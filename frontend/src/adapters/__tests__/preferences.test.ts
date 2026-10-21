@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { LocalPreferences, type PreferencesAdapter } from '@/adapters/preferences'
+import { DEFAULT_PREFS, LocalPreferences, type PreferencesAdapter } from '@/adapters/preferences'
 
 describe('preferences adapter', () => {
   beforeEach(() => {
@@ -45,8 +45,8 @@ describe('preferences adapter', () => {
     it('round-trips through localStorage', async () => {
       // Typed as the port, so the call sites here are the ones the hook makes.
       const adapter: PreferencesAdapter = new LocalPreferences()
-      await adapter.save({ document_sort: 'alphabetical' }, 'document_sort', 'alphabetical')
-      expect(JSON.parse(localStorage.getItem('oversolved.preferences')!)).toEqual({ document_sort: 'alphabetical' })
+      await adapter.save({ ...DEFAULT_PREFS, document_sort: 'alphabetical' }, 'document_sort', 'alphabetical')
+      expect(JSON.parse(localStorage.getItem('oversolved.preferences')!)).toMatchObject({ document_sort: 'alphabetical' })
       expect(new LocalPreferences().read().document_sort).toBe('alphabetical')
     })
 
@@ -59,7 +59,7 @@ describe('preferences adapter', () => {
       vi.spyOn(Storage.prototype, 'setItem').mockImplementation(boom)
       const adapter: PreferencesAdapter = new LocalPreferences()
       expect(adapter.read().document_sort).toBe('date_newest_first')
-      await expect(adapter.save({ document_sort: 'alphabetical' }, 'document_sort', 'alphabetical')).resolves.toBeUndefined()
+      await expect(adapter.save({ ...DEFAULT_PREFS, document_sort: 'alphabetical' }, 'document_sort', 'alphabetical')).resolves.toBeUndefined()
     })
   })
 })

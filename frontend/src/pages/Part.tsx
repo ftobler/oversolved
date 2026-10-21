@@ -8,7 +8,7 @@ import { stripRefSigil } from '@/utils/refSigil'
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { wouldOverconstrain } from '@/kernel/features/constraintProbe'
-import { visibleFeatureIds } from '@/utils/featureVisibility'
+import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
 import { useSketchEditorStore, useSketchUiStore, setSketchCallback, sketchOwnedDeleteTargets, type PendingConstraint } from '@/stores/sketchEditorStore'
 import { useEditorState, editorState } from '@/hooks/useEditorState'
 import { syncRollbackFromDoc } from '@/stores/editorState'
@@ -49,6 +49,8 @@ import MessageDialog from '@/components/dialogs/MessageDialog'
 import { useEditFeature } from '@/pages/useEditFeature'
 
 import measurementIcon from '@/assets/icons/measurement.svg'
+import ViewOptionsButton from '@/components/Viewport/ViewOptionsButton'
+import { showGroupIds, showGroupStates, type ShowGroup } from '@/components/Viewport/viewOptionsShow'
 
 import { buildContextMenu } from './buildContextMenu'
 import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from './buildContextMenu'
@@ -195,8 +197,6 @@ export default function Part() {
   const [debugOpen, setDebugOpen] = useState(false)
   const [messageDialog, setMessageDialog] = useState<ShowMessagePayload | null>(null)
   const showMessage = useCallback((payload: ShowMessagePayload) => setMessageDialog(payload), [])
-  const showDebugHit = useSketchUiStore(s => s.showDebugHit)
-  const setShowDebugHit = useSketchUiStore(s => s.setShowDebugHit)
 
   const activePickField = useSketchEditorStore(s => s.activePickField)
   const setActivePickField = useSketchEditorStore(s => s.setActivePickField)
@@ -957,6 +957,24 @@ export default function Part() {
   )
   usePartCommands(commandRegistry)
 
+  // The Show rows describe the document, so their check state comes from the
+  // same derivation the viewport draws from, not from the edit overrides.
+  const docVisible = useMemo(() => docVisibleFeatureIds(features), [features])
+  const viewShowStates = useMemo(() => showGroupStates(features, docVisible), [features, docVisible])
+  // One undo step per row: planes use the existing command (the keyboard's own
+  // path), while sketches and origin go through the same mutation the tree
+  // calls, grouped so a whole category is one history entry.
+  const handleToggleShowGroup = useCallback((group: ShowGroup) => {
+    if (group === 'planes') {
+      commandRegistry.execute('toggle_plane_visibility')
+      return
+    }
+    const ids = showGroupIds(features, group)
+    if (ids.length === 0) return
+    const visible = !viewShowStates[group].visible
+    commitMutationGroup(ids.map(featureId => ({ type: 'set_feature_visibility' as const, featureId, visible })))
+  }, [commandRegistry, commitMutationGroup, features, viewShowStates])
+
   // Q6: the drive surface is a dev/test affordance. The gate constant is folded
   // by the bundler, so in a production build this effect body is dead code and
   // the bridge module is never referenced.
@@ -1289,14 +1307,6 @@ export default function Part() {
             >
               <span className="material-icons-outlined">terminal</span>
             </button>
-            <button
-              className="toolbar-btn"
-              aria-label="Toggle debug collision rendering"
-              title={showDebugHit ? 'Hide debug collision rendering' : 'Show debug collision rendering'}
-              onClick={() => setShowDebugHit(!showDebugHit)}
-            >
-              <span className="material-icons-outlined">{showDebugHit ? 'visibility' : 'visibility_off'}</span>
-            </button>
           </>
         }
       />
@@ -1322,6 +1332,9 @@ export default function Part() {
           handleRightClick={handleRightClick}
           viewportHud={
             <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
+          }
+          viewportViewOptions={
+            <ViewOptionsButton show={viewShowStates} onToggleShow={handleToggleShowGroup} />
           }
           rightPanel={
             <PartDebugPanel debugOpen={debugOpen} />

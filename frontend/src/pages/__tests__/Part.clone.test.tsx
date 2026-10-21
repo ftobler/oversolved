@@ -42,7 +42,6 @@ describe('Part clone dialog', () => {
     modeStack: [],
   })
   useSketchUiStore.setState({
-    showDebugHit: false,
   })
   })
 

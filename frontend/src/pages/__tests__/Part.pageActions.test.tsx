@@ -203,7 +203,6 @@ describe('Part page actions', () => {
     modeStack: [],
   })
   useSketchUiStore.setState({
-    showDebugHit: false,
     showConstraintTiles: false,
   })
     useDevSettingsStore.setState({ validateOnRebuild: false })
@@ -229,16 +228,16 @@ describe('Part page actions', () => {
     expect(h.renameDoc).toHaveBeenCalledWith('doc-1', 'New Bracket')
   })
 
-  it('the header toggle opens the debug drawer and the collision button flips its store flag', () => {
+  it('the header toggle opens the debug drawer', () => {
     renderPart()
     expect(document.querySelector('.debug-drawer')).toBeNull()
 
     fireEvent.click(screen.getByTitle('Toggle debug panel (F2)'))
     expect(document.querySelector('.debug-drawer')).not.toBeNull()
 
-    expect(useSketchUiStore.getState().showDebugHit).toBe(false)
-    fireEvent.click(screen.getByTitle('Show debug collision rendering'))
-    expect(useSketchUiStore.getState().showDebugHit).toBe(true)
+    // The collision render moved into the viewport's view-options dropdown, so
+    // the header no longer owns it.
+    expect(screen.queryByTitle('Show debug collision rendering')).toBeNull()
   })
 
   it('the tree Rebuild re-solves the current document with the cache bypassed', async () => {

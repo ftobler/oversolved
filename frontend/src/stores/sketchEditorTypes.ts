@@ -156,8 +156,7 @@ export interface SketchEditorState {
   // and computeHighlight re-highlights by membership until the user picks again.
   clearSelectedPicks: () => void
   // Reset every transient interaction field to its create() default, leaving
-  // user preferences (showDebugHit, showConstraintTiles, ngonSides,
-  // entityKindMap) intact. Called from Part's unmount cleanup: the store is
+  // user preferences (showConstraintTiles, ngonSides, entityKindMap) intact. Called from Part's unmount cleanup: the store is
   // module-level and survives a remount, so a new document would otherwise
   // inherit the previous one's picks, drags, and modes. Deliberately a plain
   // set, not the validation-running actions: it tears down a half-open state,

@@ -33,9 +33,14 @@ interface AssemblyBodyProps {
   // A mate reference slot is armed, so a click aims rather than grabs.
   aiming: boolean
   onGrab: (point: Vec3, event: ThreeEvent<PointerEvent>) => void
+  // The viewer's Shading and Edges rows, shared by both editors. A hidden mesh
+  // is not mounted, so it can neither be drawn nor grabbed: the assembly's grab
+  // is an R3F raycast on the mesh, not the ID buffer.
+  showFaces?: boolean
+  showEdges?: boolean
 }
 
-export default function AssemblyBody({ item, curves, selected, aiming, onGrab }: AssemblyBodyProps) {
+export default function AssemblyBody({ item, curves, selected, aiming, onGrab, showFaces = true, showEdges = true }: AssemblyBodyProps) {
   const geometry = useMemo(() => {
     const { positions, indices } = buildBodyGeometry(item.mesh)
     const g = new THREE.BufferGeometry()
@@ -60,35 +65,37 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab }:
 
   return (
     <>
-      <mesh
-        geometry={geometry}
-        visible={item.visible}
-        userData={{ fitBounds: true }}
-        onPointerDown={(e) => {
-          if (e.button !== 0) return
-          // Ctrl+click aims a mate reference, and so does any click while a mate
-          // chip is armed (AssemblyViewport resolves both off the ID buffer).
-          // Grabbing the part on the same gesture would drag it away from the
-          // anchor the user was pointing at.
-          if (e.ctrlKey || aiming) return
-          e.stopPropagation()
-          onGrab([e.point.x, e.point.y, e.point.z], e)
-        }}
-      >
-        <meshStandardMaterial
-          color={selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT}
-          roughness={DEFAULT_PART_ROUGHNESS}
-          metalness={0}
-          envMapIntensity={ENV_MAP_INTENSITY}
-          // Push the surface back so an edge lying exactly on it draws crisp
-          // instead of z-fighting, as Body3D does in the part editor.
-          polygonOffset
-          polygonOffsetFactor={1}
-          polygonOffsetUnits={1}
-        />
-      </mesh>
+      {showFaces && (
+        <mesh
+          geometry={geometry}
+          visible={item.visible}
+          userData={{ fitBounds: true }}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return
+            // Ctrl+click aims a mate reference, and so does any click while a mate
+            // chip is armed (AssemblyViewport resolves both off the ID buffer).
+            // Grabbing the part on the same gesture would drag it away from the
+            // anchor the user was pointing at.
+            if (e.ctrlKey || aiming) return
+            e.stopPropagation()
+            onGrab([e.point.x, e.point.y, e.point.z], e)
+          }}
+        >
+          <meshStandardMaterial
+            color={selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT}
+            roughness={DEFAULT_PART_ROUGHNESS}
+            metalness={0}
+            envMapIntensity={ENV_MAP_INTENSITY}
+            // Push the surface back so an edge lying exactly on it draws crisp
+            // instead of z-fighting, as Body3D does in the part editor.
+            polygonOffset
+            polygonOffsetFactor={1}
+            polygonOffsetUnits={1}
+          />
+        </mesh>
+      )}
 
-      {edgeGeometry && (
+      {showEdges && edgeGeometry && (
         <lineSegments geometry={edgeGeometry} visible={item.visible} renderOrder={RENDER_ORDER_DEFAULT}>
           <lineBasicMaterial color={selected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE} />
         </lineSegments>

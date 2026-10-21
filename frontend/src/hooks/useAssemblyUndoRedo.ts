@@ -219,9 +219,10 @@ export function useAssemblyUndoRedo(
     // undo must not leave the session behind either: pointer-up would
     // otherwise commit the drag onto the restored doc. Delegated to the
     // store's own reset (rather than hand-listing the fields here) so this
-    // call site can't drift from STORE_OWNED_FIELDS the way it already had
-    // (missing showPickDebug); it deliberately skips the two undo stacks,
-    // whose mirror the History move above just republished.
+    // call site can't drift from STORE_OWNED_FIELDS. It deliberately skips the
+    // two undo stacks, whose mirror the History move above just republished.
+    // The view options (including the collision-debug overlay) are browser
+    // preference, not assembly state, so they stay across an undo by design.
     useAssemblyStore.getState().resetTransientAssemblyState()
     docRef.current = entry.doc
     setDoc(entry.doc)

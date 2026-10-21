@@ -252,9 +252,9 @@ describe('useAssemblyUndoRedo', () => {
 
   // applyUndoRedo's transient-field reset must delegate to the store's own
   // resetTransientAssemblyState rather than hand-listing fields, or it silently
-  // drifts from STORE_OWNED_FIELDS (which happened: showPickDebug was missing).
-  // Pinning this one field proves the reset now covers the full owned set.
-  it('undo resets showPickDebug along with the rest of the store-owned transient state', () => {
+  // drifts from STORE_OWNED_FIELDS. Pinning one owned field proves the reset
+  // covers the set; the view options are outside it by design (browser state).
+  it('undo resets a store-owned transient field along with the rest', () => {
     const docA = docWith(['a'])
     const docRef = { current: docWith(['a', 'b']) }
     const { result } = renderHookStrict(() => useAssemblyUndoRedo(
@@ -262,12 +262,12 @@ describe('useAssemblyUndoRedo', () => {
     ))
 
     act(() => {
-      useAssemblyStore.setState({ showPickDebug: true })
+      useAssemblyStore.setState({ pickScopeEntity: 'P|1|face|0' })
       result.current.pushUndo(docA, 'Add part')
     })
     act(() => { result.current.handleUndo() })
 
-    expect(useAssemblyStore.getState().showPickDebug).toBe(false)
+    expect(useAssemblyStore.getState().pickScopeEntity).toBeNull()
   })
 
   // The selection fields live outside the doc, so an undo that removes the

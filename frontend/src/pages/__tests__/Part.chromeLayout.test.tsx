@@ -71,16 +71,27 @@ describe('Part editor chrome', () => {
     expect(screen.queryByText(/Copyright/)).toBeNull()
   })
 
-  it('puts the collision-render toggle in the header, beside Report a bug', async () => {
+  it('no longer puts the collision-render toggle in the header', async () => {
     await renderPageLoaded()
-    const button = screen.getByTitle('Show debug collision rendering')
-    expect(screen.getByTestId('header').contains(button)).toBe(true)
+    expect(screen.queryByTitle('Show debug collision rendering')).toBeNull()
+    // The header keeps the F2 debug panel, which is a different thing.
+    expect(screen.getByTitle('Toggle debug panel (F2)')).toBeInTheDocument()
   })
 
   it('puts the measurement readout inside the viewport HUD', async () => {
     await renderPageLoaded()
     const readout = screen.getByTestId('measurement-readout')
     expect(screen.getByTestId('viewport-hud').contains(readout)).toBe(true)
+  })
+
+  it('hands the view options button to the HUD slot above the cube', async () => {
+    await renderPageLoaded()
+    const slot = screen.getByTestId('viewport-hud-view-options')
+    expect(slot.querySelector('button[aria-label="View options"]')).not.toBeNull()
+    // The stack order is options, cube, readout: the mock renders the two
+    // handed-in slots, and the option slot comes first.
+    const hud = screen.getByTestId('viewport-hud')
+    expect(hud.firstElementChild).toBe(slot)
   })
 
   it('floats the feature and parts lists inside the viewport stage', async () => {

@@ -31,7 +31,7 @@ describe('useUserPreferences', () => {
     await act(async () => { await result.current.updatePreference('document_sort', 'date_oldest_first') })
     expect(result.current.preferences.document_sort).toBe('date_oldest_first')
     expect(JSON.parse(localStorage.getItem('oversolved.preferences')!))
-      .toEqual({ document_sort: 'date_oldest_first' })
+      .toMatchObject({ document_sort: 'date_oldest_first' })
   })
 
   it('does not let a stale revert stomp a later successful update (rapid toggles)', async () => {

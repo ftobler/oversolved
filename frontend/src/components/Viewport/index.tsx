@@ -11,6 +11,7 @@ import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
 import '@/components/Viewport/ViewportHud.css'
 import { type Hit, type Pv } from '@/components/misc/CubeGizmo.utils'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { useEditorState } from '@/hooks/useEditorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Body3D from '@/components/Geometry3D/Body3D'
@@ -20,6 +21,8 @@ import FeatureHandles from '@/components/Viewport/FeatureHandles'
 import ReferencePlane from '@/components/Viewport/ReferencePlane'
 import SceneController from '@/components/Viewport/SceneController'
 import { RenderOnChange, RenderOnce } from '@/components/Viewport/RenderOnChange'
+import { useSceneExposure } from '@/components/Viewport/SceneExposure'
+import { useLayerPipelineEffects } from '@/components/Viewport/viewOptionsEffects'
 import { MsaaRender } from '@/components/Viewport/MsaaRender'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/components/Viewport/cameraController'
@@ -93,6 +96,10 @@ export interface ViewportProps {
   // measurement readout). A node rather than a fixed component so the part and
   // assembly editors can each hand in their own readout.
   hud?: ReactNode
+  // The viewer options button, stacked ABOVE the cube. Separate from `hud`
+  // because the stack order is part of the layout (options, cube, readout), not
+  // something a caller should have to reproduce.
+  viewOptions?: ReactNode
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
@@ -123,6 +130,7 @@ export interface ViewportHandle {
 export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   onRightClick,
   hud,
+  viewOptions,
 }: ViewportProps, ref) {
   // Session/solver facts come from the publication store; the editor FSM and
   // the derived non-solve fields come from L2.
@@ -139,7 +147,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const partColors = useEditorState(s => s.partColors)
   const partStyle = useEditorState(s => s.partStyle)
   const activeFeatureId = useEditorState(s => s.activeSketchFeatureId) ?? undefined
-  const showDebugHit = useSketchUiStore(s => s.showDebugHit)
+  const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
+  const shading = useViewOptionsStore(s => s.shading)
+  const edges = useViewOptionsStore(s => s.edges)
 
   const featureDefs = doc?.features as PartFeature[] | undefined
 
@@ -167,6 +177,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const consumedLayers = PART_EDITOR_CONSUMED_LAYERS
   const clearIdBufferHover = useIdBufferPointerDispatch({ glRef, consumedLayers })
 
+  // Shading/Edges change the ID layers, so a toggle has to dirty the buffer and
+  // drop the hover that was resolved against the old ones. The registration
+  // hooks dirty the buffer themselves; this adds the hover half.
+  useLayerPipelineEffects(clearIdBufferHover)
+
   // Bumped when the scene-side prerequisites of a fit become live (the
   // Canvas-owned camera via SceneController, gl/scene via onCreated). R3F
   // renders the scene tree on a later frame than this component's mount, so a
@@ -180,6 +195,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // per instance inside SceneController.
   const [sceneTick, setSceneTick] = useState(0)
   const onSceneReady = useCallback(() => setSceneTick(t => t + 1), [])
+
+  // Brightness lands on the renderer itself, not on a scene instance; the
+  // readiness tick is what tells this hook the renderer ref is finally set.
+  useSceneExposure(glRef, invalidateRef, sceneTick)
 
   const createdLiveRef = useRef(false)
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
@@ -537,6 +556,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       metalness={partStyle?.[b.key]?.metalness ?? 0}
       transmission={partStyle?.[b.key]?.transmission ?? 0}
       doomed={b.doomed}
+      showFaces={shading}
+      showEdges={edges}
     />
   )
 
@@ -581,7 +602,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
         <IdPickingDriver onReady={onIdPipelineReady} />
         <SceneProbeDriver />
-        {showDebugHit && <IdDebugOverlay />}
+        {collisionDebug && <IdDebugOverlay />}
 
         {/* Local boundary so the 1.47 MB HDR no longer hides and re-shows the
             entire Canvas subtree (which destroys and recreates the IdPipeline on
@@ -692,7 +713,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           which entities the cursor's disc actually covers, in the order the
           click would take them. The buffer overlay can only show that a mark
           exists, not which entity it is. */}
-      {showDebugHit && <IdPickReadout glRef={glRef} />}
+      {collisionDebug && <IdPickReadout glRef={glRef} />}
 
       {/* 268: rubber-band drag-box selection overlay. A box is crossing-only;
           the window-mode styling and its mode branch were deleted with the
@@ -726,6 +747,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       )}
 
       <div className="viewport-hud">
+        {viewOptions}
         <CubeGizmoCanvas
           canvasRef={canvasRef}
           pvRef={pvRef}

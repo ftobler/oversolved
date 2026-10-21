@@ -19,6 +19,7 @@ import { initializeTools } from '@/tools'
 import { preloadViewportLabelFont } from '@/components/Viewport/labelFont'
 import { ToastProvider } from '@/contexts/ToastContext'
 import { useStoragePersistenceStore } from '@/stores/storagePersistenceStore'
+import { syncViewOptionsFromPreferences } from '@/stores/viewOptionsStore'
 import { installGlobalErrorHandlers } from '@/recovery/globalErrors'
 import { warmSolverWorker } from '@/kernel/worker/solverClient'
 import { warmAnchorSolverWorker } from '@/kernel/worker/anchorSolverClient'
@@ -45,6 +46,10 @@ preloadViewportLabelFont()
 // compiled by the time the first document opens instead of after it.
 warmSolverWorker()
 warmAnchorSolverWorker()
+
+// Before the first render, so the viewport's first frame already uses the
+// stored viewer options rather than flashing today's defaults.
+syncViewOptionsFromPreferences()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -20,7 +20,9 @@ vi.mock('@/components/Geometry3D/bodyGeometry', () => ({
 }))
 
 vi.mock('@/utils/edgeSampling', () => ({
-  buildCurveSegments: () => new Float32Array(0),
+  // One segment, so the wireframe half of the shading/edges rows has an
+  // element to find. The grab tests never look at it.
+  buildCurveSegments: () => new Float32Array([0, 0, 0, 1, 0, 0]),
 }))
 
 function makeItem(): BodyRenderItem {
@@ -31,7 +33,7 @@ function makeItem(): BodyRenderItem {
   }
 }
 
-function renderBody(overrides: { aiming?: boolean; selected?: boolean } = {}) {
+function renderBody(overrides: { aiming?: boolean; selected?: boolean; showFaces?: boolean; showEdges?: boolean } = {}) {
   const onGrab = vi.fn()
   const { container } = render(
     <AssemblyBody
@@ -40,6 +42,8 @@ function renderBody(overrides: { aiming?: boolean; selected?: boolean } = {}) {
       selected={overrides.selected ?? false}
       aiming={overrides.aiming ?? false}
       onGrab={onGrab}
+      showFaces={overrides.showFaces ?? true}
+      showEdges={overrides.showEdges ?? true}
     />,
   )
   const mesh = container.querySelector('mesh')!
@@ -68,5 +72,28 @@ describe('AssemblyBody grab guard', () => {
     const { mesh, onGrab } = renderBody({ aiming: true })
     fireEvent.pointerDown(mesh, { button: 0 })
     expect(onGrab).not.toHaveBeenCalled()
+  })
+})
+
+describe('AssemblyBody viewer layers', () => {
+  // The assembly spec registers its pick layers scene-wide, but the mesh is
+  // also an R3F raycast target, so a "hidden" face must not be mounted at all:
+  // an invisible-but-present mesh would still swallow the grab.
+  it('draws both layers by default, which is today\'s look', () => {
+    const { container } = renderBody()
+    expect(container.querySelector('mesh')).not.toBeNull()
+    expect(container.querySelector('linesegments')).not.toBeNull()
+  })
+
+  it('shading off removes the mesh, leaving the wireframe drawn', () => {
+    const { container } = renderBody({ showFaces: false })
+    expect(container.querySelector('mesh')).toBeNull()
+    expect(container.querySelector('linesegments')).not.toBeNull()
+  })
+
+  it('edges off removes the wireframe, leaving the mesh drawn', () => {
+    const { container } = renderBody({ showEdges: false })
+    expect(container.querySelector('linesegments')).toBeNull()
+    expect(container.querySelector('mesh')).not.toBeNull()
   })
 })

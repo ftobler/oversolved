@@ -22,7 +22,7 @@ export function useUserPreferences() {
   // instead of racing on a stale closure.
   const preferencesRef = useRef(preferences)
 
-  const updatePreference = useCallback(async (key: keyof UserPreferences, value: string) => {
+  const updatePreference = useCallback(async (key: 'document_sort', value: DocumentSort) => {
     const previous = preferencesRef.current[key]
     const next = { ...preferencesRef.current, [key]: value } as UserPreferences
     preferencesRef.current = next

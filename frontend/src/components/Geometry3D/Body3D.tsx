@@ -77,11 +77,16 @@ interface Body3DProps {
   transmission?: number  // 0-1 (0 = opaque, 1 = fully transmissive / glass-like)
   interactive?: boolean
   doomed?: boolean  // ghost of a body the previewed edit consumes: drawn "doomed", still pickable
+  // The viewer's Shading and Edges rows. A hidden layer is neither drawn nor
+  // registered in the ID buffer: what is not drawn must not be pickable, or a
+  // wireframe would keep blocking clicks on the edges the user can see.
+  showFaces?: boolean
+  showEdges?: boolean
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false }: Body3DProps) {
-  useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible })
-  useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
+export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true }: Body3DProps) {
+  useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible && showFaces })
+  useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible && showEdges })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
   const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
   const hoveredPickKey = useSketchEditorStore(s => s.hoveredPickKey)
@@ -500,31 +505,39 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     }
   })
 
+  // The removal mark is the doomed body's wireframe, and the plan keeps it
+  // visible through either row: a consumed body must stay identifiable while
+  // the user is still choosing what the edit takes. It is not made pickable by
+  // this, though -- the edge ID registration above follows `showEdges` alone.
+  const drawEdges = (showEdges || doomed) && edges.length > 0
+
   return (
     <group visible={visible} userData={{ featureId }}>
-      <mesh
-        geometry={geometry}
-      >
-        <meshPhysicalMaterial
-          color="white"
-          roughness={surface.roughness}
-          metalness={surface.metalness}
-          transmission={surface.transmission}
-          envMapIntensity={ENV_MAP_INTENSITY}
-          side={THREE.DoubleSide}
-          vertexColors={true}
-          polygonOffset={true}
-          polygonOffsetFactor={1}
-          polygonOffsetUnits={1}
-          transparent={surface.transparency > 0 || surface.transmission > 0}
-          depthWrite={surface.transparency === 0 && surface.transmission === 0}
-          opacity={1 - surface.transparency}
-          blending={surface.transparency > 0 || surface.transmission > 0 ? THREE.CustomBlending : THREE.NormalBlending}
-          blendSrc={THREE.SrcAlphaFactor}
-          blendDst={THREE.OneMinusSrcAlphaFactor}
-        />
-      </mesh>
-      {edges.length > 0 && (
+      {showFaces && (
+        <mesh
+          geometry={geometry}
+        >
+          <meshPhysicalMaterial
+            color="white"
+            roughness={surface.roughness}
+            metalness={surface.metalness}
+            transmission={surface.transmission}
+            envMapIntensity={ENV_MAP_INTENSITY}
+            side={THREE.DoubleSide}
+            vertexColors={true}
+            polygonOffset={true}
+            polygonOffsetFactor={1}
+            polygonOffsetUnits={1}
+            transparent={surface.transparency > 0 || surface.transmission > 0}
+            depthWrite={surface.transparency === 0 && surface.transmission === 0}
+            opacity={1 - surface.transparency}
+            blending={surface.transparency > 0 || surface.transmission > 0 ? THREE.CustomBlending : THREE.NormalBlending}
+            blendSrc={THREE.SrcAlphaFactor}
+            blendDst={THREE.OneMinusSrcAlphaFactor}
+          />
+        </mesh>
+      )}
+      {drawEdges && (
         <lineSegments
           geometry={edgeGeometry}
           material={edgeMaterial}
@@ -560,7 +573,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
       )}
       {/* The hasAny guards keep a re-render triggered by someone else's hover
           from walking this body's primitive lists just to emit nothing. */}
-      {interactive && edgeBoundaryGeos && edgeHighlightIndex.hasAny(edgeHoverFlags) && edgeHoverFlags.map((hovered, edgeIdx) => {
+      {interactive && showEdges && edgeBoundaryGeos && edgeHighlightIndex.hasAny(edgeHoverFlags) && edgeHoverFlags.map((hovered, edgeIdx) => {
         // Selection outranks hover: skip the hover overlay where the selection
         // overlay already draws, so precedence is explicit and not a JSX draw-order
         // accident (mirrors the edgeColors if/else-if).
@@ -573,7 +586,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
           </lineSegments>
         )
       })}
-      {interactive && edgeBoundaryGeos && edgeHighlightIndex.hasAny(edgeSelectionFlags) && edgeSelectionFlags.map((selected, edgeIdx) => {
+      {interactive && showEdges && edgeBoundaryGeos && edgeHighlightIndex.hasAny(edgeSelectionFlags) && edgeSelectionFlags.map((selected, edgeIdx) => {
         if (!selected) return null
         const geo = edgeBoundaryGeos.get(edgeIdx)
         if (!geo) return null
@@ -583,7 +596,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
           </lineSegments>
         )
       })}
-      {interactive && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceHoverFlags) && faceHoverFlags!.map((hovered, faceIdx) => {
+      {interactive && showFaces && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceHoverFlags) && faceHoverFlags!.map((hovered, faceIdx) => {
         // Selection outranks hover: skip the hover overlay where the selection
         // overlay already draws (mirrors the faceColors if/else-if precedence).
         if (!hovered || faceSelectionFlags?.[faceIdx]) return null
@@ -595,7 +608,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
           </lineSegments>
         )
       })}
-      {interactive && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceSelectionFlags) && faceSelectionFlags!.map((selected, faceIdx) => {
+      {interactive && showFaces && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceSelectionFlags) && faceSelectionFlags!.map((selected, faceIdx) => {
         if (!selected) return null
         const geo = faceBoundaryGeos.get(faceIdx)
         if (!geo) return null

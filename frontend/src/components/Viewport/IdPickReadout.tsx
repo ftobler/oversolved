@@ -70,7 +70,7 @@ export default function IdPickReadout({ glRef }: { glRef: RefObject<THREE.WebGLR
       })
     }
 
-    // `showDebugHit` is a persisted preference, so on a reload this mounts
+    // The debug flag is deliberately not persisted, so on a reload this mounts
     // before the renderer exists. Poll for the canvas rather than silently
     // attaching to nothing, the same way the pointer dispatcher does.
     const tryAttach = () => {

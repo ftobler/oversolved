@@ -56,6 +56,8 @@ interface PartEditorPanelProps {
   handleRightClick: (pos: [number, number], targetId?: string) => void
   // Bottom-right in-viewport overlay (the measurement readout).
   viewportHud?: ReactNode
+  // The viewer options button, stacked above the orientation cube.
+  viewportViewOptions?: ReactNode
 }
 
 export default function PartEditorPanel({
@@ -74,6 +76,7 @@ export default function PartEditorPanel({
   viewportRef,
   handleRightClick,
   viewportHud,
+  viewportViewOptions,
 }: PartEditorPanelProps) {
   // The phone drawer's open flag. It only means anything below the breakpoint
   // (Part.css): above it the cards are always out and the toggle is not shown.
@@ -130,7 +133,7 @@ export default function PartEditorPanel({
         )}
         <div className="viewport-stage">
           <EditorErrorBoundary label="viewport">
-            <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} hud={viewportHud} />
+            <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} hud={viewportHud} viewOptions={viewportViewOptions} />
           </EditorErrorBoundary>
           <LoadingOverlay isDocumentLoading={loading} />
           {/* The overlay containers are positioning-only and click-through;

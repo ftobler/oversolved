@@ -21,6 +21,7 @@ import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
 import '@/components/Viewport/ViewportHud.css'
 import type { Hit, Pv } from '@/components/misc/CubeGizmo.utils'
 import SceneController from '@/components/Viewport/SceneController'
+import { useSceneExposure } from '@/components/Viewport/SceneExposure'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent, shouldAutoFit } from '@/components/Viewport/cameraController'
@@ -41,6 +42,8 @@ import {
   PLANE_LAYER_NAME, VERTEX_LAYER_NAME,
 } from '@/picking'
 import { useAssemblyStore } from '@/stores/assemblyStore'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
+import { useLayerPipelineEffects } from '@/components/Viewport/viewOptionsEffects'
 import { lookupAnchor, resolveAnchorGizmos } from '@/utils/anchorGizmos'
 import { entityKeysForMate } from '@/utils/mateHighlight'
 import {
@@ -118,9 +121,11 @@ export interface AssemblyViewportProps {
   // Bottom-right overlay content, stacked under the orientation cube. Mirrors
   // the part viewport's `hud`.
   hud?: ReactNode
+  // The viewer options button, above the cube; same slot as the part editor's.
+  viewOptions?: ReactNode
 }
 
-export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(function AssemblyViewport({ hud }, ref) {
+export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(function AssemblyViewport({ hud, viewOptions }, ref) {
   const doc = useAssemblyStore(s => s.doc)
   const mates = useAssemblyStore(s => s.mates)
   // One subject slot instead of two independent selected fields: the part handle
@@ -146,7 +151,9 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const pickIndex = useAssemblyStore(s => s.pickIndex)
   const entitySelection = useAssemblyStore(s => s.entitySelection)
   const hoveredEntity = useAssemblyStore(s => s.hoveredEntity)
-  const showPickDebug = useAssemblyStore(s => s.showPickDebug)
+  const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
+  const shading = useViewOptionsStore(s => s.shading)
+  const edges = useViewOptionsStore(s => s.edges)
   // An armed mate chip turns the whole scene into a reference picker: a plain
   // click aims instead of grabbing, so authoring a mate never nudges a part.
   // With no chip armed the viewport is a plain B-rep selector instead (faces,
@@ -194,6 +201,10 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // is one-shot per instance inside SceneController.
   const [sceneTick, setSceneTick] = useState(0)
   const onSceneReady = useCallback(() => setSceneTick(t => t + 1), [])
+
+  // The same global brightness as the part editor. No invalidate ref here: this
+  // canvas draws continuously, so the write is enough.
+  useSceneExposure(glRef, undefined, sceneTick)
 
   const createdLiveRef = useRef(false)
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
@@ -467,6 +478,10 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     store.setHoveredEntity(null)  // the selection-mode B-rep hover
   }, [hoverScheduler])
 
+  // Shading/Edges change the ID layers; the toggle must dirty the buffer and
+  // drop the hover resolved against the old ones, exactly as in the part editor.
+  useLayerPipelineEffects(clearHover)
+
   const scheduleHover = useCallback((e: React.PointerEvent) => {
     // A held button means an orbit is in progress. Every frame of it would
     // re-render the ID buffer and read it back, to answer a question the user is
@@ -727,8 +742,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
         />
 
         <IdPickingDriver onReady={onPipelineReady} />
-        <AssemblyPickLayers bodies={drawnPickGeometry} />
-        {showPickDebug && <IdDebugOverlay />}
+        <AssemblyPickLayers bodies={drawnPickGeometry} showFaces={shading} showEdges={edges} />
+        {collisionDebug && <IdDebugOverlay />}
 
         <Suspense fallback={null}>
           <Environment files={`${import.meta.env.BASE_URL}env.hdr`} background={false} environmentIntensity={ENV_INTENSITY} />
@@ -747,6 +762,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
                 selected={g.selected}
                 aiming={aiming}
                 onGrab={(point, event) => handleGrabBody(g.handle, point, pointerOf(event))}
+                showFaces={shading}
+                showEdges={edges}
               />
             ))}
           </group>
@@ -780,6 +797,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
       </Canvas>
 
       <div className="viewport-hud">
+        {viewOptions}
         <CubeGizmoCanvas
           canvasRef={canvasRef}
           pvRef={pvRef}

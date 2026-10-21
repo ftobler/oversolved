@@ -81,7 +81,6 @@ beforeEach(() => {
   })
   useSketchUiStore.setState({
     closeContextMenu: () => {},
-    showDebugHit: false,
   })
   usePartEditorStore.setState({
     features: [] as Feature[],

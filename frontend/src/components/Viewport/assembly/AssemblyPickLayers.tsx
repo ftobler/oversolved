@@ -26,11 +26,21 @@ function unregisterAll(pipeline: IdPipeline, registered: Map<string, AssemblyPic
   registered.clear()
 }
 
-export default function AssemblyPickLayers({ bodies }: { bodies: AssemblyPickBody[] }) {
+/** Which drawn layers were registered, so a viewer toggle can re-register. */
+function layerKey(showFaces: boolean, showEdges: boolean): string {
+  return `${showFaces ? 'f' : ''}${showEdges ? 'e' : ''}`
+}
+
+export default function AssemblyPickLayers({ bodies, showFaces = true, showEdges = true }: {
+  bodies: AssemblyPickBody[]
+  showFaces?: boolean
+  showEdges?: boolean
+}) {
   const pipeline = useIdPipeline()
   // The body objects currently registered, keyed by bodyKey. A body whose
   // object identity is unchanged needs no re-registration.
   const registeredRef = useRef<Map<string, AssemblyPickBody>>(new Map())
+  const layersRef = useRef(layerKey(showFaces, showEdges))
 
   // Unmount / pipeline swap frees every id this component registered. Kept
   // apart from the registration effect so a bodies change never tears the whole
@@ -50,6 +60,18 @@ export default function AssemblyPickLayers({ bodies }: { bodies: AssemblyPickBod
     const next = new Set(bodies.map(body => body.bodyKey))
     let changed = false
 
+    // A viewer layer toggle changes which layers exist, not the bodies. The
+    // simplest honest answer is to drop every registration and rebuild: the
+    // shutter is a rare click, and the alternative -- tracking a per-layer
+    // registration set -- would be bookkeeping with no runtime gain. A layer
+    // that is off is not in the ID buffer at all, matching what is drawn.
+    const key = layerKey(showFaces, showEdges)
+    if (layersRef.current !== key) {
+      unregisterAll(pipeline, registered)
+      layersRef.current = key
+      changed = true
+    }
+
     // Drop bodies that left the snapshot.
     for (const bodyKey of [...registered.keys()]) {
       if (next.has(bodyKey)) continue
@@ -67,10 +89,10 @@ export default function AssemblyPickLayers({ bodies }: { bodies: AssemblyPickBod
       if (registered.get(body.bodyKey) === body) continue
       const { bodyKey } = body
       try {
-        if (body.faces) {
+        if (showFaces && body.faces) {
           pipeline.faceLayer.registerBody({ bodyKey, ...body.faces })
         }
-        if (body.edges) {
+        if (showEdges && body.edges) {
           pipeline.edgeLayer.registerBody({ bodyKey, ...body.edges })
         }
         if (body.vertices) {
@@ -87,7 +109,7 @@ export default function AssemblyPickLayers({ bodies }: { bodies: AssemblyPickBod
     }
 
     if (changed) pipeline.markDirty('assembly-pick-geometry')
-  }, [pipeline, bodies])
+  }, [pipeline, bodies, showFaces, showEdges])
 
   return null
 }
