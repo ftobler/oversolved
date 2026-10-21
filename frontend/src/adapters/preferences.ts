@@ -143,6 +143,16 @@ function readView(raw: unknown): ViewPreferences {
   })
 }
 
+/**
+ * Validate and normalize a view record that did not necessarily come through
+ * `readLocalPrefs` (a test, a future profile port). One bad field falls back to
+ * its default without resetting the rest, and the cross-field rules are
+ * reapplied.
+ */
+export function normalizeViewPreferences(raw: unknown): ViewPreferences {
+  return readView(raw)
+}
+
 export function readLocalPrefs(): UserPreferences {
   try {
     const raw = localStorage.getItem(LS_KEY)

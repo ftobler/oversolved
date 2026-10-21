@@ -20,6 +20,7 @@ import {
   DEFAULT_VIEW_PREFERENCES,
   MAX_BRIGHTNESS,
   MIN_BRIGHTNESS,
+  normalizeViewPreferences,
   type CurvatureKind,
   type UserPreferences,
   type ViewPreferences,
@@ -71,7 +72,7 @@ export function toViewPreferences(state: ViewPreferences): ViewPreferences {
  * both analysis modes on, is normalized to the nearest legal view.
  */
 export function viewOptionsFromPreferences(prefs: UserPreferences): ViewPreferences {
-  return toViewPreferences({ ...DEFAULT_VIEW_PREFERENCES, ...prefs.view })
+  return toViewPreferences(normalizeViewPreferences(prefs.view))
 }
 
 function persist(get: () => ViewOptionsState): void {
@@ -165,6 +166,9 @@ export const useViewOptionsStore = create<ViewOptionsState>((set, get) => {
     },
 
     setCurvatureRange: (range) => {
+      // An inverted or non-finite range is not a user choice; keep the previous
+      // one so the shader never divides by a negative span.
+      if (range !== null && (!Number.isFinite(range[0]) || !Number.isFinite(range[1]) || range[0] >= range[1])) return
       set({ curvature_range: range })
       persist(get)
     },

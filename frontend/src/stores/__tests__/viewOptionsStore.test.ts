@@ -4,12 +4,13 @@
 // because they are what keeps the viewport from drawing nothing.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { backendBundle } from '@/adapters/backend'
-import { DEFAULT_VIEW_PREFERENCES } from '@/adapters/preferences'
+import { DEFAULT_PREFS, DEFAULT_VIEW_PREFERENCES, MAX_BRIGHTNESS, type UserPreferences } from '@/adapters/preferences'
 import {
   useViewOptionsStore,
   normalizeAnalysis,
   normalizeLayers,
   syncViewOptionsFromPreferences,
+  viewOptionsFromPreferences,
 } from '@/stores/viewOptionsStore'
 
 function reset(overrides: Partial<ReturnType<typeof useViewOptionsStore.getState>> = {}): void {
@@ -159,5 +160,40 @@ describe('view options store', () => {
     expect(useViewOptionsStore.getState().zebra_stripes).toBe(40)
     useViewOptionsStore.getState().setZebraStripes(Number.NaN)
     expect(useViewOptionsStore.getState().zebra_stripes).toBe(DEFAULT_VIEW_PREFERENCES.zebra_stripes)
+  })
+
+  it('normalizes a raw record itself, not only through the adapter', () => {
+    const raw: UserPreferences = {
+      ...DEFAULT_PREFS,
+      view: {
+        ...DEFAULT_VIEW_PREFERENCES,
+        shading: false,
+        edges: false,
+        zebra: true,
+        curvature: true,
+        brightness: 99,
+        curvature_range: [2, 1],
+      },
+    }
+    const view = viewOptionsFromPreferences(raw)
+    // Both layers off is illegal: edges win.
+    expect(view.shading).toBe(false)
+    expect(view.edges).toBe(true)
+    // Analysis needs the faces, so shading off clears both.
+    expect(view.zebra).toBe(false)
+    expect(view.curvature).toBe(false)
+    expect(view.brightness).toBe(MAX_BRIGHTNESS)
+    // An inverted range is not a range.
+    expect(view.curvature_range).toBeNull()
+  })
+
+  it('refuses an inverted or non-finite curvature range instead of storing it', () => {
+    reset({ curvature_range: [0, 1] })
+    useViewOptionsStore.getState().setCurvatureRange([2, 1])
+    expect(useViewOptionsStore.getState().curvature_range).toEqual([0, 1])
+    useViewOptionsStore.getState().setCurvatureRange([0, Number.NaN])
+    expect(useViewOptionsStore.getState().curvature_range).toEqual([0, 1])
+    useViewOptionsStore.getState().setCurvatureRange(null)
+    expect(useViewOptionsStore.getState().curvature_range).toBeNull()
   })
 })

@@ -284,6 +284,7 @@ export default function ViewOptionsButton({ show, onToggleShow }: ViewOptionsBut
                   step="0.01"
                   value={curvatureRange?.[0] ?? ''}
                   onChange={e => {
+                    if (e.target.value.trim() === '') return
                     const lo = Number(e.target.value)
                     if (!Number.isFinite(lo)) return
                     const hi = curvatureRange?.[1] ?? effectiveRange?.[1] ?? 1
@@ -299,6 +300,7 @@ export default function ViewOptionsButton({ show, onToggleShow }: ViewOptionsBut
                   step="0.01"
                   value={curvatureRange?.[1] ?? ''}
                   onChange={e => {
+                    if (e.target.value.trim() === '') return
                     const hi = Number(e.target.value)
                     if (!Number.isFinite(hi)) return
                     const lo = curvatureRange?.[0] ?? effectiveRange?.[0] ?? 0
