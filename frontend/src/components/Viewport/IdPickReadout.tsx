@@ -70,9 +70,9 @@ export default function IdPickReadout({ glRef }: { glRef: RefObject<THREE.WebGLR
       })
     }
 
-    // The debug flag is deliberately not persisted, so on a reload this mounts
-    // before the renderer exists. Poll for the canvas rather than silently
-    // attaching to nothing, the same way the pointer dispatcher does.
+    // The overlay can be switched on before the renderer and its ID pipeline
+    // are attached. Poll for the canvas rather than silently attaching to
+    // nothing, the same way the pointer dispatcher does.
     const tryAttach = () => {
       const el = glRef.current?.domElement ?? null
       if (!el) { attachFrame = requestAnimationFrame(tryAttach); return }
