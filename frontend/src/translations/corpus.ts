@@ -72,6 +72,14 @@ export function parseReference(name: string, text: string): TranslationReference
     throw new Error(`${where}: expected an object`)
   }
   const record = raw as { [key: string]: unknown }
+  // The most common transcription mistake: the measures pasted as a nested
+  // `measures` object (the older MCP description read that way). Name the fix
+  // before requireMeasures reports the unhelpful missing-bodies error.
+  const nestedMeasures = record.measures
+  if (record.bodies === undefined && typeof nestedMeasures === 'object'
+    && nestedMeasures !== null && !Array.isArray(nestedMeasures)) {
+    throw new Error(`${where}: measures go at the top level of the reference, not under \`measures\``)
+  }
   const measures = requireMeasures(where, record, false)
   // The oracle's parser leaves the counts optional and untyped beyond finite,
   // because its cases are hand-checked. A reference is machine-produced, so a

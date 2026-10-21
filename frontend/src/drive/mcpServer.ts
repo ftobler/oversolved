@@ -19,6 +19,7 @@ import { PART_DOC_SCHEMA_URI } from '@/persistence/partDocSchema'
 import { validateSelector, type Selector } from '@/kernel/select'
 import { parseReference, type TranslationReference } from '@/translations/corpus'
 import { MUTATION_CATALOG_URI, mutationCatalogPayload } from '@/drive/mutationCatalogPayload'
+import { worldFrameSentence } from '@/drive/worldFrame'
 
 // The protocol revisions whose initialize handshake this server accepts. The
 // three methods implemented here exist unchanged in all of them, so a client
@@ -230,9 +231,11 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         doc: { type: 'object' },
         reference: {
           type: 'object',
-          description: 'A reference.json payload: source {tool, version, file}, tolerance {rel, abs}, '
-            + 'optional topology ("report" | "strict"), and the measures bodies, volume, area, centroid, '
-            + 'bbox, optional faces and edges.',
+          description: 'A reference.json payload with the measures flat at the top level, for example '
+            + '{"source":{"tool":"hand","version":"1","file":"-"},"tolerance":{"rel":1e-4,"abs":0.01},'
+            + '"bodies":1,"volume":12000,"area":3800,"centroid":[20,5,-15],"bbox":[0,0,-30,40,10,0]}. '
+            + 'Optional topology ("report" | "strict"), faces and edges. The measures are top-level keys, '
+            + 'not nested under "measures".',
         },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
@@ -261,7 +264,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     name: 'select',
     description: 'Find faces or edges by predicate over the solved document and return the query strings a click '
       + 'would store, plus a geometry summary per item. Run it after `run`, then feed the queries to a feature '
-      + '(fillet, chamfer, hole, ...). An empty match is an error naming the nearest-miss count per predicate.',
+      + '(fillet, chamfer, hole, ...). An empty match is an error naming the nearest-miss count per predicate. '
+      + worldFrameSentence(),
     inputSchema: {
       type: 'object',
       required: ['doc', 'selector'],
@@ -502,7 +506,7 @@ export function createMcpServer(ops: McpCadOps): McpServer {
               + 'select finds faces/edges by predicate over the solve output, '
               + 'and export writes STEP or STL. The part-document JSON Schema is '
               + 'served as the resource ' + PART_DOC_SCHEMA_URI + ' and the mutation catalog as '
-              + MUTATION_CATALOG_URI + '.',
+              + MUTATION_CATALOG_URI + '. ' + worldFrameSentence(),
           })
         case 'notifications/initialized':
           return null

@@ -391,7 +391,8 @@ banner on stdout, so a client config must use the direct node invocation.
 
   `topology` is optional (`"report"` by default, `"strict"` to enforce the
   face/edge counts); `tolerance` is required so every reference states its own
-  budget.
+  budget. The measures are top-level keys: nesting them under `measures` is
+  refused with a message saying so, in the MCP tool and the CLI alike.
 - The server also serves two resources (`resources/list`, `resources/read`):
   `oversolved://schema/part-document`, the JSON Schema for a part document
   (`persistence/partDocSchema.ts`), and `oversolved://catalog/mutations`, the
@@ -407,6 +408,10 @@ banner on stdout, so a client config must use the direct node invocation.
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; unknown fields are rejected by name, so a typo never fails
   silently.
+- `initialize` instructions and the `select` description carry one generated
+  world-frame sentence (from `BUILTIN_PLANES`): Y is up, each builtin plane's
+  normal and sketch axes, and that an extrude goes along the normal. It is
+  generated rather than hand-typed so a plane change cannot leave it stale.
 - stdout carries protocol messages only: the entry redirects every other
   stdout write (the OCC STEP writer prints a transfer banner) to stderr.
 - The readline loop processes one call at a time, and every `run` is a fresh

@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest'
 import Ajv from 'ajv'
 import { createMcpServer, MCP_TOOLS, type McpCadOps, type McpToolPayload } from '../mcpServer'
 import { MUTATION_CATALOG_URI } from '../mutationCatalogPayload'
+import { worldFrameSentence } from '../worldFrame'
 
 type FakeOps = {
   calls: Array<{ tool: string; args: unknown }>
@@ -62,6 +63,9 @@ describe('createMcpServer', () => {
     })
     const instructions = (response as { result: { instructions: string } }).result.instructions
     expect(instructions).toContain('compare')
+    // The frame sentence is generated from BUILTIN_PLANES, so compare the
+    // served text with the generator rather than a hand-typed copy.
+    expect(instructions).toContain(worldFrameSentence())
   })
 
   it('falls back to the oldest known version for an unknown one', async () => {
@@ -263,6 +267,33 @@ describe('createMcpServer', () => {
         reference: expect.objectContaining({ tolerance: { rel: 1e-5, abs: 1e-6 }, topology: 'report' }),
       }),
     })
+  })
+
+  it('describes the flat reference shape and the select frame from one generator', () => {
+    const compare = MCP_TOOLS.find(t => t.name === 'compare')
+    const reference = (compare!.inputSchema.properties as Record<string, { description: string }>).reference
+    expect(reference.description).toContain('"bodies":1')
+    expect(reference.description).toContain('not nested under "measures"')
+
+    const select = MCP_TOOLS.find(t => t.name === 'select')
+    expect(select!.description).toContain(worldFrameSentence())
+  })
+
+  it('names the nested-measures mistake when a compare reference carries one', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    const response = await request(server, 29, 'tools/call', {
+      name: 'compare',
+      arguments: {
+        doc: {},
+        reference: {
+          source: { tool: 'test', version: '1', file: 'source.md' },
+          tolerance: { rel: 1e-5, abs: 1e-6 },
+          measures: { bodies: 1, volume: 10, area: 20, centroid: [0, 0, 0], bbox: [0, 0, 0, 1, 1, 1] },
+        },
+      },
+    })
+    expect(response).toMatchObject({ error: { code: -32602 } })
+    expect((response as { error: { message: string } }).error.message).toMatch(/top level/)
   })
 
   it('rejects a malformed compare reference as invalid params', async () => {
