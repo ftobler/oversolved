@@ -6,6 +6,7 @@ import {
 } from './helpers'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
+import { hidePlanesIfFirstBoundSketch } from './partStyle'
 
 // The rect/ngon/offset sugar lives in a sibling module so this file stays a
 // focused set of the core sketch mutations. Re-exported here so the historical
@@ -649,5 +650,9 @@ function _resolveInferredTargets(doc: PartDoc, featureId: string, targets: strin
 export function applySetFeaturePlane(doc: PartDoc, featureId: string, plane: string): void {
   const feature = findSketchFeature(doc, featureId)
   if (!feature) return
+  const wasBound = !!feature.plane
   feature.plane = plane
+  // Empty to non-empty is the sketch becoming usable, which is when the first
+  // one hides the planes. A rebind (or an unpick) leaves visibility alone.
+  if (!wasBound && plane) hidePlanesIfFirstBoundSketch(doc, featureId)
 }

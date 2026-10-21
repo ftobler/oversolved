@@ -67,4 +67,31 @@ describe('visibleFeatureIds', () => {
     const features = [sketch('sk1'), extrude('ex1', [area('sk1')])]
     expect(visibleFeatureIds(features, { editingFeatureId: 'sk1', forcedVisible: ['sk1'] }).has('sk1')).toBe(true)
   })
+
+  // The first sketch hides the planes by a document write, but picking a plane
+  // for a later sketch still needs them on screen: a hidden plane is not drawn,
+  // so there is nothing to click. The armed pick field shows them by derivation,
+  // the same way an open consumer shows its own profile sketch.
+  it('draws the hidden planes while a plane pick field is armed', () => {
+    const features: PartFeature[] = [
+      { id: 'Origin', kind: 'origin', visible: false },
+      { id: 'Top', kind: 'plane', visible: false },
+      { id: 'Front', kind: 'plane', visible: false },
+      { id: 'p1', kind: 'plane', visible: false },
+    ]
+
+    expect(visibleFeatureIds(features).has('Front')).toBe(false)
+
+    const picking = visibleFeatureIds(features, { planePickArmed: true })
+    expect(picking.has('Top')).toBe(true)
+    expect(picking.has('Front')).toBe(true)
+    expect(picking.has('p1')).toBe(true)
+    // The origin is not a plane target, so arming the field does not turn it on.
+    expect(picking.has('Origin')).toBe(false)
+  })
+
+  it('does not need the plane pick flag to draw planes that are already shown', () => {
+    const features: PartFeature[] = [{ id: 'Front', kind: 'plane' }]
+    expect(visibleFeatureIds(features, { planePickArmed: false }).has('Front')).toBe(true)
+  })
 })
