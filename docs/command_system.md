@@ -329,7 +329,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | `set_tool_spline` | Spline tool | `s` | no | sketch/part |
 | `toggle_construction` | Toggle construction | `q` | yes | sketch/part |
 | `toggle_plane_visibility` | Toggle planes | `p` | yes | sketch/part |
-| `toggle_sketch_plane_visibility` | Toggle sketches/planes | `y` | yes | sketch/part |
+| `toggle_sketch_plane_visibility` | Toggle reference geometry | `y` | yes | sketch/part |
 | `undo` | Undo | `ctrl+z` | no | any |
 | `update_mate` | Update mate | - | yes | assembly |
 
@@ -337,7 +337,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 
 ## Keybindings
 
-Active core keys: `ctrl+z` (undo), `ctrl+shift+z`/`ctrl+y` (redo), `delete`/`backspace` (delete), `d` (dimension), `shift+m` (mirror), `q` (construction toggle), `y` (toggle sketches/planes), `e` (add extrude, feature mode only), `p` (toggle plane visibility), `escape` (cancel).
+Active core keys: `ctrl+z` (undo), `ctrl+shift+z`/`ctrl+y` (redo), `delete`/`backspace` (delete), `d` (dimension), `shift+m` (mirror), `q` (construction toggle), `y` (toggle reference geometry), `e` (add extrude, feature mode only), `p` (toggle plane visibility), `escape` (cancel).
 
 Assembly editor keys (`ASSEMBLY_KEYBINDINGS`, active only while the assembly editor is): `ctrl+z`, `ctrl+shift+z`/`ctrl+y` (undo/redo), `delete`/`backspace` (delete the selected part or mate), and `escape` (`cancel_edit`, closes the open part or mate editor).
 

@@ -139,6 +139,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const partColors = useEditorState(s => s.partColors)
   const partStyle = useEditorState(s => s.partStyle)
   const activeFeatureId = useEditorState(s => s.activeSketchFeatureId) ?? undefined
+  const editingFeatureId = useEditorState(s => s.editingFeatureId)
   const showDebugHit = useSketchUiStore(s => s.showDebugHit)
 
   const featureDefs = doc?.features as PartFeature[] | undefined
@@ -622,7 +623,14 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           .map(f => {
             const curve = solveResults?.[f.id]?.curve
             if (!curve) return null
-            return <HelixCurve key={f.id} featureId={f.id} curve={curve} />
+            return (
+              <HelixCurve
+                key={f.id}
+                featureId={f.id}
+                curve={curve}
+                isEditing={editingFeatureId === f.id}
+              />
+            )
           })}
 
         <ThreadCurves curves={threadCurves} />

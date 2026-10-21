@@ -1,4 +1,4 @@
-// Which sketches and planes the part editor draws.
+// Which sketch-class features the part editor draws.
 //
 // A sketch a solid feature consumes is hidden: once the body exists its profile
 // wires are clutter inside it. The hide is DERIVED from consumption here, never
@@ -8,15 +8,20 @@
 // to the body. Deriving it also means a sketch no feature consumes any more
 // (profile un-picked, consumer deleted) comes back on its own.
 //
-// The auto-hide is a one-shot per sketch: when the user shows a consumed sketch
-// the show stamps `auto_hidden` (yamlMutations/partStyle), and from then on the
-// `visible` flag alone decides, however many features consume the sketch.
+// A helix is sketch-class reference geometry: a helix picked as a sweep path is
+// consumed and hidden exactly like a sketch path, and drawn while its consumer's
+// editor is open so the path stays pickable.
+//
+// The auto-hide is a one-shot per sketch-class feature: when the user shows a
+// consumed one the show stamps `auto_hidden` (yamlMutations/partStyle), and from
+// then on the `visible` flag alone decides, however many features consume it.
 //
 // Pure on purpose: the viewport only reads the resulting id set, so the rule is
 // tested without mounting it.
 
 import type { PartFeature } from '@/types/cad'
 import { allConsumedSketchIds, consumedSketchIds } from '@/utils/query/consumedSketches'
+import { isSketchClassFeature } from '@/utils/sketchClass'
 
 /**
  * Whether `feature` is one of the reference planes the bulk plane toggle works
@@ -35,8 +40,9 @@ export function isPlaneVisibilityTarget(feature: PartFeature): boolean {
 function shownInDoc(feature: PartFeature, consumed: ReadonlySet<string>): boolean {
   if (feature.visible === false) return false
   // Consumed, and the user has not shown it since: the auto-hide applies. Only
-  // a sketch carries the one-shot flag; for anything else it can never be spent.
-  const autoHiddenSpent = feature.kind === 'sketch' && feature.auto_hidden === true
+  // a sketch-class feature carries the one-shot flag; for anything else it can
+  // never be spent.
+  const autoHiddenSpent = isSketchClassFeature(feature) && feature.auto_hidden === true
   return !(consumed.has(feature.id) && !autoHiddenSpent)
 }
 
@@ -63,12 +69,13 @@ export interface EditVisibility {
 
 /**
  * The ids the part editor draws. On top of the document rule, an open editor
- * keeps its own geometry on screen: the sketch being edited, and the sketches
- * the open consumer picks its profiles from. The latter is a deliberate choice:
- * while an extrude's editor is open its profile sketch stays drawn so the next
- * profile pick from the same sketch is still possible and the picked region
- * stays visible as the selection. It is hidden again the moment the editor
- * closes, whether by OK or Cancel.
+ * keeps its own geometry on screen: the sketch being edited, and the
+ * sketch-class features the open consumer picks its profile or path from. The
+ * latter is a deliberate choice: while an extrude's editor is open its profile
+ * sketch stays drawn so the next profile pick from the same sketch is still
+ * possible and the picked region stays visible as the selection; while a
+ * sweep's editor is open its helix path stays pickable the same way. It is
+ * hidden again the moment the editor closes, whether by OK or Cancel.
  */
 export function visibleFeatureIds(features: PartFeature[], edit: EditVisibility = {}): Set<string> {
   const out = docVisibleFeatureIds(features)

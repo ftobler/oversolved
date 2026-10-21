@@ -1,6 +1,7 @@
 import type { PartFeature } from '@/types/cad'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
+import { isSketchClassFeature } from '@/utils/sketchClass'
 
 import contextRebuildIcon from '@/assets/icons/context-rebuild.svg'
 import contextHideIcon from '@/assets/icons/context-hide.svg'
@@ -262,13 +263,13 @@ function buildMenuContext(
   // mean "this sketch"; a tree click on any other feature does not.
   const canNormalToSketch = !!input.activeSketchFeatureId
     && (!featureId || featureId === input.activeSketchFeatureId)
-  // Hide/Show only ever touches a plane or a sketch, the two overlays the tree
-  // draws. A tree target wins when it is one of those and is not the sketch
-  // already under edit; otherwise the edited sketch is the thing on screen to
-  // hide or show. With neither, the slot is greyed.
+  // Hide/Show only ever touches a plane or sketch-class reference geometry, the
+  // overlays the tree draws. A tree target wins when it is one of those and is
+  // not the sketch already under edit; otherwise the edited sketch is the thing
+  // on screen to hide or show. With neither, the slot is greyed.
   const targetIsHideable = !!featureId && featureId !== input.activeSketchFeatureId
     && !!target && !input.builtInIds.has(featureId)
-    && (target.kind === 'plane' || target.kind === 'sketch')
+    && (target.kind === 'plane' || isSketchClassFeature(target))
   const visibilityFeature = targetIsHideable
     ? target
     : input.activeSketchFeatureId

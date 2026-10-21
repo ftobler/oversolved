@@ -536,6 +536,7 @@ export type VariableFeature = FeatureBase & {
 export type HelixFeature = FeatureBase & {
   kind: 'helix'
   helix: HelixFeatureDef
+  auto_hidden?: boolean  // sketch-class like a sketch: showing it while consumed spends the one-shot hide
 }
 
 export type ImportStepFeature = FeatureBase & {
