@@ -353,9 +353,9 @@ banner on stdout, so a client config must use the direct node invocation.
 | `commands` | none | the command catalog, the same shape as the CLI's `commands` |
 | `mutations` | none | the mutation vocabulary grouped by family, plus ready-to-run example scripts |
 | `run` | `steps`, optional `doc` or `docHash`, `returnDoc`, `docId`, `files` | `{ ok, steps, docHash, solve, summary, doc? }`; chain with `docHash`, `returnDoc: true` for the document |
-| `measure` | `doc` or `docHash`, optional `docId`, `files` | `{ ok, bodies, volume, area, centroid, bbox, faces, edges, vertices }` |
-| `compare` | `doc` or `docHash`, `reference` (inline), optional `docId`, `files` | `{ ok, pass, rows, measures }`; a failing row is data, not an MCP error |
-| `export` | `doc` or `docHash`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, file, format, bytes }` |
+| `measure` | `doc` or `docHash`, optional `docId`, `files` | `{ ok, docHash, bodies, volume, area, centroid, bbox, faces, edges, vertices }` |
+| `compare` | `doc` or `docHash`, `reference` (inline), optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
+| `export` | `doc` or `docHash`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, docHash, file, format, bytes }` |
 | `select` | `doc` or `docHash`, `selector`, optional `docId`, `files` | `{ ok, docHash, queries, items }`: the query strings a click would store, plus a geometry summary per item |
 
 - `select` runs a predicate over the solved bodies and returns the exact query
@@ -379,7 +379,9 @@ banner on stdout, so a client config must use the direct node invocation.
   one is required is invalid params. The server keeps the last 32 documents
   in-process, content-addressed and recency-refreshed on a hit; an unknown
   hash is a tool error naming that bound, with "pass doc instead". A document
-  passed as `doc` is stored too, so a hand-edited part gets a handle.
+  passed as `doc` is stored too, so a hand-edited part gets a handle; the
+  reply's `docHash` names that stored content, so `select`, `measure`,
+  `compare` and `export` all echo it.
 - By default `run` returns `docHash` and a one-line `summary` (feature ids and
   kinds, body ids), not the document; `returnDoc: true` adds the full `doc`
   for saving or hand-editing. Chaining by hash is the intended flow: a

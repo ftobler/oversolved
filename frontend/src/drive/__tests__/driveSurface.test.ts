@@ -142,6 +142,26 @@ describe('drive surface', () => {
     expect(seen).toEqual([])
   })
 
+  it('refuses prototype-key mutation types and malformed steps at the bridge', async () => {
+    const seen: Mutation[] = []
+    const surface = createDriveSurface(deps({
+      executeMutation: (m) => { seen.push(m); return okResult() },
+    }))
+    for (const type of ['constructor', 'toString', '__proto__']) {
+      const outcome = await surface.script([{ mutation: { type } as unknown as Mutation }])
+      expect(outcome.steps[0].error?.code).toBe('unknown-mutation')
+    }
+    for (const step of [{}, { mutation: null }]) {
+      const outcome = await surface.script([step as never])
+      expect(outcome.steps[0]).toMatchObject({
+        index: 0,
+        ok: false,
+        error: { code: 'invalid-mutation' },
+      })
+    }
+    expect(seen).toEqual([])
+  })
+
   it('summarizes the session inspection and drops the mesh payload', () => {
     const summary = summarizeInspection(sessionInspection({
       bodies: { b1: { mesh: new Float32Array([1, 2]) }, b2: {} },

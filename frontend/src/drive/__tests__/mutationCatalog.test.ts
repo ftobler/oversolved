@@ -7,9 +7,9 @@
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
-import { validateMutation, MUTATION_CATALOG, HIDDEN_MUTATION_TYPES, mutationInfoOf } from '../mutationCatalog'
+import { validateMutation, MUTATION_CATALOG, MUTATION_FAMILY, HIDDEN_MUTATION_TYPES, mutationInfoOf } from '../mutationCatalog'
 import type { Mutation } from '@/types/cad'
-import { mutationCatalogPayload } from '../mutationCatalogPayload'
+import { MUTATION_FAMILIES, mutationCatalogPayload } from '../mutationCatalogPayload'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 import { runHeadless, measureHeadless, seedBuiltins } from '../headlessOps'
 import { loadOcc } from '@/kernel/occ/loadOcc'
@@ -52,8 +52,8 @@ describe('mutation catalog', () => {
 
   it('hides exactly the internal plumbing from the listing', () => {
     expect([...HIDDEN_MUTATION_TYPES].sort()).toEqual([
-      'edit_session', 'move_entity', 'move_vertex', 'move_vertex_with_constraint',
-      'preview_commit', 'remove_dangling_content', 'resize_circle', 'set_rollback',
+      'edit_session', 'move_vertex', 'move_vertex_with_constraint',
+      'preview_commit', 'remove_dangling_content', 'set_rollback',
     ])
     const payload = mutationCatalogPayload()
     const listed = Object.values(payload.families).flat().map(entry => entry.type)
@@ -65,6 +65,17 @@ describe('mutation catalog', () => {
       expect(entry.fields.solvedGeometry).toBeUndefined()
     }
     expect(listed).not.toContain('edit_session')
+  })
+
+  it('places every visible mutation in exactly one family', () => {
+    expect(Object.keys(MUTATION_FAMILY).sort()).toEqual(Object.keys(MUTATION_CATALOG).sort())
+    const payload = mutationCatalogPayload()
+    expect(Object.keys(payload.families).sort()).toEqual([...MUTATION_FAMILIES].sort())
+    const listed = Object.values(payload.families).flat().map(entry => entry.type)
+    expect(listed).toHaveLength(new Set(listed).size)
+    const visible = (Object.keys(MUTATION_CATALOG) as Mutation['type'][])
+      .filter(type => mutationInfoOf(type).hidden !== true)
+    expect(new Set(listed)).toEqual(new Set(visible))
   })
 
   it('validates every example step', () => {

@@ -5,6 +5,10 @@
 // Content addressing is deliberate: the same document always has the same
 // name, so a stale handle cannot silently point at changed content. The store
 // dies with the server; the hash stays reproducible by re-running the script.
+//
+// Both put and get clone, so a caller that mutates a returned document cannot
+// change what the hash names. The clone is the by-reference invariant: the
+// stored content is exactly the content the handle was minted from.
 
 import type { PartDoc } from '@/types/cad'
 import { docHashOf } from '@/drive/docHash'
@@ -25,7 +29,7 @@ export class DocHandleStore {
   put(doc: PartDoc): string {
     const hash = docHashOf(doc)
     this.docs.delete(hash)
-    this.docs.set(hash, doc)
+    this.docs.set(hash, structuredClone(doc))
     while (this.docs.size > this.capacity) {
       const oldest = this.docs.keys().next()
       if (oldest.done) break
@@ -40,7 +44,7 @@ export class DocHandleStore {
     if (doc === undefined) return undefined
     this.docs.delete(hash)
     this.docs.set(hash, doc)
-    return doc
+    return structuredClone(doc)
   }
 
   size(): number {

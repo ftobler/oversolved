@@ -446,6 +446,8 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       // does not re-send the part.
       expect(typeof built.docHash).toBe('string')
       expect(built.doc).toBeUndefined()
+      expect(built.steps).toHaveLength(BOX_SCRIPT.steps.length)
+      expect((built.steps as Array<{ ok: boolean }>).every(step => step.ok)).toBe(true)
       expect(built.summary).toContain('sk1 (sketch)')
       expect(built.summary).toContain('ex1 (extrude)')
       expect(built.summary).toContain('body_ex1')
@@ -463,6 +465,19 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       }))
       expect(returned.doc).toBeDefined()
 
+      // A doc passed to select is stored and its hash returned, so a later
+      // call can chain on the handle without re-sending the document.
+      const selectedByDoc = toolPayload(await client.request('tools/call', {
+        name: 'select',
+        arguments: { doc: returned.doc, selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } },
+      }))
+      expect(typeof selectedByDoc.docHash).toBe('string')
+      const measuredByHandle = toolPayload(await client.request('tools/call', {
+        name: 'measure',
+        arguments: { docHash: selectedByDoc.docHash },
+      }))
+      expect(measuredByHandle.volume as number).toBeCloseTo(500, 6)
+
       // Edit the extrude distance through the handle and rebuild.
       const edited = toolPayload(await client.request('tools/call', {
         name: 'run',
@@ -477,6 +492,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
         arguments: { docHash: edited.docHash },
       }))
       expect(measure.volume as number).toBeCloseTo(800, 6)
+      expect(measure.docHash).toBe(edited.docHash)
       expectBbox(measure.bbox, [0, 0, 0, 10, 10, 8])
 
       // Compare the same document against a reference stated from its own
@@ -496,7 +512,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
         name: 'compare',
         arguments: { docHash: edited.docHash, reference },
       }))
-      expect(compared).toMatchObject({ ok: true, pass: true })
+      expect(compared).toMatchObject({ ok: true, pass: true, docHash: edited.docHash })
       expect((compared.rows as Array<{ measure: string }>).map(row => row.measure))
         .toEqual(['bodies', 'volume', 'area', 'centroid', 'bbox', 'faces', 'edges'])
 
@@ -504,7 +520,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
         name: 'export',
         arguments: { docHash: edited.docHash, format: 'step', out: stepFile },
       }))
-      expect(exported).toMatchObject({ ok: true, format: 'step' })
+      expect(exported).toMatchObject({ ok: true, format: 'step', docHash: edited.docHash })
       expect(readFileSync(stepFile).byteLength).toBeGreaterThan(0)
 
       // Select the four vertical edges by predicate, then fillet exactly those
@@ -554,6 +570,26 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       const unknownResult = unknown.result as { isError?: boolean; content: Array<{ text: string }> }
       expect(unknownResult.isError).toBe(true)
       expect((JSON.parse(unknownResult.content[0].text) as { error: string }).error).toContain('32')
+
+      // A malformed step is a named invalid-mutation step outcome, never an
+      // internal error from reading step.mutation.type.
+      for (const step of [{}, { mutation: null }]) {
+        const malformed = await client.request('tools/call', {
+          name: 'run',
+          arguments: { steps: [step] },
+        })
+        const malformedResult = malformed.result as { isError?: boolean; content: Array<{ text: string }> }
+        expect(malformedResult.isError).toBe(true)
+        const malformedPayload = JSON.parse(malformedResult.content[0].text) as {
+          ok: boolean
+          steps: Array<{ ok: boolean; error?: { code: string } }>
+        }
+        expect(malformedPayload.ok).toBe(false)
+        expect(malformedPayload.steps[0]).toMatchObject({
+          ok: false,
+          error: { code: 'invalid-mutation' },
+        })
+      }
 
       const commands = toolPayload(await client.request('tools/call', { name: 'commands', arguments: {} }))
       expect((commands.commands as unknown[]).length).toBeGreaterThan(0)

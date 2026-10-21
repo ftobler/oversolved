@@ -351,6 +351,22 @@ describe('replayJournal', () => {
     expect(second.steps[0].error?.code).toBe('invalid-mint-index')
   })
 
+  it('refuses a malformed recorded payload as a step error, not a hash mismatch', async () => {
+    const journal = new CommandJournal()
+    const recorded = makeSession(sketchDoc(), journal)
+    recorded.session.execute(addExtrude('ex1', 1))
+    const repro = journal.repro()!
+    const tampered: ReproPayload = structuredClone(repro)
+    tampered.journal[0].payload = { type: 'add_fillett' } as unknown as Mutation
+    const fresh = makeSession(structuredClone(repro.doc) as PartDoc, undefined, 'doc-1')
+    const outcome = await replayJournal(tampered, fresh.session)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps).toHaveLength(1)
+    expect(outcome.steps[0].error).toMatchObject({ code: 'unknown-mutation' })
+    expect(outcome.steps[0].error?.message).toContain('add_fillet')
+    expect(outcome.steps[0].actualHash).toBe(docHashOf(fresh.cell.current))
+  })
+
   it('stops with both hashes when a step lands elsewhere than the journal recorded', async () => {
     const journal = new CommandJournal()
     const recorded = makeSession(sketchDoc(), journal)

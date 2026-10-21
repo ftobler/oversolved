@@ -522,7 +522,9 @@ export class DocSession {
     // bug wherever it appears, never a silent no-op.
     const handlers = mutationHandlers as Record<string, AnyHandler | undefined>
     for (const mutation of mutations) {
-      if (!handlers[mutation.type]) {
+      // hasOwn, not a truthy lookup: 'constructor' and '__proto__' resolve
+      // through Object.prototype and would otherwise pass as handlers.
+      if (!Object.hasOwn(handlers, mutation.type)) {
         return this.fault('unknown-mutation', `no handler for mutation type '${mutation.type}'`)
       }
     }
@@ -661,7 +663,7 @@ export class DocSession {
     const insertedIds: string[] = []
     let attemptedInsertion = false
     for (const m of mutations) {
-      const handler = handlers[m.type]
+      const handler = Object.hasOwn(handlers, m.type) ? handlers[m.type] : undefined
       // A feature add may carry the rollback bar's slot. The handler appends it
       // like every other add, then the row moves into place. Detecting the
       // creation (the id was absent before the handler) keeps this keyed on the

@@ -19,14 +19,14 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { PartDoc } from '@/types/cad'
-import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { createHeadlessPart } from '@/drive/headlessPart'
 import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHeadless, seedBuiltins } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createCliJournal } from '@/drive/journal'
-import { createMcpServer, type McpCadOps, type McpDocArguments, type McpFileRef } from '@/drive/mcpServer'
-import { DocHandleStore, DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
+import { createMcpServer, type McpCadOps, type McpFileRef } from '@/drive/mcpServer'
+import { DocHandleStore } from '@/drive/docHandleStore'
+import { resolveDoc, runReply } from '@/drive/mcpDocRef'
 import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import type { ScriptStep } from '@/drive/scriptRunner'
 import { routeKernelStdoutToStderr } from './kernelStdout'
@@ -47,13 +47,6 @@ function emptyPartDoc(): PartDoc {
   return seedBuiltins({ version: 1, kind: 'part', features: [] })
 }
 
-// A document arriving on the protocol crosses the same loader as one read from
-// disk or the store, so an invalid payload comes back as an ok:false tool
-// result naming the field instead of an internal error or a half-parsed spec.
-function loadDocPayload(payload: unknown) {
-  return loadPartDoc(payload, { name: 'mcp' })
-}
-
 // Paths resolve against the server's cwd, like the CLI's --file values.
 function readFiles(files: McpFileRef[]): ReadonlyMap<string, Uint8Array> | undefined {
   if (files.length === 0) return undefined
@@ -66,35 +59,6 @@ function readFiles(files: McpFileRef[]): ReadonlyMap<string, Uint8Array> | undef
 // of calls never re-sends the whole document. The protocol module parses the
 // argument shape; the store lives here with the real ops.
 const documents = new DocHandleStore()
-
-type ResolvedDoc = { ok: true; doc: PartDoc; docHash: string } | { ok: false; error: string }
-
-function resolveDoc(req: McpDocArguments): ResolvedDoc {
-  if (req.docHash !== undefined) {
-    const doc = documents.get(req.docHash)
-    if (!doc) {
-      return {
-        ok: false,
-        error: `unknown docHash (the server keeps the last ${DOC_HANDLE_CAPACITY} documents); pass doc instead`,
-      }
-    }
-    return { ok: true, doc, docHash: req.docHash }
-  }
-  if (req.doc === undefined) return { ok: false, error: 'no document: pass doc or docHash' }
-  const loaded = loadDocPayload(req.doc)
-  if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
-  return { ok: true, doc: loaded.doc, docHash: documents.put(loaded.doc) }
-}
-
-// The reply's one-line index of what the script built. Body ids are the
-// part_style keys (the solve write-back reconciles one entry per body);
-// feature ids and kinds come from the feature log.
-function summarizeDoc(doc: PartDoc): string {
-  const features = (doc.features ?? []).map(feature => `${feature.id} (${feature.kind})`)
-  const bodies = Object.keys(doc.part_style ?? {})
-  return `features: ${features.length > 0 ? features.join(', ') : 'none'}; `
-    + `bodies: ${bodies.length > 0 ? bodies.join(', ') : 'none'}`
-}
 
 const ops: McpCadOps = {
   partDocSchema: () => PART_DOC_SCHEMA_JSON,
@@ -109,7 +73,7 @@ const ops: McpCadOps = {
   async run(req) {
     let doc: PartDoc
     if (req.doc !== undefined || req.docHash !== undefined) {
-      const resolved = resolveDoc(req)
+      const resolved = resolveDoc(req, documents)
       if (!resolved.ok) return { ok: false, error: resolved.error }
       doc = resolved.doc
     } else {
@@ -124,20 +88,11 @@ const ops: McpCadOps = {
       files: readFiles(req.files),
       journal: createCliJournal(),
     })
-    const finalDoc = result.doc
-    const docHash = finalDoc ? documents.put(finalDoc) : result.docHash
-    return {
-      ok: result.ok,
-      steps: result.outcome.steps,
-      docHash,
-      solve: result.solve,
-      ...(finalDoc && { summary: summarizeDoc(finalDoc) }),
-      ...(req.returnDoc === true && finalDoc && { doc: finalDoc }),
-    }
+    return runReply(result, req.returnDoc === true, documents)
   },
 
   async measure(req) {
-    const resolved = resolveDoc(req)
+    const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
     const measure = await measureHeadless(resolved.doc, {
       docId: req.docId ?? 'mcp',
@@ -146,11 +101,11 @@ const ops: McpCadOps = {
     if (!measure) {
       return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
     }
-    return { ok: true, ...measure }
+    return { ok: true, docHash: resolved.docHash, ...measure }
   },
 
   async compare(req) {
-    const resolved = resolveDoc(req)
+    const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
     const result = await compareHeadless(resolved.doc, req.reference, {
       docId: req.docId ?? 'mcp',
@@ -158,6 +113,7 @@ const ops: McpCadOps = {
     })
     return {
       ok: result.ok,
+      docHash: resolved.docHash,
       pass: result.pass,
       rows: result.rows,
       measures: result.measures,
@@ -166,7 +122,7 @@ const ops: McpCadOps = {
   },
 
   async export(req) {
-    const resolved = resolveDoc(req)
+    const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
     const bytes = await exportHeadless(resolved.doc, {
       format: req.format,
@@ -179,11 +135,11 @@ const ops: McpCadOps = {
     }
     const out = path.resolve(req.out)
     writeFileSync(out, bytes)
-    return { ok: true, file: out, format: req.format, bytes: bytes.byteLength }
+    return { ok: true, docHash: resolved.docHash, file: out, format: req.format, bytes: bytes.byteLength }
   },
 
   async select(req) {
-    const resolved = resolveDoc(req)
+    const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
     try {
       const result = await selectHeadless(resolved.doc, req.selector, {

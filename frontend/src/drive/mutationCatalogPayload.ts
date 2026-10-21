@@ -15,6 +15,7 @@ export const MUTATION_FAMILIES: readonly MutationFamily[] = [
 export interface CatalogFieldListing {
   type: FieldInfo['type']
   required: boolean
+  nullable?: boolean
   note?: string
 }
 
@@ -45,6 +46,7 @@ export function mutationCatalogPayload(): MutationCatalogPayload {
       fields[name] = {
         type: field.type,
         required: field.required,
+        ...(field.nullable === true && { nullable: true }),
         ...(field.note !== undefined && { note: field.note }),
       }
     }

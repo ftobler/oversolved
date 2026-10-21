@@ -24,6 +24,7 @@ import type { Result } from '@/session/result'
 import { setIdSource, getIdSource } from '@/utils/yamlMutations'
 import { DRIVE_ID_SEED, seededIdSource } from './seededIds'
 import { docHashOf } from './docHash'
+import { validateMutation } from './mutationCatalog'
 import type { ReproPayload } from './journal'
 
 // The largest source position a payload may seek to. A session's journal holds
@@ -118,6 +119,41 @@ export async function replayJournal(
           ok = false
           break
         }
+        // A repro read from disk is external input: validate every payload
+        // before the cast/apply so a malformed entry reports the mutation
+        // refusal, not a bare hash mismatch after a silent no-op.
+        const payloads = Array.isArray(entry.payload) ? entry.payload : [entry.payload]
+        const validated: Mutation[] = []
+        let invalidPayload: { code: string; message: string } | null = null
+        for (const [payloadIndex, payload] of payloads.entries()) {
+          const validation = validateMutation(payload, { allowInternal: true })
+          if (!validation.ok) {
+            const where = Array.isArray(entry.payload)
+              ? `entry ${index} payload ${payloadIndex}`
+              : `entry ${index}`
+            invalidPayload = {
+              code: validation.error.code,
+              message: `${where}: ${validation.error.message}`,
+            }
+            break
+          }
+          validated.push(validation.mutation)
+        }
+        if (invalidPayload) {
+          steps.push({
+            index,
+            kind: entry.kind,
+            ...(entry.label !== undefined && { label: entry.label }),
+            ok: false,
+            expectedBeforeHash: entry.docHashBefore,
+            actualBeforeHash,
+            expectedHash: entry.docHashAfter,
+            actualHash: hashDoc(),
+            error: invalidPayload,
+          })
+          ok = false
+          break
+        }
         // Resume the generation's id sequence where the recording started this
         // apply; ids minted outside the session since the last entry are not
         // replayed and the seek steps over them.
@@ -125,8 +161,8 @@ export async function replayJournal(
         let result: Result
         try {
           result = Array.isArray(entry.payload)
-            ? session.executeGroup(entry.payload)
-            : session.execute(entry.payload)
+            ? session.executeGroup(validated)
+            : session.execute(validated[0])
         } catch (e) {
           steps.push({
             index,

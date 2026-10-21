@@ -4,11 +4,11 @@
 // normal module, so the `mutations` tool serves them and the catalog tests run
 // exactly the same steps through the real kernel.
 //
-// The edge queries are the deterministic `body:edge:index` aliases the builder
-// registers, not the `?` strings `select` mints: a select query carries the
-// id of the sketch entity that created the edge, and only a seeded journal
-// makes those repeat. The indices are the ones `select {parallel:[0,1,0]}`
-// returns for this box.
+// The edge queries are the deterministic `?body_ex1:edge:<index>` aliases the
+// builder registers, not the longer `?` ancestry strings `select` mints for
+// this box: a select query embeds the sketch entity ids that created the edge,
+// and only a seeded journal makes those repeat. The indices are the ones
+// `select {parallel:[0,1,0]}` returns for this box.
 
 import type { ScriptStep } from '@/drive/scriptRunner'
 

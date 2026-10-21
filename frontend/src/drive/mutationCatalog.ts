@@ -29,6 +29,9 @@ export interface FieldInfo {
   type: FieldType
   required: boolean
   note?: string
+  // True only where the union spells `| null`; null is a value, not a missing
+  // field, so an optional field is not implicitly nullable.
+  nullable?: boolean
   // Internal plumbing a script must not send; omitted from the listing.
   internal?: true
 }
@@ -48,6 +51,7 @@ function field(type: FieldType, required = true, note?: string): FieldInfo {
 
 const str = (note?: string): FieldInfo => field('string', true, note)
 const optStr = (note?: string): FieldInfo => field('string', false, note)
+const nullableStr = (): FieldInfo => ({ type: 'string', required: false, nullable: true })
 const num = (note?: string): FieldInfo => field('number', true, note)
 const optNum = (): FieldInfo => field('number', false)
 const bool = (): FieldInfo => field('boolean', true)
@@ -75,7 +79,7 @@ const featureAddFields = () => ({
 const sketchQuery = (): FieldInfo => query('$<sketchId>: the sketch feature to consume.')
 const edgeQuery = (): FieldInfo => query('An edge query as returned by `select`.')
 const faceQuery = (): FieldInfo => query('A face query as returned by `select`.')
-const bodyQuery = (): FieldInfo => query('A body query as returned by `select`.')
+const bodyQuery = (): FieldInfo => query('A body id such as body_ex1, or a stored body query.')
 
 const fieldOf = (kind: string): FieldInfo => str(`The ${kind} field to set.`)
 const anyFieldValue = (): FieldInfo => anyValue()
@@ -107,8 +111,7 @@ export const MUTATION_CATALOG = {
     },
   },
   move_entity: {
-    summary: 'Drag one sketch entity by a delta (gesture plumbing).',
-    hidden: true,
+    summary: 'Drag one sketch entity by a delta.',
     fields: {
       featureId: str(),
       entityId: str(),
@@ -117,8 +120,7 @@ export const MUTATION_CATALOG = {
     },
   },
   resize_circle: {
-    summary: 'Resize one sketch circle by a new radius (gesture plumbing).',
-    hidden: true,
+    summary: 'Resize one sketch circle by a new radius.',
     fields: {
       featureId: str(),
       entityId: str(),
@@ -185,8 +187,8 @@ export const MUTATION_CATALOG = {
       featureId: str(),
       p0: point(),
       p1: point(),
-      p0Ref: optStr(),
-      p1Ref: optStr(),
+      p0Ref: nullableStr(),
+      p1Ref: nullableStr(),
     },
   },
   add_center_rect: {
@@ -195,8 +197,8 @@ export const MUTATION_CATALOG = {
       featureId: str(),
       center: point(),
       corner: point(),
-      centerRef: optStr(),
-      cornerRef: optStr(),
+      centerRef: nullableStr(),
+      cornerRef: nullableStr(),
     },
   },
   add_ngon: {
@@ -206,8 +208,8 @@ export const MUTATION_CATALOG = {
       center: point(),
       corner: point(),
       sides: num(),
-      centerRef: optStr(),
-      cornerRef: optStr(),
+      centerRef: nullableStr(),
+      cornerRef: nullableStr(),
     },
   },
   apply_offset: {
@@ -540,7 +542,7 @@ export const MUTATION_CATALOG = {
   set_rollback: {
     summary: 'Park or clear the rollback bar (undo-entry plumbing).',
     hidden: true,
-    fields: { position: field('number', true) },
+    fields: { position: { type: 'number', required: true, nullable: true } },
   },
   edit_session: {
     summary: 'Undo-only marker naming an edit session.',
@@ -679,6 +681,13 @@ export type MutationValidation =
   | { ok: true; mutation: Mutation }
   | { ok: false; error: { code: MutationValidationErrorCode; message: string } }
 
+export interface MutationValidationOptions {
+  // Journal replay reapplies mutations the app itself produced, so internal
+  // plumbing (insertAt, drag snapshots, hidden gesture types) is legitimate
+  // there. External scripts keep the strict default.
+  allowInternal?: boolean
+}
+
 function fail(code: MutationValidationErrorCode, message: string): MutationValidation {
   return { ok: false, error: { code, message } }
 }
@@ -753,20 +762,20 @@ function typeName(value: unknown): string {
  * back as a named Result, so the script runner records one failing step
  * instead of applying nothing.
  */
-export function validateMutation(raw: unknown): MutationValidation {
+export function validateMutation(raw: unknown, options: MutationValidationOptions = {}): MutationValidation {
   if (!isRecord(raw)) return fail('invalid-mutation', 'a mutation must be an object')
   const type = raw.type
   if (typeof type !== 'string' || type.length === 0) {
     return fail('invalid-mutation', 'a mutation needs a non-empty string "type"')
   }
   const catalog = MUTATION_CATALOG as Record<string, MutationInfo | undefined>
-  const info = catalog[type]
+  const info = Object.hasOwn(catalog, type) ? catalog[type] : undefined
   if (!info) {
     const suggestion = nearestMutationType(type)
     const hint = suggestion === null ? '' : `; did you mean "${suggestion}"?`
     return fail('unknown-mutation', `unknown mutation type "${type}"${hint}`)
   }
-  if (info.hidden === true) {
+  if (info.hidden === true && options.allowInternal !== true) {
     return fail('internal-mutation', `mutation type "${type}" is internal and cannot be sent by a script`)
   }
   for (const [name, fieldInfo] of Object.entries(info.fields)) {
@@ -777,9 +786,20 @@ export function validateMutation(raw: unknown): MutationValidation {
       }
       continue
     }
-    // An optional nullable ref (a rectangle corner with no snap target) is
-    // written as null; every other typed field must have its JSON type.
-    if (value === null && !fieldInfo.required) continue
+    // Internal plumbing is refused by field, not only by mutation type: a
+    // script must not smuggle insertAt or a drag snapshot into a visible row.
+    if (fieldInfo.internal === true && options.allowInternal !== true) {
+      return fail(
+        'internal-mutation',
+        `mutation type "${type}" field "${name}" is internal and cannot be sent by a script`,
+      )
+    }
+    // Null is accepted only where the union says `| null`; an optional field
+    // is not implicitly nullable and `any` does not swallow null either.
+    if (value === null) {
+      if (fieldInfo.nullable === true) continue
+      return fail('invalid-mutation', `mutation type "${type}" field "${name}" must be ${fieldInfo.type}, got null`)
+    }
     if (!matchesType(fieldInfo.type, value)) {
       return fail(
         'invalid-mutation',

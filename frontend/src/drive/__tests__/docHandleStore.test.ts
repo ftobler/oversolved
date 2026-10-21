@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { DocHandleStore, DOC_HANDLE_CAPACITY } from '../docHandleStore'
+import { docHashOf } from '../docHash'
 
 function doc(label: string): PartDoc {
   return { version: 1, kind: 'part', features: [{ id: label, kind: 'sketch' }] } as PartDoc
@@ -20,6 +21,16 @@ describe('DocHandleStore', () => {
     expect(second).toBe(first)
     expect(store.size()).toBe(1)
     expect(store.get(first)).toEqual(doc('sk1'))
+  })
+
+  it('clones on put and get, so a caller cannot mutate a document into a different handle', () => {
+    const store = new DocHandleStore()
+    const original = doc('sk1')
+    const hash = store.put(original)
+    const returned = store.get(hash)!
+    returned.features![0].id = 'mutated'
+    expect(store.get(hash)).toEqual(original)
+    expect(docHashOf(store.get(hash)!)).toBe(hash)
   })
 
   it('returns undefined for an unknown hash', () => {

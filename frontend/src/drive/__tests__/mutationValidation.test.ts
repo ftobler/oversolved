@@ -52,6 +52,38 @@ describe('validateMutation', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'internal-mutation' } })
   })
 
+  it('refuses prototype keys as unknown types instead of throwing', () => {
+    for (const type of ['constructor', 'toString', '__proto__']) {
+      const result = validateMutation({ type })
+      expect(result).toMatchObject({ ok: false, error: { code: 'unknown-mutation' } })
+    }
+  })
+
+  it('refuses an internal field on a visible mutation', () => {
+    const result = validateMutation({
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, insertAt: 0,
+    })
+    expect(result).toMatchObject({ ok: false, error: { code: 'internal-mutation' } })
+    if (result.ok) throw new Error('unreachable')
+    expect(result.error.message).toContain('insertAt')
+  })
+
+  it('accepts null only where the union spells it', () => {
+    expect(validateMutation({
+      type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [1, 1], p0Ref: null,
+    })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: null,
+    })).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    expect(validateMutation({
+      type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: null,
+    })).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    // Internal plumbing is allowed only on the replay path, where the app's
+    // own set_rollback payload can legitimately carry a null position.
+    expect(validateMutation({ type: 'set_rollback', position: null }, { allowInternal: true }))
+      .toMatchObject({ ok: true })
+  })
+
   it('refuses a non-object and a missing type', () => {
     expect(validateMutation(null)).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
     expect(validateMutation('add_sketch')).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
@@ -84,6 +116,41 @@ describe('headless drive boundary', () => {
     expect(result.ok).toBe(false)
     const empty = await runHeadless({ doc: seededDoc(), steps: [] })
     expect(result.docHash).toBe(empty.docHash)
+  })
+
+  it('reports a malformed step as an invalid-mutation outcome, not a crash', async () => {
+    for (const step of [{}, { mutation: null }]) {
+      const result = await runHeadless({ doc: seededDoc(), steps: [step as never] })
+      expect(result.outcome.steps).toHaveLength(1)
+      expect(result.outcome.steps[0]).toMatchObject({
+        index: 0,
+        ok: false,
+        error: { code: 'invalid-mutation' },
+      })
+    }
+  })
+
+  it('refuses prototype-key types through the headless step executor', async () => {
+    for (const type of ['constructor', 'toString', '__proto__']) {
+      const result = await runHeadless({ doc: seededDoc(), steps: [{ mutation: { type } as never }] })
+      expect(result.outcome.steps[0]).toMatchObject({
+        ok: false,
+        error: { code: 'unknown-mutation' },
+      })
+    }
+  })
+
+  it('refuses internal plumbing sent as a script step', async () => {
+    const result = await runHeadless({
+      doc: seededDoc(),
+      steps: [{
+        mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Sketch', insertAt: 0 } as never,
+      }],
+    })
+    expect(result.outcome.steps[0]).toMatchObject({
+      ok: false,
+      error: { code: 'internal-mutation' },
+    })
   })
 
   it('refuses a missing required field before the session sees it', async () => {
