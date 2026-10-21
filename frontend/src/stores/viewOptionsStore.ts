@@ -46,6 +46,7 @@ export interface ViewOptionsState extends ViewPreferences {
   setCurvatureRange: (range: [number, number] | null) => void
   setCurvatureAutoRange: (range: [number, number] | null) => void
   setCollisionDebug: (on: boolean) => void
+  setOrbitAroundCursor: (on: boolean) => void
 }
 
 /** The persisted half of the state, as the port stores it. */
@@ -59,6 +60,7 @@ export function toViewPreferences(state: ViewPreferences): ViewPreferences {
     curvature: state.curvature,
     curvature_kind: state.curvature_kind,
     curvature_range: state.curvature_range,
+    orbit_around_cursor: state.orbit_around_cursor,
   }
 }
 
@@ -171,6 +173,11 @@ export const useViewOptionsStore = create<ViewOptionsState>((set, get) => {
       // A derived value from the scene, so it is not a user edit and does not
       // touch the preferences port.
       set({ curvatureAutoRange: range })
+    },
+
+    setOrbitAroundCursor: (on) => {
+      set({ orbit_around_cursor: on })
+      persist(get)
     },
 
     // The public exception to "options follow the layers": this flag exists

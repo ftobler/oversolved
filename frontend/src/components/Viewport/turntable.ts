@@ -26,6 +26,9 @@ export type TurntableGesture = {
   pointerId: number
   x: number
   y: number
+  // The world point this drag turns around, when the press landed on a body and
+  // Orbit around cursor is on. Null means the rotation uses `target` as before.
+  pivot: THREE.Vector3 | null
 }
 
 // The historical part/assembly binding: left is selection, middle pans, right
@@ -137,6 +140,21 @@ export function rotateOrbit(
   }
 }
 
+const WORLD_UP = new THREE.Vector3(0, 1, 0)
+
+// The two drag angles as one rigid turn: azimuth about world Y, then elevation
+// about the camera's right axis. `dir(az + dAz, el + dEl)` is exactly this
+// rotation of `dir(az, el)`, which is what lets a drag turn the whole camera
+// about a point that is not its target (see TurntableControls.rotateByPixels).
+function turnAbout(pivot: THREE.Vector3, azimuth: number, dAz: number, dEl: number): (v: THREE.Vector3) => THREE.Vector3 {
+  const right = orbitRight(azimuth)
+  return (v: THREE.Vector3) => v
+    .sub(pivot)
+    .applyAxisAngle(right, -dEl)
+    .applyAxisAngle(WORLD_UP, dAz)
+    .add(pivot)
+}
+
 export interface TurntablePoseSnapshot {
   target: [number, number, number]
   distance: number
@@ -165,6 +183,11 @@ export class TurntableControls {
   distance = 1
   azimuth = 0
   elevation = 0
+  // Orbit around the body under the cursor on a right-drag (the View options
+  // row). The pick itself is injected: the controller owns the gesture, the
+  // scene owner owns the raycast.
+  orbitAroundCursor = true
+  pivotPick: ((clientX: number, clientY: number) => THREE.Vector3 | null) | null = null
   onChange: (() => void) | null = null
   onStart: (() => void) | null = null
   onEnd: (() => void) | null = null
@@ -176,6 +199,11 @@ export class TurntableControls {
     this.camera = camera
     this.adoptCamera()
     if (domElement) this.connect(domElement)
+  }
+
+  // The point the active rotate drag turns around, or null when it uses `target`.
+  get orbitPivot(): THREE.Vector3 | null {
+    return this.gesture?.pivot ?? null
   }
 
   get enabled(): boolean {
@@ -282,6 +310,25 @@ export class TurntableControls {
     if (notify) this.onChange?.()
   }
 
+  // Rotate by one pointer move. With a pivot from the press, the camera and the
+  // target are turned rigidly about that point: the grabbed point keeps its
+  // screen position and the horizon stays level, because the turn is the same
+  // two-axis rotation the turntable law already applies to the view direction.
+  // Without a pivot this is the plain phase-1 orbit around `target`.
+  private rotateByPixels(dx: number, dy: number): void {
+    const next = rotateOrbit(this, dx, dy, this.elementHeight())
+    const dAz = next.azimuth - this.azimuth
+    const dEl = next.elevation - this.elevation
+    const pivot = this.gesture?.pivot
+    if (pivot) {
+      const turn = turnAbout(pivot, this.azimuth, dAz, dEl)
+      this.target.copy(turn(this.target.clone()))
+    }
+    this.azimuth = next.azimuth
+    this.elevation = next.elevation
+    this.applyPose(true)
+  }
+
   private panByPixels(dx: number, dy: number): void {
     const camera = this.camera as THREE.Camera & {
       left?: number; right?: number; top?: number; bottom?: number
@@ -325,11 +372,20 @@ export class TurntableControls {
     // OrbitControls cancelled the press for a recognized gesture; without it a
     // middle-drag starts the browser's autoscroll and a drag selects text.
     e.preventDefault()
+    // The pivot is read ONCE, at button-down, and lasts only for this drag. A
+    // press that lands on a body turns about that point; a miss, a modifier
+    // press or the off preference falls back to the target. Nothing moves here:
+    // the pose change belongs to the first pointer move, so opening the right
+    // click menu cannot swing the view.
+    const pivot = action === 'rotate' && this.orbitAroundCursor && this.pivotPick
+      ? this.pivotPick(e.clientX, e.clientY)
+      : null
     this.gesture = {
       action,
       pointerId: pointerIdOf(e),
       x: e.clientX,
       y: e.clientY,
+      pivot,
     }
     const doc = this.domElement?.ownerDocument
     doc?.addEventListener('pointermove', this.handlePointerMove)
@@ -352,10 +408,7 @@ export class TurntableControls {
     if (dx === 0 && dy === 0) return
 
     if (gesture.action === 'rotate') {
-      const next = rotateOrbit(this, dx, dy, this.elementHeight())
-      this.azimuth = next.azimuth
-      this.elevation = next.elevation
-      this.applyPose(true)
+      this.rotateByPixels(dx, dy)
     } else if (gesture.action === 'pan') {
       this.panByPixels(dx, dy)
     } else if (gesture.action === 'dolly') {

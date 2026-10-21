@@ -50,7 +50,7 @@ import { useEditFeature } from '@/pages/useEditFeature'
 
 import measurementIcon from '@/assets/icons/measurement.svg'
 import ViewOptionsButton from '@/components/Viewport/ViewOptionsButton'
-import { showGroupIds, showGroupStates, type ShowGroup } from '@/components/Viewport/viewOptionsShow'
+import { showGroupStates, showGroupToggleMutations, type ShowGroup } from '@/components/Viewport/viewOptionsShow'
 
 import { buildContextMenu } from './buildContextMenu'
 import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from './buildContextMenu'
@@ -965,19 +965,15 @@ export default function Part() {
   // same derivation the viewport draws from, not from the edit overrides.
   const docVisible = useMemo(() => docVisibleFeatureIds(features), [features])
   const viewShowStates = useMemo(() => showGroupStates(features, docVisible), [features, docVisible])
-  // One undo step per row: planes use the existing command (the keyboard's own
-  // path), while sketches and origin go through the same mutation the tree
-  // calls, grouped so a whole category is one history entry.
+  // One undo step per row. Every group writes the same `set_feature_visibility`
+  // the tree eye calls, so an unchecked row means "show every member": using
+  // the keyboard's toggle here would hide the remaining ones instead when only
+  // part of the group was hidden.
   const handleToggleShowGroup = useCallback((group: ShowGroup) => {
-    if (group === 'planes') {
-      commandRegistry.execute('toggle_plane_visibility')
-      return
-    }
-    const ids = showGroupIds(features, group)
-    if (ids.length === 0) return
-    const visible = !viewShowStates[group].visible
-    commitMutationGroup(ids.map(featureId => ({ type: 'set_feature_visibility' as const, featureId, visible })))
-  }, [commandRegistry, commitMutationGroup, features, viewShowStates])
+    const mutations = showGroupToggleMutations(features, docVisible, group)
+    if (mutations.length === 0) return
+    commitMutationGroup(mutations)
+  }, [commitMutationGroup, features, docVisible])
 
   // Q6: the drive surface is a dev/test affordance. The gate constant is folded
   // by the bundler, so in a production build this effect body is dead code and

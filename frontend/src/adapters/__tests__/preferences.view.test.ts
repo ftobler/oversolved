@@ -66,6 +66,15 @@ describe('viewer options in the preferences record', () => {
     expect(view.curvature_range).toBeNull()
   })
 
+  it('orbits around the cursor unless the record says otherwise', () => {
+    expect(readLocalPrefs().view.orbit_around_cursor).toBe(true)
+    store({ view: { orbit_around_cursor: false } })
+    expect(readLocalPrefs().view.orbit_around_cursor).toBe(false)
+    // A non-boolean is a stale or hand-edited value: fall back, do not coerce.
+    store({ view: { orbit_around_cursor: 'yes' } })
+    expect(readLocalPrefs().view.orbit_around_cursor).toBe(true)
+  })
+
   it('rejects a curvature kind outside the union and a nonsense range', () => {
     store({ view: { curvature_kind: 'principal', curvature_range: [2, 2] } })
     expect(readLocalPrefs().view.curvature_kind).toBe('mean')

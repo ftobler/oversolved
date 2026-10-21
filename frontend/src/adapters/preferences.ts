@@ -49,6 +49,10 @@ export interface ViewPreferences {
   curvature_kind: CurvatureKind
   // null means "auto from the scene, with the outliers clamped".
   curvature_range: [number, number] | null
+  // A right-drag turns about the body point under the cursor instead of the
+  // camera target. On by default: it is how the user asked to reach a corner
+  // the fixed pivot cannot.
+  orbit_around_cursor: boolean
 }
 
 export const DEFAULT_VIEW_PREFERENCES: Readonly<ViewPreferences> = Object.freeze({
@@ -61,6 +65,7 @@ export const DEFAULT_VIEW_PREFERENCES: Readonly<ViewPreferences> = Object.freeze
   curvature: false,
   curvature_kind: 'mean',
   curvature_range: null,
+  orbit_around_cursor: true,
 })
 
 export interface UserPreferences {
@@ -134,6 +139,7 @@ function readView(raw: unknown): ViewPreferences {
     curvature_range: record.curvature_range === null || record.curvature_range === undefined
       ? null
       : isRange(record.curvature_range) ? [record.curvature_range[0], record.curvature_range[1]] : null,
+    orbit_around_cursor: isBoolean(record.orbit_around_cursor) ? record.orbit_around_cursor : d.orbit_around_cursor,
   })
 }
 
