@@ -2,7 +2,7 @@
 // Viewport/index.tsx): a frame is drawn when something that feeds the scene
 // changed, not once per display refresh. Two of the three routes are already
 // covered by R3F itself. The reconciler requests a frame for every scene
-// instance it creates, updates or reveals, and drei's OrbitControls requests
+// instance it creates, updates or reveals, and TurntableControls requests
 // one on every camera change (its change listener calls invalidate).
 //
 // What neither can see are the app stores. Their writes reach the scene

@@ -16,7 +16,7 @@ import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlan
 
 // Sketch dragging is the prime consumer of the camera-drag block: the
 // drag/dragPending state this component sets and clears is what disables
-// OrbitControls (see deriveOrbitEnabled in orbitEnabled.ts). Camera orbit is
+// the turntable (see deriveOrbitEnabled in orbitEnabled.ts). Camera orbit is
 // suppressed while a sketch element is being dragged so the two gestures do not
 // fight. Because that block is keyed on this state, any path that sets it must
 // also clear it on release; a lost release (e.g. a load race that unmounts this

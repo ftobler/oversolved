@@ -4,12 +4,15 @@ import { render, act, waitFor } from '@testing-library/react'
 import * as THREE from 'three'
 import SceneController from '@/components/Viewport/SceneController'
 import { deriveOrbitEnabled } from '@/components/Viewport/orbitEnabled'
-import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
+import { anglesFromDirection, TurntableControls } from '@/components/Viewport/turntable'
 
 import type { Pv, Hit } from '@/components/misc/CubeGizmo.utils'
 import { useEditorState } from '@/hooks/useEditorState'
 
-const h = vi.hoisted(() => ({ frameCallbacks: [] as Array<() => void> }))
+const h = vi.hoisted(() => ({
+  frameCallbacks: [] as Array<() => void>,
+  invalidate: vi.fn(),
+}))
 
 vi.mock('@react-three/fiber', () => ({
   useThree: vi.fn(),
@@ -25,64 +28,72 @@ vi.mock('@/components/misc/CubeGizmo.utils', async (importOriginal) => {
   return { ...actual, drawCubeGizmo: vi.fn(actual.drawCubeGizmo) }
 })
 
-// A fuller OrbitControls mock than a bare `() => null`: it wires the ref up to
-// a minimal fake controls object (target + mouseButtons + update) so
-// SceneController's pose save/restore has a truthy controls object to work
-// with. It calls the ref in a layout effect (attach) and with null on unmount
-// (detach). Layout timing is the point: React detaches a real callback ref in
-// the commit phase, before any passive-effect cleanup, which is exactly why a
-// save living in a passive cleanup always read a null controls. Using a
-// passive effect here would hide that and let the buggy save appear to work.
-// The fake is memoized per MOUNT, mirroring drei's own useMemo'd controls:
-// re-renders keep the instance, only a key change produces a fresh one, so
-// tests can tell "re-rendered" from "re-keyed" by instance identity.
-vi.mock('@react-three/drei', async () => {
-  const { useMemo, useLayoutEffect } = await import('react')
-  const THREE = await import('three')
-  return {
-    OrbitControls: ({ ref }: { ref?: (v: unknown) => void }) => {
-      const fake = useMemo(() => ({
-        target: new THREE.Vector3(),
-        update: () => {},
-        // Mirrors three-stdlib's mutable action table, which is exactly what
-        // the pointerdown remap writes into.
-        mouseButtons: { RIGHT: THREE.MOUSE.ROTATE },
-      }), [])
-      useLayoutEffect(() => {
-        ref?.(fake)
-        return () => ref?.(null)
-      }, [ref, fake])
-      return null
-    },
-  }
-})
-
-beforeEach(() => {
-  useEditorState.setState({
-    setIsRotating: () => {},
-  })
-})
-
 function makeRef<T>(initial: T): React.MutableRefObject<T> {
   const ref = createRef() as React.MutableRefObject<T>
   ;(ref as unknown as Record<string, unknown>).current = initial
   return ref
 }
 
-// A stand-in WebGLRenderer: only domElement matters here, it is the element
-// the right-button remap must bind to.
+// A stand-in WebGLRenderer: domElement is the surface the controls bind to.
+// jsdom has no layout, so the viewport size is stated; otherwise every drag
+// would be measured against the 1px fallback.
 function makeGl() {
-  return { domElement: document.createElement('canvas') }
+  const domElement = document.createElement('canvas')
+  Object.defineProperty(domElement, 'clientWidth', { value: 800 })
+  Object.defineProperty(domElement, 'clientHeight', { value: 600 })
+  return { domElement }
+}
+
+function makeCamera(): THREE.OrthographicCamera {
+  const cam = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
+  cam.position.set(20, 20, 100)
+  cam.zoom = 80
+  cam.updateProjectionMatrix()
+  return cam
+}
+
+function useThreeState(camera: THREE.Camera, gl = makeGl()) {
+  return { camera, gl, scene: new THREE.Scene(), invalidate: h.invalidate, size: { width: 800, height: 600 } }
 }
 
 // jsdom has no PointerEvent constructor; a MouseEvent with the same type is
 // indistinguishable to an addEventListener('pointerdown') handler and still
-// carries button/modifiers.
-function pressRightButton(el: Element, mods: MouseEventInit = {}): void {
-  el.dispatchEvent(new MouseEvent('pointerdown', {
-    button: 2, bubbles: true, cancelable: true, ...mods,
-  }))
+// carries button/modifiers/coords.
+function press(el: Element | Document, type: string, init: MouseEventInit = {}): void {
+  el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...init }))
 }
+
+function wheel(el: Element, deltaY: number): void {
+  el.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY }))
+}
+
+function propsFor() {
+  return {
+    gizmoCanvasRef: makeRef<HTMLCanvasElement | null>(null),
+    pvRef: makeRef<Pv[]>([]),
+    hoverRef: makeRef<Hit | null>(null),
+    snapRef: makeRef<THREE.Vector3 | null>(null),
+    cameraRef: makeRef<THREE.Camera | null>(null),
+    controlsRef: makeRef<TurntableControls | null>(null),
+  }
+}
+
+function drag(el: Element, props: { button: number; from: [number, number]; to: [number, number]; mods?: MouseEventInit }) {
+  press(el, 'pointerdown', { button: props.button, clientX: props.from[0], clientY: props.from[1], ...props.mods })
+  press(document, 'pointermove', { button: props.button, clientX: props.to[0], clientY: props.to[1], ...props.mods })
+  press(document, 'pointerup', { button: props.button, clientX: props.to[0], clientY: props.to[1], ...props.mods })
+}
+
+beforeEach(() => {
+  h.frameCallbacks.length = 0
+  h.invalidate.mockClear()
+  useEditorState.setState({
+    setIsRotating: () => {},
+    isPointerDown: false,
+    drag: null,
+    dragPending: null,
+  })
+})
 
 describe('deriveOrbitEnabled', () => {
   const drag = { featureId: 'S1' }
@@ -117,44 +128,27 @@ describe('SceneController camera preservation', () => {
     cam.zoom = 300
     cam.updateProjectionMatrix()
 
-    const cameraRef = makeRef<THREE.Camera | null>(null)
-    const canvasRef = makeRef<HTMLCanvasElement | null>(null)
-    const pvRef = makeRef<Pv[]>([])
-    const hoverRef = makeRef<Hit | null>(null)
-    const snapRef = makeRef<THREE.Vector3 | null>(null)
-    const controlsRef = makeRef<OrbitControlsImpl | null>(null)
+    const props = propsFor()
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(cam))
 
-    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ camera: cam, gl: makeGl() })
-
-    const { rerender } = render(
-      <SceneController
-        gizmoCanvasRef={canvasRef}
-        pvRef={pvRef}
-        hoverRef={hoverRef}
-        snapRef={snapRef}
-        cameraRef={cameraRef}
-        controlsRef={controlsRef}
-      />
-    )
+    const { rerender } = render(<SceneController {...props} />)
 
     // SceneController does NOT initialize the camera (the Canvas does); the
-    // user-set pose must be left exactly as-is.
-    expect(cam.position.toArray()).toEqual([50, 60, 100])
+    // user-set pose is read into angles and written back, so compare within
+    // float noise only.
+    const expectPosition = (expected: [number, number, number]) => {
+      const actual = cam.position.toArray()
+      expect(actual[0]).toBeCloseTo(expected[0], 9)
+      expect(actual[1]).toBeCloseTo(expected[1], 9)
+      expect(actual[2]).toBeCloseTo(expected[2], 9)
+    }
+    expectPosition([50, 60, 100])
     expect(cam.zoom).toBe(300)
 
     // A re-render (e.g. canvas resize on sketch edit entry) must not move it.
-    rerender(
-      <SceneController
-        gizmoCanvasRef={canvasRef}
-        pvRef={pvRef}
-        hoverRef={hoverRef}
-        snapRef={snapRef}
-        cameraRef={cameraRef}
-        controlsRef={controlsRef}
-      />
-    )
+    rerender(<SceneController {...props} />)
 
-    expect(cam.position.toArray()).toEqual([50, 60, 100])
+    expectPosition([50, 60, 100])
     expect(cam.zoom).toBe(300)
   })
 })
@@ -162,15 +156,6 @@ describe('SceneController camera preservation', () => {
 describe('SceneController saved-orbit-state instance scoping', () => {
   it("does not let an unrelated torn-down instance's saved pose clobber a live instance's restore", async () => {
     const { useThree } = await import('@react-three/fiber')
-
-    const propsFor = () => ({
-      gizmoCanvasRef: makeRef<HTMLCanvasElement | null>(null),
-      pvRef: makeRef<Pv[]>([]),
-      hoverRef: makeRef<Hit | null>(null),
-      snapRef: makeRef<THREE.Vector3 | null>(null),
-      cameraRef: makeRef<THREE.Camera | null>(null),
-      controlsRef: makeRef<OrbitControlsImpl | null>(null),
-    })
 
     const makeCam = (pos: [number, number, number], zoom: number) => {
       const cam = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
@@ -183,34 +168,37 @@ describe('SceneController saved-orbit-state instance scoping', () => {
     // Instance B: a live viewport that stays mounted for the whole test.
     const propsB = propsFor()
     const camB1 = makeCam([44, 55, 66], 222)
-    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ camera: camB1, gl: makeGl() })
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(camB1))
     const { rerender: rerenderB } = render(<SceneController {...propsB} />)
 
     // Instance A: an unrelated viewport that mounts and tears down elsewhere.
     // Its unmount cleanup saves camA's pose for restoration. With a
     // module-level save slot that pose sits in the shared slot after A is
-    // gone; scoping the save per instance (a ref) must discard it along
-    // with A, so it can never reach B.
+    // gone; scoping the save per instance (the camera's userData) must discard
+    // it along with A, so it can never reach B.
     const camA = makeCam([11, 22, 33], 111)
-    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ camera: camA, gl: makeGl() })
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(camA))
     const { unmount: unmountA } = render(<SceneController {...propsFor()} />)
     unmountA()
 
-    // B's restore effect re-fires (its `camera` dependency changes, as it
-    // would if the Canvas handed it a new camera instance) without B ever
-    // having unmounted or saved anything of its own.
+    // B's effect re-fires (its `camera` dependency changes, as it would if the
+    // Canvas handed it a new camera instance) without B ever having unmounted
+    // or saved anything of its own.
     const camB2 = makeCam([44, 55, 66], 222)
-    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ camera: camB2, gl: makeGl() })
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(camB2))
     rerenderB(<SceneController {...propsB} />)
 
-    // Let the restore effect's deferred rAF run.
+    // Let the effect's deferred render settle.
     await act(async () => {
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     })
 
     // B must keep its own pose -- it must not be silently teleported to
     // instance A's saved camera position/zoom.
-    expect(camB2.position.toArray()).toEqual([44, 55, 66])
+    const actual = camB2.position.toArray()
+    expect(actual[0]).toBeCloseTo(44, 9)
+    expect(actual[1]).toBeCloseTo(55, 9)
+    expect(actual[2]).toBeCloseTo(66, 9)
     expect(camB2.zoom).toBe(222)
   })
 })
@@ -219,14 +207,14 @@ describe('SceneController orbit pose across a Suspense reveal', () => {
   // Regression: the pose save lived in a passive-effect cleanup and read the
   // controls ref, but React detaches that ref in the commit phase first, so the
   // save never ran and the rebuilt controls came back at the default (0,0,0)
-  // target. The mock detaches its ref in a layout effect to preserve that
-  // ordering, and the pose now rides on the camera's userData.
-  it('restores the saved orbit target onto the controls instance born at the reveal', async () => {
+  // target. The pose now rides on the camera's userData and is written by the
+  // controller's own layout-effect cleanup, which still runs in the commit.
+  it('restores the saved orbit pose onto the controller born at the reveal', async () => {
     const { useThree } = await import('@react-three/fiber')
     const { useLayoutEffect, useState } = await import('react')
 
     const cam = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
-    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ camera: cam, gl: makeGl() })
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(cam))
 
     // R3F's actual suspension shape, which a plain sibling boundary does not
     // reproduce: the Canvas-wide Suspense's fallback (Block) flips the outer
@@ -256,14 +244,7 @@ describe('SceneController orbit pose across a Suspense reveal', () => {
       return <React.Suspense fallback={<Block set={setBlock} />}>{children}</React.Suspense>
     }
 
-    const props = {
-      gizmoCanvasRef: makeRef<HTMLCanvasElement | null>(null),
-      pvRef: makeRef<Pv[]>([]),
-      hoverRef: makeRef<Hit | null>(null),
-      snapRef: makeRef<THREE.Vector3 | null>(null),
-      cameraRef: makeRef<THREE.Camera | null>(null),
-      controlsRef: makeRef<OrbitControlsImpl | null>(null),
-    }
+    const props = propsFor()
     // No boundary above R3fShapedCanvas: like the real Canvas component, it
     // sits at the top of what this test renders, so its own thrown promise
     // parks the update instead of unmount/remount ping-pong through an
@@ -278,24 +259,32 @@ describe('SceneController orbit pose across a Suspense reveal', () => {
     )
 
     const { rerender } = render(tree(false))
-    // The controls attach in a layout effect during the commit.
+    // The controller attaches in a layout effect during the commit.
     await waitFor(() => expect(props.controlsRef.current).toBeTruthy())
 
-    // The user frames the scene: pivot off the origin.
+    // The user frames the scene: pivot off the origin, and an upright pose with
+    // a known position, then an inverted one would also be carried.
     const posed = props.controlsRef.current!
-    cam.position.set(10, 20, 30)
+    const target = new THREE.Vector3(5, 6, 7)
+    const position = new THREE.Vector3(10, 20, 30)
+    const angles = anglesFromDirection(position.clone().sub(target), 0)
+    posed.target.copy(target)
+    posed.distance = position.distanceTo(target)
+    posed.azimuth = angles.azimuth
+    posed.elevation = angles.elevation
     cam.zoom = 42
-    posed.target.set(5, 6, 7)
+    posed.update()
+    expect(cam.position.toArray()).toEqual([10, 20, 30])
 
     // Hide: the teardown cleanup saves the posed orbit state in the commit,
     // so poll the camera until the save lands instead of sleeping a fixed 30ms.
     let releaseGate: () => void = () => {}
     gate = new Promise<void>(resolve => { releaseGate = resolve })
     await act(async () => { rerender(tree(true)) })
-    await waitFor(() => expect((cam.userData as { orbitPose?: unknown }).orbitPose).toBeDefined())
+    await waitFor(() => expect((cam.userData as { turntablePose?: unknown }).turntablePose).toBeDefined())
 
-    // Reveal: effects re-run and the key bump mounts a FRESH OrbitControls;
-    // the saved pose must land on that fresh instance's target.
+    // Reveal: effects re-run and a FRESH controller is born; the saved pose
+    // must land on that fresh instance's target, position and zoom.
     gate = null
     await act(async () => { rerender(tree(false)); releaseGate() })
 
@@ -309,62 +298,124 @@ describe('SceneController orbit pose across a Suspense reveal', () => {
   })
 })
 
-describe('SceneController right-button remap binding', () => {  it('listens on the renderer canvas so the modifier remap works outside the gizmo corner', async () => {
+describe('SceneController camera gestures', () => {
+  it('rotates on right drag, pans on middle drag, zooms on the wheel and ignores the left button', async () => {
     const { useThree } = await import('@react-three/fiber')
+    const cam = makeCamera()
+    const gl = makeGl()
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(cam, gl))
 
-    const cam = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
-    // Two distinct elements: what R3F renders into (where OrbitControls
-    // listens) and the gizmo overlay CubeGizmoCanvas owns. The regression
-    // this pins had them conflated: one shared ref put the listener on the
-    // overlay, so shift/ctrl+right-drag was dead everywhere else.
-    const rendererCanvas = document.createElement('canvas')
-    const gizmoOverlay = document.createElement('canvas')
-    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      camera: cam,
-      gl: { domElement: rendererCanvas },
-    })
+    const props = propsFor()
+    render(<SceneController {...props} />)
+    const controls = props.controlsRef.current!
+    expect(controls).toBeInstanceOf(TurntableControls)
 
-    const props = {
-      gizmoCanvasRef: makeRef<HTMLCanvasElement | null>(gizmoOverlay),
-      pvRef: makeRef<Pv[]>([]),
-      hoverRef: makeRef<Hit | null>(null),
-      snapRef: makeRef<THREE.Vector3 | null>(null),
-      cameraRef: makeRef<THREE.Camera | null>(null),
-      controlsRef: makeRef<OrbitControlsImpl | null>(null),
+    // Left drag is selection's: it must not touch the camera at all.
+    const poseBefore = {
+      position: cam.position.toArray(),
+      azimuth: controls.azimuth,
+      target: controls.target.toArray(),
+      zoom: cam.zoom,
     }
-    const { unmount } = render(<SceneController {...props} />)
+    drag(gl.domElement, { button: 0, from: [100, 100], to: [180, 160] })
+    expect(cam.position.toArray()).toEqual(poseBefore.position)
+    expect(controls.azimuth).toBe(poseBefore.azimuth)
+    expect(controls.target.toArray()).toEqual(poseBefore.target)
+    expect(cam.zoom).toBe(poseBefore.zoom)
 
-    const mapping = () => props.controlsRef.current!.mouseButtons.RIGHT
+    // Right drag rotates: both angles move, the target stays put.
+    const azimuthBefore = controls.azimuth
+    const elevationBefore = controls.elevation
+    drag(gl.domElement, { button: 2, from: [100, 100], to: [180, 160] })
+    expect(controls.azimuth).not.toBe(azimuthBefore)
+    expect(controls.elevation).not.toBe(elevationBefore)
+    expect(controls.target.toArray()).toEqual([0, 0, 0])
 
-    expect(mapping()).toBe(THREE.MOUSE.ROTATE)
+    // Middle drag pans the target instead of rotating.
+    const azimuthAfterRotate = controls.azimuth
+    const targetBefore = controls.target.clone()
+    drag(gl.domElement, { button: 1, from: [100, 100], to: [140, 130] })
+    expect(controls.target.distanceTo(targetBefore)).toBeGreaterThan(0)
+    expect(controls.azimuth).toBeCloseTo(azimuthAfterRotate, 12)
 
-    // Shift+right-drag dolly...
-    pressRightButton(rendererCanvas, { shiftKey: true })
-    expect(mapping()).toBe(THREE.MOUSE.DOLLY)
-    // ...and the mutation must not stick: a plain press re-arms rotate,
-    // because the mapping is re-evaluated on every pointerdown.
-    pressRightButton(rendererCanvas)
-    expect(mapping()).toBe(THREE.MOUSE.ROTATE)
+    // Wheel zooms the ortho projection only.
+    const zoomBefore = cam.zoom
+    wheel(gl.domElement, -100)
+    expect(cam.zoom).toBeGreaterThan(zoomBefore)
+    wheel(gl.domElement, 100)
+    expect(cam.zoom).toBeCloseTo(zoomBefore, 12)
+  })
 
-    // Ctrl and meta pan.
-    pressRightButton(rendererCanvas, { ctrlKey: true })
-    expect(mapping()).toBe(THREE.MOUSE.PAN)
-    pressRightButton(rendererCanvas, { metaKey: true })
-    expect(mapping()).toBe(THREE.MOUSE.PAN)
+  it('keeps shift+right as dolly and ctrl+right as pan, per press', async () => {
+    const { useThree } = await import('@react-three/fiber')
+    const cam = makeCamera()
+    const gl = makeGl()
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(cam, gl))
+    const props = propsFor()
+    render(<SceneController {...props} />)
+    const controls = props.controlsRef.current!
 
-    // A press on the gizmo overlay itself never touches the mapping: that
-    // element only hosts hit-testing for the navigation cube.
-    pressRightButton(rendererCanvas)
-    pressRightButton(gizmoOverlay, { shiftKey: true })
-    expect(mapping()).toBe(THREE.MOUSE.ROTATE)
+    const targetBefore = controls.target.clone()
+    const zoomBefore = cam.zoom
+    const elevationBefore = controls.elevation
+    drag(gl.domElement, { button: 2, from: [100, 100], to: [100, 160], mods: { shiftKey: true } })
+    expect(cam.zoom).not.toBe(zoomBefore)
+    expect(controls.elevation).toBe(elevationBefore)
+    expect(controls.target.toArray()).toEqual(targetBefore.toArray())
 
-    // Cleanup on unmount: the controls ref detaches and no further presses
-    // reach the mapping.
-    const controlsAtUnmount = props.controlsRef.current!
-    unmount()
-    expect(props.controlsRef.current).toBeNull()
-    pressRightButton(rendererCanvas, { ctrlKey: true })
-    expect(controlsAtUnmount.mouseButtons.RIGHT).toBe(THREE.MOUSE.ROTATE)
+    drag(gl.domElement, { button: 2, from: [100, 100], to: [140, 120], mods: { ctrlKey: true } })
+    expect(controls.target.distanceTo(targetBefore)).toBeGreaterThan(0)
+
+    // The modifier mapping is re-evaluated on every press.
+    const azimuthBefore = controls.azimuth
+    drag(gl.domElement, { button: 2, from: [100, 100], to: [160, 100] })
+    expect(controls.azimuth).not.toBe(azimuthBefore)
+  })
+
+  it('disables the controls during a sketch element drag', async () => {
+    const { useThree } = await import('@react-three/fiber')
+    const cam = makeCamera()
+    const gl = makeGl()
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(cam, gl))
+    const props = propsFor()
+    const { rerender } = render(<SceneController {...props} />)
+
+    act(() => {
+      useEditorState.setState({ isPointerDown: true, drag: { featureId: 'S1' } as never })
+    })
+    rerender(<SceneController {...props} />)
+    expect(props.controlsRef.current!.enabled).toBe(false)
+
+    const azimuthBefore = props.controlsRef.current!.azimuth
+    drag(gl.domElement, { button: 2, from: [100, 100], to: [180, 160] })
+    expect(props.controlsRef.current!.azimuth).toBe(azimuthBefore)
+
+    act(() => {
+      useEditorState.setState({ isPointerDown: false, drag: null })
+    })
+    rerender(<SceneController {...props} />)
+    expect(props.controlsRef.current!.enabled).toBe(true)
+  })
+
+  it('requests a frame on every pose change (demand rendering)', async () => {
+    const { useThree } = await import('@react-three/fiber')
+    const cam = makeCamera()
+    const gl = makeGl()
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(cam, gl))
+    const props = propsFor()
+    render(<SceneController {...props} />)
+    h.invalidate.mockClear()
+
+    drag(gl.domElement, { button: 2, from: [100, 100], to: [140, 130] })
+    expect(h.invalidate).toHaveBeenCalled()
+
+    h.invalidate.mockClear()
+    drag(gl.domElement, { button: 1, from: [100, 100], to: [140, 130] })
+    expect(h.invalidate).toHaveBeenCalled()
+
+    h.invalidate.mockClear()
+    wheel(gl.domElement, -100)
+    expect(h.invalidate).toHaveBeenCalled()
   })
 })
 
@@ -374,12 +425,7 @@ describe('SceneController gizmo paint', () => {
     const { drawCubeGizmo } = await import('@/components/misc/CubeGizmo.utils')
 
     const cam = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
-    const invalidate = vi.fn()
-    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      camera: cam,
-      gl: { domElement: document.createElement('canvas') },
-      invalidate,
-    })
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(cam))
 
     const gizmoOverlay = document.createElement('canvas')
     render(
@@ -389,7 +435,7 @@ describe('SceneController gizmo paint', () => {
         hoverRef={makeRef<Hit | null>(null)}
         snapRef={makeRef<THREE.Vector3 | null>(null)}
         cameraRef={makeRef<THREE.Camera | null>(null)}
-        controlsRef={makeRef<OrbitControlsImpl | null>(null)}
+        controlsRef={makeRef<TurntableControls | null>(null)}
       />
     )
 
@@ -399,6 +445,6 @@ describe('SceneController gizmo paint', () => {
     const frame = h.frameCallbacks.at(-1)!
     frame()
 
-    expect(drawCubeGizmo).toHaveBeenCalledWith(gizmoOverlay, cam, null, invalidate)
+    expect(drawCubeGizmo).toHaveBeenCalledWith(gizmoOverlay, cam, null, h.invalidate)
   })
 })
