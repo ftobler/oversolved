@@ -205,7 +205,7 @@ const deleteSelectedSpec: PartCommandSpec = {
 
 const toggleSketchPlaneVisibilitySpec: PartCommandSpec = {
   id: 'toggle_sketch_plane_visibility',
-  label: 'Toggle sketches/planes',
+  label: 'Toggle reference geometry',
   shortcut: partShortcut('toggle_sketch_plane_visibility'),
   params: noParams(),
   undoable: true,

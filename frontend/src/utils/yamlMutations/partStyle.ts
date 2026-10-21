@@ -4,6 +4,7 @@ import { findFeature, warn } from './helpers'
 import { isValidVariableName } from '@/kernel/features/variable'
 import { allConsumedSketchIds } from '@/utils/query/consumedSketches'
 import { docVisibleFeatureIds } from '@/utils/featureVisibility'
+import { isSketchClassFeature } from '@/utils/sketchClass'
 
 // ─── Part Style ───
 
@@ -140,13 +141,15 @@ export function applySetFeatureVisibility(doc: PartDoc, featureId: string, visib
 // whatever its flag says, so clearing the flag alone would leave the user's
 // "show" doing nothing. Showing it spends the one-shot auto-hide: from here on
 // `visible` is the user's setting, however many features consume the sketch.
-// Unconsumed sketches are left unstamped, so their first consume still hides.
+// Unconsumed sketch-class features are left unstamped, so their first consume
+// still hides.
 function spendAutoHideOnShow(doc: PartDoc, shown: PartFeature[]): void {
   const consumed = allConsumedSketchIds(doc.features ?? [])
   for (const f of shown) {
-    // Only a sketch carries the one-shot flag; a consumed non-sketch id can
-    // only be a stale ref, and stamping it would write a key nothing reads.
-    if (f.kind === 'sketch' && consumed.has(f.id)) f.auto_hidden = true
+    // A helix is sketch-class and carries the same one-shot flag. A consumed id
+    // that is neither is a stale ref, and stamping it would write a key nothing
+    // reads.
+    if (isSketchClassFeature(f) && consumed.has(f.id)) f.auto_hidden = true
   }
 }
 
@@ -192,8 +195,11 @@ function toggleVisibility(doc: PartDoc, predicate: (f: PartFeature) => boolean):
   if (!anyVisible) spendAutoHideOnShow(doc, targets)
 }
 
+// The one "reference geometry on/off" bulk command: sketches, planes and
+// helixes. The command name is historical and stays, so its key and every saved
+// keybinding keep resolving.
 export function applyToggleSketchPlaneVisibility(doc: PartDoc): void {
-  toggleVisibility(doc, f => f.kind === 'sketch' || f.kind === 'plane')
+  toggleVisibility(doc, f => isSketchClassFeature(f) || f.kind === 'plane')
 }
 
 export function applyTogglePlaneVisibility(doc: PartDoc): void {

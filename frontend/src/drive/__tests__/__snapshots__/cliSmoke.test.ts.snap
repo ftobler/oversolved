@@ -354,7 +354,7 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
     {
       "enabled": true,
       "id": "toggle_sketch_plane_visibility",
-      "label": "Toggle sketches/planes",
+      "label": "Toggle reference geometry",
       "params": [],
       "shortcut": "y",
       "undoable": true,

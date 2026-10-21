@@ -204,6 +204,21 @@ describe('buildContextMenu', () => {
     expect(findLabel(result.items, 'Hide')).toBeUndefined()
   })
 
+  it('offers Hide for a helix, which is reference geometry like a sketch', () => {
+    const features = [makeFeature({ id: 'hx1', kind: 'helix', helix: {} })]
+    const seen: string[] = []
+    const callbacks = defaultCallbacks()
+    callbacks.onToggleVisibility = (id) => { seen.push(id) }
+    const result = buildContextMenu(
+      defaultInput({ targetId: 'hx1', features, visibleFeatures: new Set(['hx1']) }),
+      callbacks,
+    )
+    const hide = findLabel(result.items, 'Hide')!
+    expect(hide.disabled).toBeFalsy()
+    hide.onClick()
+    expect(seen).toEqual(['hx1'])
+  })
+
   it('offers New Sketch on a user-defined plane, keyed by its feature query', () => {
     const features = [makeFeature({ id: 'plane1', kind: 'plane' })]
     let plane: string | undefined
