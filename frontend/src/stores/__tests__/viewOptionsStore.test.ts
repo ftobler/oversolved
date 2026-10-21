@@ -30,7 +30,20 @@ describe('view options store', () => {
     expect(state.brightness).toBe(1)
     expect(state.zebra).toBe(false)
     expect(state.curvature).toBe(false)
+    expect(state.orbit_around_cursor).toBe(true)
     expect(state.collisionDebug).toBe(false)
+  })
+
+  it('persists the orbit-around-cursor choice through the port', () => {
+    const save = vi.spyOn(backendBundle.preferences, 'save').mockResolvedValue(undefined)
+    useViewOptionsStore.getState().setOrbitAroundCursor(false)
+
+    expect(useViewOptionsStore.getState().orbit_around_cursor).toBe(false)
+    expect(save).toHaveBeenCalledTimes(1)
+    const [next, key, value] = save.mock.calls[0]
+    expect(key).toBe('view')
+    expect((value as { orbit_around_cursor: boolean }).orbit_around_cursor).toBe(false)
+    expect(next.view.orbit_around_cursor).toBe(false)
   })
 
   it('seeds from the port when boot calls sync, normalizing the record', () => {

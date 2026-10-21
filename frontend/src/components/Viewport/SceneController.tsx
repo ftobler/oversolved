@@ -5,6 +5,8 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { drawCubeGizmo, type Pv, type Hit } from '@/components/misc/CubeGizmo.utils'
 import { snapToDirection } from '@/components/Viewport/cameraController'
 import { deriveOrbitEnabled } from '@/components/Viewport/orbitEnabled'
+import { pickPivotPoint } from '@/components/Viewport/pivotPick'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import {
   restoreTurntablePose,
   snapshotTurntablePose,
@@ -51,7 +53,7 @@ interface SceneControllerProps {
 }
 
 export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef, orbitEnabled, onReady }: SceneControllerProps) {
-  const { camera, gl, invalidate } = useThree()
+  const { camera, gl, scene, invalidate } = useThree()
   const ctrlRef = useRef<TurntableControls | null>(null)
   const cameraRefStable = useRef(camera)
   // eslint-disable-next-line react-hooks/refs -- mirror the latest camera into a ref without triggering a re-render
@@ -105,6 +107,7 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
   }, [camera, onReady])
 
   const setIsRotating = useSketchEditorStore(s => s.setIsRotating)
+  const orbitAroundCursor = useViewOptionsStore(s => s.orbit_around_cursor)
 
   // The controller listens on the renderer canvas, the same surface the old
   // drei OrbitControls bound to, so modifiers and gestures work everywhere in
@@ -116,12 +119,28 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
     ctrl.onChange = () => invalidate?.()
     ctrl.onStart = () => setIsRotating(true)
     ctrl.onEnd = () => setIsRotating(false)
+    // The raycast needs the scene and the renderer canvas, neither of which the
+    // framework-free controller may know about, so it is injected here.
+    ctrl.pivotPick = (clientX, clientY) => pickPivotPoint(
+      cam,
+      scene,
+      gl.domElement.getBoundingClientRect(),
+      clientX,
+      clientY,
+    )
+    ctrl.orbitAroundCursor = useViewOptionsStore.getState().orbit_around_cursor
     attachControls(ctrl)
     return () => {
       attachControls(null)
       ctrl.dispose()
     }
-  }, [camera, gl, invalidate, setIsRotating, showSeq, attachControls])
+  }, [camera, gl, scene, invalidate, setIsRotating, showSeq, attachControls])
+
+  // The preference is a runtime gate, like `enabled`: toggling it must not
+  // rebuild the controller and drop the live pose.
+  useEffect(() => {
+    if (ctrlRef.current) ctrlRef.current.orbitAroundCursor = orbitAroundCursor
+  }, [orbitAroundCursor, showSeq])
 
   // `enabled` is a runtime gate, not a reason to rebuild the controller: a
   // sketch drag or a part manipulation can toggle it every gesture.

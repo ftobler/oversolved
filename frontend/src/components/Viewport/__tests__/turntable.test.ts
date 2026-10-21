@@ -14,6 +14,7 @@ import {
   snapshotTurntablePose,
   restoreTurntablePose,
 } from '@/components/Viewport/turntable'
+import { pickPivotPoint } from '@/components/Viewport/pivotPick'
 import { alignToFace, alignToPlane, snapToDirection } from '@/components/Viewport/cameraController'
 
 // The pure half of the orbit law plus the controller against a real camera.
@@ -342,6 +343,143 @@ describe('mouse bindings', () => {
     const left = new MouseEvent('pointerdown', { button: 0, bubbles: true, cancelable: true })
     el.dispatchEvent(left)
     expect(left.defaultPrevented).toBe(false)
+  })
+})
+
+describe('orbit about the cursor point', () => {
+  const RECT = { left: 0, top: 0, width: 800, height: 600 }
+
+  function sceneWithBody(z = 20): THREE.Scene {
+    const scene = new THREE.Scene()
+    const body = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial())
+    body.userData.orbitPivot = true
+    body.position.set(0, 0, z)
+    scene.add(body)
+    return scene
+  }
+
+  function setup(withBody = true) {
+    const camera = makeCamera()
+    camera.position.set(0, 0, 100)
+    camera.lookAt(0, 0, 0)
+    camera.updateMatrixWorld()
+    const controls = new TurntableControls(camera)
+    const el = makeElement()
+    controls.connect(el)
+    const scene = withBody ? sceneWithBody() : new THREE.Scene()
+    // The production picker is SceneController's; the geometry of the read is
+    // what this case pins, not the wiring.
+    controls.pivotPick = (x, y) => pickPivotPoint(camera, scene, RECT, x, y)
+    return { camera, controls, el }
+  }
+
+  it('13: a right-down over a body sets the pivot and the first frame does not move the image', () => {
+    const { camera, controls, el } = setup()
+    const position = camera.position.clone()
+    const quaternion = camera.quaternion.clone()
+
+    press(el, 'pointerdown', { button: 2, clientX: 400, clientY: 300 })
+
+    expect(controls.orbitPivot).not.toBeNull()
+    expect(controls.orbitPivot!.z).toBeCloseTo(20, 9)
+    // Nothing about the pose moved: not the eye, not the aim, not the roll. The
+    // grabbed point is still exactly under the cursor at (0, 0) in clip space.
+    expect(camera.position.distanceTo(position)).toBeLessThan(1e-12)
+    expect(camera.quaternion.angleTo(quaternion)).toBeLessThan(1e-12)
+    const projected = controls.orbitPivot!.clone().project(camera)
+    expect(projected.x).toBeCloseTo(0, 9)
+    expect(projected.y).toBeCloseTo(0, 9)
+    expect(controls.target.toArray()).toEqual([0, 0, 0])
+
+    press(document, 'pointerup', { button: 2, clientX: 400, clientY: 300 })
+  })
+
+  it('13: a miss keeps the target and takes no pivot', () => {
+    const { camera, controls, el } = setup()
+    const position = camera.position.clone()
+
+    // Top-right corner: the ray passes beside the small body.
+    press(el, 'pointerdown', { button: 2, clientX: 790, clientY: 10 })
+
+    expect(controls.orbitPivot).toBeNull()
+    expect(controls.target.toArray()).toEqual([0, 0, 0])
+    expect(camera.position.distanceTo(position)).toBeLessThan(1e-12)
+
+    press(document, 'pointerup', { button: 2, clientX: 790, clientY: 10 })
+  })
+
+  it('13: a miss on an empty scene keeps the current target', () => {
+    const { controls, el } = setup(false)
+
+    press(el, 'pointerdown', { button: 2, clientX: 400, clientY: 300 })
+    expect(controls.orbitPivot).toBeNull()
+    press(document, 'pointerup', { button: 2, clientX: 400, clientY: 300 })
+
+    expect(controls.target.toArray()).toEqual([0, 0, 0])
+  })
+
+  it('turns the view about the grabbed point, keeping it under the cursor', () => {
+    const { camera, controls, el } = setup()
+
+    // Off the view axis: the ray meets the body at x = 90.
+    press(el, 'pointerdown', { button: 2, clientX: 490, clientY: 300 })
+    const pivot = controls.orbitPivot!.clone()
+    const screenBefore = pivot.clone().project(camera)
+    const distanceBefore = camera.position.distanceTo(pivot)
+    const azimuthBefore = controls.azimuth
+
+    press(document, 'pointermove', { clientX: 560, clientY: 330 })
+
+    expect(controls.azimuth).not.toBe(azimuthBefore)
+    // The pivot stays pinned: an orbit about a point must not slide that point.
+    const screenAfter = pivot.clone().project(camera)
+    expect(screenAfter.x).toBeCloseTo(screenBefore.x, 9)
+    expect(screenAfter.y).toBeCloseTo(screenBefore.y, 9)
+    // It is a turn around the point, not a dolly toward it.
+    expect(camera.position.distanceTo(pivot)).toBeCloseTo(distanceBefore, 9)
+    // The look-at swings with the camera rather than staying at the origin.
+    expect(controls.target.distanceTo(new THREE.Vector3())).toBeGreaterThan(1e-6)
+
+    press(document, 'pointerup', { clientX: 560, clientY: 330 })
+    expect(controls.orbitPivot).toBeNull()
+  })
+
+  it('takes no pivot when the preference is off', () => {
+    const { controls, el } = setup()
+    controls.orbitAroundCursor = false
+
+    press(el, 'pointerdown', { button: 2, clientX: 400, clientY: 300 })
+    expect(controls.orbitPivot).toBeNull()
+    press(document, 'pointerup', { button: 2, clientX: 400, clientY: 300 })
+
+    expect(controls.target.toArray()).toEqual([0, 0, 0])
+  })
+
+  it('takes no pivot for a modifier press that pans or dollies instead of rotating', () => {
+    const { controls, el } = setup()
+
+    press(el, 'pointerdown', { button: 2, clientX: 400, clientY: 300, ctrlKey: true })
+    expect(controls.orbitPivot).toBeNull()
+    press(document, 'pointerup', { button: 2, clientX: 400, clientY: 300, ctrlKey: true })
+    expect(controls.target.toArray()).toEqual([0, 0, 0])
+
+    press(el, 'pointerdown', { button: 2, clientX: 400, clientY: 300, shiftKey: true })
+    expect(controls.orbitPivot).toBeNull()
+    press(document, 'pointerup', { button: 2, clientX: 400, clientY: 300, shiftKey: true })
+    expect(controls.target.toArray()).toEqual([0, 0, 0])
+  })
+
+  it('keeps the level horizon while turning about an off-axis pivot', () => {
+    const { camera, controls, el } = setup()
+
+    press(el, 'pointerdown', { button: 2, clientX: 490, clientY: 300 })
+    expect(controls.orbitPivot).not.toBeNull()
+    press(document, 'pointermove', { clientX: 490, clientY: 380 })
+    press(document, 'pointerup', { clientX: 490, clientY: 380 })
+
+    const right = localAxis(camera, new THREE.Vector3(1, 0, 0))
+    expect(Math.abs(right.y)).toBeLessThan(1e-12)
+    expect(right.length()).toBeCloseTo(1, 12)
   })
 })
 

@@ -189,6 +189,19 @@ describe('ViewOptionsButton viewer rows', () => {
     expect(useViewOptionsStore.getState().zebra).toBe(false)
   })
 
+  it('shows Orbit around cursor on by default and flips it from the row', () => {
+    const save = vi.spyOn(backendBundle.preferences, 'save').mockResolvedValue(undefined)
+    render(<ViewOptionsButton />)
+    open()
+
+    expect(row('Orbit around cursor')).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(row('Orbit around cursor'))
+
+    expect(useViewOptionsStore.getState().orbit_around_cursor).toBe(false)
+    expect(row('Orbit around cursor')).toHaveAttribute('aria-checked', 'false')
+    expect(save).toHaveBeenCalled()
+  })
+
   it('shows the auto range, and a manual range overrides it', () => {
     useViewOptionsStore.setState({ curvatureAutoRange: [0.1, 0.3] })
     render(<ViewOptionsButton />)

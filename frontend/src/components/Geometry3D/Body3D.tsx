@@ -550,6 +550,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
       {showFaces && (
         <mesh
           geometry={geometry}
+          userData={{ orbitPivot: true }}
         >
           <meshPhysicalMaterial
             ref={bodyMaterialRef}
