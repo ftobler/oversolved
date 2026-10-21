@@ -49,6 +49,15 @@ function wheel(el: Element, deltaY: number): void {
   el.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY }))
 }
 
+// jsdom has no PointerEvent, and its MouseEvent carries neither pointerType nor
+// pointerId; both are what route a press to the touch gesture.
+function touch(el: Element | Document, type: string, init: MouseEventInit & { pointerId?: number } = {}): void {
+  const e = new MouseEvent(type, { bubbles: true, cancelable: true, ...init })
+  Object.defineProperty(e, 'pointerType', { value: 'touch' })
+  Object.defineProperty(e, 'pointerId', { value: init.pointerId ?? 1 })
+  el.dispatchEvent(e)
+}
+
 function screenX(camera: THREE.Camera, point: THREE.Vector3): number {
   camera.updateMatrixWorld()
   ;(camera as THREE.OrthographicCamera).updateProjectionMatrix()
@@ -521,5 +530,69 @@ describe('controller state', () => {
     expect(anglesFromDirection(new THREE.Vector3(0, 1, 0), 7).elevation).toBeCloseTo(Math.PI / 2, 12)
     expect(anglesFromDirection(new THREE.Vector3(0, -1, 0), 7).azimuth).toBe(7)
     expect(anglesFromDirection(new THREE.Vector3(0, -1, 0), 7).elevation).toBeCloseTo(-Math.PI / 2, 12)
+  })
+})
+
+describe('touch bindings', () => {
+  it('one finger rotates instead of being dropped as a button-less press', () => {
+    const controls = makeControls()
+    const el = makeElement()
+    controls.connect(el)
+    controls.azimuth = 0
+    controls.elevation = 0
+    controls.update()
+
+    touch(el, 'pointerdown', { pointerId: 11, clientX: 400, clientY: 300 })
+    touch(document, 'pointermove', { pointerId: 11, clientX: 520, clientY: 300 })
+    expect(controls.azimuth).not.toBe(0)
+    touch(document, 'pointerup', { pointerId: 11, clientX: 520, clientY: 300 })
+  })
+
+  it('two fingers pinch-zoom with the distance between them', () => {
+    const controls = makeControls()
+    const el = makeElement()
+    controls.connect(el)
+    const before = controls.zoom
+
+    touch(el, 'pointerdown', { pointerId: 21, clientX: 300, clientY: 300 })
+    touch(el, 'pointerdown', { pointerId: 22, clientX: 500, clientY: 300 })
+    // Spread apart symmetrically: the centre stays put, the distance grows.
+    touch(document, 'pointermove', { pointerId: 21, clientX: 250, clientY: 300 })
+    touch(document, 'pointermove', { pointerId: 22, clientX: 550, clientY: 300 })
+    expect(controls.zoom).toBeGreaterThan(before)
+    touch(document, 'pointerup', { pointerId: 21, clientX: 250, clientY: 300 })
+    touch(document, 'pointerup', { pointerId: 22, clientX: 550, clientY: 300 })
+  })
+
+  it('two fingers dragging together pan the target', () => {
+    const controls = makeControls()
+    const el = makeElement()
+    controls.connect(el)
+    const target = controls.target.clone()
+    const zoom = controls.zoom
+
+    touch(el, 'pointerdown', { pointerId: 21, clientX: 300, clientY: 300 })
+    touch(el, 'pointerdown', { pointerId: 22, clientX: 500, clientY: 300 })
+    // Both fingers move right by the same amount: the distance ends where it
+    // started, so the net effect is pan only.
+    touch(document, 'pointermove', { pointerId: 21, clientX: 340, clientY: 300 })
+    touch(document, 'pointermove', { pointerId: 22, clientX: 540, clientY: 300 })
+    expect(controls.target.distanceTo(target)).toBeGreaterThan(0)
+    expect(controls.zoom).toBeCloseTo(zoom, 10)
+  })
+
+  it('lifts one finger back to a rotate without moving the pose by itself', () => {
+    const controls = makeControls()
+    const el = makeElement()
+    controls.connect(el)
+
+    touch(el, 'pointerdown', { pointerId: 21, clientX: 300, clientY: 300 })
+    touch(el, 'pointerdown', { pointerId: 22, clientX: 500, clientY: 300 })
+    const azimuth = controls.azimuth
+    touch(document, 'pointerup', { pointerId: 22, clientX: 500, clientY: 300 })
+    expect(controls.azimuth).toBe(azimuth)
+
+    touch(document, 'pointermove', { pointerId: 21, clientX: 380, clientY: 300 })
+    expect(controls.azimuth).not.toBe(azimuth)
   })
 })

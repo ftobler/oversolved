@@ -194,6 +194,13 @@ export class TurntableControls {
 
   private _enabled = true
   private gesture: TurntableGesture | null = null
+  // Touch is its own gesture: one finger rotates, two pinch-zoom and pan, the
+  // same split the OrbitControls this replaced used (ONE = ROTATE,
+  // TWO = DOLLY_PAN). A finger press has no usable mouse button, so it cannot go
+  // through `gestureForButton`.
+  private touchPoints = new Map<number, { x: number; y: number }>()
+  private touchRotate: { pointerId: number; x: number; y: number } | null = null
+  private touchPinch: { centerX: number; centerY: number; distance: number } | null = null
 
   constructor(camera: THREE.Camera, domElement: HTMLElement | null = null) {
     this.camera = camera
@@ -214,7 +221,10 @@ export class TurntableControls {
   // a drag that a sketch drag or a part manipulation has taken over.
   set enabled(value: boolean) {
     this._enabled = value
-    if (!value) this.endGesture()
+    if (!value) {
+      if (this.touchPoints.size > 0) this.endTouch()
+      else this.endGesture()
+    }
   }
 
   get zoom(): number {
@@ -366,7 +376,12 @@ export class TurntableControls {
   }
 
   private handlePointerDown = (e: PointerEvent): void => {
-    if (!this._enabled || this.gesture) return
+    if (!this._enabled) return
+    if (e.pointerType === 'touch') {
+      this.beginTouch(e)
+      return
+    }
+    if (this.gesture) return
     const action = gestureForButton(e.button, e)
     if (!action) return
     // OrbitControls cancelled the press for a recognized gesture; without it a
@@ -387,14 +402,15 @@ export class TurntableControls {
       y: e.clientY,
       pivot,
     }
-    const doc = this.domElement?.ownerDocument
-    doc?.addEventListener('pointermove', this.handlePointerMove)
-    doc?.addEventListener('pointerup', this.handlePointerUp)
-    doc?.addEventListener('pointercancel', this.handlePointerUp)
+    this.addDocListeners()
     this.onStart?.()
   }
 
   private handlePointerMove = (e: PointerEvent): void => {
+    if (this.touchPoints.has(pointerIdOf(e))) {
+      this.moveTouch(e)
+      return
+    }
     const gesture = this.gesture
     if (!gesture || pointerIdOf(e) !== gesture.pointerId) return
     if (!this._enabled) {
@@ -420,9 +436,89 @@ export class TurntableControls {
   }
 
   private handlePointerUp = (e: PointerEvent): void => {
+    const id = pointerIdOf(e)
+    if (this.touchPoints.has(id)) {
+      this.touchPoints.delete(id)
+      if (this.touchPoints.size === 0) {
+        this.endTouch()
+        return
+      }
+      // Going from two fingers to one continues as a rotate from where the
+      // remaining finger is now, so the view does not jump.
+      if (this.touchPoints.size === 1) {
+        const [remainingId, point] = this.touchPoints.entries().next().value as [number, { x: number; y: number }]
+        this.touchRotate = { pointerId: remainingId, x: point.x, y: point.y }
+        this.touchPinch = null
+      }
+      return
+    }
     const gesture = this.gesture
-    if (!gesture || pointerIdOf(e) !== gesture.pointerId) return
+    if (!gesture || id !== gesture.pointerId) return
     this.endGesture()
+  }
+
+  private beginTouch(e: PointerEvent): void {
+    e.preventDefault()
+    const id = pointerIdOf(e)
+    this.touchPoints.set(id, { x: e.clientX, y: e.clientY })
+    if (this.touchPoints.size === 1) {
+      this.touchRotate = { pointerId: id, x: e.clientX, y: e.clientY }
+      this.touchPinch = null
+    } else {
+      this.touchRotate = null
+      this.touchPinch = this.pinchFromTouches()
+    }
+    this.addDocListeners()
+    this.onStart?.()
+  }
+
+  private moveTouch(e: PointerEvent): void {
+    if (!this._enabled) {
+      this.endTouch()
+      return
+    }
+    const id = pointerIdOf(e)
+    this.touchPoints.set(id, { x: e.clientX, y: e.clientY })
+    if (this.touchPoints.size >= 2) {
+      const pinch = this.pinchFromTouches()
+      if (!pinch) return
+      const previous = this.touchPinch
+      this.touchPinch = pinch
+      if (!previous) return
+      const dx = pinch.centerX - previous.centerX
+      const dy = pinch.centerY - previous.centerY
+      if (dx !== 0 || dy !== 0) this.panByPixels(dx, dy)
+      if (previous.distance > 0 && pinch.distance > 0) {
+        this.setZoom(this.zoom * (pinch.distance / previous.distance))
+      }
+      return
+    }
+    const rotate = this.touchRotate
+    if (!rotate || rotate.pointerId !== id) return
+    const dx = e.clientX - rotate.x
+    const dy = e.clientY - rotate.y
+    rotate.x = e.clientX
+    rotate.y = e.clientY
+    if (dx !== 0 || dy !== 0) this.rotateByPixels(dx, dy)
+  }
+
+  private pinchFromTouches(): { centerX: number; centerY: number; distance: number } | null {
+    const [a, b] = this.touchPoints.values()
+    if (!a || !b) return null
+    return {
+      centerX: (a.x + b.x) / 2,
+      centerY: (a.y + b.y) / 2,
+      distance: Math.hypot(a.x - b.x, a.y - b.y),
+    }
+  }
+
+  private endTouch(): void {
+    if (this.touchPoints.size === 0) return
+    this.touchPoints.clear()
+    this.touchRotate = null
+    this.touchPinch = null
+    this.detachDocListeners()
+    this.onEnd?.()
   }
 
   private handleWheel = (e: WheelEvent): void => {
@@ -437,13 +533,27 @@ export class TurntableControls {
     if (this._enabled) e.preventDefault()
   }
 
-  private endGesture(): void {
-    if (!this.gesture) return
-    this.gesture = null
+  // One listener pair serves both gestures. Adding the same function twice is a
+  // no-op, so a second finger can call this safely.
+  private addDocListeners(): void {
+    const doc = this.domElement?.ownerDocument
+    doc?.addEventListener('pointermove', this.handlePointerMove)
+    doc?.addEventListener('pointerup', this.handlePointerUp)
+    doc?.addEventListener('pointercancel', this.handlePointerUp)
+  }
+
+  private detachDocListeners(): void {
+    if (this.gesture || this.touchPoints.size > 0) return
     const doc = this.domElement?.ownerDocument
     doc?.removeEventListener('pointermove', this.handlePointerMove)
     doc?.removeEventListener('pointerup', this.handlePointerUp)
     doc?.removeEventListener('pointercancel', this.handlePointerUp)
+  }
+
+  private endGesture(): void {
+    if (!this.gesture) return
+    this.gesture = null
+    this.detachDocListeners()
     this.onEnd?.()
   }
 }
