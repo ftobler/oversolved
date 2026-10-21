@@ -39,7 +39,8 @@ export interface McpFileRef {
 // A document argument is either the full doc or a docHash from an earlier
 // call's reply. The store that resolves the hash lives in the entry script;
 // this module only learns the shape. `run` may take neither (a fresh seeded
-// document); the other tools need exactly one.
+// document); the other tools need exactly one. mcpDocRef imports this shape so
+// the protocol and the ops cannot drift.
 export interface McpDocArguments {
   doc?: unknown
   docHash?: string

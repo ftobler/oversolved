@@ -27,7 +27,13 @@ export class DocHandleStore {
 
   // Store a document and return its content hash.
   put(doc: PartDoc): string {
-    const hash = docHashOf(doc)
+    return this.putAs(docHashOf(doc), doc)
+  }
+
+  // Store under a caller-computed hash, for a document that arrived as a JSON
+  // payload: the handle then names the bytes the client sent, not the loader's
+  // normalized copy. The stored value is still cloned.
+  putAs(hash: string, doc: PartDoc): string {
     this.docs.delete(hash)
     this.docs.set(hash, structuredClone(doc))
     while (this.docs.size > this.capacity) {

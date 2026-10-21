@@ -6,11 +6,8 @@
 import type { PartDoc } from '@/types/cad'
 import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { DocHandleStore, DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
-
-export interface McpDocArguments {
-  doc?: unknown
-  docHash?: string
-}
+import { docHashOf } from '@/drive/docHash'
+import type { McpDocArguments } from '@/drive/mcpServer'
 
 export type ResolvedDoc =
   | { ok: true; doc: PartDoc; docHash: string }
@@ -29,9 +26,13 @@ export function resolveDoc(req: McpDocArguments, documents: DocHandleStore): Res
     return { ok: true, doc, docHash: req.docHash }
   }
   if (req.doc === undefined) return { ok: false, error: 'no document: pass doc or docHash' }
+  // The loader migrates in place, so the raw hash must be taken first: the
+  // handle names the payload the client sent, not the loader's normalized copy.
+  const docHash = docHashOf(req.doc)
   const loaded = loadPartDoc(req.doc, { name: 'mcp' })
   if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
-  return { ok: true, doc: loaded.doc, docHash: documents.put(loaded.doc) }
+  documents.putAs(docHash, loaded.doc)
+  return { ok: true, doc: loaded.doc, docHash }
 }
 
 // The reply's one-line index of what the script built. Body ids are the

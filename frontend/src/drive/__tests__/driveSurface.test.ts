@@ -147,7 +147,7 @@ describe('drive surface', () => {
     const surface = createDriveSurface(deps({
       executeMutation: (m) => { seen.push(m); return okResult() },
     }))
-    for (const type of ['constructor', 'toString', '__proto__']) {
+    for (const type of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
       const outcome = await surface.script([{ mutation: { type } as unknown as Mutation }])
       expect(outcome.steps[0].error?.code).toBe('unknown-mutation')
     }
@@ -157,6 +157,13 @@ describe('drive surface', () => {
         index: 0,
         ok: false,
         error: { code: 'invalid-mutation' },
+      })
+    }
+    for (const step of [{ command: 123 }, { command: '' }]) {
+      const outcome = await surface.script([step as never])
+      expect(outcome.steps[0]).toMatchObject({
+        ok: false,
+        error: { code: 'invalid-step' },
       })
     }
     expect(seen).toEqual([])

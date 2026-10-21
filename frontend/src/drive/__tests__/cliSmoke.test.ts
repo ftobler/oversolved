@@ -22,6 +22,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { docHashOf } from '@/drive/docHash'
 
 const execFileAsync = promisify(execFile)
 
@@ -471,7 +472,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
         name: 'select',
         arguments: { doc: returned.doc, selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } },
       }))
-      expect(typeof selectedByDoc.docHash).toBe('string')
+      expect(selectedByDoc.docHash).toBe(docHashOf(returned.doc))
       const measuredByHandle = toolPayload(await client.request('tools/call', {
         name: 'measure',
         arguments: { docHash: selectedByDoc.docHash },
@@ -571,8 +572,8 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       expect(unknownResult.isError).toBe(true)
       expect((JSON.parse(unknownResult.content[0].text) as { error: string }).error).toContain('32')
 
-      // A malformed step is a named invalid-mutation step outcome, never an
-      // internal error from reading step.mutation.type.
+      // A malformed step is a named step outcome, never an internal error
+      // from reading step.mutation.type.
       for (const step of [{}, { mutation: null }]) {
         const malformed = await client.request('tools/call', {
           name: 'run',
@@ -589,6 +590,19 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
           ok: false,
           error: { code: 'invalid-mutation' },
         })
+      }
+      for (const step of [{ command: 123 }, { command: '' }]) {
+        const malformed = await client.request('tools/call', {
+          name: 'run',
+          arguments: { steps: [step] },
+        })
+        const malformedResult = malformed.result as { isError?: boolean; content: Array<{ text: string }> }
+        expect(malformedResult.isError).toBe(true)
+        const malformedPayload = JSON.parse(malformedResult.content[0].text) as {
+          ok: boolean
+          steps: Array<{ ok: boolean; error?: { code: string } }>
+        }
+        expect(malformedPayload.steps[0]).toMatchObject({ ok: false, error: { code: 'invalid-step' } })
       }
 
       const commands = toolPayload(await client.request('tools/call', { name: 'commands', arguments: {} }))

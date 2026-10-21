@@ -709,7 +709,7 @@ describe('unknown mutation boundary', () => {
   it('faults in a non-DEV build and records no undo entry or doc change', () => {
     vi.stubEnv('DEV', false)
     try {
-      for (const type of ['nope', 'constructor', 'toString', '__proto__']) {
+      for (const type of ['nope', 'constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
         const { session, doc } = makeSession()
         const before = structuredClone(doc.current)
 

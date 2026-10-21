@@ -45,29 +45,32 @@ export interface MutationInfo {
 
 export type MutationFamily = 'sketch' | 'features' | 'picks' | 'part style' | 'document'
 
-function field(type: FieldType, required = true, note?: string): FieldInfo {
-  return { type, required, ...(note !== undefined && { note }) }
-}
-
-const str = (note?: string): FieldInfo => field('string', true, note)
-const optStr = (note?: string): FieldInfo => field('string', false, note)
-const nullableStr = (): FieldInfo => ({ type: 'string', required: false, nullable: true })
-const num = (note?: string): FieldInfo => field('number', true, note)
-const optNum = (): FieldInfo => field('number', false)
-const bool = (): FieldInfo => field('boolean', true)
-const point = (note?: string): FieldInfo => field('point', true, note)
-const arr = (note?: string): FieldInfo => field('array', true, note)
-const optArr = (): FieldInfo => field('array', false)
-const obj = (note?: string): FieldInfo => field('object', true, note)
-const optObj = (note?: string): FieldInfo => field('object', false, note)
-const query = (note: string): FieldInfo => field('query', true, note)
-const scalar = (): FieldInfo => field('scalar')
-const anyValue = (): FieldInfo => field('any')
+// The helpers keep `type`, `required` and `nullable` as literal types so the
+// type-level check in mutationCatalogTypecheck.ts can compare a union member's
+// optional and nullable keys against its catalog row.
+const str = (note?: string) => ({ type: 'string', required: true, ...(note !== undefined && { note }) } as const)
+const optStr = (note?: string) => ({ type: 'string', required: false, ...(note !== undefined && { note }) } as const)
+const nullableStr = () => ({ type: 'string', required: false, nullable: true } as const)
+const num = (note?: string) => ({ type: 'number', required: true, ...(note !== undefined && { note }) } as const)
+const optNum = () => ({ type: 'number', required: false } as const)
+const bool = () => ({ type: 'boolean', required: true } as const)
+const point = (note?: string) => ({ type: 'point', required: true, ...(note !== undefined && { note }) } as const)
+const optPoint = () => ({ type: 'point', required: false } as const)
+const arr = (note?: string) => ({ type: 'array', required: true, ...(note !== undefined && { note }) } as const)
+const optArr = () => ({ type: 'array', required: false } as const)
+const obj = (note?: string) => ({ type: 'object', required: true, ...(note !== undefined && { note }) } as const)
+const optObj = (note?: string) => ({ type: 'object', required: false, ...(note !== undefined && { note }) } as const)
+const query = (note: string) => ({ type: 'query', required: true, note } as const)
+const optQuery = (note: string) => ({ type: 'query', required: false, note } as const)
+const scalar = () => ({ type: 'scalar', required: true } as const)
+// The pass-through setter value: null is the documented clear (a deleted
+// field), so it is nullable even though the applier owns the real type.
+const anyValue = () => ({ type: 'any', required: true, nullable: true } as const)
 
 // The insert slot and the drag snapshot are journal/gesture plumbing: both ride
 // on a payload the app produces, never on one a script authors.
-const insertAt = (): FieldInfo => ({ type: 'number', required: false, internal: true })
-const solvedGeometry = (): FieldInfo => ({ type: 'object', required: false, internal: true })
+const insertAt = () => ({ type: 'number', required: false, internal: true } as const)
+const solvedGeometry = () => ({ type: 'object', required: false, internal: true } as const)
 
 // A feature add's shared optional label plus its insertion slot.
 const featureAddFields = () => ({
@@ -76,13 +79,13 @@ const featureAddFields = () => ({
   insertAt: insertAt(),
 })
 
-const sketchQuery = (): FieldInfo => query('$<sketchId>: the sketch feature to consume.')
-const edgeQuery = (): FieldInfo => query('An edge query as returned by `select`.')
-const faceQuery = (): FieldInfo => query('A face query as returned by `select`.')
-const bodyQuery = (): FieldInfo => query('A body id such as body_ex1, or a stored body query.')
+const sketchQuery = () => query('$<sketchId>: the sketch feature to consume.')
+const edgeQuery = () => query('An edge query as returned by `select`.')
+const faceQuery = () => query('A face query as returned by `select`.')
+const bodyQuery = () => query('A body id such as body_ex1, or a stored body query.')
 
-const fieldOf = (kind: string): FieldInfo => str(`The ${kind} field to set.`)
-const anyFieldValue = (): FieldInfo => anyValue()
+const fieldOf = (kind: string) => str(`The ${kind} field to set.`)
+const anyFieldValue = () => anyValue()
 
 export const MUTATION_CATALOG = {
   move_vertex: {
@@ -135,7 +138,7 @@ export const MUTATION_CATALOG = {
       kind: str('The constraint kind, e.g. coincident or distance.'),
       targets: arr('Entity or vertex refs the constraint names.'),
       value: optNum(),
-      pos: field('point', false),
+      pos: optPoint(),
       sign: optNum(),
     },
   },
@@ -229,7 +232,7 @@ export const MUTATION_CATALOG = {
     fields: {
       featureId: str(),
       label: optStr(),
-      plane: field('query', false, '@<planeId> or a bare plane name.'),
+      plane: optQuery('@<planeId> or a bare plane name.'),
       insertAt: insertAt(),
     },
   },
@@ -565,7 +568,11 @@ export type MutationCatalog = typeof MUTATION_CATALOG
 
 /** A row's common shape; the inferred rows carry their literal field keys. */
 export function mutationInfoOf(type: Mutation['type']): MutationInfo {
-  return MUTATION_CATALOG[type]
+  const info = Object.hasOwn(MUTATION_CATALOG, type)
+    ? (MUTATION_CATALOG as Record<Mutation['type'], MutationInfo>)[type]
+    : undefined
+  if (info === undefined) throw new Error(`no mutation catalog row for type "${type}"`)
+  return info
 }
 
 // Hidden means the app produces the mutation and an external script must not.
@@ -777,6 +784,15 @@ export function validateMutation(raw: unknown, options: MutationValidationOption
   }
   if (info.hidden === true && options.allowInternal !== true) {
     return fail('internal-mutation', `mutation type "${type}" is internal and cannot be sent by a script`)
+  }
+  // A key the row does not declare is refused even on the replay path: only
+  // fields a mutation actually carries may ride on it, so insertAt cannot be
+  // smuggled onto a visible non-add row to move the rollback bar.
+  for (const key of Object.keys(raw)) {
+    if (key === 'type') continue
+    if (!Object.hasOwn(info.fields, key)) {
+      return fail('invalid-mutation', `mutation type "${type}" has no field "${key}"`)
+    }
   }
   for (const [name, fieldInfo] of Object.entries(info.fields)) {
     const value = raw[name]

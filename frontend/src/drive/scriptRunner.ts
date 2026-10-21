@@ -72,14 +72,14 @@ function malformedStep(index: number, step: unknown): ScriptStepOutcome | null {
   if (!isObject(step)) {
     return {
       index, kind: 'mutation', id: 'invalid-step', ok: false, createdIds: [],
-      error: { code: 'invalid-mutation', message: `step ${index} must be an object` },
+      error: { code: 'invalid-step', message: `step ${index} must be an object` },
     }
   }
   if ('command' in step) {
     if (typeof step.command !== 'string' || step.command.length === 0) {
       return {
         index, kind: 'command', id: 'invalid-step', ok: false, createdIds: [],
-        error: { code: 'invalid-mutation', message: `step ${index} needs a command id` },
+        error: { code: 'invalid-step', message: `step ${index} needs a command id` },
       }
     }
     return null
