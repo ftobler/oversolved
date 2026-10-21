@@ -285,7 +285,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   //   3. DrawPlane mesh          (z=-0.002, mounted for select/drag/dimension - the click-on-empty backplane)
   //   4. Reference/user planes   (no handlers; picked via the ID buffer)
   //   5. B-rep faces/edges       (no handlers; picked via the ID buffer)
-  //   6. OrbitControls           (canvas div level, suppressed during drag)
+  //   6. TurntableControls      (renderer canvas level, suppressed during drag)
   //
   // New R3F event consumers must fit into this stack via z-positioning.
   // Drag-time snap uses findSnapTarget() in Dragging.tsx (full scan, dragged element hidden).

@@ -38,7 +38,7 @@ interface Ratchet {
 const RATCHETS: Ratchet[] = [
   {
     token: 'as unknown as',
-    baseline: 49,
+    baseline: 48,
   },
   {
     token: 'Record<string, unknown>',

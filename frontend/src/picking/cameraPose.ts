@@ -2,8 +2,8 @@ import type * as THREE from 'three'
 
 /**
  * The two matrices that decide where an entity lands in the ID buffer: where
- * the camera sits in the world and how it projects to clip space. OrbitControls
- * dolly on an ORTHOGRAPHIC camera changes only zoom/projectionMatrix and leaves
+ * the camera sits in the world and how it projects to clip space. A wheel-zoom
+ * on an ORTHOGRAPHIC camera changes only zoom/projectionMatrix and leaves
  * matrixWorld untouched, so a world-matrix-only snapshot misses pure
  * wheel-zooms and lets the ID buffer go stale.
  */

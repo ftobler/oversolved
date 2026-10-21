@@ -3,7 +3,6 @@ import type { ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
-import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { Feature, PartFeature, Sketch, BodyResult } from '@/types/cad'
 import { unflattenGeometry, deriveConstraints } from '@/utils/geometry/geometryMapping'
 import Geometry3D from '@/components/Geometry3D'
@@ -23,6 +22,7 @@ import { RenderOnChange, RenderOnce } from '@/components/Viewport/RenderOnChange
 import { MsaaRender } from '@/components/Viewport/MsaaRender'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/components/Viewport/cameraController'
+import type { TurntableControls } from '@/components/Viewport/turntable'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
@@ -148,7 +148,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const hoverRef = useRef<Hit | null>(null)
   const snapRef = useRef<THREE.Vector3 | null>(null)
   const cameraRef = useRef<THREE.Camera | null>(null)
-  const controlsRef = useRef<OrbitControlsImpl | null>(null)
+  const controlsRef = useRef<TurntableControls | null>(null)
   const glRef = useRef<THREE.WebGLRenderer | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   // The Canvas's own invalidate, published by RenderOnChange. The viewport
@@ -557,7 +557,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         gl={CANVAS_GL}
         // Demand, not the R3F default "always": the scene draws when something
         // that feeds it changed (RenderOnChange below, the reconciler's own
-        // instance invalidations, OrbitControls' change listener), never once
+        // instance invalidations, TurntableControls' change listener), never once
         // per display refresh. An idle viewport presents nothing, so a
         // compositor that mishandles a re-presented canvas has no frame to get
         // wrong, and the GPU and battery stay idle with it.

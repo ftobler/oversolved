@@ -16,7 +16,6 @@ import type { ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
-import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
 import '@/components/Viewport/ViewportHud.css'
 import type { Hit, Pv } from '@/components/misc/CubeGizmo.utils'
@@ -24,6 +23,7 @@ import SceneController from '@/components/Viewport/SceneController'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent, shouldAutoFit } from '@/components/Viewport/cameraController'
+import type { TurntableControls } from '@/components/Viewport/turntable'
 import AnchorGizmos from '@/components/Viewport/assembly/AnchorGizmos'
 import AssemblyBody from '@/components/Viewport/assembly/AssemblyBody'
 import AssemblyBuiltin from '@/components/Viewport/assembly/AssemblyBuiltin'
@@ -158,7 +158,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const hoverRef = useRef<Hit | null>(null)
   const snapRef = useRef<THREE.Vector3 | null>(null)
   const cameraRef = useRef<THREE.Camera | null>(null)
-  const controlsRef = useRef<OrbitControlsImpl | null>(null)
+  const controlsRef = useRef<TurntableControls | null>(null)
   const glRef = useRef<THREE.WebGLRenderer | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   const raycaster = useMemo(() => new THREE.Raycaster(), [])
