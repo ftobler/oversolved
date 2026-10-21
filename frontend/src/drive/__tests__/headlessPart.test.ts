@@ -13,7 +13,7 @@ import { replayJournal } from '../replay'
 import { docHashOf } from '../docHash'
 import { seededIdSource } from '../seededIds'
 import { setIdSource } from '@/utils/yamlMutations'
-import type { PartDoc } from '@/types/cad'
+import type { Mutation, PartDoc } from '@/types/cad'
 import type { CommandName } from '@/utils/core/commandNames'
 import type { ScriptStep } from '../scriptRunner'
 
@@ -124,10 +124,13 @@ describe('createHeadlessPart', () => {
     }
     const journal = new CommandJournal()
     const part = createHeadlessPart({ doc, journal })
-    const outcome = await part.run([
-      { mutation: { type: 'add_sketch', featureId: 'f1b', label: 'Inserted', insertAt: 1 } },
-    ])
-    expect(outcome.ok).toBe(true)
+    // The app produces insertAt; the script boundary refuses it (see
+    // mutationValidation), so this test applies the internal payload directly
+    // and then pins that its replay accepts the internal field.
+    const result = part.session.execute({
+      type: 'add_sketch', featureId: 'f1b', label: 'Inserted', insertAt: 1,
+    } as Mutation)
+    expect(result.ok).toBe(true)
     expect(part.getDoc()?.features?.map(f => f.id)).toEqual(['f1', 'f1b', 'f2'])
     expect(part.getDoc()?.rollback).toBe(2)
 

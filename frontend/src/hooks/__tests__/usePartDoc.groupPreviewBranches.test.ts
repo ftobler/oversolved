@@ -92,27 +92,23 @@ describe('commitMutationGroup solve-result prune and restore', () => {
     expect(reSolve.mock.calls[0][1]).toMatchObject({ _restoreSolveResults: { ex1: { solved: {} } } })
   })
 
-  it('applies a known mutation in a group that also carries an unknown one', () => {
+  it('refuses a group carrying an unknown mutation before any of it applies', () => {
     docRef.current = {
       version: 1, kind: 'part', features: [{ id: 'ex1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      const { result } = renderPartDoc()
+    const { result } = renderPartDoc()
 
-      act(() => {
-        result.current.commitMutationGroup([
-          { type: 'bogus_mutation' } as unknown as Mutation,
-          renameTo('second'),
-        ])
-      })
+    act(() => {
+      expect(() => result.current.commitMutationGroup([
+        { type: 'bogus_mutation' } as unknown as Mutation,
+        renameTo('second'),
+      ])).toThrow(/no handler for mutation type 'bogus_mutation'/)
+    })
 
-      expect(error).toHaveBeenCalledWith(expect.stringContaining('no handler for mutation type: bogus_mutation'))
-      expect(labelOf()).toBe('second')
-      expect(result.current.undoStack).toHaveLength(1)
-    } finally {
-      error.mockRestore()
-    }
+    // The boundary checks every mutation first, so the known member must not
+    // land either, and no undo entry may record a partial group.
+    expect(labelOf()).toBe('first')
+    expect(result.current.undoStack).toHaveLength(0)
   })
 })
 

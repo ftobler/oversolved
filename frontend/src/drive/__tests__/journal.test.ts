@@ -351,6 +351,67 @@ describe('replayJournal', () => {
     expect(second.steps[0].error?.code).toBe('invalid-mint-index')
   })
 
+  it('refuses a malformed recorded payload as a step error, not a hash mismatch', async () => {
+    const journal = new CommandJournal()
+    const recorded = makeSession(sketchDoc(), journal)
+    recorded.session.execute(addExtrude('ex1', 1))
+    const repro = journal.repro()!
+    const tampered: ReproPayload = structuredClone(repro)
+    tampered.journal[0].payload = { type: 'add_fillett' } as unknown as Mutation
+    const fresh = makeSession(structuredClone(repro.doc) as PartDoc, undefined, 'doc-1')
+    const outcome = await replayJournal(tampered, fresh.session)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps).toHaveLength(1)
+    expect(outcome.steps[0].error).toMatchObject({ code: 'unknown-mutation' })
+    expect(outcome.steps[0].error?.message).toContain('add_fillet')
+    expect(outcome.steps[0].actualHash).toBe(docHashOf(fresh.cell.current))
+  })
+
+  it('replays the app null clears for setter fields', async () => {
+    // The app writes `value: null` to clear a setter field (hole.thread,
+    // circular_array.step_angle); the replay validator must accept it or real
+    // repros fail with invalid-mutation.
+    const doc = makeDoc(
+      { id: 'h1', kind: 'hole', hole: { thread: { designation: 'M6x1' } } } as never,
+      { id: 'ca1', kind: 'circular_array', circular_array: { count: 4, step_angle: 45 } } as never,
+    )
+    const journal = new CommandJournal()
+    const recorded = makeSession(doc, journal)
+    expect(recorded.session.execute({
+      type: 'set_hole_field', featureId: 'h1', field: 'thread', value: null,
+    }).ok).toBe(true)
+    expect(recorded.session.execute({
+      type: 'set_circular_array_field', featureId: 'ca1', field: 'step_angle', value: null,
+    }).ok).toBe(true)
+    const repro = journal.repro()!
+    expect(repro.journal).toHaveLength(2)
+
+    const fresh = makeSession(structuredClone(repro.doc) as PartDoc, undefined, 'doc-1')
+    const outcome = await replayJournal(repro, fresh.session)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.finalHash).toBe(docHashOf(recorded.cell.current))
+  })
+
+  it('replays a drag frame carrying solvedGeometry', async () => {
+    const doc = makeDoc(makeSketch('sk1', {
+      entities: [{ id: 'l1', kind: 'line' }],
+      initial: { l1: [0, 0, 10, 0] },
+    }))
+    const journal = new CommandJournal()
+    const recorded = makeSession(doc, journal)
+    expect(recorded.session.execute({
+      type: 'move_entity', featureId: 'sk1', entityId: 'l1', delta: [1, 0],
+      solvedGeometry: { l1: [1, 0, 11, 0] },
+    }).ok).toBe(true)
+    const repro = journal.repro()!
+    expect(repro.journal).toHaveLength(1)
+
+    const fresh = makeSession(structuredClone(repro.doc) as PartDoc, undefined, 'doc-1')
+    const outcome = await replayJournal(repro, fresh.session)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.finalHash).toBe(docHashOf(recorded.cell.current))
+  })
+
   it('stops with both hashes when a step lands elsewhere than the journal recorded', async () => {
     const journal = new CommandJournal()
     const recorded = makeSession(sketchDoc(), journal)

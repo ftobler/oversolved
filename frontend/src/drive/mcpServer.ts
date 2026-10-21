@@ -18,6 +18,8 @@
 import { PART_DOC_SCHEMA_URI } from '@/persistence/partDocSchema'
 import { validateSelector, type Selector } from '@/kernel/select'
 import { parseReference, type TranslationReference } from '@/translations/corpus'
+import { MUTATION_CATALOG_URI, mutationCatalogPayload } from '@/drive/mutationCatalogPayload'
+import { worldFrameSentence } from '@/drive/worldFrame'
 
 // The protocol revisions whose initialize handshake this server accepts. The
 // three methods implemented here exist unchanged in all of them, so a client
@@ -34,21 +36,30 @@ export interface McpFileRef {
   path: string
 }
 
-export interface McpRunRequest {
+// A document argument is either the full doc or a docHash from an earlier
+// call's reply. The store that resolves the hash lives in the entry script;
+// this module only learns the shape. `run` may take neither (a fresh seeded
+// document); the other tools need exactly one. mcpDocRef imports this shape so
+// the protocol and the ops cannot drift.
+export interface McpDocArguments {
   doc?: unknown
+  docHash?: string
+}
+
+export interface McpRunRequest extends McpDocArguments {
   steps: unknown[]
   docId?: string
   files: McpFileRef[]
+  // Default false: the reply carries docHash, not the whole document.
+  returnDoc?: boolean
 }
 
-export interface McpMeasureRequest {
-  doc: unknown
+export interface McpMeasureRequest extends McpDocArguments {
   docId?: string
   files: McpFileRef[]
 }
 
-export interface McpExportRequest {
-  doc: unknown
+export interface McpExportRequest extends McpDocArguments {
   format: 'step' | 'stl'
   // Where the bytes are written, resolved against the server's cwd.
   out: string
@@ -57,15 +68,13 @@ export interface McpExportRequest {
   files: McpFileRef[]
 }
 
-export interface McpSelectRequest {
-  doc: unknown
+export interface McpSelectRequest extends McpDocArguments {
   selector: Selector
   docId?: string
   files: McpFileRef[]
 }
 
-export interface McpCompareRequest {
-  doc: unknown
+export interface McpCompareRequest extends McpDocArguments {
   reference: TranslationReference
   docId?: string
   files: McpFileRef[]
@@ -108,6 +117,16 @@ const FILE_LIST_SCHEMA = {
     properties: { id: { type: 'string' }, path: { type: 'string' } },
     additionalProperties: false,
   },
+}
+
+const DOC_SCHEMA = {
+  type: 'object',
+  description: 'A full part document. Pass either doc or docHash.',
+}
+
+const DOC_HASH_SCHEMA = {
+  type: 'string',
+  description: 'A content hash from an earlier reply. Pass either doc or docHash; the server keeps the last 32 documents.',
 }
 
 const VEC3_SCHEMA = {
@@ -182,15 +201,25 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
+    name: 'mutations',
+    description: 'List the mutation vocabulary grouped by family (sketch, features, picks, part style, document), '
+      + 'with each type\'s summary and fields, plus ready-to-run example scripts. Mutation steps author geometry; '
+      + 'commands act on the current selection.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
     name: 'run',
     description: 'Run a script of command and mutation steps through one DocSession and the real kernel. '
-      + 'Returns the final document (for chaining), its hash, per-step results and solve state.',
+      + 'Returns per-step results, the solve state and the resulting docHash; chain calls with docHash. '
+      + 'The full document is returned only with returnDoc: true.',
     inputSchema: {
       type: 'object',
       required: ['steps'],
       properties: {
-        doc: { type: 'object', description: 'Starting document; omit to start from a fresh seeded document.' },
-        steps: { type: 'array', items: { type: 'object' }, description: 'Script steps: {command,params} or {mutation}.' },
+        doc: { ...DOC_SCHEMA, description: 'Starting document. Omit with docHash to start from a fresh seeded document.' },
+        docHash: DOC_HASH_SCHEMA,
+        steps: { type: 'array', items: { type: 'object' }, description: 'Script steps: {command,params} or {mutation}; mutation types: see the `mutations` tool.' },
+        returnDoc: { type: 'boolean', description: 'Include the full final document in the reply (default false).' },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
@@ -202,9 +231,9 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     description: 'Measure a document: body count, volume, surface area, centroid, bounding box and B-rep counts.',
     inputSchema: {
       type: 'object',
-      required: ['doc'],
       properties: {
-        doc: { type: 'object' },
+        doc: DOC_SCHEMA,
+        docHash: DOC_HASH_SCHEMA,
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
@@ -217,14 +246,17 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'Returns pass plus one row per measure (ours, theirs, delta, within); a failing row is data, not a tool error.',
     inputSchema: {
       type: 'object',
-      required: ['doc', 'reference'],
+      required: ['reference'],
       properties: {
-        doc: { type: 'object' },
+        doc: DOC_SCHEMA,
+        docHash: DOC_HASH_SCHEMA,
         reference: {
           type: 'object',
-          description: 'A reference.json payload: source {tool, version, file}, tolerance {rel, abs}, '
-            + 'optional topology ("report" | "strict"), and the measures bodies, volume, area, centroid, '
-            + 'bbox, optional faces and edges.',
+          description: 'A reference.json payload with the measures flat at the top level, for example '
+            + '{"source":{"tool":"hand","version":"1","file":"-"},"tolerance":{"rel":1e-4,"abs":0.01},'
+            + '"bodies":1,"volume":12000,"area":3800,"centroid":[20,5,-15],"bbox":[0,0,-30,40,10,0]}. '
+            + 'Optional topology ("report" | "strict"), faces and edges. The measures are top-level keys, '
+            + 'not nested under "measures".',
         },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
@@ -237,9 +269,10 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     description: 'Export a document to STEP or STL and write the bytes to `out`. Returns the written path and size.',
     inputSchema: {
       type: 'object',
-      required: ['doc', 'format', 'out'],
+      required: ['format', 'out'],
       properties: {
-        doc: { type: 'object' },
+        doc: DOC_SCHEMA,
+        docHash: DOC_HASH_SCHEMA,
         format: { type: 'string', enum: ['step', 'stl'] },
         out: { type: 'string' },
         body: { type: 'string', description: 'Export this single body id; omit for the whole assembly.' },
@@ -253,12 +286,14 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     name: 'select',
     description: 'Find faces or edges by predicate over the solved document and return the query strings a click '
       + 'would store, plus a geometry summary per item. Run it after `run`, then feed the queries to a feature '
-      + '(fillet, chamfer, hole, ...). An empty match is an error naming the nearest-miss count per predicate.',
+      + '(fillet, chamfer, hole, ...). An empty match is an error naming the nearest-miss count per predicate. '
+      + 'Returns the docHash it ran against. ' + worldFrameSentence(),
     inputSchema: {
       type: 'object',
-      required: ['doc', 'selector'],
+      required: ['selector'],
       properties: {
-        doc: { type: 'object' },
+        doc: DOC_SCHEMA,
+        docHash: DOC_HASH_SCHEMA,
         selector: { $ref: '#/$defs/selector' },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
@@ -278,6 +313,12 @@ export const MCP_RESOURCES: readonly { uri: string; name: string; description: s
     name: 'part-document-schema',
     description: 'JSON Schema for an Oversolved part document: feature refs are @id and params are nested under the kind key.',
     mimeType: 'application/schema+json',
+  },
+  {
+    uri: MUTATION_CATALOG_URI,
+    name: 'mutation-catalog',
+    description: 'The mutation vocabulary grouped by family, plus ready-to-run example scripts. Same JSON as the `mutations` tool.',
+    mimeType: 'application/json',
   },
 ]
 
@@ -356,25 +397,61 @@ function rejectUnknown(record: Record<string, unknown>, allowed: readonly string
   }
 }
 
-function parseRunArgs(raw: unknown): McpRunRequest {
-  const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'steps', 'docId', 'files'])
-  if (!Array.isArray(record.steps)) throw new McpInvalidParams('field "steps" must be an array')
-  for (const [index, step] of record.steps.entries()) asObject(step, `field "steps[${index}]"`)
+function optionalBoolean(value: unknown, name: string): boolean | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'boolean') throw new McpInvalidParams(`field "${name}" must be a boolean`)
+  return value
+}
+
+function optionalDocHash(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new McpInvalidParams('field "docHash" must be a non-empty string')
+  }
+  return value
+}
+
+// `run` starts fresh when given neither, so only the both-present case is
+// invalid there; every other doc-taking tool needs exactly one of the two.
+function readDocArguments(
+  record: { [key: string]: unknown },
+  mode: 'run' | 'exactly-one',
+): McpDocArguments {
   const doc = record.doc === undefined ? undefined : asObject(record.doc, 'field "doc"')
+  const docHash = optionalDocHash(record.docHash)
+  const count = (doc === undefined ? 0 : 1) + (docHash === undefined ? 0 : 1)
+  if (mode === 'exactly-one' && count !== 1) {
+    throw new McpInvalidParams('pass exactly one of "doc" or "docHash"')
+  }
+  if (mode === 'run' && count === 2) {
+    throw new McpInvalidParams('pass at most one of "doc" or "docHash"')
+  }
   return {
     ...(doc !== undefined && { doc }),
+    ...(docHash !== undefined && { docHash }),
+  }
+}
+
+function parseRunArgs(raw: unknown): McpRunRequest {
+  const record = asObject(raw ?? {}, 'arguments')
+  rejectUnknown(record, ['doc', 'docHash', 'steps', 'docId', 'files', 'returnDoc'])
+  if (!Array.isArray(record.steps)) throw new McpInvalidParams('field "steps" must be an array')
+  for (const [index, step] of record.steps.entries()) asObject(step, `field "steps[${index}]"`)
+  const returnDoc = optionalBoolean(record.returnDoc, 'returnDoc')
+  return {
+    ...readDocArguments(record, 'run'),
     steps: record.steps,
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
+    ...(returnDoc !== undefined && { returnDoc }),
   }
 }
 
 function parseMeasureArgs(raw: unknown): McpMeasureRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'docId', 'files'])
+  rejectUnknown(record, ['doc', 'docHash', 'docId', 'files'])
   return {
-    doc: requiredObject(record.doc, 'doc'),
+    ...readDocArguments(record, 'exactly-one'),
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
   }
@@ -382,7 +459,8 @@ function parseMeasureArgs(raw: unknown): McpMeasureRequest {
 
 function parseCompareArgs(raw: unknown): McpCompareRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'reference', 'docId', 'files'])
+  rejectUnknown(record, ['doc', 'docHash', 'reference', 'docId', 'files'])
+  const docArguments = readDocArguments(record, 'exactly-one')
   const referenceRaw = requiredObject(record.reference, 'reference')
   let reference: TranslationReference
   try {
@@ -393,7 +471,7 @@ function parseCompareArgs(raw: unknown): McpCompareRequest {
     throw new McpInvalidParams(`field "reference": ${e instanceof Error ? e.message : String(e)}`)
   }
   return {
-    doc: requiredObject(record.doc, 'doc'),
+    ...docArguments,
     reference,
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
@@ -402,14 +480,15 @@ function parseCompareArgs(raw: unknown): McpCompareRequest {
 
 function parseExportArgs(raw: unknown): McpExportRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'format', 'out', 'body', 'docId', 'files'])
+  rejectUnknown(record, ['doc', 'docHash', 'format', 'out', 'body', 'docId', 'files'])
+  const docArguments = readDocArguments(record, 'exactly-one')
   const format = record.format
   if (format !== 'step' && format !== 'stl') throw new McpInvalidParams('field "format" must be "step" or "stl"')
   const out = record.out
   if (typeof out !== 'string' || out.length === 0) throw new McpInvalidParams('field "out" must be a non-empty string')
   const body = optionalString(record.body, 'body')
   return {
-    doc: requiredObject(record.doc, 'doc'),
+    ...docArguments,
     format,
     out,
     ...(body !== undefined && { body }),
@@ -420,7 +499,8 @@ function parseExportArgs(raw: unknown): McpExportRequest {
 
 function parseSelectArgs(raw: unknown): McpSelectRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'selector', 'docId', 'files'])
+  rejectUnknown(record, ['doc', 'docHash', 'selector', 'docId', 'files'])
+  const docArguments = readDocArguments(record, 'exactly-one')
   const selectorRaw = requiredObject(record.selector, 'selector')
   let selector: Selector
   try {
@@ -429,7 +509,7 @@ function parseSelectArgs(raw: unknown): McpSelectRequest {
     throw new McpInvalidParams(`field "selector": ${e instanceof Error ? e.message : String(e)}`)
   }
   return {
-    doc: requiredObject(record.doc, 'doc'),
+    ...docArguments,
     selector,
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
@@ -442,6 +522,9 @@ async function callTool(ops: McpCadOps, name: string, args: unknown): Promise<Mc
       // The schema takes no arguments; a typo must still be rejected by name.
       rejectUnknown(asObject(args ?? {}, 'arguments'), [])
       return ops.commands()
+    case 'mutations':
+      rejectUnknown(asObject(args ?? {}, 'arguments'), [])
+      return { ok: true, ...mutationCatalogPayload() }
     case 'run': return ops.run(parseRunArgs(args))
     case 'measure': return ops.measure(parseMeasureArgs(args))
     case 'compare': return ops.compare(parseCompareArgs(args))
@@ -479,11 +562,13 @@ export function createMcpServer(ops: McpCadOps): McpServer {
             protocolVersion: negotiatedProtocolVersion(request.params),
             capabilities: { tools: {}, resources: {} },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-            instructions: 'Drive the CAD document headlessly: commands lists the registry, run executes scripts, '
+            instructions: 'Drive the CAD document headlessly: commands lists the registry, mutations lists the '
+              + 'mutation vocabulary and example scripts, run executes scripts, '
               + 'measure reports geometry facts, compare checks a document against a reference, '
               + 'select finds faces/edges by predicate over the solve output, '
               + 'and export writes STEP or STL. The part-document JSON Schema is '
-              + 'served as the resource ' + PART_DOC_SCHEMA_URI + '.',
+              + 'served as the resource ' + PART_DOC_SCHEMA_URI + ' and the mutation catalog as '
+              + MUTATION_CATALOG_URI + '. ' + worldFrameSentence(),
           })
         case 'notifications/initialized':
           return null
@@ -498,7 +583,18 @@ export function createMcpServer(ops: McpCadOps): McpServer {
           const params = asObject(request.params ?? {}, 'params')
           const uri = params.uri
           if (typeof uri !== 'string') throw new McpInvalidParams('resources/read needs a resource uri')
-          if (uri !== PART_DOC_SCHEMA_URI) throw new McpInvalidParams(`unknown resource uri "${uri}"`)
+          if (uri !== PART_DOC_SCHEMA_URI && uri !== MUTATION_CATALOG_URI) {
+            throw new McpInvalidParams(`unknown resource uri "${uri}"`)
+          }
+          if (uri === MUTATION_CATALOG_URI) {
+            return success(id, {
+              contents: [{
+                uri,
+                mimeType: 'application/json',
+                text: JSON.stringify(mutationCatalogPayload(), null, 1),
+              }],
+            })
+          }
           return success(id, {
             contents: [{ uri, mimeType: 'application/schema+json', text: ops.partDocSchema() }],
           })

@@ -19,13 +19,14 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { PartDoc } from '@/types/cad'
-import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { createHeadlessPart } from '@/drive/headlessPart'
 import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHeadless, seedBuiltins } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createCliJournal } from '@/drive/journal'
 import { createMcpServer, type McpCadOps, type McpFileRef } from '@/drive/mcpServer'
+import { DocHandleStore } from '@/drive/docHandleStore'
+import { resolveDoc, runReply } from '@/drive/mcpDocRef'
 import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import type { ScriptStep } from '@/drive/scriptRunner'
 import { routeKernelStdoutToStderr } from './kernelStdout'
@@ -46,13 +47,6 @@ function emptyPartDoc(): PartDoc {
   return seedBuiltins({ version: 1, kind: 'part', features: [] })
 }
 
-// A document arriving on the protocol crosses the same loader as one read from
-// disk or the store, so an invalid payload comes back as an ok:false tool
-// result naming the field instead of an internal error or a half-parsed spec.
-function loadDocPayload(payload: unknown) {
-  return loadPartDoc(payload, { name: 'mcp' })
-}
-
 // Paths resolve against the server's cwd, like the CLI's --file values.
 function readFiles(files: McpFileRef[]): ReadonlyMap<string, Uint8Array> | undefined {
   if (files.length === 0) return undefined
@@ -60,6 +54,11 @@ function readFiles(files: McpFileRef[]): ReadonlyMap<string, Uint8Array> | undef
   for (const file of files) map.set(file.id, new Uint8Array(readFileSync(path.resolve(file.path))))
   return map
 }
+
+// The docHash chain: in-process, content-addressed and bounded, so a session
+// of calls never re-sends the whole document. The protocol module parses the
+// argument shape; the store lives here with the real ops.
+const documents = new DocHandleStore()
 
 const ops: McpCadOps = {
   partDocSchema: () => PART_DOC_SCHEMA_JSON,
@@ -72,9 +71,14 @@ const ops: McpCadOps = {
   },
 
   async run(req) {
-    const loaded = req.doc === undefined ? null : loadDocPayload(req.doc)
-    if (loaded && !loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
-    const doc = loaded ? loaded.doc : emptyPartDoc()
+    let doc: PartDoc
+    if (req.doc !== undefined || req.docHash !== undefined) {
+      const resolved = resolveDoc(req, documents)
+      if (!resolved.ok) return { ok: false, error: resolved.error }
+      doc = resolved.doc
+    } else {
+      doc = emptyPartDoc()
+    }
     // The CLI journal pins the id seed, so a script mints the same ids on
     // every call and the returned document hashes repeat across runs.
     const result = await runHeadless({
@@ -84,37 +88,32 @@ const ops: McpCadOps = {
       files: readFiles(req.files),
       journal: createCliJournal(),
     })
-    return {
-      ok: result.ok,
-      steps: result.outcome.steps,
-      docHash: result.docHash,
-      solve: result.solve,
-      doc: result.doc,
-    }
+    return runReply(result, req.returnDoc === true, documents)
   },
 
   async measure(req) {
-    const loaded = loadDocPayload(req.doc)
-    if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
-    const measure = await measureHeadless(loaded.doc, {
+    const resolved = resolveDoc(req, documents)
+    if (!resolved.ok) return { ok: false, error: resolved.error }
+    const measure = await measureHeadless(resolved.doc, {
       docId: req.docId ?? 'mcp',
       files: readFiles(req.files),
     })
     if (!measure) {
       return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
     }
-    return { ok: true, ...measure }
+    return { ok: true, docHash: resolved.docHash, ...measure }
   },
 
   async compare(req) {
-    const loaded = loadDocPayload(req.doc)
-    if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
-    const result = await compareHeadless(loaded.doc, req.reference, {
+    const resolved = resolveDoc(req, documents)
+    if (!resolved.ok) return { ok: false, error: resolved.error }
+    const result = await compareHeadless(resolved.doc, req.reference, {
       docId: req.docId ?? 'mcp',
       files: readFiles(req.files),
     })
     return {
       ok: result.ok,
+      docHash: resolved.docHash,
       pass: result.pass,
       rows: result.rows,
       measures: result.measures,
@@ -123,9 +122,9 @@ const ops: McpCadOps = {
   },
 
   async export(req) {
-    const loaded = loadDocPayload(req.doc)
-    if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
-    const bytes = await exportHeadless(loaded.doc, {
+    const resolved = resolveDoc(req, documents)
+    if (!resolved.ok) return { ok: false, error: resolved.error }
+    const bytes = await exportHeadless(resolved.doc, {
       format: req.format,
       bodyId: req.body ?? null,
       docId: req.docId ?? 'mcp',
@@ -136,21 +135,21 @@ const ops: McpCadOps = {
     }
     const out = path.resolve(req.out)
     writeFileSync(out, bytes)
-    return { ok: true, file: out, format: req.format, bytes: bytes.byteLength }
+    return { ok: true, docHash: resolved.docHash, file: out, format: req.format, bytes: bytes.byteLength }
   },
 
   async select(req) {
-    const loaded = loadDocPayload(req.doc)
-    if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+    const resolved = resolveDoc(req, documents)
+    if (!resolved.ok) return { ok: false, error: resolved.error }
     try {
-      const result = await selectHeadless(loaded.doc, req.selector, {
+      const result = await selectHeadless(resolved.doc, req.selector, {
         docId: req.docId ?? 'mcp',
         files: readFiles(req.files),
       })
       if (!result) {
         return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
       }
-      return { ok: true, ...result }
+      return { ok: true, docHash: resolved.docHash, ...result }
     } catch (e) {
       // An empty match or a bad predicate expression is a tool failure, not a
       // protocol error: the message names the offending clause.

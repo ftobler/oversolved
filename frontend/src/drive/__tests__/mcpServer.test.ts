@@ -8,6 +8,8 @@
 import { describe, it, expect } from 'vitest'
 import Ajv from 'ajv'
 import { createMcpServer, MCP_TOOLS, type McpCadOps, type McpToolPayload } from '../mcpServer'
+import { MUTATION_CATALOG_URI } from '../mutationCatalogPayload'
+import { worldFrameSentence } from '../worldFrame'
 
 type FakeOps = {
   calls: Array<{ tool: string; args: unknown }>
@@ -61,6 +63,9 @@ describe('createMcpServer', () => {
     })
     const instructions = (response as { result: { instructions: string } }).result.instructions
     expect(instructions).toContain('compare')
+    // The frame sentence is generated from BUILTIN_PLANES, so compare the
+    // served text with the generator rather than a hand-typed copy.
+    expect(instructions).toContain(worldFrameSentence())
   })
 
   it('falls back to the oldest known version for an unknown one', async () => {
@@ -73,7 +78,7 @@ describe('createMcpServer', () => {
     const server = createMcpServer(fakeOps().ops)
     const response = await request(server, 2, 'tools/list', {})
     const tools = (response as { result: { tools: typeof MCP_TOOLS } }).result.tools
-    expect(tools.map(t => t.name).sort()).toEqual(['commands', 'compare', 'export', 'measure', 'run', 'select'])
+    expect(tools.map(t => t.name).sort()).toEqual(['commands', 'compare', 'export', 'measure', 'mutations', 'run', 'select'])
     for (const tool of tools) expect(tool.inputSchema).toMatchObject({ type: 'object' })
   })
 
@@ -138,16 +143,48 @@ describe('createMcpServer', () => {
   it('advertises the part-document schema as a resource and serves it', async () => {
     const server = createMcpServer(fakeOps().ops)
     const list = await request(server, 17, 'resources/list', {})
-    expect(list).toMatchObject({
-      id: 17,
-      result: { resources: [{ uri: 'oversolved://schema/part-document', mimeType: 'application/schema+json' }] },
-    })
+    expect(list).toMatchObject({ id: 17 })
+    const resources = (list as { result: { resources: unknown[] } }).result.resources
+    expect(resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ uri: 'oversolved://schema/part-document', mimeType: 'application/schema+json' }),
+    ]))
     const read = await request(server, 18, 'resources/read', { uri: 'oversolved://schema/part-document' })
     const contents = (read as { result: { contents: Array<{ uri: string; mimeType: string; text: string }> } }).result.contents
     expect(contents[0].mimeType).toBe('application/schema+json')
     expect(JSON.parse(contents[0].text)).toMatchObject({ title: 'Oversolved part document' })
     expectError(await request(server, 19, 'resources/read', { uri: 'oversolved://nope' }), -32602)
     expectError(await request(server, 20, 'resources/read', {}), -32602)
+  })
+
+  it('serves the mutation catalog as a tool and as the same resource', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    const tool = MCP_TOOLS.find(t => t.name === 'mutations')
+    expect(tool).toBeDefined()
+    expect(tool!.inputSchema).toEqual({ type: 'object', properties: {}, additionalProperties: false })
+    expectError(await request(server, 41, 'tools/call', { name: 'mutations', arguments: { typo: 1 } }), -32602)
+
+    const call = await request(server, 42, 'tools/call', { name: 'mutations', arguments: {} })
+    const text = (call as { result: { content: Array<{ text: string }> } }).result.content[0].text
+    const payload = JSON.parse(text) as {
+      families: Record<string, Array<{ type: string; summary: string; fields: unknown }>>
+      examples: Array<{ name: string; steps: unknown[] }>
+    }
+    expect(payload.examples.map(example => example.name)).toEqual(['box', 'filleted-box'])
+    expect(payload.families.sketch.some(entry => entry.type === 'add_sketch')).toBe(true)
+    expect(payload.families.features.some(entry => entry.type === 'add_fillet')).toBe(true)
+
+    const list = await request(server, 43, 'resources/list', {})
+    const resources = (list as { result: { resources: unknown[] } }).result.resources
+    expect(resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ uri: MUTATION_CATALOG_URI, mimeType: 'application/json' }),
+    ]))
+    const read = await request(server, 44, 'resources/read', { uri: MUTATION_CATALOG_URI })
+    const contents = (read as { result: { contents: Array<{ uri: string; mimeType: string; text: string }> } }).result.contents
+    expect(contents[0].mimeType).toBe('application/json')
+    // The resource and the tool are one JSON source, not two hand-kept copies;
+    // the tool adds only the Result `ok` wrapper.
+    const { ok: _ok, ...catalog } = payload as unknown as { ok: boolean } & Record<string, unknown>
+    expect(JSON.parse(contents[0].text)).toEqual(catalog)
   })
 
   it('announces the resources capability and answers nothing to a resource notification', async () => {
@@ -232,6 +269,33 @@ describe('createMcpServer', () => {
     })
   })
 
+  it('describes the flat reference shape and the select frame from one generator', () => {
+    const compare = MCP_TOOLS.find(t => t.name === 'compare')
+    const reference = (compare!.inputSchema.properties as Record<string, { description: string }>).reference
+    expect(reference.description).toContain('"bodies":1')
+    expect(reference.description).toContain('not nested under "measures"')
+
+    const select = MCP_TOOLS.find(t => t.name === 'select')
+    expect(select!.description).toContain(worldFrameSentence())
+  })
+
+  it('names the nested-measures mistake when a compare reference carries one', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    const response = await request(server, 29, 'tools/call', {
+      name: 'compare',
+      arguments: {
+        doc: {},
+        reference: {
+          source: { tool: 'test', version: '1', file: 'source.md' },
+          tolerance: { rel: 1e-5, abs: 1e-6 },
+          measures: { bodies: 1, volume: 10, area: 20, centroid: [0, 0, 0], bbox: [0, 0, 0, 1, 1, 1] },
+        },
+      },
+    })
+    expect(response).toMatchObject({ error: { code: -32602 } })
+    expect((response as { error: { message: string } }).error.message).toMatch(/top level/)
+  })
+
   it('rejects a malformed compare reference as invalid params', async () => {
     const server = createMcpServer(fakeOps().ops)
     const base = {
@@ -254,6 +318,68 @@ describe('createMcpServer', () => {
       arguments: { doc: {}, reference: { ...base, bbox: [0, 0, 0, 1, 1] } },
     }), -32602)
     expectError(await request(server, 27, 'tools/call', { name: 'compare', arguments: { doc: {} } }), -32602)
+  })
+
+  it('requires exactly one of doc or docHash, except run which may start fresh', async () => {
+    const { ops, calls } = fakeOps()
+    const server = createMcpServer(ops)
+    const reference = {
+      source: { tool: 'test', version: '1', file: 'source.md' },
+      tolerance: { rel: 1e-5, abs: 1e-6 },
+      bodies: 1,
+      volume: 10,
+      area: 20,
+      centroid: [0, 0, 0],
+      bbox: [0, 0, 0, 1, 1, 1],
+    }
+    const docTools: Array<[string, Record<string, unknown>]> = [
+      ['measure', {}],
+      ['compare', { reference }],
+      ['export', { format: 'step', out: 'x.step' }],
+      ['select', { selector: { kind: 'edge' } }],
+    ]
+    let id = 50
+    for (const [name, extra] of docTools) {
+      // Neither: the tool has no document to act on.
+      expectError(await request(server, id++, 'tools/call', { name, arguments: { ...extra } }), -32602)
+      // Both: ambiguous, even when the two would name the same document.
+      expectError(await request(server, id++, 'tools/call', {
+        name,
+        arguments: { ...extra, doc: {}, docHash: 'abc' },
+      }), -32602)
+    }
+
+    // A single docHash reaches the op, so a caller can chain without the doc.
+    const measure = await request(server, 60, 'tools/call', {
+      name: 'measure',
+      arguments: { docHash: 'abc' },
+    })
+    expect(measure).toMatchObject({ id: 60 })
+    expect(calls.at(-1)).toEqual({ tool: 'measure', args: { docHash: 'abc', files: [] } })
+
+    // run starts a fresh seeded document with neither, but both is ambiguous.
+    expectError(await request(server, 61, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], doc: {}, docHash: 'abc' },
+    }), -32602)
+    const fresh = await request(server, 62, 'tools/call', { name: 'run', arguments: { steps: [] } })
+    expect(fresh).toMatchObject({ id: 62 })
+    expect(calls.at(-1)).toEqual({ tool: 'run', args: { steps: [], files: [] } })
+    const chained = await request(server, 63, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], docHash: 'abc' },
+    })
+    expect(chained).toMatchObject({ id: 63 })
+    expect(calls.at(-1)).toEqual({ tool: 'run', args: { docHash: 'abc', steps: [], files: [] } })
+
+    expectError(await request(server, 64, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], returnDoc: 'yes' },
+    }), -32602)
+    expectError(await request(server, 65, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], docHash: '' },
+    }), -32602)
   })
 
   it('returns a failing compare as data, not an error result', async () => {

@@ -51,18 +51,19 @@ cd frontend
 node --experimental-strip-types --loader=./scripts/driveCli.loader.mjs scripts/mcpServer.ts
 ```
 
-`run` takes mutation steps and returns the built `doc`; pass that document to
-`select` to get the query strings a click would store:
+`run` takes mutation steps and returns a `docHash`; chain the next call with
+that handle rather than re-sending the document. `select` takes the handle and
+returns the query strings a click would store:
 
 ```jsonc
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run","arguments":{"steps":[
   {"mutation":{"type":"add_sketch","featureId":"sk1","plane":"@builtin_plane_front"}},
   {"mutation":{"type":"add_rect","featureId":"sk1","p0":[0,0],"p1":[20,14]}},
-  {"mutation":{"type":"add_extrude","featureId":"ex1","sketchQuery":"@sk1","distance":10}}
+  {"mutation":{"type":"add_extrude","featureId":"ex1","sketchQuery":"$sk1","distance":10}}
 ]}}}
-// result.doc is the built document.
+// result.docHash is the handle for call 2.
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"select","arguments":{
-  "doc":"<doc from call 1>",
+  "docHash":"<docHash from call 1>",
   "selector":{"kind":"edge","where":{"and":[{"type":"line"},{"parallel":[0,0,1]}]}}
 }}}
 ```
@@ -87,7 +88,7 @@ Measure the recipe against the reference over MCP:
 
 ```jsonc
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"compare","arguments":{
-  "doc":"<doc from the last run>",
+  "docHash":"<docHash from the last run>",
   "reference":"<the reference.json object>"
 }}}
 ```

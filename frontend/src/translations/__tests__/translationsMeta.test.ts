@@ -104,6 +104,17 @@ describe('translation corpus meta', () => {
       .toThrow(/edges: must be a non-negative integer/)
   })
 
+  it('names the nested-measures mistake instead of the missing bodies field', () => {
+    const { source, tolerance, volume, area, centroid, bbox } = VALID_REFERENCE
+    const nested = {
+      source,
+      tolerance,
+      measures: { bodies: 1, volume, area, centroid, bbox },
+    }
+    expect(() => parseReference('01-broken', JSON.stringify(nested)))
+      .toThrow(/measures go at the top level of the reference, not under `measures`/)
+  })
+
   it('defaults topology to report and keeps optional faces and edges', () => {
     const parsed = parseReference('01-broken', JSON.stringify(VALID_REFERENCE))
     expect(parsed.topology).toBe('report')

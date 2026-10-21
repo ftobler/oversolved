@@ -117,17 +117,56 @@ describe('drive surface', () => {
     const surface = createDriveSurface(deps({
       executeMutation: (m) => { seen.push(m); return okResult(['m1']) as Result },
     }))
-    const outcome = await surface.script([{ mutation: { type: 'set_rollback', position: null } }])
+    const outcome = await surface.script([{ mutation: { type: 'rename_feature', featureId: 'f1', label: 'x' } }])
     expect(outcome.ok).toBe(true)
-    expect(seen).toEqual([{ type: 'set_rollback', position: null }])
+    expect(seen).toEqual([{ type: 'rename_feature', featureId: 'f1', label: 'x' }])
     expect(outcome.steps[0].createdIds).toEqual(['m1'])
   })
 
   it('fails mutation steps when no mutation executor was wired', async () => {
     const surface = createDriveSurface(deps())
-    const outcome = await surface.script([{ mutation: { type: 'set_rollback', position: null } }])
+    const outcome = await surface.script([{ mutation: { type: 'rename_feature', featureId: 'f1', label: 'x' } }])
     expect(outcome.ok).toBe(false)
     expect(outcome.steps[0].error?.code).toBe('bridge-error')
+  })
+
+  it('refuses an unknown mutation at the bridge and never calls the executor', async () => {
+    const seen: Mutation[] = []
+    const surface = createDriveSurface(deps({
+      executeMutation: (m) => { seen.push(m); return okResult() },
+    }))
+    const outcome = await surface.script([{ mutation: { type: 'add_fillett' } as unknown as Mutation }])
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps).toHaveLength(1)
+    expect(outcome.steps[0].error?.code).toBe('unknown-mutation')
+    expect(seen).toEqual([])
+  })
+
+  it('refuses prototype-key mutation types and malformed steps at the bridge', async () => {
+    const seen: Mutation[] = []
+    const surface = createDriveSurface(deps({
+      executeMutation: (m) => { seen.push(m); return okResult() },
+    }))
+    for (const type of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
+      const outcome = await surface.script([{ mutation: { type } as unknown as Mutation }])
+      expect(outcome.steps[0].error?.code).toBe('unknown-mutation')
+    }
+    for (const step of [{}, { mutation: null }]) {
+      const outcome = await surface.script([step as never])
+      expect(outcome.steps[0]).toMatchObject({
+        index: 0,
+        ok: false,
+        error: { code: 'invalid-mutation' },
+      })
+    }
+    for (const step of [{ command: 123 }, { command: '' }]) {
+      const outcome = await surface.script([step as never])
+      expect(outcome.steps[0]).toMatchObject({
+        ok: false,
+        error: { code: 'invalid-step' },
+      })
+    }
+    expect(seen).toEqual([])
   })
 
   it('summarizes the session inspection and drops the mesh payload', () => {

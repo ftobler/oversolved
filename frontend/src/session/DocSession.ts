@@ -516,6 +516,18 @@ export class DocSession {
     if (!current) {
       return this.fault('no-document', 'execute called with no document')
     }
+    // The union makes a missing handler unreachable inside the app, but the
+    // drive surface casts untyped JSON to Mutation. Refuse before any clone,
+    // journal entry or history push, in every build: a missing handler is a
+    // bug wherever it appears, never a silent no-op.
+    const handlers = mutationHandlers as Record<string, AnyHandler | undefined>
+    for (const mutation of mutations) {
+      // hasOwn, not a truthy lookup: 'constructor' and '__proto__' resolve
+      // through Object.prototype and would otherwise pass as handlers.
+      if (!Object.hasOwn(handlers, mutation.type)) {
+        return this.fault('unknown-mutation', `no handler for mutation type '${mutation.type}'`)
+      }
+    }
     const unsyncedRollback = this.unsyncedRollback(mutations)
     if (unsyncedRollback) {
       // The payload is advisory: the store owns the position and the mirror
@@ -651,10 +663,7 @@ export class DocSession {
     const insertedIds: string[] = []
     let attemptedInsertion = false
     for (const m of mutations) {
-      const handler = handlers[m.type]
-      if (import.meta.env.DEV && !handler) {
-        console.error(`[DocSession] no handler for mutation type: ${m.type}`)
-      }
+      const handler = Object.hasOwn(handlers, m.type) ? handlers[m.type] : undefined
       // A feature add may carry the rollback bar's slot. The handler appends it
       // like every other add, then the row moves into place. Detecting the
       // creation (the id was absent before the handler) keeps this keyed on the

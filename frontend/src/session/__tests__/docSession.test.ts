@@ -735,3 +735,28 @@ describe('idle', () => {
     expect(settled).toBe(true)
   })
 })
+
+describe('unknown mutation boundary', () => {
+  it('faults in a non-DEV build and records no undo entry or doc change', () => {
+    vi.stubEnv('DEV', false)
+    try {
+      for (const type of ['nope', 'constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
+        const { session, doc } = makeSession()
+        const before = structuredClone(doc.current)
+
+        // The drive surface can hand untyped JSON to execute; the DEV-only log
+        // this used to be is gone, so a production build refuses identically.
+        const result = session.execute({ type } as unknown as Mutation)
+
+        expect(result).toMatchObject({ ok: false, code: 'unknown-mutation' })
+        expect(doc.current).toEqual(before)
+        expect(session.historyEntries().undo).toHaveLength(0)
+        expect(session.diagnostics()).toContainEqual(
+          expect.objectContaining({ code: 'unknown-mutation' }),
+        )
+      }
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+})

@@ -46,9 +46,56 @@ export type ScriptStepResult = CommandResult | Result | ScriptFailure | null
 
 export type ScriptStepRunner = (step: ScriptStep) => ScriptStepResult
 
-function outcomeFor(index: number, step: ScriptStep, result: ScriptStepResult): ScriptStepOutcome {
-  const kind: 'command' | 'mutation' = 'command' in step ? 'command' : 'mutation'
-  const id = 'command' in step ? step.command : step.mutation.type
+function isObject(value: unknown): value is { [key: string]: unknown } {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function stepKind(step: unknown): 'command' | 'mutation' {
+  return isObject(step) && 'command' in step ? 'command' : 'mutation'
+}
+
+// The step id is read defensively: a JSON script can carry `{}` or a null
+// mutation, and reading `.mutation.type` there used to crash the runner inside
+// both the outcome builder and the catch block.
+function stepId(step: unknown): string {
+  if (isObject(step)) {
+    if (typeof step.command === 'string') return step.command
+    const mutation = step.mutation
+    if (isObject(mutation) && typeof mutation.type === 'string') return mutation.type
+  }
+  return 'invalid-step'
+}
+
+// Structural step failures are step outcomes, not thrown exceptions: a caller
+// needs the index and the reason even when the payload is not a step at all.
+function malformedStep(index: number, step: unknown): ScriptStepOutcome | null {
+  if (!isObject(step)) {
+    return {
+      index, kind: 'mutation', id: 'invalid-step', ok: false, createdIds: [],
+      error: { code: 'invalid-step', message: `step ${index} must be an object` },
+    }
+  }
+  if ('command' in step) {
+    if (typeof step.command !== 'string' || step.command.length === 0) {
+      return {
+        index, kind: 'command', id: 'invalid-step', ok: false, createdIds: [],
+        error: { code: 'invalid-step', message: `step ${index} needs a command id` },
+      }
+    }
+    return null
+  }
+  if (!('mutation' in step) || !isObject(step.mutation)) {
+    return {
+      index, kind: 'mutation', id: 'invalid-step', ok: false, createdIds: [],
+      error: { code: 'invalid-mutation', message: `step ${index} needs a command or a mutation` },
+    }
+  }
+  return null
+}
+
+function outcomeFor(index: number, step: unknown, result: ScriptStepResult): ScriptStepOutcome {
+  const kind = stepKind(step)
+  const id = stepId(step)
   if (result === null) return { index, kind, id, ok: true, createdIds: [] }
   if (result.ok) {
     // The registry's CommandResult and the session's Result both carry
@@ -74,24 +121,28 @@ export async function runScript(
   const outcomes: ScriptStepOutcome[] = []
   for (let index = 0; index < steps.length; index++) {
     const step = steps[index]
+    const malformed = malformedStep(index, step)
     let outcome: ScriptStepOutcome
-    try {
-      outcome = outcomeFor(index, step, run(step))
-    } catch (e) {
-      const kind: 'command' | 'mutation' = 'command' in step ? 'command' : 'mutation'
-      const id = 'command' in step ? step.command : step.mutation.type
-      outcome = {
-        index,
-        kind,
-        id,
-        ok: false,
-        createdIds: [],
-        error: { code: 'thrown', message: e instanceof Error ? e.message : String(e) },
+    if (malformed) {
+      outcome = malformed
+    } else {
+      try {
+        outcome = outcomeFor(index, step, run(step))
+      } catch (e) {
+        outcome = {
+          index,
+          kind: stepKind(step),
+          id: stepId(step),
+          ok: false,
+          createdIds: [],
+          error: { code: 'thrown', message: e instanceof Error ? e.message : String(e) },
+        }
       }
     }
     outcomes.push(outcome)
     if (settle) await settle()
-    if (!outcome.ok && !step.continueOnError) break
+    const continueOnError = isObject(step) && step.continueOnError === true
+    if (!outcome.ok && !continueOnError) break
   }
   return { ok: outcomes.every(o => o.ok), steps: outcomes }
 }
