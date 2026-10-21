@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+      "oversolved": {
+        "command": "node",
+        "args": [
+          "--no-warnings",
+          "--experimental-strip-types",
+          "--loader=./frontend/scripts/driveCli.loader.mjs",
+          "frontend/scripts/mcpServer.ts"
+        ]
+      }
+    }
+  }
