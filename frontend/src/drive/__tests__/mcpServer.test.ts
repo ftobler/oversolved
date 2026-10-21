@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import Ajv from 'ajv'
 import { createMcpServer, MCP_TOOLS, type McpCadOps, type McpToolPayload } from '../mcpServer'
+import { MUTATION_CATALOG_URI } from '../mutationCatalogPayload'
 
 type FakeOps = {
   calls: Array<{ tool: string; args: unknown }>
@@ -73,7 +74,7 @@ describe('createMcpServer', () => {
     const server = createMcpServer(fakeOps().ops)
     const response = await request(server, 2, 'tools/list', {})
     const tools = (response as { result: { tools: typeof MCP_TOOLS } }).result.tools
-    expect(tools.map(t => t.name).sort()).toEqual(['commands', 'compare', 'export', 'measure', 'run', 'select'])
+    expect(tools.map(t => t.name).sort()).toEqual(['commands', 'compare', 'export', 'measure', 'mutations', 'run', 'select'])
     for (const tool of tools) expect(tool.inputSchema).toMatchObject({ type: 'object' })
   })
 
@@ -138,16 +139,48 @@ describe('createMcpServer', () => {
   it('advertises the part-document schema as a resource and serves it', async () => {
     const server = createMcpServer(fakeOps().ops)
     const list = await request(server, 17, 'resources/list', {})
-    expect(list).toMatchObject({
-      id: 17,
-      result: { resources: [{ uri: 'oversolved://schema/part-document', mimeType: 'application/schema+json' }] },
-    })
+    expect(list).toMatchObject({ id: 17 })
+    const resources = (list as { result: { resources: unknown[] } }).result.resources
+    expect(resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ uri: 'oversolved://schema/part-document', mimeType: 'application/schema+json' }),
+    ]))
     const read = await request(server, 18, 'resources/read', { uri: 'oversolved://schema/part-document' })
     const contents = (read as { result: { contents: Array<{ uri: string; mimeType: string; text: string }> } }).result.contents
     expect(contents[0].mimeType).toBe('application/schema+json')
     expect(JSON.parse(contents[0].text)).toMatchObject({ title: 'Oversolved part document' })
     expectError(await request(server, 19, 'resources/read', { uri: 'oversolved://nope' }), -32602)
     expectError(await request(server, 20, 'resources/read', {}), -32602)
+  })
+
+  it('serves the mutation catalog as a tool and as the same resource', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    const tool = MCP_TOOLS.find(t => t.name === 'mutations')
+    expect(tool).toBeDefined()
+    expect(tool!.inputSchema).toEqual({ type: 'object', properties: {}, additionalProperties: false })
+    expectError(await request(server, 41, 'tools/call', { name: 'mutations', arguments: { typo: 1 } }), -32602)
+
+    const call = await request(server, 42, 'tools/call', { name: 'mutations', arguments: {} })
+    const text = (call as { result: { content: Array<{ text: string }> } }).result.content[0].text
+    const payload = JSON.parse(text) as {
+      families: Record<string, Array<{ type: string; summary: string; fields: unknown }>>
+      examples: Array<{ name: string; steps: unknown[] }>
+    }
+    expect(payload.examples.map(example => example.name)).toEqual(['box', 'filleted-box'])
+    expect(payload.families.sketch.some(entry => entry.type === 'add_sketch')).toBe(true)
+    expect(payload.families.features.some(entry => entry.type === 'add_fillet')).toBe(true)
+
+    const list = await request(server, 43, 'resources/list', {})
+    const resources = (list as { result: { resources: unknown[] } }).result.resources
+    expect(resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ uri: MUTATION_CATALOG_URI, mimeType: 'application/json' }),
+    ]))
+    const read = await request(server, 44, 'resources/read', { uri: MUTATION_CATALOG_URI })
+    const contents = (read as { result: { contents: Array<{ uri: string; mimeType: string; text: string }> } }).result.contents
+    expect(contents[0].mimeType).toBe('application/json')
+    // The resource and the tool are one JSON source, not two hand-kept copies;
+    // the tool adds only the Result `ok` wrapper.
+    const { ok: _ok, ...catalog } = payload as unknown as { ok: boolean } & Record<string, unknown>
+    expect(JSON.parse(contents[0].text)).toEqual(catalog)
   })
 
   it('announces the resources capability and answers nothing to a resource notification', async () => {

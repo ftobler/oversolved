@@ -351,6 +351,7 @@ banner on stdout, so a client config must use the direct node invocation.
 | Tool | Arguments | Returns |
 |---|---|---|
 | `commands` | none | the command catalog, the same shape as the CLI's `commands` |
+| `mutations` | none | the mutation vocabulary grouped by family, plus ready-to-run example scripts |
 | `run` | `steps`, optional `doc`, `docId`, `files` | `{ ok, steps, docHash, solve, doc }`; pass `doc` back in to chain edits |
 | `measure` | `doc`, optional `docId`, `files` | `{ ok, bodies, volume, area, centroid, bbox, faces, edges, vertices }` |
 | `compare` | `doc`, `reference` (inline), optional `docId`, `files` | `{ ok, pass, rows, measures }`; a failing row is data, not an MCP error |
@@ -391,11 +392,17 @@ banner on stdout, so a client config must use the direct node invocation.
   `topology` is optional (`"report"` by default, `"strict"` to enforce the
   face/edge counts); `tolerance` is required so every reference states its own
   budget.
-- The server also serves one resource, `oversolved://schema/part-document`
-  (`resources/list`, `resources/read`): the JSON Schema for a part document
-  (`persistence/partDocSchema.ts`). Read it before authoring a document instead
-  of inferring the format from these examples; it pins the canonical spellings
-  (feature refs are `@id`, params nest under the kind key).
+- The server also serves two resources (`resources/list`, `resources/read`):
+  `oversolved://schema/part-document`, the JSON Schema for a part document
+  (`persistence/partDocSchema.ts`), and `oversolved://catalog/mutations`, the
+  same JSON the `mutations` tool returns. Read the schema before authoring a
+  document instead of inferring the format from these examples; it pins the
+  canonical spellings (feature refs are `@id`, params nest under the kind key).
+- `mutations` is the discovery path for the script vocabulary: `commands` act
+  on the current selection, while mutation steps author geometry with explicit
+  feature and entity ids. Each visible entry carries its fields and a summary,
+  and the examples are the box and fillet scripts the catalog tests run against
+  the real kernel.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; unknown fields are rejected by name, so a typo never fails

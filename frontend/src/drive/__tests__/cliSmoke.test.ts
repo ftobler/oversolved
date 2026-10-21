@@ -426,7 +426,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
 
       const list = await client.request('tools/list', {})
       const tools = (list.result as { tools: Array<{ name: string; inputSchema: unknown }> }).tools
-      expect(tools.map(t => t.name).sort()).toEqual(['commands', 'compare', 'export', 'measure', 'run', 'select'])
+      expect(tools.map(t => t.name).sort()).toEqual(['commands', 'compare', 'export', 'measure', 'mutations', 'run', 'select'])
 
       const built = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
       expect(built.ok).toBe(true)

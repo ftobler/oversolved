@@ -18,6 +18,7 @@
 import { PART_DOC_SCHEMA_URI } from '@/persistence/partDocSchema'
 import { validateSelector, type Selector } from '@/kernel/select'
 import { parseReference, type TranslationReference } from '@/translations/corpus'
+import { MUTATION_CATALOG_URI, mutationCatalogPayload } from '@/drive/mutationCatalogPayload'
 
 // The protocol revisions whose initialize handshake this server accepts. The
 // three methods implemented here exist unchanged in all of them, so a client
@@ -182,6 +183,13 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
+    name: 'mutations',
+    description: 'List the mutation vocabulary grouped by family (sketch, features, picks, part style, document), '
+      + 'with each type\'s summary and fields, plus ready-to-run example scripts. Mutation steps author geometry; '
+      + 'commands act on the current selection.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
     name: 'run',
     description: 'Run a script of command and mutation steps through one DocSession and the real kernel. '
       + 'Returns the final document (for chaining), its hash, per-step results and solve state.',
@@ -190,7 +198,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       required: ['steps'],
       properties: {
         doc: { type: 'object', description: 'Starting document; omit to start from a fresh seeded document.' },
-        steps: { type: 'array', items: { type: 'object' }, description: 'Script steps: {command,params} or {mutation}.' },
+        steps: { type: 'array', items: { type: 'object' }, description: 'Script steps: {command,params} or {mutation}; mutation types: see the `mutations` tool.' },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
@@ -278,6 +286,12 @@ export const MCP_RESOURCES: readonly { uri: string; name: string; description: s
     name: 'part-document-schema',
     description: 'JSON Schema for an Oversolved part document: feature refs are @id and params are nested under the kind key.',
     mimeType: 'application/schema+json',
+  },
+  {
+    uri: MUTATION_CATALOG_URI,
+    name: 'mutation-catalog',
+    description: 'The mutation vocabulary grouped by family, plus ready-to-run example scripts. Same JSON as the `mutations` tool.',
+    mimeType: 'application/json',
   },
 ]
 
@@ -442,6 +456,9 @@ async function callTool(ops: McpCadOps, name: string, args: unknown): Promise<Mc
       // The schema takes no arguments; a typo must still be rejected by name.
       rejectUnknown(asObject(args ?? {}, 'arguments'), [])
       return ops.commands()
+    case 'mutations':
+      rejectUnknown(asObject(args ?? {}, 'arguments'), [])
+      return { ok: true, ...mutationCatalogPayload() }
     case 'run': return ops.run(parseRunArgs(args))
     case 'measure': return ops.measure(parseMeasureArgs(args))
     case 'compare': return ops.compare(parseCompareArgs(args))
@@ -479,11 +496,13 @@ export function createMcpServer(ops: McpCadOps): McpServer {
             protocolVersion: negotiatedProtocolVersion(request.params),
             capabilities: { tools: {}, resources: {} },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-            instructions: 'Drive the CAD document headlessly: commands lists the registry, run executes scripts, '
+            instructions: 'Drive the CAD document headlessly: commands lists the registry, mutations lists the '
+              + 'mutation vocabulary and example scripts, run executes scripts, '
               + 'measure reports geometry facts, compare checks a document against a reference, '
               + 'select finds faces/edges by predicate over the solve output, '
               + 'and export writes STEP or STL. The part-document JSON Schema is '
-              + 'served as the resource ' + PART_DOC_SCHEMA_URI + '.',
+              + 'served as the resource ' + PART_DOC_SCHEMA_URI + ' and the mutation catalog as '
+              + MUTATION_CATALOG_URI + '.',
           })
         case 'notifications/initialized':
           return null
@@ -498,7 +517,18 @@ export function createMcpServer(ops: McpCadOps): McpServer {
           const params = asObject(request.params ?? {}, 'params')
           const uri = params.uri
           if (typeof uri !== 'string') throw new McpInvalidParams('resources/read needs a resource uri')
-          if (uri !== PART_DOC_SCHEMA_URI) throw new McpInvalidParams(`unknown resource uri "${uri}"`)
+          if (uri !== PART_DOC_SCHEMA_URI && uri !== MUTATION_CATALOG_URI) {
+            throw new McpInvalidParams(`unknown resource uri "${uri}"`)
+          }
+          if (uri === MUTATION_CATALOG_URI) {
+            return success(id, {
+              contents: [{
+                uri,
+                mimeType: 'application/json',
+                text: JSON.stringify(mutationCatalogPayload(), null, 1),
+              }],
+            })
+          }
           return success(id, {
             contents: [{ uri, mimeType: 'application/schema+json', text: ops.partDocSchema() }],
           })

@@ -561,6 +561,11 @@ export const MUTATION_CATALOG = {
 
 export type MutationCatalog = typeof MUTATION_CATALOG
 
+/** A row's common shape; the inferred rows carry their literal field keys. */
+export function mutationInfoOf(type: Mutation['type']): MutationInfo {
+  return MUTATION_CATALOG[type]
+}
+
 // Hidden means the app produces the mutation and an external script must not.
 export const HIDDEN_MUTATION_TYPES: ReadonlySet<Mutation['type']> = new Set(
   (Object.entries(MUTATION_CATALOG) as Array<[Mutation['type'], MutationInfo]>)
