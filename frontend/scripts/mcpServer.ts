@@ -25,7 +25,8 @@ import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHe
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createCliJournal } from '@/drive/journal'
-import { createMcpServer, type McpCadOps, type McpFileRef } from '@/drive/mcpServer'
+import { createMcpServer, type McpCadOps, type McpDocArguments, type McpFileRef } from '@/drive/mcpServer'
+import { DocHandleStore, DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
 import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import type { ScriptStep } from '@/drive/scriptRunner'
 import { routeKernelStdoutToStderr } from './kernelStdout'
@@ -61,6 +62,40 @@ function readFiles(files: McpFileRef[]): ReadonlyMap<string, Uint8Array> | undef
   return map
 }
 
+// The docHash chain: in-process, content-addressed and bounded, so a session
+// of calls never re-sends the whole document. The protocol module parses the
+// argument shape; the store lives here with the real ops.
+const documents = new DocHandleStore()
+
+type ResolvedDoc = { ok: true; doc: PartDoc; docHash: string } | { ok: false; error: string }
+
+function resolveDoc(req: McpDocArguments): ResolvedDoc {
+  if (req.docHash !== undefined) {
+    const doc = documents.get(req.docHash)
+    if (!doc) {
+      return {
+        ok: false,
+        error: `unknown docHash (the server keeps the last ${DOC_HANDLE_CAPACITY} documents); pass doc instead`,
+      }
+    }
+    return { ok: true, doc, docHash: req.docHash }
+  }
+  if (req.doc === undefined) return { ok: false, error: 'no document: pass doc or docHash' }
+  const loaded = loadDocPayload(req.doc)
+  if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+  return { ok: true, doc: loaded.doc, docHash: documents.put(loaded.doc) }
+}
+
+// The reply's one-line index of what the script built. Body ids are the
+// part_style keys (the solve write-back reconciles one entry per body);
+// feature ids and kinds come from the feature log.
+function summarizeDoc(doc: PartDoc): string {
+  const features = (doc.features ?? []).map(feature => `${feature.id} (${feature.kind})`)
+  const bodies = Object.keys(doc.part_style ?? {})
+  return `features: ${features.length > 0 ? features.join(', ') : 'none'}; `
+    + `bodies: ${bodies.length > 0 ? bodies.join(', ') : 'none'}`
+}
+
 const ops: McpCadOps = {
   partDocSchema: () => PART_DOC_SCHEMA_JSON,
 
@@ -72,9 +107,14 @@ const ops: McpCadOps = {
   },
 
   async run(req) {
-    const loaded = req.doc === undefined ? null : loadDocPayload(req.doc)
-    if (loaded && !loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
-    const doc = loaded ? loaded.doc : emptyPartDoc()
+    let doc: PartDoc
+    if (req.doc !== undefined || req.docHash !== undefined) {
+      const resolved = resolveDoc(req)
+      if (!resolved.ok) return { ok: false, error: resolved.error }
+      doc = resolved.doc
+    } else {
+      doc = emptyPartDoc()
+    }
     // The CLI journal pins the id seed, so a script mints the same ids on
     // every call and the returned document hashes repeat across runs.
     const result = await runHeadless({
@@ -84,19 +124,22 @@ const ops: McpCadOps = {
       files: readFiles(req.files),
       journal: createCliJournal(),
     })
+    const finalDoc = result.doc
+    const docHash = finalDoc ? documents.put(finalDoc) : result.docHash
     return {
       ok: result.ok,
       steps: result.outcome.steps,
-      docHash: result.docHash,
+      docHash,
       solve: result.solve,
-      doc: result.doc,
+      ...(finalDoc && { summary: summarizeDoc(finalDoc) }),
+      ...(req.returnDoc === true && finalDoc && { doc: finalDoc }),
     }
   },
 
   async measure(req) {
-    const loaded = loadDocPayload(req.doc)
-    if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
-    const measure = await measureHeadless(loaded.doc, {
+    const resolved = resolveDoc(req)
+    if (!resolved.ok) return { ok: false, error: resolved.error }
+    const measure = await measureHeadless(resolved.doc, {
       docId: req.docId ?? 'mcp',
       files: readFiles(req.files),
     })
@@ -107,9 +150,9 @@ const ops: McpCadOps = {
   },
 
   async compare(req) {
-    const loaded = loadDocPayload(req.doc)
-    if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
-    const result = await compareHeadless(loaded.doc, req.reference, {
+    const resolved = resolveDoc(req)
+    if (!resolved.ok) return { ok: false, error: resolved.error }
+    const result = await compareHeadless(resolved.doc, req.reference, {
       docId: req.docId ?? 'mcp',
       files: readFiles(req.files),
     })
@@ -123,9 +166,9 @@ const ops: McpCadOps = {
   },
 
   async export(req) {
-    const loaded = loadDocPayload(req.doc)
-    if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
-    const bytes = await exportHeadless(loaded.doc, {
+    const resolved = resolveDoc(req)
+    if (!resolved.ok) return { ok: false, error: resolved.error }
+    const bytes = await exportHeadless(resolved.doc, {
       format: req.format,
       bodyId: req.body ?? null,
       docId: req.docId ?? 'mcp',
@@ -140,17 +183,17 @@ const ops: McpCadOps = {
   },
 
   async select(req) {
-    const loaded = loadDocPayload(req.doc)
-    if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+    const resolved = resolveDoc(req)
+    if (!resolved.ok) return { ok: false, error: resolved.error }
     try {
-      const result = await selectHeadless(loaded.doc, req.selector, {
+      const result = await selectHeadless(resolved.doc, req.selector, {
         docId: req.docId ?? 'mcp',
         files: readFiles(req.files),
       })
       if (!result) {
         return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
       }
-      return { ok: true, ...result }
+      return { ok: true, docHash: resolved.docHash, ...result }
     } catch (e) {
       // An empty match or a bad predicate expression is a tool failure, not a
       // protocol error: the message names the offending clause.

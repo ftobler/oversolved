@@ -39,7 +39,10 @@ vi.mock('@/hooks/useSolver', () => ({
 }))
 
 vi.mock('@/hooks/mutationDispatch', () => ({
-  mutationHandlers: {},
+  // The session's up-front boundary refuses an unknown type in every build,
+  // so the preview fixture needs a handler even though this suite only checks
+  // the session transaction guards.
+  mutationHandlers: { set_part_color: () => {} },
 }))
 
 describe('usePartDoc edit session guards', () => {

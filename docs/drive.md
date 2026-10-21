@@ -352,11 +352,11 @@ banner on stdout, so a client config must use the direct node invocation.
 |---|---|---|
 | `commands` | none | the command catalog, the same shape as the CLI's `commands` |
 | `mutations` | none | the mutation vocabulary grouped by family, plus ready-to-run example scripts |
-| `run` | `steps`, optional `doc`, `docId`, `files` | `{ ok, steps, docHash, solve, doc }`; pass `doc` back in to chain edits |
-| `measure` | `doc`, optional `docId`, `files` | `{ ok, bodies, volume, area, centroid, bbox, faces, edges, vertices }` |
-| `compare` | `doc`, `reference` (inline), optional `docId`, `files` | `{ ok, pass, rows, measures }`; a failing row is data, not an MCP error |
-| `export` | `doc`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, file, format, bytes }` |
-| `select` | `doc`, `selector`, optional `docId`, `files` | `{ ok, queries, items }`: the query strings a click would store, plus a geometry summary per item |
+| `run` | `steps`, optional `doc` or `docHash`, `returnDoc`, `docId`, `files` | `{ ok, steps, docHash, solve, summary, doc? }`; chain with `docHash`, `returnDoc: true` for the document |
+| `measure` | `doc` or `docHash`, optional `docId`, `files` | `{ ok, bodies, volume, area, centroid, bbox, faces, edges, vertices }` |
+| `compare` | `doc` or `docHash`, `reference` (inline), optional `docId`, `files` | `{ ok, pass, rows, measures }`; a failing row is data, not an MCP error |
+| `export` | `doc` or `docHash`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, file, format, bytes }` |
+| `select` | `doc` or `docHash`, `selector`, optional `docId`, `files` | `{ ok, docHash, queries, items }`: the query strings a click would store, plus a geometry summary per item |
 
 - `select` runs a predicate over the solved bodies and returns the exact query
   strings a click would store, so a headless author (an LLM, a translator, the
@@ -372,6 +372,18 @@ banner on stdout, so a client config must use the direct node invocation.
   nearest-miss count per predicate; an unknown predicate key is an invalid
   argument rejected by name. The engine is pure TS in `frontend/src/kernel/select/`.
 
+- Document handles: every tool that needs a document takes exactly one of
+  `doc` (the full JSON) or `docHash` (the content hash an earlier reply
+  returned). `run` is the exception: it may take neither, which starts from a
+  fresh seeded document, but not both. Passing both or neither where exactly
+  one is required is invalid params. The server keeps the last 32 documents
+  in-process, content-addressed and recency-refreshed on a hit; an unknown
+  hash is a tool error naming that bound, with "pass doc instead". A document
+  passed as `doc` is stored too, so a hand-edited part gets a handle.
+- By default `run` returns `docHash` and a one-line `summary` (feature ids and
+  kinds, body ids), not the document; `returnDoc: true` adds the full `doc`
+  for saving or hand-editing. Chaining by hash is the intended flow: a
+  modelling session does not re-send the part on every call.
 - `files` is `[{ id, path }]`, the CLI's `--file` flags in JSON form; paths
   resolve against the server's cwd.
 - `compare` takes its `reference` inline (the agent has just produced it) and
@@ -420,33 +432,49 @@ banner on stdout, so a client config must use the direct node invocation.
   loop's serialization is what keeps the kernel's single-writer cross-solve
   cache honest.
 
-An agent session, entirely over MCP (the `doc` values are the payload of the
-previous call):
+An agent session, entirely over MCP. Every call chains on `docHash` from the
+previous reply; the full document never crosses the wire by default:
 
 ```jsonc
+// 1. Build a 40 x 30 sketch on Top and extrude 10 along +Y.
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run","arguments":{"steps":[
-  {"mutation":{"type":"add_sketch","featureId":"sk1","label":"Rectangle","plane":"@builtin_plane_front"}},
-  {"mutation":{"type":"add_rect","featureId":"sk1","p0":[0,0],"p1":[10,10]}},
-  {"mutation":{"type":"add_extrude","featureId":"ex1","label":"Extrude","sketchQuery":"@sk1","distance":5}}
+  {"mutation":{"type":"add_sketch","featureId":"sk1","label":"Rectangle","plane":"@builtin_plane_top"}},
+  {"mutation":{"type":"add_rect","featureId":"sk1","p0":[0,0],"p1":[40,30]}},
+  {"mutation":{"type":"add_extrude","featureId":"ex1","label":"Extrude","sketchQuery":"$sk1","distance":10}}
 ]}}}
-// result.doc is the built document; edit one dimension and rebuild:
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"run","arguments":{
-  "doc":"<doc from call 1>",
-  "steps":[{"mutation":{"type":"set_extrude_field","featureId":"ex1","field":"distance","value":8}}]
+// {"ok":true,"docHash":"<hash1>","summary":"features: sk1 (sketch), ex1 (extrude); bodies: ...",...}
+// 2. Pick the four Y-parallel edges (Y is up, so these are the 10 mm verticals).
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"select","arguments":{
+  "docHash":"<hash1>","selector":{"kind":"edge","where":{"parallel":[0,1,0]}}
 }}}
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"measure","arguments":{"doc":"<doc from call 2>"}}}
-// {"ok":true,"bodies":1,"volume":800,...}
-{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"compare","arguments":{
-  "doc":"<doc from call 2>",
-  "reference":{"source":{"tool":"cadquery","version":"2.4.0","file":"source.py"},
-    "tolerance":{"rel":1e-5,"abs":1e-6},
-    "bodies":1,"volume":800,"area":720,"centroid":[5,5,4],"bbox":[0,0,0,10,10,8]}
+// {"ok":true,"docHash":"<hash1>","queries":["?..."],"items":[...]}
+// 3. Fillet those queries on the same handle.
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"run","arguments":{
+  "docHash":"<hash1>","steps":[
+    {"mutation":{"type":"add_fillet","featureId":"fi1","label":"Fillet"}},
+    {"mutation":{"type":"add_fillet_edge","featureId":"fi1","edgeQuery":"?..."}},
+    {"mutation":{"type":"set_fillet_field","featureId":"fi1","field":"radius","value":3}}
+  ]
+}}}
+// {"ok":true,"docHash":"<hash2>",...}
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"measure","arguments":{"docHash":"<hash2>"}}}
+// {"ok":true,"bodies":1,"volume":11922.743,...}
+{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"compare","arguments":{
+  "docHash":"<hash2>",
+  "reference":{"source":{"tool":"hand","version":"1","file":"-"},
+    "tolerance":{"rel":1e-4,"abs":0.01},
+    "bodies":1,"volume":11922.743,"area":3733.044,
+    "centroid":[20,5,-15],"bbox":[0,0,-30,40,10,0]}
 }}}
 // {"ok":true,"pass":true,"rows":[...],"measures":{...}}
-{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"export","arguments":{
-  "doc":"<doc from call 2>","format":"step","out":"box.step"
+{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"export","arguments":{
+  "docHash":"<hash2>","format":"step","out":"box.step"
 }}}
 ```
+
+When a caller needs the document itself (to save it, or to hand-edit it before
+the next call), pass `"returnDoc": true` to `run` and send the returned `doc`
+back in place of `docHash`.
 
 `render_png` is deliberately not offered: the browser's raster path is the
 three.js viewport (WebGL, DOM-bound) and the node tier has no offscreen

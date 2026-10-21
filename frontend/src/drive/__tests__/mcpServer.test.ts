@@ -320,6 +320,68 @@ describe('createMcpServer', () => {
     expectError(await request(server, 27, 'tools/call', { name: 'compare', arguments: { doc: {} } }), -32602)
   })
 
+  it('requires exactly one of doc or docHash, except run which may start fresh', async () => {
+    const { ops, calls } = fakeOps()
+    const server = createMcpServer(ops)
+    const reference = {
+      source: { tool: 'test', version: '1', file: 'source.md' },
+      tolerance: { rel: 1e-5, abs: 1e-6 },
+      bodies: 1,
+      volume: 10,
+      area: 20,
+      centroid: [0, 0, 0],
+      bbox: [0, 0, 0, 1, 1, 1],
+    }
+    const docTools: Array<[string, Record<string, unknown>]> = [
+      ['measure', {}],
+      ['compare', { reference }],
+      ['export', { format: 'step', out: 'x.step' }],
+      ['select', { selector: { kind: 'edge' } }],
+    ]
+    let id = 50
+    for (const [name, extra] of docTools) {
+      // Neither: the tool has no document to act on.
+      expectError(await request(server, id++, 'tools/call', { name, arguments: { ...extra } }), -32602)
+      // Both: ambiguous, even when the two would name the same document.
+      expectError(await request(server, id++, 'tools/call', {
+        name,
+        arguments: { ...extra, doc: {}, docHash: 'abc' },
+      }), -32602)
+    }
+
+    // A single docHash reaches the op, so a caller can chain without the doc.
+    const measure = await request(server, 60, 'tools/call', {
+      name: 'measure',
+      arguments: { docHash: 'abc' },
+    })
+    expect(measure).toMatchObject({ id: 60 })
+    expect(calls.at(-1)).toEqual({ tool: 'measure', args: { docHash: 'abc', files: [] } })
+
+    // run starts a fresh seeded document with neither, but both is ambiguous.
+    expectError(await request(server, 61, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], doc: {}, docHash: 'abc' },
+    }), -32602)
+    const fresh = await request(server, 62, 'tools/call', { name: 'run', arguments: { steps: [] } })
+    expect(fresh).toMatchObject({ id: 62 })
+    expect(calls.at(-1)).toEqual({ tool: 'run', args: { steps: [], files: [] } })
+    const chained = await request(server, 63, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], docHash: 'abc' },
+    })
+    expect(chained).toMatchObject({ id: 63 })
+    expect(calls.at(-1)).toEqual({ tool: 'run', args: { docHash: 'abc', steps: [], files: [] } })
+
+    expectError(await request(server, 64, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], returnDoc: 'yes' },
+    }), -32602)
+    expectError(await request(server, 65, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], docHash: '' },
+    }), -32602)
+  })
+
   it('returns a failing compare as data, not an error result', async () => {
     const { ops } = fakeOps(() => ({ ok: true, pass: false, rows: [{ measure: 'volume', within: false }] }))
     const server = createMcpServer(ops)

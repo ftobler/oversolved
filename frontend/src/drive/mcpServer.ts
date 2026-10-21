@@ -36,21 +36,29 @@ export interface McpFileRef {
   path: string
 }
 
-export interface McpRunRequest {
+// A document argument is either the full doc or a docHash from an earlier
+// call's reply. The store that resolves the hash lives in the entry script;
+// this module only learns the shape. `run` may take neither (a fresh seeded
+// document); the other tools need exactly one.
+export interface McpDocArguments {
   doc?: unknown
+  docHash?: string
+}
+
+export interface McpRunRequest extends McpDocArguments {
   steps: unknown[]
   docId?: string
   files: McpFileRef[]
+  // Default false: the reply carries docHash, not the whole document.
+  returnDoc?: boolean
 }
 
-export interface McpMeasureRequest {
-  doc: unknown
+export interface McpMeasureRequest extends McpDocArguments {
   docId?: string
   files: McpFileRef[]
 }
 
-export interface McpExportRequest {
-  doc: unknown
+export interface McpExportRequest extends McpDocArguments {
   format: 'step' | 'stl'
   // Where the bytes are written, resolved against the server's cwd.
   out: string
@@ -59,15 +67,13 @@ export interface McpExportRequest {
   files: McpFileRef[]
 }
 
-export interface McpSelectRequest {
-  doc: unknown
+export interface McpSelectRequest extends McpDocArguments {
   selector: Selector
   docId?: string
   files: McpFileRef[]
 }
 
-export interface McpCompareRequest {
-  doc: unknown
+export interface McpCompareRequest extends McpDocArguments {
   reference: TranslationReference
   docId?: string
   files: McpFileRef[]
@@ -110,6 +116,16 @@ const FILE_LIST_SCHEMA = {
     properties: { id: { type: 'string' }, path: { type: 'string' } },
     additionalProperties: false,
   },
+}
+
+const DOC_SCHEMA = {
+  type: 'object',
+  description: 'A full part document. Pass either doc or docHash.',
+}
+
+const DOC_HASH_SCHEMA = {
+  type: 'string',
+  description: 'A content hash from an earlier reply. Pass either doc or docHash; the server keeps the last 32 documents.',
 }
 
 const VEC3_SCHEMA = {
@@ -193,13 +209,16 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: 'run',
     description: 'Run a script of command and mutation steps through one DocSession and the real kernel. '
-      + 'Returns the final document (for chaining), its hash, per-step results and solve state.',
+      + 'Returns per-step results, the solve state and the resulting docHash; chain calls with docHash. '
+      + 'The full document is returned only with returnDoc: true.',
     inputSchema: {
       type: 'object',
       required: ['steps'],
       properties: {
-        doc: { type: 'object', description: 'Starting document; omit to start from a fresh seeded document.' },
+        doc: { ...DOC_SCHEMA, description: 'Starting document. Omit with docHash to start from a fresh seeded document.' },
+        docHash: DOC_HASH_SCHEMA,
         steps: { type: 'array', items: { type: 'object' }, description: 'Script steps: {command,params} or {mutation}; mutation types: see the `mutations` tool.' },
+        returnDoc: { type: 'boolean', description: 'Include the full final document in the reply (default false).' },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
@@ -211,9 +230,9 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     description: 'Measure a document: body count, volume, surface area, centroid, bounding box and B-rep counts.',
     inputSchema: {
       type: 'object',
-      required: ['doc'],
       properties: {
-        doc: { type: 'object' },
+        doc: DOC_SCHEMA,
+        docHash: DOC_HASH_SCHEMA,
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
@@ -226,9 +245,10 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'Returns pass plus one row per measure (ours, theirs, delta, within); a failing row is data, not a tool error.',
     inputSchema: {
       type: 'object',
-      required: ['doc', 'reference'],
+      required: ['reference'],
       properties: {
-        doc: { type: 'object' },
+        doc: DOC_SCHEMA,
+        docHash: DOC_HASH_SCHEMA,
         reference: {
           type: 'object',
           description: 'A reference.json payload with the measures flat at the top level, for example '
@@ -248,9 +268,10 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     description: 'Export a document to STEP or STL and write the bytes to `out`. Returns the written path and size.',
     inputSchema: {
       type: 'object',
-      required: ['doc', 'format', 'out'],
+      required: ['format', 'out'],
       properties: {
-        doc: { type: 'object' },
+        doc: DOC_SCHEMA,
+        docHash: DOC_HASH_SCHEMA,
         format: { type: 'string', enum: ['step', 'stl'] },
         out: { type: 'string' },
         body: { type: 'string', description: 'Export this single body id; omit for the whole assembly.' },
@@ -265,12 +286,13 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     description: 'Find faces or edges by predicate over the solved document and return the query strings a click '
       + 'would store, plus a geometry summary per item. Run it after `run`, then feed the queries to a feature '
       + '(fillet, chamfer, hole, ...). An empty match is an error naming the nearest-miss count per predicate. '
-      + worldFrameSentence(),
+      + 'Returns the docHash it ran against. ' + worldFrameSentence(),
     inputSchema: {
       type: 'object',
-      required: ['doc', 'selector'],
+      required: ['selector'],
       properties: {
-        doc: { type: 'object' },
+        doc: DOC_SCHEMA,
+        docHash: DOC_HASH_SCHEMA,
         selector: { $ref: '#/$defs/selector' },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
@@ -374,25 +396,61 @@ function rejectUnknown(record: Record<string, unknown>, allowed: readonly string
   }
 }
 
-function parseRunArgs(raw: unknown): McpRunRequest {
-  const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'steps', 'docId', 'files'])
-  if (!Array.isArray(record.steps)) throw new McpInvalidParams('field "steps" must be an array')
-  for (const [index, step] of record.steps.entries()) asObject(step, `field "steps[${index}]"`)
+function optionalBoolean(value: unknown, name: string): boolean | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'boolean') throw new McpInvalidParams(`field "${name}" must be a boolean`)
+  return value
+}
+
+function optionalDocHash(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new McpInvalidParams('field "docHash" must be a non-empty string')
+  }
+  return value
+}
+
+// `run` starts fresh when given neither, so only the both-present case is
+// invalid there; every other doc-taking tool needs exactly one of the two.
+function readDocArguments(
+  record: { [key: string]: unknown },
+  mode: 'run' | 'exactly-one',
+): McpDocArguments {
   const doc = record.doc === undefined ? undefined : asObject(record.doc, 'field "doc"')
+  const docHash = optionalDocHash(record.docHash)
+  const count = (doc === undefined ? 0 : 1) + (docHash === undefined ? 0 : 1)
+  if (mode === 'exactly-one' && count !== 1) {
+    throw new McpInvalidParams('pass exactly one of "doc" or "docHash"')
+  }
+  if (mode === 'run' && count === 2) {
+    throw new McpInvalidParams('pass at most one of "doc" or "docHash"')
+  }
   return {
     ...(doc !== undefined && { doc }),
+    ...(docHash !== undefined && { docHash }),
+  }
+}
+
+function parseRunArgs(raw: unknown): McpRunRequest {
+  const record = asObject(raw ?? {}, 'arguments')
+  rejectUnknown(record, ['doc', 'docHash', 'steps', 'docId', 'files', 'returnDoc'])
+  if (!Array.isArray(record.steps)) throw new McpInvalidParams('field "steps" must be an array')
+  for (const [index, step] of record.steps.entries()) asObject(step, `field "steps[${index}]"`)
+  const returnDoc = optionalBoolean(record.returnDoc, 'returnDoc')
+  return {
+    ...readDocArguments(record, 'run'),
     steps: record.steps,
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
+    ...(returnDoc !== undefined && { returnDoc }),
   }
 }
 
 function parseMeasureArgs(raw: unknown): McpMeasureRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'docId', 'files'])
+  rejectUnknown(record, ['doc', 'docHash', 'docId', 'files'])
   return {
-    doc: requiredObject(record.doc, 'doc'),
+    ...readDocArguments(record, 'exactly-one'),
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
   }
@@ -400,7 +458,8 @@ function parseMeasureArgs(raw: unknown): McpMeasureRequest {
 
 function parseCompareArgs(raw: unknown): McpCompareRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'reference', 'docId', 'files'])
+  rejectUnknown(record, ['doc', 'docHash', 'reference', 'docId', 'files'])
+  const docArguments = readDocArguments(record, 'exactly-one')
   const referenceRaw = requiredObject(record.reference, 'reference')
   let reference: TranslationReference
   try {
@@ -411,7 +470,7 @@ function parseCompareArgs(raw: unknown): McpCompareRequest {
     throw new McpInvalidParams(`field "reference": ${e instanceof Error ? e.message : String(e)}`)
   }
   return {
-    doc: requiredObject(record.doc, 'doc'),
+    ...docArguments,
     reference,
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
@@ -420,14 +479,15 @@ function parseCompareArgs(raw: unknown): McpCompareRequest {
 
 function parseExportArgs(raw: unknown): McpExportRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'format', 'out', 'body', 'docId', 'files'])
+  rejectUnknown(record, ['doc', 'docHash', 'format', 'out', 'body', 'docId', 'files'])
+  const docArguments = readDocArguments(record, 'exactly-one')
   const format = record.format
   if (format !== 'step' && format !== 'stl') throw new McpInvalidParams('field "format" must be "step" or "stl"')
   const out = record.out
   if (typeof out !== 'string' || out.length === 0) throw new McpInvalidParams('field "out" must be a non-empty string')
   const body = optionalString(record.body, 'body')
   return {
-    doc: requiredObject(record.doc, 'doc'),
+    ...docArguments,
     format,
     out,
     ...(body !== undefined && { body }),
@@ -438,7 +498,8 @@ function parseExportArgs(raw: unknown): McpExportRequest {
 
 function parseSelectArgs(raw: unknown): McpSelectRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'selector', 'docId', 'files'])
+  rejectUnknown(record, ['doc', 'docHash', 'selector', 'docId', 'files'])
+  const docArguments = readDocArguments(record, 'exactly-one')
   const selectorRaw = requiredObject(record.selector, 'selector')
   let selector: Selector
   try {
@@ -447,7 +508,7 @@ function parseSelectArgs(raw: unknown): McpSelectRequest {
     throw new McpInvalidParams(`field "selector": ${e instanceof Error ? e.message : String(e)}`)
   }
   return {
-    doc: requiredObject(record.doc, 'doc'),
+    ...docArguments,
     selector,
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),

@@ -88,6 +88,17 @@ const BOX_SCRIPT = {
   ],
 }
 
+// The first real agent session's part: a 40 x 30 sketch on Top extruded 10
+// along +Y. Its four Y-parallel edges are the ones `select {parallel:[0,1,0]}`
+// returns, each 10 long.
+const SESSION_BOX_SCRIPT = {
+  steps: [
+    { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Rectangle', plane: '@builtin_plane_top' } },
+    { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [40, 30] } },
+    { mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Extrude', sketchQuery: '$sk1', distance: 10 } },
+  ],
+}
+
 const COMMAND_SCRIPT = {
   steps: [
     { command: 'toggle_plane_visibility' },
@@ -408,7 +419,7 @@ function toolPayload(response: McpResponse): Record<string, unknown> {
 }
 
 describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust solver)', () => {
-  it('builds, edits a dimension, measures and exports over stdio', async () => {
+  it('builds, edits a dimension, measures and exports over stdio by docHash', async () => {
     mkdirSync(TMP_DIR, { recursive: true })
     const stepFile = path.join(TMP_DIR, 'mcp-box.step')
     const client = spawnMcp()
@@ -431,20 +442,40 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       const built = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
       expect(built.ok).toBe(true)
       expect((built.solve as { lastError: string | null }).lastError).toBeNull()
+      // The default reply is a handle, not the document: a session of calls
+      // does not re-send the part.
+      expect(typeof built.docHash).toBe('string')
+      expect(built.doc).toBeUndefined()
+      expect(built.summary).toContain('sk1 (sketch)')
+      expect(built.summary).toContain('ex1 (extrude)')
+      expect(built.summary).toContain('body_ex1')
 
       // The same script twice through one server process mints the same ids
       // and hashes the same document: the CLI journal seed pins them.
       const again = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
       expect(again.docHash).toBe(built.docHash)
 
-      // Edit the extrude distance on the returned document and rebuild.
+      // returnDoc is the explicit opt-in for a caller that wants to save or
+      // hand-edit the document.
+      const returned = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { docHash: built.docHash, steps: [], returnDoc: true },
+      }))
+      expect(returned.doc).toBeDefined()
+
+      // Edit the extrude distance through the handle and rebuild.
       const edited = toolPayload(await client.request('tools/call', {
         name: 'run',
-        arguments: { doc: built.doc, steps: EDIT_SCRIPT.steps },
+        arguments: { docHash: built.docHash, steps: EDIT_SCRIPT.steps },
       }))
       expect(edited.ok).toBe(true)
+      expect(edited.doc).toBeUndefined()
+      expect(typeof edited.docHash).toBe('string')
 
-      const measure = toolPayload(await client.request('tools/call', { name: 'measure', arguments: { doc: edited.doc } }))
+      const measure = toolPayload(await client.request('tools/call', {
+        name: 'measure',
+        arguments: { docHash: edited.docHash },
+      }))
       expect(measure.volume as number).toBeCloseTo(800, 6)
       expectBbox(measure.bbox, [0, 0, 0, 10, 10, 8])
 
@@ -463,7 +494,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       }
       const compared = toolPayload(await client.request('tools/call', {
         name: 'compare',
-        arguments: { doc: edited.doc, reference },
+        arguments: { docHash: edited.docHash, reference },
       }))
       expect(compared).toMatchObject({ ok: true, pass: true })
       expect((compared.rows as Array<{ measure: string }>).map(row => row.measure))
@@ -471,7 +502,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
 
       const exported = toolPayload(await client.request('tools/call', {
         name: 'export',
-        arguments: { doc: edited.doc, format: 'step', out: stepFile },
+        arguments: { docHash: edited.docHash, format: 'step', out: stepFile },
       }))
       expect(exported).toMatchObject({ ok: true, format: 'step' })
       expect(readFileSync(stepFile).byteLength).toBeGreaterThan(0)
@@ -480,9 +511,10 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       // queries: the selector output is what a click would have stored.
       const selected = toolPayload(await client.request('tools/call', {
         name: 'select',
-        arguments: { doc: edited.doc, selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } },
+        arguments: { docHash: edited.docHash, selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } },
       }))
       expect(selected.ok).toBe(true)
+      expect(selected.docHash).toBe(edited.docHash)
       const queries = selected.queries as string[]
       expect(queries).toHaveLength(4)
 
@@ -493,13 +525,13 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       ]
       const filleted = toolPayload(await client.request('tools/call', {
         name: 'run',
-        arguments: { doc: edited.doc, steps: filletSteps },
+        arguments: { docHash: edited.docHash, steps: filletSteps },
       }))
       expect(filleted.ok).toBe(true)
 
       const filletMeasure = toolPayload(await client.request('tools/call', {
         name: 'measure',
-        arguments: { doc: filleted.doc },
+        arguments: { docHash: filleted.docHash },
       }))
       // Four radius-1 fillets on the 10x10x8 box: the four side faces stay, the
       // two caps stay and four quarter-cylinders appear.
@@ -509,13 +541,101 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       const stlFile = path.join(TMP_DIR, 'mcp-box.stl')
       const stl = toolPayload(await client.request('tools/call', {
         name: 'export',
-        arguments: { doc: edited.doc, format: 'stl', out: stlFile },
+        arguments: { docHash: edited.docHash, format: 'stl', out: stlFile },
       }))
       expect(stl).toMatchObject({ ok: true, format: 'stl' })
       expect(readFileSync(stlFile).byteLength).toBe(stl.bytes)
 
+      // An unknown handle is a tool failure naming the bound, not a crash.
+      const unknown = await client.request('tools/call', {
+        name: 'measure',
+        arguments: { docHash: '0'.repeat(64) },
+      })
+      const unknownResult = unknown.result as { isError?: boolean; content: Array<{ text: string }> }
+      expect(unknownResult.isError).toBe(true)
+      expect((JSON.parse(unknownResult.content[0].text) as { error: string }).error).toContain('32')
+
       const commands = toolPayload(await client.request('tools/call', { name: 'commands', arguments: {} }))
       expect((commands.commands as unknown[]).length).toBeGreaterThan(0)
+    } finally {
+      await client.close()
+    }
+  }, 240_000)
+
+  it('chains the first session by docHash: box, select, fillet, compare, export', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const stepFile = path.join(TMP_DIR, 'mcp-session-box.step')
+    const client = spawnMcp()
+    try {
+      const init = await client.request('initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'cliSmoke', version: '0' },
+      })
+      expect(init.result).toBeDefined()
+
+      const built = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { steps: SESSION_BOX_SCRIPT.steps },
+      }))
+      expect(built.ok).toBe(true)
+      const boxHash = built.docHash as string
+
+      // World Y is up, so the four edges parallel to +Y are the 10 mm verticals
+      // of this 40 x 10 x 30 block.
+      const selected = toolPayload(await client.request('tools/call', {
+        name: 'select',
+        arguments: { docHash: boxHash, selector: { kind: 'edge', where: { parallel: [0, 1, 0] } } },
+      }))
+      expect(selected.ok).toBe(true)
+      expect(selected.docHash).toBe(boxHash)
+      const queries = selected.queries as string[]
+      expect(queries).toHaveLength(4)
+      const items = selected.items as Array<{ geometry: { length?: number } }>
+      for (const item of items) expect(item.geometry.length).toBeCloseTo(10, 6)
+
+      const filletSteps = [
+        { mutation: { type: 'add_fillet', featureId: 'fi1', label: 'Fillet' } },
+        ...queries.map(edgeQuery => ({ mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery } })),
+        { mutation: { type: 'set_fillet_field', featureId: 'fi1', field: 'radius', value: 3 } },
+      ]
+      const filleted = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { docHash: boxHash, steps: filletSteps },
+      }))
+      expect(filleted.ok).toBe(true)
+
+      const measure = toolPayload(await client.request('tools/call', {
+        name: 'measure',
+        arguments: { docHash: filleted.docHash },
+      }))
+      expect(measure.volume as number).toBeCloseTo(11922.743, 3)
+      expect(measure.area as number).toBeCloseTo(3733.044, 3)
+
+      // The hand reference from the session, flat at the top level.
+      const compared = toolPayload(await client.request('tools/call', {
+        name: 'compare',
+        arguments: {
+          docHash: filleted.docHash,
+          reference: {
+            source: { tool: 'hand', version: '1', file: '-' },
+            tolerance: { rel: 1e-4, abs: 0.01 },
+            bodies: 1,
+            volume: 11922.743,
+            area: 3733.044,
+            centroid: [20, 5, -15],
+            bbox: [0, 0, -30, 40, 10, 0],
+          },
+        },
+      }))
+      expect(compared).toMatchObject({ ok: true, pass: true })
+
+      const exported = toolPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: filleted.docHash, format: 'step', out: stepFile },
+      }))
+      expect(exported).toMatchObject({ ok: true, format: 'step' })
+      expect(readFileSync(stepFile).byteLength).toBeGreaterThan(0)
     } finally {
       await client.close()
     }
