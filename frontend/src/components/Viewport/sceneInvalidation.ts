@@ -2,7 +2,7 @@
 // Viewport/index.tsx): a frame is drawn when something that feeds the scene
 // changed, not once per display refresh. Two of the three routes are already
 // covered by R3F itself. The reconciler requests a frame for every scene
-// instance it creates, updates or reveals, and drei's OrbitControls requests
+// instance it creates, updates or reveals, and TurntableControls requests
 // one on every camera change (its change listener calls invalidate).
 //
 // What neither can see are the app stores. Their writes reach the scene
@@ -24,6 +24,7 @@
 import { editorState } from '@/stores/editorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 
 // Structural so one list can hold stores with different state shapes.
 interface SceneStore {
@@ -32,11 +33,14 @@ interface SceneStore {
 
 // Every store that can change what the scene draws. `useSketchEditorStore` is
 // not a fourth entry: it is `editorState` under its historical name
-// (sketchEditorStore.ts).
+// (sketchEditorStore.ts). The view options are one more: shading, edges,
+// brightness, zebra and curvature all change the image, and the assembly
+// viewport shares them on a Canvas of its own.
 const SCENE_STORES: readonly SceneStore[] = [
   usePartEditorStore,
   editorState,
   useSketchUiStore,
+  useViewOptionsStore,
 ]
 
 /**

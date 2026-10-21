@@ -8,11 +8,14 @@
 // curves rather than pulled off the tessellation, so a hole's rim stays a circle
 // at any zoom while its face is still a facetted mesh.
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
-import { buildBodyGeometry } from '@/components/Geometry3D/bodyGeometry'
+import { buildBodySurfaceGeometry } from '@/components/Geometry3D/bodyGeometry'
+import { analysisMaterialName, useBodyAnalysisMaterial } from '@/components/Geometry3D/bodyAnalysisMaterial'
+import { curvatureForMesh, effectiveCurvatureRange } from '@/components/Geometry3D/curvature'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import {
   COLOR_BODY_DEFAULT,
   COLOR_BODY_EDGE,
@@ -33,18 +36,27 @@ interface AssemblyBodyProps {
   // A mate reference slot is armed, so a click aims rather than grabs.
   aiming: boolean
   onGrab: (point: Vec3, event: ThreeEvent<PointerEvent>) => void
+  // The viewer's Shading and Edges rows, shared by both editors. A hidden mesh
+  // is not mounted, so it can neither be drawn nor grabbed: the assembly's grab
+  // is an R3F raycast on the mesh, not the ID buffer.
+  showFaces?: boolean
+  showEdges?: boolean
 }
 
-export default function AssemblyBody({ item, curves, selected, aiming, onGrab }: AssemblyBodyProps) {
+export default function AssemblyBody({ item, curves, selected, aiming, onGrab, showFaces = true, showEdges = true }: AssemblyBodyProps) {
+  const curvature = useViewOptionsStore(s => s.curvature)
+  const curvatureKind = useViewOptionsStore(s => s.curvature_kind)
+  const curvatureManualRange = useViewOptionsStore(s => s.curvature_range)
+  const curvatureAutoRange = useViewOptionsStore(s => s.curvatureAutoRange)
+  const curvatureActive = showFaces && curvature
+
   const geometry = useMemo(() => {
-    const { positions, indices } = buildBodyGeometry(item.mesh)
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    g.setIndex(new THREE.BufferAttribute(indices, 1))
-    // The bundle ships positions only; shading needs normals.
-    g.computeVertexNormals()
+    const g = buildBodySurfaceGeometry(item.mesh)
+    if (curvatureActive) {
+      g.setAttribute('aCurvature', new THREE.BufferAttribute(curvatureForMesh(item.mesh).values, 2))
+    }
     return g
-  }, [item.mesh])
+  }, [item.mesh, curvatureActive])
 
   useEffect(() => () => geometry.dispose(), [geometry])
 
@@ -58,37 +70,56 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab }:
 
   useEffect(() => () => edgeGeometry?.dispose(), [edgeGeometry])
 
+  // The assembly has no vertex-colour highlight (selection is the overlay
+  // below), so the zebra program does not reference vColor.
+  const zebra = useViewOptionsStore(s => s.zebra)
+  const zebraStripes = useViewOptionsStore(s => s.zebra_stripes)
+  const analysisMode = !showFaces ? 'none' : curvature ? 'curvature' : zebra ? 'zebra' : 'none'
+  const materialRef = useRef<THREE.MeshStandardMaterial>(null)
+  useBodyAnalysisMaterial(materialRef, {
+    mode: analysisMode,
+    mixVertexColor: false,
+    baseColor: selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT,
+    zebraStripes,
+    curvatureKind,
+    curvatureRange: effectiveCurvatureRange(curvatureManualRange, curvatureAutoRange),
+  })
+
   return (
     <>
-      <mesh
-        geometry={geometry}
-        visible={item.visible}
-        userData={{ fitBounds: true }}
-        onPointerDown={(e) => {
-          if (e.button !== 0) return
-          // Ctrl+click aims a mate reference, and so does any click while a mate
-          // chip is armed (AssemblyViewport resolves both off the ID buffer).
-          // Grabbing the part on the same gesture would drag it away from the
-          // anchor the user was pointing at.
-          if (e.ctrlKey || aiming) return
-          e.stopPropagation()
-          onGrab([e.point.x, e.point.y, e.point.z], e)
-        }}
-      >
-        <meshStandardMaterial
-          color={selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT}
-          roughness={DEFAULT_PART_ROUGHNESS}
-          metalness={0}
-          envMapIntensity={ENV_MAP_INTENSITY}
-          // Push the surface back so an edge lying exactly on it draws crisp
-          // instead of z-fighting, as Body3D does in the part editor.
-          polygonOffset
-          polygonOffsetFactor={1}
-          polygonOffsetUnits={1}
-        />
-      </mesh>
+      {showFaces && (
+        <mesh
+          geometry={geometry}
+          visible={item.visible}
+          userData={{ fitBounds: true }}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return
+            // Ctrl+click aims a mate reference, and so does any click while a mate
+            // chip is armed (AssemblyViewport resolves both off the ID buffer).
+            // Grabbing the part on the same gesture would drag it away from the
+            // anchor the user was pointing at.
+            if (e.ctrlKey || aiming) return
+            e.stopPropagation()
+            onGrab([e.point.x, e.point.y, e.point.z], e)
+          }}
+        >
+          <meshStandardMaterial
+            ref={materialRef}
+            name={analysisMaterialName(analysisMode)}
+            color={selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT}
+            roughness={DEFAULT_PART_ROUGHNESS}
+            metalness={0}
+            envMapIntensity={ENV_MAP_INTENSITY}
+            // Push the surface back so an edge lying exactly on it draws crisp
+            // instead of z-fighting, as Body3D does in the part editor.
+            polygonOffset
+            polygonOffsetFactor={1}
+            polygonOffsetUnits={1}
+          />
+        </mesh>
+      )}
 
-      {edgeGeometry && (
+      {showEdges && edgeGeometry && (
         <lineSegments geometry={edgeGeometry} visible={item.visible} renderOrder={RENDER_ORDER_DEFAULT}>
           <lineBasicMaterial color={selected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE} />
         </lineSegments>

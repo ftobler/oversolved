@@ -48,7 +48,7 @@ export function PlaneLabel({ x, y, children }: PlaneLabelProps) {
       {/* R3F wraps ALL Canvas children in one Suspense boundary of its own, and
           a suspended boundary is not merely invisible: R3F's hideInstance sets
           object.visible = false on every host instance under it, so ANY leaf
-          that suspends blanks the entire viewport (and takes OrbitControls down
+          that suspends blanks the entire viewport (and takes the turntable down
           with it, see SceneController). drei's <Text> suspends on its font, so
           the label needs its own boundary to keep that blast radius local. The
           plane draws immediately; the label pops in a moment later. */}

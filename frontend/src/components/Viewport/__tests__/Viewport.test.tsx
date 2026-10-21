@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { Feature, BodyResult } from '@/types/cad'
 import Viewport from '@/components/Viewport'
@@ -141,7 +142,6 @@ beforeEach(() => {
   })
   useSketchUiStore.setState({
     closeContextMenu: () => {},
-    showDebugHit: false,
   })
   usePartEditorStore.setState({
     features: [],
@@ -193,6 +193,34 @@ describe('Viewport body interactivity', () => {
     items.forEach(el => {
       expect(el.getAttribute('data-interactive')).not.toBe('false')
     })
+  })
+
+  it('publishes the curvature auto range from the visible bodies', async () => {
+    const { icosphere } = await import('@/testing/curvatureFixtures')
+    const surface = icosphere(2, 2)
+    const mesh = { vertices: surface.positions, faces: surface.indices, face_data: [], face_queries: [] }
+    usePartEditorStore.setState({
+      features: [sketch, extrude],
+      bodies: {
+        body_ex1: {
+          id: 'body_ex1',
+          created_by: 'ex1',
+          modified_by: [],
+          mesh,
+        } as unknown as BodyResult,
+      },
+      visibleBodies: undefined,
+    })
+    useViewOptionsStore.setState({ curvature: true, curvature_kind: 'mean', curvatureAutoRange: null })
+
+    const { unmount } = render(<Viewport />)
+
+    const range = useViewOptionsStore.getState().curvatureAutoRange
+    expect(range).not.toBeNull()
+    expect(range![1]).toBeGreaterThan(0.4)
+    expect(range![1]).toBeLessThan(0.6)
+    unmount()
+    useViewOptionsStore.setState({ curvature: false, curvatureAutoRange: null })
   })
 
   it('ghostMode renders pickBodies and shows a preview edge overlay', () => {
@@ -349,21 +377,18 @@ describe('Viewport overlay stacking pen', () => {
 })
 
 describe('Viewport collision debug gate', () => {
-  it('mounts IdDebugOverlay only while showDebugHit is on', () => {
+  it('mounts IdDebugOverlay only while the collision debug option is on', () => {
     usePartEditorStore.setState({ features: [sketch], bodies: makeBody() })
 
-    useSketchUiStore.setState({
-    showDebugHit: false,
-  })
+    useViewOptionsStore.setState({ collisionDebug: false })
     const off = render(<Viewport />)
     expect(off.queryByTestId('id-debug-overlay')).toBeNull()
     off.unmount()
 
-    useSketchUiStore.setState({
-    showDebugHit: true,
-  })
+    useViewOptionsStore.setState({ collisionDebug: true })
     const on = render(<Viewport />)
     expect(on.getByTestId('id-debug-overlay')).not.toBeNull()
     on.unmount()
+    useViewOptionsStore.setState({ collisionDebug: false })
   })
 })

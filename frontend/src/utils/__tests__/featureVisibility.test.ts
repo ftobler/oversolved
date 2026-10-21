@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { SketchFeature, PartFeature } from '@/types/cad'
+import type { HelixFeature, SketchFeature, PartFeature } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
 import { visibleFeatureIds } from '@/utils/featureVisibility'
 
@@ -8,8 +8,11 @@ import { visibleFeatureIds } from '@/utils/featureVisibility'
 const area = (sk: string) => makeAncestryQuery([`@${sk}/c1`, 'surface:0', `@${sk}`], 'flatface')
 
 const sketch = (id: string, extra: Partial<SketchFeature> = {}): SketchFeature => ({ id, kind: 'sketch', ...extra })
+const helix = (id: string, extra: Partial<HelixFeature> = {}): HelixFeature => ({ id, kind: 'helix', helix: {}, ...extra })
 const extrude = (id: string, profiles: string[]): PartFeature =>
   ({ id, kind: 'extrude', extrude: { sketch: profiles, distance: 10 } })
+const sweep = (id: string, path: string): PartFeature =>
+  ({ id, kind: 'sweep', sweep: { sketch: '', path } })
 
 // The mutation-driven side of the same rule (picks, un-picks, the eye icon and
 // the bulk toggle) lives in yamlMutations.autoHide.test.ts.
@@ -66,5 +69,55 @@ describe('visibleFeatureIds', () => {
   it('draws the sketch being edited even though a feature consumes it', () => {
     const features = [sketch('sk1'), extrude('ex1', [area('sk1')])]
     expect(visibleFeatureIds(features, { editingFeatureId: 'sk1', forcedVisible: ['sk1'] }).has('sk1')).toBe(true)
+  })
+
+  // The first sketch hides the planes by a document write, but picking a plane
+  // for a later sketch still needs them on screen: a hidden plane is not drawn,
+  // so there is nothing to click. The armed pick field shows them by derivation,
+  // the same way an open consumer shows its own profile sketch.
+  it('draws the hidden planes while a plane pick field is armed', () => {
+    const features: PartFeature[] = [
+      { id: 'Origin', kind: 'origin', visible: false },
+      { id: 'Top', kind: 'plane', visible: false },
+      { id: 'Front', kind: 'plane', visible: false },
+      { id: 'p1', kind: 'plane', visible: false },
+    ]
+
+    expect(visibleFeatureIds(features).has('Front')).toBe(false)
+
+    const picking = visibleFeatureIds(features, { planePickArmed: true })
+    expect(picking.has('Top')).toBe(true)
+    expect(picking.has('Front')).toBe(true)
+    expect(picking.has('p1')).toBe(true)
+    // The origin is not a plane target, so arming the field does not turn it on.
+    expect(picking.has('Origin')).toBe(false)
+  })
+
+  it('does not need the plane pick flag to draw planes that are already shown', () => {
+    const features: PartFeature[] = [{ id: 'Front', kind: 'plane' }]
+    expect(visibleFeatureIds(features, { planePickArmed: false }).has('Front')).toBe(true)
+  })
+})
+
+describe('visibleFeatureIds treats a helix as sketch-class', () => {
+  it('hides a helix a sweep uses as its path, with no flag in the document', () => {
+    const features = [helix('hx1'), sweep('sw1', '@hx1')]
+    expect(visibleFeatureIds(features).has('hx1')).toBe(false)
+  })
+
+  it('keeps a consumed helix shown once the user spent the one-shot hide', () => {
+    const features = [helix('hx1', { auto_hidden: true }), sweep('sw1', '@hx1')]
+    expect(visibleFeatureIds(features).has('hx1')).toBe(true)
+  })
+
+  it('shows the helix again when the sweep no longer uses it as a path', () => {
+    const features = [helix('hx1'), sweep('sw1', '')]
+    expect(visibleFeatureIds(features).has('hx1')).toBe(true)
+  })
+
+  it('keeps the consumed helix drawn while the sweep editor is open, so the path stays pickable', () => {
+    const features = [helix('hx1'), sweep('sw1', '@hx1')]
+    expect(visibleFeatureIds(features, { editingFeatureId: 'sw1' }).has('hx1')).toBe(true)
+    expect(visibleFeatureIds(features, { editingFeatureId: null }).has('hx1')).toBe(false)
   })
 })

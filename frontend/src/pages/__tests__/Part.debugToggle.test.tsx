@@ -7,7 +7,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { type ReactNode } from 'react'
-import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import Part from '@/pages/Part'
 import { Wrapper } from '@/__tests__/test-utils'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -49,8 +48,6 @@ function pressF2() {
   return prevented
 }
 
-// Scoped by title: the header also holds an unconditional collision-render
-// button with the same class, and only this one reflects debugOpen.
 const headerButton = () => document.querySelector('button[title="Toggle debug panel (F2)"]')
 
 describe('Part F2 debug toggle (static build)', () => {
@@ -63,9 +60,6 @@ describe('Part F2 debug toggle (static build)', () => {
     activeTool: null,
     activePickField: null,
     modeStack: [],
-  })
-  useSketchUiStore.setState({
-    showDebugHit: false,
   })
   })
 

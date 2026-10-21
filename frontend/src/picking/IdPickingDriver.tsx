@@ -103,7 +103,7 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
 
     // Camera-change detection. Compare the camera's world AND projection matrix
     // every frame against the snapshot from the previous frame. The projection
-    // half is what catches an OrbitControls dolly on an orthographic camera:
+    // half is what catches a wheel-zoom on an orthographic camera:
     // it only scales zoom, so matrixWorld alone misses it and the ID buffer
     // went stale after a pure wheel-zoom. A change marks the pipeline dirty so
     // the frame below re-renders it.

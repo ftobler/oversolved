@@ -1,45 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { OrbitControls } from '@react-three/drei'
-import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { drawCubeGizmo, type Pv, type Hit } from '@/components/misc/CubeGizmo.utils'
 import { snapToDirection } from '@/components/Viewport/cameraController'
 import { deriveOrbitEnabled } from '@/components/Viewport/orbitEnabled'
+import {
+  restoreTurntablePose,
+  snapshotTurntablePose,
+  TurntableControls,
+  type TurntablePoseSnapshot,
+} from '@/components/Viewport/turntable'
 
-const MOUSE_BUTTONS = {
-  LEFT: -1 as unknown as THREE.MOUSE,
-  MIDDLE: THREE.MOUSE.PAN,
-  RIGHT: THREE.MOUSE.ROTATE,
-}
-
-function rightButtonMapping(e: MouseEvent | PointerEvent): THREE.MOUSE {
-  if (e.shiftKey) return THREE.MOUSE.DOLLY
-  if (e.ctrlKey || e.metaKey) return THREE.MOUSE.PAN
-  return THREE.MOUSE.ROTATE
-}
-
-// Camera freeze fix: R3F wraps Canvas children in React.Suspense. When a
-// child suspends mid-solve the entire Canvas tree hides and re-shows,
-// disposing OrbitControls in between. Three-stdlib's dispose() removes
-// document-level listeners but does not clear the private pointers array,
-// so after reconnect the controls can never re-arm. We force a fresh
-// OrbitControls instance on every show by bumping showSeq in the effect
-// that re-fires on each show, and carry the camera pose across the rebuild.
-interface SavedOrbitState {
-  position: [number, number, number]
-  target: [number, number, number]
-  zoom: number
-}
-
-// The pose rides on the Canvas camera's userData because the camera outlives
-// the rebuild while the controls does not. A per-instance ref cannot carry it:
-// React detaches the OrbitControls ref during the commit phase, before the
-// passive-effect cleanup that used to read it, so the save never ran and the
-// orbit target reset to (0,0,0) after any Suspense cycle.
+// Camera freeze fix: R3F wraps Canvas children in React.Suspense. When a child
+// suspends mid-solve the entire Canvas tree hides and re-shows, tearing the
+// controls' effect down and running it again. The pose rides on the Canvas
+// camera's userData because the camera outlives the controller: the effect
+// cleanup runs while the outgoing controller is still live, and the setup that
+// follows adopts the carried pose before any frame can run. A per-instance ref
+// cannot carry it across the teardown, because the cleanup is the only place
+// the outgoing state is still readable.
 interface PoseCarrier {
-  orbitPose?: SavedOrbitState
+  turntablePose?: TurntablePoseSnapshot
 }
 
 interface SceneControllerProps {
@@ -53,7 +35,7 @@ interface SceneControllerProps {
   hoverRef: React.MutableRefObject<Hit | null>
   snapRef: React.MutableRefObject<THREE.Vector3 | null>
   cameraRef: React.MutableRefObject<THREE.Camera | null>
-  controlsRef: React.MutableRefObject<OrbitControlsImpl | null>
+  controlsRef: React.MutableRefObject<TurntableControls | null>
   /**
    * Overrides the sketch-drag orbit gate. The assembly viewport has no sketch
    * drag; it blocks the camera while a part is being dragged instead.
@@ -70,49 +52,37 @@ interface SceneControllerProps {
 
 export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef, orbitEnabled, onReady }: SceneControllerProps) {
   const { camera, gl, invalidate } = useThree()
-  const ctrlRef = useRef<OrbitControlsImpl | null>(null)
+  const ctrlRef = useRef<TurntableControls | null>(null)
   const cameraRefStable = useRef(camera)
   // eslint-disable-next-line react-hooks/refs -- mirror the latest camera into a ref without triggering a re-render
   cameraRefStable.current = camera
 
-  // showSeq bumps every time this component's effect setup runs, which
-  // happens on initial mount AND on every re-show after React Suspense
-  // hides the tree (Suspense calls cleanup then re-runs setup on show).
-  // A clean OrbitControls key forces drei's useMemo to produce a fresh
-  // three-stdlib instance with an empty pointers array.
+  // showSeq bumps every time this component's effect setup runs, which happens
+  // on initial mount AND on every re-show after React Suspense hides the tree
+  // (Suspense calls cleanup then re-runs setup on show). Rebuilding the
+  // controller forces a clean gesture state after a reveal, and the carried
+  // pose means the rebuild costs no camera movement.
   const [showSeq, setShowSeq] = useState(0)
   useEffect(() => {
     setShowSeq(k => k + 1)
   }, [])
 
-  // The one owner of the incoming and outgoing controls. An attach applies the
-  // carried pose before any frame can run, so the rebuilt controls' default
-  // target cannot overwrite it; a detach stashes the live pose on the camera
-  // for the next attach. Doing both in the ref callback is what makes the save
-  // survive: it runs in the commit phase, while the outgoing controls and its
-  // target are still live.
-  const attachControls = useCallback((ctrl: OrbitControlsImpl | null) => {
+  // The one owner of the incoming and outgoing controls. An attach restores the
+  // carried pose before any frame can run, so the rebuilt controller cannot
+  // overwrite it with the camera's current default; a detach stashes the live
+  // pose on the camera for the next attach.
+  const attachControls = useCallback((ctrl: TurntableControls | null) => {
     const cam = cameraRefStable.current
     if (ctrl) {
-      const state = (cam.userData as PoseCarrier).orbitPose
-      if (state) {
-        cam.position.set(...state.position)
-        ctrl.target.set(...state.target)
-        cam.zoom = state.zoom
-        cam.updateProjectionMatrix()
-        ctrl.update()
-      }
+      const state = (cam.userData as PoseCarrier).turntablePose
+      if (state) restoreTurntablePose(ctrl, state)
       ctrlRef.current = ctrl
       controlsRef.current = ctrl
       return
     }
     const last = ctrlRef.current
     if (last) {
-      ;(cam.userData as PoseCarrier).orbitPose = {
-        position: [cam.position.x, cam.position.y, cam.position.z],
-        target: [last.target.x, last.target.y, last.target.z],
-        zoom: cam.zoom,
-      }
+      ;(cam.userData as PoseCarrier).turntablePose = snapshotTurntablePose(last)
     }
     ctrlRef.current = null
     controlsRef.current = null
@@ -134,22 +104,35 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
     onReady?.()
   }, [camera, onReady])
 
-  // Right-button mapping: shift/ctrl/meta override the default rotate action.
-  // Bound to the renderer canvas, not the gizmo overlay: OrbitControls listens
-  // there, so a mapping attached to the 140x140 corner element would leave
-  // right-drags elsewhere unremapped and let one modifier press stick into
-  // every later plain right-drag. The handler re-evaluates on every press,
-  // which is what keeps the mapping non-sticky for press-and-hold gestures.
-  useEffect(() => {
-    const canvas = gl.domElement
-    if (!canvas) return
-    const onPointerDown = (e: PointerEvent) => {
-      if (e.button !== 2 || !ctrlRef.current) return
-      ctrlRef.current.mouseButtons.RIGHT = rightButtonMapping(e)
+  const setIsRotating = useSketchEditorStore(s => s.setIsRotating)
+
+  // The controller listens on the renderer canvas, the same surface the old
+  // drei OrbitControls bound to, so modifiers and gestures work everywhere in
+  // the pane rather than only over the 140x140 gizmo corner.
+  useLayoutEffect(() => {
+    const cam = cameraRefStable.current
+    if (!cam || !gl?.domElement) return
+    const ctrl = new TurntableControls(cam, gl.domElement)
+    ctrl.onChange = () => invalidate?.()
+    ctrl.onStart = () => setIsRotating(true)
+    ctrl.onEnd = () => setIsRotating(false)
+    attachControls(ctrl)
+    return () => {
+      attachControls(null)
+      ctrl.dispose()
     }
-    canvas.addEventListener('pointerdown', onPointerDown, { capture: true })
-    return () => canvas.removeEventListener('pointerdown', onPointerDown, { capture: true })
-  }, [gl])
+  }, [camera, gl, invalidate, setIsRotating, showSeq, attachControls])
+
+  // `enabled` is a runtime gate, not a reason to rebuild the controller: a
+  // sketch drag or a part manipulation can toggle it every gesture.
+  const drag = useSketchEditorStore(s => s.drag)
+  const dragPending = useSketchEditorStore(s => s.dragPending)
+  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
+  const sketchOrbitEnabled = deriveOrbitEnabled(isPointerDown, drag, dragPending)
+  const orbitAllowed = orbitEnabled ?? sketchOrbitEnabled
+  useEffect(() => {
+    if (ctrlRef.current) ctrlRef.current.enabled = orbitAllowed
+  }, [orbitAllowed, showSeq])
 
   useFrame(() => {
     if (snapRef.current) {
@@ -164,24 +147,5 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
       pvRef.current = drawCubeGizmo(gizmoCanvasRef.current, camera, hoverRef.current, invalidate)
   })
 
-  const drag = useSketchEditorStore(s => s.drag)
-  const dragPending = useSketchEditorStore(s => s.dragPending)
-  const isPointerDown = useSketchEditorStore(s => s.isPointerDown)
-  const sketchOrbitEnabled = deriveOrbitEnabled(isPointerDown, drag, dragPending)
-  const setIsRotating = useSketchEditorStore(s => s.setIsRotating)
-
-  return (
-    <OrbitControls
-      key={showSeq}
-      ref={attachControls}
-      enabled={orbitEnabled ?? sketchOrbitEnabled}
-      mouseButtons={MOUSE_BUTTONS}
-      enableRotate
-      enableZoom
-      enablePan
-      enableDamping={false}
-      onStart={() => setIsRotating(true)}
-      onEnd={() => setIsRotating(false)}
-    />
-  )
+  return null
 }

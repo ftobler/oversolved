@@ -1,11 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
 import { snapToDirection, alignToPlane, alignToFace, fitToContent, shouldAutoFit } from '@/components/Viewport/cameraController'
+import { TurntableControls } from '@/components/Viewport/turntable'
 import type { BodyResult } from '@/types/cad'
-
-function makeControls() {
-  return { target: new THREE.Vector3(), update: () => {} }
-}
 
 function makeOrtho() {
   const cam = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
@@ -15,19 +12,28 @@ function makeOrtho() {
   return cam
 }
 
+// The real controller, so the camera and its orbit state stay in lockstep the
+// way they do in the viewport. A fake `{target, update}` would let the old
+// position-plus-lookAt assumptions slip back in untested.
+function makeControls(cam = makeOrtho()) {
+  return new TurntableControls(cam)
+}
+
 describe('cameraController', () => {
   it('snapToDirection points along the direction and preserves distance from origin', () => {
     const cam = makeOrtho()
     const dist = cam.position.length()
-    snapToDirection(cam, makeControls() as never, new THREE.Vector3(0, 0, 5))
+    const controls = makeControls(cam)
+    snapToDirection(cam, controls, new THREE.Vector3(0, 0, 5))
     expect(cam.position.x).toBeCloseTo(0)
     expect(cam.position.y).toBeCloseTo(0)
     expect(cam.position.z).toBeCloseTo(dist)
+    expect(controls.target.toArray()).toEqual([0, 0, 0])
   })
 
   it('alignToPlane positions the camera for a known plane and no-ops on unknown', () => {
     const cam = makeOrtho()
-    alignToPlane(cam, makeControls() as never, 'builtin_plane_top')
+    alignToPlane(cam, makeControls(cam), 'builtin_plane_top')
     // Top plane looks down +Y, distance 100.
     expect(cam.position.x).toBeCloseTo(0)
     expect(cam.position.y).toBeCloseTo(100)
@@ -35,31 +41,33 @@ describe('cameraController', () => {
 
     const cam2 = makeOrtho()
     const before = cam2.position.toArray()
-    alignToPlane(cam2, makeControls() as never, 'not_a_plane')
+    alignToPlane(cam2, makeControls(cam2), 'not_a_plane')
     expect(cam2.position.toArray()).toEqual(before)
   })
 
   it('alignToFace offsets along the normal from the face center and no-ops on a degenerate normal', () => {
     const cam = makeOrtho()
-    const controls = makeControls()
-    alignToFace(cam, controls as never, [0, 0, 1], [10, 20, 30])
-    expect(cam.position.toArray()).toEqual([10, 20, 130])
+    const controls = makeControls(cam)
+    alignToFace(cam, controls, [0, 0, 1], [10, 20, 30])
+    expect(cam.position.x).toBeCloseTo(10, 9)
+    expect(cam.position.y).toBeCloseTo(20, 9)
+    expect(cam.position.z).toBeCloseTo(130, 9)
     expect(controls.target.toArray()).toEqual([10, 20, 30])
 
     const cam2 = makeOrtho()
     const before = cam2.position.toArray()
-    alignToFace(cam2, makeControls() as never, [0, 0, 0], [1, 2, 3])
+    alignToFace(cam2, makeControls(cam2), [0, 0, 0], [1, 2, 3])
     expect(cam2.position.toArray()).toEqual(before)
   })
 
   it('fitToContent returns false with no geometry and true once body vertices are present', () => {
     const cam = makeOrtho()
-    expect(fitToContent(cam, makeControls() as never, {}, null)).toBe(false)
+    expect(fitToContent(cam, makeControls(cam), {}, null)).toBe(false)
 
     const bodies: Record<string, BodyResult> = {
       a: { mesh: { vertices: new Float32Array([-10, -10, -10, 10, 10, 10]) } } as unknown as BodyResult,
     }
-    const fit = fitToContent(cam, makeControls() as never, bodies, null)
+    const fit = fitToContent(cam, makeControls(cam), bodies, null)
     expect(fit).toBe(true)
     expect(cam.zoom).toBeGreaterThan(0)
     expect(Number.isFinite(cam.zoom)).toBe(true)
@@ -70,9 +78,27 @@ describe('cameraController', () => {
     const bodies: Record<string, BodyResult> = {
       a: { mesh: { vertices: [[-10, -10, -10], [10, 10, 10]] } } as unknown as BodyResult,
     }
-    expect(fitToContent(cam, makeControls() as never, bodies, null)).toBe(true)
+    expect(fitToContent(cam, makeControls(cam), bodies, null)).toBe(true)
     expect(Number.isFinite(cam.zoom)).toBe(true)
     expect(cam.zoom).toBeGreaterThan(0)
+  })
+
+  it('fit moves the target to the content centre without changing the view direction', () => {
+    const cam = makeOrtho()
+    const controls = makeControls(cam)
+    controls.azimuth = 0.42
+    controls.elevation = 0.31
+    controls.update()
+    const directionBefore = cam.position.clone().sub(controls.target).normalize()
+    const bodies: Record<string, BodyResult> = {
+      a: { mesh: { vertices: new Float32Array([90, 90, 90, 110, 110, 110]) } } as unknown as BodyResult,
+    }
+    expect(fitToContent(cam, controls, bodies, null)).toBe(true)
+    expect(controls.target.toArray()).toEqual([100, 100, 100])
+    const directionAfter = cam.position.clone().sub(controls.target).normalize()
+    expect(directionAfter.x).toBeCloseTo(directionBefore.x, 9)
+    expect(directionAfter.y).toBeCloseTo(directionBefore.y, 9)
+    expect(directionAfter.z).toBeCloseTo(directionBefore.z, 9)
   })
 
   it('scene fallback measures only fitBounds-tagged meshes and is stable on repeat (no oscillation)', () => {
@@ -93,13 +119,14 @@ describe('cameraController', () => {
     scene.add(helper)
     scene.updateMatrixWorld(true)
 
-    expect(fitToContent(cam, makeControls() as never, {}, scene)).toBe(true)
+    const controls = makeControls(cam)
+    expect(fitToContent(cam, controls, {}, scene)).toBe(true)
     const zoomAfterFirst = cam.zoom
 
     // Second press: the helper would have resized if it were measured. Re-sync it
     // and fit again - a stable fit lands on the same zoom (fixed point).
     syncHelper()
-    expect(fitToContent(cam, makeControls() as never, {}, scene)).toBe(true)
+    expect(fitToContent(cam, controls, {}, scene)).toBe(true)
     expect(cam.zoom).toBeCloseTo(zoomAfterFirst, 6)
   })
 })
@@ -136,13 +163,13 @@ describe('fitToContent clip planes', () => {
 
   it('keeps the range tight for a small model so the polygon offset stays invisible', () => {
     const cam = makeOrtho()
-    expect(fitToContent(cam, makeControls() as never, boxBody(0, 0, 0, 10), null)).toBe(true)
+    expect(fitToContent(cam, makeControls(cam), boxBody(0, 0, 0, 10), null)).toBe(true)
     expect(cam.far - cam.near).toBeLessThanOrEqual(1500)
   })
 
   it('clips neither end of a model far deeper than any fixed range', () => {
     const cam = makeOrtho()
-    expect(fitToContent(cam, makeControls() as never, boxBody(0, 0, 0, 10000), null)).toBe(true)
+    expect(fitToContent(cam, makeControls(cam), boxBody(0, 0, 0, 10000), null)).toBe(true)
     for (const corner of cornersOf(0, 0, 0, 10000)) {
       const depth = depthOf(cam, corner)
       expect(depth).toBeGreaterThan(cam.near)
@@ -152,7 +179,7 @@ describe('fitToContent clip planes', () => {
 
   it('keeps the world origin visible when the model sits far from it', () => {
     const cam = makeOrtho()
-    expect(fitToContent(cam, makeControls() as never, boxBody(0, 0, 3000, 10), null)).toBe(true)
+    expect(fitToContent(cam, makeControls(cam), boxBody(0, 0, 3000, 10), null)).toBe(true)
     const originDepth = depthOf(cam, [0, 0, 0])
     expect(originDepth).toBeGreaterThan(cam.near)
     expect(originDepth).toBeLessThan(cam.far)
@@ -160,12 +187,12 @@ describe('fitToContent clip planes', () => {
 
   it('does not let the origin drag the framing away from the model', () => {
     const atOrigin = makeOrtho()
-    fitToContent(atOrigin, makeControls() as never, boxBody(0, 0, 0, 10), null)
+    fitToContent(atOrigin, makeControls(atOrigin), boxBody(0, 0, 0, 10), null)
 
     // Same model, moved far off. The origin counts for depth only, so zoom -
     // which is decided by the lateral extents - must not change.
     const farOff = makeOrtho()
-    fitToContent(farOff, makeControls() as never, boxBody(3000, 3000, 0, 10), null)
+    fitToContent(farOff, makeControls(farOff), boxBody(3000, 3000, 0, 10), null)
     expect(farOff.zoom).toBeCloseTo(atOrigin.zoom, 6)
   })
 })

@@ -140,8 +140,10 @@ export interface AssemblyEditorData {
   entitySelection: Set<string>
   // The single entity under the cursor in B-rep selection mode; null when none.
   hoveredEntity: string | null
-  // The ID-buffer debug renderpass overlay (mirrors the part editor's showDebugHit).
-  showPickDebug: boolean
+  // The ID-buffer debug renderpass overlay lives in viewOptionsStore
+  // (`collisionDebug`) now: one flag for both editors, drawn from the viewport's
+  // own View Options dropdown. It left this store with the header button it
+  // used to be toggled by.
   // Live drag/gizmo state; null between manipulations. This is the single
   // React-visible truth for "a drag is live": the viewport derives its orbit
   // lock and render gates from it, and the gesture machine in
@@ -192,7 +194,6 @@ export function createDefaultAssemblyEditorData(): AssemblyEditorData {
     hoverHits: [],
     entitySelection: new Set(),
     hoveredEntity: null,
-    showPickDebug: false,
     manipulation: null,
     gizmoDrag: null,
     settlingOffsets: {},
@@ -268,7 +269,7 @@ const STORE_OWNED_FIELDS = [
   'activeMateField', 'mateFieldDirty',
   'editingSubject',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
-  'entitySelection', 'hoveredEntity', 'showPickDebug',
+  'entitySelection', 'hoveredEntity',
   'solveStatus',
   'undoStack', 'redoStack',
 ] as const
@@ -347,7 +348,6 @@ interface AssemblyEditorState extends AssemblyEditorData {
   clearSelection: () => void
   // The lone entity highlighted under the cursor in B-rep selection mode.
   setHoveredEntity: (entityKey: string | null) => void
-  setShowPickDebug: (enabled: boolean) => void
   // The reference a mate pick chip would commit right now; the set is retained.
   activePickCandidate: () => MateRef | null
   /** The settled pose of one part: the last solve carried by any committed drag
@@ -582,8 +582,6 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   setHoveredEntity: (entityKey) => set((prev) => (
     prev.hoveredEntity === entityKey ? {} : { hoveredEntity: entityKey }
   )),
-
-  setShowPickDebug: (enabled) => set({ showPickDebug: enabled }),
 
   activePickCandidate: () => {
     const { pickCandidates, pickIndex } = get()

@@ -1,3 +1,4 @@
+import * as THREE from 'three'
 import type { Mesh3D, EdgeData } from '@/types/cad'
 import { ARC_SEGMENTS } from '@/components/Geometry3D/constants'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
@@ -63,6 +64,28 @@ export function buildBodyGeometry(mesh: Mesh3D): {
     indices[i * 3] = a; indices[i * 3 + 1] = b; indices[i * 3 + 2] = c
   })
   return { positions, indices }
+}
+
+/**
+ * The indexed surface both editors draw, with smooth per-vertex normals.
+ *
+ * `computeVertexNormals` averages the adjacent triangle normals at each shared
+ * vertex, which is what makes zebra stripes continuous across a tessellated
+ * curved face. The worker's mesh shares vertices per face boundary, so the
+ * average never crosses a B-rep face: a real crease keeps its hard edge while a
+ * cylinder's ring is radial.
+ *
+ * Kept indexed: the part editor splits it with `toNonIndexed` afterwards for
+ * the per-face colour runs, and the assembly draws it as-is. Curvature is
+ * computed on this vertex order.
+ */
+export function buildBodySurfaceGeometry(mesh: Mesh3D): THREE.BufferGeometry {
+  const { positions, indices } = buildBodyGeometry(mesh)
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1))
+  geometry.computeVertexNormals()
+  return geometry
 }
 
 /**

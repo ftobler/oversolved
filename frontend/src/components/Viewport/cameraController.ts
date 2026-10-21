@@ -1,7 +1,7 @@
 import * as THREE from 'three'
-import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { BodyResult } from '@/types/cad'
 import { INITIAL_ZOOM } from './cameraConstants'
+import type { TurntableControls } from './turntable'
 
 // How much of the viewport the framed content fills: targetViewHeight =
 // contentHeight * FIT_MARGIN, so content occupies 1/FIT_MARGIN of the frustum.
@@ -29,7 +29,7 @@ const MIN_CLIP_PAD = 500
 
 // ─── camera chokepoint ───
 // Every programmatic camera move in the viewport goes through this module.
-// The camera itself is otherwise only touched by the user (OrbitControls) and
+// The camera itself is otherwise only touched by the user (TurntableControls) and
 // created once by the <Canvas>. Having a single set of writers means one place
 // answers "what moved the camera, and why" - flip CAMERA_TRACE to true to
 // follow every move with its trigger source, which is what makes
@@ -40,27 +40,49 @@ export function traceCamera(op: string, ...detail: unknown[]): void {
   if (CAMERA_TRACE) console.log(`[camera] ${op}`, ...detail)
 }
 
-type Controls = OrbitControlsImpl | null
+type Controls = TurntableControls | null
 
 // updateProjectionMatrix lives on the camera subclasses (Ortho/Perspective),
-// not the THREE.Camera base type. Our camera is always one of those.
+// not the THREE.Camera base type. Our camera is always one of those, but the
+// base-camera tests and probe helpers can hand in the base type.
 function commitProjection(camera: THREE.Camera): void {
-  (camera as THREE.OrthographicCamera).updateProjectionMatrix()
+  const cam = camera as THREE.Camera & { updateProjectionMatrix?: () => void }
+  cam.updateProjectionMatrix?.()
 }
 
 function readZoom(camera: THREE.Camera): number {
   return 'zoom' in camera ? (camera as unknown as { zoom: number }).zoom : INITIAL_ZOOM
 }
 
+// Point the camera at a known direction (target -> camera) from a known target,
+// keeping the controller's state and the camera in lockstep. The fallback is
+// only for callers without a controller (the unit tests of this module): it
+// positions the camera directly and leaves the roll to lookAt.
+function pointCamera(
+  camera: THREE.Camera,
+  controls: Controls,
+  direction: THREE.Vector3,
+  distance: number,
+  target: THREE.Vector3,
+  poleAzimuth: number,
+): void {
+  if (controls) {
+    controls.setDirection(direction, { distance, target, poleAzimuth })
+    return
+  }
+  const dir = direction.clone().normalize()
+  camera.position.copy(target).addScaledVector(dir, distance)
+  camera.lookAt(target)
+  commitProjection(camera)
+}
+
 // Rotate to look down the given direction (gizmo face/edge/corner click),
 // preserving the current distance from the origin.
 export function snapToDirection(camera: THREE.Camera, controls: Controls, dir: THREE.Vector3): void {
-  const d = dir.clone().normalize()
-  const dist = camera.position.length()
-  traceCamera('snapToDirection', 'dir=', d.toArray())
-  camera.position.copy(d.multiplyScalar(dist))
-  controls?.target.set(0, 0, 0)
-  controls?.update()
+  traceCamera('snapToDirection', 'dir=', dir.toArray())
+  // A straight-up or straight-down snap gets the canonical top-view roll
+  // (screen up -Z), never whatever azimuth the previous drag left behind.
+  pointCamera(camera, controls, dir, camera.position.length(), new THREE.Vector3(), 0)
 }
 
 const PLANE_DIRECTIONS: Record<string, [number, number, number]> = {
@@ -78,14 +100,10 @@ export function alignToPlane(camera: THREE.Camera, controls: Controls, planeId: 
   if (!direction) { traceCamera('alignToPlane', 'unknown plane', planeId); return }
   traceCamera('alignToPlane', planeId)
 
-  const distance = 100
-  const [dx, dy, dz] = direction
-  const norm = Math.sqrt(dx * dx + dy * dy + dz * dz)
-  camera.position.set((dx / norm) * distance, (dy / norm) * distance, (dz / norm) * distance)
-  camera.lookAt(0, 0, 0)
-  controls?.target.set(0, 0, 0)
-  controls?.update()
-  commitProjection(camera)
+  // The builtin views all look from a 100-unit standoff at the origin, and the
+  // poles carry the canonical CAD roll: Top has the Front plane at the bottom
+  // of the screen, Bottom mirrors it.
+  pointCamera(camera, controls, new THREE.Vector3(...direction), 100, new THREE.Vector3(), 0)
 }
 
 // Look straight at a face, centred on it.
@@ -100,17 +118,17 @@ export function alignToFace(
   if (norm === 0) { traceCamera('alignToFace', 'degenerate normal'); return }
   traceCamera('alignToFace', 'center=', faceCenter)
 
-  const distance = 100
-  const ndx = nx / norm, ndy = ny / norm, ndz = nz / norm
-  camera.position.set(
-    faceCenter[0] + ndx * distance,
-    faceCenter[1] + ndy * distance,
-    faceCenter[2] + ndz * distance,
+  // Aligning to a horizontal face keeps the current azimuth, so looking at a
+  // top face does not spin the view around the vertical axis.
+  const poleAzimuth = controls?.azimuth ?? 0
+  pointCamera(
+    camera,
+    controls,
+    new THREE.Vector3(nx, ny, nz),
+    100,
+    new THREE.Vector3(...faceCenter),
+    poleAzimuth,
   )
-  camera.lookAt(faceCenter[0], faceCenter[1], faceCenter[2])
-  controls?.target.set(faceCenter[0], faceCenter[1], faceCenter[2])
-  controls?.update()
-  commitProjection(camera)
 }
 
 // Auto-fit is a document-load intent, not a running behaviour: it stays armed
@@ -278,8 +296,15 @@ export function fitToContent(
   camera.far = maxDepth + pad
   traceCamera('fitToContent', 'clip=', [camera.near, camera.far])
 
-  controls?.target.set(cx, cy, cz)
-  controls?.update()
-  commitProjection(camera)
+  if (controls) {
+    // The lateral slide keeps the view direction; only the target moves to the
+    // content centre and the distance is re-read from the new standoff. The
+    // controller re-applies the same position with its own unclamped roll.
+    controls.target.copy(centerWorld)
+    controls.distance = Math.max(newPos.distanceTo(centerWorld), 1e-6)
+    controls.update()
+  } else {
+    commitProjection(camera)
+  }
   return true
 }

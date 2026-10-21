@@ -95,14 +95,6 @@ vi.mock('@react-three/fiber', () => ({
   useFrame: (cb: () => void) => { frameCb.current = cb },
 }))
 
-vi.mock('@react-three/drei', () => ({
-  OrbitControls: (props: { ref?: (v: unknown) => void }) => {
-    const fake = { target: new THREE.Vector3(), update: () => {}, mouseButtons: { RIGHT: THREE.MOUSE.ROTATE } }
-    if (props.ref) props.ref(fake)
-    return null
-  },
-}))
-
 describe('SceneController consumes the gizmo snap each frame', () => {
   it('snaps the camera and nulls snapRef when a gizmo snap is pending', async () => {
     const cameraController = await import('@/components/Viewport/cameraController')

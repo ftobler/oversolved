@@ -3,7 +3,6 @@ import type { ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
-import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { Feature, PartFeature, Sketch, BodyResult } from '@/types/cad'
 import { unflattenGeometry, deriveConstraints } from '@/utils/geometry/geometryMapping'
 import Geometry3D from '@/components/Geometry3D'
@@ -11,6 +10,7 @@ import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
 import '@/components/Viewport/ViewportHud.css'
 import { type Hit, type Pv } from '@/components/misc/CubeGizmo.utils'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { useEditorState } from '@/hooks/useEditorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Body3D from '@/components/Geometry3D/Body3D'
@@ -20,9 +20,13 @@ import FeatureHandles from '@/components/Viewport/FeatureHandles'
 import ReferencePlane from '@/components/Viewport/ReferencePlane'
 import SceneController from '@/components/Viewport/SceneController'
 import { RenderOnChange, RenderOnce } from '@/components/Viewport/RenderOnChange'
+import { useSceneExposure } from '@/components/Viewport/SceneExposure'
+import { useLayerPipelineEffects } from '@/components/Viewport/viewOptionsEffects'
+import { autoRangeFromMeshes } from '@/components/Geometry3D/curvature'
 import { MsaaRender } from '@/components/Viewport/MsaaRender'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/components/Viewport/cameraController'
+import type { TurntableControls } from '@/components/Viewport/turntable'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
@@ -93,6 +97,10 @@ export interface ViewportProps {
   // measurement readout). A node rather than a fixed component so the part and
   // assembly editors can each hand in their own readout.
   hud?: ReactNode
+  // The viewer options button, stacked ABOVE the cube. Separate from `hud`
+  // because the stack order is part of the layout (options, cube, readout), not
+  // something a caller should have to reproduce.
+  viewOptions?: ReactNode
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
@@ -123,6 +131,7 @@ export interface ViewportHandle {
 export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   onRightClick,
   hud,
+  viewOptions,
 }: ViewportProps, ref) {
   // Session/solver facts come from the publication store; the editor FSM and
   // the derived non-solve fields come from L2.
@@ -139,7 +148,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const partColors = useEditorState(s => s.partColors)
   const partStyle = useEditorState(s => s.partStyle)
   const activeFeatureId = useEditorState(s => s.activeSketchFeatureId) ?? undefined
-  const showDebugHit = useSketchUiStore(s => s.showDebugHit)
+  const editingFeatureId = useEditorState(s => s.editingFeatureId)
+  const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
+  const shading = useViewOptionsStore(s => s.shading)
+  const edges = useViewOptionsStore(s => s.edges)
+  const curvature = useViewOptionsStore(s => s.curvature)
+  const curvatureKind = useViewOptionsStore(s => s.curvature_kind)
+  const setCurvatureAutoRange = useViewOptionsStore(s => s.setCurvatureAutoRange)
 
   const featureDefs = doc?.features as PartFeature[] | undefined
 
@@ -148,7 +163,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const hoverRef = useRef<Hit | null>(null)
   const snapRef = useRef<THREE.Vector3 | null>(null)
   const cameraRef = useRef<THREE.Camera | null>(null)
-  const controlsRef = useRef<OrbitControlsImpl | null>(null)
+  const controlsRef = useRef<TurntableControls | null>(null)
   const glRef = useRef<THREE.WebGLRenderer | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   // The Canvas's own invalidate, published by RenderOnChange. The viewport
@@ -167,6 +182,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const consumedLayers = PART_EDITOR_CONSUMED_LAYERS
   const clearIdBufferHover = useIdBufferPointerDispatch({ glRef, consumedLayers })
 
+  // Shading/Edges change the ID layers, so a toggle has to dirty the buffer and
+  // drop the hover that was resolved against the old ones. The registration
+  // hooks dirty the buffer themselves; this adds the hover half.
+  useLayerPipelineEffects(clearIdBufferHover)
+
   // Bumped when the scene-side prerequisites of a fit become live (the
   // Canvas-owned camera via SceneController, gl/scene via onCreated). R3F
   // renders the scene tree on a later frame than this component's mount, so a
@@ -180,6 +200,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // per instance inside SceneController.
   const [sceneTick, setSceneTick] = useState(0)
   const onSceneReady = useCallback(() => setSceneTick(t => t + 1), [])
+
+  // Brightness lands on the renderer itself, not on a scene instance; the
+  // readiness tick is what tells this hook the renderer ref is finally set.
+  useSceneExposure(glRef, invalidateRef, sceneTick)
 
   const createdLiveRef = useRef(false)
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
@@ -424,6 +448,18 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     [bodies, features, rollbackPosition, visibleBodies]
   )
 
+  // The legend names the range the bodies are actually painted with, and the
+  // range spans the whole visible scene. Bodies only compute their own field;
+  // this is the one place that sees them all.
+  useEffect(() => {
+    if (!curvature) {
+      setCurvatureAutoRange(null)
+      return
+    }
+    const meshes = bodyItems.filter(item => item.visible).map(item => item.mesh)
+    setCurvatureAutoRange(autoRangeFromMeshes(meshes, curvatureKind))
+  }, [curvature, curvatureKind, bodyItems, setCurvatureAutoRange])
+
   // Show ALL pickBodies regardless of rollbackPosition -- these represent the body
   // state before entering edit mode, and the user needs to see every prior body to
   // pick faces/edges as references for the feature being edited. Bodies the edit
@@ -537,6 +573,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       metalness={partStyle?.[b.key]?.metalness ?? 0}
       transmission={partStyle?.[b.key]?.transmission ?? 0}
       doomed={b.doomed}
+      showFaces={shading}
+      showEdges={edges}
     />
   )
 
@@ -557,7 +595,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         gl={CANVAS_GL}
         // Demand, not the R3F default "always": the scene draws when something
         // that feeds it changed (RenderOnChange below, the reconciler's own
-        // instance invalidations, OrbitControls' change listener), never once
+        // instance invalidations, TurntableControls' change listener), never once
         // per display refresh. An idle viewport presents nothing, so a
         // compositor that mishandles a re-presented canvas has no frame to get
         // wrong, and the GPU and battery stay idle with it.
@@ -581,7 +619,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
         <IdPickingDriver onReady={onIdPipelineReady} />
         <SceneProbeDriver />
-        {showDebugHit && <IdDebugOverlay />}
+        {collisionDebug && <IdDebugOverlay />}
 
         {/* Local boundary so the 1.47 MB HDR no longer hides and re-shows the
             entire Canvas subtree (which destroys and recreates the IdPipeline on
@@ -622,7 +660,14 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           .map(f => {
             const curve = solveResults?.[f.id]?.curve
             if (!curve) return null
-            return <HelixCurve key={f.id} featureId={f.id} curve={curve} />
+            return (
+              <HelixCurve
+                key={f.id}
+                featureId={f.id}
+                curve={curve}
+                isEditing={editingFeatureId === f.id}
+              />
+            )
           })}
 
         <ThreadCurves curves={threadCurves} />
@@ -692,7 +737,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           which entities the cursor's disc actually covers, in the order the
           click would take them. The buffer overlay can only show that a mark
           exists, not which entity it is. */}
-      {showDebugHit && <IdPickReadout glRef={glRef} />}
+      {collisionDebug && <IdPickReadout glRef={glRef} />}
 
       {/* 268: rubber-band drag-box selection overlay. A box is crossing-only;
           the window-mode styling and its mode branch were deleted with the
@@ -726,6 +771,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       )}
 
       <div className="viewport-hud">
+        {viewOptions}
         <CubeGizmoCanvas
           canvasRef={canvasRef}
           pvRef={pvRef}

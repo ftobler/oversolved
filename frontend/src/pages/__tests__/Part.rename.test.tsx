@@ -60,7 +60,6 @@ describe('Part rename dialog', () => {
     modeStack: [],
   })
   useSketchUiStore.setState({
-    showDebugHit: false,
   })
   })
 

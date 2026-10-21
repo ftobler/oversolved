@@ -30,7 +30,6 @@ vi.mock('@react-three/fiber', () => ({
 
 vi.mock('@react-three/drei', () => ({
   OrthographicCamera: () => null,
-  OrbitControls: () => null,
   Line: () => null,
   Text: () => null,
   Environment: () => null,
@@ -81,7 +80,6 @@ beforeEach(() => {
   })
   useSketchUiStore.setState({
     closeContextMenu: () => {},
-    showDebugHit: false,
   })
   usePartEditorStore.setState({
     features: [] as Feature[],

@@ -9,6 +9,7 @@ import {
   applyAddRevolveProfile,
   applyAddSweepProfile,
   applyAddSweepPath,
+  applyRemoveSweepPath,
   applyRemoveExtrudeProfile,
   applySetHoleSketch,
 } from '@/utils/yamlMutations/featureDefs'
@@ -233,5 +234,48 @@ describe('the auto-hide is a one-shot', () => {
     expect(auto_hidden0(doc)).toBeUndefined()
     applyAddExtrudeProfile(doc, 'ex1', 'entity:sk1:circle1')
     expect(drawn(doc, 'sk1')).toBe(false)
+  })
+})
+
+// A helix used as a sweep path is sketch-class reference geometry: it is
+// consumed and auto-hidden exactly like a sketch path, and the same one-shot
+// stamp makes showing it permanent.
+describe('a consumed helix is hidden and its show is permanent', () => {
+  const helixFeature = (id: string): PartFeature => ({ id, kind: 'helix', helix: {} })
+  const sweepPathFeature = (id: string): PartFeature => ({ id, kind: 'sweep', sweep: { sketch: '', path: '' } })
+  const helixAutoHidden = (doc: PartDoc) => doc.features!.find(f => f.kind === 'helix')!.auto_hidden
+
+  it('picking a helix as a sweep path hides it', () => {
+    const doc = makeDoc([helixFeature('hx1'), sweepPathFeature('sw1')])
+    applyAddSweepPath(doc, 'sw1', '@hx1')
+    expect(drawn(doc, 'hx1')).toBe(false)
+  })
+
+  it('the eye shows a consumed helix and stamps the one-shot, so a later consume leaves it shown', () => {
+    const doc = makeDoc([helixFeature('hx1'), sweepPathFeature('sw1'), sweepPathFeature('sw2')])
+    applyAddSweepPath(doc, 'sw1', '@hx1')
+    applySetFeatureVisibility(doc, 'hx1', true)
+    expect(drawn(doc, 'hx1')).toBe(true)
+    expect(helixAutoHidden(doc)).toBe(true)
+    applyAddSweepPath(doc, 'sw2', '@hx1')
+    expect(drawn(doc, 'hx1')).toBe(true)
+  })
+
+  it('the bulk reference toggle shows a consumed helix and stamps it too', () => {
+    const doc = makeDoc([helixFeature('hx1'), sweepPathFeature('sw1'), sweepPathFeature('sw2')])
+    applyAddSweepPath(doc, 'sw1', '@hx1')
+    applyToggleSketchPlaneVisibility(doc)
+    expect(drawn(doc, 'hx1')).toBe(true)
+    expect(helixAutoHidden(doc)).toBe(true)
+    applyAddSweepPath(doc, 'sw2', '@hx1')
+    expect(drawn(doc, 'hx1')).toBe(true)
+  })
+
+  it('the path un-picked shows the helix again', () => {
+    const doc = makeDoc([helixFeature('hx1'), sweepPathFeature('sw1')])
+    applyAddSweepPath(doc, 'sw1', '@hx1')
+    expect(drawn(doc, 'hx1')).toBe(false)
+    applyRemoveSweepPath(doc, 'sw1', 0)
+    expect(drawn(doc, 'hx1')).toBe(true)
   })
 })

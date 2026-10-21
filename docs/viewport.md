@@ -8,7 +8,7 @@ The frontend 3D viewport is an R3F (React Three Fiber) scene inside a single `Ca
 <Canvas orthographic camera={INITIAL_CAMERA} frameloop="demand"> (antialias, logarithmicDepthBuffer, background #111)
                                            (camera: pos [20,20,100], zoom 80, near=-500, far=500)
   <RenderOnChange />                        (asks for a frame on every scene-store change)
-  <SceneController />                       (OrbitControls + CubeGizmo on drawn frames)
+  <SceneController />                       (TurntableControls + CubeGizmo on drawn frames)
   <IdPickingDriver />                       (offscreen ID render target; pick source)
   <SceneProbeDriver />                      (publishes camera + canvas to the scene probe)
   <Environment /> + <EnvLight />           (IBL env map; EnvLight rotates the env to follow the camera)
@@ -63,12 +63,12 @@ mapping the cursor onto the sketch plane.
 Transforms raw events into clean primitives:
 - **Coordinate sanitization**: world point → sketch-local 2D via inverse parent quaternion, off-plane rejection (>1 unit)
 - **Click-vs-drag**: 4px screen-space threshold; drag initiation postponed until threshold exceeded (prevents race condition where click events fire after hidden collision geometry)
-- **Camera state**: `orbitEnabled` flag gates OrbitControls; disabled during drag/draw, `isRotating` suppresses hover/selection
+- **Camera state**: `orbitEnabled` flag gates the turntable; disabled during drag/draw, `isRotating` suppresses hover/selection
 
 ### Layer 3A: Navigation Subsystem
 
-- **SceneController**: OrbitControls + CubeGizmo + keyboard modifiers + snap-to-direction animation in one `useFrame`
-- **OrbitControls**: Left button disabled (reserved for selection), Middle=pan, Right=rotate. Ctrl=pan, Shift=dolly
+- **SceneController**: TurntableControls + CubeGizmo + keyboard modifiers + snap-to-direction animation in one `useFrame`
+- **TurntableControls**: an unclamped, level-horizon turntable (`Viewport/turntable.ts`): right-drag rotates over the poles without clamping, the camera never rolls (screen right stays horizontal), and past a pole the view is upside down with the horizon still level. Left button disabled (reserved for selection), Middle=pan, Right=rotate. Ctrl=pan, Shift=dolly. The state (`target`, `distance`, `azimuth`, `elevation`, ortho `zoom`) is the single source of the camera pose; fit and plane/face alignment set it rather than calling `lookAt`.
 - **Camera alignment**: `autoZoomToFit`, `alignCameraToPlane` (Front/Top/Right/etc.), `alignCameraToFace`
 - **CubeGizmo**: 2D canvas overlay, painted on drawn frames with face/edge/vertex hit detection
 
@@ -178,7 +178,7 @@ plain, JSON-safe snapshot of the scene, readable without a devtools connection:
 - The Canvas is created with `antialias: false`; `MsaaRender` (inside the Canvas) claims the frame with useFrame priority 1, so R3F does not call `gl.render` itself. It renders the scene into a 4x multisampled half-float target sized to the drawing buffer (`Viewport/msaaPresenter.ts`) and draws the resolved image to the canvas through three's `OutputPass`, which applies the renderer's ACES tone mapping and sRGB encoding (rendering into a target skips both for the scene's materials). Its shader is swapped for `PREMULTIPLIED_OUTPUT_FRAGMENT`, which divides coverage out before tone mapping and multiplies it back after encoding, because the transparent-cleared target holds premultiplied colour at antialiased fringes. Fully covered opaque pixels match a direct render; blending and the sample resolve now happen in linear light, so antialiased edges and translucent overlays are weighted differently than the old sRGB-space blend (keeping the old weighting would need three's internal `isXRRenderTarget` flag). The browser is handed a single-sampled image and resolves nothing on present: a multisampled canvas shimmered fine 1px lines on Chrome + NVIDIA under Wayland, although a readback of every frame was pixel-identical. The assembly viewport still renders directly with a multisampled canvas.
 - The Canvas runs `frameloop="demand"`: an idle viewport presents nothing, so the GPU and the compositor stay idle. A frame is requested by:
   - R3F itself: every scene instance it creates, updates or reveals, and every root-store change (size, dpr, scene, camera);
-  - drei's `OrbitControls`, whose change listener invalidates on every camera move;
+  - `TurntableControls`, whose change listener invalidates on every camera move;
   - `RenderOnChange` (inside the Canvas), which asks through `subscribeSceneInvalidation` (`Viewport/sceneInvalidation.ts`) on every change in the stores that feed the scene: `usePartEditorStore`, `editorState` (`useSketchEditorStore` is that same store) and `useSketchUiStore`;
   - `RenderOnChange`'s other two cases: a restored GL context (`webglcontextrestored` leaves a blank canvas and touches no store), and `RenderOnce`, mounted beside `Environment` inside the Suspense boundary because the landed HDR map applies scene state from a layout effect and creates no R3F instance;
   - the imperative camera paths (fit, plane/face alignment) and the orientation cube's hover/snap (only when the drawn highlight changed), which reach the Canvas's own invalidate through the `invalidateRef` `RenderOnChange` publishes. `SceneController` also feeds that invalidate to `drawCubeGizmo`'s `onFontReady`, so a label font landing after the frame repaints the cube.

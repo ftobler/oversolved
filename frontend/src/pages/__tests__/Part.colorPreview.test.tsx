@@ -70,7 +70,6 @@ describe('Part Color Preview', () => {
     modeStack: [],
   })
   useSketchUiStore.setState({
-    showDebugHit: false,
   })
   })
 

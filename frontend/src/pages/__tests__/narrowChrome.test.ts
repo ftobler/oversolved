@@ -19,6 +19,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { GIZMO_SIZE } from '@/components/misc/CubeGizmo.utils'
 
 const SRC = join(__dirname, '../..')
 
@@ -313,6 +314,36 @@ describe('phone-width chrome', () => {
     const row = chain('workspace-layout', 'workspace-entries', 'workspace-entry-list', 'workspace-entry-row')
     expect(pinned(css, 'flex-wrap', row, PORTRAIT)).toBe('wrap')
     expect(effective(css, 'flex-wrap', row, TOP_LEVEL)).toBeNull()
+  })
+
+  it('reserves bottom clearance for the whole viewport HUD stack', () => {
+    // The right panel must clear the stack the viewport puts in the corner:
+    // the view options button, the orientation cube, the readout and the
+    // stack's gaps. Every number below is read from the sheet that owns it, so
+    // a widget resize that outgrows the clearance fails here instead of
+    // letting the panel overlap the cube. The one literal is the intent:
+    // 206px of stack plus margin.
+    const css = readFileSync(join(SRC, 'pages/Part.css'), 'utf8')
+    const clearance = Number(/--hud-clearance:\s*(\d+)px/.exec(css)![1])
+    const inset = Number(/--floating-inset:\s*(\d+)px/.exec(css)![1])
+    const button = Number(pinned('components/Viewport/ViewOptions.css', 'height', chain('view-options', 'view-options-btn'), TOP_LEVEL)!.replace('px', ''))
+    const readout = Number(pinned('components/Viewport/ViewportHud.css', 'min-height', chain('viewport-hud', 'viewport-hud-readout'), TOP_LEVEL)!.replace('px', ''))
+    const gap = Number(pinned('components/Viewport/ViewportHud.css', 'gap', chain('viewport-hud'), TOP_LEVEL)!.replace('px', ''))
+
+    const stack = GIZMO_SIZE + button + readout + 2 * gap + inset
+    expect(clearance).toBe(228)
+    expect(clearance).toBeGreaterThanOrEqual(stack)
+  })
+
+  it('turns the view options card into a bottom sheet on a phone', () => {
+    const card = chain('view-options', 'view-options-popover')
+    expect(pinned('components/Viewport/ViewOptions.css', 'position', card, PORTRAIT)).toBe('fixed')
+    expect(pinned('components/Viewport/ViewOptions.css', 'left', card, PORTRAIT)).toBe('0')
+    expect(pinned('components/Viewport/ViewOptions.css', 'right', card, PORTRAIT)).toBe('0')
+    expect(pinned('components/Viewport/ViewOptions.css', 'bottom', card, PORTRAIT)).toBe('0')
+    // Above the breakpoint it stays a popover anchored above the eye button.
+    expect(pinned('components/Viewport/ViewOptions.css', 'position', card, TOP_LEVEL)).toBe('absolute')
+    expect(pinned('components/Viewport/ViewOptions.css', 'bottom', card, TOP_LEVEL)).toBe('calc(100% + 6px)')
   })
 
   it('keeps the neighbour overlap off the panels toggle', () => {

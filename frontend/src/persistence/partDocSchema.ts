@@ -248,6 +248,10 @@ const FEATURE_SCHEMA_BY_KIND = {
   helix: feature('helix', {
     key: 'helix',
     properties: {
+      // A helix is sketch-class, so it carries the same one-shot consume stamp
+      // a sketch does; without this key a shown consumed helix would fail the
+      // schema on save.
+      auto_hidden: { type: 'boolean' },
       reference: REF, radius_mode: { enum: ['derived', 'entered'] },
       mode: { enum: ['pitch_turns', 'pitch_height', 'turns_height', 'angle_turns', 'angle_height'] },
       hand: { enum: ['right', 'left'] }, direction: { enum: ['normal', 'reverse'] },

@@ -1,15 +1,18 @@
-// Which sketches a feature has swallowed.
+// Which sketch-class features a feature has swallowed.
 //
 // A solid feature (extrude, revolve, sweep, hole) consumes the sketch it is
 // built from: once the body exists, the profile wires floating inside it are
-// clutter, so a consumed sketch is not drawn. The answer is needed twice and
-// must not be computed two different ways -- the document rule that hides every
-// consumed sketch and the editor that keeps its own profiles on screen while it
-// is open (utils/featureVisibility) both ask here.
+// clutter, so a consumed sketch is not drawn. A helix picked as a sweep path is
+// reference geometry the same way, so it is consumed by the same rule. The
+// answer is needed twice and must not be computed two different ways -- the
+// document rule that hides every consumed feature and the editor that keeps its
+// own profiles on screen while it is open (utils/featureVisibility) both ask
+// here.
 
 import type { PartFeature } from '@/types/cad'
 import { featureRefId } from '@/utils/query'
 import { selectionSourceFeatureIds } from '@/utils/query/pickOrder'
+import { isSketchClassFeature } from '@/utils/sketchClass'
 
 function refList(ref: string | string[] | undefined): string[] {
   if (Array.isArray(ref)) return ref.filter(r => r)
@@ -29,23 +32,24 @@ function sketchIdsInQuery(
   // names the sketch itself. selectionSourceFeatureIds only reads the `@`
   // spelling, so routing through the one grammar seam here keeps a legacy `$`
   // doc's consumed sketch hidden instead of silently leaving it on screen.
+  // A bare `@<helixId>` names the reference curve the same way.
   const featureId = featureRefId(query)
   if (featureId !== null) {
-    return byId.get(featureId)?.kind === 'sketch' ? [featureId] : []
+    return isSketchClassFeature(byId.get(featureId)) ? [featureId] : []
   }
   const sources = selectionSourceFeatureIds(query, known)
   // A body face or edge names the sketch edges that swept it in its ancestry
   // (`@ex1@body_ex1@sk1/left`), so it mentions the sketch without being sketch
   // geometry. Picking it consumes the body, not the sketch: only a query whose
-  // every source is a sketch picks from a sketch.
-  if (!sources.every(id => byId.get(id)?.kind === 'sketch')) return []
+  // every source is sketch-class picks from sketch-class geometry.
+  if (!sources.every(id => isSketchClassFeature(byId.get(id)))) return []
   return sources
 }
 
 /**
- * Every sketch `feature` consumes as profile or path geometry. A feature that
- * merely references a body face (an extrude off a flat face, say) consumes no
- * sketch and yields nothing.
+ * Every sketch-class feature `feature` consumes as profile or path geometry. A
+ * feature that merely references a body face (an extrude off a flat face, say)
+ * consumes no sketch and yields nothing.
  */
 export function consumedSketchIds(feature: PartFeature, features: PartFeature[]): string[] {
   const byId = new Map(features.map(f => [f.id, f] as const))
@@ -55,9 +59,9 @@ export function consumedSketchIds(feature: PartFeature, features: PartFeature[])
 }
 
 /**
- * Every sketch that ANY feature in the list consumes. The rollback bar is
- * deliberately not consulted: a consumer the bar hides for the moment still
- * owns the sketch.
+ * Every sketch-class feature that ANY feature in the list consumes. The
+ * rollback bar is deliberately not consulted: a consumer the bar hides for the
+ * moment still owns the sketch.
  */
 export function allConsumedSketchIds(features: PartFeature[]): Set<string> {
   const byId = new Map(features.map(f => [f.id, f] as const))

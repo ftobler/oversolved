@@ -149,6 +149,25 @@ describe('body3dHoverViaIdBuffer', () => {
     expect(s.hoveredSelectionId).toBe('@feat3/vertex/0')
   })
 
+  it('a helix edge hover publishes @helix1 through the same edge route', () => {
+    // HelixCurve registers itself as an edge body under its own feature id
+    // (edgeQueries ['@helix1']), so the shared edge adapter is its one hover
+    // path; HelixCurve only reads hoveredSelectionId.
+    registerBodyCallbacks('helix1/helix1', {
+      featureId: 'helix1',
+      bodyId: 'helix1',
+      mesh: stubMesh(),
+      edgeQueries: ['@helix1'],
+      vertexQueries: undefined,
+      updateFaceGeometryForIndex: () => {},
+      clearFaceGeometry: () => {},
+    })
+
+    brepEdgeAdapter.onHover('@helix1')
+
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('@helix1')
+  })
+
   it('transition from face to edge clears old hover and sets new hoveredSelectionId', () => {
     let faceGeometryCleared = false
 

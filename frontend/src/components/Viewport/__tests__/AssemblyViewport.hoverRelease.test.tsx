@@ -15,17 +15,9 @@ vi.mock('@react-three/fiber', () => ({
   Canvas: () => null,
 }))
 
-vi.mock('@react-three/drei', async () => {
-  const THREE = await import('three')
-  return {
-    Environment: () => null,
-    // SceneController imports this at module scope; it never renders here.
-    OrbitControls: () => {
-      void THREE
-      return null
-    },
-  }
-})
+vi.mock('@react-three/drei', () => ({
+  Environment: () => null,
+}))
 
 vi.mock('@/components/misc/CubeGizmo', () => ({
   CubeGizmoCanvas: () => null,

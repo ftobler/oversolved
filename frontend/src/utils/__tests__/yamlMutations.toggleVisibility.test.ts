@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  applySetFeatureVisibility,
   applyToggleSketchPlaneVisibility,
   applyTogglePlaneVisibility,
   applyRenameFeature,
@@ -9,7 +10,8 @@ import type { PartDoc, PartFeature } from '@/types/cad'
 // Bulk visibility toggles drive the `y` keyboard command and the plane-only
 // toggle. Both are "hide everything if anything is showing, otherwise show
 // everything" over a filtered target set. The tests pin the target set (which
-// kinds participate) and the show/hide direction.
+// kinds participate) and the show/hide direction. The bulk target set is
+// reference geometry: sketch, plane and helix.
 
 function makeDoc(): PartDoc {
   return {
@@ -22,6 +24,7 @@ function makeDoc(): PartDoc {
       { id: 'Right', kind: 'plane' },
       { id: 'p1', kind: 'plane' },
       { id: 'sk1', kind: 'sketch' },
+      { id: 'hx1', kind: 'helix', helix: {} },
       { id: 'ex1', kind: 'extrude' },
     ],
   } as PartDoc
@@ -32,12 +35,13 @@ function byId(doc: PartDoc, id: string): PartFeature {
 }
 
 describe('applyToggleSketchPlaneVisibility', () => {
-  it('hides all sketches and planes when any is visible', () => {
+  it('hides all sketches, planes and helixes when any is visible', () => {
     const doc = makeDoc()
     applyToggleSketchPlaneVisibility(doc)
     expect(byId(doc, 'Top').visible).toBe(false)
     expect(byId(doc, 'p1').visible).toBe(false)
     expect(byId(doc, 'sk1').visible).toBe(false)
+    expect(byId(doc, 'hx1').visible).toBe(false)
   })
 
   it('does not touch the origin or solid features', () => {
@@ -50,11 +54,12 @@ describe('applyToggleSketchPlaneVisibility', () => {
   it('shows all (deletes the visible key) when everything is already hidden', () => {
     const doc = makeDoc()
     for (const f of doc.features!) {
-      if (f.kind === 'sketch' || f.kind === 'plane') f.visible = false
+      if (f.kind === 'sketch' || f.kind === 'plane' || f.kind === 'helix') f.visible = false
     }
     applyToggleSketchPlaneVisibility(doc)
     expect('visible' in byId(doc, 'Top')).toBe(false)
     expect('visible' in byId(doc, 'sk1')).toBe(false)
+    expect('visible' in byId(doc, 'hx1')).toBe(false)
   })
 
   it('treats a partially-hidden set as "any visible" and hides the rest', () => {
@@ -63,6 +68,17 @@ describe('applyToggleSketchPlaneVisibility', () => {
     applyToggleSketchPlaneVisibility(doc)
     expect(byId(doc, 'Top').visible).toBe(false)
     expect(byId(doc, 'sk1').visible).toBe(false)
+    expect(byId(doc, 'hx1').visible).toBe(false)
+  })
+})
+
+describe('set_feature_visibility', () => {
+  it('hides and shows a helix with no kind gate', () => {
+    const doc = makeDoc()
+    applySetFeatureVisibility(doc, 'hx1', false)
+    expect(byId(doc, 'hx1').visible).toBe(false)
+    applySetFeatureVisibility(doc, 'hx1', true)
+    expect('visible' in byId(doc, 'hx1')).toBe(false)
   })
 })
 
