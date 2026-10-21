@@ -195,6 +195,34 @@ describe('Viewport body interactivity', () => {
     })
   })
 
+  it('publishes the curvature auto range from the visible bodies', async () => {
+    const { icosphere } = await import('@/testing/curvatureFixtures')
+    const surface = icosphere(2, 2)
+    const mesh = { vertices: surface.positions, faces: surface.indices, face_data: [], face_queries: [] }
+    usePartEditorStore.setState({
+      features: [sketch, extrude],
+      bodies: {
+        body_ex1: {
+          id: 'body_ex1',
+          created_by: 'ex1',
+          modified_by: [],
+          mesh,
+        } as unknown as BodyResult,
+      },
+      visibleBodies: undefined,
+    })
+    useViewOptionsStore.setState({ curvature: true, curvature_kind: 'mean', curvatureAutoRange: null })
+
+    const { unmount } = render(<Viewport />)
+
+    const range = useViewOptionsStore.getState().curvatureAutoRange
+    expect(range).not.toBeNull()
+    expect(range![1]).toBeGreaterThan(0.4)
+    expect(range![1]).toBeLessThan(0.6)
+    unmount()
+    useViewOptionsStore.setState({ curvature: false, curvatureAutoRange: null })
+  })
+
   it('ghostMode renders pickBodies and shows a preview edge overlay', () => {
     usePartEditorStore.setState({
     features: [sketch, extrude],

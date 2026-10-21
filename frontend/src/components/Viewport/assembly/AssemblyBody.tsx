@@ -14,6 +14,7 @@ import type { ThreeEvent } from '@react-three/fiber'
 import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
 import { buildBodySurfaceGeometry } from '@/components/Geometry3D/bodyGeometry'
 import { analysisMaterialName, useBodyAnalysisMaterial } from '@/components/Geometry3D/bodyAnalysisMaterial'
+import { curvatureForMesh, effectiveCurvatureRange } from '@/components/Geometry3D/curvature'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import {
   COLOR_BODY_DEFAULT,
@@ -43,7 +44,19 @@ interface AssemblyBodyProps {
 }
 
 export default function AssemblyBody({ item, curves, selected, aiming, onGrab, showFaces = true, showEdges = true }: AssemblyBodyProps) {
-  const geometry = useMemo(() => buildBodySurfaceGeometry(item.mesh), [item.mesh])
+  const curvature = useViewOptionsStore(s => s.curvature)
+  const curvatureKind = useViewOptionsStore(s => s.curvature_kind)
+  const curvatureManualRange = useViewOptionsStore(s => s.curvature_range)
+  const curvatureAutoRange = useViewOptionsStore(s => s.curvatureAutoRange)
+  const curvatureActive = showFaces && curvature
+
+  const geometry = useMemo(() => {
+    const g = buildBodySurfaceGeometry(item.mesh)
+    if (curvatureActive) {
+      g.setAttribute('aCurvature', new THREE.BufferAttribute(curvatureForMesh(item.mesh).values, 2))
+    }
+    return g
+  }, [item.mesh, curvatureActive])
 
   useEffect(() => () => geometry.dispose(), [geometry])
 
@@ -61,15 +74,15 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
   // below), so the zebra program does not reference vColor.
   const zebra = useViewOptionsStore(s => s.zebra)
   const zebraStripes = useViewOptionsStore(s => s.zebra_stripes)
-  const analysisMode = showFaces && zebra ? 'zebra' : 'none'
+  const analysisMode = !showFaces ? 'none' : curvature ? 'curvature' : zebra ? 'zebra' : 'none'
   const materialRef = useRef<THREE.MeshStandardMaterial>(null)
   useBodyAnalysisMaterial(materialRef, {
     mode: analysisMode,
     mixVertexColor: false,
     baseColor: selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT,
     zebraStripes,
-    curvatureKind: 'mean',
-    curvatureRange: [0, 1],
+    curvatureKind,
+    curvatureRange: effectiveCurvatureRange(curvatureManualRange, curvatureAutoRange),
   })
 
   return (

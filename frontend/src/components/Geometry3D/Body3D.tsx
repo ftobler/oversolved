@@ -29,6 +29,7 @@ import {
   resolveVertexQueries,
 } from '@/components/Geometry3D/bodyGeometry'
 import { analysisMaterialName, useBodyAnalysisMaterial } from '@/components/Geometry3D/bodyAnalysisMaterial'
+import { curvatureForMesh, effectiveCurvatureRange } from '@/components/Geometry3D/curvature'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { lazyGeometryCache } from '@/components/Geometry3D/lazyGeometryCache'
 import { faceRuns, triangleRuns, edgeRuns, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
@@ -95,6 +96,15 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const selectedPicks = useSketchEditorStore(s => s.selectedPicks)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
+
+  // The curvature row needs an attribute on the geometry, so it is read here
+  // rather than at render time only. The auto range is published by the
+  // viewport once it has sampled every visible body.
+  const curvature = useViewOptionsStore(s => s.curvature)
+  const curvatureKind = useViewOptionsStore(s => s.curvature_kind)
+  const curvatureManualRange = useViewOptionsStore(s => s.curvature_range)
+  const curvatureAutoRange = useViewOptionsStore(s => s.curvatureAutoRange)
+  const curvatureActive = showFaces && curvature
 
   // Triangles-per-face grouping, built on first use and then shared by everything
   // that works face-by-face. Lazy on purpose: a body is meshed and mounted far
@@ -259,6 +269,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
 
   const geometry = useMemo(() => {
     const indexed = buildBodySurfaceGeometry(mesh)
+    if (curvatureActive) {
+      // The field follows the indexed vertex order, and toNonIndexed below
+      // copies this attribute per split vertex exactly like the smooth normals.
+      indexed.setAttribute('aCurvature', new THREE.BufferAttribute(curvatureForMesh(mesh).values, 2))
+    }
     // toNonIndexed gives each triangle its own vertex slots so faceColors[i*9..i*9+8]
     // maps 1:1 to face i without bleeding into shared-vertex neighbors. The
     // smooth normals computed on the indexed form are copied per split vertex,
@@ -274,7 +289,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     }
     geo.setAttribute('color', new THREE.BufferAttribute(initialColors, 3))
     return geo
-  }, [mesh])
+  }, [mesh, curvatureActive])
 
   useDispose(geometry)
 
@@ -313,17 +328,19 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // drawn; with shading off there is nothing for it to paint.
   const zebra = useViewOptionsStore(s => s.zebra)
   const zebraStripes = useViewOptionsStore(s => s.zebra_stripes)
-  const analysisMode = showFaces && zebra ? 'zebra' : 'none'
+  // The store keeps the two analysis rows exclusive; the order here only makes
+  // the intent readable.
+  const analysisMode = !showFaces ? 'none' : curvature ? 'curvature' : zebra ? 'zebra' : 'none'
   const bodyMaterialRef = useRef<THREE.MeshPhysicalMaterial>(null)
   useBodyAnalysisMaterial(bodyMaterialRef, {
     mode: analysisMode,
     // The part editor is the one place with a vertex-colour highlight, so the
-    // zebra program mixes it back in instead of overwriting the selection.
+    // analysis program mixes it back in instead of overwriting the selection.
     mixVertexColor: true,
     baseColor: bodyColor,
     zebraStripes,
-    curvatureKind: 'mean',
-    curvatureRange: [0, 1],
+    curvatureKind,
+    curvatureRange: effectiveCurvatureRange(curvatureManualRange, curvatureAutoRange),
   })
 
   // The wireframe is where the removal mark lives now the doomed face is

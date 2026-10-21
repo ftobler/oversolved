@@ -23,6 +23,7 @@ import SceneController from '@/components/Viewport/SceneController'
 import { RenderOnChange, RenderOnce } from '@/components/Viewport/RenderOnChange'
 import { useSceneExposure } from '@/components/Viewport/SceneExposure'
 import { useLayerPipelineEffects } from '@/components/Viewport/viewOptionsEffects'
+import { autoRangeFromMeshes } from '@/components/Geometry3D/curvature'
 import { MsaaRender } from '@/components/Viewport/MsaaRender'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/components/Viewport/cameraController'
@@ -150,6 +151,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
   const shading = useViewOptionsStore(s => s.shading)
   const edges = useViewOptionsStore(s => s.edges)
+  const curvature = useViewOptionsStore(s => s.curvature)
+  const curvatureKind = useViewOptionsStore(s => s.curvature_kind)
+  const setCurvatureAutoRange = useViewOptionsStore(s => s.setCurvatureAutoRange)
 
   const featureDefs = doc?.features as PartFeature[] | undefined
 
@@ -442,6 +446,18 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     () => getBodiesToRender(bodies, features, rollbackPosition, visibleBodies),
     [bodies, features, rollbackPosition, visibleBodies]
   )
+
+  // The legend names the range the bodies are actually painted with, and the
+  // range spans the whole visible scene. Bodies only compute their own field;
+  // this is the one place that sees them all.
+  useEffect(() => {
+    if (!curvature) {
+      setCurvatureAutoRange(null)
+      return
+    }
+    const meshes = bodyItems.filter(item => item.visible).map(item => item.mesh)
+    setCurvatureAutoRange(autoRangeFromMeshes(meshes, curvatureKind))
+  }, [curvature, curvatureKind, bodyItems, setCurvatureAutoRange])
 
   // Show ALL pickBodies regardless of rollbackPosition -- these represent the body
   // state before entering edit mode, and the user needs to see every prior body to

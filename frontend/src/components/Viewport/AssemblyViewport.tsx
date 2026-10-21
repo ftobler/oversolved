@@ -43,6 +43,7 @@ import {
 } from '@/picking'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
+import { autoRangeFromMeshes } from '@/components/Geometry3D/curvature'
 import { useLayerPipelineEffects } from '@/components/Viewport/viewOptionsEffects'
 import { lookupAnchor, resolveAnchorGizmos } from '@/utils/anchorGizmos'
 import { entityKeysForMate } from '@/utils/mateHighlight'
@@ -154,6 +155,9 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
   const shading = useViewOptionsStore(s => s.shading)
   const edges = useViewOptionsStore(s => s.edges)
+  const curvature = useViewOptionsStore(s => s.curvature)
+  const curvatureKind = useViewOptionsStore(s => s.curvature_kind)
+  const setCurvatureAutoRange = useViewOptionsStore(s => s.setCurvatureAutoRange)
   // An armed mate chip turns the whole scene into a reference picker: a plain
   // click aims instead of grabbing, so authoring a mate never nudges a part.
   // With no chip armed the viewport is a plain B-rep selector instead (faces,
@@ -266,6 +270,18 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     () => offsetPickBodies(pickGeometry, pickGeometryPose, drawnPoses),
     [pickGeometry, pickGeometryPose, drawnPoses],
   )
+
+  // Same scene-wide auto range as the part viewport: the component bodies each
+  // know only their own field.
+  useEffect(() => {
+    if (!curvature) {
+      setCurvatureAutoRange(null)
+      return
+    }
+    const meshes = groups.flatMap(group => group.items.filter(item => item.visible).map(item => item.mesh))
+    setCurvatureAutoRange(autoRangeFromMeshes(meshes, curvatureKind))
+  }, [curvature, curvatureKind, groups, setCurvatureAutoRange])
+
   const builtins = useMemo(() => getAssemblyBuiltinsToRender(doc), [doc])
 
   // Each part's world basis, so a hovered anchor's display rings turn with the

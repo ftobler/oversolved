@@ -95,6 +95,78 @@ export class ZebraProgram implements BodyAnalysisPatch {
   }
 }
 
+// A diverging ramp: concave (negative) on the blue side, flat neutral, convex
+// (positive) on the red side. The auto range is symmetric, so a plane lands
+// exactly on the neutral middle.
+export const CURVATURE_GLSL = `
+  float curvatureValue = uCurvatureKind < 0.5 ? vCurvature.x : vCurvature.y;
+  float curvatureSpan = max( uCurvatureRange.y - uCurvatureRange.x, 1e-9 );
+  float curvatureT = clamp( ( curvatureValue - uCurvatureRange.x ) / curvatureSpan, 0.0, 1.0 );
+  vec3 curvatureCold = vec3( 0.16, 0.36, 0.86 );
+  vec3 curvatureFlat = vec3( 0.70, 0.70, 0.70 );
+  vec3 curvatureHot = vec3( 0.90, 0.24, 0.18 );
+  vec3 curvatureColor = curvatureT < 0.5
+    ? mix( curvatureCold, curvatureFlat, curvatureT * 2.0 )
+    : mix( curvatureFlat, curvatureHot, ( curvatureT - 0.5 ) * 2.0 );
+`
+
+export const CURVATURE_HIGHLIGHT_GLSL = `
+  float curvatureHighlight = step( ${HIGHLIGHT_EPSILON}, distance( vColor, uBaseColor ) );
+  diffuseColor.rgb = mix( curvatureColor, vColor, curvatureHighlight );
+`
+
+/**
+ * The curvature program: a vertex attribute carries the two scalars and the
+ * fragment maps the selected one through the range uniform. Like zebra, the
+ * range and the kind are uniforms, so changing either repaints without a
+ * recompile.
+ */
+export class CurvatureProgram implements BodyAnalysisPatch {
+  readonly name = 'curvature-material'
+  readonly uniforms: BodyAnalysisPatch['uniforms']
+  private readonly mixVertexColor: boolean
+
+  constructor(mixVertexColor: boolean) {
+    this.mixVertexColor = mixVertexColor
+    this.uniforms = {
+      uStripeFrequency: { value: 12 },
+      uCurvatureRange: { value: new THREE.Vector2(-1, 1) },
+      uCurvatureKind: { value: 0 },
+      ...(mixVertexColor ? { uBaseColor: { value: new THREE.Color('#ffffff') } } : {}),
+    }
+  }
+
+  customProgramCacheKey = (): string => `curvature-${this.mixVertexColor ? 'vc' : 'plain'}`
+
+  setBaseColor = (hex: string): void => { this.uniforms.uBaseColor?.value.set(hex) }
+
+  setCurvature = (kind: CurvatureKind, range: [number, number]): void => {
+    this.uniforms.uCurvatureKind!.value = kind === 'gaussian' ? 1 : 0
+    this.uniforms.uCurvatureRange!.value.set(range[0], range[1])
+  }
+
+  onBeforeCompile = (shader: WebGLProgramParametersWithUniforms): void => {
+    const vertexDeclarations = 'attribute vec2 aCurvature;\nvarying vec2 vCurvature;\n'
+    const fragmentDeclarations = 'varying vec2 vCurvature;\nuniform vec2 uCurvatureRange;\nuniform float uCurvatureKind;\n'
+      + (this.mixVertexColor ? 'uniform vec3 uBaseColor;\n' : '')
+    const body = CURVATURE_GLSL + (this.mixVertexColor ? CURVATURE_HIGHLIGHT_GLSL : '  diffuseColor.rgb = curvatureColor;\n')
+
+    shader.vertexShader = vertexDeclarations + shader.vertexShader
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      '#include <begin_vertex>\n  vCurvature = aCurvature;',
+    )
+    shader.fragmentShader = fragmentDeclarations + shader.fragmentShader
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <normal_fragment_begin>',
+      `#include <normal_fragment_begin>\n${body}`,
+    )
+    shader.uniforms.uCurvatureRange = this.uniforms.uCurvatureRange!
+    shader.uniforms.uCurvatureKind = this.uniforms.uCurvatureKind!
+    if (this.mixVertexColor && this.uniforms.uBaseColor) shader.uniforms.uBaseColor = this.uniforms.uBaseColor
+  }
+}
+
 /** A standalone patch for a caller that has no hook (tests, one-off previews). */
 export function makeZebraPatch(opts: {
   stripes: number
@@ -133,6 +205,7 @@ export function useBodyAnalysisMaterial(
   const { mode, mixVertexColor } = params
   const patch = useMemo<BodyAnalysisPatch | null>(() => {
     if (mode === 'zebra') return new ZebraProgram(mixVertexColor)
+    if (mode === 'curvature') return new CurvatureProgram(mixVertexColor)
     return null
   }, [mode, mixVertexColor])
 
