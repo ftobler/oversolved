@@ -10,12 +10,10 @@ import type { DialogState } from './sketchEditorTypes'
 import { sketchCallbacks } from './sketchEditorCallbacks'
 
 export interface SketchUiState {
-  showDebugHit: boolean
   showConstraintTiles: boolean
   ngonSides: number  // side count for the two-click n-gon draw tool
   pendingDialog: DialogState | null
   contextMenu: [number, number] | null
-  setShowDebugHit: (enabled: boolean) => void
   setShowConstraintTiles: (show: boolean) => void
   // Clamp to the n-gon range (3..64) so the draw tool and preview never see a
   // degenerate count.
@@ -32,13 +30,10 @@ export interface SketchUiState {
 }
 
 export const useSketchUiStore = create<SketchUiState>((set) => ({
-  showDebugHit: false,
   showConstraintTiles: true,
   ngonSides: 6,
   pendingDialog: null,
   contextMenu: null,
-
-  setShowDebugHit: (enabled) => set({ showDebugHit: enabled }),
 
   setShowConstraintTiles: (show) => set({ showConstraintTiles: show }),
 

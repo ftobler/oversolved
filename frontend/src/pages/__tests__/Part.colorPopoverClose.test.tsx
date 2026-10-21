@@ -145,7 +145,6 @@ describe('Part color popover close path', () => {
     modeStack: [],
   })
   useSketchUiStore.setState({
-    showDebugHit: false,
   })
   })
 

@@ -23,6 +23,18 @@ function body(handle: string): AssemblyPickBody {
   }
 }
 
+function fullBody(handle: string): AssemblyPickBody {
+  return {
+    ...body(handle),
+    edges: {
+      segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
+      segmentToEdge: new Uint32Array([0]),
+      edgeQueries: [`${handle}:edge0`],
+    },
+    vertices: { vertices: [[0, 0, 0]], vertexQueries: [`${handle}:vtx0`] },
+  }
+}
+
 function stubPipeline() {
   const registered: string[] = []
   const unregistered: string[] = []
@@ -46,10 +58,10 @@ function stubPipeline() {
   }
 }
 
-function tree(pipeline: IdPipeline, bodies: AssemblyPickBody[]) {
+function tree(pipeline: IdPipeline, bodies: AssemblyPickBody[], layers: { showFaces?: boolean; showEdges?: boolean } = {}) {
   return (
     <IdPipelineContext.Provider value={pipeline}>
-      <AssemblyPickLayers bodies={bodies} />
+      <AssemblyPickLayers bodies={bodies} {...layers} />
     </IdPipelineContext.Provider>
   )
 }
@@ -96,6 +108,28 @@ describe('AssemblyPickLayers incremental registration', () => {
     view.rerender(tree(pipeline, [a]))
 
     expect(unregistered).toEqual(['face:p2:body_0', 'edge:p2:body_0', 'vertex:p2:body_0'])
+  })
+
+  it('registers a layer only while the viewer draws it', () => {
+    const { pipeline, registered, unregistered, dirty, reset } = stubPipeline()
+    const a = fullBody('p1')
+    const view = render(tree(pipeline, [a], { showFaces: false }))
+    // Shading off: no face entries at all, the wireframe and vertices still pick.
+    expect(new Set(registered)).toEqual(new Set(['edge:p1:body_0', 'vertex:p1:body_0']))
+    expect(dirty()).toBe(1)
+
+    reset()
+    view.rerender(tree(pipeline, [a], { showFaces: false, showEdges: false }))
+    // Both rows off is not reachable in the UI, but the component must not
+    // register anything it was told not to draw. Vertices are neither row, so
+    // they stay pickable.
+    expect(registered).toEqual(['vertex:p1:body_0'])
+    expect(unregistered).toEqual(['face:p1:body_0', 'edge:p1:body_0', 'vertex:p1:body_0'])
+
+    reset()
+    view.rerender(tree(pipeline, [a], { showFaces: true, showEdges: true }))
+    expect(new Set(registered)).toEqual(new Set(['face:p1:body_0', 'edge:p1:body_0', 'vertex:p1:body_0']))
+    expect(dirty()).toBe(1)
   })
 
   it('frees every registered body on unmount', () => {

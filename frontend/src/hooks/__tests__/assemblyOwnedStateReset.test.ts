@@ -135,7 +135,6 @@ describe('assembly owned state reset on doc swap', () => {
       subject: { kind: 'part', handle: 'pA' },
       activeMateField: { featureId: 'm1', field: 'ref_a' },
       mateFieldDirty: true,
-      showPickDebug: true,
     })
     expect(useAssemblyStore.getState().manipulation).not.toBeNull()
     expect(useAssemblyStore.getState().gizmoDrag).not.toBeNull()
@@ -159,7 +158,6 @@ describe('assembly owned state reset on doc swap', () => {
     expect(reset.subject).toBeNull()
     expect(reset.activeMateField).toBeNull()
     expect(reset.mateFieldDirty).toBe(false)
-    expect(reset.showPickDebug).toBe(false)
     // History is cleared by clearAssemblyHistory on the load path, never by the
     // transient reset; see the dedicated reset-preserves-stacks test below.
     expect(reset.undoStack).toEqual([])

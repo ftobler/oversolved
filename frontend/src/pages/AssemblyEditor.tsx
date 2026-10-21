@@ -11,6 +11,7 @@ import { LoadingState } from '@/components/shared/LoadingState'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import EditorErrorBoundary from '@/components/misc/EditorErrorBoundary'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
+import ViewOptionsButton from '@/components/Viewport/ViewOptionsButton'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useOpenEntryInNewTab } from '@/hooks/useOpenEntryInNewTab'
 import { confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
@@ -124,7 +125,6 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   const selectedMateId = subject?.kind === 'mate' ? subject.id : null
   const activeMateField = useAssemblyStore(s => s.activeMateField)
   const solveStatus = useAssemblyStore(s => s.solveStatus)
-  const showPickDebug = useAssemblyStore(s => s.showPickDebug)
   // One store-owned tagged subject instead of two useState ids. The selectors
   // are the only place "which editor is open" is read.
   const editingSubject = useAssemblyStore(s => s.editingSubject)
@@ -630,16 +630,6 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         handleSave={handleSave}
         handleClone={handleClone}
         onExport={() => executeCommand('export_assembly')}
-        rightContent={
-          <button
-            className="toolbar-btn"
-            aria-label="Toggle debug collision rendering"
-            title={showPickDebug ? 'Hide debug collision rendering' : 'Show debug collision rendering'}
-            onClick={() => useAssemblyStore.getState().setShowPickDebug(!showPickDebug)}
-          >
-            <span className="material-icons-outlined">{showPickDebug ? 'visibility' : 'visibility_off'}</span>
-          </button>
-        }
       />
       <div className={`doc-container${panelsOpen ? ' panels-open' : ''}`}>
         <Sidebar
@@ -705,6 +695,9 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
               <AssemblyViewport
                 ref={viewportRef}
                 hud={<AssemblyMeasurementDisplay measurementIcon={measurementIcon} />}
+                // No Show group: an assembly has no feature tree, so the part
+                // editor alone supplies the document-visibility rows.
+                viewOptions={<ViewOptionsButton />}
               />
             </EditorErrorBoundary>
             {/* The assembly solve mirrors useSolverStore.isSolving and claims its

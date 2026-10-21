@@ -21,7 +21,6 @@ describe('assemblyStore', () => {
     // does not reset it; clear explicitly to keep the tests isolated.
     useAssemblyStore.getState().clearSelection()
     useAssemblyStore.getState().setHoveredEntity(null)
-    useAssemblyStore.getState().setShowPickDebug(false)
   })
 
   it('default state has empty fields and null doc', () => {

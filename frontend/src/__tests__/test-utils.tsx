@@ -99,10 +99,15 @@ export function viewportMockModule(handle: Record<string, unknown> = {}) {
         alignCameraToFace: vi.fn(),
         ...handle,
       }))
-      // The real viewport hosts the bottom-right HUD (orientation cube plus the
-      // measurement readout); render the slot so a page test can assert what
-      // was handed into it.
-      return <div data-testid="viewport-hud">{props.hud as ReactNode}</div>
+      // The real viewport hosts the bottom-right HUD (view options button,
+      // orientation cube, measurement readout); render both slots so a page
+      // test can assert what was handed into them and in which order.
+      return (
+        <div data-testid="viewport-hud">
+          <div data-testid="viewport-hud-view-options">{props.viewOptions as ReactNode}</div>
+          <div data-testid="viewport-hud-readout">{props.hud as ReactNode}</div>
+        </div>
+      )
     }),
   }
 }

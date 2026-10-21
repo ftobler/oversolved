@@ -1,0 +1,214 @@
+/* The view options button and its card. The button sits in the viewport's HUD
+   stack above the cube (ViewportHud.css owns the column); it opts back into
+   pointer events like the cube, because the stack around it is click-through.
+   The card opens UP and to the LEFT so it never covers the cube below it. */
+
+.view-options {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: auto;
+}
+
+.view-options-btn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  background: rgba(17, 17, 17, 0.72);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.view-options-btn:hover,
+.view-options-btn.open {
+  background: var(--glass-hover-bg);
+}
+
+.view-options-btn img {
+  width: 16px;
+  height: 16px;
+  /* The generated icons are black; the HUD reads light-on-dark. */
+  filter: brightness(0) invert(0.82);
+}
+
+.view-options-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  width: 232px;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: #dddddd;
+  pointer-events: auto;
+}
+
+.view-options-heading {
+  padding: 4px 8px 2px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a8a8a;
+}
+
+.view-options-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.view-options-row:hover:not(:disabled) {
+  background: var(--glass-hover-bg);
+}
+
+.view-options-row.checked {
+  background: var(--glass-selected-bg);
+}
+
+.view-options-row:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.view-options-check {
+  width: 12px;
+  flex: none;
+  color: #4fc3f7;
+}
+
+.view-options-label {
+  flex: 1;
+}
+
+.view-options-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--glass-border);
+}
+
+.view-options-slider-row {
+  padding: 2px 8px 6px;
+}
+
+.view-options-slider-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.view-options-value {
+  color: #9a9a9a;
+  font-variant-numeric: tabular-nums;
+}
+
+.view-options-slider {
+  width: 100%;
+  margin: 4px 0 0;
+  accent-color: #4fc3f7;
+}
+
+.view-options-segment {
+  display: flex;
+  gap: 2px;
+  padding: 2px 6px;
+}
+
+.view-options-segment-btn {
+  flex: 1;
+  padding: 3px 4px;
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.view-options-segment-btn.active {
+  background: var(--glass-selected-bg);
+  border-color: rgba(79, 195, 247, 0.5);
+}
+
+.view-options-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 8px;
+}
+
+.view-options-legend-bar {
+  height: 8px;
+  border-radius: 3px;
+  /* The same blue -> neutral -> red the body shader paints, so the legend and
+     the model cannot drift apart. */
+  background: linear-gradient(90deg, #2f6fdb 0%, #7d7d7d 50%, #d9534f 100%);
+}
+
+.view-options-legend-caption {
+  font-size: 10px;
+  color: #9a9a9a;
+  font-variant-numeric: tabular-nums;
+}
+
+.view-options-range-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 4px;
+}
+
+.view-options-range-input {
+  width: 58px;
+  padding: 2px 4px;
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+  background: var(--glass-field-bg);
+  color: inherit;
+  font: inherit;
+}
+
+.view-options-reset {
+  margin-left: auto;
+  padding: 2px 6px;
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* A phone has no room for a card above the corner button: the popover becomes a
+   bottom sheet, full width, scrolling from the bottom edge. */
+@media (max-width: 768px) {
+  .view-options-popover {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-height: 62vh;
+    border-radius: 10px 10px 0 0;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+}

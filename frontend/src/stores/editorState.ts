@@ -133,7 +133,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
   // Part-side FSM
   ...DEFAULT_EDITOR_STATE,
   // Sketch editor state moved from stores/sketchEditorStore.ts. UI prefs
-  // (showDebugHit, showConstraintTiles, ngonSides) and the pending value dialog
+  // (showConstraintTiles, ngonSides) and the pending value dialog
   // stay in that store; entityKindMap is here because applyConstraint reads it.
   normalSelection: new Set(),
   selectedPicks: new Map(),

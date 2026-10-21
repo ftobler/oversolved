@@ -6,7 +6,7 @@ import { buildOverlayMaterial, updateOverlayTexture } from './IdDebugOverlayMate
  * Full-screen quad that samples the ID render target and recolours each
  * non-empty pixel into a stable, visually distinct hue.
  *
- * Mounted by Viewport when `useSketchEditorStore.showDebugHit` is true.
+ * Mounted by a viewport while `viewOptionsStore.collisionDebug` is true.
  * Returns null when no ID pipeline is available (e.g. tests, or before
  * `IdPickingDriver` has finished its first effect).
  *

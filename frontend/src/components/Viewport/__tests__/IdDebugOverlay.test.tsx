@@ -9,8 +9,8 @@ import { setLivePipeline } from '@/picking/IdPipelineContext'
 
 /**
  * Acceptance: the shader decodes packed RGB ids and uses golden-ratio hue
- * mapping; empty pixels (a < 0.5) render as black. The showDebugHit gate that
- * mounts this overlay is covered in Viewport.test.tsx.
+ * mapping; empty pixels (a < 0.5) render as black. The collisionDebug gate
+ * that mounts this overlay is covered in Viewport.test.tsx.
  *
  * The rendered output cannot be inspected in jsdom (no WebGL), so this
  * test exercises the shader source + uniform wiring at the component

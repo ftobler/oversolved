@@ -17,7 +17,7 @@ import {
   EDGE_HIGHLIGHT_LINE_WIDTH,
 } from '@/components/Geometry3D/constants'
 import {
-  buildBodyGeometry,
+  buildBodySurfaceGeometry,
   buildFaceBoundarySegments,
   planarFaceFrame,
   buildEdgeSegments,
@@ -28,6 +28,9 @@ import {
   resolveEdgeQueries,
   resolveVertexQueries,
 } from '@/components/Geometry3D/bodyGeometry'
+import { analysisMaterialName, useBodyAnalysisMaterial } from '@/components/Geometry3D/bodyAnalysisMaterial'
+import { curvatureForMesh, effectiveCurvatureRange } from '@/components/Geometry3D/curvature'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { lazyGeometryCache } from '@/components/Geometry3D/lazyGeometryCache'
 import { faceRuns, triangleRuns, edgeRuns, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
 import { useHighlightColors, paletteRGB } from '@/components/Geometry3D/useHighlightColors'
@@ -77,17 +80,31 @@ interface Body3DProps {
   transmission?: number  // 0-1 (0 = opaque, 1 = fully transmissive / glass-like)
   interactive?: boolean
   doomed?: boolean  // ghost of a body the previewed edit consumes: drawn "doomed", still pickable
+  // The viewer's Shading and Edges rows. A hidden layer is neither drawn nor
+  // registered in the ID buffer: what is not drawn must not be pickable, or a
+  // wireframe would keep blocking clicks on the edges the user can see.
+  showFaces?: boolean
+  showEdges?: boolean
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false }: Body3DProps) {
-  useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible })
-  useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
+export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true }: Body3DProps) {
+  useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible && showFaces })
+  useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible && showEdges })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
   const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
   const hoveredPickKey = useSketchEditorStore(s => s.hoveredPickKey)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const selectedPicks = useSketchEditorStore(s => s.selectedPicks)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
+
+  // The curvature row needs an attribute on the geometry, so it is read here
+  // rather than at render time only. The auto range is published by the
+  // viewport once it has sampled every visible body.
+  const curvature = useViewOptionsStore(s => s.curvature)
+  const curvatureKind = useViewOptionsStore(s => s.curvature_kind)
+  const curvatureManualRange = useViewOptionsStore(s => s.curvature_range)
+  const curvatureAutoRange = useViewOptionsStore(s => s.curvatureAutoRange)
+  const curvatureActive = showFaces && curvature
 
   // Triangles-per-face grouping, built on first use and then shared by everything
   // that works face-by-face. Lazy on purpose: a body is meshed and mounted far
@@ -251,13 +268,16 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   )
 
   const geometry = useMemo(() => {
-    const indexed = new THREE.BufferGeometry()
-    const { positions, indices } = buildBodyGeometry(mesh)
-    indexed.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    indexed.setIndex(new THREE.BufferAttribute(indices, 1))
-    indexed.computeVertexNormals()
+    const indexed = buildBodySurfaceGeometry(mesh)
+    if (curvatureActive) {
+      // The field follows the indexed vertex order, and toNonIndexed below
+      // copies this attribute per split vertex exactly like the smooth normals.
+      indexed.setAttribute('aCurvature', new THREE.BufferAttribute(curvatureForMesh(mesh).values, 2))
+    }
     // toNonIndexed gives each triangle its own vertex slots so faceColors[i*9..i*9+8]
-    // maps 1:1 to face i without bleeding into shared-vertex neighbors.
+    // maps 1:1 to face i without bleeding into shared-vertex neighbors. The
+    // smooth normals computed on the indexed form are copied per split vertex,
+    // which is what zebra keeps continuous across a curved face.
     const geo = indexed.toNonIndexed()
     indexed.dispose()
     // Pre-fill color attribute so vertexColors=true doesn't flash black on first render.
@@ -269,7 +289,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     }
     geo.setAttribute('color', new THREE.BufferAttribute(initialColors, 3))
     return geo
-  }, [mesh])
+  }, [mesh, curvatureActive])
 
   useDispose(geometry)
 
@@ -303,6 +323,25 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     selected: isBodySelected, doomed, color, transparency, metalness, roughness, transmission,
   })
   const bodyColor = surface.color
+
+  // The analysis material replaces the surface colour only where faces are
+  // drawn; with shading off there is nothing for it to paint.
+  const zebra = useViewOptionsStore(s => s.zebra)
+  const zebraStripes = useViewOptionsStore(s => s.zebra_stripes)
+  // The store keeps the two analysis rows exclusive; the order here only makes
+  // the intent readable.
+  const analysisMode = !showFaces ? 'none' : curvature ? 'curvature' : zebra ? 'zebra' : 'none'
+  const bodyMaterialRef = useRef<THREE.MeshPhysicalMaterial>(null)
+  useBodyAnalysisMaterial(bodyMaterialRef, {
+    mode: analysisMode,
+    // The part editor is the one place with a vertex-colour highlight, so the
+    // analysis program mixes it back in instead of overwriting the selection.
+    mixVertexColor: true,
+    baseColor: bodyColor,
+    zebraStripes,
+    curvatureKind,
+    curvatureRange: effectiveCurvatureRange(curvatureManualRange, curvatureAutoRange),
+  })
 
   // The wireframe is where the removal mark lives now the doomed face is
   // see-through: a consumed body's edges turn pink so the mark shows WHICH
@@ -500,31 +539,41 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     }
   })
 
+  // The removal mark is the doomed body's wireframe, and the plan keeps it
+  // visible through either row: a consumed body must stay identifiable while
+  // the user is still choosing what the edit takes. It is not made pickable by
+  // this, though -- the edge ID registration above follows `showEdges` alone.
+  const drawEdges = (showEdges || doomed) && edges.length > 0
+
   return (
     <group visible={visible} userData={{ featureId }}>
-      <mesh
-        geometry={geometry}
-      >
-        <meshPhysicalMaterial
-          color="white"
-          roughness={surface.roughness}
-          metalness={surface.metalness}
-          transmission={surface.transmission}
-          envMapIntensity={ENV_MAP_INTENSITY}
-          side={THREE.DoubleSide}
-          vertexColors={true}
-          polygonOffset={true}
-          polygonOffsetFactor={1}
-          polygonOffsetUnits={1}
-          transparent={surface.transparency > 0 || surface.transmission > 0}
-          depthWrite={surface.transparency === 0 && surface.transmission === 0}
-          opacity={1 - surface.transparency}
-          blending={surface.transparency > 0 || surface.transmission > 0 ? THREE.CustomBlending : THREE.NormalBlending}
-          blendSrc={THREE.SrcAlphaFactor}
-          blendDst={THREE.OneMinusSrcAlphaFactor}
-        />
-      </mesh>
-      {edges.length > 0 && (
+      {showFaces && (
+        <mesh
+          geometry={geometry}
+        >
+          <meshPhysicalMaterial
+            ref={bodyMaterialRef}
+            name={analysisMaterialName(analysisMode)}
+            color="white"
+            roughness={surface.roughness}
+            metalness={surface.metalness}
+            transmission={surface.transmission}
+            envMapIntensity={ENV_MAP_INTENSITY}
+            side={THREE.DoubleSide}
+            vertexColors={true}
+            polygonOffset={true}
+            polygonOffsetFactor={1}
+            polygonOffsetUnits={1}
+            transparent={surface.transparency > 0 || surface.transmission > 0}
+            depthWrite={surface.transparency === 0 && surface.transmission === 0}
+            opacity={1 - surface.transparency}
+            blending={surface.transparency > 0 || surface.transmission > 0 ? THREE.CustomBlending : THREE.NormalBlending}
+            blendSrc={THREE.SrcAlphaFactor}
+            blendDst={THREE.OneMinusSrcAlphaFactor}
+          />
+        </mesh>
+      )}
+      {drawEdges && (
         <lineSegments
           geometry={edgeGeometry}
           material={edgeMaterial}
@@ -560,7 +609,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
       )}
       {/* The hasAny guards keep a re-render triggered by someone else's hover
           from walking this body's primitive lists just to emit nothing. */}
-      {interactive && edgeBoundaryGeos && edgeHighlightIndex.hasAny(edgeHoverFlags) && edgeHoverFlags.map((hovered, edgeIdx) => {
+      {interactive && showEdges && edgeBoundaryGeos && edgeHighlightIndex.hasAny(edgeHoverFlags) && edgeHoverFlags.map((hovered, edgeIdx) => {
         // Selection outranks hover: skip the hover overlay where the selection
         // overlay already draws, so precedence is explicit and not a JSX draw-order
         // accident (mirrors the edgeColors if/else-if).
@@ -573,7 +622,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
           </lineSegments>
         )
       })}
-      {interactive && edgeBoundaryGeos && edgeHighlightIndex.hasAny(edgeSelectionFlags) && edgeSelectionFlags.map((selected, edgeIdx) => {
+      {interactive && showEdges && edgeBoundaryGeos && edgeHighlightIndex.hasAny(edgeSelectionFlags) && edgeSelectionFlags.map((selected, edgeIdx) => {
         if (!selected) return null
         const geo = edgeBoundaryGeos.get(edgeIdx)
         if (!geo) return null
@@ -583,7 +632,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
           </lineSegments>
         )
       })}
-      {interactive && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceHoverFlags) && faceHoverFlags!.map((hovered, faceIdx) => {
+      {interactive && showFaces && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceHoverFlags) && faceHoverFlags!.map((hovered, faceIdx) => {
         // Selection outranks hover: skip the hover overlay where the selection
         // overlay already draws (mirrors the faceColors if/else-if precedence).
         if (!hovered || faceSelectionFlags?.[faceIdx]) return null
@@ -595,7 +644,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
           </lineSegments>
         )
       })}
-      {interactive && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceSelectionFlags) && faceSelectionFlags!.map((selected, faceIdx) => {
+      {interactive && showFaces && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceSelectionFlags) && faceSelectionFlags!.map((selected, faceIdx) => {
         if (!selected) return null
         const geo = faceBoundaryGeos.get(faceIdx)
         if (!geo) return null
