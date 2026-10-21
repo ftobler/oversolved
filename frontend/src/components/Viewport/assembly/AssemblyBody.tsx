@@ -91,7 +91,7 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
         <mesh
           geometry={geometry}
           visible={item.visible}
-          userData={{ fitBounds: true }}
+          userData={{ fitBounds: true, orbitPivot: true }}
           onPointerDown={(e) => {
             if (e.button !== 0) return
             // Ctrl+click aims a mate reference, and so does any click while a mate

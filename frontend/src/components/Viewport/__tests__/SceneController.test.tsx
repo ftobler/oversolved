@@ -8,6 +8,7 @@ import { anglesFromDirection, TurntableControls } from '@/components/Viewport/tu
 
 import type { Pv, Hit } from '@/components/misc/CubeGizmo.utils'
 import { useEditorState } from '@/hooks/useEditorState'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 
 const h = vi.hoisted(() => ({
   frameCallbacks: [] as Array<() => void>,
@@ -52,8 +53,8 @@ function makeCamera(): THREE.OrthographicCamera {
   return cam
 }
 
-function useThreeState(camera: THREE.Camera, gl = makeGl()) {
-  return { camera, gl, scene: new THREE.Scene(), invalidate: h.invalidate, size: { width: 800, height: 600 } }
+function useThreeState(camera: THREE.Camera, gl = makeGl(), scene = new THREE.Scene()) {
+  return { camera, gl, scene, invalidate: h.invalidate, size: { width: 800, height: 600 } }
 }
 
 // jsdom has no PointerEvent constructor; a MouseEvent with the same type is
@@ -93,6 +94,7 @@ beforeEach(() => {
     drag: null,
     dragPending: null,
   })
+  useViewOptionsStore.setState({ orbit_around_cursor: true })
 })
 
 describe('deriveOrbitEnabled', () => {
@@ -416,6 +418,56 @@ describe('SceneController camera gestures', () => {
     h.invalidate.mockClear()
     wheel(gl.domElement, -100)
     expect(h.invalidate).toHaveBeenCalled()
+  })
+})
+
+describe('SceneController cursor pivot', () => {
+  // A renderer canvas with a real layout, and one body surface tagged the way
+  // Body3D tags it, so the whole read (rect -> ray -> world point) runs.
+  function glWithLayout() {
+    const gl = makeGl()
+    Object.defineProperty(gl.domElement, 'getBoundingClientRect', {
+      value: () => ({ left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600, x: 0, y: 0 }),
+    })
+    return gl
+  }
+
+  function sceneWithBody(): THREE.Scene {
+    const scene = new THREE.Scene()
+    const body = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial())
+    body.userData.orbitPivot = true
+    body.position.set(0, 0, 20)
+    scene.add(body)
+    return scene
+  }
+
+  it('takes the pivot from the body under a right-down, unless the preference says no', async () => {
+    const { useThree } = await import('@react-three/fiber')
+    const cam = makeCamera()
+    cam.position.set(0, 0, 100)
+    cam.lookAt(0, 0, 0)
+    cam.updateMatrixWorld()
+    const gl = glWithLayout()
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(cam, gl, sceneWithBody()))
+
+    useViewOptionsStore.setState({ orbit_around_cursor: true })
+    const props = propsFor()
+    render(<SceneController {...props} />)
+    const controls = props.controlsRef.current!
+
+    // Press only: the pivot is read, the pose is untouched.
+    press(gl.domElement, 'pointerdown', { button: 2, clientX: 400, clientY: 300 })
+    expect(controls.orbitPivot).not.toBeNull()
+    expect(controls.orbitPivot!.z).toBeCloseTo(20, 9)
+    expect(controls.target.toArray()).toEqual([0, 0, 0])
+    expect(cam.position.toArray().map(v => Math.round(v * 1e6) / 1e6)).toEqual([0, 0, 100])
+    press(document, 'pointerup', { button: 2, clientX: 400, clientY: 300 })
+
+    // The row is the gate: with it off, the same press takes no pivot.
+    act(() => { useViewOptionsStore.setState({ orbit_around_cursor: false }) })
+    press(gl.domElement, 'pointerdown', { button: 2, clientX: 400, clientY: 300 })
+    expect(controls.orbitPivot).toBeNull()
+    press(document, 'pointerup', { button: 2, clientX: 400, clientY: 300 })
   })
 })
 

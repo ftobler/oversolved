@@ -12,7 +12,8 @@
 //            record undo and agree with the keyboard toggles.
 //   Viewer - browser preferences. No undo, no document write. Shading and
 //            Edges are the drawn layers, Brightness is the global exposure,
-//            Zebra and Curvature replace the body material, and Debug holds
+//            Zebra and Curvature replace the body material, Camera decides
+//            whether an orbit turns about the cursor point, and Debug holds
 //            the ID-buffer overlay.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import iconEyeIcon from '@/assets/icons/icon-eye.svg'
@@ -87,6 +88,7 @@ export default function ViewOptionsButton({ show, onToggleShow }: ViewOptionsBut
   const curvatureRange = useViewOptionsStore(s => s.curvature_range)
   const curvatureAutoRange = useViewOptionsStore(s => s.curvatureAutoRange)
   const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
+  const orbitAroundCursor = useViewOptionsStore(s => s.orbit_around_cursor)
 
   const setShading = useViewOptionsStore(s => s.setShading)
   const setEdges = useViewOptionsStore(s => s.setEdges)
@@ -98,6 +100,7 @@ export default function ViewOptionsButton({ show, onToggleShow }: ViewOptionsBut
   const setCurvatureKind = useViewOptionsStore(s => s.setCurvatureKind)
   const setCurvatureRange = useViewOptionsStore(s => s.setCurvatureRange)
   const setCollisionDebug = useViewOptionsStore(s => s.setCollisionDebug)
+  const setOrbitAroundCursor = useViewOptionsStore(s => s.setOrbitAroundCursor)
 
   // Escape and an outside pointer both close. A second eye click goes through
   // the button's own toggle; a row click deliberately does not close, so a
@@ -315,6 +318,15 @@ export default function ViewOptionsButton({ show, onToggleShow }: ViewOptionsBut
               </div>
             </div>
           )}
+
+          <div className="view-options-divider" />
+          <div className="view-options-heading">Camera</div>
+          <CheckRow
+            label="Orbit around cursor"
+            checked={orbitAroundCursor}
+            title="Right-drag turns about the body point under the cursor"
+            onToggle={() => setOrbitAroundCursor(!orbitAroundCursor)}
+          />
 
           <div className="view-options-divider" />
           <div className="view-options-heading">Debug</div>
