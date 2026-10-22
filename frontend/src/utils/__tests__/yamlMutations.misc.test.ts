@@ -5,7 +5,7 @@ import { applyRenamePart, applySetPartColor, applySetPartTransparency, applySetP
 import { applyAddFillet, applyAddChamfer, applySetFilletField, applySetChamferField } from '@/utils/yamlMutations/featureDefs'
 import { applyAddBoolean, applySetBooleanField } from '@/utils/yamlMutations/featureDefs'
 import { applySetArrayField } from '@/utils/yamlMutations/featureDefs'
-import { randomId, warn } from '@/utils/yamlMutations/helpers'
+import { randomId, warn, setIdScope, setIdSource } from '@/utils/yamlMutations/helpers'
 import { featureAt } from '@/testing/featureAccess'
 
 const array0 = (doc: PartDoc) => featureAt(doc, 0, 'array').array
@@ -557,6 +557,20 @@ describe('randomId', () => {
     const id12 = randomId(12)
     const id18 = randomId(18)
     expect(id12.length).toBeLessThan(id18.length)
+  })
+
+  it('reports an id-space exhaustion instead of silently returning a collision', () => {
+    // A source stuck on one id can never satisfy the scope, so past the redraw
+    // bound the collision is loud (failLoud throws under test) rather than
+    // silently returned.
+    const previous = setIdScope(new Set(['dup']))
+    setIdSource(() => 'dup')
+    try {
+      expect(() => randomId(12)).toThrow(/still collides/)
+    } finally {
+      setIdSource(null)
+      setIdScope(previous)
+    }
   })
 })
 

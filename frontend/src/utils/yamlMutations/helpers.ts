@@ -2,6 +2,7 @@ import type { PartDoc, PartFeature, PartConstraint, PartEntityDef, PartTarget, S
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { selectionToQuery, parseSelectionId, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { emitWire } from '@/utils/query'
+import { failLoud } from '@/utils/invariants'
 
 // The optional chain is the repo-wide rule for import.meta.env (see
 // deployBase.test.ts): this module loads under plain Node through the fuzz
@@ -146,8 +147,18 @@ export function randomId(bytes: number): string {
   let id = mint(bytes)
   // Bounded: a source that cannot produce a fresh id (a broken double, a
   // sequence whose whole space is taken) must not spin the apply forever, so
-  // past the bound the collision is returned rather than hanging.
-  for (let redraws = 0; scope.has(id) && redraws < MAX_ID_REDRAWS; redraws++) id = mint(bytes)
+  // past the bound the collision is reported instead of hanging.
+  let redraws = 0
+  while (scope.has(id) && redraws < MAX_ID_REDRAWS) {
+    id = mint(bytes)
+    redraws++
+  }
+  if (scope.has(id)) {
+    // The minted id still collides, so the scope guarantee is broken. Report it
+    // (throws in test, warns in dev, silent in production) and return it anyway:
+    // an exhausted id space must not abort an apply in production.
+    failLoud(`randomId: minted id ${id} still collides after ${MAX_ID_REDRAWS} redraws`)
+  }
   scope.add(id)
   return id
 }
