@@ -28,6 +28,12 @@ export function isSubtype(actualType: string | null, targetType: string): boolea
   return (TYPE_HIERARCHY[actualType] ?? []).includes(targetType)
 }
 
+/** The direct subtypes of a type, in declaration order. Used to publish the
+ *  vocabulary a selector can name instead of a hand-kept copy. */
+export function subtypesOf(targetType: string): string[] {
+  return Object.keys(TYPE_HIERARCHY).filter(t => TYPE_HIERARCHY[t].includes(targetType))
+}
+
 export function objType(obj: unknown): string | null {
   if (obj !== null && typeof obj === "object") {
     const t = (obj as Record<string, unknown>)["type"]

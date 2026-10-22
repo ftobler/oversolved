@@ -5,7 +5,8 @@
 // `and` narrows sequentially (CadQuery chaining: "|Z" then ">Z"), so an
 // `extreme` clause groups the extremes of whatever the earlier clauses left. An
 // empty result is an error whose message carries the nearest-miss count per
-// predicate, so an authoring agent can see which clause killed the match.
+// predicate and, for a `type` clause, the values present and the full valid
+// vocabulary, so an authoring agent can see which clause killed the match.
 
 import type { BodyResult } from '@/types/cad'
 import { parseAncestry } from '@/kernel/query'
@@ -21,9 +22,10 @@ import {
   pointOf,
   radiusOf,
   typeOf,
+  typeVocabulary,
   type Candidate,
 } from './geometry'
-import type { Predicate, RadiusTest, SelectResult, Selector, Vec3 } from './types'
+import type { Predicate, RadiusTest, SelectKind, SelectResult, Selector, Vec3 } from './types'
 
 // Direction tests compare normalized vectors: parallel means the axes coincide,
 // perpendicular means they cross at a right angle. The epsilon is an angle
@@ -156,28 +158,39 @@ function label(p: Predicate): string {
 /** Per-predicate nearest-miss counts. For a top-level `and` this walks the
  *  clauses in order, each measured against the set the previous clause left;
  *  every other shape reports one count over the incoming pool. */
-function diagnose(p: Predicate, pool: Candidate[], ctx: EvalContext): string[] {
+function diagnose(p: Predicate, pool: Candidate[], ctx: EvalContext, kind: SelectKind): string[] {
   if ('and' in p) {
     const out: string[] = []
     let current = pool
     for (const child of p.and) {
       const matched = evaluate(child, current, ctx)
-      out.push(...describeOne(child, current, matched.length, ctx))
+      out.push(...describeOne(child, current, matched.length, ctx, kind))
       current = matched
     }
     return out
   }
-  return describeOne(p, pool, evaluate(p, pool, ctx).length, ctx)
+  return describeOne(p, pool, evaluate(p, pool, ctx).length, ctx, kind)
 }
 
-function describeOne(p: Predicate, pool: Candidate[], matched: number, ctx: EvalContext): string[] {
-  if ('and' in p) return diagnose(p, pool, ctx)
+/** A `type` clause that matched nothing also names the values it could have
+ *  used: the ones present on the candidates and the full vocabulary for the
+ *  kind. One call then fixes a wrong guess instead of a nearest-miss count. */
+function typeDetail(p: { type: string }, pool: Candidate[], kind: SelectKind): string {
+  const present = [...new Set(pool.map(typeOf).filter((t): t is string => t !== null))].sort()
+  const valid = typeVocabulary(kind)
+  const noun = kind === 'edge' ? 'edge kinds' : 'face types'
+  return `${label(p)} matched 0; present ${noun}: ${present.join(', ') || 'none'}; valid ${noun}: ${valid.join(', ')}`
+}
+
+function describeOne(p: Predicate, pool: Candidate[], matched: number, ctx: EvalContext, kind: SelectKind): string[] {
+  if ('and' in p) return diagnose(p, pool, ctx, kind)
+  if ('type' in p && matched === 0) return [typeDetail(p, pool, kind)]
   return [`${label(p)} matched ${matched}`]
 }
 
 function emptyError(selector: Selector, pool: Candidate[], ctx: EvalContext): SelectorError {
   const what = selector.kind === 'edge' ? 'edges' : 'faces'
-  const details = selector.where ? diagnose(selector.where, pool, ctx) : ['no candidates']
+  const details = selector.where ? diagnose(selector.where, pool, ctx, selector.kind) : ['no candidates']
   const count = `${pool.length} candidate${pool.length === 1 ? '' : 's'}`
   return new SelectorError(`selector matched no ${what} (${count}: ${details.join(', ')})`)
 }

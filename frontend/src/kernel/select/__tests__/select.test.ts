@@ -294,6 +294,35 @@ describe('selectByPredicate: alignment and diagnostics', () => {
     expect(message).toMatch(/type "spline" matched 0/)
   })
 
+  it('an unknown type names the present and valid values instead of guessing a synonym', () => {
+    let error: unknown
+    try {
+      selectByPredicate({ kind: 'face', where: { type: 'plane' } }, box())
+    } catch (e) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(SelectorError)
+    const message = (error as Error).message
+    expect(message).toContain('type "plane" matched 0')
+    // `plane` is not mapped to `flatface`: one spelling per meaning.
+    expect(message).toContain('present face types: flatface')
+    expect(message).toContain('valid face types: flatface, cylinderface, coneface, sphereface, torusface')
+  })
+
+  it('a valid type with zero matches still lists the vocabulary', () => {
+    let error: unknown
+    try {
+      selectByPredicate({ kind: 'edge', where: { type: 'ellipse' } }, box())
+    } catch (e) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(SelectorError)
+    const message = (error as Error).message
+    expect(message).toContain('type "ellipse" matched 0')
+    expect(message).toContain('present edge kinds: line')
+    expect(message).toContain('valid edge kinds: line, circle, arc, spline, ellipse')
+  })
+
   it('returns the geometry summary the agent reads back', () => {
     const items = selectByPredicate({ kind: 'edge', where: { parallel: [0, 0, 1] } }, box()).items
     expect(items[0].geometry).toMatchObject({ kind: 'line', length: 10 })

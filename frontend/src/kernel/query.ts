@@ -43,7 +43,7 @@ export {
 } from './queryRepository'
 export type { ResolveTier } from './queryRepository'
 export type { AncestryTokens } from './queryWire'
-export { AmbiguousQueryError } from './queryCoerce'
+export { AmbiguousQueryError, subtypesOf } from './queryCoerce'
 export {
   initGlobalRepo,
   evictAncestryAndRegister,
