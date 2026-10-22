@@ -105,6 +105,29 @@ describe('MsaaPresenter', () => {
     expect([calls[4].target!.width, calls[4].target!.height]).toEqual([400, 225])
   })
 
+  it('swaps in a stencil target for the section cap, disposing the old one', () => {
+    const { gl, calls } = makeFakeGl()
+    const presenter = new MsaaPresenter()
+    presenter.render(gl, scene, camera)
+    const withoutStencil = calls[0].target!
+    expect(withoutStencil.stencilBuffer).toBe(false)
+    const disposed = vi.fn()
+    withoutStencil.addEventListener('dispose', disposed)
+
+    presenter.setStencil(true)
+    expect(presenter.hasStencil()).toBe(true)
+    expect(disposed).toHaveBeenCalledOnce()
+
+    presenter.render(gl, scene, camera)
+    const withStencil = calls[calls.length - 2].target!
+    expect(withStencil).not.toBe(withoutStencil)
+    expect(withStencil.stencilBuffer).toBe(true)
+
+    presenter.setStencil(false)
+    presenter.render(gl, scene, camera)
+    expect(calls[calls.length - 2].target!.stencilBuffer).toBe(false)
+  })
+
   it('restores the render target that was bound before the frame', () => {
     const { gl, setCurrent } = makeFakeGl()
     const outer = new THREE.WebGLRenderTarget(8, 8)

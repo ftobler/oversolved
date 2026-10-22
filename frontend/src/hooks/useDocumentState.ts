@@ -8,6 +8,7 @@ import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { useDocPersistence } from '@/hooks/useDocPersistence'
 import { takeRecoveryRestore } from '@/recovery/restore'
 import { syncRollbackFromDoc } from '@/stores/editorState'
+import { useSectionStore } from '@/stores/sectionStore'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 
@@ -30,6 +31,10 @@ export function useDocumentState(
 
   useEffect(() => {
     if (!uuid) return
+    // The section is a momentary inspection view, not a saved view: a document
+    // opened after another one starts uncut rather than inheriting a stale
+    // plane whose picked face may not even exist here.
+    useSectionStore.getState().reset()
     // Guard against a superseded load: if the uuid changes while a load is in
     // flight, a slow prior resolution must not overwrite the newer doc. Mirrors
     // the listReqRef guard in Documents.tsx.

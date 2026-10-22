@@ -25,6 +25,7 @@ import { editorState } from '@/stores/editorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
+import { useSectionStore } from '@/stores/sectionStore'
 
 // Structural so one list can hold stores with different state shapes.
 interface SceneStore {
@@ -41,6 +42,7 @@ const SCENE_STORES: readonly SceneStore[] = [
   editorState,
   useSketchUiStore,
   useViewOptionsStore,
+  useSectionStore,
 ]
 
 /**

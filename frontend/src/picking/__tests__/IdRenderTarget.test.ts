@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { IdRenderTarget } from '../IdRenderTarget'
 
 // The target's size drives the pick readback window and every layer's
@@ -49,6 +49,43 @@ describe('IdRenderTarget', () => {
     expect(t.isDirty()).toBe(false)
     t.markDirty()
     expect(t.isDirty()).toBe(true)
+    t.dispose()
+  })
+
+  it('adds a stencil only on request, and swaps the target without leaking the old one', () => {
+    const t = new IdRenderTarget(16, 12)
+    expect(t.hasStencil()).toBe(false)
+    expect(t.target.stencilBuffer).toBe(false)
+    const first = t.target
+    const disposed = vi.fn()
+    first.addEventListener('dispose', disposed)
+
+    t.markClean()
+    t.setStencil(true)
+    expect(t.hasStencil()).toBe(true)
+    expect(t.target.stencilBuffer).toBe(true)
+    expect(t.target).not.toBe(first)
+    expect(disposed).toHaveBeenCalledOnce()
+    // The next pick has to render into the new attachment set.
+    expect(t.isDirty()).toBe(true)
+    expect([t.getWidth(), t.getHeight()]).toEqual([16, 12])
+
+    t.setStencil(true)
+    const stencilTarget = t.target
+    t.setStencil(true)
+    expect(t.target).toBe(stencilTarget)
+    t.setStencil(false)
+    expect(t.hasStencil()).toBe(false)
+    expect(t.target.stencilBuffer).toBe(false)
+    t.dispose()
+  })
+
+  it('keeps the stencil attachment across a resize', () => {
+    const t = new IdRenderTarget(8, 8, true)
+    t.resize(20, 10)
+    expect(t.hasStencil()).toBe(true)
+    expect(t.target.stencilBuffer).toBe(true)
+    expect([t.getWidth(), t.getHeight()]).toEqual([20, 10])
     t.dispose()
   })
 })

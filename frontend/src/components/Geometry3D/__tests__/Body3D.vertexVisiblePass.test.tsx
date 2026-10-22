@@ -10,6 +10,7 @@ import { useFrame } from '@react-three/fiber'
 import { POINT_HIT_PIXELS, POINT_VIS_PIXELS } from '@/components/Geometry3D/constants'
 import type { Mesh3D } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
+import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
@@ -101,6 +102,17 @@ describe('Body3D visible vertex pass (unchanged by the pick-cube refactor)', () 
     // returns early on the null mesh ref -- the point is only that the new
     // `if (!visible) return` guard does not block the visible path.
     expect(() => runFrame()).not.toThrow()
+  })
+
+  it('clips the visible vertex dot while a section is on', async () => {
+    act(() => useSectionStore.setState({ ...DEFAULT_SECTION_STATE, enabled: true, resolved: true }))
+    try {
+      const { container } = await renderBody()
+      const dot = container.querySelector('meshbasicmaterial[color="white"]')
+      expect(dot?.hasAttribute('clippingplanes')).toBe(true)
+    } finally {
+      act(() => useSectionStore.setState({ ...DEFAULT_SECTION_STATE }))
+    }
   })
 
   it('keeps the visible-pass pixel sizes independent of the pick cube size', async () => {

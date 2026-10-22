@@ -20,6 +20,8 @@ import iconEyeIcon from '@/assets/icons/icon-eye.svg'
 import {
   useViewOptionsStore,
 } from '@/stores/viewOptionsStore'
+import { useSectionStore } from '@/stores/sectionStore'
+import { BUILTIN_SECTION_PLANES, type BuiltinSectionPlaneId } from '@/viewport/sectionPlane'
 import type { CurvatureKind } from '@/adapters/preferences'
 import { MAX_BRIGHTNESS, MAX_ZEBRA_STRIPES, MIN_BRIGHTNESS, MIN_ZEBRA_STRIPES } from '@/adapters/preferences'
 import type { ShowGroup, ShowGroupState } from '@/components/Viewport/viewOptionsShow'
@@ -32,6 +34,10 @@ export interface ViewOptionsButtonProps {
   // has no feature tree to show or hide.
   show?: Record<ShowGroup, ShowGroupState>
   onToggleShow?: (group: ShowGroup) => void
+  // Whether the viewport can resolve a picked section plane. The part editor
+  // can (it owns the body face registry); the assembly cannot, so it offers the
+  // builtin planes and says so rather than arming a pick nothing consumes.
+  allowSectionPick?: boolean
 }
 
 const SHOW_LABELS: Record<ShowGroup, string> = {
@@ -73,7 +79,7 @@ function formatRange(range: [number, number]): string {
   return `${fmt(range[0])} .. ${fmt(range[1])} 1/mm`
 }
 
-export default function ViewOptionsButton({ show, onToggleShow }: ViewOptionsButtonProps) {
+export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick = true }: ViewOptionsButtonProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -89,6 +95,13 @@ export default function ViewOptionsButton({ show, onToggleShow }: ViewOptionsBut
   const curvatureAutoRange = useViewOptionsStore(s => s.curvatureAutoRange)
   const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
   const orbitAroundCursor = useViewOptionsStore(s => s.orbit_around_cursor)
+  const sectionEnabled = useSectionStore(s => s.enabled)
+  const sectionPlane = useSectionStore(s => s.plane)
+  const sectionOffset = useSectionStore(s => s.offset)
+  const sectionFlipped = useSectionStore(s => s.flipped)
+  const sectionReason = useSectionStore(s => s.disabledReason)
+  const sectionPicking = useSectionStore(s => s.picking)
+  const sectionPickError = useSectionStore(s => s.pickError)
 
   const setShading = useViewOptionsStore(s => s.setShading)
   const setEdges = useViewOptionsStore(s => s.setEdges)
@@ -101,6 +114,11 @@ export default function ViewOptionsButton({ show, onToggleShow }: ViewOptionsBut
   const setCurvatureRange = useViewOptionsStore(s => s.setCurvatureRange)
   const setCollisionDebug = useViewOptionsStore(s => s.setCollisionDebug)
   const setOrbitAroundCursor = useViewOptionsStore(s => s.setOrbitAroundCursor)
+  const setSectionEnabled = useSectionStore(s => s.setEnabled)
+  const setSectionPlane = useSectionStore(s => s.setPlane)
+  const setSectionOffset = useSectionStore(s => s.setOffset)
+  const setSectionFlipped = useSectionStore(s => s.setFlipped)
+  const setSectionPicking = useSectionStore(s => s.setPicking)
 
   // Escape and an outside pointer both close. A second eye click goes through
   // the button's own toggle; a row click deliberately does not close, so a
@@ -329,6 +347,86 @@ export default function ViewOptionsButton({ show, onToggleShow }: ViewOptionsBut
             title="Right-drag turns about the body point under the cursor"
             onToggle={() => setOrbitAroundCursor(!orbitAroundCursor)}
           />
+
+          <div className="view-options-divider" />
+          <div className="view-options-heading">Section</div>
+          <CheckRow
+            label="Section"
+            checked={sectionEnabled}
+            title="Cut the bodies with a plane"
+            onToggle={() => setSectionEnabled(!sectionEnabled)}
+          />
+          {sectionReason && !sectionEnabled && (
+            <div className="view-options-note" role="status">{sectionReason}</div>
+          )}
+          {sectionEnabled && (
+            <>
+              <div className="view-options-segment" role="group" aria-label="Section plane">
+                {BUILTIN_SECTION_PLANES.map(id => {
+                  const chosen = sectionPlane.kind === 'builtin' && sectionPlane.id === id
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`view-options-segment-btn${chosen ? ' active' : ''}`}
+                      aria-pressed={chosen}
+                      onClick={() => setSectionPlane({ kind: 'builtin', id: id as BuiltinSectionPlaneId })}
+                      data-view-row
+                    >
+                      {id === 'front' ? 'Front' : id === 'top' ? 'Top' : 'Right'}
+                    </button>
+                  )
+                })}
+                {allowSectionPick && (
+                  <button
+                    type="button"
+                    className={`view-options-segment-btn${sectionPicking ? ' active' : ''}`}
+                    aria-pressed={sectionPicking}
+                    title={sectionPlane.kind === 'query' ? `Picked ${sectionPlane.query}` : 'Pick a face or plane in the viewport'}
+                    onClick={() => setSectionPicking(!sectionPicking)}
+                    data-view-row
+                  >
+                    {sectionPlane.kind === 'query' ? 'Picked' : 'Pick'}
+                  </button>
+                )}
+              </div>
+              {!allowSectionPick && (
+                <div className="view-options-note" role="status">
+                  Use Front, Top or Right here; picking a face or plane is a part-editor action.
+                </div>
+              )}
+              {sectionPickError && (
+                <div className="view-options-note" role="status">{sectionPickError}</div>
+              )}
+              {sectionPicking && (
+                <div className="view-options-note" role="status">Click a face or plane in the viewport.</div>
+              )}
+              <div className="view-options-range-row">
+                <span className="view-options-label">Offset</span>
+                <input
+                  type="number"
+                  className="view-options-range-input"
+                  aria-label="Section offset"
+                  step="0.5"
+                  value={sectionOffset}
+                  onChange={e => {
+                    // An empty box is unfinished input, not a request to move
+                    // the plane to zero.
+                    if (e.target.value.trim() === '') return
+                    const value = Number(e.target.value)
+                    if (Number.isFinite(value)) setSectionOffset(value)
+                  }}
+                  data-view-row
+                />
+              </div>
+              <CheckRow
+                label="Flip side"
+                checked={sectionFlipped}
+                title="Keep the other half"
+                onToggle={() => setSectionFlipped(!sectionFlipped)}
+              />
+            </>
+          )}
 
           <div className="view-options-divider" />
           <div className="view-options-heading">Debug</div>

@@ -3,6 +3,7 @@ import { subscribeSceneInvalidation } from '@/components/Viewport/sceneInvalidat
 import { editorState } from '@/stores/editorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
+import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
 // The part viewport draws on demand, so a store write that reaches the scene
 // has to ask for a frame. These cases pin the "which stores" half of that
@@ -41,6 +42,21 @@ describe('subscribeSceneInvalidation', () => {
     useViewOptionsStore.getState().setZebra(true)
     expect(invalidate).toHaveBeenCalled()
     useViewOptionsStore.getState().setZebra(false)
+  })
+
+  it('requests a frame for every section change', () => {
+    // Enabling and moving the section change only material uniforms and the
+    // shared plane; no React instance prop moves.
+    const invalidate = vi.fn()
+    unsubscribe = subscribeSceneInvalidation(invalidate)
+    useSectionStore.setState({ ...DEFAULT_SECTION_STATE })
+
+    useSectionStore.getState().setEnabled(true)
+    useSectionStore.getState().setOffset(3)
+    useSectionStore.getState().toggleFlipped()
+    useSectionStore.getState().setEnabled(false)
+
+    expect(invalidate.mock.calls.length).toBeGreaterThanOrEqual(4)
   })
 
   it('stops requesting frames once unsubscribed', () => {

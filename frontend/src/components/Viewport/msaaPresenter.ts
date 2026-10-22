@@ -76,11 +76,29 @@ export class MsaaPresenter {
   private readonly output = new OutputPass()
   private readonly size = new THREE.Vector2()
   private readonly samples: number
+  private stencil = false
 
   constructor(samples: number = PRESENT_SAMPLES) {
     this.samples = samples
     this.output.renderToScreen = true
     this.output.material.fragmentShader = PREMULTIPLIED_OUTPUT_FRAGMENT
+  }
+
+  /**
+   * Re-create the multisampled target with or without a stencil attachment.
+   * WebGL fixes the attachment set when a framebuffer is allocated, so the
+   * section's cap passes need a fresh target; the old one is disposed here so
+   * a toggle cannot leak a multisampled colour/depth set.
+   */
+  setStencil(enabled: boolean): void {
+    if (this.stencil === enabled) return
+    this.stencil = enabled
+    this.target?.dispose()
+    this.target = null
+  }
+
+  hasStencil(): boolean {
+    return this.stencil
   }
 
   render(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
@@ -104,7 +122,12 @@ export class MsaaPresenter {
       // linear target bands in the shadows. The fallback only applies where
       // float colour attachments are not renderable.
       const type = gl.extensions.has('EXT_color_buffer_float') ? THREE.HalfFloatType : THREE.UnsignedByteType
-      this.target = new THREE.WebGLRenderTarget(width, height, { samples: this.samples, type })
+      this.target = new THREE.WebGLRenderTarget(width, height, {
+        samples: this.samples,
+        type,
+        depthBuffer: true,
+        stencilBuffer: this.stencil,
+      })
     } else if (this.target.width !== width || this.target.height !== height) {
       this.target.setSize(width, height)
     }

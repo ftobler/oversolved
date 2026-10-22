@@ -198,6 +198,15 @@
   cursor: pointer;
 }
 
+/* A section note is informational: it explains why the section turned itself
+   off, so it must read as a message, not as another row. */
+.view-options-note {
+  padding: 0 8px 6px;
+  color: var(--text-muted, #9aa4b2);
+  font-size: 0.85em;
+  line-height: 1.3;
+}
+
 /* A phone has no room for a card above the corner button: the popover becomes a
    bottom sheet, full width, scrolling from the bottom edge. */
 @media (max-width: 768px) {

@@ -11,6 +11,8 @@ import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { COLOR_SELECTED, COLOR_HOVER, RENDER_ORDER_HIGHLIGHT, EDGE_HIGHLIGHT_LINE_WIDTH } from '@/components/Geometry3D/constants'
 import { AssemblySelectionIndex } from '@/utils/assemblySelectionGeometry'
+import { getSectionClipPlaneList } from '@/viewport/sectionClipping'
+import { useSectionActive } from '@/viewport/useSection'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import type { Vec3 } from '@/utils/transform3d'
 
@@ -82,6 +84,8 @@ function usePointsGeometry(points: readonly Vec3[]): THREE.BufferGeometry | null
 }
 
 export default function AssemblySelectionHighlight({ pickBodies, selection, hovered, mateHighlighted }: Props) {
+  const sectionActive = useSectionActive()
+  const clippingPlanes = sectionActive ? getSectionClipPlaneList() : null
   // The index outlives the pointer: it is keyed on the pick geometry, so a hover
   // change costs only the primitives of the newly hovered entity. Rebuilding it
   // per move (what calling the one-shot helper would do) would walk every
@@ -127,6 +131,7 @@ export default function AssemblySelectionHighlight({ pickBodies, selection, hove
             polygonOffset
             polygonOffsetFactor={-1}
             polygonOffsetUnits={-1}
+            clippingPlanes={clippingPlanes}
           />
         </mesh>
       )}
@@ -141,27 +146,28 @@ export default function AssemblySelectionHighlight({ pickBodies, selection, hove
             polygonOffset
             polygonOffsetFactor={-1}
             polygonOffsetUnits={-1}
+            clippingPlanes={clippingPlanes}
           />
         </mesh>
       )}
       {selFaceBoundary && (
         <lineSegments geometry={selFaceBoundary} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
-          <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
+          <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent clippingPlanes={clippingPlanes} />
         </lineSegments>
       )}
       {hovFaceBoundary && (
         <lineSegments geometry={hovFaceBoundary} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
-          <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
+          <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent clippingPlanes={clippingPlanes} />
         </lineSegments>
       )}
       {selEdges && (
         <lineSegments geometry={selEdges} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
-          <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
+          <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent clippingPlanes={clippingPlanes} />
         </lineSegments>
       )}
       {hovEdges && (
         <lineSegments geometry={hovEdges} renderOrder={RENDER_ORDER_HIGHLIGHT} raycast={NO_RAYCAST}>
-          <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
+          <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent clippingPlanes={clippingPlanes} />
         </lineSegments>
       )}
       {selVerts && (
@@ -173,6 +179,7 @@ export default function AssemblySelectionHighlight({ pickBodies, selection, hove
             depthTest={false}
             alphaMap={getVertexDotAlphaMap()}
             transparent
+            clippingPlanes={clippingPlanes}
           />
         </points>
       )}
@@ -185,6 +192,7 @@ export default function AssemblySelectionHighlight({ pickBodies, selection, hove
             depthTest={false}
             alphaMap={getVertexDotAlphaMap()}
             transparent
+            clippingPlanes={clippingPlanes}
           />
         </points>
       )}

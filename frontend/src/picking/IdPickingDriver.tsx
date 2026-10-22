@@ -5,6 +5,7 @@ import { IdPipeline } from './IdPipeline'
 import { useIdPipelineLifecycle } from './useIdPipelineLifecycle'
 import { cameraPoseChanged, createCameraPose, recordCameraPoseInto, type CameraPoseSnapshot } from './cameraPose'
 import { getPixelRatio } from './pickPixelRatio'
+import { isSectionClippingActive } from '@/viewport/sectionClipping'
 
 // Reused across getRenderSize calls (per-frame resize poll). getDrawingBufferSize
 // only writes into the vector it is handed, so one module-scope instance avoids a
@@ -69,6 +70,14 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
   }, [gl, sizeWidth, sizeHeight])
 
   const { pipeline, tryRender } = useIdPipelineLifecycle(factory)
+
+  // The section's clip + cap machinery is pipeline state. Syncing it here, not
+  // only from the viewport's effects, is what makes a pipeline re-created by a
+  // Suspense reveal inherit a section that was already on. The shared plane is
+  // the source of truth (the stores layer is off limits to picking).
+  useEffect(() => {
+    pipeline?.setSectionActive(isSectionClippingActive())
+  }, [pipeline])
 
   const onReadyRef = useRef(onReady)
   useEffect(() => { onReadyRef.current = onReady }, [onReady])

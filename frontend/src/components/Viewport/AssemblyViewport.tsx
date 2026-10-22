@@ -43,8 +43,10 @@ import {
 } from '@/picking'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
+import { useSectionStore } from '@/stores/sectionStore'
 import { autoRangeFromMeshes } from '@/components/Geometry3D/curvature'
 import { useLayerPipelineEffects } from '@/components/Viewport/viewOptionsEffects'
+import { useSectionPipelineEffects } from '@/viewport/useSection'
 import { lookupAnchor, resolveAnchorGizmos } from '@/utils/anchorGizmos'
 import { entityKeysForMate } from '@/utils/mateHighlight'
 import {
@@ -95,7 +97,9 @@ const pointerOf = (e: { pointerId: number; button: number }): PointerRef => ({ i
 const CANVAS_STYLE = { width: '100%', height: '100%', background: '#0b0b0b' }
 // `alpha` is stated rather than inherited, for the same reason as the part
 // viewport: the thumbnail's empty-frame check depends on a transparent clear.
-const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true, alpha: true }
+// The stencil is for the section cap (this canvas renders directly, so the
+// attachment must be on the default framebuffer). It is cheap when unused.
+const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true, alpha: true, stencil: true }
 // `isolation: isolate` makes this div a stacking context, penning anything drei
 // portals next to the canvas inside the viewport. The assembly scene draws its
 // overlays in-canvas (Text/Billboard) and mounts no `<Html>` today, so this is
@@ -214,6 +218,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
     glRef.current = state.gl
     sceneRef.current = state.scene
+    // Same object-level clipping switch as the part viewport.
+    state.gl.localClippingEnabled = true
     // Latched: a caller may invoke onCreated while rendering, and re-entering
     // setState from there would loop renders.
     if (createdLiveRef.current) return
@@ -270,6 +276,26 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     () => offsetPickBodies(pickGeometry, pickGeometryPose, drawnPoses),
     [pickGeometry, pickGeometryPose, drawnPoses],
   )
+
+  // Section cap render-order bands, one per drawn body across every part group.
+  // They must be unique across the whole scene, not just within a group, or two
+  // bodies' stencil passes would interleave.
+  const capBands = useMemo(() => {
+    const bands = new Map<string, number>()
+    let next = 0
+    for (const group of groups) {
+      for (const item of group.items) bands.set(item.key, next++)
+    }
+    return bands
+  }, [groups])
+
+  // The assembly has no planar-face frames to resolve a picked section plane
+  // against, so the dropdown does not offer the face/plane pick here. Clear any
+  // pick armed in the part editor as the assembly takes over: an armed flag
+  // with no consumer would swallow the next part click.
+  useEffect(() => {
+    useSectionStore.getState().setPicking(false)
+  }, [])
 
   // Same scene-wide auto range as the part viewport: the component bodies each
   // know only their own field.
@@ -497,6 +523,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // Shading/Edges change the ID layers; the toggle must dirty the buffer and
   // drop the hover resolved against the old ones, exactly as in the part editor.
   useLayerPipelineEffects(clearHover)
+  // Same section debt as the part editor: the pick buffer follows the cut.
+  useSectionPipelineEffects(clearHover)
 
   const scheduleHover = useCallback((e: React.PointerEvent) => {
     // A held button means an orbit is in progress. Every frame of it would
@@ -780,6 +808,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
                 onGrab={(point, event) => handleGrabBody(g.handle, point, pointerOf(event))}
                 showFaces={shading}
                 showEdges={edges}
+                capBand={capBands.get(item.key) ?? 0}
               />
             ))}
           </group>

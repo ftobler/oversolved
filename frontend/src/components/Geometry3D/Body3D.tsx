@@ -38,6 +38,12 @@ import { VertexInstancePainter } from '@/components/Geometry3D/vertexInstancePai
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
 import { bodyKeyFor } from '@/picking/pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
+import SectionCap from '@/components/Geometry3D/SectionCap'
+import { getSectionClipPlaneList } from '@/viewport/sectionClipping'
+import {
+  useSectionActive,
+  useSectionOwnedMaterialClipping,
+} from '@/viewport/useSection'
 import { HighlightIndex, type ActiveHighlight } from '@/picking/selectionHighlight'
 import { selectActiveFrom, hoverActiveFrom, EMPTY_CLAIM_MAP } from '@/picking/highlightActive'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
@@ -85,9 +91,12 @@ interface Body3DProps {
   // wireframe would keep blocking clicks on the edges the user can see.
   showFaces?: boolean
   showEdges?: boolean
+  // Stable position in the viewport's body list; owns the section cap's render
+  // order band so bodies cannot interleave their stencil passes.
+  capBand?: number
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true, capBand = 0 }: Body3DProps) {
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible && showFaces })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible && showEdges })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
@@ -343,6 +352,16 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     curvatureRange: effectiveCurvatureRange(curvatureManualRange, curvatureAutoRange),
   })
 
+  // The section clips the body's faces and edges, not the reference geometry
+  // around them. The cap is the fill of the cut itself, in the body's colour.
+  // The face material carries the plane as a JSX prop because the mesh is
+  // unmounted and remounted by the Shading row; the edge material is one
+  // memo-owned instance for the component's lifetime. Only the active boolean
+  // is subscribed here, not the moving plane: the shared plane updates in
+  // place, so a drag must not re-render every body.
+  const sectionActive = useSectionActive()
+  useSectionOwnedMaterialClipping(edgeMaterial, sectionActive)
+
   // The wireframe is where the removal mark lives now the doomed face is
   // see-through: a consumed body's edges turn pink so the mark shows WHICH
   // body is leaving. Selection still outranks removal, mirroring the face
@@ -571,6 +590,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
             blending={surface.transparency > 0 || surface.transmission > 0 ? THREE.CustomBlending : THREE.NormalBlending}
             blendSrc={THREE.SrcAlphaFactor}
             blendDst={THREE.OneMinusSrcAlphaFactor}
+            clippingPlanes={sectionActive ? getSectionClipPlaneList() : null}
           />
         </mesh>
       )}
@@ -604,7 +624,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
             renderOrder={RENDER_ORDER_HIGHLIGHT}
           >
             <sphereGeometry args={[1, 6, 6]} />
-            <meshBasicMaterial color="white" depthTest={false} depthWrite={false} />
+            <meshBasicMaterial
+              color="white"
+              depthTest={false}
+              depthWrite={false}
+              clippingPlanes={sectionActive ? getSectionClipPlaneList() : null}
+            />
           </instancedMesh>
         </>
       )}
@@ -619,7 +644,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
         if (!geo) return null
         return (
           <lineSegments key={`edge-hover-${edgeIdx}`} geometry={geo}>
-            <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} />
+            <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} clippingPlanes={sectionActive ? getSectionClipPlaneList() : null} />
           </lineSegments>
         )
       })}
@@ -629,7 +654,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
         if (!geo) return null
         return (
           <lineSegments key={edgeIdx} geometry={geo} renderOrder={RENDER_ORDER_HIGHLIGHT}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent clippingPlanes={sectionActive ? getSectionClipPlaneList() : null} />
           </lineSegments>
         )
       })}
@@ -641,17 +666,20 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
         if (!geo) return null
         return (
           <lineSegments key={`face-hover-${faceIdx}`} geometry={geo}>
-            <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} />
+            <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} clippingPlanes={sectionActive ? getSectionClipPlaneList() : null} />
           </lineSegments>
         )
       })}
+      {showFaces && sectionActive && (
+        <SectionCap geometry={geometry} color={bodyColor} enabled={visible} band={capBand} />
+      )}
       {interactive && showFaces && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceSelectionFlags) && faceSelectionFlags!.map((selected, faceIdx) => {
         if (!selected) return null
         const geo = faceBoundaryGeos.get(faceIdx)
         if (!geo) return null
         return (
           <lineSegments key={faceIdx} geometry={geo}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent clippingPlanes={sectionActive ? getSectionClipPlaneList() : null} />
           </lineSegments>
         )
       })}

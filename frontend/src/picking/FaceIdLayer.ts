@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
 import { FACE_LAYER_NAME } from './layerNames'
+import { applySectionClipping } from '@/viewport/sectionClipping'
 
 /**
  * Concrete ID layer for B-rep faces.
@@ -42,17 +43,26 @@ export interface FaceBodyRegistration {
   perPrimitivePickKeys?: boolean
 }
 
+// The clipping chunks are compiled in permanently (with `clipping: true` on the
+// material) and the section only swaps the plane list. This is what keeps the
+// ID buffer's faces in step with the drawn cut: an unclipped pick pass would
+// resolve geometry the user can no longer see.
 const VERT_SHADER = `
   varying vec3 vColor;
+  #include <clipping_planes_pars_vertex>
   void main() {
     vColor = color;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    #include <clipping_planes_vertex>
   }
 `
 
 const FRAG_SHADER = `
   varying vec3 vColor;
+  #include <clipping_planes_pars_fragment>
   void main() {
+    #include <clipping_planes_fragment>
     gl_FragColor = vec4(vColor, 1.0);
   }
 `
@@ -66,6 +76,7 @@ function buildFaceIdMaterial(): THREE.ShaderMaterial {
     polygonOffset: true,
     polygonOffsetFactor: 1,
     polygonOffsetUnits: 1,
+    clipping: true,
   })
 }
 
@@ -165,5 +176,34 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
   dispose(): void {
     this.disposeBodies()
     this.material.dispose()
+  }
+
+  // Attach or clear the section plane on every face this layer draws. The
+  // pipeline owns the timing; this only routes the shared plane list.
+  setClipping(active: boolean): void {
+    applySectionClipping(this.material, active)
+  }
+
+  // Whether this layer currently carries the section plane (test/debug).
+  isSectionClipped(): boolean {
+    return this.material.clippingPlanes !== null
+  }
+
+  // Draw the registered bodies with a stand-in material, for the section cap's
+  // stencil count and cap fill. The bodies are the same triangles the face IDs
+  // are drawn from, so the cap can never disagree with the silhouette the ID
+  // pass already has. The real material is restored before returning.
+  renderBodiesWith(renderer: THREE.WebGLRenderer, camera: THREE.Camera, material: THREE.Material): void {
+    if (this.bodies.size === 0) return
+    const previous: { mesh: THREE.Mesh; material: THREE.Material | THREE.Material[] }[] = []
+    for (const rec of this.bodies.values()) {
+      previous.push({ mesh: rec.mesh, material: rec.mesh.material })
+      rec.mesh.material = material
+    }
+    try {
+      renderer.render(this.scene, camera)
+    } finally {
+      for (const entry of previous) entry.mesh.material = entry.material
+    }
   }
 }
