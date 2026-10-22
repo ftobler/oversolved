@@ -12,7 +12,7 @@ import { featureFieldNames } from '@/persistence/partDocSchema'
 import type { Mutation } from '@/types/cad'
 import { MUTATION_FAMILIES, mutationCatalogPayload } from '../mutationCatalogPayload'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
-import { runHeadless, measureHeadless, seedBuiltins } from '../headlessOps'
+import { runHeadless, measureHeadless, seedBuiltins, selectHeadless } from '../headlessOps'
 import { createDriveJournal } from '../journal'
 import type { ScriptStep } from '../scriptRunner'
 import { loadOcc } from '@/kernel/occ/loadOcc'
@@ -181,5 +181,25 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     expect(measure).not.toBeNull()
     expect(measure!.volume).toBeCloseTo(11922.743, 3)
     expect(measure!.area).toBeCloseTo(3733.044, 3)
+  }, 120_000)
+
+  it('pins the filleted-box edge queries to a select run on the box', async () => {
+    // The example carries the queries `select` produced rather than the select
+    // step, so this re-runs select on the same box doc and compares, pinning
+    // that the carried strings really came from the engine.
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const built = await exampleRun(box.steps)
+    expect(built.ok).toBe(true)
+    const selected = await selectHeadless(built.doc!, { kind: 'edge', where: { parallel: [0, 1, 0] } })
+    expect(selected).not.toBeNull()
+    const fillet = MUTATION_EXAMPLES.find(entry => entry.name === 'filleted-box')!
+    const carried: string[] = []
+    for (const step of fillet.steps) {
+      if (!('mutation' in step)) continue
+      const query = (step.mutation as { edgeQuery?: string }).edgeQuery
+      if (query !== undefined) carried.push(query)
+    }
+    expect(carried).toHaveLength(4)
+    expect(selected!.queries).toEqual(carried)
   }, 120_000)
 })
