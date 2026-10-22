@@ -727,9 +727,12 @@ export interface OccModule extends OccBaseModule {
     // net. Tight enough for the oracle's analytic surfaces, not what an
     // external tool reports.
     Add(shape: OccShape, box: OccDisposable, useTriangulation: boolean): void
-    // The exact box: no triangulation, no shape tolerance. `AddOptimal` is the
-    // 4-arg binding in this build (the wasm also names AddOptimal_1/_2, which
-    // embind does not expose); pinned by measureLocallyReal.test.ts.
+    // The optimal box: no triangulation, no shape tolerance. It is exact over
+    // the face's parameter rectangle; a trim can leave that rectangle larger
+    // than the face itself, which `faceBounds.ts` corrects for the measure
+    // record. `AddOptimal` is the 4-arg binding in this build (the wasm also
+    // names AddOptimal_1/_2, which embind does not expose); pinned by
+    // measureLocallyReal.test.ts.
     AddOptimal(
       shape: OccShape,
       box: OccDisposable,
