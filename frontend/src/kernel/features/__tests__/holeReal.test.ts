@@ -231,6 +231,41 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       }
     })
 
+    it('a whole-sketch pick drills every point and circle at the right size', () => {
+      // The whole-sketch meaning is every drill site in it: the two circles at
+      // their own radii and the point at the feature's diameter, in the sketch's
+      // entity order. The cosmetic thread reports one helix per site, so its
+      // radii pin each site's size and the order they were drilled in. The sites
+      // are spaced apart so no two bores overlap and the volume is a clean sum.
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      try {
+        const repo = new Repository()
+        repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+        repo.register('sk/c1', { external_params: [3, 3, 2], kind: 'circle', sketch_id: 'sk' })
+        repo.register('sk/c2', { external_params: [16, 16, 3], kind: 'circle', sketch_id: 'sk' })
+        repo.register('sk/p1/xy', { external_xy: [10, 10] })
+        const bodyStore = boxTarget(occ, scope, table)
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: {
+            sketch: '@sk', diameter: 10, depth: 5, target: 'body_t',
+            thread: { designation: 'M6x1', nominal: 6, pitch: 1 },
+          },
+        }, repo, bodyStore, {
+          sk: { entities: [{ id: 'c1', kind: 'circle' }, { id: 'p1', kind: 'point' }, { id: 'c2', kind: 'circle' }] },
+        })
+        expect(result.status).toBe('ok')
+        expect(result.hole_count).toBe(3)
+        const helices = (result.thread as { helices: Array<{ radius: number }> }).helices
+        expect(helices.map((h) => h.radius)).toEqual([2, 5, 3])
+        const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * (2 * 2 + 5 * 5 + 3 * 3) * 5, 2)
+      } finally {
+        scope.dispose()
+      }
+    })
+
     it('radial through-all hole fully pierces a cylinder', () => {
       // A cylinder's B-rep vertices sit only on its seam, so a vertex-only AABB
       // collapses radially: the span reads the height instead of the diameter

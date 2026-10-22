@@ -273,11 +273,17 @@ the body untouched; the other groups still apply (status `partial`).
       pitch: 1.0                 # mm per turn
 ```
 
-A cosmetic thread adds no geometry: the bore stays the authored `diameter`
-(normally the table entry's tap drill) and the solve reports the thread's
-metadata plus one display helix per drilled bore, drawn on the bore wall. The
-pair is checked against the thread table at load time when the table carries the
-designation.
+The `sketch` pick drills every point and circle in the sketch: a point at the
+feature `diameter`, a circle at its own radius. A pick that names one point or
+circle (`entity:<sk>:<eid>`, `vertex:<sk>:<eid>:<sub>`, or a single-entity area
+query) drills only that one; a line, arc or spline names no drill site and is
+refused by name.
+
+A cosmetic thread adds no geometry: the bore keeps its drilled size (the authored
+`diameter` for a point, the circle's own radius for a circle) and the solve
+reports the thread's metadata plus one display helix per drilled bore, drawn on
+the bore wall. The pair is checked against the thread table at load time when the
+table carries the designation.
 
 ### transform
 

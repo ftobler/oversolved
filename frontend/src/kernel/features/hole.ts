@@ -2,10 +2,11 @@
 // or through-all) and boolean-cuts it from the target body. Composite of the cut boolean
 // + cylinder primitive.
 //
-// The ref is a pick chip's raw value, so it names either a whole sketch (every point entity in
-// it, the original behaviour) or ONE picked entity -- a point, or a circle that carries its own
-// diameter. parseHoleSketchRef / drilledEntities / drillSite below are that rule; a pick that
-// names no drill site is refused there by name.
+// The ref is a pick chip's raw value, so it names either a whole sketch (every point and circle
+// in it) or ONE picked entity -- a point, or a circle that carries its own radius. A circle
+// drills at its own radius either way; a point takes the feature's `diameter`.
+// parseHoleSketchRef / drilledEntities / drillSite below are that rule; a pick that names no
+// drill site is refused there by name.
 //
 // through_all sizes the cylinder from the target's edge-sampled AABB (bodyFrame).
 // A vertex-only box is NOT a safe stand-in for one: an OCCT cylinder carries
@@ -104,13 +105,14 @@ function parseHoleSketchRef(
  * without geometry (the caller counts those as skipped).
  *
  * A point entity is the classic hole site: it names a position and nothing else,
- * so the feature's own diameter applies. A picked CIRCLE names both -- position
- * and size -- and its size wins, because the hole it asks for is the hole the
- * user drew and can see; the same pick through an extrude cut removes exactly
- * that cylinder, and a hole that came out at the field's diameter instead would
- * disagree with the circle still sitting in the sketch. Nothing else is a drill
- * site: a line, an arc or a spline names no enclosed circle, so those are
- * refused rather than reduced to some point on them.
+ * so the feature's own diameter applies. A CIRCLE names both -- position and
+ * size -- and its size wins, whether the pick named it alone or took it in with
+ * the whole sketch, because the hole it asks for is the hole the user drew and
+ * can see; the same pick through an extrude cut removes exactly that cylinder,
+ * and a hole that came out at the feature's diameter instead would disagree with
+ * the circle still sitting in the sketch. Nothing else is a drill site: a line,
+ * an arc or a spline names no enclosed circle, so those are refused rather than
+ * reduced to some point on them.
  */
 function drillSite(
   globalRepo: Repository,
@@ -133,8 +135,9 @@ function drillSite(
 /**
  * The entities this hole drills. A pick that named one entity drills that one
  * and nothing else -- a user who clicked a single point does not expect the
- * other points in the sketch to be drilled too -- and a pick that named the
- * sketch drills every point in it, as it always has.
+ * other points in the sketch to be drilled too. A pick that named the sketch
+ * drills every point and circle in it, in the sketch's entity order; each point
+ * takes the feature's diameter and each circle its own radius (drillSite).
  */
 function drilledEntities(
   entities: Dict[],
@@ -142,26 +145,13 @@ function drilledEntities(
   entityId: string | null,
 ): Dict[] {
   if (entityId === null) {
-    const points = entities.filter((e) => e.kind === 'point')
-    if (points.length === 0) {
-      const circles = entities.filter((e) => e.kind === 'circle')
-      if (circles.length > 0) {
-        // A whole-sketch pick still drills only points. Name the pick that
-        // would work instead of making the user guess why their circles did
-        // nothing; drilling every circle here is a separate product decision.
-        const count = circles.length
-        const noun = count === 1 ? 'circle' : 'circles'
-        const pick = count === 1
-          ? `pick it as $${sketchId}/${circles[0].id as string}`
-          : `pick one as $${sketchId}/${circles[0].id as string}`
-        throw new Error(
-          `hole: sketch '${sketchId}' has no point entities; it has ${count} ${noun}, ` +
-          `${pick} to drill it at its own size`,
-        )
-      }
-      throw new Error(`hole: sketch '${sketchId}' has no point entities`)
+    const sites = entities.filter((e) => e.kind === 'point' || e.kind === 'circle')
+    if (sites.length === 0) {
+      throw new Error(
+        `hole: sketch '${sketchId}' has no point or circle entities; the hole needs a point or circle in its sketch`,
+      )
     }
-    return points
+    return sites
   }
   const picked = entities.find((e) => e.id === entityId)
   if (picked === undefined) throw new Error(`hole: sketch '${sketchId}' has no entity '${entityId}'`)

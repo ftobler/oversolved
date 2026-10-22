@@ -136,7 +136,7 @@ export function setterFieldNames(type: Mutation['type']): readonly string[] | nu
 
 const HOLE_FIELD_NOTE =
   `Canonical hole fields: ${featureFieldNames('hole').join(', ')}. ` +
-  '`sketch` names a sketch with point entities, or one circle as `$<sketchId>/<circleId>` to drill it at its own size.'
+  '`sketch` names a sketch whose points and circles are drilled: a circle at its own radius, a point at the feature `diameter`. A single point or circle picked alone drills only that one.'
 
 const fieldOf = (label: string, type: FieldSetterType) =>
   str(`The ${label} field to set. Valid fields: ${(setterFieldNames(type) ?? []).join(', ')}.`)
