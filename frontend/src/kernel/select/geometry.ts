@@ -6,7 +6,7 @@
 // missing or empty query means the element is unnamed and cannot be selected.
 
 import type { BodyResult, EdgeData } from '@/types/cad'
-import { subtypesOf } from '@/kernel/query'
+import type { SurfaceType } from '@/kernel/occ/primitives'
 import type { EdgeGeometry, FaceGeometry, SelectKind, Vec3 } from './types'
 
 /** One selectable element, resolved to its owning body and index. */
@@ -148,13 +148,27 @@ const EDGE_KIND_SET: Record<EdgeData['kind'], true> = {
   ellipse: true,
 }
 
+// Every SurfaceType, tethered the same way: a new member of the union fails to
+// compile here until the vocabulary learns it. The `face` catch-all is included
+// because typeOf reports it for a freeform face and `evaluate` accepts it. A
+// type-only import keeps OCC out of this pure engine.
+const FACE_TYPE_SET: Record<SurfaceType, true> = {
+  flatface: true,
+  cylinderface: true,
+  coneface: true,
+  sphereface: true,
+  torusface: true,
+  face: true,
+}
+
 const EDGE_KINDS: readonly string[] = Object.keys(EDGE_KIND_SET)
+const FACE_TYPES: readonly string[] = Object.keys(FACE_TYPE_SET)
 
 /** The `type` predicate vocabulary for a selector kind, read from the same
  *  tables as typeOf: edge kinds from the EdgeData union and face surface types
- *  from the query engine's type hierarchy. */
+ *  from the SurfaceType union. */
 export function typeVocabulary(kind: SelectKind): readonly string[] {
-  return kind === 'edge' ? EDGE_KINDS : subtypesOf('face')
+  return kind === 'edge' ? EDGE_KINDS : FACE_TYPES
 }
 
 /** The per-item geometry summary the agent reads back. */

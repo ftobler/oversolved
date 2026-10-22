@@ -147,6 +147,15 @@ describe('selectByPredicate: type and radius', () => {
     expect(queriesOf({ kind: 'face', where: { type: 'flatface' } }, box())).toHaveLength(6)
   })
 
+  it('type "face" matches the freeform catch-all surface type', () => {
+    // surfaceTypeOf reports `face` for a BSpline or otherwise unmodelled
+    // surface, and evaluate accepts it exactly; the vocabulary must offer it.
+    const bodies = {
+      body_ex1: bodyResult('body_ex1', [], [], [face([0, 0, 0], [0, 0, 1], 'face')], ['qf'], []),
+    }
+    expect(queriesOf({ kind: 'face', where: { type: 'face' } }, bodies)).toEqual(['qf'])
+  })
+
   it('radius matches a circle edge and a cylinder face', () => {
     const bodies = withCircle()
     expect(queriesOf({ kind: 'edge', where: { radius: { eq: 2 } } }, bodies)).toHaveLength(1)
@@ -306,7 +315,7 @@ describe('selectByPredicate: alignment and diagnostics', () => {
     expect(message).toContain('type "plane" matched 0')
     // `plane` is not mapped to `flatface`: one spelling per meaning.
     expect(message).toContain('present face types: flatface')
-    expect(message).toContain('valid face types: flatface, cylinderface, coneface, sphereface, torusface')
+    expect(message).toContain('valid face types: flatface, cylinderface, coneface, sphereface, torusface, face')
   })
 
   it('a valid type with zero matches still lists the vocabulary', () => {

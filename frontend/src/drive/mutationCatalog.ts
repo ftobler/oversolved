@@ -891,13 +891,18 @@ export function validateMutation(raw: unknown, options: MutationValidationOption
   }
   // A setter names one field of its kind's schema sub-definition. Refuse an
   // unknown name here, where a script first meets the boundary, rather than
-  // letting the applier store a key the published schema then rejects.
-  const setterFields = setterFieldNames(type as Mutation['type'])
-  if (setterFields !== null && typeof raw.field === 'string' && !setterFields.includes(raw.field)) {
-    return fail(
-      'invalid-mutation',
-      `mutation type "${type}" has no field "${raw.field}"; valid fields: ${setterFields.join(', ')}`,
-    )
+  // letting the applier store a key the published schema then rejects. The
+  // check is skipped on the replay path: replay reapplies mutations the app
+  // itself produced, so an app-issued setter outside the schema (none today)
+  // must still record and replay rather than fail only on the way back in.
+  if (options.allowInternal !== true) {
+    const setterFields = setterFieldNames(type as Mutation['type'])
+    if (setterFields !== null && typeof raw.field === 'string' && !setterFields.includes(raw.field)) {
+      return fail(
+        'invalid-mutation',
+        `mutation type "${type}" has no field "${raw.field}"; valid fields: ${setterFields.join(', ')}`,
+      )
+    }
   }
   return { ok: true, mutation: raw as Mutation }
 }

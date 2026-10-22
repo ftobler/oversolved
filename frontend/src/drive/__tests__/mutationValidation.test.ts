@@ -98,6 +98,14 @@ describe('validateMutation', () => {
     }, { allowInternal: true })).toMatchObject({ ok: true })
   })
 
+  it('refuses an out-of-schema setter field unless the replay path allows internal', () => {
+    // An external script must not name a field the schema does not define. The
+    // replay path re-applies the app's own journal, so it skips the check.
+    const bogus = { type: 'set_hole_field', featureId: 'h1', field: 'bogus', value: 1 }
+    expect(validateMutation(bogus)).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    expect(validateMutation(bogus, { allowInternal: true })).toMatchObject({ ok: true })
+  })
+
   it('accepts null only where the union spells it', () => {
     expect(validateMutation({
       type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [1, 1], p0Ref: null,
@@ -133,11 +141,39 @@ describe('set_*_field field names', () => {
   const setterTypes = Object.keys(MUTATION_CATALOG)
     .filter(type => type.startsWith('set_') && type.endsWith('_field'))
 
+  // One field each kind's schema really defines, written by hand. It must NOT
+  // be read through setterFieldNames: that is the function under test, and a
+  // wrong FIELD_SETTER_KIND mapping would then agree with itself. A swapped
+  // mapping makes the named field refuse below.
+  type SetterType = Extract<Mutation['type'], `set_${string}_field`>
+  const KNOWN_FIELD: Record<SetterType, string> = {
+    set_plane_definition_field: 'mode',
+    set_extrude_field: 'distance',
+    set_revolve_field: 'angle',
+    set_sweep_field: 'path',
+    set_fillet_field: 'radius',
+    set_chamfer_field: 'kind',
+    set_shell_field: 'thickness',
+    set_move_face_field: 'faces',
+    set_boolean_field: 'keep_tools',
+    set_array_field: 'count_x',
+    set_circular_array_field: 'step_angle',
+    set_hole_field: 'diameter',
+    set_transform_field: 'rotation_axis',
+    set_mirror_field: 'keep_original',
+    set_variable_field: 'expression',
+    set_helix_field: 'pitch',
+  }
+
   it('maps every catalog setter to its schema sub-definition', () => {
     expect(setterTypes.length).toBeGreaterThan(0)
     for (const type of setterTypes) {
       expect(setterFieldNames(type as Mutation['type']), type).not.toBeNull()
     }
+  })
+
+  it('names a known field for every catalog setter', () => {
+    expect(Object.keys(KNOWN_FIELD).sort()).toEqual([...setterTypes].sort())
   })
 
   it.each(setterTypes)('%s refuses an unknown field and lists the valid ones', (type) => {
@@ -151,10 +187,20 @@ describe('set_*_field field names', () => {
     for (const name of names!) expect(result.error.message).toContain(name)
   })
 
-  it.each(setterTypes)('%s accepts a field its schema names', (type) => {
-    const names = setterFieldNames(type as Mutation['type'])!
-    expect(validateMutation({ type, featureId: 'f1', field: names[0], value: 1 }))
-      .toMatchObject({ ok: true })
+  it('accepts one hand-named field per setter kind', () => {
+    for (const [type, field] of Object.entries(KNOWN_FIELD)) {
+      expect(validateMutation({ type, featureId: 'f1', field, value: 1 }), `${type} ${field}`)
+        .toMatchObject({ ok: true })
+    }
+  })
+
+  it('refuses a field another kind defines, so a swapped mapping cannot pass', () => {
+    // 'diameter' is the hole's field, 'distance' the extrude's: each setter must
+    // refuse the other's, the check a bad FIELD_SETTER_KIND mapping fails.
+    expect(validateMutation({ type: 'set_hole_field', featureId: 'h1', field: 'distance', value: 1 }))
+      .toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    expect(validateMutation({ type: 'set_extrude_field', featureId: 'ex1', field: 'diameter', value: 1 }))
+      .toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
   })
 
   it('names the hole field a typo meant and the fields that exist', () => {
