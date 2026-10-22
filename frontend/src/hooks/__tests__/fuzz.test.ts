@@ -13,6 +13,9 @@
 // the other Real suites; the fake scheduler covers the history mechanics
 // everywhere.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { stringify } from 'yaml'
 import type { PartDoc } from '@/types/cad'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
@@ -26,6 +29,7 @@ import {
   runFuzzSequence,
   type FuzzStep,
   type FuzzSolver,
+  type FuzzRunResult,
 } from './fuzzHarness'
 import { minimizeSequence } from './fuzzMinimizer'
 
@@ -63,9 +67,23 @@ async function runFake(seed: number, steps: number, options?: Parameters<typeof 
   return runFuzzSequence(generateSequence(seed, steps), fakeSolver(), options)
 }
 
+// A failing seed prints the document the session held at that step, not only a
+// number: the user can open the YAML in the app and reproduce the failure
+// directly. The path is under the project's gitignored `tmp/`.
+function reportFailureDocs(seed: number, result: FuzzRunResult): void {
+  for (const { step, doc } of result.failureDocs) {
+    const dir = join(process.cwd(), 'tmp', 'fuzz-session')
+    mkdirSync(dir, { recursive: true })
+    const path = join(dir, `seed-${seed}-step-${step}.yaml`)
+    writeFileSync(path, stringify(doc))
+    console.error(`[fuzz] seed ${seed} step ${step}: openable document at ${path}`)
+  }
+}
+
 describe('the seeded fuzz ratchet (fake scheduler)', () => {
   it.each(seeds(FAKE_SEEDS))('seed %i replays without a violation', async (seed) => {
     const result = await runFake(seed, FAKE_STEPS)
+    reportFailureDocs(seed, result)
     expect(result.violations).toEqual([])
     expect(result.landedSteps).toBeGreaterThan(0)
   })
@@ -112,6 +130,7 @@ const REGRESSION_SEEDS: readonly { seed: number; steps: number; note: string }[]
 describe('the pinned fuzz regressions (fake scheduler)', () => {
   it.each(REGRESSION_SEEDS)('seed $seed ($note) stays fixed', async ({ seed, steps }) => {
     const result = await runFake(seed, steps)
+    reportFailureDocs(seed, result)
     expect(result.violations).toEqual([])
   })
 })
@@ -182,6 +201,7 @@ describe.skipIf(!oc || !solveBytes)('the seeded fuzz ratchet (real kernel)', () 
         scheduler: createRealSolveScheduler(),
         settle: () => undefined,
       })
+      reportFailureDocs(seed, result)
       expect(result.violations, `seed ${seed}`).toEqual([])
 
       const table = persistentTableForTest()

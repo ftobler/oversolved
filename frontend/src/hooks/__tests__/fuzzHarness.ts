@@ -180,8 +180,17 @@ export interface FuzzViolation {
   message: string
 }
 
+/** The document the session held when a step first reported a violation. */
+export interface FuzzFailureDoc {
+  step: number
+  doc: PartDoc
+}
+
 export interface FuzzRunResult {
   violations: FuzzViolation[]
+  // The live document at each failing step, so a caller can write an openable
+  // repro instead of only a seed number. Empty on a passing run.
+  failureDocs: FuzzFailureDoc[]
   // Landed mutation steps: steps that earned a history entry. A run of pure
   // no-ops would pass every invariant vacuously, so callers assert on this.
   landedSteps: number
@@ -219,7 +228,15 @@ export async function runFuzzSequence(
   })
 
   const violations: FuzzViolation[] = []
-  const push = (step: number, message: string): void => { violations.push({ step, message }) }
+  const failureDocs: FuzzFailureDoc[] = []
+  const push = (step: number, message: string): void => {
+    violations.push({ step, message })
+    // Capture the document the session actually held at the failing step, once
+    // per step: the caller can write it as a YAML repro the app opens.
+    if (cell.current !== null && !failureDocs.some((entry) => entry.step === step)) {
+      failureDocs.push({ step, doc: structuredClone(cell.current) })
+    }
+  }
   const startDoc = structuredClone(cell.current as PartDoc)
   // A landed mutation offers a dirty decision; a guarded no-op offers none, so
   // the decision is also this driver's "did the step push an entry" signal.
@@ -323,6 +340,7 @@ export async function runFuzzSequence(
 
   return {
     violations,
+    failureDocs,
     landedSteps,
     undoMoves,
     redoMoves,
