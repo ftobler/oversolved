@@ -57,15 +57,16 @@ describe('solveHole guard paths', () => {
     ).toThrow(/has no shape/)
   })
 
-  it('throws when sketch has no point entities', () => {
-    // Hole referenced sketch with no point entities raises.
+  it('throws when sketch has no point or circle entities', () => {
+    // A sketch of lines names no drill site at all: the hole needs a point or
+    // a circle in it.
     const repo = new Repository()
     repo.register('_pt_sk', PLANE)
     expect(() =>
       solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: 'body_t' } }, repo, {
         body_t: { ...nullBody('body_t'), shape: 1 as never },
       }, { sk: { entities: [{ id: 'l1', kind: 'line' }] } }),
-    ).toThrow(/has no point entities/)
+    ).toThrow("hole: sketch 'sk' has no point or circle entities; the hole needs a point or circle in its sketch")
   })
 
   it('a zero-placed hole fails before touching modified_by', () => {
@@ -147,7 +148,7 @@ describe('solveHole sketch picks', () => {
 
   it('keeps the whole sketch for an area several entities bound', () => {
     // A rectangle's region names four lines and no single drill site, so the
-    // pick keeps meaning what `@sk` means: every point in the sketch.
+    // pick keeps meaning what `@sk` means: every point and circle in the sketch.
     const q = makeAncestryQuery(['@sk/ln_a', '@sk/ln_b', 'surface:0', '@sk'], 'flatface')
     expect(() => drill(q)).toThrow(/all 2 drill site\(s\)/)
   })
@@ -162,16 +163,12 @@ describe('solveHole sketch picks', () => {
     expect(() => drill('entity:sk:nope')).toThrow(/sketch 'sk' has no entity 'nope'/)
   })
 
-  it('names the circle a whole-sketch pick could drill instead', () => {
-    // The whole-sketch meaning drills points only; a sketch of circles is
-    // refused, and the error names the pick that would drill one.
-    expect(() => drill('@sk', { sk: { entities: [{ id: 'ci', kind: 'circle' }] } }))
-      .toThrow("hole: sketch 'sk' has no point entities; it has 1 circle, pick it as $sk/ci to drill it at its own size")
-  })
-
-  it('names one of several circles a whole-sketch pick could drill instead', () => {
+  it('drills every point and circle a whole-sketch pick names', () => {
+    // The whole-sketch meaning is every drill site: two circles and a point are
+    // three sites. None has solved geometry here, so the count in the message is
+    // the whole drill set. Their sizes are the real-kernel suite's to pin.
     expect(() => drill('@sk', {
-      sk: { entities: [{ id: 'c1', kind: 'circle' }, { id: 'c2', kind: 'circle' }] },
-    })).toThrow("it has 2 circles, pick one as $sk/c1 to drill it at its own size")
+      sk: { entities: [{ id: 'c1', kind: 'circle' }, { id: 'p1', kind: 'point' }, { id: 'c2', kind: 'circle' }] },
+    })).toThrow(/all 3 drill site\(s\)/)
   })
 })

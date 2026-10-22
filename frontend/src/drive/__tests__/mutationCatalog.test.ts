@@ -145,8 +145,8 @@ describe('mutation catalog', () => {
       const info = mutationInfoOf(type)
       expect(info.note).toBeDefined()
       for (const name of holeFields) expect(info.note).toContain(name)
-      expect(info.note).toContain('point entities')
-      expect(info.note).toContain('$<sketchId>/<circleId>')
+      expect(info.note).toContain('points and circles')
+      expect(info.note).toContain('own radius')
     }
   })
 })
