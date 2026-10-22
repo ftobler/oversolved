@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { IdLayerBase, type LayerZPolicy } from './IdLayer'
 import type { IdRegistry } from './IdRegistry'
 import { EDGE_LAYER_NAME } from './layerNames'
+import { applySectionClipping } from '@/viewport/sectionClipping'
 
 /**
  * Concrete ID layer for B-rep edges.
@@ -55,12 +56,15 @@ const VERT_SHADER = `
   attribute vec3 aColor;
   uniform float uDepthBias;
   varying vec3 vColor;
+  #include <clipping_planes_pars_vertex>
 
   void main() {
-    vec4 clip = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vec4 clip = projectionMatrix * mvPosition;
     clip.z += uDepthBias * clip.w;
     vColor = aColor;
     gl_Position = clip;
+    #include <clipping_planes_vertex>
   }
 `
 
@@ -70,7 +74,9 @@ const VERT_SHADER = `
 // is the mirror image and DOES apply both transforms.
 export const EDGE_ID_FRAG_SHADER = `
   varying vec3 vColor;
+  #include <clipping_planes_pars_fragment>
   void main() {
+    #include <clipping_planes_fragment>
     gl_FragColor = vec4(vColor, 1.0);
   }
 `
@@ -84,6 +90,9 @@ function buildEdgeIdMaterial(opts?: { depthBias?: number; depthTest?: boolean; d
     },
     depthTest: opts?.depthTest ?? true,
     depthWrite: opts?.depthWrite ?? false,
+    // Same permanent clipping chunks as the face layer; the section only swaps
+    // the plane list so the pick edges stop where the drawn ones do.
+    clipping: true,
   })
 }
 
@@ -211,5 +220,16 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
     this.disposeBodies()
     this.material.dispose()
     this.xrayMaterial.dispose()
+  }
+
+  // Attach or clear the section plane on both the normal and x-ray materials.
+  setClipping(active: boolean): void {
+    applySectionClipping(this.material, active)
+    applySectionClipping(this.xrayMaterial, active)
+  }
+
+  // Whether this layer currently carries the section plane (test/debug).
+  isSectionClipped(): boolean {
+    return this.material.clippingPlanes !== null
   }
 }

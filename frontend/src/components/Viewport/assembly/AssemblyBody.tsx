@@ -28,6 +28,9 @@ import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
 import type { EdgeCurve } from '@/kernel/partBundle'
 import { buildCurveSegments } from '@/utils/edgeSampling'
 import type { Vec3 } from '@/utils/transform3d'
+import SectionCap from '@/components/Geometry3D/SectionCap'
+import { isPointClipped } from '@/viewport/sectionClipping'
+import { useSectionClip, useSectionMaterialClipping } from '@/viewport/useSection'
 
 interface AssemblyBodyProps {
   item: BodyRenderItem
@@ -76,6 +79,10 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
   const zebraStripes = useViewOptionsStore(s => s.zebra_stripes)
   const analysisMode = !showFaces ? 'none' : curvature ? 'curvature' : zebra ? 'zebra' : 'none'
   const materialRef = useRef<THREE.MeshStandardMaterial>(null)
+  const lineMaterialRef = useRef<THREE.LineBasicMaterial>(null)
+  const section = useSectionClip()
+  useSectionMaterialClipping(materialRef, section.active)
+  useSectionMaterialClipping(lineMaterialRef, section.active)
   useBodyAnalysisMaterial(materialRef, {
     mode: analysisMode,
     mixVertexColor: false,
@@ -94,6 +101,10 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
           userData={{ fitBounds: true, orbitPivot: true }}
           onPointerDown={(e) => {
             if (e.button !== 0) return
+            // A grab is a CPU raycast against the full mesh, so it still sees
+            // the half the section removed. Discard that hit rather than grab a
+            // part through its own cut face.
+            if (isPointClipped(e.point)) return
             // Ctrl+click aims a mate reference, and so does any click while a mate
             // chip is armed (AssemblyViewport resolves both off the ID buffer).
             // Grabbing the part on the same gesture would drag it away from the
@@ -121,8 +132,16 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
 
       {showEdges && edgeGeometry && (
         <lineSegments geometry={edgeGeometry} visible={item.visible} renderOrder={RENDER_ORDER_DEFAULT}>
-          <lineBasicMaterial color={selected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE} />
+          <lineBasicMaterial ref={lineMaterialRef} color={selected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE} />
         </lineSegments>
+      )}
+
+      {showFaces && section.active && item.visible && (
+        <SectionCap
+          geometry={geometry}
+          color={selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT}
+          enabled
+        />
       )}
     </>
   )

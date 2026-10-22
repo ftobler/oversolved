@@ -4,6 +4,7 @@ import type { IdRegistry } from './IdRegistry'
 import { VERTEX_LAYER_NAME } from './layerNames'
 import { CUBE_CORNER_SIGNS, CUBE_TRIANGLE_INDICES } from './screenSpaceScale'
 import { idToRGBNormalized } from './idEncoding'
+import { applySectionClipping } from '@/viewport/sectionClipping'
 
 /**
  * Concrete ID layer for B-rep vertices.
@@ -68,6 +69,7 @@ export interface VertexBodyRegistration {
 const VERT_SHADER = `
   attribute vec3 aColor;
   varying vec3 vColor;
+  #include <clipping_planes_pars_vertex>
 
   void main() {
     vColor = aColor;
@@ -79,13 +81,17 @@ const VERT_SHADER = `
     // emulation expands the point to a quad of that undefined size. One pixel
     // is the right size: the resolver's window supplies the reach.
     gl_PointSize = 1.0;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    #include <clipping_planes_vertex>
   }
 `
 
 const FRAG_SHADER = `
   varying vec3 vColor;
+  #include <clipping_planes_pars_fragment>
   void main() {
+    #include <clipping_planes_fragment>
     gl_FragColor = vec4(vColor, 1.0);
   }
 `
@@ -101,11 +107,12 @@ export const CUBE_VERT_SHADER = `
   uniform float uViewportHeight;
   uniform float uDepthBias;
   varying vec3 vColor;
+  #include <clipping_planes_pars_vertex>
 
   void main() {
     vColor = aColor;
-    vec4 view = modelViewMatrix * vec4(position, 1.0);
-    float clipW = projectionMatrix[2][3] == 0.0 ? 1.0 : -view.z;
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    float clipW = projectionMatrix[2][3] == 0.0 ? 1.0 : -mvPosition.z;
     // Guard the divide like worldUnitsPerPixel() does (screenSpaceScale.ts:24):
     // a zero or NaN projection Y-scale degrades the corner offset to zero size
     // instead of the Inf/NaN vertex positions that would blow up the draw.
@@ -116,10 +123,11 @@ export const CUBE_VERT_SHADER = `
     float unitsPerPixel = projYValid
       ? (2.0 * clipW) / (projY * max(uViewportHeight, 1.0))
       : 0.0;
-    view.xyz += aCorner * (uHalfPixels * unitsPerPixel);
-    vec4 clip = projectionMatrix * view;
+    mvPosition.xyz += aCorner * (uHalfPixels * unitsPerPixel);
+    vec4 clip = projectionMatrix * mvPosition;
     clip.z += uDepthBias * clip.w;
     gl_Position = clip;
+    #include <clipping_planes_vertex>
   }
 `
 
@@ -130,6 +138,7 @@ function buildVertexIdMaterial(cubePixels?: number, depthBias?: number): THREE.S
       fragmentShader: FRAG_SHADER,
       depthTest: false,
       depthWrite: false,
+      clipping: true,
     })
   }
   return new THREE.ShaderMaterial({
@@ -146,6 +155,7 @@ function buildVertexIdMaterial(cubePixels?: number, depthBias?: number): THREE.S
     side: THREE.DoubleSide,
     depthTest: true,
     depthWrite: false,
+    clipping: true,
   })
 }
 
@@ -309,5 +319,15 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
   dispose(): void {
     this.disposeBodies()
     this.material.dispose()
+  }
+
+  // Attach or clear the section plane on the point/cube material.
+  setClipping(active: boolean): void {
+    applySectionClipping(this.material, active)
+  }
+
+  // Whether this layer currently carries the section plane (test/debug).
+  isSectionClipped(): boolean {
+    return this.material.clippingPlanes !== null
   }
 }

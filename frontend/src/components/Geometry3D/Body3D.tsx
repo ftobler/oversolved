@@ -38,6 +38,13 @@ import { VertexInstancePainter } from '@/components/Geometry3D/vertexInstancePai
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
 import { bodyKeyFor } from '@/picking/pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
+import SectionCap from '@/components/Geometry3D/SectionCap'
+import { getSectionClipPlaneList } from '@/viewport/sectionClipping'
+import {
+  useSectionClip,
+  useSectionMaterialClipping,
+  useSectionOwnedMaterialClipping,
+} from '@/viewport/useSection'
 import { HighlightIndex, type ActiveHighlight } from '@/picking/selectionHighlight'
 import { selectActiveFrom, hoverActiveFrom, EMPTY_CLAIM_MAP } from '@/picking/highlightActive'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
@@ -343,6 +350,13 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     curvatureRange: effectiveCurvatureRange(curvatureManualRange, curvatureAutoRange),
   })
 
+  // The section clips the body's faces and edges, not the reference geometry
+  // around them. The cap is the fill of the cut itself, in the body's colour.
+  const section = useSectionClip()
+  const sectionActive = section.active
+  useSectionMaterialClipping(bodyMaterialRef, sectionActive)
+  useSectionOwnedMaterialClipping(edgeMaterial, sectionActive)
+
   // The wireframe is where the removal mark lives now the doomed face is
   // see-through: a consumed body's edges turn pink so the mark shows WHICH
   // body is leaving. Selection still outranks removal, mirroring the face
@@ -619,7 +633,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
         if (!geo) return null
         return (
           <lineSegments key={`edge-hover-${edgeIdx}`} geometry={geo}>
-            <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} />
+            <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} clippingPlanes={sectionActive ? getSectionClipPlaneList() : null} />
           </lineSegments>
         )
       })}
@@ -629,7 +643,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
         if (!geo) return null
         return (
           <lineSegments key={edgeIdx} geometry={geo} renderOrder={RENDER_ORDER_HIGHLIGHT}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent clippingPlanes={sectionActive ? getSectionClipPlaneList() : null} />
           </lineSegments>
         )
       })}
@@ -641,17 +655,20 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
         if (!geo) return null
         return (
           <lineSegments key={`face-hover-${faceIdx}`} geometry={geo}>
-            <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} />
+            <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} clippingPlanes={sectionActive ? getSectionClipPlaneList() : null} />
           </lineSegments>
         )
       })}
+      {showFaces && sectionActive && (
+        <SectionCap geometry={geometry} color={bodyColor} enabled={visible} />
+      )}
       {interactive && showFaces && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceSelectionFlags) && faceSelectionFlags!.map((selected, faceIdx) => {
         if (!selected) return null
         const geo = faceBoundaryGeos.get(faceIdx)
         if (!geo) return null
         return (
           <lineSegments key={faceIdx} geometry={geo}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent />
+            <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent clippingPlanes={sectionActive ? getSectionClipPlaneList() : null} />
           </lineSegments>
         )
       })}

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { MsaaPresenter, attachPresenter, detachPresenter } from '@/components/Viewport/msaaPresenter'
+import { useSectionStore } from '@/stores/sectionStore'
 
 /**
  * Takes over the part viewport's render: a positive useFrame priority tells R3F
@@ -31,6 +32,15 @@ export function MsaaRender() {
       presenter.current = null
     }
   }, [gl, invalidate])
+
+  // The visible section cap is a stencil pass, and WebGL fixes the attachment
+  // set when the multisampled target is allocated. Toggling the section swaps
+  // the presenter's target (disposing the old one) rather than leaving a
+  // stencil-less target under cap geometry.
+  const sectionEnabled = useSectionStore(s => s.enabled)
+  useEffect(() => {
+    presenter.current?.setStencil(sectionEnabled)
+  }, [sectionEnabled])
 
   useFrame(({ gl: renderer, scene, camera }) => {
     if (presenter.current) presenter.current.render(renderer, scene, camera)

@@ -14,6 +14,13 @@ import {
   FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME, pickPriorityOf,
 } from './layerNames'
 import { DEFAULT_WINDOW_SIZE, pickRadiusPx } from './screenSpaceScale'
+import { getSectionClipPlane, getSectionClipPlaneList } from '@/viewport/sectionClipping'
+
+// Size of the cap quad in world units. The cap is the cut face of an infinite
+// plane; the quad only has to cover the model, so a generously large one keeps
+// the plane from ending inside a big imported solid. The stencil count is what
+// decides where it paints, so an oversized quad costs nothing visible.
+const SECTION_CAP_SIZE = 10000
 
 // Layer name constants now live in the pure ./layerNames module (no three.js)
 // so tool/selection policy can import them headlessly. Re-export here so the
@@ -157,6 +164,67 @@ export class IdPipeline {
   // window larger than the default. Held here and not beside the resolver's
   // decode scratch because only readWindow stitches through it.
   private subScratch = new Uint8Array(MAX_READ_WINDOW_BYTES)
+  // Section-view cap occluder. The stencil passes reuse the face layer's own
+  // triangles with a stand-in material, so the cap can never disagree with the
+  // silhouette the face IDs were drawn from. The fill writes the reserved
+  // "nothing" id over the cut opening and writes depth, which is what stops an
+  // edge or interior back face behind the solid-looking cap from being picked.
+  private sectionActive = false
+  private readonly capBackMaterial = new THREE.MeshBasicMaterial({
+    side: THREE.BackSide,
+    colorWrite: false,
+    depthWrite: false,
+    depthTest: false,
+    stencilWrite: true,
+    stencilRef: 0,
+    stencilFunc: THREE.AlwaysStencilFunc,
+    stencilFail: THREE.IncrementWrapStencilOp,
+    stencilZFail: THREE.IncrementWrapStencilOp,
+    stencilZPass: THREE.IncrementWrapStencilOp,
+    clippingPlanes: getSectionClipPlaneList(),
+  })
+  private readonly capFrontMaterial = new THREE.MeshBasicMaterial({
+    side: THREE.FrontSide,
+    colorWrite: false,
+    depthWrite: false,
+    depthTest: false,
+    stencilWrite: true,
+    stencilRef: 0,
+    stencilFunc: THREE.AlwaysStencilFunc,
+    stencilFail: THREE.DecrementWrapStencilOp,
+    stencilZFail: THREE.DecrementWrapStencilOp,
+    stencilZPass: THREE.DecrementWrapStencilOp,
+    clippingPlanes: getSectionClipPlaneList(),
+  })
+  private readonly capFillMaterial = new THREE.ShaderMaterial({
+    vertexShader: `
+      void main() {
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    // Zero in every channel: the cap is an occluder, so its pixels decode to
+    // EMPTY_ID and read as "nothing under the cursor".
+    fragmentShader: `
+      void main() {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+      }
+    `,
+    depthTest: true,
+    depthWrite: true,
+    stencilWrite: true,
+    stencilRef: 0,
+    stencilFunc: THREE.NotEqualStencilFunc,
+    stencilFail: THREE.ReplaceStencilOp,
+    stencilZFail: THREE.ReplaceStencilOp,
+    stencilZPass: THREE.ReplaceStencilOp,
+    // No color blending: the empty id has to overwrite the interior face id,
+    // not blend with it.
+    blending: THREE.NoBlending,
+  })
+  private readonly capQuadGeometry = new THREE.PlaneGeometry(SECTION_CAP_SIZE, SECTION_CAP_SIZE)
+  private readonly capQuad = new THREE.Mesh(this.capQuadGeometry, this.capFillMaterial)
+  private readonly capFillScene = new THREE.Scene()
+  private readonly capUp = new THREE.Vector3(0, 0, 1)
 
   // Reused across render()'s renderer-state save/restore so a hover frame mints
   // no THREE objects, mirroring the pose-buffer reuse in IdPickingDriver.
@@ -256,6 +324,26 @@ export class IdPipeline {
 
     this.windowSize = opts.windowSize ?? DEFAULT_WINDOW_SIZE
     this.setPixelRatio(opts.pixelRatio ?? 1)
+    this.capFillScene.add(this.capQuad)
+  }
+
+  /**
+   * Turn the section's pick-space treatment on or off. This swaps the ID
+   * target's stencil attachment, clips the three B-rep layers with the shared
+   * plane, and dirties the buffer so the next resolve reads the cut.
+   */
+  setSectionActive(active: boolean): void {
+    if (this.sectionActive === active) return
+    this.sectionActive = active
+    this.target.setStencil(active)
+    this.faceLayer.setClipping(active)
+    this.edgeLayer.setClipping(active)
+    this.vertexLayer.setClipping(active)
+    this.markDirty('section')
+  }
+
+  isSectionActive(): boolean {
+    return this.sectionActive
   }
 
   /**
@@ -416,6 +504,12 @@ export class IdPipeline {
           firstLayer = false
           renderer.render(layer.scene, camera)
           this.layerFailureStreak.set(layer.name, 0)
+          // The cap occluder is part of the face pass: it runs after the face
+          // ids have written depth, before edges and vertices test against it.
+          // Its stencil is local to the ID target, so it is cleared inside.
+          if (layer === this.faceLayer && this.sectionActive) {
+            this.renderSectionCapOccluder(renderer, camera)
+          }
         } catch (err) {
           // Skip only the failing layer; keep the pipeline alive.
           failedLayers.push(layer.name)
@@ -468,6 +562,29 @@ export class IdPipeline {
     if (!this.target.isDirty()) return false
     this.render(renderer, camera)
     return true
+  }
+
+  /**
+   * Write the "nothing" id over the cut opening.
+   *
+   * The face layer is DoubleSide, so through the cut the ID pass otherwise sees
+   * the body's interior back faces, and a bore's far wall, as pickable. The cap
+   * fills exactly the pixels where the section plane is inside a solid: back
+   * faces increment the stencil, front faces decrement it, and the fill draws
+   * where the count is non-zero. Both passes are clipped with the same plane as
+   * the faces, and the stencil is cleared before and after so no other layer or
+   * body inherits it.
+   */
+  private renderSectionCapOccluder(renderer: THREE.WebGLRenderer, camera: THREE.Camera): void {
+    const plane = getSectionClipPlane()
+    this.capQuad.position.copy(plane.normal).multiplyScalar(-plane.constant)
+    this.capQuad.quaternion.setFromUnitVectors(this.capUp, plane.normal)
+
+    renderer.clear(false, false, true)
+    this.faceLayer.renderBodiesWith(renderer, camera, this.capBackMaterial)
+    this.faceLayer.renderBodiesWith(renderer, camera, this.capFrontMaterial)
+    renderer.render(this.capFillScene, camera)
+    renderer.clear(false, false, true)
   }
 
   /**
@@ -709,6 +826,10 @@ export class IdPipeline {
     // disposed WebGLRenderTarget (which silently re-creates its GPU buffers).
     this.target.markDirty()
     for (const layer of this.layers) layer.dispose()
+    this.capBackMaterial.dispose()
+    this.capFrontMaterial.dispose()
+    this.capFillMaterial.dispose()
+    this.capQuadGeometry.dispose()
     this.target.dispose()
     this.registry.clear()
   }
