@@ -11,17 +11,20 @@ import '@/components/Viewport/ViewportHud.css'
 import { type Hit, type Pv } from '@/components/misc/CubeGizmo.utils'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
+import { useSectionStore } from '@/stores/sectionStore'
 import { useEditorState } from '@/hooks/useEditorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Body3D from '@/components/Geometry3D/Body3D'
 import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
 import OriginMarker from '@/components/Viewport/OriginMarker'
 import FeatureHandles from '@/components/Viewport/FeatureHandles'
+import SectionPlaneHandle from '@/components/Viewport/SectionPlaneHandle'
 import ReferencePlane from '@/components/Viewport/ReferencePlane'
 import SceneController from '@/components/Viewport/SceneController'
 import { RenderOnChange, RenderOnce } from '@/components/Viewport/RenderOnChange'
 import { useSceneExposure } from '@/components/Viewport/SceneExposure'
 import { useLayerPipelineEffects } from '@/components/Viewport/viewOptionsEffects'
+import { useSectionPipelineEffects } from '@/viewport/useSection'
 import { autoRangeFromMeshes } from '@/components/Geometry3D/curvature'
 import { MsaaRender } from '@/components/Viewport/MsaaRender'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
@@ -81,7 +84,8 @@ const CANVAS_STYLE = { width: '100%', height: '100%', background: '#0b0b0b' }
 // hands the canvas a resolved image (msaaPresenter.ts says why).
 // `alpha` is stated rather than inherited: the thumbnail's empty-frame check
 // reads the cleared alpha channel, so a renderer that turned it off would make
-// every empty view look like content.
+// every empty view look like content. The stencil is the presenter's target,
+// not the canvas, so the part canvas needs none.
 const CANVAS_GL = { antialias: false, logarithmicDepthBuffer: true, alpha: true }
 // `isolation: isolate` makes this div a stacking context, which pens every
 // overlay drei portals next to the canvas inside the viewport. drei hands each
@@ -150,6 +154,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const activeFeatureId = useEditorState(s => s.activeSketchFeatureId) ?? undefined
   const editingFeatureId = useEditorState(s => s.editingFeatureId)
   const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
+  const sectionEnabled = useSectionStore(s => s.enabled)
   const shading = useViewOptionsStore(s => s.shading)
   const edges = useViewOptionsStore(s => s.edges)
   const curvature = useViewOptionsStore(s => s.curvature)
@@ -186,6 +191,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // drop the hover that was resolved against the old ones. The registration
   // hooks dirty the buffer themselves; this adds the hover half.
   useLayerPipelineEffects(clearIdBufferHover)
+  // The section changes what the pick buffer sees without a camera move.
+  useSectionPipelineEffects(clearIdBufferHover)
 
   // Bumped when the scene-side prerequisites of a fit become live (the
   // Canvas-owned camera via SceneController, gl/scene via onCreated). R3F
@@ -209,6 +216,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
     glRef.current = state.gl
     sceneRef.current = state.scene
+    // Object-level clipping planes (the section view) are ignored by three
+    // until this is on. It costs nothing when no material carries a plane.
+    state.gl.localClippingEnabled = true
     // Rides the same readiness tick as the scene camera: tryFit's
     // empty-document fallback reads sceneRef, so its availability must also
     // re-attempt a fit that was armed before the Canvas had rendered. Latched:
@@ -731,6 +741,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
         {/* Draggable editing arrow for the feature open in the editor panel. */}
         <FeatureHandles />
+        {/* The section plane's faint outline and its offset drag arrow. Only
+            mounted while a section is on: it owns the same screen-scaled arrow
+            machinery as a feature handle, which needs a live camera. */}
+        {sectionEnabled && <SectionPlaneHandle />}
       </Canvas>
 
       {/* Reads the pick pass in words while the collision debug view is on:

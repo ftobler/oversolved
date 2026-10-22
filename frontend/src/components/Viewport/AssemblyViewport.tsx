@@ -43,8 +43,11 @@ import {
 } from '@/picking'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
+import { useSectionStore } from '@/stores/sectionStore'
 import { autoRangeFromMeshes } from '@/components/Geometry3D/curvature'
 import { useLayerPipelineEffects } from '@/components/Viewport/viewOptionsEffects'
+import { useSectionPipelineEffects } from '@/viewport/useSection'
+import SectionPlaneHandle from '@/components/Viewport/SectionPlaneHandle'
 import { lookupAnchor, resolveAnchorGizmos } from '@/utils/anchorGizmos'
 import { entityKeysForMate } from '@/utils/mateHighlight'
 import {
@@ -95,7 +98,9 @@ const pointerOf = (e: { pointerId: number; button: number }): PointerRef => ({ i
 const CANVAS_STYLE = { width: '100%', height: '100%', background: '#0b0b0b' }
 // `alpha` is stated rather than inherited, for the same reason as the part
 // viewport: the thumbnail's empty-frame check depends on a transparent clear.
-const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true, alpha: true }
+// The stencil is for the section cap (this canvas renders directly, so the
+// attachment must be on the default framebuffer). It is cheap when unused.
+const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true, alpha: true, stencil: true }
 // `isolation: isolate` makes this div a stacking context, penning anything drei
 // portals next to the canvas inside the viewport. The assembly scene draws its
 // overlays in-canvas (Text/Billboard) and mounts no `<Html>` today, so this is
@@ -153,6 +158,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const entitySelection = useAssemblyStore(s => s.entitySelection)
   const hoveredEntity = useAssemblyStore(s => s.hoveredEntity)
   const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
+  const sectionEnabled = useSectionStore(s => s.enabled)
   const shading = useViewOptionsStore(s => s.shading)
   const edges = useViewOptionsStore(s => s.edges)
   const curvature = useViewOptionsStore(s => s.curvature)
@@ -214,6 +220,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
     glRef.current = state.gl
     sceneRef.current = state.scene
+    // Same object-level clipping switch as the part viewport.
+    state.gl.localClippingEnabled = true
     // Latched: a caller may invoke onCreated while rendering, and re-entering
     // setState from there would loop renders.
     if (createdLiveRef.current) return
@@ -497,6 +505,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // Shading/Edges change the ID layers; the toggle must dirty the buffer and
   // drop the hover resolved against the old ones, exactly as in the part editor.
   useLayerPipelineEffects(clearHover)
+  // Same section debt as the part editor: the pick buffer follows the cut.
+  useSectionPipelineEffects(clearHover)
 
   const scheduleHover = useCallback((e: React.PointerEvent) => {
     // A held button means an orbit is in progress. Every frame of it would
@@ -810,6 +820,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
             <GizmoPickLayer origin={triad.origin} orientation={triad.orientation} enabled={!manipulating} />
           </>
         )}
+
+        {sectionEnabled && <SectionPlaneHandle />}
       </Canvas>
 
       <div className="viewport-hud">

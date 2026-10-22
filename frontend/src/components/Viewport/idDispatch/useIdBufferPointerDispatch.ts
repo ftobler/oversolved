@@ -18,6 +18,8 @@ import { dispatchSketchClick } from './dispatchSketchClick'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import { takeBandClickConsumed } from './bandClickGuard'
 import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
+import { useSectionStore } from '@/stores/sectionStore'
+import { sectionPickSource } from '@/viewport/sectionPick'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
@@ -427,6 +429,16 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         return
       }
       const hit = resolveSync(e, attached)
+      // An armed section pick owns this click: a face or plane names the cut,
+      // anything else simply disarms. The click is consumed either way so
+      // arming a pick never also changes the selection.
+      if (useSectionStore.getState().picking) {
+        const source = hit ? sectionPickSource(hit) : null
+        if (source) useSectionStore.getState().setPlane(source)
+        useSectionStore.getState().setPicking(false)
+        setLastClickIdHit(true)
+        return
+      }
       if (!hit) {
         // Empty-space click during dimension placement -> finalise.
         // The store decides whether the current picks are enough to dispatch.

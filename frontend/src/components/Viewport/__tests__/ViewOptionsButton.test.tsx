@@ -9,6 +9,7 @@ import { DEFAULT_VIEW_PREFERENCES } from '@/adapters/preferences'
 import ViewOptionsButton from '@/components/Viewport/ViewOptionsButton'
 import type { ShowGroup, ShowGroupState } from '@/components/Viewport/viewOptionsShow'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
+import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
 const SHOW_STATES: Record<ShowGroup, ShowGroupState> = {
   planes: { visible: true, disabled: false },
@@ -22,6 +23,7 @@ function reset(): void {
     collisionDebug: false,
     curvatureAutoRange: null,
   })
+  useSectionStore.setState({ ...DEFAULT_SECTION_STATE })
 }
 
 function open(): void {
@@ -218,5 +220,66 @@ describe('ViewOptionsButton viewer rows', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Auto' }))
     expect(useViewOptionsStore.getState().curvature_range).toBeNull()
     expect(screen.getByLabelText('Curvature legend').textContent).toContain('(auto)')
+  })
+})
+
+describe('ViewOptionsButton Section', () => {
+  it('toggles the section and hides the sub-rows while it is off', () => {
+    render(<ViewOptionsButton />)
+    open()
+
+    expect(row('Section')).toHaveAttribute('aria-checked', 'false')
+    expect(screen.queryByRole('group', { name: 'Section plane' })).toBeNull()
+
+    fireEvent.click(row('Section'))
+    expect(useSectionStore.getState().enabled).toBe(true)
+    expect(screen.getByRole('group', { name: 'Section plane' })).toBeInTheDocument()
+  })
+
+  it('chooses a builtin plane, edits the offset and flips the kept side', () => {
+    render(<ViewOptionsButton />)
+    open()
+    fireEvent.click(row('Section'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Top' }))
+    expect(useSectionStore.getState().plane).toEqual({ kind: 'builtin', id: 'top' })
+
+    fireEvent.change(screen.getByLabelText('Section offset'), { target: { value: '7.5' } })
+    expect(useSectionStore.getState().offset).toBe(7.5)
+    // An empty box is unfinished input, not a move to zero.
+    fireEvent.change(screen.getByLabelText('Section offset'), { target: { value: '' } })
+    expect(useSectionStore.getState().offset).toBe(7.5)
+
+    fireEvent.click(row('Flip side'))
+    expect(useSectionStore.getState().flipped).toBe(true)
+  })
+
+  it('arms a viewport pick for a face or user plane', () => {
+    render(<ViewOptionsButton />)
+    open()
+    fireEvent.click(row('Section'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pick' }))
+    expect(useSectionStore.getState().picking).toBe(true)
+    expect(screen.getByRole('status').textContent).toContain('Click a face or plane')
+  })
+
+  it('shows the picked source', () => {
+    useSectionStore.setState({ enabled: true, plane: { kind: 'query', query: '?04;abcd' } })
+    render(<ViewOptionsButton />)
+    open()
+
+    expect(screen.getByRole('button', { name: 'Picked' })).toBeInTheDocument()
+  })
+
+  it('shows the reason an auto-disabled section turned off', () => {
+    useSectionStore.setState({
+      enabled: false,
+      disabledReason: 'Section off: the picked plane or face no longer resolves after the solve.',
+    })
+    render(<ViewOptionsButton />)
+    open()
+
+    expect(screen.getByRole('status').textContent).toContain('no longer resolves')
   })
 })
