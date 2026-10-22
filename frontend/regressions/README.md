@@ -53,8 +53,8 @@ runner is `src/regressions/run.ts`; the loader/validator is
 - `measures`: the oracle's measure names. `bodies` is required; the rest are
   checked only when present. `centroid` and `bbox` may be `null` for a document
   with no body.
-- `topology`: `strict` enforces `faces`/`edges`; `report` prints them without
-  failing.
+- `topology`: `strict` enforces `faces`/`edges`; `report` compares them and
+  warns without failing the case.
 - `snapshot`: `true` requires `snapshot.json`; the file is refused without it.
 
 ## How to direct this
@@ -83,7 +83,8 @@ case is evidence, so update it deliberately rather than replacing it.
 When a change to the kernel is intended, regenerate the affected cases with
 `npm run regressions:regen -- <name...>` (all cases when none are named). The
 reviewable output is the small per-case `checks.json` / `snapshot.json` diff;
-`origin`, `license`, `severity`, `what` and `tolerance` are never rewritten.
+`origin`, `license`, `severity`, `what` and `tolerance` are never rewritten,
+and a measure the case omits stays omitted (only `bodies` is always kept).
 Do not regen to make a red case green before deciding the change is correct.
 
 These decisions stay with you:

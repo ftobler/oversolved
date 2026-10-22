@@ -20,7 +20,7 @@ export interface CorpusDoc {
 
 // The PR-gate slice: the doc-shaped fixtures (real bug-report documents) plus
 // corpus labels chosen for target coverage (a sketch with entities and
-// constraints, a feature modifier, a boolean chain). The full sweep widens to
+// constraints, a feature modifier, a two-extrude chain). The full sweep widens to
 // every corpus document; the target caps must keep SMOKE <= FULL so the smoke
 // keys are always a prefix of the baseline.
 export const SMOKE_DOC_LABELS: readonly string[] = [
