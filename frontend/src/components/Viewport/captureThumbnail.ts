@@ -35,12 +35,20 @@ export async function captureThumbnail(
   // rethrown after cleanup; callers (saveDoc) already catch around it.
   let dataUrl: string
   let captured = false
+  // A document saved mid-section must not get a cut-open preview. Local
+  // clipping is the renderer-wide switch every clipped material obeys, so
+  // turning it off for the capture removes both the clip and (because the
+  // stencil count of an unclipped closed solid is zero inside) the cap fill,
+  // without touching any material or asking the scene to re-render.
+  const previousLocalClipping = gl.localClippingEnabled
   try {
+    gl.localClippingEnabled = false
     gl.setSize(smallWidth, smallHeight)
     presentFrame(gl, scene, camera)
     dataUrl = gl.domElement.toDataURL('image/png')
     captured = true
   } finally {
+    gl.localClippingEnabled = previousLocalClipping
     gl.setSize(originalSize.width, originalSize.height)
     // A resize clears the drawing buffer, and the part viewport draws on demand
     // (frameloop="demand"): without a redraw the quarter-size capture would be

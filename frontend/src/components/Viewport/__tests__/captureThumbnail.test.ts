@@ -19,6 +19,7 @@ function makeFakeGl(overrides: Partial<{
     getSize: (target: THREE.Vector2) => target.copy(size),
     setSize,
     render,
+    localClippingEnabled: true,
     domElement: { toDataURL },
   } as unknown as THREE.WebGLRenderer
   return { gl, setSize, render, toDataURL }
@@ -113,6 +114,32 @@ describe('captureThumbnail', () => {
     // ...and in that order: the repaint has to land after the size is restored,
     // or the viewport would be left at the quarter-size capture.
     expect(render.mock.invocationCallOrder[1]).toBeGreaterThan(setSize.mock.invocationCallOrder[1])
+  })
+
+  it('captures without the section and restores the live clipping state', async () => {
+    stubImage(320, 200)
+    stubCanvas()
+    const { gl, render } = makeFakeGl()
+    const clippingSeen: boolean[] = []
+    render.mockImplementation(() => {
+      clippingSeen.push((gl as unknown as { localClippingEnabled: boolean }).localClippingEnabled)
+    })
+
+    await captureThumbnail(gl, {} as THREE.Scene, {} as THREE.Camera)
+
+    // The capture draw ignores object clipping, so a document saved mid-section
+    // gets an uncut preview; the full-size repaint puts the live state back.
+    expect(clippingSeen).toEqual([false, true])
+    expect((gl as unknown as { localClippingEnabled: boolean }).localClippingEnabled).toBe(true)
+  })
+
+  it('restores local clipping even when the capture throws', async () => {
+    const renderError = new Error('WebGL context lost')
+    const { gl } = makeFakeGl({ render: () => { throw renderError } })
+
+    await expect(captureThumbnail(gl, {} as THREE.Scene, {} as THREE.Camera)).rejects.toThrow(renderError)
+
+    expect((gl as unknown as { localClippingEnabled: boolean }).localClippingEnabled).toBe(true)
   })
 
   it('scales an oversized capture down so the longest side is capped at MAX_SIZE', async () => {

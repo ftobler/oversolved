@@ -5,6 +5,8 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
 import { isShownInScene, pickPivotPoint, pointerToNdc } from '@/components/Viewport/pivotPick'
+import { resetSectionClippingForTest, setSectionClipPlane } from '@/viewport/sectionClipping'
+import { sectionPlaneFromFrame } from '@/viewport/sectionPlane'
 
 const RECT = { left: 100, top: 50, width: 800, height: 600 }
 
@@ -77,6 +79,22 @@ describe('pickPivotPoint', () => {
     const scene = new THREE.Scene()
     scene.add(new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial()))
     expect(pickPivotPoint(cameraAtOriginLookingDownZ(), scene, RECT, 500, 350)).toBeNull()
+  })
+
+  it('turns about the first body point the section still draws', () => {
+    const scene = new THREE.Scene()
+    scene.add(taggedBody(20))
+    scene.add(taggedBody(-20))
+    const camera = cameraAtOriginLookingDownZ()
+    expect(pickPivotPoint(camera, scene, RECT, 500, 350)!.z).toBeCloseTo(20, 9)
+
+    // A plane at z = 0 keeps the negative half; the nearest body is cut away.
+    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 0, false))
+    try {
+      expect(pickPivotPoint(camera, scene, RECT, 500, 350)!.z).toBeCloseTo(-20, 9)
+    } finally {
+      resetSectionClippingForTest()
+    }
   })
 })
 

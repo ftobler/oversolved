@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { isPointClipped } from '@/viewport/sectionClipping'
 
 // Where a right-drag orbit turns around: the point of the body under the
 // cursor, read once at button-down.
@@ -64,6 +65,8 @@ export function pickPivotPoint(
   scene.updateMatrixWorld(true)
   const raycaster = new THREE.Raycaster()
   raycaster.setFromCamera(ndc, camera)
-  const hit = raycaster.intersectObjects(targets, false)[0]
+  // The mesh raycast sees the whole solid, including the half the section
+  // removed. Turn about the first point that is actually still drawn.
+  const hit = raycaster.intersectObjects(targets, false).find(candidate => !isPointClipped(candidate.point))
   return hit ? hit.point.clone() : null
 }

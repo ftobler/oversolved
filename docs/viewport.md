@@ -18,6 +18,8 @@ The frontend 3D viewport is an R3F (React Three Fiber) scene inside a single `Ca
   <SketchPlaneDisplay />                    (active sketch plane highlight)
   <Geometry3D /> xN                         (sketch geometry per visible feature)
   <Body3D /> xN                             (solved bodies: mesh + edges + vertices)
+  <SectionPlaneHandle />                    (only while the section is on: outline + offset arrow)
+  <FeatureHandles />
 
 <!-- Overlaid 2D -->
 <CubeGizmoCanvas />                         (128x128 orientation cube, bottom-right)
@@ -57,6 +59,12 @@ the backplane/deselect paths (`onPointerMissed`), surfaces' own guarded click,
 and drag/draw plane math. DragPlane/DrawPlane use window-level listeners and a
 ray-plane intersection (`dragMathPlane.ts`) to bypass R3F event bubbling when
 mapping the cursor onto the sketch plane.
+
+The B-rep ID layers (face, edge, vertex) carry the section's clipping plane
+while a section is on, and a cap occluder writes the empty id over the cut
+opening (see Section View below). The ID buffer therefore sees exactly the
+geometry the user sees; hover and selection stay one path, with no CPU-side
+filter layered on top.
 
 ### Layer 2: Pointer Event Abstraction
 
@@ -137,6 +145,52 @@ every direction (`pickRadiusPx`). Hit geometry constants:
 `POINT_HIT_PIXELS` 20 and `ENTITY_HIT_PIXELS` 8 are the drag/snap zones, not
 the ID reach; `VERTEX_PICK_CUBE_PIXELS` 3 is the B-rep vertex cube size.
 
+## Section View
+
+A section is render-only clipping: the kernel and the document are untouched.
+Its state lives in `stores/sectionStore.ts` (enabled, plane source, offset,
+flipped, and the reason an auto-disabled section gives); it is viewer state, so
+no Mutation, no undo entry and no reload persistence. The source is a builtin
+Front/Top/Right plane or a `{kind: 'query'}` picked plane/face, resolved
+through `viewport/sectionPlane.ts` against the solve results (`plane_transform`)
+and the planar-face frame. If the picked source stops resolving after a solve,
+the section turns off and the eye dropdown shows why.
+
+One `THREE.Plane` (`viewport/sectionClipping.ts`) is shared by every clipped
+material and updated in place, so moving the plane costs no recompile. Clipped:
+body faces and edges, the preview overlay, and the face/edge/vertex ID layers.
+Not clipped: sketches, reference and user planes, helixes, the origin,
+dimension and constraint overlays, and the orientation cube.
+
+The visible cut face is a stencil cap (`Geometry3D/SectionCap.tsx`): per body,
+back faces increment the stencil and front faces decrement it, both clipped;
+a quad on the section plane then fills where the count is non-zero, in the
+body colour, at render order 150..152 (after the bodies, before highlights).
+This needs a stencil attachment on the MSAA target. `MsaaPresenter` creates the
+target with `stencilBuffer` only while a section is on and disposes/recreates
+it on a toggle (WebGL fixes the attachment set at allocation). The assembly
+viewport draws directly, so its canvas requests a stencil and it runs the same
+cap component.
+
+Picking follows the cut in the GPU, not by filtering hits in JS:
+
+- `IdPipeline.setSectionActive` attaches the shared plane to the three B-rep ID
+  layers and gives `IdRenderTarget` a stencil for the duration.
+- After the face layer, `IdPipeline` runs the same stencil count and draws a cap
+  quad in the reserved empty id (`vec4(0)`) with depth write. The solid-looking
+  cap consequently picks nothing, instead of exposing the interior back faces
+  the DoubleSide ID material would otherwise show.
+- Every section change calls `markDirty('section')` and clears/invalidates the
+  hover scheduler, so a hover resolved against the previous cut cannot land.
+- The rubber band reads the same ID target, so it inherits the clip and cap.
+- CPU raycasts discard hits on the removed side: the orbit pivot
+  (`Viewport/pivotPick.ts`) and the assembly part grab (`AssemblyBody`). Hover
+  and selection still go through the ID buffer only.
+
+`captureThumbnail` turns `localClippingEnabled` off for the capture draw (and
+restores it before the full-size repaint), so a document saved mid-section gets
+an uncut preview.
+
 ## Scene Probe
 
 `SceneProbeDriver` (inside the Canvas) and the ID registration hooks publish a
@@ -183,7 +237,7 @@ plain, JSON-safe snapshot of the scene, readable without a devtools connection:
   - `RenderOnChange`'s other two cases: a restored GL context (`webglcontextrestored` leaves a blank canvas and touches no store), and `RenderOnce`, mounted beside `Environment` inside the Suspense boundary because the landed HDR map applies scene state from a layout effect and creates no R3F instance;
   - the imperative camera paths (fit, plane/face alignment) and the orientation cube's hover/snap (only when the drawn highlight changed), which reach the Canvas's own invalidate through the `invalidateRef` `RenderOnChange` publishes. `SceneController` also feeds that invalidate to `drawCubeGizmo`'s `onFontReady`, so a label font landing after the frame repaints the cube.
 - `useFrame` therefore runs only on drawn frames. Per-frame work: scene controller, env light, Body3D vertex scaling, dot/hit geometry pixel scaling, origin billboarding. All of it is driven by the camera or by props, and both request a frame.
-- `captureThumbnail` resizes the live renderer and restores it; because a resize clears the drawing buffer it redraws a full-size frame before returning, or a demand-mode viewport would sit blank until the next change. Both draws go through `presentFrame`, which uses the presenter `MsaaRender` registered for that renderer (the part viewport) and falls back to a direct `gl.render` (the assembly viewport).
+- `captureThumbnail` resizes the live renderer and restores it; because a resize clears the drawing buffer it redraws a full-size frame before returning, or a demand-mode viewport would sit blank until the next change. Both draws go through `presentFrame`, which uses the presenter `MsaaRender` registered for that renderer (the part viewport) and falls back to a direct `gl.render` (the assembly viewport). The capture draw runs with `localClippingEnabled` off, so it never stores a cut-open preview.
 - Render order constants: DEFAULT=0, EDITING=10, HIGHLIGHT=999 (in `partColors.ts`).
 - Screenshot capture: imperative `presentFrame(gl, scene, camera)`, `captureScreenshotForSaving` renders at 1/4 resolution scaled to max 1024px.
 - Colors defined in `partColors.ts` (body: mint green, sketch: blue/white/red, selected: orange, etc.).
