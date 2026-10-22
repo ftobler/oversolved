@@ -148,13 +148,17 @@ const EDGE_KIND_SET: Record<EdgeData['kind'], true> = {
   ellipse: true,
 }
 
+// Every SurfaceType the vocabulary offers: the query hierarchy's face subtypes
+// plus the `face` catch-all typeOf reports for a freeform face.
+const FACE_TYPES: readonly string[] = [...subtypesOf('face'), 'face']
+
 const EDGE_KINDS: readonly string[] = Object.keys(EDGE_KIND_SET)
 
 /** The `type` predicate vocabulary for a selector kind, read from the same
  *  tables as typeOf: edge kinds from the EdgeData union and face surface types
  *  from the query engine's type hierarchy. */
 export function typeVocabulary(kind: SelectKind): readonly string[] {
-  return kind === 'edge' ? EDGE_KINDS : subtypesOf('face')
+  return kind === 'edge' ? EDGE_KINDS : FACE_TYPES
 }
 
 /** The per-item geometry summary the agent reads back. */
