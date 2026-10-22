@@ -5,7 +5,8 @@
 // or an internal type is a named step failure instead of a silent success.
 
 import { describe, it, expect } from 'vitest'
-import { validateMutation } from '../mutationCatalog'
+import { MUTATION_CATALOG, setterFieldNames, validateMutation } from '../mutationCatalog'
+import type { Mutation } from '@/types/cad'
 import { seedBuiltins } from '../headlessOps'
 import { runHeadless } from '../headlessOps'
 
@@ -123,6 +124,47 @@ describe('validateMutation', () => {
   it('accepts a valid mutation unchanged', () => {
     const mutation = { type: 'add_sketch' as const, featureId: 'sk1', label: 'Sketch' }
     expect(validateMutation(mutation)).toEqual({ ok: true, mutation })
+  })
+})
+
+describe('set_*_field field names', () => {
+  // Derived from the catalog, so a new setter kind joins this table without a
+  // second hand-written list to keep in step.
+  const setterTypes = Object.keys(MUTATION_CATALOG)
+    .filter(type => type.startsWith('set_') && type.endsWith('_field'))
+
+  it('maps every catalog setter to its schema sub-definition', () => {
+    expect(setterTypes.length).toBeGreaterThan(0)
+    for (const type of setterTypes) {
+      expect(setterFieldNames(type as Mutation['type']), type).not.toBeNull()
+    }
+  })
+
+  it.each(setterTypes)('%s refuses an unknown field and lists the valid ones', (type) => {
+    const names = setterFieldNames(type as Mutation['type'])
+    expect(names).not.toBeNull()
+    expect(names!.length).toBeGreaterThan(0)
+    const result = validateMutation({ type, featureId: 'f1', field: 'diameterx', value: 1 })
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    if (result.ok) throw new Error('unreachable')
+    expect(result.error.message).toContain('diameterx')
+    for (const name of names!) expect(result.error.message).toContain(name)
+  })
+
+  it.each(setterTypes)('%s accepts a field its schema names', (type) => {
+    const names = setterFieldNames(type as Mutation['type'])!
+    expect(validateMutation({ type, featureId: 'f1', field: names[0], value: 1 }))
+      .toMatchObject({ ok: true })
+  })
+
+  it('names the hole field a typo meant and the fields that exist', () => {
+    const result = validateMutation({ type: 'set_hole_field', featureId: 'h1', field: 'diameterx', value: 8 })
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    if (result.ok) throw new Error('unreachable')
+    expect(result.error.message).toContain('diameterx')
+    expect(result.error.message).toContain('diameter')
+    expect(result.error.message).toContain('depth_mode')
+    expect(result.error.message).toContain('sketch')
   })
 })
 

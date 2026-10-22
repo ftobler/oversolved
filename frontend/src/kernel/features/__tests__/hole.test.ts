@@ -33,6 +33,14 @@ describe('solveHole guard paths', () => {
     ).toThrow(/has no plane transform registered/)
   })
 
+  it('names the sketch a half-configured hole still needs', () => {
+    for (const hole of [{}, { sketch: '' }, { sketch: '  ' }]) {
+      expect(() =>
+        solveHole(oc, scope, table, { id: 'h', hole }, new Repository(), {}, {}),
+      ).toThrow(/the hole needs a sketch/)
+    }
+  })
+
   it('throws when there are no bodies and no target', () => {
     const repo = new Repository()
     repo.register('_pt_sk', PLANE)

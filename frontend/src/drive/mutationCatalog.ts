@@ -10,8 +10,12 @@
 // step failure instead of a silent no-op. Only presence and JSON type are
 // checked; the appliers still own meaning.
 
-import type { Mutation } from '@/types/cad'
-import { planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
+import type { FeatureKind, Mutation } from '@/types/cad'
+import {
+  featureFieldNames,
+  planeDefinitionSchema,
+  type JsonSchema,
+} from '@/persistence/partDocSchema'
 
 export type FieldType =
   | 'string'
@@ -98,7 +102,44 @@ const edgeQuery = () => query('An edge query as returned by `select`.')
 const faceQuery = () => query('A face query as returned by `select`.')
 const bodyQuery = () => query('A body id such as body_ex1, or a stored body query.')
 
-const fieldOf = (kind: string) => str(`The ${kind} field to set.`)
+// Every `set_<kind>_field` names one feature kind; the kind's schema
+// sub-definition is the one list of fields it may set. The Record makes a new
+// setter mutation fail `tsc -b` until it is mapped, and the catalog test names
+// any setter this map forgets.
+type FieldSetterType = Extract<Mutation['type'], `set_${string}_field`>
+
+const FIELD_SETTER_KIND = {
+  set_plane_definition_field: 'plane',
+  set_extrude_field: 'extrude',
+  set_revolve_field: 'revolve',
+  set_sweep_field: 'sweep',
+  set_fillet_field: 'fillet',
+  set_chamfer_field: 'chamfer',
+  set_shell_field: 'shell',
+  set_move_face_field: 'move_face',
+  set_boolean_field: 'boolean',
+  set_array_field: 'array',
+  set_circular_array_field: 'circular_array',
+  set_hole_field: 'hole',
+  set_transform_field: 'transform',
+  set_mirror_field: 'mirror',
+  set_variable_field: 'variable',
+  set_helix_field: 'helix',
+} as const satisfies Record<FieldSetterType, FeatureKind>
+
+/** The field names a `set_<kind>_field` mutation may name, read from that
+ *  kind's part-document schema sub-definition. Null for any other mutation. */
+export function setterFieldNames(type: Mutation['type']): readonly string[] | null {
+  if (!Object.hasOwn(FIELD_SETTER_KIND, type)) return null
+  return featureFieldNames(FIELD_SETTER_KIND[type as FieldSetterType])
+}
+
+const HOLE_FIELD_NOTE =
+  `Canonical hole fields: ${featureFieldNames('hole').join(', ')}. ` +
+  '`sketch` names a sketch with point entities, or one circle as `$<sketchId>/<circleId>` to drill it at its own size.'
+
+const fieldOf = (label: string, type: FieldSetterType) =>
+  str(`The ${label} field to set. Valid fields: ${(setterFieldNames(type) ?? []).join(', ')}.`)
 // A setter value's real type is the named schema field's; name that definition
 // instead of trying to restate every feature field's union here.
 const setterValue = (kind: string) =>
@@ -272,7 +313,7 @@ export const MUTATION_CATALOG = {
   },
   set_plane_definition_field: {
     summary: 'Set one field of a construction plane definition.',
-    fields: { featureId: str(), field: fieldOf('plane definition'), value: planeDefinitionValue() },
+    fields: { featureId: str(), field: fieldOf('plane definition', 'set_plane_definition_field'), value: planeDefinitionValue() },
   },
   rename_feature: {
     summary: 'Rename a feature.',
@@ -292,7 +333,7 @@ export const MUTATION_CATALOG = {
   },
   set_extrude_field: {
     summary: 'Set one extrude field (distance, direction, operation, ...).',
-    fields: { featureId: str(), field: fieldOf('extrude'), value: setterValue('extrude') },
+    fields: { featureId: str(), field: fieldOf('extrude', 'set_extrude_field'), value: setterValue('extrude') },
   },
   add_extrude_profile: {
     summary: 'Add a profile sketch to an extrude.',
@@ -308,7 +349,7 @@ export const MUTATION_CATALOG = {
   },
   set_revolve_field: {
     summary: 'Set one revolve field.',
-    fields: { featureId: str(), field: fieldOf('revolve'), value: setterValue('revolve') },
+    fields: { featureId: str(), field: fieldOf('revolve', 'set_revolve_field'), value: setterValue('revolve') },
   },
   add_revolve_profile: {
     summary: 'Add a profile sketch to a revolve.',
@@ -328,7 +369,7 @@ export const MUTATION_CATALOG = {
   },
   set_sweep_field: {
     summary: 'Set one sweep field.',
-    fields: { featureId: str(), field: fieldOf('sweep'), value: setterValue('sweep') },
+    fields: { featureId: str(), field: fieldOf('sweep', 'set_sweep_field'), value: setterValue('sweep') },
   },
   add_sweep_profile: {
     summary: 'Add a profile sketch to a sweep.',
@@ -360,11 +401,11 @@ export const MUTATION_CATALOG = {
   },
   set_fillet_field: {
     summary: 'Set one fillet field, e.g. radius.',
-    fields: { featureId: str(), field: fieldOf('fillet'), value: setterValue('fillet') },
+    fields: { featureId: str(), field: fieldOf('fillet', 'set_fillet_field'), value: setterValue('fillet') },
   },
   set_chamfer_field: {
     summary: 'Set one chamfer field, e.g. distance.',
-    fields: { featureId: str(), field: fieldOf('chamfer'), value: setterValue('chamfer') },
+    fields: { featureId: str(), field: fieldOf('chamfer', 'set_chamfer_field'), value: setterValue('chamfer') },
   },
   add_fillet_edge: {
     summary: 'Add an edge to fillet.',
@@ -388,7 +429,7 @@ export const MUTATION_CATALOG = {
   },
   set_shell_field: {
     summary: 'Set one shell field, e.g. thickness.',
-    fields: { featureId: str(), field: fieldOf('shell'), value: setterValue('shell') },
+    fields: { featureId: str(), field: fieldOf('shell', 'set_shell_field'), value: setterValue('shell') },
   },
   add_shell_face: {
     summary: 'Add a face to remove in a shell.',
@@ -404,7 +445,7 @@ export const MUTATION_CATALOG = {
   },
   set_move_face_field: {
     summary: 'Set one move-face field.',
-    fields: { featureId: str(), field: fieldOf('move-face'), value: setterValue('move_face') },
+    fields: { featureId: str(), field: fieldOf('move-face', 'set_move_face_field'), value: setterValue('move_face') },
   },
   add_move_face_ref: {
     summary: 'Add a face for move-face.',
@@ -432,7 +473,7 @@ export const MUTATION_CATALOG = {
   },
   set_boolean_field: {
     summary: 'Set one boolean field, e.g. operation.',
-    fields: { featureId: str(), field: fieldOf('boolean'), value: setterValue('boolean') },
+    fields: { featureId: str(), field: fieldOf('boolean', 'set_boolean_field'), value: setterValue('boolean') },
   },
   add_boolean_tool: {
     summary: 'Add a tool body to a boolean.',
@@ -448,7 +489,7 @@ export const MUTATION_CATALOG = {
   },
   set_array_field: {
     summary: 'Set one linear-array field.',
-    fields: { featureId: str(), field: fieldOf('array'), value: setterValue('array') },
+    fields: { featureId: str(), field: fieldOf('array', 'set_array_field'), value: setterValue('array') },
   },
   add_circular_array: {
     summary: 'Add a circular array feature.',
@@ -456,7 +497,7 @@ export const MUTATION_CATALOG = {
   },
   set_circular_array_field: {
     summary: 'Set one circular-array field.',
-    fields: { featureId: str(), field: fieldOf('circular array'), value: setterValue('circular_array') },
+    fields: { featureId: str(), field: fieldOf('circular array', 'set_circular_array_field'), value: setterValue('circular_array') },
   },
   add_delete_body: {
     summary: 'Add a delete-body feature, optionally naming bodies.',
@@ -472,11 +513,13 @@ export const MUTATION_CATALOG = {
   },
   add_hole: {
     summary: 'Add a hole feature.',
+    note: HOLE_FIELD_NOTE,
     fields: featureAddFields(),
   },
   set_hole_field: {
     summary: 'Set one hole field, e.g. diameter or depth.',
-    fields: { featureId: str(), field: fieldOf('hole'), value: setterValue('hole') },
+    note: HOLE_FIELD_NOTE,
+    fields: { featureId: str(), field: fieldOf('hole', 'set_hole_field'), value: setterValue('hole') },
   },
   add_transform: {
     summary: 'Add a transform feature, then add its bodies.',
@@ -484,7 +527,7 @@ export const MUTATION_CATALOG = {
   },
   set_transform_field: {
     summary: 'Set one transform field.',
-    fields: { featureId: str(), field: fieldOf('transform'), value: setterValue('transform') },
+    fields: { featureId: str(), field: fieldOf('transform', 'set_transform_field'), value: setterValue('transform') },
   },
   add_transform_body: {
     summary: 'Add a body to a transform.',
@@ -524,7 +567,7 @@ export const MUTATION_CATALOG = {
   },
   set_mirror_field: {
     summary: 'Set one mirror field.',
-    fields: { featureId: str(), field: fieldOf('mirror'), value: setterValue('mirror') },
+    fields: { featureId: str(), field: fieldOf('mirror', 'set_mirror_field'), value: setterValue('mirror') },
   },
   add_variable: {
     summary: 'Add a variable feature.',
@@ -532,7 +575,7 @@ export const MUTATION_CATALOG = {
   },
   set_variable_field: {
     summary: 'Set one variable field, e.g. expression.',
-    fields: { featureId: str(), field: fieldOf('variable'), value: setterValue('variable') },
+    fields: { featureId: str(), field: fieldOf('variable', 'set_variable_field'), value: setterValue('variable') },
   },
   add_helix: {
     summary: 'Add a helix feature, optionally from a picked reference.',
@@ -543,7 +586,7 @@ export const MUTATION_CATALOG = {
   },
   set_helix_field: {
     summary: 'Set one helix field.',
-    fields: { featureId: str(), field: fieldOf('helix'), value: setterValue('helix') },
+    fields: { featureId: str(), field: fieldOf('helix', 'set_helix_field'), value: setterValue('helix') },
   },
   reorder_features: {
     summary: 'Move a feature to an absolute index in the log.',
@@ -841,6 +884,16 @@ export function validateMutation(raw: unknown, options: MutationValidationOption
         `mutation type "${type}" field "${name}" must be ${fieldInfo.type}, got ${typeName(value)}`,
       )
     }
+  }
+  // A setter names one field of its kind's schema sub-definition. Refuse an
+  // unknown name here, where a script first meets the boundary, rather than
+  // letting the applier store a key the published schema then rejects.
+  const setterFields = setterFieldNames(type as Mutation['type'])
+  if (setterFields !== null && typeof raw.field === 'string' && !setterFields.includes(raw.field)) {
+    return fail(
+      'invalid-mutation',
+      `mutation type "${type}" has no field "${raw.field}"; valid fields: ${setterFields.join(', ')}`,
+    )
   }
   return { ok: true, mutation: raw as Mutation }
 }

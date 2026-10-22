@@ -255,7 +255,11 @@ export function solveHole(
   featuresById: Record<string, Dict>,
 ): HoleResult {
   const sub = (feature.hole as Dict) ?? {}
-  const { sketchId, entityId } = parseHoleSketchRef((sub.sketch as string) ?? '', globalRepo)
+  const sketchRef = typeof sub.sketch === 'string' ? sub.sketch : ''
+  // An empty sketch is a half-configured feature, not a bad ref: name the
+  // missing piece instead of letting the plane lookup report `_pt_` by itself.
+  if (sketchRef.trim() === '') throw new Error('hole: the hole needs a sketch')
+  const { sketchId, entityId } = parseHoleSketchRef(sketchRef, globalRepo)
   const diameter = Number(sub.diameter ?? 10.0)
   const depthMode = (sub.depth_mode as string) ?? 'blind'
   const depth = Number(sub.depth ?? 10.0)

@@ -8,6 +8,7 @@ import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 import { validateMutation, MUTATION_CATALOG, MUTATION_FAMILY, HIDDEN_MUTATION_TYPES, mutationInfoOf } from '../mutationCatalog'
+import { featureFieldNames } from '@/persistence/partDocSchema'
 import type { Mutation } from '@/types/cad'
 import { MUTATION_FAMILIES, mutationCatalogPayload } from '../mutationCatalogPayload'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
@@ -119,6 +120,18 @@ describe('mutation catalog', () => {
       }
     }
     expect(unshaped).toEqual([])
+  })
+
+  it('lists the hole fields and says what the hole sketch must name', () => {
+    const holeFields = featureFieldNames('hole')
+    expect(holeFields).toEqual(expect.arrayContaining(['sketch', 'diameter', 'depth_mode', 'depth']))
+    for (const type of ['add_hole', 'set_hole_field'] as const) {
+      const info = mutationInfoOf(type)
+      expect(info.note).toBeDefined()
+      for (const name of holeFields) expect(info.note).toContain(name)
+      expect(info.note).toContain('point entities')
+      expect(info.note).toContain('$<sketchId>/<circleId>')
+    }
   })
 })
 
