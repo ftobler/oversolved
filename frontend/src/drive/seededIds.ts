@@ -8,8 +8,9 @@
 //
 // The generator is mulberry32, small and fully specified; it is not a security
 // primitive and mints nothing secret. Cross-session uniqueness comes from the
-// seed: the browser draws it from crypto per generation, the CLI pins the
-// constant so two runs of one script agree.
+// seed: the browser draws it from crypto per generation, the drive CLI derives
+// it from the starting document (driveSeedFor), so two runs of one script
+// agree while a chained call on the result draws a different sequence.
 
 import type { IdSource } from '@/utils/yamlMutations/helpers'
 
@@ -42,6 +43,21 @@ export function cryptoGenerationSeed(): number {
   const arr = new Uint32Array(1)
   crypto.getRandomValues(arr)
   return arr[0]
+}
+
+/** The seed one drive operation mints under, derived from the starting
+ *  document's content hash. A chained call (docHash from the previous reply)
+ *  starts from a different document and therefore draws a different sequence,
+ *  while the same document with the same script derives the same seed and stays
+ *  byte-identical. FNV-1a over the hex hash mixes it into the pinned drive seed;
+ *  the result only has to be stable and spread, not cryptographic. */
+export function driveSeedFor(docHash: string): number {
+  let mixed = 0x811c9dc5
+  for (let i = 0; i < docHash.length; i++) {
+    mixed ^= docHash.charCodeAt(i)
+    mixed = Math.imul(mixed, 0x01000193) >>> 0
+  }
+  return (DRIVE_ID_SEED ^ mixed) >>> 0
 }
 
 /** A seeded id source. A fresh call restarts the sequence at index 0. */

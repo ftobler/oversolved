@@ -453,8 +453,9 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       expect(built.summary).toContain('ex1 (extrude)')
       expect(built.summary).toContain('body_ex1')
 
-      // The same script twice through one server process mints the same ids
-      // and hashes the same document: the CLI journal seed pins them.
+      // The same script twice through one server process, both starting from a
+      // fresh document, mints the same ids and hashes the same document: the
+      // drive journal's seed is derived from the starting document.
       const again = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
       expect(again.docHash).toBe(built.docHash)
 
@@ -686,6 +687,60 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       }))
       expect(exported).toMatchObject({ ok: true, format: 'step' })
       expect(readFileSync(stepFile).byteLength).toBeGreaterThan(0)
+    } finally {
+      await client.close()
+    }
+  }, 240_000)
+
+  it('chains a second run from the first docHash without repeating its minted ids', async () => {
+    const client = spawnMcp()
+    try {
+      await client.request('initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'cliSmoke', version: '0' },
+      })
+
+      // Each call opens a new sketch and draws a rect in it: the rect's lines
+      // and constraints are minted inside the handler, so a repeated id sequence
+      // would show up as a duplicate id in the final document.
+      const rectSteps = (sketchId: string) => [
+        { mutation: { type: 'add_sketch', featureId: sketchId, label: 'Rectangle', plane: '@builtin_plane_front' } },
+        { mutation: { type: 'add_rect', featureId: sketchId, p0: [0, 0], p1: [10, 10] } },
+      ]
+      const first = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { steps: rectSteps('sk2') },
+      }))
+      expect(first.ok).toBe(true)
+      const firstSteps = first.steps as Array<{ ok: boolean; createdIds: string[] }>
+      expect(firstSteps).toHaveLength(2)
+      expect(firstSteps.every(step => step.ok && step.createdIds.length > 0)).toBe(true)
+
+      const second = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { docHash: first.docHash, steps: rectSteps('sk3') },
+      }))
+      expect(second.ok).toBe(true)
+      const secondSteps = second.steps as Array<{ ok: boolean; createdIds: string[] }>
+      expect(secondSteps).toHaveLength(2)
+      expect(secondSteps.every(step => step.ok && step.createdIds.length > 0)).toBe(true)
+
+      const returned = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { docHash: second.docHash, steps: [], returnDoc: true },
+      }))
+      const doc = returned.doc as {
+        features: Array<{ id: string; entities?: Array<{ id: string }>; constraints?: Array<{ id: string }> }>
+      }
+      expect(doc.features.map(f => f.id)).toEqual(expect.arrayContaining(['sk2', 'sk3']))
+      const ids = doc.features.flatMap(f => [
+        f.id,
+        ...(f.entities ?? []).map(e => e.id),
+        ...(f.constraints ?? []).map(c => c.id),
+      ])
+      expect(ids.length).toBeGreaterThan(0)
+      expect(new Set(ids).size).toBe(ids.length)
     } finally {
       await client.close()
     }

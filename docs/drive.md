@@ -217,13 +217,20 @@ Replay is guaranteed when every entry was settled:
 The seed travels in the payload (`frontend/src/drive/seededIds.ts`):
 
 - Each generation opens an id source under a recorded seed: the browser draws
-  the seed from crypto once per generation (and per document reset), the CLI
-  pins the constant `DRIVE_ID_SEED`, so different sessions differ and a CLI
-  script is byte-identical across runs. `randomId` and every mint site that
-  routes through it (`uniqueConstraintId`, `freshEntityIds`, `mintEntityId` in
-  `frontend/src/utils/yamlMutations/helpers.ts`) mint under that source, so an
-  id a handler mints internally (`add_rect`, `add_ngon`, a fresh constraint
+  the seed from crypto once per generation (and per document reset), the drive
+  CLI and the MCP `run` derive it from the starting document's content hash
+  (`driveSeedFor`), so a repeat of the same document and script is
+  byte-identical while a call chained onto the previous reply (a different
+  starting document) draws a different sequence. `randomId` and every mint site
+  that routes through it (`uniqueConstraintId`, `freshEntityIds`, `mintEntityId`
+  in `frontend/src/utils/yamlMutations/helpers.ts`) mint under that source, so
+  an id a handler mints internally (`add_rect`, `add_ngon`, a fresh constraint
   id) is a function of the seed and the source position.
+- A minted id the starting document already carries is skipped and the next one
+  drawn: the session installs the document's ids as a mint scope around each
+  apply, so even a restarted or colliding sequence cannot add a second entity
+  with an id the document already holds. `createdIds` then names what the apply
+  really created.
 - Replay installs the recorded seed and seeks each entry's `mintIndex`, the
   source position the apply started from. That covers ids minted outside the
   session (UI feature ids) that advanced the source without being replayed,
@@ -282,10 +289,10 @@ npm run drive -- replay repro.json
 - `run` builds a document from mutation steps and/or command steps through one
   `DocSession` and the real kernel, optionally writes the final document (`--out`)
   and the journal (`--repro`), and prints steps, document hash and solve state.
-  Its journal pins every generation seed to the constant `DRIVE_ID_SEED`, so
-  two runs of one script produce byte-identical documents and the recorded
-  repro replays exactly (the `cliSmoke` suite runs the box script twice in two
-  processes and compares the printed `docHash`).
+  Its journal derives every generation seed from the starting document's hash,
+  so two runs of one script on one document produce byte-identical documents
+  and the recorded repro replays exactly (the `cliSmoke` suite runs the box
+  script twice in two processes and compares the printed `docHash`).
 - `commands` prints the command catalog: every spec id, label, shortcut,
   `undoable` flag, its param fields (`spec.params.fields`, the same schema the
   registry parses a call against) and the live `enabled` verdict from a fresh
@@ -429,10 +436,12 @@ banner on stdout, so a client config must use the direct node invocation.
 - stdout carries protocol messages only: the entry redirects every other
   stdout write (the OCC STEP writer prints a transfer banner) to stderr.
 - The readline loop processes one call at a time, and every `run` is a fresh
-  `DocSession` over the real kernel with the CLI journal installed, so the same
-  script mints the same ids and hashes the same document on every call. The
-  loop's serialization is what keeps the kernel's single-writer cross-solve
-  cache honest.
+  `DocSession` over the real kernel with the drive journal installed under a
+  seed derived from the starting document, so a repeated call on the same
+  document mints the same ids and hashes the same document, while a call
+  chained by `docHash` starts from a different document and cannot repeat the
+  previous call's minted sequence. The loop's serialization is what keeps the
+  kernel's single-writer cross-solve cache honest.
 
 An agent session, entirely over MCP. Every call chains on `docHash` from the
 previous reply; the full document never crosses the wire by default:

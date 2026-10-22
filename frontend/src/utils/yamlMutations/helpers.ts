@@ -121,8 +121,35 @@ export function getIdSource(): IdSource | null {
   return idSource
 }
 
+// The ids the document the current apply starts from already holds, plus every
+// id minted since the scope opened. A source whose sequence restarts (a replayed
+// or re-seeded generation) can then never hand out an id the document already
+// carries: the mint is skipped and the next one drawn. The session installs a
+// scope around each apply and restores the previous one after; outside an apply
+// (the app's UI mints) there is none.
+let idScope: Set<string> | null = null
+
+const MAX_ID_REDRAWS = 64
+
+/** Install the minted-id scope for one apply, returning the previous one so a
+ *  nested caller can restore it. */
+export function setIdScope(scope: Set<string> | null): Set<string> | null {
+  const previous = idScope
+  idScope = scope
+  return previous
+}
+
 export function randomId(bytes: number): string {
-  return (idSource ?? cryptoRandomId)(bytes)
+  const mint = idSource ?? cryptoRandomId
+  const scope = idScope
+  if (!scope) return mint(bytes)
+  let id = mint(bytes)
+  // Bounded: a source that cannot produce a fresh id (a broken double, a
+  // sequence whose whole space is taken) must not spin the apply forever, so
+  // past the bound the collision is returned rather than hanging.
+  for (let redraws = 0; scope.has(id) && redraws < MAX_ID_REDRAWS; redraws++) id = mint(bytes)
+  scope.add(id)
+  return id
 }
 
 export function uniqueConstraintId(constraints: PartConstraint[], kind: string): string {

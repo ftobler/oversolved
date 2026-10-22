@@ -21,17 +21,20 @@
 // a journal can never span two documents.
 //
 // Every generation carries the seed of the id source it minted under. The seed
-// is drawn from crypto when the generation opens (so sessions differ) or is the
-// CLI's pinned constant; the source is installed over the yamlMutations default
-// before the first handler runs, so handler-internal mints (add_rect, add_ngon,
-// constraint ids) become a function of the seed and the source position. The
-// repro carries the seed and each entry its start position, and replay installs
-// and seeks, so a recorded generation reproduces byte-identically.
+// is drawn from crypto when the generation opens (so sessions differ) or is
+// derived from the starting document for a drive operation (so a repeat agrees
+// and a chained call does not); the source is installed over the yamlMutations
+// default before the first handler runs, so handler-internal mints (add_rect,
+// add_ngon, constraint ids) become a function of the seed and the source
+// position. The repro carries the seed and each entry its start position, and
+// replay installs and seeks, so a recorded generation reproduces
+// byte-identically.
 
+import type { PartDoc } from '@/types/cad'
 import type { SessionJournalChange, SessionJournalSink } from '@/session/DocSession'
 import { setIdSource } from '@/utils/yamlMutations'
 import { docHashOf } from './docHash'
-import { DRIVE_ID_SEED, cryptoGenerationSeed, seededIdSource, type SeededIdSource } from './seededIds'
+import { driveSeedFor, cryptoGenerationSeed, seededIdSource, type SeededIdSource } from './seededIds'
 
 export const JOURNAL_CAPACITY = 500
 
@@ -253,11 +256,15 @@ export function journalSink(journal: CommandJournal): SessionJournalSink {
   }
 }
 
-/** The CLI's journal: every generation reuses the constant drive seed, so two
- *  runs of one script mint identical ids and build byte-identical documents.
- *  The seed still travels in the repro, so replay installs the same one. */
-export function createCliJournal(): CommandJournal {
-  return new CommandJournal(JOURNAL_CAPACITY, Date.now, () => DRIVE_ID_SEED)
+/** The drive journal for one operation (the CLI run, one MCP `run` call): the
+ *  generation seed is derived from the starting document's hash, so a repeat of
+ *  the same document and script mints the same ids and builds byte-identical
+ *  documents, while a call chained onto the previous reply starts from a
+ *  different document and draws a different sequence. The seed still travels in
+ *  the repro, so replay installs the same one. */
+export function createDriveJournal(doc: PartDoc): CommandJournal {
+  const seed = driveSeedFor(docHashOf(doc))
+  return new CommandJournal(JOURNAL_CAPACITY, Date.now, () => seed)
 }
 
 let journal: CommandJournal | null = null
