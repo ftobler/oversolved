@@ -143,7 +143,24 @@ function drilledEntities(
 ): Dict[] {
   if (entityId === null) {
     const points = entities.filter((e) => e.kind === 'point')
-    if (points.length === 0) throw new Error(`hole: sketch '${sketchId}' has no point entities`)
+    if (points.length === 0) {
+      const circles = entities.filter((e) => e.kind === 'circle')
+      if (circles.length > 0) {
+        // A whole-sketch pick still drills only points. Name the pick that
+        // would work instead of making the user guess why their circles did
+        // nothing; drilling every circle here is a separate product decision.
+        const count = circles.length
+        const noun = count === 1 ? 'circle' : 'circles'
+        const pick = count === 1
+          ? `pick it as $${sketchId}/${circles[0].id as string}`
+          : `pick one as $${sketchId}/${circles[0].id as string}`
+        throw new Error(
+          `hole: sketch '${sketchId}' has no point entities; it has ${count} ${noun}, ` +
+          `${pick} to drill it at its own size`,
+        )
+      }
+      throw new Error(`hole: sketch '${sketchId}' has no point entities`)
+    }
     return points
   }
   const picked = entities.find((e) => e.id === entityId)
@@ -255,7 +272,11 @@ export function solveHole(
   featuresById: Record<string, Dict>,
 ): HoleResult {
   const sub = (feature.hole as Dict) ?? {}
-  const { sketchId, entityId } = parseHoleSketchRef((sub.sketch as string) ?? '', globalRepo)
+  const sketchRef = typeof sub.sketch === 'string' ? sub.sketch : ''
+  // An empty sketch is a half-configured feature, not a bad ref: name the
+  // missing piece instead of letting the plane lookup report `_pt_` by itself.
+  if (sketchRef.trim() === '') throw new Error('hole: the hole needs a sketch')
+  const { sketchId, entityId } = parseHoleSketchRef(sketchRef, globalRepo)
   const diameter = Number(sub.diameter ?? 10.0)
   const depthMode = (sub.depth_mode as string) ?? 'blind'
   const depth = Number(sub.depth ?? 10.0)

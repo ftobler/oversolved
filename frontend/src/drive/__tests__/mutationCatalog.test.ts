@@ -8,6 +8,7 @@ import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 import { validateMutation, MUTATION_CATALOG, MUTATION_FAMILY, HIDDEN_MUTATION_TYPES, mutationInfoOf } from '../mutationCatalog'
+import { featureFieldNames } from '@/persistence/partDocSchema'
 import type { Mutation } from '@/types/cad'
 import { MUTATION_FAMILIES, mutationCatalogPayload } from '../mutationCatalogPayload'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
@@ -84,6 +85,52 @@ describe('mutation catalog', () => {
         if (!('mutation' in step)) continue
         expect(validateMutation(step.mutation)).toMatchObject({ ok: true })
       }
+    }
+  })
+
+  it('publishes the plane definition shape from the part-document schema', () => {
+    const payload = mutationCatalogPayload()
+    const entry = Object.values(payload.families).flat().find(row => row.type === 'add_plane')
+    expect(entry).toBeDefined()
+    const definition = entry!.fields.definition
+    expect(definition.type).toBe('object')
+    const shape = definition.shape as {
+      properties: Record<string, { enum?: string[] }>
+      additionalProperties?: boolean
+    }
+    expect(shape).toBeDefined()
+    expect(shape.properties.mode.enum).toContain('offset')
+    expect(shape.properties.plane).toBeDefined()
+    expect(shape.properties.offset).toBeDefined()
+    expect(shape.properties.p1).toBeDefined()
+  })
+
+  it('shapes every object or any field, or names the definition it follows', () => {
+    // A new unshaped object or pass-through field is a catalog regression: the
+    // catalog has to carry either the schema shape or a note saying where it is
+    // defined, so an agent never has to infer the payload from prose.
+    const unshaped: string[] = []
+    for (const type of Object.keys(MUTATION_CATALOG) as Mutation['type'][]) {
+      const info = mutationInfoOf(type)
+      for (const [name, field] of Object.entries(info.fields)) {
+        if (field.type !== 'object' && field.type !== 'any') continue
+        const shaped = field.shape !== undefined
+        const noted = field.note !== undefined && field.note.trim().length > 0
+        if (!shaped && !noted) unshaped.push(`${type}.${name}`)
+      }
+    }
+    expect(unshaped).toEqual([])
+  })
+
+  it('lists the hole fields and says what the hole sketch must name', () => {
+    const holeFields = featureFieldNames('hole')
+    expect(holeFields).toEqual(expect.arrayContaining(['sketch', 'diameter', 'depth_mode', 'depth']))
+    for (const type of ['add_hole', 'set_hole_field'] as const) {
+      const info = mutationInfoOf(type)
+      expect(info.note).toBeDefined()
+      for (const name of holeFields) expect(info.note).toContain(name)
+      expect(info.note).toContain('point entities')
+      expect(info.note).toContain('$<sketchId>/<circleId>')
     }
   })
 })

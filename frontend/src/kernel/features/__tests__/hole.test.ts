@@ -33,6 +33,14 @@ describe('solveHole guard paths', () => {
     ).toThrow(/has no plane transform registered/)
   })
 
+  it('names the sketch a half-configured hole still needs', () => {
+    for (const hole of [{}, { sketch: '' }, { sketch: '  ' }]) {
+      expect(() =>
+        solveHole(oc, scope, table, { id: 'h', hole }, new Repository(), {}, {}),
+      ).toThrow(/the hole needs a sketch/)
+    }
+  })
+
   it('throws when there are no bodies and no target', () => {
     const repo = new Repository()
     repo.register('_pt_sk', PLANE)
@@ -152,5 +160,18 @@ describe('solveHole sketch picks', () => {
 
   it('refuses an entity the sketch does not have', () => {
     expect(() => drill('entity:sk:nope')).toThrow(/sketch 'sk' has no entity 'nope'/)
+  })
+
+  it('names the circle a whole-sketch pick could drill instead', () => {
+    // The whole-sketch meaning drills points only; a sketch of circles is
+    // refused, and the error names the pick that would drill one.
+    expect(() => drill('@sk', { sk: { entities: [{ id: 'ci', kind: 'circle' }] } }))
+      .toThrow("hole: sketch 'sk' has no point entities; it has 1 circle, pick it as $sk/ci to drill it at its own size")
+  })
+
+  it('names one of several circles a whole-sketch pick could drill instead', () => {
+    expect(() => drill('@sk', {
+      sk: { entities: [{ id: 'c1', kind: 'circle' }, { id: 'c2', kind: 'circle' }] },
+    })).toThrow("it has 2 circles, pick one as $sk/c1 to drill it at its own size")
   })
 })
