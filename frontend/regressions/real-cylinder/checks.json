@@ -1,0 +1,43 @@
+{
+  "origin": {
+    "kind": "real_doc",
+    "ref": "src/wasm-kernel/regression-baseline.json",
+    "date": "2026-10-22"
+  },
+  "license": "own",
+  "severity": "soft",
+  "what": "a circle-and-lines sketch on the top plane, extruded 10 mm into two bodies and filleted",
+  "features": {
+    "default": "ok",
+    "except": {
+      "1yEm9_SklrAtzJorFHt9t04S": "underconstrained",
+      "GFJXRfGfWEqEXbwa79_7HI3Y": "exception"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 2,
+    "volume": 7916.932721727145,
+    "area": 3119.723097022821,
+    "centroid": [
+      -5.7429654640421095,
+      4.999999999999999,
+      -2.14760700725872
+    ],
+    "bbox": [
+      -30.00000000001415,
+      0,
+      -15,
+      23.4399370156,
+      10,
+      18.4568141017
+    ],
+    "faces": 10,
+    "edges": 18
+  },
+  "snapshot": true
+}

@@ -31,7 +31,9 @@ harvests wider ranges.
 
 `frontend/src/testing/actionMatrix/` replays the corpus documents
 (`frontend/src/wasm-kernel/regression-baseline.json` specs plus the doc-shaped
-`kernel/features/__fixtures__` files). For each document it enumerates targets
+`kernel/features/__fixtures__` files). The baseline holds the 55 curated specs;
+real documents and bug reports live in the folder regression corpus and are not
+swept here. For each document it enumerates targets
 (empty selection, each feature, and each sketch entity, vertex and constraint)
 and runs every part command from `PART_COMMAND_SPECS` through
 `CommandRegistry.execute` on a fresh headless `DocSession`. The matrix never
@@ -39,8 +41,8 @@ calls a mutation handler directly; the context callbacks perform the same
 session calls the page handlers do.
 
 Each entry records `ok`, `failed` or `refused` plus its error or refusal text
-in `frontend/src/testing/actionMatrix/baseline.json` (74 documents x up to 12
-targets x 48 commands, 36,048 rows, one row per line so the diff is readable).
+in `frontend/src/testing/actionMatrix/baseline.json` (59 documents x up to 12
+targets x 48 commands, 28,272 rows, one row per line so the diff is readable).
 
 - PR gate: `actionMatrix.test.ts` replays a bounded smoke slice (5 documents,
   6 targets) with the fake scheduler, so it needs no OCC.js, and
@@ -55,10 +57,33 @@ targets x 48 commands, 36,048 rows, one row per line so the diff is readable).
   baseline is regenerated and reviewed. A row that disappears or changes status
   is a regression.
 
+## Folder regression corpus
+
+`frontend/regressions/<kebab-name>/` holds one directory per real document or
+bug report (no `NN-` order): `recipe.yaml` (the exported document, loaded
+through `partSpecFromText`), `checks.json` (origin, licence, severity, expected
+feature statuses, tolerance, topology and the measures to freeze) and an
+optional `snapshot.json` with the per-body face/edge fingerprint sets.
+`severity: hard` fails `just frontend`; `soft` warns, and `REGRESSION_SOFT=1`
+downgrades every case to a warning.
+
+- PR gate: `frontend/src/regressions/__tests__/regressionsReal.test.ts` builds
+  every case once for statuses and measures; the no-kernel
+  `regressionsMeta.test.ts` guards the layout, licence allow list and loader.
+- Add: `cd frontend && npm run regressions:add -- <doc.yaml> <name>
+  [--snapshot]` refuses to overwrite and writes a passing manifest from the
+  live result.
+- Update: `npm run regressions:regen [name...]` rewrites only the live-derived
+  fields (`features`, the measures the case already states, the snapshot);
+  `origin`, `license`, `severity`, `what` and `tolerance` stay untouched.
+- The 15 former `real_doc` baseline anchors and the first bug case `two-rings`
+  are the seed corpus. The layout, checks schema and the decisions that stay
+  with the user are in `frontend/regressions/README.md`.
+
 ## Session fuzz
 
 `frontend/src/hooks/__tests__/fuzz.test.ts` (harness `fuzzHarness.ts`,
-minimiser `fuzzMinimizer.ts`) generates seeded sequences over the 84-type
+minimiser `fuzzMinimizer.ts`) generates seeded sequences over the 97-type
 mutation example registry plus random undo/redo, and drives them through a
 fresh `DocSession`. After every step it checks that the document is well formed
 and JSON-serializable, the session is idle, no solve crashed and history stays

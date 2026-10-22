@@ -15,8 +15,9 @@ case whose label is absent from the payload and whose kind the generator owns
 has vanished from a spec and is pruned, so a removed case is not frozen
 forever. Cases the generator does not own (the Python-era corpus it never
 regenerates) are carried forward untouched, so a partial regen cannot silently
-drop the rest of the corpus. summary.ok is counted from the per-case ok flags,
-never assumed to equal total.
+drop the rest of the corpus -- except the `real_doc` tier, which moved to the
+folder corpus (`frontend/regressions/`) and is never carried. summary.ok is
+counted from the per-case ok flags, never assumed to equal total.
 
 Run from frontend/:  python3 scripts/mergeCorpus.py [payload baseline manifest]
 The optional positional paths point a dry run at copies without touching the
@@ -82,6 +83,12 @@ def main(argv: list[str] | None = None) -> None:
     for label in list(old_cases):
         if label in new_cases:
             intended[label] = case_record(new_cases[label])
+        elif old_cases[label].get("query_tier") == "real_doc":
+            # The real-document anchors moved to the folder corpus
+            # (frontend/regressions/). A stale manifest copy must not be carried
+            # forward as "not owned", or the baseline keeps a second, silent
+            # copy of a case the folder suite already builds.
+            continue
         elif old_cases[label]["feature_kind"] not in owned_kinds:
             intended[label] = old_cases[label]
     for label, case in new_cases.items():

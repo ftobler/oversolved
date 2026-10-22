@@ -1,0 +1,44 @@
+{
+  "origin": {
+    "kind": "real_doc",
+    "ref": "src/wasm-kernel/regression-baseline.json",
+    "date": "2026-10-22"
+  },
+  "license": "own",
+  "severity": "soft",
+  "what": "a circle extruded 10 mm, translated 8 mm, unioned, circular-arrayed four times and filleted",
+  "features": {
+    "default": "ok",
+    "except": {
+      "27Ap4YadUnqTFwLOfDuqnopO": "fully_constrained",
+      "t17tStkj9R0rdcCPrNYmCBBn": "exception",
+      "Mc_91h3oHzLrD6a9HzdrJmtz": "exception"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 1489.0457723982558,
+    "area": 797.4274634389535,
+    "centroid": [
+      4.000000000000002,
+      5,
+      -1.5584381909469757e-16
+    ],
+    "bbox": [
+      -5,
+      0,
+      -5.000000000000023,
+      13.000000000000004,
+      10,
+      5.0000000000000195
+    ],
+    "faces": 4,
+    "edges": 6
+  },
+  "snapshot": true
+}

@@ -10,6 +10,8 @@
   "include": [
     "scripts/regenCorpus.ts",
     "scripts/driveCli.ts",
-    "scripts/mcpServer.ts"
+    "scripts/mcpServer.ts",
+    "scripts/regressions.ts",
+    "src/types/fileSystemAccess.d.ts"
   ]
 }

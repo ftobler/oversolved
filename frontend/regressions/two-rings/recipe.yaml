@@ -1,0 +1,221 @@
+features:
+  - id: Origin
+    kind: origin
+  - id: Top
+    kind: plane
+    visible: false
+  - id: Front
+    kind: plane
+    visible: false
+  - id: Right
+    kind: plane
+    visible: false
+  - id: UgoC6zEmpmK7z5yqVQHdagP8
+    kind: sketch
+    label: sketch 1
+    plane: "@builtin_plane_front"
+    initial:
+      Wb0Rxrzw10E_-ag_:
+        - 0
+        - 0
+        - 20
+      UY8-3zKbHOQ7X4Wx:
+        - 0
+        - 0
+        - 30
+    entities:
+      - id: Wb0Rxrzw10E_-ag_
+        kind: circle
+      - id: UY8-3zKbHOQ7X4Wx
+        kind: circle
+    constraints:
+      - id: c_coincident_W28cpoZa
+        kind: coincident
+        a: $Wb0Rxrzw10E_-ag_center
+        b: "@builtin_origin"
+      - id: c_coincident_Ja6zmBQe
+        kind: coincident
+        a: $UY8-3zKbHOQ7X4Wxcenter
+        b: $Wb0Rxrzw10E_-ag_center
+      - id: c_radius_difference_oNMmawU8
+        kind: radius_difference
+        a: $Wb0Rxrzw10E_-ag_
+        b: $UY8-3zKbHOQ7X4Wx
+        value: 10
+        pos:
+          - -1.388489
+          - 42.608103
+      - id: c_diameter_IFbOrmLN
+        kind: diameter
+        target: $Wb0Rxrzw10E_-ag_
+        value: 40
+        pos:
+          - 10.813015
+          - 37.748321
+  - id: SY-uXCL_uS188WwBa7Hwywkv
+    kind: extrude
+    label: extrude 1
+    extrude:
+      sketch:
+        - ?2a,9,19;@UgoC6zEmpmK7z5yqVQHdagP8/UY8-3zKbHOQ7X4Wxsurface:1@UgoC6zEmpmK7z5yqVQHdagP8:flatface
+      distance: 10
+      direction: normal
+  - id: TFB3j1moAeG81lG_TV9ORJ0D
+    kind: array
+    label: array 2
+    array:
+      mode: linear
+      count_x: 2
+      pitch_x: 20
+      operation: new
+      include_source: true
+      source_body: ?15,19,1e,2a;@u|u_c1dea7bb6244c5c3@SY-uXCL_uS188WwBa7Hwywkv@body_SY-uXCL_uS188WwBa7Hwywkv@UgoC6zEmpmK7z5yqVQHdagP8/Wb0Rxrzw10E_-ag_:cylinderface
+      direction_x_query: "@builtin_plane_right"
+      invert_x: false
+  - id: 6koLbUCSiP21l-0idDJaIi3v
+    kind: transform
+    label: transform 3
+    transform:
+      bodies:
+        - ?15,19,1e,2a,2a,7;@u|u_e02af981da930e65@TFB3j1moAeG81lG_TV9ORJ0D@body_TFB3j1moAeG81lG_TV9ORJ0D@UgoC6zEmpmK7z5yqVQHdagP8/Wb0Rxrzw10E_-ag_@UgoC6zEmpmK7z5yqVQHdagP8/UY8-3zKbHOQ7X4Wx@cls_zp:flatface
+      operation: replace
+      translation:
+        - 0
+        - 0
+        - 3
+      rotation_angle: 0
+      scale: 1
+  - id: ZD04FJPYjSRTqVeGCUSZPYt6
+    kind: boolean
+    label: boolean 3
+    boolean:
+      operation: subtract
+      target: ?15,19,1e,2a,2a,7;@u|u_418d8511c26753ad@SY-uXCL_uS188WwBa7Hwywkv@body_SY-uXCL_uS188WwBa7Hwywkv@UgoC6zEmpmK7z5yqVQHdagP8/Wb0Rxrzw10E_-ag_@UgoC6zEmpmK7z5yqVQHdagP8/UY8-3zKbHOQ7X4Wx@cls_zp:flatface
+      tools:
+        - ?15,19,1e,2a,2a,7;@u|u_e02af981da930e65@TFB3j1moAeG81lG_TV9ORJ0D@body_TFB3j1moAeG81lG_TV9ORJ0D@UgoC6zEmpmK7z5yqVQHdagP8/Wb0Rxrzw10E_-ag_@UgoC6zEmpmK7z5yqVQHdagP8/UY8-3zKbHOQ7X4Wx@cls_zp:flatface
+      clearance: 0.5
+      keep_tools: true
+  - id: eG6DKBSW-XtU1SNEpN8-q91S
+    kind: sketch
+    label: sketch 2
+    initial:
+      I3SqONbJ_pX93fSk:
+        - -0
+        - -34.886517
+        - 30.5
+        - 49.685091
+        - 20.65034
+      AhzG5DtR05u-BVKb:
+        - -0
+        - -14.886517
+        - 20
+        - 9.370182
+        - 170.629818
+      Pe2Kdy6L9mRhGkv4:
+        - -0
+        - -34.886517
+        - 30.5
+        - 159.34966
+        - 130.314909
+      tZlIx2s80GerZwTj:
+        - -0
+        - -14.886517
+        - 30
+        - -17.946271
+        - -162.053729
+      j4oU1Loz4-q7t3Jn:
+        - -0
+        - -34.886517
+        - 32.5
+      qXHK2o9L-AJ66nY0:
+        - -0
+        - -14.886517
+        - 28
+      SAr5hOgzT5Gdjd70:
+        - -0
+        - -14.886517
+        - 22
+    plane: ?15,19,1e,2a,2a,7;@u|u_878ec812709cb256@SY-uXCL_uS188WwBa7Hwywkv@body_SY-uXCL_uS188WwBa7Hwywkv@UgoC6zEmpmK7z5yqVQHdagP8/Wb0Rxrzw10E_-ag_@UgoC6zEmpmK7z5yqVQHdagP8/UY8-3zKbHOQ7X4Wx@cls_zp:flatface
+    entities:
+      - id: I3SqONbJ_pX93fSk
+        kind: arc
+        source: ?15,19,1e,2a,7,7;@u|e_e3dd461dc3ca4255@ZD04FJPYjSRTqVeGCUSZPYt6@body_SY-uXCL_uS188WwBa7Hwywkv@UgoC6zEmpmK7z5yqVQHdagP8/UY8-3zKbHOQ7X4Wx@cls_xp@cls_zp:edge
+      - id: AhzG5DtR05u-BVKb
+        kind: arc
+        source: ?15,19,1e,2a,7;@u|e_6f04171e1421dc30@SY-uXCL_uS188WwBa7Hwywkv@body_SY-uXCL_uS188WwBa7Hwywkv@UgoC6zEmpmK7z5yqVQHdagP8/Wb0Rxrzw10E_-ag_@cls_zp:edge
+      - id: Pe2Kdy6L9mRhGkv4
+        kind: arc
+        source: ?15,19,1e,2a,7,7;@u|e_ae093d0d1be41915@ZD04FJPYjSRTqVeGCUSZPYt6@body_SY-uXCL_uS188WwBa7Hwywkv@UgoC6zEmpmK7z5yqVQHdagP8/UY8-3zKbHOQ7X4Wx@cls_xp@cls_zp:edge
+      - id: tZlIx2s80GerZwTj
+        kind: arc
+        source: ?15,19,1e,2a,7;@u|e_0c423eb61a9bf699@SY-uXCL_uS188WwBa7Hwywkv@body_SY-uXCL_uS188WwBa7Hwywkv@UgoC6zEmpmK7z5yqVQHdagP8/UY8-3zKbHOQ7X4Wx@cls_zp:edge
+      - id: j4oU1Loz4-q7t3Jn
+        kind: circle
+      - id: qXHK2o9L-AJ66nY0
+        kind: circle
+      - id: SAr5hOgzT5Gdjd70
+        kind: circle
+    constraints:
+      - id: c_coincident_DKkolmNk
+        kind: coincident
+        a: $j4oU1Loz4-q7t3Jncenter
+        b: $I3SqONbJ_pX93fSkcenter
+      - id: c_coincident_KwgI7_P2
+        kind: coincident
+        a: $qXHK2o9L-AJ66nY0center
+        b: $AhzG5DtR05u-BVKbcenter
+      - id: c_coincident_w3MttE3i
+        kind: coincident
+        a: $SAr5hOgzT5Gdjd70center
+        b: $AhzG5DtR05u-BVKbcenter
+      - id: c_radius_difference_BM_zpSCa
+        kind: radius_difference
+        a: $qXHK2o9L-AJ66nY0
+        b: $tZlIx2s80GerZwTj
+        value: 2
+        pos:
+          - 2.252476
+          - 27.329191
+      - id: c_radius_difference_AO-LMGih
+        kind: radius_difference
+        a: $SAr5hOgzT5Gdjd70
+        b: $AhzG5DtR05u-BVKb
+        value: 2
+        pos:
+          - -0.241243
+          - 15.111565
+      - id: c_radius_difference_w1c8xoBv
+        kind: radius_difference
+        a: $j4oU1Loz4-q7t3Jn
+        b: $Pe2Kdy6L9mRhGkv4
+        value: 2
+        pos:
+          - 3.868887
+          - 18.20808
+  - id: BiixtYAZoqXXz_3JMHIshKoq
+    kind: extrude
+    label: extrude 3
+    extrude:
+      sketch:
+        - ?2a,2a,2a,2a,a,19;@eG6DKBSW-XtU1SNEpN8-q91S/SAr5hOgzT5Gdjd70@eG6DKBSW-XtU1SNEpN8-q91S/j4oU1Loz4-q7t3Jn@eG6DKBSW-XtU1SNEpN8-q91S/j4oU1Loz4-q7t3Jn@eG6DKBSW-XtU1SNEpN8-q91S/qXHK2o9L-AJ66nY0surface:12@eG6DKBSW-XtU1SNEpN8-q91S:flatface
+      distance: 10
+      direction: normal
+      termination: up_to
+      up_to: ?15,19,1e,2a,2a,7;@u|u_e02af981da930e65@TFB3j1moAeG81lG_TV9ORJ0D@body_TFB3j1moAeG81lG_TV9ORJ0D@UgoC6zEmpmK7z5yqVQHdagP8/Wb0Rxrzw10E_-ag_@UgoC6zEmpmK7z5yqVQHdagP8/UY8-3zKbHOQ7X4Wx@cls_zp:flatface
+part_style:
+  body_SY-uXCL_uS188WwBa7Hwywkv:
+    name: part 1
+    color: "#6AB59B"
+    created_by: SY-uXCL_uS188WwBa7Hwywkv
+  body_SY-uXCL_uS188WwBa7Hwywkv_1:
+    name: part 2
+    color: "#A8D5FF"
+    created_by: SY-uXCL_uS188WwBa7Hwywkv
+  body_TFB3j1moAeG81lG_TV9ORJ0D:
+    name: part 3
+    color: "#B8E8C8"
+    created_by: TFB3j1moAeG81lG_TV9ORJ0D
+  body_6koLbUCSiP21l-0idDJaIi3v:
+    name: part 4
+    color: "#FFD6A5"
+    created_by: 6koLbUCSiP21l-0idDJaIi3v

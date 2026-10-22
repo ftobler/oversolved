@@ -1,0 +1,44 @@
+{
+  "origin": {
+    "kind": "real_doc",
+    "ref": "src/wasm-kernel/regression-baseline.json",
+    "date": "2026-10-22"
+  },
+  "license": "own",
+  "severity": "soft",
+  "what": "two circles extruded together as two bodies, each with a filleted edge",
+  "features": {
+    "default": "ok",
+    "except": {
+      "1yEm9_SklrAtzJorFHt9t04S": "underconstrained",
+      "HJStD1T68wxC6ZzSBZpn2wmj": "exception",
+      "bb9va5To_XpOqYtRLCIzq8Sk": "exception"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 2,
+    "volume": 1272.509309386089,
+    "area": 818.5838706161073,
+    "centroid": [
+      1.6868522017470817,
+      5.000000000000001,
+      0.7625269340516113
+    ],
+    "bbox": [
+      -13.541361,
+      0,
+      -4.609074,
+      14.801055999999999,
+      10,
+      5.678395999999999
+    ],
+    "faces": 6,
+    "edges": 6
+  },
+  "snapshot": true
+}

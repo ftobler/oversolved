@@ -1,8 +1,9 @@
 // Shared baseline-building helpers for the full-doc regression test
-// (occ/__tests__/fullDocRegression.test.ts) and the corpus generator
-// (scripts/regenCorpus.ts). Both must agree on how a live TS body is reduced
-// to a frozen golden baseline body; keeping it here single-sources the replay
-// and the regen so a drift on one side cannot hide a divergence.
+// (occ/__tests__/fullDocRegression.test.ts), the corpus generator
+// (scripts/regenCorpus.ts) and the folder regression runner
+// (src/regressions/run.ts). All must agree on how a live TS body is reduced to
+// a frozen golden body; keeping it here single-sources the replay and the regen
+// so a drift on one side cannot hide a divergence.
 
 import { faceGeometryHash, edgeGeometryHash } from '../kernel/geomHash'
 

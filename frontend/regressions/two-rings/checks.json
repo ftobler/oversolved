@@ -1,0 +1,47 @@
+{
+  "origin": {
+    "kind": "bug_report",
+    "ref": "feature/regression-corpus.md",
+    "date": "2026-10-22"
+  },
+  "license": "own",
+  "severity": "hard",
+  "what": "two rings on the front plane, up_to extrude onto a body 3 face",
+  "features": {
+    "default": "ok",
+    "except": {
+      "Origin": "exception",
+      "Top": "exception",
+      "Front": "exception",
+      "Right": "exception",
+      "UgoC6zEmpmK7z5yqVQHdagP8": "fully_constrained",
+      "eG6DKBSW-XtU1SNEpN8-q91S": "fully_constrained"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 2,
+    "volume": 30512.09127804879,
+    "area": 13048.645768548799,
+    "centroid": [
+      8.81328145388081,
+      7.85441862410472e-17,
+      6.746257932220344
+    ],
+    "bbox": [
+      -30,
+      -30,
+      0,
+      50,
+      30,
+      13.000000000000002
+    ],
+    "faces": 20,
+    "edges": 48
+  },
+  "snapshot": true
+}

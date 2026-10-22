@@ -1,0 +1,163 @@
+features:
+  - constraints:
+      - a: $2Ulv_0KAG-KOXp0_start
+        b: "@builtin_origin"
+        id: c_coincident_UL1fDYoR
+        kind: coincident
+      - a: $Wb5Ad8pQcZqXCsfDstart
+        b: "@builtin_origin"
+        id: c_coincident_B6Ezn-E3
+        kind: coincident
+      - a: $UgHdCGiTrthhYn0Pstart
+        b: $Wb5Ad8pQcZqXCsfDend
+        id: c_coincident_IGfof1_b
+        kind: coincident
+      - a: $2Ulv_0KAG-KOXp0_end
+        b: $jwRVDCyVZWD7KloQend
+        id: c_coincident_ghCu3CdW
+        kind: coincident
+      - id: c_horizontal_1LIjuaJD
+        kind: horizontal
+        target: $2Ulv_0KAG-KOXp0_
+      - id: c_vertical_9XYP4i8q
+        kind: vertical
+        target: $Wb5Ad8pQcZqXCsfD
+      - id: c_vertical_llhVestf
+        kind: vertical
+        target: $jwRVDCyVZWD7KloQ
+      - id: c_length_8Pf2WKM_
+        kind: length
+        target: $2Ulv_0KAG-KOXp0_
+        value: 20
+      - id: c_length_6PPupkiG
+        kind: length
+        target: $Wb5Ad8pQcZqXCsfD
+        value: 5
+      - a: $jwRVDCyVZWD7KloQstart
+        b: $UgHdCGiTrthhYn0Pend
+        id: c_coincident_vrxUivuB
+        kind: coincident
+      - a: $UgHdCGiTrthhYn0P
+        b: $2Ulv_0KAG-KOXp0_
+        id: c_angle_W5DB1UV4
+        kind: angle
+        pos:
+          - -85.160982
+          - 11.566389
+        value: 3
+    entities:
+      - id: 2Ulv_0KAG-KOXp0_
+        kind: line
+      - id: Wb5Ad8pQcZqXCsfD
+        kind: line
+      - id: UgHdCGiTrthhYn0P
+        kind: line
+      - id: jwRVDCyVZWD7KloQ
+        kind: line
+    id: opsT9cxmUvsfths6Xoi4MZNU
+    initial:
+      2Ulv_0KAG-KOXp0_:
+        - 0
+        - 0
+        - 20
+        - 0
+      UgHdCGiTrthhYn0P:
+        - 0
+        - 5
+        - 20
+        - 3.9518444143
+      Wb5Ad8pQcZqXCsfD:
+        - 0
+        - 0
+        - 0
+        - 5
+      jwRVDCyVZWD7KloQ:
+        - 20
+        - 3.9518444143
+        - 20
+        - 0
+    kind: sketch
+    label: sketch 1
+    plane: "@builtin_plane_top"
+    visible: false
+  - id: 6EbMgXvI6h-cG2SylOF4pRWq
+    kind: revolve
+    label: revolve 1
+    revolve:
+      angle: 360
+      axis: "@opsT9cxmUvsfths6Xoi4MZNU/2Ulv_0KAG-KOXp0_"
+      axis_direction:
+        - 0
+        - 0
+        - 1
+      axis_origin:
+        - 0
+        - 0
+        - 0
+      sketch:
+        - ?2a,2a,2a,2a,9,19;@opsT9cxmUvsfths6Xoi4MZNU/2Ulv_0KAG-KOXp0_@opsT9cxmUvsfths6Xoi4MZNU/UgHdCGiTrthhYn0P@opsT9cxmUvsfths6Xoi4MZNU/Wb5Ad8pQcZqXCsfD@opsT9cxmUvsfths6Xoi4MZNU/jwRVDCyVZWD7KloQsurface:0@opsT9cxmUvsfths6Xoi4MZNU:flatface
+  - constraints:
+      - a: $9z4wK0exhW0ANN1-start
+        b: "@builtin_origin"
+        id: c_coincident_8ZdBq4J3
+        kind: coincident
+      - id: c_horizontal_MftfE0sl
+        kind: horizontal
+        target: $9z4wK0exhW0ANN1-
+    entities:
+      - construction: true
+        id: 9z4wK0exhW0ANN1-
+        kind: line
+    id: EOMJCK6CjXsMkYqtXDwkyXCZ
+    initial:
+      9z4wK0exhW0ANN1-:
+        - 0
+        - -2e-10
+        - 15.88909
+        - -2e-10
+    kind: sketch
+    label: sketch 2
+    plane: ?17,19,1e,2a,2a,2a,2a;@gface_7e0c0a834ce0f549@6EbMgXvI6h-cG2SylOF4pRWq@body_6EbMgXvI6h-cG2SylOF4pRWq@opsT9cxmUvsfths6Xoi4MZNU/2Ulv_0KAG-KOXp0_@opsT9cxmUvsfths6Xoi4MZNU/UgHdCGiTrthhYn0P@opsT9cxmUvsfths6Xoi4MZNU/Wb5Ad8pQcZqXCsfD@opsT9cxmUvsfths6Xoi4MZNU/jwRVDCyVZWD7KloQ:flatface
+    visible: false
+  - id: EHZb8fwkaQkQ5rnDAVbQmOE9
+    kind: transform
+    label: transform 2
+    transform:
+      bodies:
+        - "@body_6EbMgXvI6h-cG2SylOF4pRWq"
+      operation: new
+      rotation_angle: 45
+      rotation_axis: "@EOMJCK6CjXsMkYqtXDwkyXCZ/9z4wK0exhW0ANN1-"
+      scale: 0.8
+      scale_center_from: "@EOMJCK6CjXsMkYqtXDwkyXCZ/9z4wK0exhW0ANN1-/end"
+      translation:
+        - 0
+        - 0
+        - 0
+  - boolean:
+      operation: union
+      target: "@body_6EbMgXvI6h-cG2SylOF4pRWq"
+      tools:
+        - "@body_EHZb8fwkaQkQ5rnDAVbQmOE9"
+    id: apdJ6LvwaX2lOi5VN4Y55DFZ
+    kind: boolean
+    label: boolean 3
+  - fillet:
+      edges:
+        - ?17,19,1e,2a,2a,2a,2a;@gedge_eed4b032460d63bc@6EbMgXvI6h-cG2SylOF4pRWq@body_6EbMgXvI6h-cG2SylOF4pRWq@opsT9cxmUvsfths6Xoi4MZNU/2Ulv_0KAG-KOXp0_@opsT9cxmUvsfths6Xoi4MZNU/UgHdCGiTrthhYn0P@opsT9cxmUvsfths6Xoi4MZNU/Wb5Ad8pQcZqXCsfD@opsT9cxmUvsfths6Xoi4MZNU/jwRVDCyVZWD7KloQ:edge
+        - ?17,19,1e,2a,2a,2a,2a;@gedge_6f89dfd05e0ac64e@6EbMgXvI6h-cG2SylOF4pRWq@body_6EbMgXvI6h-cG2SylOF4pRWq@opsT9cxmUvsfths6Xoi4MZNU/2Ulv_0KAG-KOXp0_@opsT9cxmUvsfths6Xoi4MZNU/UgHdCGiTrthhYn0P@opsT9cxmUvsfths6Xoi4MZNU/Wb5Ad8pQcZqXCsfD@opsT9cxmUvsfths6Xoi4MZNU/jwRVDCyVZWD7KloQ:edge
+        - ?17,19,1e,2a,2a,2a,2a;@gedge_e82ca442ce77ac7c@6EbMgXvI6h-cG2SylOF4pRWq@body_6EbMgXvI6h-cG2SylOF4pRWq@opsT9cxmUvsfths6Xoi4MZNU/2Ulv_0KAG-KOXp0_@opsT9cxmUvsfths6Xoi4MZNU/UgHdCGiTrthhYn0P@opsT9cxmUvsfths6Xoi4MZNU/Wb5Ad8pQcZqXCsfD@opsT9cxmUvsfths6Xoi4MZNU/jwRVDCyVZWD7KloQ:edge
+        - ?17,19,1e,2a,2a,2a,2a;@gedge_da030596bf151940@6EbMgXvI6h-cG2SylOF4pRWq@body_6EbMgXvI6h-cG2SylOF4pRWq@opsT9cxmUvsfths6Xoi4MZNU/2Ulv_0KAG-KOXp0_@opsT9cxmUvsfths6Xoi4MZNU/UgHdCGiTrthhYn0P@opsT9cxmUvsfths6Xoi4MZNU/Wb5Ad8pQcZqXCsfD@opsT9cxmUvsfths6Xoi4MZNU/jwRVDCyVZWD7KloQ:edge
+      radius: 1
+    id: 7ZKo8i4XPbtibJKMsqq7ku2M
+    kind: fillet
+    label: fillet 2
+  - fillet:
+      edges:
+        - ?17,19,1e,2a,2a,2a,2a;@gedge_ff0c7b35548d1282@6EbMgXvI6h-cG2SylOF4pRWq@body_6EbMgXvI6h-cG2SylOF4pRWq@opsT9cxmUvsfths6Xoi4MZNU/2Ulv_0KAG-KOXp0_@opsT9cxmUvsfths6Xoi4MZNU/UgHdCGiTrthhYn0P@opsT9cxmUvsfths6Xoi4MZNU/Wb5Ad8pQcZqXCsfD@opsT9cxmUvsfths6Xoi4MZNU/jwRVDCyVZWD7KloQ:straightedge
+      radius: 1
+    id: 8TUePGIfQrzRp6K4f9jDokKi
+    kind: fillet
+    label: fillet 2
+kind: part
+version: 1

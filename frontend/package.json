@@ -17,6 +17,8 @@
     "docs:commands": "UPDATE_COMMAND_DOCS=1 vitest run src/pages/registry/__tests__/commandDocs.test.ts",
     "docs:oracle": "UPDATE_ORACLE_DOCS=1 vitest run src/oracle/__tests__/oracleReal.test.ts",
     "regen:corpus": "node --experimental-strip-types --loader=./resolve-alias.loader.mjs scripts/regenCorpus.ts && ../.venv/bin/python scripts/mergeCorpus.py",
+    "regressions:add": "node --experimental-strip-types --loader=./scripts/driveCli.loader.mjs scripts/regressions.ts add",
+    "regressions:regen": "node --experimental-strip-types --loader=./scripts/driveCli.loader.mjs scripts/regressions.ts regen",
     "regen:action-matrix": "vite-node scripts/regenActionMatrix.ts",
     "shadow:wasm": "cd ../sketch-solver && wasm-pack build --target web --out-dir pkg --release && cd ../mate-solver && wasm-pack build --target web --out-dir pkg --release && cd ../frontend && node scripts/copyWasm.mjs",
     "licenses:generate": "node scripts/generateThirdPartyNotices.mjs && node scripts/generateRustNotices.mjs",

@@ -1,0 +1,24 @@
+{
+  "bodies": {
+    "body_ibq8DPuht3CcI706vgQX98WJ": {
+      "created_by": "ibq8DPuht3CcI706vgQX98WJ",
+      "modified_by": [
+        "SzKzWjfYdrBa30PkDkrt28jV"
+      ],
+      "face_hashes": [
+        "gface_585d0084829ef223",
+        "gface_6c673f36357c5b1f",
+        "gface_a361c840bc420735",
+        "gface_b1976f930f5156e9"
+      ],
+      "edge_hashes": [
+        "gedge_2546df38e273204f",
+        "gedge_2d0276776b8689e4",
+        "gedge_4140e5ef60cf26dd",
+        "gedge_9e494e83d4732994",
+        "gedge_bbb5c14411eb6b7e",
+        "gedge_e5787b16236a0598"
+      ]
+    }
+  }
+}

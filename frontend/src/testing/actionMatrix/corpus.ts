@@ -1,10 +1,10 @@
 // The action-matrix corpus: the documents the matrix sweeps, plus the target
 // enumerator that turns a document into the selection ids the command table
-// reads. The corpus is the frozen 70-spec regression baseline (the same specs
+// reads. The corpus is the frozen 55-spec regression baseline (the same specs
 // fullDocRegression replays through the kernel) plus the doc-shaped feature
 // fixtures under kernel/features/__fixtures__; the occ fixture tables are case
 // inputs for the kernel suites, not documents, so they are not part of the
-// matrix.
+// matrix. Real documents moved to the folder corpus and are not swept here.
 import baseline from '@/wasm-kernel/regression-baseline.json'
 import faceExtrudeAfterArrayCut from '@/kernel/features/__fixtures__/faceExtrudeAfterArrayCut.json'
 import filletInvalidResultDoc from '@/kernel/features/__fixtures__/filletInvalidResultDoc.json'
@@ -20,7 +20,7 @@ export interface CorpusDoc {
 
 // The PR-gate slice: the doc-shaped fixtures (real bug-report documents) plus
 // corpus labels chosen for target coverage (a sketch with entities and
-// constraints, a feature modifier, a real document). The full sweep widens to
+// constraints, a feature modifier, a two-extrude chain). The full sweep widens to
 // every corpus document; the target caps must keep SMOKE <= FULL so the smoke
 // keys are always a prefix of the baseline.
 export const SMOKE_DOC_LABELS: readonly string[] = [
@@ -28,7 +28,7 @@ export const SMOKE_DOC_LABELS: readonly string[] = [
   'fixture:filletInvalidResultDoc',
   'rect_sketch_10x10',
   'box_with_fillet',
-  'real_two_objects_1',
+  'chain_extrude_cut',
 ]
 export const SMOKE_MAX_TARGETS = 6
 export const FULL_MAX_TARGETS = 12
@@ -41,7 +41,7 @@ export const FULL_MAX_TARGETS = 12
 export const REAL_SMOKE_DOC_LABELS: readonly string[] = [
   'rect_sketch_10x10',
   'box_with_fillet',
-  'real_two_objects_1',
+  'chain_extrude_cut',
 ]
 
 interface BaselineEntry {

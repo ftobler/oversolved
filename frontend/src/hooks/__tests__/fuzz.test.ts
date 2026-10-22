@@ -13,7 +13,11 @@
 // the other Real suites; the fake scheduler covers the history mechanics
 // everywhere.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { stringify } from 'yaml'
 import type { PartDoc } from '@/types/cad'
+import { loadPartDocText } from '@/persistence/docSchema'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { setSolveLocalsForTest, persistentTableForTest } from '@/kernel/solveLocally'
@@ -26,6 +30,7 @@ import {
   runFuzzSequence,
   type FuzzStep,
   type FuzzSolver,
+  type FuzzRunResult,
 } from './fuzzHarness'
 import { minimizeSequence } from './fuzzMinimizer'
 
@@ -63,9 +68,51 @@ async function runFake(seed: number, steps: number, options?: Parameters<typeof 
   return runFuzzSequence(generateSequence(seed, steps), fakeSolver(), options)
 }
 
+// A failing seed prints the document the session held at that step, not only a
+// number: the user can open the YAML in the app and reproduce the failure
+// directly. The path is under the project's gitignored `tmp/`. A write failure
+// is a warning, never a replacement for the real assertion message.
+function reportFailureDocs(seed: number, result: FuzzRunResult): void {
+  for (const { step, doc } of result.failureDocs) {
+    const dir = join(process.cwd(), 'tmp', 'fuzz-session')
+    const path = join(dir, `seed-${seed}-step-${step}.yaml`)
+    try {
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(path, stringify(doc))
+      console.error(`[fuzz] seed ${seed} step ${step}: openable document at ${path}`)
+    } catch (error) {
+      console.warn(`[fuzz] seed ${seed} step ${step}: could not write the repro to ${path}: ${String(error)}`)
+    }
+  }
+}
+
+// The known failing seed: R04 is a designed refusal (dispatching set_rollback
+// without pre-syncing the editor store aborts with a rollback-unsynced fault),
+// and a seed whose sequence contains that step fails against the real session
+// driver when the pre-sync is withheld. The seed is found, not hard-coded: the
+// generator draws by index into the registry, so every new mutation type
+// reshuffles which seed draws set_rollback (a pinned 15 went stale when
+// move/delete face landed). The length is fixed, not the env-sized FAKE_STEPS:
+// the minimiser and the repro checks are about the mechanism, and the sequence
+// must not change under a long-run override.
+const ROLLBACK_FAULT_STEPS = 16
+const ROLLBACK_SEED_SEARCH = 200
+
+function hasRollback(steps: readonly FuzzStep[]): boolean {
+  return steps.some(step => step.kind === 'mutation' && step.type === 'set_rollback')
+}
+
+function rollbackFaultSeed(): number {
+  for (let seed = 0; seed < ROLLBACK_SEED_SEARCH; seed++) {
+    if (hasRollback(generateSequence(seed, ROLLBACK_FAULT_STEPS))) return seed
+  }
+  return -1
+}
+
 describe('the seeded fuzz ratchet (fake scheduler)', () => {
   it.each(seeds(FAKE_SEEDS))('seed %i replays without a violation', async (seed) => {
     const result = await runFake(seed, FAKE_STEPS)
+    reportFailureDocs(seed, result)
     expect(result.violations).toEqual([])
     expect(result.landedSteps).toBeGreaterThan(0)
   })
@@ -112,6 +159,7 @@ const REGRESSION_SEEDS: readonly { seed: number; steps: number; note: string }[]
 describe('the pinned fuzz regressions (fake scheduler)', () => {
   it.each(REGRESSION_SEEDS)('seed $seed ($note) stays fixed', async ({ seed, steps }) => {
     const result = await runFake(seed, steps)
+    reportFailureDocs(seed, result)
     expect(result.violations).toEqual([])
   })
 })
@@ -182,6 +230,7 @@ describe.skipIf(!oc || !solveBytes)('the seeded fuzz ratchet (real kernel)', () 
         scheduler: createRealSolveScheduler(),
         settle: () => undefined,
       })
+      reportFailureDocs(seed, result)
       expect(result.violations, `seed ${seed}`).toEqual([])
 
       const table = persistentTableForTest()
@@ -192,32 +241,18 @@ describe.skipIf(!oc || !solveBytes)('the seeded fuzz ratchet (real kernel)', () 
   })
 })
 
+describe('the fuzz failure document', () => {
+  it('captures the failing step as a document the app loader accepts', async () => {
+    const seed = rollbackFaultSeed()
+    const result = await runFake(seed, ROLLBACK_FAULT_STEPS, { presyncRollback: false })
+    expect(result.violations.length).toBeGreaterThan(0)
+    expect(result.failureDocs.length).toBeGreaterThan(0)
+    const loaded = loadPartDocText(stringify(result.failureDocs[0].doc))
+    expect(loaded.ok, loaded.ok ? '' : `${loaded.error.field}: ${loaded.error.message}`).toBe(true)
+  })
+})
+
 describe('the fuzz minimiser', () => {
-  // The known failing seed: R04 is a designed refusal (dispatching
-  // set_rollback without pre-syncing the editor store aborts with a
-  // rollback-unsynced fault), and a seed whose sequence contains that step
-  // fails against the real session driver when the pre-sync is withheld. The
-  // minimiser has to find exactly that step. The length is fixed, not the
-  // env-sized FAKE_STEPS: the minimiser test is about the mechanism, and the
-  // sequence must not change under a long-run override.
-  //
-  // The seed is found, not hard-coded: the generator draws by index into the
-  // registry, so every new mutation type reshuffles which seed draws
-  // set_rollback (a pinned 15 went stale when move/delete face landed).
-  const ROLLBACK_FAULT_STEPS = 16
-  const ROLLBACK_SEED_SEARCH = 200
-
-  function hasRollback(steps: readonly FuzzStep[]): boolean {
-    return steps.some(step => step.kind === 'mutation' && step.type === 'set_rollback')
-  }
-
-  function rollbackFaultSeed(): number {
-    for (let seed = 0; seed < ROLLBACK_SEED_SEARCH; seed++) {
-      if (hasRollback(generateSequence(seed, ROLLBACK_FAULT_STEPS))) return seed
-    }
-    return -1
-  }
-
   it('finds a seed whose sequence draws the rollback fault', () => {
     expect(rollbackFaultSeed()).toBeGreaterThanOrEqual(0)
   })

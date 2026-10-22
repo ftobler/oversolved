@@ -1,0 +1,160 @@
+features:
+  - auto_hidden_by: A6S-X6wH6-KJ6vjnY2TTWoui
+    constraints:
+      - a: $8fWd2cM38yAeIlQ6start
+        b: "@builtin_origin"
+        id: c_coincident_LVuhlGse
+        kind: coincident
+      - a: $VUFJfeJAHrHboU_wstart
+        b: "@builtin_origin"
+        id: c_coincident_p_G6Sb8p
+        kind: coincident
+      - a: $xYXfRsh5MW7B_Wyjend
+        b: $8fWd2cM38yAeIlQ6end
+        id: c_coincident_sqo757mF
+        kind: coincident
+      - id: c_vertical_yjQChl3Y
+        kind: vertical
+        target: $xYXfRsh5MW7B_Wyj
+      - a: $xYXfRsh5MW7B_Wyj
+        b: $8fWd2cM38yAeIlQ6
+        id: c_angle_Ks5taSMF
+        kind: angle
+        pos:
+          - -12.493479
+          - 12.811939
+        value: 90
+      - a: $xYXfRsh5MW7B_Wyjstart
+        b: $VUFJfeJAHrHboU_wend
+        id: c_coincident_3nZ79LmT
+        kind: coincident
+      - id: c_length_es0_rImb
+        kind: length
+        target: $xYXfRsh5MW7B_Wyj
+        value: 50
+      - a: $8fWd2cM38yAeIlQ6
+        b: $VUFJfeJAHrHboU_w
+        id: c_angle__jU4l-dc
+        kind: angle
+        pos:
+          - 16.411839
+          - 22.710698
+        value: 30
+      - a: $et1UTvux6mL829z1end
+        b: $kRym9h4N2uQFCPZ0start
+        id: c_coincident_h91QkTXU
+        kind: coincident
+      - a: $kRym9h4N2uQFCPZ0end
+        b: $7IYrzW5lgRtRF0Itstart
+        id: c_coincident_Gx73KwLe
+        kind: coincident
+      - a: $7IYrzW5lgRtRF0Itend
+        b: $6bSz1QoujWQRdPc0start
+        id: c_coincident_sBSuv84A
+        kind: coincident
+      - a: $6bSz1QoujWQRdPc0end
+        b: $et1UTvux6mL829z1start
+        id: c_coincident_cOfejQx8
+        kind: coincident
+      - a: $et1UTvux6mL829z1
+        b: $7IYrzW5lgRtRF0It
+        id: c_equal_length_UCawdkf4
+        kind: equal_length
+      - a: $kRym9h4N2uQFCPZ0
+        b: $6bSz1QoujWQRdPc0
+        id: c_equal_length_f8jbWBhr
+        kind: equal_length
+      - id: c_horizontal_I5gGCpNS
+        kind: horizontal
+        target: $et1UTvux6mL829z1
+      - id: c_vertical_injOEEe9
+        kind: vertical
+        target: $kRym9h4N2uQFCPZ0
+    entities:
+      - id: 8fWd2cM38yAeIlQ6
+        kind: line
+      - id: VUFJfeJAHrHboU_w
+        kind: line
+      - id: xYXfRsh5MW7B_Wyj
+        kind: line
+      - id: et1UTvux6mL829z1
+        kind: line
+      - id: kRym9h4N2uQFCPZ0
+        kind: line
+      - id: 7IYrzW5lgRtRF0It
+        kind: line
+      - id: 6bSz1QoujWQRdPc0
+        kind: line
+    id: mu6qbJY1feKhXh5atWRrIvXf
+    initial:
+      6bSz1QoujWQRdPc0:
+        - -2.348638
+        - 2.223706
+        - -2.348638
+        - 5.779956
+      7IYrzW5lgRtRF0It:
+        - -0.547928
+        - 2.223706
+        - -2.348638
+        - 2.223706
+      8fWd2cM38yAeIlQ6:
+        - 0
+        - 0
+        - 86.6025403784
+        - 0
+      VUFJfeJAHrHboU_w:
+        - 0
+        - 0
+        - 86.6025403784
+        - 50
+      et1UTvux6mL829z1:
+        - -2.348638
+        - 5.779956
+        - -0.547928
+        - 5.779956
+      kRym9h4N2uQFCPZ0:
+        - -0.547928
+        - 5.779956
+        - -0.547928
+        - 2.223706
+      xYXfRsh5MW7B_Wyj:
+        - 86.6025403784
+        - 50
+        - 86.6025403784
+        - 0
+    kind: sketch
+    label: sketch 1
+    plane: "@builtin_plane_top"
+    visible: false
+  - id: SrJidBKOvhlP2Hq-A0g4Zg-I
+    kind: revolve
+    label: revolve 1
+    revolve:
+      angle: 360
+      axis: "@mu6qbJY1feKhXh5atWRrIvXf/8fWd2cM38yAeIlQ6"
+      axis_direction:
+        - 0
+        - 0
+        - 1
+      axis_origin:
+        - 0
+        - 0
+        - 0
+      sketch:
+        - ?2a,2a,2a,9,19;@mu6qbJY1feKhXh5atWRrIvXf/8fWd2cM38yAeIlQ6@mu6qbJY1feKhXh5atWRrIvXf/VUFJfeJAHrHboU_w@mu6qbJY1feKhXh5atWRrIvXf/xYXfRsh5MW7B_Wyjsurface:0@mu6qbJY1feKhXh5atWRrIvXf:flatface
+  - fillet:
+      edges:
+        - ?17,19,19,1e,2a,2a,2a;@gface_afad537ee56e69bb@gnormal_b8b142e09df938ad@SrJidBKOvhlP2Hq-A0g4Zg-I@body_SrJidBKOvhlP2Hq-A0g4Zg-I@mu6qbJY1feKhXh5atWRrIvXf/8fWd2cM38yAeIlQ6@mu6qbJY1feKhXh5atWRrIvXf/VUFJfeJAHrHboU_w@mu6qbJY1feKhXh5atWRrIvXf/xYXfRsh5MW7B_Wyj:face
+      radius: 10
+    id: J3zsMkh96HwVGyKyz9OS99OB
+    kind: fillet
+    label: fillet 2
+  - fillet:
+      edges:
+        - ?17,19,19,1e,2a,2a,2a;@gface_b04c148efe24c16e@gnormal_b8b142e09df938ad@SrJidBKOvhlP2Hq-A0g4Zg-I@body_SrJidBKOvhlP2Hq-A0g4Zg-I@mu6qbJY1feKhXh5atWRrIvXf/8fWd2cM38yAeIlQ6@mu6qbJY1feKhXh5atWRrIvXf/VUFJfeJAHrHboU_w@mu6qbJY1feKhXh5atWRrIvXf/xYXfRsh5MW7B_Wyj:face
+      radius: 1
+    id: nlihKPG6aKB-z1WNTpteMceb
+    kind: fillet
+    label: fillet 2
+kind: part
+version: 1

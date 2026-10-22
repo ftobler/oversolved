@@ -1,0 +1,32 @@
+{
+  "bodies": {
+    "body_BeDqcW3gyaT-vZhoottMwsD6": {
+      "created_by": "BeDqcW3gyaT-vZhoottMwsD6",
+      "modified_by": [],
+      "face_hashes": [
+        "gface_0f134ae1a905e6a0",
+        "gface_6d404f64afd82e92",
+        "gface_abb9476b5c3bcbe4"
+      ],
+      "edge_hashes": [
+        "gedge_3aeb2f16a6579459",
+        "gedge_c0aaacd02834d4e0",
+        "gedge_cc19f5e0b89cf899"
+      ]
+    },
+    "body_S_ia4hxd1SXwEZA75qsODiJy": {
+      "created_by": "S_ia4hxd1SXwEZA75qsODiJy",
+      "modified_by": [],
+      "face_hashes": [
+        "gface_2417cf274f792919",
+        "gface_2ff11664db889747",
+        "gface_72ba1a1e20de0003"
+      ],
+      "edge_hashes": [
+        "gedge_531ef830199fe853",
+        "gedge_c3435166356e8a4c",
+        "gedge_fa9c60fd91e54e5e"
+      ]
+    }
+  }
+}

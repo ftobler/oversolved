@@ -1,9 +1,10 @@
 /**
  * The measure tolerance comparator and the row-producing comparison shared by
  * the analytic-volume seed (`occ/__tests__/volumeOracleReal.test.ts`), the
- * reference oracle corpus (`src/oracle/`) and the translation corpus
- * (`src/translations/`). It lives in a leaf module because every suite must
- * apply the identical budget; two copies would let them drift apart.
+ * reference oracle corpus (`src/oracle/`), the translation corpus
+ * (`src/translations/`) and the regression corpus (`src/regressions/`). It
+ * lives in a leaf module because every suite must apply the identical budget;
+ * two copies would let them drift apart.
  *
  * The budget is proportional to the expected value's own size, exactly as a
  * mesh tolerance would be: rel * expected covers the integrator's convergence,
@@ -11,7 +12,6 @@
  */
 
 import type { MeasureRecord } from './measure'
-import type { OracleMeasures } from '@/oracle/corpus'
 
 export interface MeasureTolerance {
   rel: number
@@ -63,6 +63,23 @@ export interface CompareOptions {
   topology?: TopologyMode
 }
 
+/**
+ * What a caller states about an expected body set. The oracle and translation
+ * references are the full record (`OracleMeasures` assigns to this), while a
+ * regression case may omit a measure it does not freeze or state `centroid` /
+ * `bbox` as null for a document with no body: an omitted or null field produces
+ * no row, so nothing is checked that the case did not state.
+ */
+export interface MeasureExpectation {
+  bodies: number
+  volume?: number
+  area?: number
+  centroid?: readonly number[] | null
+  bbox?: readonly number[] | null
+  faces?: number
+  edges?: number
+}
+
 function scalarRow(
   measure: MeasureName,
   ours: number,
@@ -112,18 +129,20 @@ function vectorRow(
  */
 export function compareMeasures(
   ours: MeasureRecord,
-  theirs: OracleMeasures,
+  theirs: MeasureExpectation,
   opts: CompareOptions = {},
 ): { pass: boolean; rows: MeasureRow[] } {
   const tolerance = opts.tolerance ?? DEFAULT_MEASURE_TOLERANCE
   const topology = opts.topology ?? 'strict'
-  const rows: MeasureRow[] = [
-    exactRow('bodies', ours.bodies, theirs.bodies),
-    scalarRow('volume', ours.volume, theirs.volume, tolerance),
-    scalarRow('area', ours.area, theirs.area, tolerance),
-    vectorRow('centroid', ours.centroid, theirs.centroid, tolerance),
-    vectorRow('bbox', ours.bbox, theirs.bbox, tolerance),
-  ]
+  const rows: MeasureRow[] = [exactRow('bodies', ours.bodies, theirs.bodies)]
+  if (theirs.volume !== undefined) rows.push(scalarRow('volume', ours.volume, theirs.volume, tolerance))
+  if (theirs.area !== undefined) rows.push(scalarRow('area', ours.area, theirs.area, tolerance))
+  if (theirs.centroid != null) {
+    rows.push(vectorRow('centroid', ours.centroid, [...theirs.centroid], tolerance))
+  }
+  if (theirs.bbox != null) {
+    rows.push(vectorRow('bbox', ours.bbox, [...theirs.bbox], tolerance))
+  }
   if (theirs.faces !== undefined) {
     rows.push(exactRow('faces', ours.faces, theirs.faces, topology === 'strict'))
   }

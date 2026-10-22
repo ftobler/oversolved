@@ -1,0 +1,44 @@
+{
+  "origin": {
+    "kind": "real_doc",
+    "ref": "src/wasm-kernel/regression-baseline.json",
+    "date": "2026-10-22"
+  },
+  "license": "own",
+  "severity": "soft",
+  "what": "a circle-and-lines sketch extruded 10 mm, a 90 degree revolve, and a fillet",
+  "features": {
+    "default": "ok",
+    "except": {
+      "1yEm9_SklrAtzJorFHt9t04S": "fully_constrained",
+      "dSAQs3CmnJqzbSQNZ3_K43zz": "exception",
+      "QGrxZCadCAi9KWRuYCk_hCIY": "exception"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 785.3981633974482,
+    "area": 514.1592653589793,
+    "centroid": [
+      -4.2441318157838746,
+      4.999999999999999,
+      -4.244131815783875
+    ],
+    "bbox": [
+      -10,
+      0,
+      -10,
+      6.123233995736766e-16,
+      10,
+      0
+    ],
+    "faces": 5,
+    "edges": 9
+  },
+  "snapshot": true
+}
