@@ -315,6 +315,18 @@ describe('buildKeyString', () => {
 - No new `// eslint-disable` suppressions without explanation
 - TypeScript strict mode - no new `any` casts
 
+### Test Corpora
+
+Three sibling folder corpora share one loader shape (`recipe.yaml` plus a JSON
+manifest) and differ in what makes their expectation true:
+
+- `frontend/oracle/<NN-name>/` - a closed-form `expected.json` (`src/oracle/`).
+- `frontend/translations/<NN-name>/` - another tool's `reference.json`
+  (`src/translations/`).
+- `frontend/regressions/<kebab-name>/` - a real exported document plus a
+  readable `checks.json` and optional `snapshot.json` (`src/regressions/`);
+  one directory per bug report or real file, no `NN-` order.
+
 ### Drive Surface and CLI
 
 - `window.__oversolved` exists in dev/test builds only; it is a test and
