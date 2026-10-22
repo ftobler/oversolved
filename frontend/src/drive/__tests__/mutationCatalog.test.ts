@@ -13,6 +13,8 @@ import type { Mutation } from '@/types/cad'
 import { MUTATION_FAMILIES, mutationCatalogPayload } from '../mutationCatalogPayload'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 import { runHeadless, measureHeadless, seedBuiltins } from '../headlessOps'
+import { createDriveJournal } from '../journal'
+import type { ScriptStep } from '../scriptRunner'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
@@ -88,6 +90,20 @@ describe('mutation catalog', () => {
     }
   })
 
+  it('carries select ancestry queries, never positional edge aliases', () => {
+    // A positional `?<body>:edge:<n>` alias is the pattern the knowledge base
+    // forbids: it points at whatever edge holds that index once the topology
+    // changes. The examples must teach the ancestry strings `select` returns.
+    const positional = /\?[^;]*:edge:\d+$/
+    for (const example of MUTATION_EXAMPLES) {
+      for (const step of example.steps) {
+        if (!('mutation' in step)) continue
+        const query = (step.mutation as { edgeQuery?: string }).edgeQuery
+        if (query !== undefined) expect(query).not.toMatch(positional)
+      }
+    }
+  })
+
   it('publishes the plane definition shape from the part-document schema', () => {
     const payload = mutationCatalogPayload()
     const entry = Object.values(payload.families).flat().find(row => row.type === 'add_plane')
@@ -136,10 +152,19 @@ describe('mutation catalog', () => {
 })
 
 describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () => {
+  // The examples are run the way the `mutations` tool's consumer runs them: a
+  // `run` on a fresh seeded document installs the drive journal, so the id
+  // source is seeded from that document and the ancestry queries the fillet
+  // example carries resolve to the same edges they were produced from.
+  function exampleRun(steps: readonly ScriptStep[]) {
+    const doc = seedBuiltins({ version: 1, kind: 'part', features: [] })
+    return runHeadless({ doc, steps, journal: createDriveJournal(doc) })
+  }
+
   it('builds the box example at volume 12000', async () => {
     const example = MUTATION_EXAMPLES.find(entry => entry.name === 'box')
     expect(example).toBeDefined()
-    const result = await runHeadless({ doc: seedBuiltins({ version: 1, kind: 'part', features: [] }), steps: example!.steps })
+    const result = await exampleRun(example!.steps)
     expect(result.ok).toBe(true)
     const measure = await measureHeadless(result.doc!)
     expect(measure).not.toBeNull()
@@ -150,7 +175,7 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
   it('builds the filleted-box example at the measured volume and area', async () => {
     const example = MUTATION_EXAMPLES.find(entry => entry.name === 'filleted-box')
     expect(example).toBeDefined()
-    const result = await runHeadless({ doc: seedBuiltins({ version: 1, kind: 'part', features: [] }), steps: example!.steps })
+    const result = await exampleRun(example!.steps)
     expect(result.ok).toBe(true)
     const measure = await measureHeadless(result.doc!)
     expect(measure).not.toBeNull()
