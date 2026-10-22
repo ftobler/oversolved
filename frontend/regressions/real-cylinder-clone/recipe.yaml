@@ -1,0 +1,127 @@
+features:
+  - constraints:
+      - a: $IQUWoE6eGIwhLtA1center
+        b: "@builtin_origin"
+        id: c_coincident_zomaPm3K
+        kind: coincident
+      - id: c_diameter_-9dwourc
+        kind: diameter
+        pos:
+          - 12.719928
+          - 3.055816
+        target: $IQUWoE6eGIwhLtA1
+        value: 20
+      - id: c_horizontal_QxtbvKfb
+        kind: horizontal
+        target: $FZm88cA37XFkRgFh
+      - a: $vUX3STWGRjO_WaRpstart
+        b: $FZm88cA37XFkRgFhend
+        id: c_coincident_Fsvzr8Lu
+        kind: coincident
+      - id: c_horizontal_GF_Aps7O
+        kind: horizontal
+        target: $A6UaSDv5wrJFd8b5
+      - a: $k-g9YNviFC85Z-7Kstart
+        b: $A6UaSDv5wrJFd8b5end
+        id: c_coincident_WH0NPljE
+        kind: coincident
+      - a: $A6UaSDv5wrJFd8b5start
+        b: $vUX3STWGRjO_WaRpend
+        id: c_coincident_yBCMSVLP
+        kind: coincident
+      - id: c_vertical_1k_FHgMV
+        kind: vertical
+        target: $vUX3STWGRjO_WaRp
+      - id: c_vertical_RDVeg-7m
+        kind: vertical
+        target: $k-g9YNviFC85Z-7K
+      - a: $k-g9YNviFC85Z-7Kend
+        b: $FZm88cA37XFkRgFhstart
+        id: c_coincident_FDT9Vs58
+        kind: coincident
+      - a: $k-g9YNviFC85Z-7Kend
+        b: "@builtin_origin"
+        id: c_coincident_mT0hBYSf
+        kind: coincident
+      - id: c_length_1snfo9Fo
+        kind: length
+        target: $k-g9YNviFC85Z-7K
+        value: 15
+      - id: c_length_Z7jBcuJo
+        kind: length
+        target: $FZm88cA37XFkRgFh
+        value: 30
+    entities:
+      - id: IQUWoE6eGIwhLtA1
+        kind: circle
+      - id: FZm88cA37XFkRgFh
+        kind: line
+      - id: vUX3STWGRjO_WaRp
+        kind: line
+      - id: A6UaSDv5wrJFd8b5
+        kind: line
+      - id: k-g9YNviFC85Z-7K
+        kind: line
+    id: 1yEm9_SklrAtzJorFHt9t04S
+    initial:
+      A6UaSDv5wrJFd8b5:
+        - -30
+        - 15
+        - 0
+        - 15
+      FZm88cA37XFkRgFh:
+        - 0
+        - 0
+        - -30
+        - 0
+      IQUWoE6eGIwhLtA1:
+        - 0
+        - 0
+        - 10
+      k-g9YNviFC85Z-7K:
+        - 0
+        - 15
+        - 0
+        - 0
+      vUX3STWGRjO_WaRp:
+        - -30
+        - 0
+        - -30
+        - 15
+    kind: sketch
+    label: sketch 1
+    plane: "@builtin_plane_top"
+    visible: false
+  - extrude:
+      direction: normal
+      distance: 10
+      sketch:
+        - ?2a,2a,2a,9,19,1a,1a;@1yEm9_SklrAtzJorFHt9t04S/FZm88cA37XFkRgFh@1yEm9_SklrAtzJorFHt9t04S/IQUWoE6eGIwhLtA1@1yEm9_SklrAtzJorFHt9t04S/k-g9YNviFC85Z-7Ksurface:1@1yEm9_SklrAtzJorFHt9t04S@cls_ld_FZm88cA37XFkRgFh_p@cls_ld_k-g9YNviFC85Z-7K_p:flatface
+    id: S_ia4hxd1SXwEZA75qsODiJy
+    kind: extrude
+    label: extrude 1
+  - id: dSAQs3CmnJqzbSQNZ3_K43zz
+    kind: revolve
+    label: revolve 2
+    revolve:
+      angle: 90
+      axis: ?17,19,1e;@gedge_8fc3b13d1716b808@S_ia4hxd1SXwEZA75qsODiJy@body_S_ia4hxd1SXwEZA75qsODiJy:straightedge
+      axis_direction:
+        - 0
+        - 0
+        - 1
+      axis_origin:
+        - 0
+        - 0
+        - 0
+      sketch:
+        - ?17,19,19,1e,2a,7;@gface_8c72c90e4d958b84@gnormal_53fa13f93d5f2ab8@S_ia4hxd1SXwEZA75qsODiJy@body_S_ia4hxd1SXwEZA75qsODiJy@1yEm9_SklrAtzJorFHt9t04S/FZm88cA37XFkRgFh@cls_zp:flatface
+  - fillet:
+      edges:
+        - ?17,19,1e;@gedge_281182a9400294aa@S_ia4hxd1SXwEZA75qsODiJy@body_S_ia4hxd1SXwEZA75qsODiJy:edge
+      radius: 1
+    id: QGrxZCadCAi9KWRuYCk_hCIY
+    kind: fillet
+    label: fillet 2
+kind: part
+version: 1

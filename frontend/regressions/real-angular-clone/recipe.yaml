@@ -1,0 +1,71 @@
+features:
+  - auto_hidden_by: A6S-X6wH6-KJ6vjnY2TTWoui
+    constraints:
+      - a: $8fWd2cM38yAeIlQ6start
+        b: "@builtin_origin"
+        id: c_coincident_LVuhlGse
+        kind: coincident
+      - a: $VUFJfeJAHrHboU_wstart
+        b: "@builtin_origin"
+        id: c_coincident_p_G6Sb8p
+        kind: coincident
+      - a: $xYXfRsh5MW7B_Wyjend
+        b: $8fWd2cM38yAeIlQ6end
+        id: c_coincident_sqo757mF
+        kind: coincident
+      - id: c_vertical_yjQChl3Y
+        kind: vertical
+        target: $xYXfRsh5MW7B_Wyj
+      - a: $xYXfRsh5MW7B_Wyj
+        b: $8fWd2cM38yAeIlQ6
+        id: c_angle_Ks5taSMF
+        kind: angle
+        pos:
+          - -12.493479
+          - 12.811939
+        value: 90
+      - a: $xYXfRsh5MW7B_Wyjstart
+        b: $VUFJfeJAHrHboU_wend
+        id: c_coincident_3nZ79LmT
+        kind: coincident
+      - id: c_length_es0_rImb
+        kind: length
+        target: $xYXfRsh5MW7B_Wyj
+        value: 50
+      - a: $8fWd2cM38yAeIlQ6
+        b: $VUFJfeJAHrHboU_w
+        id: c_angle__jU4l-dc
+        kind: angle
+        pos:
+          - 16.411839
+          - 22.710698
+        value: 30
+    entities:
+      - id: 8fWd2cM38yAeIlQ6
+        kind: line
+      - id: VUFJfeJAHrHboU_w
+        kind: line
+      - id: xYXfRsh5MW7B_Wyj
+        kind: line
+    id: mu6qbJY1feKhXh5atWRrIvXf
+    initial:
+      8fWd2cM38yAeIlQ6:
+        - 0
+        - 0
+        - 86.6025403784
+        - 0
+      VUFJfeJAHrHboU_w:
+        - 0
+        - 0
+        - 86.6025403784
+        - 50
+      xYXfRsh5MW7B_Wyj:
+        - 86.6025403784
+        - 50
+        - 86.6025403784
+        - 0
+    kind: sketch
+    label: sketch 1
+    plane: "@builtin_plane_top"
+kind: part
+version: 1

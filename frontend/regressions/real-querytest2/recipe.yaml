@@ -1,0 +1,67 @@
+features:
+  - entities:
+      - id: dOxIRa_qLPQqyOs3
+        kind: circle
+      - id: 4gjZLlpw7UIFPmrO
+        kind: circle
+    id: 5EQ6kQwoMC1k_7tvdp13VImZ
+    initial:
+      4gjZLlpw7UIFPmrO:
+        - 26.124305
+        - 10.616067
+        - 47.121934
+      dOxIRa_qLPQqyOs3:
+        - -64.992507
+        - -8.520346
+        - 75.842081
+    kind: sketch
+    label: sketch 1
+    plane: "@builtin_plane_top"
+    visible: false
+  - extrude:
+      direction: normal
+      distance: 10
+      sketch:
+        - ?2a,2a,9,19;@5EQ6kQwoMC1k_7tvdp13VImZ/4gjZLlpw7UIFPmrO@5EQ6kQwoMC1k_7tvdp13VImZ/dOxIRa_qLPQqyOs3surface:0@5EQ6kQwoMC1k_7tvdp13VImZ:flatface
+    id: Yy8uSVonUQeLrOOJ7zgeqUAd
+    kind: extrude
+    label: extrude 1
+  - fillet:
+      edges:
+        - ?17,19,1e;@gedge_a03b423a1c6404a5@Yy8uSVonUQeLrOOJ7zgeqUAd@body_Yy8uSVonUQeLrOOJ7zgeqUAd:straightedge
+        - ?17,19,1e;@gedge_1d5a5d95234ecc9f@Yy8uSVonUQeLrOOJ7zgeqUAd@body_Yy8uSVonUQeLrOOJ7zgeqUAd:straightedge
+      radius: 10
+    id: OPJuryddXKZg2m4RzbwQi-EQ
+    kind: fillet
+    label: fillet 1
+  - fillet:
+      edges:
+        - ?17,19,1e;@gedge_785424dc8d8f6dfa@Yy8uSVonUQeLrOOJ7zgeqUAd@body_Yy8uSVonUQeLrOOJ7zgeqUAd:edge
+      radius: 4
+    id: K5yCpGaM1lqd7s7Pr02-3Xw0
+    kind: fillet
+    label: fillet 2
+  - entities:
+      - id: -RE0LknYh0tw_xg1
+        kind: circle
+    id: oxMCY5deiOb20hhZW1JKAUoo
+    initial:
+      -RE0LknYh0tw_xg1:
+        - -8.698597
+        - -0.200306
+        - 13.306401
+    kind: sketch
+    label: sketch 2
+    plane: ?17,19,19,1e,7;@gface_5b2463b938fa447a@gnormal_844a1dd6c1936d08@Yy8uSVonUQeLrOOJ7zgeqUAd@body_Yy8uSVonUQeLrOOJ7zgeqUAd@cls_yp:flatface
+    visible: false
+  - extrude:
+      direction: reverse
+      distance: 8
+      operation: cut
+      sketch:
+        - ?2a,9,19;@oxMCY5deiOb20hhZW1JKAUoo/-RE0LknYh0tw_xg1surface:0@oxMCY5deiOb20hhZW1JKAUoo:flatface
+    id: EjqRLsW5Sm3o57X3uxuxbuSZ
+    kind: extrude
+    label: extrude 2
+kind: part
+version: 1

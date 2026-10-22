@@ -11,7 +11,10 @@
  * kernel. The translations tier (`frontend/translations/`, parsed by
  * `src/translations/corpus.ts`) is the second sibling corpus: it reuses the
  * `require*` validators here but its truth is another tool's report, not a
- * closed form. Minimised fuzz recipes are not documents and live under
+ * closed form. The regression corpus (`frontend/regressions/`, parsed by
+ * `src/regressions/corpus.ts`) is the third: a folder per real document or bug
+ * report with a readable `checks.json`, whose truth is the kernel's own earlier
+ * output. Minimised fuzz recipes are not documents and live under
  * `testing/robustnessFuzz/regressions/`, not here.
  */
 

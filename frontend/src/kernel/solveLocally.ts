@@ -528,16 +528,27 @@ export async function exportLocally(
 
 // ─── local measure ───
 
+export interface LocalBuildAndMeasure {
+  response: BuildResponse
+  measures: MeasureRecord
+}
+
 /**
- * Build a document and report its final bodies' measures. The body set is the
- * last feature checkpoint's snapshot, exactly the one `resolveExportShape`
- * reads, so the measurement describes what an export would contain. Returns
- * null when OCC.js is unavailable.
+ * Build a document once and return both the solve response and the final body
+ * set's measures. The body set is the last feature checkpoint's snapshot,
+ * exactly the one `resolveExportShape` reads, so the measurement describes what
+ * an export would contain. One build, not two: the regression corpus needs the
+ * per-feature statuses from the response and the measures from the same bodies.
+ *
+ * The build runs on an ephemeral handle table, so the response's shape handles
+ * are dead once this returns; its plain data (result, tessellated bodies) stays
+ * valid. Callers that need live shapes (the oracle's STEP round trip) use the
+ * persistent path in `src/oracle/run.ts` instead.
  */
-export async function measureLocally(
+export async function buildAndMeasureLocally(
   spec: Record<string, unknown>,
   files?: ReadonlyMap<string, Uint8Array>,
-): Promise<MeasureRecord | null> {
+): Promise<LocalBuildAndMeasure | null> {
   const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
   if (!oc) return null
 
@@ -551,11 +562,23 @@ export async function measureLocally(
     const shapes = Object.values(bodies)
       .filter((body) => body.shape != null)
       .map((body) => table.get<OccShape>(body.shape!))
-    return measureBodies(oc, scope, shapes)
+    return { response, measures: measureBodies(oc, scope, shapes) }
   } finally {
     scope.dispose()
     table.disposeAll()
   }
+}
+
+/**
+ * Build a document and report its final bodies' measures. Returns null when
+ * OCC.js is unavailable.
+ */
+export async function measureLocally(
+  spec: Record<string, unknown>,
+  files?: ReadonlyMap<string, Uint8Array>,
+): Promise<MeasureRecord | null> {
+  const built = await buildAndMeasureLocally(spec, files)
+  return built === null ? null : built.measures
 }
 
 // ─── assembly export ───

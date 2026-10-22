@@ -1,8 +1,9 @@
 // @vitest-environment node
 //
-// Full-document regression test: replays the 70 PartDoc specs from the
+// Full-document regression test: replays the 55 curated PartDoc specs from the
 // regression baseline through the TS/WASM kernel (OCC.js + Rust sketch solver)
-// and diffs the output against the frozen baseline.
+// and diffs the output against the frozen baseline. Real documents and bug
+// reports live in the folder corpus (`frontend/regressions/`) instead.
 //
 // The baseline (regression-baseline.json) is a golden snapshot of the kernel's
 // own earlier output, regenerated with `npm run regen:corpus`
@@ -79,8 +80,9 @@ interface BaselineEntry {
   input_sketches?: unknown[]
   result: Record<string, unknown>
   bodies: Record<string, BaselineBody>
-  // Real-doc anchors are a best-effort signal: warn on divergence, never
-  // hard-fail. They surface remaining TS-kernel gaps without blocking the gate.
+  // Best-effort entry: warn on divergence, never hard-fail. The real-doc
+  // anchors that used this moved to `frontend/regressions/`; REGRESSION_SOFT=1
+  // still downgrades the whole replay.
   soft?: boolean
 }
 
@@ -465,8 +467,8 @@ describe.skipIf(!provisioned)('full-doc regression (TS kernel vs frozen baseline
 
       if (allIssues.length > 0) {
         // Hard-fail by default: this is the enforced regression gate. A per-entry
-        // `soft` flag (real-doc anchors) or REGRESSION_SOFT=1 downgrades to a
-        // warn-only inventory -- a best-effort signal that never blocks the gate.
+        // `soft` flag or REGRESSION_SOFT=1 downgrades to a warn-only inventory --
+        // a best-effort signal that never blocks the gate.
         const msg = `${allIssues.length} issue(s): ${allIssues.join('; ')}`
         const soft = import.meta.env.REGRESSION_SOFT === '1' || entry.soft === true
         if (soft) {

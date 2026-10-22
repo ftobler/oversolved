@@ -1,0 +1,22 @@
+{
+  "bodies": {
+    "body_oHYt8ozEaavkfnf3jLxSHzfX": {
+      "created_by": "oHYt8ozEaavkfnf3jLxSHzfX",
+      "modified_by": [],
+      "face_hashes": [
+        "gface_075f94e7f05d1daf",
+        "gface_0ff35f9e637efa4c",
+        "gface_1d12eca4f342a988",
+        "gface_88bcca9ed81f9c49"
+      ],
+      "edge_hashes": [
+        "gedge_1e7dbdffb748dca0",
+        "gedge_3fe293410f1c01ca",
+        "gedge_6192a412678fbedc",
+        "gedge_a4d1768a37373d23",
+        "gedge_e9299bb5739dd336",
+        "gedge_f5e3d8b3ac5e6347"
+      ]
+    }
+  }
+}

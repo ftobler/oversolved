@@ -1,0 +1,48 @@
+{
+  "origin": {
+    "kind": "real_doc",
+    "ref": "src/wasm-kernel/regression-baseline.json",
+    "date": "2026-10-22"
+  },
+  "license": "own",
+  "severity": "soft",
+  "what": "migrated real document real_querytest3",
+  "features": {
+    "default": "ok",
+    "except": {
+      "R5fpkVccRkrt5rATsr5lOaKG": "underconstrained",
+      "n_HFor-40SsGeBxMhA3W9F1m": "exception",
+      "nqpExdtULtsU9g8i2ntqirDf": "exception",
+      "nE0n0jxmu1cLXjG5L111SMOS": "underconstrained",
+      "q03bitrzNJGzsgyFRVnqqh0x": "exception",
+      "kzfbkY1oRS2vdxgfRIzJPObU": "exception",
+      "RdT-WeKNe4IHSod7TXqAgQAV": "underconstrained"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 2427.624511876875,
+    "area": 1569.417989102244,
+    "centroid": [
+      -11.128666706538421,
+      5.394521394752901,
+      3.1508584884728155
+    ],
+    "bbox": [
+      -18.540889999999997,
+      0,
+      -7.796691000000001,
+      -1.7737159999999985,
+      10,
+      13.649931
+    ],
+    "faces": 7,
+    "edges": 12
+  },
+  "snapshot": true
+}

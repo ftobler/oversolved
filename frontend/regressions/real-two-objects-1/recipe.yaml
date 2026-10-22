@@ -1,0 +1,46 @@
+features:
+  - auto_hidden_by: S_ia4hxd1SXwEZA75qsODiJy
+    constraints: []
+    entities:
+      - id: dQ_f34r6fJdOwQ8X
+        kind: circle
+      - id: IOozm8q4eDp7lNFL
+        kind: circle
+    id: 1yEm9_SklrAtzJorFHt9t04S
+    initial:
+      IOozm8q4eDp7lNFL:
+        - -9.373618
+        - -1.510653
+        - 4.167743
+      dQ_f34r6fJdOwQ8X:
+        - 9.991155
+        - -0.200827
+        - 4.809901
+    kind: sketch
+    label: sketch 1
+    plane: "@builtin_plane_top"
+  - extrude:
+      direction: normal
+      distance: 10
+      sketch:
+        - ?2a,9,19;@1yEm9_SklrAtzJorFHt9t04S/IOozm8q4eDp7lNFLsurface:1@1yEm9_SklrAtzJorFHt9t04S:flatface
+        - ?2a,9,19;@1yEm9_SklrAtzJorFHt9t04S/dQ_f34r6fJdOwQ8Xsurface:0@1yEm9_SklrAtzJorFHt9t04S:flatface
+    id: S_ia4hxd1SXwEZA75qsODiJy
+    kind: extrude
+    label: extrude 1
+  - fillet:
+      edges:
+        - ?17,19,1e;@gedge_8b22d37942c1866b@S_ia4hxd1SXwEZA75qsODiJy@body_S_ia4hxd1SXwEZA75qsODiJy:edge
+      radius: 1
+    id: HJStD1T68wxC6ZzSBZpn2wmj
+    kind: fillet
+    label: fillet 1
+  - fillet:
+      edges:
+        - ?17,19,20;@gedge_3aeb2f16a6579459@S_ia4hxd1SXwEZA75qsODiJy@body_S_ia4hxd1SXwEZA75qsODiJy_1:edge
+      radius: 1
+    id: bb9va5To_XpOqYtRLCIzq8Sk
+    kind: fillet
+    label: fillet 2
+kind: part
+version: 1

@@ -1,0 +1,18 @@
+{
+  "bodies": {
+    "body_O-2YFuQ27O4bvaRp0i44N4rt": {
+      "created_by": "O-2YFuQ27O4bvaRp0i44N4rt",
+      "modified_by": [],
+      "face_hashes": [
+        "gface_77309c6e13ba6067",
+        "gface_a36a340411d6648d",
+        "gface_abccd26fcc1c0756"
+      ],
+      "edge_hashes": [
+        "gedge_7bfa4166c7abecbe",
+        "gedge_90d0a7025934241c",
+        "gedge_c49d485e618f5a84"
+      ]
+    }
+  }
+}

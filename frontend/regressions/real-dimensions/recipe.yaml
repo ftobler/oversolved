@@ -1,0 +1,59 @@
+features:
+  - constraints:
+      - a: $osdz-uqXJLmqtGTV
+        b: $ET40l0VKe-_q3K9g
+        id: c_parallel_F1R67sVZ
+        kind: parallel
+      - a: $osdz-uqXJLmqtGTV
+        b: $ET40l0VKe-_q3K9g
+        id: c_line_distance_kOZczQIv
+        kind: line_distance
+        pos:
+          - 13.480716
+          - -1.392849
+        value: 7
+      - id: c_length_2wTcGwIV
+        kind: length
+        target: $osdz-uqXJLmqtGTV
+        value: 20
+      - a: $tUMSvNRviQWNK7j_end
+        b: $osdz-uqXJLmqtGTVend
+        id: c_coincident_Fs09hVAR
+        kind: coincident
+      - a: $tUMSvNRviQWNK7j_
+        b: $osdz-uqXJLmqtGTV
+        id: c_angle_i9583Tmd
+        kind: angle
+        pos:
+          - -6.321207
+          - 10.142803
+        value: 15
+    entities:
+      - id: ET40l0VKe-_q3K9g
+        kind: line
+      - id: osdz-uqXJLmqtGTV
+        kind: line
+      - id: tUMSvNRviQWNK7j_
+        kind: line
+    id: JLAH-RsqNIF5wE5kgqlKTJ5A
+    initial:
+      ET40l0VKe-_q3K9g:
+        - -5.6825562319
+        - 34.0375565173
+        - 16.7744558406
+        - -13.1058259208
+      osdz-uqXJLmqtGTV:
+        - 2.1012493344
+        - 1.4202439399
+        - 10.7023505705
+        - -16.635809272
+      tUMSvNRviQWNK7j_:
+        - -3.7312662397
+        - 0.281082911
+        - 10.7023505705
+        - -16.635809272
+    kind: sketch
+    label: sketch 1
+    plane: "@builtin_plane_top"
+kind: part
+version: 1

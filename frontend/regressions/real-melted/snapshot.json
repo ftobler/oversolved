@@ -1,0 +1,20 @@
+{
+  "bodies": {
+    "body_6EbMgXvI6h-cG2SylOF4pRWq": {
+      "created_by": "6EbMgXvI6h-cG2SylOF4pRWq",
+      "modified_by": [
+        "apdJ6LvwaX2lOi5VN4Y55DFZ"
+      ],
+      "face_hashes": [
+        "gface_3e7c696d84b6a3b6",
+        "gface_48150391b5bb77db",
+        "gface_ab68f0d16041721f"
+      ],
+      "edge_hashes": [
+        "gedge_71814c2e228034a7",
+        "gedge_d5bf68c62f7eafa7",
+        "gedge_fdedd7977023dbcf"
+      ]
+    }
+  }
+}
