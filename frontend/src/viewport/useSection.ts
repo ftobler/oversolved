@@ -5,7 +5,6 @@
 // The plane itself lives in `viewport/sectionClipping.ts`; everything here is
 // wiring so the renderer-free pieces stay testable on their own.
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import type { RefObject } from 'react'
 import type * as THREE from 'three'
 import { getLivePipeline } from '@/picking/IdPipelineContext'
 import { findFaceFrame } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
@@ -64,17 +63,8 @@ export function useSectionClip(): SectionClipState {
   return { active, frame, offset, flipped }
 }
 
-/** Attach the section's clip plane to a material held in a ref. */
-export function useSectionMaterialClipping(
-  materialRef: RefObject<THREE.Material | null>,
-  active: boolean,
-): void {
-  useLayoutEffect(() => {
-    applySectionClipping(materialRef.current, active)
-  }, [materialRef, active])
-}
-
-/** Same, for a material whose identity this component owns (a memo result). */
+/** Attach the section's clip plane to a material whose identity this component
+ *  owns (a memo result). JSX-declared materials carry it as a prop instead. */
 export function useSectionOwnedMaterialClipping(
   material: THREE.Material | null | undefined,
   active: boolean,

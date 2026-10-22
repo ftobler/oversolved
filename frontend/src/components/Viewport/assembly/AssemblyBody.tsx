@@ -29,8 +29,8 @@ import type { EdgeCurve } from '@/kernel/partBundle'
 import { buildCurveSegments } from '@/utils/edgeSampling'
 import type { Vec3 } from '@/utils/transform3d'
 import SectionCap from '@/components/Geometry3D/SectionCap'
-import { isPointClipped } from '@/viewport/sectionClipping'
-import { useSectionClip, useSectionMaterialClipping } from '@/viewport/useSection'
+import { getSectionClipPlaneList, isPointClipped } from '@/viewport/sectionClipping'
+import { useSectionClip } from '@/viewport/useSection'
 
 interface AssemblyBodyProps {
   item: BodyRenderItem
@@ -79,10 +79,7 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
   const zebraStripes = useViewOptionsStore(s => s.zebra_stripes)
   const analysisMode = !showFaces ? 'none' : curvature ? 'curvature' : zebra ? 'zebra' : 'none'
   const materialRef = useRef<THREE.MeshStandardMaterial>(null)
-  const lineMaterialRef = useRef<THREE.LineBasicMaterial>(null)
   const section = useSectionClip()
-  useSectionMaterialClipping(materialRef, section.active)
-  useSectionMaterialClipping(lineMaterialRef, section.active)
   useBodyAnalysisMaterial(materialRef, {
     mode: analysisMode,
     mixVertexColor: false,
@@ -126,13 +123,17 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
             polygonOffset
             polygonOffsetFactor={1}
             polygonOffsetUnits={1}
+            clippingPlanes={section.active ? getSectionClipPlaneList() : null}
           />
         </mesh>
       )}
 
       {showEdges && edgeGeometry && (
         <lineSegments geometry={edgeGeometry} visible={item.visible} renderOrder={RENDER_ORDER_DEFAULT}>
-          <lineBasicMaterial ref={lineMaterialRef} color={selected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE} />
+          <lineBasicMaterial
+            color={selected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE}
+            clippingPlanes={section.active ? getSectionClipPlaneList() : null}
+          />
         </lineSegments>
       )}
 

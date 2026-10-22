@@ -42,7 +42,6 @@ import SectionCap from '@/components/Geometry3D/SectionCap'
 import { getSectionClipPlaneList } from '@/viewport/sectionClipping'
 import {
   useSectionClip,
-  useSectionMaterialClipping,
   useSectionOwnedMaterialClipping,
 } from '@/viewport/useSection'
 import { HighlightIndex, type ActiveHighlight } from '@/picking/selectionHighlight'
@@ -352,9 +351,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
 
   // The section clips the body's faces and edges, not the reference geometry
   // around them. The cap is the fill of the cut itself, in the body's colour.
+  // The face material carries the plane as a JSX prop because the mesh is
+  // unmounted and remounted by the Shading row; the edge material is one
+  // memo-owned instance for the component's lifetime.
   const section = useSectionClip()
   const sectionActive = section.active
-  useSectionMaterialClipping(bodyMaterialRef, sectionActive)
   useSectionOwnedMaterialClipping(edgeMaterial, sectionActive)
 
   // The wireframe is where the removal mark lives now the doomed face is
@@ -585,6 +586,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
             blending={surface.transparency > 0 || surface.transmission > 0 ? THREE.CustomBlending : THREE.NormalBlending}
             blendSrc={THREE.SrcAlphaFactor}
             blendDst={THREE.OneMinusSrcAlphaFactor}
+            clippingPlanes={sectionActive ? getSectionClipPlaneList() : null}
           />
         </mesh>
       )}
