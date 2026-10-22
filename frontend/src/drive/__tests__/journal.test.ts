@@ -10,6 +10,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { CommandJournal, JOURNAL_CAPACITY, journalSink, type ReproPayload } from '../journal'
 import { replayJournal } from '../replay'
 import { docHashOf } from '../docHash'
+import { driveSeedFor, seededIdSource } from '../seededIds'
 import { createDocSession, type DocSession } from '@/session/DocSession'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
@@ -123,6 +124,14 @@ describe('CommandJournal', () => {
     expect(journal.repro()).toBeNull()
   })
 
+  it('derives the same per-document seed for the same document only', () => {
+    const a = docHashOf(sketchDoc())
+    const b = docHashOf(makeDoc(makeSketch('sk2')))
+    expect(driveSeedFor(a)).toBe(driveSeedFor(a))
+    expect(driveSeedFor(a)).not.toBe(driveSeedFor(b))
+    expect(Number.isInteger(driveSeedFor(a))).toBe(true)
+  })
+
   it('hands out detached copies of the baseline and the entries', () => {
     const journal = new CommandJournal()
     const before = makeDoc(makeSketch('sk1', { label: 'before' }))
@@ -218,6 +227,29 @@ describe('the session seam', () => {
     expect(journal.size()).toBe(0)
   })
 
+  it('skips a minted id the document already holds', () => {
+    // A source whose sequence restarts hands out an id another sketch already
+    // carries; the session's scope makes it draw the next one, so the document
+    // never gains a second entity with that id.
+    const heldId = 'alreadyHeldId00'
+    const freshId = 'freshlyMintedId'
+    const doc = makeDoc(
+      makeSketch('sk1', { entities: [{ id: heldId, kind: 'point' }], initial: { [heldId]: [0, 0] } }),
+      makeSketch('sk2'),
+    )
+    const drawn = [heldId, freshId]
+    setIdSource(() => {
+      const id = drawn.shift()
+      if (id === undefined) throw new Error('the source was drawn past its sequence')
+      return id
+    })
+    const { session } = makeSession(doc)
+    const result = session.execute({ type: 'add_entity', featureId: 'sk2', kind: 'point', params: [1, 1] })
+    expect(result).toEqual({ ok: true, createdIds: [freshId] })
+    const sk2 = session.getDoc()!.features!.find(f => f.id === 'sk2')
+    expect(sk2?.kind === 'sketch' ? sk2.entities?.map(e => e.id) : null).toEqual([freshId])
+  })
+
   it('restarts the suffix on undo, so a repro is never a torn history', () => {
     const journal = new CommandJournal()
     const { session } = makeSession(sketchDoc(), journal)
@@ -284,6 +316,30 @@ describe('replayJournal', () => {
     expect(outcome.steps[0].kind).toBe('mutation')
     expect(outcome.finalHash).toBe(expectedFinal)
     expect(fresh.cell.current?.features?.some(f => f.id === 'ex1')).toBe(true)
+  })
+
+  it('replays a recording whose mint skipped an id the document already held', async () => {
+    // Seed the journal so its first draw is a known id, and start from a
+    // document that already carries it: both the recording and the replay skip
+    // it, so the seek positions stay aligned and the hashes still match.
+    const seed = 424242
+    const taken = seededIdSource(seed)(12)
+    const doc = makeDoc(
+      makeSketch('sk1', { entities: [{ id: taken, kind: 'point' }], initial: { [taken]: [0, 0] } }),
+      makeSketch('sk2'),
+    )
+    const journal = new CommandJournal(JOURNAL_CAPACITY, Date.now, () => seed)
+    const recorded = makeSession(doc, journal)
+    const result = recorded.session.execute({ type: 'add_rect', featureId: 'sk2', p0: [0, 0], p1: [10, 10] })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.createdIds).not.toContain(taken)
+    const repro = journal.repro()!
+    expect(repro.seed).toBe(seed)
+
+    const fresh = makeSession(structuredClone(repro.doc) as PartDoc, undefined, 'doc-1')
+    const outcome = await replayJournal(repro, fresh.session)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.finalHash).toBe(docHashOf(recorded.cell.current))
   })
 
   it('replays the same payload twice to the same hash', async () => {

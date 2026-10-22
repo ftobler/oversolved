@@ -36,7 +36,7 @@ import { createHeadlessPart } from '@/drive/headlessPart'
 import { runHeadless, measureHeadless, compareHeadless, exportHeadless, seedBuiltins } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
-import { createCliJournal, type ReproPayload } from '@/drive/journal'
+import { createDriveJournal, type ReproPayload } from '@/drive/journal'
 import { replayJournal } from '@/drive/replay'
 import { parseReference } from '@/translations/corpus'
 import type { ScriptStep } from '@/drive/scriptRunner'
@@ -171,7 +171,7 @@ async function runCommand(args: Args): Promise<number> {
   const doc = args.flags.doc
     ? readDoc(args.flags.doc)
     : seedBuiltins({ version: 1, kind: 'part', features: [] })
-  const journal = createCliJournal()
+  const journal = createDriveJournal(doc)
   const result = await runHeadless({
     doc,
     steps,

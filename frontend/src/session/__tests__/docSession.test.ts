@@ -210,6 +210,21 @@ describe('execute', () => {
     })).toEqual({ ok: true, createdIds: ['ex1'] })
   })
 
+  it('reports an entity whose id already exists in another sketch', () => {
+    // Entity ids are scoped to their sketch, so a collision with another sketch
+    // still means this one gained an entity; the diff must name it. This is the
+    // shape the unseeded drive source used to produce, and why createdIds came
+    // back empty there.
+    const { session } = makeSession(makeDoc(
+      makeSketch('sk1', { entities: [{ id: 'shared', kind: 'point' }], initial: { shared: [0, 0] } }),
+      makeSketch('sk2'),
+    ))
+
+    expect(session.execute({
+      type: 'add_entity', featureId: 'sk2', kind: 'point', params: [1, 1], entityId: 'shared',
+    })).toEqual({ ok: true, createdIds: ['shared'] })
+  })
+
   it('reports the minted id of a created constraint', () => {
     const { session } = makeSession(pointSketchDoc())
     const result = session.execute({

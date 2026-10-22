@@ -23,7 +23,7 @@ import { createHeadlessPart } from '@/drive/headlessPart'
 import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHeadless, seedBuiltins } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
-import { createCliJournal } from '@/drive/journal'
+import { createDriveJournal } from '@/drive/journal'
 import { createMcpServer, type McpCadOps, type McpFileRef } from '@/drive/mcpServer'
 import { DocHandleStore } from '@/drive/docHandleStore'
 import { resolveDoc, runReply } from '@/drive/mcpDocRef'
@@ -79,14 +79,15 @@ const ops: McpCadOps = {
     } else {
       doc = emptyPartDoc()
     }
-    // The CLI journal pins the id seed, so a script mints the same ids on
-    // every call and the returned document hashes repeat across runs.
+    // The journal derives its id seed from the starting document, so a repeat
+    // of the same document and script mints the same ids and hashes the same
+    // document, while a call chained by docHash draws a fresh sequence.
     const result = await runHeadless({
       doc,
       steps: req.steps as ScriptStep[],
       docId: req.docId ?? 'mcp',
       files: readFiles(req.files),
-      journal: createCliJournal(),
+      journal: createDriveJournal(doc),
     })
     return runReply(result, req.returnDoc === true, documents)
   },

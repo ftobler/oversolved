@@ -1,6 +1,6 @@
 // Barrel: backward-compatible re-exports for '@/utils/yamlMutations'
 
-export { parseTarget, randomId, normalizeRefList, setIdSource, getIdSource, type IdSource } from './helpers'
+export { parseTarget, randomId, normalizeRefList, setIdSource, getIdSource, setIdScope, type IdSource } from './helpers'
 
 export { migrateLegacyBodyPicks, dropDeadAxisConstraints } from '../yamlMigrations'
 

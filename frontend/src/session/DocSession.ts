@@ -1,9 +1,9 @@
 import { stringify as stringifyYaml } from 'yaml'
-import type { PartDoc, Mutation, SketchData } from '@/types/cad'
+import type { PartDoc, Mutation, PartFeature, SketchData } from '@/types/cad'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
-import { applySetRollback } from '@/utils/yamlMutations'
+import { applySetRollback, setIdScope } from '@/utils/yamlMutations'
 import { pruneSolveResults } from '@/utils/yamlMutations/solveResults'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { isDimensionKind } from '@/registry/constraintRegistry'
@@ -233,24 +233,37 @@ function contentIds(doc: PartDoc): Set<string> {
   const ids = new Set<string>()
   for (const feature of doc.features ?? []) {
     ids.add(feature.id)
-    if (feature.kind !== 'sketch') continue
-    for (const entity of feature.entities ?? []) ids.add(entity.id)
-    for (const constraint of feature.constraints ?? []) ids.add(constraint.id)
+    for (const id of childIds(feature)) ids.add(id)
   }
+  return ids
+}
+
+// Entity and constraint ids are scoped to their sketch, so the created-id diff
+// below must compare within a feature: an id a new entity shares with an entity
+// in another sketch (the collision an unseeded source can mint) is still that
+// sketch's new entity and must be reported.
+function childIds(feature: PartFeature): Set<string> {
+  const ids = new Set<string>()
+  if (feature.kind !== 'sketch') return ids
+  for (const entity of feature.entities ?? []) ids.add(entity.id)
+  for (const constraint of feature.constraints ?? []) ids.add(constraint.id)
   return ids
 }
 
 function createdIdsBetween(before: PartDoc, after: PartDoc): string[] {
   const beforeIds = contentIds(before)
+  const beforeChildren = new Map<string, Set<string>>()
+  for (const feature of before.features ?? []) beforeChildren.set(feature.id, childIds(feature))
   const created: string[] = []
   for (const feature of after.features ?? []) {
     if (!beforeIds.has(feature.id)) created.push(feature.id)
     if (feature.kind !== 'sketch') continue
+    const heldBefore = beforeChildren.get(feature.id)
     for (const entity of feature.entities ?? []) {
-      if (!beforeIds.has(entity.id)) created.push(entity.id)
+      if (!heldBefore?.has(entity.id)) created.push(entity.id)
     }
     for (const constraint of feature.constraints ?? []) {
-      if (!beforeIds.has(constraint.id)) created.push(constraint.id)
+      if (!heldBefore?.has(constraint.id)) created.push(constraint.id)
     }
   }
   return created
@@ -662,29 +675,40 @@ export class DocSession {
     // The features this apply inserted. The bar lands just past the last one.
     const insertedIds: string[] = []
     let attemptedInsertion = false
-    for (const m of mutations) {
-      const handler = Object.hasOwn(handlers, m.type) ? handlers[m.type] : undefined
-      // A feature add may carry the rollback bar's slot. The handler appends it
-      // like every other add, then the row moves into place. Detecting the
-      // creation (the id was absent before the handler) keeps this keyed on the
-      // document rather than a hand-maintained list of add kinds; a mutation
-      // that edits an existing feature and happens to carry the field moves
-      // nothing. Check the slot first so the drag path never pays for a scan.
-      const insertAt = 'insertAt' in m ? m.insertAt : undefined
-      if (insertAt !== undefined) attemptedInsertion = true
-      const addedId = insertAt !== undefined && 'featureId' in m && !next.features?.some(f => f.id === m.featureId)
-        ? m.featureId
-        : null
-      handler?.(next, m)
-      if (addedId !== null && insertAt !== undefined && insertFeatureAt(next, addedId, insertAt)) {
-        insertedIds.push(addedId)
+    // A minted id must not duplicate one the document already holds, or a
+    // document-wide lookup (delete, createdIds) conflates the two. The scope is
+    // the starting document's ids plus every id this apply mints; a source that
+    // restarts at a recorded position (replay, a per-document seed) draws past a
+    // collision instead of handing it out, and the same draws happen on replay
+    // because the starting document is the same.
+    const outerScope = setIdScope(contentIds(current))
+    try {
+      for (const m of mutations) {
+        const handler = Object.hasOwn(handlers, m.type) ? handlers[m.type] : undefined
+        // A feature add may carry the rollback bar's slot. The handler appends it
+        // like every other add, then the row moves into place. Detecting the
+        // creation (the id was absent before the handler) keeps this keyed on the
+        // document rather than a hand-maintained list of add kinds; a mutation
+        // that edits an existing feature and happens to carry the field moves
+        // nothing. Check the slot first so the drag path never pays for a scan.
+        const insertAt = 'insertAt' in m ? m.insertAt : undefined
+        if (insertAt !== undefined) attemptedInsertion = true
+        const addedId = insertAt !== undefined && 'featureId' in m && !next.features?.some(f => f.id === m.featureId)
+          ? m.featureId
+          : null
+        handler?.(next, m)
+        if (addedId !== null && insertAt !== undefined && insertFeatureAt(next, addedId, insertAt)) {
+          insertedIds.push(addedId)
+        }
+        // Content-removing edits invalidate the affected features' last solve;
+        // prune it so stale geometry cannot linger while the re-solve is in
+        // flight. Only whole-feature removals carry a restorable snapshot.
+        const pruned = pruneSolveResults(m, nextSolveResults)
+        nextSolveResults = pruned.next
+        if (pruned.restorable) restorable = { ...(restorable ?? {}), ...pruned.restorable }
       }
-      // Content-removing edits invalidate the affected features' last solve;
-      // prune it so stale geometry cannot linger while the re-solve is in
-      // flight. Only whole-feature removals carry a restorable snapshot.
-      const pruned = pruneSolveResults(m, nextSolveResults)
-      nextSolveResults = pruned.next
-      if (pruned.restorable) restorable = { ...(restorable ?? {}), ...pruned.restorable }
+    } finally {
+      setIdScope(outerScope)
     }
 
     // The rollback bar is document content, but only a user-parked position
