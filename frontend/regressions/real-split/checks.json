@@ -6,7 +6,7 @@
   },
   "license": "own",
   "severity": "soft",
-  "what": "migrated real document real_split",
+  "what": "a circle extruded 10 mm, an eight-line profile cut 10 mm, and three filleted edges",
   "features": {
     "default": "ok",
     "except": {

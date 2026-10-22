@@ -6,7 +6,7 @@
   },
   "license": "own",
   "severity": "soft",
-  "what": "migrated real document real_cylinder_Clone_Clone",
+  "what": "the cylinder stack plus a projected-arc sketch extruded 10 mm",
   "features": {
     "default": "ok",
     "except": {

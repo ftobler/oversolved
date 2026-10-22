@@ -6,7 +6,7 @@
   },
   "license": "own",
   "severity": "soft",
-  "what": "migrated real document real_two_objects_1",
+  "what": "two circles extruded together as two bodies, each with a filleted edge",
   "features": {
     "default": "ok",
     "except": {

@@ -6,7 +6,7 @@
   },
   "license": "own",
   "severity": "soft",
-  "what": "migrated real document real_cylinder_Clone",
+  "what": "a circle-and-lines sketch extruded 10 mm, a 90 degree revolve, and a fillet",
   "features": {
     "default": "ok",
     "except": {

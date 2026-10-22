@@ -6,7 +6,7 @@
   },
   "license": "own",
   "severity": "soft",
-  "what": "migrated real document real_translate",
+  "what": "a circle extruded 10 mm, translated 8 mm, unioned, circular-arrayed four times and filleted",
   "features": {
     "default": "ok",
     "except": {

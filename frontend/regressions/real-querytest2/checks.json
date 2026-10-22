@@ -6,7 +6,7 @@
   },
   "license": "own",
   "severity": "soft",
-  "what": "migrated real document real_querytest2",
+  "what": "two concentric circles extruded 10 mm and filleted, then a circular cut 8 mm deep",
   "features": {
     "default": "ok",
     "except": {

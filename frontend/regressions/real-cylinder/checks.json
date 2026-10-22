@@ -6,7 +6,7 @@
   },
   "license": "own",
   "severity": "soft",
-  "what": "migrated real document real_cylinder",
+  "what": "a circle-and-lines sketch on the top plane, extruded 10 mm into two bodies and filleted",
   "features": {
     "default": "ok",
     "except": {

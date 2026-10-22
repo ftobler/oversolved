@@ -6,7 +6,7 @@
   },
   "license": "own",
   "severity": "soft",
-  "what": "migrated real document real_querytest",
+  "what": "two concentric circles extruded 10 mm with 4 mm and 1 mm fillets",
   "features": {
     "default": "ok",
     "except": {

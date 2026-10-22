@@ -6,7 +6,7 @@
   },
   "license": "own",
   "severity": "soft",
-  "what": "migrated real document real_melted",
+  "what": "a four-line profile revolved 360 degrees, a line sketch on a face, a transform, a union, and two fillets",
   "features": {
     "default": "ok",
     "except": {

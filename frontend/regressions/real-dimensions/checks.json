@@ -6,7 +6,7 @@
   },
   "license": "own",
   "severity": "soft",
-  "what": "migrated real document real_dimensions",
+  "what": "three-line dimensioned sketch on the top plane with no solid feature",
   "features": {
     "default": "ok",
     "except": {
