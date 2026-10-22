@@ -145,7 +145,11 @@ const fieldOf = (label: string, type: FieldSetterType) =>
 const setterValue = (kind: string) =>
   anyValue(`The new value for the named field; its type follows FEATURE_SCHEMA_BY_KIND.${kind} in persistence/partDocSchema.ts.`)
 const planeDefinitionValue = () =>
-  anyValue('The new value for the named plane definition field; its type follows PLANE_DEF in persistence/partDocSchema.ts.')
+  ({
+    type: 'scalar',
+    required: true,
+    note: 'The new value for the named plane definition field; its type follows PLANE_DEF in persistence/partDocSchema.ts.',
+  } as const)
 
 export const MUTATION_CATALOG = {
   move_vertex: {
