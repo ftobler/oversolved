@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { SECTION_CAP_SIZE } from '@/viewport/sectionPlane'
 import {
-  SECTION_CAP_FILL_ORDER,
-  SECTION_CAP_SIZE,
-  SECTION_CAP_STENCIL_BACK_ORDER,
-  SECTION_CAP_STENCIL_FRONT_ORDER,
   buildSectionCapFillMaterial,
   buildSectionCapStencilMaterial,
   placeSectionCapQuad,
+  sectionCapRenderOrders,
 } from '@/components/Geometry3D/sectionCaps'
 
 interface SectionCapProps {
@@ -16,6 +14,10 @@ interface SectionCapProps {
   geometry: THREE.BufferGeometry
   color: string
   enabled: boolean
+  // Stable position of this body in the render list. Each body owns a band of
+  // three render orders so its count, decrement and fill cannot interleave
+  // with another body's.
+  band?: number
 }
 
 /**
@@ -24,7 +26,8 @@ interface SectionCapProps {
  * this body and `onAfterRender` clears it again, so bodies cannot accumulate a
  * count from each other.
  */
-export default function SectionCap({ geometry, color, enabled }: SectionCapProps) {
+export default function SectionCap({ geometry, color, enabled, band = 0 }: SectionCapProps) {
+  const [backOrder, frontOrder, fillOrder] = sectionCapRenderOrders(band)
   const [backMaterial] = useState(() => buildSectionCapStencilMaterial(THREE.BackSide))
   const [frontMaterial] = useState(() => buildSectionCapStencilMaterial(THREE.FrontSide))
   const [fillMaterial] = useState(() => buildSectionCapFillMaterial(color))
@@ -49,19 +52,19 @@ export default function SectionCap({ geometry, color, enabled }: SectionCapProps
       <mesh
         geometry={geometry}
         material={backMaterial}
-        renderOrder={SECTION_CAP_STENCIL_BACK_ORDER}
+        renderOrder={backOrder}
         onBeforeRender={renderer => { renderer.clearStencil() }}
       />
       <mesh
         geometry={geometry}
         material={frontMaterial}
-        renderOrder={SECTION_CAP_STENCIL_FRONT_ORDER}
+        renderOrder={frontOrder}
       />
       <mesh
         ref={quadRef}
         geometry={quadGeometry}
         material={fillMaterial}
-        renderOrder={SECTION_CAP_FILL_ORDER}
+        renderOrder={fillOrder}
         onBeforeRender={() => { if (quadRef.current) placeSectionCapQuad(quadRef.current) }}
         onAfterRender={renderer => { renderer.clearStencil() }}
         raycast={() => undefined}

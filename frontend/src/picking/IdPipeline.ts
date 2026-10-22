@@ -15,12 +15,12 @@ import {
 } from './layerNames'
 import { DEFAULT_WINDOW_SIZE, pickRadiusPx } from './screenSpaceScale'
 import { getSectionClipPlane, getSectionClipPlaneList } from '@/viewport/sectionClipping'
+import { SECTION_CAP_SIZE } from '@/viewport/sectionPlane'
 
 // Size of the cap quad in world units. The cap is the cut face of an infinite
 // plane; the quad only has to cover the model, so a generously large one keeps
 // the plane from ending inside a big imported solid. The stencil count is what
 // decides where it paints, so an oversized quad costs nothing visible.
-const SECTION_CAP_SIZE = 10000
 
 // Layer name constants now live in the pure ./layerNames module (no three.js)
 // so tool/selection policy can import them headlessly. Re-export here so the
@@ -211,6 +211,10 @@ export class IdPipeline {
     `,
     depthTest: true,
     depthWrite: true,
+    // The quad's facing is not meaningful: the stencil count decides where it
+    // paints. DoubleSide matters because the kept side can present the quad's
+    // back face, and a FrontSide fill would be culled there.
+    side: THREE.DoubleSide,
     stencilWrite: true,
     stencilRef: 0,
     stencilFunc: THREE.NotEqualStencilFunc,
@@ -579,6 +583,10 @@ export class IdPipeline {
     const plane = getSectionClipPlane()
     this.capQuad.position.copy(plane.normal).multiplyScalar(-plane.constant)
     this.capQuad.quaternion.setFromUnitVectors(this.capUp, plane.normal)
+    // The fill render below runs outside the scene's own update pass in the
+    // unit tests' stand-in renderer, and three's `render` would refresh it only
+    // on a real renderer. Write it here so the transform is always current.
+    this.capQuad.updateMatrixWorld(true)
 
     renderer.clear(false, false, true)
     this.faceLayer.renderBodiesWith(renderer, camera, this.capBackMaterial)

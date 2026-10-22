@@ -13,6 +13,7 @@ import { SECTION_SOURCE_GONE_REASON, useSectionStore } from '@/stores/sectionSto
 import type { SketchData } from '@/types/cad'
 import {
   resolveSectionFrame,
+  sectionFrameKey,
   sectionPlaneFromFrame,
   type SectionFrame,
 } from '@/viewport/sectionPlane'
@@ -61,6 +62,16 @@ export function useSectionClip(): SectionClipState {
   }, [active, frame, offset, flipped])
 
   return { active, frame, offset, flipped }
+}
+
+/**
+ * Whether the section is on and its source resolves, as one boolean. Render-path
+ * components subscribe to this instead of the resolved frame: the shared plane
+ * is mutable, so moving it must not re-render every body. The viewport's section
+ * effects publish the derived value.
+ */
+export function useSectionActive(): boolean {
+  return useSectionStore(s => s.enabled && s.resolved)
 }
 
 /** Attach the section's clip plane to a material whose identity this component
@@ -112,10 +123,16 @@ export function useSectionPipelineEffects(clearHover: () => void): void {
   const { active, frame } = useSectionClip()
   const mounted = useRef(false)
 
-  // A builtin frame never moves, so only a query's frame is worth a dependency:
-  // otherwise every solve would dirty the pick buffer for a section that did
-  // not change.
-  const frameDependency = source.kind === 'query' ? frame : null
+  // Publish the derived boolean for the render path, and let a fresh viewport
+  // settle it before the first paint that mounts the clipped materials.
+  useLayoutEffect(() => {
+    useSectionStore.getState().setResolved(active)
+  }, [active])
+
+  // A builtin frame never moves, so only a query's frame is worth a dependency.
+  // The value key means a solve that produced the same plane does not dirty the
+  // buffer for nothing.
+  const frameKey = sectionFrameKey(frame)
 
   useEffect(() => {
     if (!mounted.current) {
@@ -126,9 +143,9 @@ export function useSectionPipelineEffects(clearHover: () => void): void {
       markDirty: reason => getLivePipeline()?.markDirty(reason),
       clearHover,
     })
-    // The frame is in the deps because a solve can move a picked user plane
+    // The key is in the deps because a solve can move a picked user plane
     // without any store field changing.
-  }, [enabled, source, offset, flipped, frameDependency, clearHover])
+  }, [enabled, source, offset, flipped, frameKey, clearHover])
 
   useEffect(() => {
     if (enabled && frame === null) useSectionStore.getState().disable(SECTION_SOURCE_GONE_REASON)

@@ -65,14 +65,6 @@ export function setSectionClipPlane(plane: THREE.Plane | null): void {
 }
 
 /**
- * The plane list a streaming material should carry while the section is on.
- * Null (not an empty array) is what three treats as "no local clipping".
- */
-export function sectionClippingPlanes(): THREE.Plane[] | null {
-  return active ? getSectionClipPlaneList() : null
-}
-
-/**
  * Attach the shared plane list to a material, or clear it. Custom ShaderMaterials
  * must also be built with `clipping: true`; built-in materials need no flag.
  */
@@ -88,9 +80,12 @@ export function applySectionClipping(
 }
 
 /**
- * Whether a world point is on the removed side of the live section. Clipping
- * discards where `dot(normal, p) + constant > 0`, i.e. a positive signed
- * distance. Without an active section nothing is clipped.
+ * Whether a world point is on the removed side of the live section.
+ *
+ * three clips the half where `plane.distanceToPoint(p)` is negative (the
+ * clipping shader is fed the negated view position and discards a positive dot
+ * with the plane). The caller must not invert that: keeping this in one place
+ * is what makes the orbit pivot, the assembly grab and the drawn cut agree.
  */
 export function isPointClipped(point: THREE.Vector3 | readonly [number, number, number]): boolean {
   if (!active) return false
@@ -98,7 +93,7 @@ export function isPointClipped(point: THREE.Vector3 | readonly [number, number, 
   const x = Array.isArray(point) ? point[0] : (point as THREE.Vector3).x
   const y = Array.isArray(point) ? point[1] : (point as THREE.Vector3).y
   const z = Array.isArray(point) ? point[2] : (point as THREE.Vector3).z
-  return plane.normal.x * x + plane.normal.y * y + plane.normal.z * z + plane.constant > 0
+  return plane.normal.x * x + plane.normal.y * y + plane.normal.z * z + plane.constant < 0
 }
 
 /** Test helper: forget the live plane without going through React. */

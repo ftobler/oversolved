@@ -8,8 +8,8 @@ import {
   getSectionClipPlane,
   getSectionClipPlaneList,
   isPointClipped,
+  isSectionClippingActive,
   resetSectionClippingForTest,
-  sectionClippingPlanes,
   setSectionClipPlane,
 } from '@/viewport/sectionClipping'
 import { sectionPlaneFromFrame } from '@/viewport/sectionPlane'
@@ -21,7 +21,7 @@ describe('shared section clipping plane', () => {
 
   it('is inert until a plane is published', () => {
     expect(isPointClipped(new THREE.Vector3(0, 0, 5))).toBe(false)
-    expect(sectionClippingPlanes()).toBeNull()
+    expect(isSectionClippingActive()).toBe(false)
     expect(getSectionClipPlaneList()).toHaveLength(1)
   })
 
@@ -30,8 +30,9 @@ describe('shared section clipping plane', () => {
     setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 3, false))
 
     expect(getSectionClipPlane()).toBe(before)
-    expect(before.constant).toBeCloseTo(-3, 12)
-    expect(sectionClippingPlanes()).toContain(before)
+    expect(isSectionClippingActive()).toBe(true)
+    expect(before.constant).toBeCloseTo(3, 12)
+    expect(getSectionClipPlaneList()).toContain(before)
   })
 
   it('clips the half three discards (positive signed distance)', () => {
@@ -60,18 +61,5 @@ describe('shared section clipping plane', () => {
     const version = material.version
     applySectionClipping(material, true)
     expect(material.version).toBe(version)
-  })
-
-  it('never hands the plane to a reference material unless the caller asks', () => {
-    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 1, 0], point: [0, 0, 0] }, 0, false))
-    // A sketch line, a reference plane and a dimension label are not clipped:
-    // they are what the user reads the cut against.
-    for (const material of [
-      new THREE.LineBasicMaterial(),
-      new THREE.MeshBasicMaterial(),
-      new THREE.SpriteMaterial(),
-    ]) {
-      expect(material.clippingPlanes).toBeNull()
-    }
   })
 })

@@ -4,6 +4,7 @@ import {
   builtinSectionFrame,
   offsetFramePoint,
   resolveSectionFrame,
+  sectionFrameKey,
   sectionOffsetFromDrag,
   sectionPlaneFromFrame,
   sectionSourceLabel,
@@ -33,16 +34,22 @@ describe('builtin section planes', () => {
 describe('sectionPlaneFromFrame', () => {
   const frame = { normal: [0, 0, 1] as [number, number, number], point: [0, 0, 0] as [number, number, number] }
 
-  it('builds a plane through the point with the frame normal', () => {
+  it('keeps the half behind the source normal by default', () => {
+    // three clips the negative-distance half, so keeping the far half needs the
+    // plane normal negated. This is what puts the cut face toward the viewer
+    // when the camera looks along the source normal.
     const plane = sectionPlaneFromFrame(frame, 0, false)
-    expect(plane.normal.toArray()).toEqual([0, 0, 1])
+    expect(plane.normal.x).toBeCloseTo(0, 12)
+    expect(plane.normal.y).toBeCloseTo(0, 12)
+    expect(plane.normal.z).toBeCloseTo(-1, 12)
     expect(plane.constant).toBeCloseTo(0, 12)
-    expect(plane.distanceToPoint(new THREE.Vector3(0, 0, 2))).toBeCloseTo(2, 12)
+    expect(plane.distanceToPoint(new THREE.Vector3(0, 0, 2))).toBeCloseTo(-2, 12)
+    expect(plane.distanceToPoint(new THREE.Vector3(0, 0, -2))).toBeCloseTo(2, 12)
   })
 
-  it('moves along the normal with the offset', () => {
+  it('moves along the source normal with the offset', () => {
     const plane = sectionPlaneFromFrame(frame, 4, false)
-    expect(plane.constant).toBeCloseTo(-4, 12)
+    expect(plane.constant).toBeCloseTo(4, 12)
     // The plane now passes through z = 4.
     expect(plane.distanceToPoint(new THREE.Vector3(0, 0, 4))).toBeCloseTo(0, 12)
   })
@@ -50,7 +57,7 @@ describe('sectionPlaneFromFrame', () => {
   it('flipped negates both the normal and the constant', () => {
     const upright = sectionPlaneFromFrame(frame, 4, false)
     const flipped = sectionPlaneFromFrame(frame, 4, true)
-    expect(flipped.normal.toArray()).toEqual([-0, -0, -1])
+    expect(flipped.normal.z).toBeCloseTo(1, 12)
     expect(flipped.constant).toBeCloseTo(-upright.constant, 12)
     // Same plane, other half kept.
     expect(flipped.distanceToPoint(new THREE.Vector3(0, 0, 4))).toBeCloseTo(0, 12)
@@ -60,6 +67,14 @@ describe('sectionPlaneFromFrame', () => {
 
   it('moves the point helper along the normal', () => {
     expect(offsetFramePoint({ normal: [0, 1, 0], point: [1, 2, 3] }, 5)).toEqual([1, 7, 3])
+  })
+
+  it('keys a frame by value, so an unchanged plane is not a change', () => {
+    const a = { normal: [0, 0, 1] as [number, number, number], point: [1, 2, 3] as [number, number, number] }
+    const b = { normal: [0, 0, 1] as [number, number, number], point: [1, 2, 3] as [number, number, number] }
+    expect(sectionFrameKey(a)).toBe(sectionFrameKey(b))
+    expect(sectionFrameKey(a)).not.toBe(sectionFrameKey({ ...a, point: [1, 2, 4] }))
+    expect(sectionFrameKey(null)).toBe('none')
   })
 })
 

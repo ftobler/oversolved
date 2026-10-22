@@ -7,8 +7,16 @@
 // shared THREE.Plane is built from.
 import * as THREE from 'three'
 import type { PlaneTransform } from '@/types/cad'
+import { BUILTIN_PLANES } from '@/kernel/solverConstants'
 
 export type BuiltinSectionPlaneId = 'front' | 'top' | 'right'
+
+// Size of the cap quad in world units. The cap is the cut face of an infinite
+// plane; the quad only has to cover the model, so a generously large one keeps
+// the plane from ending inside a big imported solid. The stencil count is what
+// decides where it paints, so an oversized quad costs nothing visible. Lives
+// here so the visible cap and the ID-buffer cap cannot disagree.
+export const SECTION_CAP_SIZE = 10000
 
 /**
  * The plane the user chose. `query` covers both a user-defined plane and a
@@ -29,17 +37,15 @@ export interface SectionFrame {
 
 export const BUILTIN_SECTION_PLANES: readonly BuiltinSectionPlaneId[] = ['front', 'top', 'right']
 
-// The builtin sketch planes' own normals, so the section agrees with the plane
-// the user sees when they pick Front/Top/Right in the tree.
-const BUILTIN_FRAMES: Record<BuiltinSectionPlaneId, SectionFrame> = {
-  front: { normal: [0, 0, 1], point: [0, 0, 0] },
-  top: { normal: [0, 1, 0], point: [0, 0, 0] },
-  right: { normal: [1, 0, 0], point: [0, 0, 0] },
-}
-
+// The builtin sketch planes' own canonical normals, so the section agrees with
+// the plane the user sees when they pick Front/Top/Right in the tree. Sourced
+// from the kernel's one table rather than a second copy.
 export function builtinSectionFrame(id: BuiltinSectionPlaneId): SectionFrame {
-  const frame = BUILTIN_FRAMES[id]
-  return { normal: [...frame.normal], point: [...frame.point] }
+  const plane = BUILTIN_PLANES[`builtin_plane_${id}`]
+  const normal = unitNormal(plane.normal as number[])
+  if (!normal) throw new Error(`builtin section plane ${id} has no usable normal`)
+  const origin = plane.origin as number[]
+  return { normal, point: [origin[0], origin[1], origin[2]] }
 }
 
 export interface SectionFrameSources {
@@ -101,9 +107,19 @@ export function sectionOffsetFromDrag(startOffset: number, startParam: number, c
 }
 
 /**
- * The three.js clipping plane for a frame. `offset` slides the plane along the
- * normal; `flipped` swaps which side survives by negating both the normal and
- * the constant, which is exactly keeping the other half-space.
+ * The three.js clipping plane for a frame.
+ *
+ * three clips points whose signed distance to the plane is NEGATIVE
+ * (`clipping_planes_vertex` writes `vClipPosition = -mvPosition.xyz`, and the
+ * fragment discards where `dot(vClipPosition, plane.xyz) > plane.w`). The
+ * unflipped section keeps the half BEHIND the source normal, which is the far
+ * half a camera looking along the normal sees into: the cut face then faces the
+ * viewer. So the plane is built with the negated normal, and `flipped` keeps it
+ * pointing at the source normal instead (the near half survives).
+ *
+ * `offset` slides the plane along the source normal before the orientation is
+ * applied, so a positive offset always moves the cut in the same world
+ * direction whichever side survives.
  */
 export function sectionPlaneFromFrame(
   frame: SectionFrame,
@@ -114,8 +130,18 @@ export function sectionPlaneFromFrame(
   const normal = new THREE.Vector3(...frame.normal)
   const point = new THREE.Vector3(...offsetFramePoint(frame, offset))
   out.setFromNormalAndCoplanarPoint(normal, point)
-  if (flipped) out.negate()
+  // Keeping the negative side is the default; flipping negates both fields,
+  // which is exactly keeping the other half-space.
+  if (!flipped) out.negate()
   return out
+}
+
+/** A value-comparison key for the resolved frame, used to avoid dirtying the
+ *  pick buffer on a solve that moved nothing. */
+export function sectionFrameKey(frame: SectionFrame | null): string {
+  if (!frame) return 'none'
+  const f = (v: number): string => v.toFixed(6)
+  return `${frame.normal.map(f).join(',')}|${frame.point.map(f).join(',')}`
 }
 
 /** A short label for the dropdown's current source. */

@@ -1,17 +1,18 @@
-// The visible cap's material recipe and render order. The stencil technique is
-// easy to get subtly wrong (an increment on both sides fills the solid instead
-// of the opening), so the operations are pinned here without a GPU.
+// The visible cap's material recipe and render-order bands. The stencil
+// technique is easy to get subtly wrong (an increment on both sides fills the
+// solid instead of the opening), and three sorts the whole scene by renderOrder,
+// so each body's three passes must be contiguous or their counts interleave.
 import { describe, it, expect, beforeEach } from 'vitest'
 import * as THREE from 'three'
 import {
-  SECTION_CAP_FILL_ORDER,
-  SECTION_CAP_STENCIL_BACK_ORDER,
-  SECTION_CAP_STENCIL_FRONT_ORDER,
+  SECTION_CAP_BASE_ORDER,
+  SECTION_CAP_MAX_BAND,
   buildSectionCapFillMaterial,
   buildSectionCapStencilMaterial,
   placeSectionCapQuad,
+  sectionCapRenderOrders,
 } from '@/components/Geometry3D/sectionCaps'
-import { getSectionClipPlaneList, resetSectionClippingForTest, setSectionClipPlane } from '@/viewport/sectionClipping'
+import { getSectionClipPlane, getSectionClipPlaneList, resetSectionClippingForTest, setSectionClipPlane } from '@/viewport/sectionClipping'
 import { sectionPlaneFromFrame } from '@/viewport/sectionPlane'
 
 describe('section cap materials', () => {
@@ -42,21 +43,33 @@ describe('section cap materials', () => {
     expect(fill.stencilZPass).toBe(THREE.ReplaceStencilOp)
     expect(fill.depthTest).toBe(true)
     expect(fill.depthWrite).toBe(true)
+    // The kept side can present the back face of the quad; a FrontSide fill
+    // would be culled there and the cut would stay open.
+    expect(fill.side).toBe(THREE.DoubleSide)
   })
+})
 
-  it('draws the cap after the bodies it fills', () => {
-    expect(SECTION_CAP_STENCIL_BACK_ORDER).toBeLessThan(SECTION_CAP_STENCIL_FRONT_ORDER)
-    expect(SECTION_CAP_STENCIL_FRONT_ORDER).toBeLessThan(SECTION_CAP_FILL_ORDER)
-    // Bodies and their edges draw at the default order (0).
-    expect(SECTION_CAP_STENCIL_BACK_ORDER).toBeGreaterThan(0)
+describe('section cap render-order bands', () => {
+  it('gives every body three contiguous orders, after the bodies and below highlights', () => {
+    const orders = [0, 1, 2, 40].map(sectionCapRenderOrders)
+    expect(orders[0]).toEqual([SECTION_CAP_BASE_ORDER, SECTION_CAP_BASE_ORDER + 1, SECTION_CAP_BASE_ORDER + 2])
+    expect(orders[1]).toEqual([orders[0][2] + 1, orders[0][2] + 2, orders[0][2] + 3])
+    // Strictly increasing across bodies: no interleaving of another body's
+    // back pass between this body's count and fill.
+    const flat = orders.flat()
+    expect(flat).toEqual([...flat].sort((a, b) => a - b))
+    expect(new Set(flat).size).toBe(flat.length)
+    expect(SECTION_CAP_MAX_BAND).toBeGreaterThan(40)
+    expect(orders.at(-1)![2]).toBeLessThan(999)
   })
 })
 
 describe('placeSectionCapQuad', () => {
   beforeEach(() => resetSectionClippingForTest())
 
-  it('puts the quad on the live plane in its parent local frame', () => {
+  it('writes the world matrix on the live plane, without a later scene update', () => {
     setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 3, false))
+    const plane = getSectionClipPlane()
 
     const parent = new THREE.Group()
     parent.position.set(10, 0, 0)
@@ -66,18 +79,18 @@ describe('placeSectionCapQuad', () => {
     parent.updateMatrixWorld(true)
 
     placeSectionCapQuad(quad)
-    quad.updateMatrixWorld(true)
 
-    const worldPosition = quad.getWorldPosition(new THREE.Vector3())
-    // The plane is z = 3 in world space; the quad is a child of the rotated,
-    // translated group, so its local position has to compensate.
+    // Read matrixWorld directly: getWorldPosition would recompute it and hide a
+    // missing updateMatrixWorld (the one-frame lag this pins).
+    const worldPosition = new THREE.Vector3().setFromMatrixPosition(quad.matrixWorld)
     expect(worldPosition.x).toBeCloseTo(0, 9)
     expect(worldPosition.y).toBeCloseTo(0, 9)
     expect(worldPosition.z).toBeCloseTo(3, 9)
 
-    const worldNormal = quad.getWorldDirection(new THREE.Vector3())
-    expect(worldNormal.x).toBeCloseTo(0, 9)
-    expect(worldNormal.y).toBeCloseTo(0, 9)
-    expect(worldNormal.z).toBeCloseTo(1, 9)
+    const worldRotation = new THREE.Quaternion().setFromRotationMatrix(quad.matrixWorld)
+    const worldNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(worldRotation)
+    expect(worldNormal.x).toBeCloseTo(plane.normal.x, 9)
+    expect(worldNormal.y).toBeCloseTo(plane.normal.y, 9)
+    expect(worldNormal.z).toBeCloseTo(plane.normal.z, 9)
   })
 })

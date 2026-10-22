@@ -41,7 +41,7 @@ import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/l
 import SectionCap from '@/components/Geometry3D/SectionCap'
 import { getSectionClipPlaneList } from '@/viewport/sectionClipping'
 import {
-  useSectionClip,
+  useSectionActive,
   useSectionOwnedMaterialClipping,
 } from '@/viewport/useSection'
 import { HighlightIndex, type ActiveHighlight } from '@/picking/selectionHighlight'
@@ -91,9 +91,12 @@ interface Body3DProps {
   // wireframe would keep blocking clicks on the edges the user can see.
   showFaces?: boolean
   showEdges?: boolean
+  // Stable position in the viewport's body list; owns the section cap's render
+  // order band so bodies cannot interleave their stencil passes.
+  capBand?: number
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true, capBand = 0 }: Body3DProps) {
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible && showFaces })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible && showEdges })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
@@ -353,9 +356,10 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // around them. The cap is the fill of the cut itself, in the body's colour.
   // The face material carries the plane as a JSX prop because the mesh is
   // unmounted and remounted by the Shading row; the edge material is one
-  // memo-owned instance for the component's lifetime.
-  const section = useSectionClip()
-  const sectionActive = section.active
+  // memo-owned instance for the component's lifetime. Only the active boolean
+  // is subscribed here, not the moving plane: the shared plane updates in
+  // place, so a drag must not re-render every body.
+  const sectionActive = useSectionActive()
   useSectionOwnedMaterialClipping(edgeMaterial, sectionActive)
 
   // The wireframe is where the removal mark lives now the doomed face is
@@ -620,7 +624,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
             renderOrder={RENDER_ORDER_HIGHLIGHT}
           >
             <sphereGeometry args={[1, 6, 6]} />
-            <meshBasicMaterial color="white" depthTest={false} depthWrite={false} />
+            <meshBasicMaterial
+              color="white"
+              depthTest={false}
+              depthWrite={false}
+              clippingPlanes={sectionActive ? getSectionClipPlaneList() : null}
+            />
           </instancedMesh>
         </>
       )}
@@ -662,7 +671,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
         )
       })}
       {showFaces && sectionActive && (
-        <SectionCap geometry={geometry} color={bodyColor} enabled={visible} />
+        <SectionCap geometry={geometry} color={bodyColor} enabled={visible} band={capBand} />
       )}
       {interactive && showFaces && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceSelectionFlags) && faceSelectionFlags!.map((selected, faceIdx) => {
         if (!selected) return null

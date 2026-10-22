@@ -30,7 +30,7 @@ import { buildCurveSegments } from '@/utils/edgeSampling'
 import type { Vec3 } from '@/utils/transform3d'
 import SectionCap from '@/components/Geometry3D/SectionCap'
 import { getSectionClipPlaneList, isPointClipped } from '@/viewport/sectionClipping'
-import { useSectionClip } from '@/viewport/useSection'
+import { useSectionActive } from '@/viewport/useSection'
 
 interface AssemblyBodyProps {
   item: BodyRenderItem
@@ -44,9 +44,12 @@ interface AssemblyBodyProps {
   // is an R3F raycast on the mesh, not the ID buffer.
   showFaces?: boolean
   showEdges?: boolean
+  // Stable position across the whole assembly render list; owns this body's
+  // section cap render-order band.
+  capBand?: number
 }
 
-export default function AssemblyBody({ item, curves, selected, aiming, onGrab, showFaces = true, showEdges = true }: AssemblyBodyProps) {
+export default function AssemblyBody({ item, curves, selected, aiming, onGrab, showFaces = true, showEdges = true, capBand = 0 }: AssemblyBodyProps) {
   const curvature = useViewOptionsStore(s => s.curvature)
   const curvatureKind = useViewOptionsStore(s => s.curvature_kind)
   const curvatureManualRange = useViewOptionsStore(s => s.curvature_range)
@@ -79,7 +82,7 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
   const zebraStripes = useViewOptionsStore(s => s.zebra_stripes)
   const analysisMode = !showFaces ? 'none' : curvature ? 'curvature' : zebra ? 'zebra' : 'none'
   const materialRef = useRef<THREE.MeshStandardMaterial>(null)
-  const section = useSectionClip()
+  const sectionActive = useSectionActive()
   useBodyAnalysisMaterial(materialRef, {
     mode: analysisMode,
     mixVertexColor: false,
@@ -123,7 +126,13 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
             polygonOffset
             polygonOffsetFactor={1}
             polygonOffsetUnits={1}
-            clippingPlanes={section.active ? getSectionClipPlaneList() : null}
+            // The raycaster obeys the material side too. With a section on, the
+            // visible kept surface can be the body's back face, so a plain
+            // FrontSide material would make the part ungrabbable through the
+            // cut. DoubleSide keeps the grab working; the opaque look is the
+            // same for a closed solid.
+            side={sectionActive ? THREE.DoubleSide : THREE.FrontSide}
+            clippingPlanes={sectionActive ? getSectionClipPlaneList() : null}
           />
         </mesh>
       )}
@@ -132,16 +141,17 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
         <lineSegments geometry={edgeGeometry} visible={item.visible} renderOrder={RENDER_ORDER_DEFAULT}>
           <lineBasicMaterial
             color={selected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE}
-            clippingPlanes={section.active ? getSectionClipPlaneList() : null}
+            clippingPlanes={sectionActive ? getSectionClipPlaneList() : null}
           />
         </lineSegments>
       )}
 
-      {showFaces && section.active && item.visible && (
+      {showFaces && sectionActive && item.visible && (
         <SectionCap
           geometry={geometry}
           color={selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT}
           enabled
+          band={capBand}
         />
       )}
     </>

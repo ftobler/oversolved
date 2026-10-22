@@ -566,7 +566,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault() }, [])
 
-  const renderBodyItem = (b: BodyRenderItem) => (
+  const renderBodyItem = (b: BodyRenderItem, capBand: number) => (
     <Body3D
       key={b.key}
       featureId={b.featureId}
@@ -585,6 +585,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       doomed={b.doomed}
       showFaces={shading}
       showEdges={edges}
+      capBand={capBand}
     />
   )
 

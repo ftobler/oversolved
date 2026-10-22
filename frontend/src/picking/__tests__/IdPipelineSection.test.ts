@@ -13,6 +13,7 @@ import { collectEntitiesFromPixels } from '@/picking/collectEntitiesFromPixels'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME } from '@/picking/layerNames'
 import { buildEdgeMaterial } from '@/components/Geometry3D/edgeLineMaterial'
 import {
+  getSectionClipPlane,
   getSectionClipPlaneList,
   resetSectionClippingForTest,
   setSectionClipPlane,
@@ -156,10 +157,25 @@ describe('IdPipeline section cap occluder', () => {
     const fill = fillRender.material as THREE.ShaderMaterial
     expect(fill.stencilFunc).toBe(THREE.NotEqualStencilFunc)
     expect(fill.depthWrite).toBe(true)
+    // The kept side can present the quad's back face: a FrontSide fill would be
+    // culled and the cut opening would stay occupied by interior face ids.
+    expect(fill.side).toBe(THREE.DoubleSide)
     // The fill writes zero in every channel, which decodes to the reserved
     // empty id: a pick on the cap answers "nothing", not the bore's far wall.
     expect(fill.fragmentShader).toContain('gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0)')
     expect(rgbToId(0, 0, 0)).toBe(EMPTY_ID)
+
+    // The quad was placed on the live plane before the fill render: its world
+    // normal matches the plane's, and its world position is the plane point.
+    const quad = fillRender.scene.children[0] as THREE.Mesh
+    const plane = getSectionClipPlane()
+    const worldRotation = new THREE.Quaternion().setFromRotationMatrix(quad.matrixWorld)
+    const worldNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(worldRotation)
+    expect(worldNormal.x).toBeCloseTo(plane.normal.x, 9)
+    expect(worldNormal.y).toBeCloseTo(plane.normal.y, 9)
+    expect(worldNormal.z).toBeCloseTo(plane.normal.z, 9)
+    const worldPosition = new THREE.Vector3().setFromMatrixPosition(quad.matrixWorld)
+    expect(worldPosition.distanceTo(plane.normal.clone().multiplyScalar(-plane.constant))).toBeLessThan(1e-6)
 
     // The stencil was cleared before the count and after the fill.
     expect(recorder.stencilClears).toBe(2)
