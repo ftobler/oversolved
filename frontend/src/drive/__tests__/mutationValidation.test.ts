@@ -98,6 +98,14 @@ describe('validateMutation', () => {
     }, { allowInternal: true })).toMatchObject({ ok: true })
   })
 
+  it('refuses an out-of-schema setter field unless the replay path allows internal', () => {
+    // An external script must not name a field the schema does not define. The
+    // replay path re-applies the app's own journal, so it skips the check.
+    const bogus = { type: 'set_hole_field', featureId: 'h1', field: 'bogus', value: 1 }
+    expect(validateMutation(bogus)).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    expect(validateMutation(bogus, { allowInternal: true })).toMatchObject({ ok: true })
+  })
+
   it('accepts null only where the union spells it', () => {
     expect(validateMutation({
       type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [1, 1], p0Ref: null,
