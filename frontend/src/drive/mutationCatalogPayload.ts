@@ -4,6 +4,7 @@
 
 import type { Mutation } from '@/types/cad'
 import { MUTATION_CATALOG, MUTATION_FAMILY, mutationInfoOf, type FieldInfo, type MutationFamily } from '@/drive/mutationCatalog'
+import type { JsonSchema } from '@/persistence/partDocSchema'
 import { MUTATION_EXAMPLES, type MutationExample } from '@/drive/mutationExamples'
 
 export const MUTATION_CATALOG_URI = 'oversolved://catalog/mutations'
@@ -17,11 +18,14 @@ export interface CatalogFieldListing {
   required: boolean
   nullable?: boolean
   note?: string
+  // An object field's shape, from the part-document schema.
+  shape?: JsonSchema
 }
 
 export interface CatalogMutationListing {
   type: Mutation['type']
   summary: string
+  note?: string
   fields: Record<string, CatalogFieldListing>
 }
 
@@ -48,9 +52,15 @@ export function mutationCatalogPayload(): MutationCatalogPayload {
         required: field.required,
         ...(field.nullable === true && { nullable: true }),
         ...(field.note !== undefined && { note: field.note }),
+        ...(field.shape !== undefined && { shape: field.shape }),
       }
     }
-    families[MUTATION_FAMILY[type]].push({ type, summary: info.summary, fields })
+    families[MUTATION_FAMILY[type]].push({
+      type,
+      summary: info.summary,
+      ...(info.note !== undefined && { note: info.note }),
+      fields,
+    })
   }
   return { families, examples: MUTATION_EXAMPLES.map(example => ({ ...example })) }
 }

@@ -17,7 +17,7 @@
 
 import type { FeatureKind } from '@/types/cad'
 
-type JsonSchema = Record<string, unknown>
+export type JsonSchema = Record<string, unknown>
 
 /** A feature-level reference to a feature, a body or a query. It never starts
  *  with `$`: `$` is host-local to the owning sketch's entities, not a
@@ -44,7 +44,13 @@ interface SubDef {
   required?: string[]
 }
 
+// The param-container key each kind registered with feature(), so callers can
+// read a kind's field shape back out of FEATURE_SCHEMA_BY_KIND without guessing
+// it from property names.
+const FEATURE_PARAM_KEY = new Map<FeatureKind, string | null>()
+
 function feature(kind: FeatureKind, sub: SubDef): JsonSchema {
+  FEATURE_PARAM_KEY.set(kind, sub.key)
   const properties: JsonSchema = { ...BASE_PROPERTIES, kind: { const: kind } }
   const required = ['id', 'kind']
   if (sub.key === null) {
@@ -121,7 +127,7 @@ const SKETCH_SCHEMA = feature('sketch', {
 
 // The per-kind feature schemas, keyed by FeatureKind so the union and the schema
 // cannot drift. `origin` has no params; `plane` uses `definition`.
-const FEATURE_SCHEMA_BY_KIND = {
+export const FEATURE_SCHEMA_BY_KIND = {
   origin: feature('origin', { key: null, properties: {} }),
   sketch: SKETCH_SCHEMA,
   plane: feature('plane', { key: 'definition', properties: PLANE_DEF.properties as JsonSchema }),
@@ -266,6 +272,38 @@ const FEATURE_SCHEMA_BY_KIND = {
     properties: { file_id: { type: 'string', minLength: 1 }, file_data: { type: 'string' }, scale: NUMBER_OR_EXPR },
   }),
 } as const satisfies Record<FeatureKind, JsonSchema>
+
+/** The key a feature kind nests its authored params under; null when the kind
+ *  keeps them feature-level (sketch, import_step, origin). */
+export function featureParamKey(kind: FeatureKind): string | null {
+  return FEATURE_PARAM_KEY.get(kind) ?? null
+}
+
+/** The schema of the object under a feature kind's param key, or null for a
+ *  kind with no such container. Read from FEATURE_SCHEMA_BY_KIND, so a catalog
+ *  or a validator sharing it cannot drift from the published schema. */
+export function featureParamsSchema(kind: FeatureKind): JsonSchema | null {
+  const key = featureParamKey(kind)
+  if (key === null) return null
+  const properties = FEATURE_SCHEMA_BY_KIND[kind].properties as Record<string, JsonSchema>
+  return properties[key] ?? null
+}
+
+/** The authored field names of a feature kind's param container, in schema
+ *  order. Empty for a kind whose params stay feature-level. */
+export function featureFieldNames(kind: FeatureKind): string[] {
+  const params = featureParamsSchema(kind)
+  if (params === null) return []
+  return Object.keys(params.properties as Record<string, JsonSchema>)
+}
+
+/** The plane definition object: both the plane feature's `definition` payload
+ *  and the fields `set_plane_definition_field` may name. */
+export function planeDefinitionSchema(): JsonSchema {
+  const params = featureParamsSchema('plane')
+  if (params === null) throw new Error('plane feature schema has no definition')
+  return params
+}
 
 // A separate widening alias so the exported schema reads as a plain record and
 // callers do not depend on the literal object shape.
