@@ -282,4 +282,21 @@ describe('ViewOptionsButton Section', () => {
 
     expect(screen.getByRole('status').textContent).toContain('no longer resolves')
   })
+
+  it('hides the plane pick in the assembly and says where it lives', () => {
+    render(<ViewOptionsButton allowSectionPick={false} />)
+    open()
+    fireEvent.click(row('Section'))
+
+    expect(screen.queryByRole('button', { name: 'Pick' })).toBeNull()
+    expect(screen.getByRole('status').textContent).toContain('part-editor')
+  })
+
+  it('shows a refused face pick reason', () => {
+    useSectionStore.setState({ enabled: true, pickError: 'Pick a flat face or a plane.' })
+    render(<ViewOptionsButton />)
+    open()
+
+    expect(screen.getByRole('status').textContent).toContain('flat face')
+  })
 })

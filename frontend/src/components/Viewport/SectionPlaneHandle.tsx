@@ -54,6 +54,7 @@ function buildOutlineGeometry(size: number): THREE.BufferGeometry {
 export default function SectionPlaneHandle() {
   const { camera, gl } = useThree()
   const { active, frame, offset } = useSectionClip()
+  const capturing = useSectionStore(s => s.capturing)
   const hovered = useSketchEditorStore(s => s.hoveredSelectionId === SECTION_HANDLE_KEY)
 
   const [dragging, setDragging] = useState(false)
@@ -105,7 +106,7 @@ export default function SectionPlaneHandle() {
     field: SECTION_HANDLE_FIELD,
     start: planePoint ?? [0, 0, 0],
     end: tipPoint ?? [0, 0, 0],
-    enabled: active && !dragging && planePoint !== null && tipPoint !== null,
+    enabled: active && !capturing && !dragging && planePoint !== null && tipPoint !== null,
   })
 
   const cursorAxisParam = useCallback((
@@ -130,7 +131,7 @@ export default function SectionPlaneHandle() {
   // buffer. This records a pending drag; the move listener activates past the
   // click threshold so a click on the arrow does not nudge the plane.
   useEffect(() => {
-    if (!active || !frame) return
+    if (!active || !frame || capturing) return
     return registerFeatureHandleCallbacks(SECTION_HANDLE_KEY, {
       onPointerDown: (clientX, clientY) => {
         const st = useSketchEditorStore.getState()
@@ -144,7 +145,7 @@ export default function SectionPlaneHandle() {
       },
       onDoubleClick: () => {},
     })
-  }, [active, frame])
+  }, [active, frame, capturing])
 
   const moveImpl = (e: PointerEvent) => {
     const pending = pendingRef.current
@@ -208,7 +209,7 @@ export default function SectionPlaneHandle() {
     if (scale > pxToWorld * 1.25 || scale < pxToWorld * 0.8) setPxToWorld(scale)
   })
 
-  if (!active || !frame || !planePoint) return null
+  if (!active || !frame || !planePoint || capturing) return null
 
   const color = handleColor(hovered, dragging)
 

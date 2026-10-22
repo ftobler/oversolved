@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS, useDocumentState } from '@/hooks/useDocumentState'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 import { editorState } from '@/stores/editorState'
 import {
   requestRecoveryRestore,
@@ -495,5 +496,24 @@ describe('useDocumentState load and operation failures', () => {
     await act(async () => { ok = await result.current.renameDoc('S', 'Other') })
     expect(ok).toBe(false)
     expect(result.current.error).toBe('locked')
+  })
+})
+
+// The section is a momentary inspection view: opening a document starts uncut
+// rather than inheriting a plane whose picked face may not exist in the new one.
+describe('useDocumentState section reset on load', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useSectionStore.setState({ ...DEFAULT_SECTION_STATE })
+  })
+
+  it('turns the section off when a document loads', async () => {
+    useSectionStore.setState({ ...DEFAULT_SECTION_STATE, enabled: true, offset: 12 })
+    h.loadMock.mockResolvedValue({ content: 'version: 1\nkind: part\nfeatures: []\n', name: 'Fresh' })
+
+    renderHook(() => useDocumentState('S', { current: vi.fn() }, { solveOnLoad: false }))
+
+    expect(useSectionStore.getState().enabled).toBe(false)
+    expect(useSectionStore.getState().offset).toBe(0)
   })
 })

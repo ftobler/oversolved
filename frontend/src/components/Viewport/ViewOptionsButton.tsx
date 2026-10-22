@@ -34,6 +34,10 @@ export interface ViewOptionsButtonProps {
   // has no feature tree to show or hide.
   show?: Record<ShowGroup, ShowGroupState>
   onToggleShow?: (group: ShowGroup) => void
+  // Whether the viewport can resolve a picked section plane. The part editor
+  // can (it owns the body face registry); the assembly cannot, so it offers the
+  // builtin planes and says so rather than arming a pick nothing consumes.
+  allowSectionPick?: boolean
 }
 
 const SHOW_LABELS: Record<ShowGroup, string> = {
@@ -75,7 +79,7 @@ function formatRange(range: [number, number]): string {
   return `${fmt(range[0])} .. ${fmt(range[1])} 1/mm`
 }
 
-export default function ViewOptionsButton({ show, onToggleShow }: ViewOptionsButtonProps) {
+export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick = true }: ViewOptionsButtonProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -97,6 +101,7 @@ export default function ViewOptionsButton({ show, onToggleShow }: ViewOptionsBut
   const sectionFlipped = useSectionStore(s => s.flipped)
   const sectionReason = useSectionStore(s => s.disabledReason)
   const sectionPicking = useSectionStore(s => s.picking)
+  const sectionPickError = useSectionStore(s => s.pickError)
 
   const setShading = useViewOptionsStore(s => s.setShading)
   const setEdges = useViewOptionsStore(s => s.setEdges)
@@ -372,17 +377,27 @@ export default function ViewOptionsButton({ show, onToggleShow }: ViewOptionsBut
                     </button>
                   )
                 })}
-                <button
-                  type="button"
-                  className={`view-options-segment-btn${sectionPicking ? ' active' : ''}`}
-                  aria-pressed={sectionPicking}
-                  title={sectionPlane.kind === 'query' ? `Picked ${sectionPlane.query}` : 'Pick a face or plane in the viewport'}
-                  onClick={() => setSectionPicking(!sectionPicking)}
-                  data-view-row
-                >
-                  {sectionPlane.kind === 'query' ? 'Picked' : 'Pick'}
-                </button>
+                {allowSectionPick && (
+                  <button
+                    type="button"
+                    className={`view-options-segment-btn${sectionPicking ? ' active' : ''}`}
+                    aria-pressed={sectionPicking}
+                    title={sectionPlane.kind === 'query' ? `Picked ${sectionPlane.query}` : 'Pick a face or plane in the viewport'}
+                    onClick={() => setSectionPicking(!sectionPicking)}
+                    data-view-row
+                  >
+                    {sectionPlane.kind === 'query' ? 'Picked' : 'Pick'}
+                  </button>
+                )}
               </div>
+              {!allowSectionPick && (
+                <div className="view-options-note" role="status">
+                  Use Front, Top or Right here; picking a face or plane is a part-editor action.
+                </div>
+              )}
+              {sectionPickError && (
+                <div className="view-options-note" role="status">{sectionPickError}</div>
+              )}
               {sectionPicking && (
                 <div className="view-options-note" role="status">Click a face or plane in the viewport.</div>
               )}

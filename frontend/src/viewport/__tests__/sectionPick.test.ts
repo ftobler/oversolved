@@ -6,7 +6,9 @@ describe('sectionPickSource', () => {
   it('turns a face or a user plane pick into a query source', () => {
     expect(sectionPickSource({ layer: FACE_LAYER_NAME, entityKey: '?04;abcd' }))
       .toEqual({ kind: 'query', query: '?04;abcd' })
-    expect(sectionPickSource({ layer: PLANE_LAYER_NAME, entityKey: 'Plane1' }))
+    // The plane layer's selection id is `@<featureId>`; the solve result is
+    // keyed by the bare feature id.
+    expect(sectionPickSource({ layer: PLANE_LAYER_NAME, entityKey: '@Plane1' }))
       .toEqual({ kind: 'query', query: 'Plane1' })
   })
 

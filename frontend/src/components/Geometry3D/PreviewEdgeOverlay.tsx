@@ -5,7 +5,7 @@ import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
 import { buildEdgeSegments } from '@/components/Geometry3D/bodyGeometry'
 import { COLOR_PREVIEW_EDGE, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
 import { getSectionClipPlaneList } from '@/viewport/sectionClipping'
-import { useSectionClip } from '@/viewport/useSection'
+import { useSectionActive } from '@/viewport/useSection'
 
 interface PreviewEdgeOverlayProps {
   items: BodyRenderItem[]
@@ -43,7 +43,7 @@ function geomKeyFromSegments(pts: Float32Array): string {
 function PreviewBodyEdges({ edges, existingGeom }: PreviewBodyEdgesProps) {
   // The preview is body geometry: it is cut with the same plane as the solid it
   // previews, or a pending edit would draw through the removed half.
-  const { active: sectionActive } = useSectionClip()
+  const sectionActive = useSectionActive()
   // Tessellate each edge once; the point array feeds both the suppression key
   // and, for the survivors, the merged BufferGeometry.
   const tessellated = useMemo(

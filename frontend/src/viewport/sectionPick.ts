@@ -27,7 +27,9 @@ export function sectionPickSource(hit: SectionPickCandidate): SectionPlaneSource
     const name = hit.entityKey.replace(/^@/, '')
     const builtin = BUILTIN_PLANE_QUERIES[name]
     if (builtin) return { kind: 'builtin', id: builtin }
-    return { kind: 'query', query: hit.entityKey }
+    // A user-defined plane's selection id is `@<featureId>`; the solve result
+    // is keyed by the bare feature id.
+    return { kind: 'query', query: name }
   }
   return null
 }

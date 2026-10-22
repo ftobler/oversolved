@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import * as THREE from 'three'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
+import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
 // A minimal stand-in for THREE.WebGLRenderer: only the surface captureThumbnail
 // touches (getSize/setSize/render/domElement.toDataURL). Avoids spinning up a
@@ -131,6 +132,25 @@ describe('captureThumbnail', () => {
     // gets an uncut preview; the full-size repaint puts the live state back.
     expect(clippingSeen).toEqual([false, true])
     expect((gl as unknown as { localClippingEnabled: boolean }).localClippingEnabled).toBe(true)
+  })
+
+  it('hides the section plane outline and arrow during the capture', async () => {
+    stubImage(320, 200)
+    stubCanvas()
+    const { gl, render } = makeFakeGl()
+    useSectionStore.setState({ ...DEFAULT_SECTION_STATE, enabled: true })
+    const capturingSeen: boolean[] = []
+    render.mockImplementation(() => {
+      capturingSeen.push(useSectionStore.getState().capturing)
+    })
+
+    await captureThumbnail(gl, {} as THREE.Scene, {} as THREE.Camera)
+
+    // The plain scene geometry has to be gone for the capture draw; the
+    // full-size repaint runs after it is restored.
+    expect(capturingSeen).toEqual([true, false])
+    expect(useSectionStore.getState().capturing).toBe(false)
+    useSectionStore.setState({ ...DEFAULT_SECTION_STATE })
   })
 
   it('restores local clipping even when the capture throws', async () => {

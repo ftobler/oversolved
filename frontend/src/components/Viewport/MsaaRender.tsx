@@ -40,7 +40,9 @@ export function MsaaRender() {
   const sectionEnabled = useSectionStore(s => s.enabled)
   useEffect(() => {
     presenter.current?.setStencil(sectionEnabled)
-  }, [sectionEnabled])
+    // `gl` is a dependency too: a rebuilt presenter (StrictMode, a new renderer)
+    // starts without a stencil, and the boolean alone would not re-apply it.
+  }, [sectionEnabled, gl])
 
   useFrame(({ gl: renderer, scene, camera }) => {
     if (presenter.current) presenter.current.render(renderer, scene, camera)

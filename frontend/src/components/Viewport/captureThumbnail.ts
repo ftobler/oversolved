@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { presentFrame } from '@/components/Viewport/msaaPresenter'
+import { useSectionStore } from '@/stores/sectionStore'
 
 // Render the current scene into a small PNG data URL for a document thumbnail.
 // Shared by the part Viewport and the AssemblyViewport so both editors capture
@@ -25,6 +26,11 @@ export async function captureThumbnail(
 
   // Yield a tick so any pending React-driven scene update has committed before
   // the one-off render we read the pixels from.
+  //
+  // The section's plane outline and drag arrow are ordinary scene geometry, so
+  // local clipping alone would leave them in a saved preview. The store flag
+  // hides the handle, and the tick lets that commit before the capture draw.
+  useSectionStore.getState().setCapturing(true)
   await new Promise<void>(resolve => setTimeout(resolve, 0))
 
   // The resize-down, render and pixel read all touch the LIVE renderer shared
@@ -49,6 +55,7 @@ export async function captureThumbnail(
     captured = true
   } finally {
     gl.localClippingEnabled = previousLocalClipping
+    useSectionStore.getState().setCapturing(false)
     gl.setSize(originalSize.width, originalSize.height)
     // A resize clears the drawing buffer, and the part viewport draws on demand
     // (frameloop="demand"): without a redraw the quarter-size capture would be

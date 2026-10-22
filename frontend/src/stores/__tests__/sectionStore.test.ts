@@ -20,7 +20,10 @@ describe('section store', () => {
     expect(state.offset).toBe(0)
     expect(state.flipped).toBe(false)
     expect(state.disabledReason).toBeNull()
+    expect(state.pickError).toBeNull()
     expect(state.picking).toBe(false)
+    expect(state.resolved).toBe(false)
+    expect(state.capturing).toBe(false)
   })
 
   it('toggles, flips and resets without touching the document', () => {
@@ -59,6 +62,22 @@ describe('section store', () => {
     expect(useSectionStore.getState().plane).toEqual({ kind: 'query', query: '?04;abcd' })
     useSectionStore.getState().setPicking(false)
     expect(useSectionStore.getState().picking).toBe(false)
+  })
+
+  it('keeps a refused pick message until the pick is re-armed', () => {
+    useSectionStore.getState().setPickError('Pick a flat face or a plane.')
+    expect(useSectionStore.getState().pickError).toBe('Pick a flat face or a plane.')
+    useSectionStore.getState().setPicking(true)
+    expect(useSectionStore.getState().pickError).toBeNull()
+  })
+
+  it('publishes the resolved flag and the capture flag without touching the document', () => {
+    useSectionStore.getState().setResolved(true)
+    expect(useSectionStore.getState().resolved).toBe(true)
+    useSectionStore.getState().setCapturing(true)
+    expect(useSectionStore.getState().capturing).toBe(true)
+    useSectionStore.getState().setCapturing(false)
+    expect(useSectionStore.getState().capturing).toBe(false)
   })
 
   it('disables with a reason when the source stops resolving, and clears it on a manual toggle', () => {

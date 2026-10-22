@@ -126,4 +126,11 @@ describe('SectionPlaneHandle', () => {
     expect(seams.registration).toMatchObject({ enabled: false })
     expect(seams.callbacks).toBeNull()
   })
+
+  it('hides the arrow and its grab segment while a thumbnail capture runs', () => {
+    useSectionStore.setState({ enabled: true, capturing: true })
+    render(<SectionPlaneHandle />)
+    expect(seams.registration).toMatchObject({ enabled: false })
+    expect(seams.callbacks).toBeNull()
+  })
 })

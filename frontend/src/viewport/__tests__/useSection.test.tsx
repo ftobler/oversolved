@@ -8,7 +8,7 @@ import type { IdPipeline } from '@/picking/IdPipeline'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 import { DEFAULT_PART_EDITOR_DATA, usePartEditorStore } from '@/stores/partEditorStore'
 import { DEFAULT_SECTION_STATE, SECTION_SOURCE_GONE_REASON, useSectionStore } from '@/stores/sectionStore'
-import { notifySectionChange, useSectionPipelineEffects } from '@/viewport/useSection'
+import { notifySectionChange, useSectionActive, useSectionPipelineEffects } from '@/viewport/useSection'
 
 function fakePipeline(): IdPipeline {
   return {
@@ -84,5 +84,30 @@ describe('useSectionPipelineEffects', () => {
     renderHook(() => useSectionPipelineEffects(() => {}))
     expect(useSectionStore.getState().enabled).toBe(true)
     expect(useSectionStore.getState().disabledReason).toBeNull()
+  })
+
+  it('publishes one active boolean for the render path', () => {
+    publish(fakePipeline())
+    const { result } = renderHook(() => useSectionActive())
+    expect(result.current).toBe(false)
+
+    act(() => useSectionStore.getState().setEnabled(true))
+    renderHook(() => useSectionPipelineEffects(() => {}))
+    expect(useSectionStore.getState().resolved).toBe(true)
+
+    act(() => useSectionStore.getState().setEnabled(false))
+    expect(useSectionStore.getState().resolved).toBe(false)
+  })
+
+  it('does not dirty the buffer for a solve that leaves a builtin frame unchanged', () => {
+    const pipeline = fakePipeline()
+    publish(pipeline)
+    const clearHover = () => {}
+    act(() => useSectionStore.getState().setEnabled(true))
+    renderHook(() => useSectionPipelineEffects(clearHover))
+    ;(pipeline.markDirty as ReturnType<typeof vi.fn>).mockClear()
+
+    act(() => usePartEditorStore.setState({ solveResults: {} } as never))
+    expect(pipeline.markDirty).not.toHaveBeenCalled()
   })
 })

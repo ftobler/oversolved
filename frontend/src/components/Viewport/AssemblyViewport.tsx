@@ -47,7 +47,6 @@ import { useSectionStore } from '@/stores/sectionStore'
 import { autoRangeFromMeshes } from '@/components/Geometry3D/curvature'
 import { useLayerPipelineEffects } from '@/components/Viewport/viewOptionsEffects'
 import { useSectionPipelineEffects } from '@/viewport/useSection'
-import SectionPlaneHandle from '@/components/Viewport/SectionPlaneHandle'
 import { lookupAnchor, resolveAnchorGizmos } from '@/utils/anchorGizmos'
 import { entityKeysForMate } from '@/utils/mateHighlight'
 import {
@@ -158,7 +157,6 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const entitySelection = useAssemblyStore(s => s.entitySelection)
   const hoveredEntity = useAssemblyStore(s => s.hoveredEntity)
   const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
-  const sectionEnabled = useSectionStore(s => s.enabled)
   const shading = useViewOptionsStore(s => s.shading)
   const edges = useViewOptionsStore(s => s.edges)
   const curvature = useViewOptionsStore(s => s.curvature)
@@ -278,6 +276,26 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     () => offsetPickBodies(pickGeometry, pickGeometryPose, drawnPoses),
     [pickGeometry, pickGeometryPose, drawnPoses],
   )
+
+  // Section cap render-order bands, one per drawn body across every part group.
+  // They must be unique across the whole scene, not just within a group, or two
+  // bodies' stencil passes would interleave.
+  const capBands = useMemo(() => {
+    const bands = new Map<string, number>()
+    let next = 0
+    for (const group of groups) {
+      for (const item of group.items) bands.set(item.key, next++)
+    }
+    return bands
+  }, [groups])
+
+  // The assembly has no planar-face frames to resolve a picked section plane
+  // against, so the dropdown does not offer the face/plane pick here. Clear any
+  // pick armed in the part editor as the assembly takes over: an armed flag
+  // with no consumer would swallow the next part click.
+  useEffect(() => {
+    useSectionStore.getState().setPicking(false)
+  }, [])
 
   // Same scene-wide auto range as the part viewport: the component bodies each
   // know only their own field.
@@ -790,6 +808,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
                 onGrab={(point, event) => handleGrabBody(g.handle, point, pointerOf(event))}
                 showFaces={shading}
                 showEdges={edges}
+                capBand={capBands.get(item.key) ?? 0}
               />
             ))}
           </group>
@@ -820,8 +839,6 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
             <GizmoPickLayer origin={triad.origin} orientation={triad.orientation} enabled={!manipulating} />
           </>
         )}
-
-        {sectionEnabled && <SectionPlaneHandle />}
       </Canvas>
 
       <div className="viewport-hud">

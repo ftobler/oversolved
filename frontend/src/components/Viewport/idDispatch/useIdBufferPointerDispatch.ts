@@ -13,12 +13,12 @@ import { planeAdapter } from './planeAdapter'
 import { originAdapter } from './originAdapter'
 import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 import type { ActiveTool } from '@/types/cad'
-import { findEdgeKindForQuery } from './bodyDispatchCallbacks'
+import { findEdgeKindForQuery, findFaceFrame } from './bodyDispatchCallbacks'
 import { dispatchSketchClick } from './dispatchSketchClick'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import { takeBandClickConsumed } from './bandClickGuard'
 import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
-import { useSectionStore } from '@/stores/sectionStore'
+import { useSectionStore, SECTION_FACE_NOT_FLAT_REASON } from '@/stores/sectionStore'
 import { sectionPickSource } from '@/viewport/sectionPick'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
@@ -428,13 +428,26 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         setLastClickIdHit(true)
         return
       }
-      const hit = resolveSync(e, attached)
-      // An armed section pick owns this click: a face or plane names the cut,
-      // anything else simply disarms. The click is consumed either way so
-      // arming a pick never also changes the selection.
-      if (useSectionStore.getState().picking) {
+      // An armed section pick owns this click: resolve against the editor's
+      // consumed layers, not the active tool's filter. Under a drawing tool the
+      // face and plane layers are excluded from hover, but a section pick is a
+      // distinct gesture and must still see them.
+      const sectionPicking = useSectionStore.getState().picking
+      const hit = sectionPicking && glRef.current
+        ? resolvePickAtEvent(e, attached, glRef.current, consumedLayers)
+        : resolveSync(e, attached)
+      if (sectionPicking) {
         const source = hit ? sectionPickSource(hit) : null
-        if (source) useSectionStore.getState().setPlane(source)
+        if (source) {
+          // A curved face has no planar frame to cut with. Refuse it and say
+          // why, instead of storing a source that would auto-disable later.
+          if (hit!.layer === FACE_LAYER_NAME && !findFaceFrame(hit!.entityKey, hit!.pickKey)) {
+            useSectionStore.getState().setPickError(SECTION_FACE_NOT_FLAT_REASON)
+            setLastClickIdHit(true)
+            return
+          }
+          useSectionStore.getState().setPlane(source)
+        }
         useSectionStore.getState().setPicking(false)
         setLastClickIdHit(true)
         return
