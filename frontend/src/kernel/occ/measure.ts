@@ -3,16 +3,20 @@
  * (no solve imports) so `solveLocally`, the oracle runner and the translations
  * tier share one record without a cycle.
  *
- * The bbox is `BRepBndLib.AddOptimal`, the read an external tool reports:
- * `BRepBndLib.Add` enlarges the box by each sub-shape's tolerance and boxes a
- * B-spline's control net, both of which make it useless as a comparison value.
- * `measureLocallyReal.test.ts` pins the difference on a B-spline sweep.
+ * The bbox is the face union from `faceBounds`, which starts at
+ * `BRepBndLib.AddOptimal` and corrects the one read it gets wrong: a trim that
+ * leaves the face's parameter rectangle intact (a sphere sliced into a slab)
+ * would otherwise report the removed caps' extent. `BRepBndLib.Add` remains
+ * unusable as a comparison value: it enlarges the box by each sub-shape's
+ * tolerance and boxes a B-spline's control net. `measureLocallyReal.test.ts`
+ * pins both differences.
  */
 
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape } from './occTypes'
 import type { Vec3 } from './primitives'
 import { canonicalEdges, canonicalFaces, canonicalVertices } from './bodyNames'
+import { shapeBbox } from './faceBounds'
 import { surfaceAreaOf, volumeAndCentroidOf } from './volume'
 
 /** [xmin, ymin, zmin, xmax, ymax, zmax], the order a reference file writes. */
@@ -45,13 +49,7 @@ export function measureShape(
 ): Omit<MeasureRecord, 'bodies'> {
   const { volume, centroid } = volumeAndCentroidOf(oc, scope, shape)
   const area = surfaceAreaOf(oc, scope, shape)
-
-  const box = scope.track(new oc.Bnd_Box_1())
-  oc.BRepBndLib.AddOptimal(shape, box, false, false)
-  const bbox: Bbox6 = [
-    box.GetXmin(), box.GetYmin(), box.GetZmin(),
-    box.GetXmax(), box.GetYmax(), box.GetZmax(),
-  ]
+  const bbox = shapeBbox(oc, scope, shape)
 
   return {
     volume,

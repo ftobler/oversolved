@@ -300,9 +300,10 @@ npm run drive -- replay repro.json
   The catalog is the part editor's table (`PART_COMMAND_SPECS`); the assembly
   editor's commands are not on this surface in v1.
 - `measure` reports a `MeasureRecord`: `bodies`, `volume`, `area`, `centroid`
-  (volume-weighted), `bbox` (an exact six-number AddOptimal box:
-  `[xmin, ymin, zmin, xmax, ymax, zmax]`), plus face, edge and vertex counts
-  from the final checkpoint's bodies.
+  (volume-weighted), `bbox` (a tight six-number box,
+  `[xmin, ymin, zmin, xmax, ymax, zmax]`, computed from the faces so a trim that
+  leaves a face's parameter rectangle whole cannot inflate it), plus face, edge
+  and vertex counts from the final checkpoint's bodies.
 - `compare` measures the document and compares it against a `reference.json`
   (the translation format: `source`, a required `tolerance`, an optional
   `topology` mode and the measure fields) with `compareMeasures`. It prints

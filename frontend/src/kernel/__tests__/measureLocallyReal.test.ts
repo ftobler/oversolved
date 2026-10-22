@@ -14,6 +14,7 @@ import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { DisposeScope } from '../occ/disposeScope'
 import { measureBodies, type Bbox6 } from '../occ/measure'
+import { compareMeasures } from '../occ/measureTolerance'
 import { readOracleCase } from '@/oracle/corpus'
 import { partSpecFromText } from '@/utils/partExport'
 import type { BuildState } from '../types3d'
@@ -64,6 +65,75 @@ function twoBodyDoc() {
       extrude('sk1', 'ex1', 5),
       rectSketch('sk2', 6, 6, '@builtin_plane_right'),
       extrude('sk2', 'ex2', 4),
+    ],
+  }
+}
+
+// The bug report's head: a sphere r=7.945 centred at (20,20,0), cut out of a
+// 40x40x20 box, then sliced into a slab by two cuts at z = +-4. The spherical
+// face keeps its poles (they sit at z=0, inside the slab) while the two caps
+// around the world Z poles are removed, so its parameter rectangle is the whole
+// sphere and a rectangle-only bbox read reports z = +-7.945.
+const POCKET_R = 7.945
+const POCKET_CENTRE = [20, 20, 0]
+
+function halfCircleProfile(sketchId: string): Record<string, unknown> {
+  const [cx, cy] = POCKET_CENTRE
+  return {
+    id: sketchId, kind: 'sketch', plane: '@builtin_plane_front',
+    entities: [{ id: 'arc', kind: 'arc' }, { id: 'chord', kind: 'line' }],
+    initial: {
+      arc: [cx, cy, POCKET_R, 90, 270],
+      chord: [cx, cy - POCKET_R, cx, cy + POCKET_R],
+    },
+  }
+}
+
+// A construction line on the pocket's axis, the revolve's required pick.
+function axisSketch(sketchId: string): Record<string, unknown> {
+  const [cx, cy] = POCKET_CENTRE
+  return {
+    id: sketchId, kind: 'sketch', plane: '@builtin_plane_front',
+    entities: [{ id: 'axis', kind: 'line', construction: true }],
+    initial: { axis: [cx, cy - 10, cx, cy + 10] },
+  }
+}
+
+function revolveSphere(sketchId: string, axisId: string, id: string) {
+  return {
+    id, kind: 'revolve',
+    revolve: { sketch: '$' + sketchId, angle: 360, axis: `@${axisId}/axis`, operation: 'new' },
+  }
+}
+
+function pocketAndSlabDoc() {
+  return {
+    id: 'pocket-slab',
+    features: [
+      rectSketch('sk1', 40, 40),
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 20, direction: 'symmetric', operation: 'new' } },
+      halfCircleProfile('skp'),
+      axisSketch('skax'),
+      revolveSphere('skp', 'skax', 'rv1'),
+      { id: 'bo1', kind: 'boolean', boolean: { operation: 'subtract', target: '@body_ex1', tools: ['@body_rv1'] } },
+      { id: 'pl1', kind: 'plane', definition: { mode: 'offset', plane: '@builtin_plane_front', offset: 4 } },
+      rectSketch('sk2', 42, 42, '@pl1'),
+      { id: 'cutTop', kind: 'extrude', extrude: { sketch: '$sk2', distance: 6, direction: 'normal', operation: 'cut' } },
+      { id: 'pl2', kind: 'plane', definition: { mode: 'offset', plane: '@builtin_plane_front', offset: -10 } },
+      rectSketch('sk3', 42, 42, '@pl2'),
+      { id: 'cutBottom', kind: 'extrude', extrude: { sketch: '$sk3', distance: 6, direction: 'normal', operation: 'cut' } },
+    ],
+  }
+}
+
+// The same pocket without the slabs: a plain sphere, the no-regression case.
+function sphereDoc() {
+  return {
+    id: 'sphere',
+    features: [
+      halfCircleProfile('skp'),
+      axisSketch('skax'),
+      revolveSphere('skp', 'skax', 'rv1'),
     ],
   }
 }
@@ -119,6 +189,42 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
     expect(measure!.faces).toBe(6)
     expect(measure!.edges).toBe(12)
     expect(measure!.vertices).toBe(8)
+  })
+
+  it('trims a spherical pocket bbox to the slab that cuts it', async () => {
+    const measure = await measureLocally(pocketAndSlabDoc())
+    expect(measure).not.toBeNull()
+    expect(measure!.bodies).toBe(1)
+    // The flat slab faces are at z = +-4; the sphere's poles are inside the
+    // slab and its two caps are cut away. A bbox read off the sphere's
+    // parameter rectangle would report z = +-7.945 here.
+    expect(measure!.bbox).not.toBeNull()
+    expect(measure!.bbox!.map(v => +v.toFixed(6))).toEqual([0, 0, -4, 40, 40, 4])
+    for (let axis = 0; axis < 6; axis++) {
+      expect(measure!.bbox![axis]).toBeCloseTo([0, 0, -4, 40, 40, 4][axis], 9)
+    }
+  })
+
+  it('passes compare against a reference whose bbox is the trimmed slab', async () => {
+    const measure = await measureLocally(pocketAndSlabDoc())
+    expect(measure).not.toBeNull()
+    const result = compareMeasures(measure!, { bodies: 1, bbox: [0, 0, -4, 40, 40, 4] })
+    expect(result.rows.find(row => row.measure === 'bbox')).toMatchObject({ within: true })
+    expect(result.pass).toBe(true)
+  })
+
+  it('keeps the exact bbox on an untrimmed revolved sphere', async () => {
+    const measure = await measureLocally(sphereDoc())
+    expect(measure).not.toBeNull()
+    expect(measure!.bodies).toBe(1)
+    const c = POCKET_CENTRE
+    const expected = [
+      c[0] - POCKET_R, c[1] - POCKET_R, -POCKET_R,
+      c[0] + POCKET_R, c[1] + POCKET_R, POCKET_R,
+    ]
+    for (let axis = 0; axis < 6; axis++) {
+      expect(measure!.bbox![axis]).toBeCloseTo(expected[axis], 9)
+    }
   })
 
   it('sums volumes and areas over two bodies and unions their AABBs', async () => {
