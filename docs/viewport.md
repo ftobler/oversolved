@@ -62,9 +62,9 @@ mapping the cursor onto the sketch plane.
 
 The B-rep ID layers (face, edge, vertex) carry the section's clipping plane
 while a section is on, and a cap occluder writes the empty id over the cut
-opening (see Section View below). The ID buffer therefore sees exactly the
-geometry the user sees; hover and selection stay one path, with no CPU-side
-filter layered on top.
+opening (see Section View below). The ID buffer therefore agrees with the
+visible bodies: hover and selection stay one path, with no CPU-side filter
+layered on top of it.
 
 ### Layer 2: Pointer Event Abstraction
 
@@ -150,46 +150,70 @@ the ID reach; `VERTEX_PICK_CUBE_PIXELS` 3 is the B-rep vertex cube size.
 A section is render-only clipping: the kernel and the document are untouched.
 Its state lives in `stores/sectionStore.ts` (enabled, plane source, offset,
 flipped, and the reason an auto-disabled section gives); it is viewer state, so
-no Mutation, no undo entry and no reload persistence. The source is a builtin
-Front/Top/Right plane or a `{kind: 'query'}` picked plane/face, resolved
-through `viewport/sectionPlane.ts` against the solve results (`plane_transform`)
-and the planar-face frame. If the picked source stops resolving after a solve,
-the section turns off and the eye dropdown shows why.
+no Mutation, no undo entry, no reload persistence and no survival across a
+document load. The source is a builtin Front/Top/Right plane or a
+`{kind: 'query'}` picked plane/face, resolved through `viewport/sectionPlane.ts`
+against the solve results (`plane_transform`) and the planar-face frame. If the
+picked source stops resolving after a solve, the section turns off and the eye
+dropdown shows why; a curved face is refused at pick time with a specific
+reason (it has no planar frame to cut with).
 
 One `THREE.Plane` (`viewport/sectionClipping.ts`) is shared by every clipped
 material and updated in place, so moving the plane costs no recompile. Clipped:
-body faces and edges, the preview overlay, and the face/edge/vertex ID layers.
-Not clipped: sketches, reference and user planes, helixes, the origin,
+body faces and edges, the preview overlay, the part's hovered/selected vertex
+dots, the assembly highlight overlays, and the face/edge/vertex ID layers. Not
+clipped: sketches, reference and user planes, helixes, the origin,
 dimension and constraint overlays, and the orientation cube.
 
-The visible cut face is a stencil cap (`Geometry3D/SectionCap.tsx`): per body,
-back faces increment the stencil and front faces decrement it, both clipped;
-a quad on the section plane then fills where the count is non-zero, in the
-body colour, at render order 150..152 (after the bodies, before highlights).
-This needs a stencil attachment on the MSAA target. `MsaaPresenter` creates the
-target with `stencilBuffer` only while a section is on and disposes/recreates
-it on a toggle (WebGL fixes the attachment set at allocation). The assembly
-viewport draws directly, so its canvas requests a stencil and it runs the same
-cap component.
+three clips the half where a point's signed distance to the plane is negative.
+The unflipped section therefore builds its plane with the negated source normal,
+keeping the far half so the cut face turns toward the viewer; Flip negates both
+fields and keeps the near half. `isPointClipped` (`< 0`) is the same rule for
+the CPU raycasts, so the picked side cannot drift from the drawn cut.
+
+The visible cut face is a stencil cap (`Geometry3D/SectionCap.tsx`). Per body,
+back faces increment the stencil and front faces decrement it, both clipped; a
+quad on the section plane then fills where the count is non-zero, in the body
+colour. Each body owns a contiguous band of three render orders
+(`sectionCapRenderOrders`, 150, 153, 156, ...), not one shared 150..152: three
+sorts the whole scene by renderOrder, so a shared band would run every body's
+back pass before any fill and each body's stencil clear would wipe the previous
+count. This needs a stencil attachment on the MSAA target. `MsaaPresenter`
+creates the target with `stencilBuffer` only while a section is on and
+disposes/recreates it on a toggle (WebGL fixes the attachment set at
+allocation). The assembly viewport draws directly, so its canvas requests a
+stencil and it runs the same cap component.
 
 Picking follows the cut in the GPU, not by filtering hits in JS:
 
 - `IdPipeline.setSectionActive` attaches the shared plane to the three B-rep ID
   layers and gives `IdRenderTarget` a stencil for the duration.
-- After the face layer, `IdPipeline` runs the same stencil count and draws a cap
-  quad in the reserved empty id (`vec4(0)`) with depth write. The solid-looking
-  cap consequently picks nothing, instead of exposing the interior back faces
-  the DoubleSide ID material would otherwise show.
+- After the face layer, `IdPipeline` runs the same stencil count and draws a
+  DoubleSide cap quad in the reserved empty id (`vec4(0)`) with depth write. The
+  solid-looking cap consequently picks nothing, instead of exposing the interior
+  back faces the DoubleSide ID material would otherwise show.
+- An armed plane/face pick resolves against the editor's consumed layers rather
+  than the active tool's hover filter, so it still works under a drawing tool.
 - Every section change calls `markDirty('section')` and clears/invalidates the
   hover scheduler, so a hover resolved against the previous cut cannot land.
 - The rubber band reads the same ID target, so it inherits the clip and cap.
-- CPU raycasts discard hits on the removed side: the orbit pivot
-  (`Viewport/pivotPick.ts`) and the assembly part grab (`AssemblyBody`). Hover
-  and selection still go through the ID buffer only.
+- CPU raycasts discard hits on the removed side (`isPointClipped`, negative
+  signed distance): the orbit pivot (`Viewport/pivotPick.ts`) and the assembly
+  part grab (`AssemblyBody`, whose material goes DoubleSide while clipped so the
+  kept side stays grabbable). Hover and selection still go through the ID buffer
+  only.
 
-`captureThumbnail` turns `localClippingEnabled` off for the capture draw (and
-restores it before the full-size repaint), so a document saved mid-section gets
-an uncut preview.
+The assembly gets clipping and caps, but only the builtin plane choice and the
+offset/flip rows: it has no planar-face registry to resolve a picked face
+against, so the dropdown hides the Pick row and explains that picking is a
+part-editor action, and it mounts no section arrow (no gesture is left
+half-wired). A pick armed in the part editor is cleared when the assembly
+viewport mounts.
+
+`captureThumbnail` turns `localClippingEnabled` off for the capture draw and
+sets `sectionStore.capturing` so the plane outline and drag arrow (plain scene
+geometry) unmount; both are restored before the full-size repaint, so a
+document saved mid-section gets an uncut preview.
 
 ## Scene Probe
 
