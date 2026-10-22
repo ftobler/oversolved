@@ -81,6 +81,7 @@ describe.skipIf(!ready)('regression corpus writer (real kernel)', () => {
 
     const run = await runRegressionCase(loaded)
     expect(run.issues).toEqual([])
+    expect(run.pass).toBe(true)
   })
 
   it('refuses to overwrite an existing case', { timeout: 120_000 }, async () => {
@@ -91,6 +92,10 @@ describe.skipIf(!ready)('regression corpus writer (real kernel)', () => {
     const checksPath = join(caseDir, 'checks.json')
     const live = parseChecks(caseName, readFileSync(checksPath, 'utf8'))
     const liveVolume = live.measures.volume as number
+    // `area` is deliberately omitted: regen must keep it omitted rather than
+    // silently re-freezing every live measure.
+    const keptMeasures = { ...live.measures, volume: liveVolume + 1000 }
+    delete keptMeasures.area
     const custom = {
       ...live,
       origin: { kind: 'fuzz' as const, ref: 'a hand-written note', date: '2026-01-02' },
@@ -99,7 +104,7 @@ describe.skipIf(!ready)('regression corpus writer (real kernel)', () => {
       what: 'a user-written description',
       tolerance: { rel: 1e-4, abs: 1e-4 },
       // A deliberately wrong live-derived value, to prove regen rewrites it.
-      measures: { ...live.measures, volume: liveVolume + 1000 },
+      measures: keptMeasures,
       features: { default: 'ok' },
     }
     writeFileSync(checksPath, `${JSON.stringify(custom, null, 2)}\n`)
@@ -107,18 +112,31 @@ describe.skipIf(!ready)('regression corpus writer (real kernel)', () => {
     const results = await regenCases([caseName], { root: workDir })
     expect(results).toEqual([{ name: caseName, changed: true }])
 
-    const after = parseChecks(caseName, readFileSync(checksPath, 'utf8'))
+    const checksBytes = readFileSync(checksPath, 'utf8')
+    const after = parseChecks(caseName, checksBytes)
     expect(after.origin).toEqual(custom.origin)
     expect(after.license).toBe(custom.license)
     expect(after.severity).toBe(custom.severity)
     expect(after.what).toBe(custom.what)
     expect(after.tolerance).toEqual(custom.tolerance)
     expect(after.measures.volume).toBeCloseTo(liveVolume, 6)
+    expect(after.measures.area, 'regen must not re-freeze an omitted measure').toBeUndefined()
+    // Textually, not just semantically: the user-owned blocks are untouched in
+    // the rewritten file, so a later regen cannot quietly reformat them.
+    for (const fragment of [
+      '"origin": {\n    "kind": "fuzz",\n    "ref": "a hand-written note",\n    "date": "2026-01-02"\n  }',
+      '"license": "own"',
+      '"severity": "soft"',
+      '"what": "a user-written description"',
+      '"tolerance": {\n    "rel": 0.0001,\n    "abs": 0.0001\n  }',
+    ]) {
+      expect(checksBytes, fragment).toContain(fragment)
+    }
+    expect(checksBytes, 'omitted measure').not.toContain('"area"')
     // The regen-pinned status set is the live one, which for this fixture is
     // the sketch verdict plus extrude ok, so it matches the freshly added case.
     expect(after.features).toEqual(live.features)
 
-    const checksBytes = readFileSync(checksPath, 'utf8')
     const snapshotBytes = readFileSync(join(caseDir, 'snapshot.json'), 'utf8')
     await regenCases([caseName], { root: workDir })
     expect(readFileSync(checksPath, 'utf8')).toBe(checksBytes)
@@ -127,5 +145,18 @@ describe.skipIf(!ready)('regression corpus writer (real kernel)', () => {
     // And the rewritten case still passes the runner.
     const run = await runRegressionCase(loadRegressionCase(caseName, workDir))
     expect(run.issues).toEqual([])
+  })
+
+  it('reports a snapshot-only rewrite as changed', { timeout: 120_000 }, async () => {
+    const snapshotPath = join(caseDir, 'snapshot.json')
+    const good = readFileSync(snapshotPath, 'utf8')
+    writeFileSync(snapshotPath, `${JSON.stringify({ bodies: {} }, null, 2)}\n`)
+
+    const results = await regenCases([caseName], { root: workDir })
+    expect(results).toEqual([{ name: caseName, changed: true }])
+    expect(readFileSync(snapshotPath, 'utf8')).toBe(good)
+    // The checks text did not move, so the change came from the snapshot alone.
+    const second = await regenCases([caseName], { root: workDir })
+    expect(second).toEqual([{ name: caseName, changed: false }])
   })
 })

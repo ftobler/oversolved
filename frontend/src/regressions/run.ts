@@ -40,6 +40,9 @@ export interface RegressionBuild {
 
 export interface RegressionRun extends RegressionBuild {
   issues: RegressionIssue[]
+  // Rows the case reports but does not enforce (`topology: report`). They never
+  // fail a case; the suite prints them as warnings.
+  warnings: RegressionIssue[]
   pass: boolean
 }
 
@@ -58,9 +61,6 @@ export function recipeFeatureIds(doc: Record<string, unknown>): string[] {
 /** Build one case from its recipe and reduce the bodies to the snapshot shape. */
 export async function buildRegression(name: string, recipe: string): Promise<RegressionBuild> {
   const doc = partSpecFromText(recipe)
-  // The case name is the doc id: a document switch resets solveLocally's
-  // cross-solve cache, so cases never build on each other's checkpoints.
-  doc.id = name
   const built = await buildAndMeasureLocally(doc)
   if (built === null) {
     throw new Error(`regressions/${name}: buildAndMeasureLocally returned null (OCC.js unavailable?)`)
@@ -150,8 +150,56 @@ export function regressionIssues(
   recipeFeatureIdsInRecipe: readonly string[],
   build: RegressionBuild,
 ): RegressionIssue[] {
-  const issues: RegressionIssue[] = []
+  return regressionMeasureRows(checks, build)
+    .filter((row) => row.enforced)
+    .map((row) => ({ check: row.check, ours: row.ours, expected: row.expected }))
+    .concat(regressionFeatureIssues(checks, recipeFeatureIdsInRecipe, build))
+}
 
+/**
+ * Rows the case states in `report` topology mode. They are compared but not
+ * enforced, so the suite prints them as warnings rather than dropping them.
+ */
+export function regressionWarnings(
+  checks: RegressionChecks,
+  build: RegressionBuild,
+): RegressionIssue[] {
+  return regressionMeasureRows(checks, build)
+    .filter((row) => !row.enforced)
+    .map((row) => ({ check: row.check, ours: row.ours, expected: row.expected }))
+}
+
+interface ComparedRow {
+  check: string
+  ours: string
+  expected: string
+  enforced: boolean
+}
+
+function regressionMeasureRows(checks: RegressionChecks, build: RegressionBuild): ComparedRow[] {
+  const measured = compareMeasures(build.measures, checks.measures, {
+    tolerance: checks.tolerance,
+    topology: checks.topology,
+  })
+  const rows: ComparedRow[] = []
+  for (const row of measured.rows) {
+    if (row.within) continue
+    rows.push({
+      check: row.measure,
+      ours: formatValue(row.ours),
+      expected: formatValue(row.theirs),
+      enforced: row.enforced,
+    })
+  }
+  return rows
+}
+
+function regressionFeatureIssues(
+  checks: RegressionChecks,
+  recipeFeatureIdsInRecipe: readonly string[],
+  build: RegressionBuild,
+): RegressionIssue[] {
+  const issues: RegressionIssue[] = []
   for (const id of recipeFeatureIdsInRecipe) {
     const expected = checks.features.except?.[id] ?? checks.features.default
     const live = build.statuses[id]
@@ -171,16 +219,6 @@ export function regressionIssues(
       })
     }
   }
-
-  const measured = compareMeasures(build.measures, checks.measures, {
-    tolerance: checks.tolerance,
-    topology: checks.topology,
-  })
-  for (const row of measured.rows) {
-    if (!row.enforced || row.within) continue
-    issues.push({ check: row.measure, ours: formatValue(row.ours), expected: formatValue(row.theirs) })
-  }
-
   return issues
 }
 
@@ -203,12 +241,13 @@ export async function runRegressionCase(regressionCase: RegressionCase): Promise
 
   const build = await buildRegression(regressionCase.name, regressionCase.recipe)
   const issues = regressionIssues(regressionCase.checks, featureIds, build)
+  const warnings = regressionWarnings(regressionCase.checks, build)
   // The snapshot is diffed only when the case carries one; `loadRegressionCase`
   // already enforces `snapshot: true` <=> `snapshot.json`.
   if (regressionCase.snapshot !== null) {
     issues.push(...snapshotIssues(build.snapshot, regressionCase.snapshot))
   }
-  return { ...build, issues, pass: issues.length === 0 }
+  return { ...build, issues, warnings, pass: issues.length === 0 }
 }
 
 /** Render failing rows as `<case>/<check>: ours=... expected=...`. */

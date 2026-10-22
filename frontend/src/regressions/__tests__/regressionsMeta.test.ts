@@ -18,6 +18,7 @@ import {
   parseChecks,
   parseSnapshot,
   REGRESSION_CASE_FILES,
+  REGRESSIONS_DIR,
 } from '../corpus'
 import { recipeFeatureIds, regressionFailureIsSoft } from '../run'
 
@@ -89,6 +90,18 @@ function writeCase(
   if (options.extra !== undefined) writeFileSync(join(dir, options.extra), 'stray\n')
 }
 
+/** Files in a case directory beyond the three the format allows, plus missing required ones. */
+function layoutProblems(name: string, dir = REGRESSIONS_DIR): string[] {
+  const files = readdirSync(join(dir, name)).sort()
+  const problems = files
+    .filter((file) => !(REGRESSION_CASE_FILES as readonly string[]).includes(file))
+    .map((file) => `${name}: stray file ${file}`)
+  for (const required of ['recipe.yaml', 'checks.json']) {
+    if (!files.includes(required)) problems.push(`${name}: missing ${required}`)
+  }
+  return problems
+}
+
 describe('regression corpus meta', () => {
   const cases = listRegressionCases()
 
@@ -106,14 +119,14 @@ describe('regression corpus meta', () => {
 
   it('has exactly recipe.yaml, checks.json and an optional snapshot.json per case', () => {
     for (const name of listRegressionDirs()) {
-      const files = readdirSync(join(process.cwd(), 'regressions', name)).sort()
-      const allowed = [...REGRESSION_CASE_FILES]
-      for (const file of files) {
-        expect(allowed, `${name}: stray file ${file}`).toContain(file)
-      }
-      expect(files, `${name}: missing recipe.yaml`).toContain('recipe.yaml')
-      expect(files, `${name}: missing checks.json`).toContain('checks.json')
+      expect(layoutProblems(name), `${name}: unexpected case layout`).toEqual([])
     }
+  })
+
+  it('rejects a stray file in a case directory', () => {
+    const root = join(workDir, 'stray-file')
+    writeCase(root, 'stray-case', { checks: VALID_CHECKS, extra: 'notes.txt' })
+    expect(layoutProblems('stray-case', root)).toEqual(['stray-case: stray file notes.txt'])
   })
 
   it('loads every case recipe through the one part loader', () => {
@@ -247,10 +260,10 @@ describe('migrated real_doc entries', () => {
   ]
 
   const baseline = JSON.parse(
-    readFileSync(join(process.cwd(), 'src', 'wasm-kernel', 'regression-baseline.json'), 'utf8'),
+    readFileSync(join(REGRESSIONS_DIR, '..', 'src', 'wasm-kernel', 'regression-baseline.json'), 'utf8'),
   ) as Array<{ label: string }>
   const manifest = JSON.parse(
-    readFileSync(join(process.cwd(), 'src', 'wasm-kernel', 'corpus-manifest.json'), 'utf8'),
+    readFileSync(join(REGRESSIONS_DIR, '..', 'src', 'wasm-kernel', 'corpus-manifest.json'), 'utf8'),
   ) as { cases: Record<string, unknown>; summary: { total: number } }
 
   it('keeps the numbered labels in neither the baseline nor the manifest', () => {

@@ -72,6 +72,10 @@ describe.skipIf(!ready)('regression corpus (real OCC)', () => {
   for (const regressionCase of cases) {
     it(regressionCase.name, { timeout: 120_000 }, async () => {
       const run = await runRegressionCase(regressionCase)
+      const warningLines = issueLines(regressionCase.name, run.warnings)
+      if (warningLines.length > 0) {
+        console.warn(`[regression] ${regressionCase.name} (reported, not enforced):\n${warningLines.join('\n')}`)
+      }
       const lines = issueLines(regressionCase.name, run.issues)
       if (lines.length === 0) return
       const message = lines.join('\n')
@@ -129,5 +133,33 @@ describe.skipIf(!ready)('regression corpus (real OCC)', () => {
     const run = await runRegressionCase(pinned)
     expect(run.pass).toBe(false)
     expect(run.issues.map((issue) => issue.check)).toContain(`features/${okId}`)
+  })
+
+  it('warns instead of failing when a soft case moved', async () => {
+    const seed = cases.find(
+      (c) => c.checks.severity === 'soft' && typeof c.checks.measures.volume === 'number',
+    ) as RegressionCase
+    const shifted = copyWith(seed, {
+      ...seed.checks,
+      measures: { ...seed.checks.measures, volume: (seed.checks.measures.volume as number) * 1.01 },
+    })
+    const run = await runRegressionCase(shifted)
+    expect(run.pass).toBe(false)
+    expect(run.issues.map((issue) => issue.check)).toContain('volume')
+    expect(regressionFailureIsSoft(seed.checks.severity, false)).toBe(true)
+  })
+
+  it('reports a non-enforced faces row without failing', async () => {
+    const seed = cases.find((c) => c.name === 'two-rings') as RegressionCase
+    const faces = seed.checks.measures.faces as number
+    const reported = copyWith(seed, {
+      ...seed.checks,
+      topology: 'report',
+      measures: { ...seed.checks.measures, faces: faces + 1 },
+    })
+    const run = await runRegressionCase(reported)
+    expect(run.pass).toBe(true)
+    expect(run.issues.map((issue) => issue.check)).not.toContain('faces')
+    expect(run.warnings.map((issue) => issue.check)).toContain('faces')
   })
 })

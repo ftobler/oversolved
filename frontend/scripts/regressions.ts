@@ -19,7 +19,7 @@
  * `just install-occ` and `just wasm`.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { loadOcc } from '@/kernel/occ/loadOcc'
@@ -43,7 +43,7 @@ import {
   type RegressionSnapshot,
   type Severity,
 } from '../src/regressions/corpus'
-import { buildRegression, recipeFeatureIds, type RegressionBuild } from '../src/regressions/run'
+import { buildRegression, issueLines, recipeFeatureIds, regressionIssues, type RegressionBuild } from '../src/regressions/run'
 
 const DEFAULT_TOLERANCE = { rel: 1e-6, abs: 1e-6 }
 
@@ -70,8 +70,8 @@ export async function initKernel(): Promise<void> {
 }
 
 /** The live build reduced to the measure fields a checks.json states. */
-export function liveMeasures(build: RegressionBuild): RegressionMeasures {
-  return {
+export function liveMeasures(build: RegressionBuild, keep?: readonly string[]): RegressionMeasures {
+  const all: RegressionMeasures = {
     bodies: build.measures.bodies,
     volume: build.measures.volume,
     area: build.measures.area,
@@ -80,6 +80,18 @@ export function liveMeasures(build: RegressionBuild): RegressionMeasures {
     faces: build.measures.faces,
     edges: build.measures.edges,
   }
+  // `bodies` is the one required measure; a regen keeps exactly the optional
+  // names the case already states, so a deliberately omitted measure stays
+  // omitted instead of silently being re-frozen.
+  if (keep === undefined) return all
+  const out: RegressionMeasures = { bodies: all.bodies }
+  if (keep.includes('volume')) out.volume = all.volume
+  if (keep.includes('area')) out.area = all.area
+  if (keep.includes('centroid')) out.centroid = all.centroid
+  if (keep.includes('bbox')) out.bbox = all.bbox
+  if (keep.includes('faces')) out.faces = all.faces
+  if (keep.includes('edges')) out.edges = all.edges
+  return out
 }
 
 /**
@@ -115,8 +127,24 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
 }
 
+/** Write via a sibling temp file and rename, so a crash never leaves a torn JSON. */
+function writeJsonAtomic(path: string, value: unknown): void {
+  const tmp = `${path}.tmp-${process.pid}-${Date.now()}`
+  try {
+    writeJson(tmp, value)
+    renameSync(tmp, path)
+  } catch (error) {
+    rmSync(tmp, { force: true })
+    throw error
+  }
+}
+
+/** `YYYY-MM-DD` from the machine's local calendar, not the UTC day. */
 function localDate(): string {
-  return new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
 }
 
 export interface AddCaseOptions {
@@ -173,11 +201,28 @@ export async function addCase(
   // Re-read the text the writer will produce, so a case that would fail the
   // meta-test cannot be written in the first place.
   parseChecks(name, JSON.stringify(checks), featureIds)
+  // The live-derived fields must already pass. The dangerous case is a recipe
+  // feature with no solve-result row: `default: ok` would leave it unpinned and
+  // the written case would fail at `features/<id>: ours=missing`.
+  const issues = regressionIssues(checks, featureIds, build)
+  if (issues.length > 0) {
+    throw new Error(`regressions:add: "${name}" would not pass:\n${issueLines(name, issues).join('\n')}`)
+  }
 
-  mkdirSync(caseDir, { recursive: true })
-  writeFileSync(join(caseDir, 'recipe.yaml'), recipe)
-  writeJson(join(caseDir, 'checks.json'), checks)
-  if (checks.snapshot) writeJson(join(caseDir, 'snapshot.json'), stableSnapshot(build.snapshot))
+  // Build the whole case in a temp directory, then rename it into place: a
+  // crash mid-write cannot leave a half-written case, and checks can never be
+  // newer than the snapshot they describe.
+  const tmpDir = join(root, `.${name}.tmp-${process.pid}-${Date.now()}`)
+  try {
+    mkdirSync(tmpDir, { recursive: true })
+    writeFileSync(join(tmpDir, 'recipe.yaml'), recipe)
+    if (checks.snapshot) writeJson(join(tmpDir, 'snapshot.json'), stableSnapshot(build.snapshot))
+    writeJson(join(tmpDir, 'checks.json'), checks)
+    renameSync(tmpDir, caseDir)
+  } catch (error) {
+    rmSync(tmpDir, { recursive: true, force: true })
+    throw error
+  }
   return { dir: caseDir, checks }
 }
 
@@ -215,19 +260,26 @@ export async function regenCases(names: readonly string[], options: RegenOptions
     const next: RegressionChecks = {
       ...regressionCase.checks,
       features: liveFeatures(build, recipeFeatureIds(doc)),
-      measures: liveMeasures(build),
+      // Only the measures the case already states (plus the required `bodies`),
+      // so an omitted measure is not silently re-frozen.
+      measures: liveMeasures(build, Object.keys(regressionCase.checks.measures)),
     }
     const text = `${JSON.stringify(next, null, 2)}\n`
-    const changed = text !== before
-    writeFileSync(checksPath, text)
+    let snapshotChanged = false
+    // Snapshot first, checks last: a crash between the two leaves the older
+    // checks describing a newer snapshot (a loud mismatch) rather than checks
+    // claiming a snapshot that was never written.
     if (next.snapshot) {
       const snapshotPath = join(root, name, 'snapshot.json')
-      const snapshotText = `${JSON.stringify(stableSnapshot(build.snapshot), null, 2)}\n`
+      const snapshot = stableSnapshot(build.snapshot)
+      const snapshotText = `${JSON.stringify(snapshot, null, 2)}\n`
       if (!existsSync(snapshotPath) || readFileSync(snapshotPath, 'utf8') !== snapshotText) {
-        writeJson(snapshotPath, stableSnapshot(build.snapshot))
+        writeJsonAtomic(snapshotPath, snapshot)
+        snapshotChanged = true
       }
     }
-    results.push({ name, changed })
+    writeJsonAtomic(checksPath, next)
+    results.push({ name, changed: text !== before || snapshotChanged })
   }
   return results
 }
