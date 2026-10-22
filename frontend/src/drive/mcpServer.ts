@@ -16,7 +16,7 @@
 // once; an ops implementation that answers out of band would break that.
 
 import { PART_DOC_SCHEMA_URI } from '@/persistence/partDocSchema'
-import { validateSelector, type Selector } from '@/kernel/select'
+import { validateSelector, typeVocabulary, type Selector } from '@/kernel/select'
 import { parseReference, type TranslationReference } from '@/translations/corpus'
 import { MUTATION_CATALOG_URI, mutationCatalogPayload } from '@/drive/mutationCatalogPayload'
 import { worldFrameSentence } from '@/drive/worldFrame'
@@ -142,6 +142,12 @@ const VEC3_SCHEMA = {
 // predicate key" cleanly); this mirrors it so tools/list is honest about the
 // shape, and an unknown predicate is still rejected before the engine runs.
 //
+// The `type` description lists the real vocabulary from typeVocabulary, the
+// same tables the engine's typeOf and the query hierarchy read, so the schema
+// cannot advertise a name the selector would never match.
+
+const TYPE_DESCRIPTION = `Edge kind (${typeVocabulary('edge').join(', ')}) or face surface type (${typeVocabulary('face').join(', ')}).`
+
 // A `$ref` fragment resolves against the schema-document root, which for a tool
 // is the whole `inputSchema`. These definitions are therefore spread into that
 // root as `$defs` and the `selector` property refs into them; nesting the
@@ -159,7 +165,7 @@ const SELECTOR_DEFS: Record<string, unknown> = {
         not: { $ref: '#/$defs/predicate' },
         parallel: VEC3_SCHEMA,
         perpendicular: VEC3_SCHEMA,
-        type: { type: 'string', description: 'Edge kind or face surface_type.' },
+        type: { type: 'string', description: TYPE_DESCRIPTION },
         extreme: {
           type: 'object',
           required: ['axis', 'side'],

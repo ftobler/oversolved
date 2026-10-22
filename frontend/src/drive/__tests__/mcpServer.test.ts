@@ -94,6 +94,11 @@ describe('createMcpServer', () => {
     expect(call({ kind: 'edge', where: { and: [{ parallel: [0, 0, 1] }, { not: { on_face: { kind: 'face' } } }] } })).toBe(true)
     // An unknown predicate fails additionalProperties on the predicate def.
     expect(call({ kind: 'edge', where: { frobnicate: [0, 0, 1] } })).toBe(false)
+    // The `type` description lists the real vocabulary, derived from the same
+    // tables the engine reads, so `plane` is not advertised as an alias.
+    const schemaText = JSON.stringify(tool!.inputSchema)
+    expect(schemaText).toContain('flatface')
+    expect(schemaText).toContain('cylinderface')
   })
 
   it('calls a tool and returns its payload as text content', async () => {

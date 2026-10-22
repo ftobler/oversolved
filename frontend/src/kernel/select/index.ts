@@ -4,6 +4,7 @@
 // op (drive/headlessOps.ts) are the only consumers.
 
 export { selectByPredicate, type EvalContext } from './select'
+export { typeVocabulary } from './geometry'
 export { selector as validateSelector, PREDICATE_KEYS } from './validate'
 export { SelectorError } from './errors'
 export type {

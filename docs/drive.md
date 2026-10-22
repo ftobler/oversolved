@@ -366,10 +366,15 @@ banner on stdout, so a client config must use the direct node invocation.
   `perpendicular`, `type`, `extreme` (the min/max-projection group, tolerance
   grouped so a box top yields all four edges), `on_face` (edges bounding the
   selected faces), `created_by` (ancestry through the query engine) and
-  `radius`. The selector itself is an authoring aid and is never stored: the
+  `radius`. A `type` is one exact spelling per meaning, with no synonyms: an
+  edge kind (`line`, `circle`, `arc`, `spline`, `ellipse`) or a face surface
+  type (`flatface`, `cylinderface`, `coneface`, `sphereface`, `torusface`).
+  The selector itself is an authoring aid and is never stored: the
   returned queries are what goes into the document, exactly as if each element
   had been clicked. An empty match is a tool error whose message names the
-  nearest-miss count per predicate; an unknown predicate key is an invalid
+  nearest-miss count per predicate; when a `type` clause matched nothing it also
+  lists the values present among the candidates and the full valid set for that
+  kind. An unknown predicate key is an invalid
   argument rejected by name. The engine is pure TS in `frontend/src/kernel/select/`.
 
 - Document handles: every tool that needs a document takes exactly one of

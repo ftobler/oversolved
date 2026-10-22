@@ -6,6 +6,7 @@
 // missing or empty query means the element is unnamed and cannot be selected.
 
 import type { BodyResult, EdgeData } from '@/types/cad'
+import { subtypesOf } from '@/kernel/query'
 import type { EdgeGeometry, FaceGeometry, SelectKind, Vec3 } from './types'
 
 /** One selectable element, resolved to its owning body and index. */
@@ -135,6 +136,25 @@ export function radiusOf(c: Candidate): number | null {
 export function typeOf(c: Candidate): string | null {
   if (c.kind === 'face') return c.body.mesh?.face_data?.[c.index]?.surface_type ?? null
   return edgeData(c)?.kind ?? null
+}
+
+// Every EdgeData kind, written as a Record so a new member of the union fails
+// to compile here until the select vocabulary learns it.
+const EDGE_KIND_SET: Record<EdgeData['kind'], true> = {
+  line: true,
+  circle: true,
+  arc: true,
+  spline: true,
+  ellipse: true,
+}
+
+const EDGE_KINDS: readonly string[] = Object.keys(EDGE_KIND_SET)
+
+/** The `type` predicate vocabulary for a selector kind, read from the same
+ *  tables as typeOf: edge kinds from the EdgeData union and face surface types
+ *  from the query engine's type hierarchy. */
+export function typeVocabulary(kind: SelectKind): readonly string[] {
+  return kind === 'edge' ? EDGE_KINDS : subtypesOf('face')
 }
 
 /** The per-item geometry summary the agent reads back. */
