@@ -61,9 +61,7 @@ World is Y-up; the frames of the Top/Front/Right planes are in the server
 instructions.
 
 - Author with `run` steps, chain by `docHash`.
-- Pick edges and faces with `select`, not by guessing query strings. The
-  `mutations` fillet example uses positional `?body_ex1:edge:N` queries;
-  do not copy that pattern, they break as soon as the topology changes.
+- Pick edges and faces with `select`, not by guessing query strings.
 - Check your progress with `measure` after each meaningful step.
 - `compare` against a reference only if one is cheap to get (a CadQuery
   example run through `frontend/scripts/cadqueryReference.py`, see

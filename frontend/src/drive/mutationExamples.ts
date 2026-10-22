@@ -4,11 +4,14 @@
 // normal module, so the `mutations` tool serves them and the catalog tests run
 // exactly the same steps through the real kernel.
 //
-// The edge queries are the deterministic `?body_ex1:edge:<index>` aliases the
-// builder registers, not the longer `?` ancestry strings `select` mints for
-// this box: a select query embeds the sketch entity ids that created the edge,
-// and only a seeded journal makes those repeat. The indices are the ones
-// `select {parallel:[0,1,0]}` returns for this box.
+// The edge queries are the ancestry strings `select` mints for this box: run as
+// `select {kind:'edge', where:{parallel:[0,1,0]}}` on the document BOX_STEPS
+// builds, they name its four Y-parallel edges (Y is up). They embed the sketch
+// entity ids add_rect minted, and those repeat because a drive run seeds its id
+// source from the starting document's hash (drive/seededIds.ts), so the same
+// fresh document and steps mint the same ids. A ScriptStep is a command id or a
+// mutation, so it cannot express a `select` step: the example carries the
+// queries that step produced instead of the step itself.
 
 import type { ScriptStep } from '@/drive/scriptRunner'
 
@@ -27,10 +30,10 @@ const BOX_STEPS: ScriptStep[] = [
 const FILLET_STEPS: ScriptStep[] = [
   ...BOX_STEPS,
   { mutation: { type: 'add_fillet', featureId: 'fi1', label: 'Fillet' } },
-  { mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '?body_ex1:edge:1' } },
-  { mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '?body_ex1:edge:2' } },
-  { mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '?body_ex1:edge:7' } },
-  { mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '?body_ex1:edge:9' } },
+  { mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '?15,4,9,15,15,7,7;@u|e_9402afa90c6432c7@ex1@body_ex1@sk1/D_eW7NvY8Bn9T-iF@sk1/l-KpA38G8FN2rTHK@cls_xn@cls_zn:straightedge' } },
+  { mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '?15,4,9,15,15,7,7;@u|e_ea1814dba5d2758f@ex1@body_ex1@sk1/GXPNVYZrzA5NG-k_@sk1/l-KpA38G8FN2rTHK@cls_xn@cls_zp:straightedge' } },
+  { mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '?15,4,9,15,15,7,7;@u|e_9f9a26915a03cab5@ex1@body_ex1@sk1/4qRU4kX287mbNyVA@sk1/D_eW7NvY8Bn9T-iF@cls_xp@cls_zn:straightedge' } },
+  { mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '?15,4,9,15,15,7,7;@u|e_feab0add793ad259@ex1@body_ex1@sk1/GXPNVYZrzA5NG-k_@sk1/4qRU4kX287mbNyVA@cls_xp@cls_zp:straightedge' } },
   { mutation: { type: 'set_fillet_field', featureId: 'fi1', field: 'radius', value: 3 } },
 ]
 
