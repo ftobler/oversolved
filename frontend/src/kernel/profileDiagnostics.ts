@@ -250,8 +250,10 @@ function gapBand(gap: number): string | null {
 /**
  * Measure a profile: per-joint gaps against the tolerance ladder, per-loop area
  * at both sample counts, duplicate loops, degenerate edges, and the containment
- * the face builder will use (plus the same containment at 64 samples, so a
- * nesting decision that only holds on the coarse polygon shows up).
+ * the face builder will use. `groups` is derived from the raw loops BEFORE
+ * `dissolveAdjacentLoops`, so a plus-shaped void still reports as its five
+ * touching holes here even though the builder receives one merged wire; the
+ * 1-sample coarse pass is reported alongside as the chord comparison.
  *
  * `loops` is what `sketchLoopsToFace` receives: loops[0] the outer boundary and
  * loops[1:] its holes, or (from `extractProfileLoops`) every loop of a sketch.

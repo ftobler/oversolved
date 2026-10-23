@@ -622,6 +622,15 @@ describe('arcSamplePoints', () => {
     expect(pts[0][0]).toBeCloseTo(Math.cos((5 * Math.PI) / 4), 9)
     expect(pts[0][1]).toBeCloseTo(Math.sin((5 * Math.PI) / 4), 9)
   })
+
+  it('keeps a stored 360 degree arc as a full turn instead of a point', () => {
+    const pts = arcSamplePoints(arcEdge(0, 0, 1, 0, 360), 3)
+    expect(pts).toHaveLength(3)
+    for (const [index, deg] of [90, 180, 270].entries()) {
+      expect(pts[index][0]).toBeCloseTo(Math.cos((deg * Math.PI) / 180), 9)
+      expect(pts[index][1]).toBeCloseTo(Math.sin((deg * Math.PI) / 180), 9)
+    }
+  })
 })
 
 describe('ellipseArcSamplePoints', () => {
@@ -825,6 +834,17 @@ describe('dissolveAdjacentLoops', () => {
   it('leaves disjoint holes alone', () => {
     const holes = [rect(-3, -1, -2, 1), rect(2, -1, 3, 1)]
     expect(dissolveAdjacentLoops(holes)).toEqual(holes)
+  })
+
+  it('dissolves the touching holes and keeps a self-closed hole verbatim', () => {
+    // A full ellipse has no shareable edge; it must not disable the plus merge.
+    const ellipse: LoopEdge = { kind: 'ellipse', center: [10, 10], a: 2, b: 1 }
+    const merged = dissolveAdjacentLoops([...plusRegions(), [ellipse]])
+    expect(merged).toHaveLength(2)
+    const plus = merged.find((loop) => loop.length === 12)
+    expect(plus).toBeDefined()
+    expect(Math.abs(loopSignedArea(plus as LoopEdge[], CENTROID_ARC_SAMPLES))).toBeCloseTo(8.2251, 9)
+    expect(merged.some((loop) => loop.length === 1 && loop[0] === ellipse)).toBe(true)
   })
 
   it('a circle with a plus of holes classifies as one face with one plus hole', () => {

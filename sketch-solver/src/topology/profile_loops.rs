@@ -105,7 +105,16 @@ fn arc_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
         // instead, as this once did, sampled the complementary arc in reverse
         // order and the loop polygon grew a chord across it.
         let two_pi = 2.0 * std::f64::consts::PI;
-        let sweep = if ccw {
+        // A stored 360-degree arc is a full turn, not a zero one: rem_euclid
+        // would collapse 2*pi to 0 and sample every point at the start.
+        let full_turn = (a1 - a0).abs() >= two_pi - 1e-9;
+        let sweep = if full_turn {
+            if ccw {
+                two_pi
+            } else {
+                -two_pi
+            }
+        } else if ccw {
             (a1 - a0).rem_euclid(two_pi)
         } else {
             -(a0 - a1).rem_euclid(two_pi)
@@ -715,6 +724,23 @@ mod tests {
         let want = |deg: f64| [deg.to_radians().cos(), deg.to_radians().sin()];
         for (k, deg) in [-54.0, -108.0, -162.0, -216.0].iter().enumerate() {
             let w = want(*deg);
+            assert!(
+                (pts[k + 1][0] - w[0]).abs() < 1e-12 && (pts[k + 1][1] - w[1]).abs() < 1e-12,
+                "sample {k} should sit at {deg} degrees: {:?}",
+                pts[k + 1]
+            );
+        }
+    }
+
+    #[test]
+    fn loop_pts_keeps_a_stored_360_degree_arc_as_a_full_turn() {
+        // The modulo sweep would read 2*pi as 0 and collapse every sample onto
+        // the start; a full turn must still sample around the circle.
+        let pts = loop_pts(&[arc_edge([0.0, 0.0], 1.0, 0.0, 360.0, true)], 3);
+        assert_eq!(pts.len(), 4);
+        let quadrants = [90.0_f64, 180.0, 270.0];
+        for (k, deg) in quadrants.iter().enumerate() {
+            let w = [deg.to_radians().cos(), deg.to_radians().sin()];
             assert!(
                 (pts[k + 1][0] - w[0]).abs() < 1e-12 && (pts[k + 1][1] - w[1]).abs() < 1e-12,
                 "sample {k} should sit at {deg} degrees: {:?}",
