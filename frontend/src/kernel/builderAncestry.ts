@@ -49,7 +49,13 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
     // The UUID the tessellator minted into this face's query: one source, so
     // the query and the registered element cannot disagree.
     const uuid = mesh.face_uuids?.[faceIdx] ?? null
-    const ancestryTokens = (uuid && body.face_ancestry) ? (body.face_ancestry[uuid] ?? null) : null
+    // A cap's net lives in `face_cap_ancestry` (it is kept out of
+    // face_ancestry, which also feeds edge lineage): a joined cap names its
+    // producing profile instead of falling through to the body-wide queries.
+    const faceTokens = uuid ? (body.face_ancestry?.[uuid] ?? null) : null
+    const ancestryTokens = (faceTokens && faceTokens.length)
+      ? faceTokens
+      : (uuid ? (body.face_cap_ancestry?.[uuid] ?? null) : null)
     if (ancestryTokens && ancestryTokens.length) {
       ancestorIds.push(...ancestryTokens)
     } else if (body.profile_queries.length) {

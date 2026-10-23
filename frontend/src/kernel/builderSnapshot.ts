@@ -37,6 +37,9 @@ function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
     ...(body.edge_uuids ? { edge_uuids: [...body.edge_uuids] } : {}),
     ...(body.face_ancestry ? { face_ancestry: { ...body.face_ancestry } } : {}),
     ...(body.edge_ancestry ? { edge_ancestry: { ...body.edge_ancestry } } : {}),
+    ...(body.face_cap_ancestry ? { face_cap_ancestry: { ...body.face_cap_ancestry } } : {}),
+    ...(body.face_owner ? { face_owner: { ...body.face_owner } } : {}),
+    ...(body.edge_owner ? { edge_owner: { ...body.edge_owner } } : {}),
     // A copied shape keeps the canonical order, so the indices move with it.
     ...(body.brep_new && body.brep_new.shape === body.shape && shape != null
       ? { brep_new: { ...body.brep_new, shape } }

@@ -58,6 +58,15 @@ export interface Body {
   face_ancestry?: Record<string, string[]>
   edge_ancestry?: Record<string, string[]>
   /**
+   * A cap face's ancestral net (its UUID -> the profile entities that bounded
+   * it), kept OUT of `face_ancestry`: that map also feeds edge lineage, and an
+   * edge's tokens are the union of its adjacent faces' ancestry, where a cap's
+   * whole-loop list would swamp the one profile entity the edge lies on. Only
+   * identification reads this map, as the face's ancestral recovery net
+   * (occ/prismLineage.ts, join-cap-lineage).
+   */
+  face_cap_ancestry?: Record<string, string[]>
+  /**
    * The elements the body's last modifier created (`brep_diff`'s new faces,
    * edges and their vertices), as canonical indices into `shape`
    * (occ/modifierAttribution.ts). `brep_diff` holds live sub-shapes that die
@@ -65,6 +74,17 @@ export interface Body {
    * because the restore copy keeps the canonical order.
    */
   brep_new?: NewElements | null
+  /**
+   * Construction UUID -> the feature that minted that identity, for the face and
+   * edge UUIDs whose creator is not the body's `created_by`
+   * (occ/modifierAttribution.ts). A UUID names one element for the life of the
+   * model, so this survives a later modifier reshaping the body; the
+   * last-modifier `brep_new` set alone cannot, which used to move every earlier
+   * modifier's elements back onto the body's creator. Absent entries mean the
+   * body's creator.
+   */
+  face_owner?: Record<string, string>
+  edge_owner?: Record<string, string>
   /**
    * True when the body's geometry originates from a STEP import (as opposed to
    * native modelling). Imported B-rep carries freeform faces and STEP tolerances

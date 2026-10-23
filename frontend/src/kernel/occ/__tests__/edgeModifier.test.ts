@@ -192,6 +192,7 @@ function run(oldFaces: OccShape[], newFace: OccShape, uuids: string[], maker = m
     edgeNames: new SubShapeMap(),
     faceAncestry: {},
     edgeAncestry: {},
+    capAncestry: {},
   }
   oldFaces.forEach((f, i) => {
     old.faceNames.set(f as OccSubShape, uuids[i])
@@ -296,6 +297,7 @@ function runExtract(opts: {
       edgeNames: mapOf(opts.oldEdgeNames ?? []),
       faceAncestry: {},
       edgeAncestry: {},
+      capAncestry: {},
     }
     for (const [, uuid] of opts.oldFaceNames) old.faceAncestry[uuid] = ['extrude1']
     for (const [, uuid] of opts.oldEdgeNames ?? []) old.edgeAncestry[uuid] = ['extrude1']

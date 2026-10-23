@@ -73,6 +73,7 @@ describe.skipIf(!oc)('construction-name minting (real OCC)', () => {
         edgeUuids: [...r.edgeNames.values()],
         faceAncestry: { ...r.faceAncestry },
         edgeAncestry: { ...r.edgeAncestry },
+        capAncestry: { ...r.capAncestry },
       }
     } finally {
       scope.dispose()
@@ -80,7 +81,7 @@ describe.skipIf(!oc)('construction-name minting (real OCC)', () => {
   }
 
   it('mints one construction UUID per face, exactly the symbolic values', () => {
-    const { faceUuids: uuids, faceAncestry } = build()
+    const { faceUuids: uuids, faceAncestry, capAncestry } = build()
     // A box has 6 faces: 4 sides + 2 caps.
     expect(uuids.length).toBe(6)
     // Collision-free within a build.
@@ -97,12 +98,17 @@ describe.skipIf(!oc)('construction-name minting (real OCC)', () => {
       expect(uuids).toContain(u)
     }
 
-    // Side faces carry the generating profile entity as ancestral fallback;
-    // caps carry an empty ancestral list.
+    // Side faces carry the generating profile entity as ancestral fallback; a
+    // cap's net is its whole profile, kept in the cap map so an edge's lineage
+    // union never inherits it (join-cap-lineage).
     for (let i = 0; i < 4; i++) {
       expect(faceAncestry[expectedSides[i]]).toEqual([`@${SKETCH_ID}/l${i}`])
     }
-    for (const cap of expectedCaps) expect(faceAncestry[cap]).toEqual([])
+    const capTokens = ['l0', 'l1', 'l2', 'l3'].map((e) => `@${SKETCH_ID}/${e}`).sort()
+    for (const cap of expectedCaps) {
+      expect(faceAncestry[cap]).toEqual([])
+      expect(capAncestry[cap]).toEqual(capTokens)
+    }
   })
 
   it('derives collision-free edge UUIDs from face adjacency', () => {

@@ -31,10 +31,17 @@ export interface ShapeNames {
   edgeNames: SubShapeMap<string>
   faceAncestry: Record<string, string[]>
   edgeAncestry: Record<string, string[]>
+  // A cap face's identification net, kept apart from `faceAncestry` (Body
+  // `face_cap_ancestry`): edge lineage unions faceAncestry, and a cap's
+  // whole-profile list is not the entity an edge lies on.
+  capAncestry: Record<string, string[]>
 }
 
 export function emptyShapeNames(): ShapeNames {
-  return { faceNames: new SubShapeMap(), edgeNames: new SubShapeMap(), faceAncestry: {}, edgeAncestry: {} }
+  return {
+    faceNames: new SubShapeMap(), edgeNames: new SubShapeMap(),
+    faceAncestry: {}, edgeAncestry: {}, capAncestry: {},
+  }
 }
 
 /** Add `from` into `into`, later entries winning: one shape's names onto another's. */
@@ -43,6 +50,7 @@ export function mergeShapeNames(into: ShapeNames, from: ShapeNames): ShapeNames 
   into.edgeNames.assign(from.edgeNames)
   Object.assign(into.faceAncestry, from.faceAncestry)
   Object.assign(into.edgeAncestry, from.edgeAncestry)
+  Object.assign(into.capAncestry, from.capAncestry)
   return into
 }
 
@@ -74,13 +82,14 @@ export function readBodyNames(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
-  body: Pick<Body, 'face_uuids' | 'edge_uuids' | 'face_ancestry' | 'edge_ancestry'>,
+  body: Pick<Body, 'face_uuids' | 'edge_uuids' | 'face_ancestry' | 'edge_ancestry' | 'face_cap_ancestry'>,
 ): ShapeNames {
   return {
     faceNames: namesFromArray(canonicalFaces(oc, scope, shape), body.face_uuids),
     edgeNames: namesFromArray(canonicalEdges(oc, scope, shape), body.edge_uuids),
     faceAncestry: { ...(body.face_ancestry ?? {}) },
     edgeAncestry: { ...(body.edge_ancestry ?? {}) },
+    capAncestry: { ...(body.face_cap_ancestry ?? {}) },
   }
 }
 

@@ -104,6 +104,7 @@ interface NameBuildContext {
   builtFace: (f: OccShape) => OccSubShape
   faceNames: Names
   faceAncestry: Lineage
+  capAncestry: Lineage
 }
 
 /**
@@ -128,15 +129,19 @@ export function extractNames(
 ): NewNames {
   const faceNames: Names = new SubShapeMap()
   const faceAncestry: Lineage = {}
+  const capAncestry: Lineage = {}
   const ctx: NameBuildContext = {
     oc, scope, maker, old,
     builtFace: builtFaceOf(newFaces),
     faceNames,
     faceAncestry,
+    capAncestry,
   }
 
   // Step 1: old named faces -> output faces via Modified() (subshape identity).
-  inheritOldFaceNames(oc, scope, maker, old, ctx.builtFace, faceNames, faceAncestry, oldFaces, oldFaceIdx, oldFaceModified)
+  inheritOldFaceNames(
+    oc, scope, maker, old, ctx.builtFace, faceNames, faceAncestry, oldFaces, oldFaceIdx, oldFaceModified, capAncestry,
+  )
 
   // Step 2: modified edges -> generated fillet faces, minted role=fillet.
   mintGeneratedFilletFaces(ctx, newShape, modifiedEdges)
@@ -144,7 +149,7 @@ export function extractNames(
   // Step 3: the corner patches steps 1-2 cannot reach (generated from a vertex
   // where blends meet), named off their neighbours so their edges stay pickable.
   const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, newShape, faceNames, faceAncestry)
-  return { faceNames, edgeNames, faceAncestry, edgeAncestry }
+  return { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry }
 }
 
 /** Carry every named old face to its output image, keyed by the built solid's face.
@@ -166,6 +171,9 @@ export function inheritOldFaceNames(
   oldFaces: OccShape[],
   oldFaceIdx: SubShapeIndexMap,
   oldFaceModified: Map<number, OccShape[]>,
+  // A cap's identification net follows its UUID like the ancestry does (see
+  // ShapeNames); a fillet that reshapes the body must not drop it.
+  capAncestry: Lineage = {},
 ): void {
   // Faces a merge collision already cancelled: the two faces that merged into
   // one dropped their names, so the face is up for grabs. A third face
@@ -184,11 +192,13 @@ export function inheritOldFaceNames(
     }
     if (deleted) continue
     const ancestry = old.faceAncestry[uuid] ?? []
+    const capNet = old.capAncestry[uuid] ?? null
     const mods = oldFaceModified.get(oldFaceIdx.get(oldF as OccSubShape)) ?? []
     if (mods.length === 0) {
       // Unchanged face: the output holds the same face, so the UUID carries over.
       faceNames.set(builtFace(oldF), uuid)
       faceAncestry[uuid] = [...ancestry]
+      if (capNet) capAncestry[uuid] = [...capNet]
     } else if (mods.length === 1) {
       const key = builtFace(mods[0])
       const prior = faceNames.get(key)
@@ -204,6 +214,7 @@ export function inheritOldFaceNames(
       if (mergedAway.has(key)) continue
       faceNames.set(key, uuid)
       faceAncestry[uuid] = [...ancestry]
+      if (capNet) capAncestry[uuid] = [...capNet]
     } else {
       const ordered = orderSplitChildren(
         mods.map<SplitChild<OccShape>>((m) => ({ item: m, key: faceSplitKey(oc, scope, oldF, asFace(oc, m)) })),
@@ -213,6 +224,7 @@ export function inheritOldFaceNames(
         const childUuid = mintFaceUuid(splitFacePath(uuid, i))
         faceNames.set(builtFace(m), childUuid)
         faceAncestry[childUuid] = [...ancestry]
+        if (capNet) capAncestry[childUuid] = [...capNet]
       })
     }
   }

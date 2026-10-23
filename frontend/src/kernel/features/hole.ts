@@ -181,9 +181,13 @@ function cutterNames(
   sketchId: string,
   entityId: string,
   faces: CylinderFaces,
-): { faceNames: SubShapeMap<string>; faceAncestry: Record<string, string[]> } {
+): { faceNames: SubShapeMap<string>; faceAncestry: Record<string, string[]>; capAncestry: Record<string, string[]> } {
   const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
+  // A cutter's bore/floor/mouth come from the drill site's entity, and a
+  // cylinder cap path names no cap here (every role is a generated face), so
+  // there is no whole-profile net to carry.
+  const capAncestry: Record<string, string[]> = {}
   const site = `${sketchId}/${entityId}`
   const token = emitWire(absolute(sketchId, entityId))
   const roles: Array<[HoleFaceRole, OccShape]> = [['bore', faces.lateral], ['floor', faces.top], ['mouth', faces.bottom]]
@@ -192,7 +196,7 @@ function cutterNames(
     faceNames.set(face as OccSubShape, uuid)
     faceAncestry[uuid] = [token]
   }
-  return { faceNames, faceAncestry }
+  return { faceNames, faceAncestry, capAncestry }
 }
 
 /** Extent of the target along the drill axis, from its edge-sampled AABB: the
@@ -388,8 +392,10 @@ export function solveHole(
       faceOrigin: res.faceOrigin,
       targetFaceNames: names.faceNames,
       targetFaceAncestry: names.faceAncestry,
+      targetCapAncestry: names.capAncestry,
       toolFaceNames: tool.faceNames,
       toolFaceAncestry: tool.faceAncestry,
+      toolCapAncestry: tool.capAncestry,
       toolUuidScope: null,
     })
     scope.release(cyl)

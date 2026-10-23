@@ -17,6 +17,8 @@ import type { ShapeNames } from './bodyNames'
 export interface FaceNameMaps {
   faceNames: SubShapeMap<string>
   faceAncestry: Record<string, string[]>
+  // Cap identification nets keyed by the mapped face uuid (Body.face_cap_ancestry).
+  capAncestry: Record<string, string[]>
 }
 
 export type NameMaps = ShapeNames
@@ -25,6 +27,8 @@ export interface SourceFaceRow {
   face: OccSubShape
   uuid: string  // only faces that HAVE a source uuid are kept
   ancestry: string[]
+  // A cap's own profile net, carried apart from `ancestry` (see ShapeNames).
+  capAncestry: string[] | null
 }
 
 /**
@@ -36,6 +40,7 @@ export interface SourceFaceRow {
 export function readSourceFaceRows(
   oc: OccModule, scope: DisposeScope, sourceShape: OccShape,
   sourceFaceNames: SubShapeMap<string>, sourceFaceAncestry: Record<string, string[]>,
+  sourceCapAncestry: Record<string, string[]> = {},
 ): SourceFaceRow[] {
   const E = oc.TopAbs_ShapeEnum
   const sourceExp = scope.track(new oc.TopExp_Explorer_2(sourceShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
@@ -45,7 +50,12 @@ export function readSourceFaceRows(
     const sourceFace = scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape
     const sourceUuid = sourceFaceNames.get(sourceFace)
     if (!sourceUuid) continue
-    rows.push({ face: sourceFace, uuid: sourceUuid, ancestry: sourceFaceAncestry[sourceUuid] ?? [] })
+    rows.push({
+      face: sourceFace,
+      uuid: sourceUuid,
+      ancestry: sourceFaceAncestry[sourceUuid] ?? [],
+      capAncestry: sourceCapAncestry[sourceUuid] ?? null,
+    })
   }
   return rows
 }
@@ -87,6 +97,7 @@ export function remapFaceNamesForInstance(
   const E = oc.TopAbs_ShapeEnum
   const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
+  const capAncestry: Record<string, string[]> = {}
 
   // Cache shell-oriented instance faces so each source face's image can be
   // matched to the outward-facing explorer order used by downstream code.
@@ -116,9 +127,10 @@ export function remapFaceNamesForInstance(
       const newUuid = mintFaceUuid(arrayInstancePath(row.uuid, featureId, index))
       faceNames.set(match, newUuid)
       faceAncestry[newUuid] = [...row.ancestry]
+      if (row.capAncestry) capAncestry[newUuid] = [...row.capAncestry]
     }
   }
-  return { faceNames, faceAncestry }
+  return { faceNames, faceAncestry, capAncestry }
 }
 
 /**
@@ -135,10 +147,12 @@ export function rekeyFaceNamesForTransform(
   sourceFaceNames: SubShapeMap<string>,
   sourceFaceAncestry: Record<string, string[]>,
   builder: OccTransformBuilder,
+  sourceCapAncestry: Record<string, string[]> = {},
 ): FaceNameMaps {
   const E = oc.TopAbs_ShapeEnum
   const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
+  const capAncestry: Record<string, string[]> = {}
 
   const transformedFaces: OccSubShape[] = []
   const texp = scope.track(new oc.TopExp_Explorer_2(transformedShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
@@ -170,9 +184,10 @@ export function rekeyFaceNamesForTransform(
       const match = transformedFaces[j]
       faceNames.set(match, sourceUuid)
       faceAncestry[sourceUuid] = [...(sourceFaceAncestry[sourceUuid] ?? [])]
+      if (sourceCapAncestry[sourceUuid]) capAncestry[sourceUuid] = [...sourceCapAncestry[sourceUuid]]
     }
   }
-  return { faceNames, faceAncestry }
+  return { faceNames, faceAncestry, capAncestry }
 }
 
 /**
@@ -195,6 +210,7 @@ export function rekeyNamesForTransformedBody(
     sourceNames.faceNames,
     sourceNames.faceAncestry,
     builder,
+    sourceNames.capAncestry,
   )
   // Edge derivation only (no neighbour pass on a rigid transform: every face is
   // already named by the rekey); the table is read once and handed in.

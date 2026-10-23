@@ -78,5 +78,5 @@ export function importedNameMaps(
   // around it do not all fall back to the body-wide ancestral string. Must run
   // before the edge derivation, which needs both faces of an edge named.
   const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, shape, faceNames, faceAncestry)
-  return { faceNames, edgeNames, faceAncestry, edgeAncestry }
+  return { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry: {} }
 }

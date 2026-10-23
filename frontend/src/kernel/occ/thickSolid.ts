@@ -238,7 +238,7 @@ function applySealedShell(
     faceAncestry[uuid] = [...(old.faceAncestry[srcUuid ?? uuid] ?? [])]
   }
   const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, built, faceNames, faceAncestry)
-  let names: NewNames = { faceNames, edgeNames, faceAncestry, edgeAncestry }
+  let names: NewNames = { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry: {} }
   if (!isValidShape(oc, scope, built)) {
     const heal = healShape(oc, scope, built)
     if (heal === null) {
@@ -329,7 +329,7 @@ export function applyShellWithLineage(
     mintRoleFaces(oc, scope, maker, closingFaces, uuidOf, 'Modified', 'rim', oldNames.createdBy, builtFace, faceNames, faceAncestry, oldNames, built)
 
     const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, built, faceNames, faceAncestry)
-    names = { faceNames, edgeNames, faceAncestry, edgeAncestry }
+    names = { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry: {} }
   }
 
   if (!isValidShape(oc, scope, built)) {

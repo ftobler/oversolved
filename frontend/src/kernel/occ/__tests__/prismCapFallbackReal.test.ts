@@ -49,6 +49,7 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
         faces: string[]
         edges: string[]
         ancestry: Record<string, string[]>
+        capAncestry: Record<string, string[]>
       } => {
         const builder = scope.track(new occ.BRepOffsetAPI_MakePipeShell(spineWire))
         builder.SetTransitionMode(occ.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner)
@@ -65,6 +66,7 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
           faces: [...maps.faceNames.values()].sort(),
           edges: [...maps.edgeNames.values()].sort(),
           ancestry: { ...maps.faceAncestry },
+          capAncestry: { ...maps.capAncestry },
         }
       }
 
@@ -75,10 +77,16 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
       // from the geometric fallback). Zero faces left unnamed.
       expect(first.faces.length).toBe(6)
 
-      // The caps went through the cap construction path: their ancestry is
-      // EMPTY (a cap carries no profile token), exactly like a builder-reported
-      // cap. A neighbour-corner name would inherit the lateral faces' tokens.
+      // The caps went through the cap construction path: their faceAncestry is
+      // EMPTY (a cap carries no per-face token), and their own net - the whole
+      // profile - sits in capAncestry instead, so an edge's lineage union never
+      // inherits it (join-cap-lineage). A neighbour-corner name would have put
+      // one lateral entity in faceAncestry.
       expect(Object.values(first.ancestry).filter((tokens) => tokens.length === 0).length).toBe(2)
+      // buildPrismLineageMap is called directly, so the tokens are still bare
+      // entity ids (the caller's `@<sketch>/` prefix is a later step).
+      const profileTokens = JSON.stringify(['b', 'l', 'r', 't'])
+      expect(Object.values(first.capAncestry).filter((tokens) => JSON.stringify(tokens) === profileTokens).length).toBe(2)
 
       // Every rim edge (cap-lateral pair) and every lateral-lateral edge earns
       // a unique construction UUID: 12 edges on a 2x2 square swept 3 units.

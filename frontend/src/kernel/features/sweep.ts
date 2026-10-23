@@ -747,6 +747,7 @@ export function solveSweep(
     edgeNames: lineage.edgeNames,
     faceAncestry: lineage.faceAncestry,
     edgeAncestry: lineage.edgeAncestry,
+    capAncestry: lineage.capAncestry,
   })
   Object.assign(result, opResult)
 

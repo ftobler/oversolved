@@ -163,8 +163,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     expect(measure!.volume).toBeCloseTo(1965.6637061435918, 6)
   })
 
-  it('created_by narrows to the edges a feature made', async () => {
-    const bodies = await bodiesOf({
+  it('created_by narrows to the edges a feature made', async () => {    const bodies = await bodiesOf({
       id: 'sel-created-by',
       features: [
         rectSketch('sk1', 20, 20), extrude('ex1', 10),
@@ -181,5 +180,46 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     const madeByEx1 = selectByPredicate({ kind: 'edge', where: { created_by: 'ex1' } }, bodies)
     expect(madeByEx1.queries.length).toBeGreaterThan(0)
     for (const item of madeByEx1.items) expect(item.query).toContain('@ex1')
+  })
+
+  // A joined extrude's faces belong to the extrude that added them, and a later
+  // fillet does not move them back onto the body's creator (join-cap-lineage).
+  it('created_by keeps a joined boss after a downstream fillet', async () => {
+    const plate = [rectSketch('sk1', 15, 15, -7.5, -7.5), extrude('ex1', 2)]
+    const doc = (extra: Array<Record<string, unknown>>) => ({
+      id: 'sel-join-created-by',
+      features: [
+        ...plate,
+        { id: 'pl2', kind: 'plane', definition: { mode: 'offset', plane: '@builtin_plane_front', offset: 2 } },
+        {
+          id: 'sk2', kind: 'sketch', label: 'Boss', plane: '@pl2',
+          entities: [{ id: 'boss', kind: 'circle' }], initial: { boss: [0, 0, 4] }, constraints: [],
+        },
+        { id: 'ex2', kind: 'extrude', extrude: { sketch: '@sk2', distance: 10, direction: 'normal', operation: 'add' } },
+        ...extra,
+      ],
+    })
+    const base = await bodiesOf(doc([]))
+    const added = selectByPredicate({ kind: 'face', where: { created_by: 'ex2' } }, base)
+    expect(added.queries, 'the boss top and its wall').toHaveLength(2)
+
+    // The junction edge, found by geometry test-side only to feed the fillet.
+    const body = firstBody(base)
+    const junction = (body.edge_queries ?? []).find((_q, i) => {
+      const edge = body.edges?.[i]
+      return edge?.kind === 'circle' && Math.abs((edge.center?.[2] ?? -1) - 2) < 1e-6
+    })
+    expect(junction, 'the boss/plate junction edge').toBeTruthy()
+
+    const filleted = await bodiesOf(doc([{ id: 'fi1', kind: 'fillet', fillet: { edges: [junction], radius: 0.5 } }]))
+    const kept = selectByPredicate({ kind: 'face', where: { created_by: 'ex2' } }, filleted)
+    expect(kept.queries, 'still the boss top and its wall').toHaveLength(2)
+    for (const item of kept.items) {
+      expect(item.query).toContain('@ex2')
+      expect(item.query).toContain('@sk2/boss')
+      expect(item.query).not.toContain('@sk1/')
+    }
+    const types = kept.items.map((item) => (item.geometry as { surface_type: string }).surface_type).sort()
+    expect(types).toEqual(['cylinderface', 'flatface'])
   })
 })

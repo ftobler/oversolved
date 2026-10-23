@@ -32,6 +32,11 @@ interface TransferNamesInput {
   // Tool body's face names + ancestry (or null for ops without a named tool).
   toolFaceNames: SubShapeMap<string> | null
   toolFaceAncestry: Record<string, string[]> | null
+  // Each side's cap identification nets (Body.face_cap_ancestry), carried onto
+  // the output face by the same origin mapping. They stay out of faceAncestry
+  // so a cap's whole-profile list never becomes an edge's lineage.
+  targetCapAncestry?: Record<string, string[]> | null
+  toolCapAncestry?: Record<string, string[]> | null
   // What makes this body's copy of the tool's UUIDs distinct, or null to carry
   // them verbatim. Non-null whenever some OTHER live face keeps the originals:
   // a kept tool body (scope = the boolean), or a sibling target the same cut
@@ -59,7 +64,7 @@ export function transferBooleanNames(
 ): ShapeNames {
   const {
     bodyShape, faceOrigin, targetFaceNames, targetFaceAncestry,
-    toolFaceNames, toolFaceAncestry, toolUuidScope,
+    toolFaceNames, toolFaceAncestry, targetCapAncestry, toolCapAncestry, toolUuidScope,
   } = input
 
   // One Face_1 proxy per distinct sub-shape identity, not per origin entry: a
@@ -82,10 +87,12 @@ export function transferBooleanNames(
   // produced (>1 is a split).
   const bySource = new Map<string, { output: OccSubShape; source: OccSubShape }[]>()
   const ancestryOf: Record<string, string[]> = {}  // source uuid -> ancestral tokens
+  const capAncestryOf: Record<string, string[]> = {}  // source uuid -> a cap's profile net
   const seenOutput = new SubShapeMap<true>()  // dedupe merged faces by output identity
   for (const o of faceOrigin) {
     const names = o.fromTool ? toolFaceNames : targetFaceNames
     const ancestry = o.fromTool ? toolFaceAncestry : targetFaceAncestry
+    const capAncestry = o.fromTool ? toolCapAncestry : targetCapAncestry
     if (!names) continue
     const source = faceOf(o.source)
     const sourceUuid = names.get(source)
@@ -102,14 +109,20 @@ export function transferBooleanNames(
     if (children === undefined) bySource.set(uuid, [{ output, source }])
     else children.push({ output, source })
     if (!(uuid in ancestryOf)) ancestryOf[uuid] = [...((ancestry ?? {})[sourceUuid] ?? [])]
+    // A cap stays a cap when its UUID is carried: the output face's profile net
+    // is the source's. A split child keeps it too (both children bound the same
+    // profile entities).
+    if (!(uuid in capAncestryOf) && capAncestry?.[sourceUuid]) capAncestryOf[uuid] = [...capAncestry[sourceUuid]]
   }
 
   const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
+  const capAncestry: Record<string, string[]> = {}
   for (const [uuid, children] of bySource) {
     if (children.length === 1) {
       faceNames.set(children[0].output, uuid)
       faceAncestry[uuid] = ancestryOf[uuid]
+      if (capAncestryOf[uuid]) capAncestry[uuid] = capAncestryOf[uuid]
       continue
     }
     // Genuine split: order the children in the parent frame; refuse on near-tie.
@@ -125,6 +138,7 @@ export function transferBooleanNames(
       const childUuid = mintFaceUuid(splitFacePath(uuid, i))
       faceNames.set(out, childUuid)
       faceAncestry[childUuid] = ancestryOf[uuid]
+      if (capAncestryOf[uuid]) capAncestry[childUuid] = capAncestryOf[uuid]
     })
   }
 
@@ -132,5 +146,5 @@ export function transferBooleanNames(
   // split refusal above) is named off its named neighbours, so the edges around
   // it do not all collapse onto the body-wide ancestral fallback.
   const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, bodyShape, faceNames, faceAncestry)
-  return { faceNames, edgeNames, faceAncestry, edgeAncestry }
+  return { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry }
 }

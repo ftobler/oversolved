@@ -365,8 +365,10 @@ function nameMovedFaces(
     faceOrigin: res.faceOrigin,
     targetFaceNames: old.faceNames,
     targetFaceAncestry: old.faceAncestry,
+    targetCapAncestry: old.capAncestry,
     toolFaceNames,
     toolFaceAncestry,
+    toolCapAncestry: null,
     toolUuidScope: null,
   })
 }

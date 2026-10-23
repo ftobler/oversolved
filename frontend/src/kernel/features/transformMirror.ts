@@ -307,8 +307,10 @@ export function solveMirror(
       faceOrigin: res.faceOrigin,
       targetFaceNames: sourceNames.faceNames,
       targetFaceAncestry: sourceNames.faceAncestry,
+      targetCapAncestry: sourceNames.capAncestry,
       toolFaceNames: mirroredNames.faceNames,
       toolFaceAncestry: mirroredNames.faceAncestry,
+      toolCapAncestry: mirroredNames.capAncestry,
       // The mirrored copy already carries per-instance UUIDs, so nothing collides.
       toolUuidScope: null,
     })
