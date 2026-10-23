@@ -1,0 +1,314 @@
+{
+  "features": [
+    {
+      "id": "sk_rect",
+      "kind": "sketch",
+      "label": "Flange web",
+      "plane": "@builtin_plane_top",
+      "initial": {
+        "RbyzDekiMba0yyFD": [
+          -76.5,
+          -11,
+          76.5,
+          -11
+        ],
+        "nJUiBJquZer4NmG6": [
+          76.5,
+          -11,
+          76.5,
+          11
+        ],
+        "1uGWfp1-Iw7zmS8O": [
+          76.5,
+          11,
+          -76.5,
+          11
+        ],
+        "fe5LE9bUMv2jGdmt": [
+          -76.5,
+          11,
+          -76.5,
+          -11
+        ]
+      },
+      "entities": [
+        {
+          "id": "RbyzDekiMba0yyFD",
+          "kind": "line"
+        },
+        {
+          "id": "nJUiBJquZer4NmG6",
+          "kind": "line"
+        },
+        {
+          "id": "1uGWfp1-Iw7zmS8O",
+          "kind": "line"
+        },
+        {
+          "id": "fe5LE9bUMv2jGdmt",
+          "kind": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "id": "c_coincident_AtAxWO5l",
+          "kind": "coincident",
+          "a": "$RbyzDekiMba0yyFDend",
+          "b": "$nJUiBJquZer4NmG6start"
+        },
+        {
+          "id": "c_coincident_XtfpHnzV",
+          "kind": "coincident",
+          "a": "$nJUiBJquZer4NmG6end",
+          "b": "$1uGWfp1-Iw7zmS8Ostart"
+        },
+        {
+          "id": "c_coincident_MHR-S3yB",
+          "kind": "coincident",
+          "a": "$1uGWfp1-Iw7zmS8Oend",
+          "b": "$fe5LE9bUMv2jGdmtstart"
+        },
+        {
+          "id": "c_coincident__N-SmzSj",
+          "kind": "coincident",
+          "a": "$fe5LE9bUMv2jGdmtend",
+          "b": "$RbyzDekiMba0yyFDstart"
+        },
+        {
+          "id": "c_equal_length_yRCLOzj8",
+          "kind": "equal_length",
+          "a": "$RbyzDekiMba0yyFD",
+          "b": "$1uGWfp1-Iw7zmS8O"
+        },
+        {
+          "id": "c_equal_length_-ldvIzHj",
+          "kind": "equal_length",
+          "a": "$nJUiBJquZer4NmG6",
+          "b": "$fe5LE9bUMv2jGdmt"
+        },
+        {
+          "id": "c_horizontal_2TDV_NeZ",
+          "kind": "horizontal",
+          "target": "$RbyzDekiMba0yyFD"
+        },
+        {
+          "id": "c_vertical_ZupDTURq",
+          "kind": "vertical",
+          "target": "$nJUiBJquZer4NmG6"
+        }
+      ]
+    },
+    {
+      "id": "ex_web",
+      "kind": "extrude",
+      "label": "Web 11",
+      "extrude": {
+        "sketch": [
+          "$sk_rect"
+        ],
+        "distance": 11,
+        "direction": "normal",
+        "operation": "add"
+      }
+    },
+    {
+      "id": "sk_endR",
+      "kind": "sketch",
+      "label": "End R",
+      "plane": "@builtin_plane_top",
+      "initial": {
+        "eR": [
+          76.5,
+          0,
+          11
+        ]
+      },
+      "entities": [
+        {
+          "id": "eR",
+          "kind": "circle"
+        }
+      ]
+    },
+    {
+      "id": "ex_endR",
+      "kind": "extrude",
+      "label": "End R 11",
+      "extrude": {
+        "sketch": [
+          "$sk_endR"
+        ],
+        "distance": 11,
+        "direction": "normal",
+        "operation": "add"
+      }
+    },
+    {
+      "id": "sk_endL",
+      "kind": "sketch",
+      "label": "End L",
+      "plane": "@builtin_plane_top",
+      "initial": {
+        "eL": [
+          -76.5,
+          0,
+          11
+        ]
+      },
+      "entities": [
+        {
+          "id": "eL",
+          "kind": "circle"
+        }
+      ]
+    },
+    {
+      "id": "ex_endL",
+      "kind": "extrude",
+      "label": "End L 11",
+      "extrude": {
+        "sketch": [
+          "$sk_endL"
+        ],
+        "distance": 11,
+        "direction": "normal",
+        "operation": "add"
+      }
+    },
+    {
+      "id": "sk_boss",
+      "kind": "sketch",
+      "label": "Boss",
+      "plane": "@builtin_plane_top",
+      "initial": {
+        "b0": [
+          0,
+          0,
+          28.5
+        ]
+      },
+      "entities": [
+        {
+          "id": "b0",
+          "kind": "circle"
+        }
+      ]
+    },
+    {
+      "id": "ex_boss",
+      "kind": "extrude",
+      "label": "Boss 26",
+      "extrude": {
+        "sketch": [
+          "$sk_boss"
+        ],
+        "distance": 26,
+        "direction": "normal",
+        "operation": "add"
+      }
+    },
+    {
+      "id": "sk_cb",
+      "kind": "sketch",
+      "label": "Counterbore centre",
+      "plane": "?15,8,c,19,19,19,19,7;@u|u_a88b163bb146c2d0@ex_boss@body_ex_web@sk_rect/1uGWfp1-Iw7zmS8O@sk_rect/RbyzDekiMba0yyFD@sk_rect/fe5LE9bUMv2jGdmt@sk_rect/nJUiBJquZer4NmG6@cls_yp:flatface",
+      "initial": {
+        "cb0": [
+          0,
+          0
+        ]
+      },
+      "entities": [
+        {
+          "id": "cb0",
+          "kind": "point"
+        }
+      ]
+    },
+    {
+      "id": "h_cb",
+      "kind": "hole",
+      "label": "Counterbore 47x14",
+      "hole": {
+        "sketch": "sk_cb",
+        "diameter": 47,
+        "depth_mode": "blind",
+        "depth": 14,
+        "direction": "reverse",
+        "target": "body_ex_web"
+      }
+    },
+    {
+      "id": "h_bore",
+      "kind": "hole",
+      "label": "Bore 14 thru",
+      "hole": {
+        "sketch": "sk_cb",
+        "diameter": 14,
+        "depth_mode": "through_all",
+        "depth": 26,
+        "direction": "reverse",
+        "target": "body_ex_web"
+      }
+    },
+    {
+      "id": "sk_bolts",
+      "kind": "sketch",
+      "label": "Bolt centres",
+      "plane": "@builtin_plane_top",
+      "initial": {
+        "bl1": [
+          76.5,
+          0
+        ],
+        "bl2": [
+          -76.5,
+          0
+        ]
+      },
+      "entities": [
+        {
+          "id": "bl1",
+          "kind": "point"
+        },
+        {
+          "id": "bl2",
+          "kind": "point"
+        }
+      ]
+    },
+    {
+      "id": "h_bolts",
+      "kind": "hole",
+      "label": "Bolt holes 10",
+      "hole": {
+        "sketch": "sk_bolts",
+        "diameter": 10,
+        "depth_mode": "through_all",
+        "depth": 26,
+        "direction": "normal",
+        "target": "body_ex_web"
+      }
+    },
+    {
+      "id": "fi1",
+      "kind": "fillet",
+      "label": "Casting fillet R1",
+      "fillet": {
+        "edges": [
+          "?15,7,c,b,7,7;@u|e_f5e97cd624d2ce68@ex_web@body_ex_web@sk_endL/eL@cls_xn@cls_yn:edge",
+          "?15,7,c,b,7;@u|e_b3039d1ea5c76103@ex_web@body_ex_web@sk_endL/eL@cls_xn:edge",
+          "?15,7,c,b,7;@u|e_f51841e458cbfba9@ex_web@body_ex_web@sk_boss/b0@cls_yn:edge",
+          "?15,7,c,b,7;@u|e_0f4ddd3ca2b5a581@ex_web@body_ex_web@sk_boss/b0@cls_yn:edge",
+          "?15,7,c,b;@u|e_8de3cbd85ab04d01@ex_web@body_ex_web@sk_boss/b0:edge",
+          "?15,7,c,b;@u|e_7038746d22252348@ex_web@body_ex_web@sk_boss/b0:edge",
+          "?15,7,c,b;@u|e_12c2c5821c189ac2@ex_web@body_ex_web@sk_boss/b0:edge",
+          "?15,7,c,b,7,7;@u|e_c0439e382f2eaad7@ex_web@body_ex_web@sk_endR/eR@cls_xp@cls_yn:edge",
+          "?15,7,c,b,7;@u|e_3c0d22c86929931e@ex_web@body_ex_web@sk_endR/eR@cls_xp:edge",
+          "?15,7,c,b,7;@u|e_13e606548b60135a@ex_web@body_ex_web@sk_boss/b0@cls_yp:edge"
+        ],
+        "radius": 1
+      }
+    }
+  ]
+}

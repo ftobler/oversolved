@@ -24,6 +24,8 @@ import { makeBox, makeCylinderWithFaces, faceCentroid } from '../primitives'
 import { volumeOf } from '../volume'
 import { canonicalFaces, canonicalEdges } from '../bodyNames'
 import { booleanWithDiff } from '../booleans'
+import { applyFilletWithDiff } from '../edgeModifier'
+import { applyShellWithLineage } from '../thickSolid'
 import type { OccModule, OccShape, OccSubShape, OccEnumValue, OccThickSolidMaker } from '../occTypes'
 
 const oc = await loadOcc()
@@ -191,6 +193,40 @@ describe.skipIf(!oc)('thickSolid phase-1 probe (real OCC)', () => {
       const top = topFace(module, scope, box)
       const { result } = thickSolid(module, scope, box, [top], -1, module.GeomAbs_JoinType.GeomAbs_Intersection)
       expect(canonicalEdges(module, scope, result)).toHaveLength(24)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('shells a box whose removed face is bounded by fillets (arc-join fallback)', () => {
+    // The key_cap repro: a sharp-join thick solid refuses this shape, and so
+    // does the plain offset, while the same shape offsets with arc joins. The
+    // adapter must retry and hand back a real hollow, not an unchanged body.
+    const module = setup()
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(module, scope, 18, 18, 10)
+      const top = topFace(module, scope, box)
+      const fillet = applyFilletWithDiff(module, scope, box, 1, canonicalEdges(module, scope, top) as OccShape[])
+      expect(fillet.success).toBe(true)
+      const filleted = scope.track(fillet.shape)
+      expect(volumeOf(module, scope, filleted)).toBeCloseTo(3224.9321491062146, 6)
+      const openTop = topFace(module, scope, filleted)
+
+      const inward = applyShellWithLineage(module, scope, filleted, [openTop], 0.75, 'inward', null)
+      expect(inward.success).toBe(true)
+      const inwardShape = scope.track(inward.shape)
+      expect(volumeOf(module, scope, inwardShape)).toBeCloseTo(847.6863897057074, 6)
+      expect(canonicalFaces(module, scope, inwardShape)).toHaveLength(20)
+      // The outer top is still the opening's rim: the shell walls reach it.
+      expect(Math.round(bbox(module, scope, inwardShape)[5])).toBe(10)
+
+      const outward = applyShellWithLineage(module, scope, filleted, [openTop], 0.75, 'outward', null)
+      expect(outward.success).toBe(true)
+      const outwardShape = scope.track(outward.shape)
+      expect(volumeOf(module, scope, outwardShape)).toBeCloseTo(854.9865869618458, 6)
+      expect(canonicalFaces(module, scope, outwardShape)).toHaveLength(19)
+      expect(bbox(module, scope, outwardShape).map((n) => Math.round(n))).toEqual([-1, -1, -1, 19, 19, 10])
     } finally {
       scope.dispose()
     }

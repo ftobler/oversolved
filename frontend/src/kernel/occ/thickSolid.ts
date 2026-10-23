@@ -163,21 +163,31 @@ function applySealedShell(
   oldFaces: OccShape[],
 ): ShellResult {
   const sign = direction === 'inward' ? -thickness : thickness
-  let off: OccShape
-  let offMaker: OccModifierHistory
-  try {
-    const maker = scope.track(new oc.BRepOffsetAPI_MakeOffsetShape_1())
-    maker.PerformByJoin(
-      shape, sign, 1e-3,
-      oc.BRepOffset_Mode.BRepOffset_Skin, false, false, oc.GeomAbs_JoinType.GeomAbs_Intersection, false,
-    )
-    maker.Build()
-    if (!maker.IsDone()) return fail(shape, 'build_not_done')
-    off = scope.track(maker.Shape())
-    offMaker = maker
-  } catch {
-    return fail(shape, 'build_failed')
+  let off: OccShape | null = null
+  let offMaker: OccModifierHistory | null = null
+  // Same join fallback as the open shell: a filleted body can refuse the sharp
+  // offset and accept the arc one. See applyShellWithLineage.
+  let lastReason = 'build_not_done'
+  for (const join of [oc.GeomAbs_JoinType.GeomAbs_Intersection, oc.GeomAbs_JoinType.GeomAbs_Arc]) {
+    try {
+      const maker = scope.track(new oc.BRepOffsetAPI_MakeOffsetShape_1())
+      maker.PerformByJoin(
+        shape, sign, 1e-3,
+        oc.BRepOffset_Mode.BRepOffset_Skin, false, false, join, false,
+      )
+      maker.Build()
+      if (!maker.IsDone()) {
+        lastReason = 'build_not_done'
+        continue
+      }
+      off = scope.track(maker.Shape())
+      offMaker = maker
+      break
+    } catch {
+      lastReason = 'build_failed'
+    }
   }
+  if (off === null || offMaker === null) return fail(shape, lastReason)
 
   // Offset images keyed by source face UUID, so the cut origin can name them.
   const offsetUuid: SubShapeMap<string> = new SubShapeMap()
@@ -282,23 +292,37 @@ export function applyShellWithLineage(
   }
 
   const sign = direction === 'inward' ? -thickness : thickness
-  let maker: OccModifierHistory
-  let built: OccShape
-  try {
-    const mk = scope.track(new oc.BRepOffsetAPI_MakeThickSolid_1())
-    const list = scope.track(new oc.TopTools_ListOfShape_1())
-    for (const f of closingFaces) list.Append_1(f)
-    mk.MakeThickSolidByJoin(
-      shape, list, sign, 1e-3,
-      oc.BRepOffset_Mode.BRepOffset_Skin, false, false, oc.GeomAbs_JoinType.GeomAbs_Intersection, false,
-    )
-    mk.Build()
-    if (!mk.IsDone()) return fail(shape, 'build_not_done')
-    built = scope.track(mk.Shape())
-    maker = mk
-  } catch {
-    return fail(shape, 'build_failed')
+  let maker: OccModifierHistory | null = null
+  let built: OccShape | null = null
+  // OCC's sharp-join offset refuses some shapes whose removed face is bounded
+  // by fillets (the key_cap repro: a box with its top edges rounded, then the
+  // flat top opened). The same shape offsets with arc joins, which round the
+  // inner corners instead of extending the faces. Sharp joins stay first so a
+  // normal shell keeps its authored corners; the arc attempt is the fallback
+  // only when the sharp build genuinely fails.
+  let lastReason = 'build_not_done'
+  for (const join of [oc.GeomAbs_JoinType.GeomAbs_Intersection, oc.GeomAbs_JoinType.GeomAbs_Arc]) {
+    try {
+      const mk = scope.track(new oc.BRepOffsetAPI_MakeThickSolid_1())
+      const list = scope.track(new oc.TopTools_ListOfShape_1())
+      for (const f of closingFaces) list.Append_1(f)
+      mk.MakeThickSolidByJoin(
+        shape, list, sign, 1e-3,
+        oc.BRepOffset_Mode.BRepOffset_Skin, false, false, join, false,
+      )
+      mk.Build()
+      if (!mk.IsDone()) {
+        lastReason = 'build_not_done'
+        continue
+      }
+      built = scope.track(mk.Shape())
+      maker = mk
+      break
+    } catch {
+      lastReason = 'build_failed'
+    }
   }
+  if (maker === null || built === null) return fail(shape, lastReason)
 
   const newFaces = canonicalFaces(oc, scope, built) as OccShape[]
   const newEdges = canonicalEdges(oc, scope, built) as OccShape[]

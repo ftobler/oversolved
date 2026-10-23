@@ -424,6 +424,10 @@ interface EdgeOccOptions {
   makeMakerThrows?: boolean
   addThrowsFor?: EdgeFake
   buildThrows?: boolean
+  // Build refuses whenever any of these edges is in the maker's set. Models the
+  // cast-bearing repro: the whole set fails, a single edge fails alone, and the
+  // rest build together.
+  buildFailsFor?: EdgeFake[]
   isDone?: boolean
   valid?: boolean | ((shape: OccShape) => boolean)
   analyzerThrows?: boolean
@@ -463,26 +467,36 @@ function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShap
     TopAbs_SHAPE: { value: 8 },
   }
   const built = { faces: opts.builtFaces ?? [], edges: opts.builtEdges ?? [], delete: () => {} } as unknown as OccShape
-  const maker = {
-    Add_2: (_d: number, edge: OccShape): void => {
-      if (edge === opts.addThrowsFor) throw new Error('addEdge rejected this edge')
-    },
-    AddDA: (): void => {},
-    Build: (): void => {
-      if (opts.buildThrows) throw new Error('build failed')
-    },
-    IsDone: (): boolean => opts.isDone ?? true,
-    Shape: (): OccShape => built,
-    IsDeleted: (): boolean => {
-      if (opts.isDeletedThrows) throw new Error('history probe failed')
-      return false
-    },
-    Modified: () => {
-      if (opts.modifiedThrows) throw new Error('history unavailable')
-      return { Size: () => 0, delete: () => {} }
-    },
-    Generated: (s: OccShape) => fakeList(opts.generated?.get(s) ?? []),
-    delete: () => {},
+  const makeMaker = (): OccEdgeModifierMaker => {
+    const added: OccShape[] = []
+    const maker = {
+      Add_2: (_d: number, edge: OccShape): void => {
+        if (edge === opts.addThrowsFor) throw new Error('addEdge rejected this edge')
+        added.push(edge)
+      },
+      AddDA: (_d: number, _a: number, edge: OccShape): void => {
+        added.push(edge)
+      },
+      Build: (): void => {
+        if (opts.buildThrows) throw new Error('build failed')
+        if (opts.buildFailsFor?.some((bad) => added.some((e) => (e as OccSubShape).IsSame(bad as OccSubShape)))) {
+          throw new Error('build failed for this edge set')
+        }
+      },
+      IsDone: (): boolean => opts.isDone ?? true,
+      Shape: (): OccShape => built,
+      IsDeleted: (): boolean => {
+        if (opts.isDeletedThrows) throw new Error('history probe failed')
+        return false
+      },
+      Modified: () => {
+        if (opts.modifiedThrows) throw new Error('history unavailable')
+        return { Size: () => 0, delete: () => {} }
+      },
+      Generated: (s: OccShape) => fakeList(opts.generated?.get(s) ?? []),
+      delete: () => {},
+    }
+    return maker as unknown as OccEdgeModifierMaker
   }
   const shape = {
     IsNull: (): boolean => opts.shapeIsNull ?? false,
@@ -513,7 +527,7 @@ function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShap
     },
     BRepFilletAPI_MakeChamfer: function () {
       if (opts.makeMakerThrows) throw new Error('maker unavailable')
-      return maker
+      return makeMaker()
     },
     BRepCheck_Analyzer: function (analyzed: OccShape) {
       if (opts.analyzerThrows) throw new Error('analyzer unavailable')
@@ -582,6 +596,33 @@ describe('applyEdgeModifier guard / error classification', () => {
     const edge = makeEdgeFake()
     const { oc, shape } = makeEdgeOcc({ shapeEdges: [edge], buildThrows: true })
     const res = runChamfer(oc, shape, [edge])
+    expect(res.success).toBe(false)
+    expect(res.reason).toBe('build_failed')
+  })
+
+  it('retries the set without an edge whose own blend refuses and flags it by index', () => {
+    // The multi-edge case: the full set Build throws, the bad edge alone also
+    // throws, and the other two build together. The fallback must apply the
+    // good pair in one operation (so naming and diff still come from a single
+    // maker) and report the bad edge as skipped.
+    const bad = makeEdgeFake()
+    const good1 = makeEdgeFake()
+    const good2 = makeEdgeFake()
+    const { oc, shape } = makeEdgeOcc({
+      shapeEdges: [bad, good1, good2],
+      buildFailsFor: [bad],
+    })
+    const res = runChamfer(oc, shape, [bad, good1, good2])
+    expect(res.success).toBe(true)
+    expect(res.reason).toBeNull()
+    expect(res.skippedEdgeIndices).toEqual([0])
+  })
+
+  it('still reports failure when every edge refuses alone', () => {
+    const a = makeEdgeFake()
+    const b = makeEdgeFake()
+    const { oc, shape } = makeEdgeOcc({ shapeEdges: [a, b], buildFailsFor: [a, b] })
+    const res = runChamfer(oc, shape, [a, b])
     expect(res.success).toBe(false)
     expect(res.reason).toBe('build_failed')
   })
