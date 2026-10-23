@@ -20,6 +20,7 @@ import { partSolvePayload, applySolveToDoc } from '@/drive/solveWriteBack'
 import { journalSink, type CommandJournal } from '@/drive/journal'
 import { runScript, type ScriptRunOutcome, type ScriptStep } from '@/drive/scriptRunner'
 import { validateMutation } from '@/drive/mutationCatalog'
+import { readSolveOutcomes, type FeatureOutcome } from '@/drive/featureOutcome'
 
 export interface HeadlessPartOptions {
   doc: PartDoc
@@ -45,10 +46,11 @@ export interface HeadlessPart {
   // boolean or join consumed (it only reconciles new ids in), so a summary
   // built from it lists dead bodies.
   bodyIds(): readonly string[] | null
-  // The per-feature solve status of the last settle (`featureId -> status`).
-  // The CLI only needs the scheduler state, but a caller checking a document
-  // against what the user saw (the repro test's sidecar expectations) needs
-  // each sketch's own verdict.
+  // The per-feature outcome of the last settle (status plus the kernel's own
+  // exception/warning text). The CLI and MCP report every problem in here.
+  solveOutcomes(): Record<string, FeatureOutcome>
+  // The status-only view of solveOutcomes, for the repro test's sidecar
+  // expectations.
   solveStatuses(): Record<string, string>
   idle(): Promise<void>
   run(steps: readonly ScriptStep[]): Promise<ScriptRunOutcome>
@@ -59,14 +61,17 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
   const docBox: { current: PartDoc | null } = { current: opts.doc }
   const solveResultsBox: { current: Record<string, SketchData> } = { current: {} }
   // What the last settle published per feature, by id: the browser adapter
-  // fills the session's SketchData map here, and headlessly only the verdict is
-  // needed (a caller checking a document against what the user saw), so the
-  // solver's own answer is kept instead of a re-derived result object.
-  const statusesBox: { current: Record<string, string> } = { current: {} }
+  // fills the session's SketchData map here, and headlessly the kernel's own
+  // answer is what a caller checking a document against the user's view needs,
+  // so it is kept whole instead of reduced to a result object. Cleared before
+  // each solve so a failed rebuild cannot leave the previous outcome standing
+  // as if it described the current document.
+  const outcomesBox: { current: Record<string, FeatureOutcome> } = { current: {} }
   const bodiesBox: { current: string[] | null } = { current: null }
   const dirtyFacts = { dirty: false, saves: 0, savedHash: null as number | null }
 
   const reSolve: ReSolveFn = async (doc, solveOpts?: SolveOptions) => {
+    outcomesBox.current = {}
     const payload = partSolvePayload(doc, docId)
     const response = await solveLocally(payload, {
       rollbackPosition: payload.rollback_position,
@@ -79,12 +84,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     // and reconcile part_style. The journal ignores it: its hashes were taken
     // synchronously around the apply, before this write-back landed.
     docBox.current = applySolveToDoc(doc, response)
-    const statuses: Record<string, string> = {}
-    for (const [id, feature] of Object.entries(response.result ?? {})) {
-      const status = (feature as { status?: unknown } | null)?.status
-      if (typeof status === 'string') statuses[id] = status
-    }
-    statusesBox.current = statuses
+    outcomesBox.current = readSolveOutcomes(response.result)
     // The live body set of this solve, recorded before any later feature or
     // write-back: this is what the reply summary reports, not the accumulated
     // part_style keys.
@@ -146,8 +146,16 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
   const registry = new CommandRegistry<PartCommandContext>(() => context)
   for (const spec of PART_COMMAND_SPECS) registry.register(spec)
 
-  const run = (steps: readonly ScriptStep[]): Promise<ScriptRunOutcome> =>
-    runScript(
+  const run = async (steps: readonly ScriptStep[]): Promise<ScriptRunOutcome> => {
+    if (steps.length === 0) {
+      // An empty script is the "inspect this document" call: without a request
+      // the reply carried generation 0 and no verdicts, so a passed document
+      // was never actually solved.
+      session.refreshSolve()
+      await solve.idle()
+      return { ok: true, steps: [] }
+    }
+    return runScript(
       steps,
       step => {
         if ('command' in step) return registry.execute(step.command as CommandName, step.params)
@@ -159,6 +167,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
       },
       () => solve.idle(),
     )
+  }
 
   return {
     session,
@@ -166,7 +175,12 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     solve,
     getDoc: () => docBox.current,
     bodyIds: () => bodiesBox.current,
-    solveStatuses: () => statusesBox.current,
+    solveOutcomes: () => outcomesBox.current,
+    // Derived rather than stored: the status view and the outcome view cannot
+    // disagree about which features the last settle reached.
+    solveStatuses: () => Object.fromEntries(
+      Object.entries(outcomesBox.current).map(([id, outcome]) => [id, outcome.status]),
+    ),
     idle: () => solve.idle(),
     run,
   }

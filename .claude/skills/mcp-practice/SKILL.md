@@ -62,7 +62,9 @@ instructions.
 
 - Author with `run` steps, chain by `docHash`.
 - Pick edges and faces with `select`, not by guessing query strings.
-- Check your progress with `measure` after each meaningful step.
+- Read `features` in every reply: a non-empty list is a finding (a feature failed, only partly
+  applied, or warned while `ok` stayed true), so record its id, kind, status and message.
+  `measure` returns the same list when you want the document's verdicts without a run.
 - `compare` against a reference only if one is cheap to get (a CadQuery
   example run through `frontend/scripts/cadqueryReference.py`, see
   `docs/translate.md`; CadQuery is in `.venv`). Optional.

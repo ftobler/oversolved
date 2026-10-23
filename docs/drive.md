@@ -288,11 +288,14 @@ npm run drive -- replay repro.json
   (OCC's STEP transfer banner) go to stderr, so stdout parses whole.
 - `run` builds a document from mutation steps and/or command steps through one
   `DocSession` and the real kernel, optionally writes the final document (`--out`)
-  and the journal (`--repro`), and prints steps, document hash and solve state.
-  Its journal derives every generation seed from the starting document's hash,
-  so two runs of one script on one document produce byte-identical documents
-  and the recorded repro replays exactly (the `cliSmoke` suite runs the box
-  script twice in two processes and compares the printed `docHash`).
+  and the journal (`--repro`), and prints steps, document hash, solve state and
+  the feature problems (`features`, see the MCP section). An empty script still
+  solves the given document once and prints the same fields, so `run` doubles
+  as the "inspect this document" call. Its journal derives every generation
+  seed from the starting document's hash, so two runs of one script on one
+  document produce byte-identical documents and the recorded repro replays
+  exactly (the `cliSmoke` suite runs the box script twice in two processes and
+  compares the printed `docHash`).
 - `commands` prints the command catalog: every spec id, label, shortcut,
   `undoable` flag, its param fields (`spec.params.fields`, the same schema the
   registry parses a call against) and the live `enabled` verdict from a fresh
@@ -300,10 +303,13 @@ npm run drive -- replay repro.json
   The catalog is the part editor's table (`PART_COMMAND_SPECS`); the assembly
   editor's commands are not on this surface in v1.
 - `measure` reports a `MeasureRecord`: `bodies`, `volume`, `area`, `centroid`
+- `measure` reports a `MeasureRecord`: `bodies`, `volume`, `area`, `centroid`
   (volume-weighted), `bbox` (a tight six-number box,
   `[xmin, ymin, zmin, xmax, ymax, zmax]`, computed from the faces so a trim that
   leaves a face's parameter rectangle whole cannot inflate it), plus face, edge
-  and vertex counts from the final checkpoint's bodies.
+  and vertex counts from the final checkpoint's bodies, and the same `features`
+  problem list `run` returns (measuring builds every feature, so the kernel's
+  verdicts are already known).
 - `compare` measures the document and compares it against a `reference.json`
   (the translation format: `source`, a required `tolerance`, an optional
   `topology` mode and the measure fields) with `compareMeasures`. It prints
@@ -360,8 +366,8 @@ banner on stdout, so a client config must use the direct node invocation.
 |---|---|---|
 | `commands` | none | the command catalog, the same shape as the CLI's `commands` |
 | `mutations` | none | the mutation vocabulary grouped by family, plus ready-to-run example scripts |
-| `run` | `steps`, optional `doc` or `docHash`, `returnDoc`, `docId`, `files` | `{ ok, steps, docHash, solve, summary, doc? }`; chain with `docHash`, `returnDoc: true` for the document |
-| `measure` | `doc` or `docHash`, optional `docId`, `files` | `{ ok, docHash, bodies, volume, area, centroid, bbox, faces, edges, vertices }` |
+| `run` | `steps`, optional `doc` or `docHash`, `returnDoc`, `docId`, `files` | `{ ok, steps, docHash, solve, features, summary, doc? }`; chain with `docHash`, `returnDoc: true` for the document |
+| `measure` | `doc` or `docHash`, optional `docId`, `files` | `{ ok, docHash, bodies, volume, area, centroid, bbox, faces, edges, vertices, features }` |
 | `compare` | `doc` or `docHash`, `reference` (inline), optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
 | `export` | `doc` or `docHash`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, docHash, file, format, bytes }` |
 | `select` | `doc` or `docHash`, `selector`, optional `docId`, `files` | `{ ok, docHash, queries, items }`: the query strings a click would store, plus a geometry summary per item |
@@ -421,6 +427,20 @@ banner on stdout, so a client config must use the direct node invocation.
   run to about 1500 lines pretty-printed), so `run` never has to inflate every
   reply with bytes the caller may not need. An unknown or evicted hash is
   invalid params naming the 32-document bound.
+- `ok` means the steps applied and the solve ran, not that every feature
+  built. A feature can solve to `exception` or `partial`, or succeed with a
+  `solver_warning` (a fallback, or a hole that removed nothing), and `ok`
+  stays true: that is data like a failing compare row, not a failed call. The
+  `features` list carries every such feature in feature log order as
+  `{ id, kind, status, message }`, where `message` is the kernel's own
+  exception or warning text; it is always present and empty for a clean build.
+  The one-line `summary` repeats it as a `; problems: <id> (<kind>) <status>:
+  <message>` suffix, so a client that reads only the summary still sees it.
+  Sketch verdicts (`fully_constrained`, `underconstrained`) are normal states
+  and are not listed; an `overconstrained` sketch is.
+- `run` with `steps: []` solves the given `doc` or `docHash` once and returns
+  the same fields. It is the "inspect this document" call: the solve state has
+  a real `generation` and `features` is the document's problem list.
 - `files` is `[{ id, path }]`, the CLI's `--file` flags in JSON form; paths
   resolve against the server's cwd.
 - `compare` takes its `reference` inline (the agent has just produced it) and

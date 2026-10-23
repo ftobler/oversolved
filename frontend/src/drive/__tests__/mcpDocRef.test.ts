@@ -86,6 +86,7 @@ describe('runReply', () => {
     doc: doc('sk1'),
     docHash: docHashOf(doc('sk1')),
     solve: { generation: 1, pending: false, running: false, lastError: null },
+    features: [],
   }
 
   it('returns the handle, steps, solve and summary but not the doc by default', () => {
@@ -106,5 +107,24 @@ describe('runReply', () => {
     const reply = runReply(source, true, documents)
     expect(reply.doc).toEqual(source.doc)
     expect(documents.get(reply.docHash as string)).toEqual(source.doc)
+  })
+
+  it('always carries features, and the summary names them only when there are problems', () => {
+    const documents = new DocHandleStore()
+    expect(runReply(source, false, documents).features).toEqual([])
+    expect(runReply(source, false, documents).summary).not.toContain('problems:')
+
+    const problem = {
+      id: 'h1',
+      kind: 'hole',
+      status: 'exception',
+      message: "hole: sketch 'sk3' has no point or circle entities",
+    }
+    const failed = runReply({ ...source, features: [problem] }, false, documents)
+    expect(failed.ok).toBe(true)
+    expect(failed.features).toEqual([problem])
+    expect(failed.summary).toBe(
+      "features: sk1 (sketch); bodies: body_ex1; problems: h1 (hole) exception: hole: sketch 'sk3' has no point or circle entities",
+    )
   })
 })

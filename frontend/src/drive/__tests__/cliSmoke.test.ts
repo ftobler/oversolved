@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { docHashOf } from '@/drive/docHash'
+import { HOLE_ON_LINE_SKETCH } from './featureFixtures'
 
 const execFileAsync = promisify(execFile)
 
@@ -150,6 +151,8 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(run.payload.ok).toBe(true)
     expect(run.payload.steps).toHaveLength(3)
     expect((run.payload.solve as { lastError: string | null }).lastError).toBeNull()
+    // The problem list rides every run reply, empty for a clean build.
+    expect(run.payload.features).toEqual([])
 
     // The canonical script executed a second time in a fresh process must
     // build the byte-identical document: the seeded id source is what makes
@@ -163,6 +166,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(measure.status).toBe(0)
     expect(measure.payload).toMatchObject({ ok: true, bodies: 1, faces: 6, edges: 12, vertices: 8 })
     expect(measure.payload.volume as number).toBeCloseTo(500, 6)
+    expect(measure.payload.features).toEqual([])
     expectBbox(measure.payload.bbox, [0, 0, 0, 10, 10, 5])
 
     const exported = await drive('export', boxDoc, '--format', 'step', '--out', stepFile)
@@ -257,6 +261,21 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     // verdict: the registry is the public surface, so drift must be visible.
     expect(run.payload).toMatchSnapshot()
   }, 60_000)
+
+  it('reports a failed feature while ok stays true', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const holeScript = path.join(TMP_DIR, 'hole-line-sketch.json')
+    writeFileSync(holeScript, JSON.stringify({ steps: HOLE_ON_LINE_SKETCH }, null, 1))
+
+    const run = await drive('run', holeScript)
+    expect(run.status).toBe(0)
+    expect(run.payload.ok).toBe(true)
+    expect((run.payload.solve as { lastError: string | null }).lastError).toBeNull()
+    const features = run.payload.features as Array<Record<string, unknown>>
+    expect(features).toHaveLength(1)
+    expect(features[0]).toMatchObject({ id: 'h1', kind: 'hole', status: 'exception' })
+    expect(features[0].message).toMatch(/has no point/)
+  }, 120_000)
 
   it('rejects a malformed script step with the step named', async () => {
     mkdirSync(TMP_DIR, { recursive: true })
@@ -443,6 +462,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       const built = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
       expect(built.ok).toBe(true)
       expect((built.solve as { lastError: string | null }).lastError).toBeNull()
+      expect(built.features).toEqual([])
       // The default reply is a handle, not the document: a session of calls
       // does not re-send the part.
       expect(typeof built.docHash).toBe('string')
@@ -466,6 +486,30 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
         arguments: { docHash: built.docHash, steps: [], returnDoc: true },
       }))
       expect(returned.doc).toBeDefined()
+      // An empty script still solves the given document: generation > 0 and
+      // the feature list is the inspect answer, not a fresh-document default.
+      expect((returned.solve as { generation: number }).generation).toBeGreaterThan(0)
+      expect(returned.features).toEqual([])
+
+      // A hole whose whole-sketch pick names no drill site fails in the kernel
+      // while every step applied: ok stays true and features names it.
+      const hole = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { steps: HOLE_ON_LINE_SKETCH },
+      }))
+      expect(hole.ok).toBe(true)
+      expect((hole.solve as { lastError: string | null }).lastError).toBeNull()
+      const holeFeatures = hole.features as Array<Record<string, unknown>>
+      expect(holeFeatures).toHaveLength(1)
+      expect(holeFeatures[0]).toMatchObject({ id: 'h1', kind: 'hole', status: 'exception' })
+      expect(holeFeatures[0].message).toMatch(/has no point/)
+      expect(hole.summary).toContain('problems: h1 (hole) exception:')
+
+      const holeMeasure = toolPayload(await client.request('tools/call', {
+        name: 'measure',
+        arguments: { docHash: hole.docHash },
+      }))
+      expect(holeMeasure.features).toEqual(holeFeatures)
 
       // A doc passed to select is stored and its hash returned, so a later
       // call can chain on the handle without re-sending the document.
@@ -479,6 +523,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
         arguments: { docHash: selectedByDoc.docHash },
       }))
       expect(measuredByHandle.volume as number).toBeCloseTo(500, 6)
+      expect(measuredByHandle.features).toEqual([])
 
       // Edit the extrude distance through the handle and rebuild.
       const edited = toolPayload(await client.request('tools/call', {

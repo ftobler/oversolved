@@ -243,9 +243,12 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     name: 'run',
     description: 'Run a script of command and mutation steps through one DocSession and the real kernel. '
       + 'Returns per-step results, the solve state and the resulting docHash; chain calls with docHash. '
+      + 'ok means the steps applied and the solve ran: a feature can fail (status exception or partial) or '
+      + 'warn while ok stays true, and features lists every such feature with its id, kind, status and message '
+      + '(an empty list is a clean build). With steps: [] the given document is solved once and the same fields '
+      + 'are returned, which is how to inspect a document. The summary lists only the bodies the final solve left live. '
       + 'The full document is not returned by default (returnDoc: false); pass returnDoc: true, or read the '
-      + 'resource ' + MCP_DOC_RESOURCE_TEMPLATE + ' with that docHash, when you need the bytes. '
-      + 'The summary lists only the bodies the final solve left live.',
+      + 'resource ' + MCP_DOC_RESOURCE_TEMPLATE + ' with that docHash, when you need the bytes. ',
     inputSchema: {
       type: 'object',
       required: ['steps'],
@@ -262,7 +265,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
   },
   {
     name: 'measure',
-    description: 'Measure a document: body count, volume, surface area, centroid, bounding box and B-rep counts.',
+    description: 'Measure a document: body count, volume, surface area, centroid, bounding box and B-rep counts. '
+      + 'Also returns features, the same failed-or-warning feature list a run reply carries.',
     inputSchema: {
       type: 'object',
       properties: {
