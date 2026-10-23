@@ -155,10 +155,27 @@ describe('mutation catalog', () => {
       const info = mutationInfoOf(type)
       expect(info.note).toBeDefined()
       for (const name of holeFields) expect(info.note).toContain(name)
+      expect(info.note).toContain('required fields are sketch, diameter, depth_mode, depth')
+      expect(info.note).toContain('optional ones are direction, target, thread')
+      expect(info.note).toContain('blind or through_all')
+      // The one spelling difference an author hits: a hole's sketch ref is
+      // feature-level, unlike the profile consumers' `$<sketchId>` form.
+      expect(info.note).toContain('@<sketchId>')
+      expect(info.note).toContain('$<sketchId>')
       expect(info.note).toContain('points and circles')
       expect(info.note).toContain('own radius')
-      expect(info.note).toContain('required')
       expect(info.note).toContain('empty value clears')
+    }
+  })
+
+  it('names the face-query form a sketch plane accepts', () => {
+    for (const type of ['add_sketch', 'set_feature_plane'] as const) {
+      const note = mutationInfoOf(type).fields.plane.note
+      expect(note).toBeDefined()
+      expect(note).toContain('@<planeId>')
+      expect(note).toContain('bare plane name')
+      expect(note).toContain('face query from `select`')
+      expect(note).toContain('places the sketch on that face')
     }
   })
 

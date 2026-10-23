@@ -376,11 +376,15 @@ banner on stdout, so a client config must use the direct node invocation.
   strings a click would store, so a headless author (an LLM, a translator, the
   fuzzer) can pick a fillet/chamfer/hole target without a pointer. The selector
   is a structured language modeled on CadQuery's string selectors: `kind` is
-  `edge` or `face`; `where` combines `and`/`or`/`not` with `parallel`,
+  `edge` or `face`; `where` is one predicate, and several are composed with
+  `and`/`or`/`not` (each predicate object carries exactly one key; two keys
+  side by side are refused with the `and` form to use), over `parallel`,
   `perpendicular`, `type`, `extreme` (the min/max-projection group, tolerance
   grouped so a box top yields all four edges), `on_face` (edges bounding the
   selected faces), `created_by` (ancestry through the query engine) and
-  `radius`. `extreme.axis` is a world vector; the letters `"x"`, `"y"` and `"z"`
+  `radius`. A multi-key example:
+  `{"and":[{"type":"line"},{"parallel":[0,1,0]}]}`. `extreme.axis` is a world
+  vector; the letters `"x"`, `"y"` and `"z"`
   are sugar for the unit axis, and an invalid axis repeats the whole clause
   (`{"extreme":{"axis":"up","side":"max"}}`) in the error. Omitting `where`
   takes every candidate, so `{from:"body_ex1",kind:"edge"}` is all edges of one
@@ -467,6 +471,13 @@ banner on stdout, so a client config must use the direct node invocation.
   naming the field rather than compared on a narrower set. The measures are
   top-level keys: nesting them under `measures` is refused with a message
   saying so, in the MCP tool and the CLI alike.
+- `compare` compares the reference in Oversolved's world frame unchanged: it
+  does not rotate another tool's coordinates. State the reference in Y-up.
+  CadQuery's own frame is Z-up, so a CadQuery XY-plane extrusion along +Z is
+  Oversolved's Front plane, and a box centred on CadQuery's origin needs a
+  symmetric or re-origined extrusion before its bbox and centroid match. A
+  centroid or bbox row that fails while volume and area pass is the expected
+  sign of a frame mismatch, not a geometry error; the row carries that hint.
 - The server also serves two fixed resources (`resources/list`,
   `resources/read`): `oversolved://schema/part-document`, the JSON Schema for a
   part document (`persistence/partDocSchema.ts`), and
@@ -489,15 +500,22 @@ banner on stdout, so a client config must use the direct node invocation.
   emits the enum members of every enum field in that kind's schema
   (`operation: add|cut|new`, `direction: normal|reverse|symmetric`,
   `termination: blind|up_to`, `operation: new|replace`), and `add_plane`'s
-  `definition` carries the same shape the part-document schema serves.
-  Guidance that a field list cannot carry lives in the row note: `hole` needs a
-  `sketch` and drills a circle at its own radius and a point at the feature
-  `diameter`; `add_center_rect` takes the half-diagonal corner (center `[0,0]`
-  with corner `[1,1]` is 2x2) and leaves a centre point entity; `revolve.axis`
-  is a feature-level ref such as `@sk1/line1`, not the profile's `$sk1` form;
-  and `transform` rotates about exactly one axis, given either as
-  `rotation_axis` (a ref) or as `rotation_axis_origin` plus
-  `rotation_axis_direction`.
+  `definition` carries the same shape the part-document schema serves (its
+  `mode` enum includes `offset`, and the common offset plane is
+  `{mode:"offset", plane:"@builtin_plane_top", offset:43}`).
+  Guidance that a field list cannot carry lives in the row note: `hole` lists
+  its required fields (`sketch`, `diameter`, `depth_mode`, `depth`) and its
+  optional ones (`direction`, `target`, `thread`), spells `hole.sketch` as
+  `@<sketchId>` (or a narrower viewport pick), not the profile consumers'
+  `$<sketchId>` form, and says a circle drills at its own radius while a point
+  uses the feature `diameter`; `add_sketch.plane` and `set_feature_plane.plane`
+  also accept a face query from `select` (the stored `?...:flatface` string),
+  so a face pick can place the sketch in one step; `add_center_rect` takes the
+  half-diagonal corner (center `[0,0]` with corner `[1,1]` is 2x2) and leaves a
+  centre point entity; `revolve.axis` is a feature-level ref such as
+  `@sk1/line1`, not the profile's `$sk1` form; and `transform` rotates about
+  exactly one axis, given either as `rotation_axis` (a ref) or as
+  `rotation_axis_origin` plus `rotation_axis_direction`.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; unknown fields are rejected by name, so a typo never fails

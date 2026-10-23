@@ -86,7 +86,14 @@ function predicate(raw: unknown, path: string): Predicate {
   const record = asObject(raw, path)
   const keys = Object.keys(record).filter(k => record[k] !== undefined)
   if (keys.length !== 1) {
-    throw new SelectorError(`${path} must carry exactly one predicate key (${PREDICATE_KEYS.join(', ')})`)
+    // A side-by-side pair is the natural mistake; name the composition key
+    // instead of leaving the author to guess how to combine two tests.
+    const hint = keys.length > 1
+      ? '; wrap several keys in "and", e.g. {"and":[{"type":"line"},{"parallel":[0,1,0]}]}'
+      : ''
+    throw new SelectorError(
+      `${path} must carry exactly one predicate key (${PREDICATE_KEYS.join(', ')})${hint}`,
+    )
   }
   const key = keys[0]
   if (!(PREDICATE_KEYS as readonly string[]).includes(key)) {

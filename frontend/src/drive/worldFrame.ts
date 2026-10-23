@@ -44,3 +44,11 @@ export function worldFrameSentence(): string {
   sentences.push('An extrude goes along the plane normal.')
   return sentences.join(' ')
 }
+
+/** The frame rule for a compare reference: the numbers are compared unchanged,
+ *  so a source tool's frame has to be mapped by the author. */
+export const REFERENCE_FRAME_SENTENCE =
+  'A reference must already be in Oversolved\'s Y-up world frame; it is not rotated. '
+  + 'A CadQuery XY extrusion along +Z maps to Front, and a box centred on CadQuery\'s origin needs a '
+  + 'symmetric or re-origined extrusion. A centroid or bbox mismatch with volume and area passing is '
+  + 'the likely frame difference, not the geometry.'

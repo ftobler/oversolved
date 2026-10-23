@@ -135,6 +135,23 @@ describe('compareMeasures', () => {
     expect(result.pass).toBe(false)
   })
 
+  it('hints a frame mismatch when only centroid and bbox disagree', () => {
+    const result = compareMeasures(
+      record({ centroid: [-5, 5, 5], bbox: [-10, 0, 0, 0, 10, 10] }),
+      expected(),
+    )
+    expect(result.pass).toBe(false)
+    expect(row(result.rows, 'centroid').hint).toContain('frame')
+    expect(row(result.rows, 'bbox').hint).toContain('CadQuery XY extrusion +Z maps to Front')
+    // A shape measure that also disagrees is a geometry difference, not a frame.
+    const geometry = compareMeasures(
+      record({ volume: 200, centroid: [-5, 5, 5], bbox: [-10, 0, 0, 0, 10, 10] }),
+      expected(),
+    )
+    expect(row(geometry.rows, 'centroid').hint).toBeUndefined()
+    expect(row(geometry.rows, 'bbox').hint).toBeUndefined()
+  })
+
   it('defaults to the strict topology mode', () => {
     const result = compareMeasures(record({ faces: 7 }), expected({ faces: 6 }))
     expect(result.pass).toBe(false)

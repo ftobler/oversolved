@@ -20,7 +20,7 @@ import { validateSelector, typeVocabulary, type Selector } from '@/kernel/select
 import { parseReference, type TranslationReference } from '@/translations/corpus'
 import { MUTATION_CATALOG_URI, mutationCatalogPayload } from '@/drive/mutationCatalogPayload'
 import { DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
-import { worldFrameSentence } from '@/drive/worldFrame'
+import { worldFrameSentence, REFERENCE_FRAME_SENTENCE } from '@/drive/worldFrame'
 
 // The protocol revisions whose initialize handshake this server accepts. The
 // three methods implemented here exist unchanged in all of them, so a client
@@ -157,9 +157,12 @@ const EXTREME_AXIS_SCHEMA = {
 }
 
 // The structured selector grammar advertised to MCP clients. The authoritative
-// check is validateSelector (a recursive JSON Schema cannot express "exactly one
-// predicate key" cleanly); this mirrors it so tools/list is honest about the
-// shape, and an unknown predicate is still rejected before the engine runs.
+// check is validateSelector; the schema only holds the shape it can express
+// cleanly. It deliberately does not cap a predicate at one property: with a cap
+// the client's own schema validation replaced the server's message with the
+// generic "at most 1 entry", while validateSelector names `and` and shows how
+// to compose the keys. An unknown predicate is still rejected before the engine
+// runs.
 //
 // The `type` description lists the real vocabulary from typeVocabulary, the
 // same tables the engine's typeOf and the query hierarchy read, so the schema
@@ -175,9 +178,9 @@ const SELECTOR_DEFS: Record<string, unknown> = {
   $defs: {
     predicate: {
       type: 'object',
-      description: 'A selector predicate; exactly one key.',
+      description: 'A selector predicate. Each object carries exactly one key; wrap several tests in '
+        + '"and", e.g. {"and":[{"type":"line"},{"parallel":[0,1,0]}]}.',
       minProperties: 1,
-      maxProperties: 1,
       properties: {
         and: { type: 'array', items: { $ref: '#/$defs/predicate' }, minItems: 1 },
         or: { type: 'array', items: { $ref: '#/$defs/predicate' }, minItems: 1 },
@@ -281,7 +284,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: 'compare',
     description: 'Measure a document and compare it against a reference at the reference\'s tolerance. '
-      + 'Returns pass plus one row per measure (ours, theirs, delta, within); a failing row is data, not a tool error.',
+      + 'Returns pass plus one row per measure (ours, theirs, delta, within); a failing row is data, not a tool error. '
+      + REFERENCE_FRAME_SENTENCE,
     inputSchema: {
       type: 'object',
       required: ['reference'],

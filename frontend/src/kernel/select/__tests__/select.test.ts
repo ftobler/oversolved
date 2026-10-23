@@ -437,8 +437,8 @@ describe('validateSelector', () => {
       .toThrow(/not a valid edge kind; valid: line, circle, arc, spline, ellipse/)
   })
 
-  it('rejects a predicate object with two keys', () => {
+  it('rejects a predicate object with two keys and names how to combine them', () => {
     expect(() => validateSelector({ kind: 'edge', where: { parallel: [0, 0, 1], type: 'line' } }))
-      .toThrow(/exactly one predicate key/)
+      .toThrow(/"and".*e\.g\. \{"and":\[\{"type":"line"\}/)
   })
 })
