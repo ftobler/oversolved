@@ -384,13 +384,20 @@ banner on stdout, so a client config must use the direct node invocation.
   are sugar for the unit axis, and an invalid axis repeats the whole clause
   (`{"extreme":{"axis":"up","side":"max"}}`) in the error. Omitting `where`
   takes every candidate, so `{from:"body_ex1",kind:"edge"}` is all edges of one
-  body. A `type` is one exact spelling per meaning, with no synonyms: an edge
-  kind (`line`, `circle`, `arc`, `spline`, `ellipse`) or a face surface type
-  (`flatface`, `cylinderface`, `coneface`, `sphereface`, `torusface`). On a
-  flat face `parallel` tests the
-  normal; on a curved analytic face (cylinder, cone, torus) it tests the
-  analytic axis from `surface_frame`, not the radial normal, so
-  `parallel: [0,1,0]` names a Y-axis cylinder rather than one of its seams. A
+  body. An edge direction test reads the edge's own tangent, not its
+  underlying curve's axis: a line's direction, an arc or partial ellipse's
+  tangent at the middle of its sweep, a spline's tangent at its middle sample.
+  A full circle has no single tangent, so no `parallel`/`perpendicular` clause
+  matches it; select it by `type` and `radius`. This is what makes a filleted
+  plate behave: the fillet's boundary arcs are swept in an XZ plane, so they do
+  not match `parallel: [0,1,0]` even though their circle's axis is Y, while the
+  straight Y edges (the fillet's tangent seams included) still do. On a flat
+  face `parallel` tests the normal; on a curved analytic face (cylinder, cone,
+  torus) it tests the analytic axis from `surface_frame`, not the radial normal,
+  so `parallel: [0,1,0]` names a Y-axis cylinder rather than one of its seams. A
+  `type` is one exact spelling per meaning, with no synonyms: an edge kind
+  (`line`, `circle`, `arc`, `spline`, `ellipse`) or a face surface type
+  (`flatface`, `cylinderface`, `coneface`, `sphereface`, `torusface`). A
   `type` name outside the kind's vocabulary is refused as an invalid argument
   with the valid list and the likely spelling (`plane` suggests `flatface`),
   including inside a `not`, where it would otherwise match everything. An empty
@@ -402,6 +409,19 @@ banner on stdout, so a client config must use the direct node invocation.
   never stored: the returned queries are what goes into the document, exactly
   as if each element had been clicked. The engine is pure TS in
   `frontend/src/kernel/select/`.
+
+  To name one outer vertical corner edge of a plate, chain the direction and
+  kind with the two extremes that leave the corner. Each `extreme` groups what
+  the earlier clauses left, so on a Y-up plate:
+
+  ```jsonc
+  {"kind":"edge","where":{"and":[
+    {"parallel":[0,1,0]},{"type":"line"},
+    {"extreme":{"axis":"x","side":"min"}},{"extreme":{"axis":"z","side":"min"}}]}}
+  ```
+
+  Four such chains under one `or` name all four corners in a single call. There
+  is no outer-boundary or `length` predicate; this is the recipe.
 
 - Document handles: every tool that needs a document takes exactly one of
   `doc` (the full JSON) or `docHash` (the content hash an earlier reply

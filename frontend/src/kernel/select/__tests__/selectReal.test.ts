@@ -20,11 +20,11 @@ import type { BodyResult } from '@/types/cad'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
-function rectSketch(sketchId: string, w: number, h: number, offsetX = 0, offsetY = 0) {
+function rectSketch(sketchId: string, w: number, h: number, offsetX = 0, offsetY = 0, plane = '@builtin_plane_front') {
   const ox = offsetX
   const oy = offsetY
   return {
-    id: sketchId, kind: 'sketch' as const, label: 'Rectangle', plane: '@builtin_plane_front',
+    id: sketchId, kind: 'sketch' as const, label: 'Rectangle', plane,
     entities: [
       { id: 'bottom', kind: 'line' as const }, { id: 'right', kind: 'line' as const },
       { id: 'top', kind: 'line' as const }, { id: 'left', kind: 'line' as const },
@@ -91,6 +91,40 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
       expect(item.kind).toBe('edge')
       expect(item.geometry).toMatchObject({ kind: 'line', length: 6 })
     }
+  })
+
+  it('parallel on a filleted plate keeps straight Y edges and drops the fillet arcs', async () => {
+    // A plate on Top extruded along +Y (Y is up), filleted on its four
+    // Y-parallel corner edges. The fillet's top and bottom boundary arcs are
+    // swept in XZ planes, so their circle axis is Y: the axis reading used to
+    // return them for `parallel [0,1,0]`. The tangent reading must not.
+    const base = {
+      id: 'sel-fillet-parallel',
+      features: [rectSketch('sk1', 40, 30, 0, 0, '@builtin_plane_top'), extrude('ex1', 10)],
+    }
+    const plate = await bodiesOf(base)
+    const verticals = selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, plate)
+    expect(verticals.queries).toHaveLength(4)
+    for (const item of verticals.items) expect(item.geometry).toMatchObject({ kind: 'line', length: 10 })
+
+    const filleted = {
+      id: base.id,
+      features: [...base.features, { id: 'fi1', kind: 'fillet', fillet: { edges: verticals.queries, radius: 3 } }],
+    }
+    const bodies = await bodiesOf(filleted)
+    const body = firstBody(bodies)
+    // The regression case must exist on this body, or the assertion below is
+    // vacuous: at least one arc whose underlying circle axis is Y.
+    const yArcs = (body.edges ?? []).filter(
+      (e): boolean => (e.kind === 'arc' || e.kind === 'circle') && Math.abs(e.axis[1]) > 1 - 1e-6,
+    )
+    expect(yArcs.length).toBeGreaterThan(0)
+
+    const selected = selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, bodies)
+    // The four corners each split into two tangent seams, so the fillet leaves
+    // more than four straight Y edges; every one of them is a line, though.
+    expect(selected.queries.length).toBeGreaterThanOrEqual(4)
+    for (const item of selected.items) expect(item.geometry.kind).toBe('line')
   })
 
   it('feeds the selected queries to a fillet and reproduces oracle 09-fillet-vertical-naming', async () => {

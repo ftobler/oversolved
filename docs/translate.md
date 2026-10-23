@@ -73,6 +73,9 @@ returns the query strings a click would store:
 cases:
 
 - the four vertical edges of an extrusion: `{"kind":"edge","where":{"and":[{"type":"line"},{"parallel":[0,0,1]}]}}`
+- one outer vertical corner edge: the same and-chain plus the two extremes that
+  leave that corner, e.g. `{"kind":"edge","where":{"and":[{"type":"line"},{"parallel":[0,0,1]},{"extreme":{"axis":"x","side":"min"}},{"extreme":{"axis":"y","side":"min"}}]}}`;
+  four such chains under `or` name all four corners in one call
 - the top rim of a cylinder: `{"kind":"edge","where":{"and":[{"type":"circle"},{"extreme":{"axis":[0,0,1],"side":"max"}}]}}`
 - a face for `on_face`: `{"kind":"face","where":{"extreme":{"axis":[0,0,1],"side":"max"}}}`
 

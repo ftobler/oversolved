@@ -30,6 +30,16 @@ export function dot(a: readonly number[], b: readonly number[]): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
+/** Cross product, used to rebuild a conic's in-plane y axis from its normal
+ *  and x axis. */
+function cross(a: readonly number[], b: readonly number[]): Vec3 {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ]
+}
+
 /** Every named edge of the bodies, in body-then-index order. */
 export function edgeCandidates(bodies: Record<string, BodyResult>, from?: string): Candidate[] {
   const out: Candidate[] = []
@@ -77,9 +87,36 @@ function edgeData(c: Candidate): EdgeData | undefined {
 // are the surface types where the axis is the meaningful direction.
 const ANALYTIC_AXIS_SURFACES: ReadonlySet<string> = new Set(['cylinderface', 'coneface', 'torusface'])
 
-/** The direction a parallel/perpendicular test compares: a line's chord, a
- *  curved edge's axis, a flat face's normal or a curved analytic face's axis
- *  (not its radial normal, which would make "parallel" mean a seam). */
+const FULL_TURN = 2 * Math.PI
+
+function isFullTurn(c: { angle_start: number; angle_end: number }): boolean {
+  return Math.abs(c.angle_end - c.angle_start) >= FULL_TURN - 1e-9
+}
+
+/** A conic's tangent at the middle of its parametric sweep. The point is
+ *  `center + a cos(t) x_axis + b sin(t) (axis x x_axis)`, so the tangent lies in
+ *  the conic's plane: a fillet arc swept in the XZ plane is never parallel to
+ *  Y, though its underlying circle's axis points along Y. */
+function conicTangent(
+  c: { axis: Vec3; x_axis: Vec3; angle_start: number; angle_end: number },
+  a: number,
+  b: number,
+): Vec3 {
+  const x = normalize(c.x_axis)
+  const y = normalize(cross(c.axis, c.x_axis))
+  const t = (c.angle_start + c.angle_end) / 2
+  return normalize([
+    -a * Math.sin(t) * x[0] + b * Math.cos(t) * y[0],
+    -a * Math.sin(t) * x[1] + b * Math.cos(t) * y[1],
+    -a * Math.sin(t) * x[2] + b * Math.cos(t) * y[2],
+  ])
+}
+
+/** The direction a parallel/perpendicular test compares: an edge's own tangent
+ *  (a line's direction, a conic's tangent at mid-sweep, a spline's tangent at
+ *  its middle sample), a flat face's normal or a curved analytic face's axis
+ *  (not its radial normal, which would make "parallel" mean a seam). A full
+ *  circle has no single tangent, so it matches no direction clause. */
 export function directionOf(c: Candidate): Vec3 | null {
   if (c.kind === 'face') {
     const fd = c.body.mesh?.face_data?.[c.index]
@@ -94,11 +131,22 @@ export function directionOf(c: Candidate): Vec3 | null {
     case 'line':
       return normalize([ed.end[0] - ed.start[0], ed.end[1] - ed.start[1], ed.end[2] - ed.start[2]])
     case 'circle':
+      // A full circle's tangent turns with the parameter, so there is no one
+      // direction to compare; select it by type and radius instead.
+      return null
     case 'arc':
-      return normalize(ed.axis)
+      return isFullTurn(ed) ? null : conicTangent(ed, ed.radius, ed.radius)
     case 'ellipse':
-      return normalize(ed.axis)
+      return isFullTurn(ed) ? null : conicTangent(ed, ed.a, ed.b)
     case 'spline': {
+      // The middle sample's central difference is the curve's tangent there;
+      // the first-to-last chord is only a fallback for a two-sample spline.
+      const mid = Math.floor(ed.points.length / 2)
+      const before = ed.points[mid - 1]
+      const after = ed.points[mid + 1]
+      if (before && after) {
+        return normalize([after[0] - before[0], after[1] - before[1], after[2] - before[2]])
+      }
       const first = ed.points[0]
       const last = ed.points[ed.points.length - 1]
       if (!first || !last) return null
