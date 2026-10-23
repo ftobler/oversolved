@@ -21,7 +21,10 @@ export type Predicate =
   | { and: Predicate[] }
   | { or: Predicate[] }
   | { not: Predicate }
-  // Edge direction / face normal (CQ "|Z" / the ">Z" axis).
+  // Edge tangent / face normal (CQ "|Z" / the ">Z" axis). An edge tests its own
+  // tangent: a line's direction, an arc's tangent at mid-sweep, a spline's
+  // tangent at its middle sample. A full circle has no single tangent and
+  // matches neither test.
   | { parallel: Vec3 }
   | { perpendicular: Vec3 }
   // Edge kind ('line', 'circle', ...) or face surface_type ('flatface', ...).

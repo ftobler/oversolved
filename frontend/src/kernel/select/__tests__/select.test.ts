@@ -18,6 +18,18 @@ function circle(center: V3, radius: number, axis: V3): EdgeData {
   return { kind: 'circle', center, radius, axis, x_axis: [1, 0, 0], angle_start: 0, angle_end: 2 * Math.PI }
 }
 
+function arc(center: V3, radius: number, axis: V3, xAxis: V3, from: number, to: number): EdgeData {
+  return { kind: 'arc', center, radius, axis, x_axis: xAxis, angle_start: from, angle_end: to }
+}
+
+function spline(points: V3[]): EdgeData {
+  return { kind: 'spline', points }
+}
+
+function ellipse(center: V3, a: number, b: number, axis: V3, xAxis: V3, from: number, to: number): EdgeData {
+  return { kind: 'ellipse', center, a, b, axis, x_axis: xAxis, angle_start: from, angle_end: to }
+}
+
 function face(centroid: V3, normal: V3, surface_type: string, radius?: number, axis?: V3): FaceData {
   return {
     centroid,
@@ -160,6 +172,78 @@ describe('selectByPredicate: direction predicates', () => {
   })
 })
 
+describe('selectByPredicate: edge tangent semantics', () => {
+  // One line along each axis, so a direction test can only return the one whose
+  // own direction it names.
+  function lines(): Record<string, BodyResult> {
+    return {
+      body_ex1: bodyResult(
+        'body_ex1',
+        [line([0, 0, 0], [0, 5, 0]), line([0, 0, 0], [5, 0, 0])],
+        ['q_y', 'q_x'],
+        [], [], [],
+      ),
+    }
+  }
+
+  it('parallel tests a line direction', () => {
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 1, 0] } }, lines())).toEqual(['q_y'])
+    expect(queriesOf({ kind: 'edge', where: { parallel: [1, 0, 0] } }, lines())).toEqual(['q_x'])
+    expect(queriesOf({ kind: 'edge', where: { perpendicular: [1, 0, 0] } }, lines())).toEqual(['q_y'])
+  })
+
+  it('tests a fillet arc tangent, not the underlying circle axis', () => {
+    // A vertical fillet's top/bottom boundary arc on a plate: its circle axis
+    // is Y, but the arc is swept in the XZ plane, so its tangent never is.
+    const filletArc = arc([3, 0, -27], 3, [0, 1, 0], [1, 0, 0], Math.PI, 1.5 * Math.PI)
+    const bodies = {
+      body_ex1: bodyResult('body_ex1', [filletArc, line([0, 0, 0], [0, 5, 0])], ['q_arc', 'q_line'], [], [], []),
+    }
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 1, 0] } }, bodies)).toEqual(['q_line'])
+    expect(queriesOf({ kind: 'edge', where: { perpendicular: [0, 1, 0] } }, bodies)).toEqual(['q_arc'])
+    // Mid-sweep is 5*pi/4, where the tangent is the 45 degree XZ direction.
+    expect(queriesOf({ kind: 'edge', where: { parallel: [1, 0, 1] } }, bodies)).toEqual(['q_arc'])
+  })
+
+  it('a full circle has no direction, so no direction clause picks it', () => {
+    const bodies = {
+      body_ex1: bodyResult('body_ex1', [circle([0, 0, 0], 2, [0, 0, 1])], ['q_circle'], [], [], []),
+    }
+    expect(() => queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies))
+      .toThrow(/parallel \[0, 0, 1\] matched 0/)
+    expect(() => queriesOf({ kind: 'edge', where: { perpendicular: [0, 0, 1] } }, bodies)).toThrow(SelectorError)
+    // It stays reachable by kind and radius, and a negation never drops it.
+    expect(queriesOf({ kind: 'edge', where: { type: 'circle' } }, bodies)).toEqual(['q_circle'])
+    expect(queriesOf({ kind: 'edge', where: { not: { parallel: [0, 0, 1] } } }, bodies)).toEqual(['q_circle'])
+  })
+
+  it('tests an ellipse tangent at mid-sweep, not its plane normal', () => {
+    // A half ellipse in the XZ plane (axis Y), semi axes 4 and 2.
+    const half = ellipse([0, 0, 0], 4, 2, [0, 1, 0], [1, 0, 0], 0, Math.PI / 2)
+    const bodies = {
+      body_ex1: bodyResult('body_ex1', [half, line([0, 0, 0], [0, 5, 0])], ['q_ellipse', 'q_line'], [], [], []),
+    }
+    // At t = pi/4 the tangent is (-2, 0, -1); the Y normal is never a match.
+    expect(queriesOf({ kind: 'edge', where: { parallel: [-2, 0, -1] } }, bodies)).toEqual(['q_ellipse'])
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 1, 0] } }, bodies)).toEqual(['q_line'])
+  })
+
+  it('tests a spline tangent at its middle sample, not its end chord', () => {
+    // The middle sample's central difference is (1, 0, 1); first-to-last is
+    // (1, 0, 2), so the old chord reading would miss the real tangent.
+    const bodies = {
+      body_ex1: bodyResult(
+        'body_ex1',
+        [spline([[0, 0, 0], [0, 0, 1], [1, 0, 1], [1, 0, 2]]), line([0, 0, 0], [0, 5, 0])],
+        ['q_spline', 'q_line'],
+        [], [], [],
+      ),
+    }
+    expect(queriesOf({ kind: 'edge', where: { parallel: [1, 0, 1] } }, bodies)).toEqual(['q_spline'])
+    expect(() => queriesOf({ kind: 'edge', where: { parallel: [1, 0, 2] } }, bodies)).toThrow(SelectorError)
+  })
+})
+
 describe('selectByPredicate: type and radius', () => {
   it('type filters edge kinds', () => {
     const bodies = withCircle()
@@ -219,6 +303,27 @@ describe('selectByPredicate: extreme', () => {
   it('min side groups the bottom edges', () => {
     const out = queriesOf({ kind: 'edge', where: { extreme: { axis: [0, 0, 1], side: 'min' } } }, box())
     expect(out).toEqual(edgeQueriesFor('body_ex1', 12).slice(8, 12))
+  })
+
+  it('names one outer vertical corner edge and all four corners in one or', () => {
+    // There is no outer-boundary predicate, but a per-corner chain of the
+    // existing vocabulary expresses exactly one corner: direction, kind, then
+    // the two extremes that leave the corner. Four chains under `or` name all
+    // four in one call.
+    const corner = (x: 'min' | 'max', y: 'min' | 'max'): Predicate => ({
+      and: [
+        { parallel: [0, 0, 1] },
+        { type: 'line' },
+        { extreme: { axis: [1, 0, 0], side: x } },
+        { extreme: { axis: [0, 1, 0], side: y } },
+      ],
+    })
+    expect(queriesOf({ kind: 'edge', where: corner('min', 'min') }, box()))
+      .toEqual([edgeQueriesFor('body_ex1', 12)[0]])
+    expect(queriesOf({
+      kind: 'edge',
+      where: { or: [corner('min', 'min'), corner('max', 'min'), corner('max', 'max'), corner('min', 'max')] },
+    }, box())).toEqual(edgeQueriesFor('body_ex1', 12).slice(0, 4))
   })
 
   it('accepts x, y and z as sugar for the unit axis', () => {

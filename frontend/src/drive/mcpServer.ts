@@ -142,6 +142,13 @@ const VEC3_SCHEMA = {
   maxItems: 3,
 }
 
+// Direction tests name a tangent for an edge and a normal/axis for a face. The
+// edge rule matters for a filleted body: a boundary arc's underlying circle
+// axis is not a direction, so only its tangent at mid-sweep is compared.
+const DIRECTION_DESCRIPTION = 'Direction test: an edge compares its own tangent (a line\'s direction, an arc or partial '
+  + 'ellipse\'s tangent at mid-sweep, a spline\'s tangent at its middle sample); a full circle has no single tangent and '
+  + 'matches neither clause. A face compares its normal, or the analytic axis of a cylinder/cone/torus face.'
+
 // An extreme axis is a vector; the three letters are sugar the validator maps to
 // the matching unit vector, so a hand-written selector may use either spelling.
 const EXTREME_AXIS_SCHEMA = {
@@ -182,8 +189,8 @@ const SELECTOR_DEFS: Record<string, unknown> = {
         and: { type: 'array', items: { $ref: '#/$defs/predicate' }, minItems: 1 },
         or: { type: 'array', items: { $ref: '#/$defs/predicate' }, minItems: 1 },
         not: { $ref: '#/$defs/predicate' },
-        parallel: VEC3_SCHEMA,
-        perpendicular: VEC3_SCHEMA,
+        parallel: { ...VEC3_SCHEMA, description: DIRECTION_DESCRIPTION },
+        perpendicular: { ...VEC3_SCHEMA, description: DIRECTION_DESCRIPTION },
         type: { type: 'string', description: TYPE_DESCRIPTION },
         extreme: {
           type: 'object',
@@ -327,7 +334,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     description: 'Find faces or edges by predicate over the solved document and return the query strings a click '
       + 'would store, plus a geometry summary per item. Run it after `run`, then feed the queries to a feature '
       + '(fillet, chamfer, hole, ...). Omit `where` to take every candidate: {from:"body_ex1",kind:"edge"} is '
-      + 'all edges of that body. A `type` outside the kind\'s vocabulary is invalid params with the valid list '
+      + 'all edges of that body. An edge direction test reads the edge\'s own tangent, so a fillet arc\'s underlying '
+      + 'circle axis is not a direction; a full circle has no single tangent. A `type` outside the kind\'s vocabulary is invalid params with the valid list '
       + 'and a "did you mean" hint. An empty match is an error naming the nearest-miss count per predicate. '
       + 'Returns the docHash it ran against. ' + worldFrameSentence(),
     inputSchema: {
