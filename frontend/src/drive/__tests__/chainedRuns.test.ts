@@ -18,7 +18,7 @@ import { DocHandleStore } from '../docHandleStore'
 import { resolveDoc, runReply } from '../mcpDocRef'
 import { createHeadlessPart } from '../headlessPart'
 import { setIdSource, setIdScope } from '@/utils/yamlMutations'
-import type { PartDoc } from '@/types/cad'
+import type { PartDoc, Mutation } from '@/types/cad'
 import type { McpDocArguments } from '../mcpServer'
 import type { ScriptStep, ScriptStepOutcome } from '../scriptRunner'
 
@@ -161,5 +161,30 @@ describe('chained drive runs', () => {
     const replayedIds = everyId(replayedSecond.getDoc()!)
     expect(replayedIds).toEqual(everyId(second.doc))
     expect(new Set(replayedIds).size).toBe(replayedIds.length)
+  })
+
+  it('reports a refused step as not solved instead of the stale part_style bodies', async () => {
+    // A document whose part_style still names a body a boolean consumed. The
+    // first step succeeds, the second is refused (a duplicate id), so the script
+    // stops and no final solve runs; the reply must not fall back to the colour
+    // keys and name the dead body.
+    const consumed = {
+      ...emptyDoc(),
+      features: [{ id: 'sk1', kind: 'sketch' }],
+      part_style: { body_ex1: { name: 'part 1' }, body_ex2: { name: 'part 2' } },
+    } as unknown as PartDoc
+    const steps: ScriptStep[] = [
+      { mutation: { type: 'add_sketch', featureId: 'sk2', label: 'second', plane: '@builtin_plane_front' } },
+      // An unknown mutation type is refused at the drive boundary, so step 1
+      // (the second of three) stops the script before the extrude.
+      { mutation: { type: 'add_nonsense', featureId: 'broken' } as unknown as Mutation },
+      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk2', distance: 5 } },
+    ]
+    const result = await runHeadless({ doc: consumed, steps })
+    expect(result.outcome.steps.map(step => step.ok)).toEqual([true, false])
+    expect(result.doc).not.toBeNull()
+    const summary = runReply(result, false, new DocHandleStore()).summary as string
+    expect(summary).toContain('bodies: not solved (step 1 refused)')
+    expect(summary).not.toContain('body_ex2')
   })
 })

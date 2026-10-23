@@ -11,7 +11,7 @@
 // interleave their caches. Split into two processes instead.
 //
 // Usage:
-//   npm run drive -- run <script.json> [--doc <file>] [--out <doc.yaml>] [--repro <file>]
+//   npm run drive -- run <script.json> [--doc <file>] [--out <doc.(yaml|json)>] [--repro <file>]
 //                     [--file <id>=<path>] [--doc-id <id>]
 //   npm run drive -- commands
 //   npm run drive -- measure <doc.(yaml|json)> [--file <id>=<path>]
@@ -20,11 +20,13 @@
 //   npm run drive -- replay <repro.json>
 //
 // --file supplies the bytes for an import_step feature's file_id (repeatable).
+// --out for run chooses JSON by a .json extension and YAML otherwise; the path
+// must resolve inside the project's tmp/ or bugreports/.
 // Every command prints one JSON object on stdout; diagnostics go to stderr.
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
+import { parse as parseYaml } from 'yaml'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
@@ -41,6 +43,7 @@ import { replayJournal } from '@/drive/replay'
 import { parseReference } from '@/translations/corpus'
 import type { ScriptStep } from '@/drive/scriptRunner'
 import { routeKernelStdoutToStderr } from './kernelStdout'
+import { resolveProjectPath, writeDocFile } from './docPath'
 
 // ─── kernel bootstrap ───
 
@@ -98,12 +101,13 @@ function parseArgs(argv: string[]): Args {
 }
 
 const USAGE = `usage: drive <run|commands|measure|compare|export|replay> [args] [--flags]
-  run <script.(json|yaml)> [--doc <file>] [--out <doc.yaml>] [--repro <file>] [--file <id>=<path>] [--doc-id <id>]
+  run <script.(json|yaml)> [--doc <file>] [--out <doc.(yaml|json)>] [--repro <file>] [--file <id>=<path>] [--doc-id <id>]
   commands
   measure <doc.(yaml|json)> [--file <id>=<path>] [--doc-id <id>]
   compare <doc.(yaml|json)> <reference.json> [--file <id>=<path>] [--doc-id <id>]
   export <doc.(yaml|json)> --format step|stl [--out <file>] [--body <id>] [--file <id>=<path>]
-  replay <repro.json>`
+  replay <repro.json>
+--out for run writes JSON for a .json path and YAML otherwise, inside tmp/ or bugreports/.`
 
 // ─── file helpers ───
 
@@ -167,6 +171,9 @@ function readFiles(args: Args): ReadonlyMap<string, Uint8Array> | undefined {
 async function runCommand(args: Args): Promise<number> {
   const scriptFile = args.positional[0]
   if (!scriptFile) throw new UsageError('run needs a script file')
+  // Resolve the output before the script runs: a path outside tmp/ or
+  // bugreports/ must be refused without doing the work it would have saved.
+  const out = args.flags.out === undefined ? null : resolveProjectPath(args.flags.out, 'doc')
   const steps = readSteps(scriptFile)
   const doc = args.flags.doc
     ? readDoc(args.flags.doc)
@@ -180,9 +187,10 @@ async function runCommand(args: Args): Promise<number> {
     journal,
   })
 
-  if (args.flags.out) {
+  let saved: { file: string; format: string } | null = null
+  if (out !== null) {
     if (!result.doc) throw new Error('run produced no document')
-    writeFileSync(path.resolve(args.flags.out), stringifyYaml(result.doc))
+    saved = writeDocFile(out, result.doc)
   }
   if (args.flags.repro) {
     const repro = journal.repro()
@@ -197,6 +205,7 @@ async function runCommand(args: Args): Promise<number> {
     solve: result.solve,
     features: result.features,
     featureDeltas: result.featureDeltas,
+    ...(saved !== null && { file: saved.file, format: saved.format }),
   })
   return result.ok ? 0 : 1
 }

@@ -22,19 +22,31 @@ import { surfaceAreaOf, volumeAndCentroidOf } from './volume'
 /** [xmin, ymin, zmin, xmax, ymax, zmax], the order a reference file writes. */
 export type Bbox6 = [number, number, number, number, number, number]
 
-export interface MeasureRecord {
-  bodies: number
-  // Summed over the closed bodies (OnlyClosed = true).
+/** The measures of one shape, with or without the body id that owns it. */
+export interface ShapeMeasure {
+  // The closed volume (OnlyClosed = true).
   volume: number
-  // Summed over every body, open shells included.
+  // Surface area, open shells included.
   area: number
   // Volume-weighted; the plain body average when no body has volume (an open
-  // shell only set); null iff bodies === 0.
+  // shell only set); null iff the measured set is empty.
   centroid: Vec3 | null
   bbox: Bbox6 | null
   faces: number
   edges: number
   vertices: number
+}
+
+/** One body's own measure, keyed by the live body id the solve reported. */
+export interface BodyMeasure extends ShapeMeasure {
+  id: string
+}
+
+export interface MeasureRecord extends ShapeMeasure {
+  bodies: number
+  // Per-body measures in the body set's iteration order. Empty when the caller
+  // did not supply body ids (the oracle's internal checks do not need them).
+  perBody: BodyMeasure[]
 }
 
 /**
@@ -46,7 +58,7 @@ export function measureShape(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
-): Omit<MeasureRecord, 'bodies'> {
+): ShapeMeasure {
   const { volume, centroid } = volumeAndCentroidOf(oc, scope, shape)
   const area = surfaceAreaOf(oc, scope, shape)
   const bbox = shapeBbox(oc, scope, shape)
@@ -62,8 +74,17 @@ export function measureShape(
   }
 }
 
-/** Aggregate a body set: sums, a volume-weighted centroid, a bbox union. */
-export function measureBodies(oc: OccModule, scope: DisposeScope, shapes: readonly OccShape[]): MeasureRecord {
+/**
+ * Aggregate a body set: sums, a volume-weighted centroid, a bbox union. When
+ * `bodyIds` is supplied it is parallel to `shapes`, and the record carries one
+ * per-body measure per entry; otherwise `perBody` stays empty.
+ */
+export function measureBodies(
+  oc: OccModule,
+  scope: DisposeScope,
+  shapes: readonly OccShape[],
+  bodyIds?: readonly string[],
+): MeasureRecord {
   let volume = 0
   let area = 0
   let faces = 0
@@ -72,14 +93,16 @@ export function measureBodies(oc: OccModule, scope: DisposeScope, shapes: readon
   let bbox: Bbox6 | null = null
   const weighted: Vec3 = [0, 0, 0]
   const centroidSum: Vec3 = [0, 0, 0]
+  const perBody: BodyMeasure[] = []
 
-  for (const shape of shapes) {
+  for (const [index, shape] of shapes.entries()) {
     const body = measureShape(oc, scope, shape)
     volume += body.volume
     area += body.area
     faces += body.faces
     edges += body.edges
     vertices += body.vertices
+    if (bodyIds !== undefined) perBody.push({ id: bodyIds[index] ?? '', ...body })
     for (let axis = 0; axis < 3; axis++) {
       weighted[axis] += body.centroid![axis] * body.volume
       centroidSum[axis] += body.centroid![axis]
@@ -103,5 +126,5 @@ export function measureBodies(oc: OccModule, scope: DisposeScope, shapes: readon
       ? [weighted[0] / volume, weighted[1] / volume, weighted[2] / volume]
       : [centroidSum[0] / bodies, centroidSum[1] / bodies, centroidSum[2] / bodies]
 
-  return { bodies, volume, area, centroid, bbox, faces, edges, vertices }
+  return { bodies, volume, area, centroid, bbox, faces, edges, vertices, perBody }
 }

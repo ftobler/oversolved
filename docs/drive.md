@@ -276,7 +276,7 @@ surfaces cannot drift:
 
 ```bash
 cd frontend
-npm run drive -- run script.json [--doc doc.yaml] [--out out.yaml] [--repro repro.json] [--file id=path] [--doc-id id]
+npm run drive -- run script.json [--doc doc.yaml] [--out doc.(yaml|json)] [--repro repro.json] [--file id=path] [--doc-id id]
 npm run drive -- commands
 npm run drive -- measure doc.yaml [--file id=path]
 npm run drive -- compare doc.yaml reference.json [--file id=path] [--doc-id id]
@@ -289,7 +289,11 @@ npm run drive -- replay repro.json
 - `run` builds a document from mutation steps and/or command steps through one
   `DocSession` and the real kernel, optionally writes the final document (`--out`)
   and the journal (`--repro`), and prints steps, document hash, solve state and
-  the feature problems (`features`, see the MCP section). An empty script still
+  the feature problems (`features`, see the MCP section). The `--out` format is
+  chosen by the extension: `.json` writes JSON, anything else writes YAML. The
+  path must resolve inside the project's `tmp/` or `bugreports/` (relative paths
+  resolve against the repo root, not `frontend/`); anything else is refused
+  before the script runs. An empty script still
   solves the given document once and prints the same fields, so `run` doubles
   as the "inspect this document" call. Its journal derives every generation
   seed from the starting document's hash, so two runs of one script on one
@@ -303,13 +307,15 @@ npm run drive -- replay repro.json
   The catalog is the part editor's table (`PART_COMMAND_SPECS`); the assembly
   editor's commands are not on this surface in v1.
 - `measure` reports a `MeasureRecord`: `bodies`, `volume`, `area`, `centroid`
-- `measure` reports a `MeasureRecord`: `bodies`, `volume`, `area`, `centroid`
   (volume-weighted), `bbox` (a tight six-number box,
   `[xmin, ymin, zmin, xmax, ymax, zmax]`, computed from the faces so a trim that
   leaves a face's parameter rectangle whole cannot inflate it), plus face, edge
-  and vertex counts from the final checkpoint's bodies, and the same `features`
-  problem list `run` returns (measuring builds every feature, so the kernel's
-  verdicts are already known).
+  and vertex counts from the final checkpoint's bodies. `perBody` adds one
+  entry per live body (`id`, `volume`, `area`, `centroid`, `bbox`), in the
+  solve's body order; its volumes and areas sum to the totals and its ids are
+  the ids `run` and `select` use. The same `features`
+  problem list `run` returns rides along (measuring builds every feature, so the
+  kernel's verdicts are already known).
 - `compare` measures the document and compares it against a `reference.json`
   (the translation format: `source`, a required `tolerance`, an optional
   `topology` mode and the measure fields) with `compareMeasures`. It prints
@@ -366,9 +372,9 @@ banner on stdout, so a client config must use the direct node invocation.
 |---|---|---|
 | `commands` | none | the command catalog, the same shape as the CLI's `commands` |
 | `mutations` | none | the mutation vocabulary grouped by family, plus ready-to-run example scripts |
-| `run` | `steps`, optional `doc` or `docHash`, `returnDoc`, `docId`, `files` | `{ ok, steps, docHash, solve, features, featureDeltas, summary, doc? }`; chain with `docHash`, `returnDoc: true` for the document |
-| `measure` | `doc` or `docHash`, optional `docId`, `files` | `{ ok, docHash, bodies, volume, area, centroid, bbox, faces, edges, vertices, features }` |
-| `compare` | `doc` or `docHash`, `reference` (inline), optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
+| `run` | `steps`, optional `doc` or `docHash`, `returnDoc`, `featureDeltas: "all"`, `out`, `docId`, `files` | `{ ok, steps, docHash, solve, features, featureDeltas, summary, doc?, file?, format? }`; chain with `docHash`, `returnDoc: true` for the document, `out` to write it |
+| `measure` | `doc` or `docHash`, optional `docId`, `files` | `{ ok, docHash, bodies, volume, area, centroid, bbox, faces, edges, vertices, perBody, features }` |
+| `compare` | `doc` or `docHash`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
 | `export` | `doc` or `docHash`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, docHash, file, format, bytes }` |
 | `select` | `doc` or `docHash`, `selector`, optional `docId`, `files` | `{ ok, docHash, queries, items }`: the query strings a click would store, plus a geometry summary per item |
 
@@ -431,8 +437,10 @@ banner on stdout, so a client config must use the direct node invocation.
   `doc` (the full JSON) or `docHash` (the content hash an earlier reply
   returned). `run` is the exception: it may take neither, which starts from a
   fresh seeded document, but not both. Passing both or neither where exactly
-  one is required is invalid params. The server keeps the last 32 documents
-  in-process, content-addressed and recency-refreshed on a hit; an unknown
+  one is required is invalid params. The server keeps the last 256 documents
+  in-process, content-addressed and recency-refreshed on a hit, so a hash that a
+  client keeps chaining on is not the eviction victim when another client's
+  calls interleave; an unknown
   hash is a tool error naming that bound, with "pass doc instead". A document
   passed as `doc` is stored too, so a hand-edited part gets a handle; the
   reply's `docHash` names that stored content, so `select`, `measure`,
@@ -442,7 +450,9 @@ banner on stdout, so a client config must use the direct node invocation.
   for saving or hand-editing. The summary's body ids are the live bodies of the
   final solve, not the accumulated `part_style` keys: a boolean or join consumes
   a body while its colour entry stays behind, and the reply must not name what
-  the measure tool no longer counts. Chaining by hash is the intended flow: a
+  the measure tool no longer counts. When a step is refused no final solve runs,
+  so the summary says `bodies: not solved (step N refused)` instead of falling
+  back to `part_style`. Chaining by hash is the intended flow: a
   modelling session does not re-send the part on every call.
 - The full document behind any reply's `docHash` is also a resource:
   `resources/templates/list` advertises `oversolved://doc/{docHash}`, and
@@ -450,7 +460,7 @@ banner on stdout, so a client config must use the direct node invocation.
   That is the out-of-band path for the large case (a few n-gon sketches already
   run to about 1500 lines pretty-printed), so `run` never has to inflate every
   reply with bytes the caller may not need. An unknown or evicted hash is
-  invalid params naming the 32-document bound.
+  invalid params naming the 256-document bound.
 - `ok` means the steps applied and the solve ran, not that every feature
   built. A feature can solve to `exception` or `partial`, or succeed with a
   `solver_warning` (a fallback, or a hole that removed nothing), and `ok`
@@ -462,13 +472,20 @@ banner on stdout, so a client config must use the direct node invocation.
   <message>` suffix, so a client that reads only the summary still sees it.
   Sketch verdicts (`fully_constrained`, `underconstrained`) are normal states
   and are not listed; an `overconstrained` sketch is.
-- `featureDeltas` answers "what did this step contribute": one row per clean
-  feature in log order with `id`, `kind`, `status`, the cumulative `volume` and
-  `bbox` after it, and `volumeDelta`/`bboxDelta` from the previous checkpoint.
-  The first body's deltas start from zero. A failed, partial or warning feature
+- `featureDeltas` answers "what did this step contribute": one row per feature
+  this call changed, in log order, with `id`, `kind`, `status`, the cumulative
+  `volume` and `bbox` after it, and `volumeDelta`/`bboxDelta` from the previous
+  checkpoint. A row appears when the feature's checkpoint differs from the input
+  document's solve, when the feature is new, or when the steps touched a
+  solid-producing feature (so an edit that leaves the same volume still shows
+  its zero contribution); untouched planes and sketches from an earlier call do
+  not repeat. The first body's deltas start from zero. A failed, partial or
+  warning feature
   has no row (its checkpoint may hold half-applied geometry), but that
   checkpoint still sets the baseline for the next clean feature, so a later
-  delta describes the real part. The list is null when the final solve exposed
+  delta describes the real part. Pass `featureDeltas: "all"` to list every clean
+  feature, which is how an empty `steps: []` call inspects the whole history.
+  The list is null when the final solve exposed
   no measurable checkpoints (the kernel was unavailable). The checkpoint
   measurement reads each unique OCC shape once, not once per feature.
 - `run` with `steps: []` solves the given `doc` or `docHash` once and returns
@@ -476,6 +493,15 @@ banner on stdout, so a client config must use the direct node invocation.
   a real `generation` and `features` is the document's problem list.
 - `files` is `[{ id, path }]`, the CLI's `--file` flags in JSON form; paths
   resolve against the server's cwd.
+- `run` with `out` writes the final document (even the accepted prefix of a
+  refused script) as JSON for a `.json` path and YAML otherwise, and adds
+  `file` and `format` to the reply. `compare` with `referencePath` reads the
+  reference from a file instead of inline. Both resolve relative paths against
+  the repo root, so `tmp/x.json` names the project's tmp even though the server
+  runs with cwd `frontend/`. A written document must stay inside `tmp/` or
+  `bugreports/`; a reference may also come from `scratch/`. Anything else is
+  refused with the allowed directories named. The file reference goes through
+  the same corpus validator as the inline object.
 - `compare` takes its `reference` inline (the agent has just produced it) and
   validates it through the corpus parser, so a reference missing `tolerance`
   or carrying a malformed bbox is JSON-RPC invalid-params, not a tool error.
@@ -505,8 +531,10 @@ banner on stdout, so a client config must use the direct node invocation.
   CadQuery's own frame is Z-up, so a CadQuery XY-plane extrusion along +Z is
   Oversolved's Front plane, and a box centred on CadQuery's origin needs a
   symmetric or re-origined extrusion before its bbox and centroid match. A
-  centroid or bbox row that fails while volume and area pass is the expected
-  sign of a frame mismatch, not a geometry error; the row carries that hint.
+  centroid or bbox row that fails while volume and area pass carries the frame
+  hint only when the Z-up to Y-up swap (`(x,y,z)` to `(x,z,-y)`) actually makes
+  that row match; a positional miss the swap cannot explain reports just its
+  axis delta.
 - The server also serves two fixed resources (`resources/list`,
   `resources/read`): `oversolved://schema/part-document`, the JSON Schema for a
   part document (`persistence/partDocSchema.ts`), and

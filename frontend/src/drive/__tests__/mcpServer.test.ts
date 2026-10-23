@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest'
 import Ajv from 'ajv'
 import { createMcpServer, MCP_TOOLS, type McpCadOps, type McpToolPayload } from '../mcpServer'
 import { MUTATION_CATALOG_URI } from '../mutationCatalogPayload'
+import { DOC_HANDLE_CAPACITY } from '../docHandleStore'
 import { REFERENCE_FRAME_SENTENCE, worldFrameSentence } from '../worldFrame'
 
 type FakeOps = {
@@ -190,7 +191,7 @@ describe('createMcpServer', () => {
 
     const unknown = await request(server, 33, 'resources/read', { uri: 'oversolved://doc/gone' })
     expect(unknown).toMatchObject({ error: { code: -32602 } })
-    expect((unknown as { error: { message: string } }).error.message).toContain('32')
+    expect((unknown as { error: { message: string } }).error.message).toContain(String(DOC_HANDLE_CAPACITY))
     expectError(await request(server, 34, 'resources/read', { uri: 'oversolved://doc/' }), -32602)
   })
 
@@ -451,6 +452,54 @@ describe('createMcpServer', () => {
     expectError(await request(server, 65, 'tools/call', {
       name: 'run',
       arguments: { steps: [], docHash: '' },
+    }), -32602)
+  })
+
+  it('parses the run out/featureDeltas options and a compare referencePath', async () => {
+    const { ops, calls } = fakeOps()
+    const server = createMcpServer(ops)
+
+    await request(server, 70, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], out: 'tmp/x.json', featureDeltas: 'all' },
+    })
+    expect(calls.at(-1)).toEqual({
+      tool: 'run',
+      args: { steps: [], files: [], out: 'tmp/x.json', featureDeltas: 'all' },
+    })
+    expectError(await request(server, 71, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], featureDeltas: 'changed' },
+    }), -32602)
+    expectError(await request(server, 72, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], out: 7 },
+    }), -32602)
+
+    await request(server, 73, 'tools/call', {
+      name: 'compare',
+      arguments: { doc: {}, referencePath: 'tmp/reference.json' },
+    })
+    expect(calls.at(-1)).toEqual({
+      tool: 'compare',
+      args: { doc: {}, referencePath: 'tmp/reference.json', files: [] },
+    })
+    const inline = {
+      source: { tool: 'test', version: '1', file: 'source.md' },
+      tolerance: { rel: 1e-5, abs: 1e-6 },
+      bodies: 1,
+      volume: 10,
+      area: 20,
+      centroid: [0, 0, 0],
+      bbox: [0, 0, 0, 1, 1, 1],
+    }
+    expectError(await request(server, 74, 'tools/call', {
+      name: 'compare',
+      arguments: { doc: {}, reference: inline, referencePath: 'tmp/reference.json' },
+    }), -32602)
+    expectError(await request(server, 75, 'tools/call', {
+      name: 'compare',
+      arguments: { doc: {} },
     }), -32602)
   })
 

@@ -22,6 +22,7 @@ function record(overrides: Partial<MeasureRecord> = {}): MeasureRecord {
     faces: 6,
     edges: 12,
     vertices: 8,
+    perBody: [],
     ...overrides,
   }
 }
@@ -135,17 +136,32 @@ describe('compareMeasures', () => {
     expect(result.pass).toBe(false)
   })
 
-  it('hints a frame mismatch when only centroid and bbox disagree', () => {
-    const result = compareMeasures(
-      record({ centroid: [-5, 5, 5], bbox: [-10, 0, 0, 0, 10, 10] }),
-      expected(),
+  it('hints a frame mismatch only when the Z-up swap actually lines the row up', () => {
+    // The reference states the same part in CadQuery's Z-up frame: our Y-up
+    // centroid [5, 5, 5] is (5, -5, 5) there, and the bbox swaps y/z with the
+    // sign. Volume and area agree, so the swap is the explanation.
+    const zUp = compareMeasures(
+      record(),
+      expected({ centroid: [5, -5, 5], bbox: [0, -10, 0, 10, 0, 10] }),
     )
+    expect(zUp.pass).toBe(false)
+    expect(row(zUp.rows, 'centroid').hint).toContain('frame swap')
+    expect(row(zUp.rows, 'bbox').hint).toContain('CadQuery XY extrusion +Z maps to Front')
+  })
+
+  it('does not blame the frame for a small centroid miss the swap cannot explain', () => {
+    // 0.03 off in Y with every other measure matching: the row reports the
+    // delta, and the swap would not produce it.
+    const result = compareMeasures(record({ centroid: [5, 5.03, 5] }), expected())
     expect(result.pass).toBe(false)
-    expect(row(result.rows, 'centroid').hint).toContain('frame')
-    expect(row(result.rows, 'bbox').hint).toContain('CadQuery XY extrusion +Z maps to Front')
-    // A shape measure that also disagrees is a geometry difference, not a frame.
+    expect(row(result.rows, 'centroid').within).toBe(false)
+    expect(row(result.rows, 'centroid').hint).toBeUndefined()
+    expect(row(result.rows, 'bbox').within).toBe(true)
+  })
+
+  it('does not hint when a shape measure also disagrees', () => {
     const geometry = compareMeasures(
-      record({ volume: 200, centroid: [-5, 5, 5], bbox: [-10, 0, 0, 0, 10, 10] }),
+      record({ volume: 200, centroid: [5, -5, 5], bbox: [0, -10, 0, 10, 0, 10] }),
       expected(),
     )
     expect(row(geometry.rows, 'centroid').hint).toBeUndefined()

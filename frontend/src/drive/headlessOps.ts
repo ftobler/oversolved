@@ -12,7 +12,7 @@
 
 import type { PartDoc, BodyResult } from '@/types/cad'
 import type { SolveSchedulerState } from '@/session/SolveScheduler'
-import { exportLocally, solveLocally, buildAndMeasureLocally, type LocalExportOptions } from '@/kernel/solveLocally'
+import { exportLocally, solveLocally, buildAndMeasureLocally, measureSolveFeatures, type FeatureMeasure, type LocalExportOptions } from '@/kernel/solveLocally'
 import { compareMeasures, type MeasureRow } from '@/kernel/occ/measureTolerance'
 import type { MeasureRecord } from '@/kernel/occ/measure'
 import type { TranslationReference } from '@/translations/corpus'
@@ -20,7 +20,7 @@ import { selectByPredicate, type SelectResult, type Selector } from '@/kernel/se
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { createHeadlessPart, type HeadlessPart } from '@/drive/headlessPart'
 import { featureProblems, readSolveOutcomes, type FeatureProblem } from '@/drive/featureOutcome'
-import { featureDeltaRows, type FeatureDelta } from '@/drive/featureDeltas'
+import { featureDeltaRows, touchedFeatureIds, type FeatureDelta } from '@/drive/featureDeltas'
 import { partSolvePayload } from '@/drive/solveWriteBack'
 import { docHashOf } from '@/drive/docHash'
 import type { CommandJournal } from '@/drive/journal'
@@ -45,6 +45,9 @@ export interface HeadlessRunOptions {
   files?: ReadonlyMap<string, Uint8Array>
   // When given, every session mutation is journaled into it.
   journal?: CommandJournal
+  // 'all' restores the whole feature history in featureDeltas; the default
+  // reports only what this call changed. The inspection opt-in.
+  featureDeltas?: 'all'
 }
 
 export interface HeadlessRunResult {
@@ -60,10 +63,10 @@ export interface HeadlessRunResult {
   // The features the solve did not finish cleanly, in feature log order. This
   // is always present: an empty list is the clean-build answer.
   features: FeatureProblem[]
-  // Volume and bbox after every clean feature, with the change from the
-  // previous checkpoint. Null when the final solve exposed no measurable
-  // checkpoints (no kernel); a failed feature has no row, but its checkpoint
-  // still sets the baseline for the next clean one.
+  // Volume and bbox for the features this run changed or touched, with the
+  // change from the previous checkpoint. Null when the final solve exposed no
+  // measurable checkpoints (no kernel); a failed feature has no row, but its
+  // checkpoint still sets the baseline for the next clean one.
   featureDeltas: FeatureDelta[] | null
   // The live part, for a caller that wants the session (the CLI records a
   // repro from its journal; most callers only read the fields above).
@@ -76,6 +79,13 @@ export interface HeadlessRunResult {
  * document" call.
  */
 export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRunResult> {
+  // The delta filter compares the final checkpoints against the document the
+  // run started on. Measuring it through the same kernel keeps the comparison
+  // real (a raw, un-baked doc measures its authored features, not its stale
+  // `initial`); the solve is the one the first step's build restores from, so a
+  // chain by docHash is not a second full build. 'all' does not filter, so it
+  // skips this entirely.
+  const baseline = opts.featureDeltas === 'all' ? null : await measureBaselineFeatures(opts)
   const part = createHeadlessPart({
     doc: opts.doc,
     docId: opts.docId,
@@ -95,9 +105,30 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     bodies: part.bodyIds(),
     features: doc ? featureProblems(doc, part.solveOutcomes()) : [],
     featureDeltas: doc !== null && measures !== null
-      ? featureDeltaRows(doc, measures, part.solveOutcomes())
+      ? featureDeltaRows(doc, measures, part.solveOutcomes(), {
+          baseline,
+          touched: touchedFeatureIds(opts.steps, outcome.steps),
+          mode: opts.featureDeltas === 'all' ? 'all' : 'changed',
+        })
       : null,
     part,
+  }
+}
+
+// The input document's per-feature checkpoints, measured without writing the
+// solve back: the run must author on the document it was handed, and the
+// journal's baseline hash is that same pre-solve doc. Null when the kernel is
+// unavailable or the measurement cannot be trusted.
+async function measureBaselineFeatures(opts: HeadlessRunOptions): Promise<FeatureMeasure[] | null> {
+  try {
+    const payload = partSolvePayload(opts.doc, opts.docId ?? 'headless')
+    const response = await solveLocally(payload, {
+      rollbackPosition: payload.rollback_position,
+      ...(opts.files ? { files: opts.files } : {}),
+    })
+    return response === null ? null : await measureSolveFeatures(response)
+  } catch {
+    return null
   }
 }
 

@@ -38,14 +38,35 @@ export function resolveDoc(req: McpDocArguments, documents: DocHandleStore): Res
 }
 
 // The reply's one-line index of what the script built. Body ids are the live
-// bodies the final solve reported when the caller has them: part_style keeps a
-// colour entry for a body a boolean or join consumed, so its keys alone would
-// name dead bodies. Feature ids and kinds come from the feature log.
-export function summarizeDoc(doc: PartDoc, liveBodies?: readonly string[] | null): string {
+// bodies the final solve reported when the caller has them: part_style can
+// keep a colour entry for a body a boolean or join consumed (an older document,
+// or the browser's add-only reconcile), so its keys alone would name dead
+// bodies. Feature ids and kinds come from the feature log. A refused
+// step skips the solve (the script stops there), so there are no live bodies to
+// report; saying "not solved" is honest where the part_style fallback is not.
+export function summarizeDoc(
+  doc: PartDoc,
+  liveBodies?: readonly string[] | null,
+  refusedStep?: number | null,
+): string {
   const features = (doc.features ?? []).map(feature => `${feature.id} (${feature.kind})`)
-  const bodies = liveBodies ?? Object.keys(doc.part_style ?? {})
+  const bodies = refusedStep !== undefined && refusedStep !== null
+    ? `not solved (step ${refusedStep} refused)`
+    : (liveBodies ?? Object.keys(doc.part_style ?? {}))
+      .join(', ') || 'none'
   return `features: ${features.length > 0 ? features.join(', ') : 'none'}; `
-    + `bodies: ${bodies.length > 0 ? bodies.join(', ') : 'none'}`
+    + `bodies: ${bodies}`
+}
+
+// The refused step that stopped the script, as the index the outcomes carry.
+// A failed step in the middle only appears when `continueOnError` let later
+// steps run and solve, so it is not evidence that the final state is unsolved.
+function stoppedStep(steps: readonly unknown[]): number | null {
+  const last = steps[steps.length - 1]
+  if (typeof last !== 'object' || last === null) return null
+  const candidate = last as { index?: unknown; ok?: unknown }
+  if (candidate.ok !== false) return null
+  return typeof candidate.index === 'number' ? candidate.index : null
 }
 
 export interface RunReplySource {
@@ -60,8 +81,8 @@ export interface RunReplySource {
   // The problems the solve reported (featureOutcome.featureProblems): a
   // feature can fail or warn while `ok` stays true, so this rides every reply.
   features: FeatureProblem[]
-  // Per-feature volume/bbox after the clean features; null when no checkpoints
-  // were measurable (no kernel).
+  // Per-feature volume/bbox for the features this run changed or touched; null
+  // when no checkpoints were measurable (no kernel).
   featureDeltas?: FeatureDelta[] | null
 }
 
@@ -82,8 +103,12 @@ export function runReply(
   const finalDoc = result.doc
   const docHash = finalDoc ? documents.put(finalDoc) : result.docHash
   const features = result.features
+  // A stopped script has no solve for its final, refused step, so the live-set
+  // fallback would name whatever part_style last carried. Say so instead; a
+  // script that continued past a failure (continueOnError) did solve later.
+  const refusedStep = stoppedStep(result.outcome.steps)
   const summary = finalDoc
-    ? summarizeDoc(finalDoc, result.bodies) + (features.length > 0 ? `; problems: ${features.map(formatFeatureProblem).join('; ')}` : '')
+    ? summarizeDoc(finalDoc, result.bodies, refusedStep) + (features.length > 0 ? `; problems: ${features.map(formatFeatureProblem).join('; ')}` : '')
     : undefined
   return {
     ok: result.ok,

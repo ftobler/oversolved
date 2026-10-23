@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
-import { featureDeltaRows } from '../featureDeltas'
+import { featureDeltaRows, touchedFeatureIds } from '../featureDeltas'
 import type { FeatureMeasure } from '@/kernel/solveLocally'
 import type { FeatureOutcome } from '../featureOutcome'
 
@@ -70,5 +70,47 @@ describe('featureDeltaRows', () => {
   it('leaves features the solve never reached out of the rows', () => {
     const rows = featureDeltaRows(DOC, MEASURES.slice(0, 2), CLEAN)
     expect(rows.map(row => row.id)).toEqual(['sk1', 'ex1'])
+  })
+
+  it('changed mode drops rows whose checkpoint matches the input solve', () => {
+    const rows = featureDeltaRows(DOC, MEASURES, CLEAN, { baseline: MEASURES, mode: 'changed' })
+    expect(rows).toEqual([])
+  })
+
+  it('changed mode keeps an added feature and a touched solid one', () => {
+    const withAdded = {
+      ...DOC,
+      features: [...(DOC.features ?? []), { id: 'ex3', kind: 'extrude' }],
+    } as unknown as PartDoc
+    const measures: FeatureMeasure[] = [...MEASURES, { id: 'ex3', volume: 15000, bbox: [0, 0, 0, 60, 10, 30] }]
+    const outcomes: Record<string, FeatureOutcome> = { ...CLEAN, ex3: { status: 'ok' } }
+    // sk1 and fi1 were named by the steps; sk1 is a sketch (its row stays out),
+    // fi1 is solid-producing and keeps its row even though the measure matches.
+    const rows = featureDeltaRows(withAdded, measures, outcomes, {
+      baseline: MEASURES,
+      touched: new Set(['sk1', 'fi1']),
+      mode: 'changed',
+    })
+    expect(rows.map(row => row.id)).toEqual(['fi1', 'ex3'])
+  })
+
+  it('all mode keeps every clean row even against an identical baseline', () => {
+    const rows = featureDeltaRows(DOC, MEASURES, CLEAN, { baseline: MEASURES, mode: 'all' })
+    expect(rows.map(row => row.id)).toEqual(['sk1', 'ex1', 'fi1', 'ex2'])
+  })
+
+  it('reads touched feature ids from the mutations and the step outcomes', () => {
+    const touched = touchedFeatureIds(
+      [
+        { mutation: { type: 'set_extrude_field', featureId: 'ex1' } },
+        { command: 'undo' },
+        { mutation: { type: 'add_sketch', featureId: 'sk9' } },
+      ],
+      [
+        { index: 0, ok: true, createdIds: ['ex1'] },
+        { index: 2, ok: true, createdIds: ['sk9', 'line1'] },
+      ],
+    )
+    expect([...touched].sort()).toEqual(['ex1', 'line1', 'sk9'])
   })
 })

@@ -29,7 +29,9 @@ import { DocHandleStore } from '@/drive/docHandleStore'
 import { resolveDoc, runReply } from '@/drive/mcpDocRef'
 import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import type { ScriptStep } from '@/drive/scriptRunner'
+import { parseReference } from '@/translations/corpus'
 import { routeKernelStdoutToStderr } from './kernelStdout'
+import { readProjectReference, resolveProjectPath, writeDocFile } from './docPath'
 
 // The headless OCC loader and the nodejs solver builds; without them the solve
 // reports the kernel unavailable instead of a document.
@@ -76,6 +78,16 @@ const ops: McpCadOps = {
   },
 
   async run(req) {
+    // Resolve the write path before the script runs: an unsafe path must be
+    // refused without doing the work the caller expected to save.
+    let out: string | undefined
+    if (req.out !== undefined) {
+      try {
+        out = resolveProjectPath(req.out, 'doc')
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) }
+      }
+    }
     let doc: PartDoc
     if (req.doc !== undefined || req.docHash !== undefined) {
       const resolved = resolveDoc(req, documents)
@@ -93,8 +105,16 @@ const ops: McpCadOps = {
       docId: req.docId ?? 'mcp',
       files: readFiles(req.files),
       journal: createDriveJournal(doc),
+      ...(req.featureDeltas !== undefined && { featureDeltas: req.featureDeltas }),
     })
-    return runReply(result, req.returnDoc === true, documents)
+    const reply = runReply(result, req.returnDoc === true, documents)
+    if (out === undefined || result.doc === null) return reply
+    try {
+      const written = writeDocFile(out, result.doc)
+      return { ...reply, file: written.file, format: written.format }
+    } catch (e) {
+      return { ...reply, ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
   },
 
   async measure(req) {
@@ -113,7 +133,21 @@ const ops: McpCadOps = {
   async compare(req) {
     const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
-    const result = await compareHeadless(resolved.doc, req.reference, {
+    let reference = req.reference
+    if (reference === undefined) {
+      if (req.referencePath === undefined) {
+        return { ok: false, error: 'pass exactly one of "reference" or "referencePath"' }
+      }
+      try {
+        const { file, text } = readProjectReference(req.referencePath)
+        // The corpus parser, named by the reference's directory as the corpus
+        // suite does, so a file-based reference is held to the same contract.
+        reference = parseReference(path.basename(path.dirname(file)), text)
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) }
+      }
+    }
+    const result = await compareHeadless(resolved.doc, reference, {
       docId: req.docId ?? 'mcp',
       files: readFiles(req.files),
     })
