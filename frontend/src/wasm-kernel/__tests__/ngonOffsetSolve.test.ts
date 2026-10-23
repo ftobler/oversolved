@@ -205,4 +205,33 @@ describe.skipIf(!bytes)('connected-profile offset stays a closed profile after s
       expect(Math.hypot(p[2] - p[0], p[3] - p[1])).toBeCloseTo(6, 1)  // 10 - 2*2
     }
   })
+
+  // Birdhouse F1: a hand-drawn triangle has matching endpoint coordinates but no
+  // coincident constraints, so the offset has to discover its corners from the
+  // geometry. The solved clone chain must stay closed, mitered to the 2 mm
+  // inset triangle rather than left as three separate parallel segments.
+  it('coordinate-only triangle offset solves to the closed inset loop', () => {
+    const doc = emptySketch()
+    for (const [id, params] of [
+      ['o1', [-54, 0, 54, 0]],
+      ['o2', [54, 0, 0, 85]],
+      ['o3', [0, 85, -54, 0]],
+    ] as const) {
+      applyAddEntity(doc, 'sk', 'line', [...params], id)
+    }
+    applyAddOffset(doc, 'sk', ['o1', 'o2', 'o3'], 2)
+    const cloneIds = entities0(doc).map((e) => e.id).filter((id) => !['o1', 'o2', 'o3'].includes(id))
+    expect(cloneIds).toHaveLength(3)
+
+    const solved = solveFeature(doc)
+    const clones = cloneIds.map((id) => solved[id])
+    // Every clone endpoint must land on another clone endpoint at the mitered
+    // inner corner; a translated (untrimmed) endpoint leaves a gap here.
+    const ends = clones.map((p) => [p[2], p[3]] as [number, number])
+    const starts = clones.map((p) => [p[0], p[1]] as [number, number])
+    for (const e of ends) {
+      const nearest = Math.min(...starts.map((s) => Math.hypot(s[0] - e[0], s[1] - e[1])))
+      expect(nearest).toBeLessThan(1e-2)
+    }
+  })
 })

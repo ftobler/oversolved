@@ -601,11 +601,29 @@ function addNgon(raw: RawStep): ValueViolation | null {
   return null
 }
 
-function applyOffset(raw: RawStep): ValueViolation | null {
+function applyOffset(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const sourceProblem = nonEmptyStringsProblem(raw.sourceIds, 'sourceIds')
   if (sourceProblem !== null) return invalid(sourceProblem)
   if (!isFiniteNumber(raw.distance)) {
     return invalid(`distance must be a finite number, got ${json(raw.distance)}`)
+  }
+  const featureId = raw.featureId
+  if (ctx.doc === null || typeof featureId !== 'string') return null
+  // A source id that names nothing used to answer ok with an unchanged document
+  // and no created ids, which read like an offset that had run and produced no
+  // geometry. The app's own offset always resolves ids from the selection it
+  // holds, so only an external step reaches this with an invented or stale id.
+  const sketch = sketchOf(ctx.doc, featureId)
+  if (sketch === undefined) {
+    return unknownTarget(`apply_offset names no sketch feature ${json(featureId)}`)
+  }
+  const entityIds = new Set((sketch.entities ?? []).map(entity => entity.id))
+  for (const id of raw.sourceIds as string[]) {
+    if (!entityIds.has(id)) {
+      return unknownTarget(
+        `apply_offset source id ${json(id)} names no entity in sketch ${featureId}; use a bare entity id from that sketch`,
+      )
+    }
   }
   return null
 }

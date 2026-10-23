@@ -384,7 +384,8 @@ export const MUTATION_CATALOG = {
     },
   },
   apply_offset: {
-    summary: 'Offset sketch entities by a distance.',
+    summary: 'Offset sketch entities by a distance. Each sourceId must name an entity in the featureId sketch; '
+      + 'a connected chain (coincident or coordinate-joined) is refitted corner to corner.',
     fields: { featureId: str(), sourceIds: arr(), distance: num() },
   },
   toggle_construction: {

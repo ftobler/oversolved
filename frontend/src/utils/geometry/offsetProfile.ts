@@ -1,10 +1,12 @@
 // PURE -- no React, no Three, no doc mutation. Connectivity reconstruction for
 // offsetting a *connected* profile. Offsetting each entity independently leaves
-// the corners disjointed; this module finds the coincident corners of the
-// selection and tells the caller how to reconnect the clones (miter the meeting
-// point of two offset lines, carry tangency over to arcs). Node-unit-testable.
+// the corners disjointed; this module finds the joints of the selection (an
+// explicit `coincident`, or endpoints the area builder welds by coordinate) and
+// tells the caller how to reconnect the clones (miter the meeting point of two
+// offset lines, carry tangency over to arcs). Node-unit-testable.
 
 import { resolveVertexRef } from '@/types/vertexRef'
+import { TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
 
 export interface VertexRef {
   entityId: string
@@ -45,6 +47,100 @@ export function offsetCorners(
     corners.push({ a, b })
   }
   return corners
+}
+
+/** The endpoint vertices of one entity as `[x, y]` in its flat param array.
+ *  A circle is closed and an ellipse's vertex keys are axis ends rather than
+ *  curve ends, so neither contributes an endpoint. Arc ends are derived from
+ *  centre, radius and the degree angle pair, exactly as the draw/solve side
+ *  reads them. */
+function endpointVertices(
+  kind: string,
+  params: readonly number[],
+): Array<{ vertexKey: string; point: [number, number] }> {
+  switch (kind) {
+    case 'line':
+      return [
+        { vertexKey: 'start', point: [params[0], params[1]] },
+        { vertexKey: 'end', point: [params[2], params[3]] },
+      ]
+    case 'spline':
+      return [
+        { vertexKey: 'start', point: [params[0], params[1]] },
+        { vertexKey: 'end', point: [params[6], params[7]] },
+      ]
+    case 'arc': {
+      const [cx, cy, r, a0, a1] = params
+      const start = (a0 * Math.PI) / 180
+      const end = (a1 * Math.PI) / 180
+      return [
+        { vertexKey: 'start', point: [cx + r * Math.cos(start), cy + r * Math.sin(start)] },
+        { vertexKey: 'end', point: [cx + r * Math.cos(end), cy + r * Math.sin(end)] },
+      ]
+    }
+    default:
+      return []
+  }
+}
+
+/** Discover coordinate-joined corners among a selection: endpoint vertices of
+ *  two DISTINCT selected entities that sit within the area builder's merge
+ *  tolerance. Hand-drawn and imported chains have no coincident constraints, but
+ *  the profile builder still welds their shared endpoints, so an offset must
+ *  rebuild those joints on the clones too or the offset chain stays open. */
+export function coordinateCorners(
+  entities: ReadonlyArray<{ id: string; kind: string }>,
+  initial: Readonly<Record<string, readonly number[]>>,
+  selectedIds: readonly string[],
+  tol = TOL_TOPOLOGY_MERGE,
+): OffsetCorner[] {
+  const selected = new Set(selectedIds)
+  const vertices: Array<{ entityId: string; vertexKey: string; point: [number, number] }> = []
+  for (const entity of entities) {
+    if (!selected.has(entity.id)) continue
+    const params = initial[entity.id]
+    if (!params) continue
+    for (const vertex of endpointVertices(entity.kind, params)) {
+      // A NaN coordinate would compare as "within tolerance" (NaN > tol is
+      // false) and seed a NaN miter into the clones, so skip it outright.
+      if (!Number.isFinite(vertex.point[0]) || !Number.isFinite(vertex.point[1])) continue
+      vertices.push({ entityId: entity.id, ...vertex })
+    }
+  }
+
+  const corners: OffsetCorner[] = []
+  for (let i = 0; i < vertices.length; i++) {
+    for (let j = i + 1; j < vertices.length; j++) {
+      const a = vertices[i], b = vertices[j]
+      if (a.entityId === b.entityId) continue
+      if (Math.hypot(a.point[0] - b.point[0], a.point[1] - b.point[1]) > tol) continue
+      corners.push({
+        a: { entityId: a.entityId, vertexKey: a.vertexKey },
+        b: { entityId: b.entityId, vertexKey: b.vertexKey },
+      })
+    }
+  }
+  return corners
+}
+
+/** Drop corners that name the same vertex pair twice. A rectangle carries both
+ *  `coincident` constraints and coordinate-equal endpoints, so the two discovery
+ *  routes find the same four joints; without this the offset would author two
+ *  coincidents per clone corner. */
+export function uniqueCorners(corners: readonly OffsetCorner[]): OffsetCorner[] {
+  const seen = new Set<string>()
+  const unique: OffsetCorner[] = []
+  for (const corner of corners) {
+    const [a, b] = [
+      `${corner.a.entityId}:${corner.a.vertexKey}`,
+      `${corner.b.entityId}:${corner.b.vertexKey}`,
+    ].sort()
+    const key = `${a}|${b}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    unique.push(corner)
+  }
+  return unique
 }
 
 /** Intersect two infinite lines, each given as `[x0, y0, x1, y1]`. Returns the

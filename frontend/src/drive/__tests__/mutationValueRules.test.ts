@@ -482,6 +482,46 @@ describe('finding 8: hole field values', () => {
   })
 })
 
+describe('birdhouse F2: apply_offset source ids', () => {
+  it('refuses a source id that names no entity in the target sketch, naming it', () => {
+    const error = refusal({
+      type: 'apply_offset', featureId: 'sk1', sourceIds: ['l1', 'ghost'], distance: 2,
+    }, sketchDoc())
+    expect(error.code).toBe('unknown-target')
+    expect(error.message).toContain('ghost')
+    expect(error.message).toContain('sk1')
+  })
+
+  it('refuses an unknown sketch feature and accepts the real ids', () => {
+    const missing = refusal({
+      type: 'apply_offset', featureId: 'nope', sourceIds: ['l1'], distance: 2,
+    }, sketchDoc())
+    expect(missing.code).toBe('unknown-target')
+    expect(missing.message).toContain('nope')
+
+    expect(validateMutation({
+      type: 'apply_offset', featureId: 'sk1', sourceIds: ['l1'], distance: 2,
+    }, { doc: sketchDoc() })).toMatchObject({ ok: true })
+  })
+
+  it('reports the ghost id as a step failure and still offsets a real id', async () => {
+    const ghost = await runHeadless({
+      doc: sketchDoc(),
+      steps: [{ mutation: { type: 'apply_offset', featureId: 'sk1', sourceIds: ['ghost'], distance: 2 } }],
+    })
+    expect(ghost.outcome.steps[0]).toMatchObject({ ok: false, error: { code: 'unknown-target' } })
+    if (ghost.outcome.steps[0].error) expect(ghost.outcome.steps[0].error.message).toContain('ghost')
+
+    const real = await runHeadless({
+      doc: sketchDoc(),
+      steps: [{ mutation: { type: 'apply_offset', featureId: 'sk1', sourceIds: ['l1'], distance: 2 } }],
+    })
+    expect(real.outcome.steps[0]).toMatchObject({ ok: true })
+    // One clone entity plus the parallel constraint that ties it to the source.
+    expect(real.outcome.steps[0].createdIds).toHaveLength(2)
+  })
+})
+
 describe('the positive twin of a seeded script still validates', () => {
   it('accepts a normal box script step by step', async () => {
     const steps: Array<{ mutation: Mutation }> = [
