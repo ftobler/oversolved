@@ -70,7 +70,7 @@ export function driveSeedFor(docHash: string): number {
 // continues the script changes what happens after the step, not what it mints.
 function stepContent(step: unknown): unknown {
   if (typeof step !== 'object' || step === null || Array.isArray(step)) return step
-  const content = { ...(step as Record<string, unknown>) }
+  const content = { ...(step as { continueOnError?: unknown }) }
   delete content.continueOnError
   return content
 }

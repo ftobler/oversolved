@@ -61,7 +61,7 @@ function variableValueOf(
 // A name already in the live context is an earlier definition, so it can never
 // be the forward reference an expression is complaining about.
 function laterVariablesFor(
-  features: Array<Record<string, unknown>>,
+  features: readonly { kind?: unknown; label?: unknown; id?: unknown }[],
   fromIndex: number,
   context: Record<string, number>,
 ): Record<string, number> {
