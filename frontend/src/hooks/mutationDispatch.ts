@@ -167,7 +167,7 @@ export const mutationHandlers: MutationHandlers = {
   remove_extrude_profile: (next, m) =>
     applyRemoveExtrudeProfile(next, m.featureId, m.index),
   add_revolve: (next, m) =>
-    applyAddRevolve(next, m.featureId, m.label, m.sketchQuery, m.angle),
+    applyAddRevolve(next, m.featureId, m.label, m.sketchQuery, m.angle, m.axis),
   set_revolve_field: (next, m) =>
     applySetRevolveField(next, m.featureId, m.field, m.value),
   add_revolve_profile: (next, m) =>

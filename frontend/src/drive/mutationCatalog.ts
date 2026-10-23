@@ -181,7 +181,10 @@ export type { ValueRule, ValueViolation, ValueViolationCode } from '@/drive/muta
 
 const HOLE_FIELD_NOTE =
   `Canonical hole fields: ${featureFieldNames('hole').join(', ')}. ` +
-  'The required fields are sketch, diameter, depth_mode, depth; the optional ones are direction, target, thread. ' +
+  'The required fields are sketch, diameter, depth_mode; depth is required only for a blind hole. ' +
+  'A through_all hole sizes itself from the target body and stores no depth, so omit it. ' +
+  'A blind add with no depth keeps the editor default of 20. ' +
+  'The optional fields are direction, target, thread. ' +
   '`depth_mode` is blind or through_all. `sketch` is a feature-level ref, so spell it ' +
   '@<sketchId> (or a narrower entity:/vertex:/? pick from the viewport), not the profile consumers\' ' +
   '$<sketchId> form; a $ ref is refused here. ' +
@@ -216,7 +219,7 @@ const holeAddFields = () => {
 // The transform's axis trio is the one place an author has to choose a
 // spelling; the solver composes exactly one axis for the whole feature.
 const TRANSFORM_NOTE =
-  'One transform applies translation, then rotation, then scale about a single axis, equally to every body in `bodies`. ' +
+  'One transform applies scale first, then rotation, then translation about a single axis, equally to every body in `bodies`. ' +
   'For the rotation, name either `rotation_axis` (a feature-level ref such as @<sketchId>/<entityId>, or an edge query from `select`) ' +
   'or the stored pair `rotation_axis_origin` (VEC3 point) and `rotation_axis_direction` (VEC3, non-zero). ' +
   'A resolved `rotation_axis` derives both from that edge and overrides the pair; `rotation_axis_direction` alone rotates about the world origin, ' +
@@ -226,9 +229,10 @@ const TRANSFORM_NOTE =
 // The revolve axis resolves through the feature-level query repository, not the
 // sketch-local `$` namespace: @sk/entity and edge queries work, `$sk` does not.
 const REVOLVE_AXIS_NOTE =
-  '`axis` is a feature-level ref, not the profile\'s sketch-local $ form: name a sketch entity as ' +
+  '`axis` is required and is a feature-level ref, not the profile\'s sketch-local $ form: name a sketch entity as ' +
   '@<sketchId>/<entityId> (a line, or a circle/arc whose center sits on the axis), or an edge query from `select`. ' +
-  'A $<sketchId> ref does not resolve in `axis`.'
+  'A $<sketchId> ref does not resolve in `axis`. The axis may touch the profile boundary but must not cut through ' +
+  'its interior.'
 
 // Plane refs are exact on purpose: a case-insensitive bare-name match could
 // shadow a user plane whose id differs only by case. The boundary refuses an
@@ -353,8 +357,14 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), constraintId: str(), sign: num() },
   },
   delete: {
-    summary: 'Delete sketch entities, constraints or features by id.',
-    fields: { targets: arr('Ids to delete across the document.') },
+    summary: 'Delete sketch entities, vertices or constraints.',
+    fields: {
+      targets: arr(
+        'Sketch targets to delete: "entity:<sketchId>:<entityId>", ' +
+        '"vertex:<sketchId>:<entityId>:<vertexKey>" or "constraint:<sketchId>:<constraintId>". ' +
+        'Features are deleted with delete_feature, not with a sketch target.',
+      ),
+    },
   },
   add_entity: {
     summary: 'Add one sketch entity of a kind with numeric params.',
@@ -384,7 +394,8 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), kind: str(), source: str('The source edge ref.'), entityId: optStr() },
   },
   add_rect: {
-    summary: 'Add an axis-aligned rectangle with its lines and constraints.',
+    summary: 'Add an axis-aligned rectangle with its lines and constraints; '
+      + 'the created line ids are ordered bottom, right, top, left.',
     fields: {
       featureId: str(),
       p0: point(),
@@ -424,7 +435,9 @@ export const MUTATION_CATALOG = {
   },
   toggle_construction: {
     summary: 'Toggle construction mode on sketch entities.',
-    fields: { targets: arr() },
+    fields: {
+      targets: arr('Entity targets of the form "entity:<sketchId>:<entityId>"; a bare id is refused.'),
+    },
   },
   set_feature_plane: {
     summary: 'Move a sketch to another plane.',
@@ -442,7 +455,7 @@ export const MUTATION_CATALOG = {
     },
   },
   delete_feature: {
-    summary: 'Delete a feature and everything downstream of it.',
+    summary: 'Delete a feature; dependents stay and report the missing input.',
     fields: { featureId: str() },
   },
   set_feature_visibility: {
@@ -489,9 +502,9 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_revolve: {
-    summary: 'Revolve a sketch around its plane axis.',
+    summary: 'Revolve a sketch about a picked axis.',
     note: REVOLVE_AXIS_NOTE,
-    fields: { ...featureAddFields(), sketchQuery: sketchQuery(), angle: num() },
+    fields: { ...featureAddFields(), sketchQuery: sketchQuery(), angle: num(), axis: query(REVOLVE_AXIS_NOTE) },
   },
   set_revolve_field: {
     summary: 'Set one revolve field.',
@@ -729,7 +742,15 @@ export const MUTATION_CATALOG = {
   },
   add_variable: {
     summary: 'Add a variable feature.',
-    fields: featureAddFields(),
+    note:
+      'A variable must precede every feature that names it: an expression naming a variable defined later is refused with ' +
+      '"<field>: variable \'<name>\' is defined after this feature (at index N); move it up with reorder_features". ' +
+      'N is the index among the solved (non-builtin) features. `insertAt` and reorder_features.toIndex count the seeded ' +
+      'plane rows, so the first user slot is usually 4; a smaller N clamps there.',
+    fields: {
+      ...featureAddFields(),
+      insertAt: insertAt(),
+    },
   },
   set_variable_field: {
     summary: 'Set one variable field, e.g. expression.',
@@ -748,6 +769,7 @@ export const MUTATION_CATALOG = {
   },
   reorder_features: {
     summary: 'Move a feature to an absolute index in the log.',
+    note: '`toIndex` counts the seeded plane rows, so the first user feature usually sits at index 4.',
     fields: { featureId: str(), toIndex: num() },
   },
   set_body_visibility: {

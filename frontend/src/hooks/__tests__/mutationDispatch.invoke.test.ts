@@ -185,7 +185,7 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
 
   it('revolve: add, set field, add/remove profile', () => {
     const doc = sketchDoc()
-    mutationHandlers.add_revolve(doc, { type: 'add_revolve', featureId: 'RV', sketchQuery: '@S1/area1', angle: 90 })
+    mutationHandlers.add_revolve(doc, { type: 'add_revolve', featureId: 'RV', sketchQuery: '@S1/area1', angle: 90, axis: '@S1/ax' })
     mutationHandlers.set_revolve_field(doc, { type: 'set_revolve_field', featureId: 'RV', field: 'angle', value: 180 })
     mutationHandlers.add_revolve_profile(doc, { type: 'add_revolve_profile', featureId: 'RV', sketchQuery: '@S1/area2' })
     mutationHandlers.remove_revolve_profile(doc, { type: 'remove_revolve_profile', featureId: 'RV', index: 0 })

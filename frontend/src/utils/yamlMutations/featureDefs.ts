@@ -205,6 +205,7 @@ export function applyAddRevolve(
   label: string | undefined,
   sketchQuery: string,
   angle: number,
+  axis?: string,
 ): void {
   // The angle is persisted verbatim into the doc. round(NaN) is still NaN, so a
   // non-finite angle would seed a broken revolve. Refuse before the feature is
@@ -217,13 +218,13 @@ export function applyAddRevolve(
     id: featureId,
     kind: 'revolve',
     label: label ?? 'Revolve',
-    // Deliberately NO axis default. Pre-filling [0,0,0]/[0,0,1] made every new
-    // revolve solve about world Z, so a user who never picked an axis got a
-    // plausible-looking wrong solid instead of a red feature asking for the
-    // pick. Same contract as circular_array, which also ships axis-less.
+    // The axis rides along in the add so a script needs one call. It is a
+    // stored pick, not a default: an absent axis stays absent and the solver
+    // reports the missing pick.
     revolve: {
       sketch: sketchQuery ? [sketchQuery] : [],
       angle,
+      ...(axis ? { axis } : {}),
     },
   }
   pushFeature(doc, feature)
@@ -599,7 +600,12 @@ export function applyAddHole(
   fields: Partial<HoleFeatureDef> = {},
 ): void {
   const hole: HoleFeatureDef = { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' }
-  Object.assign(hole, Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)))
+  const defined = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined))
+  Object.assign(hole, defined)
+  // A through_all bore is sized by the body it cuts, so the blind default is
+  // not part of its contract. Drop it when the caller supplied none instead of
+  // persisting a depth the solve then ignores.
+  if (hole.depth_mode === 'through_all' && defined.depth === undefined) delete hole.depth
   pushFeature(doc, {
     id: featureId,
     kind: 'hole',

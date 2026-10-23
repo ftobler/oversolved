@@ -533,18 +533,28 @@ banner on stdout, so a client config must use the direct node invocation.
   `mode` enum includes `offset`, and the common offset plane is
   `{mode:"offset", plane:"@builtin_plane_top", offset:43}`).
   Guidance that a field list cannot carry lives in the row note: `hole` lists
-  its required fields (`sketch`, `diameter`, `depth_mode`, `depth`) and its
-  optional ones (`direction`, `target`, `thread`), spells `hole.sketch` as
-  `@<sketchId>` (or a narrower viewport pick), not the profile consumers'
-  `$<sketchId>` form, and says a circle drills at its own radius while a point
-  uses the feature `diameter`; `add_center_rect` takes the half-diagonal corner
-  (center `[0,0]` with corner `[1,1]` is 2x2) and leaves a centre point entity;
-  `revolve.axis` is a feature-level ref such as `@sk1/line1`, not the profile's
-  `$sk1` form; `transform` rotates about exactly one axis, given either as
-  `rotation_axis` (a ref) or as `rotation_axis_origin` plus
-  `rotation_axis_direction`; `add_fillet` takes all of `edges` and `radius` in
-  the same call; and an array's `operation: add` only fuses copies that touch,
-  so disjoint copies split into bodies named with `_1`, `_2`... suffixes.
+  its required fields (`sketch`, `diameter`, `depth_mode`) and its optional ones
+  (`depth`, `direction`, `target`, `thread`), with `depth` required only for a
+  blind hole because a `through_all` hole is sized by the target body and
+  stores no depth. `hole.sketch` is spelled `@<sketchId>` (or a narrower
+  viewport pick), not the profile consumers' `$<sketchId>` form, and a circle
+  drills at its own radius while a point uses the feature `diameter`;
+  `add_center_rect` takes the half-diagonal corner (center `[0,0]` with corner
+  `[1,1]` is 2x2) and leaves a centre point entity; `add_rect` creates its line
+  ids in bottom, right, top, left order; `add_revolve` takes the required
+  `axis` inline (`@<sketchId>/<entityId>` or an edge query from `select`), and
+  an axis that crosses a profile's interior is refused by name; `transform`
+  applies scale first, then rotation, then translation, always about exactly
+  one axis given either as `rotation_axis` (a ref) or as `rotation_axis_origin`
+  plus `rotation_axis_direction`; `add_fillet` takes all of `edges` and
+  `radius` in the same call; `toggle_construction` takes entity targets as
+  `entity:<sketchId>:<entityId>` and `delete` takes entity, vertex or constraint
+  refs (a bare id is refused); `add_variable` must sit
+  before every feature that names it, and `reorder_features.toIndex` counts the
+  seeded plane rows; `delete_feature` removes only the named row, so a
+  dependent stays in the log and reports its missing input; and an array's
+  `operation: add` only fuses copies that touch, so disjoint copies split into
+  bodies named with `_1`, `_2`... suffixes.
 - Plane refs are exact. `add_sketch.plane` and `set_feature_plane.plane` accept
   `@builtin_plane_front`, `@builtin_plane_top`, `@builtin_plane_right`, the bare
   names `Front`/`Top`/`Right` (case-sensitive), `@<planeId>` for a plane

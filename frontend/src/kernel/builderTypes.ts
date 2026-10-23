@@ -17,6 +17,10 @@ export type FeatureSolver = (
   bodyStore: Record<string, Body>,
   featuresById: Record<string, Record<string, unknown>>,
   variableContext?: Record<string, number>,
+  // Variable names defined after this feature, mapped to their feature-log
+  // indices. Expression resolution names a forward reference explicitly instead
+  // of reporting only "Cannot evaluate".
+  laterVariables?: Record<string, number>,
 ) => FeatureResult
 
 export interface BuildDeps {

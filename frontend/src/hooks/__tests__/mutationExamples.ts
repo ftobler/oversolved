@@ -282,7 +282,7 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   // revolve
   add_revolve: {
     makeDoc: emptyDoc,
-    mutation: { type: 'add_revolve', featureId: 'rv1', label: 'Rev', sketchQuery: '@sk1', angle: 180 },
+    mutation: { type: 'add_revolve', featureId: 'rv1', label: 'Rev', sketchQuery: '@sk1', angle: 180, axis: '@sk1/ax' },
   },
   set_revolve_field: {
     makeDoc: revolveDoc,

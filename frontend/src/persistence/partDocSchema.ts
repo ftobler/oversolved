@@ -42,6 +42,10 @@ interface SubDef {
   key: string | null
   properties: JsonSchema
   required?: string[]
+  // Conditional requirements inside the param container, for a field whose
+  // necessity depends on another field (hole.depth is required only when
+  // depth_mode is blind).
+  allOf?: JsonSchema[]
 }
 
 // The param-container key each kind registered with feature(), so callers can
@@ -61,6 +65,7 @@ function feature(kind: FeatureKind, sub: SubDef): JsonSchema {
       type: 'object',
       properties: sub.properties,
       required: sub.required ?? [],
+      ...(sub.allOf !== undefined && { allOf: sub.allOf }),
       additionalProperties: false,
     }
     required.push(sub.key)
@@ -141,7 +146,7 @@ export const FEATURE_SCHEMA_BY_KIND = {
   }),
   revolve: feature('revolve', {
     key: 'revolve',
-    required: ['sketch', 'angle'],
+    required: ['sketch', 'angle', 'axis'],
     properties: {
       sketch: REF_OR_LIST, angle: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse', 'symmetric'] },
       axis: REF, operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
@@ -215,7 +220,16 @@ export const FEATURE_SCHEMA_BY_KIND = {
   }),
   hole: feature('hole', {
     key: 'hole',
-    required: ['sketch', 'diameter', 'depth_mode', 'depth'],
+    // depth sizes a blind bore only: a through_all bore is sized by the body it
+    // cuts, so requiring a depth there made the catalog demand a value the
+    // kernel then ignored.
+    required: ['sketch', 'diameter', 'depth_mode'],
+    allOf: [
+      {
+        if: { properties: { depth_mode: { const: 'blind' } }, required: ['depth_mode'] },
+        then: { required: ['depth'] },
+      },
+    ],
     properties: {
       sketch: REF, diameter: NUMBER_OR_EXPR, depth_mode: { enum: ['blind', 'through_all'] },
       depth: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse'] }, target: REF,

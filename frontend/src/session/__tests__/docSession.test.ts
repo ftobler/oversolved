@@ -158,6 +158,16 @@ describe('execute', () => {
     expect(session.getDoc()!.features!.map(f => f.id)).toEqual(['f1', 'f2', 'plane1', 'f3'])
   })
 
+  it('inserts a variable add through the same slot rule', () => {
+    // A variable has to precede every feature that names it, so its add carries
+    // the same insertion slot as a sketch or plane add.
+    const { session } = makeSession(rollbackDoc())
+
+    session.execute({ type: 'add_variable', featureId: 'width', label: 'width', insertAt: 2 })
+
+    expect(session.getDoc()!.features!.map(f => f.id)).toEqual(['f1', 'f2', 'width', 'f3'])
+  })
+
   it('a refused insertion leaves the parked bar alone', () => {
     const { session, facts } = makeSession(rollbackDoc())
     facts.rollbackPosition = 3  // staged by the page for a row that never lands

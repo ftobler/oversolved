@@ -16,7 +16,7 @@ const baseDoc: PartDoc = { features: [] }
 describe('add_revolve', () => {
   it('adds a revolve feature with sketch as an array', () => {
     const doc: PartDoc = structuredClone(baseDoc)
-    applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
+    applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360, '@sk1/ax')
     expect(doc.features).toHaveLength(1)
     expect(doc.features![0].kind).toBe('revolve')
     expect(doc.features![0].id).toBe('rev1')
@@ -27,28 +27,34 @@ describe('add_revolve', () => {
 
   it('stores empty array when sketchQuery is empty string', () => {
     const doc: PartDoc = structuredClone(baseDoc)
-    applyAddRevolve(doc, 'rev1', undefined, '', 360)
+    applyAddRevolve(doc, 'rev1', undefined, '', 360, '@sk1/ax')
     expect(revolve0(doc).sketch).toEqual([])
   })
 
   it('uses label when provided', () => {
     const doc: PartDoc = structuredClone(baseDoc)
-    applyAddRevolve(doc, 'rev1', 'My Revolve', '$sk1', 360)
+    applyAddRevolve(doc, 'rev1', 'My Revolve', '$sk1', 360, '@sk1/ax')
     expect(doc.features![0].label).toBe('My Revolve')
   })
 
   it('defaults label to "Revolve" when not provided', () => {
     const doc: PartDoc = structuredClone(baseDoc)
-    applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
+    applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360, '@sk1/ax')
     expect(doc.features![0].label).toBe('Revolve')
   })
 
-  it('writes no axis default, so the revolve fails until an axis is picked', () => {
+  it('stores the inline axis with the profile and angle', () => {
+    const doc: PartDoc = structuredClone(baseDoc)
+    applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360, '@sk1/ax')
+    expect(revolve0(doc).axis).toBe('@sk1/ax')
+  })
+
+  it('leaves an absent axis absent instead of filling a default', () => {
     // A pre-filled [0,0,0]/[0,0,1] axis made a never-picked axis solve about
     // world Z; the revolve leaf now rejects an axis-less feature instead.
     const doc: PartDoc = structuredClone(baseDoc)
     applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
-    expect(Object.keys(revolve0(doc)).sort()).toEqual(['angle', 'sketch'])
+    expect(revolve0(doc)).not.toHaveProperty('axis')
   })
 })
 
@@ -367,7 +373,7 @@ describe('set_revolve_merge_target', () => {
 describe('mutation does not mutate original doc', () => {
   it('add_revolve does not mutate original', () => {
     const doc: PartDoc = structuredClone(baseDoc)
-    applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
+    applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360, '@sk1/ax')
     expect(baseDoc.features).toEqual([])
   })
 

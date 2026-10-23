@@ -65,6 +65,7 @@ describe('value rules cover the catalog', () => {
     ['add_center_rect', { type: 'add_center_rect', featureId: 'sk1', center: [0, 0], corner: [1] }],
     ['add_ngon', { type: 'add_ngon', featureId: 'sk1', center: [0, 0], corner: [1, 1], sides: 2 }],
     ['apply_offset', { type: 'apply_offset', featureId: 'sk1', sourceIds: [], distance: 2 }],
+    ['toggle_construction', { type: 'toggle_construction', targets: ['l1'] }],
     ['set_feature_plane', { type: 'set_feature_plane', featureId: 'sk1', plane: '' }],
     ['add_sketch', { type: 'add_sketch', featureId: 'sk1', plane: 'a plane with spaces' }],
     ['add_plane', { type: 'add_plane', featureId: 'p1', definition: { mode: 'nope' } }],
@@ -73,7 +74,7 @@ describe('value rules cover the catalog', () => {
     ['set_extrude_field', { type: 'set_extrude_field', featureId: 'ex1', field: 'operation', value: 'copy' }],
     ['add_extrude_profile', { type: 'add_extrude_profile', featureId: 'ex1', sketchQuery: '' }],
     ['remove_extrude_profile', { type: 'remove_extrude_profile', featureId: 'ex1', index: -1 }],
-    ['add_revolve', { type: 'add_revolve', featureId: 'rv1', sketchQuery: '$sk1', angle: 0 }],
+    ['add_revolve', { type: 'add_revolve', featureId: 'rv1', sketchQuery: '$sk1', angle: 0, axis: '@sk1/ax' }],
     ['set_revolve_field', { type: 'set_revolve_field', featureId: 'rv1', field: 'angle', value: 0 }],
     ['add_revolve_profile', { type: 'add_revolve_profile', featureId: 'rv1', sketchQuery: '' }],
     ['remove_revolve_profile', { type: 'remove_revolve_profile', featureId: 'rv1', index: -1 }],
@@ -412,6 +413,43 @@ describe('finding 6: delete targets', () => {
       error: { code: 'unknown-target' },
     })
     if (result.outcome.steps[0].error) expect(result.outcome.steps[0].error.message).toContain('ghost')
+  })
+})
+
+describe('finding: toggle_construction target form', () => {
+  it.each(['l1', 'sk1/l1', '@sk1/l1', 'vertex:sk1:l1:start'])('refuses %s naming the entity form', (target) => {
+    const error = refusal({ type: 'toggle_construction', targets: [target] })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('entity:<sketchId>:<entityId>')
+  })
+
+  it('refuses a well-formed target that names nothing', () => {
+    const error = refusal({ type: 'toggle_construction', targets: ['entity:sk1:ghost'] }, sketchDoc())
+    expect(error.code).toBe('unknown-target')
+    expect(error.message).toContain('ghost')
+  })
+
+  it('toggles an existing entity when the target names it', () => {
+    expect(validateMutation({ type: 'toggle_construction', targets: ['entity:sk1:l1'] }, { doc: sketchDoc() }))
+      .toMatchObject({ ok: true })
+  })
+})
+
+describe('finding: add_revolve axis is a required pick', () => {
+  it('refuses a $ ref in axis and names the feature-level form', () => {
+    const error = refusal({ type: 'add_revolve', featureId: 'rv1', sketchQuery: '$sk1', angle: 90, axis: '$sk1' })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('"$"')
+    expect(error.message).toContain('@<featureId>/<elementId>')
+  })
+
+  it('accepts an inline sketch ref or an edge query', () => {
+    expect(validateMutation({
+      type: 'add_revolve', featureId: 'rv1', sketchQuery: '$sk1', angle: 90, axis: '@sk1/ax',
+    })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_revolve', featureId: 'rv1', sketchQuery: '$sk1', angle: 90, axis: '?body:edge',
+    })).toMatchObject({ ok: true })
   })
 })
 

@@ -127,6 +127,39 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     })
   }
 
+  it('composes scale, then rotation, then translation (the order TRANSFORM_NOTE states)', () => {
+    // The catalog note used to claim translation came first. Pin the code's real
+    // order: the right-hand factor acts on the point first, so a box centred at
+    // (0.5, 1, 1.5) rotated 90 about Z then translated +X 10 lands at
+    // (9, 0.5, 1.5). Translation first would land at (-1, 10.5, 1.5).
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const repo = new Repository()
+      const bodyStore: Record<string, Body> = {
+        body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 1, 2, 3, 'body_s', 'ex_s'),
+      }
+      const result = solveTransform(occ, scope, table, {
+        id: 'tr1',
+        kind: 'transform',
+        transform: {
+          bodies: ['body_s'],
+          operation: 'new',
+          translation: [10, 0, 0],
+          rotation_angle: 90,
+          rotation_axis_origin: [0, 0, 0],
+          rotation_axis_direction: [0, 0, 1],
+        },
+      }, repo, bodyStore)
+      expect(result.status).toBe('ok')
+      const moved = bodyStore[result.body_id as string]
+      expect(moved).toBeDefined()
+      expectCentreClose(centreOf(scope, table, moved), [9, 0.5, 1.5])
+    } finally {
+      scope.dispose()
+    }
+  })
+
   // Create a box body at the given origin and size.
   function makeBoxBody(
     oc: OccModule, scope: DisposeScope, table: HandleTable,

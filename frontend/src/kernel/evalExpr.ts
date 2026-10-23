@@ -12,6 +12,7 @@
  */
 
 import { create, all } from 'mathjs'
+import type { FunctionNode, MathNode, SymbolNode } from 'mathjs'
 import type {
   ArrayFeatureDef, BooleanFeatureDef, ChamferFeatureDef, CircularArrayFeatureDef,
   ExtrudeFeatureDef, FilletFeatureDef, HelixFeatureDef, HoleFeatureDef,
@@ -98,23 +99,60 @@ export function isExprFieldKind(kind: string): kind is ExprFieldKind {
   return Object.hasOwn(EXPR_FIELDS_BY_KIND, kind)
 }
 
+/**
+ * The first symbol an expression reads that names a variable defined later in
+ * the feature log, with that definition's index. mathjs parses the string, so
+ * only real identifiers count: a name inside a string literal or a function
+ * call's own name is never mistaken for a variable. Null when the expression
+ * has no forward reference (or does not parse at all, which the evaluator
+ * reports as its own failure).
+ */
+export function laterVariableRef(
+  expr: string,
+  laterVariables: Record<string, number> = {},
+): { name: string; index: number } | null {
+  if (Object.keys(laterVariables).length === 0) return null
+  try {
+    const node: MathNode = math.parse(expr)
+    let found: { name: string; index: number } | null = null
+    node.traverse((child, _path, parent) => {
+      if (found !== null || child.type !== 'SymbolNode') return
+      // `sqrt(x)` parses as a FunctionNode whose callee is a SymbolNode. That
+      // symbol names a function, not a variable, so it must not win the match.
+      if (parent.type === 'FunctionNode' && (parent as FunctionNode).fn === child) return
+      const name = (child as SymbolNode).name
+      if (Object.hasOwn(laterVariables, name)) found = { name, index: laterVariables[name] }
+    })
+    return found
+  } catch {
+    return null
+  }
+}
+
 /** Evaluate the expression-capable fields of a feature's sub-dict in place.
  *  String values are replaced by their evaluated number; plain numbers are left
  *  untouched. On a failed evaluation the original string is kept and a
  *  `<key>_error` entry is written so the solver layer can mark the feature
- *  errored.
+ *  errored. A forward reference gets the actionable "defined after" sentence
+ *  instead of the generic "Cannot evaluate", because `laterVariables` names
+ *  those variables and their log indices.
  */
 export function evalFeatureParams(
   sub: Record<string, unknown>,
   exprFields: readonly string[],
   context: Record<string, number> = {},
+  laterVariables: Record<string, number> = {},
 ): void {
   for (const key of exprFields) {
     const val = sub[key]
     if (typeof val !== 'string') continue  // numbers (and absent) pass through
     const result = evalExpr(val, context)
     if (isNaN(result)) {
-      sub[`${key}_error`] = `Cannot evaluate "${val}"`
+      const later = laterVariableRef(val, laterVariables)
+      sub[`${key}_error`] = later === null
+        ? `Cannot evaluate "${val}"`
+        : `${key}: variable '${later.name}' is defined after this feature (at index ${later.index}); `
+          + 'move it up with reorder_features'
       continue
     }
     sub[key] = result

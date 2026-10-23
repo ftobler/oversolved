@@ -295,7 +295,7 @@ const ROUND_TRIPS: RoundTripCase[] = [
   { name: 'extrude remove_extrude_profile', makeDoc: extrudeDoc, mutation: { type: 'remove_extrude_profile', featureId: 'ex1', index: 0 } as Mutation },
 
   // revolve
-  { name: 'revolve add_revolve', makeDoc: emptyDoc, mutation: { type: 'add_revolve', featureId: 'rv1', label: 'Rev', sketchQuery: '@sk1', angle: 180 } as Mutation },
+  { name: 'revolve add_revolve', makeDoc: emptyDoc, mutation: { type: 'add_revolve', featureId: 'rv1', label: 'Rev', sketchQuery: '@sk1', angle: 180, axis: '@sk1/ax' } as Mutation },
   { name: 'revolve set_revolve_field', makeDoc: revolveDoc, mutation: { type: 'set_revolve_field', featureId: 'rv1', field: 'angle', value: 120 } as Mutation },
   { name: 'revolve add_revolve_profile', makeDoc: revolveDoc, mutation: { type: 'add_revolve_profile', featureId: 'rv1', sketchQuery: '@sk2' } as Mutation },
   { name: 'revolve remove_revolve_profile', makeDoc: revolveDoc, mutation: { type: 'remove_revolve_profile', featureId: 'rv1', index: 0 } as Mutation },

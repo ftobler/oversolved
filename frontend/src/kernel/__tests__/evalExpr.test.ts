@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evalExpr, evalFeatureParams, EXPR_FIELDS_BY_KIND } from '../evalExpr'
+import { evalExpr, evalFeatureParams, laterVariableRef, EXPR_FIELDS_BY_KIND } from '../evalExpr'
 
 describe('evalExpr', () => {
   it('returns a plain number string via the fast path', () => {
@@ -110,6 +110,33 @@ describe('evalFeatureParams', () => {
     const sub: Record<string, unknown> = { distance: '2*h' }
     evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.move_face, { h: -3 })
     expect(sub.distance).toBe(-6)
+  })
+
+  it('reports a variable defined later by name and log index', () => {
+    const sub: Record<string, unknown> = { distance: 'width*2' }
+    evalFeatureParams(sub, ['distance'], {}, { width: 7 })
+    expect(sub.distance).toBe('width*2')
+    expect(sub.distance_error).toBe(
+      "distance: variable 'width' is defined after this feature (at index 7); "
+      + 'move it up with reorder_features',
+    )
+  })
+})
+
+describe('laterVariableRef', () => {
+  it('finds a real identifier and its index', () => {
+    expect(laterVariableRef('width*2 + height', { width: 3, height: 4 }))
+      .toEqual({ name: 'width', index: 3 })
+  })
+
+  it('does not read a function name or a string literal as a variable', () => {
+    expect(laterVariableRef('sqrt(width)', { sqrt: 1, width: 3 })).toEqual({ name: 'width', index: 3 })
+    expect(laterVariableRef('"width"', { width: 3 })).toBeNull()
+  })
+
+  it('returns null when no later variable is named or the expression does not parse', () => {
+    expect(laterVariableRef('2+2', { width: 3 })).toBeNull()
+    expect(laterVariableRef('2+/', { width: 3 })).toBeNull()
   })
 })
 

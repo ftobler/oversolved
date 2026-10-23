@@ -12,7 +12,7 @@
  * in, so this stays trivially unit-testable.
  */
 
-import { evalExpr } from '../evalExpr'
+import { evalExpr, laterVariableRef } from '../evalExpr'
 
 // mathjs constants that would shadow a builtin if used as a variable name.
 const RESERVED = new Set(['pi', 'e', 'i', 'Infinity', 'NaN', 'true', 'false', 'null'])
@@ -33,6 +33,7 @@ export function isValidVariableName(name: string): boolean {
 export function solveVariable(
   feature: Record<string, unknown>,
   context: Record<string, number> = {},
+  laterVariables: Record<string, number> = {},
 ): Record<string, unknown> {
   const varName = String(feature.label ?? feature.id ?? '')
 
@@ -55,6 +56,15 @@ export function solveVariable(
 
   const value = evalExpr(exprStr, context)
   if (isNaN(value)) {
+    const later = laterVariableRef(exprStr, laterVariables)
+    if (later !== null) {
+      return {
+        status: 'exception',
+        exception:
+          `expression: variable '${later.name}' is defined after this feature (at index ${later.index}); ` +
+          'move it up with reorder_features',
+      }
+    }
     return { status: 'exception', exception: `Cannot evaluate "${exprStr}"` }
   }
   return { status: 'ok', value, expression: exprStr }

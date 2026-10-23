@@ -8,16 +8,17 @@ import { describe, it, expect } from 'vitest'
 import { build, type BuildDeps, type FeatureResult } from '../../builder'
 import { Repository } from '../../query'
 import { solveVariable } from '../variable'
-import { evalExpr } from '../../evalExpr'
+import { resolveFeatureExpressions } from '../../solverRegistry'
 
 function deps(): BuildDeps {
   return {
-    trySolveFeature: (feature, _repo, _bodyStore, _featuresById, variableContext): FeatureResult => {
+    trySolveFeature: (feature, _repo, _bodyStore, _featuresById, variableContext, laterVariables): FeatureResult => {
       const ctx = variableContext ?? {}
-      if (feature.kind === 'variable') return solveVariable(feature, ctx)
+      if (feature.kind === 'variable') return solveVariable(feature, ctx, laterVariables ?? {})
       if (feature.kind === 'extrude') {
-        const distance = (feature.extrude as { distance: string }).distance
-        return { status: 'ok', resolvedDistance: evalExpr(distance, ctx) }
+        const resolved = resolveFeatureExpressions(feature, ctx, laterVariables ?? {})
+        if ('exception' in resolved) return { status: 'exception', exception: resolved.exception }
+        return { status: 'ok', resolvedDistance: (resolved.feature.extrude as { distance: number }).distance }
       }
       return { status: 'ok' }
     },
@@ -52,6 +53,28 @@ describe('variable build integration', () => {
     expect(res.a).toMatchObject({ value: 10 })
     expect(res.b).toMatchObject({ value: 50 })
     expect(res.ex1).toMatchObject({ resolvedDistance: 52 })
+  })
+
+  it('names a forward reference and builds once the variable is moved up', () => {
+    const forward = {
+      features: [
+        { id: 'ex1', kind: 'extrude', extrude: { distance: 'width+50' } },
+        { id: 'width', kind: 'variable', label: 'width', variable: { expression: '100' } },
+      ],
+    }
+    const failed = build(forward, { prevState: null }, deps()).result as Record<string, FeatureResult>
+    expect(failed.ex1).toMatchObject({
+      status: 'exception',
+      exception:
+        "distance: variable 'width' is defined after this feature (at index 1); "
+        + 'move it up with reorder_features',
+    })
+
+    const reordered = {
+      features: [forward.features[1], forward.features[0]],
+    }
+    const built = build(reordered, { prevState: null }, deps()).result as Record<string, FeatureResult>
+    expect(built.ex1).toMatchObject({ status: 'ok', resolvedDistance: 150 })
   })
 
   it('errors a forward reference (variable defined later)', () => {
