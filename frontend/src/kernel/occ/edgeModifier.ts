@@ -578,6 +578,7 @@ function applyEdgeModifier(
   }
 
   const appliedEdges: OccShape[] = []
+  const appliedIdx: number[] = []
   const skippedIdx: number[] = []
   for (let i = 0; i < edges.length; i++) {
     const edge = edges[i]
@@ -589,6 +590,7 @@ function applyEdgeModifier(
     try {
       spec.addEdge(maker, edge, { scope, faces: oldFaces })
       appliedEdges.push(edge)
+      appliedIdx.push(i)
     } catch {
       // failed edge -- mirror Python's failed_count (no throw)
       skippedIdx.push(i)
@@ -597,13 +599,73 @@ function applyEdgeModifier(
 
   if (appliedEdges.length === 0) return fail('no_edges_applied')
 
-  let built: OccShape
+  // Build one fresh maker over `list`; used by the failure diagnosis below.
+  const buildFresh = (
+    list: OccShape[],
+  ): { ok: true; maker: OccEdgeModifierMaker; shape: OccShape } | { ok: false; reason: string } => {
+    let fresh: OccEdgeModifierMaker
+    try {
+      fresh = scope.track(spec.makeMaker(shape))
+    } catch {
+      return { ok: false, reason: 'maker_failed' }
+    }
+    try {
+      for (const e of list) spec.addEdge(fresh, e, { scope, faces: oldFaces })
+      fresh.Build()
+      if (!fresh.IsDone()) return { ok: false, reason: 'build_not_done' }
+      return { ok: true, maker: fresh, shape: scope.track(fresh.Shape()) }
+    } catch {
+      return { ok: false, reason: 'build_failed' }
+    }
+  }
+
+  let built: OccShape | null = null
+  let buildReason = 'build_not_done'
   try {
     maker.Build()
-    if (!maker.IsDone()) return fail('build_not_done')
-    built = maker.Shape()
+    if (maker.IsDone()) built = maker.Shape()
   } catch {
-    return fail('build_failed')
+    buildReason = 'build_failed'
+  }
+  if (built === null) {
+    // One or more picked edges can make the whole fillet/chamfer chain refuse,
+    // even though the rest of the set applies cleanly (the cast-bearing repro:
+    // ten edges fail as one build, eight of them build as one and two refuse
+    // alone). Find the refusals by bisecting the failing set, never by
+    // reordering or guessing: a subset that builds is entirely good, so only
+    // failing subsets are walked down. Then retry the good edges as ONE
+    // operation, keeping a single history for naming and the diff.
+    const broken = new Set<number>()
+    const diagnose = (positions: number[]): void => {
+      if (positions.length === 0) return
+      const probe = buildFresh(positions.map((p) => appliedEdges[p]))
+      if (probe.ok) {
+        scope.release(probe.shape)
+        return
+      }
+      if (positions.length === 1) {
+        broken.add(appliedIdx[positions[0]])
+        return
+      }
+      const mid = Math.ceil(positions.length / 2)
+      diagnose(positions.slice(0, mid))
+      diagnose(positions.slice(mid))
+    }
+    if (appliedEdges.length === 1) {
+      broken.add(appliedIdx[0])
+    } else {
+      const all = appliedEdges.map((_, i) => i)
+      const mid = Math.ceil(all.length / 2)
+      diagnose(all.slice(0, mid))
+      diagnose(all.slice(mid))
+    }
+    const good = appliedEdges.filter((_, k) => !broken.has(appliedIdx[k]))
+    if (broken.size === 0 || good.length === 0) return fail(buildReason)
+    const retry = buildFresh(good)
+    if (!retry.ok) return fail(retry.reason)
+    maker = retry.maker
+    built = retry.shape
+    skippedIdx.push(...[...broken].sort((a, b) => a - b))
   }
 
   // IsDone() is not a validity claim. On a pick whose blend runs into a

@@ -12,6 +12,7 @@ import { SharedHarness } from '../../occ/sharedHarness'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { ref, makeAncestryQuery, parseAncestry, constructionUuidToken } from '../../query'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import castBearingFilletDoc from '../__fixtures__/castBearingFilletDoc.json'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
@@ -223,6 +224,27 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     // be reported as a resolved-but-refused edge.
     expect((h.res(r, 'fil').unresolved_edges as string[] | undefined) ?? []).toEqual(['?body_nonexistent:edge:0'])
     expect((h.res(r, 'fil').failed_edges as string[] | undefined) ?? []).toEqual([])
+  })
+
+  it('applies the admissible edges of a ten-edge casting fillet and flags the refused pair', { timeout: 120_000 }, () => {
+    // The cast-bearing repro: ten picked edges in one fillet make
+    // BRepFilletAPI's Build throw, but eight of them build as one operation and
+    // the remaining two refuse even alone. The result must be a real geometry
+    // change with those two queries in failed_edges, not a green no-op and not
+    // a body left at its pre-fillet state.
+    const allFeatures = castBearingFilletDoc.features as Array<Record<string, unknown>>
+    const before = h.run({ features: allFeatures.filter((f) => f.id !== 'fi1') })
+    const edgesBefore = (h.body(before, 'body_ex_web').edge_queries as string[]).length
+
+    const r = h.run({ features: allFeatures })
+    const res = h.res(r, 'fi1')
+    const fillet = allFeatures.find((f) => f.id === 'fi1')!.fillet as { edges: string[] }
+    expect(res.status).toBe('partial')
+    expect(res.failed_edges as string[]).toEqual([fillet.edges[2], fillet.edges[3]])
+    expect(res.unresolved_edges as string[] | undefined).toEqual([])
+    expect((res.body_ids as string[]) ?? []).toEqual(['body_ex_web'])
+    const edgesAfter = (h.body(r, 'body_ex_web').edge_queries as string[]).length
+    expect(edgesAfter).toBeGreaterThan(edgesBefore)
   })
 
   it('fillet then chamfer on same body', () => {

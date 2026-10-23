@@ -65,13 +65,17 @@ features:
 `
 
 /** The query of the box's top cap (the 4-edge face whose classifier is +z). */
-function topFaceQuery(bodies: Record<string, unknown>): string {
+function topFaceEntry(bodies: Record<string, unknown>): { query: string; edges: string[] } {
   const body = Object.values(bodies)[0] as { mesh?: { face_queries?: string[]; face_edge_queries?: string[][] } }
   const queries = body?.mesh?.face_queries ?? []
   const boundaries = body?.mesh?.face_edge_queries ?? []
   const hit = queries.findIndex((q, i) => q.includes('cls_zp') && (boundaries[i]?.length ?? 0) === 4)
   if (hit < 0) throw new Error(`no top-cap query among ${queries.length} face queries`)
-  return queries[hit]
+  return { query: queries[hit], edges: boundaries[hit] ?? [] }
+}
+
+function topFaceQuery(bodies: Record<string, unknown>): string {
+  return topFaceEntry(bodies).query
 }
 
 describe.skipIf(!ready)('shell full-document continuation (real kernel)', () => {
@@ -105,5 +109,33 @@ describe.skipIf(!ready)('shell full-document continuation (real kernel)', () => 
     const result = response!.result as Record<string, { status?: string }>
     expect(result.sh1.status).toBe('exception')
     expect(result.sh2.status).toBe('ok')
+  })
+
+  it('opens a filleted top face in both directions', { timeout: 120_000 }, async () => {
+    // The key_cap repro: the removed top face is bounded by four r1 fillets.
+    // OCC's sharp-join thick solid refuses that shape (build_not_done inward,
+    // build_failed outward); the arc-join fallback must produce the hollow open
+    // box instead of leaving the body unchanged.
+    const base = partSpecFromText(BASE_RECIPE)
+    base.id = 'shell-doc-fillet-base'
+    const baseResponse = await solveLocally(base, { prevState: null })
+    expect(baseResponse).not.toBeNull()
+    const top = topFaceEntry(baseResponse!.bodies)
+    expect(top.edges).toHaveLength(4)
+
+    for (const direction of ['inward', 'outward']) {
+      const features = [...(base.features as Record<string, unknown>[])]
+      features.push({ id: 'fi1', kind: 'fillet', fillet: { edges: top.edges, radius: 1 } })
+      features.push({ id: 'sh1', kind: 'shell', shell: { faces: [top.query], thickness: 0.75, direction } })
+      const response = await solveLocally(
+        { ...base, id: `shell-doc-fillet-${direction}`, features },
+        { prevState: null },
+      )
+      expect(response).not.toBeNull()
+      const result = response!.result as Record<string, { status?: string }>
+      expect(result.fi1.status).toBe('ok')
+      expect(result.sh1.status).toBe('ok')
+      expect(Object.keys(response!.bodies)).toHaveLength(1)
+    }
   })
 })
