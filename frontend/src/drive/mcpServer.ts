@@ -53,6 +53,11 @@ export interface McpRunRequest extends McpDocArguments {
   files: McpFileRef[]
   // Default false: the reply carries docHash, not the whole document.
   returnDoc?: boolean
+  // 'all' lists every feature in featureDeltas instead of this call's changes.
+  featureDeltas?: 'all'
+  // Write the final document here (YAML or JSON by extension). Project paths
+  // only; the entry script resolves and enforces the directory rule.
+  out?: string
 }
 
 export interface McpMeasureRequest extends McpDocArguments {
@@ -76,7 +81,9 @@ export interface McpSelectRequest extends McpDocArguments {
 }
 
 export interface McpCompareRequest extends McpDocArguments {
-  reference: TranslationReference
+  // Exactly one of reference / referencePath reaches the op.
+  reference?: TranslationReference
+  referencePath?: string
   docId?: string
   files: McpFileRef[]
 }
@@ -131,7 +138,7 @@ const DOC_SCHEMA = {
 
 const DOC_HASH_SCHEMA = {
   type: 'string',
-  description: 'A content hash from an earlier reply. Pass either doc or docHash; the server keeps the last 32 documents.',
+  description: `A content hash from an earlier reply. Pass either doc or docHash; the server keeps the last ${DOC_HANDLE_CAPACITY} documents.`,
 }
 
 const VEC3_SCHEMA = {
@@ -255,12 +262,15 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'Returns per-step results, the solve state and the resulting docHash; chain calls with docHash. '
       + 'ok means the steps applied and the solve ran: a feature can fail (status exception or partial) or '
       + 'warn while ok stays true, and features lists every such feature with its id, kind, status and message '
-      + '(an empty list is a clean build). featureDeltas gives volume and bbox after every clean feature with the '
-      + 'change from the previous checkpoint, so an additive step\'s contribution is visible; a failed, partial or '
-      + 'warning feature has no delta row. With steps: [] the given document is solved once and the same fields '
-      + 'are returned, which is how to inspect a document. The summary lists only the bodies the final solve left live. '
+      + '(an empty list is a clean build). featureDeltas gives volume and bbox after each feature this call '
+      + 'changed or touched, with the change from the previous checkpoint, so an additive step\'s contribution '
+      + 'is visible without repeating the whole history; a failed, partial or warning feature has no delta row. '
+      + 'Pass featureDeltas: "all" to inspect every clean row instead. With steps: [] the given document is solved '
+      + 'once and the same fields are returned, which is how to inspect a document. The summary lists only the '
+      + 'bodies the final solve left live; a refused step says the document was not solved. '
       + 'The full document is not returned by default (returnDoc: false); pass returnDoc: true, or read the '
-      + 'resource ' + MCP_DOC_RESOURCE_TEMPLATE + ' with that docHash, when you need the bytes. ',
+      + 'resource ' + MCP_DOC_RESOURCE_TEMPLATE + ' with that docHash, when you need the bytes. Pass out to write '
+      + 'the final document (YAML or JSON by extension) inside tmp/ or bugreports/. ',
     inputSchema: {
       type: 'object',
       required: ['steps'],
@@ -269,6 +279,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         docHash: DOC_HASH_SCHEMA,
         steps: { type: 'array', items: { type: 'object' }, description: 'Script steps: {command,params} or {mutation}; mutation types: see the `mutations` tool.' },
         returnDoc: { type: 'boolean', description: 'Include the full final document in the reply (default false; the docHash resource serves it either way).' },
+        featureDeltas: { type: 'string', enum: ['all'], description: 'Pass "all" to list every clean feature; the default lists only features this call changed or touched.' },
+        out: { type: 'string', description: 'Write the final document here. YAML or JSON by extension; the path must resolve inside tmp/ or bugreports/ (relative paths resolve against the repo root).' },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
@@ -277,7 +289,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
   },
   {
     name: 'measure',
-    description: 'Measure a document: body count, volume, surface area, centroid, bounding box and B-rep counts. '
+    description: 'Measure a document: body count, volume, surface area, centroid, bounding box and B-rep counts, '
+      + 'plus perBody: one entry per live body with its id, volume, area, centroid and bbox. '
       + 'Also returns features, the same failed-or-warning feature list a run reply carries.',
     inputSchema: {
       type: 'object',
@@ -293,11 +306,11 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: 'compare',
     description: 'Measure a document and compare it against a reference at the reference\'s tolerance. '
+      + 'Pass the reference inline or as referencePath (a project file under tmp/, bugreports/ or scratch/). '
       + 'Returns pass plus one row per measure (ours, theirs, delta, within); a failing row is data, not a tool error. '
       + REFERENCE_FRAME_SENTENCE,
     inputSchema: {
       type: 'object',
-      required: ['reference'],
       properties: {
         doc: DOC_SCHEMA,
         docHash: DOC_HASH_SCHEMA,
@@ -309,7 +322,12 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
             + 'bodies, volume, area, centroid and bbox are required (the CadQuery runner '
             + 'frontend/scripts/cadqueryReference.py emits all five). '
             + 'Optional topology ("report" | "strict"), faces and edges. The measures are top-level keys, '
-            + 'not nested under "measures".',
+            + 'not nested under "measures". Pass exactly one of reference or referencePath.',
+        },
+        referencePath: {
+          type: 'string',
+          description: 'Read the reference from this file instead of inline. Resolves against the repo root and '
+            + 'must stay inside tmp/, bugreports/ or scratch/, parsed by the same validator as `reference`.',
         },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
@@ -490,16 +508,23 @@ function readDocArguments(
 
 function parseRunArgs(raw: unknown): McpRunRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'docHash', 'steps', 'docId', 'files', 'returnDoc'])
+  rejectUnknown(record, ['doc', 'docHash', 'steps', 'docId', 'files', 'returnDoc', 'featureDeltas', 'out'])
   if (!Array.isArray(record.steps)) throw new McpInvalidParams('field "steps" must be an array')
   for (const [index, step] of record.steps.entries()) asObject(step, `field "steps[${index}]"`)
   const returnDoc = optionalBoolean(record.returnDoc, 'returnDoc')
+  const featureDeltas = record.featureDeltas
+  if (featureDeltas !== undefined && featureDeltas !== 'all') {
+    throw new McpInvalidParams('field "featureDeltas" must be "all" when present')
+  }
+  const out = optionalString(record.out, 'out')
   return {
     ...readDocArguments(record, 'run'),
     steps: record.steps,
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
     ...(returnDoc !== undefined && { returnDoc }),
+    ...(featureDeltas !== undefined && { featureDeltas }),
+    ...(out !== undefined && { out }),
   }
 }
 
@@ -515,20 +540,30 @@ function parseMeasureArgs(raw: unknown): McpMeasureRequest {
 
 function parseCompareArgs(raw: unknown): McpCompareRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'docHash', 'reference', 'docId', 'files'])
+  rejectUnknown(record, ['doc', 'docHash', 'reference', 'referencePath', 'docId', 'files'])
   const docArguments = readDocArguments(record, 'exactly-one')
-  const referenceRaw = requiredObject(record.reference, 'reference')
-  let reference: TranslationReference
-  try {
-    // The same validator the corpus and the CLI use, so a malformed reference
-    // is invalid params here rather than a tool error after a build.
-    reference = parseReference('reference', JSON.stringify(referenceRaw))
-  } catch (e) {
-    throw new McpInvalidParams(`field "reference": ${e instanceof Error ? e.message : String(e)}`)
+  const referencePath = optionalString(record.referencePath, 'referencePath')
+  if (referencePath !== undefined && record.reference !== undefined) {
+    throw new McpInvalidParams('pass exactly one of "reference" or "referencePath"')
+  }
+  if (referencePath === undefined && record.reference === undefined) {
+    throw new McpInvalidParams('pass exactly one of "reference" or "referencePath"')
+  }
+  let reference: TranslationReference | undefined
+  if (record.reference !== undefined) {
+    const referenceRaw = requiredObject(record.reference, 'reference')
+    try {
+      // The same validator the corpus and the CLI use, so a malformed reference
+      // is invalid params here rather than a tool error after a build.
+      reference = parseReference('reference', JSON.stringify(referenceRaw))
+    } catch (e) {
+      throw new McpInvalidParams(`field "reference": ${e instanceof Error ? e.message : String(e)}`)
+    }
   }
   return {
     ...docArguments,
-    reference,
+    ...(reference !== undefined && { reference }),
+    ...(referencePath !== undefined && { referencePath }),
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
   }
@@ -643,7 +678,7 @@ export function createMcpServer(ops: McpCadOps): McpServer {
             resourceTemplates: [{
               uriTemplate: MCP_DOC_RESOURCE_TEMPLATE,
               name: 'document-by-hash',
-              description: 'The full part document behind a reply docHash, as JSON. Unknown hashes are an invalid-params error naming the 32-document bound.',
+              description: `The full part document behind a reply docHash, as JSON. Unknown hashes are an invalid-params error naming the ${DOC_HANDLE_CAPACITY}-document bound.`,
               mimeType: 'application/json',
             }],
           })

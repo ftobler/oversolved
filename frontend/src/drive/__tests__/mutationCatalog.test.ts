@@ -353,9 +353,10 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     ]
     const result = await exampleRun(steps)
     expect(result.ok).toBe(true)
-    // The write-back keeps a colour entry for the consumed tool, so the document
-    // alone cannot answer "which bodies are live".
-    expect(result.doc!.part_style).toHaveProperty('body_ex2')
+    // The write-back drops the consumed tool's colour entry, so part_style
+    // describes the live body set the same solve reported.
+    expect(result.doc!.part_style).not.toHaveProperty('body_ex2')
+    expect(result.doc!.part_style).toHaveProperty('body_ex1')
     expect(result.bodies).toContain('body_ex1')
     expect(result.bodies).not.toContain('body_ex2')
 

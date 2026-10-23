@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { docHashOf } from '@/drive/docHash'
+import { DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
 import { HOLE_ON_LINE_SKETCH } from './featureFixtures'
 
 const execFileAsync = promisify(execFile)
@@ -168,9 +169,21 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     // The canonical script executed a second time in a fresh process must
     // build the byte-identical document: the seeded id source is what makes
     // the rect's internally minted entities repeat.
-    const second = await drive('run', boxScript)
+    // The second run also exercises the relative-path rule: the CLI's cwd is
+    // frontend/, so `tmp/...` must name the repo's tmp, not frontend/tmp.
+    const second = await drive('run', boxScript, '--out', 'tmp/drive-cli-smoke/box.json')
     expect(second.status).toBe(0)
     expect(second.payload.docHash).toBe(run.payload.docHash)
+    expect(String(second.payload.file)).toBe(path.join(TMP_DIR, 'box.json'))
+    // The format follows the extension: a .json path must contain JSON, not the
+    // YAML the CLI used to write for every path.
+    const jsonDoc = JSON.parse(readFileSync(path.join(TMP_DIR, 'box.json'), 'utf8')) as {
+      version: number
+      kind: string
+      features: Array<{ id: string }>
+    }
+    expect(jsonDoc).toMatchObject({ version: 1, kind: 'part' })
+    expect(jsonDoc.features.map(feature => feature.id)).toContain('ex1')
 
     // 10 x 10 x 5 box: 6 faces, 12 edges, 8 vertices, volume 500.
     const measure = await drive('measure', boxDoc)
@@ -178,6 +191,11 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(measure.payload).toMatchObject({ ok: true, bodies: 1, faces: 6, edges: 12, vertices: 8 })
     expect(measure.payload.volume as number).toBeCloseTo(500, 6)
     expect(measure.payload.features).toEqual([])
+    const perBody = measure.payload.perBody as Array<{ id: string; volume: number; centroid: number[] }>
+    expect(perBody).toHaveLength(1)
+    expect(perBody[0].id).toBe('body_ex1')
+    expect(perBody[0].volume).toBeCloseTo(500, 6)
+    expect(perBody[0].centroid).toHaveLength(3)
     expectBbox(measure.payload.bbox, [0, 0, 0, 10, 10, 5])
 
     const exported = await drive('export', boxDoc, '--format', 'step', '--out', stepFile)
@@ -292,6 +310,19 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(features[0]).toMatchObject({ id: 'h1', kind: 'hole', status: 'exception' })
     expect(features[0].message).toMatch(/has no point/)
   }, 120_000)
+
+  it('refuses an out path outside the project before running the script', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const boxScript = path.join(TMP_DIR, 'box-refusal-script.json')
+    writeFileSync(boxScript, JSON.stringify(BOX_SCRIPT, null, 1))
+
+    for (const out of ['/etc/drive-out.json', '../drive-out.json']) {
+      const refused = await drive('run', boxScript, '--out', out)
+      expect(refused.status).toBe(1)
+      expect(refused.payload.ok).toBe(false)
+      expect(String(refused.payload.error)).toContain('must resolve inside')
+    }
+  }, 60_000)
 
   it('rejects a malformed script step with the step named', async () => {
     mkdirSync(TMP_DIR, { recursive: true })
@@ -475,10 +506,26 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       const tools = (list.result as { tools: Array<{ name: string; inputSchema: unknown }> }).tools
       expect(tools.map(t => t.name).sort()).toEqual(['commands', 'compare', 'export', 'measure', 'mutations', 'run', 'select'])
 
-      const built = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
+      const built = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: {
+          steps: BOX_SCRIPT.steps,
+          // A relative path resolves against the repo root even though the
+          // server's cwd is frontend/.
+          out: 'tmp/drive-cli-smoke/mcp-relative-out.json',
+        },
+      }))
       expect(built.ok).toBe(true)
       expect((built.solve as { lastError: string | null }).lastError).toBeNull()
       expect(built.features).toEqual([])
+      expect(built.format).toBe('json')
+      expect(String(built.file)).toBe(path.join(TMP_DIR, 'mcp-relative-out.json'))
+      const written = JSON.parse(readFileSync(String(built.file), 'utf8')) as {
+        version: number
+        features: Array<{ id: string }>
+      }
+      expect(written).toMatchObject({ version: 1 })
+      expect(written.features.map(feature => feature.id)).toContain('ex1')
       // The default reply is a handle, not the document: a session of calls
       // does not re-send the part.
       expect(typeof built.docHash).toBe('string')
@@ -560,6 +607,10 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       }))
       expect(measure.volume as number).toBeCloseTo(800, 6)
       expect(measure.docHash).toBe(edited.docHash)
+      const perBody = measure.perBody as Array<{ id: string; volume: number }>
+      expect(perBody).toHaveLength(1)
+      expect(perBody[0]).toMatchObject({ id: 'body_ex1' })
+      expect(perBody[0].volume).toBeCloseTo(800, 6)
       expectBbox(measure.bbox, [0, 0, 0, 10, 10, 8])
 
       // Compare the same document against a reference stated from its own
@@ -582,6 +633,37 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       expect(compared).toMatchObject({ ok: true, pass: true, docHash: edited.docHash })
       expect((compared.rows as Array<{ measure: string }>).map(row => row.measure))
         .toEqual(['bodies', 'volume', 'area', 'centroid', 'bbox', 'faces', 'edges'])
+
+      // The same reference read from a project file: referencePath goes through
+      // the corpus validator and may be read-only under tmp/.
+      const referenceFile = path.join(TMP_DIR, 'mcp-reference.json')
+      writeFileSync(referenceFile, JSON.stringify(reference, null, 1))
+      const fromFile = toolPayload(await client.request('tools/call', {
+        name: 'compare',
+        arguments: { docHash: edited.docHash, referencePath: referenceFile },
+      }))
+      expect(fromFile).toMatchObject({ ok: true, pass: true, docHash: edited.docHash })
+      expect((fromFile.rows as Array<{ measure: string }>).map(row => row.measure))
+        .toEqual(['bodies', 'volume', 'area', 'centroid', 'bbox', 'faces', 'edges'])
+
+      // A write outside the project's scratch areas is refused, and no file is
+      // written: the entry checks the path before it runs the script.
+      for (const out of ['/etc/mcp-out.json', '../mcp-out.json']) {
+        const refused = await client.request('tools/call', {
+          name: 'run',
+          arguments: { steps: BOX_SCRIPT.steps, out },
+        })
+        const refusedResult = refused.result as { isError?: boolean; content: Array<{ text: string }> }
+        expect(refusedResult.isError).toBe(true)
+        expect((JSON.parse(refusedResult.content[0].text) as { error: string }).error).toContain('must resolve inside')
+      }
+      const badReference = await client.request('tools/call', {
+        name: 'compare',
+        arguments: { docHash: edited.docHash, referencePath: '/etc/passwd' },
+      })
+      const badReferenceResult = badReference.result as { isError?: boolean; content: Array<{ text: string }> }
+      expect(badReferenceResult.isError).toBe(true)
+      expect((JSON.parse(badReferenceResult.content[0].text) as { error: string }).error).toContain('must resolve inside')
 
       const exported = toolPayload(await client.request('tools/call', {
         name: 'export',
@@ -636,7 +718,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       })
       const unknownResult = unknown.result as { isError?: boolean; content: Array<{ text: string }> }
       expect(unknownResult.isError).toBe(true)
-      expect((JSON.parse(unknownResult.content[0].text) as { error: string }).error).toContain('32')
+      expect((JSON.parse(unknownResult.content[0].text) as { error: string }).error).toContain(String(DOC_HANDLE_CAPACITY))
 
       // A malformed step is a named step outcome, never an internal error
       // from reading step.mutation.type.
@@ -793,6 +875,19 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       const secondSteps = second.steps as Array<{ ok: boolean; createdIds: string[] }>
       expect(secondSteps).toHaveLength(2)
       expect(secondSteps.every(step => step.ok && step.createdIds.length > 0)).toBe(true)
+
+      // The second call reports only what it touched: sk2 already existed and
+      // its checkpoint did not move, so it is not repeated.
+      expect((first.featureDeltas as Array<{ id: string }>).map(row => row.id)).toEqual(['sk2'])
+      expect((second.featureDeltas as Array<{ id: string }>).map(row => row.id)).toEqual(['sk3'])
+
+      // The inspection opt-in restores every clean row on a call that changes
+      // nothing.
+      const all = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { docHash: second.docHash, steps: [], featureDeltas: 'all' },
+      }))
+      expect((all.featureDeltas as Array<{ id: string }>).map(row => row.id)).toEqual(['sk2', 'sk3'])
 
       const returned = toolPayload(await client.request('tools/call', {
         name: 'run',

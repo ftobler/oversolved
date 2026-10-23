@@ -42,6 +42,18 @@ export function applySolveToDoc(doc: PartDoc, response: SolveResponseLike): Part
     const geometry = (feature as { geometry?: Record<string, number[]> } | null)?.geometry
     if (geometry) applyGeometryToFeature(cloned, id, geometry)
   }
-  if (response.bodies) reconcilePartStyle(cloned, response.bodies as Record<string, BodyResult>)
+  if (response.bodies) {
+    // Drop colour entries for bodies this solve consumed before reconciling:
+    // part_style is a style per live body, and a boolean or join leaves its
+    // tool's entry behind forever otherwise. Pruning first also frees the
+    // consumed part number, so a later body reuses it instead of the names
+    // drifting upward. The browser adapter still reconciles additively; this
+    // headless write-back is where the stale entry is removed.
+    const live = new Set(Object.keys(response.bodies))
+    for (const bodyId of Object.keys(cloned.part_style ?? {})) {
+      if (!live.has(bodyId)) delete cloned.part_style![bodyId]
+    }
+    reconcilePartStyle(cloned, response.bodies as Record<string, BodyResult>)
+  }
   return cloned
 }

@@ -51,13 +51,31 @@ describe('DocHandleStore', () => {
     expect(store.get(d)).toEqual(doc('d'))
   })
 
-  it('keeps the last 32 documents and evicts the 33rd insert', () => {
+  it('keeps the last DOC_HANDLE_CAPACITY documents and evicts the next insert', () => {
     const store = new DocHandleStore()
+    expect(DOC_HANDLE_CAPACITY).toBe(256)
     const hashes = Array.from({ length: DOC_HANDLE_CAPACITY }, (_, i) => store.put(doc(`f${i}`)))
     expect(store.size()).toBe(DOC_HANDLE_CAPACITY)
     const extra = store.put(doc('extra'))
     expect(store.size()).toBe(DOC_HANDLE_CAPACITY)
     expect(store.get(hashes[0])).toBeUndefined()
     expect(store.get(extra)).toEqual(doc('extra'))
+  })
+
+  it('keeps a hash fetched every five interleaved puts from two clients', () => {
+    // Two MCP clients share one server process and one store. One hash is the
+    // document their calls keep chaining on; it is fetched every fifth put, so
+    // recency must protect it even in a store small enough to overflow.
+    const store = new DocHandleStore(8)
+    const pinned = store.put(doc('pinned'))
+    let pinnedEvicted = false
+    for (let call = 0; call < 40; call++) {
+      // Alternate the clients: each put is a different document, as a fresh
+      // reply from either session would be.
+      store.put(doc(`client${call % 2}-${call}`))
+      if (call % 5 === 0 && store.get(pinned) === undefined) pinnedEvicted = true
+    }
+    expect(pinnedEvicted).toBe(false)
+    expect(store.get(pinned)).toEqual(doc('pinned'))
   })
 })

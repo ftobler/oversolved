@@ -13,8 +13,10 @@
 import type { PartDoc } from '@/types/cad'
 import { docHashOf } from '@/drive/docHash'
 
-/** The number of documents the server keeps alive for docHash chaining. */
-export const DOC_HANDLE_CAPACITY = 32
+/** The number of documents the server keeps alive for docHash chaining. A
+ *  server process is shared by every client, so the bound must survive several
+ *  interleaved sessions' worth of replies; documents are small. */
+export const DOC_HANDLE_CAPACITY = 256
 
 export class DocHandleStore {
   // Map iteration order is recency order: a lookup re-inserts at the end.

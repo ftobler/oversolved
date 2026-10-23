@@ -55,7 +55,8 @@ export interface MeasureRow {
   // false: reported, not failed (topology in report mode).
   enforced: boolean
   // On a failing centroid or bbox row whose shape measures all passed, the
-  // likely cause is the reference's frame rather than its geometry.
+  // likely cause is the reference's frame rather than its geometry; set only
+  // when the Z-up to Y-up swap actually lines the row up.
   hint?: string
 }
 
@@ -125,6 +126,32 @@ function vectorRow(
 }
 
 /**
+ * A Z-up reference's point, swapped into Oversolved's Y-up frame: a CadQuery
+ * point (x, y, z) is our (x, z, -y). Applying the map to the reference is the
+ * same check as applying its inverse to our value, and reads as "the reference
+ * was stated in the other frame".
+ */
+function zUpPointToYUp(point: readonly number[]): number[] {
+  return [point[0], point[2], -point[1]]
+}
+
+/** The same swap for a bbox: x stays, the Y range becomes [-ymax,-ymin] and
+ *  the Z range becomes the Z-up y range. */
+function zUpBboxToYUp(bbox: readonly number[]): number[] {
+  return [bbox[0], bbox[2], -bbox[4], bbox[3], bbox[5], -bbox[1]]
+}
+
+/** True when a failing positional value is exactly what the frame swap predicts. */
+function swapsIntoPlace(
+  ours: readonly number[] | null,
+  theirs: readonly number[],
+  swapped: (reference: readonly number[]) => number[],
+  tolerance: MeasureTolerance,
+): boolean {
+  return ours !== null && vectorWithinTolerance(ours, swapped(theirs), tolerance)
+}
+
+/**
  * Compare a measured record against a stated expectation, one row per measure.
  * A row the expectation omits (faces, edges) is omitted rather than passed, and
  * a missing centroid or bbox is a failing row, not a throw: the report is data
@@ -153,15 +180,24 @@ export function compareMeasures(
     rows.push(exactRow('edges', ours.edges, theirs.edges, topology === 'strict'))
   }
   // A rotation leaves volume and area alone but moves centroid and bbox. When
-  // exactly the positional rows fail, name that likely cause instead of letting
-  // a frame mismatch read as a geometry error.
+  // exactly the positional rows fail, name the likely cause only if the frame
+  // swap really explains the numbers: a centroid merely off by a little is a
+  // geometry or placement error, and the row's own delta already says by how
+  // much. A bbox that happens to align under the swap while the centroid does
+  // not is still worth the hint, so each row is judged on its own value.
   const shapeRows = rows.filter((row) => row.measure === 'bodies' || row.measure === 'volume' || row.measure === 'area')
   const shapeAgrees = shapeRows.some((row) => row.measure === 'volume' || row.measure === 'area')
     && shapeRows.every((row) => row.within)
   if (shapeAgrees) {
     for (const row of rows) {
-      if ((row.measure === 'centroid' || row.measure === 'bbox') && !row.within && row.ours !== null) {
-        row.hint = 'volume and area agree, so the likely difference is the frame: Oversolved is Y-up; '
+      if (row.within || row.ours === null || !Array.isArray(row.ours)) continue
+      const swapped = row.measure === 'centroid'
+        ? swapsIntoPlace(row.ours, theirs.centroid ?? [], zUpPointToYUp, tolerance)
+        : row.measure === 'bbox'
+          ? swapsIntoPlace(row.ours, theirs.bbox ?? [], zUpBboxToYUp, tolerance)
+          : false
+      if (swapped) {
+        row.hint = 'volume and area agree and the frame swap lines this row up: Oversolved is Y-up; '
           + 'a CadQuery XY extrusion +Z maps to Front, and a centred box needs a symmetric or re-origined extrusion.'
       }
     }

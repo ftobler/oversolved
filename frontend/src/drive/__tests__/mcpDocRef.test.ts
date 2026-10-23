@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
-import { DocHandleStore } from '../docHandleStore'
+import { DocHandleStore, DOC_HANDLE_CAPACITY } from '../docHandleStore'
 import { docHashOf } from '../docHash'
 import { resolveDoc, runReply, summarizeDoc } from '../mcpDocRef'
 
@@ -38,11 +38,11 @@ describe('resolveDoc', () => {
     })
   })
 
-  it('names the 32-document bound for an unknown handle', () => {
+  it('names the document bound for an unknown handle', () => {
     const resolved = resolveDoc({ docHash: 'nope' }, new DocHandleStore())
     expect(resolved.ok).toBe(false)
     if (resolved.ok) throw new Error('unreachable')
-    expect(resolved.error).toContain('32')
+    expect(resolved.error).toContain(String(DOC_HANDLE_CAPACITY))
     expect(resolved.error).toContain('pass doc instead')
   })
 
@@ -58,8 +58,8 @@ describe('summarizeDoc', () => {
   })
 
   it('lists only the live solve bodies, never the consumed ones part_style still carries', () => {
-    // A boolean consumes its tool body, but reconcilePartStyle only adds new
-    // ids, so part_style keeps a colour entry for the dead body.
+    // A document can carry a colour entry for a consumed body (an older doc, or
+    // the browser's add-only reconcile), so the solve's live set wins.
     const consumed = {
       version: 1,
       kind: 'part',
@@ -146,5 +146,36 @@ describe('runReply', () => {
     expect(failed.summary).toBe(
       "features: sk1 (sketch); bodies: body_ex1; problems: h1 (hole) exception: hole: sketch 'sk3' has no point or circle entities",
     )
+  })
+
+  it('says a refused step was not solved and never lists a consumed body', () => {
+    const consumed = {
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'ex1', kind: 'extrude' },
+        { id: 'ex2', kind: 'extrude' },
+        { id: 'bo1', kind: 'boolean' },
+      ],
+      part_style: { body_ex1: {}, body_ex2: {} },
+    } as unknown as PartDoc
+    // Three scripted steps, the second refused: the script stops there and the
+    // solve for the accepted prefix never runs, so bodies has no live set.
+    const refused = runReply({
+      ...source,
+      ok: false,
+      doc: consumed,
+      docHash: docHashOf(consumed),
+      bodies: null,
+      outcome: {
+        steps: [
+          { index: 0, ok: true },
+          { index: 1, ok: false, error: { code: 'duplicate-id', message: 'feature id already exists' } },
+        ],
+      },
+    }, false, new DocHandleStore())
+    expect(refused.summary).toContain('bodies: not solved (step 1 refused)')
+    expect(refused.summary).not.toContain('body_ex2')
+    expect(refused.ok).toBe(false)
   })
 })

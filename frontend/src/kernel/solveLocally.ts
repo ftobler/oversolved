@@ -568,10 +568,16 @@ export async function buildAndMeasureLocally(
     const order = response._build_state.feature_order
     const lastCp = order.length > 0 ? response._build_state.checkpoints[order[order.length - 1]] : undefined
     const bodies = lastCp?.body_store_snapshot ?? {}
-    const shapes = Object.values(bodies)
-      .filter((body) => body.shape != null)
-      .map((body) => table.get<OccShape>(body.shape!))
-    return { response, measures: measureBodies(oc, scope, shapes) }
+    // Keep ids parallel to shapes so the record can carry one entry per body;
+    // the map iteration order is the body set's own order.
+    const shapes: OccShape[] = []
+    const bodyIds: string[] = []
+    for (const [id, body] of Object.entries(bodies)) {
+      if (body.shape == null) continue
+      bodyIds.push(id)
+      shapes.push(table.get<OccShape>(body.shape))
+    }
+    return { response, measures: measureBodies(oc, scope, shapes, bodyIds) }
   } finally {
     scope.dispose()
     table.disposeAll()
