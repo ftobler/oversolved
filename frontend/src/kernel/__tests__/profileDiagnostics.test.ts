@@ -185,13 +185,15 @@ describe('describeProfile', () => {
     expect(r.reasons.some((x) => x.includes('degenerate'))).toBe(false)
   })
 
-  it('notes when hole nesting only holds at one arc sampling', () => {
+  it('reports the builder sampling and notes where the coarse pass disagrees', () => {
     // A small circle tucked against the big circle's chord: the 1-sample
     // polygon (a diamond) excludes its centroid, the 64-sample one contains it.
+    // describeProfile reports what classifyLoops builds (the fine pass) and
+    // keeps the coarse disagreement as a note.
     const outer = circleAsTwoArcs(0, 0, 10)
     const inner = circleAsTwoArcs(5.5, 5.5, 1)
     const r = describeProfile([outer, inner])
-    expect(r.container[1]).toBe(-1)  // coarse: not nested
+    expect(r.container[1]).toBe(0)  // the builder's fine pass nests it
     expect(r.reasons.some((x) => x.includes('depends on the sampling'))).toBe(true)
   })
 })

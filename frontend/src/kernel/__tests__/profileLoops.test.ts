@@ -2,7 +2,7 @@
 // extrude leaf: loopSignedArea, pointInLoop, classifyLoops. No OCC.
 
 import { describe, it, expect } from 'vitest'
-import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, loopContainment, arcSamplePoints, ellipseArcSamplePoints, loopPts, loopGeometryKey, CENTROID_ARC_SAMPLES, type LoopEdge } from '../profileLoops'
+import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, loopContainment, dissolveAdjacentLoops, arcSamplePoints, ellipseArcSamplePoints, loopPts, loopGeometryKey, CENTROID_ARC_SAMPLES, type LoopEdge } from '../profileLoops'
 import { extractProfileLoops } from '../features/shared/profileLoops'
 
 const square = (s: number): LoopEdge[] => [
@@ -747,21 +747,96 @@ describe('loopContainment arc sampling', () => {
     arc(cx, cy, r, 180, 360),
   ]
 
-  it('nests a small circle sitting near the outer circle chord only at 64 samples', () => {
+  it('nests a small circle sitting near the outer circle chord at the builder sampling', () => {
     // (5.5, 5.5) is inside a radius-10 circle (7.78 < 10) but outside the
     // 1-sample diamond through (10,0),(0,10),(-10,0),(0,-10).
     const loops = [circle(0, 0, 10), circle(5.5, 5.5, 1)]
     expect(loopContainment(loops).container[1]).toBe(-1)
     expect(loopContainment(loops, CENTROID_ARC_SAMPLES).container[1]).toBe(0)
-    // classifyLoops runs the coarse pass, so the hole is lost there today. F4
-    // moves the default to CENTROID_ARC_SAMPLES; flip this when it lands.
-    expect(classifyLoops(loops).map((g) => g[1].length)).toEqual([0, 0])
+    // classifyLoops runs the CENTROID_ARC_SAMPLES pass (the shape the user and
+    // loopCentroid see), so the hole is kept.
+    expect(classifyLoops(loops).map((g) => g[1].length)).toEqual([1])
   })
 
   it('agrees at both samplings when the inner loop sits in the middle', () => {
     const loops = [circle(0, 0, 10), circle(0, 0, 1)]
     expect(loopContainment(loops).container[1]).toBe(0)
     expect(loopContainment(loops, CENTROID_ARC_SAMPLES).container[1]).toBe(0)
+  })
+})
+
+describe('classifyLoops on the venn regions', () => {
+  // r10 circles 8 apart; P/Q are their intersection points. Each traced area is
+  // the two arcs between P and Q, and the three areas tile the union.
+  const D = Math.sqrt(84)
+  const aP = (Math.atan2(D, 4) * 180) / Math.PI
+  const aQ = -aP
+  const bP = (Math.atan2(D, -4) * 180) / Math.PI
+  const bQ = -bP
+  const lens: LoopEdge[] = [
+    arcEdge(0, 0, 10, aQ, aP),
+    arcEdge(8, 0, 10, bP, bQ),
+  ]
+  const leftCrescent: LoopEdge[] = [
+    arcEdge(0, 0, 10, aP, aQ),
+    arcEdge(8, 0, 10, bQ, bP, false),
+  ]
+  const rightCrescent: LoopEdge[] = [
+    arcEdge(8, 0, 10, bP, bQ, false),
+    arcEdge(0, 0, 10, aQ, aP),
+  ]
+
+  it('keeps the crescents as outers, not holes of the lens', () => {
+    // At the 1-sample chord polygon the crescents read smaller than the lens
+    // and their centroids can fall inside its polygon, so the old coarse
+    // classifier made them holes: the extrude built the lens alone with no
+    // warning. Each region is an independent outer.
+    const groups = classifyLoops([lens, leftCrescent, rightCrescent])
+    expect(groups).toHaveLength(3)
+    for (const [, holes] of groups) expect(holes).toHaveLength(0)
+    const total = [lens, leftCrescent, rightCrescent]
+      .map((l) => Math.abs(loopSignedArea(l, CENTROID_ARC_SAMPLES)))
+      .reduce((a, b) => a + b, 0)
+    const lensArea = 2 * 100 * Math.acos(0.4) - 4 * Math.sqrt(400 - 64)
+    const union = 2 * Math.PI * 100 - lensArea
+    // The 64-sample polygon is inscribed, so it under-reports by the sagitta.
+    expect(Math.abs(total - union)).toBeLessThan(union * 0.002)
+  })
+})
+
+describe('dissolveAdjacentLoops', () => {
+  // The five regions of two crossing rectangles, listed the way the area model
+  // publishes them, CCW each.
+  const plusRegions = (): LoopEdge[][] => [
+    rect(-2.05, -0.585, -0.585, 0.585), // left arm
+    rect(-0.585, -0.585, 0.585, 0.585), // centre
+    rect(0.585, -0.585, 2.05, 0.585),   // right arm
+    rect(-0.585, 0.585, 0.585, 2.05),   // top arm
+    rect(-0.585, -2.05, 0.585, -0.585), // bottom arm
+  ]
+
+  it('cancels shared edges into the plus outline', () => {
+    const merged = dissolveAdjacentLoops(plusRegions())
+    expect(merged).toHaveLength(1)
+    expect(merged[0]).toHaveLength(12)
+    expect(Math.abs(loopSignedArea(merged[0], CENTROID_ARC_SAMPLES))).toBeCloseTo(8.2251, 9)
+  })
+
+  it('leaves disjoint holes alone', () => {
+    const holes = [rect(-3, -1, -2, 1), rect(2, -1, 3, 1)]
+    expect(dissolveAdjacentLoops(holes)).toEqual(holes)
+  })
+
+  it('a circle with a plus of holes classifies as one face with one plus hole', () => {
+    // The key-cap cut: a r4 circle and two crossing rects inside it. The area
+    // model publishes the five plus regions as holes of the circle; they touch,
+    // and five touching hole wires are not a valid OCC face. classifyLoops
+    // hands the face builder one dissolved plus wire instead.
+    const circle: LoopEdge[] = [arcEdge(0, 0, 4, 0, 180), arcEdge(0, 0, 4, 180, 360)]
+    const groups = classifyLoops([circle, ...plusRegions()])
+    expect(groups).toHaveLength(1)
+    expect(groups[0][1]).toHaveLength(1)
+    expect(groups[0][1][0]).toHaveLength(12)
   })
 })
 
