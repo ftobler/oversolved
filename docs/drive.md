@@ -373,16 +373,28 @@ banner on stdout, so a client config must use the direct node invocation.
   `perpendicular`, `type`, `extreme` (the min/max-projection group, tolerance
   grouped so a box top yields all four edges), `on_face` (edges bounding the
   selected faces), `created_by` (ancestry through the query engine) and
-  `radius`. A `type` is one exact spelling per meaning, with no synonyms: an
-  edge kind (`line`, `circle`, `arc`, `spline`, `ellipse`) or a face surface
-  type (`flatface`, `cylinderface`, `coneface`, `sphereface`, `torusface`).
-  The selector itself is an authoring aid and is never stored: the
-  returned queries are what goes into the document, exactly as if each element
-  had been clicked. An empty match is a tool error whose message names the
+  `radius`. `extreme.axis` is a world vector; the letters `"x"`, `"y"` and `"z"`
+  are sugar for the unit axis, and an invalid axis repeats the whole clause
+  (`{"extreme":{"axis":"up","side":"max"}}`) in the error. Omitting `where`
+  takes every candidate, so `{from:"body_ex1",kind:"edge"}` is all edges of one
+  body. A `type` is one exact spelling per meaning, with no synonyms: an edge
+  kind (`line`, `circle`, `arc`, `spline`, `ellipse`) or a face surface type
+  (`flatface`, `cylinderface`, `coneface`, `sphereface`, `torusface`). On a
+  flat face `parallel` tests the
+  normal; on a curved analytic face (cylinder, cone, torus) it tests the
+  analytic axis from `surface_frame`, not the radial normal, so
+  `parallel: [0,1,0]` names a Y-axis cylinder rather than one of its seams. A
+  `type` name outside the kind's vocabulary is refused as an invalid argument
+  with the valid list and the likely spelling (`plane` suggests `flatface`),
+  including inside a `not`, where it would otherwise match everything. An empty
+  match is a tool error whose message names the
   nearest-miss count per predicate; when a `type` clause matched nothing it also
   lists the values present among the candidates and the full valid set for that
   kind. An unknown predicate key is an invalid
-  argument rejected by name. The engine is pure TS in `frontend/src/kernel/select/`.
+  argument rejected by name. The selector itself is an authoring aid and is
+  never stored: the returned queries are what goes into the document, exactly
+  as if each element had been clicked. The engine is pure TS in
+  `frontend/src/kernel/select/`.
 
 - Document handles: every tool that needs a document takes exactly one of
   `doc` (the full JSON) or `docHash` (the content hash an earlier reply
@@ -396,8 +408,18 @@ banner on stdout, so a client config must use the direct node invocation.
   `compare` and `export` all echo it.
 - By default `run` returns `docHash` and a one-line `summary` (feature ids and
   kinds, body ids), not the document; `returnDoc: true` adds the full `doc`
-  for saving or hand-editing. Chaining by hash is the intended flow: a
+  for saving or hand-editing. The summary's body ids are the live bodies of the
+  final solve, not the accumulated `part_style` keys: a boolean or join consumes
+  a body while its colour entry stays behind, and the reply must not name what
+  the measure tool no longer counts. Chaining by hash is the intended flow: a
   modelling session does not re-send the part on every call.
+- The full document behind any reply's `docHash` is also a resource:
+  `resources/templates/list` advertises `oversolved://doc/{docHash}`, and
+  `resources/read` on `oversolved://doc/<hash>` returns the document as JSON.
+  That is the out-of-band path for the large case (a few n-gon sketches already
+  run to about 1500 lines pretty-printed), so `run` never has to inflate every
+  reply with bytes the caller may not need. An unknown or evicted hash is
+  invalid params naming the 32-document bound.
 - `files` is `[{ id, path }]`, the CLI's `--file` flags in JSON form; paths
   resolve against the server's cwd.
 - `compare` takes its `reference` inline (the agent has just produced it) and
@@ -417,19 +439,44 @@ banner on stdout, so a client config must use the direct node invocation.
 
   `topology` is optional (`"report"` by default, `"strict"` to enforce the
   face/edge counts); `tolerance` is required so every reference states its own
-  budget. The measures are top-level keys: nesting them under `measures` is
-  refused with a message saying so, in the MCP tool and the CLI alike.
-- The server also serves two resources (`resources/list`, `resources/read`):
-  `oversolved://schema/part-document`, the JSON Schema for a part document
-  (`persistence/partDocSchema.ts`), and `oversolved://catalog/mutations`, the
-  same JSON the `mutations` tool returns. Read the schema before authoring a
+  budget. The five measures `bodies`, `volume`, `area`, `centroid` and `bbox`
+  are required as well, and the CadQuery runner
+  (`frontend/scripts/cadqueryReference.py`) already emits all five, so a
+  reference produced by another tool's exporter that omits `area` is refused
+  naming the field rather than compared on a narrower set. The measures are
+  top-level keys: nesting them under `measures` is refused with a message
+  saying so, in the MCP tool and the CLI alike.
+- The server also serves two fixed resources (`resources/list`,
+  `resources/read`): `oversolved://schema/part-document`, the JSON Schema for a
+  part document (`persistence/partDocSchema.ts`), and
+  `oversolved://catalog/mutations`, the same JSON the `mutations` tool returns.
+  A third, dynamic one is advertised through `resources/templates/list`:
+  `oversolved://doc/{docHash}` reads back any document the server still holds,
+  so a caller fetches the bytes on demand instead of asking `run` to return
+  them. Read the schema before authoring a
   document instead of inferring the format from these examples; it pins the
   canonical spellings (feature refs are `@id`, params nest under the kind key).
 - `mutations` is the discovery path for the script vocabulary: `commands` act
   on the current selection, while mutation steps author geometry with explicit
   feature and entity ids. Each visible entry carries its fields and a summary,
   and the examples are the box and fillet scripts the catalog tests run against
-  the real kernel.
+  the real kernel. The catalog is generated where it can be: `add_entity`
+  lists the params slot order of every entity kind from the entity registry
+  (`line [x1, y1, x2, y2]`, `circle [cx, cy, r]`,
+  `arc [cx, cy, r, a0_deg, a1_deg]`, and so on, with arc and ellipse angles in
+  degrees and arcs sweeping counter-clockwise), the `set_*_field` value note
+  emits the enum members of every enum field in that kind's schema
+  (`operation: add|cut|new`, `direction: normal|reverse|symmetric`,
+  `termination: blind|up_to`, `operation: new|replace`), and `add_plane`'s
+  `definition` carries the same shape the part-document schema serves.
+  Guidance that a field list cannot carry lives in the row note: `hole` needs a
+  `sketch` and drills a circle at its own radius and a point at the feature
+  `diameter`; `add_center_rect` takes the half-diagonal corner (center `[0,0]`
+  with corner `[1,1]` is 2x2) and leaves a centre point entity; `revolve.axis`
+  is a feature-level ref such as `@sk1/line1`, not the profile's `$sk1` form;
+  and `transform` rotates about exactly one axis, given either as
+  `rotation_axis` (a ref) or as `rotation_axis_origin` plus
+  `rotation_axis_direction`.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; unknown fields are rejected by name, so a typo never fails

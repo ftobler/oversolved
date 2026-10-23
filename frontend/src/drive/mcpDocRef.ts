@@ -35,12 +35,13 @@ export function resolveDoc(req: McpDocArguments, documents: DocHandleStore): Res
   return { ok: true, doc: loaded.doc, docHash }
 }
 
-// The reply's one-line index of what the script built. Body ids are the
-// part_style keys (the solve write-back reconciles one entry per body);
-// feature ids and kinds come from the feature log.
-export function summarizeDoc(doc: PartDoc): string {
+// The reply's one-line index of what the script built. Body ids are the live
+// bodies the final solve reported when the caller has them: part_style keeps a
+// colour entry for a body a boolean or join consumed, so its keys alone would
+// name dead bodies. Feature ids and kinds come from the feature log.
+export function summarizeDoc(doc: PartDoc, liveBodies?: readonly string[] | null): string {
   const features = (doc.features ?? []).map(feature => `${feature.id} (${feature.kind})`)
-  const bodies = Object.keys(doc.part_style ?? {})
+  const bodies = liveBodies ?? Object.keys(doc.part_style ?? {})
   return `features: ${features.length > 0 ? features.join(', ') : 'none'}; `
     + `bodies: ${bodies.length > 0 ? bodies.join(', ') : 'none'}`
 }
@@ -51,6 +52,9 @@ export interface RunReplySource {
   doc: PartDoc | null
   docHash: string | null
   solve: unknown
+  // The final solve's live body ids; null or absent means no solve ran, so the
+  // summary falls back to the document's part_style keys.
+  bodies?: readonly string[] | null
 }
 
 /**
@@ -70,7 +74,7 @@ export function runReply(
     steps: result.outcome.steps,
     docHash,
     solve: result.solve,
-    ...(finalDoc && { summary: summarizeDoc(finalDoc) }),
+    ...(finalDoc && { summary: summarizeDoc(finalDoc, result.bodies) }),
     ...(returnDoc && finalDoc && { doc: finalDoc }),
   }
 }

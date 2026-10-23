@@ -18,12 +18,12 @@ function circle(center: V3, radius: number, axis: V3): EdgeData {
   return { kind: 'circle', center, radius, axis, x_axis: [1, 0, 0], angle_start: 0, angle_end: 2 * Math.PI }
 }
 
-function face(centroid: V3, normal: V3, surface_type: string, radius?: number): FaceData {
+function face(centroid: V3, normal: V3, surface_type: string, radius?: number, axis?: V3): FaceData {
   return {
     centroid,
     normal,
     surface_type,
-    ...(radius !== undefined && { surface_frame: { axis: normal, origin: centroid, radius } }),
+    ...(radius !== undefined && { surface_frame: { axis: axis ?? normal, origin: centroid, radius } }),
   }
 }
 
@@ -129,6 +129,30 @@ describe('selectByPredicate: direction predicates', () => {
     expect(out).toHaveLength(4)
   })
 
+  it('parallel on a curved face tests its analytic axis, not the radial normal or a seam', () => {
+    // A Y-axis cylinder: its normal is radial (+X here) while the frame carries
+    // the real axis. "parallel Y" means the axis, so a seam normal cannot win.
+    const bodies = {
+      body_ex1: bodyResult(
+        'body_ex1',
+        [],
+        [],
+        [
+          face([10, 5, 0], [1, 0, 0], 'cylinderface', 5, [0, 1, 0]),
+          face([0, 5, 0], [-1, 0, 0], 'cylinderface', 5, [0, 1, 0]),
+          face([5, 5, 5], [0, 0, 1], 'flatface'),
+        ],
+        ['q_cyl_a', 'q_cyl_b', 'q_flat'],
+        [],
+      ),
+    }
+    expect(queriesOf({ kind: 'face', where: { parallel: [0, 1, 0] } }, bodies))
+      .toEqual(['q_cyl_a', 'q_cyl_b'])
+    // The radial normal no longer matches as a direction.
+    expect(() => queriesOf({ kind: 'face', where: { parallel: [1, 0, 0] } }, bodies))
+      .toThrow(SelectorError)
+  })
+
   it('a zero axis matches nothing at the engine level', () => {
     // validateSelector rejects this at the MCP boundary, but the engine is
     // callable directly; a degenerate direction is never perpendicular.
@@ -195,6 +219,36 @@ describe('selectByPredicate: extreme', () => {
   it('min side groups the bottom edges', () => {
     const out = queriesOf({ kind: 'edge', where: { extreme: { axis: [0, 0, 1], side: 'min' } } }, box())
     expect(out).toEqual(edgeQueriesFor('body_ex1', 12).slice(8, 12))
+  })
+
+  it('accepts x, y and z as sugar for the unit axis', () => {
+    const select = (axis: unknown) => {
+      const validated = validateSelector({ kind: 'edge', where: { extreme: { axis, side: 'max' } } })
+      return queriesOf(validated, box())
+    }
+    expect(select('z')).toEqual(edgeQueriesFor('body_ex1', 12).slice(4, 8))
+    expect(select('X')).toHaveLength(4)
+    expect(validateSelector({ kind: 'edge', where: { extreme: { axis: 'y', side: 'min' } } }))
+      .toMatchObject({ where: { extreme: { axis: [0, 1, 0], side: 'min' } } })
+  })
+
+  it('a bad extreme axis repeats the whole clause so the fix is visible', () => {
+    expect(() => validateSelector({ kind: 'edge', where: { extreme: { axis: 'up', side: 'max' } } }))
+      .toThrow(/"extreme":\{"axis":"up","side":"max"\}/)
+    expect(() => validateSelector({ kind: 'edge', where: { extreme: { axis: [0, 0], side: 'max' } } }))
+      .toThrow(/"extreme":\{"axis":\[0,0\],"side":"max"\}/)
+  })
+
+  it('a diagnostic extreme clause prints the whole clause', () => {
+    // The earlier type clause empties the pool, so the extreme clause matches 0
+    // and its diagnostic carries the JSON an author copies back.
+    let message = ''
+    try {
+      selectByPredicate({ kind: 'edge', where: { and: [{ type: 'spline' }, { extreme: { axis: [1, 0, 0], side: 'max' } }] } }, box())
+    } catch (e) {
+      message = (e as Error).message
+    }
+    expect(message).toContain('extreme {"axis":[1,0,0],"side":"max"}')
   })
 })
 
@@ -313,7 +367,8 @@ describe('selectByPredicate: alignment and diagnostics', () => {
     expect(error).toBeInstanceOf(SelectorError)
     const message = (error as Error).message
     expect(message).toContain('type "plane" matched 0')
-    // `plane` is not mapped to `flatface`: one spelling per meaning.
+    // The suggestion is a hint, not a synonym: matching still needs `flatface`.
+    expect(message).toContain('did you mean "flatface"?')
     expect(message).toContain('present face types: flatface')
     expect(message).toContain('valid face types: flatface, cylinderface, coneface, sphereface, torusface, face')
   })
@@ -366,6 +421,20 @@ describe('validateSelector', () => {
     expect(() => validateSelector({ kind: 'edge', where: { perpendicular: [0, 0, 0] } })).toThrow(/non-zero axis/)
     expect(() => validateSelector({ kind: 'edge', where: { extreme: { axis: [0, 0, 0], side: 'max' } } }))
       .toThrow(/non-zero axis/)
+  })
+
+  it('rejects a bad type name with the vocabulary and the likely spelling', () => {
+    expect(() => validateSelector({ kind: 'face', where: { type: 'plane' } }))
+      .toThrow(/did you mean "flatface"\?.*valid: flatface, cylinderface/)
+    expect(() => validateSelector({ kind: 'face', where: { type: 'cylindeface' } }))
+      .toThrow(/did you mean "cylinderface"\?/)
+    // The check reaches inside a negation, where a wrong name would otherwise
+    // match everything instead of failing.
+    expect(() => validateSelector({ kind: 'edge', where: { not: { type: 'plane' } } }))
+      .toThrow(/not a valid edge kind/)
+    // A name that is only valid for the other kind gets no misleading suggestion.
+    expect(() => validateSelector({ kind: 'edge', where: { type: 'flatface' } }))
+      .toThrow(/not a valid edge kind; valid: line, circle, arc, spline, ellipse/)
   })
 
   it('rejects a predicate object with two keys', () => {

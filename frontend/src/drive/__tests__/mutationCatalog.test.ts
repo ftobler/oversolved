@@ -7,12 +7,22 @@
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
-import { validateMutation, MUTATION_CATALOG, MUTATION_FAMILY, HIDDEN_MUTATION_TYPES, mutationInfoOf } from '../mutationCatalog'
-import { featureFieldNames } from '@/persistence/partDocSchema'
-import type { Mutation } from '@/types/cad'
+import {
+  validateMutation,
+  MUTATION_CATALOG,
+  MUTATION_FAMILY,
+  HIDDEN_MUTATION_TYPES,
+  FIELD_SETTER_KIND,
+  mutationInfoOf,
+} from '../mutationCatalog'
+import { featureFieldNames, featureParamsSchema, PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
+import { ENTITY_BY_KIND, ENTITY_PARAM_LAYOUT } from '@/registry/entityRegistry'
+import type { EntityKind, Mutation } from '@/types/cad'
 import { MUTATION_FAMILIES, mutationCatalogPayload } from '../mutationCatalogPayload'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 import { runHeadless, measureHeadless, seedBuiltins, selectHeadless } from '../headlessOps'
+import { runReply } from '../mcpDocRef'
+import { DocHandleStore } from '../docHandleStore'
 import { createDriveJournal } from '../journal'
 import type { ScriptStep } from '../scriptRunner'
 import { loadOcc } from '@/kernel/occ/loadOcc'
@@ -147,6 +157,90 @@ describe('mutation catalog', () => {
       for (const name of holeFields) expect(info.note).toContain(name)
       expect(info.note).toContain('points and circles')
       expect(info.note).toContain('own radius')
+      expect(info.note).toContain('required')
+      expect(info.note).toContain('empty value clears')
+    }
+  })
+
+  it('names the params slot order of every add_entity kind from the entity registry', () => {
+    const note = mutationInfoOf('add_entity').fields.params.note
+    expect(note).toBeDefined()
+    // Generated from ENTITY_PARAM_LAYOUT, so an added kind or a moved slot fails
+    // here rather than leaving the catalog stale.
+    for (const kind of Object.keys(ENTITY_PARAM_LAYOUT) as EntityKind[]) {
+      expect(note).toContain(`${kind} [${ENTITY_PARAM_LAYOUT[kind].join(', ')}]`)
+      expect(ENTITY_BY_KIND.get(kind)?.paramCount, kind).toBe(ENTITY_PARAM_LAYOUT[kind].length)
+    }
+    // The two facts the tally asked for: the layout and the angle convention.
+    expect(note).toContain('arc [cx, cy, r, a0_deg, a1_deg]')
+    expect(note).toContain('degrees')
+    expect(note).toContain('counter-clockwise')
+    // The other add_entity row shares the same generated note.
+    expect(mutationInfoOf('add_entity_with_constraint').fields.params.note).toBe(note)
+  })
+
+  it('emits the schema enum members of every setter kind', () => {
+    const notes = new Set<string>()
+    for (const [type, kind] of Object.entries(FIELD_SETTER_KIND)) {
+      const value = mutationInfoOf(type as Mutation['type']).fields.value
+      expect(value.note, type).toBeDefined()
+      const params = featureParamsSchema(kind)
+      const entry = params === null ? null : params.properties as Record<string, { enum?: unknown[] }>
+      const enums = Object.entries(entry ?? {})
+        .filter(([, property]) => Array.isArray(property.enum))
+        .map(([name, property]) => `${name}: ${property.enum!.join('|')}`)
+      if (enums.length === 0) {
+        expect(value.note, type).not.toContain('Enum fields')
+        continue
+      }
+      notes.add(value.note!)
+      for (const members of enums) expect(value.note, type).toContain(members)
+    }
+    // The four the plan called out, generated from the schema rather than typed.
+    const joined = [...notes].join('\n')
+    expect(joined).toContain('operation: add|cut|new')
+    expect(joined).toContain('operation: new|replace')
+    expect(joined).toContain('operation: union|subtract|intersect')
+    expect(joined).toContain('direction: normal|reverse|symmetric')
+    expect(joined).toContain('termination: blind|up_to')
+  })
+
+  it('publishes the plane definition shape from the same schema the resource serves', () => {
+    const entry = Object.values(mutationCatalogPayload().families).flat().find(row => row.type === 'add_plane')
+    expect(entry!.fields.definition.shape).toEqual(featureParamsSchema('plane'))
+    // The definition in the served resource is that same object, not a second
+    // hand-kept copy of the published contract.
+    const schema = JSON.parse(PART_DOC_SCHEMA_JSON) as {
+      properties: { features: { items: { oneOf: Array<Record<string, unknown>> } } }
+    }
+    const plane = schema.properties.features.items.oneOf.find(
+      variant => (variant.properties as Record<string, { const?: string }>).kind?.const === 'plane',
+    )
+    expect(plane).toBeDefined()
+    expect((plane!.properties as Record<string, unknown>).definition).toEqual(entry!.fields.definition.shape)
+  })
+
+  it('documents the center-rect corner, the transform axis pair and the revolve axis ref', () => {
+    const center = mutationInfoOf('add_center_rect').note
+    expect(center).toContain('half-diagonal')
+    expect(center).toContain('2x2')
+    expect(center).toContain('centre point')
+
+    for (const type of ['add_transform', 'set_transform_field'] as const) {
+      const note = mutationInfoOf(type).note
+      expect(note).toBeDefined()
+      expect(note).toContain('rotation_axis')
+      expect(note).toContain('rotation_axis_origin')
+      expect(note).toContain('rotation_axis_direction')
+      expect(note).toContain('single axis')
+      expect(note).toContain('degrees')
+    }
+
+    for (const type of ['add_revolve', 'set_revolve_field'] as const) {
+      const note = mutationInfoOf(type).note
+      expect(note).toBeDefined()
+      expect(note).toContain('@<sketchId>/<entityId>')
+      expect(note).toContain('$<sketchId>')
     }
   })
 })
@@ -181,6 +275,33 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     expect(measure).not.toBeNull()
     expect(measure!.volume).toBeCloseTo(11922.743, 3)
     expect(measure!.area).toBeCloseTo(3733.044, 3)
+  }, 120_000)
+
+  it('lists only live bodies in the run summary after a boolean consumes a tool', async () => {
+    const steps: ScriptStep[] = [
+      { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' } },
+      { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] } },
+      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10 } },
+      { mutation: { type: 'set_extrude_field', featureId: 'ex1', field: 'operation', value: 'new' } },
+      { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_front' } },
+      { mutation: { type: 'add_rect', featureId: 'sk2', p0: [5, 0], p1: [15, 10] } },
+      { mutation: { type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 10 } },
+      { mutation: { type: 'set_extrude_field', featureId: 'ex2', field: 'operation', value: 'new' } },
+      { mutation: { type: 'add_boolean', featureId: 'bo1' } },
+      { mutation: { type: 'set_boolean_field', featureId: 'bo1', field: 'target', value: 'body_ex1' } },
+      { mutation: { type: 'add_boolean_tool', featureId: 'bo1', tool: 'body_ex2' } },
+    ]
+    const result = await exampleRun(steps)
+    expect(result.ok).toBe(true)
+    // The write-back keeps a colour entry for the consumed tool, so the document
+    // alone cannot answer "which bodies are live".
+    expect(result.doc!.part_style).toHaveProperty('body_ex2')
+    expect(result.bodies).toContain('body_ex1')
+    expect(result.bodies).not.toContain('body_ex2')
+
+    const reply = runReply(result, false, new DocHandleStore())
+    expect(reply.summary).toContain('bodies: body_ex1')
+    expect(reply.summary).not.toContain('body_ex2')
   }, 120_000)
 
   it('pins the filleted-box edge queries to a select run on the box', async () => {

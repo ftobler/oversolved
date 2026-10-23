@@ -211,6 +211,13 @@ describe('set_*_field field names', () => {
     expect(result.error.message).toContain('diameter')
     expect(result.error.message).toContain('depth_mode')
     expect(result.error.message).toContain('sketch')
+    // The row note rides the error: what the sketch must name, how a point and
+    // a circle differ, and that sketch is the one field an empty value does not
+    // clear.
+    expect(result.error.message).toContain('required')
+    expect(result.error.message).toContain('own radius')
+    expect(result.error.message).toContain('empty value clears')
+    expect(result.error.message).toContain('stored verbatim')
   })
 })
 

@@ -39,6 +39,12 @@ export interface HeadlessPart {
   registry: CommandRegistry<PartCommandContext>
   solve: SolveScheduler<PartDoc>
   getDoc(): PartDoc | null
+  // The body ids the last solve left live, in solve order; null until a solve
+  // has run (an empty script has no live set of its own to report). The
+  // document itself cannot answer this: part_style keeps an entry for a body a
+  // boolean or join consumed (it only reconciles new ids in), so a summary
+  // built from it lists dead bodies.
+  bodyIds(): readonly string[] | null
   // The per-feature solve status of the last settle (`featureId -> status`).
   // The CLI only needs the scheduler state, but a caller checking a document
   // against what the user saw (the repro test's sidecar expectations) needs
@@ -57,6 +63,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
   // needed (a caller checking a document against what the user saw), so the
   // solver's own answer is kept instead of a re-derived result object.
   const statusesBox: { current: Record<string, string> } = { current: {} }
+  const bodiesBox: { current: string[] | null } = { current: null }
   const dirtyFacts = { dirty: false, saves: 0, savedHash: null as number | null }
 
   const reSolve: ReSolveFn = async (doc, solveOpts?: SolveOptions) => {
@@ -78,6 +85,10 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
       if (typeof status === 'string') statuses[id] = status
     }
     statusesBox.current = statuses
+    // The live body set of this solve, recorded before any later feature or
+    // write-back: this is what the reply summary reports, not the accumulated
+    // part_style keys.
+    bodiesBox.current = Object.keys(response.bodies ?? {})
   }
 
   const solve = createWorkerSolveScheduler(() => reSolve)
@@ -154,6 +165,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     registry,
     solve,
     getDoc: () => docBox.current,
+    bodyIds: () => bodiesBox.current,
     solveStatuses: () => statusesBox.current,
     idle: () => solve.idle(),
     run,

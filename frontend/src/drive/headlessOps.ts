@@ -51,6 +51,10 @@ export interface HeadlessRunResult {
   doc: PartDoc | null
   docHash: string | null
   solve: SolveSchedulerState
+  // The live body ids of the final solve; null when the script ran no solve (an
+  // empty step list), in which case the reply falls back to the document's
+  // part_style keys.
+  bodies: readonly string[] | null
   // The live part, for a caller that wants the session (the CLI records a
   // repro from its journal; most callers only read the fields above).
   part: HeadlessPart
@@ -73,6 +77,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     doc,
     docHash: doc ? docHashOf(doc) : null,
     solve,
+    bodies: part.bodyIds(),
     part,
   }
 }

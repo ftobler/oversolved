@@ -63,6 +63,11 @@ const documents = new DocHandleStore()
 const ops: McpCadOps = {
   partDocSchema: () => PART_DOC_SCHEMA_JSON,
 
+  documentText: (docHash) => {
+    const doc = documents.get(docHash)
+    return doc === undefined ? null : JSON.stringify(doc)
+  },
+
   async commands() {
     // A fresh seeded session supplies the live enabled verdicts; reading the
     // catalog runs no spec body and starts no solve.

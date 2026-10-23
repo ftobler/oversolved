@@ -32,6 +32,7 @@ function fakeOps(answer: (tool: string, args: unknown) => McpToolPayload = () =>
       export: record('export') as McpCadOps['export'],
       partDocSchema: () => '{"title":"Oversolved part document"}',
       select: record('select') as McpCadOps['select'],
+      documentText: (docHash: string) => (docHash === 'known' ? '{"version":1}' : null),
     },
   }
 }
@@ -94,6 +95,10 @@ describe('createMcpServer', () => {
     expect(call({ kind: 'edge', where: { and: [{ parallel: [0, 0, 1] }, { not: { on_face: { kind: 'face' } } }] } })).toBe(true)
     // An unknown predicate fails additionalProperties on the predicate def.
     expect(call({ kind: 'edge', where: { frobnicate: [0, 0, 1] } })).toBe(false)
+    // An extreme axis accepts the letter sugar as well as the vector.
+    expect(call({ kind: 'face', where: { extreme: { axis: 'y', side: 'max' } } })).toBe(true)
+    expect(call({ kind: 'face', where: { extreme: { axis: [0, 1, 0], side: 'max' } } })).toBe(true)
+    expect(call({ kind: 'face', where: { extreme: { axis: 'up', side: 'max' } } })).toBe(false)
     // The `type` description lists the real vocabulary, derived from the same
     // tables the engine reads, so `plane` is not advertised as an alias.
     const schemaText = JSON.stringify(tool!.inputSchema)
@@ -161,8 +166,31 @@ describe('createMcpServer', () => {
     expectError(await request(server, 20, 'resources/read', {}), -32602)
   })
 
-  it('serves the mutation catalog as a tool and as the same resource', async () => {
+  it('serves a stored document by docHash as a resource template, without listing every hash', async () => {
     const server = createMcpServer(fakeOps().ops)
+    const templates = await request(server, 30, 'resources/templates/list', {})
+    expect(templates).toMatchObject({
+      result: {
+        resourceTemplates: [expect.objectContaining({ uriTemplate: 'oversolved://doc/{docHash}', mimeType: 'application/json' })],
+      },
+    })
+    // A hash is a document, not an advertised static resource.
+    const list = await request(server, 31, 'resources/list', {})
+    const uris = (list as { result: { resources: Array<{ uri: string }> } }).result.resources.map(r => r.uri)
+    expect(uris).not.toContain('oversolved://doc/known')
+
+    const read = await request(server, 32, 'resources/read', { uri: 'oversolved://doc/known' })
+    const contents = (read as { result: { contents: Array<{ uri: string; mimeType: string; text: string }> } }).result.contents
+    expect(contents[0]).toMatchObject({ uri: 'oversolved://doc/known', mimeType: 'application/json' })
+    expect(JSON.parse(contents[0].text)).toEqual({ version: 1 })
+
+    const unknown = await request(server, 33, 'resources/read', { uri: 'oversolved://doc/gone' })
+    expect(unknown).toMatchObject({ error: { code: -32602 } })
+    expect((unknown as { error: { message: string } }).error.message).toContain('32')
+    expectError(await request(server, 34, 'resources/read', { uri: 'oversolved://doc/' }), -32602)
+  })
+
+  it('serves the mutation catalog as a tool and as the same resource', async () => {    const server = createMcpServer(fakeOps().ops)
     const tool = MCP_TOOLS.find(t => t.name === 'mutations')
     expect(tool).toBeDefined()
     expect(tool!.inputSchema).toEqual({ type: 'object', properties: {}, additionalProperties: false })
@@ -246,6 +274,28 @@ describe('createMcpServer', () => {
       name: 'select',
       arguments: { doc: {}, selector: { kind: 'vertex' } },
     }), -32602)
+
+    // A wrong type name is invalid params with the vocabulary and a hint, not a
+    // tool call that runs and matches nothing.
+    const wrongType = await request(server, 24, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'face', where: { type: 'plane' } } },
+    })
+    expectError(wrongType, -32602)
+    expect((wrongType as { error: { message: string } }).error.message).toContain('did you mean "flatface"')
+
+    // The letter axis sugar reaches the op as a vector.
+    const sugar = await request(server, 25, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'face', where: { extreme: { axis: 'y', side: 'max' } } } },
+    })
+    expect(sugar).toMatchObject({ id: 25 })
+    expect(calls.at(-1)).toEqual({
+      tool: 'select',
+      args: expect.objectContaining({
+        selector: { kind: 'face', where: { extreme: { axis: [0, 1, 0], side: 'max' } } },
+      }),
+    })
   })
 
   it('validates a compare reference through the corpus parser and passes it to the op', async () => {
@@ -279,6 +329,8 @@ describe('createMcpServer', () => {
     const reference = (compare!.inputSchema.properties as Record<string, { description: string }>).reference
     expect(reference.description).toContain('"bodies":1')
     expect(reference.description).toContain('not nested under "measures"')
+    expect(reference.description).toContain('area, centroid and bbox are required')
+    expect(reference.description).toContain('cadqueryReference.py')
 
     const select = MCP_TOOLS.find(t => t.name === 'select')
     expect(select!.description).toContain(worldFrameSentence())

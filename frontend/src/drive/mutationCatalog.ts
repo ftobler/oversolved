@@ -13,9 +13,11 @@
 import type { FeatureKind, Mutation } from '@/types/cad'
 import {
   featureFieldNames,
+  featureParamsSchema,
   planeDefinitionSchema,
   type JsonSchema,
 } from '@/persistence/partDocSchema'
+import { entityParamLayoutsSentence } from '@/registry/entityRegistry'
 
 export type FieldType =
   | 'string'
@@ -102,13 +104,28 @@ const edgeQuery = () => query('An edge query as returned by `select`.')
 const faceQuery = () => query('A face query as returned by `select`.')
 const bodyQuery = () => query('A body id such as body_ex1, or a stored body query.')
 
+// The params slot order per entity kind, generated from the entity registry so
+// a new kind or a moved slot cannot leave the catalog stale.
+const ENTITY_PARAMS_NOTE =
+  `Params per kind, in order: ${entityParamLayoutsSentence()}. ` +
+  'Arc and ellipse angles are degrees; an arc sweeps counter-clockwise from a0_deg to a1_deg.'
+
+// The constraint operand grammar an author writes by hand. A sketch-local
+// `$<entityId>` is accepted and is what the app stores; the explicit forms name
+// the sketch too, so a script can be written without knowing the local ids.
+const VERTEX_REF_NOTE =
+  'A constraint target may be a sketch-local ref ($<entityId>, as the app stores it) or an explicit ref '
+  + 'entity:<sketchId>:<entityId> / vertex:<sketchId>:<entityId>:<key>, where key is start/end on a line, '
+  + 'center on a circle or arc, and xy on a point. Builtin refs such as @builtin_origin are also accepted.'
+
 // Every `set_<kind>_field` names one feature kind; the kind's schema
 // sub-definition is the one list of fields it may set. The Record makes a new
 // setter mutation fail `tsc -b` until it is mapped, and the catalog test names
-// any setter this map forgets.
+// any setter this map forgets. Exported so the drift test reads this mapping
+// instead of keeping a second copy.
 type FieldSetterType = Extract<Mutation['type'], `set_${string}_field`>
 
-const FIELD_SETTER_KIND = {
+export const FIELD_SETTER_KIND = {
   set_plane_definition_field: 'plane',
   set_extrude_field: 'extrude',
   set_revolve_field: 'revolve',
@@ -136,20 +153,59 @@ export function setterFieldNames(type: Mutation['type']): readonly string[] | nu
 
 const HOLE_FIELD_NOTE =
   `Canonical hole fields: ${featureFieldNames('hole').join(', ')}. ` +
-  '`sketch` names a sketch whose points and circles are drilled: a circle at its own radius, a point at the feature `diameter`. A single point or circle picked alone drills only that one.'
+  '`sketch` is required: a hole drills nothing until it names a sketch. ' +
+  'The sketch\'s points and circles are drilled: a circle at its own radius, a point at the feature `diameter`. ' +
+  'A single point or circle picked alone drills only that one. ' +
+  'An empty value clears any other field (the key is deleted), but `sketch` is stored verbatim, so send a sketch id rather than "".'
+
+// The transform's axis trio is the one place an author has to choose a
+// spelling; the solver composes exactly one axis for the whole feature.
+const TRANSFORM_NOTE =
+  'One transform applies translation, then rotation, then scale about a single axis, equally to every body in `bodies`. ' +
+  'For the rotation, name either `rotation_axis` (a feature-level ref such as @<sketchId>/<entityId>, or an edge query from `select`) ' +
+  'or the stored pair `rotation_axis_origin` (VEC3 point) and `rotation_axis_direction` (VEC3, non-zero). ' +
+  'A resolved `rotation_axis` derives both from that edge and overrides the pair; `rotation_axis_direction` alone rotates about the world origin, ' +
+  'and `rotation_axis_origin` alone uses +Z. `translation_from`/`translation_to` and `scale_center_from` are point refs. ' +
+  '`rotation_angle` is degrees; `operation: new` keeps the source and emits a new body, `replace` consumes it.'
+
+// The revolve axis resolves through the feature-level query repository, not the
+// sketch-local `$` namespace: @sk/entity and edge queries work, `$sk` does not.
+const REVOLVE_AXIS_NOTE =
+  '`axis` is a feature-level ref, not the profile\'s sketch-local $ form: name a sketch entity as ' +
+  '@<sketchId>/<entityId> (a line, or a circle/arc whose center sits on the axis), or an edge query from `select`. ' +
+  'A $<sketchId> ref does not resolve in `axis`.'
 
 const fieldOf = (label: string, type: FieldSetterType) =>
   str(`The ${label} field to set. Valid fields: ${(setterFieldNames(type) ?? []).join(', ')}.`)
 // A setter value's real type is the named schema field's; name that definition
-// instead of trying to restate every feature field's union here.
-const setterValue = (kind: string) =>
-  anyValue(`The new value for the named field; its type follows FEATURE_SCHEMA_BY_KIND.${kind} in persistence/partDocSchema.ts.`)
+// instead of trying to restate every feature field's union here. The enum
+// members are generated from the schema, so a renamed value cannot go stale.
+const setterValue = (kind: FeatureKind) =>
+  anyValue(
+    `The new value for the named field; its type follows FEATURE_SCHEMA_BY_KIND.${kind} in persistence/partDocSchema.ts.`
+    + enumFieldsNote(kind)
+    + ' A null, undefined or empty-string value clears the field (the key is deleted), except hole.sketch, which is stored verbatim.',
+  )
 const planeDefinitionValue = () =>
   ({
     type: 'scalar',
     required: true,
-    note: 'The new value for the named plane definition field; its type follows PLANE_DEF in persistence/partDocSchema.ts.',
+    note: 'The new value for the named plane definition field; its type follows PLANE_DEF in persistence/partDocSchema.ts.'
+      + enumFieldsNote('plane')
+      + ' A null or empty-string value clears the field.',
   } as const)
+
+/** The enum-valued fields of a feature kind, as `name: a|b|c`, read from the
+ *  kind's schema so the note follows the union rather than a second list. */
+function enumFieldsNote(kind: FeatureKind): string {
+  const params = featureParamsSchema(kind)
+  if (params === null) return ''
+  const entries: string[] = []
+  for (const [name, property] of Object.entries(params.properties as Record<string, JsonSchema>)) {
+    if (Array.isArray(property.enum)) entries.push(`${name}: ${property.enum.join('|')}`)
+  }
+  return entries.length === 0 ? '' : ` Enum fields: ${entries.join('; ')}.`
+}
 
 export const MUTATION_CATALOG = {
   move_vertex: {
@@ -197,10 +253,11 @@ export const MUTATION_CATALOG = {
   },
   add_constraint: {
     summary: 'Add a sketch constraint over entity refs.',
+    note: VERTEX_REF_NOTE,
     fields: {
       featureId: str(),
       kind: str('The constraint kind, e.g. coincident or distance.'),
-      targets: arr('Entity or vertex refs the constraint names.'),
+      targets: arr('Entity or vertex refs the constraint names; see the row note for the spelling.'),
       value: optNum(),
       pos: optPoint(),
       sign: optNum(),
@@ -226,17 +283,18 @@ export const MUTATION_CATALOG = {
     summary: 'Add one sketch entity of a kind with numeric params.',
     fields: {
       featureId: str(),
-      kind: str('Entity kind, e.g. line, circle, arc.'),
-      params: arr('Kind-specific numeric params.'),
+      kind: str('Entity kind: line, circle, arc, ellipse, spline or point.'),
+      params: arr(ENTITY_PARAMS_NOTE),
       entityId: optStr(),
     },
   },
   add_entity_with_constraint: {
     summary: 'Add a sketch entity and pin one of its vertices to a snap target.',
+    note: '`vertexKey` names the new entity vertex the snap constraint attaches: start/end on a line, center on a circle or arc, xy on a point.',
     fields: {
       featureId: str(),
-      kind: str(),
-      params: arr(),
+      kind: str('Entity kind: line, circle, arc, ellipse, spline or point.'),
+      params: arr(ENTITY_PARAMS_NOTE),
       vertexKey: str(),
       snapVertexId: optStr(),
       snapEntityRef: optStr(),
@@ -260,6 +318,9 @@ export const MUTATION_CATALOG = {
   },
   add_center_rect: {
     summary: 'Add a rectangle by centre and corner.',
+    note: '`corner` is the half-diagonal corner: the rectangle mirrors it through `center`, so '
+      + 'center [0,0] with corner [1,1] gives a 2x2 rectangle. The feature also leaves a centre point entity '
+      + '(not construction geometry) that the two diagonal midpoint constraints reference; delete it if it is not wanted.',
     fields: {
       featureId: str(),
       center: point(),
@@ -349,10 +410,12 @@ export const MUTATION_CATALOG = {
   },
   add_revolve: {
     summary: 'Revolve a sketch around its plane axis.',
+    note: REVOLVE_AXIS_NOTE,
     fields: { ...featureAddFields(), sketchQuery: sketchQuery(), angle: num() },
   },
   set_revolve_field: {
     summary: 'Set one revolve field.',
+    note: REVOLVE_AXIS_NOTE,
     fields: { featureId: str(), field: fieldOf('revolve', 'set_revolve_field'), value: setterValue('revolve') },
   },
   add_revolve_profile: {
@@ -527,10 +590,12 @@ export const MUTATION_CATALOG = {
   },
   add_transform: {
     summary: 'Add a transform feature, then add its bodies.',
+    note: TRANSFORM_NOTE,
     fields: featureAddFields(),
   },
   set_transform_field: {
     summary: 'Set one transform field.',
+    note: TRANSFORM_NOTE,
     fields: { featureId: str(), field: fieldOf('transform', 'set_transform_field'), value: setterValue('transform') },
   },
   add_transform_body: {
@@ -898,9 +963,12 @@ export function validateMutation(raw: unknown, options: MutationValidationOption
   if (options.allowInternal !== true) {
     const setterFields = setterFieldNames(type as Mutation['type'])
     if (setterFields !== null && typeof raw.field === 'string' && !setterFields.includes(raw.field)) {
+      // The row note carries guidance a field list cannot, so a wrong hole
+      // field teaches what the sketch must name instead of only listing names.
+      const note = info.note === undefined ? '' : ` ${info.note}`
       return fail(
         'invalid-mutation',
-        `mutation type "${type}" has no field "${raw.field}"; valid fields: ${setterFields.join(', ')}`,
+        `mutation type "${type}" has no field "${raw.field}"; valid fields: ${setterFields.join(', ')}.${note}`,
       )
     }
   }

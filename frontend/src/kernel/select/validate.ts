@@ -3,8 +3,9 @@
 // (`parallelish`) is rejected rather than silently matching everything, which
 // is the same contract the tool schemas keep for top-level fields.
 
-import type { Predicate, RadiusTest, Selector, Vec3 } from './types'
+import type { Predicate, RadiusTest, SelectKind, Selector, Vec3 } from './types'
 import { SelectorError } from './errors'
+import { suggestTypeName, typeVocabulary } from './geometry'
 
 // Every predicate key the grammar admits. `and`/`or`/`not` compose; the rest
 // are leaves. Kept as data so the unknown-key rejection and the schema agree.
@@ -56,6 +57,31 @@ function radiusTest(v: unknown, path: string): RadiusTest {
   return out
 }
 
+// The three world axes an author may name as one letter instead of spelling the
+// vector. Kept as sugar only: the stored selector always carries a vector.
+const AXIS_SUGAR: Readonly<Record<string, Vec3>> = {
+  x: [1, 0, 0],
+  y: [0, 1, 0],
+  z: [0, 0, 1],
+}
+
+/** An extreme axis: the sugar letter or three finite non-zero numbers. The
+ *  failure repeats the whole clause, so a caller sees the shape it must fix
+ *  rather than a bare "axis must be three finite numbers". */
+function extremeAxis(value: unknown, path: string, clause: unknown): Vec3 {
+  if (typeof value === 'string') {
+    const sugar = AXIS_SUGAR[value.trim().toLowerCase()]
+    if (sugar !== undefined) return sugar
+  }
+  if (Array.isArray(value) && value.length === 3 && value.every(n => typeof n === 'number' && Number.isFinite(n))
+    && !(value[0] === 0 && value[1] === 0 && value[2] === 0)) {
+    return [value[0], value[1], value[2]]
+  }
+  throw new SelectorError(
+    `${path} {"extreme":${JSON.stringify(clause)}} needs a non-zero axis: "x" | "y" | "z" or three finite numbers`,
+  )
+}
+
 function predicate(raw: unknown, path: string): Predicate {
   const record = asObject(raw, path)
   const keys = Object.keys(record).filter(k => record[k] !== undefined)
@@ -87,7 +113,8 @@ function predicate(raw: unknown, path: string): Predicate {
       rejectUnknown(spec, ['axis', 'side'], `${path}.extreme`)
       const side = spec.side
       if (side !== 'min' && side !== 'max') throw new SelectorError(`${path}.extreme.side must be "min" or "max"`)
-      return { extreme: { axis: vec3(spec.axis, `${path}.extreme.axis`), side } }
+      const clause = { axis: spec.axis, side: spec.side }
+      return { extreme: { axis: extremeAxis(spec.axis, `${path}.extreme`, clause), side } }
     }
     case 'on_face':
       return { on_face: selector(value, `${path}.on_face`) }
@@ -102,6 +129,31 @@ function predicate(raw: unknown, path: string): Predicate {
   }
 }
 
+/** Refuse a `type` name outside the kind's vocabulary. Left to the engine, such
+ *  a clause matches nothing; under a `not` it would silently match everything.
+ *  The message names the vocabulary and the likely spelling. */
+function validateTypeNames(p: Predicate, kind: SelectKind, path: string): void {
+  if ('type' in p) {
+    const valid = typeVocabulary(kind)
+    if (valid.includes(p.type)) return
+    const suggestion = suggestTypeName(p.type, kind)
+    const noun = kind === 'edge' ? 'edge kind' : 'face surface type'
+    throw new SelectorError(
+      `${path}.type "${p.type}" is not a valid ${noun}`
+      + `${suggestion === null ? '' : `; did you mean "${suggestion}"?`}; valid: ${valid.join(', ')}`,
+    )
+  }
+  if ('and' in p) {
+    for (const child of p.and) validateTypeNames(child, kind, path)
+    return
+  }
+  if ('or' in p) {
+    for (const child of p.or) validateTypeNames(child, kind, path)
+    return
+  }
+  if ('not' in p) validateTypeNames(p.not, kind, path)
+}
+
 /** Validate a selector expression, naming the offending field. */
 export function selector(raw: unknown, path = 'selector'): Selector {
   const record = asObject(raw, path)
@@ -111,9 +163,11 @@ export function selector(raw: unknown, path = 'selector'): Selector {
   if (record.from !== undefined && (typeof record.from !== 'string' || record.from.length === 0)) {
     throw new SelectorError(`${path}.from must be a non-empty string`)
   }
+  const where = record.where === undefined ? undefined : predicate(record.where, `${path}.where`)
+  if (where !== undefined) validateTypeNames(where, kind, `${path}.where`)
   return {
     ...(record.from !== undefined && { from: record.from as string }),
     kind,
-    ...(record.where !== undefined && { where: predicate(record.where, `${path}.where`) }),
+    ...(where !== undefined && { where }),
   }
 }

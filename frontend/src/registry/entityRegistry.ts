@@ -14,7 +14,7 @@
 //   4. Add rendering in Geometry3D/.
 //   5. Optionally add an SVG icon in assets/icons/.
 
-import type { ActiveTool } from '@/types/cad'
+import type { ActiveTool, EntityKind } from '@/types/cad'
 import { narrowCommandName, type CommandName } from '@/utils/core/commandNames'
 
 // ─── Entity definition ───
@@ -230,4 +230,28 @@ export const ENTITY_SHORTCUTS: ReadonlyMap<string, CommandName> =
 // Get default parameters for an entity kind.
 export function getDefaultParams(kind: string): number[] {
   return ENTITY_BY_KIND.get(kind)?.defaultParams ?? []
+}
+
+// The flat seed-parameter order `add_entity` writes, in solver order. Named
+// per slot so an authoring catalog can say what each number means without
+// reading the solver; the names are the solver's own terms. Arc and ellipse
+// angles are degrees, and an arc sweeps counter-clockwise from a0_deg to
+// a1_deg. `project` is absent because it is a tool registration, not an entity
+// kind. Keyed by the EntityKind union so a new kind fails to compile until its
+// layout is named here; a test pins each length to the registry's paramCount.
+export const ENTITY_PARAM_LAYOUT: Record<EntityKind, readonly string[]> = {
+  line: ['x1', 'y1', 'x2', 'y2'],
+  circle: ['cx', 'cy', 'r'],
+  arc: ['cx', 'cy', 'r', 'a0_deg', 'a1_deg'],
+  ellipse: ['cx', 'cy', 'a', 'b', 'theta_deg'],
+  spline: ['x1', 'y1', 'c1x', 'c1y', 'c2x', 'c2y', 'x2', 'y2'],
+  point: ['x', 'y'],
+}
+
+/** Every entity kind's params slot list on one line, for the mutation catalog
+ *  and the docs: `line [x1, y1, x2, y2]; circle [cx, cy, r]; ...`. */
+export function entityParamLayoutsSentence(): string {
+  return (Object.keys(ENTITY_PARAM_LAYOUT) as EntityKind[])
+    .map(kind => `${kind} [${ENTITY_PARAM_LAYOUT[kind].join(', ')}]`)
+    .join('; ')
 }
