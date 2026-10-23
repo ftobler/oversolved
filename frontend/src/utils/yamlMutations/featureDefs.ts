@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList } from './helpers'
 
 /** Append a feature, lazily initializing the features array. */
@@ -301,12 +301,15 @@ export function applyAddChamfer(
   doc: PartDoc,
   featureId: string,
   label?: string,
+  edges?: string[],
+  distance?: NumberOrExpr,
 ): void {
   const feature: PartFeature = {
     id: featureId,
     kind: 'chamfer',
     label: label ?? 'Chamfer',
-    chamfer: { edges: [], distance: 1, kind: 'distance', angle: 45 },
+    // The pick list is copied for the same journal reason as the fillet's.
+    chamfer: { edges: [...(edges ?? [])], distance: distance ?? 1, kind: 'distance', angle: 45 },
   }
   pushFeature(doc, feature)
 }
@@ -365,12 +368,19 @@ export function applyRemoveChamferEdge(doc: PartDoc, featureId: string, index: n
 
 // ─── Shell ───
 
-export function applyAddShell(doc: PartDoc, featureId: string, label?: string): void {
+export function applyAddShell(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  faces?: string[],
+  thickness?: NumberOrExpr,
+  direction?: ShellDirection,
+): void {
   pushFeature(doc, {
     id: featureId,
     kind: 'shell',
     label: label ?? 'Shell',
-    shell: { faces: [], thickness: 1, direction: 'inward' },
+    shell: { faces: [...(faces ?? [])], thickness: thickness ?? 1, direction: direction ?? 'inward' },
   })
 }
 

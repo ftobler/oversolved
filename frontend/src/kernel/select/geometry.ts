@@ -195,6 +195,96 @@ export function typeOf(c: Candidate): string | null {
   return edgeData(c)?.kind ?? null
 }
 
+/** The axis-aligned bounding box of an element, for the `within` range test. */
+export interface Bounds3 {
+  min: Vec3
+  max: Vec3
+}
+
+function boundsOfPoints(points: readonly Vec3[]): Bounds3 | null {
+  if (points.length === 0) return null
+  const min: Vec3 = [Infinity, Infinity, Infinity]
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity]
+  for (const p of points) {
+    for (let i = 0; i < 3; i++) {
+      if (p[i] < min[i]) min[i] = p[i]
+      if (p[i] > max[i]) max[i] = p[i]
+    }
+  }
+  return { min, max }
+}
+
+/** World half-extents of a full conic in its own plane. A circle of radius r
+ *  with in-plane axes x and y reaches `r * sqrt(x[i]^2 + y[i]^2)` along world
+ *  axis i, not r on every axis (a Y-axis cylinder's base circle is flat in Y). */
+function conicHalfExtents(axis: Vec3, xAxis: Vec3, a: number, b: number): Vec3 {
+  const x = normalize(xAxis)
+  const y = normalize(cross(axis, xAxis))
+  return [
+    Math.hypot(a * x[0], b * y[0]),
+    Math.hypot(a * x[1], b * y[1]),
+    Math.hypot(a * x[2], b * y[2]),
+  ]
+}
+
+function faceBounds(c: Candidate): Bounds3 | null {
+  const mesh = c.body.mesh
+  const triangles = mesh?.triangle_to_face
+  if (!mesh || !triangles) return null
+  const verts = mesh.vertices
+  const faces = mesh.faces
+  if (!verts || !faces) return null
+  const vertexAt = (i: number): Vec3 => {
+    if (verts instanceof Float32Array) return [verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]]
+    const v = (verts as [number, number, number][])[i]
+    return [v[0], v[1], v[2]]
+  }
+  const triangleAt = (t: number): readonly number[] => {
+    if (faces instanceof Uint32Array) return [faces[t * 3], faces[t * 3 + 1], faces[t * 3 + 2]]
+    return (faces as [number, number, number][])[t]
+  }
+  const points: Vec3[] = []
+  for (let t = 0; t < triangles.length; t++) {
+    if (triangles[t] !== c.index) continue
+    const tri = triangleAt(t)
+    if (!tri) continue
+    for (let k = 0; k < 3; k++) points.push(vertexAt(tri[k]))
+  }
+  return boundsOfPoints(points)
+}
+
+/** A line and a spline read their own points; a full conic is exact in its
+ *  plane, while a partial arc uses its whole conic's bounds (conservative: a
+ *  range that excludes the removed sweep can still exclude the arc). A face
+ *  reads its mesh triangles; a solve without `triangle_to_face` has no face
+ *  bounds and matches nothing. */
+export function bboxOf(c: Candidate): Bounds3 | null {
+  if (c.kind === 'face') return faceBounds(c)
+  const ed = edgeData(c)
+  if (!ed) return null
+  switch (ed.kind) {
+    case 'line':
+      return boundsOfPoints([ed.start, ed.end])
+    case 'circle':
+    case 'arc': {
+      const half = conicHalfExtents(ed.axis, ed.x_axis, ed.radius, ed.radius)
+      return {
+        min: [ed.center[0] - half[0], ed.center[1] - half[1], ed.center[2] - half[2]],
+        max: [ed.center[0] + half[0], ed.center[1] + half[1], ed.center[2] + half[2]],
+      }
+    }
+    case 'ellipse': {
+      const half = conicHalfExtents(ed.axis, ed.x_axis, ed.a, ed.b)
+      return {
+        min: [ed.center[0] - half[0], ed.center[1] - half[1], ed.center[2] - half[2]],
+        max: [ed.center[0] + half[0], ed.center[1] + half[1], ed.center[2] + half[2]],
+      }
+    }
+    case 'spline':
+      return boundsOfPoints(ed.points)
+  }
+}
+
 // Every EdgeData kind, written as a Record so a new member of the union fails
 // to compile here until the select vocabulary learns it.
 const EDGE_KIND_SET: Record<EdgeData['kind'], true> = {

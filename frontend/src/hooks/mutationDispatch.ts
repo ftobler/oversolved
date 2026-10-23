@@ -191,7 +191,7 @@ export const mutationHandlers: MutationHandlers = {
   add_fillet: (next, m) =>
     applyAddFillet(next, m.featureId, m.label, m.edges, m.radius),
   add_chamfer: (next, m) =>
-    applyAddChamfer(next, m.featureId, m.label),
+    applyAddChamfer(next, m.featureId, m.label, m.edges, m.distance),
   set_fillet_field: (next, m) =>
     applySetFilletField(next, m.featureId, m.field, m.value),
   set_chamfer_field: (next, m) =>
@@ -205,7 +205,7 @@ export const mutationHandlers: MutationHandlers = {
   remove_chamfer_edge: (next, m) =>
     applyRemoveChamferEdge(next, m.featureId, m.index),
   add_shell: (next, m) =>
-    applyAddShell(next, m.featureId, m.label),
+    applyAddShell(next, m.featureId, m.label, m.faces, m.thickness, m.direction),
   set_shell_field: (next, m) =>
     applySetShellField(next, m.featureId, m.field, m.value),
   add_shell_face: (next, m) =>

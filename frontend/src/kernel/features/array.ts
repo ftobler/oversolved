@@ -4,18 +4,19 @@
 // instance-application logic lives in `applyArray`.
 
 import type { DisposeScope } from '../occ/disposeScope'
-import type { OccModule, OccShape, OccTrsf } from '../occ/occTypes'
+import type { OccModule, OccShape, OccSubShape, OccTrsf } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
 import { resolveBody, AmbiguousBodyRefError } from './shared/bodyResolution'
 import { resolveDirectionQueryStrict, resolveAxisQueryStrict } from './shared/directionQuery'
 import { makeTranslationTrsf, makeRotationTrsf } from '../occ/transforms'
-import { booleanWithDiff } from '../occ/booleans'
+import { booleanWithDiff, exploreSolids } from '../occ/booleans'
 import { transformCopyWithMapping, rebuildNamesForTransformedCopy, readSourceFaceRows, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody } from './bodySplit'
-import { readBodyNames } from '../occ/bodyNames'
+import { canonicalFaces, readBodyNames } from '../occ/bodyNames'
+import { SubShapeDedup } from '../occ/primitives'
 
 type Dict = Record<string, unknown>
 
@@ -30,11 +31,12 @@ interface ArrayResult {
 }
 
 /**
- * Resolve a required array direction from its picker query, applying the
- * per-axis invert toggle. The direction must come from a picked straight edge
- * or planar face: an empty or dangling query is a solve error rather than a
- * silent world-axis fallback, so the user cannot accidentally array a body
- * along an arbitrary direction.
+ * Resolve a required array direction, applying the per-axis invert toggle. An
+ * explicit pick query wins. Without one, a stored `direction_<axis>` vector is
+ * honoured as a unit world vector: the schema accepted it but the leaf used to
+ * ignore it and report the direction as missing. With neither, the solve fails
+ * rather than falling back to a world axis, so the user cannot accidentally
+ * array a body along an arbitrary direction.
  */
 function resolveArrayDirection(
   feature: Dict,
@@ -44,10 +46,24 @@ function resolveArrayDirection(
 ): number[] {
   const label = axis.toUpperCase()
   const query = (feature[`direction_${axis}_query`] as string) ?? ''
-  if (!query) throw new Error(`array: direction ${label} is required; pick a straight edge or planar face`)
-  const dir = resolveDirectionQueryStrict(query, globalRepo, bodyStore)
-  if (!dir) {
-    throw new Error(`array: direction ${label} query '${query}' did not resolve to a straight edge or planar face`)
+  let dir: number[]
+  if (query) {
+    const resolved = resolveDirectionQueryStrict(query, globalRepo, bodyStore)
+    if (!resolved) {
+      throw new Error(`array: direction ${label} query '${query}' did not resolve to a straight edge or planar face`)
+    }
+    dir = resolved
+  } else {
+    const stored = feature[`direction_${axis}`]
+    if (stored === undefined || stored === null) {
+      throw new Error(`array: direction ${label} is required; pick a straight edge or planar face`)
+    }
+    if (!Array.isArray(stored) || stored.length !== 3 || !stored.every((c) => typeof c === 'number' && Number.isFinite(c))) {
+      throw new Error(`array: direction ${label} must be three finite numbers, got ${JSON.stringify(stored)}`)
+    }
+    const len = Math.hypot(stored[0], stored[1], stored[2])
+    if (len < 1e-12) throw new Error(`array: direction ${label} must be a non-zero vector`)
+    dir = (stored as number[]).map((c) => c / len)
   }
   const invert = (feature[`invert_${axis}`] as boolean) ?? false
   // `c === 0 ? 0 : -c` keeps the negated zero components as +0, not -0.
@@ -168,6 +184,26 @@ export function buildCircularTransforms(
   return trsfs
 }
 
+/**
+ * The solid of `shape` that owns one of `faces`, by face identity. `faces` are
+ * the tracked images of the source body's own faces, so the solid containing
+ * them is the source material: earlier copies' faces were never in the tracked
+ * set. Used by the array add path to keep the source's persisted id.
+ */
+function solidHoldingFaces(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  faces: OccShape[],
+): OccShape | null {
+  if (faces.length === 0) return null
+  for (const solid of exploreSolids(oc, scope, shape)) {
+    const own = canonicalFaces(oc, scope, solid) as OccShape[]
+    if (own.some((face) => faces.some((sf) => (face as OccSubShape).IsSame(sf as OccSubShape)))) return solid
+  }
+  return null
+}
+
 /** Shared instance build + fuse/new dispatch for both array leaves. */
 function applyArray(
   oc: OccModule,
@@ -266,10 +302,32 @@ function applyArray(
   let fused = instances[0]
   let fusedNames = instanceNames[0]
   let lastDiff: BrepDiff | null = null
+  // The source body's own faces, tracked through every union by the boolean's
+  // face origin. Whole-solid IsSame does not survive the clean pass on a
+  // multi-face body (measured: a fused rail loses it on the first disjoint
+  // union), while the face lineage does; a solid is then identified by any of
+  // its own faces. Without this the split ranked siblings by centroid and gave
+  // the source's id to a copy. The first union's target IS the source shape, so
+  // its target-side origins seed the set without a second face walk.
+  let sourceFaces: OccShape[] = []
   for (let i = 1; i < instances.length; i++) {
     const prev = fused
     const r = booleanWithDiff(oc, scope, fused, instances[i], 'fuse', { unifyFaces: !body.imported })
     fused = scope.track(r.shape)
+    if (includeSource) {
+      const next: OccShape[] = []
+      const seen = new SubShapeDedup()
+      const firstUnion = i === 1
+      for (const origin of r.faceOrigin) {
+        if (origin.fromTool) continue
+        const fromSource = firstUnion
+          || sourceFaces.some((sf) => (origin.source as OccSubShape).IsSame(sf as OccSubShape))
+        if (fromSource && seen.add(origin.output)) next.push(origin.output as OccShape)
+      }
+      // An empty set means the history could not narrate the source at all; keep
+      // the last usable set rather than turning a naming fallback into a throw.
+      if (next.length > 0) sourceFaces = next
+    }
     const names = transferBooleanNames(oc, scope, {
       bodyShape: fused,
       faceOrigin: r.faceOrigin,
@@ -307,8 +365,13 @@ function applyArray(
   body.brep_diff = lastDiff
   // "add" fuses the instances into the source body, but a pitch wider than the
   // part leaves that fuse disjoint: the union of N non-touching copies is an
-  // N-solid compound, which is N parts, not one.
-  const bodyIds = resplitBody(oc, scope, table, bodyStore, body, fused, featureId, fusedNames)
+  // N-solid compound, which is N parts, not one. The source's own solid is
+  // identified by construction through the tracked face lineage, so the split
+  // keeps body.id on that material instead of re-ranking siblings by centroid.
+  const bodyIds = resplitBody(
+    oc, scope, table, bodyStore, body, fused, featureId, fusedNames,
+    solidHoldingFaces(oc, scope, fused, sourceFaces),
+  )
   if (bodyIds.length === 0) {
     // A union can only be empty through a failed boolean, so this is defensive:
     // resplitBody deleted the body, and body_ids must not hand back a live id

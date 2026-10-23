@@ -386,7 +386,10 @@ banner on stdout, so a client config must use the direct node invocation.
   `and`/`or`/`not` (each predicate object carries exactly one key; two keys
   side by side are refused with the `and` form to use), over `parallel`,
   `perpendicular`, `type`, `extreme` (the min/max-projection group, tolerance
-  grouped so a box top yields all four edges), `on_face` (edges bounding the
+  grouped so a box top yields all four edges), `within` (the element's whole
+  bounding box inside a world-axis range; `{"within":{"axis":"z","min":10,
+  "max":20}}` names the edges between z=10 and z=20, and a missing `min` or
+  `max` is open on that side), `on_face` (edges bounding the
   selected faces), `created_by` (ancestry through the query engine) and
   `radius`. A multi-key example:
   `{"and":[{"type":"line"},{"parallel":[0,1,0]}]}`. `extreme.axis` is a world

@@ -10,7 +10,7 @@ import { suggestTypeName, typeVocabulary } from './geometry'
 // Every predicate key the grammar admits. `and`/`or`/`not` compose; the rest
 // are leaves. Kept as data so the unknown-key rejection and the schema agree.
 export const PREDICATE_KEYS = [
-  'and', 'or', 'not', 'parallel', 'perpendicular', 'type', 'extreme', 'on_face', 'created_by', 'radius',
+  'and', 'or', 'not', 'parallel', 'perpendicular', 'type', 'extreme', 'within', 'on_face', 'created_by', 'radius',
 ] as const
 
 const SELECTOR_KEYS = ['from', 'kind', 'where']
@@ -122,6 +122,30 @@ function predicate(raw: unknown, path: string): Predicate {
       if (side !== 'min' && side !== 'max') throw new SelectorError(`${path}.extreme.side must be "min" or "max"`)
       const clause = { axis: spec.axis, side: spec.side }
       return { extreme: { axis: extremeAxis(spec.axis, `${path}.extreme`, clause), side } }
+    }
+    case 'within': {
+      const spec = asObject(value, `${path}.within`)
+      rejectUnknown(spec, ['axis', 'min', 'max'], `${path}.within`)
+      const axis = spec.axis
+      if (axis !== 'x' && axis !== 'y' && axis !== 'z') {
+        throw new SelectorError(`${path}.within.axis must be "x", "y" or "z"`)
+      }
+      const out: { axis: 'x' | 'y' | 'z'; min?: number; max?: number } = { axis }
+      for (const key of ['min', 'max'] as const) {
+        if (spec[key] === undefined) continue
+        const n = spec[key]
+        if (typeof n !== 'number' || !Number.isFinite(n)) {
+          throw new SelectorError(`${path}.within.${key} must be a finite number`)
+        }
+        out[key] = n
+      }
+      if (out.min === undefined && out.max === undefined) {
+        throw new SelectorError(`${path}.within needs at least one of min/max`)
+      }
+      if (out.min !== undefined && out.max !== undefined && out.min > out.max) {
+        throw new SelectorError(`${path}.within.min (${out.min}) must not exceed max (${out.max})`)
+      }
+      return { within: out }
     }
     case 'on_face':
       return { on_face: selector(value, `${path}.on_face`) }
