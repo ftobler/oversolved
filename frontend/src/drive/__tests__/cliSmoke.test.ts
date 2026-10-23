@@ -153,6 +153,17 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect((run.payload.solve as { lastError: string | null }).lastError).toBeNull()
     // The problem list rides every run reply, empty for a clean build.
     expect(run.payload.features).toEqual([])
+    // The per-feature delta makes the extrude's contribution visible without a
+    // second measure: the 10 x 10 x 5 prism is the whole 500.
+    const deltas = run.payload.featureDeltas as Array<{
+      id: string; kind: string; status: string; volume: number; volumeDelta: number; bbox: number[]
+    }>
+    const extrudeDelta = deltas.find(row => row.id === 'ex1')!
+    expect(extrudeDelta).toMatchObject({ kind: 'extrude', status: 'ok' })
+    expect(extrudeDelta.volume).toBeCloseTo(500, 6)
+    expect(extrudeDelta.volumeDelta).toBeCloseTo(500, 6)
+    expectBbox(extrudeDelta.bbox, [0, 0, 0, 10, 10, 5])
+    expect(deltas.find(row => row.id === 'sk1')).toMatchObject({ volumeDelta: 0 })
 
     // The canonical script executed a second time in a fresh process must
     // build the byte-identical document: the seeded id source is what makes
@@ -222,6 +233,11 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(built.status).toBe(0)
     expect(built.payload.ok).toBe(true)
     expect((built.payload.solve as { lastError: string | null }).lastError).toBeNull()
+    // One edge of the box is filleted, so the last feature's delta is the
+    // material the fillet removed.
+    const filletDelta = (built.payload.featureDeltas as Array<{ id: string; volumeDelta: number }>)
+      .find(row => row.id === 'f1')
+    expect(filletDelta!.volumeDelta).toBeCloseTo(-(1 - Math.PI / 4) * 5, 6)
 
     // Radius-1 fillet on one edge of the 10 x 10 x 5 box: the edge is 5 long,
     // so the volume drops by (1 - pi/4) * 5, the two removed strips outweigh
@@ -472,6 +488,10 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       expect(built.summary).toContain('sk1 (sketch)')
       expect(built.summary).toContain('ex1 (extrude)')
       expect(built.summary).toContain('body_ex1')
+      // The run reply carries the extrude's contribution, not just the total.
+      const boxDelta = (built.featureDeltas as Array<{ id: string; volumeDelta: number }>)
+        .find(row => row.id === 'ex1')
+      expect(boxDelta!.volumeDelta).toBeCloseTo(500, 6)
 
       // The same script twice through one server process, both starting from a
       // fresh document, mints the same ids and hashes the same document: the
@@ -690,16 +710,19 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       const items = selected.items as Array<{ geometry: { length?: number } }>
       for (const item of items) expect(item.geometry.length).toBeCloseTo(10, 6)
 
+      // One add_fillet call carries the whole pick set and the radius, instead
+      // of one feature + four edge calls + one field call.
       const filletSteps = [
-        { mutation: { type: 'add_fillet', featureId: 'fi1', label: 'Fillet' } },
-        ...queries.map(edgeQuery => ({ mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery } })),
-        { mutation: { type: 'set_fillet_field', featureId: 'fi1', field: 'radius', value: 3 } },
+        { mutation: { type: 'add_fillet', featureId: 'fi1', label: 'Fillet', edges: queries, radius: 3 } },
       ]
       const filleted = toolPayload(await client.request('tools/call', {
         name: 'run',
         arguments: { docHash: boxHash, steps: filletSteps },
       }))
       expect(filleted.ok).toBe(true)
+      const filletDelta = (filleted.featureDeltas as Array<{ id: string; volumeDelta: number }>)
+        .find(row => row.id === 'fi1')
+      expect(filletDelta!.volumeDelta).toBeLessThan(0)
 
       const measure = toolPayload(await client.request('tools/call', {
         name: 'measure',

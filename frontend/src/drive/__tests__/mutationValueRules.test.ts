@@ -84,6 +84,7 @@ describe('value rules cover the catalog', () => {
     ['add_sweep_path', { type: 'add_sweep_path', featureId: 'sw1', pathQuery: '' }],
     ['remove_sweep_path', { type: 'remove_sweep_path', featureId: 'sw1', index: -1 }],
     ['add_import_step', { type: 'add_import_step', featureId: 'im1', fileId: '' }],
+    ['add_fillet', { type: 'add_fillet', featureId: 'fi1', edges: [''], radius: 2 }],
     ['set_fillet_field', { type: 'set_fillet_field', featureId: 'fi1', field: 'radius', value: {} }],
     ['set_chamfer_field', { type: 'set_chamfer_field', featureId: 'ch1', field: 'kind', value: 'radius' }],
     ['add_fillet_edge', { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '' }],
@@ -271,6 +272,108 @@ describe('finding 5: add_constraint target spelling', () => {
       type: 'add_constraint', featureId: 'sk1', kind: 'coincident',
       targets: ['entity:sk1:l1', 'vertex:sk1:l1:start'],
     })).toMatchObject({ ok: true })
+  })
+})
+
+describe('finding: plane refs are exact, not silently replaced by XY', () => {
+  it('refuses a lowercase builtin name and lists the valid planes', () => {
+    const error = refusal({ type: 'add_sketch', featureId: 'sk1', plane: 'top' }, seededDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('"top"')
+    expect(error.message).toContain('@builtin_plane_top')
+    expect(error.message).toContain('Front')
+    expect(error.message).toContain('case-sensitive')
+  })
+
+  it('accepts the seeded spellings, a plane feature and a face query', () => {
+    const withPlane = seededDoc()
+    withPlane.features = [
+      ...(withPlane.features ?? []),
+      { id: 'pl1', kind: 'plane', definition: { mode: 'offset', plane: '@builtin_plane_top', offset: 5 } },
+    ] as PartDoc['features']
+    for (const plane of ['Top', '@builtin_plane_top', 'pl1', '@pl1', '?15,4,9;@cls_yp:flatface']) {
+      expect(validateMutation({ type: 'add_sketch', featureId: 'sk1', plane }, { doc: withPlane }), plane)
+        .toMatchObject({ ok: true })
+    }
+    expect(validateMutation({ type: 'set_feature_plane', featureId: 'sk1', plane: 'Front' }, { doc: withPlane }))
+      .toMatchObject({ ok: true })
+  })
+
+  it('refuses an invented @ ref too', () => {
+    const error = refusal({ type: 'set_feature_plane', featureId: 'sk1', plane: '@nope' }, seededDoc())
+    expect(error.message).toContain('@nope')
+    expect(error.message).toContain('@builtin_plane_front')
+  })
+
+  it('fails the headless run step and leaves the sketch out of the document', async () => {
+    const result = await runHeadless({
+      doc: seededDoc(),
+      steps: [{ mutation: { type: 'add_sketch', featureId: 'sk1', plane: 'top' } }],
+    })
+    expect(result.outcome.steps[0]).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    expect(result.doc?.features?.map(feature => feature.id)).not.toContain('sk1')
+  })
+})
+
+describe('finding: resize_circle names its target', () => {
+  const circleDoc = (): PartDoc => seedBuiltins({
+    version: 1,
+    kind: 'part',
+    features: [{
+      id: 'sk1',
+      kind: 'sketch',
+      plane: '@builtin_plane_front',
+      entities: [
+        { id: 'c1', kind: 'circle' },
+        { id: 'l1', kind: 'line' },
+      ],
+      initial: { c1: [0, 0, 5], l1: [0, 0, 10, 0] },
+    }],
+  })
+
+  it('refuses an unknown entity id with it named', () => {
+    const error = refusal({
+      type: 'resize_circle', featureId: 'sk1', entityId: 'ghost', radius: 2,
+    }, circleDoc())
+    expect(error.code).toBe('unknown-target')
+    expect(error.message).toContain('ghost')
+    expect(error.message).toContain('sk1')
+  })
+
+  it('refuses a non-circle entity and a missing sketch by name', () => {
+    const line = refusal({ type: 'resize_circle', featureId: 'sk1', entityId: 'l1', radius: 2 }, circleDoc())
+    expect(line.message).toContain('l1')
+    expect(line.message).toContain('not a circle')
+    const sketch = refusal({ type: 'resize_circle', featureId: 'nope', entityId: 'c1', radius: 2 }, circleDoc())
+    expect(sketch.code).toBe('unknown-target')
+    expect(sketch.message).toContain('nope')
+  })
+
+  it('accepts a real circle and rejects a ghost through the headless boundary', async () => {
+    expect(validateMutation({ type: 'resize_circle', featureId: 'sk1', entityId: 'c1', radius: 2 }, { doc: circleDoc() }))
+      .toMatchObject({ ok: true })
+    const result = await runHeadless({
+      doc: circleDoc(),
+      steps: [{ mutation: { type: 'resize_circle', featureId: 'sk1', entityId: 'ghost', radius: 2 } }],
+    })
+    expect(result.outcome.steps[0]).toMatchObject({ ok: false, error: { code: 'unknown-target' } })
+  })
+})
+
+describe('finding: add_fillet takes a whole edge set', () => {
+  it('accepts edges and a number or expression radius in one step', () => {
+    expect(validateMutation({
+      type: 'add_fillet', featureId: 'fi1', edges: ['?e1', '?e2'], radius: 0.125,
+    })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_fillet', featureId: 'fi1', edges: ['?e1'], radius: 'wall / 2',
+    })).toMatchObject({ ok: true })
+  })
+
+  it('refuses a non-positive radius and an empty name in the edge list', () => {
+    expect(refusal({ type: 'add_fillet', featureId: 'fi1', radius: 0 }).message).toContain('positive')
+    const edge = refusal({ type: 'add_fillet', featureId: 'fi1', edges: ['?e1', ''] })
+    expect(edge.message).toContain('edges[1]')
   })
 })
 

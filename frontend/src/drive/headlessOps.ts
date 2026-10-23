@@ -20,6 +20,7 @@ import { selectByPredicate, type SelectResult, type Selector } from '@/kernel/se
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { createHeadlessPart, type HeadlessPart } from '@/drive/headlessPart'
 import { featureProblems, readSolveOutcomes, type FeatureProblem } from '@/drive/featureOutcome'
+import { featureDeltaRows, type FeatureDelta } from '@/drive/featureDeltas'
 import { partSolvePayload } from '@/drive/solveWriteBack'
 import { docHashOf } from '@/drive/docHash'
 import type { CommandJournal } from '@/drive/journal'
@@ -59,6 +60,11 @@ export interface HeadlessRunResult {
   // The features the solve did not finish cleanly, in feature log order. This
   // is always present: an empty list is the clean-build answer.
   features: FeatureProblem[]
+  // Volume and bbox after every clean feature, with the change from the
+  // previous checkpoint. Null when the final solve exposed no measurable
+  // checkpoints (no kernel); a failed feature has no row, but its checkpoint
+  // still sets the baseline for the next clean one.
+  featureDeltas: FeatureDelta[] | null
   // The live part, for a caller that wants the session (the CLI records a
   // repro from its journal; most callers only read the fields above).
   part: HeadlessPart
@@ -79,6 +85,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   const outcome = await part.run(opts.steps)
   const doc = part.getDoc()
   const solve = part.solve.state()
+  const measures = part.bodyIds() === null ? null : await part.featureMeasures()
   return {
     ok: outcome.ok && solve.lastError === null,
     outcome,
@@ -87,6 +94,9 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     solve,
     bodies: part.bodyIds(),
     features: doc ? featureProblems(doc, part.solveOutcomes()) : [],
+    featureDeltas: doc !== null && measures !== null
+      ? featureDeltaRows(doc, measures, part.solveOutcomes())
+      : null,
     part,
   }
 }

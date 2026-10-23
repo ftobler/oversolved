@@ -71,7 +71,7 @@ const bool = () => ({ type: 'boolean', required: true } as const)
 const point = (note?: string) => ({ type: 'point', required: true, ...(note !== undefined && { note }) } as const)
 const optPoint = () => ({ type: 'point', required: false } as const)
 const arr = (note?: string) => ({ type: 'array', required: true, ...(note !== undefined && { note }) } as const)
-const optArr = () => ({ type: 'array', required: false } as const)
+const optArr = (note?: string) => ({ type: 'array', required: false, ...(note !== undefined && { note }) } as const)
 const obj = (note?: string) => ({ type: 'object', required: true, ...(note !== undefined && { note }) } as const)
 const shapedObj = (shape: JsonSchema, note?: string) =>
   ({ type: 'object', required: false, shape, ...(note !== undefined && { note }) } as const)
@@ -81,6 +81,9 @@ const optQuery = (note: string) => ({ type: 'query', required: false, note } as 
 // field), so it is nullable even though the applier owns the real type.
 const anyValue = (note?: string) =>
   ({ type: 'any', required: true, nullable: true, ...(note !== undefined && { note }) } as const)
+// A number-or-expression field a bulk add can carry in its own payload.
+const optScalar = (note?: string) =>
+  ({ type: 'scalar', required: false, ...(note !== undefined && { note }) } as const)
 
 // The insert slot and the drag snapshot are journal/gesture plumbing: both ride
 // on a payload the app produces, never on one a script authors.
@@ -192,6 +195,28 @@ const REVOLVE_AXIS_NOTE =
   '`axis` is a feature-level ref, not the profile\'s sketch-local $ form: name a sketch entity as ' +
   '@<sketchId>/<entityId> (a line, or a circle/arc whose center sits on the axis), or an edge query from `select`. ' +
   'A $<sketchId> ref does not resolve in `axis`.'
+
+// Plane refs are exact on purpose: a case-insensitive bare-name match could
+// shadow a user plane whose id differs only by case. The boundary refuses an
+// unmatched ref with this list rather than letting the resolver fall back to XY.
+const PLANE_REF_NOTE =
+  '`plane` is "@builtin_plane_front", "@builtin_plane_top", "@builtin_plane_right", ' +
+  'a bare builtin name (Front, Top, Right; case-sensitive), "@<planeId>" for a plane feature, ' +
+  'or a "?" face query from `select`. An unmatched name is refused with the valid names; ' +
+  'it never silently falls back to the XY plane.'
+
+// The array's "add" is a union only where the copies touch. Disjoint instances
+// stay separate B-reps and therefore separate bodies, with the source id plus
+// sibling suffixes. Name that here so the operation word does not read as a fuse
+// of the instances into one body when the geometry does not connect them.
+const ARRAY_OPERATION_NOTE =
+  '`operation: add` unions each instance into the source body when they intersect; disjoint copies split into ' +
+  'separate bodies, taking the source id and `_1`, `_2`... siblings (the `run` reply summary names the live ids). ' +
+  '`operation: new` keeps the source as instance 0 and mints one body per copy.'
+
+const FILLET_BULK_NOTE =
+  'One call may carry the whole pick: `edges` appends the query strings `select` returned, and `radius` sets the ' +
+  'radius in the same step. `add_fillet_edge` and `set_fillet_field` remain for later single-edge and field edits.'
 
 const fieldOf = (label: string, type: FieldSetterType) =>
   str(`The ${label} field to set. Valid fields: ${(setterFieldNames(type) ?? []).join(', ')}.`)
@@ -368,10 +393,12 @@ export const MUTATION_CATALOG = {
   },
   set_feature_plane: {
     summary: 'Move a sketch to another plane.',
+    note: PLANE_REF_NOTE,
     fields: { featureId: str(), plane: query('@<planeId> or a bare plane name.') },
   },
   add_sketch: {
     summary: 'Add a sketch feature, optionally on a plane.',
+    note: PLANE_REF_NOTE,
     fields: {
       featureId: str(),
       label: optStr(),
@@ -477,8 +504,13 @@ export const MUTATION_CATALOG = {
     fields: { ...featureAddFields(), fileId: str('The files entry id carrying the bytes.') },
   },
   add_fillet: {
-    summary: 'Add a fillet feature, then add its edges.',
-    fields: featureAddFields(),
+    summary: 'Add a fillet feature, optionally with its edges and radius in the same call.',
+    note: FILLET_BULK_NOTE,
+    fields: {
+      ...featureAddFields(),
+      edges: optArr('Edge queries from `select`; the same array the document stores as fillet.edges.'),
+      radius: optScalar('A positive number or an expression string; defaults to 1 when omitted.'),
+    },
   },
   add_chamfer: {
     summary: 'Add a chamfer feature, then add its edges.',
@@ -570,18 +602,22 @@ export const MUTATION_CATALOG = {
   },
   add_array: {
     summary: 'Add a linear array feature.',
+    note: ARRAY_OPERATION_NOTE,
     fields: featureAddFields(),
   },
   set_array_field: {
     summary: 'Set one linear-array field.',
+    note: ARRAY_OPERATION_NOTE,
     fields: { featureId: str(), field: fieldOf('array', 'set_array_field'), value: setterValue('array') },
   },
   add_circular_array: {
     summary: 'Add a circular array feature.',
+    note: ARRAY_OPERATION_NOTE,
     fields: featureAddFields(),
   },
   set_circular_array_field: {
     summary: 'Set one circular-array field.',
+    note: ARRAY_OPERATION_NOTE,
     fields: { featureId: str(), field: fieldOf('circular array', 'set_circular_array_field'), value: setterValue('circular_array') },
   },
   add_delete_body: {

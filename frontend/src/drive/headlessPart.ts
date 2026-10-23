@@ -11,7 +11,7 @@ import { createDocSession, type DocSession } from '@/session/DocSession'
 import type { SolveOptions, SolveScheduler } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
-import { solveLocally } from '@/kernel/solveLocally'
+import { measureSolveFeatures, solveLocally, type FeatureMeasure } from '@/kernel/solveLocally'
 import { CommandRegistry } from '@/utils/core/commandSpec'
 import type { CommandName } from '@/utils/core/commandNames'
 import { PART_COMMAND_SPECS, getSketchState, type PartCommandContext } from '@/pages/commandEntries'
@@ -52,6 +52,10 @@ export interface HeadlessPart {
   // The status-only view of solveOutcomes, for the repro test's sidecar
   // expectations.
   solveStatuses(): Record<string, string>
+  // Per-feature volume and bbox of the last solve's checkpoints, in feature
+  // order. Null when the last solve never produced a measurable state (no
+  // kernel, or nothing solved yet).
+  featureMeasures(): Promise<FeatureMeasure[] | null>
   idle(): Promise<void>
   run(steps: readonly ScriptStep[]): Promise<ScriptRunOutcome>
 }
@@ -68,6 +72,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
   // as if it described the current document.
   const outcomesBox: { current: Record<string, FeatureOutcome> } = { current: {} }
   const bodiesBox: { current: string[] | null } = { current: null }
+  const responseBox: { current: Awaited<ReturnType<typeof solveLocally>> } = { current: null }
   const dirtyFacts = { dirty: false, saves: 0, savedHash: null as number | null }
 
   const reSolve: ReSolveFn = async (doc, solveOpts?: SolveOptions) => {
@@ -85,6 +90,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     // synchronously around the apply, before this write-back landed.
     docBox.current = applySolveToDoc(doc, response)
     outcomesBox.current = readSolveOutcomes(response.result)
+    responseBox.current = response
     // The live body set of this solve, recorded before any later feature or
     // write-back: this is what the reply summary reports, not the accumulated
     // part_style keys.
@@ -183,6 +189,9 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     solveStatuses: () => Object.fromEntries(
       Object.entries(outcomesBox.current).map(([id, outcome]) => [id, outcome.status]),
     ),
+    featureMeasures: () => responseBox.current === null
+      ? Promise.resolve(null)
+      : measureSolveFeatures(responseBox.current),
     idle: () => solve.idle(),
     run,
   }

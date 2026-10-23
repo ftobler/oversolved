@@ -1161,7 +1161,7 @@ export type Mutation =
   | { type: 'add_sweep_path'; featureId: string; pathQuery: string }
   | { type: 'remove_sweep_path'; featureId: string; index: number }
   | ({ type: 'add_import_step'; featureId: string; fileId: string; label?: string } & FeatureInsertion)
-  | ({ type: 'add_fillet'; featureId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_fillet'; featureId: string; label?: string; edges?: string[]; radius?: NumberOrExpr } & FeatureInsertion)
   | ({ type: 'add_chamfer'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_fillet_field'; featureId: string; field: keyof FilletFeatureDef; value: unknown }
   | { type: 'set_chamfer_field'; featureId: string; field: keyof ChamferFeatureDef; value: unknown }
