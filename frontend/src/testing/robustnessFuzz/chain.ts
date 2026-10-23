@@ -134,6 +134,15 @@ function roundedRectLoop(dx: number, dy: number, r: number): LoopEdge[] {
   ]
 }
 
+/** A full circle boundary as one self-closed edge, with its sketch entity id. */
+function circleLoop(cx: number, cy: number, radius: number, id: string): LoopEdge[] {
+  return [{
+    id, kind: 'arc', center: [cx, cy], radius,
+    angle_start_deg: 0, angle_end_deg: 360, ccw: true,
+    start: [cx + radius, cy], end: [cx + radius, cy],
+  }]
+}
+
 /** A rectangular ring's cross-section in the sketch's uv space. */
 function rectLoop(u0: number, u1: number, v0: number, v1: number): LoopEdge[] {
   return [
@@ -369,6 +378,17 @@ function applyStart(oc: OccModule, scope: DisposeScope, table: HandleTable, body
   if (step.shape === 'arc-profile') {
     const loops = [roundedRectLoop(step.size[0], step.size[1], step.arcRadius)]
     const lineage = extrudeProfileWithLineage(oc, scope, loops, PLANE_XY, [0, 0, 1], step.size[2], 'sk_seed', step.id)
+    scope.track(lineage.solid)
+    registerSplitBodies(oc, scope, table, bodyStore, lineage.solid, { ...template, ...lineage })
+    return
+  }
+  if (step.shape === 'ring') {
+    // A nested-loop profile: the outer circle with the bore as its hole, the
+    // washer the extruded-profile path is built around. The two entity ids ride
+    // the loops so the lineage walk names the walls as a real sketch does.
+    const [outerD, innerD, height] = step.size
+    const loops = [circleLoop(0, 0, outerD / 2, 'o1'), circleLoop(0, 0, innerD / 2, 'i1')]
+    const lineage = extrudeProfileWithLineage(oc, scope, loops, PLANE_XY, [0, 0, 1], height, 'sk_seed', step.id)
     scope.track(lineage.solid)
     registerSplitBodies(oc, scope, table, bodyStore, lineage.solid, { ...template, ...lineage })
     return

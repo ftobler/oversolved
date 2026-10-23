@@ -1,0 +1,42 @@
+{
+  "origin": {
+    "kind": "bug_report",
+    "ref": "feature/bug-nested-loop-extrude.md",
+    "date": "2026-10-22"
+  },
+  "license": "own",
+  "severity": "hard",
+  "what": "two concentric circles (r11, r10) on the top plane, extruded 40: one bore, four faces",
+  "features": {
+    "default": "ok",
+    "except": {
+      "sk_washer": "underconstrained"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 2638.9378290154264,
+    "area": 5409.822549481623,
+    "centroid": [
+      -3.791086553651328e-15,
+      20.000000000000007,
+      7.454354593911764e-16
+    ],
+    "bbox": [
+      -11,
+      0,
+      -11,
+      11,
+      40,
+      11
+    ],
+    "faces": 4,
+    "edges": 6
+  },
+  "snapshot": true
+}

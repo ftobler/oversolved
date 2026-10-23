@@ -26,7 +26,7 @@ const DESIGNATIONS = threadDesignations()
 // generates exact multiplications of the grid.
 export const FUZZ_GRID_MM = 2.5
 
-export type StartShapeKind = 'box' | 'arc-profile' | 'revolve'
+export type StartShapeKind = 'box' | 'arc-profile' | 'revolve' | 'ring'
 export type ToolShapeKind = 'box' | 'cylinder' | 'sphere'
 export type ToolAnchor = 'center' | 'min' | 'max'
 export type AxisName = 'x' | 'y' | 'z'
@@ -43,7 +43,8 @@ export interface RecipeStart {
   body: string
   shape: StartShapeKind
   // box/arc-profile: [dx, dy, dz] (extruded along +z). revolve: [innerRadius,
-  // ringWidth, height] revolved about the world z axis.
+  // ringWidth, height] revolved about the world z axis. ring: [outerDiameter,
+  // innerDiameter, height], extruded along +z as a nested-loop washer.
   size: [number, number, number]
   // arc-profile corner radius; 0 for the other shapes.
   arcRadius: number
@@ -180,6 +181,13 @@ export interface RecipeOptions {
   // One start step plus up to this many drawn edits (before the per-kind
   // budget in freshBudget() can end the chain earlier).
   maxSteps?: number
+  // Force the start body's shape. The default draw never picks a holed profile
+  // (box, arc-profile and revolve are all hole-free), so a nested-loop washer
+  // never reached this fuzz. Used by the dedicated ring sweep, which is a
+  // separate seed family: the default draw consumes no extra randomness, so
+  // every existing seed's chain stays byte-identical and the pinned findings
+  // keep their seeds.
+  startShape?: StartShapeKind
 }
 
 // The number of leading display-sorted edges an edge pick is allowed to land
@@ -200,7 +208,20 @@ function grid(steps: number): number {
   return steps * FUZZ_GRID_MM
 }
 
-function drawStart(rnd: () => number): RecipeStart {
+function drawStart(rnd: () => number, forced?: StartShapeKind): RecipeStart {
+  if (forced === 'ring') {
+    // Wall width 2.5..7.5 so the bore always stays open (inner > 0) yet is
+    // always a large fraction of the outer, which is the ratio the shipped
+    // defect (V_outer - 2 * V_inner, negative once the bore passed the wall)
+    // needed to appear.
+    const outer = grid(drawInt(rnd, 8, 18))
+    const wall = grid(drawInt(rnd, 1, 3))
+    return {
+      kind: 'start', id: 'seed', body: PRIMARY_BODY, shape: 'ring',
+      size: [outer, outer - 2 * wall, grid(drawInt(rnd, 4, 9))],
+      arcRadius: 0, angleDeg: 0,
+    }
+  }
   const roll = rnd()
   if (roll < 0.45) {
     return {
@@ -339,7 +360,7 @@ export function generateRecipe(seed: number, options: RecipeOptions = {}): Recip
   // with how many times the previous step's face count was rebuilt, so the
   // sweep budget wants the mean low, while `up to eight` still has to occur.
   const stepCount = Math.min(options.maxSteps ?? 8, drawInt(rnd, 1, 5) + (rnd() < 0.15 ? drawInt(rnd, 1, 3) : 0))
-  const steps: RecipeStep[] = [drawStart(rnd)]
+  const steps: RecipeStep[] = [drawStart(rnd, options.startShape)]
   const budget = freshBudget()
   for (let i = 0; i < stepCount; i++) {
     const step = drawStep(rnd, `s${i + 1}`, budget)
