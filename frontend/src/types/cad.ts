@@ -1176,14 +1176,14 @@ export type Mutation =
   | { type: 'remove_sweep_path'; featureId: string; index: number }
   | ({ type: 'add_import_step'; featureId: string; fileId: string; label?: string } & FeatureInsertion)
   | ({ type: 'add_fillet'; featureId: string; label?: string; edges?: string[]; radius?: NumberOrExpr } & FeatureInsertion)
-  | ({ type: 'add_chamfer'; featureId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_chamfer'; featureId: string; label?: string; edges?: string[]; distance?: NumberOrExpr } & FeatureInsertion)
   | { type: 'set_fillet_field'; featureId: string; field: keyof FilletFeatureDef; value: unknown }
   | { type: 'set_chamfer_field'; featureId: string; field: keyof ChamferFeatureDef; value: unknown }
   | { type: 'add_fillet_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_fillet_edge'; featureId: string; index: number }
   | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_chamfer_edge'; featureId: string; index: number }
-  | ({ type: 'add_shell'; featureId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_shell'; featureId: string; label?: string; faces?: string[]; thickness?: NumberOrExpr; direction?: ShellDirection } & FeatureInsertion)
   | { type: 'set_shell_field'; featureId: string; field: keyof ShellFeatureDef; value: unknown }
   | { type: 'add_shell_face'; featureId: string; faceQuery: string }
   | { type: 'remove_shell_face'; featureId: string; index: number }

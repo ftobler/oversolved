@@ -32,6 +32,10 @@ export type Predicate =
   // The min/max-projection group of the current candidate set (CQ ">Z"), grouped
   // within the measure tolerance so a box top yields all four of its edges.
   | { extreme: { axis: Vec3; side: 'min' | 'max' } }
+  // The element's whole bounding box lies inside a world-axis range. A missing
+  // min or max is open on that side; a cone of edges "between z=10 and z=20"
+  // does not need the extreme chains.
+  | { within: { axis: 'x' | 'y' | 'z'; min?: number; max?: number } }
   // Edges bounding the faces the inner selector names (adjacency).
   | { on_face: Selector }
   // Ancestry contains this feature id (resolved through the query engine).

@@ -135,6 +135,51 @@ describe('buildArrayTransforms (linear)', () => {
     expect(translations(t)).toEqual([[-5, 0, 0]])
   })
 
+  it('honours a stored direction_x vector when no query is set', () => {
+    // The schema accepted direction_x but the leaf only read the pick query, so
+    // a document carrying the vector reported "direction X is required". The
+    // vector is a world direction and is normalised, like a picked edge.
+    const t = buildArrayTransforms(
+      makeFake(), scope,
+      { mode: 'linear', count_x: 2, pitch_x: 5, direction_x: [0, 0, -2] },
+      repo,
+    )
+    expect(translations(t)).toEqual([[0, 0, -5]])
+  })
+
+  it('normalises a non-unit stored direction_x vector', () => {
+    const t = buildArrayTransforms(
+      makeFake(), scope,
+      { mode: 'linear', count_x: 2, pitch_x: 10, direction_x: [3, 4, 0] },
+      repo,
+    )
+    expectCloseVec(translations(t)[0], [6, 8, 0])
+  })
+
+  it('an explicit direction_x query wins over a stored vector', () => {
+    const t = buildArrayTransforms(
+      makeFake(), scope,
+      { mode: 'linear', count_x: 2, pitch_x: 5, direction_x: [0, 0, 1], direction_x_query: 'qx' },
+      xyRepo,
+    )
+    expect(translations(t)).toEqual([[5, 0, 0]])
+  })
+
+  it('inverts a stored direction_x vector too', () => {
+    const t = buildArrayTransforms(
+      makeFake(), scope,
+      { mode: 'linear', count_x: 2, pitch_x: 5, direction_x: [0, 0, 1], invert_x: true },
+      repo,
+    )
+    expect(translations(t)).toEqual([[0, 0, -5]])
+  })
+
+  it('refuses a zero stored direction_x vector by name', () => {
+    expect(() => buildArrayTransforms(
+      makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5, direction_x: [0, 0, 0] }, repo,
+    )).toThrow(/direction X must be a non-zero vector/)
+  })
+
   it('throws when the direction picker is empty', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5 }, repo)).toThrow(/direction X is required/)
   })
@@ -192,6 +237,19 @@ describe('buildArrayTransforms (rectangular)', () => {
     )
     // Full 2x2 lattice minus (0,0): (1,0), (0,1), (1,1)
     expect(translations(t)).toEqual([[10, 0, 0], [0, 20, 0], [10, 20, 0]])
+  })
+
+  it('honours stored direction_x and direction_y vectors when no queries are set', () => {
+    const t = buildArrayTransforms(
+      makeFake(),
+      scope,
+      {
+        mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: 20,
+        include_source: true, direction_x: [1, 0, 0], direction_y: [0, 0, -1],
+      },
+      repo,
+    )
+    expect(translations(t)).toEqual([[10, 0, 0], [0, 0, -20], [10, 0, -20]])
   })
 
   it('excludes the seed cell when the source is excluded', () => {

@@ -739,6 +739,44 @@ function addFillet(raw: RawStep): ValueViolation | null {
   return radiusProblem === null ? null : invalid(radiusProblem)
 }
 
+// A number-or-expression field a bulk add carries: the number is a positive
+// magnitude, the string is a non-empty expression resolved after the solve.
+function positiveScalarProblem(value: unknown, label: string): string | null {
+  if (typeof value === 'string') {
+    return value.trim().length === 0
+      ? `${label} must be a positive number or a non-empty expression string, got ${json(value)}`
+      : null
+  }
+  return positiveNumberProblem(value, label)
+}
+
+function addChamfer(raw: RawStep): ValueViolation | null {
+  if (raw.edges !== undefined) {
+    const edgesProblem = stringListProblem(raw.edges, 'edges')
+    if (edgesProblem !== null) return invalid(edgesProblem)
+  }
+  if (raw.distance !== undefined) {
+    const distanceProblem = positiveScalarProblem(raw.distance, 'distance')
+    if (distanceProblem !== null) return invalid(distanceProblem)
+  }
+  return null
+}
+
+function addShell(raw: RawStep): ValueViolation | null {
+  if (raw.faces !== undefined) {
+    const facesProblem = stringListProblem(raw.faces, 'faces')
+    if (facesProblem !== null) return invalid(facesProblem)
+  }
+  if (raw.thickness !== undefined) {
+    const thicknessProblem = positiveScalarProblem(raw.thickness, 'thickness')
+    if (thicknessProblem !== null) return invalid(thicknessProblem)
+  }
+  if (raw.direction !== undefined && raw.direction !== 'inward' && raw.direction !== 'outward') {
+    return invalid(`direction must be "inward" or "outward", got ${json(raw.direction)}`)
+  }
+  return null
+}
+
 function addDeleteFace(raw: RawStep): ValueViolation | null {
   if (raw.faces === undefined) return null
   const problem = stringListProblem(raw.faces, 'faces')
@@ -902,14 +940,14 @@ export const MUTATION_VALUE_RULES = {
   add_sweep_path: queryField('pathQuery'),
   remove_sweep_path: indexField('index'),
   add_import_step: addImportStep,
-  add_chamfer: 'none',
+  add_chamfer: addChamfer,
   set_fillet_field: fieldValue,
   set_chamfer_field: fieldValue,
   add_fillet_edge: queryField('edgeQuery'),
   remove_fillet_edge: indexField('index'),
   add_chamfer_edge: queryField('edgeQuery'),
   remove_chamfer_edge: indexField('index'),
-  add_shell: 'none',
+  add_shell: addShell,
   set_shell_field: fieldValue,
   add_shell_face: queryField('faceQuery'),
   remove_shell_face: indexField('index'),

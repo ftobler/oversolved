@@ -13,6 +13,7 @@ import { parseAncestry } from '@/kernel/query'
 import { DEFAULT_MEASURE_TOLERANCE, valueWithinTolerance } from '@/kernel/occ/measureTolerance'
 import { SelectorError } from './errors'
 import {
+  bboxOf,
   directionOf,
   dot,
   edgeCandidates,
@@ -92,6 +93,22 @@ function extremeGroup(spec: { axis: Vec3; side: 'min' | 'max' }, pool: Candidate
   })
 }
 
+function withinGroup(spec: { axis: 'x' | 'y' | 'z'; min?: number; max?: number }, pool: Candidate[]): Candidate[] {
+  const axis = spec.axis === 'x' ? 0 : spec.axis === 'y' ? 1 : 2
+  const tol = DEFAULT_MEASURE_TOLERANCE.abs
+  return pool.filter(c => {
+    const bounds = bboxOf(c)
+    if (bounds === null) return false
+    // The WHOLE box must sit in the range: an element crossing a boundary is out,
+    // even when its centre or one end is in. The tolerance is the same measure
+    // tolerance the radius and extreme tests use, so a value authored as the
+    // boundary itself is not lost to f64 noise.
+    if (spec.min !== undefined && bounds.min[axis] < spec.min - tol) return false
+    if (spec.max !== undefined && bounds.max[axis] > spec.max + tol) return false
+    return true
+  })
+}
+
 function onFace(inner: Selector, pool: Candidate[], ctx: EvalContext): Candidate[] {
   if (inner.kind !== 'face') {
     throw new SelectorError('on_face needs a face selector (kind "face")')
@@ -138,6 +155,7 @@ function evaluate(p: Predicate, pool: Candidate[], ctx: EvalContext): Candidate[
   }
   if ('type' in p) return pool.filter(c => typeOf(c) === p.type)
   if ('extreme' in p) return extremeGroup(p.extreme, pool)
+  if ('within' in p) return withinGroup(p.within, pool)
   if ('on_face' in p) return onFace(p.on_face, pool, ctx)
   if ('created_by' in p) return pool.filter(c => createdByMatches(c.query, p.created_by))
   return pool.filter(c => radiusMatches(radiusOf(c), p.radius))
@@ -149,6 +167,7 @@ function label(p: Predicate): string {
   if ('type' in p) return `type "${p.type}"`
   // The whole clause, not an abbreviation: an author copies it back to fix it.
   if ('extreme' in p) return `extreme ${JSON.stringify(p.extreme)}`
+  if ('within' in p) return `within ${JSON.stringify(p.within)}`
   if ('on_face' in p) return `on_face {${p.on_face.kind}}`
   if ('created_by' in p) return `created_by "${p.created_by}"`
   if ('radius' in p) return `radius ${JSON.stringify(p.radius)}`

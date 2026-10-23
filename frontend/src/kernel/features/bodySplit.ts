@@ -26,7 +26,7 @@
  */
 
 import type { DisposeScope } from '../occ/disposeScope'
-import type { OccModule, OccShape } from '../occ/occTypes'
+import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { exploreSolids } from '../occ/booleans'
@@ -159,6 +159,26 @@ function mintSiblingId(base: string, index: number, bodyStore: Record<string, Bo
   return `${base}_${suffix}`
 }
 
+/**
+ * Move the sibling the caller identifies by construction to the front.
+ *
+ * The geometric ordering above is a relative key for naming new siblings, but
+ * it must not decide which existing identity survives: after a disjoint array
+ * the source body keeps its id, so the source solid has to stay first even when
+ * a copy sits at a smaller centroid. `preferred` is a solid of the very shape
+ * being split (topological identity, no coordinates), found by the caller
+ * through its own construction lineage; when the union changed it so no sibling
+ * is that exact solid, the relative order stays.
+ */
+function keepPreferredFirst(solids: OccShape[], preferred: OccShape | null): OccShape[] {
+  if (preferred === null || solids.length < 2) return solids
+  const at = solids.findIndex((s) => (s as OccSubShape).IsSame(preferred as OccSubShape))
+  if (at <= 0) return solids
+  const [kept] = solids.splice(at, 1)
+  solids.unshift(kept)
+  return solids
+}
+
 /** The solids `shape` decomposes into, in stable sibling order. Empty for a shell-only shape. */
 export function splitSolids(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
   return orderSolids(oc, scope, shape, exploreSolids(oc, scope, shape))
@@ -238,6 +258,11 @@ export function registerSplitBodies(
  * first is deliberate -- the leaves disagree on whether they push before or
  * after this call.
  *
+ * `preferredFirst` is a sub-shape of `newShape` the caller knows by construction
+ * (the array leaf's source solid). It takes the first sibling slot, so `body.id`
+ * stays on that material instead of on whichever sibling the relative centroid
+ * order ranks first. Null keeps the geometric order; see `keepPreferredFirst`.
+ *
  * An EMPTY result (the new shape holds no solid) deletes the body from the
  * store and returns `[]`, so a caller that re-resolves the old id later fails
  * with "body not found" instead of reading a `shape: null`. `body_ids: []`
@@ -256,8 +281,9 @@ export function resplitBody(
   newShape: OccShape,
   featureId: string,
   produced: ProducedNames,
+  preferredFirst: OccShape | null = null,
 ): string[] {
-  const solids = splitSolids(oc, scope, newShape)
+  const solids = keepPreferredFirst(splitSolids(oc, scope, newShape), preferredFirst)
   const oldHandle = body.shape
   const ids = [body.id]
 

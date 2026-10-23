@@ -252,6 +252,25 @@ const FILLET_BULK_NOTE =
   'One call may carry the whole pick: `edges` appends the query strings `select` returned, and `radius` sets the ' +
   'radius in the same step. `add_fillet_edge` and `set_fillet_field` remain for later single-edge and field edits.'
 
+const CHAMFER_BULK_NOTE =
+  'One call may carry the whole pick: `edges` appends the query strings `select` returned, and `distance` sets the ' +
+  'distance in the same step. `add_chamfer_edge` and `set_chamfer_field` remain for later single-edge and field edits.'
+
+// The shell has no signed thickness: `thickness` is a magnitude and the
+// direction field carries the side. CadQuery's `.shell()` takes a signed
+// thickness and its negative value is the inward one, so a translated model
+// flips the sign into `direction` rather than passing it through.
+const SHELL_SIGN_NOTE =
+  '`thickness` is always positive and a negative value is refused; the side is carried by `direction: inward|outward`. ' +
+  'The default is `inward` (the outer skin stays where it is and material is removed from inside). ' +
+  "CadQuery's signed thickness maps as positive -> `outward` and negative -> `inward`, with the magnitude as " +
+  '`thickness`.'
+
+const SHELL_BULK_NOTE =
+  'One call may carry the whole pick: `faces` appends the query strings `select` returned, and `thickness` and ' +
+  '`direction` set the wall in the same step. `add_shell_face` and `set_shell_field` remain for later single-face ' +
+  'and field edits. ' + SHELL_SIGN_NOTE
+
 const fieldOf = (label: string, type: FieldSetterType) =>
   str(`The ${label} field to set. Valid fields: ${(setterFieldNames(type) ?? []).join(', ')}.`)
 // A setter value's real type is the named schema field's; name that definition
@@ -548,8 +567,13 @@ export const MUTATION_CATALOG = {
     },
   },
   add_chamfer: {
-    summary: 'Add a chamfer feature, then add its edges.',
-    fields: featureAddFields(),
+    summary: 'Add a chamfer feature, optionally with its edges and distance in the same call.',
+    note: CHAMFER_BULK_NOTE,
+    fields: {
+      ...featureAddFields(),
+      edges: optArr('Edge queries from `select`; the same array the document stores as chamfer.edges.'),
+      distance: optScalar('A positive number or an expression string; defaults to 1 when omitted.'),
+    },
   },
   set_fillet_field: {
     summary: 'Set one fillet field, e.g. radius.',
@@ -576,11 +600,21 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_shell: {
-    summary: 'Add a shell feature, then add its removed faces.',
-    fields: featureAddFields(),
+    summary: 'Add a shell feature, optionally with its removed faces, thickness and direction in the same call.',
+    note: SHELL_BULK_NOTE,
+    fields: {
+      ...featureAddFields(),
+      faces: optArr(
+        'Face queries from `select` to remove (the openings); the same array the document stores as shell.faces. ' +
+        'May be empty when `source_body` names a body for a closed hollow.',
+      ),
+      thickness: optScalar('A positive number or an expression string; defaults to 1 when omitted.'),
+      direction: optStr('inward or outward; defaults to inward (the same key the document stores as shell.direction).'),
+    },
   },
   set_shell_field: {
     summary: 'Set one shell field, e.g. thickness.',
+    note: SHELL_SIGN_NOTE,
     fields: { featureId: str(), field: fieldOf('shell', 'set_shell_field'), value: setterValue('shell') },
   },
   add_shell_face: {

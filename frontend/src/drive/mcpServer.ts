@@ -201,6 +201,18 @@ const SELECTOR_DEFS: Record<string, unknown> = {
           properties: { axis: EXTREME_AXIS_SCHEMA, side: { enum: ['min', 'max'] } },
           additionalProperties: false,
         },
+        within: {
+          type: 'object',
+          required: ['axis'],
+          properties: {
+            axis: { enum: ['x', 'y', 'z'] },
+            min: { type: 'number' },
+            max: { type: 'number' },
+          },
+          additionalProperties: false,
+          description: 'The element\'s whole bounding box must lie inside this world-axis range; a missing '
+            + 'min or max is open on that side.',
+        },
         on_face: { $ref: '#/$defs/selector' },
         created_by: { type: 'string' },
         radius: {

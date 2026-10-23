@@ -17,7 +17,7 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { AmbiguousQueryError } from '../query'
 import { faceNormal, faceCentroid, type Vec3 } from '../occ/primitives'
-import { booleanWithHistory } from '../occ/booleans'
+import { booleanWithHistory, shapesIntersect } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
 import { resolveDirection } from './shared/directionQuery'
 import { registerTopFace } from './shared/topFace'
@@ -443,6 +443,27 @@ export function solveExtrude(
     capAncestry: names.capAncestry,
   })
   Object.assign(result, opResult)
+
+  // An add with no explicit merge target fuses into the FIRST body it connects
+  // to and then stops. When the new solid also reaches another body, that body
+  // stays separate: silently, before this check, the caller saw one fused body
+  // and a second one it did not ask for. Name it and the one-step fix rather
+  // than widening the operation here (user decision: warn now, fuse-all later).
+  if (operation === 'add' && mergeTarget === null && opResult.body_id !== bodyId) {
+    const touched: string[] = []
+    for (const otherId of Object.keys(bodyStore).sort()) {
+      if (otherId === opResult.body_id || (opResult.body_ids ?? []).includes(otherId)) continue
+      const other = bodyStore[otherId]
+      if (other.shape === null) continue
+      if (shapesIntersect(oc, table.get<OccShape>(other.shape), toolShape)) touched.push(otherId)
+    }
+    if (touched.length > 0) {
+      const warning = `extrude: the new solid also touches ${touched.join(', ')}; add a boolean union to fuse it`
+      result.solver_warning = result.solver_warning === undefined
+        ? warning
+        : `${result.solver_warning}; ${warning}`
+    }
+  }
 
   if (profileErrors.length) {
     result.status = 'partial'
