@@ -664,7 +664,9 @@ function applyEdgeModifier(
     const retry = buildFresh(good)
     if (!retry.ok) return fail(retry.reason)
     maker = retry.maker
-    built = retry.shape
+    // The probe builder tracks its shape so a failed probe can release it; a
+    // successful retry hands ownership to the caller like the original maker.
+    built = scope.detach(retry.shape)
     skippedIdx.push(...[...broken].sort((a, b) => a - b))
   }
 

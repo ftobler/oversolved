@@ -301,9 +301,8 @@ export function sketchLoopsToFace(
       for (const w of holeWires) scope.release(w)
     }
     // A profile can build into a wrong-but-valid solid with no error anywhere
-    // (a duplicated hole wire, a nesting decision that only holds on the coarse
-    // polygon). Leave a trace when that happens, gated like every other hot-path
-    // diagnostic so production solves stay silent.
+    // (a duplicated hole wire). Leave a trace when that happens, gated like
+    // every other hot-path diagnostic so production solves stay silent.
     if (isDevBuild()) {
       const suspect = safeProfileReport(snapped, 'suspect')
       if (suspect !== '') console.warn(`sketchLoopsToFace: the profile built but looks suspect\n${suspect}`)

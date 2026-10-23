@@ -32,9 +32,15 @@ export function arcSamplePoints(e: LoopEdge, n: number): number[][] {
   // edge's start then jumps to the end-angle side and retraces the arc; a
   // reversed half-edge in a traced face doubled its own area (a venn crescent
   // read as 308 instead of 155, which is what mis-nested it under the lens).
-  const sweep = (e["ccw"] as boolean) ?? true
-    ? ((a1 - a0) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI)
-    : -(((a0 - a1) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI))
+  const ccw = (e["ccw"] as boolean) ?? true
+  // A stored 360-degree arc is a full turn, not a zero one: the modulo below
+  // would collapse 2*pi to 0 and sample every point at the start.
+  const fullTurn = Math.abs(a1 - a0) >= 2 * Math.PI - 1e-9
+  const sweep = fullTurn
+    ? (ccw ? 2 * Math.PI : -2 * Math.PI)
+    : ccw
+      ? ((a1 - a0) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI)
+      : -(((a0 - a1) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI))
   const out: number[][] = []
   for (let k = 0; k < n; k++) {
     const a = a0 + (sweep * (k + 1)) / (n + 1)
@@ -405,11 +411,18 @@ function pointKey(p: number[]): string {
 export function dissolveAdjacentLoops(loops: LoopEdge[][]): LoopEdge[][] {
   if (loops.length < 2) return loops
   const entries: { loop: number; edge: number; match: EdgeMatch }[] = []
+  // A self-closed loop (full ellipse, closed spline) has no shareable edge, so
+  // it cannot join a cancellation. Keep it verbatim and dissolve the rest; one
+  // such hole must not disable the merge for a plus of touching line holes.
+  const untouched: LoopEdge[][] = []
   for (let li = 0; li < loops.length; li++) {
+    const matches = loops[li].map(edgeMatch)
+    if (matches.some((match) => match === null)) {
+      untouched.push(loops[li])
+      continue
+    }
     for (let ei = 0; ei < loops[li].length; ei++) {
-      const match = edgeMatch(loops[li][ei])
-      if (match === null) return loops  // a self-closed edge: leave the set alone
-      entries.push({ loop: li, edge: ei, match })
+      entries.push({ loop: li, edge: ei, match: matches[ei] as EdgeMatch })
     }
   }
 
@@ -467,7 +480,7 @@ export function dissolveAdjacentLoops(loops: LoopEdge[][]): LoopEdge[][] {
     }
     cycles.push(cycle)
   }
-  return cycles
+  return untouched.length === 0 ? cycles : [...cycles, ...untouched]
 }
 
 /**
