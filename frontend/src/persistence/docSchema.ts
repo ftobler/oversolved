@@ -611,6 +611,11 @@ function checkHole(sub: DocRecord, field: string): void {
   checkOptional(sub, 'sketch', field, checkRef)
   checkOptional(sub, 'diameter', field, checkExpr)
   checkOptional(sub, 'depth_mode', field, (v, f) => checkEnum(v, f, ['blind', 'through_all']))
+  // A through_all bore is sized by the target body, so no depth is required
+  // (and none is stored). A blind bore must say how deep it goes.
+  if (sub.depth_mode === 'blind' && sub.depth === undefined) {
+    fail(`${field}.depth`, 'is required for a blind hole')
+  }
   checkOptional(sub, 'depth', field, checkExpr)
   checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, ['normal', 'reverse']))
   checkOptional(sub, 'target', field, checkRef)

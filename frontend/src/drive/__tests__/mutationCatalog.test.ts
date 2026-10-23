@@ -157,8 +157,10 @@ describe('mutation catalog', () => {
       const info = mutationInfoOf(type)
       expect(info.note).toBeDefined()
       for (const name of holeFields) expect(info.note).toContain(name)
-      expect(info.note).toContain('required fields are sketch, diameter, depth_mode, depth')
-      expect(info.note).toContain('optional ones are direction, target, thread')
+      expect(info.note).toContain('required fields are sketch, diameter, depth_mode')
+      expect(info.note).toContain('depth is required only for a blind hole')
+      expect(info.note).toContain('stores no depth')
+      expect(info.note).toContain('optional fields are direction, target, thread')
       expect(info.note).toContain('blind or through_all')
       // The one spelling difference an author hits: a hole's sketch ref is
       // feature-level, unlike the profile consumers' `$<sketchId>` form.
@@ -179,6 +181,19 @@ describe('mutation catalog', () => {
       expect(note).toContain('face query from `select`')
       expect(note).toContain('places the sketch on that face')
     }
+  })
+
+  it('requires the revolve axis in the document schema', () => {
+    expect(featureParamsSchema('revolve')!.required).toContain('axis')
+  })
+
+  it('requires a hole depth only for a blind hole', () => {
+    const params = featureParamsSchema('hole')!
+    expect(params.required).toEqual(expect.arrayContaining(['sketch', 'diameter', 'depth_mode']))
+    expect(params.required).not.toContain('depth')
+    const conditional = (params.allOf as Array<Record<string, unknown>>)[0]
+    expect(conditional.if).toBeDefined()
+    expect((conditional.then as { required: string[] }).required).toEqual(['depth'])
   })
 
   it('lets add_hole carry exactly the fields set_hole_field can set', () => {
@@ -278,6 +293,53 @@ describe('mutation catalog', () => {
       expect(note, type).toContain('?" face query')
       expect(note, type).toContain('never silently')
     }
+  })
+
+  it('documents the add_rect id order and the sketch target forms', () => {
+    expect(mutationInfoOf('add_rect').summary).toContain('bottom, right, top, left')
+
+    const deleteTargets = mutationInfoOf('delete').fields.targets.note
+    expect(deleteTargets).toBeDefined()
+    expect(deleteTargets).toContain('entity:<sketchId>:<entityId>')
+    expect(deleteTargets).toContain('delete_feature')
+
+    const toggleTargets = mutationInfoOf('toggle_construction').fields.targets.note
+    expect(toggleTargets).toBeDefined()
+    expect(toggleTargets).toContain('entity:<sketchId>:<entityId>')
+  })
+
+  it('takes the revolve axis in the add call and never calls it the plane axis', () => {
+    const info = mutationInfoOf('add_revolve')
+    expect(info.fields.axis).toBeDefined()
+    expect(info.fields.axis.required).toBe(true)
+    expect(info.note).toContain('required')
+    expect(info.summary).not.toContain('plane axis')
+    expect(info.fields.axis.note).toContain('@<sketchId>/<entityId>')
+  })
+
+  it('says a variable must sit before its users and how the index is counted', () => {
+    const info = mutationInfoOf('add_variable')
+    expect(info.fields.insertAt).toBeDefined()
+    expect(info.fields.insertAt.internal).toBe(true)
+    expect(info.note).toContain('defined after this feature')
+    expect(info.note).toContain('precede')
+    expect(info.note).toContain('count the seeded')
+    expect(info.note).toContain('plane rows')
+    expect(mutationInfoOf('reorder_features').note).toContain('seeded plane rows')
+  })
+
+  it('pins the transform composition order to what the code does', () => {
+    for (const type of ['add_transform', 'set_transform_field'] as const) {
+      const note = mutationInfoOf(type).note
+      expect(note).toBeDefined()
+      expect(note).toContain('scale first, then rotation, then translation')
+    }
+  })
+
+  it('states that delete_feature leaves dependents behind', () => {
+    const summary = mutationInfoOf('delete_feature').summary
+    expect(summary).toContain('dependents stay')
+    expect(summary).toContain('missing input')
   })
 
   it('documents the center-rect corner, the transform axis pair and the revolve axis ref', () => {

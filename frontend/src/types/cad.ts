@@ -138,7 +138,9 @@ export type HoleFeatureDef = {
   sketch: string
   diameter: NumberOrExpr
   depth_mode: 'blind' | 'through_all'
-  depth: NumberOrExpr
+  // Required for a blind hole; a through_all hole is sized by the target body
+  // and stores no depth.
+  depth?: NumberOrExpr
   direction?: 'normal' | 'reverse'
   target?: string
   // How the mouth is widened: a plain bore, a counterbore (a wider flat-bottomed
@@ -1164,7 +1166,7 @@ export type Mutation =
   | { type: 'set_extrude_field'; featureId: string; field: keyof ExtrudeFeatureDef; value: unknown }
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
-  | ({ type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number } & FeatureInsertion)
+  | ({ type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number; axis: string } & FeatureInsertion)
   | { type: 'set_revolve_field'; featureId: string; field: keyof RevolveFeatureDef; value: unknown }
   | { type: 'add_revolve_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_revolve_profile'; featureId: string; index: number }

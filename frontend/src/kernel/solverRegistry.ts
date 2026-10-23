@@ -191,6 +191,7 @@ const EXPR_SUBKEY_BY_KIND: { [K in ExprFieldKind]: ExprSubKey<K> } = {
 export function resolveFeatureExpressions(
   feature: Record<string, unknown>,
   context: Record<string, number> = {},
+  laterVariables: Record<string, number> = {},
 ): { feature: Record<string, unknown> } | { exception: string } {
   const kind = feature.kind as string | undefined
   if (!kind) return { feature }
@@ -204,7 +205,7 @@ export function resolveFeatureExpressions(
     ? copy
     : (copy[subKey] = { ...(copy[subKey] as Record<string, unknown> | undefined) })
 
-  evalFeatureParams(target, exprFields, context)
+  evalFeatureParams(target, exprFields, context, laterVariables)
 
   const errKey = Object.keys(target).find((k) => k.endsWith('_error'))
   if (errKey) return { exception: String(target[errKey]) }
@@ -235,6 +236,7 @@ export function createFeatureSolver(
     bodyStore: Record<string, Body>,
     featuresById: Record<string, Record<string, unknown>>,
     variableContext: Record<string, number> = {},
+    laterVariables: Record<string, number> = {},
   ) => {
     const kind = feature.kind as string | undefined
     if (!kind) {
@@ -249,13 +251,13 @@ export function createFeatureSolver(
     // Variables carry no geometry: evaluate their expression against the
     // accumulated variable context and short-circuit the OCC path entirely.
     if (kind === 'variable') {
-      return solveVariable(canonical, variableContext)
+      return solveVariable(canonical, variableContext, laterVariables)
     }
     // import_step is special-cased next to variable because it needs the solve
     // file map, which is not on the shared FeatureSolver signature. Resolve its
     // expression params (scale) first, exactly as the generic dispatch would.
     if (kind === 'import_step') {
-      const resolvedImport = resolveFeatureExpressions(canonical, variableContext)
+      const resolvedImport = resolveFeatureExpressions(canonical, variableContext, laterVariables)
       if ('exception' in resolvedImport) {
         return { status: 'exception', exception: resolvedImport.exception }
       }
@@ -267,7 +269,7 @@ export function createFeatureSolver(
     // Resolve any math-expression params (e.g. distance="50+25") to numbers
     // before dispatch. Named variables from preceding features supply the
     // context; the leaf solvers only ever read numbers.
-    const resolved = resolveFeatureExpressions(canonical, variableContext)
+    const resolved = resolveFeatureExpressions(canonical, variableContext, laterVariables)
     if ('exception' in resolved) {
       return { status: 'exception', exception: resolved.exception }
     }

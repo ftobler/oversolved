@@ -54,4 +54,23 @@ describe('hole style document validation', () => {
     if (result.ok) return
     expect(result.error.field).toBe('features[0].hole.cb_diameter')
   })
+
+  it('accepts a through_all hole with no depth and keeps it absent', () => {
+    const hole = { sketch: '@sk1', diameter: 4, depth_mode: 'through_all' }
+    const result = loadPartDoc({ kind: 'part', features: [{ id: 'h1', kind: 'hole', hole }] })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(holeOf(result.doc)).not.toHaveProperty('depth')
+  })
+
+  it('refuses a blind hole with no depth and names the field', () => {
+    const result = loadPartDoc({
+      kind: 'part',
+      features: [{ id: 'h1', kind: 'hole', hole: { sketch: '@sk1', diameter: 4, depth_mode: 'blind' } }],
+    })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.field).toBe('features[0].hole.depth')
+    expect(result.error.message).toContain('required for a blind hole')
+  })
 })

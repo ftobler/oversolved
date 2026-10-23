@@ -58,6 +58,15 @@ describe('validateMutation', () => {
     expect(result.error.message).toContain('sketchQuery')
   })
 
+  it('names the missing revolve axis at the drive boundary', () => {
+    const result = validateMutation({
+      type: 'add_revolve', featureId: 'rv1', sketchQuery: '$sk1', angle: 90,
+    })
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    if (result.ok) throw new Error('unreachable')
+    expect(result.error.message).toContain('axis')
+  })
+
   it('names the field with the wrong JSON type', () => {
     const result = validateMutation({
       type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: '5',

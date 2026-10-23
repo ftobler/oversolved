@@ -57,6 +57,24 @@ function variableValueOf(
   return name ? { name, value } : null
 }
 
+// Variables defined after the feature being solved, by name and feature index.
+// A name already in the live context is an earlier definition, so it can never
+// be the forward reference an expression is complaining about.
+function laterVariablesFor(
+  features: Array<Record<string, unknown>>,
+  fromIndex: number,
+  context: Record<string, number>,
+): Record<string, number> {
+  const later: Record<string, number> = {}
+  for (let i = fromIndex + 1; i < features.length; i++) {
+    const feature = features[i]
+    if (feature.kind !== 'variable') continue
+    const name = String(feature.label ?? feature.id ?? '')
+    if (name !== '' && !(name in context)) later[name] = i
+  }
+  return later
+}
+
 function _normalizeSpec(spec: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const k of Object.keys(spec)) {
@@ -423,7 +441,8 @@ export function build(
     return (shape) => { retain(shape, 'cp:' + fid); return shape }
   }
 
-  for (const feature of features.slice(firstDirty)) {
+  for (let featureIndex = firstDirty; featureIndex < features.length; featureIndex++) {
+    const feature = features[featureIndex]
     const fid = String(feature.id ?? '')
 
     if (feature.suppressed) {
@@ -454,7 +473,10 @@ export function build(
     setCurrentFeatureId(fid)
     try {
       const t0 = performance.now()
-      const featureResult = deps.trySolveFeature(feature, globalRepo, bodyStore, featuresById, variableContext)
+      const featureResult = deps.trySolveFeature(
+        feature, globalRepo, bodyStore, featuresById, variableContext,
+        laterVariablesFor(features, featureIndex, variableContext),
+      )
       featureResult.solve_ms = performance.now() - t0
       deps.postRegister(globalRepo, fid, feature, featureResult)
       result[fid] = featureResult

@@ -20,7 +20,7 @@ import { revolveFace, revolveProfileWithLineage } from '../occ/prismLineage'
 import { carryFaceNames, emptyShapeNames, mergeShapeNames } from '../occ/bodyNames'
 import { deriveEdgeNames } from '../occ/constructionLineage'
 import { faceCentroid, type Vec3 } from '../occ/primitives'
-import { loopCentroid } from '../profileLoops'
+import { loopCentroid, loopPts, pointInLoop } from '../profileLoops'
 import { angularHandle } from './featureHandles'
 
 type Dict = Record<string, unknown>
@@ -141,6 +141,87 @@ export function resolveRevolveAxis(
   return axis
 }
 
+/**
+ * Refuse an axis that cuts through the interior of a profile loop.
+ *
+ * OCC's MakeRevol either refuses such a profile or builds a self-intersecting
+ * solid, both reported as a bare "builder did not complete". The axis is legal
+ * when it touches the boundary (a tangent, or a line along an edge): only a
+ * line with loop vertices strictly on both sides cuts through. The axis is
+ * mapped into the sketch frame first, so an axis parallel to the plane is
+ * tested as its in-plane projection and a skew axis by its one point where it
+ * meets the plane. Loops are the assembled boundaries, so a hole's boundary is
+ * checked too: material revolved around an axis inside its own hole would
+ * sweep through itself.
+ */
+export function refuseAxisThroughProfile(
+  loops: Dict[][],
+  plane: PlaneLike,
+  axisOrigin: number[],
+  axisDirection: number[],
+  areaId: string,
+): void {
+  const dot = (a: number[], b: number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+  const to2d = (p: number[]): number[] => {
+    const rel = [p[0] - plane.origin[0], p[1] - plane.origin[1], p[2] - plane.origin[2]]
+    return [dot(rel, plane.x_axis), dot(rel, plane.y_axis)]
+  }
+  const normalComponent = dot(axisDirection, plane.normal)
+  // Below this the direction counts as lying in the plane; a normalised vector
+  // has an in-plane component near 1 when its normal component is this small.
+  const PARALLEL_EPS = 1e-9
+  const fail = (): never => {
+    throw new Error(
+      `revolve: the axis crosses profile area ${areaId}; ` +
+      'a revolve axis may touch the profile but not cut through it',
+    )
+  }
+
+  for (const loop of loops) {
+    const pts = loopPts(loop, 16)
+    if (pts.length < 3) continue
+    if (Math.abs(normalComponent) <= PARALLEL_EPS) {
+      const origin2 = to2d(axisOrigin)
+      const dir2 = [
+        dot(axisDirection, plane.x_axis),
+        dot(axisDirection, plane.y_axis),
+      ]
+      const len = Math.hypot(dir2[0], dir2[1])
+      if (len <= PARALLEL_EPS) continue
+      // Signed distance of every polygon vertex from the projected line. A
+      // vertex on the line is a touch; strictly opposite signs mean the line
+      // runs through the loop's interior. The tolerance scales with the loop so
+      // far-from-origin sketches are not dominated by rounding.
+      let scale = 1
+      for (const p of pts) scale = Math.max(scale, Math.abs(p[0]), Math.abs(p[1]))
+      const sideEps = scale * 1e-9
+      let minSide = Infinity
+      let maxSide = -Infinity
+      for (const p of pts) {
+        const side = dir2[0] * (p[1] - origin2[1]) - dir2[1] * (p[0] - origin2[0])
+        if (side < minSide) minSide = side
+        if (side > maxSide) maxSide = side
+        if (minSide < -sideEps && maxSide > sideEps) fail()
+      }
+    } else {
+      // The axis meets the plane at exactly one point. That point is the only
+      // place a line outside the profile plane can pass through the area.
+      const rel = [
+        axisOrigin[0] - plane.origin[0],
+        axisOrigin[1] - plane.origin[1],
+        axisOrigin[2] - plane.origin[2],
+      ]
+      const t = -dot(rel, plane.normal) / normalComponent
+      const hit = [
+        axisOrigin[0] + t * axisDirection[0],
+        axisOrigin[1] + t * axisDirection[1],
+        axisOrigin[2] + t * axisDirection[2],
+      ]
+      if (pointInLoop(to2d(hit), loop, 16)) fail()
+    }
+  }
+}
+
 /** Solve a revolve feature into the body store (mirrors `_solve_revolve`). */
 export function solveRevolve(
   oc: OccModule,
@@ -253,6 +334,12 @@ export function solveRevolve(
   const [axisOrigin, axisDirection] = resolveRevolveAxis(sub, globalRepo, bodyStore)
   const ao = axisOrigin as Vec3
   const ad = axisDirection as Vec3
+
+  // The profile is planar, so the crossing test runs in that plane before any
+  // MakeRevol call. Picked faces carry their own frame and are left to OCC.
+  if (firstPt !== null && allLoops.length > 0) {
+    refuseAxisThroughProfile(allLoops, firstPt, axisOrigin, axisDirection, firstSketchId || 'unknown')
+  }
 
   const operation = ((sub.operation as string) ?? 'add') as BodyOperation
   const direction = (sub.direction as string) ?? 'normal'

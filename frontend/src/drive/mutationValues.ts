@@ -530,6 +530,51 @@ function deleteRule(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return null
 }
 
+const TOGGLE_ENTITY_FORM = '"entity:<sketchId>:<entityId>"'
+
+function toggleConstructionTargetProblem(value: unknown, index: number): string | null {
+  if (typeof value !== 'string') {
+    return `toggle_construction target ${index} must be a reference string, got ${json(value)}`
+  }
+  const parts = value.split(':')
+  const accepted = `${TOGGLE_ENTITY_FORM} (the form \`select\` returns for a sketch entity)`
+  if (parts[0] !== 'entity') {
+    return `toggle_construction target ${index} ${json(value)} is not an entity ref; use ${accepted}`
+  }
+  if (parts.length !== 3 || parts[1] === '' || parts[2] === '') {
+    return `toggle_construction target ${index} ${json(value)} is malformed; use ${accepted}`
+  }
+  return null
+}
+
+function toggleConstructionRule(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const targets = raw.targets
+  if (!Array.isArray(targets)) return invalid(`targets must be a list of references, got ${json(targets)}`)
+  if (targets.length === 0) return invalid('targets must name at least one sketch entity')
+  const parsed: Array<{ featureId: string; id: string }> = []
+  for (let i = 0; i < targets.length; i++) {
+    const problem = toggleConstructionTargetProblem(targets[i], i)
+    if (problem !== null) return invalid(problem)
+    const parts = (targets[i] as string).split(':')
+    parsed.push({ featureId: parts[1], id: parts[2] })
+  }
+  if (ctx.doc === null) return null
+  // The applier skips a target whose sketch or entity is gone, which used to
+  // read as a successful toggle that changed nothing.
+  for (const target of parsed) {
+    const sketch = sketchOf(ctx.doc, target.featureId)
+    if (sketch === undefined) {
+      return unknownTarget(`toggle_construction target names no sketch feature ${json(target.featureId)}`)
+    }
+    if (!(sketch.entities ?? []).some(entity => entity.id === target.id)) {
+      return unknownTarget(
+        `toggle_construction target names no entity ${json(target.id)} in sketch ${target.featureId}`,
+      )
+    }
+  }
+  return null
+}
+
 function addEntity(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const kind = raw.kind
   const params = raw.params
@@ -704,7 +749,18 @@ function addRevolve(raw: RawStep): ValueViolation | null {
   const problem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
   if (problem !== null) return invalid(problem)
   const angleProblem = positiveNumberProblem(raw.angle, 'angle (degrees)')
-  return angleProblem === null ? null : invalid(angleProblem)
+  if (angleProblem !== null) return invalid(angleProblem)
+  // The axis is a stored pick, not a default, so a malformed ref used to reach
+  // the solver and fail there. Refuse it at the boundary with the accepted form.
+  const axis = raw.axis
+  if (typeof axis !== 'string' || axis.trim().length === 0) {
+    return invalid(
+      'axis must be a non-empty pick such as "@<sketchId>/<entityId>" or an edge query from `select`, '
+      + 'got ' + json(axis),
+    )
+  }
+  const axisProblem = refValueProblem(axis, 'axis')
+  return axisProblem === null ? null : invalid(axisProblem)
 }
 
 function addSweep(raw: RawStep): ValueViolation | null {
@@ -876,7 +932,7 @@ export const MUTATION_VALUE_RULES = {
   add_center_rect: addCenterRect,
   add_ngon: addNgon,
   apply_offset: applyOffset,
-  toggle_construction: 'none',
+  toggle_construction: toggleConstructionRule,
   set_feature_plane: setFeaturePlane,
   add_sketch: addSketch,
   add_fillet: addFillet,
