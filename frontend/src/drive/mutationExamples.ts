@@ -7,9 +7,10 @@
 // The edge queries are the ancestry strings `select` mints for this box: run as
 // `select {kind:'edge', where:{parallel:[0,1,0]}}` on the document BOX_STEPS
 // builds, they name its four Y-parallel edges (Y is up). They embed the sketch
-// entity ids add_rect minted, and those repeat because a drive run seeds its id
-// source from the starting document's hash (drive/seededIds.ts), so the same
-// fresh document and steps mint the same ids. A ScriptStep is a command id or a
+// entity ids add_rect minted, and those repeat because a drive run seeds each
+// step from the document before it and the step's own content
+// (drive/seededIds.ts), so the same fresh document and steps mint the same ids
+// regardless of chunking. A ScriptStep is a command id or a
 // mutation, so it cannot express a `select` step: the example carries the
 // queries that step produced instead of the step itself.
 
@@ -28,10 +29,10 @@ const BOX_STEPS: ScriptStep[] = [
 ]
 
 const FILLET_EDGES = [
-  '?15,4,9,15,15,7,7;@u|e_9402afa90c6432c7@ex1@body_ex1@sk1/D_eW7NvY8Bn9T-iF@sk1/l-KpA38G8FN2rTHK@cls_xn@cls_zn:straightedge',
-  '?15,4,9,15,15,7,7;@u|e_ea1814dba5d2758f@ex1@body_ex1@sk1/GXPNVYZrzA5NG-k_@sk1/l-KpA38G8FN2rTHK@cls_xn@cls_zp:straightedge',
-  '?15,4,9,15,15,7,7;@u|e_9f9a26915a03cab5@ex1@body_ex1@sk1/4qRU4kX287mbNyVA@sk1/D_eW7NvY8Bn9T-iF@cls_xp@cls_zn:straightedge',
-  '?15,4,9,15,15,7,7;@u|e_feab0add793ad259@ex1@body_ex1@sk1/GXPNVYZrzA5NG-k_@sk1/4qRU4kX287mbNyVA@cls_xp@cls_zp:straightedge',
+  '?15,4,9,15,15,7,7;@u|e_697ad2ebeead097b@ex1@body_ex1@sk1/JYbi_lky54WhmLXO@sk1/t0Y0HmwoxeqOCaem@cls_xn@cls_zn:straightedge',
+  '?15,4,9,15,15,7,7;@u|e_3b61715990c341be@ex1@body_ex1@sk1/ABKeovVyZqFFRLRD@sk1/t0Y0HmwoxeqOCaem@cls_xn@cls_zp:straightedge',
+  '?15,4,9,15,15,7,7;@u|e_41f1f9b6b9d4658a@ex1@body_ex1@sk1/1PBFlZzALgDN7VwE@sk1/JYbi_lky54WhmLXO@cls_xp@cls_zn:straightedge',
+  '?15,4,9,15,15,7,7;@u|e_b955e8635ace8599@ex1@body_ex1@sk1/ABKeovVyZqFFRLRD@sk1/1PBFlZzALgDN7VwE@cls_xp@cls_zp:straightedge',
 ]
 
 const FILLET_STEPS: ScriptStep[] = [
