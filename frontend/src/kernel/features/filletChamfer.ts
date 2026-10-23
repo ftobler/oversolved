@@ -15,7 +15,7 @@ import { resolveBody, resolveBodyIds } from './shared/bodyResolution'
 import { buildFaceIndex, makeFaceIndexCache, resolveFacesByQuery, type FaceIndex } from './shared/faceResolution'
 import { resplitBody } from './bodySplit'
 import { canonicalEdges, assertAligned, readBodyNames } from '../occ/bodyNames'
-import { elementCreator, newIndexSets } from '../occ/modifierAttribution'
+import { namedElementCreator, newIndexSets } from '../occ/modifierAttribution'
 import { bodyFrame, compareEdgeSortKeys, edgeRepresentativePoint } from '../occ/tessellation'
 import { faceNormal, edgeToGeom, SubShapeDedup, SubShapeMultiIndex, type EdgeSortKey, type Vec3 } from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
@@ -151,8 +151,10 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
     const ed = geom.ed
     const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
     if (body.created_by) {
-      const edgeCreatedBy = elementCreator(created?.edges.has(canon) ?? false, body.created_by, body.modified_by)
       const uuid = body.edge_uuids?.[canon] ?? null
+      const edgeCreatedBy = namedElementCreator(
+        uuid, body.edge_owner, created?.edges.has(canon) ?? false, body.created_by, body.modified_by,
+      )
       const pt = edgeRepresentativePoint(ed)
       const classifiers = pt ? geometryClassifiers(pt, center, half) : []
       const ids: string[] = []

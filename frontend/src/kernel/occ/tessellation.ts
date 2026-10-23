@@ -29,7 +29,7 @@ import {
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
 import { geometryClassifiers } from '../geomHash'
 import { assertAligned, canonicalEdges, canonicalFaces, canonicalIndex, canonicalVertices } from './bodyNames'
-import { elementCreator, type NewIndexSets } from './modifierAttribution'
+import { elementCreator, namedElementCreator, type NewIndexSets } from './modifierAttribution'
 import { deriveVertexUuid, deriveEdgesVertexUuid, orderSplitChildren, type SplitChild } from '../constructionName'
 import { shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
 import { buildFaceQuery } from '../faceQuery'
@@ -266,8 +266,14 @@ interface SolidMeshOptions extends TessellateOptions {
   bodyId?: string
   profileQueries?: string[] | null
   faceAncestry?: Record<string, string[]> | null
+  // A cap face's identification net (Body.face_cap_ancestry): read where a face
+  // has no `faceAncestry` entry, so a cap still carries its producing profile.
+  faceCapAncestry?: Record<string, string[]> | null
   // The body's face UUIDs in the solid's canonical order (Body.face_uuids).
   faceUuids?: (string | null)[] | null
+  // UUID -> the feature that minted it (Body.face_owner), for a face a later
+  // modifier reshaped without recreating it.
+  faceOwner?: Record<string, string> | null
   // What the body's last modifier created (Body.brep_new) and the modifier
   // history, for the per-face creator.
   newElements?: NewIndexSets | null
@@ -278,7 +284,10 @@ interface SolidMeshOptions extends TessellateOptions {
 function faceCreators(oc: OccModule, scope: DisposeScope, solid: OccShape, opts: SolidMeshOptions): string[] {
   const createdBy = opts.createdBy ?? ''
   return canonicalFaces(oc, scope, solid).map((_f, i) =>
-    elementCreator(opts.newElements?.faces.has(i) ?? false, createdBy, opts.modifiedBy))
+    namedElementCreator(
+      opts.faceUuids?.[i] ?? null, opts.faceOwner,
+      opts.newElements?.faces.has(i) ?? false, createdBy, opts.modifiedBy,
+    ))
 }
 
 /** The uuid of the face at canonical index `canon`, or null. */
@@ -356,14 +365,16 @@ function classifyFace(
   creator: string,
 ): { classifiers: string[]; query: string | null } {
   const classifiers = geometryClassifiers(centroid, center, half)
-  // An EMPTY ancestry token list (a prism cap face) is "no ancestry": read
-  // `[]` as absent so the profile-token fallback fires, matching buildFaceQuery
-  // and the builder's registered key. A bare createdBy+bodyId net would leave a
-  // stale cap UUID with no ancestral recovery.
-  const ancestorTokens =
-    (uuid && opts.faceAncestry && opts.faceAncestry[uuid] && opts.faceAncestry[uuid].length)
-      ? opts.faceAncestry[uuid]
-      : null
+  // An EMPTY ancestry token list is "no ancestry": read `[]` as absent so the
+  // profile-token fallback fires, matching buildFaceQuery and the builder's
+  // registered key. A bare createdBy+bodyId net would leave a stale cap UUID
+  // with no ancestral recovery.
+  const ancestry = uuid ? opts.faceAncestry?.[uuid] ?? null : null
+  // An empty faceAncestry list is "no ancestry" (a cap keeps its net in
+  // `faceCapAncestry`, see prismLineage), so the cap map is the second read.
+  const ancestorTokens = (ancestry && ancestry.length)
+    ? ancestry
+    : (uuid ? (opts.faceCapAncestry?.[uuid] ?? null) : null)
   const fallbackPq = ancestorTokens ? null : opts.profileQueries
   const query = buildFaceQuery(
     opts.createdBy ? creator : undefined,
@@ -482,6 +493,8 @@ interface SolidEdgesOptions {
   edgeAncestry?: Record<string, string[]> | null
   // The body's edge UUIDs in the solid's canonical order (Body.edge_uuids).
   edgeUuids?: (string | null)[] | null
+  // UUID -> the feature that minted it (Body.edge_owner).
+  edgeOwner?: Record<string, string> | null
   newElements?: NewIndexSets | null
   modifiedBy?: string[]
 }
@@ -726,8 +739,9 @@ export function solidToEdges(
     if (createdBy) {
       const { center, half } = bodyFrame(oc, scope, solid)
       const parts: QueryParts[] = []
-      // An edge the last modifier created is attributed to it, the same
-      // attribution the fillet/chamfer edge index applies.
+      // A named face keeps the feature that minted its UUID; an element with no
+      // recorded owner (or none at all) falls back to the last-modifier rule,
+      // the same attribution the fillet/chamfer edge index applies.
       edges.forEach((ed, i) => {
         const pt = edgeRepresentativePoint(ed)
         const classifiers = pt ? geometryClassifiers(pt, center, half) : []
@@ -742,7 +756,7 @@ export function solidToEdges(
         const fallbackPq = ancestorTokens ? null : (opts.profileQueries ?? null)
         const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
         const isNew = opts.newElements?.edges.has(raw[i].canon) ?? false
-        const edgeCreatedBy = elementCreator(isNew, createdBy, opts.modifiedBy)
+        const edgeCreatedBy = namedElementCreator(uuid, opts.edgeOwner, isNew, createdBy, opts.modifiedBy)
         edge_created_by.push(edgeCreatedBy)
         if (bodyId) {
           const ids: string[] = []

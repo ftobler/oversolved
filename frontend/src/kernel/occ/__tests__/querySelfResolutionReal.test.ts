@@ -370,6 +370,20 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
     expectRestoredMatchesFull(base, blindHole(), 'body_ex1')
   })
 
+  // A joined extrude's cap: the tool's cap face is attributed to the extrude
+  // that produced it, and its ancestry names that feature's own sketch. Both
+  // sides of the hand-off have to agree for the cap to resolve through the
+  // ancestral tier (join-cap-lineage).
+  it('joined boss cap', () => {
+    const modifierOwned = expectSelfResolution({ features: [
+      rectSketch('sk1', 10, 10),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
+      circleSketch('sk2', 6),
+      { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 15, direction: 'normal', operation: 'add' },
+    ] }, 'body_ex1')
+    expect(modifierOwned).toBeGreaterThan(0)
+  })
+
   // The cut's walls, rim edges and corners belong to the cut. The old
   // geometry-hash attribution never matched a boolean's edges (it threw on the
   // uncast sub-shapes and swallowed it), so this also guards that regression.

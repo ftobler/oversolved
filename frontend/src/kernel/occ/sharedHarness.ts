@@ -92,7 +92,9 @@ export class SharedHarness {
               createdBy: body.created_by || '',
               bodyId: body.id,
               faceAncestry: body.face_ancestry ?? null,
+              faceCapAncestry: body.face_cap_ancestry ?? null,
               faceUuids: body.face_uuids ?? null,
+              faceOwner: body.face_owner ?? null,
               profileQueries: body.profile_queries ?? [],
               newElements: newIndexSets(body.brep_new, body.shape),
               modifiedBy: body.modified_by,
@@ -103,6 +105,7 @@ export class SharedHarness {
               profileQueries: body.profile_queries ?? [],
               edgeAncestry: body.edge_ancestry ?? null,
               edgeUuids: body.edge_uuids ?? null,
+              edgeOwner: body.edge_owner ?? null,
               newElements: newIndexSets(body.brep_new, body.shape),
               modifiedBy: body.modified_by,
             })

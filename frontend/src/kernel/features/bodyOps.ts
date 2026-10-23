@@ -41,6 +41,7 @@ export interface ApplyBodyOperationInput {
   edgeNames?: SubShapeMap<string> | null
   faceAncestry?: Record<string, string[]> | null
   edgeAncestry?: Record<string, string[]> | null
+  capAncestry?: Record<string, string[]> | null
 }
 
 export interface ApplyBodyOperationResult {
@@ -104,12 +105,13 @@ export function applyBodyOperation(
     edgeNames = null,
     faceAncestry = null,
     edgeAncestry = null,
+    capAncestry = null,
   } = input
 
   // The tool body's construction-name maps, carried onto a body the tool becomes
   // (the "new"/no-target paths) and narrowed per sibling when it splits. Boolean
   // paths (add/cut) rebuild them in Stage 2.
-  const toolNames = { faceNames, edgeNames, faceAncestry, edgeAncestry }
+  const toolNames = { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry }
 
   const result: ApplyBodyOperationResult = { status: 'ok', body_id: bodyId }
 
@@ -183,8 +185,10 @@ export function applyBodyOperation(
         faceOrigin,
         targetFaceNames: readBodyNames(oc, scope, oldShape, existingBody).faceNames,
         targetFaceAncestry: existingBody.face_ancestry ?? {},
+        targetCapAncestry: existingBody.face_cap_ancestry ?? {},
         toolFaceNames: faceNames,
         toolFaceAncestry: faceAncestry,
+        toolCapAncestry: capAncestry,
         // The tool shape itself is transient, but with no `merge_target` a cut
         // reaches EVERY body, and each one it hits inherits the same tool face
         // names. The first body cut keeps them verbatim -- so a single-target
@@ -268,8 +272,10 @@ export function applyBodyOperation(
         faceOrigin,
         targetFaceNames: readBodyNames(oc, scope, oldShape, existingBody).faceNames,
         targetFaceAncestry: existingBody.face_ancestry ?? {},
+        targetCapAncestry: existingBody.face_cap_ancestry ?? {},
         toolFaceNames: faceNames,
         toolFaceAncestry: faceAncestry,
+        toolCapAncestry: capAncestry,
         // A fuse lands on exactly one target (the loop breaks below), and the
         // tool shape is transient, so nothing else claims these names.
         toolUuidScope: null,

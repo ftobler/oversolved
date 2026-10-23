@@ -275,8 +275,10 @@ function applyArray(
       faceOrigin: r.faceOrigin,
       targetFaceNames: fusedNames.faceNames,
       targetFaceAncestry: fusedNames.faceAncestry,
+      targetCapAncestry: fusedNames.capAncestry,
       toolFaceNames: instanceNames[i].faceNames,
       toolFaceAncestry: instanceNames[i].faceAncestry,
+      toolCapAncestry: instanceNames[i].capAncestry,
       // Each instance was already remapped to its own UUIDs by
       // `rebuildNamesForTransformedCopy`, so nothing collides.
       toolUuidScope: null,

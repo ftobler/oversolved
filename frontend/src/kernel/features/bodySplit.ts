@@ -42,6 +42,7 @@ export interface ProducedNames {
   edgeNames?: SubShapeMap<string> | null
   faceAncestry?: Record<string, string[]> | null
   edgeAncestry?: Record<string, string[]> | null
+  capAncestry?: Record<string, string[]> | null
 }
 
 /** The per-body identity fields a split has to hand down to every sibling. */
@@ -60,6 +61,7 @@ interface SiblingNames {
   edge_uuids: UuidArray
   face_ancestry: Record<string, string[]>
   edge_ancestry: Record<string, string[]>
+  face_cap_ancestry: Record<string, string[]>
 }
 
 /**
@@ -121,15 +123,23 @@ function namesForSolid(
   const edge_uuids = namesToArray(canonicalEdges(oc, scope, solid), names.edgeNames ?? null)
   const srcFaceAnc = names.faceAncestry ?? {}
   const srcEdgeAnc = names.edgeAncestry ?? {}
+  const srcCapAnc = names.capAncestry ?? {}
   if (!narrow) {
-    return { face_uuids, edge_uuids, face_ancestry: { ...srcFaceAnc }, edge_ancestry: { ...srcEdgeAnc } }
+    return {
+      face_uuids, edge_uuids,
+      face_ancestry: { ...srcFaceAnc }, edge_ancestry: { ...srcEdgeAnc }, face_cap_ancestry: { ...srcCapAnc },
+    }
   }
   const pick = (uuids: UuidArray, src: Record<string, string[]>): Record<string, string[]> => {
     const out: Record<string, string[]> = {}
     for (const uuid of uuids) if (uuid !== null && src[uuid] !== undefined) out[uuid] = [...src[uuid]]
     return out
   }
-  return { face_uuids, edge_uuids, face_ancestry: pick(face_uuids, srcFaceAnc), edge_ancestry: pick(edge_uuids, srcEdgeAnc) }
+  return {
+    face_uuids, edge_uuids,
+    face_ancestry: pick(face_uuids, srcFaceAnc), edge_ancestry: pick(edge_uuids, srcEdgeAnc),
+    face_cap_ancestry: pick(face_uuids, srcCapAnc),
+  }
 }
 
 /**

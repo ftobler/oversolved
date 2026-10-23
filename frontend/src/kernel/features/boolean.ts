@@ -123,7 +123,7 @@ export function solveBoolean(
   let foldedAny = false
   // Folded across the tools: each step's output names are the next step's target
   // names, so a face keeps its identity through a multi-tool boolean.
-  let { faceNames, edgeNames, faceAncestry, edgeAncestry } = readBodyNames(oc, scope, resultShape, targetBody)
+  let { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry } = readBodyNames(oc, scope, resultShape, targetBody)
   const result: BooleanResult = { status: 'ok', body_id: targetBody.id, body_ids: [], operation }
   const warn = (msg: string): void => {
     result.solver_warning = result.solver_warning === undefined ? msg : `${result.solver_warning}; ${msg}`
@@ -206,11 +206,13 @@ export function solveBoolean(
       faceOrigin: res.faceOrigin,
       targetFaceNames: faceNames,
       targetFaceAncestry: faceAncestry,
+      targetCapAncestry: capAncestry,
       toolFaceNames: toolNames.faceNames,
       toolFaceAncestry: toolBody.face_ancestry ?? null,
+      toolCapAncestry: toolBody.face_cap_ancestry ?? null,
       toolUuidScope: keepTools ? featureId : null,
     })
-    ;({ faceNames, faceAncestry, edgeNames, edgeAncestry } = names)
+    ;({ faceNames, faceAncestry, edgeNames, edgeAncestry, capAncestry } = names)
     lastDiff = res.diff
     foldedAny = true
     if (!keepTools) consumedKeys.push(toolBody.id)

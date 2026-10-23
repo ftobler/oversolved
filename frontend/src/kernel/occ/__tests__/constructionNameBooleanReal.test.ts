@@ -196,6 +196,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
         edgeNames: box.edgeNames,
         faceAncestry: box.faceAncestry,
         edgeAncestry: box.edgeAncestry,
+        capAncestry: box.capAncestry,
       })
       expect(res.success).toBe(true)
       expect(res.names).not.toBeNull()

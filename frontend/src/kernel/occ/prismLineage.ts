@@ -318,9 +318,23 @@ export function buildPrismLineageMap(
     ordered.forEach((face, i) => sideUuids.set(face, mintFaceUuid(splitFacePath(base, i))))
   }
 
+  // A cap's identification net is the profile entities that bounded it. The cap
+  // is produced by THIS profile, so it says so itself instead of leaving an
+  // empty list: an empty list makes every consumer fall back to the body-wide
+  // `profile_queries`, and a cap that a later add fuses into another body then
+  // inherits THAT body's creator's entities (join-cap-lineage). Sorted and
+  // deduped to match what a sketch surface's ancestry ids look like, so a cap
+  // and the stand-alone body's own profile query name the same set.
+  //
+  // It goes in `capAncestry`, not `faceAncestry`: edge lineage unions the
+  // adjacent faces' ancestry, and a cap's whole-loop list on a rim edge would
+  // swamp the one profile entity that edge actually lies on.
+  const capTokens = [...new Set(edgeEids.filter((eid): eid is string => eid !== null))].sort()
+
   // solid face -> construction uuid, its tokens the generating profile entity.
   const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
+  const capAncestry: Record<string, string[]> = {}
   for (const row of faces.rows) {
     const sf = row.face
     const match = genIdx.get(sf)[0]
@@ -336,7 +350,11 @@ export function buildPrismLineageMap(
       }
       if (uuid !== null) {
         faceNames.set(sf, uuid)
-        faceAncestry[uuid] = match !== undefined ? [match.eid] : []
+        if (match !== undefined) faceAncestry[uuid] = [match.eid]
+        else {
+          faceAncestry[uuid] = []
+          capAncestry[uuid] = capTokens
+        }
       }
     }
   }
@@ -356,7 +374,7 @@ export function buildPrismLineageMap(
     : { edgeNames: new SubShapeMap<string>(), edgeAncestry: {} }
 
   scope.release(solid)
-  return { faceNames, edgeNames, faceAncestry, edgeAncestry }
+  return { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry }
 }
 
 /** Prefix bare (non-@) tokens in every value list of a token map, in place. */
@@ -366,10 +384,11 @@ function prefixTokens(lineage: Record<string, string[]>, prefix: string): void {
   }
 }
 
-/** Prefix the two ancestry maps of a LineageMaps in place. */
+/** Prefix every ancestry map of a LineageMaps in place. */
 function prefixLineageMaps(maps: LineageMaps, prefix: string): void {
   prefixTokens(maps.faceAncestry, prefix)
   prefixTokens(maps.edgeAncestry, prefix)
+  prefixTokens(maps.capAncestry, prefix)
 }
 
 // ─── pre-prism profile union (multi-group extrude) ───

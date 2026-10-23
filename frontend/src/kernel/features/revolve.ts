@@ -338,6 +338,7 @@ export function solveRevolve(
     edgeNames: names.edgeNames,
     faceAncestry: names.faceAncestry,
     edgeAncestry: names.edgeAncestry,
+    capAncestry: names.capAncestry,
   })
   Object.assign(result, opResult)
 
