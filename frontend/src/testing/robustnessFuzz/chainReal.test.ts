@@ -288,6 +288,46 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
     expect(refusals).toBeLessThanOrEqual(Math.ceil(SEEDS * 0.75))
   })
 
+  // The default start draw is hole-free (box, arc-profile, revolve), so a
+  // nested-loop washer never reached this fuzz: the duplicated-hole extrude
+  // that shipped a negative-volume washer was invisible here. The ring start
+  // forces the most basic holed profile through the same chain checks, whose
+  // soundness gate is a strictly positive volume for every body. Persistent
+  // naming is not part of this sweep; the default family owns that finding
+  // class.
+  const RING_SEEDS = envInt('ROBUSTNESS_FUZZ_RING_SEEDS', 8)
+
+  it('replays a nested-loop (washer) start range: no violation', { timeout: Math.min(90 * 60_000, 60_000 + Math.ceil(RING_SEEDS / WORKERS) * BUDGET_MS) }, async () => {
+    const problems: string[] = []
+    let built = 0
+    const outcomes = await runSeedsBounded(RING_SEEDS, WORKERS, (seed) =>
+      runChainWithTimeout(generateRecipe(seed, { startShape: 'ring' }))
+        .catch((err: unknown) => {
+          throw new Error(`ring seed ${seed}: the watchdog child failed: ${err instanceof Error ? err.message : String(err)}`)
+        }))
+    for (let seed = 0; seed < RING_SEEDS; seed++) {
+      const guarded = outcomes[seed]
+      if (guarded.status === 'hang') {
+        const where = guarded.hang.step === null
+          ? 'before the first step'
+          : `at ${guarded.hang.phase} step ${guarded.hang.step} (${guarded.hang.kind})`
+        problems.push(`ring seed ${seed}: HANG ${where}`)
+        continue
+      }
+      const { run } = guarded.replay
+      const start = run.reports[0]
+      if (start === undefined || start.status !== 'built') {
+        problems.push(`ring seed ${seed}: the washer start did not build (${start?.error ?? 'no report'})`)
+        continue
+      }
+      built++
+      for (const v of run.violations) problems.push(`ring seed ${seed}: step ${v.step}: ${v.message}`)
+    }
+    console.log(`[robustness-fuzz] ring sweep: ${RING_SEEDS} seeds, ${built} washer starts built`)
+    expect(built).toBeGreaterThan(0)
+    expect(problems).toEqual([])
+  })
+
   it('same seed replays the identical chain and the identical reports', { timeout: 60_000 }, async () => {
     const recipe = generateRecipe(11)
     expect(generateRecipe(11)).toEqual(recipe)

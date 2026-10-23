@@ -1,0 +1,22 @@
+features:
+  - entities:
+      - id: c_out
+        kind: circle
+      - id: c_in
+        kind: circle
+    id: sk_washer
+    initial:
+      c_in: [0, 0, 10]
+      c_out: [0, 0, 11]
+    kind: sketch
+    label: washer
+    plane: "@builtin_plane_top"
+    constraints: []
+  - extrude:
+      direction: normal
+      distance: 40
+      operation: add
+      sketch: "@sk_washer"
+    id: ex_washer
+    kind: extrude
+    label: extrude 1

@@ -20,7 +20,7 @@ import { canonicalFaces } from '../../occ/bodyNames'
 import { SubShapeMap } from '../../occ/subshapeIdentity'
 import { applyBodyOperation, type BodyOperation } from '../bodyOps'
 import type { Body } from '../../types3d'
-import type { OccModule, OccShape } from '../../occ/occTypes'
+import type { OccModule, OccOrientableShape, OccShape } from '../../occ/occTypes'
 import fixture from '../../occ/__fixtures__/bodyOps.json'
 
 const oc = await loadOcc()
@@ -335,5 +335,65 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         scope.dispose()
       }
     })
+  })
+})
+
+// A reversed shell integrates to a negative volume while BRepCheck can still
+// call the shape valid, so nothing further down notices a body that is inside
+// out. The nested-loop extrude once registered one because a duplicated hole
+// loop made V_outer - 2 * V_inner negative; the funnel refuses it now.
+describe.skipIf(!oc)('applyBodyOperation refuses an inside-out tool (real OCC)', () => {
+  let occ: OccModule
+  if (oc) occ = oc
+
+  function reversedBox(scope: DisposeScope, size: number): OccShape {
+    const box = scope.track(makeBox(occ, scope, size, size, size))
+    return scope.track((box as unknown as OccOrientableShape).Reversed())
+  }
+
+  it('a negative-volume tool is a feature error, and no body is minted', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    const bodyStore: Record<string, Body> = {}
+    try {
+      const tool = reversedBox(scope, 10)
+      expect(volumeOf(occ, scope, tool)).toBeCloseTo(-1000, 6)
+      expect(() => applyBodyOperation(occ, scope, table, {
+        toolShape: tool,
+        bodyStore,
+        operation: 'new',
+        mergeTarget: null,
+        bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+        profileQueries: [],
+      })).toThrow(/extrude: the tool solid has a negative volume/)
+      expect(Object.keys(bodyStore)).toEqual([])
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a positive-volume tool still registers as before', () => {
+    // The guard must not cost an ordinary tool path: the same box the right way
+    // round becomes a body with its own volume.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    const bodyStore: Record<string, Body> = {}
+    try {
+      const tool = scope.track(makeBox(occ, scope, 10, 10, 10))
+      const result = applyBodyOperation(occ, scope, table, {
+        toolShape: tool,
+        bodyStore,
+        operation: 'new',
+        mergeTarget: null,
+        bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+        profileQueries: [],
+      })
+      expect(result.status).toBe('ok')
+      const body = bodyStore[result.body_id]
+      expect(body).toBeDefined()
+      expect(volumeOf(occ, scope, table.get<OccShape>(body.shape!))).toBeCloseTo(1000, 6)
+    } finally {
+      scope.dispose()
+    }
   })
 })

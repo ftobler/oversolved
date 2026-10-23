@@ -3,6 +3,7 @@
 // "no closed profile found" companions.
 
 import { TOL_LOOP_CLOSURE } from '../../solverConstants'
+import { loopGeometryKey, type LoopEdge } from '../../profileLoops'
 
 type Dict = Record<string, unknown>
 
@@ -30,7 +31,34 @@ export function extractProfileLoops(surfaces: Dict[], diagnostics?: ProfileLoopD
     Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
 
   const allLoops: Dict[][] = []
+  // A nested loop is published twice by the sketch area model: as the filled
+  // area inside the curve, and as the hole of the area around it (nest_surfaces
+  // copies each nested loop into its container's holes). In a profile that
+  // boundary is ONE loop. Keeping both reaches OCC as an outer with two
+  // coincident hole wires, so a washer comes out as V_outer - 2 * V_inner --
+  // negative for a bore wider than the wall. Only a loop another AREA already
+  // published is dropped here; an area that repeats a loop in its own data is
+  // malformed and validateSketchArea still refuses it.
+  const published = new Set<string>()
+  const publish = (loop: Dict[]): void => {
+    const key = loopGeometryKey(loop as LoopEdge[])
+    if (published.has(key)) return
+    published.add(key)
+    allLoops.push(loop)
+  }
   for (const surface of surfaces) {
+    const mine = new Set<string>()
+    const publishHere = (loop: Dict[]): void => {
+      const key = loopGeometryKey(loop as LoopEdge[])
+      if (mine.has(key)) {
+        // A repeat inside this area's own boundary/holes is the gate's to
+        // refuse, not the assembler's to silently fold.
+        allLoops.push(loop)
+        return
+      }
+      mine.add(key)
+      publish(loop)
+    }
     // Emit the outer boundary and every inner hole as separate loops;
     // classifyLoops re-nests them (outer + holes) for the OCC face.
     const holes = (surface.holes as Dict[][]) ?? []
@@ -40,7 +68,7 @@ export function extractProfileLoops(surfaces: Dict[], diagnostics?: ProfileLoopD
       // A full ellipse is a single self-closed edge with no shared endpoints: it is
       // its own complete loop. (The endpoint-chaining below needs start/end edges,
       // which a full ellipse lacks; a sliced ellipse arrives as ellipse_arc edges.)
-      for (const e of boundary) if (e.kind === 'ellipse') allLoops.push([e])
+      for (const e of boundary) if (e.kind === 'ellipse') publishHere([e])
 
       const rawEdges: [number[], number[], Dict][] = []
       for (const e of boundary) {
@@ -95,7 +123,7 @@ export function extractProfileLoops(surfaces: Dict[], diagnostics?: ProfileLoopD
           break
         }
         if (dist2d([...rawEdges[0][0]], current) <= TOL && loop.length >= 1) {
-          allLoops.push(loop)
+          publishHere(loop)
           // The chain closed, but any edge left unconsumed is a second defect:
           // it is part of the same boundary and is being silently discarded.
           const leftover = rawEdges.length - used.size

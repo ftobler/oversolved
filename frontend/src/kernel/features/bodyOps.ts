@@ -18,7 +18,7 @@ import type { Body } from '../types3d'
 import type { HandleTable } from '../occ/handleTable'
 import { resolveMergeTargets } from './shared/bodyResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
-import { booleanWithDiff, countSolids, shapesIntersect } from '../occ/booleans'
+import { booleanWithDiff, countSolids, shapesIntersect, volumeOf } from '../occ/booleans'
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody } from './bodySplit'
 import { readBodyNames } from '../occ/bodyNames'
@@ -50,6 +50,33 @@ export interface ApplyBodyOperationResult {
   body_ids?: string[]
   solver_warning?: string
 }
+
+/**
+ * Refuse a shape whose shell orientation makes it integrate to a negative
+ * volume. A body's material is signed by its outer shell, so a reversed shell
+ * reads as negative material everywhere downstream even though BRepCheck can
+ * call the topology valid. The nested-loop extrude once registered such a body
+ * (V_outer - 2 * V_inner = -9927) and later features silently changed nothing;
+ * this turns any repeat of that class into a red feature naming the shape.
+ */
+function assertPositiveVolume(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  what: string,
+  opName: string,
+): void {
+  const volume = volumeOf(oc, scope, shape)
+  if (volume < -NEGATIVE_VOLUME_EPS) {
+    throw new Error(
+      `${opName}: ${what} has a negative volume (${volume.toFixed(6)}); a shell is inside out`,
+    )
+  }
+}
+
+// Rounding on a sliver can make a near-zero volume read a hair negative; only a
+// sign that survives that noise is a reversed shell.
+const NEGATIVE_VOLUME_EPS = 1e-9
 
 /**
  * Apply a boolean body operation (add / cut / new) using `toolShape`.
@@ -86,6 +113,17 @@ export function applyBodyOperation(
 
   const result: ApplyBodyOperationResult = { status: 'ok', body_id: bodyId }
 
+  // The tool is checked lazily: the OCC-free early branches (a cut with no
+  // target, an unresolvable merge target) never touch either handle, and the
+  // their unit tests pin that. The first branch that is about to turn the tool
+  // into material or feed it to a boolean causes the check.
+  let toolVolumeChecked = false
+  const requireToolVolume = (): void => {
+    if (toolVolumeChecked) return
+    toolVolumeChecked = true
+    assertPositiveVolume(oc, scope, toolShape, 'the tool solid', opName)
+  }
+
   let needNewBody = false
   let targetIds: string[] = []
   if (operation === 'add' || operation === 'cut') {
@@ -121,8 +159,10 @@ export function applyBodyOperation(
       if (!shapesIntersect(oc, oldShape, toolShape)) continue
 
       const unifyOpts = { unifyFaces: !existingBody.imported }
+      requireToolVolume()
       const { shape: newShape, diff, faceOrigin } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut', unifyOpts)
       scope.track(newShape)
+      assertPositiveVolume(oc, scope, newShape, 'the cut result', opName)
 
       // If the cut consumed the entire body, remove it rather than registering
       // an empty compound.  Mirrors deleteBody.ts:39 for auto-deletion.
@@ -177,6 +217,7 @@ export function applyBodyOperation(
   }
 
   if (operation === 'new') {
+    requireToolVolume()
     const bodyIds = registerSplitBodies(oc, scope, table, bodyStore, toolShape, {
       id: bodyId, createdBy: featureId, sketchId, profileQueries, ...toolNames,
     })
@@ -199,6 +240,7 @@ export function applyBodyOperation(
       let diff
       let faceOrigin
       try {
+        requireToolVolume()
         // Imported bodies skip the face merge (hang guard); see booleanWithDiff.
         const res = booleanWithDiff(oc, scope, oldShape, toolShape, 'fuse', { unifyFaces: !existingBody.imported })
         newShape = res.shape
@@ -208,6 +250,7 @@ export function applyBodyOperation(
         throw new Error(`${opName}: add operation failed: ${String(exc)}`)
       }
       scope.track(newShape)
+      assertPositiveVolume(oc, scope, newShape, 'the fused result', opName)
       if (mergeTarget) {
         if (countSolids(oc, scope, newShape) > 1) {
           throw new Error(`${opName}: add would create island shape not touching target body`)
@@ -257,6 +300,7 @@ export function applyBodyOperation(
     throw new Error(`${opName}: add could not fuse with any target body`)
   }
   // No target body: the tool becomes its own body (one per solid).
+  requireToolVolume()
   const bodyIds = registerSplitBodies(oc, scope, table, bodyStore, toolShape, {
     id: bodyId, createdBy: featureId, sketchId, profileQueries, ...toolNames,
   })

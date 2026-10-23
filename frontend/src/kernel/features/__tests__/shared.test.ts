@@ -181,18 +181,28 @@ describe('extractProfileLoops on a nested sketch', () => {
     query: '?disk',
   })
 
-  // C1: nest_surfaces keeps every loop as its own surface AND copies each
-  // nested loop into its container's holes, so extruding the whole sketch feeds
-  // the inner loop to the face builder twice. Not fixed here (that is F1); what
-  // IS in place is the dump that names it. Update this when F1 lands.
-  it('emits the inner loop twice, and the dump flags the duplicate', () => {
+  // F1 (nested-loop extrude): nest_surfaces keeps every loop as its own surface
+  // AND copies each nested loop into its container's holes, so extruding the
+  // whole sketch used to feed the inner loop to the face builder twice -- one
+  // outer with two coincident hole wires, which subtracts the bore twice and
+  // turns a washer into V_outer - 2 * V_inner. The assembler now keeps the
+  // first copy of a boundary another area already published.
+  it('emits a nested loop once across areas', () => {
     const loops = extractProfileLoops([ring(), disk()])
-    expect(loops).toHaveLength(3)
+    expect(loops).toHaveLength(2)
     const report = describeProfile(loops)
-    expect(report.loops[2].duplicateOf).toBe(1)
-    expect(report.verdict).toBe('suspect')
-    // The face builder would receive one outer with TWO coincident hole wires.
-    expect(report.groups).toEqual([{ outer: 0, holes: [1, 2] }])
+    expect(report.loops.some((lr) => lr.duplicateOf !== null)).toBe(false)
+    expect(report.groups).toEqual([{ outer: 0, holes: [1] }])
+  })
+
+  // A display of the same inner loop twice inside ONE area's own data is not
+  // the cross-area duplication above: it is malformed input, and the per-area
+  // gate must still refuse it rather than folding it quietly.
+  it('keeps a repeat inside one area for the gate to refuse', () => {
+    const doubled = ring() as Record<string, unknown> & { holes: Record<string, unknown>[][] }
+    doubled.holes = [...doubled.holes, doubled.holes[0].map((e) => ({ ...e }))]
+    expect(extractProfileLoops([doubled])).toHaveLength(3)
+    expect(validateSketchArea(doubled).reasonCode).toBe('duplicate_loop')
   })
 
   // A single nested surface is fine: boundary + its own holes are distinct

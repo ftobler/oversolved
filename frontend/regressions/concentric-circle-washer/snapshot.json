@@ -1,0 +1,22 @@
+{
+  "bodies": {
+    "body_ex_washer": {
+      "created_by": "ex_washer",
+      "modified_by": [],
+      "face_hashes": [
+        "gface_abccd26fcc1c0756",
+        "gface_b22d618927c9f22e",
+        "gface_b2f7a366ee43481e",
+        "gface_e69087c0eae03095"
+      ],
+      "edge_hashes": [
+        "gedge_0739a45ed71b9504",
+        "gedge_3442971e3bc8d8f1",
+        "gedge_4be4ff4b19693211",
+        "gedge_cada2a3943f1d0cb",
+        "gedge_f33c2c8be255f5af",
+        "gedge_fa9e225039dfbea8"
+      ]
+    }
+  }
+}

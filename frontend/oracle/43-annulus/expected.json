@@ -1,0 +1,21 @@
+{
+  "method": "V = pi (R^2 - r^2) h = pi*(121-100)*40; A = 2 pi (R^2 - r^2) + 2 pi h (R + r) (two annulus caps, outer wall, bore wall)",
+  "bodies": 1,
+  "volume": 2638.9378290154264,
+  "area": 5409.822549481623,
+  "centroid": [
+    0,
+    0,
+    20
+  ],
+  "bbox": [
+    -11,
+    -11,
+    0,
+    11,
+    11,
+    40
+  ],
+  "faces": 4,
+  "edges": 6
+}

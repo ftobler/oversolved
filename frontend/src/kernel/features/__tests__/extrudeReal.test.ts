@@ -7,12 +7,17 @@
 // Split by describe group from the original 1.3k-line file; the shared spec
 // builders live in extrudeRealSupport.ts. This file covers basic mesh/bbox,
 // nested UI / bare plane ids, stacked extrudes, surface queries, picked sketch
-// entities and profile lists.
+// entities, profile lists and the nested-loop (washer) profile.
 //
 // Skips when OCC.js or the Rust solver is absent.
 
 import { describe, it, expect } from 'vitest'
 import { makeAncestryQuery } from '../../query'
+import type { BuildResponse } from '../../builder'
+import { DisposeScope } from '../../occ/disposeScope'
+import { canonicalFaces } from '../../occ/bodyNames'
+import { volumeOf } from '../../occ/booleans'
+import type { OccShape } from '../../occ/occTypes'
 import {
   oc, solveBytes, extrudeTestHarness, rectSketchSk, extrudeSpec, fullRectExtrudeSpec,
   assertMeshValid, assertMeshBbox,
@@ -461,5 +466,169 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     expect(h.res(result, 'ex1').status).toBe('partial')
     expect(String(h.res(result, 'ex1').exception)).toMatch(/sketch not found: missing/)
     expect(result.bodies).toHaveProperty('body_ex1')
+  })
+})
+
+// The whole-sketch profile flattens every area the sketch solver builds. A
+// nested loop appears twice in that flattening: once as the container area's
+// hole and once as the area's own boundary (the sketch area model makes the
+// inside of a closed curve a filled area of its own). The face builder must
+// see it once, or the inner loop is cut out twice -- the washer comes out with
+// V_outer - 2 * V_inner, which is negative for any bore larger than the wall.
+describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): nested loops cut once', () => {
+  const h = extrudeTestHarness()
+
+  // Volume and face count read off the body's own shape through the harness's
+  // persistent table: the response's tessellated body has no shape handle, the
+  // checkpoint snapshot is where the live shape lives.
+  function gauges(result: BuildResponse, bodyId: string): { volume: number; faces: number } {
+    const cp = result._build_state!.checkpoints['ex1']
+    const shape = h.table.get<OccShape>(cp.body_store_snapshot[bodyId].shape!)
+    const scope = new DisposeScope()
+    try {
+      return { volume: volumeOf(oc!, scope, shape), faces: canonicalFaces(oc!, scope, shape).length }
+    } finally {
+      scope.dispose()
+    }
+  }
+
+  // Circles carry their centre and radius in `initial`; no constraints are
+  // needed to place them, which is exactly the report's two free circles.
+  function concentricSketch(entities: Record<string, unknown>[], initial: Record<string, number[]>) {
+    return {
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+          entities, initial, constraints: [],
+        },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 40, direction: 'normal' } },
+      ],
+    }
+  }
+
+  it('two concentric circles extrude the washer, not the bore twice', () => {
+    const result = h.run(concentricSketch(
+      [{ id: 'cOut', kind: 'circle' }, { id: 'cIn', kind: 'circle' }],
+      { cOut: [0, 0, 11], cIn: [0, 0, 10] },
+    ))
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const g = gauges(result, 'body_ex1')
+    expect(g.volume).toBeCloseTo(Math.PI * (121 - 100) * 40, 3)
+    // Two annulus caps, the outer wall, the bore wall.
+    expect(g.faces).toBe(4)
+  })
+
+  it('constraining the two centres together changes nothing', () => {
+    // The failing reports carried no constraints; the corpus cases that were
+    // expected to cover this shape do. Constraints decide nothing here: the
+    // duplication came from the area model, not from the solver, so the
+    // constrained sketch has to build the same washer.
+    const result = h.run({
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [{ id: 'cOut', kind: 'circle' }, { id: 'cIn', kind: 'circle' }],
+          initial: { cOut: [0, 0, 11], cIn: [0, 0, 10] },
+          constraints: [
+            { id: 'co1', kind: 'coincident', a: '$cOutcenter', b: '@builtin_origin' },
+            { id: 'co2', kind: 'coincident', a: '$cIncenter', b: '$cOutcenter' },
+            { id: 'd1', kind: 'diameter', target: '$cOut', value: 22 },
+            { id: 'd2', kind: 'diameter', target: '$cIn', value: 20 },
+          ],
+        },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 40, direction: 'normal' } },
+      ],
+    })
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const g = gauges(result, 'body_ex1')
+    expect(g.volume).toBeCloseTo(Math.PI * 21 * 40, 3)
+    expect(g.faces).toBe(4)
+  })
+
+  it('the washer is the same when the circles were drawn inner first', () => {
+    const result = h.run(concentricSketch(
+      [{ id: 'cIn', kind: 'circle' }, { id: 'cOut', kind: 'circle' }],
+      { cIn: [0, 0, 10], cOut: [0, 0, 11] },
+    ))
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    expect(gauges(result, 'body_ex1').volume).toBeCloseTo(Math.PI * 21 * 40, 3)
+  })
+
+  it('an off-centre bore subtracts once', () => {
+    const result = h.run(concentricSketch(
+      [{ id: 'cOut', kind: 'circle' }, { id: 'cIn', kind: 'circle' }],
+      { cOut: [0, 0, 11], cIn: [3, 1, 4] },
+    ))
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const g = gauges(result, 'body_ex1')
+    expect(g.volume).toBeCloseTo(Math.PI * (121 - 16) * 40, 3)
+    expect(g.faces).toBe(4)
+  })
+
+  it('a bore tangent to the outer wall still subtracts once', () => {
+    // The inner loop touches the outer one at (10, 0) instead of floating
+    // inside it: the assembler must still see two loops and the face one hole.
+    const result = h.run(concentricSketch(
+      [{ id: 'cOut', kind: 'circle' }, { id: 'cIn', kind: 'circle' }],
+      { cOut: [0, 0, 10], cIn: [5, 0, 5] },
+    ))
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const g = gauges(result, 'body_ex1')
+    expect(g.volume).toBeCloseTo(Math.PI * (100 - 25) * 40, 3)
+    expect(g.faces).toBe(4)
+  })
+
+  it('two overlapping circles extrude their union, not one lobe', () => {
+    // Equal r=5 circles with centres 6 apart cross, so the area builder splits
+    // them into three regions. The face builder gets three loops, none nested,
+    // and the even/odd rule keeps all three: the union, not one of the lobes.
+    const r = 5
+    const d = 6
+    const lens = 2 * r * r * Math.acos(d / (2 * r)) - (d / 2) * Math.sqrt(4 * r * r - d * d)
+    const unionArea = 2 * Math.PI * r * r - lens
+    const result = h.run(concentricSketch(
+      [{ id: 'cA', kind: 'circle' }, { id: 'cB', kind: 'circle' }],
+      { cA: [-3, 0, r], cB: [3, 0, r] },
+    ))
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    expect(gauges(result, 'body_ex1').volume).toBeCloseTo(unionArea * 40, 3)
+  })
+
+  it('a rectangular plate with a circular hole keeps one bore', () => {
+    const sk = rectSketchSk('sk1', 40, 20) as unknown as Record<string, unknown>
+    const entities = sk.entities as Record<string, unknown>[]
+    const initial = sk.initial as Record<string, number[]>
+    entities.push({ id: 'bore', kind: 'circle' })
+    initial.bore = [20, 10, 5]
+    const result = h.run({
+      features: [
+        sk,
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 4, direction: 'normal' } },
+      ],
+    })
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const g = gauges(result, 'body_ex1')
+    expect(g.volume).toBeCloseTo(40 * 20 * 4 - Math.PI * 25 * 4, 2)
+    // Four side walls, two caps, one bore wall.
+    expect(g.faces).toBe(7)
+  })
+
+  it('a plate with two bores subtracts each once', () => {
+    const sk = rectSketchSk('sk1', 40, 20) as unknown as Record<string, unknown>
+    const entities = sk.entities as Record<string, unknown>[]
+    const initial = sk.initial as Record<string, number[]>
+    entities.push({ id: 'b1', kind: 'circle' }, { id: 'b2', kind: 'circle' })
+    initial.b1 = [10, 10, 3]
+    initial.b2 = [30, 10, 4]
+    const result = h.run({
+      features: [
+        sk,
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 5, direction: 'normal' } },
+      ],
+    })
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const g = gauges(result, 'body_ex1')
+    expect(g.volume).toBeCloseTo(40 * 20 * 5 - Math.PI * (9 + 16) * 5, 2)
+    expect(g.faces).toBe(8)
   })
 })

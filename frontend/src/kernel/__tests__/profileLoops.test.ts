@@ -2,7 +2,7 @@
 // extrude leaf: loopSignedArea, pointInLoop, classifyLoops. No OCC.
 
 import { describe, it, expect } from 'vitest'
-import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, loopContainment, arcSamplePoints, ellipseArcSamplePoints, loopPts, CENTROID_ARC_SAMPLES, type LoopEdge } from '../profileLoops'
+import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, loopContainment, arcSamplePoints, ellipseArcSamplePoints, loopPts, loopGeometryKey, CENTROID_ARC_SAMPLES, type LoopEdge } from '../profileLoops'
 import { extractProfileLoops } from '../features/shared/profileLoops'
 
 const square = (s: number): LoopEdge[] => [
@@ -775,9 +775,10 @@ describe('classifyLoops with a duplicated hole', () => {
 
   // C1 at the classifier level: two copies of one inner loop have equal area,
   // and the depth test is a STRICT area comparison, so neither encloses the
-  // other and both attach to the same container. sketchLoopsToFace then adds two
-  // coincident hole wires to one face. Not fixed here (F1); pinned so the fix
-  // has something to flip.
+  // other and both attach to the same container. This classifier stays literal
+  // (it groups whatever loops it is handed); the profile assembler is what now
+  // keeps a boundary published by two areas down to one copy, so a real profile
+  // never reaches here with the same loop twice.
   it('attaches an identical hole twice', () => {
     const loops = [box(0, 0, 10, 10), box(3, 3, 7, 7), box(3, 3, 7, 7)]
     const groups = classifyLoops(loops)
@@ -790,5 +791,33 @@ describe('classifyLoops with a duplicated hole', () => {
     const groups = classifyLoops(loops)
     expect(groups).toHaveLength(1)
     expect(groups[0][1]).toHaveLength(2)
+  })
+})
+
+describe('loopGeometryKey', () => {
+  const square = (): LoopEdge[] => [
+    { kind: 'line', start: [0, 0], end: [10, 0] },
+    { kind: 'line', start: [10, 0], end: [10, 10] },
+    { kind: 'line', start: [10, 10], end: [0, 10] },
+    { kind: 'line', start: [0, 10], end: [0, 0] },
+  ]
+
+  it('is independent of which edge the loop was chained from', () => {
+    const loop = square()
+    expect(loopGeometryKey([loop[2], loop[3], loop[0], loop[1]])).toBe(loopGeometryKey(loop))
+  })
+
+  it('tells apart two circles that share a centre', () => {
+    // Endpoint-only identity once collapsed an elliptical donut; the radius is
+    // part of the key for the same reason.
+    const circle = (r: number): LoopEdge[] => [{
+      kind: 'arc', center: [0, 0], radius: r, angle_start_deg: 0, angle_end_deg: 360,
+      ccw: true, start: [r, 0], end: [r, 0],
+    }]
+    expect(loopGeometryKey(circle(5))).not.toBe(loopGeometryKey(circle(3)))
+  })
+
+  it('calls a copy of a loop the same loop', () => {
+    expect(loopGeometryKey(square().map((e) => ({ ...e })))).toBe(loopGeometryKey(square()))
   })
 })

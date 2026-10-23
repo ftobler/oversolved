@@ -18,6 +18,7 @@
 import {
   CENTROID_ARC_SAMPLES,
   loopContainment,
+  loopGeometryKey,
   loopPts,
   loopSignedArea,
   type LoopEdge,
@@ -149,31 +150,6 @@ function isSelfClosedEdge(e: LoopEdge): boolean {
   return s.length > 0 && en.length > 0 && dist2d(s, en) < TOL_TOPOLOGY_EPS
 }
 
-// Every geometry field that can tell two edges of the same kind apart. The
-// endpoint multiset alone is NOT enough: a full ellipse carries no start/end and
-// no radius, so two concentric ellipses of different size hashed identically and
-// the smaller was reported as a duplicate of the larger (seen on the elliptical
-// donut). A false positive here marks a good area unbuildable, so the key errs
-// wide.
-const SHAPE_KEY_FIELDS = [
-  'start', 'end', 'center', 'c1', 'c2',
-  'radius', 'a', 'b', 'theta', 'angle_start_deg', 'angle_end_deg', 'ccw',
-] as const
-
-/** Order-independent identity key for a loop, for duplicate detection. */
-function loopKey(loop: LoopEdge[]): string {
-  const field = (v: unknown): string => {
-    if (Array.isArray(v)) return (v as number[]).map((c) => c.toFixed(9)).join(',')
-    if (typeof v === 'number') return v.toFixed(9)
-    if (typeof v === 'boolean') return String(v)
-    return ''
-  }
-  return loop
-    .map((e) => [String(e['kind'] ?? ''), ...SHAPE_KEY_FIELDS.map((k) => field(e[k]))].join('|'))
-    .sort()
-    .join(';')
-}
-
 /** Shoelace area over an explicitly sampled polygon. */
 function shoelace(pts: number[][]): number {
   const n = pts.length
@@ -286,7 +262,7 @@ export function describeProfile(loops: LoopEdge[][]): ProfileReport {
 
   const seen = new Map<string, number>()
   loops.forEach((loop, i) => {
-    const key = loopKey(loop)
+    const key = loopGeometryKey(loop)
     const first = seen.get(key)
     if (first === undefined) seen.set(key, i)
     else reports[i].duplicateOf = first

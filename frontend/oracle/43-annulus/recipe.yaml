@@ -1,0 +1,28 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: outer
+        kind: circle
+      - id: bore
+        kind: circle
+    initial:
+      outer:
+        - 0
+        - 0
+        - 11
+      bore:
+        - 0
+        - 0
+        - 10
+    constraints: []
+  - id: ex1
+    kind: extrude
+    label: extrude 1
+    extrude:
+      sketch: "@sk1"
+      direction: normal
+      distance: 40
+      operation: add

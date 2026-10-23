@@ -136,6 +136,39 @@ export function loopPts(loop: LoopEdge[], arcSamples = 1): number[][] {
   return pts
 }
 
+// The fields that carry a loop's geometry, so two loops with the same boundary
+// compare equal whatever order their edges were chained in.
+const LOOP_SHAPE_FIELDS = [
+  'start', 'end', 'center', 'c1', 'c2',
+  'radius', 'a', 'b', 'theta', 'angle_start_deg', 'angle_end_deg', 'ccw',
+] as const
+
+/**
+ * Order-independent identity key for a closed loop, used both by the profile
+ * assembler (one boundary published by two areas is one loop) and by the
+ * profile dump (a repeated loop is flagged). One definition, so the two cannot
+ * disagree about what "the same loop" means.
+ *
+ * Every geometry field that can tell two edges of the same kind apart is in the
+ * key. The endpoint multiset alone is NOT enough: a full ellipse carries no
+ * start/end and no radius, so two concentric ellipses of different size hashed
+ * identically and the smaller was reported as a duplicate of the larger (the
+ * elliptical donut). A false positive marks a good area unbuildable and now also
+ * makes the assembler drop a real boundary, so the key errs wide.
+ */
+export function loopGeometryKey(loop: LoopEdge[]): string {
+  const field = (v: unknown): string => {
+    if (Array.isArray(v)) return (v as number[]).map((c) => c.toFixed(9)).join(',')
+    if (typeof v === 'number') return v.toFixed(9)
+    if (typeof v === 'boolean') return String(v)
+    return ''
+  }
+  return loop
+    .map((e) => [String(e['kind'] ?? ''), ...LOOP_SHAPE_FIELDS.map((k) => field(e[k]))].join('|'))
+    .sort()
+    .join(';')
+}
+
 /** Signed 2D area via the shoelace formula. Positive = CCW. `arcSamples` is the
  *  arc/spline sampling the polygon is built from; the default 1 is the coarse
  *  polygon every existing caller has always used. */
