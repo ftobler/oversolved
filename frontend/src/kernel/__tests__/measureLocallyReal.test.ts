@@ -17,6 +17,8 @@ import { measureBodies, type Bbox6 } from '../occ/measure'
 import { compareMeasures } from '../occ/measureTolerance'
 import { readOracleCase } from '@/oracle/corpus'
 import { partSpecFromText } from '@/utils/partExport'
+import { applyAddOffset } from '@/utils/yamlMutations'
+import type { PartDoc } from '@/types/cad'
 import type { BuildState } from '../types3d'
 import type { OccModule, OccShape } from '../occ/occTypes'
 
@@ -165,6 +167,37 @@ function tinyBox(oc: OccModule, scope: DisposeScope, corner: [number, number, nu
   return scope.track(new oc.BRepPrimAPI_MakeBox_2(p, 5e-5, 5e-5, 5e-5).Shape())
 }
 
+// Birdhouse F1: a hand-drawn triangle joined only by coordinate (no coincident
+// constraints) offset 2 mm inward, then extruded symmetric 120. The offset must
+// close its clones into the inset loop, so the profile is the 2 mm ring (4590 -
+// 3992.05 = 597.95 mm2) and the solid is 71754 mm3, not the solid outer triangle
+// (550800) the unjoined open chain leaves the extrude with.
+function triangleRingDoc(): Record<string, unknown> {
+  const doc = {
+    id: 'triangle-ring',
+    features: [{
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'o1', kind: 'line' },
+        { id: 'o2', kind: 'line' },
+        { id: 'o3', kind: 'line' },
+      ],
+      initial: {
+        o1: [-54, 0, 54, 0],
+        o2: [54, 0, 0, 85],
+        o3: [0, 85, -54, 0],
+      },
+      constraints: [],
+    }] as Array<Record<string, unknown>>,
+  }
+  applyAddOffset(doc as unknown as PartDoc, 'sk1', ['o1', 'o2', 'o3'], 2)
+  doc.features.push({
+    id: 'ex1', kind: 'extrude', sketch: '$sk1',
+    distance: 120, direction: 'symmetric', operation: 'new',
+  })
+  return doc
+}
+
 describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', () => {
   beforeAll(() => {
     resetSketchSolver()
@@ -248,6 +281,16 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
   it('reports an empty measure for a document with no solid body', async () => {
     const measure = await measureLocally({ id: 'empty', features: [rectSketch('sk1', 4, 4)] })
     expect(measure).toMatchObject({ bodies: 0, volume: 0, area: 0, centroid: null, bbox: null, faces: 0 })
+  })
+
+  it('extrudes a coordinate-only triangle offset to the closed 2 mm ring', async () => {
+    const measure = await measureLocally(triangleRingDoc())
+    expect(measure).not.toBeNull()
+    expect(measure!.bodies).toBe(1)
+    // The ring is 597.95 mm2 over 120 mm, so 71754 mm3. The solid outer
+    // triangle the open offset was ignored for is 4590 * 120 = 550800 mm3.
+    expect(measure!.volume).toBeCloseTo(71754.43, 1)
+    expect(measure!.volume).toBeLessThan(600_000)
   })
 
   it('reads an exact AddOptimal bbox for the analytic cylinder (oracle 04)', async () => {

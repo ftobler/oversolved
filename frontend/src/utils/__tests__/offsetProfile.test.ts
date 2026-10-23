@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc } from '@/types/cad'
+import type { PartDoc, SketchFeature } from '@/types/cad'
 import { applyAddOffset, applyAddEntity, applyAddRect, applyAddConstraint, applyDeleteElements } from '@/utils/yamlMutations'
 import { CONSTRAINTS } from '@/registry'
-import { offsetCorners, lineIntersect, parseVertexRef } from '@/utils/geometry/offsetProfile'
+import { offsetCorners, coordinateCorners, uniqueCorners, lineIntersect, parseVertexRef } from '@/utils/geometry/offsetProfile'
 import { sketchAt } from '@/testing/featureAccess'
 
 const DIMENSION_KINDS = new Set(CONSTRAINTS.filter((c) => c.category === 'dimensional').map((c) => c.kind))
@@ -75,6 +75,63 @@ describe('offsetCorners', () => {
     const doc = sketchDoc()
     const [a] = addLJoin(doc)
     expect(offsetCorners([a], feat(doc).constraints!)).toHaveLength(0)  // b not selected
+  })
+})
+
+describe('coordinateCorners', () => {
+  // A hand-drawn chain has matching endpoint coordinates and no constraints.
+  function chainDoc(): PartDoc {
+    const doc = sketchDoc()
+    applyAddEntity(doc, 'sk', 'line', [0, 0, 10, 0], 'a')
+    applyAddEntity(doc, 'sk', 'line', [10, 0, 10, 10], 'b')
+    return doc
+  }
+
+  it('finds a coordinate-only L join and reports the touching endpoint keys', () => {
+    const doc = chainDoc()
+    const f = feat(doc)
+    expect(f.constraints).toHaveLength(0)  // no coincident is what makes this a chain
+    const corners = coordinateCorners(f.entities!, f.initial!, ['a', 'b'])
+    expect(corners).toHaveLength(1)
+    expect(corners[0]).toEqual({
+      a: { entityId: 'a', vertexKey: 'end' },
+      b: { entityId: 'b', vertexKey: 'start' },
+    })
+  })
+
+  it('finds no coordinate corner when the endpoints do not touch', () => {
+    const doc = sketchDoc()
+    applyAddEntity(doc, 'sk', 'line', [0, 0, 10, 0], 'a')
+    applyAddEntity(doc, 'sk', 'line', [10.5, 0, 10.5, 10], 'b')
+    const f = feat(doc)
+    expect(coordinateCorners(f.entities!, f.initial!, ['a', 'b'])).toHaveLength(0)
+  })
+
+  it('ignores endpoints of unselected entities and derives arc endpoints', () => {
+    const doc = sketchDoc()
+    applyAddEntity(doc, 'sk', 'line', [0, 0, 10, 0], 'ln')
+    // Quarter arc from (10, 0) to (0, 10), centre the origin: its start is the
+    // line's end by coordinate, with no constraint between them.
+    applyAddEntity(doc, 'sk', 'arc', [0, 0, 10, 0, 90], 'ar')
+    applyAddEntity(doc, 'sk', 'line', [0, 10, -5, 10], 'other')
+    const f = feat(doc)
+    expect(coordinateCorners(f.entities!, f.initial!, ['ln'])).toHaveLength(0)
+    const corners = coordinateCorners(f.entities!, f.initial!, ['ln', 'ar'])
+    expect(corners).toEqual([{
+      a: { entityId: 'ln', vertexKey: 'end' },
+      b: { entityId: 'ar', vertexKey: 'start' },
+    }])
+  })
+
+  it('dedupes a joint found by both a coincident and equal coordinates', () => {
+    const doc = sketchDoc()
+    const [a, b] = addLJoin(doc)
+    const f = feat(doc)
+    const explicit = offsetCorners([a, b], f.constraints!)
+    const coordinate = coordinateCorners(f.entities!, f.initial!, [a, b])
+    expect(explicit).toHaveLength(1)
+    expect(coordinate).toHaveLength(1)
+    expect(uniqueCorners([...explicit, ...coordinate])).toHaveLength(1)
   })
 })
 
@@ -262,5 +319,100 @@ describe('applyAddOffset connectivity', () => {
     applyDeleteElements(doc, [`entity:sk:${cloneIds[0]}`])
     // The corner coincident referenced the deleted clone -> GC'd. Its parallel too.
     expect(f.constraints!.find((c) => c.id === coinId)).toBeUndefined()
+  })
+})
+
+// A hand-drawn chain joins its endpoints by coordinate alone: no coincident
+// constraints exist, so before the coordinate-corner discovery the offset clones
+// translated each line's endpoints instead of mitering them and the chain stayed
+// open (birdhouse F1). The rect path always joined; these chains must match it.
+describe('applyAddOffset on a coordinate-only chain', () => {
+  function addCoordChain(doc: PartDoc, lines: Array<[string, number[]]>): string[] {
+    for (const [id, params] of lines) applyAddEntity(doc, 'sk', 'line', params, id)
+    return lines.map(([id]) => id)
+  }
+
+  function cloneOfSource(f: SketchFeature, sourceId: string): string {
+    const parallel = f.constraints!.find((c) => c.kind === 'parallel' && c.a === '$' + sourceId)
+    return (parallel!.b as string).slice(1)
+  }
+
+  function cloneCoincidents(f: SketchFeature, sourceIds: string[]) {
+    const cloneSet = new Set(f.entities!.map((e) => e.id).filter((id) => !sourceIds.includes(id)))
+    return f.constraints!.filter(
+      (c) => c.kind === 'coincident' && parseVertexRef(c.a, cloneSet) && parseVertexRef(c.b, cloneSet),
+    )
+  }
+
+  function polygonArea(points: Array<[number, number]>): number {
+    let sum = 0
+    for (let i = 0; i < points.length; i++) {
+      const [x0, y0] = points[i]
+      const [x1, y1] = points[(i + 1) % points.length]
+      sum += x0 * y1 - x1 * y0
+    }
+    return Math.abs(sum) / 2
+  }
+
+  it('L-chain: mitered corner, one clone coincident, the offset lines meet', () => {
+    const doc = sketchDoc()
+    const srcIds = addCoordChain(doc, [
+      ['a', [0, 0, 10, 0]],
+      ['b', [10, 0, 10, 10]],
+    ])
+    applyAddOffset(doc, 'sk', srcIds, 2)
+    const f = feat(doc)
+
+    expect(f.entities!).toHaveLength(4)
+    expect(cloneCoincidents(f, srcIds)).toHaveLength(1)
+
+    // The inward offset of the corner is (8, 2), the intersection of y=2 and
+    // x=8, not the offset of the shared vertex (10, 2) or (8, 0).
+    const pa = f.initial![cloneOfSource(f, 'a')]
+    const pb = f.initial![cloneOfSource(f, 'b')]
+    expect([pa[2], pa[3]]).toEqual([8, 2])
+    expect([pb[0], pb[1]]).toEqual([8, 2])
+  })
+
+  it('three-line triangle closes into the 598 mm2 ring loop (birdhouse F1)', () => {
+    const doc = sketchDoc()
+    const srcIds = addCoordChain(doc, [
+      ['o1', [-54, 0, 54, 0]],
+      ['o2', [54, 0, 0, 85]],
+      ['o3', [0, 85, -54, 0]],
+    ])
+    applyAddOffset(doc, 'sk', srcIds, 2)
+    const f = feat(doc)
+
+    expect(f.entities!).toHaveLength(6)
+    expect(cloneCoincidents(f, srcIds)).toHaveLength(3)
+
+    // Each clone corner is the intersection of its two seeded offset lines: the
+    // sample vertices the report hand-computed for the 2 mm inset triangle.
+    const a = f.initial![cloneOfSource(f, 'o1')]
+    const b = f.initial![cloneOfSource(f, 'o2')]
+    const c = f.initial![cloneOfSource(f, 'o3')]
+    expect(a[2]).toBeCloseTo(50.35994, 5)
+    expect(a[3]).toBeCloseTo(2, 6)
+    expect(b[0]).toBeCloseTo(50.35994, 5)
+    expect(b[1]).toBeCloseTo(2, 6)
+    expect(b[2]).toBeCloseTo(0, 6)
+    expect(b[3]).toBeCloseTo(81.270277, 5)
+    expect(c[0]).toBeCloseTo(0, 6)
+    expect(c[1]).toBeCloseTo(81.270277, 5)
+    expect(c[2]).toBeCloseTo(-50.35994, 5)
+    expect(c[3]).toBeCloseTo(2, 6)
+    expect(a[0]).toBeCloseTo(-50.35994, 5)
+    expect(a[1]).toBeCloseTo(2, 6)
+
+    const outer: Array<[number, number]> = [[-54, 0], [54, 0], [0, 85]]
+    const inner: Array<[number, number]> = [
+      [a[2], a[3]], [b[2], b[3]], [c[2], c[3]],
+    ]
+    // The extrude sees both closed loops, so the profile is the 2 mm ring:
+    // 4590 - 3992.05 = 597.95 mm2, 120 thick = 71754 mm3 (report: ~598, 71760).
+    expect(polygonArea(outer)).toBeCloseTo(4590, 6)
+    expect(polygonArea(inner)).toBeCloseTo(3992.046, 2)
+    expect(polygonArea(outer) - polygonArea(inner)).toBeCloseTo(598, 0)
   })
 })

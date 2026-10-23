@@ -5,7 +5,7 @@ import {
 } from './helpers'
 import type { SketchLists } from './helpers'
 import { applyAddConstraint } from './sketch'
-import { offsetCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
+import { offsetCorners, coordinateCorners, uniqueCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
 import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
 import { sameSnapVertex } from '@/utils/snapRefs'
 
@@ -257,13 +257,15 @@ function offsetSeed(kind: string, p: number[], distance: number): number[] | nul
 /** Reconnect the corners among offset clones: miter line/line corners to the
  *  intersection of the two *seeded* (untrimmed) offset lines (NOT the offset of
  *  the shared vertex), and carry line/arc and arc/arc tangency over so the
- *  solver settles the fillet join. Snapshot the seeds before trimming endpoints
- *  -- otherwise the second corner of a shared line would intersect an
- *  already-moved line and drift. Spline/ellipse corners stay ungrafted (matches
- *  the copy-at-source clone policy). */
+ *  solver settles the fillet join. A corner is either an explicit `coincident`
+ *  or two selected endpoints the area builder welds by coordinate (a hand-drawn
+ *  chain), so both authoring styles rebuild the same joint. Snapshot the seeds
+ *  before trimming endpoints -- otherwise the second corner of a shared line
+ *  would intersect an already-moved line and drift. Spline/ellipse corners stay
+ *  ungrafted (matches the copy-at-source clone policy). */
 function reconnectOffsetCorners(
   doc: PartDoc,
-  feature: PartFeature & Pick<SketchLists, 'initial' | 'constraints'>,
+  feature: PartFeature & Pick<SketchLists, 'entities' | 'initial' | 'constraints'>,
   featureId: string,
   cloneOf: Map<string, string>,
   kindOf: Map<string, string>,
@@ -273,7 +275,14 @@ function reconnectOffsetCorners(
   for (const cloneId of cloneOf.values()) seedSnapshot.set(cloneId, [...initial[cloneId]])
 
   const curved = (k: string | undefined) => k === 'arc' || k === 'circle'
-  for (const corner of offsetCorners([...cloneOf.keys()], feature.constraints)) {
+  const sourceIds = [...cloneOf.keys()]
+  // A rectangle has both forms of join (coincidents and equal coordinates), so
+  // the merge keeps the explicit-corner ordering while dropping the duplicate.
+  const corners = uniqueCorners([
+    ...offsetCorners(sourceIds, feature.constraints),
+    ...coordinateCorners(feature.entities, initial, sourceIds),
+  ])
+  for (const corner of corners) {
     const cloneA = cloneOf.get(corner.a.entityId)
     const cloneB = cloneOf.get(corner.b.entityId)
     if (!cloneA || !cloneB) continue
@@ -320,12 +329,13 @@ function reconnectOffsetCorners(
  *  Splines/ellipses have no clean offset, so only the (at-source) copy is made.
  *
  *  Connectivity carry-over: a *connected* selection (rectangle, n-gon, fillet
- *  chain) is held together by `coincident` corners. Offsetting each entity in
- *  isolation would tear those corners apart, so after cloning we rebuild every
- *  corner among the selected sources on the clones -- mitering line/line corners
- *  to the intersection of the two offset lines (NOT the offset of the shared
- *  vertex) and carrying line/arc tangency over with a `tangent`. Still no
- *  dimensions; the reconnection is the only added structure. */
+ *  chain, or a hand-drawn chain whose endpoints merely meet by coordinate) is
+ *  held together at its corners. Offsetting each entity in isolation would tear
+ *  those corners apart, so after cloning we rebuild every corner among the
+ *  selected sources on the clones -- mitering line/line corners to the
+ *  intersection of the two offset lines (NOT the offset of the shared vertex)
+ *  and carrying line/arc tangency over with a `tangent`. Still no dimensions;
+ *  the reconnection is the only added structure. */
 export function applyAddOffset(
   doc: PartDoc,
   featureId: string,
