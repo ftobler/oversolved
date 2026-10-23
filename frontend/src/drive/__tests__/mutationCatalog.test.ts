@@ -108,8 +108,10 @@ describe('mutation catalog', () => {
     for (const example of MUTATION_EXAMPLES) {
       for (const step of example.steps) {
         if (!('mutation' in step)) continue
-        const query = (step.mutation as { edgeQuery?: string }).edgeQuery
-        if (query !== undefined) expect(query).not.toMatch(positional)
+        const mutation = step.mutation as { edgeQuery?: string; edges?: string[] }
+        for (const query of [mutation.edgeQuery, ...(mutation.edges ?? [])]) {
+          if (query !== undefined) expect(query).not.toMatch(positional)
+        }
       }
     }
   })
@@ -220,6 +222,33 @@ describe('mutation catalog', () => {
     expect((plane!.properties as Record<string, unknown>).definition).toEqual(entry!.fields.definition.shape)
   })
 
+  it('documents the bulk fillet form and the array split into bodies', () => {
+    const fillet = mutationInfoOf('add_fillet')
+    expect(fillet.fields.edges).toBeDefined()
+    expect(fillet.fields.radius).toBeDefined()
+    expect(fillet.note).toContain('edges')
+    expect(fillet.note).toContain('radius')
+    expect(fillet.note).toContain('same step')
+
+    for (const type of ['add_array', 'add_circular_array', 'set_array_field', 'set_circular_array_field'] as const) {
+      const note = mutationInfoOf(type).note
+      expect(note, type).toBeDefined()
+      expect(note, type).toContain('disjoint')
+      expect(note, type).toContain('_1')
+    }
+  })
+
+  it('pins case-sensitive plane refs and the face-query form', () => {
+    for (const type of ['add_sketch', 'set_feature_plane'] as const) {
+      const note = mutationInfoOf(type).note
+      expect(note, type).toBeDefined()
+      expect(note, type).toContain('case-sensitive')
+      expect(note, type).toContain('@builtin_plane_front')
+      expect(note, type).toContain('?" face query')
+      expect(note, type).toContain('never silently')
+    }
+  })
+
   it('documents the center-rect corner, the transform axis pair and the revolve axis ref', () => {
     const center = mutationInfoOf('add_center_rect').note
     expect(center).toContain('half-diagonal')
@@ -317,8 +346,9 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     const carried: string[] = []
     for (const step of fillet.steps) {
       if (!('mutation' in step)) continue
-      const query = (step.mutation as { edgeQuery?: string }).edgeQuery
-      if (query !== undefined) carried.push(query)
+      const mutation = step.mutation as { edgeQuery?: string; edges?: string[] }
+      if (mutation.edgeQuery !== undefined) carried.push(mutation.edgeQuery)
+      if (mutation.edges !== undefined) carried.push(...mutation.edges)
     }
     expect(carried).toHaveLength(4)
     expect(selected!.queries).toEqual(carried)

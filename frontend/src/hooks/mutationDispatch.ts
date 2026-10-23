@@ -189,7 +189,7 @@ export const mutationHandlers: MutationHandlers = {
   add_import_step: (next, m) =>
     applyAddImportStep(next, m.featureId, m.fileId, m.label),
   add_fillet: (next, m) =>
-    applyAddFillet(next, m.featureId, m.label),
+    applyAddFillet(next, m.featureId, m.label, m.edges, m.radius),
   add_chamfer: (next, m) =>
     applyAddChamfer(next, m.featureId, m.label),
   set_fillet_field: (next, m) =>

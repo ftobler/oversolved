@@ -8,6 +8,7 @@ import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { DocHandleStore, DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
 import { docHashOf } from '@/drive/docHash'
 import { formatFeatureProblem, type FeatureProblem } from '@/drive/featureOutcome'
+import type { FeatureDelta } from '@/drive/featureDeltas'
 import type { McpDocArguments } from '@/drive/mcpServer'
 
 export type ResolvedDoc =
@@ -59,6 +60,9 @@ export interface RunReplySource {
   // The problems the solve reported (featureOutcome.featureProblems): a
   // feature can fail or warn while `ok` stays true, so this rides every reply.
   features: FeatureProblem[]
+  // Per-feature volume/bbox after the clean features; null when no checkpoints
+  // were measurable (no kernel).
+  featureDeltas?: FeatureDelta[] | null
 }
 
 /**
@@ -87,6 +91,7 @@ export function runReply(
     docHash,
     solve: result.solve,
     features,
+    ...(result.featureDeltas !== undefined && { featureDeltas: result.featureDeltas }),
     ...(summary !== undefined && { summary }),
     ...(returnDoc && finalDoc && { doc: finalDoc }),
   }

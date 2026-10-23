@@ -196,6 +196,7 @@ async function runCommand(args: Args): Promise<number> {
     docHash: result.docHash,
     solve: result.solve,
     features: result.features,
+    featureDeltas: result.featureDeltas,
   })
   return result.ok ? 0 : 1
 }

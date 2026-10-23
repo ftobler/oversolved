@@ -23,7 +23,10 @@ import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
 import { copyShape, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
 import { resolveTessellation, type TessellationPreset } from './tessellationPresets'
-import { measureBodies, type MeasureRecord } from './occ/measure'
+import { measureBodies, type Bbox6, type MeasureRecord } from './occ/measure'
+import { volumeOf } from './occ/volume'
+import { shapeBbox } from './occ/faceBounds'
+import type { OccHandle } from './occ/handleTable'
 import type { OccModule, OccShape } from './occ/occTypes'
 import type { Body, BuildState } from './types3d'
 import type { Transform3D } from '../types/cad'
@@ -572,6 +575,78 @@ export async function buildAndMeasureLocally(
   } finally {
     scope.dispose()
     table.disposeAll()
+  }
+}
+
+/** The volume and bbox a feature checkpoint's body set carried. */
+export interface FeatureMeasure {
+  id: string
+  volume: number
+  bbox: Bbox6 | null
+}
+
+function unionBbox(a: Bbox6 | null, b: Bbox6): Bbox6 {
+  if (a === null) return [...b] as Bbox6
+  return [
+    Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.min(a[2], b[2]),
+    Math.max(a[3], b[3]), Math.max(a[4], b[4]), Math.max(a[5], b[5]),
+  ]
+}
+
+// One measurement per unique shape, not per checkpoint: a checkpoint body set
+// mostly shares handles with its neighbours, so sketches and untouched bodies
+// cost nothing after the feature that minted them. Volume and bbox only: area
+// and the topology counts are not part of the per-feature delta.
+function measureFeatureCheckpoints(
+  oc: OccModule,
+  state: BuildState,
+  table: HandleTable,
+): FeatureMeasure[] {
+  const scope = new DisposeScope()
+  const cache = new Map<OccHandle, { volume: number; bbox: Bbox6 }>()
+  try {
+    const out: FeatureMeasure[] = []
+    for (const id of state.feature_order) {
+      const checkpoint = state.checkpoints[id]
+      if (!checkpoint) continue
+      let volume = 0
+      let bbox: Bbox6 | null = null
+      for (const body of Object.values(checkpoint.body_store_snapshot)) {
+        if (body.shape == null) continue
+        let measured = cache.get(body.shape)
+        if (measured === undefined) {
+          const shape = table.get<OccShape>(body.shape)
+          measured = { volume: volumeOf(oc, scope, shape), bbox: shapeBbox(oc, scope, shape) }
+          cache.set(body.shape, measured)
+        }
+        volume += measured.volume
+        bbox = unionBbox(bbox, measured.bbox)
+      }
+      out.push({ id, volume, bbox })
+    }
+    return out
+  } finally {
+    scope.dispose()
+  }
+}
+
+/**
+ * Per-feature volume and bbox of the last `solveLocally` build, or null when
+ * the kernel is absent or the response is not the current cached build. The
+ * checkpoint snapshots are still live in the persistent handle table, so this
+ * reads the geometry the solve actually built without a second build.
+ */
+export async function measureSolveFeatures(response: BuildResponse): Promise<FeatureMeasure[] | null> {
+  const state = response._build_state as BuildState | undefined
+  if (!state || !Array.isArray(state.feature_order) || lastBuildState !== state || !persistentTable) return null
+  const oc = await ensureOcc()
+  if (!oc) return null
+  try {
+    return measureFeatureCheckpoints(oc, state, persistentTable)
+  } catch {
+    // A missing handle here means the measurement cannot be trusted; an absent
+    // delta list is honest, a partial or invented one would not be.
+    return null
   }
 }
 

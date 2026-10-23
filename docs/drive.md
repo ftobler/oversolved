@@ -366,7 +366,7 @@ banner on stdout, so a client config must use the direct node invocation.
 |---|---|---|
 | `commands` | none | the command catalog, the same shape as the CLI's `commands` |
 | `mutations` | none | the mutation vocabulary grouped by family, plus ready-to-run example scripts |
-| `run` | `steps`, optional `doc` or `docHash`, `returnDoc`, `docId`, `files` | `{ ok, steps, docHash, solve, features, summary, doc? }`; chain with `docHash`, `returnDoc: true` for the document |
+| `run` | `steps`, optional `doc` or `docHash`, `returnDoc`, `docId`, `files` | `{ ok, steps, docHash, solve, features, featureDeltas, summary, doc? }`; chain with `docHash`, `returnDoc: true` for the document |
 | `measure` | `doc` or `docHash`, optional `docId`, `files` | `{ ok, docHash, bodies, volume, area, centroid, bbox, faces, edges, vertices, features }` |
 | `compare` | `doc` or `docHash`, `reference` (inline), optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
 | `export` | `doc` or `docHash`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, docHash, file, format, bytes }` |
@@ -438,6 +438,15 @@ banner on stdout, so a client config must use the direct node invocation.
   <message>` suffix, so a client that reads only the summary still sees it.
   Sketch verdicts (`fully_constrained`, `underconstrained`) are normal states
   and are not listed; an `overconstrained` sketch is.
+- `featureDeltas` answers "what did this step contribute": one row per clean
+  feature in log order with `id`, `kind`, `status`, the cumulative `volume` and
+  `bbox` after it, and `volumeDelta`/`bboxDelta` from the previous checkpoint.
+  The first body's deltas start from zero. A failed, partial or warning feature
+  has no row (its checkpoint may hold half-applied geometry), but that
+  checkpoint still sets the baseline for the next clean feature, so a later
+  delta describes the real part. The list is null when the final solve exposed
+  no measurable checkpoints (the kernel was unavailable). The checkpoint
+  measurement reads each unique OCC shape once, not once per feature.
 - `run` with `steps: []` solves the given `doc` or `docHash` once and returns
   the same fields. It is the "inspect this document" call: the solve state has
   a real `generation` and `features` is the document's problem list.
@@ -495,9 +504,16 @@ banner on stdout, so a client config must use the direct node invocation.
   `diameter`; `add_center_rect` takes the half-diagonal corner (center `[0,0]`
   with corner `[1,1]` is 2x2) and leaves a centre point entity; `revolve.axis`
   is a feature-level ref such as `@sk1/line1`, not the profile's `$sk1` form;
-  and `transform` rotates about exactly one axis, given either as
+  `transform` rotates about exactly one axis, given either as
   `rotation_axis` (a ref) or as `rotation_axis_origin` plus
-  `rotation_axis_direction`.
+  `rotation_axis_direction`; `add_fillet` takes all of `edges` and `radius` in
+  the same call; and an array's `operation: add` only fuses copies that touch,
+  so disjoint copies split into bodies named with `_1`, `_2`... suffixes.
+- Plane refs are exact. `add_sketch.plane` and `set_feature_plane.plane` accept
+  `@builtin_plane_front`, `@builtin_plane_top`, `@builtin_plane_right`, the bare
+  names `Front`/`Top`/`Right` (case-sensitive), `@<planeId>` for a plane
+  feature, or a `?` face query from `select`. An unmatched name is refused with
+  the valid list; it never falls back to the XY plane.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; unknown fields are rejected by name, so a typo never fails
@@ -532,12 +548,10 @@ previous reply; the full document never crosses the wire by default:
   "docHash":"<hash1>","selector":{"kind":"edge","where":{"parallel":[0,1,0]}}
 }}}
 // {"ok":true,"docHash":"<hash1>","queries":["?..."],"items":[...]}
-// 3. Fillet those queries on the same handle.
+// 3. Fillet those queries on the same handle: one call carries the whole pick.
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"run","arguments":{
   "docHash":"<hash1>","steps":[
-    {"mutation":{"type":"add_fillet","featureId":"fi1","label":"Fillet"}},
-    {"mutation":{"type":"add_fillet_edge","featureId":"fi1","edgeQuery":"?..."}},
-    {"mutation":{"type":"set_fillet_field","featureId":"fi1","field":"radius","value":3}}
+    {"mutation":{"type":"add_fillet","featureId":"fi1","label":"Fillet","edges":["?..."],"radius":3}}
   ]
 }}}
 // {"ok":true,"docHash":"<hash2>",...}

@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList } from './helpers'
 
 /** Append a feature, lazily initializing the features array. */
@@ -282,12 +282,16 @@ export function applyAddFillet(
   doc: PartDoc,
   featureId: string,
   label?: string,
+  edges?: string[],
+  radius?: NumberOrExpr,
 ): void {
   const feature: PartFeature = {
     id: featureId,
     kind: 'fillet',
     label: label ?? 'Fillet',
-    fillet: { edges: [], radius: 1 },
+    // The pick list is copied: the mutation payload may be journaled and replayed
+    // from the same array, and a later toggle must not edit that record.
+    fillet: { edges: [...(edges ?? [])], radius: radius ?? 1 },
   }
   pushFeature(doc, feature)
 }

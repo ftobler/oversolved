@@ -20,6 +20,7 @@
 import type { EntityKind, Mutation, PartDoc } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
+import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
 import { planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 
 export type ValueViolationCode = 'invalid-mutation' | 'unknown-target'
@@ -431,9 +432,24 @@ function moveEntity(raw: RawStep): ValueViolation | null {
   return problem === null ? null : invalid(problem)
 }
 
-function resizeCircle(raw: RawStep): ValueViolation | null {
+function resizeCircle(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const problem = positiveNumberProblem(raw.radius, 'radius')
-  return problem === null ? null : invalid(problem)
+  if (problem !== null) return invalid(problem)
+  const featureId = raw.featureId
+  const entityId = raw.entityId
+  if (ctx.doc === null || typeof featureId !== 'string' || typeof entityId !== 'string') return null
+  const sketch = sketchOf(ctx.doc, featureId)
+  if (sketch === undefined) {
+    return unknownTarget(`resize_circle names no sketch feature ${json(featureId)}`)
+  }
+  const entity = sketch.entities?.find(candidate => candidate.id === entityId)
+  if (entity === undefined) {
+    return unknownTarget(`resize_circle names no entity ${json(entityId)} in sketch ${featureId}`)
+  }
+  if (entity.kind !== 'circle') {
+    return invalid(`resize_circle target ${json(entityId)} is a ${entity.kind}, not a circle`)
+  }
+  return null
 }
 
 function addConstraint(raw: RawStep): ValueViolation | null {
@@ -594,13 +610,47 @@ function applyOffset(raw: RawStep): ValueViolation | null {
   return null
 }
 
-function setFeaturePlane(raw: RawStep): ValueViolation | null {
+// The bare builtin names resolveSketchPlane accepts. They stay case-sensitive:
+// accepting "top" would shadow a user plane whose id is exactly that, so the
+// boundary refuses an unmatched spelling with the valid names instead of
+// letting resolveSketchPlane's front-plane fallback hide the mistake.
+const BARE_PLANE_NAMES = ['Front', 'Top', 'Right'] as const
+
+function planeTargetProblem(value: string, ctx: ValueContext): string | null {
+  // A face query is resolved through the repo after the solve; its predicates
+  // cannot be checked here.
+  if (value.startsWith('?')) return null
+  const name = value.startsWith('@') ? value.slice(1) : value
+  if (Object.hasOwn(BUILTIN_PLANES, name)) return null
+  if (!value.startsWith('@') && resolveBarePlaneId(name) !== null) return null
+  // Without a document only the builtin vocabulary is knowable; a custom plane
+  // id may live in the document the caller did not pass.
+  if (ctx.doc === null) return null
+  const planeIds = (ctx.doc.features ?? [])
+    .filter(feature => feature.kind === 'plane')
+    .map(feature => String(feature.id))
+  if (planeIds.includes(name)) return null
+  const valid = [
+    ...Object.keys(BUILTIN_PLANES).map(id => `@${id}`),
+    ...BARE_PLANE_NAMES,
+    ...planeIds
+      .filter(id => !BARE_PLANE_NAMES.includes(id as typeof BARE_PLANE_NAMES[number]))
+      .filter(id => !Object.hasOwn(BUILTIN_PLANES, id))
+      .map(id => `@${id}`),
+  ]
+  return `plane ${json(value)} names no plane; use one of ${valid.join(', ')}, or a "?" face query from select `
+    + '(bare builtin names are case-sensitive)'
+}
+
+function setFeaturePlane(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const plane = raw.plane
   if (typeof plane !== 'string' || plane.trim().length === 0) {
     return invalid(`plane must be a non-empty plane reference such as "@builtin_plane_front", got ${json(plane)}`)
   }
   const problem = refValueProblem(plane, 'plane')
-  return problem === null ? null : invalid(problem)
+  if (problem !== null) return invalid(problem)
+  const targetProblem = planeTargetProblem(plane, ctx)
+  return targetProblem === null ? null : invalid(targetProblem)
 }
 
 function addPlane(raw: RawStep): ValueViolation | null {
@@ -613,14 +663,16 @@ function addPlane(raw: RawStep): ValueViolation | null {
   return problem === null ? null : invalid(problem)
 }
 
-function addSketch(raw: RawStep): ValueViolation | null {
+function addSketch(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const plane = raw.plane
   if (plane === undefined) return null
   if (typeof plane !== 'string' || plane.trim().length === 0) {
     return invalid(`plane must be a non-empty plane reference such as "@builtin_plane_front", got ${json(plane)}`)
   }
   const problem = refValueProblem(plane, 'plane')
-  return problem === null ? null : invalid(problem)
+  if (problem !== null) return invalid(problem)
+  const targetProblem = planeTargetProblem(plane, ctx)
+  return targetProblem === null ? null : invalid(targetProblem)
 }
 
 function addExtrude(raw: RawStep): ValueViolation | null {
@@ -650,6 +702,23 @@ function addImportStep(raw: RawStep): ValueViolation | null {
     return invalid(`fileId must be a non-empty files registry id, got ${json(fileId)}`)
   }
   return null
+}
+
+function addFillet(raw: RawStep): ValueViolation | null {
+  if (raw.edges !== undefined) {
+    const edgesProblem = stringListProblem(raw.edges, 'edges')
+    if (edgesProblem !== null) return invalid(edgesProblem)
+  }
+  const radius = raw.radius
+  if (radius === undefined) return null
+  if (typeof radius === 'string') {
+    if (radius.trim().length === 0) {
+      return invalid(`radius must be a positive number or a non-empty expression string, got ${json(radius)}`)
+    }
+    return null
+  }
+  const radiusProblem = positiveNumberProblem(radius, 'radius')
+  return radiusProblem === null ? null : invalid(radiusProblem)
 }
 
 function addDeleteFace(raw: RawStep): ValueViolation | null {
@@ -777,6 +846,7 @@ export const MUTATION_VALUE_RULES = {
   toggle_construction: 'none',
   set_feature_plane: setFeaturePlane,
   add_sketch: addSketch,
+  add_fillet: addFillet,
   delete_feature: 'none',
   set_feature_visibility: 'none',
   add_plane: addPlane,
@@ -799,7 +869,6 @@ export const MUTATION_VALUE_RULES = {
   add_sweep_path: queryField('pathQuery'),
   remove_sweep_path: indexField('index'),
   add_import_step: addImportStep,
-  add_fillet: 'none',
   add_chamfer: 'none',
   set_fillet_field: fieldValue,
   set_chamfer_field: fieldValue,

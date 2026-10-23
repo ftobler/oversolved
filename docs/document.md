@@ -348,6 +348,12 @@ A rotational array is its own feature kind (not a `mode` of `array`):
     include_source: true
 ```
 
+`operation: add` unions each instance into the source body only where they
+intersect. Disjoint copies stay separate bodies, taking the source id plus
+`_1`, `_2`... siblings (the `run` reply summary names the live ids). Use
+`operation: new` to keep the source as instance 0 and give every copy its own
+body.
+
 ### mirror
 
 ```yaml

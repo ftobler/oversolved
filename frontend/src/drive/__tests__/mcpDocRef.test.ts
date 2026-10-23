@@ -77,6 +77,17 @@ describe('summarizeDoc', () => {
   it('says none when the solve left no bodies', () => {
     expect(summarizeDoc(doc('sk1'), [])).toBe('features: sk1 (sketch); bodies: none')
   })
+
+  it('names every split sibling a disjoint array leaves behind', () => {
+    const arrayed = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'ca1', kind: 'circular_array' }],
+      part_style: { body_ca1: {} },
+    } as unknown as PartDoc
+    expect(summarizeDoc(arrayed, ['body_ca1', 'body_ca1_1', 'body_ca1_2', 'body_ca1_3']))
+      .toBe('features: ca1 (circular_array); bodies: body_ca1, body_ca1_1, body_ca1_2, body_ca1_3')
+  })
 })
 
 describe('runReply', () => {
@@ -107,6 +118,15 @@ describe('runReply', () => {
     const reply = runReply(source, true, documents)
     expect(reply.doc).toEqual(source.doc)
     expect(documents.get(reply.docHash as string)).toEqual(source.doc)
+  })
+
+  it('passes the per-feature deltas through when the solve measured them', () => {
+    const documents = new DocHandleStore()
+    const featureDeltas = [{
+      id: 'sk1', kind: 'sketch', status: 'fully_constrained',
+      volume: 0, bbox: null, volumeDelta: 0, bboxDelta: null,
+    }]
+    expect(runReply({ ...source, featureDeltas }, false, documents).featureDeltas).toEqual(featureDeltas)
   })
 
   it('always carries features, and the summary names them only when there are problems', () => {

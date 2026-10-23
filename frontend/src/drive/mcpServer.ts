@@ -245,7 +245,9 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'Returns per-step results, the solve state and the resulting docHash; chain calls with docHash. '
       + 'ok means the steps applied and the solve ran: a feature can fail (status exception or partial) or '
       + 'warn while ok stays true, and features lists every such feature with its id, kind, status and message '
-      + '(an empty list is a clean build). With steps: [] the given document is solved once and the same fields '
+      + '(an empty list is a clean build). featureDeltas gives volume and bbox after every clean feature with the '
+      + 'change from the previous checkpoint, so an additive step\'s contribution is visible; a failed, partial or '
+      + 'warning feature has no delta row. With steps: [] the given document is solved once and the same fields '
       + 'are returned, which is how to inspect a document. The summary lists only the bodies the final solve left live. '
       + 'The full document is not returned by default (returnDoc: false); pass returnDoc: true, or read the '
       + 'resource ' + MCP_DOC_RESOURCE_TEMPLATE + ' with that docHash, when you need the bytes. ',
@@ -611,7 +613,10 @@ export function createMcpServer(ops: McpCadOps): McpServer {
               + 'and export writes STEP or STL. The part-document JSON Schema is '
               + 'served as the resource ' + PART_DOC_SCHEMA_URI + ' and the mutation catalog as '
               + MUTATION_CATALOG_URI + '. The full document behind any reply docHash is the resource '
-              + MCP_DOC_RESOURCE_TEMPLATE + ', so run replies stay small. ' + worldFrameSentence(),
+              + MCP_DOC_RESOURCE_TEMPLATE + ', so run replies stay small. Plane names are case-sensitive: use '
+              + '@builtin_plane_front, @builtin_plane_top, @builtin_plane_right, a bare seeded name (Front, Top, '
+              + 'Right) or @<planeId>; an unmatched plane is an error naming the valid planes. '
+              + worldFrameSentence(),
           })
         case 'notifications/initialized':
           return null

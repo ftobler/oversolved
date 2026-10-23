@@ -213,6 +213,16 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     expect(fillet(doc)!.edges).toHaveLength(0)
   })
 
+  it('fillet: add carries the whole edge set and radius in one call', () => {
+    const doc = sketchDoc()
+    mutationHandlers.add_fillet(doc, {
+      type: 'add_fillet', featureId: 'FL', edges: ['@ex/edge/1', '@ex/edge/2'], radius: 0.125,
+    })
+    const feature = fillet(doc)!
+    expect(feature.edges).toEqual(['@ex/edge/1', '@ex/edge/2'])
+    expect(feature.radius).toBe(0.125)
+  })
+
   it('chamfer: add, set field, add/remove edge', () => {
     const doc = sketchDoc()
     mutationHandlers.add_chamfer(doc, { type: 'add_chamfer', featureId: 'CH' })

@@ -27,14 +27,16 @@ const BOX_STEPS: ScriptStep[] = [
   { mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Extrude', sketchQuery: '$sk1', distance: 10 } },
 ]
 
+const FILLET_EDGES = [
+  '?15,4,9,15,15,7,7;@u|e_9402afa90c6432c7@ex1@body_ex1@sk1/D_eW7NvY8Bn9T-iF@sk1/l-KpA38G8FN2rTHK@cls_xn@cls_zn:straightedge',
+  '?15,4,9,15,15,7,7;@u|e_ea1814dba5d2758f@ex1@body_ex1@sk1/GXPNVYZrzA5NG-k_@sk1/l-KpA38G8FN2rTHK@cls_xn@cls_zp:straightedge',
+  '?15,4,9,15,15,7,7;@u|e_9f9a26915a03cab5@ex1@body_ex1@sk1/4qRU4kX287mbNyVA@sk1/D_eW7NvY8Bn9T-iF@cls_xp@cls_zn:straightedge',
+  '?15,4,9,15,15,7,7;@u|e_feab0add793ad259@ex1@body_ex1@sk1/GXPNVYZrzA5NG-k_@sk1/4qRU4kX287mbNyVA@cls_xp@cls_zp:straightedge',
+]
+
 const FILLET_STEPS: ScriptStep[] = [
   ...BOX_STEPS,
-  { mutation: { type: 'add_fillet', featureId: 'fi1', label: 'Fillet' } },
-  { mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '?15,4,9,15,15,7,7;@u|e_9402afa90c6432c7@ex1@body_ex1@sk1/D_eW7NvY8Bn9T-iF@sk1/l-KpA38G8FN2rTHK@cls_xn@cls_zn:straightedge' } },
-  { mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '?15,4,9,15,15,7,7;@u|e_ea1814dba5d2758f@ex1@body_ex1@sk1/GXPNVYZrzA5NG-k_@sk1/l-KpA38G8FN2rTHK@cls_xn@cls_zp:straightedge' } },
-  { mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '?15,4,9,15,15,7,7;@u|e_9f9a26915a03cab5@ex1@body_ex1@sk1/4qRU4kX287mbNyVA@sk1/D_eW7NvY8Bn9T-iF@cls_xp@cls_zn:straightedge' } },
-  { mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery: '?15,4,9,15,15,7,7;@u|e_feab0add793ad259@ex1@body_ex1@sk1/GXPNVYZrzA5NG-k_@sk1/4qRU4kX287mbNyVA@cls_xp@cls_zp:straightedge' } },
-  { mutation: { type: 'set_fillet_field', featureId: 'fi1', field: 'radius', value: 3 } },
+  { mutation: { type: 'add_fillet', featureId: 'fi1', label: 'Fillet', edges: FILLET_EDGES, radius: 3 } },
 ]
 
 export const MUTATION_EXAMPLES: readonly MutationExample[] = [
