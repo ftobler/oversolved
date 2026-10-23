@@ -165,4 +165,23 @@ describe('loader fuzz (fixed seeds)', () => {
       if (!result.ok) expect(result.error.field).toBeTruthy()
     }
   })
+
+  // A duplicate entity id changes no count and no type, so the random
+  // replacement above would only reach it by coincidence. It is pinned here:
+  // every sketch lookup is by id, so the second entry must be refused by field.
+  it('refuses a duplicate entity id in a sketch', () => {
+    const doc = clone(VALID_PART)
+    doc.features[0]!.entities!.push({ id: 'line1', kind: 'circle' })
+    const result = loadPartDoc(doc)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.field).toBe('features[0].entities[1].id')
+    expect(result.error.message).toContain('duplicates entity id')
+  })
+
+  it('accepts distinct entity ids in the same sketch', () => {
+    const doc = clone(VALID_PART)
+    doc.features[0]!.entities!.push({ id: 'circle1', kind: 'circle' })
+    expect(loadPartDoc(doc).ok).toBe(true)
+  })
 })

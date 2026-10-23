@@ -408,6 +408,23 @@ function checkEntity(value: unknown, field: string): void {
   checkOptional(entity, 'source', field, checkString)
 }
 
+// A sketch addresses its entities by id (constraint operands, the solve result
+// keyed by entity id, delete targets), so two entries under one id make every
+// one of those lookups ambiguous. A document can only reach this state through
+// a hand edit or a broken writer: an add through the mutation path refuses a
+// supplied id the sketch already holds.
+function checkUniqueEntityIds(entities: unknown[], field: string): void {
+  const seen = new Set<string>()
+  for (let i = 0; i < entities.length; i++) {
+    const entity = entities[i]
+    if (!isRecord(entity) || typeof entity.id !== 'string') continue
+    if (seen.has(entity.id)) {
+      fail(`${field}[${i}].id`, `duplicates entity id ${JSON.stringify(entity.id)}; a sketch cannot hold two entities with the same id`)
+    }
+    seen.add(entity.id)
+  }
+}
+
 // The keys a constraint carries an operand under: the eight lowerSketch's
 // REF_KEYS resolve, plus `circle`, the `ngon` sugar's construction circle
 // (PartConstraint.circle, read by the ngon lowering and the renderer).
@@ -701,6 +718,7 @@ function checkFeature(value: unknown, field: string): void {
   if (feature.entities !== undefined) {
     const entities = checkList(feature.entities, `${field}.entities`, MAX_FEATURE_LIST)
     eachEntry(entities, `${field}.entities`, checkEntity)
+    checkUniqueEntityIds(entities, `${field}.entities`)
   }
   if (feature.constraints !== undefined) {
     const constraints = checkList(feature.constraints, `${field}.constraints`, MAX_FEATURE_LIST)

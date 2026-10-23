@@ -987,6 +987,7 @@ export default function Part() {
       editorState: getSketchState,
       idle: () => session.idle(),
       executeMutation: mutation => session.execute(mutation),
+      doc: () => session.getDoc(),
       screenshot: () => viewportRef.current?.captureScreenshotForSaving() ?? Promise.resolve(null),
       journal: { repro: () => getCommandJournal().repro() },
     })

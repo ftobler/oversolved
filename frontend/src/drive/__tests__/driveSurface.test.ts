@@ -6,7 +6,7 @@ import {
   type DriveCommandTable, type DriveEditorStateLike, type DriveSessionInspectionLike, type DriveSurfaceDeps,
 } from '../driveSurface'
 import { okResult, type Result } from '@/session/result'
-import type { Mutation } from '@/types/cad'
+import type { Mutation, PartDoc } from '@/types/cad'
 import {
   publishProbeCamera, publishProbeCanvas, replaceProbeSource, resetSceneProbeStore,
 } from '@/picking'
@@ -121,6 +121,31 @@ describe('drive surface', () => {
     expect(outcome.ok).toBe(true)
     expect(seen).toEqual([{ type: 'rename_feature', featureId: 'f1', label: 'x' }])
     expect(outcome.steps[0].createdIds).toEqual(['m1'])
+  })
+
+  it('refuses doc-aware value errors at the bridge before the executor runs', async () => {
+    const seen: Mutation[] = []
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'l1', kind: 'line' }],
+        initial: { l1: [0, 0, 10, 0] },
+      }],
+    }
+    const surface = createDriveSurface(deps({
+      doc: () => doc,
+      executeMutation: (m) => { seen.push(m); return okResult() },
+    }))
+    const duplicate = await surface.script([{
+      mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 0, 5, 5], entityId: 'l1' },
+    }])
+    expect(duplicate.steps[0]).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    const ghost = await surface.script([{ mutation: { type: 'delete', targets: ['entity:sk1:ghost'] } }])
+    expect(ghost.steps[0]).toMatchObject({ ok: false, error: { code: 'unknown-target' } })
+    expect(seen).toEqual([])
   })
 
   it('fails mutation steps when no mutation executor was wired', async () => {
