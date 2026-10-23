@@ -1269,3 +1269,115 @@ fn a_hole_circle_crossed_by_another_circle_keeps_its_pieces_as_areas() {
         .collect::<Vec<_>>();
     assert!(violations.is_empty(), "{violations:?}");
 }
+
+/// Closed rectangle as four line entities, the way the area builder sees a
+/// drawn rect: the corners are shared by consecutive edges.
+fn rect_lines(prefix: &str, x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<(String, InputEntity)> {
+    let p = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    (0..4)
+        .map(|i| (format!("{prefix}{i}"), line(p[i], p[(i + 1) % 4])))
+        .collect()
+}
+
+#[test]
+fn two_overlapping_circles_partition_their_union() {
+    // The cast-bearing report's envelope: r10 circles 8 apart. The area model
+    // must expose the two crescents and the lens as three independent areas;
+    // their union is the extrudable region. A classifier that nests either
+    // crescent in the lens builds the intersection, not the union (the
+    // frontend regression pinned in profileLoops.test.ts).
+    let geom = vec![
+        ("A".into(), circle([0.0, 0.0], 10.0)),
+        ("B".into(), circle([8.0, 0.0], 10.0)),
+    ];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 3, "two crescents plus the lens");
+    assert_eq!(t.hole_regions.len(), 0, "nothing is a bore here");
+    for s in &t.surfaces {
+        assert!(
+            s.holes.is_empty(),
+            "the areas are independent, not nested: {:?}",
+            s.face_entity_ids
+        );
+        assert_eq!(s.boundary.len(), 2, "each area is an arc pair");
+    }
+    let area: f64 = t
+        .surfaces
+        .iter()
+        .map(|s| crate::topology::oracle::loop_area_centroid(&s.boundary).0)
+        .sum();
+    let lens = 2.0 * 100.0 * (0.4f64).acos() - 4.0 * (400.0f64 - 64.0).sqrt();
+    let union = 2.0 * std::f64::consts::PI * 100.0 - lens;
+    assert!(
+        (area - union).abs() < 1e-6,
+        "the three areas cover the union: {area} vs {union}"
+    );
+}
+
+#[test]
+fn two_crossing_rectangles_partition_the_plus() {
+    // The key-cap report's crossing rectangles: the arrangement must expose the
+    // five rectangles (four arms plus the centre) as separate areas, none
+    // nested, so a whole-sketch extrude can union them into the plus.
+    let mut geom = rect_lines("h", -2.05, -0.585, 2.05, 0.585);
+    geom.extend(rect_lines("v", -0.585, -2.05, 0.585, 2.05));
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 5, "four arms plus the centre");
+    assert_eq!(t.hole_regions.len(), 0);
+    for s in &t.surfaces {
+        assert!(s.holes.is_empty(), "nothing nests: {:?}", s.face_entity_ids);
+        assert_eq!(s.boundary.len(), 4, "every region is a quad");
+    }
+    let area: f64 = t
+        .surfaces
+        .iter()
+        .map(|s| crate::topology::oracle::loop_area_centroid(&s.boundary).0)
+        .sum();
+    // 2 * (4.1 * 1.17) - 1.17 * 1.17
+    let union = 2.0 * 4.1 * 1.17 - 1.17 * 1.17;
+    assert!(
+        (area - union).abs() < 1e-9,
+        "the five areas cover the plus: {area} vs {union}"
+    );
+}
+
+#[test]
+fn a_circle_with_crossing_rects_keeps_the_five_touching_holes() {
+    // The key-cap cut's tool: a r4 circle with a plus of two crossing rects
+    // inside it. The sketch-area model publishes the four corner regions as
+    // the circle's area and the five plus regions as its HOLES; the holes share
+    // edges (each arm borders the centre). A prism built from five touching
+    // hole wires is not a sound solid (the cut failed BRepCheck_Analyzer), so
+    // classifyLoops dissolves them into one plus-shaped wire. This pins the
+    // input that dissolve consumes.
+    let mut geom = vec![("circ".into(), circle([0.0, 0.0], 4.0))];
+    geom.extend(rect_lines("h", -3.0, -1.0, 3.0, 1.0));
+    geom.extend(rect_lines("v", -1.0, -3.0, 1.0, 3.0));
+    let t = detect_topology(&geom);
+    assert_eq!(
+        t.surfaces.len(),
+        6,
+        "the circle area plus the five plus regions"
+    );
+    assert_eq!(
+        t.hole_regions.len(),
+        0,
+        "the plus regions are material areas"
+    );
+    let circle = t
+        .surfaces
+        .iter()
+        .find(|s| s.face_entity_ids == vec!["circ".to_string()])
+        .expect("the enclosing area");
+    assert_eq!(circle.holes.len(), 5, "one hole per plus region");
+    let hole_area: f64 = circle
+        .holes
+        .iter()
+        .map(|h| crate::topology::oracle::loop_area_centroid(h).0.abs())
+        .sum();
+    let plus = 2.0 * 6.0 * 2.0 - 2.0 * 2.0;
+    assert!(
+        (hole_area - plus).abs() < 1e-9,
+        "the five holes tile the plus: {hole_area} vs {plus}"
+    );
+}

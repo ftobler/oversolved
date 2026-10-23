@@ -417,7 +417,15 @@ export function canonicalizeFaceCircles(oc: OccModule, scope: DisposeScope, face
   // makeFaceFromWire, and, when nothing needed canonicalizing, a copy of the
   // entrance face rather than the entrance face itself, so the caller never has
   // to ask which branch it took.
-  return rebuilt ?? copyShape(oc, scope, face)
+  if (rebuilt !== null) return rebuilt
+  // `copyShape` hands back the generic TopoDS_Shape wrapper; the caller prisms
+  // this face and reads its normal, both of which take a TopoDS_Face and throw
+  // a raw embind type error on the shape wrapper (the crossing-rectangle add
+  // that re-prisms the merged entrance cap hit exactly that).
+  const copied = scope.track(copyShape(oc, scope, face))
+  const asFace = oc.TopoDS.Face_1(copied)
+  scope.release(copied)
+  return asFace
 }
 
 /**

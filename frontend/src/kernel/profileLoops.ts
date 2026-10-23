@@ -24,17 +24,20 @@ export function arcSamplePoints(e: LoopEdge, n: number): number[][] {
   const cx = center[0]
   const cy = center[1]
   const r = (e["radius"] as number) ?? 0.0
-  let a0 = radians((e["angle_start_deg"] as number) ?? 0.0)
-  let a1 = radians((e["angle_end_deg"] as number) ?? 0.0)
-  if (!((e["ccw"] as boolean) ?? true)) {
-    const tmp = a0
-    a0 = a1
-    a1 = tmp
-  }
-  if (a1 < a0) a1 += 2 * Math.PI
+  const a0 = radians((e["angle_start_deg"] as number) ?? 0.0)
+  const a1 = radians((e["angle_end_deg"] as number) ?? 0.0)
+  // Samples follow the stored traversal direction, like the Rust mirror: a CW
+  // side sweeps towards its end angle. Swapping the angles instead (as this once
+  // did) sampled the same arc in reverse order, so a polygon that starts at the
+  // edge's start then jumps to the end-angle side and retraces the arc; a
+  // reversed half-edge in a traced face doubled its own area (a venn crescent
+  // read as 308 instead of 155, which is what mis-nested it under the lens).
+  const sweep = (e["ccw"] as boolean) ?? true
+    ? ((a1 - a0) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI)
+    : -(((a0 - a1) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI))
   const out: number[][] = []
   for (let k = 0; k < n; k++) {
-    const a = a0 + ((a1 - a0) * (k + 1)) / (n + 1)
+    const a = a0 + (sweep * (k + 1)) / (n + 1)
     out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)])
   }
   return out
@@ -254,11 +257,11 @@ function interiorProbe(loop: LoopEdge[], arcSamples: number): number[] | null {
  * loop that encloses it, or -1 if none).
  *
  * `arcSamples` controls how finely a curved loop is polygonised for the area and
- * point-in-loop tests. The default 1 is what classifyLoops/subdivideLoops have
- * always used (and what the Rust mirror in profile_loops.rs uses); it is a
- * parameter so the profile dump can re-run the same containment at
- * CENTROID_ARC_SAMPLES and report the divergence. Changing the DEFAULT moves
- * hole nesting and therefore frozen goldens -- see F4 in the fix plan.
+ * point-in-loop tests. The default 1 is the historical coarse pass, kept as the
+ * profile dump's comparison baseline; `classifyLoops` -- the function that
+ * decides what OCC actually builds -- passes `CENTROID_ARC_SAMPLES`, because a
+ * 1-sample chord polygon is a shape neither the user nor `loopCentroid` sees.
+ * The Rust mirror in profile_loops.rs still nests areas at the coarse count.
  */
 export function loopContainment(
   loops: LoopEdge[][],
@@ -300,22 +303,171 @@ export function loopContainment(
  * strictly larger) container. A solid island inside a hole (depth 2) is its own
  * face again -- so arbitrary nesting works, not just one level. This is the
  * extrude/solid model where two concentric circles fuse into one washer solid.
+ *
+ * Containment runs at `CENTROID_ARC_SAMPLES`, the same polygon the user sees
+ * and `loopCentroid` measures. The 1-sample chord polygon is a shape neither
+ * the user nor the centroid sees: a small circle sitting near a big circle's
+ * chord lay outside it for the chord test but inside the real circle, so a
+ * real bore was lost. A venn crescent also read smaller than the lens on the
+ * old sampler and became its hole (the extrude built the lens, not the
+ * union). The coarse pass stays available through `loopContainment`'s own
+ * default for the profile dump, which reports where the two disagree.
  */
 export function classifyLoops(loops: LoopEdge[][]): [LoopEdge[], LoopEdge[][]][] {
   if (loops.length === 0) return []
   if (loops.length === 1) return [[loops[0], []]]
 
   const n = loops.length
-  const { depth, container } = loopContainment(loops)
+  const { depth, container } = loopContainment(loops, CENTROID_ARC_SAMPLES)
 
   const result: [LoopEdge[], LoopEdge[][]][] = []
   for (let oi = 0; oi < n; oi++) {
     if (depth[oi] % 2 === 1) continue  // a hole, attached to its container below
     const holes: LoopEdge[][] = []
     for (let i = 0; i < n; i++) if (depth[i] % 2 === 1 && container[i] === oi) holes.push(loops[i])
-    result.push([loops[oi], holes])
+    result.push([loops[oi], dissolveAdjacentLoops(holes)])
   }
   return result
+}
+
+/**
+ * One loop edge's matchable geometry: a direction-free `key` (the same for an
+ * edge and its reverse half-edge), its two endpoint keys, and the direction
+ * sign relative to the key. `null` for an edge with no endpoints (a full
+ * ellipse or a self-closed spline): those never border another region.
+ *
+ * The direction sign comes from the endpoint keys in stored traversal order, so
+ * two copies of one shared edge carry opposite signs whatever the seam/angle
+ * convention. Arc midpoint sampling is direction-free for the same reason: a
+ * reversed arc swaps its angles and flips `ccw`, which samples the same points.
+ */
+interface EdgeMatch {
+  key: string
+  start: string
+  end: string
+  sign: number
+}
+
+function endpointKey(e: LoopEdge, which: 'start' | 'end'): string | null {
+  const vertex = e[which + '_vertex']
+  if (typeof vertex === 'string') return 'v:' + vertex
+  const p = e[which] as number[] | undefined
+  if (!Array.isArray(p) || p.length < 2) return null
+  return `p:${p[0].toFixed(9)},${p[1].toFixed(9)}`
+}
+
+function edgeMatch(e: LoopEdge): EdgeMatch | null {
+  const start = endpointKey(e, 'start')
+  const end = endpointKey(e, 'end')
+  if (start === null || end === null || start === end) return null
+  const kind = String(e['kind'] ?? '')
+  const pair = [start, end].sort().join('|')
+  let key: string
+  if (kind === 'line') {
+    key = 'line|' + pair
+  } else if (kind === 'arc') {
+    const mid = arcSamplePoints(e, 1)[0]
+    key = `arc|${JSON.stringify(e['center'])}|${String(e['radius'])}|${mid ? pointKey(mid) : ''}`
+  } else if (kind === 'ellipse_arc') {
+    const mid = ellipseArcSamplePoints(e, 1)[0]
+    key = `ellipse_arc|${JSON.stringify(e['center'])}|${String(e['a'])}|${String(e['b'])}|` +
+      `${String(e['theta'] ?? 0)}|${mid ? pointKey(mid) : ''}`
+  } else if (kind === 'spline') {
+    const c1 = e['c1'] as number[] | undefined
+    const c2 = e['c2'] as number[] | undefined
+    const controls = c1 && c2 ? [pointKey(c1), pointKey(c2)].sort().join('|') : ''
+    key = 'spline|' + pair + '|' + controls
+  } else {
+    return null
+  }
+  return { key, start, end, sign: start < end ? 1 : -1 }
+}
+
+function pointKey(p: number[]): string {
+  return `${p[0].toFixed(9)},${p[1].toFixed(9)}`
+}
+
+/**
+ * Merge holes that share an edge into the boundary of their union.
+ *
+ * The area model publishes every region, so a plus-shaped void inside a
+ * circle reaches the face builder as FIVE hole loops that share edges. OCC
+ * gets a face whose hole wires touch along edges, and a boolean cut of its
+ * prism fails BRepCheck_Analyzer ("the kernel returned an unsound result").
+ * The void's real boundary is one plus-shaped wire, so cancel each shared
+ * edge against its reverse half-edge and chain the survivors.
+ *
+ * Conservative on purpose: every edge must be matchable, every cancellation
+ * must be an opposite pair, and the survivors must chain into closed cycles
+ * with no ambiguous (more than one onward) vertex. Anything else returns the
+ * holes untouched, so a shape this cannot prove is never silently rewritten.
+ */
+export function dissolveAdjacentLoops(loops: LoopEdge[][]): LoopEdge[][] {
+  if (loops.length < 2) return loops
+  const entries: { loop: number; edge: number; match: EdgeMatch }[] = []
+  for (let li = 0; li < loops.length; li++) {
+    for (let ei = 0; ei < loops[li].length; ei++) {
+      const match = edgeMatch(loops[li][ei])
+      if (match === null) return loops  // a self-closed edge: leave the set alone
+      entries.push({ loop: li, edge: ei, match })
+    }
+  }
+
+  // Cancel each shared edge against its reverse. A key can hold several
+  // candidates (a vertex with several borders); match the first live opposite.
+  const alive = new Array<boolean>(entries.length).fill(true)
+  const pending = new Map<string, number[]>()
+  let cancelled = false
+  for (let i = 0; i < entries.length; i++) {
+    const { key, sign } = entries[i].match
+    const candidates = pending.get(key) ?? []
+    const opposite = candidates.find((j) => alive[j] && entries[j].match.sign === -sign)
+    if (opposite !== undefined) {
+      alive[opposite] = false
+      alive[i] = false
+      cancelled = true
+      continue
+    }
+    candidates.push(i)
+    pending.set(key, candidates)
+  }
+  if (!cancelled) return loops
+
+  const survivors = entries.filter((_, i) => alive[i])
+  if (survivors.length === 0) return loops
+  // Start key -> survivor indices, for the head-to-tail walk.
+  const at = new Map<string, number[]>()
+  survivors.forEach((s, i) => {
+    const list = at.get(s.match.start) ?? []
+    list.push(i)
+    at.set(s.match.start, list)
+  })
+
+  const used = new Array<boolean>(survivors.length).fill(false)
+  const cycles: LoopEdge[][] = []
+  for (let first = 0; first < survivors.length; first++) {
+    if (used[first]) continue
+    const cycle: LoopEdge[] = []
+    let current = first
+    for (;;) {
+      if (used[current]) return loops  // revisited before closing: ambiguous walk
+      used[current] = true
+      const s = survivors[current]
+      cycle.push(loops[s.loop][s.edge])
+      const live = (at.get(s.match.end) ?? []).filter((i) => !used[i])
+      if (s.match.end === survivors[first].match.start) {
+        // The chain came back to its own start. Close only when nothing else
+        // leaves that vertex (a figure-eight pinch would need an arbitrary
+        // choice, and an arbitrary choice is not a wire this can prove).
+        if (live.length === 0) break
+        return loops
+      }
+      if (live.length !== 1) return loops  // open chain or a pinch point
+      current = live[0]
+    }
+    cycles.push(cycle)
+  }
+  return cycles
 }
 
 /**

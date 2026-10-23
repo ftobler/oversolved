@@ -271,12 +271,15 @@ export function describeProfile(loops: LoopEdge[][]): ProfileReport {
   // Containment is only a question once there are two loops to nest, and the
   // overwhelmingly common profile is a single boundary. Skipping both passes
   // there also skips two 64-sample centroid polygonisations per solve.
+  // `classifyLoops` decides the real hole assignment at CENTROID_ARC_SAMPLES,
+  // so that is the reported depth/container; the 1-sample pass is the coarse
+  // comparison that catches a nesting decision which only holds on its chords.
   const single = loops.length < 2
-  const coarse = single
+  const fine = single
     ? { depth: loops.map(() => 0), container: loops.map(() => -1) }
-    : loopContainment(loops)
-  const { depth, container } = coarse
-  const fine = single ? coarse : loopContainment(loops, CENTROID_ARC_SAMPLES)
+    : loopContainment(loops, CENTROID_ARC_SAMPLES)
+  const { depth, container } = fine
+  const coarse = single ? fine : loopContainment(loops)
 
   const groups: { outer: number; holes: number[] }[] = []
   for (let oi = 0; oi < loops.length; oi++) {
@@ -329,17 +332,20 @@ export function describeProfile(loops: LoopEdge[][]): ProfileReport {
       // Expected for any curved loop; it only matters once it changes a nesting
       // decision, which the container comparison below catches on its own.
       note(
-        `loop ${li} area ratio ${lr.areaRatio.toFixed(4)}: the 1-sample polygon containment runs on ` +
-        `a shape that is not the one rendered at ${CENTROID_ARC_SAMPLES} samples`,
+        `loop ${li} area ratio ${lr.areaRatio.toFixed(4)}: the 1-sample chord polygon is not the ` +
+        `shape rendered at ${CENTROID_ARC_SAMPLES} samples`,
         false,
       )
     }
   })
   for (let i = 0; i < loops.length; i++) {
-    if (container[i] !== fine.container[i]) {
+    if (coarse.container[i] !== container[i]) {
       note(
-        `loop ${i} nests under ${container[i]} at 1 arc sample but under ${fine.container[i]} at ` +
+        `loop ${i} nests under ${coarse.container[i]} at 1 arc sample but under ${container[i]} at ` +
         `${CENTROID_ARC_SAMPLES}: the hole assignment depends on the sampling`,
+        // The BUILDER now runs the fine pass, so this divergence is a note
+        // about the coarse reference, not a defect in the built face.
+        false,
       )
     }
   }
