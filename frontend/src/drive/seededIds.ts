@@ -8,10 +8,12 @@
 //
 // The generator is mulberry32, small and fully specified; it is not a security
 // primitive and mints nothing secret. Cross-session uniqueness comes from the
-// seed: the browser draws it from crypto per generation, the drive CLI derives
-// it from the starting document (driveSeedFor), so two runs of one script
-// agree while a chained call on the result draws a different sequence.
+// seed: the browser draws it from crypto per generation, while a drive script
+// derives one seed per step (stepSeedFor) so the ids depend on the document
+// before the step and the step itself, never on how a caller chunked the
+// script across `run` calls.
 
+import { stableJson } from '@/kernel/builderHash'
 import type { IdSource } from '@/utils/yamlMutations/helpers'
 
 export const DRIVE_ID_SEED = 0x5eed_0001
@@ -45,19 +47,41 @@ export function cryptoGenerationSeed(): number {
   return arr[0]
 }
 
-/** The seed one drive operation mints under, derived from the starting
- *  document's content hash. A chained call (docHash from the previous reply)
- *  starts from a different document and therefore draws a different sequence,
- *  while the same document with the same script derives the same seed and stays
- *  byte-identical. FNV-1a over the hex hash mixes it into the pinned drive seed;
- *  the result only has to be stable and spread, not cryptographic. */
-export function driveSeedFor(docHash: string): number {
-  let mixed = 0x811c9dc5
-  for (let i = 0; i < docHash.length; i++) {
-    mixed ^= docHash.charCodeAt(i)
+// FNV-1a over a string, mixed into the seed it is given. The result only has to
+// be stable and spread, not cryptographic.
+function mixText(text: string, seed: number): number {
+  let mixed = seed >>> 0
+  for (let i = 0; i < text.length; i++) {
+    mixed ^= text.charCodeAt(i)
     mixed = Math.imul(mixed, 0x01000193) >>> 0
   }
-  return (DRIVE_ID_SEED ^ mixed) >>> 0
+  return mixed
+}
+
+/** The seed one drive operation mints under, derived from the starting
+ *  document's content hash. It seeds the journal generation (and every entry a
+ *  legacy recording carries no step seed for); a script step mints under its
+ *  own step seed below so chunking the same script draws the same ids. */
+export function driveSeedFor(docHash: string): number {
+  return (DRIVE_ID_SEED ^ mixText(docHash, 0x811c9dc5)) >>> 0
+}
+
+// The step's own content, without the runner's control flag: whether a failure
+// continues the script changes what happens after the step, not what it mints.
+function stepContent(step: unknown): unknown {
+  if (typeof step !== 'object' || step === null || Array.isArray(step)) return step
+  const content = { ...(step as Record<string, unknown>) }
+  delete content.continueOnError
+  return content
+}
+
+/** The seed one script step mints under: the authored document immediately
+ *  before the step (its content hash) mixed with the step's own content. One
+ *  call, a 3+3 split and a 1x6 split all present the same document before the
+ *  same step, so the step mints the same ids and the chunks chain to the same
+ *  document hash. */
+export function stepSeedFor(docHash: string, step: unknown): number {
+  return mixText(stableJson(stepContent(step)), driveSeedFor(docHash))
 }
 
 /** A seeded id source. A fresh call restarts the sequence at index 0. */

@@ -26,8 +26,11 @@
 // and a chained call does not); the source is installed over the yamlMutations
 // default before the first handler runs, so handler-internal mints (add_rect,
 // add_ngon, constraint ids) become a function of the seed and the source
-// position. The repro carries the seed and each entry its start position, and
-// replay installs and seeks, so a recorded generation reproduces
+// position. A script step also names its own explicit seed (beginStep), which
+// makes its ids depend on the document before the step and the step itself
+// instead of the call's starting document; those entries carry that seed, so a
+// repro reproduces under any chunking. The repro carries the generation seed as
+// well, and each entry its start position, so both shapes replay
 // byte-identically.
 
 import type { PartDoc } from '@/types/cad'
@@ -47,9 +50,13 @@ export interface JournalEntry {
   label?: string
   docHashBefore: string
   docHashAfter: string
-  // The generation id source's position when this apply started. Replay seeks
-  // to it before applying, so handler-minted ids resume where the recording
-  // left off even when the UI minted ids between applies.
+  // The step's explicit seed when the entry came from a script step; entries of
+  // one step share it and continue its sequence. Absent for a plain editor
+  // generation, which mints under the repro's top-level seed.
+  seed?: number
+  // The id source's position when this apply started. Replay seeks to it
+  // before applying, so handler-minted ids resume where the recording left off
+  // even when the UI minted ids between applies.
   mintIndex: number
   // True when a solve was pending as this apply landed (the live doc was still
   // authored). Replay settles each step, so it may diverge at this entry; the
@@ -62,11 +69,15 @@ export interface JournalEntry {
 /** The JSON payload a repro download (or the CLI) writes: baseline + journal. */
 export interface ReproPayload {
   kind: 'oversolved-repro'
-  version: 1
+  // Version 1: every entry mints under the top-level seed, continuing one
+  // sequence. Version 2: a script-step entry also carries its own seed, which
+  // replay installs at that entry. Both are accepted.
+  version: 1 | 2
   // The hash of `doc`, so a reader can check the baseline before replaying.
   docHash: string
   doc: unknown
-  // The generation's id-source seed; replay installs it before applying.
+  // The generation's id-source seed; replay installs it before applying, and it
+  // remains the source for every entry that carries no step seed.
   seed: number
   // One line per unsettled entry, naming its index and label/mutation type, so
   // a reader knows replay is not guaranteed before running it.
@@ -106,6 +117,10 @@ export class CommandJournal {
   // The generation the ring belongs to. Null until the first generation opens.
   private generationSeed: number | null = null
   private generationSource: SeededIdSource | null = null
+  // The explicit seed of the script step currently running, or null outside a
+  // step. It makes the installed source the step's own, so an entry records it
+  // and replay can install exactly that sequence without deriving it again.
+  private stepSeed: number | null = null
   // A full ring restarts with the incoming apply; its source is installed
   // before the handlers run (onBeforeApply) but the ring only drops when the
   // apply actually records, so a no-op never destroys the held suffix.
@@ -136,7 +151,21 @@ export class CommandJournal {
     this.ring = []
     this.baselineDoc = null
     this.currentDocId = docId
+    this.stepSeed = null
     this.openGeneration(this.seedSource())
+  }
+
+  /** Begin one script step: install an id source under the step's explicit seed
+   *  before any handler runs, so the step's internal mints (add_rect, add_ngon,
+   *  constraint ids) and every apply a command dispatches share it. A plain
+   *  editor session never calls this and keeps the generation seed. */
+  beginStep(seed: number): void {
+    const normalized = seed >>> 0
+    // A generation identity is still part of the repro even when every entry
+    // carries its own step seed; keep the one the journal was created with.
+    if (this.generationSeed === null) this.generationSeed = this.seedSource()
+    this.stepSeed = normalized
+    this.installSource(normalized)
   }
 
   /** Called synchronously before a mutation set runs. Opens a generation when
@@ -145,12 +174,28 @@ export class CommandJournal {
    *  entry will start from. */
   onBeforeApply(docId: string | null): void {
     if (docId !== this.currentDocId) {
-      this.reset(docId)
+      // A document switch drops the replayable suffix. Inside a step the
+      // step's source is re-installed, because the boundary is the step, not
+      // the document.
+      this.ring = []
+      this.baselineDoc = null
+      this.currentDocId = docId
+      if (this.stepSeed !== null) {
+        if (this.generationSeed === null) this.generationSeed = this.seedSource()
+        this.installSource(this.stepSeed)
+      } else {
+        this.openGeneration(this.seedSource())
+      }
       this.pendingMintIndex = this.generationSource?.index() ?? 0
       return
     }
-    let source = this.generationSource ?? this.openGeneration(this.seedSource())
-    if (this.ring.length >= this.capacity) {
+    let source = this.generationSource ?? (this.stepSeed !== null
+      ? this.installSource(this.stepSeed)
+      : this.openGeneration(this.seedSource()))
+    // A full ring restarts with this apply. Inside a step the source already
+    // covers the handlers and the rest of the step stays on its sequence, so
+    // only a generation restarts with a fresh seed.
+    if (this.ring.length >= this.capacity && this.stepSeed === null) {
       this.preparedSource = seededIdSource(this.seedSource())
       setIdSource(this.preparedSource)
       source = this.preparedSource
@@ -174,7 +219,11 @@ export class CommandJournal {
       // entry alone, because a suffix without its baseline cannot be replayed.
       this.ring = []
       this.baselineDoc = null
-      if (this.preparedSource) {
+      if (this.stepSeed !== null) {
+        // The step's own source covers the handlers that just ran and the
+        // entries that follow continue its sequence, so the restart keeps it.
+        this.preparedSource = null
+      } else if (this.preparedSource) {
         this.generationSource = this.preparedSource
         this.generationSeed = this.preparedSource.seed
         this.preparedSource = null
@@ -191,6 +240,7 @@ export class CommandJournal {
       ...(change.label ? { label: change.label } : {}),
       docHashBefore: beforeHash,
       docHashAfter: afterHash,
+      ...(this.stepSeed !== null && { seed: this.stepSeed }),
       mintIndex,
       ...(change.unsettled && { unsettled: true as const }),
       at: this.clock(),
@@ -210,15 +260,20 @@ export class CommandJournal {
   clear(): void {
     this.ring = []
     this.baselineDoc = null
+    this.stepSeed = null
     this.openGeneration(this.seedSource())
   }
 
   // The replayable payload, or null while the journal holds nothing.
   repro(): ReproPayload | null {
     if (this.ring.length === 0 || this.baselineDoc === null || this.generationSeed === null) return null
+    // A step-seeded recording says so per entry (version 2). A browser journal,
+    // whose entries all mint under the generation seed, keeps the version-1
+    // shape so an older reader sees exactly what it always did.
+    const version: 1 | 2 = this.ring.some(entry => entry.seed !== undefined) ? 2 : 1
     return {
       kind: 'oversolved-repro',
-      version: 1,
+      version,
       docHash: docHashOf(this.baselineDoc),
       doc: snapshotJson(this.baselineDoc),
       seed: this.generationSeed,
@@ -235,14 +290,20 @@ export class CommandJournal {
       : [])
   }
 
-  private openGeneration(seed: number): SeededIdSource {
+  // Install a source under `seed` without touching the generation identity:
+  // a step changes the minting sequence, not which generation the repro names.
+  private installSource(seed: number): SeededIdSource {
     const source = seededIdSource(seed)
-    this.generationSeed = seed
     this.generationSource = source
     setIdSource(source)
     this.preparedSource = null
     this.pendingMintIndex = null
     return source
+  }
+
+  private openGeneration(seed: number): SeededIdSource {
+    this.generationSeed = seed
+    return this.installSource(seed)
   }
 }
 
@@ -257,11 +318,10 @@ export function journalSink(journal: CommandJournal): SessionJournalSink {
 }
 
 /** The drive journal for one operation (the CLI run, one MCP `run` call): the
- *  generation seed is derived from the starting document's hash, so a repeat of
- *  the same document and script mints the same ids and builds byte-identical
- *  documents, while a call chained onto the previous reply starts from a
- *  different document and draws a different sequence. The seed still travels in
- *  the repro, so replay installs the same one. */
+ *  generation seed is derived from the starting document's hash. Each script
+ *  step then names its own seed (beginStep), derived from the document before
+ *  it and the step itself, so one call and any chunking of it mint the same ids.
+ *  The generation seed still travels in the repro as the fallback source. */
 export function createDriveJournal(doc: PartDoc): CommandJournal {
   const seed = driveSeedFor(docHashOf(doc))
   return new CommandJournal(JOURNAL_CAPACITY, Date.now, () => seed)

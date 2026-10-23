@@ -21,6 +21,9 @@ import { journalSink, type CommandJournal } from '@/drive/journal'
 import { runScript, type ScriptRunOutcome, type ScriptStep } from '@/drive/scriptRunner'
 import { validateMutation } from '@/drive/mutationCatalog'
 import { readSolveOutcomes, type FeatureOutcome } from '@/drive/featureOutcome'
+import { docHashOf } from '@/drive/docHash'
+import { seededIdSource, stepSeedFor } from '@/drive/seededIds'
+import { setIdSource } from '@/utils/yamlMutations'
 
 export interface HeadlessPartOptions {
   doc: PartDoc
@@ -119,10 +122,16 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     ...(opts.journal && { journal: journalSink(opts.journal) }),
   })
 
-  // Deterministic feature ids for command-driven adds; scripts that need exact
-  // ids use explicit mutation steps instead.
-  let featureCounter = 0
-  const nextFeatureId = (kind: string): string => `${kind}_${++featureCounter}`
+  // Command-driven adds take the first free `${kind}_<n>` in the live document,
+  // not a counter that restarts with each `run` call: a script split across
+  // calls can then never mint `extrude_1` twice. Scripts that need exact ids
+  // use explicit mutation steps instead.
+  const nextFeatureId = (kind: string): { id: string; label: string } => {
+    const held = new Set((docBox.current?.features ?? []).map(f => f.id))
+    let n = 1
+    while (held.has(`${kind}_${n}`)) n++
+    return { id: `${kind}_${n}`, label: `${kind} ${n}` }
+  }
 
   const context: PartCommandContext = {
     editor: 'part',
@@ -138,12 +147,15 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     },
     toggleSketchPlaneVisibility: () => { session.execute({ type: 'toggle_sketch_plane_visibility' }) },
     togglePlaneVisibility: () => { session.execute({ type: 'toggle_plane_visibility' }) },
-    addFeature: (kind, extra) => session.execute({
-      type: `add_${kind}`,
-      featureId: nextFeatureId(kind),
-      label: `${kind} ${featureCounter}`,
-      ...extra,
-    } as Mutation),
+    addFeature: (kind, extra) => {
+      const next = nextFeatureId(kind)
+      return session.execute({
+        type: `add_${kind}`,
+        featureId: next.id,
+        label: next.label,
+        ...extra,
+      } as Mutation)
+    },
     showMessage: (payload) => {
       console.error(`[drive] ${payload.title}: ${payload.message}`)
     },
@@ -164,6 +176,14 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     return runScript(
       steps,
       step => {
+        // Seed each step from the settled document before it and the step
+        // itself, and install the source before any handler runs, so internal
+        // mints (add_rect, add_ngon, constraint ids) and every apply a command
+        // dispatches follow the step. A journal records the seed; without one
+        // the headless session still mints deterministically.
+        const seed = stepSeedFor(docHashOf(docBox.current), step)
+        if (opts.journal) opts.journal.beginStep(seed)
+        else setIdSource(seededIdSource(seed))
         if ('command' in step) return registry.execute(step.command as CommandName, step.params)
         // The script carries untyped JSON; validate before the cast so a typo
         // is a named step failure and the doc stays as it was. The live doc lets

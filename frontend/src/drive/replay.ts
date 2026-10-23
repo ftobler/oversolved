@@ -10,14 +10,17 @@
 // the recording saw. A divergence stops the replay and is reported with both
 // hashes, so a non-reproduction is a precise fact, not a silent failure.
 //
-// Replay installs the recorded generation seed for its duration (restoring the
-// previous source afterwards), because a recorded mutation may not embed every
-// id it needs: the sugar handlers (add_rect, add_ngon) mint entities and
-// constraints internally. The seed is what the recording minted under, and each
-// entry carries the source position it started from, so replay seeks there
-// before applying; ids the recording minted outside the session (UI feature
-// ids) advanced that position without being replayed, and the seek steps over
-// them.
+// Replay installs the recorded seed for its duration (restoring the previous
+// source afterwards), because a recorded mutation may not embed every id it
+// needs: the sugar handlers (add_rect, add_ngon) mint entities and constraints
+// internally. A version-1 entry mints under the repro's top-level seed; a
+// version-2 entry carries the seed its script step minted under, and replay
+// installs it at that entry without deriving it again from a document replay
+// may only reach later. Each entry also carries the source position it started
+// from, so replay seeks there before applying; ids the recording minted outside
+// the session (UI feature ids) advanced that position without being replayed,
+// and the seek steps over them. Entries of one step share a seed and continue
+// its sequence: the source is only replaced when the recorded seed changes.
 
 import type { PartDoc, Mutation } from '@/types/cad'
 import type { Result } from '@/session/result'
@@ -74,7 +77,10 @@ export async function replayJournal(
   // A payload read from disk is external input: a missing seed falls back to
   // the constant, the best a hand-written payload can do.
   const seed = typeof repro.seed === 'number' && Number.isFinite(repro.seed) ? repro.seed : DRIVE_ID_SEED
-  const source = seededIdSource(seed)
+  const fallbackSource = seededIdSource(seed)
+  // The seed the active source was installed for; null means the fallback.
+  let activeStepSeed: number | null = null
+  let source = fallbackSource
   setIdSource(source)
   try {
     const baselineHash = hashDoc()
@@ -100,6 +106,25 @@ export async function replayJournal(
             expectedHash: entry.docHashAfter,
             actualHash: null,
             error: { code: 'invalid-mint-index', message: `entry ${index} mintIndex ${String(mintIndex)} is out of range` },
+          })
+          ok = false
+          break
+        }
+        // A recorded step seed is external input too, and it addresses the same
+        // generator: a value outside the uint32 space is a lying payload.
+        const stepSeed = entry.seed
+        if (stepSeed !== undefined
+          && (typeof stepSeed !== 'number' || !Number.isInteger(stepSeed) || stepSeed < 0 || stepSeed > 0xffffffff)) {
+          steps.push({
+            index,
+            kind: entry.kind,
+            ...(entry.label !== undefined && { label: entry.label }),
+            ok: false,
+            expectedBeforeHash: entry.docHashBefore,
+            actualBeforeHash: hashDoc(),
+            expectedHash: entry.docHashAfter,
+            actualHash: null,
+            error: { code: 'invalid-seed', message: `entry ${index} seed ${String(stepSeed)} is not a uint32` },
           })
           ok = false
           break
@@ -154,7 +179,21 @@ export async function replayJournal(
           ok = false
           break
         }
-        // Resume the generation's id sequence where the recording started this
+        // Switch sources only when the recorded seed changes. A step may make
+        // several applies that share one seed and continue its sequence, so
+        // resetting the generator per entry would replay a different sequence.
+        if (stepSeed !== undefined && stepSeed !== activeStepSeed) {
+          source = seededIdSource(stepSeed)
+          activeStepSeed = stepSeed
+          setIdSource(source)
+        } else if (stepSeed === undefined && activeStepSeed !== null) {
+          // A legacy entry after a step-seeded one: resume the payload's own
+          // generation sequence, which the step entries did not consume.
+          source = fallbackSource
+          activeStepSeed = null
+          setIdSource(source)
+        }
+        // Resume the active id sequence where the recording started this
         // apply; ids minted outside the session since the last entry are not
         // replayed and the seek steps over them.
         if (mintIndex !== undefined) source.seek(mintIndex)
