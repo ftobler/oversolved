@@ -67,6 +67,7 @@ const optStr = (note?: string) => ({ type: 'string', required: false, ...(note !
 const nullableStr = () => ({ type: 'string', required: false, nullable: true } as const)
 const num = (note?: string) => ({ type: 'number', required: true, ...(note !== undefined && { note }) } as const)
 const optNum = () => ({ type: 'number', required: false } as const)
+const optObj = () => ({ type: 'object', required: false } as const)
 const bool = () => ({ type: 'boolean', required: true } as const)
 const point = (note?: string) => ({ type: 'point', required: true, ...(note !== undefined && { note }) } as const)
 const optPoint = () => ({ type: 'point', required: false } as const)
@@ -186,7 +187,31 @@ const HOLE_FIELD_NOTE =
   '$<sketchId> form; a $ ref is refused here. ' +
   'The sketch\'s points and circles are drilled: a circle at its own radius, a point at the feature `diameter`. ' +
   'A single point or circle picked alone drills only that one. ' +
+  '`style` widens the mouth: `counterbore` reads `cb_diameter` and `cb_depth`, `countersink` reads `cb_diameter` and `cs_angle` (degrees, default 90); absent means `simple`. ' +
   'An empty value clears any other field (the key is deleted), but `sketch` is stored verbatim, so send a sketch id rather than "".'
+
+// The hole payload an `add_hole` may carry, the same field names and value
+// contract a `set_hole_field` sets. Every one is optional: a bare add is still
+// a half-configured feature the editor completes, and a script can create a
+// fully configured hole in one call.
+const holeAddFields = () => {
+  const properties = (featureParamsSchema('hole')?.properties ?? {}) as Record<string, JsonSchema>
+  const thread = properties.thread
+  return {
+    ...featureAddFields(),
+    sketch: optStr('The sketch to drill, as "@<sketchId>" (or a point/circle pick).'),
+    diameter: optScalar(),
+    depth_mode: optStr('blind | through_all.'),
+    depth: optScalar(),
+    direction: optStr('normal | reverse.'),
+    target: optStr('The body to drill into; the first body when absent.'),
+    style: optStr('simple | counterbore | countersink (absent means simple).'),
+    cb_diameter: optScalar(),
+    cb_depth: optScalar(),
+    cs_angle: optScalar(),
+    thread: thread === undefined ? optObj() : shapedObj(thread, 'The cosmetic thread spec: designation, nominal and pitch.'),
+  }
+}
 
 // The transform's axis trio is the one place an author has to choose a
 // spelling; the solver composes exactly one axis for the whole feature.
@@ -643,9 +668,9 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_hole: {
-    summary: 'Add a hole feature.',
+    summary: 'Add a hole feature, optionally configured in the same call.',
     note: HOLE_FIELD_NOTE,
-    fields: featureAddFields(),
+    fields: holeAddFields(),
   },
   set_hole_field: {
     summary: 'Set one hole field, e.g. diameter or depth.',

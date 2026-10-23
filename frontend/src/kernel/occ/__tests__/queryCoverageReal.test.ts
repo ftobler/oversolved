@@ -69,6 +69,14 @@ const blindHoles = (points: Array<[number, number]>, depth = 3): Spec['features'
   { id: 'hole1', kind: 'hole', hole: { sketch: '@skh', diameter: 2, depth, target: 'body_ex1' } },
 ]
 
+const widenedHoles = (
+  points: Array<[number, number]>,
+  hole: Record<string, unknown>,
+): Spec['features'] => [
+  pointSketch('skh', points),
+  { id: 'hole1', kind: 'hole', hole: { sketch: '@skh', diameter: 2, depth: 3, target: 'body_ex1', ...hole } },
+]
+
 /** The emitted queries of one kind for a body, index-aligned with its primitives. */
 function queriesOf(body: Record<string, unknown>, kind: Kind): string[] {
   if (kind === 'face') return ((body.mesh as { face_queries?: string[] } | undefined)?.face_queries) ?? []
@@ -226,5 +234,34 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
       ...blindHoles([[5, 5]]),
     ] }
     expect(expectFullCoverage(spec, 'filleted blind hole')).toBeGreaterThan(0)
+  })
+
+  // The widened-mouth roles (step wall/floor, sink) are faces the producer
+  // mints itself, so they must resolve from the construction uuid like the
+  // bore and floor, with no index-tag fallback.
+  it('counterbored blind hole', () => {
+    const spec = { features: [
+      ...box(),
+      ...widenedHoles([[5, 5]], { style: 'counterbore', cb_diameter: 4, cb_depth: 1.5 }),
+    ] }
+    expect(expectFullCoverage(spec, 'counterbored blind hole')).toBeGreaterThan(0)
+  })
+
+  it('counterbored through hole', () => {
+    const spec = { features: [
+      ...box(),
+      ...widenedHoles([[5, 5]], {
+        style: 'counterbore', cb_diameter: 4, cb_depth: 1.5, depth_mode: 'through_all',
+      }),
+    ] }
+    expect(expectFullCoverage(spec, 'counterbored through hole')).toBeGreaterThan(0)
+  })
+
+  it('countersunk hole', () => {
+    const spec = { features: [
+      ...box(),
+      ...widenedHoles([[5, 5]], { style: 'countersink', cb_diameter: 4, cs_angle: 90 }),
+    ] }
+    expect(expectFullCoverage(spec, 'countersunk hole')).toBeGreaterThan(0)
   })
 })

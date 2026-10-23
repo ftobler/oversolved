@@ -251,7 +251,19 @@ export const mutationHandlers: MutationHandlers = {
   remove_delete_body_ref: (next, m) =>
     applyRemoveDeleteBodyRef(next, m.featureId, m.index),
   add_hole: (next, m) =>
-    applyAddHole(next, m.featureId, m.label),
+    applyAddHole(next, m.featureId, m.label, {
+      sketch: m.sketch,
+      diameter: m.diameter,
+      depth_mode: m.depth_mode,
+      depth: m.depth,
+      direction: m.direction,
+      target: m.target,
+      style: m.style,
+      cb_diameter: m.cb_diameter,
+      cb_depth: m.cb_depth,
+      cs_angle: m.cs_angle,
+      thread: m.thread,
+    }),
   set_hole_field: (next, m) =>
     applySetHoleField(next, m.featureId, m.field, m.value),
   add_transform: (next, m) =>

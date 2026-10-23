@@ -308,6 +308,40 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       }
     })
 
+    it('a through-all bore on a cup bottom face pierces the boss (candleStand)', () => {
+      // The candleStand practice report's cup: an r4 x 7 boss with a circle
+      // r2 drill site on its bottom face and depth_mode through_all. The hole
+      // once removed nothing while reporting ok; the edge-sampled span must
+      // size the cutter clean through the 7 mm boss (pi*2^2*7 removed).
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      try {
+        const repo = new Repository()
+        repo.register('_pt_sk', { origin: [0, 43, 0], x_axis: [1, 0, 0], y_axis: [0, 0, 1], normal: [0, 1, 0] })
+        repo.register('sk/c1', { external_params: [0, 0, 2], kind: 'circle', sketch_id: 'sk' })
+        const cup = makeCylinder(occ, scope, [0, 43, 0], [0, 1, 0], 4, 7)
+        const bodyStore: Record<string, Body> = {
+          body_cup: {
+            id: 'body_cup', created_by: 'exCup', modified_by: [],
+            shape: table.register(cup, 'exCup'),
+            sketch_id: 'skCup', brep_diff: null,
+            profile_queries: [],
+          },
+        }
+        const before = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_cup.shape!))
+        const result = solveHole(occ, scope, table, {
+          id: 'hoCup',
+          hole: { sketch: '@sk', diameter: 4, depth_mode: 'through_all', depth: 20, direction: 'normal', target: 'body_cup' },
+        }, repo, bodyStore, { sk: { entities: [{ id: 'c1', kind: 'circle' }] } })
+        expect(result.status).toBe('ok')
+        expect(result.hole_count).toBe(1)
+        const after = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_cup.shape!))
+        expect(after).toBeCloseTo(before - Math.PI * 2 * 2 * 7, 3)
+      } finally {
+        scope.dispose()
+      }
+    })
+
     it('through-all on an oblique datum plane fully pierces the body', () => {
       // bodySpan used to size the cutter from the max world-axis half-extent,
       // but a diagonal drill axis crosses a cube along its space diagonal: the

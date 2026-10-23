@@ -219,6 +219,8 @@ export const FEATURE_SCHEMA_BY_KIND = {
     properties: {
       sketch: REF, diameter: NUMBER_OR_EXPR, depth_mode: { enum: ['blind', 'through_all'] },
       depth: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse'] }, target: REF,
+      style: { enum: ['simple', 'counterbore', 'countersink'] },
+      cb_diameter: NUMBER_OR_EXPR, cb_depth: NUMBER_OR_EXPR, cs_angle: NUMBER_OR_EXPR,
       thread: {
         type: 'object',
         required: ['designation', 'nominal', 'pitch'],

@@ -614,6 +614,10 @@ function checkHole(sub: DocRecord, field: string): void {
   checkOptional(sub, 'depth', field, checkExpr)
   checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, ['normal', 'reverse']))
   checkOptional(sub, 'target', field, checkRef)
+  checkOptional(sub, 'style', field, (v, f) => checkEnum(v, f, ['simple', 'counterbore', 'countersink']))
+  checkOptional(sub, 'cb_diameter', field, checkExpr)
+  checkOptional(sub, 'cb_depth', field, checkExpr)
+  checkOptional(sub, 'cs_angle', field, checkExpr)
   checkOptional(sub, 'thread', field, checkThread)
 }
 

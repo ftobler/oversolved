@@ -589,12 +589,22 @@ export function applyRemoveDeleteBodyRef(doc: PartDoc, featureId: string, index:
   bodies.splice(index, 1)
 }
 
-export function applyAddHole(doc: PartDoc, featureId: string, label?: string): void {
+/** Add a hole, optionally already configured. Only defined fields override the
+ *  editor's defaults, so a bare add keeps the stored document it always had and
+ *  a one-call add can carry the whole spec. */
+export function applyAddHole(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  fields: Partial<HoleFeatureDef> = {},
+): void {
+  const hole: HoleFeatureDef = { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' }
+  Object.assign(hole, Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)))
   pushFeature(doc, {
     id: featureId,
     kind: 'hole',
     label: label ?? 'Hole',
-    hole: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' },
+    hole,
   })
 }
 

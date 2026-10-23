@@ -70,6 +70,7 @@ One directory per case: `frontend/oracle/<NN-name>/`.
 | 41-move-face-cylinder-wall | 1 | 1539.38040 | 747.699052 | faces 3, edges 3 | - | ok |
 | 42-move-face-bore | 1 | 15717.2567 | 4931.94689 | faces 7, edges 15 | - | ok |
 | 43-annulus | 1 | 2638.93783 | 5409.82255 | faces 4, edges 6 | - | ok |
+| 44-hole-counterbore | 1 | 3612.11513 | 2070.79645 | - | ok | ok |
 
 ## Cases
 
@@ -847,3 +848,32 @@ STEP round trip:
   - centroid [0.00000000, 0.00000000, 20.0000000] -> [2.32634857e-13, -2.82631061e-15, 20.0000000] (max dev 2.33e-13)
   - bbox [-11.0000000, -11.0000000, 0.00000000, 11.0000000, 11.0000000, 40.0000000] -> [-11.0000000, -11.0000000, 0.00000000, 11.0000000, 11.0000000, 40.0000000] (max dev 0)
   - counts faces 4, edges 6 -> faces 4, edges 6
+### 44-hole-counterbore
+
+`V = 24*24*8 - pi*5^2*8 - pi*(8^2-5^2)*3; the counterbore wall, step annulus and deeper bore wall replace the two mouth discs: A = box + 48pi; centroid z = (box moment - bore moment - step moment)/V`
+
+Live build (expected -> measured):
+  - volume 3612.11513 -> 3612.11513 (rel dev 2.52e-16)
+  - area 2070.79645 -> 2070.79645 (rel dev 0)
+  - centroid [12.0000000, 12.0000000, 4.25439827] -> [12.0000000, 12.0000000, 4.25439827] (max dev 1.78e-15)
+  - bbox [0.00000000, 0.00000000, 0.00000000, 24.0000000, 24.0000000, 8.00000000] -> [0.00000000, 0.00000000, 0.00000000, 24.0000000, 24.0000000, 8.00000000] (max dev 0)
+
+STEP round trip:
+  - volume 3612.11513 -> 3612.11513 (rel dev 8.31e-15)
+  - area 2070.79645 -> 2070.79645 (rel dev -9.88e-15)
+  - centroid [12.0000000, 12.0000000, 4.25439827] -> [12.0000000, 12.0000000, 4.25439827] (max dev 4.26e-14)
+  - bbox [0.00000000, 0.00000000, 0.00000000, 24.0000000, 24.0000000, 8.00000000] -> [0.00000000, 0.00000000, 0.00000000, 24.0000000, 24.0000000, 8.00000000] (max dev 0)
+
+Edit: `edit ex1.distance 8 -> 10 (the plate gets thicker under the same counterbore)` (ex1.distance = 10).
+`the through bore follows the new span (10), the 3 deep step does not: V = 24*24*10 - pi*5^2*10 - pi*(8^2-5^2)*3; A = box + 68pi; the hole names re-resolve after the rebuild`
+
+  - volume 4607.03550 -> 4607.03550 (rel dev 1.97e-16)
+  - area 2325.62830 -> 2325.62830 (rel dev -1.96e-16)
+  - centroid [12.0000000, 12.0000000, 5.27924295] -> [12.0000000, 12.0000000, 5.27924295] (max dev 5.33e-15)
+  - bbox [0.00000000, 0.00000000, 0.00000000, 24.0000000, 24.0000000, 10.0000000] -> [0.00000000, 0.00000000, 0.00000000, 24.0000000, 24.0000000, 10.0000000] (max dev 1.78e-15)
+
+Edit STEP round trip:
+  - volume 4607.03550 -> 4607.03550 (rel dev 7.30e-15)
+  - area 2325.62830 -> 2325.62830 (rel dev -1.08e-14)
+  - centroid [12.0000000, 12.0000000, 5.27924295] -> [12.0000000, 12.0000000, 5.27924295] (max dev 3.55e-14)
+  - bbox [0.00000000, 0.00000000, 0.00000000, 24.0000000, 24.0000000, 10.0000000] -> [0.00000000, 0.00000000, 0.00000000, 24.0000000, 24.0000000, 10.0000000] (max dev 1.78e-15)
