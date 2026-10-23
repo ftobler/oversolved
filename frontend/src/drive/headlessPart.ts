@@ -160,8 +160,10 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
       step => {
         if ('command' in step) return registry.execute(step.command as CommandName, step.params)
         // The script carries untyped JSON; validate before the cast so a typo
-        // is a named step failure and the doc stays as it was.
-        const validated = validateMutation(step.mutation)
+        // is a named step failure and the doc stays as it was. The live doc lets
+        // the value rules refuse a duplicate id or a delete target that names
+        // nothing instead of reporting an ok that changed nothing.
+        const validated = validateMutation(step.mutation, { doc: docBox.current })
         if (!validated.ok) return { ok: false, code: validated.error.code, message: validated.error.message }
         return session.execute(validated.mutation)
       },

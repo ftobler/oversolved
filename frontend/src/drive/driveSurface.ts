@@ -5,7 +5,7 @@
 // never thrown across the bridge. The page supplies the live getters, so this
 // module imports no UI store and stays testable headlessly.
 
-import type { Mutation } from '@/types/cad'
+import type { Mutation, PartDoc } from '@/types/cad'
 import type { CommandResult } from '@/utils/core/commandSpec'
 import type { Result } from '@/session/result'
 import {
@@ -137,6 +137,9 @@ export interface DriveSurfaceDeps {
   // The mutation path a script's mutation steps take. Absent means mutation
   // steps fail as bridge errors rather than throwing.
   executeMutation?: (mutation: Mutation) => Result | null
+  // The live document, so the boundary's doc-aware value rules (a delete target
+  // that names nothing, a duplicate entity id) can run in the browser too.
+  doc?: () => PartDoc | null
   screenshot?: () => Promise<string | null>
   journal?: DriveJournalDeps
 }
@@ -248,7 +251,7 @@ export function createDriveSurface(deps: DriveSurfaceDeps): DriveSurface {
   const executeMutation = (raw: unknown): DriveExecuteResult => {
     // Both external surfaces validate at the same boundary, so the bridge and
     // the headless runner refuse an untyped mutation identically.
-    const validated = validateMutation(raw)
+    const validated = validateMutation(raw, { doc: deps.doc?.() ?? null })
     if (!validated.ok) {
       return { ok: false, code: validated.error.code, message: validated.error.message }
     }

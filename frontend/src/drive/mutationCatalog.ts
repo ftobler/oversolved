@@ -7,10 +7,10 @@
 //
 // The table also guards the drive boundary: an untyped JSON step is validated
 // here before it is cast to Mutation, so a typo or a missing field is a named
-// step failure instead of a silent no-op. Only presence and JSON type are
-// checked; the appliers still own meaning.
+// step failure instead of a silent no-op. Presence, JSON type and the value a
+// field may hold are checked; the appliers still own the geometry meaning.
 
-import type { FeatureKind, Mutation } from '@/types/cad'
+import type { FeatureKind, Mutation, PartDoc } from '@/types/cad'
 import {
   featureFieldNames,
   featureParamsSchema,
@@ -18,6 +18,7 @@ import {
   type JsonSchema,
 } from '@/persistence/partDocSchema'
 import { entityParamLayoutsSentence } from '@/registry/entityRegistry'
+import { mutationValueViolation } from '@/drive/mutationValues'
 
 export type FieldType =
   | 'string'
@@ -150,6 +151,23 @@ export function setterFieldNames(type: Mutation['type']): readonly string[] | nu
   if (!Object.hasOwn(FIELD_SETTER_KIND, type)) return null
   return featureFieldNames(FIELD_SETTER_KIND[type as FieldSetterType])
 }
+
+/** The schema definition of one field a setter may name, so the value check
+ *  reads the same contract the saved document is held to. Null when the type is
+ *  not a setter or the name is not in the kind's schema. */
+export function setterFieldSchema(type: Mutation['type'], field: string): JsonSchema | null {
+  if (!Object.hasOwn(FIELD_SETTER_KIND, type)) return null
+  const kind = FIELD_SETTER_KIND[type as FieldSetterType]
+  const params = kind === 'plane' ? planeDefinitionSchema() : featureParamsSchema(kind)
+  if (params === null) return null
+  const properties = params.properties as Record<string, JsonSchema> | undefined
+  return properties?.[field] ?? null
+}
+
+// The value-rule table is part of the boundary's contract, so it is published
+// next to the catalog: a test (and a future docs page) reads one name for it.
+export { MUTATION_VALUE_RULES } from '@/drive/mutationValues'
+export type { ValueRule, ValueViolation, ValueViolationCode } from '@/drive/mutationValues'
 
 const HOLE_FIELD_NOTE =
   `Canonical hole fields: ${featureFieldNames('hole').join(', ')}. ` +
@@ -813,7 +831,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   remove_dangling_content: 'document',
 }
 
-export type MutationValidationErrorCode = 'unknown-mutation' | 'invalid-mutation' | 'internal-mutation'
+export type MutationValidationErrorCode = 'unknown-mutation' | 'invalid-mutation' | 'internal-mutation' | 'unknown-target'
 
 export type MutationValidation =
   | { ok: true; mutation: Mutation }
@@ -824,6 +842,10 @@ export interface MutationValidationOptions {
   // plumbing (insertAt, drag snapshots, hidden gesture types) is legitimate
   // there. External scripts keep the strict default.
   allowInternal?: boolean
+  // The document the step will be applied to. Supplying it lets the value rules
+  // also refuse a target that names nothing and a duplicate entity id; without
+  // it only the value's shape is checked.
+  doc?: PartDoc | null
 }
 
 function fail(code: MutationValidationErrorCode, message: string): MutationValidation {
@@ -971,6 +993,14 @@ export function validateMutation(raw: unknown, options: MutationValidationOption
         `mutation type "${type}" has no field "${raw.field}"; valid fields: ${setterFields.join(', ')}.${note}`,
       )
     }
+    // Value rules run on the same external path: the field names and JSON types
+    // are right, but the value may still be one the field (or the document)
+    // cannot hold. A row is 'none' where the applier owns every value it admits.
+    const violation = mutationValueViolation(type as Mutation['type'], raw, {
+      doc: options.doc ?? null,
+      fieldSchema: setterFieldSchema,
+    })
+    if (violation !== null) return fail(violation.code, violation.message)
   }
   return { ok: true, mutation: raw as Mutation }
 }

@@ -5,10 +5,29 @@
 // or an internal type is a named step failure instead of a silent success.
 
 import { describe, it, expect } from 'vitest'
-import { MUTATION_CATALOG, setterFieldNames, validateMutation } from '../mutationCatalog'
+import { MUTATION_CATALOG, setterFieldNames, setterFieldSchema, validateMutation } from '../mutationCatalog'
 import type { Mutation } from '@/types/cad'
 import { seedBuiltins } from '../headlessOps'
 import { runHeadless } from '../headlessOps'
+
+// A value the named field's schema accepts, so the field-name test is not also
+// (accidentally) asserting that every field takes a number.
+function validValueFor(type: Mutation['type'], field: string): unknown {
+  const schema = setterFieldSchema(type, field)
+  if (schema === null) return 1
+  if (Array.isArray(schema.enum)) return (schema.enum as unknown[])[0]
+  if (Array.isArray(schema.anyOf)) {
+    const types = (schema.anyOf as Array<{ type?: string }>).map(branch => branch.type)
+    if (types.includes('array')) return ['@sk1']
+    if (types.includes('boolean')) return true
+    return 1
+  }
+  if (schema.type === 'boolean') return true
+  if (schema.type === 'array') return ['@sk1']
+  if (schema.type === 'object') return {}
+  if (schema.type === 'number' || schema.type === 'integer') return 1
+  return '@sk1'
+}
 
 function seededDoc() {
   return seedBuiltins({ version: 1, kind: 'part', features: [] })
@@ -189,7 +208,7 @@ describe('set_*_field field names', () => {
 
   it('accepts one hand-named field per setter kind', () => {
     for (const [type, field] of Object.entries(KNOWN_FIELD)) {
-      expect(validateMutation({ type, featureId: 'f1', field, value: 1 }), `${type} ${field}`)
+      expect(validateMutation({ type, featureId: 'f1', field, value: validValueFor(type as Mutation['type'], field) }), `${type} ${field}`)
         .toMatchObject({ ok: true })
     }
   })
