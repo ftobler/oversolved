@@ -565,9 +565,10 @@ banner on stdout, so a client config must use the direct node invocation.
   `{mode:"offset", plane:"@builtin_plane_top", offset:43}`).
   Guidance that a field list cannot carry lives in the row note: `hole` lists
   its required fields (`sketch`, `diameter`, `depth_mode`) and its optional ones
-  (`depth`, `direction`, `target`, `thread`), with `depth` required only for a
-  blind hole because a `through_all` hole is sized by the target body and
-  stores no depth. `hole.sketch` is spelled `@<sketchId>` (or a narrower
+  (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,
+  `cs_angle`), with `depth` required only for a blind hole because a
+  `through_all` hole is sized by the target body and stores no depth; all are
+  optional in an `add_hole` payload. `hole.sketch` is spelled `@<sketchId>` (or a narrower
   viewport pick), not the profile consumers' `$<sketchId>` form, and a circle
   drills at its own radius while a point uses the feature `diameter`;
   `add_center_rect` takes the half-diagonal corner (center `[0,0]` with corner
@@ -590,8 +591,9 @@ banner on stdout, so a client config must use the direct node invocation.
   `@builtin_plane_front`, `@builtin_plane_top`, `@builtin_plane_right`, the bare
   names `Front`/`Top`/`Right` (case-sensitive), `@<planeId>` for a plane
   feature, or a `?` face query from `select` (the stored `?...:flatface`
-  string), so a face pick can place the sketch in one step. An unmatched name
-  is refused with the valid list; it never falls back to the XY plane.
+  string), so a face pick can place the sketch in one step. An unmatched NAME
+  is refused with the valid list; a name never falls back to the XY plane. A
+  face query is resolved after the solve.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; unknown fields are rejected by name, so a typo never fails

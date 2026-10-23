@@ -184,7 +184,8 @@ const HOLE_FIELD_NOTE =
   'The required fields are sketch, diameter, depth_mode; depth is required only for a blind hole. ' +
   'A through_all hole sizes itself from the target body and stores no depth, so omit it. ' +
   'A blind add with no depth keeps the editor default of 20. ' +
-  'The optional fields are direction, target, thread. ' +
+  'The optional fields are direction, target, thread, style, cb_diameter, cb_depth, cs_angle; ' +
+  'they are all optional in an `add_hole` payload. ' +
   '`depth_mode` is blind or through_all. `sketch` is a feature-level ref, so spell it ' +
   '@<sketchId> (or a narrower entity:/vertex:/? pick from the viewport), not the profile consumers\' ' +
   '$<sketchId> form; a $ ref is refused here. ' +
@@ -240,8 +241,8 @@ const REVOLVE_AXIS_NOTE =
 const PLANE_REF_NOTE =
   '`plane` is "@builtin_plane_front", "@builtin_plane_top", "@builtin_plane_right", ' +
   'a bare builtin name (Front, Top, Right; case-sensitive), "@<planeId>" for a plane feature, ' +
-  'or a "?" face query from `select`. An unmatched name is refused with the valid names; ' +
-  'it never silently falls back to the XY plane.'
+  'or a "?" face query from `select`. An unmatched NAME is refused with the valid names; ' +
+  'a name never silently falls back to the XY plane. A face query is resolved after the solve.'
 
 // The array's "add" is a union only where the copies touch. Disjoint instances
 // stay separate B-reps and therefore separate bodies, with the source id plus
