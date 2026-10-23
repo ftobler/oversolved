@@ -24,7 +24,9 @@ never downloads the OCP wheel. Locally `just install` installs
 ```
 
 The script must name its finished workplane or shape `result` (or `model` /
-`part`). Then run the reference runner:
+`part`). The runner injects `cadquery`/`cq`/`Workplane` and a no-op
+`show_object`, so the editor hook every corpus example ends with runs without a
+viewer and the source is executed unmodified. Then run the reference runner:
 
 ```bash
 .venv/bin/python frontend/scripts/cadqueryReference.py \
@@ -86,6 +88,15 @@ geometry with no constraints: the translation is a direct model, not a
 dimensioned design.
 
 ## 3. Compare and iterate
+
+The runner emits CadQuery's own frame (XY plane, extrusion along +Z), and
+`compare` does not rotate a reference: it measures the recipe in Oversolved's
+Y-up world and compares the numbers unchanged. Map the source frame before
+comparing. CadQuery's XY extrusion along +Z is Oversolved's Front plane, and a
+box centred on CadQuery's origin needs a symmetric or re-origined extrusion so
+its bbox and centroid land where the recipe does. A centroid or bbox row that
+fails while volume and area pass is the expected sign of a frame mismatch; the
+row says so, and it is not a geometry difference.
 
 Measure the recipe against the reference over MCP:
 

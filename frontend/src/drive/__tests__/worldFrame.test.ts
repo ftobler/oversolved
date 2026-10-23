@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { BUILTIN_PLANES } from '@/kernel/solverConstants'
-import { worldFrameSentence } from '../worldFrame'
+import { REFERENCE_FRAME_SENTENCE, worldFrameSentence } from '../worldFrame'
 
 function labelOf(id: string): string {
   return id.replace(/^builtin_plane_/, '').split('_')
@@ -26,5 +26,14 @@ describe('worldFrameSentence', () => {
     const sentence = worldFrameSentence()
     expect(sentence).toContain('Top: normal +Y, sketch x->+X, y->-Z.')
     expect(sentence).toContain('An extrude goes along the plane normal.')
+  })
+})
+
+describe('REFERENCE_FRAME_SENTENCE', () => {
+  it('names the source frame the author must map', () => {
+    expect(REFERENCE_FRAME_SENTENCE).toContain('Y-up')
+    expect(REFERENCE_FRAME_SENTENCE).toContain('CadQuery XY extrusion along +Z maps to Front')
+    expect(REFERENCE_FRAME_SENTENCE).toContain('symmetric or re-origined')
+    expect(REFERENCE_FRAME_SENTENCE).toContain('centroid or bbox mismatch')
   })
 })

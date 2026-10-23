@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest'
 import Ajv from 'ajv'
 import { createMcpServer, MCP_TOOLS, type McpCadOps, type McpToolPayload } from '../mcpServer'
 import { MUTATION_CATALOG_URI } from '../mutationCatalogPayload'
-import { worldFrameSentence } from '../worldFrame'
+import { REFERENCE_FRAME_SENTENCE, worldFrameSentence } from '../worldFrame'
 
 type FakeOps = {
   calls: Array<{ tool: string; args: unknown }>
@@ -99,6 +99,10 @@ describe('createMcpServer', () => {
     expect(call({ kind: 'face', where: { extreme: { axis: 'y', side: 'max' } } })).toBe(true)
     expect(call({ kind: 'face', where: { extreme: { axis: [0, 1, 0], side: 'max' } } })).toBe(true)
     expect(call({ kind: 'face', where: { extreme: { axis: 'up', side: 'max' } } })).toBe(false)
+    // The schema leaves the one-key rule to validateSelector, which names
+    // `and`; capping maxProperties here made the client report only "at most
+    // 1 entry" and hid that guidance.
+    expect(call({ kind: 'edge', where: { parallel: [0, 0, 1], type: 'line' } })).toBe(true)
     // The `type` description lists the real vocabulary, derived from the same
     // tables the engine reads, so `plane` is not advertised as an alias.
     const schemaText = JSON.stringify(tool!.inputSchema)
@@ -275,6 +279,16 @@ describe('createMcpServer', () => {
       arguments: { doc: {}, selector: { kind: 'vertex' } },
     }), -32602)
 
+    // Two side-by-side predicate keys reach validateSelector (the schema does
+    // not cap the object), so the error can name `and` and show the wrap.
+    const twoKeys = await request(server, 26, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'face', where: { type: 'flatface', extreme: { axis: 'y', side: 'max' } } } },
+    })
+    expectError(twoKeys, -32602)
+    expect((twoKeys as { error: { message: string } }).error.message).toContain('wrap several keys in "and"')
+    expect((twoKeys as { error: { message: string } }).error.message).toContain('{"and":[{"type":"line"}')
+
     // A wrong type name is invalid params with the vocabulary and a hint, not a
     // tool call that runs and matches nothing.
     const wrongType = await request(server, 24, 'tools/call', {
@@ -331,6 +345,7 @@ describe('createMcpServer', () => {
     expect(reference.description).toContain('not nested under "measures"')
     expect(reference.description).toContain('area, centroid and bbox are required')
     expect(reference.description).toContain('cadqueryReference.py')
+    expect(compare!.description).toContain(REFERENCE_FRAME_SENTENCE)
 
     const select = MCP_TOOLS.find(t => t.name === 'select')
     expect(select!.description).toContain(worldFrameSentence())

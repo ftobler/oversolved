@@ -54,6 +54,9 @@ export interface MeasureRow {
   within: boolean
   // false: reported, not failed (topology in report mode).
   enforced: boolean
+  // On a failing centroid or bbox row whose shape measures all passed, the
+  // likely cause is the reference's frame rather than its geometry.
+  hint?: string
 }
 
 export interface CompareOptions {
@@ -148,6 +151,20 @@ export function compareMeasures(
   }
   if (theirs.edges !== undefined) {
     rows.push(exactRow('edges', ours.edges, theirs.edges, topology === 'strict'))
+  }
+  // A rotation leaves volume and area alone but moves centroid and bbox. When
+  // exactly the positional rows fail, name that likely cause instead of letting
+  // a frame mismatch read as a geometry error.
+  const shapeRows = rows.filter((row) => row.measure === 'bodies' || row.measure === 'volume' || row.measure === 'area')
+  const shapeAgrees = shapeRows.some((row) => row.measure === 'volume' || row.measure === 'area')
+    && shapeRows.every((row) => row.within)
+  if (shapeAgrees) {
+    for (const row of rows) {
+      if ((row.measure === 'centroid' || row.measure === 'bbox') && !row.within && row.ours !== null) {
+        row.hint = 'volume and area agree, so the likely difference is the frame: Oversolved is Y-up; '
+          + 'a CadQuery XY extrusion +Z maps to Front, and a centred box needs a symmetric or re-origined extrusion.'
+      }
+    }
   }
   return { pass: rows.every((row) => !row.enforced || row.within), rows }
 }

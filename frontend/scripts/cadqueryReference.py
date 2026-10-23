@@ -15,7 +15,9 @@ The emitted reference uses the translation corpus format:
 
 `bbox` is six exact numbers from `Shape.BoundingBox()`, the same AddOptimal box
 `frontend/src/kernel/occ/measure.ts` reads. A script must assign its finished
-workplane or shape to `result` (or `model` / `part`).
+workplane or shape to `result` (or `model` / `part`). The execution namespace
+also carries a no-op `show_object`, so the editor hook every corpus example ends
+with runs without a viewer.
 
 CadQuery is an optional extra (`pip install -e ".[dev,cadquery]"`), imported
 only inside `main` so mypy, ruff and the gates run without the OCP wheel. The
@@ -47,6 +49,14 @@ RESULT_NAMES = ("result", "model", "part")
 def shape_of(target: Any) -> Any:
     """The Shape behind a Workplane, or the Shape itself."""
     return target.val() if hasattr(target, "val") else target
+
+
+def show_object(*_args: Any, **_kwargs: Any) -> None:
+    """No-op stand-in for the CadQuery editor's display hook.
+
+    Every corpus example ends with `show_object(result)`. Running the source as
+    written must not need a GUI, so the execution namespace provides this.
+    """
 
 
 def measure(target: Any) -> dict[str, Any]:
@@ -84,7 +94,11 @@ def build_reference(
 
 def execute_source(path: pathlib.Path, namespace: dict[str, Any] | None = None) -> Any:
     """Execute a CadQuery script and return the object it names as its result."""
-    scope: dict[str, Any] = {"__name__": "__cadquery_reference__", "__file__": str(path)}
+    scope: dict[str, Any] = {
+        "__name__": "__cadquery_reference__",
+        "__file__": str(path),
+        "show_object": show_object,
+    }
     if namespace:
         scope.update(namespace)
     exec(compile(path.read_text(), str(path), "exec"), scope)

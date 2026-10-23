@@ -108,6 +108,12 @@ const edgeQuery = () => query('An edge query as returned by `select`.')
 const faceQuery = () => query('A face query as returned by `select`.')
 const bodyQuery = () => query('A body id such as body_ex1, or a stored body query.')
 
+// A sketch plane resolves through the query repository, so a face query from
+// `select` is accepted beside the plane feature ref and the bare name.
+const PLANE_QUERY_NOTE =
+  '@<planeId>, a bare plane name (Top, Front, Right), or a face query from `select` '
+  + '(the stored ?...:flatface string): a face query places the sketch on that face.'
+
 // The params slot order per entity kind, generated from the entity registry so
 // a new kind or a moved slot cannot leave the catalog stale.
 const ENTITY_PARAMS_NOTE =
@@ -174,7 +180,10 @@ export type { ValueRule, ValueViolation, ValueViolationCode } from '@/drive/muta
 
 const HOLE_FIELD_NOTE =
   `Canonical hole fields: ${featureFieldNames('hole').join(', ')}. ` +
-  '`sketch` is required: a hole drills nothing until it names a sketch. ' +
+  'The required fields are sketch, diameter, depth_mode, depth; the optional ones are direction, target, thread. ' +
+  '`depth_mode` is blind or through_all. `sketch` is a feature-level ref, so spell it ' +
+  '@<sketchId> (or a narrower entity:/vertex:/? pick from the viewport), not the profile consumers\' ' +
+  '$<sketchId> form; a $ ref is refused here. ' +
   'The sketch\'s points and circles are drilled: a circle at its own radius, a point at the feature `diameter`. ' +
   'A single point or circle picked alone drills only that one. ' +
   'An empty value clears any other field (the key is deleted), but `sketch` is stored verbatim, so send a sketch id rather than "".'
@@ -395,7 +404,7 @@ export const MUTATION_CATALOG = {
   set_feature_plane: {
     summary: 'Move a sketch to another plane.',
     note: PLANE_REF_NOTE,
-    fields: { featureId: str(), plane: query('@<planeId> or a bare plane name.') },
+    fields: { featureId: str(), plane: query(PLANE_QUERY_NOTE) },
   },
   add_sketch: {
     summary: 'Add a sketch feature, optionally on a plane.',
@@ -403,7 +412,7 @@ export const MUTATION_CATALOG = {
     fields: {
       featureId: str(),
       label: optStr(),
-      plane: optQuery('@<planeId> or a bare plane name.'),
+      plane: optQuery(PLANE_QUERY_NOTE),
       insertAt: insertAt(),
     },
   },

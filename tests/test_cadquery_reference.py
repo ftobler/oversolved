@@ -78,6 +78,23 @@ def test_main_writes_a_reference_for_the_script_result(tmp_path: pathlib.Path) -
     assert reference["bbox"] == pytest.approx([0, 0, 0, 4, 5, 6])
 
 
+def test_show_object_hook_runs_the_source_unmodified(tmp_path: pathlib.Path) -> None:
+    # The corpus examples end with the editor's show_object(result) line. The
+    # runner must accept the source byte for byte, with no viewer present.
+    source = tmp_path / "source.py"
+    out = tmp_path / "reference.json"
+    source.write_text(
+        "result = cq.Workplane('XY').box(2, 3, 4, centered=False)\n"
+        "show_object(result, name='box')\n"
+    )
+
+    assert cadqueryReference.execute_source(
+        source, {"cq": cq, "cadquery": cq, "Workplane": cq.Workplane}
+    ) is not None
+    assert cadqueryReference.main([str(source), "--out", str(out)]) == 0
+    assert read_reference(out)["volume"] == pytest.approx(24)
+
+
 def test_tolerance_and_topology_overrides_reach_the_reference(tmp_path: pathlib.Path) -> None:
     source = tmp_path / "source.py"
     out = tmp_path / "reference.json"
