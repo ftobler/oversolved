@@ -43,6 +43,10 @@ def test_build_reference_measures_a_shape_with_an_ordered_bbox() -> None:
     assert reference["topology"] == "report"
     assert reference["bodies"] == 1
     assert reference["volume"] == pytest.approx(192)
+    # `compare` requires area, so the one runner that produces references for
+    # this corpus must emit it: a helper change that drops it would make every
+    # generated reference invalid.
+    assert reference["area"] == pytest.approx(2 * (4 * 6 + 6 * 8 + 4 * 8))
     assert reference["centroid"] == pytest.approx([2, 3, 4])
     assert reference["bbox"] == pytest.approx([0, 0, 0, 4, 6, 8])
     assert reference["faces"] == 6

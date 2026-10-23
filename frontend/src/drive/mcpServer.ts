@@ -19,6 +19,7 @@ import { PART_DOC_SCHEMA_URI } from '@/persistence/partDocSchema'
 import { validateSelector, typeVocabulary, type Selector } from '@/kernel/select'
 import { parseReference, type TranslationReference } from '@/translations/corpus'
 import { MUTATION_CATALOG_URI, mutationCatalogPayload } from '@/drive/mutationCatalogPayload'
+import { DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
 import { worldFrameSentence } from '@/drive/worldFrame'
 
 // The protocol revisions whose initialize handshake this server accepts. The
@@ -100,6 +101,10 @@ export interface McpCadOps {
   // URI constant (from partDocSchema, the same source) is imported here.
   partDocSchema(): string
   select(req: McpSelectRequest): Promise<McpToolPayload>
+  // A stored document as JSON text, addressed by the docHash a reply returned.
+  // Null when the handle is unknown (evicted or never seen). This is the
+  // out-of-band way to fetch the full document without inflating `run`.
+  documentText(docHash: string): string | null
 }
 
 export interface McpToolDefinition {
@@ -137,6 +142,20 @@ const VEC3_SCHEMA = {
   maxItems: 3,
 }
 
+// An extreme axis is a vector; the three letters are sugar the validator maps to
+// the matching unit vector, so a hand-written selector may use either spelling.
+const EXTREME_AXIS_SCHEMA = {
+  anyOf: [
+    {
+      type: 'string',
+      enum: ['x', 'y', 'z'],
+      description: 'Sugar for [1,0,0], [0,1,0] or [0,0,1].',
+    },
+    VEC3_SCHEMA,
+  ],
+  description: 'The world axis to project on: "x", "y", "z" or a 3-vector.',
+}
+
 // The structured selector grammar advertised to MCP clients. The authoritative
 // check is validateSelector (a recursive JSON Schema cannot express "exactly one
 // predicate key" cleanly); this mirrors it so tools/list is honest about the
@@ -169,7 +188,7 @@ const SELECTOR_DEFS: Record<string, unknown> = {
         extreme: {
           type: 'object',
           required: ['axis', 'side'],
-          properties: { axis: VEC3_SCHEMA, side: { enum: ['min', 'max'] } },
+          properties: { axis: EXTREME_AXIS_SCHEMA, side: { enum: ['min', 'max'] } },
           additionalProperties: false,
         },
         on_face: { $ref: '#/$defs/selector' },
@@ -200,6 +219,13 @@ const SELECTOR_DEFS: Record<string, unknown> = {
   },
 }
 
+// The full document behind a run reply's docHash. A URI template rather than a
+// listed resource: a session mints a new document per call, so the concrete
+// URI cannot be known up front. This keeps the reply small (a 20-sketch ngon
+// document is about 1500 lines) while the bytes stay one read away.
+export const MCP_DOC_RESOURCE_TEMPLATE = 'oversolved://doc/{docHash}'
+export const MCP_DOC_RESOURCE_PREFIX = 'oversolved://doc/'
+
 export const MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: 'commands',
@@ -217,7 +243,9 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     name: 'run',
     description: 'Run a script of command and mutation steps through one DocSession and the real kernel. '
       + 'Returns per-step results, the solve state and the resulting docHash; chain calls with docHash. '
-      + 'The full document is returned only with returnDoc: true.',
+      + 'The full document is not returned by default (returnDoc: false); pass returnDoc: true, or read the '
+      + 'resource ' + MCP_DOC_RESOURCE_TEMPLATE + ' with that docHash, when you need the bytes. '
+      + 'The summary lists only the bodies the final solve left live.',
     inputSchema: {
       type: 'object',
       required: ['steps'],
@@ -225,7 +253,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         doc: { ...DOC_SCHEMA, description: 'Starting document. Omit with docHash to start from a fresh seeded document.' },
         docHash: DOC_HASH_SCHEMA,
         steps: { type: 'array', items: { type: 'object' }, description: 'Script steps: {command,params} or {mutation}; mutation types: see the `mutations` tool.' },
-        returnDoc: { type: 'boolean', description: 'Include the full final document in the reply (default false).' },
+        returnDoc: { type: 'boolean', description: 'Include the full final document in the reply (default false; the docHash resource serves it either way).' },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
@@ -261,6 +289,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
           description: 'A reference.json payload with the measures flat at the top level, for example '
             + '{"source":{"tool":"hand","version":"1","file":"-"},"tolerance":{"rel":1e-4,"abs":0.01},'
             + '"bodies":1,"volume":12000,"area":3800,"centroid":[20,5,-15],"bbox":[0,0,-30,40,10,0]}. '
+            + 'bodies, volume, area, centroid and bbox are required (the CadQuery runner '
+            + 'frontend/scripts/cadqueryReference.py emits all five). '
             + 'Optional topology ("report" | "strict"), faces and edges. The measures are top-level keys, '
             + 'not nested under "measures".',
         },
@@ -292,7 +322,9 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     name: 'select',
     description: 'Find faces or edges by predicate over the solved document and return the query strings a click '
       + 'would store, plus a geometry summary per item. Run it after `run`, then feed the queries to a feature '
-      + '(fillet, chamfer, hole, ...). An empty match is an error naming the nearest-miss count per predicate. '
+      + '(fillet, chamfer, hole, ...). Omit `where` to take every candidate: {from:"body_ex1",kind:"edge"} is '
+      + 'all edges of that body. A `type` outside the kind\'s vocabulary is invalid params with the valid list '
+      + 'and a "did you mean" hint. An empty match is an error naming the nearest-miss count per predicate. '
       + 'Returns the docHash it ran against. ' + worldFrameSentence(),
     inputSchema: {
       type: 'object',
@@ -574,7 +606,8 @@ export function createMcpServer(ops: McpCadOps): McpServer {
               + 'select finds faces/edges by predicate over the solve output, '
               + 'and export writes STEP or STL. The part-document JSON Schema is '
               + 'served as the resource ' + PART_DOC_SCHEMA_URI + ' and the mutation catalog as '
-              + MUTATION_CATALOG_URI + '. ' + worldFrameSentence(),
+              + MUTATION_CATALOG_URI + '. The full document behind any reply docHash is the resource '
+              + MCP_DOC_RESOURCE_TEMPLATE + ', so run replies stay small. ' + worldFrameSentence(),
           })
         case 'notifications/initialized':
           return null
@@ -584,11 +617,33 @@ export function createMcpServer(ops: McpCadOps): McpServer {
           return isNotification ? null : success(id, { tools: MCP_TOOLS })
         case 'resources/list':
           return isNotification ? null : success(id, { resources: MCP_RESOURCES })
+        case 'resources/templates/list':
+          return isNotification ? null : success(id, {
+            resourceTemplates: [{
+              uriTemplate: MCP_DOC_RESOURCE_TEMPLATE,
+              name: 'document-by-hash',
+              description: 'The full part document behind a reply docHash, as JSON. Unknown hashes are an invalid-params error naming the 32-document bound.',
+              mimeType: 'application/json',
+            }],
+          })
         case 'resources/read': {
           if (isNotification) return null
           const params = asObject(request.params ?? {}, 'params')
           const uri = params.uri
           if (typeof uri !== 'string') throw new McpInvalidParams('resources/read needs a resource uri')
+          if (uri.startsWith(MCP_DOC_RESOURCE_PREFIX)) {
+            const docHash = uri.slice(MCP_DOC_RESOURCE_PREFIX.length)
+            if (docHash.length === 0) {
+              throw new McpInvalidParams(`document resource needs a hash: ${MCP_DOC_RESOURCE_TEMPLATE}`)
+            }
+            const text = ops.documentText(docHash)
+            if (text === null) {
+              throw new McpInvalidParams(
+                `unknown docHash "${docHash}" (the server keeps the last ${DOC_HANDLE_CAPACITY} documents; run again to mint one)`,
+              )
+            }
+            return success(id, { contents: [{ uri, mimeType: 'application/json', text }] })
+          }
           if (uri !== PART_DOC_SCHEMA_URI && uri !== MUTATION_CATALOG_URI) {
             throw new McpInvalidParams(`unknown resource uri "${uri}"`)
           }

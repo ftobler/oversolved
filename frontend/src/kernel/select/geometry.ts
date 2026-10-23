@@ -72,12 +72,21 @@ function edgeData(c: Candidate): EdgeData | undefined {
   return c.body.edges?.[c.index]
 }
 
+// A curved analytic face carries a radial `normal` and its real axis in
+// `surface_frame`; a flat face has no frame and its normal is the axis. These
+// are the surface types where the axis is the meaningful direction.
+const ANALYTIC_AXIS_SURFACES: ReadonlySet<string> = new Set(['cylinderface', 'coneface', 'torusface'])
+
 /** The direction a parallel/perpendicular test compares: a line's chord, a
- *  curved edge's axis, a face's normal. */
+ *  curved edge's axis, a flat face's normal or a curved analytic face's axis
+ *  (not its radial normal, which would make "parallel" mean a seam). */
 export function directionOf(c: Candidate): Vec3 | null {
   if (c.kind === 'face') {
     const fd = c.body.mesh?.face_data?.[c.index]
-    return fd ? normalize(fd.normal) : null
+    if (!fd) return null
+    const frame = fd.surface_frame
+    if (frame !== undefined && ANALYTIC_AXIS_SURFACES.has(fd.surface_type ?? '')) return normalize(frame.axis)
+    return normalize(fd.normal)
   }
   const ed = edgeData(c)
   if (!ed) return null
@@ -169,6 +178,67 @@ const FACE_TYPES: readonly string[] = Object.keys(FACE_TYPE_SET)
  *  from the SurfaceType union. */
 export function typeVocabulary(kind: SelectKind): readonly string[] {
   return kind === 'edge' ? EDGE_KINDS : FACE_TYPES
+}
+
+// Common wrong spellings, mapped to the one vocabulary spelling. These are only
+// a "did you mean" hint: matching stays exact, because one meaning has one
+// spelling and a silent alias would hide the mistake instead of teaching it.
+const TYPE_ALIASES: Readonly<Record<string, string>> = {
+  plane: 'flatface',
+  planar: 'flatface',
+  plane_face: 'flatface',
+  flat: 'flatface',
+  cylinder: 'cylinderface',
+  cylindrical: 'cylinderface',
+  cylinder_face: 'cylinderface',
+  cone: 'coneface',
+  conical: 'coneface',
+  sphere: 'sphereface',
+  spherical: 'sphereface',
+  torus: 'torusface',
+  toroidal: 'torusface',
+  line_segment: 'line',
+  bezier: 'spline',
+  bspline: 'spline',
+  curve: 'spline',
+}
+
+// Levenshtein capped by the caller's threshold: a short typo (cylindeface), not
+// an unrelated word. Duplicated from the mutation catalog deliberately: the
+// select engine is a leaf and must not import the drive layer.
+function editDistance(a: string, b: string): number {
+  const previous = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    let diagonal = previous[0]
+    previous[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const above = previous[j]
+      previous[j] = Math.min(previous[j] + 1, previous[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1))
+      diagonal = above
+    }
+  }
+  return previous[b.length]
+}
+
+/** The vocabulary spelling a wrong `type` name most likely meant, or null when
+ *  the name is valid or has no close candidate. An alias for the other kind is
+ *  deliberately not suggested: `plane` is a face type, and telling an edge
+ *  selector it meant `line` would hide that mistake. */
+export function suggestTypeName(type: string, kind: SelectKind): string | null {
+  const valid = typeVocabulary(kind)
+  if (valid.includes(type)) return null
+  const alias = TYPE_ALIASES[type.trim().toLowerCase()]
+  if (alias !== undefined) return valid.includes(alias) ? alias : null
+  let best: string | null = null
+  let bestDistance = 3
+  for (const candidate of valid) {
+    const distance = editDistance(type, candidate)
+    if (distance < bestDistance) {
+      best = candidate
+      bestDistance = distance
+    }
+  }
+  return best
 }
 
 /** The per-item geometry summary the agent reads back. */

@@ -21,6 +21,7 @@ import {
   normalize,
   pointOf,
   radiusOf,
+  suggestTypeName,
   typeOf,
   typeVocabulary,
   type Candidate,
@@ -146,7 +147,8 @@ function label(p: Predicate): string {
   if ('parallel' in p) return `parallel [${p.parallel.join(', ')}]`
   if ('perpendicular' in p) return `perpendicular [${p.perpendicular.join(', ')}]`
   if ('type' in p) return `type "${p.type}"`
-  if ('extreme' in p) return `extreme ${p.extreme.side} [${p.extreme.axis.join(', ')}]`
+  // The whole clause, not an abbreviation: an author copies it back to fix it.
+  if ('extreme' in p) return `extreme ${JSON.stringify(p.extreme)}`
   if ('on_face' in p) return `on_face {${p.on_face.kind}}`
   if ('created_by' in p) return `created_by "${p.created_by}"`
   if ('radius' in p) return `radius ${JSON.stringify(p.radius)}`
@@ -174,12 +176,15 @@ function diagnose(p: Predicate, pool: Candidate[], ctx: EvalContext, kind: Selec
 
 /** A `type` clause that matched nothing also names the values it could have
  *  used: the ones present on the candidates and the full vocabulary for the
- *  kind. One call then fixes a wrong guess instead of a nearest-miss count. */
+ *  kind. An unknown name also gets the closest vocabulary spelling, so one call
+ *  fixes a wrong guess instead of a nearest-miss count. */
 function typeDetail(p: { type: string }, pool: Candidate[], kind: SelectKind): string {
   const present = [...new Set(pool.map(typeOf).filter((t): t is string => t !== null))].sort()
   const valid = typeVocabulary(kind)
   const noun = kind === 'edge' ? 'edge kinds' : 'face types'
-  return `${label(p)} matched 0; present ${noun}: ${present.join(', ') || 'none'}; valid ${noun}: ${valid.join(', ')}`
+  const suggestion = suggestTypeName(p.type, kind)
+  const hint = suggestion === null ? '' : `; did you mean "${suggestion}"?`
+  return `${label(p)} matched 0${hint}; present ${noun}: ${present.join(', ') || 'none'}; valid ${noun}: ${valid.join(', ')}`
 }
 
 function describeOne(p: Predicate, pool: Candidate[], matched: number, ctx: EvalContext, kind: SelectKind): string[] {

@@ -56,6 +56,27 @@ describe('summarizeDoc', () => {
   it('names feature ids and kinds plus the part_style body ids', () => {
     expect(summarizeDoc(doc('sk1'))).toBe('features: sk1 (sketch); bodies: body_ex1')
   })
+
+  it('lists only the live solve bodies, never the consumed ones part_style still carries', () => {
+    // A boolean consumes its tool body, but reconcilePartStyle only adds new
+    // ids, so part_style keeps a colour entry for the dead body.
+    const consumed = {
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'ex1', kind: 'extrude' },
+        { id: 'ex2', kind: 'extrude' },
+        { id: 'bo1', kind: 'boolean' },
+      ],
+      part_style: { body_ex1: {}, body_ex2: {} },
+    } as unknown as PartDoc
+    expect(summarizeDoc(consumed, ['body_ex1']))
+      .toBe('features: ex1 (extrude), ex2 (extrude), bo1 (boolean); bodies: body_ex1')
+  })
+
+  it('says none when the solve left no bodies', () => {
+    expect(summarizeDoc(doc('sk1'), [])).toBe('features: sk1 (sketch); bodies: none')
+  })
 })
 
 describe('runReply', () => {
