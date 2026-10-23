@@ -162,6 +162,20 @@ describe('mutation catalog', () => {
     }
   })
 
+  it('lets add_hole carry exactly the fields set_hole_field can set', () => {
+    // One call must be able to create the same configured hole six setters
+    // would build, so the payload follows the hole schema rather than a
+    // second, shorter list.
+    const holeFields = featureFieldNames('hole')
+    const fields = mutationInfoOf('add_hole').fields
+    for (const name of holeFields) expect(fields[name], name).toBeDefined()
+    const extra = Object.keys(fields).filter(
+      (name) => !holeFields.includes(name) && name !== 'featureId' && name !== 'label' && name !== 'insertAt',
+    )
+    expect(extra).toEqual([])
+    for (const name of holeFields) expect(fields[name].required, name).toBe(false)
+  })
+
   it('names the params slot order of every add_entity kind from the entity registry', () => {
     const note = mutationInfoOf('add_entity').fields.params.note
     expect(note).toBeDefined()

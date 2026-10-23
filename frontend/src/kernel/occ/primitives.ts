@@ -135,6 +135,31 @@ export function makeCylinderWithFaces(
   }
 }
 
+/** An untracked cone/frustum: `r1` at the axis origin (`center`), `r2` at the
+ *  far end, both measured from the axis. `r2 = 0` is a full cone. The shape is
+ *  untracked, so the caller owns it; builder handles are scoped.
+ *
+ *  There is no `BRepPrim_Cone` accessor in this OCC build, so callers that need
+ *  a face by role read it off the shape's surface type (the lateral face is the
+ *  cone) or the primitive's own geometry. */
+export function makeCone(
+  oc: OccModule,
+  scope: DisposeScope,
+  center: Vec3,
+  axis: Vec3,
+  r1: number,
+  r2: number,
+  height: number,
+): OccShape {
+  const ax2 = scope.track(
+    new oc.gp_Ax2_3(
+      scope.track(new oc.gp_Pnt_3(center[0], center[1], center[2])),
+      scope.track(new oc.gp_Dir_4(axis[0], axis[1], axis[2])),
+    ),
+  )
+  return scope.track(new oc.BRepPrimAPI_MakeCone_3(ax2, r1, r2, height)).Shape()
+}
+
 // ─── profile -> face -> prism ───
 
 /** A straight edge between two world points (cadquery Edge.makeLine).

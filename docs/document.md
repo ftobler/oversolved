@@ -267,6 +267,10 @@ the body untouched; the other groups still apply (status `partial`).
     depth_mode: blind            # blind | through_all
     direction: normal
     target: "@body_ex1"          # optional: the body to drill into
+    style: counterbore           # optional: simple (default) | counterbore | countersink
+    cb_diameter: 16.0            # the widened mouth diameter (counterbore/countersink)
+    cb_depth: 3.0                # the counterbore step depth
+    cs_angle: 90.0               # the countersink's included angle, degrees (default 90)
     thread:                      # optional, cosmetic only (no geometry change)
       designation: M6x1          # a thread-table entry
       nominal: 6.0               # the thread's major diameter, mm
@@ -279,11 +283,18 @@ circle (`entity:<sk>:<eid>`, `vertex:<sk>:<eid>:<sub>`, or a single-entity area
 query) drills only that one; a line, arc or spline names no drill site and is
 refused by name.
 
+`style` widens the mouth in the same one cut. A `counterbore` reads
+`cb_diameter` (wider than the bore) and `cb_depth` (the flat-bottomed step, less
+than `depth` in a blind hole); a `countersink` reads `cb_diameter` and
+`cs_angle`, and derives the cone depth from those radii. Both default the
+widened mouth to the drill site's plane, so the bore's through portion is the
+small diameter.
+
 A cosmetic thread adds no geometry: the bore keeps its drilled size (the authored
 `diameter` for a point, the circle's own radius for a circle) and the solve
 reports the thread's metadata plus one display helix per drilled bore, drawn on
-the bore wall. The pair is checked against the thread table at load time when the
-table carries the designation.
+the bore wall below the widened mouth. The pair is checked against the thread
+table at load time when the table carries the designation.
 
 ### transform
 

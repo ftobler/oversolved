@@ -132,6 +132,8 @@ export type DeleteBodyFeatureDef = {
   bodies: string[]  // one ref per body to remove; picking is multi-select
 }
 
+export type HoleStyle = 'simple' | 'counterbore' | 'countersink'
+
 export type HoleFeatureDef = {
   sketch: string
   diameter: NumberOrExpr
@@ -139,6 +141,18 @@ export type HoleFeatureDef = {
   depth: NumberOrExpr
   direction?: 'normal' | 'reverse'
   target?: string
+  // How the mouth is widened: a plain bore, a counterbore (a wider flat-bottomed
+  // step) or a countersink (a cone). Absent means `simple`, so a document saved
+  // before the styles existed reads unchanged.
+  style?: HoleStyle
+  // The counterbore/countersink's wide diameter, at the mouth. For a countersink
+  // it is the mouth diameter; `cs_angle` turns it into the cone.
+  cb_diameter?: NumberOrExpr
+  // The counterbore step's depth from the mouth. A countersink derives its
+  // depth from `cb_diameter`, `diameter` and `cs_angle`, so it does not read it.
+  cb_depth?: NumberOrExpr
+  // The countersink's included angle in degrees; absent means 90.
+  cs_angle?: NumberOrExpr
   // A cosmetic thread: metadata plus the display helix the solve reports. It
   // changes no geometry, so the bore stays the authored `diameter` (normally the
   // table entry's tap drill).
@@ -1191,7 +1205,7 @@ export type Mutation =
   | ({ type: 'add_delete_body'; featureId: string; bodies?: string[]; label?: string } & FeatureInsertion)
   | { type: 'add_delete_body_ref'; featureId: string; bodyQuery: string }
   | { type: 'remove_delete_body_ref'; featureId: string; index: number }
-  | ({ type: 'add_hole'; featureId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_hole'; featureId: string; label?: string } & Partial<HoleFeatureDef> & FeatureInsertion)
   | { type: 'set_hole_field'; featureId: string; field: keyof HoleFeatureDef; value: unknown }
   | ({ type: 'add_transform'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_transform_field'; featureId: string; field: keyof TransformFeatureDef; value: unknown }

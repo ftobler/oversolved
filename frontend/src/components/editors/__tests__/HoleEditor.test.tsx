@@ -87,4 +87,39 @@ describe('HoleEditor (via FeatureEditor)', () => {
     fireEvent.change(select, { target: { value: 'reverse' } })
     expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'direction', value: 'reverse' })
   })
+
+  it('style select emits set_hole_style', () => {
+    const feature = makeFeature()
+    const onMutation = vi.fn()
+    render(<FeatureEditor feature={feature} onMutation={onMutation} schema={HOLE_SCHEMA} />)
+    const select = screen.getByDisplayValue('Simple')
+    fireEvent.change(select, { target: { value: 'counterbore' } })
+    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'style', value: 'counterbore' })
+  })
+
+  it('a counterbore shows its mouth diameter and step depth', () => {
+    const feature = makeFeature({ style: 'counterbore', cb_diameter: 16, cb_depth: 3 })
+    const onMutation = vi.fn()
+    render(<FeatureEditor feature={feature} onMutation={onMutation} schema={HOLE_SCHEMA} />)
+    const diameter = screen.getByDisplayValue('16')
+    fireEvent.change(diameter, { target: { value: '18' } })
+    fireEvent.blur(diameter)
+    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'cb_diameter', value: 18 })
+    const step = screen.getByDisplayValue('3')
+    fireEvent.change(step, { target: { value: '4' } })
+    fireEvent.blur(step)
+    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'cb_depth', value: 4 })
+  })
+
+  it('a countersink shows the angle and hides the step depth', () => {
+    const feature = makeFeature({ style: 'countersink', cb_diameter: 16, cs_angle: 90 })
+    const onMutation = vi.fn()
+    render(<FeatureEditor feature={feature} onMutation={onMutation} schema={HOLE_SCHEMA} />)
+    // The default step depth (3) is not rendered for a countersink.
+    expect(screen.queryByDisplayValue('3')).toBeNull()
+    const angle = screen.getByDisplayValue('90')
+    fireEvent.change(angle, { target: { value: '82' } })
+    fireEvent.blur(angle)
+    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'cs_angle', value: 82 })
+  })
 })

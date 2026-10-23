@@ -225,7 +225,7 @@ export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
 export const HOLE_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_hole',
   subKey: 'hole',
-  defaults: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' },
+  defaults: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal', style: 'simple' },
   fields: [
     { type: 'pick', key: 'sketch', label: 'Sketch', transform: stripSelectionWrapper },
     { type: 'number', key: 'diameter', label: 'Diameter', default: 10, validate: positive, unit: 'mm' },
@@ -235,6 +235,17 @@ export const HOLE_SCHEMA: FeatureEditorSchema = {
       showWhen: (d) => d.depth_mode === 'blind', validate: positive, unit: 'mm' },
     { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
       options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }] },
+    // A widened mouth: the counterbore is a flat-bottomed step, the countersink
+    // a cone. Both share `cb_diameter` (the wide mouth diameter); `cb_depth` is
+    // the step depth and `cs_angle` the countersink's included angle.
+    { type: 'select', key: 'style', label: 'Style', default: 'simple',
+      options: [{ value: 'simple', label: 'Simple' }, { value: 'counterbore', label: 'Counterbore' }, { value: 'countersink', label: 'Countersink' }] },
+    { type: 'number', key: 'cb_diameter', label: 'Mouth diameter', default: 16,
+      showWhen: (d) => d.style != null && d.style !== 'simple', validate: positive, unit: 'mm' },
+    { type: 'number', key: 'cb_depth', label: 'Step depth', default: 3,
+      showWhen: (d) => d.style === 'counterbore', validate: positive, unit: 'mm' },
+    { type: 'number', key: 'cs_angle', label: 'Included angle', default: 90,
+      showWhen: (d) => d.style === 'countersink', validate: between(0, 180), unit: 'deg' },
     // The cosmetic thread: metadata plus a display helix on the bore, no
     // geometry change. The checkbox writes (or clears) the whole spec and the
     // select looks the designation up in the table, so neither writes a field

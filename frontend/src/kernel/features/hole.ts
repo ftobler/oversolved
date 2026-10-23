@@ -24,7 +24,7 @@ import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './sh
 import { resolveBody } from './shared/bodyResolution'
 import { mergeBrepDiff } from './shared/brepDiff'
 import { stripRefSigil } from '@/utils/refSigil'
-import { makeCylinderWithFaces, type CylinderFaces, type Vec3 } from '../occ/primitives'
+import { makeCylinderWithFaces, makeCone, faceSurfaceType, type CylinderFaces, type Vec3 } from '../occ/primitives'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { holeFacePath, mintFaceUuid, type HoleFaceRole } from '../constructionName'
 import { absolute, emitWire, featureRefId } from '../query'
@@ -166,21 +166,22 @@ function drilledEntities(
 
 /**
  * Construction names for one drill site's cutter, keyed by its faces before the
- * cut: the bore wall, the mouth (the cutter's start disc) and the floor (its end
- * disc). A through_all cutter starts backed off outside the body and ends past
- * it, so only a blind hole's floor, or a mouth at a site inside the body, ever
- * survives the cut; the names are minted for all three anyway, since which
- * survive is the boolean's to say. The roles come from the cylinder primitive
- * itself, never from where a face sits, and the uuid from the hole, the site and
- * the role, so a bore is the same bore whatever other sites the hole drills and
- * in whatever order. The site's sketch entity is the ancestry, as a profile
- * entity is a prism side face's.
+ * cut: the bore wall, the mouth (the cutter's start disc), the floor (its end
+ * disc), and for a widened mouth the counterbore's wall and step floor or the
+ * countersink's cone. A through_all cutter starts backed off outside the body
+ * and ends past it, so only a blind hole's floor, or a mouth at a site inside
+ * the body, ever survives the cut; the names are minted for every role anyway,
+ * since which survive is the boolean's to say. The roles come from the cutter
+ * primitives themselves, never from where a face sits, and the uuid from the
+ * hole, the site and the role, so a bore is the same bore whatever other sites
+ * the hole drills and in whatever order. The site's sketch entity is the
+ * ancestry, as a profile entity is a prism side face's.
  */
 function cutterNames(
   holeId: string,
   sketchId: string,
   entityId: string,
-  faces: CylinderFaces,
+  roles: SubShapeMap<HoleFaceRole>,
 ): { faceNames: SubShapeMap<string>; faceAncestry: Record<string, string[]>; capAncestry: Record<string, string[]> } {
   const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
@@ -190,13 +191,110 @@ function cutterNames(
   const capAncestry: Record<string, string[]> = {}
   const site = `${sketchId}/${entityId}`
   const token = emitWire(absolute(sketchId, entityId))
-  const roles: Array<[HoleFaceRole, OccShape]> = [['bore', faces.lateral], ['floor', faces.top], ['mouth', faces.bottom]]
-  for (const [role, face] of roles) {
+  for (const [face, role] of roles.entries()) {
     const uuid = mintFaceUuid(holeFacePath(holeId, site, role))
-    faceNames.set(face as OccSubShape, uuid)
+    faceNames.set(face, uuid)
     faceAncestry[uuid] = [token]
   }
   return { faceNames, faceAncestry, capAncestry }
+}
+
+/** One cutter's face roles, keyed by the primitive's faces before the cut. */
+interface Cutter {
+  shape: OccShape
+  roles: SubShapeMap<HoleFaceRole>
+}
+
+/** The bore cylinder's roles: its wall and end disc, plus the start disc as the
+ *  mouth. A counterbore/step or countersink cone reuses `mouth`; the fuse maps
+ *  only the surviving disc. */
+function cylinderRoles(faces: CylinderFaces, wall: HoleFaceRole, end: HoleFaceRole): SubShapeMap<HoleFaceRole> {
+  const roles = new SubShapeMap<HoleFaceRole>()
+  roles.set(faces.lateral as OccSubShape, wall)
+  roles.set(faces.top as OccSubShape, end)
+  roles.set(faces.bottom as OccSubShape, 'mouth')
+  return roles
+}
+
+/** The lateral (conical) face of a `makeCone` shape. This OCC build exposes no
+ *  `BRepPrim_Cone`, so the one curved face IS the cone wall. */
+function coneLateral(oc: OccModule, scope: DisposeScope, cone: OccShape): OccSubShape | null {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(cone, E.TopAbs_FACE, E.TopAbs_SHAPE))
+  for (; exp.More(); exp.Next()) {
+    const face = scope.track(oc.TopoDS.Face_1(scope.track(exp.Current()))) as OccSubShape
+    if (faceSurfaceType(oc, scope, face) === 'coneface') return face
+  }
+  return null
+}
+
+/**
+ * Fuse a widened mouth onto the bore so the hole still cuts in ONE boolean (the
+ * lineage stays one operation). The fused tool's faces are new shapes, so each
+ * is named by the operand face the fuse's own history says it came from; a role
+ * the union dropped simply has no output. One role maps to at most one output:
+ * the operands' coplanar start discs are one mouth.
+ */
+function fuseCutter(oc: OccModule, scope: DisposeScope, target: Cutter, tool: Cutter): Cutter {
+  const fused = booleanWithDiff(oc, scope, target.shape, tool.shape, 'fuse')
+  const roles = new SubShapeMap<HoleFaceRole>()
+  const assigned = new Set<HoleFaceRole>()
+  for (const origin of fused.faceOrigin) {
+    const sourceRoles = origin.fromTool ? tool.roles : target.roles
+    const role = sourceRoles.get(origin.source)
+    if (role === undefined || assigned.has(role)) continue
+    assigned.add(role)
+    roles.set(origin.output, role)
+  }
+  scope.release(target.shape)
+  scope.release(tool.shape)
+  return { shape: fused.shape, roles }
+}
+
+/**
+ * One site's whole cut tool. A simple hole is the bore cylinder; a counterbore
+ * fuses the bore with a wider, short cylinder at the mouth; a countersink fuses
+ * it with a cone whose included angle is `csAngle` (the cone runs from the wide
+ * mouth radius down to the bore radius, so no separate floor is introduced).
+ *
+ * `start` is where the bore begins (backed off outside the body for a through
+ * hole); `mouth` is the drill site's plane, where a widened mouth is measured
+ * from. A through-all counterbore's step reaches back to `start` so it always
+ * covers the entry face, however far the bore is backed off.
+ */
+function buildCutter(
+  oc: OccModule,
+  scope: DisposeScope,
+  style: string,
+  through: boolean,
+  start: Vec3,
+  mouth: Vec3,
+  axis: Vec3,
+  radius: number,
+  boreLength: number,
+  cbRadius: number,
+  cbDepth: number,
+  coneHeight: number,
+  backOffset: number,
+): Cutter {
+  const bore = makeCylinderWithFaces(oc, scope, start, axis, radius, boreLength)
+  let cutter: Cutter = { shape: bore.shape, roles: cylinderRoles(bore.faces, 'bore', 'floor') }
+  if (style === 'counterbore') {
+    const stepStart = through ? start : mouth
+    const stepLength = through ? backOffset + cbDepth : cbDepth
+    const step = makeCylinderWithFaces(oc, scope, stepStart, axis, cbRadius, stepLength)
+    cutter = fuseCutter(oc, scope, cutter, {
+      shape: step.shape,
+      roles: cylinderRoles(step.faces, 'step_wall', 'step_floor'),
+    })
+  } else if (style === 'countersink') {
+    const cone = makeCone(oc, scope, mouth, axis, cbRadius, radius, coneHeight)
+    const lateral = coneLateral(oc, scope, cone)
+    const roles = new SubShapeMap<HoleFaceRole>()
+    if (lateral !== null) roles.set(lateral, 'sink')
+    cutter = fuseCutter(oc, scope, cutter, { shape: cone, roles })
+  }
+  return { shape: scope.track(cutter.shape), roles: cutter.roles }
 }
 
 /** Extent of the target along the drill axis, from its edge-sampled AABB: the
@@ -277,13 +375,37 @@ export function solveHole(
   const direction = (sub.direction as string) ?? 'normal'
   const targetRef = (sub.target as string) ?? ''
   const thread = readThreadSpec(sub.thread)
+  const style = (sub.style as string) ?? 'simple'
+  const cbDiameter = Number(sub.cb_diameter ?? 0)
+  const cbDepth = Number(sub.cb_depth ?? 0)
+  const csAngle = Number(sub.cs_angle ?? 90)
 
   if (!Number.isFinite(diameter) || diameter <= 0) throw new Error('hole: diameter must be positive')
   if (depthMode !== 'through_all') {
     if (!Number.isFinite(depth) || depth <= 0) throw new Error('hole: depth must be positive')
   }
+  if (style !== 'simple' && style !== 'counterbore' && style !== 'countersink') {
+    throw new Error(`hole: style '${style}' is not simple, counterbore or countersink`)
+  }
+  if (style !== 'simple') {
+    if (!Number.isFinite(cbDiameter) || cbDiameter <= 0) {
+      throw new Error(`hole: a ${style} needs a positive cb_diameter`)
+    }
+  }
+  if (style === 'counterbore') {
+    if (!Number.isFinite(cbDepth) || cbDepth <= 0) throw new Error('hole: a counterbore needs a positive cb_depth')
+    if (depthMode !== 'through_all' && cbDepth >= depth) {
+      throw new Error(`hole: the counterbore depth ${cbDepth} must be less than the blind hole depth ${depth}`)
+    }
+  }
+  if (style === 'countersink') {
+    if (!Number.isFinite(csAngle) || csAngle <= 0 || csAngle >= 180) {
+      throw new Error(`hole: the countersink angle ${csAngle} must be between 0 and 180 degrees`)
+    }
+  }
 
   const radius = diameter / 2.0
+  const cbRadius = cbDiameter / 2.0
 
   const plane = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
   if (plane === undefined) {
@@ -356,6 +478,28 @@ export function solveHole(
       origin[2] + x2d * xAxis[2] + y2d * yAxis[2],
     ]
 
+    // A circle site carries its own radius, so the widened-mouth geometry is
+    // checked against THAT bore, not the feature `diameter` a point would use.
+    if (style !== 'simple' && cbRadius <= site.radius) {
+      throw new Error(
+        `hole: the ${style} mouth diameter ${cbDiameter} must be larger than the bore diameter ${site.radius * 2}`,
+      )
+    }
+    let countersinkDepth = 0
+    if (style === 'countersink') {
+      // The cone runs from the wide mouth radius down to the bore radius; the
+      // included angle fixes how deep that transition sits.
+      countersinkDepth = (cbRadius - site.radius) / Math.tan((csAngle * Math.PI) / 360.0)
+      if (!Number.isFinite(countersinkDepth) || countersinkDepth <= 0) {
+        throw new Error(`hole: the countersink angle ${csAngle} gives no countersink depth`)
+      }
+      if (depthMode !== 'through_all' && countersinkDepth >= depth) {
+        throw new Error(
+          `hole: the countersink depth ${countersinkDepth.toFixed(4)} must be less than the blind hole depth ${depth}`,
+        )
+      }
+    }
+
     let start3d: Vec3
     let h: number
     if (depthMode === 'through_all') {
@@ -370,8 +514,11 @@ export function solveHole(
       h = depth
     }
 
-    const cutter = makeCylinderWithFaces(oc, scope, start3d, axis, site.radius, h)
-    const cyl = scope.track(cutter.shape)
+    const cutter = buildCutter(
+      oc, scope, style, depthMode === 'through_all', start3d, center3d, axis,
+      site.radius, h, cbRadius, cbDepth, countersinkDepth, throughBackOffset,
+    )
+    const cyl = cutter.shape
     if (!intersects(oc, currentShape, cyl)) {
       // The cutter does not reach the body: a drill site that removes nothing.
       // Skipping the cut keeps it out of accumulatedDiff, so the body's stored
@@ -386,7 +533,7 @@ export function solveHole(
     // the drill site onto the bore and floor they leave behind. The cutter is
     // dropped after the cut and reaches this one body, so nothing else holds its
     // uuids and they carry verbatim (no toolUuidScope).
-    const tool = cutterNames(feature.id as string, sketchId, eid, cutter.faces)
+    const tool = cutterNames(feature.id as string, sketchId, eid, cutter.roles)
     names = transferBooleanNames(oc, scope, {
       bodyShape: res.shape,
       faceOrigin: res.faceOrigin,
@@ -404,13 +551,22 @@ export function solveHole(
     // Accumulate per-cut diffs so all rims survive, not just the last.
     accumulatedDiff = mergeBrepDiff(accumulatedDiff, res.diff)
     cutAny = true
-    // The bore the cosmetic thread (if any) is displayed on.
-    threadSites.push({
-      center: [center3d[0], center3d[1], center3d[2]],
-      axis: [axis[0], axis[1], axis[2]],
-      radius: site.radius,
-      length: depthMode === 'through_all' ? throughSpan : depth,
-    })
+    // The bore the cosmetic thread (if any) is displayed on: the through
+    // portion below the widened mouth, never the counterbore wall or the cone.
+    const threadOffset = style === 'counterbore' ? cbDepth : style === 'countersink' ? countersinkDepth : 0
+    const threadLength = (depthMode === 'through_all' ? throughSpan : depth) - threadOffset
+    if (threadLength > 0) {
+      threadSites.push({
+        center: [
+          center3d[0] + axis[0] * threadOffset,
+          center3d[1] + axis[1] * threadOffset,
+          center3d[2] + axis[2] * threadOffset,
+        ],
+        axis: [axis[0], axis[1], axis[2]],
+        radius: site.radius,
+        length: threadLength,
+      })
+    }
   }
 
   const total = drilled.length

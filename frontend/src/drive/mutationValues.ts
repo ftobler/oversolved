@@ -20,7 +20,7 @@
 import type { EntityKind, Mutation, PartDoc } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
-import { planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
+import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 
 export type ValueViolationCode = 'invalid-mutation' | 'unknown-target'
 
@@ -672,6 +672,21 @@ function addHelix(raw: RawStep): ValueViolation | null {
   return problem === null ? null : invalid(problem)
 }
 
+// `add_hole` carries the same fields a setter sets, so each present one is held
+// to that field's schema definition: an unknown enum spelling (a `style` typo)
+// is refused here, at the boundary, rather than solved into a silent fallback.
+function addHole(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  for (const field of featureFieldNames('hole')) {
+    const value = raw[field]
+    if (value === undefined) continue
+    const schema = ctx.fieldSchema('set_hole_field', field)
+    if (schema === null) continue
+    const problem = schemaValueProblem(value, schema, `add_hole field ${json(field)}`)
+    if (problem !== null) return invalid(problem)
+  }
+  return null
+}
+
 function renamePart(raw: RawStep): ValueViolation | null {
   const name = raw.name
   if (typeof name !== 'string' || name.trim().length === 0) {
@@ -829,7 +844,7 @@ export const MUTATION_VALUE_RULES = {
   add_delete_body: addDeleteBody,
   add_delete_body_ref: queryField('bodyQuery'),
   remove_delete_body_ref: indexField('index'),
-  add_hole: 'none',
+  add_hole: addHole,
   set_hole_field: fieldValue,
   add_transform: 'none',
   set_transform_field: fieldValue,

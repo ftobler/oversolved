@@ -1,0 +1,44 @@
+{
+  "method": "V = 24*24*8 - pi*5^2*8 - pi*(8^2-5^2)*3; the counterbore wall, step annulus and deeper bore wall replace the two mouth discs: A = box + 48pi; centroid z = (box moment - bore moment - step moment)/V",
+  "bodies": 1,
+  "volume": 3612.1151288120354,
+  "area": 2070.79644737231,
+  "centroid": [
+    12,
+    12,
+    4.254398273146191
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    24,
+    24,
+    8
+  ],
+  "edit": {
+    "what": "edit ex1.distance 8 -> 10 (the plate gets thicker under the same counterbore)",
+    "method": "the through bore follows the new span (10), the 3 deep step does not: V = 24*24*10 - pi*5^2*10 - pi*(8^2-5^2)*3; A = box + 68pi; the hole names re-resolve after the rebuild",
+    "feature": "ex1",
+    "field": "distance",
+    "value": 10,
+    "expect": {
+      "bodies": 1,
+      "volume": 4607.0354961325465,
+      "area": 2325.628300444106,
+      "centroid": [
+        12,
+        12,
+        5.279242951942735
+      ],
+      "bbox": [
+        0,
+        0,
+        0,
+        24,
+        24,
+        10
+      ]
+    }
+  }
+}

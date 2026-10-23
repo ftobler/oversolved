@@ -108,6 +108,7 @@ describe('value rules cover the catalog', () => {
     ['add_delete_body_ref', { type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: '' }],
     ['remove_delete_body_ref', { type: 'remove_delete_body_ref', featureId: 'db1', index: -1 }],
     ['set_hole_field', { type: 'set_hole_field', featureId: 'ho1', field: 'sketch', value: '' }],
+    ['add_hole', { type: 'add_hole', featureId: 'ho1', style: 'spotface' }],
     ['set_transform_field', { type: 'set_transform_field', featureId: 'tr1', field: 'operation', value: 'copy' }],
     ['add_transform_body', { type: 'add_transform_body', featureId: 'tr1', bodyQuery: '' }],
     ['remove_transform_body', { type: 'remove_transform_body', featureId: 'tr1', index: -1 }],
@@ -376,6 +377,37 @@ describe('finding 8: hole field values', () => {
     expect(validateMutation({
       type: 'set_hole_field', featureId: 'ho1', field: 'sketch', value: '@sk1',
     })).toMatchObject({ ok: true })
+  })
+})
+
+describe('hole styles: the new fields cross the same boundary', () => {
+  it('accepts the style and its dimensions through the setter', () => {
+    for (const [field, value] of [
+      ['style', 'counterbore'], ['style', 'countersink'],
+      ['cb_diameter', 8], ['cb_depth', 3], ['cs_angle', 82],
+    ] as const) {
+      expect(validateMutation({ type: 'set_hole_field', featureId: 'ho1', field, value }), field)
+        .toMatchObject({ ok: true })
+    }
+  })
+
+  it('refuses an unknown style through the setter', () => {
+    expect(refusal({ type: 'set_hole_field', featureId: 'ho1', field: 'style', value: 'spotface' }).message)
+      .toContain('simple')
+  })
+
+  it('accepts a fully configured hole in one add_hole payload', () => {
+    expect(validateMutation({
+      type: 'add_hole', featureId: 'ho1', label: 'Bolt hole', sketch: '@sk1', diameter: 4,
+      depth_mode: 'through_all', depth: 10, direction: 'normal', target: '@body_ex1',
+      style: 'counterbore', cb_diameter: 8, cb_depth: 3,
+    })).toMatchObject({ ok: true })
+  })
+
+  it('refuses a bad style in the add_hole payload', () => {
+    const error = refusal({ type: 'add_hole', featureId: 'ho1', style: 'spotface' })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('simple')
   })
 })
 

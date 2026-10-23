@@ -91,12 +91,19 @@ export function moveFaceSetExtendPath(createdBy: string, neighbourUuid: string, 
   return `${moveFaceExtendPath(createdBy, neighbourUuid)}|set|${pickIndex}`
 }
 
-/** What a hole's cutter face is: the bore wall, or one of the cutter's discs,
- *  `mouth` where the cutter starts and `floor` where it ends. A through_all
- *  cutter starts backed off outside the body and ends past it, so neither disc
- *  survives its cut; only a blind hole's floor, or a mouth at a site inside the
- *  body (where it roofs the drilled pocket), is a real face of the result. */
-export type HoleFaceRole = 'bore' | 'floor' | 'mouth'
+/** What one face of a hole's cutter is.
+ *
+ *  A simple hole's cutter is a cylinder: `bore` (lateral), `mouth` (the start
+ *  disc, at the plane) and `floor` (the end disc). A through_all cutter starts
+ *  backed off outside the body and ends past it, so neither disc survives its
+ *  cut; only a blind hole's floor, or a mouth at a site inside the body (where
+ *  it roofs the drilled pocket), is a real face of the result.
+ *
+ *  A counterbore adds a wider `step_wall` from the mouth and the annular
+ *  `step_floor` where it meets the bore. A countersink adds the conical `sink`
+ *  wall; its cone runs from the mouth down to the bore, so it has no planar
+ *  floor of its own. */
+export type HoleFaceRole = 'bore' | 'floor' | 'mouth' | 'step_wall' | 'step_floor' | 'sink'
 
 /**
  * A face one hole drills at one site: `<createdBy>|hole|<siteSlot>|<role>`,
