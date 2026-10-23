@@ -7,6 +7,7 @@ import type { PartDoc } from '@/types/cad'
 import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { DocHandleStore, DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
 import { docHashOf } from '@/drive/docHash'
+import { formatFeatureProblem, type FeatureProblem } from '@/drive/featureOutcome'
 import type { McpDocArguments } from '@/drive/mcpServer'
 
 export type ResolvedDoc =
@@ -51,12 +52,19 @@ export interface RunReplySource {
   doc: PartDoc | null
   docHash: string | null
   solve: unknown
+  // The problems the solve reported (featureOutcome.featureProblems): a
+  // feature can fail or warn while `ok` stays true, so this rides every reply.
+  features: FeatureProblem[]
 }
 
 /**
  * Build the default `run` reply: a handle and a summary, with the document
  * only when the caller opts in. The final document is stored under its hash,
  * so `returnDoc: true` and a later docHash resolve to the same content.
+ *
+ * `ok` means the steps applied and the solve ran; a failed feature is data,
+ * not a failed call. The features list and the summary's `problems:` suffix
+ * are how a client that reads only one line still learns about it.
  */
 export function runReply(
   result: RunReplySource,
@@ -65,12 +73,17 @@ export function runReply(
 ): { ok: boolean; [key: string]: unknown } {
   const finalDoc = result.doc
   const docHash = finalDoc ? documents.put(finalDoc) : result.docHash
+  const features = result.features
+  const summary = finalDoc
+    ? summarizeDoc(finalDoc) + (features.length > 0 ? `; problems: ${features.map(formatFeatureProblem).join('; ')}` : '')
+    : undefined
   return {
     ok: result.ok,
     steps: result.outcome.steps,
     docHash,
     solve: result.solve,
-    ...(finalDoc && { summary: summarizeDoc(finalDoc) }),
+    features,
+    ...(summary !== undefined && { summary }),
     ...(returnDoc && finalDoc && { doc: finalDoc }),
   }
 }

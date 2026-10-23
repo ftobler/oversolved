@@ -168,8 +168,8 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     expect(result.ok).toBe(true)
     const measure = await measureHeadless(result.doc!)
     expect(measure).not.toBeNull()
-    expect(measure!.volume).toBeCloseTo(12000, 6)
-    expect(measure!.bodies).toBe(1)
+    expect(measure!.measures.volume).toBeCloseTo(12000, 6)
+    expect(measure!.measures.bodies).toBe(1)
   }, 120_000)
 
   it('builds the filleted-box example at the measured volume and area', async () => {
@@ -179,8 +179,8 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     expect(result.ok).toBe(true)
     const measure = await measureHeadless(result.doc!)
     expect(measure).not.toBeNull()
-    expect(measure!.volume).toBeCloseTo(11922.743, 3)
-    expect(measure!.area).toBeCloseTo(3733.044, 3)
+    expect(measure!.measures.volume).toBeCloseTo(11922.743, 3)
+    expect(measure!.measures.area).toBeCloseTo(3733.044, 3)
   }, 120_000)
 
   it('pins the filleted-box edge queries to a select run on the box', async () => {

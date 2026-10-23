@@ -12,13 +12,14 @@
 
 import type { PartDoc, BodyResult } from '@/types/cad'
 import type { SolveSchedulerState } from '@/session/SolveScheduler'
-import { measureLocally, exportLocally, solveLocally, type LocalExportOptions } from '@/kernel/solveLocally'
+import { exportLocally, solveLocally, buildAndMeasureLocally, type LocalExportOptions } from '@/kernel/solveLocally'
 import { compareMeasures, type MeasureRow } from '@/kernel/occ/measureTolerance'
 import type { MeasureRecord } from '@/kernel/occ/measure'
 import type { TranslationReference } from '@/translations/corpus'
 import { selectByPredicate, type SelectResult, type Selector } from '@/kernel/select'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { createHeadlessPart, type HeadlessPart } from '@/drive/headlessPart'
+import { featureProblems, readSolveOutcomes, type FeatureProblem } from '@/drive/featureOutcome'
 import { partSolvePayload } from '@/drive/solveWriteBack'
 import { docHashOf } from '@/drive/docHash'
 import type { CommandJournal } from '@/drive/journal'
@@ -51,12 +52,19 @@ export interface HeadlessRunResult {
   doc: PartDoc | null
   docHash: string | null
   solve: SolveSchedulerState
+  // The features the solve did not finish cleanly, in feature log order. This
+  // is always present: an empty list is the clean-build answer.
+  features: FeatureProblem[]
   // The live part, for a caller that wants the session (the CLI records a
   // repro from its journal; most callers only read the fields above).
   part: HeadlessPart
 }
 
-/** Run a script through one headless session and report the end state. */
+/**
+ * Run a script through one headless session and report the end state. An empty
+ * script still solves the starting document, so it is the "inspect this
+ * document" call.
+ */
 export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRunResult> {
   const part = createHeadlessPart({
     doc: opts.doc,
@@ -73,6 +81,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     doc,
     docHash: doc ? docHashOf(doc) : null,
     solve,
+    features: doc ? featureProblems(doc, part.solveOutcomes()) : [],
     part,
   }
 }
@@ -82,9 +91,21 @@ export interface HeadlessMeasureOptions {
   files?: ReadonlyMap<string, Uint8Array>
 }
 
+export interface HeadlessMeasure {
+  measures: MeasureRecord
+  // The same problem list a `run` reply carries: measuring builds every
+  // feature, so a bore that cut nothing is already known here.
+  features: FeatureProblem[]
+}
+
 /** Measure a document through the local kernel; null when OCC is unavailable. */
-export async function measureHeadless(doc: PartDoc, opts: HeadlessMeasureOptions = {}): Promise<MeasureRecord | null> {
-  return measureLocally(partSolvePayload(doc, opts.docId ?? 'headless'), opts.files)
+export async function measureHeadless(doc: PartDoc, opts: HeadlessMeasureOptions = {}): Promise<HeadlessMeasure | null> {
+  const built = await buildAndMeasureLocally(partSolvePayload(doc, opts.docId ?? 'headless'), opts.files)
+  if (built === null) return null
+  return {
+    measures: built.measures,
+    features: featureProblems(doc, readSolveOutcomes(built.response.result)),
+  }
 }
 
 export interface HeadlessCompareResult {
@@ -109,7 +130,7 @@ export async function compareHeadless(
 ): Promise<HeadlessCompareResult> {
   let measures: MeasureRecord | null
   try {
-    measures = await measureHeadless(doc, opts)
+    measures = (await measureHeadless(doc, opts))?.measures ?? null
   } catch (e) {
     return {
       ok: false,

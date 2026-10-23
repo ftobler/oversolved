@@ -195,6 +195,7 @@ async function runCommand(args: Args): Promise<number> {
     steps: result.outcome.steps,
     docHash: result.docHash,
     solve: result.solve,
+    features: result.features,
   })
   return result.ok ? 0 : 1
 }
@@ -225,7 +226,7 @@ async function measureCommand(args: Args): Promise<number> {
     printJson({ ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' })
     return 1
   }
-  printJson({ ok: true, ...measure })
+  printJson({ ok: true, ...measure.measures, features: measure.features })
   return 0
 }
 
