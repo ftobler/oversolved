@@ -20,6 +20,7 @@
  */
 
 import type { Disposable } from './disposeScope'
+import { isHeapCorruptionTrap } from '../errors'
 
 /** Opaque, branded handle into a [[HandleTable]]. Never do arithmetic on it. */
 export type OccHandle = number & { readonly __occHandle: unique symbol }
@@ -117,8 +118,10 @@ export class HandleTable {
     this.slots.delete(h)
     try {
       if (!(s.obj.isDeleted?.() ?? false)) s.obj.delete()
-    } catch {
-      // best-effort: a failed native delete must not abort eviction of the rest
+    } catch (e) {
+      // best-effort for an ordinary delete failure, but a trap must reach the
+      // kernel boundary: the heap is undefined and the module has to go.
+      if (isHeapCorruptionTrap(e)) throw e
     }
   }
 

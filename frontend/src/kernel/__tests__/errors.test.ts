@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest'
 import {
   extractErrorMessage,
   extractOccErrorMessage,
+  isHeapCorruptionTrap,
   isKernelTrap,
   KernelFault,
   occThrowTypeName,
@@ -160,5 +161,25 @@ describe('isKernelTrap', () => {
     expect(fault.name).toBe('KernelFault')
     expect(fault.detail).toBe('memory access out of bounds')
     expect(fault.message).toBe('kernel fault: memory access out of bounds; the kernel was reloaded')
+    // A fault raised because the reload did not happen must not claim it did.
+    expect(new KernelFault('the sketch solver could not be reloaded', false).message)
+      .toBe('kernel fault: the sketch solver could not be reloaded')
+  })
+})
+
+describe('isHeapCorruptionTrap', () => {
+  it('separates linear-memory faults from embind destructor bookkeeping', () => {
+    expect(isHeapCorruptionTrap(new WebAssembly.RuntimeError('memory access out of bounds'))).toBe(true)
+    expect(isHeapCorruptionTrap(new WebAssembly.RuntimeError('unreachable'))).toBe(true)
+    // The non-RuntimeError trap forms are fatal too.
+    const exitStatus = new Error('Program terminated with exit(1)')
+    exitStatus.name = 'ExitStatus'
+    expect(isHeapCorruptionTrap(exitStatus)).toBe(true)
+    expect(isHeapCorruptionTrap(new Error('abort(Assertion failed: x)'))).toBe(true)
+    // These are what delete() on a proxy whose class registry is gone throws; they
+    // must stay best-effort so cleanup still runs.
+    expect(isHeapCorruptionTrap(new WebAssembly.RuntimeError('table index is out of bounds'))).toBe(false)
+    expect(isHeapCorruptionTrap(new WebAssembly.RuntimeError('null function or function signature mismatch'))).toBe(false)
+    expect(isHeapCorruptionTrap(new Error('native delete failed'))).toBe(false)
   })
 })

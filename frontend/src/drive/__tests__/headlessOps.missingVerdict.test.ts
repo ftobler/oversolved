@@ -21,7 +21,7 @@ vi.mock('@/kernel/solveLocally', () => ({
 }))
 
 const kernel = await import('@/kernel/solveLocally')
-const { runHeadless, measureHeadless } = await import('../headlessOps')
+const { runHeadless, measureHeadless, compareHeadless } = await import('../headlessOps')
 
 const emptyBuild = {
   result: {},
@@ -70,5 +70,24 @@ describe('a settle with no verdicts', () => {
     expect(measured!.features).toEqual([
       { id: 'ex1', kind: 'extrude', status: 'missing', message: MISSING_VERDICT_MESSAGE },
     ])
+  })
+
+  it('refuses to compare an unbuilt document instead of matching an empty reference', async () => {
+    const doc = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'ex1', kind: 'extrude' }],
+    } as PartDoc
+    vi.mocked(kernel.buildAndMeasureLocally).mockResolvedValue({
+      response: emptyBuild,
+      measures: {
+        bodies: 0, volume: 0, area: 0, centroid: [0, 0, 0], bbox: [0, 0, 0, 0, 0, 0],
+        faces: 0, edges: 0, vertices: 0, perBody: [],
+      },
+    } as never)
+    const compared = await compareHeadless(doc, {} as never)
+    expect(compared.ok).toBe(false)
+    expect(compared.pass).toBe(false)
+    expect(compared.error).toContain('no verdict from the solve for: ex1')
   })
 })

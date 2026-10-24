@@ -323,7 +323,10 @@ npm run drive -- replay repro.json
   `{ ok, pass, rows, measures }`, one row per measure with `ours`, `theirs`,
   `delta`, `within` and `enforced`; exit 0 on pass, 1 on a failing row (or a
   build or kernel error), 2 on a usage error. A failing row is data, not an
-  error: `ok` stays true so an agent loop reads which measure diverged.
+  error: `ok` stays true so an agent loop reads which measure diverged. A
+  document the settle could not answer for (a missing verdict) is `ok: false`
+  instead, because comparing its empty measure to a reference would be
+  meaningless.
 - `export` writes STEP or STL bytes.
 - `replay` applies the recorded mutations to a fresh session under the
   payload's seed, verifies each step's before and after hash and exits nonzero

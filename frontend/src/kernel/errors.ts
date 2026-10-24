@@ -25,8 +25,10 @@ export const KERNEL_FAULT_PREFIX = 'kernel fault'
 export class KernelFault extends Error {
   readonly detail: string
 
-  constructor(detail: string) {
-    super(`${KERNEL_FAULT_PREFIX}: ${detail}; the kernel was reloaded`)
+  constructor(detail: string, reloaded = true) {
+    super(reloaded
+      ? `${KERNEL_FAULT_PREFIX}: ${detail}; the kernel was reloaded`
+      : `${KERNEL_FAULT_PREFIX}: ${detail}`)
     this.name = 'KernelFault'
     this.detail = detail
   }
@@ -45,6 +47,25 @@ export class KernelFault extends Error {
  */
 export function isKernelTrap(e: unknown): boolean {
   if (e instanceof WebAssembly.RuntimeError) return true
+  if (!(e instanceof Error)) return false
+  if (e.name === 'ExitStatus') return true
+  return /^abort\(/.test(e.message) || e.message.includes('Aborted(')
+}
+
+/**
+ * The subset of traps that proves linear memory is unusable. Disposal calls
+ * (`delete()` on an embind proxy) can also throw a RuntimeError for registry
+ * bookkeeping (`table index is out of bounds`) on an object whose module is
+ * already torn down; those are deliberately swallowed by the best-effort
+ * cleanup helpers, while an out-of-bounds access or `unreachable` must not be.
+ */
+export function isHeapCorruptionTrap(e: unknown): boolean {
+  if (e instanceof WebAssembly.RuntimeError) {
+    // "table index is out of bounds" and "null function or function signature
+    // mismatch" are embind's class-registry teardown errors, not linear memory;
+    // only the memory-access wording and `unreachable` count here.
+    return /memory access out of bounds|unreachable/i.test(e.message)
+  }
   if (!(e instanceof Error)) return false
   if (e.name === 'ExitStatus') return true
   return /^abort\(/.test(e.message) || e.message.includes('Aborted(')

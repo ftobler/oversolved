@@ -173,6 +173,32 @@ describe('HandleTable', () => {
     expect(s.deleted).toBe(1)  // isDeleted() guard prevents the second delete
   })
 
+  it('surfaces a wasm trap from delete instead of swallowing it with the rest', () => {
+    const t = table()
+    const bad: Disposable = {
+      delete() {
+        throw new WebAssembly.RuntimeError('memory access out of bounds')
+      },
+    }
+    const h = t.register(bad)
+    expect(() => t.release(h)).toThrow(WebAssembly.RuntimeError)
+    // The slot is dropped before delete runs, so a caller that discards the
+    // table cannot be handed the dead handle again.
+    expect(t.has(h)).toBe(false)
+  })
+
+  it('keeps swallowing an embind destructor bookkeeping error', () => {
+    const t = table()
+    const bad: Disposable = {
+      delete() {
+        throw new WebAssembly.RuntimeError('table index is out of bounds')
+      },
+    }
+    const h = t.register(bad)
+    expect(() => t.release(h)).not.toThrow()
+    expect(t.has(h)).toBe(false)
+  })
+
   it('stays leak-free across a 100-iteration register/release loop', () => {
     const t = table()
     const all: FakeShape[] = []

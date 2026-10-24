@@ -118,6 +118,21 @@ function runSolverBytes(bytes: SolveBytes, input: FlatInput): SolverOutput {
   }
 }
 
+/** `detect_topology_bytes` shares the solver's wasm instance, so a trap there
+ *  faults the same module; mark it before the build converts it to a sketch
+ *  exception. */
+function runTopology(
+  richGeom: Parameters<typeof solveTopology>[0],
+  featureId: string,
+): ReturnType<typeof solveTopology> {
+  try {
+    return solveTopology(richGeom, featureId, topologyBytes)
+  } catch (e) {
+    if (isKernelTrap(e)) sketchTrapPending = true
+    throw e
+  }
+}
+
 /** @internal: whether the last trap came out of the sketch module. Clears the
  *  flag, so one recovered trap does not make the next OCC trap look like a
  *  sketch fault too. */
@@ -125,6 +140,13 @@ export function consumeSketchTrap(): boolean {
   const pending = sketchTrapPending
   sketchTrapPending = false
   return pending
+}
+
+/** Whether the Rust area builder shares the loaded sketch module. Recovery
+ *  requires both after a sketch-package trap: a solver without topology builds
+ *  an exception per sketch, which the drive reply would read as ok. */
+export function isSketchTopologyReady(): boolean {
+  return topologyBytes !== null
 }
 
 /** Inject a pre-loaded Rust area builder; null restores the TS fallback. */
@@ -159,6 +181,7 @@ export function resetSketchSolver(): void {
  */
 export function resetSketchSolverAfterTrap(): void {
   solverBytes = null
+  topologyBytes = null
   solverCell.reset()
   resetSolverWasm()
 }
@@ -463,7 +486,7 @@ export function solveSketch(
   // downstream features can resolve this sketch's profile. A crossing already
   // owned by a materialized point yields to that point's identity.
   const topology = stampAreaBuildability(reconcileMaterializedContacts(
-    solveTopology(richGeom, featureId, topologyBytes),
+    runTopology(richGeom, featureId),
     pointPositions,
   ))
   const plane_transform = frameToPlaneTransform(plane as Frame3D)

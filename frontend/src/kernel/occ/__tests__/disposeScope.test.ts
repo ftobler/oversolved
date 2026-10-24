@@ -125,6 +125,40 @@ describe('DisposeScope', () => {
     expect(good.deleted).toBe(1)
   })
 
+  it('rethrows a wasm trap and stops touching the dead module', () => {
+    const order: string[] = []
+    const trap: Disposable = {
+      delete() {
+        throw new WebAssembly.RuntimeError('memory access out of bounds')
+      },
+    }
+    const good = new FakeObj('good', order)
+    const scope = new DisposeScope()
+    // Reverse order: the trap runs first, so a swallowed error would still
+    // delete `good` on the undefined heap.
+    scope.track(good)
+    scope.track(trap)
+    expect(() => scope.dispose()).toThrow(WebAssembly.RuntimeError)
+    expect(good.deleted).toBe(0)
+  })
+
+  it('still swallows an embind destructor bookkeeping error', () => {
+    // These are not heap corruption: a proxy whose module registry is already
+    // torn down throws from runDestructor, and cleanup must stay best-effort.
+    const order: string[] = []
+    const bad: Disposable = {
+      delete() {
+        throw new WebAssembly.RuntimeError('table index is out of bounds')
+      },
+    }
+    const good = new FakeObj('good', order)
+    const scope = new DisposeScope()
+    scope.track(good)
+    scope.track(bad)
+    expect(() => scope.dispose()).not.toThrow()
+    expect(good.deleted).toBe(1)
+  })
+
   it('throws if track() is called after dispose()', () => {
     const scope = new DisposeScope()
     scope.dispose()

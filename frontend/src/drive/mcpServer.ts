@@ -321,7 +321,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     name: 'compare',
     description: 'Measure a document and compare it against a reference at the reference\'s tolerance. '
       + 'Pass the reference inline or as referencePath (a project file under tmp/, bugreports/ or scratch/). '
-      + 'Returns pass plus one row per measure (ours, theirs, delta, within); a failing row is data, not a tool error. '
+      + 'Returns pass plus one row per measure (ours, theirs, delta, within); a failing row is data, not a tool error, '
+      + 'but a settle with no verdict is ok:false and is not compared. '
       + REFERENCE_FRAME_SENTENCE,
     inputSchema: {
       type: 'object',

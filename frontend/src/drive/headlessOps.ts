@@ -198,9 +198,9 @@ export async function compareHeadless(
   reference: TranslationReference,
   opts: HeadlessMeasureOptions = {},
 ): Promise<HeadlessCompareResult> {
-  let measures: MeasureRecord | null
+  let measured: HeadlessMeasure | null
   try {
-    measures = (await measureHeadless(doc, opts))?.measures ?? null
+    measured = await measureHeadless(doc, opts)
   } catch (e) {
     return {
       ok: false,
@@ -210,7 +210,7 @@ export async function compareHeadless(
       error: e instanceof Error ? e.message : String(e),
     }
   }
-  if (!measures) {
+  if (!measured) {
     return {
       ok: false,
       pass: false,
@@ -219,6 +219,22 @@ export async function compareHeadless(
       error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)',
     }
   }
+  if (!measured.ok) {
+    // A settle that answered nothing must not flow into a comparison: an empty
+    // measure can look like a perfect match against an empty reference.
+    const missing = measured.features
+      .filter(problem => problem.status === MISSING_VERDICT_STATUS)
+      .map(problem => problem.id)
+      .join(', ')
+    return {
+      ok: false,
+      pass: false,
+      rows: [],
+      measures: measured.measures,
+      error: missing === '' ? 'the solve did not finish cleanly' : `no verdict from the solve for: ${missing}`,
+    }
+  }
+  const measures = measured.measures
   const { pass, rows } = compareMeasures(measures, reference, {
     tolerance: reference.tolerance,
     topology: reference.topology,

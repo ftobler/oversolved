@@ -15,6 +15,7 @@
  */
 
 import type { OccShape, OccListOfShape } from './occTypes'
+import { isHeapCorruptionTrap } from '../errors'
 
 /** Anything OCC.js (or a test double) hands back that owns native memory. */
 export interface Disposable {
@@ -76,8 +77,10 @@ export class DisposeScope {
     }
     try {
       if (!(obj.isDeleted?.() ?? false)) obj.delete()
-    } catch {
-      // best-effort: keep building with whatever memory was reclaimable
+    } catch (e) {
+      // best-effort, except for a trap: the heap is undefined, and swallowing it
+      // would leave the module in place for the next call.
+      if (isHeapCorruptionTrap(e)) throw e
     }
     return obj
   }
@@ -99,8 +102,10 @@ export class DisposeScope {
       const obj = this.tracked[i]
       try {
         if (!(obj.isDeleted?.() ?? false)) obj.delete()
-      } catch {
-        // best-effort: one bad delete must not strand the remaining handles
+      } catch (e) {
+        // best-effort, except for a trap: the heap is undefined, and swallowing it
+        // would leave the module in place for the next call.
+        if (isHeapCorruptionTrap(e)) throw e
       }
     }
     this.tracked.length = 0

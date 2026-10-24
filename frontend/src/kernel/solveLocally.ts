@@ -12,7 +12,7 @@ import { isDevBuild } from './isDevBuild'
 import { extractErrorMessage, isKernelTrap, KernelFault } from './errors'
 import { initGlobalRepo } from './query'
 import { createFeatureSolver } from './solverRegistry'
-import { initSketchSolver, consumeSketchTrap, resetSketchSolverAfterTrap } from './features/sketch'
+import { initSketchSolver, consumeSketchTrap, isSketchTopologyReady, resetSketchSolverAfterTrap } from './features/sketch'
 import { postRegister } from './features/postRegister'
 import { loadOccWeb, resetOccWeb } from './occ/loadOccWeb'
 import { memoizedLoad } from './occ/memoizedLoad'
@@ -52,6 +52,11 @@ let lastDocId: string | null = null
 // that is out of this module's scope, so the invariant is enforced here rather
 // than assumed.
 let solveInFlight = false
+// Set when the sketch module (solver + topology, one wasm package) trapped.
+// The retry must then find a fresh module: a degraded build that reports a
+// sketch "exception" would hide the dead kernel behind ok:true in the drive
+// reply.
+let sketchReloadRequired = false
 
 /** Drop the cross-solve cache (handles + state). Called on doc switch. */
 function resetLocalSolveCache(): void {
@@ -125,7 +130,10 @@ function recoverLocalKernel(): void {
   // loader owns whatever cache it has, so only the default path is reset here.
   else if (occLoaderOverride === null) resetOccWeb()
   occCell.reset()
-  if (sketchFault) resetSketchSolverAfterTrap()
+  if (sketchFault) {
+    sketchReloadRequired = true
+    resetSketchSolverAfterTrap()
+  }
 }
 
 /** A trap that escaped the build is not a document verdict: recover, then
@@ -137,6 +145,18 @@ function recoverTrap(e: unknown): never {
   throw new KernelFault(detail)
 }
 
+/** Run kernel cleanup, converting a disposal trap into the same reload path.
+ *  Kept as a function so a trap can fail the solve from a finally block without
+ *  a throw statement there (`no-unsafe-finally`). */
+function cleanupKernel(cleanup: () => void): void {
+  try {
+    cleanup()
+  } catch (e) {
+    if (isKernelTrap(e)) recoverTrap(e)
+    throw e
+  }
+}
+
 /** @internal test-only: inject an OCC loader and reset all cached state. */
 export function setSolveLocalsForTest(
   loader: (() => Promise<OccModule | null>) | null,
@@ -145,6 +165,7 @@ export function setSolveLocalsForTest(
   setOccLoader(loader, reset)
   resetLocalSolveCache()
   solveInFlight = false
+  sketchReloadRequired = false
 }
 
 /** @internal test-only: the persistent cross-solve HandleTable, so leak-gate
@@ -434,24 +455,40 @@ export async function solveLocally(
   }
 }
 
+/** Load OCC and the Rust sketch modules for a build. A trap during the load is
+ *  already a dead kernel; a sketch module that trapped earlier must be present,
+ *  or the build would degrade into per-sketch feature exceptions. */
+async function loadKernelForBuild(): Promise<OccModule | null> {
+  let oc: OccModule | null
+  let sketch: Awaited<ReturnType<typeof initSketchSolver>>
+  try {
+    const [loaded, sketchLoaded] = await Promise.all([ensureOcc(), initSketchSolver()])
+    oc = loaded
+    sketch = sketchLoaded
+  } catch (e) {
+    if (isKernelTrap(e)) recoverTrap(e)
+    throw e
+  }
+  // A sketch-package trap cannot be recovered by building without the module:
+  // that turns every sketch into a feature exception, which the drive reply
+  // reads as ok. Keep the latch until a reload actually succeeds.
+  if (sketchReloadRequired && (sketch === null || !isSketchTopologyReady())) {
+    throw new KernelFault('the sketch solver could not be reloaded after a trap', false)
+  }
+  sketchReloadRequired = false
+  return oc
+}
+
 /** The solve proper. Only ever called with the reentrancy guard held. */
 async function solveLocallyGuarded(
   spec: Record<string, unknown>,
   options: SolveLocalOptions,
 ): Promise<BuildResponse | null> {
-  // Load OCC.js and the Rust sketch solver in parallel; both must be ready
-  // before build() runs. initSketchSolver MUST be awaited: build() solves
-  // sketches synchronously, so a fire-and-forget load races the first solve and
-  // every sketch throws "Rust solver not initialised". A null result (wasm
-  // absent) is fine, sketch features then throw and the builder catches them.
-  let oc: OccModule | null
-  try {
-    const [loaded] = await Promise.all([ensureOcc(), initSketchSolver()])
-    oc = loaded
-  } catch (e) {
-    if (isKernelTrap(e)) recoverTrap(e)
-    throw e
-  }
+  // OCC and the Rust sketch solver must both be ready before build() runs;
+  // loadKernelForBuild awaits both in parallel and enforces the post-trap
+  // reload requirement. A null result (wasm absent) is fine: sketch features
+  // then throw and the builder records them.
+  const oc = await loadKernelForBuild()
   if (!oc) {
     // Dev-only diagnostics: this runs on every solve in the hot path, so prod
     // builds stay silent (same gate as handleTable/loadOccWeb).
@@ -515,7 +552,11 @@ async function solveLocallyGuarded(
     // Only the transient scope is dropped. The HandleTable persists across
     // builds: build()'s per-checkpoint retain/releaseOwner manages its handles,
     // and the clean-prefix shapes must stay live for the next incremental solve.
-    if (!faulted) scope.dispose()
+    if (!faulted) {
+      cleanupKernel(() => {
+        scope.dispose()
+      })
+    }
   }
 }
 
@@ -602,7 +643,7 @@ export async function exportLocally(
   opts: LocalExportOptions,
   files?: ReadonlyMap<string, Uint8Array>,
 ): Promise<Uint8Array | null> {
-  const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
+  const oc = await loadKernelForBuild()
   if (!oc) return null
 
   const scope = new DisposeScope()
@@ -623,8 +664,10 @@ export async function exportLocally(
     // A trapped module must not be touched again: both the scope and the table
     // would run delete() on the undefined heap.
     if (!faulted) {
-      scope.dispose()
-      table.disposeAll()
+      cleanupKernel(() => {
+        scope.dispose()
+        table.disposeAll()
+      })
     }
   }
 }
@@ -652,7 +695,7 @@ export async function buildAndMeasureLocally(
   spec: Record<string, unknown>,
   files?: ReadonlyMap<string, Uint8Array>,
 ): Promise<LocalBuildAndMeasure | null> {
-  const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
+  const oc = await loadKernelForBuild()
   if (!oc) return null
 
   const scope = new DisposeScope()
@@ -681,8 +724,10 @@ export async function buildAndMeasureLocally(
     throw e
   } finally {
     if (!faulted) {
-      scope.dispose()
-      table.disposeAll()
+      cleanupKernel(() => {
+        scope.dispose()
+        table.disposeAll()
+      })
     }
   }
 }
@@ -739,7 +784,11 @@ function measureFeatureCheckpoints(
     if (isKernelTrap(e)) faulted = true
     throw e
   } finally {
-    if (!faulted) scope.dispose()
+    if (!faulted) {
+      cleanupKernel(() => {
+        scope.dispose()
+      })
+    }
   }
 }
 
@@ -757,6 +806,9 @@ export async function measureSolveFeatures(response: BuildResponse): Promise<Fea
   try {
     return measureFeatureCheckpoints(oc, state, persistentTable)
   } catch (e) {
+    // A cleanup trap is already a KernelFault carrying the reload; let it out
+    // instead of turning it into "no deltas".
+    if (e instanceof KernelFault) throw e
     if (isKernelTrap(e)) recoverTrap(e)
     // A missing handle here means the measurement cannot be trusted; an absent
     // delta list is honest, a partial or invented one would not be.
@@ -817,7 +869,7 @@ export async function exportAssemblyLocally(
   opts: LocalExportOptions,
   files?: ReadonlyMap<string, Uint8Array>,
 ): Promise<Uint8Array | null> {
-  const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
+  const oc = await loadKernelForBuild()
   if (!oc) return null
 
   const scope = new DisposeScope()
@@ -846,8 +898,10 @@ export async function exportAssemblyLocally(
     throw e
   } finally {
     if (!faulted) {
-      scope.dispose()
-      table.disposeAll()
+      cleanupKernel(() => {
+        scope.dispose()
+        table.disposeAll()
+      })
     }
   }
 }

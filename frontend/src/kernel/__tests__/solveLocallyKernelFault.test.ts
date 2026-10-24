@@ -11,15 +11,17 @@
 import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { loadTopology } from '@/wasm-kernel/loadTopology'
 import {
   solveLocally,
   setOccLoader,
   setSolveLocalsForTest,
   persistentTableForTest,
 } from '../solveLocally'
-import { resetSketchSolver, setSketchSolver } from '../features/sketch'
+import { resetSketchSolver, setSketchSolver, setSketchTopology } from '../features/sketch'
 import { KernelFault } from '../errors'
 import type { OccModule } from '../occ/occTypes'
+import type { SolveBytes } from '@/wasm-kernel/wasmTypes'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -109,5 +111,39 @@ describe.skipIf(!oc || !solveBytes)('solveLocally kernel trap recovery (real OCC
     await expect(solveLocally(doc(6))).rejects.toThrow(/kernel fault: memory access out of bounds/)
     expect(dispose).not.toHaveBeenCalled()
     expect(persistentTableForTest()).toBeNull()
+  })
+
+  it('fails when a trapped sketch solver cannot be reloaded', async () => {
+    // Headless hosts inject the node bytes once; dropping them on a trap leaves
+    // no loader to re-run. The retry must then be a KernelFault, not a build
+    // whose sketches silently become feature exceptions.
+    setSolveLocalsForTest(async () => oc)
+    const trapping = (() => {
+      throw new WebAssembly.RuntimeError('unreachable')
+    }) as unknown as SolveBytes
+    setSketchSolver(trapping)
+
+    await expect(solveLocally(doc(5))).rejects.toThrow(/sketch solver could not be reloaded after a trap/)
+    // The latch survives the failed reload: a later call must not fall back to
+    // per-sketch exceptions that read as ok.
+    await expect(solveLocally(doc(5))).rejects.toThrow(/sketch solver could not be reloaded after a trap/)
+
+    // A real reload clears it and the next build succeeds.
+    setSketchSolver(solveBytes)
+    setSketchTopology(loadTopology())
+    const recovered = await solveLocally(doc(5))
+    expect((recovered!.result as Record<string, { status?: string }>).ex1.status).toBe('ok')
+  })
+
+  it('treats a topology-builder trap as a fault of the same sketch module', async () => {
+    setSolveLocalsForTest(async () => oc)
+    setSketchSolver(solveBytes)
+    const trapping = (() => {
+      throw new WebAssembly.RuntimeError('memory access out of bounds')
+    }) as unknown as (input: Uint8Array) => Uint8Array
+    setSketchTopology(trapping)
+
+    await expect(solveLocally(doc(5))).rejects.toThrow(/sketch solver could not be reloaded after a trap/)
+    setSketchTopology(null)
   })
 })
