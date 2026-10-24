@@ -1,0 +1,43 @@
+{
+  "origin": {
+    "kind": "bug_report",
+    "ref": "feature/bug-hole-direction.md (re-created from its text)",
+    "date": "2026-10-24"
+  },
+  "license": "own",
+  "severity": "hard",
+  "what": "a 13 thick pill plate with two through counterbores d8/cb15x4 on its top face, direction normal at the end-arc centres",
+  "features": {
+    "default": "ok",
+    "except": {
+      "sk_pill": "underconstrained",
+      "sk_bores": "underconstrained"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 18570.66313340088,
+    "area": 5847.256359733385,
+    "centroid": [
+      29.999999999999996,
+      14.999999999999996,
+      6.254873171606665
+    ],
+    "bbox": [
+      0,
+      0,
+      0,
+      60,
+      30,
+      13
+    ],
+    "faces": 12,
+    "edges": 24
+  },
+  "snapshot": true
+}

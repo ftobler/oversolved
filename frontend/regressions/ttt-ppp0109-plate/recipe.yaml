@@ -1,0 +1,81 @@
+kind: part
+version: 1
+features:
+  - id: sk_pill
+    kind: sketch
+    label: plate outline
+    plane: "@builtin_plane_front"
+    entities:
+      - id: bottom
+        kind: line
+      - id: right_end
+        kind: arc
+      - id: top
+        kind: line
+      - id: left_end
+        kind: arc
+    initial:
+      bottom:
+        - 15
+        - 0
+        - 45
+        - 0
+      right_end:
+        - 45
+        - 15
+        - 15
+        - -90
+        - 90
+      top:
+        - 45
+        - 30
+        - 15
+        - 30
+      left_end:
+        - 15
+        - 15
+        - 15
+        - 90
+        - 270
+  - id: ex_plate
+    kind: extrude
+    extrude:
+      sketch: $sk_pill
+      distance: 13
+      direction: normal
+      operation: new
+  - id: pl_top
+    kind: plane
+    label: top face
+    definition:
+      mode: offset
+      plane: "@builtin_plane_front"
+      offset: 13
+  - id: sk_bores
+    kind: sketch
+    label: bore sites
+    plane: "@pl_top"
+    entities:
+      - id: p1
+        kind: point
+      - id: p2
+        kind: point
+    initial:
+      p1:
+        - 15
+        - 15
+      p2:
+        - 45
+        - 15
+  - id: h_bores
+    kind: hole
+    label: counterbores
+    hole:
+      sketch: "@sk_bores"
+      diameter: 8
+      depth_mode: through_all
+      direction: normal
+      style: counterbore
+      cb_diameter: 15
+      cb_depth: 4
+      target: "@body_ex_plate"

@@ -1,0 +1,50 @@
+{
+  "bodies": {
+    "body_ex_plate": {
+      "created_by": "ex_plate",
+      "modified_by": [
+        "h_bores"
+      ],
+      "face_hashes": [
+        "gface_0db53f702623b5cc",
+        "gface_2165288053d1426c",
+        "gface_2fed9c83acd2211d",
+        "gface_4564337121580559",
+        "gface_6a6c28c3c8f7f97d",
+        "gface_79711a747b6b09af",
+        "gface_823b72ea70c79253",
+        "gface_9d65d47669920798",
+        "gface_9f5f84a2ffde37a1",
+        "gface_aa86a2333410bf4e",
+        "gface_c442a290033165ba",
+        "gface_e07ab09553e5e9ec"
+      ],
+      "edge_hashes": [
+        "gedge_11350b828802d10a",
+        "gedge_123b4de99e727164",
+        "gedge_211d16b7fdc341a6",
+        "gedge_2bffc7ac7b0e23e0",
+        "gedge_317b9a59f23efee5",
+        "gedge_350ce3841d40ca03",
+        "gedge_3d237536415e22d5",
+        "gedge_418982880a54522c",
+        "gedge_49912758d7c29f3b",
+        "gedge_52031821fc44f075",
+        "gedge_5c880ba757fe4142",
+        "gedge_61a877c8281e3f2d",
+        "gedge_76d425888e091dc7",
+        "gedge_776693830c0344be",
+        "gedge_808f41fce4ae7d4a",
+        "gedge_81fc370d187a2485",
+        "gedge_9fa25829f5ad68b0",
+        "gedge_ad2948e24c949c75",
+        "gedge_b37b16563e76157c",
+        "gedge_c35f53facf0f6aff",
+        "gedge_f83ada81fc8c52ea",
+        "gedge_f906658079d7a3b9",
+        "gedge_fa5501d2748433b5",
+        "gedge_fc69335408e4cde7"
+      ]
+    }
+  }
+}
