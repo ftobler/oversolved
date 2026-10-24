@@ -21,6 +21,7 @@ import { journalSink, type CommandJournal } from '@/drive/journal'
 import { runScript, type ScriptRunOutcome, type ScriptStep } from '@/drive/scriptRunner'
 import { validateMutation } from '@/drive/mutationCatalog'
 import { readSolveOutcomes, type FeatureOutcome } from '@/drive/featureOutcome'
+import { featureFrames, type FeatureFrameMap } from '@/drive/featureFrames'
 import { docHashOf } from '@/drive/docHash'
 import { seededIdSource, stepSeedFor } from '@/drive/seededIds'
 import { setIdSource } from '@/utils/yamlMutations'
@@ -52,6 +53,9 @@ export interface HeadlessPart {
   // The per-feature outcome of the last settle (status plus the kernel's own
   // exception/warning text). The CLI and MCP report every problem in here.
   solveOutcomes(): Record<string, FeatureOutcome>
+  // The resolved frame of every sketch and plane feature in the last solve,
+  // keyed by feature id. Null when no solve has run yet.
+  featureFrames(): FeatureFrameMap | null
   // The status-only view of solveOutcomes, for the repro test's sidecar
   // expectations.
   solveStatuses(): Record<string, string>
@@ -204,6 +208,9 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     getDoc: () => docBox.current,
     bodyIds: () => bodiesBox.current,
     solveOutcomes: () => outcomesBox.current,
+    featureFrames: () => responseBox.current === null
+      ? null
+      : featureFrames(docBox.current, responseBox.current.result),
     // Derived rather than stored: the status view and the outcome view cannot
     // disagree about which features the last settle reached.
     solveStatuses: () => Object.fromEntries(

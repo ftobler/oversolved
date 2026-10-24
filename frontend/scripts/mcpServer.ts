@@ -136,7 +136,7 @@ const ops: McpCadOps = {
     if (!measure) {
       return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
     }
-    return { ok: measure.ok, docHash: resolved.docHash, ...measure.measures, features: measure.features }
+    return { ok: measure.ok, docHash: resolved.docHash, ...measure.measures, features: measure.features, frames: measure.frames }
   },
 
   async compare(req) {

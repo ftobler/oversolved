@@ -22,6 +22,7 @@ import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { createHeadlessPart, type HeadlessPart } from '@/drive/headlessPart'
 import { featureProblems, readSolveOutcomes, MISSING_VERDICT_STATUS, type FeatureProblem } from '@/drive/featureOutcome'
 import { featureDeltaRows, touchedFeatureIds, type FeatureDelta } from '@/drive/featureDeltas'
+import { featureFrames, type FeatureFrameMap } from '@/drive/featureFrames'
 import { partSolvePayload } from '@/drive/solveWriteBack'
 import { docHashOf } from '@/drive/docHash'
 import type { CommandJournal } from '@/drive/journal'
@@ -69,6 +70,10 @@ export interface HeadlessRunResult {
   // measurable checkpoints (no kernel); a failed feature has no row, but its
   // checkpoint still sets the baseline for the next clean one.
   featureDeltas: FeatureDelta[] | null
+  // The resolved {origin, x_axis, y_axis, normal} of every sketch and add_plane
+  // feature the final solve reached. Null when no solve ran; a refused
+  // feature has no frame.
+  frames: FeatureFrameMap | null
   // The live part, for a caller that wants the session (the CLI records a
   // repro from its journal; most callers only read the fields above).
   part: HeadlessPart
@@ -130,6 +135,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
           mode: opts.featureDeltas === 'all' ? 'all' : 'changed',
         })
       : null,
+    frames: part.featureFrames(),
     part,
   }
 }
@@ -164,6 +170,9 @@ export interface HeadlessMeasure {
   // The same problem list a `run` reply carries: measuring builds every
   // feature, so a bore that cut nothing is already known here.
   features: FeatureProblem[]
+  // The resolved frames of every sketch and add_plane feature, the same map a
+  // run reply carries.
+  frames: FeatureFrameMap
 }
 
 /** Measure a document through the local kernel; null when OCC is unavailable. */
@@ -175,6 +184,7 @@ export async function measureHeadless(doc: PartDoc, opts: HeadlessMeasureOptions
     ok: !features.some(problem => problem.status === MISSING_VERDICT_STATUS),
     measures: built.measures,
     features,
+    frames: featureFrames(doc, built.response.result),
   }
 }
 

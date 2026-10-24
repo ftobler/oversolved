@@ -9,6 +9,7 @@ import { DocHandleStore, DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
 import { docHashOf } from '@/drive/docHash'
 import { formatFeatureProblem, type FeatureProblem } from '@/drive/featureOutcome'
 import type { FeatureDelta } from '@/drive/featureDeltas'
+import type { FeatureFrameMap } from '@/drive/featureFrames'
 import type { McpDocArguments } from '@/drive/mcpServer'
 
 export type ResolvedDoc =
@@ -84,6 +85,9 @@ export interface RunReplySource {
   // Per-feature volume/bbox for the features this run changed or touched; null
   // when no checkpoints were measurable (no kernel).
   featureDeltas?: FeatureDelta[] | null
+  // The resolved sketch and plane frames of the final solve; null when no
+  // solve ran.
+  frames?: FeatureFrameMap | null
 }
 
 /**
@@ -117,6 +121,7 @@ export function runReply(
     solve: result.solve,
     features,
     ...(result.featureDeltas !== undefined && { featureDeltas: result.featureDeltas }),
+    ...(result.frames !== undefined && result.frames !== null && { frames: result.frames }),
     ...(summary !== undefined && { summary }),
     ...(returnDoc && finalDoc && { doc: finalDoc }),
   }
