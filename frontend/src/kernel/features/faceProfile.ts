@@ -29,6 +29,11 @@ interface FaceProfile {
   face: OccShape | null
   // Why some boundary did not form a closed loop (extractProfileLoops diags).
   loopDiags?: ProfileLoopDiag[]
+  // Only the sketch-area paths: the areas THIS reference names (all of a whole
+  // sketch, only the picked ones for an area query) and the indexes of those
+  // that published a loop. Feeds the partial-profile accounting.
+  profileSurfaces?: Dict[]
+  builtSurfaces?: number[]
 }
 
 function bodyShape(table: HandleTable, body: Body): OccShape {
@@ -218,8 +223,9 @@ export function resolveFaceProfile(
       normal: (faceEntry.normal as number[]) ?? [0, 0, 1],
     }
     const diags: ProfileLoopDiag[] = []
-    const loops = extractProfileLoops(surfaces, diags)
-    return { loops, plane: effectivePlane, face: null, loopDiags: diags }
+    const built: number[] = []
+    const loops = extractProfileLoops(surfaces, diags, built)
+    return { loops, plane: effectivePlane, face: null, loopDiags: diags, profileSurfaces: surfaces, builtSurfaces: built }
   }
 
   if (sketchRef.startsWith('?')) {
@@ -243,12 +249,16 @@ export function resolveFaceProfile(
       }
     })
     const diags: ProfileLoopDiag[] = []
-    const loops = extractProfileLoops(matched.length ? matched : allSurfaces, diags)
+    const built: number[] = []
+    const referenced = matched.length ? matched : allSurfaces
+    const loops = extractProfileLoops(referenced, diags, built)
     return {
       loops,
       plane: surfacePt,
       face: null,
       loopDiags: diags,
+      profileSurfaces: referenced,
+      builtSurfaces: built,
     }
   }
 
@@ -292,6 +302,11 @@ interface ExtrudeLoops {
   face: OccShape | null
   // Why some boundary did not form a closed loop (extractProfileLoops diags).
   loopDiags?: ProfileLoopDiag[]
+  // The areas this reference names, and the indexes of those that published a
+  // loop. Whole sketch: every area; an area or entity pick: just the picked
+  // ones. A body face has no sketch areas, so it stays undefined.
+  profileSurfaces?: Dict[]
+  builtSurfaces?: number[]
   // Only set on the `$sketch` path; needed by the caller for registerTopFace.
   surfaces?: Dict[]
   // Only set on the `$sketch` path; needed by the caller for registerTopFace.
@@ -347,14 +362,16 @@ function collectEntityProfileLoops(
     ? ((ownArea.boundary as Dict[]) ?? [])
     : ((topo.edges as Dict[]) ?? []).filter((e) => e.entity_id === eid)
   const diags: ProfileLoopDiag[] = []
-  const loops = boundary.length > 0 ? extractProfileLoops([{ boundary }], diags) : []
+  const referenced = [{ boundary }]
+  const built: number[] = []
+  const loops = boundary.length > 0 ? extractProfileLoops(referenced, diags, built) : []
   if (loops.length === 0) {
     throw new Error(
       `profile entity '${eid}' of sketch ${sketchId} bounds no closed area; ` +
       'pick the area itself, or a closed entity such as a circle',
     )
   }
-  return { loops, plane, sketchId, face: null, loopDiags: diags }
+  return { loops, plane, sketchId, face: null, loopDiags: diags, profileSurfaces: referenced, builtSurfaces: built }
 }
 
 /**
@@ -370,8 +387,12 @@ function collectWholeSketchLoops(sketchId: string, globalRepo: Repository): Extr
   const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
   const surfaces = (topo.surfaces as Dict[]) ?? []
   const diags: ProfileLoopDiag[] = []
-  const loops = extractProfileLoops(surfaces, diags)
-  return { loops, plane: pt, sketchId, face: null, surfaces, pt, loopDiags: diags }
+  const built: number[] = []
+  const loops = extractProfileLoops(surfaces, diags, built)
+  return {
+    loops, plane: pt, sketchId, face: null, surfaces, pt, loopDiags: diags,
+    profileSurfaces: surfaces, builtSurfaces: built,
+  }
 }
 
 /**
@@ -413,8 +434,9 @@ export function collectExtrudeLoops(
     } else {
       sketchId = sketchRef.slice(1).split('/')[0]
     }
-    const { loops, plane, face, loopDiags } = resolveFaceProfile(oc, scope, table, sketchRef, globalRepo, bodyStore)
-    return { loops, plane, sketchId, face, loopDiags }
+    const { loops, plane, face, loopDiags, profileSurfaces, builtSurfaces } =
+      resolveFaceProfile(oc, scope, table, sketchRef, globalRepo, bodyStore)
+    return { loops, plane, sketchId, face, loopDiags, profileSurfaces, builtSurfaces }
   }
 
   // A legacy `$<sketchId>` (or any other bare string) with no registered plane

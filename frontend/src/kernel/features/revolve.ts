@@ -14,7 +14,7 @@ import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { surfaceEntityIds } from './shared/bodyRef'
-import { unbuildableAreaReasons, loopDiagReasons } from './shared/profileLoops'
+import { profileAreaReport } from './shared/profileLoops'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { revolveFace, revolveProfileWithLineage } from '../occ/prismLineage'
 import { carryFaceNames, emptyShapeNames, mergeShapeNames } from '../occ/bodyNames'
@@ -256,6 +256,9 @@ export function solveRevolve(
   const profileErrors: string[] = []
   const profileQueries: string[] = []
   const unbuildableReasons: string[] = []
+  // The referenced areas and how many produced a loop (partial accounting).
+  let areaTotal = 0
+  let areaBuilt = 0
   // The tool's construction names, keyed by the faces and edges of the tool.
   const names = emptyShapeNames()
 
@@ -287,13 +290,18 @@ export function solveRevolve(
       }
     }
     const topo = (globalRepo.elements.get('_topo_' + resolved.sketchId) as Dict | undefined) ?? {}
-    // Why an area the user could see and pick will not build. Collected here
-    // because this is the one place the sketch's areas are in hand; used only if
-    // the profile ends up empty below.
-    unbuildableReasons.push(...unbuildableAreaReasons((topo.surfaces as Dict[]) ?? []))
-    // The profile handoff also refuses boundaries that never closed or left
-    // edges behind; fold those reasons in with the area stamps.
-    unbuildableReasons.push(...loopDiagReasons(resolved.loopDiags ?? []))
+    // Why an area in the REFERENCED set did not build; an unpicked area of the
+    // same sketch is not part of this profile and is not reported.
+    const report = profileAreaReport(
+      resolved.profileSurfaces ?? [],
+      resolved.builtSurfaces,
+      resolved.loopDiags ?? [],
+    )
+    areaTotal += report.total
+    areaBuilt += report.built
+    for (const reason of report.reasons) {
+      if (!unbuildableReasons.includes(reason)) unbuildableReasons.push(reason)
+    }
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
     }
@@ -432,6 +440,15 @@ export function solveRevolve(
   if (profileErrors.length) {
     result.status = 'partial'
     result.exception = profileErrors.join('; ')
+  }
+  if (unbuildableReasons.length > 0) {
+    // A referenced area that did not build while the rest did is a partial
+    // profile: the revolve is missing geometry the user drew and can see.
+    result.status = 'partial'
+    const message =
+      `revolve: built ${areaBuilt} of ${areaTotal} profile areas; ` +
+      unbuildableReasons.join('; ')
+    result.exception = result.exception === undefined ? message : `${result.exception}; ${message}`
   }
 
   return result

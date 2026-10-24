@@ -23,7 +23,7 @@ import { resolveDirection } from './shared/directionQuery'
 import { registerTopFace } from './shared/topFace'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { surfaceEntityIds } from './shared/bodyRef'
-import { unbuildableAreaReasons, loopDiagReasons } from './shared/profileLoops'
+import { profileAreaReport } from './shared/profileLoops'
 import { loopCentroid } from '../profileLoops'
 import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
@@ -135,6 +135,12 @@ export function solveExtrude(
   const profileErrors: string[] = []
   const profileQueries: string[] = []
   const unbuildableReasons: string[] = []
+  // Accounting for the partial-profile report: the referenced areas and how
+  // many of them produced a loop. Only the areas the reference NAMES count, so
+  // a broken area elsewhere in a picked sketch does not turn this feature
+  // partial.
+  let areaTotal = 0
+  let areaBuilt = 0
   // The tool's construction names, keyed by the faces and edges of the tool.
   const names = emptyShapeNames()
 
@@ -175,13 +181,20 @@ export function solveExtrude(
       }
     }
     const topo = (globalRepo.elements.get('_topo_' + resolved.sketchId) as Dict | undefined) ?? {}
-    // Why an area the user could see and pick will not build. Collected here
-    // because this is the one place the sketch's areas are in hand; used only if
-    // the profile ends up empty below.
-    unbuildableReasons.push(...unbuildableAreaReasons((topo.surfaces as Dict[]) ?? []))
-    // The profile handoff also refuses boundaries that never closed or left
-    // edges behind; fold those reasons in with the area stamps.
-    unbuildableReasons.push(...loopDiagReasons(resolved.loopDiags ?? []))
+    // Why an area the user could see and pick did not build. Scoped to the
+    // areas this reference names: an unpicked area is not unbuildable. The
+    // profile handoff's own refusals (a boundary that never closed or left
+    // edges behind) fold in through the same report.
+    const report = profileAreaReport(
+      resolved.profileSurfaces ?? [],
+      resolved.builtSurfaces,
+      resolved.loopDiags ?? [],
+    )
+    areaTotal += report.total
+    areaBuilt += report.built
+    for (const reason of report.reasons) {
+      if (!unbuildableReasons.includes(reason)) unbuildableReasons.push(reason)
+    }
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
     }
@@ -468,6 +481,18 @@ export function solveExtrude(
   if (profileErrors.length) {
     result.status = 'partial'
     result.exception = profileErrors.join('; ')
+  }
+  if (unbuildableReasons.length > 0) {
+    // Some referenced area did not build while the rest did. That is a partial
+    // profile, not an ok one: the tool is missing geometry the user drew and
+    // can see. Same convention as a partial fillet or a hole that missed some
+    // sites. Only reached with a non-empty profile (the empty case returned
+    // above with the "no closed profile found" error).
+    result.status = 'partial'
+    const message =
+      `extrude: built ${areaBuilt} of ${areaTotal} profile areas; ` +
+      unbuildableReasons.join('; ')
+    result.exception = result.exception === undefined ? message : `${result.exception}; ${message}`
   }
 
   return result

@@ -21,6 +21,7 @@ import {
   surfaceEntityIds,
   unbuildableAreaReasons,
   loopDiagReasons,
+  profileAreaReport,
   type PlaneLike,
   type ProfileLoopDiag,
 } from '../shared'
@@ -229,7 +230,7 @@ describe('extractProfileLoops diagnostics', () => {
     const diags: ProfileLoopDiag[] = []
     // Same build result as before the guard: no loop is emitted.
     expect(extractProfileLoops([surface], diags)).toHaveLength(0)
-    expect(diags).toEqual([{ kind: 'unclosed', startedAt: [0, 0], used: 3, total: 3 }])
+    expect(diags).toEqual([{ kind: 'unclosed', startedAt: [0, 0], used: 3, total: 3, surface: 0 }])
   })
 
   it('reports an unclosed chain when an edge cannot be reached at all', () => {
@@ -244,7 +245,7 @@ describe('extractProfileLoops diagnostics', () => {
     }
     const diags: ProfileLoopDiag[] = []
     expect(extractProfileLoops([surface], diags)).toHaveLength(0)
-    expect(diags).toEqual([{ kind: 'unclosed', startedAt: [0, 0], used: 2, total: 3 }])
+    expect(diags).toEqual([{ kind: 'unclosed', startedAt: [0, 0], used: 2, total: 3, surface: 0 }])
   })
 
   it('reports leftover edges after the first closure', () => {
@@ -264,7 +265,26 @@ describe('extractProfileLoops diagnostics', () => {
     const loops = extractProfileLoops([surface], diags)
     expect(loops).toHaveLength(1)
     expect(loops[0]).toHaveLength(4)
-    expect(diags).toEqual([{ kind: 'leftover', leftover: 1, total: 5 }])
+    expect(diags).toEqual([{ kind: 'leftover', leftover: 1, total: 5, surface: 0 }])
+  })
+
+  it('reports nothing for a loop that closed on its last edge', () => {
+    // The chain consumed every edge AND closed back to the start on the last
+    // one. The "consumed every edge without closing" fallback must not fire
+    // after a successful closure; it used to, which made every clean profile
+    // read as an unclosed chain once the partial report started consulting it.
+    const surface = {
+      boundary: [
+        { kind: 'line', start: [0, 0], end: [10, 0] },
+        { kind: 'line', start: [10, 0], end: [10, 10] },
+        { kind: 'line', start: [10, 10], end: [0, 10] },
+        { kind: 'line', start: [0, 10], end: [0, 0] },
+      ],
+      query: '?x',
+    }
+    const diags: ProfileLoopDiag[] = []
+    expect(extractProfileLoops([surface], diags)).toHaveLength(1)
+    expect(diags).toEqual([])
   })
 
   it('formats the diagnostics as reasons a "no closed profile" message can join', () => {
@@ -312,6 +332,61 @@ describe('unbuildableAreaReasons', () => {
 
   it('still reports an area marked unbuildable with no reason recorded', () => {
     expect(unbuildableAreaReasons([{ buildable: false, query: '?a' }])).toEqual(['no reason recorded'])
+  })
+})
+
+// The partial-profile accounting: how many of the REFERENCED areas produced a
+// loop, and why the rest did not. It is the difference between a silent ok that
+// dropped a loop the user drew and a feature that says so.
+describe('profileAreaReport', () => {
+  const area = (buildable: boolean, reason?: string): Record<string, unknown> => ({
+    boundary: [],
+    query: '?a',
+    buildable,
+    ...(reason === undefined ? {} : { reason }),
+  })
+
+  it('counts a clean referenced set as fully built with no reasons', () => {
+    expect(profileAreaReport([area(true), area(true)], [0, 1], [])).toEqual({
+      built: 2,
+      total: 2,
+      reasons: [],
+    })
+  })
+
+  it('names an area that did not publish a loop', () => {
+    expect(profileAreaReport([area(true), area(false, 'joint gap 6.5e-6')], [0], [])).toEqual({
+      built: 1,
+      total: 2,
+      reasons: ['joint gap 6.5e-6'],
+    })
+  })
+
+  it('does not report an area outside the referenced set', () => {
+    // The caller passes only the picked surfaces: an unbuildable area elsewhere
+    // in the same sketch is not this feature's problem.
+    const picked = [{ boundary: [], query: '?picked', buildable: true }]
+    expect(profileAreaReport(picked, [0], [])).toEqual({ built: 1, total: 1, reasons: [] })
+  })
+
+  it('folds a loop-chain diagnostic in, even though its area published a loop', () => {
+    const report = profileAreaReport([area(true)], [0], [
+      { kind: 'leftover', leftover: 2, total: 6, surface: 0 },
+    ])
+    expect(report.built).toBe(0)
+    expect(report.total).toBe(1)
+    expect(report.reasons).toEqual([
+      'a sketch-area boundary left 2 of 6 edge(s) unused after its first closed loop',
+    ])
+  })
+
+  it('deduplicates one sentence across areas', () => {
+    const report = profileAreaReport(
+      [area(false, 'joint too wide'), area(false, 'joint too wide')],
+      [],
+      [],
+    )
+    expect(report.reasons).toEqual(['joint too wide'])
   })
 })
 

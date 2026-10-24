@@ -9,8 +9,8 @@ type Dict = Record<string, unknown>
 
 /** A boundary chain that did not form a clean closed loop, for reporting. */
 export type ProfileLoopDiag =
-  | { kind: 'unclosed'; startedAt: number[]; used: number; total: number }
-  | { kind: 'leftover'; leftover: number; total: number }
+  | { kind: 'unclosed'; startedAt: number[]; used: number; total: number; surface?: number }
+  | { kind: 'leftover'; leftover: number; total: number; surface?: number }
 
 /**
  * Assemble surface boundaries into ordered closed loops (mirrors
@@ -18,12 +18,24 @@ export type ProfileLoopDiag =
  * endpoint proximity (within TOL_LOOP_CLOSURE), reversing edges as needed; a
  * reversed arc swaps its angles and flips `ccw`.
  *
+ * Each boundary edge whose endpoints name area-builder vertex ids is chained
+ * from the MERGED vertex position, not from its own stored endpoint (see
+ * `mergedVertexPositions`): the two sides of a joint the builder already fused
+ * are the same point even when their coordinates differ inside
+ * TOL_TOPOLOGY_MERGE.
+ *
  * The optional `diagnostics` out-param collects every boundary that did NOT
  * form a clean closed loop (an unclosed chain, or leftover edges after the
- * first closure). What is BUILT is unchanged - the same `allLoops` as always -
- * but a caller that wants to name the failure can read these alongside it.
+ * first closure). `builtSurfaces` collects the index of every surface that
+ * published a loop, for the "built N of M profile areas" accounting. What is
+ * BUILT is unchanged - the same `allLoops` as always - but a caller that wants
+ * to name the failure can read these alongside it.
  */
-export function extractProfileLoops(surfaces: Dict[], diagnostics?: ProfileLoopDiag[]): Dict[][] {
+export function extractProfileLoops(
+  surfaces: Dict[],
+  diagnostics?: ProfileLoopDiag[],
+  builtSurfaces?: number[],
+): Dict[][] {
   if (!surfaces || surfaces.length === 0) return []
   const TOL = TOL_LOOP_CLOSURE
 
@@ -46,9 +58,10 @@ export function extractProfileLoops(surfaces: Dict[], diagnostics?: ProfileLoopD
     published.add(key)
     allLoops.push(loop)
   }
-  for (const surface of surfaces) {
+  for (const [surfaceIndex, surface] of surfaces.entries()) {
     const mine = new Set<string>()
     const publishHere = (loop: Dict[]): void => {
+      builtSurfaces?.push(surfaceIndex)
       const key = loopGeometryKey(loop as LoopEdge[])
       if (mine.has(key)) {
         // A repeat inside this area's own boundary/holes is the gate's to
@@ -84,6 +97,7 @@ export function extractProfileLoops(surfaces: Dict[], diagnostics?: ProfileLoopD
       const used = new Set<number>()
       let current = [...rawEdges[0][0]]
       const loop: Dict[] = []
+      let closed = false
 
       for (let _i = 0; _i < rawEdges.length; _i++) {
         let foundNext = false
@@ -119,16 +133,23 @@ export function extractProfileLoops(surfaces: Dict[], diagnostics?: ProfileLoopD
           // The chain ran out before closing: the remaining edges cannot form
           // this loop. Emitting nothing made the caller report "no closed profile
           // found", which is true but names neither the area nor the gap.
-          diagnostics?.push({ kind: 'unclosed', startedAt: rawEdges[0][0], used: used.size, total: rawEdges.length })
+          diagnostics?.push({
+            kind: 'unclosed',
+            startedAt: rawEdges[0][0],
+            used: used.size,
+            total: rawEdges.length,
+            surface: surfaceIndex,
+          })
           break
         }
         if (dist2d([...rawEdges[0][0]], current) <= TOL && loop.length >= 1) {
+          closed = true
           publishHere(loop)
           // The chain closed, but any edge left unconsumed is a second defect:
           // it is part of the same boundary and is being silently discarded.
           const leftover = rawEdges.length - used.size
           if (leftover > 0) {
-            diagnostics?.push({ kind: 'leftover', leftover, total: rawEdges.length })
+            diagnostics?.push({ kind: 'leftover', leftover, total: rawEdges.length, surface: surfaceIndex })
           }
           break
         }
@@ -138,8 +159,14 @@ export function extractProfileLoops(surfaces: Dict[], diagnostics?: ProfileLoopD
       // branch above (it runs out of iterations first). Same failure, one bound
       // later: name it too. The `used === total` test keeps the two from
       // double-reporting (foundNext=false only fires while edges remain).
-      if (loop.length > 0 && rawEdges.length - used.size === 0) {
-        diagnostics?.push({ kind: 'unclosed', startedAt: rawEdges[0][0], used: used.size, total: rawEdges.length })
+      if (!closed && loop.length > 0 && rawEdges.length - used.size === 0) {
+        diagnostics?.push({
+            kind: 'unclosed',
+            startedAt: rawEdges[0][0],
+            used: used.size,
+            total: rawEdges.length,
+            surface: surfaceIndex,
+          })
       }
     }
   }
@@ -188,4 +215,58 @@ export function loopDiagReasons(diags: ProfileLoopDiag[]): string[] {
     }
   }
   return out
+}
+
+/** How a profile reference's area set fared, for the partial-profile report. */
+export interface ProfileAreaReport {
+  /** Areas in the referenced set that produced at least one loop. */
+  built: number
+  /** Areas the reference names: every area of a whole sketch, or the picked ones. */
+  total: number
+  /** One sentence per distinct failure, empty when the whole set built. */
+  reasons: string[]
+}
+
+/**
+ * The "built N of M profile areas" accounting for one profile reference.
+ *
+ * `surfaces` must be the REFERENCED set, not the sketch: a whole-sketch ref
+ * names every area, an area pick names only the picked ones. An area the user
+ * deliberately did not pick is not unbuildable and must not be reported as
+ * such, or a broken area elsewhere in the sketch would turn an unrelated
+ * extrude partial.
+ *
+ * `builtSurfaces` is `extractProfileLoops`'s index list (one entry per
+ * published loop). A documented diagnostic is a failure even when the boundary
+ * still published a loop: its leftover edges were dropped from the profile.
+ */
+export function profileAreaReport(
+  surfaces: Dict[],
+  builtSurfaces: number[] | undefined,
+  diags: ProfileLoopDiag[],
+): ProfileAreaReport {
+  const total = surfaces.length
+  const builtSet = new Set(builtSurfaces ?? [])
+  const failed = new Set<number>()
+  if (builtSurfaces === undefined) {
+    surfaces.forEach((surface, i) => {
+      if (surface.buildable === false) failed.add(i)
+    })
+  } else {
+    surfaces.forEach((_, i) => {
+      if (!builtSet.has(i)) failed.add(i)
+    })
+  }
+  for (const d of diags) {
+    if (typeof d.surface === 'number' && d.surface >= 0 && d.surface < total) failed.add(d.surface)
+  }
+  const reasons: string[] = []
+  for (const i of [...failed].sort((a, b) => a - b)) {
+    const reason = surfaces[i].buildable === false ? surfaces[i].reason : undefined
+    if (typeof reason === 'string' && !reasons.includes(reason)) reasons.push(reason)
+  }
+  for (const reason of loopDiagReasons(diags)) {
+    if (!reasons.includes(reason)) reasons.push(reason)
+  }
+  return { built: total - failed.size, total, reasons }
 }

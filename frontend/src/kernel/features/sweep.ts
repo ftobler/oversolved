@@ -16,7 +16,7 @@ import type { Repository } from '../query'
 import { parseAncestry, featureRefId } from '../query'
 import { collectExtrudeLoops } from './faceProfile'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
-import { extractProfileLoops } from './shared/profileLoops'
+import { extractProfileLoops, profileAreaReport } from './shared/profileLoops'
 import { parseSketchEntityRef, surfaceEntityIds } from './shared/bodyRef'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage } from '../occ/prismLineage'
@@ -606,6 +606,10 @@ export function solveSweep(
   let firstSketchId = ''
   const profileErrors: string[] = []
   const profileQueries: string[] = []
+  // Referenced sketch areas and how many produced a loop (partial accounting).
+  const unbuildableReasons: string[] = []
+  let areaTotal = 0
+  let areaBuilt = 0
 
   for (const sketchRef of [...new Set(regionRefs)]) {
     let resolved
@@ -633,6 +637,16 @@ export function solveSweep(
       }
     }
     const topo = (globalRepo.elements.get('_topo_' + resolved.sketchId) as Dict | undefined) ?? {}
+    const report = profileAreaReport(
+      resolved.profileSurfaces ?? [],
+      resolved.builtSurfaces,
+      resolved.loopDiags ?? [],
+    )
+    areaTotal += report.total
+    areaBuilt += report.built
+    for (const reason of report.reasons) {
+      if (!unbuildableReasons.includes(reason)) unbuildableReasons.push(reason)
+    }
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
     }
@@ -754,6 +768,16 @@ export function solveSweep(
   if (profileErrors.length) {
     result.status = 'partial'
     result.exception = profileErrors.join('; ')
+  }
+  if (unbuildableReasons.length > 0) {
+    // The same partial accounting extrude and revolve give: a referenced area
+    // that did not build is geometry the user drew and can see, and the sweep
+    // must say so instead of sweeping the remainder as if that were the ask.
+    result.status = 'partial'
+    const message =
+      `sweep: built ${areaBuilt} of ${areaTotal} profile areas; ` +
+      unbuildableReasons.join('; ')
+    result.exception = result.exception === undefined ? message : `${result.exception}; ${message}`
   }
 
   return result
