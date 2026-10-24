@@ -130,7 +130,11 @@ pub fn solve_sketch(input: &Input) -> Output {
     };
 
     // `result.x` is not read again, so move it instead of cloning.
-    let params_solved = result.x;
+    let mut params_solved = result.x;
+    // A solve may satisfy the (periodic) arc angle rows a whole turn away from
+    // the authored spelling. That is the same geometry but a different branch
+    // to the document's "CCW from a0 to a1" reading, so put it back.
+    problem.rebase_arc_branches(&mut params_solved);
 
     // Per-constraint verdicts: a satisfied cold solve marks redundancy, an
     // unsatisfied one reports the per-constraint miss so the UI can localise
@@ -1536,5 +1540,143 @@ mod tests {
         assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
         assert!(out.constraint_flags.is_empty());
         assert!(out.constraint_miss.is_empty());
+    }
+
+    #[test]
+    fn coincident_line_ends_keep_the_arcs_authored_sweep() {
+        // The bug-3 case: a 105 degree cap at (-45,0), r15, with line ends
+        // already within 2e-5 of its ends. Adding the two coincidences must
+        // move everything by about that much and never change the sweep.
+        let a0 = 127.5;
+        let a1 = 232.5;
+        let (cx, cy, r) = (-45.0, 0.0, 15.0);
+        let at = |deg: f64| {
+            let a = deg.to_radians();
+            [cx + r * a.cos(), cy + r * a.sin()]
+        };
+        let start = at(a0);
+        let end = at(a1);
+        let entities = vec![line(0), line(4), ent(Kind::Arc, 8)];
+        let params = vec![
+            start[0] - 30.0,
+            start[1] + 2e-5,
+            start[0],
+            start[1] - 2e-5,
+            end[0],
+            end[1] + 2e-5,
+            end[0] + 30.0,
+            end[1] - 2e-5,
+            cx,
+            cy,
+            r,
+            a0,
+            a1,
+        ];
+        let constraints = vec![
+            cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(0, PointSelector::End), e_ref(2, PointSelector::Start)),
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(2, PointSelector::End), e_ref(1, PointSelector::Start)),
+            ),
+        ];
+        let out = solve_sketch(&input(entities, params, constraints));
+        let solved_a0 = out.params_solved[11];
+        let solved_a1 = out.params_solved[12];
+        assert!((solved_a0 - a0).abs() <= 1e-4, "a0 moved to {solved_a0}");
+        assert!((solved_a1 - a1).abs() <= 1e-4, "a1 moved to {solved_a1}");
+        assert!(
+            (solved_a1 - solved_a0 - 105.0).abs() <= 1e-3,
+            "sweep {} is not the authored 105 degrees",
+            solved_a1 - solved_a0
+        );
+    }
+
+    #[test]
+    fn perturbed_coincident_arcs_never_flip_their_sweep() {
+        // Property: random arcs with both line ends perturbed by 1e-5 and the
+        // two coincidences added. Starting that close to a solution, the solve
+        // may move by about the perturbation but never change the sweep
+        // branch. Radii below 2 are excluded: there a 1e-5 world perturbation
+        // is a >1e-3 degree angular move by arithmetic, not a branch change.
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut rnd = move || {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((state >> 11) as f64) / ((1u64 << 53) as f64)
+        };
+        let mut worst = 0.0f64;
+        for _ in 0..2000 {
+            let cx = (rnd() - 0.5) * 400.0;
+            let cy = (rnd() - 0.5) * 400.0;
+            let r = 2.0 + rnd() * 60.0;
+            let a0 = (rnd() - 0.5) * 720.0;
+            let sweep = 1.0 + rnd() * 358.0;
+            let a1 = a0 + sweep;
+            let at = |deg: f64| {
+                let a = deg.to_radians();
+                [cx + r * a.cos(), cy + r * a.sin()]
+            };
+            let start = at(a0);
+            let end = at(a1);
+            let j = 1e-5;
+            let lostart = [
+                start[0] + (rnd() - 0.5) * 2.0 * j,
+                start[1] + (rnd() - 0.5) * 2.0 * j,
+            ];
+            let loend = [
+                end[0] + (rnd() - 0.5) * 2.0 * j,
+                end[1] + (rnd() - 0.5) * 2.0 * j,
+            ];
+            let entities = vec![line(0), line(4), ent(Kind::Arc, 8)];
+            let params = vec![
+                lostart[0] - 20.0,
+                lostart[1],
+                lostart[0],
+                lostart[1],
+                loend[0],
+                loend[1],
+                loend[0] + 20.0,
+                loend[1],
+                cx,
+                cy,
+                r,
+                a0,
+                a1,
+            ];
+            let constraints = vec![
+                cons(
+                    ConstraintKind::Coincident,
+                    ab(e_ref(0, PointSelector::End), e_ref(2, PointSelector::Start)),
+                ),
+                cons(
+                    ConstraintKind::Coincident,
+                    ab(e_ref(2, PointSelector::End), e_ref(1, PointSelector::Start)),
+                ),
+            ];
+            let out = solve_sketch(&input(entities, params, constraints));
+            let mut drift = (out.params_solved[12] - out.params_solved[11] - sweep).abs();
+            drift = drift.min((drift - 360.0).abs()).min((drift + 360.0).abs());
+            worst = worst.max(drift);
+        }
+        assert!(worst < 1e-3, "worst sweep drift {worst} degrees");
+    }
+
+    #[test]
+    fn arc_branches_are_rebased_onto_the_authored_spelling() {
+        // A solve can land an angle a whole turn away: same curve, but the
+        // document's CCW reading would call it the complement. The rebase adds
+        // whole turns only, so the geometry is unchanged.
+        let entities = vec![ent(Kind::Arc, 0)];
+        let x0 = vec![0.0, 0.0, 10.0, 127.5, 232.5];
+        let probe = input(entities, x0.clone(), vec![]);
+        let problem = Problem::new(&probe);
+        let mut solved = vec![0.0, 0.0, 10.0, -232.5, 592.5];
+        problem.rebase_arc_branches(&mut solved);
+        assert!((solved[3] - 127.5).abs() < 1e-12, "a0 {}", solved[3]);
+        assert!((solved[4] - 232.5).abs() < 1e-12, "a1 {}", solved[4]);
     }
 }

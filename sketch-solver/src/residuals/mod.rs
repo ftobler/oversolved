@@ -298,6 +298,37 @@ impl<'a> Problem<'a> {
         }
     }
 
+    /// Put every solved arc's angles back on the branch the user authored.
+    ///
+    /// The arc's sweep is not a parameter: the document reads it as "CCW from
+    /// angle_start to angle_end", so two spellings differing by a whole turn
+    /// describe the same curve but not the same arc. A cold solve may land a
+    /// solved angle a turn away from the authored one (the residual is
+    /// periodic in it, so nothing in the system objects), and a consumer that
+    /// reads the raw pair then sees a different branch. Adding whole turns
+    /// moves no point, so this can always be applied: each angle takes the
+    /// representative within half a turn of what the user wrote. A solve that
+    /// genuinely moved the endpoint is untouched in its sweep: the shift is
+    /// the same curve, only spelled on the authored branch.
+    pub fn rebase_arc_branches(&self, x: &mut [f64]) {
+        for entity in self.entities {
+            if entity.kind != Kind::Arc {
+                continue;
+            }
+            let off = entity.param_offset;
+            if off + Kind::Arc.param_count() > x.len().min(self.x0.len()) {
+                continue;
+            }
+            for slot in [off + 3, off + 4] {
+                let (authored, solved) = (self.x0[slot], x[slot]);
+                if !authored.is_finite() || !solved.is_finite() {
+                    continue;
+                }
+                x[slot] = solved + ((authored - solved) / 360.0).round() * 360.0;
+            }
+        }
+    }
+
     fn kind_of(&self, index: u32) -> Kind {
         self.entities[index as usize].kind
     }
