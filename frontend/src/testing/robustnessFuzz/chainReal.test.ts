@@ -166,6 +166,13 @@ const KNOWN_STALE_PICKS: readonly { seed: number; step: number; note: string }[]
   { seed: 893, step: 4, note: 'unreached: the perturbed chain refused at an earlier step' },
   { seed: 951, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 976, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  // Surfaced by the arc-join shell fallback (c3f472c2): before it the base
+  // shell refused, so the picks were never tested. The arc-join offset of this
+  // filleted, drilled box sits on a validity knife edge that follows the heap
+  // layout: the CI box refuses the perturbed shell, a local child builds it and
+  // a local in-process replay refuses even the base one.
+  { seed: 990, step: 3, note: 'unreached: the perturbed shell refused on invalid geometry' },
+  { seed: 990, step: 4, note: 'unreached: the perturbed shell refused on invalid geometry' },
   { seed: 1065, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1100, step: 2, note: 'unreached: the perturbed fillet refused on invalid geometry' },
   { seed: 1117, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
