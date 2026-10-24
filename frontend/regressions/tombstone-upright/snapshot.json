@@ -1,0 +1,30 @@
+{
+  "bodies": {
+    "body_ex_tomb": {
+      "created_by": "ex_tomb",
+      "modified_by": [],
+      "face_hashes": [
+        "gface_1f6eaf8dfaf43e9b",
+        "gface_379fbce83fabf907",
+        "gface_387a89d4162383cc",
+        "gface_3f57c6b05617555a",
+        "gface_75261f5f2d20d577",
+        "gface_e3d90d6839bf9da7"
+      ],
+      "edge_hashes": [
+        "gedge_3b580341497acc46",
+        "gedge_4dcdfc4d025f6f35",
+        "gedge_4ed239d899909d7f",
+        "gedge_4fc146d89a99dc71",
+        "gedge_592128d77579e2b9",
+        "gedge_5bfce4e7e536f373",
+        "gedge_5fe982c1b0e13685",
+        "gedge_be0a03362e954b39",
+        "gedge_c32e91d85121abea",
+        "gedge_e768decdbdb2e048",
+        "gedge_f1b708dcb5cb2997",
+        "gedge_f726901268b52c16"
+      ]
+    }
+  }
+}

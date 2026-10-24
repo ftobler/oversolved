@@ -1,0 +1,59 @@
+kind: part
+version: 1
+features:
+  - id: sk_tomb
+    kind: sketch
+    label: tombstone upright
+    plane: "@builtin_plane_front"
+    entities:
+      - id: cap
+        kind: arc
+      - id: top
+        kind: line
+      - id: right
+        kind: line
+      - id: bottom
+        kind: line
+    initial:
+      cap:
+        - -45
+        - 0
+        - 15
+        - 127.5
+        - 232.5
+      top:
+        - -54.131421
+        - 11.9003
+        - 0
+        - 11.9003
+      right:
+        - 0
+        - 11.9003
+        - 0
+        - -11.9003
+      bottom:
+        - 0
+        - -11.9003
+        - -54.131421
+        - -11.9003
+    constraints:
+      - id: f_cap
+        kind: fixed
+        target: $cap
+      - id: f_top
+        kind: fixed
+        target: $top
+      - id: f_right
+        kind: fixed
+        target: $right
+      - id: f_bottom
+        kind: fixed
+        target: $bottom
+  - id: ex_tomb
+    kind: extrude
+    label: tombstone tool
+    extrude:
+      sketch: $sk_tomb
+      distance: 2
+      direction: normal
+      operation: new

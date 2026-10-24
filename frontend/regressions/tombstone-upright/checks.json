@@ -1,0 +1,42 @@
+{
+  "origin": {
+    "kind": "bug_report",
+    "ref": "feature/bug-silent-loop-drop.md (re-created from its text)",
+    "date": "2026-10-24"
+  },
+  "license": "own",
+  "severity": "hard",
+  "what": "a tombstone upright: a 105 degree r15 cap closed by a straight top, right side and bottom, 2 deep, with the cap-to-side joints hand-rounded to 6 decimals",
+  "features": {
+    "default": "ok",
+    "except": {
+      "sk_tomb": "fully_constrained"
+    }
+  },
+  "tolerance": {
+    "rel": 1e-06,
+    "abs": 1e-06
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 2771.721354185802,
+    "area": 3090.8261113641465,
+    "centroid": [
+      -29.138158644344262,
+      1.2324482098238551e-15,
+      1
+    ],
+    "bbox": [
+      -60,
+      -11.900300104368524,
+      0,
+      0,
+      11.900300104368528,
+      2
+    ],
+    "faces": 6,
+    "edges": 12
+  },
+  "snapshot": true
+}

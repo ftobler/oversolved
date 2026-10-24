@@ -1,0 +1,102 @@
+kind: part
+version: 1
+features:
+  - id: sk_db9
+    kind: sketch
+    label: DB9 connector outline
+    plane: "@builtin_plane_front"
+    entities:
+      - id: l1
+        kind: line
+      - id: l2
+        kind: line
+      - id: l3
+        kind: line
+      - id: l4
+        kind: line
+      - id: a1
+        kind: arc
+      - id: a2
+        kind: arc
+      - id: a3
+        kind: arc
+      - id: a4
+        kind: arc
+    initial:
+      l1:
+        - 81.561104
+        - 222.7
+        - 80.75
+        - 227.3
+      l2:
+        - 84.15
+        - 230.7
+        - 97.85
+        - 230.7
+      l3:
+        - 101.25
+        - 227.3
+        - 100.438896
+        - 222.7
+      l4:
+        - 97.038896
+        - 219.3
+        - 84.961104
+        - 219.3
+      a1:
+        - 84.961104
+        - 222.7
+        - 3.4
+        - 180
+        - 270
+      a2:
+        - 84.15
+        - 227.3
+        - 3.4
+        - 90
+        - 180
+      a3:
+        - 97.85
+        - 227.3
+        - 3.4
+        - 0
+        - 90
+      a4:
+        - 97.038896
+        - 222.7
+        - 3.4
+        - 270
+        - 360
+    constraints:
+      - id: f_l1
+        kind: fixed
+        target: $l1
+      - id: f_l2
+        kind: fixed
+        target: $l2
+      - id: f_l3
+        kind: fixed
+        target: $l3
+      - id: f_l4
+        kind: fixed
+        target: $l4
+      - id: f_a1
+        kind: fixed
+        target: $a1
+      - id: f_a2
+        kind: fixed
+        target: $a2
+      - id: f_a3
+        kind: fixed
+        target: $a3
+      - id: f_a4
+        kind: fixed
+        target: $a4
+  - id: ex_db9
+    kind: extrude
+    label: DB9 tool
+    extrude:
+      sketch: $sk_db9
+      distance: 2
+      direction: normal
+      operation: new

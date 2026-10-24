@@ -1,0 +1,46 @@
+{
+  "bodies": {
+    "body_ex_db9": {
+      "created_by": "ex_db9",
+      "modified_by": [],
+      "face_hashes": [
+        "gface_07bb86f1480f8ca5",
+        "gface_15e74a0364c527b4",
+        "gface_17bcf8af4eb815df",
+        "gface_37507b4672d09223",
+        "gface_8922847590152767",
+        "gface_9703d4c49ba86251",
+        "gface_a015d683b363af44",
+        "gface_a6dff03ab0bb6682",
+        "gface_daddc1aaa92d45b9",
+        "gface_fcac91af9b023c9d"
+      ],
+      "edge_hashes": [
+        "gedge_078aa3fcc220a417",
+        "gedge_172ab8add0b73640",
+        "gedge_190e9e7acb254de5",
+        "gedge_240a3df19c2ca17b",
+        "gedge_30554957ae4b40cc",
+        "gedge_3a39aaf41659e33a",
+        "gedge_4998b41c41046f8d",
+        "gedge_51adfc04944a32c9",
+        "gedge_583079ff134e69c4",
+        "gedge_5862b21ac384aba6",
+        "gedge_5fc945fd5b1ffa2f",
+        "gedge_604e86277c7a28fd",
+        "gedge_663de1355f9da9a4",
+        "gedge_6958e297c8580902",
+        "gedge_7bd04ae5ba55fdc3",
+        "gedge_9eb6c8f3ba9f96fd",
+        "gedge_a5be2dbd10cbd393",
+        "gedge_a8ae5b8fcce88d52",
+        "gedge_ab563bbdea090545",
+        "gedge_c4e0f9abfcc35d3d",
+        "gedge_ca8d2f239277f46c",
+        "gedge_ccd8b96c5bdad45f",
+        "gedge_cfe3e328b45a3080",
+        "gedge_dba1e00947f85f33"
+      ]
+    }
+  }
+}

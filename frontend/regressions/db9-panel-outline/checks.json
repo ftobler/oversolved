@@ -1,0 +1,42 @@
+{
+  "origin": {
+    "kind": "bug_report",
+    "ref": "feature/bug-silent-loop-drop.md (re-created from its text)",
+    "date": "2026-10-24"
+  },
+  "license": "own",
+  "severity": "hard",
+  "what": "a DB9 connector cutout drawn as four lines and four r3.4 corner arcs at (91,225), extruded 2 deep: the bottom-right corner arc must stay a 90 degree corner, not close the full circle (429.06 = the D area x 2)",
+  "features": {
+    "default": "ok",
+    "except": {
+      "sk_db9": "fully_constrained"
+    }
+  },
+  "tolerance": {
+    "rel": 1e-06,
+    "abs": 1e-06
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 429.06045095099694,
+    "area": 542.0255446212366,
+    "centroid": [
+      91,
+      225.11617254484656,
+      1
+    ],
+    "bbox": [
+      80.75,
+      219.29999999999998,
+      0,
+      101.25,
+      230.70000000000002,
+      2
+    ],
+    "faces": 10,
+    "edges": 24
+  },
+  "snapshot": true
+}
