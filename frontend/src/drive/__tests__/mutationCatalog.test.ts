@@ -254,6 +254,17 @@ describe('mutation catalog', () => {
     expect(joined).toContain('termination: blind|up_to')
   })
 
+  it('explains which way hole.direction drills, from the schema description', () => {
+    // The enum members alone do not say that a face sketch's `normal` points
+    // out of the body; the schema sentence rides the generated note.
+    const note = mutationInfoOf('set_hole_field').fields.value.note
+    expect(note).toContain('direction: normal|reverse')
+    expect(note).toContain('usually wants reverse')
+    const add = mutationInfoOf('add_hole').note
+    expect(add).toContain('usually wants `reverse`')
+    expect(add).toContain('misses every site')
+  })
+
   it('publishes the plane definition shape from the same schema the resource serves', () => {
     const entry = Object.values(mutationCatalogPayload().families).flat().find(row => row.type === 'add_plane')
     expect(entry!.fields.definition.shape).toEqual(featureParamsSchema('plane'))

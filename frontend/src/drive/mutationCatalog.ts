@@ -186,6 +186,9 @@ const HOLE_FIELD_NOTE =
   'A blind add with no depth keeps the editor default of 20. ' +
   'The optional fields are direction, target, thread, style, cb_diameter, cb_depth, cs_angle; ' +
   'they are all optional in an `add_hole` payload. ' +
+  '`direction` is the sketch plane\'s normal (the default) or its reverse; a face sketch\'s normal ' +
+  'points out of the face, so a hole on a face usually wants `reverse`, and a blind hole that misses ' +
+  'every site says so when the reverse would cut. ' +
   '`depth_mode` is blind or through_all. `sketch` is a feature-level ref, so spell it ' +
   '@<sketchId> (or a narrower entity:/vertex:/? pick from the viewport), not the profile consumers\' ' +
   '$<sketchId> form; a $ ref is refused here. ' +
@@ -297,13 +300,18 @@ const planeDefinitionValue = () =>
   } as const)
 
 /** The enum-valued fields of a feature kind, as `name: a|b|c`, read from the
- *  kind's schema so the note follows the union rather than a second list. */
+ *  kind's schema so the note follows the union rather than a second list. A
+ *  property the schema also describes carries that sentence with it, so a
+ *  value whose meaning is not obvious (hole.direction) is explained in the
+ *  catalog instead of needing a hand-kept second copy. */
 function enumFieldsNote(kind: FeatureKind): string {
   const params = featureParamsSchema(kind)
   if (params === null) return ''
   const entries: string[] = []
   for (const [name, property] of Object.entries(params.properties as Record<string, JsonSchema>)) {
-    if (Array.isArray(property.enum)) entries.push(`${name}: ${property.enum.join('|')}`)
+    if (!Array.isArray(property.enum)) continue
+    const description = typeof property.description === 'string' ? ` (${property.description})` : ''
+    entries.push(`${name}: ${property.enum.join('|')}${description}`)
   }
   return entries.length === 0 ? '' : ` Enum fields: ${entries.join('; ')}.`
 }

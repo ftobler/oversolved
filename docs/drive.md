@@ -581,7 +581,13 @@ banner on stdout, so a client config must use the direct node invocation.
   (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,
   `cs_angle`), with `depth` required only for a blind hole because a
   `through_all` hole is sized by the target body and stores no depth; all are
-  optional in an `add_hole` payload. `hole.sketch` is spelled `@<sketchId>` (or a narrower
+  optional in an `add_hole` payload. `hole.direction` is `normal` (the sketch
+  plane's normal, the default) or `reverse`; a face sketch's normal points out
+  of its face, so a hole on a face usually wants `reverse`, and a blind hole
+  that misses every site warns with that fix when the reverse would cut. A
+  through counterbore or countersink widens its mouth on the material side
+  whichever direction it is written, so the two give the same volume.
+  `hole.sketch` is spelled `@<sketchId>` (or a narrower
   viewport pick), not the profile consumers' `$<sketchId>` form, and a circle
   drills at its own radius while a point uses the feature `diameter`;
   `add_center_rect` takes the half-diagonal corner (center `[0,0]` with corner

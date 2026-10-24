@@ -232,7 +232,15 @@ export const FEATURE_SCHEMA_BY_KIND = {
     ],
     properties: {
       sketch: REF, diameter: NUMBER_OR_EXPR, depth_mode: { enum: ['blind', 'through_all'] },
-      depth: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse'] }, target: REF,
+      depth: NUMBER_OR_EXPR,
+      // `normal` is the plane's own normal. A face sketch's plane normal is the
+      // face's OUTWARD normal, so the default drills away from the material
+      // there; the kernel warns when a blind hole misses every site that way.
+      direction: {
+        enum: ['normal', 'reverse'],
+        description: "normal is the sketch plane's normal; a face sketch's normal points out of its face, so a hole on a face usually wants reverse",
+      },
+      target: REF,
       style: { enum: ['simple', 'counterbore', 'countersink'] },
       cb_diameter: NUMBER_OR_EXPR, cb_depth: NUMBER_OR_EXPR, cs_angle: NUMBER_OR_EXPR,
       thread: {
