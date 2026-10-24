@@ -10,6 +10,7 @@
 // would describe a plane the sketch was never built on.
 
 import type { PartDoc } from '@/types/cad'
+import type { BuildResponse } from '@/kernel/builderTypes'
 import { frameFromPlaneTransform } from '@/kernel/types3d'
 import { round } from '@/utils/yamlMutations/helpers'
 
@@ -25,7 +26,13 @@ export type FeatureFrameMap = Record<string, FeatureFrame>
 
 const FRAME_FEATURE_KINDS: ReadonlySet<string> = new Set(['sketch', 'plane'])
 
-function isDict(value: unknown): value is Record<string, unknown> {
+// The kernel's per-feature solve result crosses the worker as plain data, so its
+// fields are only knowable by shape here (the same untyped boundary
+// `BuildResponse.result` names). This alias is that boundary, not a feature
+// shape: the doc side still narrows by kind.
+type SolvedFeature = { [field: string]: unknown }
+
+function isSolvedFeature(value: unknown): value is SolvedFeature {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
@@ -52,14 +59,14 @@ function roundFrame(frame: {
 }
 
 function frameOfResult(result: unknown): FeatureFrame | null {
-  if (!isDict(result)) return null
-  if (isDict(result.plane_transform)) {
+  if (!isSolvedFeature(result)) return null
+  if (isSolvedFeature(result.plane_transform)) {
     const { rotation, origin } = result.plane_transform
     if (isTuple(rotation, 9) && isTuple(origin, 3)) {
       return roundFrame(frameFromPlaneTransform({ rotation, origin }))
     }
   }
-  if (isDict(result.plane)) {
+  if (isSolvedFeature(result.plane)) {
     const { origin, x_axis, y_axis, normal } = result.plane
     if (isTuple(origin, 3) && isTuple(x_axis, 3) && isTuple(y_axis, 3) && isTuple(normal, 3)) {
       return roundFrame({ origin, x_axis, y_axis, normal })
@@ -75,7 +82,7 @@ function frameOfResult(result: unknown): FeatureFrame | null {
  */
 export function featureFrames(
   doc: PartDoc | null | undefined,
-  result: Record<string, unknown> | null | undefined,
+  result: BuildResponse['result'] | null | undefined,
 ): FeatureFrameMap {
   const frames: FeatureFrameMap = {}
   if (!doc || !result) return frames
