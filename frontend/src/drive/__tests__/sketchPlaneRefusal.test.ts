@@ -83,6 +83,8 @@ describe.skipIf(!ready)('sketch plane refusal (real OCC + Rust solver)', () => {
     expect(reordered.ok).toBe(true)
     expect(reordered.features).toEqual([])
     expect(reordered.part.solveOutcomes().sk2.status).toBe('underconstrained')
+    // It built on pl1 (Top offset 5), not on the Front default.
+    expect(reordered.frames!.sk2.origin).toEqual([0, 5, 0])
   }, 120_000)
 
   it('refuses a face query an upstream delete stopped resolving', async () => {
