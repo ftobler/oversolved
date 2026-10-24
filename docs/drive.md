@@ -288,8 +288,9 @@ npm run drive -- replay repro.json
   (OCC's STEP transfer banner) go to stderr, so stdout parses whole.
 - `run` builds a document from mutation steps and/or command steps through one
   `DocSession` and the real kernel, optionally writes the final document (`--out`)
-  and the journal (`--repro`), and prints steps, document hash, solve state and
-  the feature problems (`features`, see the MCP section). The `--out` format is
+  and the journal (`--repro`), and prints steps, document hash, solve state, the
+  feature problems (`features`, see the MCP section) and the resolved sketch and
+  plane `frames` (also described there). The `--out` format is
   chosen by the extension: `.json` writes JSON, anything else writes YAML. The
   path must resolve inside the project's `tmp/` or `bugreports/` (relative paths
   resolve against the repo root, not `frontend/`); anything else is refused
@@ -315,8 +316,8 @@ npm run drive -- replay repro.json
   solve's body order; its volumes and areas sum to the totals and its ids are
   the ids `run` and `select` use. The same `features`
   problem list `run` returns rides along (measuring builds every feature, so the
-  kernel's verdicts are already known); a feature with no verdict makes `ok`
-  false, exactly as it does for `run`.
+  kernel's verdicts are already known), and so does the `frames` map; a feature
+  with no verdict makes `ok` false, exactly as it does for `run`.
 - `compare` measures the document and compares it against a `reference.json`
   (the translation format: `source`, a required `tolerance`, an optional
   `topology` mode and the measure fields) with `compareMeasures`. It prints
@@ -380,8 +381,8 @@ banner on stdout, so a client config must use the direct node invocation.
 |---|---|---|
 | `commands` | none | the command catalog, the same shape as the CLI's `commands` |
 | `mutations` | none | the mutation vocabulary grouped by family, plus ready-to-run example scripts |
-| `run` | `steps`, optional `doc` or `docHash`, `returnDoc`, `featureDeltas: "all"`, `out`, `docId`, `files` | `{ ok, steps, docHash, solve, features, featureDeltas, summary, doc?, file?, format? }`; chain with `docHash`, `returnDoc: true` for the document, `out` to write it |
-| `measure` | `doc` or `docHash`, optional `docId`, `files` | `{ ok, docHash, bodies, volume, area, centroid, bbox, faces, edges, vertices, perBody, features }` |
+| `run` | `steps`, optional `doc` or `docHash`, `returnDoc`, `featureDeltas: "all"`, `out`, `docId`, `files` | `{ ok, steps, docHash, solve, features, featureDeltas, frames, summary, doc?, file?, format? }`; chain with `docHash`, `returnDoc: true` for the document, `out` to write it |
+| `measure` | `doc` or `docHash`, optional `docId`, `files` | `{ ok, docHash, bodies, volume, area, centroid, bbox, faces, edges, vertices, perBody, features, frames }` |
 | `compare` | `doc` or `docHash`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
 | `export` | `doc` or `docHash`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, docHash, file, format, bytes }` |
 | `select` | `doc` or `docHash`, `selector`, optional `docId`, `files` | `{ ok, docHash, queries, items }`: the query strings a click would store, plus a geometry summary per item |
@@ -614,7 +615,56 @@ banner on stdout, so a client config must use the direct node invocation.
   feature, or a `?` face query from `select` (the stored `?...:flatface`
   string), so a face pick can place the sketch in one step. An unmatched NAME
   is refused with the valid list; a name never falls back to the XY plane. A
-  face query is resolved after the solve.
+  face query is resolved after the solve, and a plane or face query that does
+  not resolve fails the sketch with the cause named: a plane feature defined
+  later in the log (`move the sketch below it or reorder`) or a face query
+  nothing registers any more. Only an absent or empty query keeps Front.
+- A sketch on a face uses that face's frame: origin at the face centroid, and
+  the in-plane axes from the face normal by `normalToFrame` (the same rule
+  every body face is registered with). For the six world-axis normals:
+
+  | face normal | sketch x | sketch y |
+  |---|---|---|
+  | +Z | +Y | -X |
+  | -Z | -Y | -X |
+  | +Y | +X | -Z |
+  | -Y | -X | -Z |
+  | +X | -Y | -Z |
+  | -X | +Y | -Z |
+
+  For any other normal, sketch x is the normal crossed with world +Z (or with
+  world +X when the normal is within 0.9 of Z), y is the normal crossed with
+  x, both normalised. On a +Z or -Z face that is a quarter turn against the
+  parallel builtin plane, so write sketch-local x along the world axis the
+  table names, not the one the builtin plane's name suggests.
+- Each `add_plane` mode builds its frame as follows, then an optional
+  `rotation` turns x and y about the normal by that many degrees:
+  - `offset`: the parent plane's axes and normal; origin is the parent origin
+    plus `offset` times the normal.
+  - `three_point`: origin p1; x from p1 to p2; y in the p1-p2-p3 plane
+    perpendicular to x; normal is x cross y.
+  - `plane_point`: the parent plane's axes and normal; origin is the point
+    projected onto the parent plane along its normal.
+  - `line_angle`: origin at the line's start; x along the line from start to
+    end; y starts as world +Z projected off x (world +X when the line is
+    within 0.9 of Z) and rotates by `angle` degrees towards x cross y0; normal
+    is x cross y.
+  - `on_face`: origin at the face centroid and the face normal; a
+    `@<body>/face/<index>` pick keeps the face's own OCC axes, any other face
+    ref takes them from `normalToFrame` (the table above).
+  - `on_face_edge_angle`: origin at the face centroid, normal the face normal;
+    x is the edge direction projected into the face and rotated by `angle`
+    about the normal; y is normal cross x.
+  - `edge_point`: origin at the point; x along the edge from start to end; y
+    points from the point to its projection on the edge line, so the plane
+    holds both the edge and the point; normal is x cross y.
+- Read the frame from the reply. Every `run` and `measure` reply carries
+  `frames`, an object keyed by feature id whose entries are
+  `{origin, x_axis, y_axis, normal}` for each sketch and `add_plane` feature
+  the solve resolved (rounded to the document's 6 decimals). A feature that
+  failed or was suppressed has no entry, because it was never built on a
+  frame. `{origin, x_axis, y_axis, normal}` is world space, Y-up, in the same
+  frame the document and `compare` use.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; unknown fields are rejected by name, so a typo never fails
@@ -623,6 +673,9 @@ banner on stdout, so a client config must use the direct node invocation.
   world-frame sentence (from `BUILTIN_PLANES`): Y is up, each builtin plane's
   normal and sketch axes, and that an extrude goes along the normal. It is
   generated rather than hand-typed so a plane change cannot leave it stale.
+  `initialize` also carries the generated face-frame sentence (from
+  `normalToFrame`), the +Z/-Z/+Y/-Y/+X/-X table above and the advice to read a
+  feature's frame from the `frames` map.
 - stdout carries protocol messages only: the entry redirects every other
   stdout write (the OCC STEP writer prints a transfer banner) to stderr.
 - The readline loop processes one call at a time, and every `run` is a fresh

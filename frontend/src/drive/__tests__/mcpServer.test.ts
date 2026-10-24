@@ -10,7 +10,7 @@ import Ajv from 'ajv'
 import { createMcpServer, MCP_TOOLS, type McpCadOps, type McpToolPayload } from '../mcpServer'
 import { MUTATION_CATALOG_URI } from '../mutationCatalogPayload'
 import { DOC_HANDLE_CAPACITY } from '../docHandleStore'
-import { REFERENCE_FRAME_SENTENCE, worldFrameSentence } from '../worldFrame'
+import { REFERENCE_FRAME_SENTENCE, faceFrameSentence, worldFrameSentence } from '../worldFrame'
 
 type FakeOps = {
   calls: Array<{ tool: string; args: unknown }>
@@ -68,6 +68,9 @@ describe('createMcpServer', () => {
     // The frame sentence is generated from BUILTIN_PLANES, so compare the
     // served text with the generator rather than a hand-typed copy.
     expect(instructions).toContain(worldFrameSentence())
+    // The face-frame sentence is generated from normalToFrame for the same
+    // reason: the six axis normals live in the code that computes them.
+    expect(instructions).toContain(faceFrameSentence())
   })
 
   it('falls back to the oldest known version for an unknown one', async () => {

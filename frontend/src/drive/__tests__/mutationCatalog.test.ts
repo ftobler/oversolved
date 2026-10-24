@@ -304,6 +304,19 @@ describe('mutation catalog', () => {
       expect(note, type).toContain('@builtin_plane_front')
       expect(note, type).toContain('?" face query')
       expect(note, type).toContain('never silently')
+      // The cause is now named at the kernel too, not only at this boundary.
+      expect(note, type).toContain('does not resolve fails the sketch')
+      expect(note, type).toContain('reorder')
+    }
+  })
+
+  it('points add_sketch, set_feature_plane and add_plane at the frames in the reply', () => {
+    for (const type of ['add_sketch', 'set_feature_plane', 'add_plane'] as const) {
+      expect(mutationInfoOf(type).note, type).toContain('`frames`')
+    }
+    expect(mutationInfoOf('add_sketch').fields.plane.note).toContain('frames')
+    for (const mode of ['offset', 'three_point', 'plane_point', 'line_angle', 'on_face', 'edge_point']) {
+      expect(mutationInfoOf('add_plane').note, mode).toContain(mode)
     }
   })
 

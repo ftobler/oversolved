@@ -113,7 +113,8 @@ const bodyQuery = () => query('A body id such as body_ex1, or a stored body quer
 // `select` is accepted beside the plane feature ref and the bare name.
 const PLANE_QUERY_NOTE =
   '@<planeId>, a bare plane name (Top, Front, Right), or a face query from `select` '
-  + '(the stored ?...:flatface string): a face query places the sketch on that face.'
+  + '(the stored ?...:flatface string): a face query places the sketch on that face. '
+  + 'The run/measure reply `frames` map reports the resolved origin and axes.'
 
 // The params slot order per entity kind, generated from the entity registry so
 // a new kind or a moved slot cannot leave the catalog stale.
@@ -245,7 +246,21 @@ const PLANE_REF_NOTE =
   '`plane` is "@builtin_plane_front", "@builtin_plane_top", "@builtin_plane_right", ' +
   'a bare builtin name (Front, Top, Right; case-sensitive), "@<planeId>" for a plane feature, ' +
   'or a "?" face query from `select`. An unmatched NAME is refused with the valid names; ' +
-  'a name never silently falls back to the XY plane. A face query is resolved after the solve.'
+  'a name never silently falls back to the XY plane. A face query is resolved after the solve; ' +
+  'a plane or face query that does not resolve fails the sketch, naming the cause (a plane defined ' +
+  'later in the log tells you to reorder). The run/measure reply `frames` map reports the resolved ' +
+  'frame; docs/drive.md (MCP Server) has the face-frame and add_plane mode tables.'
+
+// The plane modes' frames, per the same tables docs/drive.md serves. Kept short:
+// the catalog names where the detail lives so the two cannot disagree on a mode
+// the schema adds later without the docs.
+const PLANE_MODE_NOTE =
+  'Each mode builds a frame: offset keeps the parent axes and moves the origin along the normal; ' +
+  'three_point takes p1 as origin and p1->p2 as x; plane_point keeps the parent axes at the point ' +
+  'projected onto the plane; line_angle takes the line start as origin and the line as x; the face ' +
+  'modes take the face centroid and normal (on_face_edge_angle/edge_point take x from the edge). ' +
+  'docs/drive.md (MCP Server, add_plane frames) has the exact conventions, and the run/measure ' +
+  'reply `frames` map reports the frame each plane resolved.'
 
 // The array's "add" is a union only where the copies touch. Disjoint instances
 // stay separate B-reps and therefore separate bodies, with the source id plus
@@ -492,6 +507,7 @@ export const MUTATION_CATALOG = {
   },
   add_plane: {
     summary: 'Add a construction plane feature.',
+    note: PLANE_MODE_NOTE,
     fields: {
       ...featureAddFields(),
       definition: shapedObj(planeDefinitionSchema(), 'The plane definition object; the schema lists its modes and fields.'),
