@@ -55,11 +55,11 @@ export const REFERENCE_FRAME_SENTENCE =
   + 'the likely frame difference, not the geometry.'
 
 // The six world-axis face normals, in the order the docs table lists them.
-const FACE_NORMALS = [
+const FACE_NORMALS: readonly (readonly [number, number, number])[] = [
   [0, 0, 1], [0, 0, -1],
   [0, 1, 0], [0, -1, 0],
   [1, 0, 0], [-1, 0, 0],
-] as const
+]
 
 export interface FaceFrameRow {
   normal: string
@@ -75,7 +75,7 @@ export interface FaceFrameRow {
  */
 export function faceFrameRows(): FaceFrameRow[] {
   return FACE_NORMALS.map(normal => {
-    const { x_axis, y_axis } = normalToFrame([...normal] as [number, number, number])
+    const { x_axis, y_axis } = normalToFrame([...normal])
     return { normal: axisName(normal), xAxis: axisName(x_axis), yAxis: axisName(y_axis) }
   })
 }
@@ -86,8 +86,8 @@ export function faceFrameSentence(): string {
     .map(row => `${row.normal}: x->${row.xAxis}, y->${row.yAxis}`)
     .join('; ')
   return 'A sketch on a face takes the face centroid as its origin and its in-plane axes from the face '
-    + 'normal (x = normal x world +Z, or normal x world +X when the normal is within 0.9 of Z; '
-    + `y = normal x x). The six axis normals give: ${rows}. A run or measure reply reports each `
+    + 'normal (x = normal x world +Z, or normal x world +X when |n_z| >= 0.9; y = normal x x). '
+    + `The six axis normals give: ${rows}. A run or measure reply reports each `
     + 'sketch and add_plane feature\'s resolved frame in its `frames` map, so read the frame there '
     + 'instead of deriving it from the query.'
 }

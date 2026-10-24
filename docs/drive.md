@@ -633,10 +633,10 @@ banner on stdout, so a client config must use the direct node invocation.
   | -X | +Y | -Z |
 
   For any other normal, sketch x is the normal crossed with world +Z (or with
-  world +X when the normal is within 0.9 of Z), y is the normal crossed with
-  x, both normalised. On a +Z or -Z face that is a quarter turn against the
-  parallel builtin plane, so write sketch-local x along the world axis the
-  table names, not the one the builtin plane's name suggests.
+  world +X when |n_z| >= 0.9), y is the normal crossed with x, both
+  normalised. On a +Z or -Z face that is a quarter turn against the parallel
+  builtin plane, so write sketch-local x along the world axis the table names,
+  not the one the builtin plane's name suggests.
 - Each `add_plane` mode builds its frame as follows, then an optional
   `rotation` turns x and y about the normal by that many degrees:
   - `offset`: the parent plane's axes and normal; origin is the parent origin
@@ -647,8 +647,8 @@ banner on stdout, so a client config must use the direct node invocation.
     projected onto the parent plane along its normal.
   - `line_angle`: origin at the line's start; x along the line from start to
     end; y starts as world +Z projected off x (world +X when the line is
-    within 0.9 of Z) and rotates by `angle` degrees towards x cross y0; normal
-    is x cross y.
+    nearly parallel to Z, |x_z| >= 0.9) and rotates by `angle` degrees towards
+    x cross y0; normal is x cross y.
   - `on_face`: origin at the face centroid and the face normal; a
     `@<body>/face/<index>` pick keeps the face's own OCC axes, any other face
     ref takes them from `normalToFrame` (the table above).
@@ -657,7 +657,9 @@ banner on stdout, so a client config must use the direct node invocation.
     about the normal; y is normal cross x.
   - `edge_point`: origin at the point; x along the edge from start to end; y
     points from the point to its projection on the edge line, so the plane
-    holds both the edge and the point; normal is x cross y.
+    holds both the edge and the point; normal is x cross y. When the point
+    lies on the edge, y comes from x crossed with world +Z (world +X when x is
+    nearly parallel to Z).
 - Read the frame from the reply. Every `run` and `measure` reply carries
   `frames`, an object keyed by feature id whose entries are
   `{origin, x_axis, y_axis, normal}` for each sketch and `add_plane` feature
