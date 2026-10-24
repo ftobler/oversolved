@@ -2,7 +2,7 @@
 // not build. Pure, no OCC: mirrors the Python `_extract_profile_loops` and its
 // "no closed profile found" companions.
 
-import { TOL_LOOP_CLOSURE } from '../../solverConstants'
+import { TOL_LOOP_CLOSURE, TOL_TOPOLOGY_MERGE } from '../../solverConstants'
 import { ANCHORED_KINDS, loopGeometryKey, type LoopEdge } from '../../profileLoops'
 
 type Dict = Record<string, unknown>
@@ -145,9 +145,20 @@ export function extractProfileLoops(
         const se = onMergedVertices(e, merged)
         const s = se.start as number[] | undefined | null
         const en = se.end as number[] | undefined | null
-        if (s !== undefined && s !== null && en !== undefined && en !== null) {
-          rawEdges.push([s, en, se])
+        if (s === undefined || s === null || en === undefined || en === null) continue
+        // A boundary edge whose two ends the builder merged into ONE vertex is
+        // a zero-length fragment of a duplicate split (a near-tangent line/arc
+        // root a hair inside the arc). It bounds nothing and OCC would build it
+        // as a micro sliver beside the real face. Dropping it joins the two
+        // neighbours at that vertex; the loop stays closed.
+        if (
+          typeof e.start_vertex === 'string' &&
+          e.start_vertex === e.end_vertex &&
+          Math.hypot(s[0] - en[0], s[1] - en[1]) <= TOL_TOPOLOGY_MERGE
+        ) {
+          continue
         }
+        rawEdges.push([s, en, se])
       }
       if (rawEdges.length < 1) continue
 

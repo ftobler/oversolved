@@ -145,6 +145,31 @@ describe('extractProfileLoops at the tolerance boundary', () => {
     expect(report.worstJointGap).toBeCloseTo(gap, 12)
   })
 
+  it('drops the zero-length edge a duplicate tangent split leaves behind', () => {
+    // A line that grazes a circle a hair inside mints a second split a few
+    // 1e-7 rad along the arc. The vertex merge fuses it with the first, so the
+    // fragment between them has one vertex at both ends: it bounds nothing,
+    // and keeping it made OCC build a micro sliver beside the real face.
+    const surface = {
+      boundary: [
+        { kind: 'line', start: [0, 0], end: [10, 0], start_vertex: '_v0', end_vertex: '_v1' },
+        { kind: 'line', start: [10, 0], end: [10, 1e-6], start_vertex: '_v1', end_vertex: '_v1' },
+        { kind: 'line', start: [10, 1e-6], end: [10, 10], start_vertex: '_v1', end_vertex: '_v2' },
+        { kind: 'line', start: [10, 10], end: [0, 10], start_vertex: '_v2', end_vertex: '_v3' },
+        { kind: 'line', start: [0, 10], end: [0, 0], start_vertex: '_v3', end_vertex: '_v0' },
+      ],
+      query: '?x',
+    }
+    const loops = extractProfileLoops([surface])
+    expect(loops).toHaveLength(1)
+    expect(loops[0]).toHaveLength(4)
+    for (const e of loops[0]) {
+      const s = e['start'] as number[]
+      const en = e['end'] as number[]
+      expect(Math.hypot(s[0] - en[0], s[1] - en[1])).toBeGreaterThan(1e-5)
+    }
+  })
+
   it('the anchored (arc) endpoint wins a merged joint, whichever edge comes first', () => {
     // Arc start (10,0) and a line's end 1e-5 away, both claiming vertex _v1.
     // The line is listed FIRST so a first-position-wins rule would move the
