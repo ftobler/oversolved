@@ -12,6 +12,15 @@ export const CENTROID_ARC_SAMPLES = 64
 
 export type LoopEdge = Record<string, unknown>
 
+/**
+ * Edges whose OCC endpoints are pinned to an analytic curve (center+radius+angle
+ * for arcs, the eccentric-angle frame for ellipse arcs): a neighbouring joint
+ * cannot pull them off that curve, so at a joint they win and the free edge
+ * moves. Shared by the pure profile dump, the loop assembler's merged-vertex
+ * snap and the OCC-side snapper (`snapLoopJoints`).
+ */
+export const ANCHORED_KINDS = new Set(['arc', 'ellipse', 'ellipse_arc'])
+
 export function radians(deg: number): number {
   return (deg * Math.PI) / 180
 }

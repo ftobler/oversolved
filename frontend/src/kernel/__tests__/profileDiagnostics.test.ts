@@ -243,7 +243,10 @@ describe('validateSketchArea', () => {
   // The prose is free to be reworded; the code is what a persisted snapshot is
   // read back through, so each refusal must carry its own.
   it('stamps a distinct reason code per refusal', () => {
-    const unchained = square(10)
+    // No shared vertex ids: a legacy or OCC-sourced boundary, where the joint
+    // is only measured (the area builder's merged ids are what make the band
+    // chainable now).
+    const unchained = square(10).map((e): LoopEdge => ({ ...e, start_vertex: undefined, end_vertex: undefined }))
     unchained[0].end = [10, 5e-6]
     expect(validateSketchArea({ boundary: unchained }).reasonCode).toBe('loop_not_chained')
 
@@ -267,10 +270,21 @@ describe('validateSketchArea', () => {
     expect(validateSketchArea({ boundary: square(10) }).reasonCode).toBeUndefined()
   })
 
-  it('refuses an area whose joint sits above TOL_LOOP_CLOSURE, naming the band', () => {
-    // The exact band the bug is about: the area builder merged it at 1e-5, the
-    // loop chainer will not join it at 1e-6, so the profile never reaches OCC.
+  it('accepts a joint the area builder merged, even inside the band', () => {
+    // Both sides name vertex _v1: the builder already decided they are one
+    // point at TOL_TOPOLOGY_MERGE, and the loop assembler now chains from that
+    // vertex's position. The hand-typed coordinate does not need more digits
+    // than the document keeps.
     const loop = square(10)
+    loop[0].end = [10, 5e-6]
+    expect(validateSketchArea({ boundary: loop })).toEqual({ buildable: true })
+  })
+
+  it('still refuses a band-sized joint with no shared vertex, naming the band', () => {
+    // No vertex ids (a legacy topology, or a boundary from somewhere other
+    // than the area builder): the gap is measurable but not mergeable, and the
+    // reason names both rungs of the ladder.
+    const loop = square(10).map((e): LoopEdge => ({ ...e, start_vertex: undefined, end_vertex: undefined }))
     loop[0].end = [10, 5e-6]
     const v = validateSketchArea({ boundary: loop })
     expect(v.buildable).toBe(false)

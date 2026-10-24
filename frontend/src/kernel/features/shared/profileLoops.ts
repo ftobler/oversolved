@@ -3,7 +3,7 @@
 // "no closed profile found" companions.
 
 import { TOL_LOOP_CLOSURE } from '../../solverConstants'
-import { loopGeometryKey, type LoopEdge } from '../../profileLoops'
+import { ANCHORED_KINDS, loopGeometryKey, type LoopEdge } from '../../profileLoops'
 
 type Dict = Record<string, unknown>
 
@@ -11,6 +11,61 @@ type Dict = Record<string, unknown>
 export type ProfileLoopDiag =
   | { kind: 'unclosed'; startedAt: number[]; used: number; total: number; surface?: number }
   | { kind: 'leftover'; leftover: number; total: number; surface?: number }
+
+/**
+ * The endpoint position the area builder already MERGED into each vertex id.
+ *
+ * The builder closes a face combinatorially at TOL_TOPOLOGY_MERGE, by vertex id,
+ * and never measures a gap; this assembler re-derived the same loop metrically
+ * at TOL_LOOP_CLOSURE, so a joint in between (a hand-typed coordinate 1e-5 off
+ * its arc end, well inside what the document keeps) built an area the profile
+ * never got. Using the merged vertex's own position makes the two sides agree
+ * by construction: the area the user sees IS the area the kernel builds.
+ *
+ * Which position a merged vertex keeps follows the same anchored-kind rule as
+ * `snapLoopJoints`: an arc/ellipse endpoint (pinned to its curve) wins over a
+ * line's, so only a free end moves. A vertex all of whose edges are free keeps
+ * the first position registered, matching the builder's own `Verts` pool.
+ */
+function mergedVertexPositions(
+  surfaces: Dict[],
+): Map<string, { pos: number[]; anchored: boolean }> {
+  const out = new Map<string, { pos: number[]; anchored: boolean }>()
+  const consider = (edge: Dict, pKey: string, vKey: string): void => {
+    const id = edge[vKey]
+    const p = edge[pKey]
+    if (typeof id !== 'string' || !Array.isArray(p)) return
+    const anchored = ANCHORED_KINDS.has(edge.kind as string)
+    const prev = out.get(id)
+    if (prev === undefined || (!prev.anchored && anchored)) out.set(id, { pos: p, anchored })
+  }
+  for (const surface of surfaces) {
+    const holes = (surface.holes as Dict[][]) ?? []
+    for (const boundary of [(surface.boundary as Dict[]) ?? [], ...holes]) {
+      for (const e of boundary) {
+        consider(e, 'start', 'start_vertex')
+        consider(e, 'end', 'end_vertex')
+      }
+    }
+  }
+  return out
+}
+
+/** Clone `edge` with its endpoints moved onto the merged vertices it names. */
+function onMergedVertices(
+  edge: Dict,
+  merged: Map<string, { pos: number[]; anchored: boolean }>,
+): Dict {
+  const startId = edge.start_vertex
+  const endId = edge.end_vertex
+  const startPos = typeof startId === 'string' ? merged.get(startId) : undefined
+  const endPos = typeof endId === 'string' ? merged.get(endId) : undefined
+  if (startPos === undefined && endPos === undefined) return edge
+  const copy: Dict = { ...edge }
+  if (startPos !== undefined) copy.start = [...startPos.pos]
+  if (endPos !== undefined) copy.end = [...endPos.pos]
+  return copy
+}
 
 /**
  * Assemble surface boundaries into ordered closed loops (mirrors
@@ -38,6 +93,7 @@ export function extractProfileLoops(
 ): Dict[][] {
   if (!surfaces || surfaces.length === 0) return []
   const TOL = TOL_LOOP_CLOSURE
+  const merged = mergedVertexPositions(surfaces)
 
   const dist2d = (a: number[], b: number[]): number =>
     Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
@@ -86,10 +142,11 @@ export function extractProfileLoops(
       const rawEdges: [number[], number[], Dict][] = []
       for (const e of boundary) {
         if (e.kind === 'ellipse') continue
-        const s = e.start as number[] | undefined | null
-        const en = e.end as number[] | undefined | null
+        const se = onMergedVertices(e, merged)
+        const s = se.start as number[] | undefined | null
+        const en = se.end as number[] | undefined | null
         if (s !== undefined && s !== null && en !== undefined && en !== null) {
-          rawEdges.push([s, en, e])
+          rawEdges.push([s, en, se])
         }
       }
       if (rawEdges.length < 1) continue

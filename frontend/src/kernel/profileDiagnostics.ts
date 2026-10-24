@@ -16,6 +16,7 @@
 // exist -- is `wireEndpointGaps` in occ/primitives.ts.
 
 import {
+  ANCHORED_KINDS,
   CENTROID_ARC_SAMPLES,
   loopContainment,
   loopGeometryKey,
@@ -26,14 +27,10 @@ import {
 import { extractProfileLoops } from './features/shared/profileLoops'
 import { OCC_CONFUSION, TOL_LOOP_CLOSURE, TOL_TOPOLOGY_EPS, TOL_TOPOLOGY_MERGE } from './solverConstants'
 
-/**
- * Edges whose OCC endpoints are pinned to an analytic curve (center+radius+angle
- * for arcs, the eccentric-angle frame for ellipse arcs): a neighbouring joint
- * cannot pull them off that curve, so at a joint they win and the free edge
- * moves. Lives here rather than in prismLineage so the pure diagnostic and the
- * OCC-side snapper (`snapLoopJoints`) share one definition instead of drifting.
- */
-export const ANCHORED_KINDS = new Set(['arc', 'ellipse', 'ellipse_arc'])
+// The anchored-kind set lives in kernel/profileLoops so the loop assembler can
+// snap merged joints without importing this module back (this module imports
+// the assembler); re-exported here for the diagnostic and the OCC-side snapper.
+export { ANCHORED_KINDS } from './profileLoops'
 
 export interface JointReport {
   index: number

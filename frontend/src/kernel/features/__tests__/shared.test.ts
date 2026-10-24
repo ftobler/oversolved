@@ -126,24 +126,43 @@ describe('extractProfileLoops at the tolerance boundary', () => {
     query: '?x',
   })
 
-  it('a joint between TOL_LOOP_CLOSURE and TOL_TOPOLOGY_MERGE is dropped, but no longer silently', () => {
+  it('a joint between TOL_LOOP_CLOSURE and TOL_TOPOLOGY_MERGE chains from the merged vertex', () => {
     const gap = 5e-6
     expect(gap).toBeGreaterThan(TOL_LOOP_CLOSURE)
     expect(gap).toBeLessThan(TOL_TOPOLOGY_MERGE)
     const surface = gappedSquare(gap, true)
-    // Today the coordinate chainer drops it. F2 (chain by vertex id) will make
-    // this loop survive instead; when it lands, flip the first assertion and
-    // keep the second, which is the part that must never regress.
-    expect(extractProfileLoops([surface])).toHaveLength(0)
-    const v = validateSketchArea(surface)
-    expect(v.buildable).toBe(false)
-    expect(v.reason).toContain('TOL_LOOP_CLOSURE')
-    expect(v.reason).toContain('TOL_TOPOLOGY_MERGE')
-    // The dump names the joint and confirms both sides claim one merged vertex.
+    // The area builder merged both sides into vertex _v1, so the assembler
+    // chains them from that vertex's position and the profile exists: the area
+    // the user sees is the area the kernel builds. A hand-typed coordinate no
+    // longer has to carry more digits than the document keeps.
+    expect(extractProfileLoops([surface])).toHaveLength(1)
+    expect(validateSketchArea(surface)).toEqual({ buildable: true })
+    // The raw boundary still prints the pre-snap gap and the shared vertex, so
+    // the dump names what the assembler repaired.
     const report = describeProfile([surface.boundary as Record<string, unknown>[]])
     expect(report.loops[0].joints[0].aEndVertex).toBe('_v1')
     expect(report.loops[0].joints[0].bStartVertex).toBe('_v1')
     expect(report.worstJointGap).toBeCloseTo(gap, 12)
+  })
+
+  it('the anchored (arc) endpoint wins a merged joint, whichever edge comes first', () => {
+    // Arc start (10,0) and a line's end 1e-5 away, both claiming vertex _v1.
+    // The line is listed FIRST so a first-position-wins rule would move the
+    // arc's endpoint off its own circle. The arc must win: only a free end
+    // moves (the same rule `snapLoopJoints` applies at OCC time).
+    const arc = {
+      id: 'arc', kind: 'arc', center: [0, 0], radius: 10,
+      angle_start_deg: 0, angle_end_deg: 90, ccw: true,
+      start: [10, 0], end: [0, 10], start_vertex: '_v1', end_vertex: '_v2',
+    }
+    const top = { id: 'top', kind: 'line', start: [0, 10], end: [0, 0], start_vertex: '_v2', end_vertex: '_v3' }
+    const bottom = { id: 'bottom', kind: 'line', start: [0, 0], end: [10, 1e-5], start_vertex: '_v3', end_vertex: '_v1' }
+    const loops = extractProfileLoops([{ boundary: [bottom, top, arc] }])
+    expect(loops).toHaveLength(1)
+    const lineEnd = loops[0].find((e) => e.id === 'bottom')!['end'] as number[]
+    expect(lineEnd).toEqual([10, 0])
+    const arcStart = loops[0].find((e) => e.id === 'arc')!['start'] as number[]
+    expect(arcStart).toEqual([10, 0])
   })
 
   it('a joint beyond TOL_TOPOLOGY_MERGE is reported, never advertised as a face', () => {

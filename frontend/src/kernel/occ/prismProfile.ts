@@ -125,8 +125,9 @@ function buildEllipseArcEdge(oc: OccModule, scope: DisposeScope, plane: PlaneLik
 // genuinely open loop sits far above it and still fails loudly in makeWire.
 const JOINT_SNAP_TOL = 1e-3
 
-// ANCHORED_KINDS lives in kernel/profileDiagnostics so the snapper below and
-// the pure profile dump cannot drift apart about which edges can be moved.
+// ANCHORED_KINDS is defined in kernel/profileLoops (re-exported by
+// profileDiagnostics) so the snapper below, the loop assembler and the pure
+// profile dump cannot drift apart about which edges can be moved.
 
 function jointDist(a: number[], b: number[]): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1])
