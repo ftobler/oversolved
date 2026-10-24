@@ -5,9 +5,10 @@
 // without a probe hole or a source read.
 //
 // The frame comes from the kernel's own result: `plane_transform` for a sketch
-// (`frameFromPlaneTransform`) and `plane` for a plane feature. A feature the
-// solve refused carries no frame, so it stays out of the map: inventing one
-// would describe a plane the sketch was never built on.
+// (`frameFromPlaneTransform`) and `plane` for a plane feature. A suppressed
+// feature, or one whose solve threw, carries no frame-bearing result and stays
+// out of the map: inventing one would describe a plane the sketch was never
+// built on. An overconstrained sketch did build on a plane and is reported.
 
 import type { PartDoc } from '@/types/cad'
 import type { BuildResponse } from '@/kernel/builderTypes'
@@ -78,7 +79,7 @@ function frameOfResult(result: unknown): FeatureFrame | null {
 /**
  * The frames of every sketch and plane feature the solve resolved, keyed by
  * feature id. A feature missing from `result` (a shorter solve, a suppressed
- * row) or carrying no frame (an exception) is left out.
+ * row) or with no frame-bearing result (a thrown solve) is left out.
  */
 export function featureFrames(
   doc: PartDoc | null | undefined,

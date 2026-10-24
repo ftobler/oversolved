@@ -52,18 +52,19 @@ describe.skipIf(!solveBytes || !topologyBytes)('corpus sketches report zero redu
       for (const feature of entry.spec.features ?? []) {
         if (feature.kind !== 'sketch') continue
         const repo = initGlobalRepo()
+        let replayFeature = feature
         const plane = typeof feature.plane === 'string' ? feature.plane : null
         try {
           // A sketch on a document plane feature (project_tilted_circle_ellipse's
           // pl_tilt) has no repo entry in this isolated replay: the live build
           // solves the planes in log order first. Redundancy is a 2D constraint
-          // property, so the plane is irrelevant here; the `solved` guard below
-          // still fails if a tree-wide change refuses everything.
+          // property, so replay it on Front instead of dropping the sketch from
+          // coverage; this is a test-only substitute, not a kernel fallback.
           resolveSketchPlane(plane, repo)
         } catch {
-          continue
+          replayFeature = { ...feature, plane: undefined }
         }
-        const out = solveSketch(feature, repo, {})
+        const out = solveSketch(replayFeature, repo, {})
         if (out.status === 'overconstrained') continue
         solved++
         for (const [cid, c] of Object.entries(out.constraints ?? {})) {

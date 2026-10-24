@@ -84,6 +84,11 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
 
   const reSolve: ReSolveFn = async (doc, solveOpts?: SolveOptions) => {
     outcomesBox.current = {}
+    // A failed or faulted solve must not leave the previous response standing:
+    // featureMeasures and featureFrames read it against the CURRENT document, so
+    // pairing the old frames with a document edited since would report a plane
+    // that solve never reached.
+    responseBox.current = null
     const payload = partSolvePayload(doc, docId)
     const response = await solveLocally(payload, {
       rollbackPosition: payload.rollback_position,

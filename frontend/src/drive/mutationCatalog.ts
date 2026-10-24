@@ -256,11 +256,11 @@ const PLANE_REF_NOTE =
 // the schema adds later without the docs.
 const PLANE_MODE_NOTE =
   'Each mode builds a frame: offset keeps the parent axes and moves the origin along the normal; ' +
-  'three_point takes p1 as origin and p1->p2 as x; plane_point keeps the parent axes at the point ' +
-  'projected onto the plane; line_angle takes the line start as origin and the line as x; the face ' +
-  'modes take the face centroid and normal (on_face_edge_angle/edge_point take x from the edge). ' +
-  'docs/drive.md (MCP Server, add_plane frames) has the exact conventions, and the run/measure ' +
-  'reply `frames` map reports the frame each plane resolved.'
+  'three_point takes p1 as origin and p1->p2 as x; plane_point keeps the parent axes with the origin ' +
+  'moved along the normal by the point\'s signed distance from the plane; line_angle takes the line ' +
+  'start as origin and the line as x; the face modes take the face centroid and normal ' +
+  '(on_face_edge_angle/edge_point take x from the edge). docs/drive.md (MCP Server, add_plane frames) ' +
+  'has the exact conventions, and the run/measure reply `frames` map reports the frame each plane resolved.'
 
 // The array's "add" is a union only where the copies touch. Disjoint instances
 // stay separate B-reps and therefore separate bodies, with the source id plus

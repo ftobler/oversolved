@@ -13,6 +13,7 @@ import {
 } from '@/kernel/solveLocally'
 import { resetSketchSolver, setSketchSolver } from '@/kernel/features/sketch'
 import { runHeadless, measureHeadless, seedBuiltins } from '../headlessOps'
+import { createHeadlessPart } from '../headlessPart'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 import type { PartDoc } from '@/types/cad'
 import type { OccModule } from '@/kernel/occ/occTypes'
@@ -67,8 +68,20 @@ describe.skipIf(!oc || !solveBytes)('headless run after a kernel fault (real OCC
     expect(built.ok).toBe(true)
     expect(built.solve.lastError).toBeNull()
     expect(built.features).toEqual([])
+    expect(built.frames!.sk1).toBeDefined()
     const measured = await measureHeadless(built.doc!)
     expect(measured).not.toBeNull()
     expect(measured!.measures.volume).toBeCloseTo(12000, 3)
+
+    // A solve that faults AFTER a good one must not pair the old response's
+    // frames with the current document.
+    const part = createHeadlessPart({ doc: emptyDoc(), docId: 'fault-after-build' })
+    await part.run(box.steps)
+    expect(part.featureFrames()!.sk1).toBeDefined()
+    setSolveLocalsForTest(async () => null)
+    part.session.refreshSolve()
+    await part.idle()
+    expect(part.solve.state().lastError).toMatch(/solver unavailable/i)
+    expect(part.featureFrames()).toBeNull()
   }, 180_000)
 })

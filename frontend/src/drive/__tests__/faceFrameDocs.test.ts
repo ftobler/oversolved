@@ -1,14 +1,26 @@
-// Drift guard for the face-frame documentation in docs/drive.md (MCP Server).
-// The table is checked against normalToFrame through faceFrameRows, never
-// against a hand-typed copy, so a change to the frame rule cannot leave the
-// docs describing the old quarter turn. When this fails, fix the doc.
+// Drift guard for the face-frame and add_plane-frame documentation the MCP
+// surface serves (docs/drive.md, MCP Server). The face table is checked against
+// normalToFrame through faceFrameRows, and the mode list against the plane
+// schema the catalog serves, so a new mode or a changed frame rule cannot leave
+// the docs and the initialize sentence describing the old convention. When this
+// fails, fix the doc or the sentence, not this file.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { faceFrameRows } from '../worldFrame'
+import { planeDefinitionSchema } from '@/persistence/partDocSchema'
+import { addPlaneFrameModes, addPlaneFrameSentence, faceFrameRows } from '../worldFrame'
 
 const DOC_PATH = join(__dirname, '../../../../docs/drive.md')
 const DOC = readFileSync(DOC_PATH, 'utf8')
+
+/** The mode names the part-document schema accepts for a plane definition. */
+function schemaPlaneModes(): string[] {
+  const properties = planeDefinitionSchema().properties as
+    { mode?: { enum?: unknown } } | undefined
+  const modes = properties?.mode?.enum
+  if (!Array.isArray(modes)) throw new Error('the plane definition schema has no mode enum')
+  return modes.map(String)
+}
 
 /** The markdown rows under the face-frame table header, cells trimmed. */
 function tableRows(): string[][] {
@@ -37,11 +49,11 @@ describe('docs/drive.md face frames', () => {
   })
 
   it('gives a frame convention for every add_plane mode the schema accepts', () => {
-    const modes = [
-      'offset', 'three_point', 'plane_point', 'line_angle',
-      'on_face', 'on_face_edge_angle', 'edge_point',
-    ]
-    const missing = modes.filter(mode => !DOC.includes(`- \`${mode}\`: `))
-    expect(missing).toEqual([])
+    const modes = schemaPlaneModes()
+    expect(modes.length).toBeGreaterThan(0)
+    // The sentence the server serves and the docs say the same set of modes.
+    expect([...addPlaneFrameModes()].sort()).toEqual([...modes].sort())
+    expect(modes.filter(mode => !DOC.includes(`- \`${mode}\`: `))).toEqual([])
+    expect(modes.filter(mode => !addPlaneFrameSentence().includes(`${mode}: `))).toEqual([])
   })
 })

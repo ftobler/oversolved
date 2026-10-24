@@ -91,3 +91,29 @@ export function faceFrameSentence(): string {
     + 'sketch and add_plane feature\'s resolved frame in its `frames` map, so read the frame there '
     + 'instead of deriving it from the query.'
 }
+
+// Each add_plane mode's frame, in the order the plane schema lists the modes.
+// The keys are the schema's mode enum (checked by worldFrame.test.ts), so a mode
+// added to the schema fails the test until its frame is stated here.
+const ADD_PLANE_FRAME_BY_MODE: Record<string, string> = {
+  offset: 'the parent axes, origin moved along the normal by offset',
+  three_point: 'origin p1, x from p1 to p2, y in the p1-p2-p3 plane',
+  plane_point: 'the parent axes, origin = parent origin + normal * the point\'s signed distance from the plane',
+  line_angle: 'origin at the line start, x along the line, y from world +Z projected off x and swung by angle',
+  edge_point: 'origin the point, x along the edge, y from the point to the edge line',
+  on_face: 'origin the face centroid, the face normal, normalToFrame axes (a slash face pick keeps its own frame)',
+  on_face_edge_angle: 'origin the face centroid, the face normal, x from the edge rotated by angle',
+}
+
+/** The `add_plane` mode names the frame sentence covers, for the drift test. */
+export function addPlaneFrameModes(): string[] {
+  return Object.keys(ADD_PLANE_FRAME_BY_MODE)
+}
+
+/** The add_plane mode frames as one sentence, served in the initialize instructions. */
+export function addPlaneFrameSentence(): string {
+  const notes = Object.entries(ADD_PLANE_FRAME_BY_MODE)
+    .map(([mode, note]) => `${mode}: ${note}`)
+    .join('; ')
+  return `An add_plane feature takes its frame from its mode: ${notes}. rotation turns x and y about the normal.`
+}

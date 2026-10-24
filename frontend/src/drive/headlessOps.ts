@@ -71,8 +71,8 @@ export interface HeadlessRunResult {
   // checkpoint still sets the baseline for the next clean one.
   featureDeltas: FeatureDelta[] | null
   // The resolved {origin, x_axis, y_axis, normal} of every sketch and add_plane
-  // feature the final solve reached. Null when no solve ran; a refused
-  // feature has no frame.
+  // feature the final solve reached. Null when no solve ran; a feature whose
+  // solve threw or that was suppressed has no frame.
   frames: FeatureFrameMap | null
   // The live part, for a caller that wants the session (the CLI records a
   // repro from its journal; most callers only read the fields above).

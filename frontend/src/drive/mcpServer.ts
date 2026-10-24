@@ -20,7 +20,12 @@ import { validateSelector, typeVocabulary, type Selector } from '@/kernel/select
 import { parseReference, type TranslationReference } from '@/translations/corpus'
 import { MUTATION_CATALOG_URI, mutationCatalogPayload } from '@/drive/mutationCatalogPayload'
 import { DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
-import { worldFrameSentence, faceFrameSentence, REFERENCE_FRAME_SENTENCE } from '@/drive/worldFrame'
+import {
+  worldFrameSentence,
+  faceFrameSentence,
+  addPlaneFrameSentence,
+  REFERENCE_FRAME_SENTENCE,
+} from '@/drive/worldFrame'
 
 // The protocol revisions whose initialize handshake this server accepts. The
 // three methods implemented here exist unchanged in all of them, so a client
@@ -280,7 +285,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'is visible without repeating the whole history; a failed, partial or warning feature has no delta row. '
       + 'Pass featureDeltas: "all" to inspect every clean row instead. frames reports each sketch and add_plane '
       + 'feature\'s resolved {origin, x_axis, y_axis, normal}, so a face sketch\'s axes are read from the reply '
-      + 'rather than guessed (a refused feature has no frame). With steps: [] the given document is solved '
+      + 'rather than guessed (a feature whose solve threw has no frame). With steps: [] the given document is solved '
       + 'once and the same fields are returned, which is how to inspect a document. The summary lists only the '
       + 'bodies the final solve left live; a refused step says the document was not solved. '
       + 'The full document is not returned by default (returnDoc: false); pass returnDoc: true, or read the '
@@ -681,7 +686,7 @@ export function createMcpServer(ops: McpCadOps): McpServer {
               + MCP_DOC_RESOURCE_TEMPLATE + ', so run replies stay small. Plane names are case-sensitive: use '
               + '@builtin_plane_front, @builtin_plane_top, @builtin_plane_right, a bare seeded name (Front, Top, '
               + 'Right) or @<planeId>; an unmatched plane is an error naming the valid planes. '
-              + worldFrameSentence() + ' ' + faceFrameSentence(),
+              + worldFrameSentence() + ' ' + faceFrameSentence() + ' ' + addPlaneFrameSentence(),
           })
         case 'notifications/initialized':
           return null

@@ -643,8 +643,9 @@ banner on stdout, so a client config must use the direct node invocation.
     plus `offset` times the normal.
   - `three_point`: origin p1; x from p1 to p2; y in the p1-p2-p3 plane
     perpendicular to x; normal is x cross y.
-  - `plane_point`: the parent plane's axes and normal; origin is the point
-    projected onto the parent plane along its normal.
+  - `plane_point`: the parent plane's axes and normal; origin is the parent
+    origin plus the normal times the point's signed distance from the parent
+    plane, so the point's in-plane offset is dropped.
   - `line_angle`: origin at the line's start; x along the line from start to
     end; y starts as world +Z projected off x (world +X when the line is
     nearly parallel to Z, |x_z| >= 0.9) and rotates by `angle` degrees towards
@@ -663,10 +664,11 @@ banner on stdout, so a client config must use the direct node invocation.
 - Read the frame from the reply. Every `run` and `measure` reply carries
   `frames`, an object keyed by feature id whose entries are
   `{origin, x_axis, y_axis, normal}` for each sketch and `add_plane` feature
-  the solve resolved (rounded to the document's 6 decimals). A feature that
-  failed or was suppressed has no entry, because it was never built on a
-  frame. `{origin, x_axis, y_axis, normal}` is world space, Y-up, in the same
-  frame the document and `compare` use.
+  the solve resolved (rounded to the document's 6 decimals). A suppressed
+  feature or one whose solve threw (status `exception`) has no entry because
+  it produced no frame-bearing result; an overconstrained sketch still reports
+  the plane it solved on. `{origin, x_axis, y_axis, normal}` is world space,
+  Y-up, in the same frame the document and `compare` use.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; unknown fields are rejected by name, so a typo never fails
