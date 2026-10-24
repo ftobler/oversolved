@@ -77,6 +77,12 @@ describe.skipIf(!oc)('an outward blind hole warns with the fix (real OCC)', () =
     expect(volume).toBeCloseTo(BOX - Math.PI * 4 * 5, 6)
   })
 
+  it('keeps the plain miss text for a through hole, which has no entry side to flip', () => {
+    const { result } = drill({ diameter: 4, depth_mode: 'through_all', direction: 'normal' }, [100, 100])
+    expect(String(result.solver_warning)).toMatch(/none of the 1 drill site\(s\) intersect/)
+    expect(String(result.solver_warning)).not.toMatch(/direction: reverse/)
+  })
+
   it('keeps the miss text when the site misses in both directions', () => {
     // Off the plate in x and y: no direction can reach it, so pointing at
     // `reverse` would be wrong advice.

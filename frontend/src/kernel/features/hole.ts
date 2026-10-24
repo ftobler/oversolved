@@ -263,11 +263,12 @@ function fuseCutter(oc: OccModule, scope: DisposeScope, target: Cutter, tool: Cu
  * through hole); `mouth` and `mouthAxis` place the widened mouth, measured from
  * the drill site's plane INTO the material. For a through hole the two axes
  * differ: the bore may run either way across the body, but a counterbore step
- * or countersink cone built on the outward side cuts air. `overhang` reaches
- * the mouth back past the sketch plane into the air side, so an entry face a
- * little below a plane that sits above it is still opened at full width; it is
- * zero for a blind hole, whose mouth is where the bore starts, and for a
- * through hole whose entry side the probe could not decide.
+ * or countersink cone built on the outward side cuts air. `airGap` is how far
+ * the entry face sits below the sketch plane and `overhang` how far past the
+ * plane the tool reaches (the gap plus a hair), so the mouth is opened at full
+ * width at the FACE, with its depth measured from there. Both are zero for a
+ * blind hole, whose mouth is on the face, and for a through hole whose entry
+ * side the probe could not decide.
  */
 function buildCutter(
   oc: OccModule,
@@ -277,6 +278,7 @@ function buildCutter(
   boreAxis: Vec3,
   mouth: Vec3,
   mouthAxis: Vec3,
+  airGap: number,
   overhang: number,
   radius: number,
   boreLength: number,
@@ -286,22 +288,23 @@ function buildCutter(
 ): Cutter {
   const bore = makeCylinderWithFaces(oc, scope, start, boreAxis, radius, boreLength)
   let cutter: Cutter = { shape: bore.shape, roles: cylinderRoles(bore.faces, 'bore', 'floor') }
+  // The widened mouth is measured from the entry FACE, which is airGap below
+  // the sketch plane; the overhang carries it back past the plane.
+  const reach = overhang + airGap
   if (style === 'counterbore') {
     const stepStart = backAlong(mouth, mouthAxis, overhang)
-    const step = makeCylinderWithFaces(oc, scope, stepStart, mouthAxis, cbRadius, overhang + cbDepth)
+    const step = makeCylinderWithFaces(oc, scope, stepStart, mouthAxis, cbRadius, reach + cbDepth)
     cutter = fuseCutter(oc, scope, cutter, {
       shape: step.shape,
       roles: cylinderRoles(step.faces, 'step_wall', 'step_floor'),
     })
   } else if (style === 'countersink') {
-    // The cone widens away from the material, so extending it into the air
+    // The cone widens away from the material, so reaching back to the face
     // means starting further back at a correspondingly wider r1: the slope is
     // fixed by the distance the cone covers between the two radii.
     const slope = (cbRadius - radius) / coneHeight
     const coneStart = backAlong(mouth, mouthAxis, overhang)
-    const cone = makeCone(
-      oc, scope, coneStart, mouthAxis, cbRadius + overhang * slope, radius, coneHeight + overhang,
-    )
+    const cone = makeCone(oc, scope, coneStart, mouthAxis, cbRadius + reach * slope, radius, coneHeight + reach)
     const lateral = coneLateral(oc, scope, cone)
     const roles = new SubShapeMap<HoleFaceRole>()
     if (lateral !== null) roles.set(lateral, 'sink')
@@ -341,20 +344,15 @@ function projectedRadius(frame: { half: Vec3 }, axis: Vec3): number {
   return Math.abs(axis[0]) * frame.half[0] + Math.abs(axis[1]) * frame.half[1] + Math.abs(axis[2]) * frame.half[2]
 }
 
-/** How far `mouth` sits past the body's AABB on the air side of `dir`, plus a
- *  hair. A widened mouth reaches back this far so it still opens an entry face
- *  below a sketch plane that sits above it; a mouth on or inside the body
- *  reaches back nothing. */
-function airOverhang(
-  frame: { center: Vec3; half: Vec3 },
-  mouth: Vec3,
-  dir: Vec3,
-  margin: number,
-): number {
+/** How far `mouth` sits outside the body's AABB on its AIR side, along `dir`
+ *  (which points into the material). The air side is the -dir end, so the mouth
+ *  is outside the box when its projection along `dir` falls below the box's
+ *  minimum. A mouth on or inside the AABB returns zero. */
+function airGapAlong(frame: { center: Vec3; half: Vec3 }, mouth: Vec3, dir: Vec3): number {
   const centre = frame.center[0] * dir[0] + frame.center[1] * dir[1] + frame.center[2] * dir[2]
   const atMouth = mouth[0] * dir[0] + mouth[1] * dir[1] + mouth[2] * dir[2]
-  const gap = atMouth - (centre + projectedRadius(frame, dir))
-  return gap > 0 ? gap + margin : 0
+  const gap = (centre - projectedRadius(frame, dir)) - atMouth
+  return gap > 0 ? gap : 0
 }
 
 /** The axis pointing from a through hole's mouth INTO the material, read by
@@ -402,7 +400,7 @@ function cutterReaches(
   coneHeight: number,
 ): boolean {
   const probe = buildCutter(
-    oc, scope, style, mouth, axis, mouth, axis, 0, radius, depth, cbRadius, cbDepth, coneHeight,
+    oc, scope, style, mouth, axis, mouth, axis, 0, 0, radius, depth, cbRadius, cbDepth, coneHeight,
   )
   const hit = intersects(oc, shape, probe.shape)
   scope.release(probe.shape)
@@ -616,9 +614,10 @@ export function solveHole(
         style === 'counterbore' ? cbDepth : countersinkDepth)
       : null
     const mouthAxis: Vec3 = probed ?? axis
-    const overhang = probed !== null && throughFrame !== null
-      ? airOverhang(throughFrame, center3d, mouthAxis, throughMargin)
+    const airGap = probed !== null && throughFrame !== null
+      ? airGapAlong(throughFrame, center3d, mouthAxis)
       : 0
+    const overhang = airGap > 0 ? airGap + throughMargin : 0
 
     let start3d: Vec3
     let h: number
@@ -628,8 +627,11 @@ export function solveHole(
       // mouth when that axis points out of the body, and the fuse then splits
       // its wall into the piece above the step and the piece below: only one
       // can carry the bore role. Ending the bore at the step keeps one wall.
+      // The overhang counts twice: once to reach back to the mouth and once
+      // more because a mouth above the entry face is up to the same distance
+      // short of the far face.
       start3d = backAlong(center3d, mouthAxis, overhang)
-      h = overhang + throughSpan + throughMargin
+      h = throughSpan + 2.0 * overhang + throughMargin
     } else if (depthMode === 'through_all') {
       // An undecided site (inside the body, or outside it) keeps the symmetric
       // back-off: the bore covers the body whichever way it turns out to lie.
@@ -641,7 +643,7 @@ export function solveHole(
     }
 
     const cutter = buildCutter(
-      oc, scope, style, start3d, mouthAxis, center3d, mouthAxis, overhang,
+      oc, scope, style, start3d, mouthAxis, center3d, mouthAxis, airGap, overhang,
       site.radius, h, cbRadius, cbDepth, countersinkDepth,
     )
     const cyl = cutter.shape

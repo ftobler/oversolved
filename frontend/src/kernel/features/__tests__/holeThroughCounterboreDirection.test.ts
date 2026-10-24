@@ -125,6 +125,17 @@ describe.skipIf(!oc)('a through counterbore widens on the material side (real OC
     })
   }
 
+  it('opens an entry face below a plane that sits above it', () => {
+    // The mouth is 1 mm above the top face: the step reaches back through the
+    // air to z=13 so the entry is still opened at cb_diameter, and the bore
+    // still clears the far face instead of stopping 1 mm short.
+    for (const direction of ['normal', 'reverse'] as const) {
+      const { volume, result } = drill(PLATE_Z + 1, 0, { ...COUNTERBORE, direction })
+      expect(result.status).toBe('ok')
+      expect(volume).toBeCloseTo(BOX_VOLUME - counterboreRemoved(BORE_R, PLATE_Z, CB_R, CB_DEPTH), 6)
+    }
+  })
+
   it('gives both directions the same bore, step wall and step floor uuids', () => {
     const uuid = (role: HoleFaceRole) => mintFaceUuid(holeFacePath('h1', 'sk/p1', role))
     const normal = drill(PLATE_Z, 0, { ...COUNTERBORE, direction: 'normal' })
