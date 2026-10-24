@@ -287,11 +287,11 @@ export function loopDiagReasons(diags: ProfileLoopDiag[]): string[] {
 
 /** How a profile reference's area set fared, for the partial-profile report. */
 export interface ProfileAreaReport {
-  /** Areas in the referenced set that produced at least one loop. */
+  // Areas in the referenced set that produced at least one loop.
   built: number
-  /** Areas the reference names: every area of a whole sketch, or the picked ones. */
+  // Areas the reference names: every area of a whole sketch, or picked ones.
   total: number
-  /** One sentence per distinct failure, empty when the whole set built. */
+  // One sentence per distinct failure, empty when the whole set built.
   reasons: string[]
 }
 
