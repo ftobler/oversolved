@@ -266,7 +266,8 @@ function fuseCutter(oc: OccModule, scope: DisposeScope, target: Cutter, tool: Cu
  * or countersink cone built on the outward side cuts air. `overhang` reaches
  * the mouth back past the sketch plane into the air side, so an entry face a
  * little below a plane that sits above it is still opened at full width; it is
- * zero for a blind hole, whose mouth is where the bore starts.
+ * zero for a blind hole, whose mouth is where the bore starts, and for a
+ * through hole whose entry side the probe could not decide.
  */
 function buildCutter(
   oc: OccModule,
@@ -382,14 +383,6 @@ function entryAxis(
   return forwardHits ? axis : away
 }
 
-/** True when `tool` shares any volume with `shape`.
- *
- *  The same bare BRepAlgoAPI_Common probe bodyOps and boolean run before a cut
- *  to skip disjoint tools. The cut's BrepDiff cannot decide this: a disjoint
- *  cut still writes a NON-empty diff because OCC's history marks the whole
- *  tool as deleted, which reads as "material removed" even though the body is
- *  untouched. A failed probe is not evidence of disjointness (mirror bodyOps),
- *  so the cut proceeds and surfaces its own failure. */
 /**
  * Whether one site's tool built along `axis` would remove material: build it,
  * probe it, drop it. The opposite-direction check a blind miss runs before it
@@ -416,6 +409,14 @@ function cutterReaches(
   return hit
 }
 
+/** True when `tool` shares any volume with `shape`.
+ *
+ *  The same bare BRepAlgoAPI_Common probe bodyOps and boolean run before a cut
+ *  to skip disjoint tools. The cut's BrepDiff cannot decide this: a disjoint
+ *  cut still writes a NON-empty diff because OCC's history marks the whole
+ *  tool as deleted, which reads as "material removed" even though the body is
+ *  untouched. A failed probe is not evidence of disjointness (mirror bodyOps),
+ *  so the cut proceeds and surfaces its own failure. */
 function intersects(oc: OccModule, shape: OccShape, tool: OccShape): boolean {
   const probe = new DisposeScope()
   try {
