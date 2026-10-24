@@ -24,7 +24,9 @@ import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './sh
 import { resolveBody } from './shared/bodyResolution'
 import { mergeBrepDiff } from './shared/brepDiff'
 import { stripRefSigil } from '@/utils/refSigil'
-import { makeCylinderWithFaces, makeCone, faceSurfaceType, type CylinderFaces, type Vec3 } from '../occ/primitives'
+import {
+  makeCylinder, makeCylinderWithFaces, makeCone, faceSurfaceType, type CylinderFaces, type Vec3,
+} from '../occ/primitives'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { holeFacePath, mintFaceUuid, type HoleFaceRole } from '../constructionName'
 import { absolute, emitWire, featureRefId } from '../query'
@@ -257,44 +259,63 @@ function fuseCutter(oc: OccModule, scope: DisposeScope, target: Cutter, tool: Cu
  * it with a cone whose included angle is `csAngle` (the cone runs from the wide
  * mouth radius down to the bore radius, so no separate floor is introduced).
  *
- * `start` is where the bore begins (backed off outside the body for a through
- * hole); `mouth` is the drill site's plane, where a widened mouth is measured
- * from. A through-all counterbore's step reaches back to `start` so it always
- * covers the entry face, however far the bore is backed off.
+ * `start` and `boreAxis` place the bore (backed off outside the body for a
+ * through hole); `mouth` and `mouthAxis` place the widened mouth, measured from
+ * the drill site's plane INTO the material. For a through hole the two axes
+ * differ: the bore may run either way across the body, but a counterbore step
+ * or countersink cone built on the outward side cuts air. `overhang` reaches
+ * the mouth back past the sketch plane into the air side, so an entry face a
+ * little below a plane that sits above it is still opened at full width; it is
+ * zero for a blind hole, whose mouth is where the bore starts.
  */
 function buildCutter(
   oc: OccModule,
   scope: DisposeScope,
   style: string,
-  through: boolean,
   start: Vec3,
+  boreAxis: Vec3,
   mouth: Vec3,
-  axis: Vec3,
+  mouthAxis: Vec3,
+  overhang: number,
   radius: number,
   boreLength: number,
   cbRadius: number,
   cbDepth: number,
   coneHeight: number,
-  backOffset: number,
 ): Cutter {
-  const bore = makeCylinderWithFaces(oc, scope, start, axis, radius, boreLength)
+  const bore = makeCylinderWithFaces(oc, scope, start, boreAxis, radius, boreLength)
   let cutter: Cutter = { shape: bore.shape, roles: cylinderRoles(bore.faces, 'bore', 'floor') }
   if (style === 'counterbore') {
-    const stepStart = through ? start : mouth
-    const stepLength = through ? backOffset + cbDepth : cbDepth
-    const step = makeCylinderWithFaces(oc, scope, stepStart, axis, cbRadius, stepLength)
+    const stepStart = backAlong(mouth, mouthAxis, overhang)
+    const step = makeCylinderWithFaces(oc, scope, stepStart, mouthAxis, cbRadius, overhang + cbDepth)
     cutter = fuseCutter(oc, scope, cutter, {
       shape: step.shape,
       roles: cylinderRoles(step.faces, 'step_wall', 'step_floor'),
     })
   } else if (style === 'countersink') {
-    const cone = makeCone(oc, scope, mouth, axis, cbRadius, radius, coneHeight)
+    // The cone widens away from the material, so extending it into the air
+    // means starting further back at a correspondingly wider r1: the slope is
+    // fixed by the distance the cone covers between the two radii.
+    const slope = (cbRadius - radius) / coneHeight
+    const coneStart = backAlong(mouth, mouthAxis, overhang)
+    const cone = makeCone(
+      oc, scope, coneStart, mouthAxis, cbRadius + overhang * slope, radius, coneHeight + overhang,
+    )
     const lateral = coneLateral(oc, scope, cone)
     const roles = new SubShapeMap<HoleFaceRole>()
     if (lateral !== null) roles.set(lateral, 'sink')
     cutter = fuseCutter(oc, scope, cutter, { shape: cone, roles })
   }
   return { shape: scope.track(cutter.shape), roles: cutter.roles }
+}
+
+/** `point` moved `distance` back along `axis` (toward the air side). */
+function backAlong(point: Vec3, axis: Vec3, distance: number): Vec3 {
+  return [
+    point[0] - axis[0] * distance,
+    point[1] - axis[1] * distance,
+    point[2] - axis[2] * distance,
+  ]
 }
 
 /** Extent of the target along the drill axis, from its edge-sampled AABB: the
@@ -305,9 +326,60 @@ function buildCutter(
  *  while intersects() still reports a hit. Vertices alone understate curved
  *  bodies (a cylinder's only vertices sit on its seam), so the edge samples
  *  carry the silhouette. */
-function bodySpanAlong(oc: OccModule, scope: DisposeScope, shape: OccShape, axis: Vec3): number {
-  const { half } = bodyFrame(oc, scope, shape)
-  return 2.0 * (Math.abs(axis[0]) * half[0] + Math.abs(axis[1]) * half[1] + Math.abs(axis[2]) * half[2])
+function bodySpanAlong(oc: OccModule, scope: DisposeScope, shape: OccShape, axis: Vec3): {
+  span: number
+  frame: { center: Vec3; half: Vec3 }
+} {
+  const frame = bodyFrame(oc, scope, shape)
+  return { span: projectedRadius(frame, axis) * 2.0, frame }
+}
+
+/** The AABB's half-extent projected onto `axis`: how far the body reaches
+ *  either side of its centre along that direction. */
+function projectedRadius(frame: { half: Vec3 }, axis: Vec3): number {
+  return Math.abs(axis[0]) * frame.half[0] + Math.abs(axis[1]) * frame.half[1] + Math.abs(axis[2]) * frame.half[2]
+}
+
+/** How far `mouth` sits past the body's AABB on the air side of `dir`, plus a
+ *  hair. A widened mouth reaches back this far so it still opens an entry face
+ *  below a sketch plane that sits above it; a mouth on or inside the body
+ *  reaches back nothing. */
+function airOverhang(
+  frame: { center: Vec3; half: Vec3 },
+  mouth: Vec3,
+  dir: Vec3,
+  margin: number,
+): number {
+  const centre = frame.center[0] * dir[0] + frame.center[1] * dir[1] + frame.center[2] * dir[2]
+  const atMouth = mouth[0] * dir[0] + mouth[1] * dir[1] + mouth[2] * dir[2]
+  const gap = atMouth - (centre + projectedRadius(frame, dir))
+  return gap > 0 ? gap + margin : 0
+}
+
+/** The axis pointing from a through hole's mouth INTO the material, read by
+ *  probing a short bore-radius cylinder either side; null when the probe cannot
+ *  decide (both sides hit: the site is inside the body; neither: outside it, and
+ *  the caller's miss handling decides). A face sketch registers the face's
+ *  OUTWARD normal, so the authored axis points out of the body, and a widened
+ *  mouth built along it cuts air or bores the full depth at cb_diameter. */
+function entryAxis(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  mouth: Vec3,
+  axis: Vec3,
+  radius: number,
+  depth: number,
+): Vec3 | null {
+  const away = axis.map((n) => -n) as Vec3
+  const forward = makeCylinder(oc, scope, mouth, axis, radius, depth)
+  const backward = makeCylinder(oc, scope, mouth, away, radius, depth)
+  const forwardHits = intersects(oc, shape, forward)
+  const backwardHits = intersects(oc, shape, backward)
+  scope.release(forward)
+  scope.release(backward)
+  if (forwardHits === backwardHits) return null
+  return forwardHits ? axis : away
 }
 
 /** True when `tool` shares any volume with `shape`.
@@ -437,10 +509,13 @@ export function solveHole(
 
   let throughDepth = 0.0
   let throughBackOffset = 0.0
+  let throughMargin = 0.0
   // How far a through-all bore runs inside the body, for the thread display.
   let throughSpan = 0.0
+  // The body's edge-sampled AABB, kept for a widened mouth's air-side reach.
+  let throughFrame: { center: Vec3; half: Vec3 } | null = null
   if (depthMode === 'through_all') {
-    const span = bodySpanAlong(oc, scope, currentShape, axis)
+    const { span, frame } = bodySpanAlong(oc, scope, currentShape, axis)
     // Back the cutter off by the full projected span plus a hair so a site on
     // the body's near face still clears the far face tangentially; the 3x
     // length leaves ample margin on the forward side.
@@ -448,6 +523,8 @@ export function solveHole(
     throughDepth = span * 3.0
     throughBackOffset = span + margin
     throughSpan = span
+    throughMargin = margin
+    throughFrame = frame
   }
 
   let skippedCount = 0
@@ -500,14 +577,33 @@ export function solveHole(
       }
     }
 
+    // A widened mouth belongs on the material side. A blind hole keeps the
+    // authored axis (the warning names the fix when it misses); a through hole
+    // probes which side the body is on, because a face sketch's normal points
+    // out of the body.
+    const probed = depthMode === 'through_all' && style !== 'simple'
+      ? entryAxis(oc, scope, currentShape, center3d, axis, site.radius,
+        style === 'counterbore' ? cbDepth : countersinkDepth)
+      : null
+    const mouthAxis: Vec3 = probed ?? axis
+    const overhang = probed !== null && throughFrame !== null
+      ? airOverhang(throughFrame, center3d, mouthAxis, throughMargin)
+      : 0
+
     let start3d: Vec3
     let h: number
-    if (depthMode === 'through_all') {
-      start3d = [
-        center3d[0] - axis[0] * throughBackOffset,
-        center3d[1] - axis[1] * throughBackOffset,
-        center3d[2] - axis[2] * throughBackOffset,
-      ]
+    if (depthMode === 'through_all' && probed !== null) {
+      // One-way bore from the mouth's air side to past the far face. A bore
+      // backed off along the AUTHORED axis would protrude above the widened
+      // mouth when that axis points out of the body, and the fuse then splits
+      // its wall into the piece above the step and the piece below: only one
+      // can carry the bore role. Ending the bore at the step keeps one wall.
+      start3d = backAlong(center3d, mouthAxis, overhang)
+      h = overhang + throughSpan + throughMargin
+    } else if (depthMode === 'through_all') {
+      // An undecided site (inside the body, or outside it) keeps the symmetric
+      // back-off: the bore covers the body whichever way it turns out to lie.
+      start3d = backAlong(center3d, axis, throughBackOffset)
       h = throughDepth
     } else {
       start3d = center3d
@@ -515,8 +611,8 @@ export function solveHole(
     }
 
     const cutter = buildCutter(
-      oc, scope, style, depthMode === 'through_all', start3d, center3d, axis,
-      site.radius, h, cbRadius, cbDepth, countersinkDepth, throughBackOffset,
+      oc, scope, style, start3d, mouthAxis, center3d, mouthAxis, overhang,
+      site.radius, h, cbRadius, cbDepth, countersinkDepth,
     )
     const cyl = cutter.shape
     if (!intersects(oc, currentShape, cyl)) {
@@ -558,11 +654,11 @@ export function solveHole(
     if (threadLength > 0) {
       threadSites.push({
         center: [
-          center3d[0] + axis[0] * threadOffset,
-          center3d[1] + axis[1] * threadOffset,
-          center3d[2] + axis[2] * threadOffset,
+          center3d[0] + mouthAxis[0] * threadOffset,
+          center3d[1] + mouthAxis[1] * threadOffset,
+          center3d[2] + mouthAxis[2] * threadOffset,
         ],
-        axis: [axis[0], axis[1], axis[2]],
+        axis: [mouthAxis[0], mouthAxis[1], mouthAxis[2]],
         radius: site.radius,
         length: threadLength,
       })
