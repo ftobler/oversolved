@@ -60,6 +60,11 @@ const occ = memoizedLoad(async (): Promise<OccModule | null> => {
 
 export const loadOcc = occ.load
 
+/** Drop the headless module so a trap recovery instantiates a fresh one. */
+export function resetOcc(): void {
+  occ.reset()
+}
+
 /**
  * Cheap "is OCC.js installed" probe: resolving the package only, no WASM
  * instantiation. Suites whose kernel work runs in a forked child (which loads

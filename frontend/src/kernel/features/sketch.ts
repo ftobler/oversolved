@@ -33,7 +33,8 @@ import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/
 import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, type TopologyBytes } from '../topologyDecorate'
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
-import { loadSolverWasm, loadTopologyWasm } from '@/wasm-kernel/solverWasm'
+import { loadSolverWasm, loadTopologyWasm, resetSolverWasm } from '@/wasm-kernel/solverWasm'
+import { isKernelTrap } from '../errors'
 import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
 import { resolve3dGeometry, projectTo2d, type PlaneFrame } from './projectionLowering'
@@ -101,6 +102,31 @@ export function setSketchSolver(bytes: SolveBytes | null): void {
   solverCell.reset()
 }
 
+// Set when a call into the Rust module traps. solveLocally's recovery reads it
+// to decide whether the sketch module (a separate wasm instance with its own
+// heap, so an OCC trap does not damage it) also has to be discarded.
+let sketchTrapPending = false
+
+/** The three solve entry points below all run the same bytes call; marking the
+ *  trap here means the recovery knows which module was corrupted. */
+function runSolverBytes(bytes: SolveBytes, input: FlatInput): SolverOutput {
+  try {
+    return decodeOutput(bytes(encodeInput(input)))
+  } catch (e) {
+    if (isKernelTrap(e)) sketchTrapPending = true
+    throw e
+  }
+}
+
+/** @internal: whether the last trap came out of the sketch module. Clears the
+ *  flag, so one recovered trap does not make the next OCC trap look like a
+ *  sketch fault too. */
+export function consumeSketchTrap(): boolean {
+  const pending = sketchTrapPending
+  sketchTrapPending = false
+  return pending
+}
+
 /** Inject a pre-loaded Rust area builder; null restores the TS fallback. */
 export function setSketchTopology(bytes: TopologyBytes | null): void {
   topologyBytes = bytes
@@ -119,6 +145,22 @@ export function initSketchSolver(): Promise<SolveBytes | null> {
 export function resetSketchSolver(): void {
   solverBytes = null
   solverCell.reset()
+}
+
+/**
+ * Discard the Rust solver after a WASM trap. Unlike `resetSketchSolver`, this
+ * also clears `solverWasm`'s package memo: that cache is what holds the
+ * instantiated module behind `solve_sketch_bytes`, so resetting only this
+ * module's cell would hand the next call the same corrupt instance.
+ *
+ * An injected solver (headless hosts call `setSketchSolver(loadSolver())`) has
+ * no loader to re-run, so it is simply dropped: the next sketch reports the
+ * solver uninitialised instead of reading a module whose heap is undefined.
+ */
+export function resetSketchSolverAfterTrap(): void {
+  solverBytes = null
+  solverCell.reset()
+  resetSolverWasm()
 }
 
 /**
@@ -390,7 +432,7 @@ export function solveSketch(
 
   const { sketch } = extract.sketches[0]
   const { input, layout, constraintIds } = lowerSketch(sketch)
-  const out = decodeOutput(solverBytes(encodeInput(input)))
+  const out = runSolverBytes(solverBytes, input)
   assertSolverOutputMatchesLayout(out, layout, featureId, input.options.skipStatusPass)
   assertConstraintVerdictsMatchInput(out, input.constraints.length, input.options.dragMode, featureId)
   const status = STATUS_NAME[out.overallStatus]
@@ -515,7 +557,7 @@ export function probeRedundantConstraint(feature: SketchFeature, draftId: string
     const extract = partDocToSketches([loweredFeature], [0, 0], pinnedIds)
     if (extract.skipped.length || !extract.sketches.length) return null
     const { input, constraintIds } = lowerSketch(extract.sketches[0].sketch, { skipStatusPass: true })
-    const out = decodeOutput(solverBytes(encodeInput(input)))
+    const out = runSolverBytes(solverBytes, input)
     assertConstraintVerdictsMatchInput(out, input.constraints.length, false, feature.id)
     if (out.overallStatus === Status.overconstrained) return null
     // The draft may lower to several wire constraints (sugar expansion); it
@@ -877,7 +919,7 @@ export function solveSketchDrag(
 
   let out
   try {
-    out = decodeOutput(solverBytes(encodeInput(input)))
+    out = runSolverBytes(solverBytes, input)
     // Inside the try on purpose. The hard solve throws on a count skew because a
     // wrong sketch is worse than an absent one, but this is the per-frame drag
     // path: it already degrades a failed solve to null so the caller holds the

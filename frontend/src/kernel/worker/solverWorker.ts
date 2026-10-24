@@ -20,7 +20,7 @@ import { loadSolverWasm } from '../../wasm-kernel/solverWasm'
 import { isDevBuild } from '../isDevBuild'
 import { extractErrorMessage } from '../errors'
 import { inWorker } from '../inWorker'
-import { loadOccWorker } from '../occ/loadOccWorker'
+import { loadOccWorker, resetOccWorker } from '../occ/loadOccWorker'
 import { subscribeOccLoadProgress } from '../occ/loadProgress'
 import type {
   SolveRequest, SolveResponse, SolvePayload,
@@ -482,7 +482,7 @@ export function preloadWorkerWasm(
 if (inWorker()) {
   // Install the DOM-free OCC loader: the main-thread loadOccWeb uses
   // document/window, which do not exist here.
-  setOccLoader(loadOccWorker)
+  setOccLoader(loadOccWorker, resetOccWorker)
   const ctx = globalThis as unknown as WorkerCtx
   const actor = new WorkerActor()
   // Subscribe before the preload starts so the main thread sees the download

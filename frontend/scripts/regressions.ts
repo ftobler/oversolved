@@ -22,7 +22,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, resetOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
@@ -62,7 +62,7 @@ export async function initKernel(): Promise<void> {
   }
   // The default OCC loader is the browser one; a Node entry has to install the
   // MEMFS-backed loader before the first build.
-  setOccLoader(loadOcc)
+  setOccLoader(loadOcc, resetOcc)
   resetSketchSolver()
   setSketchSolver(solver)
   setSketchTopology(loadTopology())

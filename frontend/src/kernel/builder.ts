@@ -6,7 +6,7 @@
 // sibling modules (builderAncestry.ts, builderSnapshot.ts, builderHash.ts); this file
 // stays the orchestrator and re-exports the public surface those modules used to expose.
 
-import { extractErrorMessage } from './errors'
+import { extractErrorMessage, isKernelTrap } from './errors'
 import { clearConsumedBodyAncestry, setCurrentFeatureId } from './query'
 import { BUILTIN_PLANE_RESULTS } from './solverConstants'
 import type { Body, FeatureCheckpoint, BuildState } from './types3d'
@@ -483,6 +483,10 @@ export function build(
       const vv = variableValueOf(feature, featureResult)
       if (vv) variableContext[vv.name] = vv.value
     } catch (e) {
+      // A WASM trap is not a feature verdict. Recording it as `exception` used
+      // to swallow it here, leaving the solve on a corrupt heap and reporting a
+      // feature error for what is actually a dead kernel.
+      if (isKernelTrap(e)) throw e
       const err = extractErrorMessage(e)
       result[fid] = { status: 'exception', exception: err, solve_ms: 0 }
     } finally {
@@ -615,7 +619,8 @@ export function build(
       cpMeta = isLast
         ? bodiesOut
         : extractMetaCached(pickBodiesById(checkpoint.body_store_snapshot, needing), null)
-    } catch {
+    } catch (e) {
+      if (isKernelTrap(e)) throw e
       cpMeta = {}
     }
     const bodiesSnapshot = isLast

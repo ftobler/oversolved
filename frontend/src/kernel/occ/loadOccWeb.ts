@@ -129,3 +129,10 @@ const occWeb = memoizedLoad(async (base: string): Promise<OccModule | null> => {
 export function loadOccWeb(base: string = DEFAULT_BASE): Promise<OccModule | null> {
   return occWeb.load(base)
 }
+
+/** Drop the main-thread module so the next load instantiates a fresh one. The
+ *  only caller is the trap recovery in solveLocally: a module that trapped has
+ *  an undefined heap and must never be handed out again. */
+export function resetOccWeb(): void {
+  occWeb.reset()
+}

@@ -7,6 +7,7 @@ import { solveLocally, exportLocally, exportAssemblyLocally } from '../../solveL
 import type { BuildResponse } from '../../builder'
 import type { BuildState } from '../../types3d'
 import type { Transform3D } from '../../../types/cad'
+import { KernelFault } from '../../errors'
 
 // The dispatcher binds the production engines directly (not via injection), so
 // the one-shot branches can only be driven without OCC if those engines are
@@ -79,6 +80,20 @@ describe('handleSolveRequest', () => {
       throw 'plain string'
     })
     expect(res).toEqual({ id: 7, ok: false, error: 'plain string' })
+  })
+
+  it('carries a KernelFault to the main thread as a failed solve, not a crash', async () => {
+    // The reload/retry lives in solveLocally, so the Worker needs no module
+    // reference of its own: it only has to get the typed failure across the
+    // wire intact.
+    const res = await handleSolveRequest(REQ, async () => {
+      throw new KernelFault('memory access out of bounds')
+    })
+    expect(res).toEqual({
+      id: 7,
+      ok: false,
+      error: 'kernel fault: memory access out of bounds; the kernel was reloaded',
+    })
   })
 })
 

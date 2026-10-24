@@ -75,3 +75,8 @@ const occWorker = memoizedLoad(async (base: string): Promise<OccModule | null> =
 export function loadOccWorker(base: string = DEFAULT_BASE): Promise<OccModule | null> {
   return occWorker.load(base)
 }
+
+/** Drop the Worker-side module so a trap recovery loads a fresh instance. */
+export function resetOccWorker(): void {
+  occWorker.reset()
+}

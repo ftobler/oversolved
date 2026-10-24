@@ -6,7 +6,13 @@
 // testable at all.
 
 import { describe, it, expect } from 'vitest'
-import { extractErrorMessage, extractOccErrorMessage, occThrowTypeName } from '../errors'
+import {
+  extractErrorMessage,
+  extractOccErrorMessage,
+  isKernelTrap,
+  KernelFault,
+  occThrowTypeName,
+} from '../errors'
 
 /**
  * Minimal stand-in for the emscripten module. Lays out one ExceptionInfo the way
@@ -126,5 +132,33 @@ describe('extractOccErrorMessage', () => {
   it('falls back to the plain message when it does not', () => {
     expect(extractOccErrorMessage({}, new Error('makeWire: only 3 of 4 edges connected')))
       .toBe('makeWire: only 3 of 4 edges connected')
+  })
+})
+
+describe('isKernelTrap', () => {
+  it('recognises the wasm trap kinds that leave the heap undefined', () => {
+    expect(isKernelTrap(new WebAssembly.RuntimeError('memory access out of bounds'))).toBe(true)
+    const exitStatus = new Error('Program terminated with exit(1)')
+    exitStatus.name = 'ExitStatus'
+    expect(isKernelTrap(exitStatus)).toBe(true)
+    expect(isKernelTrap(new Error('abort(Assertion failed: x)'))).toBe(true)
+    expect(isKernelTrap(new Error('Aborted(both async and sync calls)'))).toBe(true)
+  })
+
+  it('does not treat a C++ exception pointer or a build error as a trap', () => {
+    // The OCC layer throws its C++ exceptions as numbers; the module is still
+    // usable after one of those, so retrying/reloading would be wrong.
+    expect(isKernelTrap(6684320)).toBe(false)
+    expect(isKernelTrap(new Error('extrude: no closed profile found'))).toBe(false)
+    expect(isKernelTrap('plain')).toBe(false)
+    expect(isKernelTrap(null)).toBe(false)
+  })
+
+  it('words a KernelFault so solve.lastError names the recovery', () => {
+    const fault = new KernelFault('memory access out of bounds')
+    expect(fault).toBeInstanceOf(Error)
+    expect(fault.name).toBe('KernelFault')
+    expect(fault.detail).toBe('memory access out of bounds')
+    expect(fault.message).toBe('kernel fault: memory access out of bounds; the kernel was reloaded')
   })
 })

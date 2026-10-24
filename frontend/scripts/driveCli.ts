@@ -28,7 +28,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { setOccLoader } from '@/kernel/solveLocally'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, resetOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
@@ -49,7 +49,7 @@ import { resolveProjectPath, writeDocFile } from './docPath'
 
 // The headless OCC loader and the nodejs solver builds; without them
 // solveLocally returns null and every solve reports "unavailable".
-setOccLoader(loadOcc)
+setOccLoader(loadOcc, resetOcc)
 setSketchSolver(loadSolver())
 setSketchTopology(loadTopology())
 
@@ -236,8 +236,8 @@ async function measureCommand(args: Args): Promise<number> {
     printJson({ ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' })
     return 1
   }
-  printJson({ ok: true, ...measure.measures, features: measure.features })
-  return 0
+  printJson({ ok: measure.ok, ...measure.measures, features: measure.features })
+  return measure.ok ? 0 : 1
 }
 
 async function compareCommand(args: Args): Promise<number> {

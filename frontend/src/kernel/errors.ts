@@ -12,6 +12,44 @@ export function extractErrorMessage(e: unknown): string {
   return String(e)
 }
 
+/** The message every recovered kernel fault carries, so a caller can tell a
+ *  trap that was retried from a document that simply failed to build. */
+export const KERNEL_FAULT_PREFIX = 'kernel fault'
+
+/**
+ * A WASM trap that escaped the kernel. The heap is undefined after one of
+ * these: C++ stack unwinding did not run, so the module has been discarded and
+ * the next call loads a fresh one. This is not a document failure; a retry may
+ * still succeed, which is why `solveLocally` tries once before letting it out.
+ */
+export class KernelFault extends Error {
+  readonly detail: string
+
+  constructor(detail: string) {
+    super(`${KERNEL_FAULT_PREFIX}: ${detail}; the kernel was reloaded`)
+    this.name = 'KernelFault'
+    this.detail = detail
+  }
+}
+
+/**
+ * Whether a throw is a WASM trap rather than a document/build error.
+ *
+ * `WebAssembly.RuntimeError` is the out-of-bounds/unreachable case this fix was
+ * written for. Emscripten's `abort()` either throws the same RuntimeError or an
+ * `ExitStatus`, depending on the build and abort flags, and a build without
+ * exception catching can surface it as a plain Error whose message names the
+ * abort; all of those mean the module cannot be trusted. A C++ exception
+ * crossing out of OCC arrives as a number (see `extractErrorMessage`) and is
+ * deliberately NOT a trap: the module is still usable.
+ */
+export function isKernelTrap(e: unknown): boolean {
+  if (e instanceof WebAssembly.RuntimeError) return true
+  if (!(e instanceof Error)) return false
+  if (e.name === 'ExitStatus') return true
+  return /^abort\(/.test(e.message) || e.message.includes('Aborted(')
+}
+
 function describeThrownPointer(e: number): string {
   return `wasm exception pointer ${e} (a C++ throw with no JS message)`
 }
