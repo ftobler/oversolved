@@ -410,6 +410,17 @@ fn shift_entity(e: &mut InputEntity, d: [f64; 2]) {
     }
 }
 
+/// The whole-sketch placements the translation check walks: the origin (the
+/// seed exactly as generated), the report's DB9 placement, and a spread of
+/// realistic large coordinates.
+pub(crate) const OFFSETS: [[f64; 2]; 5] = [
+    [0.0, 0.0],
+    [91.0, 225.0],
+    [-173.0, -30.0],
+    [250.0, -180.0],
+    [-320.0, 140.0],
+];
+
 /// One seed's whole sketch: scale, motifs, placement, injectors.
 pub(crate) fn generate(seed: u32) -> Generated {
     let mut rnd = Prng::new(seed);

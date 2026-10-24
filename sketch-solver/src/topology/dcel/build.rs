@@ -3,7 +3,9 @@ use std::collections::{HashMap, HashSet};
 use super::super::curve_intersect::{bezier_self_crossing, intersect_curves, Curve};
 use super::super::curve_split::{ellipse_point_at, subdivide_bezier, BezierCtrl};
 use super::super::profile_loops::{EdgeGeom, Vec2};
-use super::super::{TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_SPLIT as SPLIT_EPS, TWO_PI};
+use super::super::{
+    TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE, TOL_TOPOLOGY_SPLIT as SPLIT_EPS, TWO_PI,
+};
 use super::intersect::{collinear_overlap, intersect, Classified};
 use super::{
     angle_in_arc, arc_tangent, dedup, degrees, has_param, norm_arc_param, Split, TopoEntity, Verts,
@@ -272,23 +274,27 @@ pub(super) fn find_all_intersections(
             }
             for (mut pa, mut pb, pt) in results {
                 let v = verts.vid(pt);
+                let mut keep_a = true;
+                let mut keep_b = true;
                 if let Some(a0) = arc_a0.get(eid_a) {
                     pa = norm_arc_param(pa, *a0);
+                    keep_a = within_arc_span(ea, pa, *a0);
                 }
                 if let Some(a0) = arc_a0.get(eid_b) {
                     pb = norm_arc_param(pb, *a0);
+                    keep_b = within_arc_span(eb, pb, *a0);
                 }
                 // A missing split bucket means the entity was not seeded (a
                 // construction or dropped entity); skip it rather than index.
                 if let Some(spl) = splits.get(eid_a) {
-                    if !has_param(spl, pa) {
+                    if keep_a && !has_param(spl, pa) {
                         if let Some(s) = splits.get_mut(eid_a) {
                             s.push((pa, v.clone()));
                         }
                     }
                 }
                 if let Some(spl) = splits.get(eid_b) {
-                    if !has_param(spl, pb) {
+                    if keep_b && !has_param(spl, pb) {
                         if let Some(s) = splits.get_mut(eid_b) {
                             s.push((pb, v));
                         }
@@ -296,6 +302,37 @@ pub(super) fn find_all_intersections(
                 }
             }
         }
+    }
+}
+
+/// True when a normalized arc parameter is still on the AUTHORED span.
+///
+/// A hit that `angle_in_arc` accepted through its endpoint slack can normalize
+/// to the far end of `norm_arc_param`'s window: a contact a hair BELOW `a0`
+/// (the rounding of a line tangent at an arc's endpoint) lands at
+/// `a0 + 2*pi - eps`, the same point but a different split. The half-edge build
+/// then emits the span between that split and the authored end, i.e. the
+/// complement: a 90 degree corner read as 270 and closed into a full circle
+/// (the DB9 report at a non-origin placement). Splitting only where the
+/// authored sweep allows keeps the two representations apart.
+fn within_arc_span(e: &TopoEntity, p: f64, a0: f64) -> bool {
+    match *e {
+        TopoEntity::Arc {
+            radius, angle_end, ..
+        } => {
+            // A stored 360 degree arc is a full turn: `norm_arc_param` maps its
+            // end back onto `a0`, so the span check would drop every hit.
+            let raw = radians(angle_end);
+            if (raw - a0).abs() >= TWO_PI - 1e-9 {
+                return true;
+            }
+            // The same endpoint slack `angle_in_arc` grants, in the same units:
+            // the angular width of a MERGE-world chord at this radius, floored
+            // at EPS. A contact inside that window still belongs to the corner.
+            let slack = (MERGE / radius.max(EPS)).max(EPS);
+            p <= norm_arc_param(raw, a0) + slack
+        }
+        _ => true,
     }
 }
 
@@ -396,6 +433,9 @@ fn register_hit(
                 return;
             }
             let p = norm_arc_param(t, *arc_a0.get(&entry.eid).unwrap_or(&0.0));
+            if !within_arc_span(&entry.e, p, *arc_a0.get(&entry.eid).unwrap_or(&0.0)) {
+                return;
+            }
             if !has_param(spl, p) {
                 spl.push((p, v.to_string()));
             }

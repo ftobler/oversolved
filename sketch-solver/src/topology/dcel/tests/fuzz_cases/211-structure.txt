@@ -1,2 +1,0 @@
-structure: surface 1 self-intersects between segments 32 and 92 near (0.016580, 0.008815)
-structure: surface 3 hole 0 self-intersects between segments 32 and 92 near (0.016580, 0.008815)

@@ -7,6 +7,7 @@ use crate::topology::TOL_TOPOLOGY_MERGE as MERGE;
 use self::helpers::*;
 
 mod construction;
+mod db9;
 mod helpers;
 mod primitives;
 

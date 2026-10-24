@@ -252,15 +252,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
         classes: &["stability", "structure"],
     },
     KnownSeed {
-        seed: 21,
-        classes: &["stability"],
-    },
-    KnownSeed {
         seed: 22,
-        classes: &["stability"],
-    },
-    KnownSeed {
-        seed: 24,
         classes: &["stability"],
     },
     KnownSeed {
@@ -324,20 +316,12 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
         classes: &["stability"],
     },
     KnownSeed {
-        seed: 53,
-        classes: &["stability"],
-    },
-    KnownSeed {
         seed: 54,
         classes: &["stability"],
     },
     KnownSeed {
         seed: 55,
         classes: &["coverage", "euler", "stability", "structure"],
-    },
-    KnownSeed {
-        seed: 56,
-        classes: &["stability"],
     },
     KnownSeed {
         seed: 58,
@@ -365,10 +349,6 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 67,
-        classes: &["stability"],
-    },
-    KnownSeed {
-        seed: 68,
         classes: &["stability"],
     },
     KnownSeed {
@@ -449,7 +429,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 100,
-        classes: &["coverage", "euler", "stability"],
+        classes: &["stability"],
     },
     KnownSeed {
         seed: 101,
@@ -469,10 +449,6 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 105,
-        classes: &["stability"],
-    },
-    KnownSeed {
-        seed: 106,
         classes: &["stability"],
     },
     KnownSeed {
@@ -509,10 +485,6 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 117,
-        classes: &["stability"],
-    },
-    KnownSeed {
-        seed: 118,
         classes: &["stability"],
     },
     KnownSeed {
@@ -584,10 +556,6 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
         classes: &["stability"],
     },
     KnownSeed {
-        seed: 140,
-        classes: &["stability"],
-    },
-    KnownSeed {
         seed: 141,
         classes: &["coverage", "euler", "stability", "structure"],
     },
@@ -633,10 +601,6 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 157,
-        classes: &["stability"],
-    },
-    KnownSeed {
-        seed: 159,
         classes: &["stability"],
     },
     KnownSeed {
@@ -717,7 +681,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 192,
-        classes: &["coverage", "euler", "structure"],
+        classes: &["coverage", "euler"],
     },
     KnownSeed {
         seed: 194,
@@ -770,10 +734,6 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     KnownSeed {
         seed: 209,
         classes: &["coverage", "euler", "stability"],
-    },
-    KnownSeed {
-        seed: 211,
-        classes: &["stability", "structure"],
     },
     KnownSeed {
         seed: 212,
@@ -908,10 +868,6 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
         classes: &["stability"],
     },
     KnownSeed {
-        seed: 255,
-        classes: &["stability"],
-    },
-    KnownSeed {
         seed: 257,
         classes: &["stability"],
     },
@@ -957,7 +913,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 269,
-        classes: &["euler", "stability"],
+        classes: &["euler"],
     },
     KnownSeed {
         seed: 270,
@@ -977,10 +933,6 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 279,
-        classes: &["euler", "stability"],
-    },
-    KnownSeed {
-        seed: 280,
         classes: &["stability"],
     },
     KnownSeed {
@@ -1005,10 +957,6 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 288,
-        classes: &["stability"],
-    },
-    KnownSeed {
-        seed: 289,
         classes: &["stability"],
     },
     KnownSeed {
@@ -1252,4 +1200,88 @@ fn fuzz_range_from_env() {
         "{} disagreement(s); rerun with SKETCH_FUZZ_WRITE=1 to harvest cases and entries",
         failures.len()
     );
+}
+
+/// The DB9 connector loop from the Panel report: four lines and four r3.4
+/// corner arcs. The plan's shrunk case, carried with the placements the
+/// generator itself cannot express (a translation is not a motif draw).
+fn db9_loop() -> Vec<(String, InputEntity)> {
+    let corner = |c: [f64; 2], a0: f64, a1: f64| arc(c, 3.4, a0, a1);
+    vec![
+        ("l1".into(), line([-9.438896, -2.3], [-10.25, 2.3])),
+        ("l2".into(), line([-6.85, 5.7], [6.85, 5.7])),
+        ("l3".into(), line([10.25, 2.3], [9.438896, -2.3])),
+        ("l4".into(), line([6.038896, -5.7], [-6.038896, -5.7])),
+        ("a1".into(), corner([-6.038896, -2.3], 180.0, 270.0)),
+        ("a2".into(), corner([-6.85, 2.3], 90.0, 180.0)),
+        ("a3".into(), corner([6.85, 2.3], 0.0, 90.0)),
+        ("a4".into(), corner([6.038896, -2.3], 270.0, 360.0)),
+    ]
+}
+
+#[test]
+fn the_db9_loop_holds_at_every_offset() {
+    // The area builder's budgets (merge, tangency, closure) are ABSOLUTE world
+    // distances, so the report's D-shaped loop closed into the full r3.4 circle
+    // of the bottom-right corner once it sat at (91,225). Every placement must
+    // give the same one face, the same edge count and the same area, and the
+    // oracle must agree it is as clean there as at the origin. This is the
+    // translated-copy coverage of the generated seeds: a translation cannot be
+    // a motif draw without re-rolling every seed, so the shrunk loop carries an
+    // offset dimension here instead.
+    let base_input = db9_loop();
+    let base = detect_topology(&base_input);
+    assert_eq!(base.surfaces.len(), 1, "origin: one face");
+    assert_eq!(base.surfaces[0].boundary.len(), 8, "origin: 8 edges");
+    let base_area = face_areas(&base)[0];
+    for [dx, dy] in OFFSETS {
+        if dx == 0.0 && dy == 0.0 {
+            continue;
+        }
+        let mut moved = base_input.clone();
+        for (_, e) in moved.iter_mut() {
+            for p in [
+                &mut e.start,
+                &mut e.end,
+                &mut e.center,
+                &mut e.c1,
+                &mut e.c2,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                p[0] += dx;
+                p[1] += dy;
+            }
+        }
+        let t = detect_topology(&moved);
+        assert_eq!(
+            t.surfaces.len(),
+            1,
+            "({dx}, {dy}): one face, got {}",
+            t.surfaces.len()
+        );
+        assert_eq!(
+            t.surfaces[0].boundary.len(),
+            8,
+            "({dx}, {dy}): the loop must keep all eight edges"
+        );
+        let area = face_areas(&t)[0];
+        assert!(
+            (area - base_area).abs() <= 1e-9 * base_area.abs(),
+            "({dx}, {dy}): area {area} vs {base_area}"
+        );
+    }
+}
+
+/// The sorted face areas of a topology, dropping slivers under the existence
+/// floor so a noise face cannot decide the comparison.
+fn face_areas(t: &super::super::dcel::TopologyOut) -> Vec<f64> {
+    let mut areas: Vec<f64> = face_summaries(t)
+        .iter()
+        .map(|f| f.area)
+        .filter(|a| a.abs() >= super::super::TOL_FACE_EXISTENCE_MIN_AREA)
+        .collect();
+    areas.sort_by(|a, b| a.total_cmp(b));
+    areas
 }

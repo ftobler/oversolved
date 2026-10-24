@@ -1,1 +1,0 @@
-coverage: coverage (phantom area): 3216 cells reachable from the border sit inside a face, first at (0.001003, 0.000304)
