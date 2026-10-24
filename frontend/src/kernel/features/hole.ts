@@ -390,6 +390,32 @@ function entryAxis(
  *  tool as deleted, which reads as "material removed" even though the body is
  *  untouched. A failed probe is not evidence of disjointness (mirror bodyOps),
  *  so the cut proceeds and surfaces its own failure. */
+/**
+ * Whether one site's tool built along `axis` would remove material: build it,
+ * probe it, drop it. The opposite-direction check a blind miss runs before it
+ * warns; the cut itself is never attempted, so only the verdict leaves here.
+ */
+function cutterReaches(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  style: string,
+  mouth: Vec3,
+  axis: Vec3,
+  radius: number,
+  depth: number,
+  cbRadius: number,
+  cbDepth: number,
+  coneHeight: number,
+): boolean {
+  const probe = buildCutter(
+    oc, scope, style, mouth, axis, mouth, axis, 0, radius, depth, cbRadius, cbDepth, coneHeight,
+  )
+  const hit = intersects(oc, shape, probe.shape)
+  scope.release(probe.shape)
+  return hit
+}
+
 function intersects(oc: OccModule, shape: OccShape, tool: OccShape): boolean {
   const probe = new DisposeScope()
   try {
@@ -538,6 +564,9 @@ export function solveHole(
   let accumulatedDiff: BrepDiff | null = null
   const missedSites: string[] = []
   let cutAny = false
+  // Set when a missed blind site would cut with the opposite direction, so the
+  // all-missed warning can point at `direction` instead of only reporting.
+  let oppositeCuts = false
 
   for (let i = 0; i < drilled.length; i++) {
     const entity = drilled[i]
@@ -620,6 +649,17 @@ export function solveHole(
       // Skipping the cut keeps it out of accumulatedDiff, so the body's stored
       // diff never gains a "whole tool deleted" entry for a miss.
       scope.release(cyl)
+      // A blind hole on a face sketch commonly points out of the body. Probe
+      // the other way so the all-missed warning can name the one-field fix;
+      // a site that misses both ways is a placement problem, not a direction
+      // one, and keeps the plain miss text.
+      if (depthMode !== 'through_all' && !oppositeCuts) {
+        const away = axis.map((n) => -n) as Vec3
+        oppositeCuts = cutterReaches(
+          oc, scope, currentShape, style, center3d, away, site.radius, depth,
+          cbRadius, cbDepth, countersinkDepth,
+        )
+      }
       missedSites.push(eid)
       continue
     }
@@ -726,8 +766,11 @@ export function solveHole(
   if (placed > 0 && missedSites.length === placed) {
     // Every site had geometry but none removed material. The body is unchanged;
     // ok with this warning beats the old silent ok with hole_count: N.
-    result.solver_warning =
-      `hole: none of the ${placed} drill site(s) intersect body '${targetBody.id}'; nothing was removed`
+    const authored = direction === 'normal' ? 'normal' : 'reverse'
+    const other = authored === 'normal' ? 'reverse' : 'normal'
+    result.solver_warning = oppositeCuts
+      ? `hole: direction: ${authored} cuts nothing in body '${targetBody.id}' at every drill site; direction: ${other} drills into it`
+      : `hole: none of the ${placed} drill site(s) intersect body '${targetBody.id}'; nothing was removed`
   }
   return result
 }
