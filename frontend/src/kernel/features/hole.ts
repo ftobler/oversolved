@@ -355,24 +355,39 @@ function airGapAlong(frame: { center: Vec3; half: Vec3 }, mouth: Vec3, dir: Vec3
   return gap > 0 ? gap : 0
 }
 
+/** How far the AABB lies ahead of `mouth` along `dir`: the length a probe must
+ *  span to reach the body from a mouth outside the box, and no more. */
+function reachAlong(frame: { center: Vec3; half: Vec3 }, mouth: Vec3, dir: Vec3): number {
+  const centre = frame.center[0] * dir[0] + frame.center[1] * dir[1] + frame.center[2] * dir[2]
+  const atMouth = mouth[0] * dir[0] + mouth[1] * dir[1] + mouth[2] * dir[2]
+  return Math.max(0, (centre + projectedRadius(frame, dir)) - atMouth)
+}
+
 /** The axis pointing from a through hole's mouth INTO the material, read by
- *  probing a short bore-radius cylinder either side; null when the probe cannot
- *  decide (both sides hit: the site is inside the body; neither: outside it, and
- *  the caller's miss handling decides). A face sketch registers the face's
- *  OUTWARD normal, so the authored axis points out of the body, and a widened
- *  mouth built along it cuts air or bores the full depth at cb_diameter. */
+ *  probing a bore-radius cylinder either side; null when the probe cannot
+ *  decide (both sides hit: the site is inside the body; neither: the body is out
+ *  of reach, and the caller's miss handling decides). A face sketch registers
+ *  the face's OUTWARD normal, so the authored axis points out of the body, and
+ *  a widened mouth built along it cuts air or bores the full depth at
+ *  cb_diameter.
+ *
+ *  Each probe reaches as far as the body's AABB along its direction, not just
+ *  the mouth depth: a sketch plane can sit further above the entry face than
+ *  the counterbore is deep, and a short probe would then miss on both sides and
+ *  leave the side undecided. */
 function entryAxis(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
+  frame: { center: Vec3; half: Vec3 },
   mouth: Vec3,
   axis: Vec3,
   radius: number,
   depth: number,
 ): Vec3 | null {
   const away = axis.map((n) => -n) as Vec3
-  const forward = makeCylinder(oc, scope, mouth, axis, radius, depth)
-  const backward = makeCylinder(oc, scope, mouth, away, radius, depth)
+  const forward = makeCylinder(oc, scope, mouth, axis, radius, reachAlong(frame, mouth, axis) + depth)
+  const backward = makeCylinder(oc, scope, mouth, away, radius, reachAlong(frame, mouth, away) + depth)
   const forwardHits = intersects(oc, shape, forward)
   const backwardHits = intersects(oc, shape, backward)
   scope.release(forward)
@@ -609,8 +624,8 @@ export function solveHole(
     // authored axis (the warning names the fix when it misses); a through hole
     // probes which side the body is on, because a face sketch's normal points
     // out of the body.
-    const probed = depthMode === 'through_all' && style !== 'simple'
-      ? entryAxis(oc, scope, currentShape, center3d, axis, site.radius,
+    const probed = depthMode === 'through_all' && style !== 'simple' && throughFrame !== null
+      ? entryAxis(oc, scope, currentShape, throughFrame, center3d, axis, site.radius,
         style === 'counterbore' ? cbDepth : countersinkDepth)
       : null
     const mouthAxis: Vec3 = probed ?? axis
@@ -694,12 +709,15 @@ export function solveHole(
     // portion below the widened mouth, never the counterbore wall or the cone.
     const threadOffset = style === 'counterbore' ? cbDepth : style === 'countersink' ? countersinkDepth : 0
     const threadLength = (depthMode === 'through_all' ? throughSpan : depth) - threadOffset
+    // The thread rides the bore below the widened mouth, measured from the
+    // entry face, not the sketch plane that may sit above it.
+    const threadStart = airGap + threadOffset
     if (threadLength > 0) {
       threadSites.push({
         center: [
-          center3d[0] + mouthAxis[0] * threadOffset,
-          center3d[1] + mouthAxis[1] * threadOffset,
-          center3d[2] + mouthAxis[2] * threadOffset,
+          center3d[0] + mouthAxis[0] * threadStart,
+          center3d[1] + mouthAxis[1] * threadStart,
+          center3d[2] + mouthAxis[2] * threadStart,
         ],
         axis: [mouthAxis[0], mouthAxis[1], mouthAxis[2]],
         radius: site.radius,

@@ -32,12 +32,13 @@ const TOP_FACE_PLANE = {
 function drill(
   hole: Record<string, unknown>,
   xy: [number, number] = [20, 20],
+  plane: Record<string, unknown> = TOP_FACE_PLANE,
 ): { result: Record<string, unknown>; volume: number } {
   const scope = new DisposeScope()
   const table = new HandleTable()
   try {
     const repo = new Repository()
-    repo.register('_pt_sk', TOP_FACE_PLANE)
+    repo.register('_pt_sk', plane)
     repo.register('sk/p1/xy', { external_xy: xy })
     const box = makeBoxAt(oc!, scope, [0, 0, 0], 40, 40, 13)
     const bodyStore: Record<string, Body> = {
@@ -75,6 +76,19 @@ describe.skipIf(!oc)('an outward blind hole warns with the fix (real OCC)', () =
     expect(result.hole_count).toBe(1)
     expect(result.solver_warning).toBeUndefined()
     expect(volume).toBeCloseTo(BOX - Math.PI * 4 * 5, 6)
+  })
+
+  it('names direction: normal when the authored reverse is the outward one', () => {
+    // A Front-plane mouth at z=0 with the plate above it: +z is into the
+    // material, so a blind `reverse` drills out of the body.
+    const { result } = drill(
+      { ...BLIND, direction: 'reverse' },
+      [20, 20],
+      { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] },
+    )
+    expect(result.status).toBe('ok')
+    expect(String(result.solver_warning)).toMatch(/direction: reverse cuts nothing/)
+    expect(String(result.solver_warning)).toMatch(/direction: normal drills into it/)
   })
 
   it('keeps the plain miss text for a through hole, which has no entry side to flip', () => {

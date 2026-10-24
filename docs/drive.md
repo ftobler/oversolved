@@ -586,7 +586,9 @@ banner on stdout, so a client config must use the direct node invocation.
   of its face, so a hole on a face usually wants `reverse`, and a blind hole
   that misses every site warns with that fix when the reverse would cut. A
   through counterbore or countersink widens its mouth on the material side
-  whichever direction it is written, so the two give the same volume.
+  whichever direction it is written, so on a mouth at the body surface the two
+  directions give the same volume (a mouth inside the body keeps the authored
+  axis, since neither side is the entry).
   `hole.sketch` is spelled `@<sketchId>` (or a narrower
   viewport pick), not the profile consumers' `$<sketchId>` form, and a circle
   drills at its own radius while a point uses the feature `diameter`;

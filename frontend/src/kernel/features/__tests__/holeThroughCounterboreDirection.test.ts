@@ -126,14 +126,27 @@ describe.skipIf(!oc)('a through counterbore widens on the material side (real OC
   }
 
   it('opens an entry face below a plane that sits above it', () => {
-    // The mouth is 1 mm above the top face: the step reaches back through the
-    // air to z=13 so the entry is still opened at cb_diameter, and the bore
-    // still clears the far face instead of stopping 1 mm short.
-    for (const direction of ['normal', 'reverse'] as const) {
-      const { volume, result } = drill(PLATE_Z + 1, 0, { ...COUNTERBORE, direction })
-      expect(result.status).toBe('ok')
-      expect(volume).toBeCloseTo(BOX_VOLUME - counterboreRemoved(BORE_R, PLATE_Z, CB_R, CB_DEPTH), 6)
+    // The mouth sits above the top face: the step reaches back through the air
+    // to z=13 so the entry is still opened at cb_diameter, and the bore still
+    // clears the far face. The 7 mm case is further above the face than
+    // cb_depth, so the side probe has to reach past the gap to decide at all.
+    for (const gap of [1, 7]) {
+      for (const direction of ['normal', 'reverse'] as const) {
+        const { volume, result } = drill(PLATE_Z + gap, 0, { ...COUNTERBORE, direction })
+        expect(result.status, `gap ${gap} ${direction}`).toBe('ok')
+        expect(volume).toBeCloseTo(BOX_VOLUME - counterboreRemoved(BORE_R, PLATE_Z, CB_R, CB_DEPTH), 6)
+      }
     }
+  })
+
+  it('keeps the cosmetic thread on the bore below a raised mouth', () => {
+    const { result } = drill(PLATE_Z + 1, 0, {
+      ...COUNTERBORE, direction: 'normal', thread: { designation: 'M4x0.7', nominal: 4, pitch: 0.7 },
+    })
+    const thread = result.thread as { helices: Array<{ center: number[] }> }
+    // The step is 4 mm into the plate, so the thread starts at z=9: measuring
+    // from the raised sketch plane would start it 1 mm higher, inside the step.
+    expect(thread.helices[0].center[2]).toBeCloseTo(PLATE_Z - CB_DEPTH)
   })
 
   it('gives both directions the same bore, step wall and step floor uuids', () => {
@@ -172,6 +185,17 @@ describe.skipIf(!oc)('a through countersink widens on the material side (real OC
     for (const direction of ['normal', 'reverse'] as const) {
       const { volume } = drill(PLATE_Z, 0, { ...COUNTERSINK, direction })
       expect(BOX_VOLUME - volume).toBeGreaterThan(plain)
+    }
+  })
+
+  it('opens the cone at the face below a plane that sits above it', () => {
+    // The cone is measured from the entry face, so lifting the plane 1 mm keeps
+    // the same material cone; the extension into the air widens r1 to match.
+    const expected = BOX_VOLUME - (Math.PI * BORE_SINK_R ** 2 * PLATE_Z + countersinkExtra(BORE_SINK_R, MOUTH_R, ANGLE))
+    for (const direction of ['normal', 'reverse'] as const) {
+      const { volume, result } = drill(PLATE_Z + 1, 0, { ...COUNTERSINK, direction })
+      expect(result.status).toBe('ok')
+      expect(volume).toBeCloseTo(expected, 6)
     }
   })
 })
