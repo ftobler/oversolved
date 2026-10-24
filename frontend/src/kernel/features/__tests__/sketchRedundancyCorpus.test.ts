@@ -16,6 +16,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { solveSketch, setSketchSolver, setSketchTopology, resetSketchSolver } from '../sketch'
+import { resolveSketchPlane } from '../postRegister'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { initGlobalRepo } from '../../query'
@@ -50,7 +51,19 @@ describe.skipIf(!solveBytes || !topologyBytes)('corpus sketches report zero redu
     for (const entry of corpusEntries()) {
       for (const feature of entry.spec.features ?? []) {
         if (feature.kind !== 'sketch') continue
-        const out = solveSketch(feature, initGlobalRepo(), {})
+        const repo = initGlobalRepo()
+        const plane = typeof feature.plane === 'string' ? feature.plane : null
+        try {
+          // A sketch on a document plane feature (project_tilted_circle_ellipse's
+          // pl_tilt) has no repo entry in this isolated replay: the live build
+          // solves the planes in log order first. Redundancy is a 2D constraint
+          // property, so the plane is irrelevant here; the `solved` guard below
+          // still fails if a tree-wide change refuses everything.
+          resolveSketchPlane(plane, repo)
+        } catch {
+          continue
+        }
+        const out = solveSketch(feature, repo, {})
         if (out.status === 'overconstrained') continue
         solved++
         for (const [cid, c] of Object.entries(out.constraints ?? {})) {
