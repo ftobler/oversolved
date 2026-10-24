@@ -274,7 +274,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'Returns per-step results, the solve state and the resulting docHash; chain calls with docHash. '
       + 'ok means the steps applied and the solve ran: a feature can fail (status exception or partial) or '
       + 'warn while ok stays true, and features lists every such feature with its id, kind, status and message '
-      + '(an empty list is a clean build). featureDeltas gives volume and bbox after each feature this call '
+      + '(an empty list is a clean build). A feature the settle gave no verdict at all is listed with status '
+      + 'missing and makes ok false, as does a kernel fault, which also sets solve.lastError. featureDeltas gives volume and bbox after each feature this call '
       + 'changed or touched, with the change from the previous checkpoint, so an additive step\'s contribution '
       + 'is visible without repeating the whole history; a failed, partial or warning feature has no delta row. '
       + 'Pass featureDeltas: "all" to inspect every clean row instead. With steps: [] the given document is solved '
@@ -303,7 +304,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     name: 'measure',
     description: 'Measure a document: body count, volume, surface area, centroid, bounding box and B-rep counts, '
       + 'plus perBody: one entry per live body with its id, volume, area, centroid and bbox. '
-      + 'Also returns features, the same failed-or-warning feature list a run reply carries.',
+      + 'Also returns features, the same failed-or-warning feature list a run reply carries; a feature with no '
+      + 'verdict makes ok false, and a kernel fault is ok false with an error naming it.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -14,7 +14,8 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { setOccLoader } from '@/kernel/solveLocally'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { KernelFault } from '@/kernel/errors'
+import { loadOcc, resetOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
@@ -35,7 +36,7 @@ import { readProjectReference, resolveProjectPath, writeDocFile } from './docPat
 
 // The headless OCC loader and the nodejs solver builds; without them the solve
 // reports the kernel unavailable instead of a document.
-setOccLoader(loadOcc)
+setOccLoader(loadOcc, resetOcc)
 setSketchSolver(loadSolver())
 setSketchTopology(loadTopology())
 
@@ -120,14 +121,22 @@ const ops: McpCadOps = {
   async measure(req) {
     const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
-    const measure = await measureHeadless(resolved.doc, {
-      docId: req.docId ?? 'mcp',
-      files: readFiles(req.files),
-    })
+    let measure
+    try {
+      measure = await measureHeadless(resolved.doc, {
+        docId: req.docId ?? 'mcp',
+        files: readFiles(req.files),
+      })
+    } catch (e) {
+      // A kernel fault is a failed tool call with a readable reason, not a
+      // protocol error: the same distinction the other tool failures make.
+      if (e instanceof KernelFault) return { ok: false, error: e.message }
+      throw e
+    }
     if (!measure) {
       return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
     }
-    return { ok: true, docHash: resolved.docHash, ...measure.measures, features: measure.features }
+    return { ok: measure.ok, docHash: resolved.docHash, ...measure.measures, features: measure.features }
   },
 
   async compare(req) {
@@ -164,12 +173,18 @@ const ops: McpCadOps = {
   async export(req) {
     const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
-    const bytes = await exportHeadless(resolved.doc, {
-      format: req.format,
-      bodyId: req.body ?? null,
-      docId: req.docId ?? 'mcp',
-      files: readFiles(req.files),
-    })
+    let bytes
+    try {
+      bytes = await exportHeadless(resolved.doc, {
+        format: req.format,
+        bodyId: req.body ?? null,
+        docId: req.docId ?? 'mcp',
+        files: readFiles(req.files),
+      })
+    } catch (e) {
+      if (e instanceof KernelFault) return { ok: false, error: e.message }
+      throw e
+    }
     if (!bytes) {
       return { ok: false, error: 'export produced no solid (or the local solver is unavailable)' }
     }

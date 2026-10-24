@@ -315,7 +315,8 @@ npm run drive -- replay repro.json
   solve's body order; its volumes and areas sum to the totals and its ids are
   the ids `run` and `select` use. The same `features`
   problem list `run` returns rides along (measuring builds every feature, so the
-  kernel's verdicts are already known).
+  kernel's verdicts are already known); a feature with no verdict makes `ok`
+  false, exactly as it does for `run`.
 - `compare` measures the document and compares it against a `reference.json`
   (the translation format: `source`, a required `tolerance`, an optional
   `topology` mode and the measure fields) with `compareMeasures`. It prints
@@ -345,7 +346,11 @@ the handlers that mint internally. `delete_selected` is refused headlessly
 use mutation steps instead.
 
 When OCC.js or the nodejs Rust solver build is absent, the CLI reports the
-solver as unavailable and exits nonzero rather than guessing.
+solver as unavailable and exits nonzero rather than guessing. A WASM trap is
+different: the OCC module and the cross-solve cache are discarded and the solve
+is retried once on a fresh module. A second trap in the same call fails it with
+`kernel fault: <message>; the kernel was reloaded`, so a corrupt heap is never
+reused for later calls.
 
 ## MCP Server
 
@@ -474,8 +479,12 @@ banner on stdout, so a client config must use the direct node invocation.
   The one-line `summary` repeats it as a `; problems: <id> (<kind>) <status>:
   <message>` suffix, so a client that reads only the summary still sees it.
   Sketch verdicts (`fully_constrained`, `underconstrained`) are normal states
-  and are not listed; an `overconstrained` sketch is.
-- `featureDeltas` answers "what did this step contribute": one row per feature
+  and are not listed; an `overconstrained` sketch is. A feature with no verdict
+  at all after the settle is listed with status `missing` and message `no verdict
+  from the solve`, and makes `ok` false: an empty solve result must never read
+  as a clean build. A kernel fault (a WASM trap that repeated on the reloaded
+  module) is also `ok: false`, with `solve.lastError` naming the fault.
+  `featureDeltas` answers "what did this step contribute": one row per feature
   this call changed, in log order, with `id`, `kind`, `status`, the cumulative
   `volume` and `bbox` after it, and `volumeDelta`/`bboxDelta` from the previous
   checkpoint. A row appears when the feature's checkpoint differs from the input
@@ -489,7 +498,8 @@ banner on stdout, so a client config must use the direct node invocation.
   delta describes the real part. Pass `featureDeltas: "all"` to list every clean
   feature, which is how an empty `steps: []` call inspects the whole history.
   The list is null when the final solve exposed
-  no measurable checkpoints (the kernel was unavailable). The checkpoint
+  no measurable checkpoints (the kernel was unavailable or faulted, which is
+  also `ok: false` with `solve.lastError`). The checkpoint
   measurement reads each unique OCC shape once, not once per feature.
 - `run` with `steps: []` solves the given `doc` or `docHash` once and returns
   the same fields. It is the "inspect this document" call: the solve state has

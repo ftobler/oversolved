@@ -6,6 +6,7 @@
 // exception and warning text) and name the features a caller has to look at.
 
 import type { BuildResponse, PartDoc } from '@/types/cad'
+import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 
 /** What the last solve said about one feature. */
 export interface FeatureOutcome {
@@ -40,6 +41,11 @@ const NON_PROBLEM_STATUSES: ReadonlySet<string> = new Set<string>([
   'underconstrained',
   'suppressed',
 ])
+
+/** The status surfaced for a feature the settle gave no verdict at all. Not a
+ *  kernel status: it is the drive boundary's own answer to a silent result. */
+export const MISSING_VERDICT_STATUS = 'missing'
+export const MISSING_VERDICT_MESSAGE = 'no verdict from the solve'
 
 /**
  * Whether a per-feature outcome is something the caller must read. A warning
@@ -84,8 +90,18 @@ function defaultMessage(status: string): string {
 /**
  * The problems a caller must act on, in feature log order so the list reads
  * like the tree. Kind comes from the document because a solve result carries
- * the id only. Features the solve did not reach (rolled back, or after the
- * first failure) are absent, not guessed at.
+ * the id only.
+ *
+ * Every non-builtin, non-suppressed feature of the solved document must have a
+ * verdict after a settle. A missing one is a problem row, not an absence: a
+ * solve that returned an empty result (the wedged-kernel signature) used to
+ * read as a clean build because there was simply nothing to report. Builtins
+ * are display-only and never reach the kernel; suppressed features are
+ * deliberately skipped by the builder, and when they were reached they already
+ * carry their own `suppressed` verdict.
+ *
+ * Rollback is not a case here: the drive boundary always solves the whole
+ * authored stack (`partSolvePayload` sets rollback_position to its length).
  */
 export function featureProblems(
   doc: PartDoc,
@@ -95,9 +111,20 @@ export function featureProblems(
   for (const feature of doc.features ?? []) {
     const id = typeof feature.id === 'string' ? feature.id : ''
     if (id === '') continue
-    const outcome = outcomes[id]
-    if (outcome === undefined || !isFeatureProblem(outcome)) continue
+    if (BUILTIN_FEATURE_IDS.has(id)) continue
+    if (feature.suppressed === true) continue
     const kind = typeof feature.kind === 'string' ? feature.kind : 'unknown'
+    const outcome = outcomes[id]
+    if (outcome === undefined) {
+      problems.push({
+        id,
+        kind,
+        status: MISSING_VERDICT_STATUS,
+        message: MISSING_VERDICT_MESSAGE,
+      })
+      continue
+    }
+    if (!isFeatureProblem(outcome)) continue
     problems.push({
       id,
       kind,

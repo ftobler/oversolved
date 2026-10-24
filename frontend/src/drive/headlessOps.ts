@@ -13,13 +13,14 @@
 import type { PartDoc, BodyResult } from '@/types/cad'
 import type { SolveSchedulerState } from '@/session/SolveScheduler'
 import { exportLocally, solveLocally, buildAndMeasureLocally, measureSolveFeatures, type FeatureMeasure, type LocalExportOptions } from '@/kernel/solveLocally'
+import { KernelFault } from '@/kernel/errors'
 import { compareMeasures, type MeasureRow } from '@/kernel/occ/measureTolerance'
 import type { MeasureRecord } from '@/kernel/occ/measure'
 import type { TranslationReference } from '@/translations/corpus'
 import { selectByPredicate, type SelectResult, type Selector } from '@/kernel/select'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { createHeadlessPart, type HeadlessPart } from '@/drive/headlessPart'
-import { featureProblems, readSolveOutcomes, type FeatureProblem } from '@/drive/featureOutcome'
+import { featureProblems, readSolveOutcomes, MISSING_VERDICT_STATUS, type FeatureProblem } from '@/drive/featureOutcome'
 import { featureDeltaRows, touchedFeatureIds, type FeatureDelta } from '@/drive/featureDeltas'
 import { partSolvePayload } from '@/drive/solveWriteBack'
 import { docHashOf } from '@/drive/docHash'
@@ -95,15 +96,33 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   const outcome = await part.run(opts.steps)
   const doc = part.getDoc()
   const solve = part.solve.state()
-  const measures = part.bodyIds() === null ? null : await part.featureMeasures()
+  let measures: Awaited<ReturnType<HeadlessPart['featureMeasures']>> = null
+  let measureFault: string | null = null
+  if (part.bodyIds() !== null) {
+    try {
+      measures = await part.featureMeasures()
+    } catch (e) {
+      // The solve itself succeeded, but measuring its checkpoints reads the same
+      // kernel. A trap there is the same failed-kernel answer, not an internal
+      // error that loses the rest of the reply.
+      if (!(e instanceof KernelFault)) throw e
+      measureFault = e.message
+    }
+  }
+  const features = doc ? featureProblems(doc, part.solveOutcomes()) : []
+  // A missing verdict means the settle did not answer for a feature at all;
+  // that is a failed run, unlike a feature that answered `exception` (data the
+  // caller reads from `features`). Without this the wedged-kernel reply was
+  // ok:true with an empty result.
+  const missingVerdict = features.some(problem => problem.status === MISSING_VERDICT_STATUS)
   return {
-    ok: outcome.ok && solve.lastError === null,
+    ok: outcome.ok && solve.lastError === null && !missingVerdict && measureFault === null,
     outcome,
     doc,
     docHash: doc ? docHashOf(doc) : null,
-    solve,
+    solve: measureFault === null ? solve : { ...solve, lastError: measureFault },
     bodies: part.bodyIds(),
-    features: doc ? featureProblems(doc, part.solveOutcomes()) : [],
+    features,
     featureDeltas: doc !== null && measures !== null
       ? featureDeltaRows(doc, measures, part.solveOutcomes(), {
           baseline,
@@ -138,6 +157,9 @@ export interface HeadlessMeasureOptions {
 }
 
 export interface HeadlessMeasure {
+  // False when the settle left a feature without a verdict, the same condition
+  // that makes a `run` reply ok:false.
+  ok: boolean
   measures: MeasureRecord
   // The same problem list a `run` reply carries: measuring builds every
   // feature, so a bore that cut nothing is already known here.
@@ -148,9 +170,11 @@ export interface HeadlessMeasure {
 export async function measureHeadless(doc: PartDoc, opts: HeadlessMeasureOptions = {}): Promise<HeadlessMeasure | null> {
   const built = await buildAndMeasureLocally(partSolvePayload(doc, opts.docId ?? 'headless'), opts.files)
   if (built === null) return null
+  const features = featureProblems(doc, readSolveOutcomes(built.response.result))
   return {
+    ok: !features.some(problem => problem.status === MISSING_VERDICT_STATUS),
     measures: built.measures,
-    features: featureProblems(doc, readSolveOutcomes(built.response.result)),
+    features,
   }
 }
 

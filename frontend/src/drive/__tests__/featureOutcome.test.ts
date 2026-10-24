@@ -11,6 +11,7 @@ import {
   featureProblems,
   formatFeatureProblem,
   isFeatureProblem,
+  MISSING_VERDICT_MESSAGE,
   readSolveOutcomes,
   type FeatureOutcome,
 } from '../featureOutcome'
@@ -77,7 +78,7 @@ function problemDoc(): PartDoc {
       { id: 'f1', kind: 'fillet' },
       { id: 'sk2', kind: 'sketch' },
       { id: 'ex1', kind: 'extrude' },
-      { id: 'gon', kind: 'sketch' },
+      { id: 'gon', kind: 'sketch', suppressed: true },
     ],
   } as PartDoc
 }
@@ -101,11 +102,33 @@ describe('featureProblems', () => {
     ])
   })
 
-  it('ignores features the solve did not reach', () => {
+  it('reports a feature the solve did not reach as a missing verdict', () => {
+    // The wedge signature: a solve returns an empty result, so every authored
+    // feature is absent. That must read as a problem, not as a clean build.
     expect(featureProblems(problemDoc(), {
       sk1: { status: 'fully_constrained' },
       h1: { status: 'ok' },
-    })).toEqual([])
+    })).toEqual([
+      { id: 'f1', kind: 'fillet', status: 'missing', message: MISSING_VERDICT_MESSAGE },
+      { id: 'sk2', kind: 'sketch', status: 'missing', message: MISSING_VERDICT_MESSAGE },
+      { id: 'ex1', kind: 'extrude', status: 'missing', message: MISSING_VERDICT_MESSAGE },
+    ])
+    // The suppressed feature is exempt whether or not the builder reached it.
+    expect(featureProblems(problemDoc(), {})).not.toContainEqual(
+      expect.objectContaining({ id: 'gon' }),
+    )
+  })
+
+  it('does not require a verdict for a builtin display feature', () => {
+    const doc = {
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'ex1', kind: 'extrude' },
+        { id: 'Top', kind: 'plane' },
+      ],
+    } as PartDoc
+    expect(featureProblems(doc, { ex1: { status: 'ok' } })).toEqual([])
   })
 
   it('formats one problem for the one-line summary', () => {
