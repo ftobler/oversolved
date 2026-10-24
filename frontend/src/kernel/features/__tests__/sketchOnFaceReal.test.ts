@@ -178,7 +178,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
    * render query unchanged, exactly as the sketch plane pick field stores it.
    * That sketch must build and lie IN the face's plane: origin on the plane,
    * sketch normal parallel to the face normal. The face picked is the one
-   * farthest from the origin, so a silent fallback to the front plane fails.
+   * farthest from the origin, so a wrong frame cannot hide.
    */
   it('a sketch on a flat face query lies in that face plane', () => {
     const r = h.run(extrudeDoc())
@@ -289,12 +289,11 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
 
     const sk2Result = (r.result as Record<string, Dict>).sk2 ?? {}
     if (sk2Result.status !== 'exception') {
-      const originZ = (sk2Result.plane_transform as { origin: number[] })?.origin?.[2]
-      // resolveSketchPlane may not yet resolve ancestry face queries;
-      // when it falls back to the front plane (z=0) the assertion is skipped.
-      if (originZ !== undefined && originZ !== 0) {
-        expect(Math.abs(originZ - topCentroidZ)).toBeLessThan(0.5)
-      }
+      const originZ = (sk2Result.plane_transform as { origin: number[] } | undefined)?.origin?.[2]
+      // The face query resolved to the face plane, so its origin is that face's
+      // centroid; the resolver has no Front fallback left to hide behind.
+      expect(originZ).toBeDefined()
+      expect(Math.abs(originZ! - topCentroidZ)).toBeLessThan(0.5)
     }
   })
 
@@ -514,12 +513,8 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
     if (res.status === 'exception') return  // known gap: sketch plane face-query resolution
 
     const originPt = (res.plane_transform as { origin: number[] })?.origin
-    // resolveSketchPlane may not yet resolve ancestry face queries;
-    // when it falls back to the front plane the assertion is skipped.
-    if (originPt && originPt[0] === 0 && originPt[1] === 0 && originPt[2] === 0) {
-      // front-plane fallback; resolveSketchPlane gap, skip assertion
-    } else if (originPt !== undefined) {
-      expect(Math.abs(originPt[1] - 14.0)).toBeLessThan(0.5)
-    }
+    // An unresolved query fails the sketch (W1); a resolved one is the moved cap.
+    expect(originPt).toBeDefined()
+    expect(Math.abs(originPt![1] - 14.0)).toBeLessThan(0.5)
   })
 })

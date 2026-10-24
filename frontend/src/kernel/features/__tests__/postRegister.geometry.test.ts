@@ -1,7 +1,7 @@
 // Hand-written coverage for postRegister's OCC-free helpers that the
 // fixture-driven parity gate does not reach: resolveSketchPlane's ancestry and
-// registry fallbacks, the rich-dict branch of registerSolvedGeometrySlash, and
-// enrichSketchEntity's unknown-kind fallback.
+// registry resolution and its refusals, the rich-dict branch of
+// registerSolvedGeometrySlash, and enrichSketchEntity's unknown-kind fallback.
 
 import { describe, it, expect } from 'vitest'
 import { initGlobalRepo, Repository, makeAncestryQuery, canonical } from '../../query'
@@ -10,9 +10,10 @@ import { postRegister, resolveSketchPlane, enrichSketchEntity } from '../postReg
 describe('resolveSketchPlane', () => {
   const front = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
 
-  it('falls back to the front plane for a missing query', () => {
+  it('keeps the front plane for a missing query', () => {
     expect(resolveSketchPlane(null, initGlobalRepo())).toEqual(front)
     expect(resolveSketchPlane(undefined, initGlobalRepo())).toEqual(front)
+    expect(resolveSketchPlane('', initGlobalRepo())).toEqual(front)
   })
 
   it('resolves a builtin plane by token and by bare name', () => {
@@ -41,10 +42,53 @@ describe('resolveSketchPlane', () => {
     expect(resolveSketchPlane(q, repo).origin).toEqual([1, 2, 3])
   })
 
-  it('falls back to the front plane when nothing matches', () => {
+  it('refuses an unknown plane name instead of drawing on the front plane', () => {
+    // The old fallback put geometry the author never placed on Front. A plane
+    // id that names nothing is an authoring mistake, so the sketch must fail.
     const repo = new Repository()
-    expect(resolveSketchPlane('@nope', repo)).toEqual(front)
-    expect(resolveSketchPlane(makeAncestryQuery(['@nope'], 'flatface'), repo)).toEqual(front)
+    expect(() => resolveSketchPlane('@nope', repo)).toThrow(
+      "plane 'nope' did not resolve; use a builtin plane, a plane feature defined before this sketch, or a face query",
+    )
+  })
+
+  it('refuses an unresolved face query and names it', () => {
+    const repo = new Repository()
+    const query = makeAncestryQuery(['@nope'], 'flatface')
+    expect(() => resolveSketchPlane(query, repo)).toThrow(`face '${query}' did not resolve`)
+  })
+
+  it('names a plane feature defined after the sketch and says how to fix it', () => {
+    const repo = new Repository()
+    const features = {
+      sk1: { id: 'sk1', kind: 'sketch', plane: '@pl1' },
+      pl1: { id: 'pl1', kind: 'plane' },
+    }
+    expect(() => resolveSketchPlane('@pl1', repo, { sketchId: 'sk1', featuresById: features })).toThrow(
+      "plane 'pl1' is defined after this sketch; move the sketch below it or reorder",
+    )
+  })
+
+  it('does not blame ordering for a plane feature that is before the sketch', () => {
+    // An earlier plane that failed or is suppressed registers no frame; the
+    // reorder advice would be wrong, so say what actually happened.
+    const repo = new Repository()
+    const features = {
+      pl1: { id: 'pl1', kind: 'plane' },
+      sk1: { id: 'sk1', kind: 'sketch', plane: '@pl1' },
+    }
+    expect(() => resolveSketchPlane('@pl1', repo, { sketchId: 'sk1', featuresById: features })).toThrow(
+      "plane 'pl1' did not resolve; its plane feature comes before this sketch but reported no frame",
+    )
+  })
+
+  it('fills missing face axes from the normal instead of returning undefined axes', () => {
+    // Older registrations carried only origin + normal; the frame rule is the
+    // one a body face uses, so deriving them cannot move a fresh face.
+    const repo = new Repository()
+    repo.registerAncestor(['@sk1/f1'], { type: 'flatface', origin: [1, 2, 3], normal: [0, 0, 1] })
+    const plane = resolveSketchPlane(makeAncestryQuery(['@sk1/f1'], 'flatface'), repo)
+    expect(plane.x_axis).toEqual([0, 1, 0])
+    expect(plane.y_axis).toEqual([-1, 0, 0])
   })
 })
 

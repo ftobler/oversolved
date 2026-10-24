@@ -676,7 +676,7 @@ function applyOffset(raw: RawStep, ctx: ValueContext): ValueViolation | null {
 // The bare builtin names resolveSketchPlane accepts. They stay case-sensitive:
 // accepting "top" would shadow a user plane whose id is exactly that, so the
 // boundary refuses an unmatched spelling with the valid names instead of
-// letting resolveSketchPlane's front-plane fallback hide the mistake.
+// spending a solve on a ref the kernel can only refuse.
 const BARE_PLANE_NAMES = ['Front', 'Top', 'Right'] as const
 
 function planeTargetProblem(value: string, ctx: ValueContext): string | null {

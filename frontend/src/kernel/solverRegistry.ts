@@ -74,8 +74,8 @@ type LeafSolver<K extends DispatchedKind> = (
 export type SolverTable = { [K in DispatchedKind]: LeafSolver<K> }
 
 const KIND_SOLVER: SolverTable = {
-  sketch: (_oc, _scope, _table, feature, globalRepo, bodyStore) =>
-    solveSketch(feature, globalRepo, bodyStore),
+  sketch: (_oc, _scope, _table, feature, globalRepo, bodyStore, featuresById) =>
+    solveSketch(feature, globalRepo, bodyStore, featuresById),
   plane: solvePlane,
   helix: solveHelix,
   extrude: solveExtrude,

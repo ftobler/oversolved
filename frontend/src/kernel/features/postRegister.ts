@@ -23,7 +23,7 @@ import {
   ref,
   isClassifierId,
 } from '../query'
-import { frameFromPlaneTransform } from '../types3d'
+import { frameFromPlaneTransform, normalToFrame } from '../types3d'
 import { loopCentroid, radians, type LoopEdge } from '../profileLoops'
 import { BUILTIN_PLANES } from '../solverConstants'
 import { sketchToWorld2d, type PlaneLike } from './shared/planes'
@@ -46,6 +46,20 @@ function planeLikeOf(plane: Dict): PlaneLike {
   }
 }
 
+/** A resolved face payload as a sketch frame. A payload from before the
+ *  frame-carrying registrations can lack the in-plane axes; the normal rule
+ *  (`normalToFrame`) supplies them, exactly as a body face is registered. */
+function planeFrameOf(plane: Dict): PlaneLike {
+  let xAxis = plane.x_axis as number[] | undefined
+  let yAxis = plane.y_axis as number[] | undefined
+  if (xAxis === undefined || yAxis === undefined) {
+    const derived = normalToFrame(plane.normal as [number, number, number])
+    xAxis ??= derived.x_axis
+    yAxis ??= derived.y_axis
+  }
+  return { origin: plane.origin as number[], x_axis: xAxis, y_axis: yAxis, normal: plane.normal as number[] }
+}
+
 function isPlaneLike(v: unknown): v is PlaneLike {
   return !!v && typeof v === 'object' && 'normal' in (v as Dict) && 'origin' in (v as Dict)
 }
@@ -55,38 +69,74 @@ function isDict(v: unknown): v is Dict {
 }
 
 /**
+ * What the resolver knows about the calling sketch, so an unresolved plane can
+ * name the cause instead of guessing: a plane defined later in the log is a
+ * reorder away, while a missing id is an authoring mistake. Optional because
+ * the unit tests resolve against a bare repository.
+ */
+export interface SketchPlaneContext {
+  sketchId?: string
+  featuresById?: Record<string, Dict>
+}
+
+function unresolvedPlaneError(bare: string, context: SketchPlaneContext): Error {
+  const features = context.featuresById
+  const planeFeature = features?.[bare]
+  if (planeFeature !== undefined && planeFeature.kind === 'plane') {
+    const order = Object.keys(features ?? {})
+    const planeAt = order.indexOf(bare)
+    const sketchAt = context.sketchId === undefined ? -1 : order.indexOf(context.sketchId)
+    if (sketchAt >= 0 && planeAt > sketchAt) {
+      return new Error(`plane '${bare}' is defined after this sketch; move the sketch below it or reorder`)
+    }
+    return new Error(
+      `plane '${bare}' did not resolve; its plane feature comes before this sketch but reported no frame `
+      + '(is it suppressed or failed?)',
+    )
+  }
+  return new Error(
+    `plane '${bare}' did not resolve; use a builtin plane, a plane feature defined before this sketch, or a face query`,
+  )
+}
+
+/**
  * Resolve a sketch's plane query to a plane frame. Handles builtin planes
- * (`builtin_plane_*`, bare
- * `Front`/`Top`/`Right`), plane features already registered as `_pt_<id>`,
- * and ancestry queries (`?...:flatface`) resolved through the repository
- * (face elements carry `origin`/`normal`/`x_axis`/`y_axis`).
- * Falls back to the front plane when nothing matches.
+ * (`builtin_plane_*`, bare `Front`/`Top`/`Right`), plane features already
+ * registered as `_pt_<id>`, and ancestry queries (`?...:flatface`) resolved
+ * through the repository (face elements carry `origin`/`normal`/`x_axis`/`y_axis`).
+ *
+ * A non-empty query that does not resolve is refused: silently drawing the
+ * sketch on Front moved geometry the author never placed there (a plane feature
+ * later in the log, or a face that an upstream edit stopped resolving). Only an
+ * absent query keeps Front, which is the documented default.
  */
 export function resolveSketchPlane(
   planeQuery: string | null | undefined,
   globalRepo: Repository,
+  context: SketchPlaneContext = {},
 ): PlaneLike {
   const front = planeLikeOf(BUILTIN_PLANES.builtin_plane_front)
   if (!planeQuery) return front
 
   // Ancestry queries mirror Python's resolve_ref calling globalRepo.query().
   if (planeQuery.startsWith('?')) {
-    const resolved = globalRepo.query(planeQuery, null) as Dict | null
-    if (resolved && isDict(resolved)) {
-      if (isPlaneLike(resolved)) return resolved
-      if (resolved.origin && resolved.normal) {
-        return planeLikeOf(resolved)
-      }
+    let resolved: unknown
+    try {
+      resolved = globalRepo.query(planeQuery, null)
+    } catch (e) {
+      throw new Error(`face '${planeQuery}' did not resolve: ${e instanceof Error ? e.message : String(e)}`)
     }
-    return front
+    if (resolved && isDict(resolved) && isPlaneLike(resolved)) return planeFrameOf(resolved)
+    throw new Error(`face '${planeQuery}' did not resolve`)
   }
 
   const bare = stripRefSigil(planeQuery, '@$')
   if (BUILTIN_PLANES[bare]) return planeLikeOf(BUILTIN_PLANES[bare])
   if (BARE_PLANE[planeQuery]) return planeLikeOf(BUILTIN_PLANES[BARE_PLANE[planeQuery]])
+  if (BARE_PLANE[bare]) return planeLikeOf(BUILTIN_PLANES[BARE_PLANE[bare]])
   const reg = globalRepo.elements.get('_pt_' + bare) ?? globalRepo.elements.get(bare)
   if (isPlaneLike(reg)) return reg
-  return front
+  throw unresolvedPlaneError(bare, context)
 }
 
 /** Rich geometry for one solved entity. */

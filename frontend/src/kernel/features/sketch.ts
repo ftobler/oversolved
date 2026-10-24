@@ -426,6 +426,7 @@ export function solveSketch(
   feature: Dict,
   globalRepo: Repository,
   _bodyStore: Record<string, Body>,
+  featuresById: Record<string, Dict> = {},
 ): SketchResult {
   if (!solverBytes) {
     throw new Error('sketch: Rust solver not initialised (call initSketchSolver first)')
@@ -434,7 +435,11 @@ export function solveSketch(
   const featureId = (feature.id as string) ?? ''
 
   // ─── Lower projected entities before partDocToSketches ───
-  const plane = resolveSketchPlane((feature.plane as string | undefined) ?? null, globalRepo)
+  const plane = resolveSketchPlane(
+    (feature.plane as string | undefined) ?? null,
+    globalRepo,
+    { sketchId: featureId, featuresById },
+  )
   const { loweredFeature, resolvedKinds, projectionErrors, pinnedIds } =
     lowerProjectedEntities(feature, plane, globalRepo)
 
