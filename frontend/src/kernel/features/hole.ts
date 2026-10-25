@@ -392,27 +392,37 @@ function probeSide(
   depth: number,
 ): SideProbe {
   const away = normal.map((n) => -n) as Vec3
-  const forward = makeCylinder(oc, scope, mouth, normal, radius, reachAlong(frame, mouth, normal) + depth)
-  const backward = makeCylinder(oc, scope, mouth, away, radius, reachAlong(frame, mouth, away) + depth)
-  const forwardHits = intersects(oc, shape, forward)
-  const backwardHits = intersects(oc, shape, backward)
-  scope.release(forward)
-  scope.release(backward)
+  const forwardHits = probeHits(oc, scope, shape, mouth, normal, radius, reachAlong(frame, mouth, normal) + depth)
+  const backwardHits = probeHits(oc, scope, shape, mouth, away, radius, reachAlong(frame, mouth, away) + depth)
   if (forwardHits && backwardHits) return 'both'
   if (forwardHits) return 'normal'
   return backwardHits ? 'reverse' : 'none'
+}
+
+/** Whether a bore-radius probe of `length` along `dir` meets the body. A mouth
+ *  on the AABB's limit has nothing ahead of it on that side, and a simple hole
+ *  adds no mouth depth, so the probe would be a zero-height cylinder: that side
+ *  holds no material by construction, and the degenerate solid is never built
+ *  (a failed Common reads as a hit in `intersects`). */
+function probeHits(
+  oc: OccModule, scope: DisposeScope, shape: OccShape, mouth: Vec3, dir: Vec3, radius: number, length: number,
+): boolean {
+  if (!(length > 1e-9)) return false
+  const probe = makeCylinder(oc, scope, mouth, dir, radius, length)
+  const hit = intersects(oc, shape, probe)
+  scope.release(probe)
+  return hit
 }
 
 /**
  * The one side a through hole drills at every site, and the sites that leave
  * material on the other side of the plane uncut.
  *
- * The side is the feature's, not each site's: a site the probe cannot decide
- * (the plane runs through the body there) used to take a symmetric bore and
- * widen toward the authored normal while its decided neighbours widened the
- * other way, so one hole opened its counterbores on two sides. The deciding
- * sites vote and every site follows the winner; a tie, or no deciding site,
- * keeps `normal`, the side the document names.
+ * The side is the feature's, not each site's, so one hole never opens its
+ * counterbores on two sides: a site the probe cannot decide (the plane runs
+ * through the body there) follows the sites that can. Those vote and every
+ * site drills the winner; a tie, or no deciding site, keeps `normal`, the side
+ * the document names.
  */
 function resolveDrillSide(probes: Array<{ eid: string; probe: SideProbe }>): {
   side: DrillSide
@@ -692,8 +702,7 @@ export function solveHole(
     // A through hole drills one way: from the sketch plane (backed off across
     // the air gap, plus a hair, when nothing lies behind it) to past the far
     // face. Material behind the plane is never cut, which is what "through all"
-    // reads as; the old symmetric bore at an undecided site ran up through
-    // whatever sat on the plane's other side.
+    // reads as, even where something sits on the plane's other side.
     const airGap = depthMode === 'through_all' && throughFrame !== null
       ? airGapAlong(throughFrame, center3d, drillAxis)
       : 0
@@ -773,7 +782,12 @@ export function solveHole(
     // The bore the cosmetic thread (if any) is displayed on: the through
     // portion below the widened mouth, never the counterbore wall or the cone.
     const threadOffset = style === 'counterbore' ? cbDepth : style === 'countersink' ? countersinkDepth : 0
-    const threadLength = (depthMode === 'through_all' ? throughSpan : depth) - threadOffset
+    // A through bore ends at the body's far limit along the drill axis, which a
+    // plane inside the body reaches in less than the whole span.
+    const boreLength = depthMode === 'through_all' && throughFrame !== null
+      ? reachAlong(throughFrame, center3d, drillAxis) - airGap
+      : depth
+    const threadLength = boreLength - threadOffset
     // The thread rides the bore below the widened mouth, measured from the
     // entry face, not the sketch plane that may sit above it.
     const threadStart = airGap + threadOffset
@@ -860,13 +874,14 @@ export function solveHole(
       ? `hole: direction: ${authored} cuts nothing in body '${targetBody.id}' at every drill site; direction: ${other} drills into it`
       : `hole: none of the ${placed} drill site(s) intersect body '${targetBody.id}'; nothing was removed`
   } else if (otherSideSites.length > 0) {
-    // Every site cut, so this is no partial: the hole is whole, but it left
-    // material on the other side of the plane at these sites. Naming them is
-    // the only cue, since the volume looks plausible either way. `reverse` is
-    // the authored side that silences it.
+    // The hole removed material, but these sites left material on the other
+    // side of the plane. Naming them is the only cue, since the volume looks
+    // plausible either way. One through hole drills one side; `reverse` is the
+    // authored side that silences this.
     const fix = side === 'normal' ? 'set direction: reverse to drill the other way' : 'set direction: reverse to keep it'
     result.solver_warning =
-      `hole: sites ${otherSideSites.join(', ')} have material on the other side; drilled ${side} at all sites, ${fix}`
+      `hole: sites ${otherSideSites.join(', ')} have material on the other side; ` +
+      `drilled ${side} at all sites (a through hole drills one side), ${fix}`
   }
   return result
 }

@@ -139,6 +139,22 @@ describe.skipIf(!oc)('a through hole with material on both sides of its plane (r
     expect(warning).toContain('drilled reverse at all sites')
   })
 
+  it('ends the cosmetic thread at the plate bottom at both sites', () => {
+    // The bore runs from the plane to z=-5 at both sites, 7.5 mm below the
+    // step; a thread sized from the whole body span would run on past the
+    // plate under the block.
+    const pitch = 0.5
+    const { result } = drill({
+      direction: 'normal', ...COUNTERBORE, thread: { designation: 'M2.5x0.45', nominal: 2.5, pitch },
+    })
+    const thread = result.thread as { helices: Array<{ center: number[]; turns: number }> }
+    expect(thread.helices).toHaveLength(2)
+    for (const helix of thread.helices) {
+      expect(helix.center[2]).toBeCloseTo(5 - CB_DEPTH, 6)
+      expect(helix.turns * pitch).toBeCloseTo(10 - CB_DEPTH, 6)
+    }
+  })
+
   it('obeys direction: reverse at every site without a warning', () => {
     const { result, cylinders } = drill({ direction: 'reverse', ...COUNTERBORE })
     expect(result.status).toBe('ok')
