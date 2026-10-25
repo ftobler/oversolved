@@ -274,6 +274,25 @@ const ARRAY_OPERATION_NOTE =
   'separate bodies, taking the source id and `_1`, `_2`... siblings (the `run` reply summary names the live ids). ' +
   '`operation: new` keeps the source as instance 0 and mints one body per copy.'
 
+// merge_target is a body id, not a ref: the practice runs guessed `@body_ex5`.
+const MERGE_TARGET_NOTE =
+  'The bare body id the cut or add goes into, e.g. `body_ex5` (no @ sigil); absent means every body the tool reaches.'
+
+const EXTRUDE_INLINE_NOTE =
+  'One call may carry the whole extrude: `direction`, `operation` and `merge_target` set the same keys ' +
+  '`set_extrude_field` does.'
+
+// The boolean refuses to solve without a target and a tool, so the catalog
+// names them up front (Case_Seam_Lip F5).
+const BOOLEAN_INLINE_NOTE =
+  'Solving needs `target` (one body id) and at least one entry in `tools`; `operation` defaults to union. ' +
+  'One call may carry all three; `set_boolean_field` and `add_boolean_tool` remain for later edits.'
+
+const BOOLEAN_ARRAY_TOOL_NOTE =
+  'A `tools` entry naming an array or circular_array feature (`@<arrayId>`) expands at solve time to that ' +
+  'array\'s source body and every instance body, so it follows a later count change; the target is left out of ' +
+  'the expansion. A hand-typed list that names only some of one array\'s bodies solves with a warning.'
+
 // Same precedence as transform's rotation axis, so one rule covers both.
 const CIRCULAR_AXIS_NOTE =
   'The rotation axis is `axis` (an edge, sketch entity or face ref), or the stored pair `axis_origin` (VEC3 point) ' +
@@ -539,8 +558,16 @@ export const MUTATION_CATALOG = {
     fields: {},
   },
   add_extrude: {
-    summary: 'Extrude a sketch along its plane normal.',
-    fields: { ...featureAddFields(), sketchQuery: sketchQuery(), distance: num() },
+    summary: 'Extrude a sketch along its plane normal, optionally with its direction, operation and merge target.',
+    note: EXTRUDE_INLINE_NOTE,
+    fields: {
+      ...featureAddFields(),
+      sketchQuery: sketchQuery(),
+      distance: num(),
+      direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as extrude.direction).'),
+      operation: optStr('add | cut | new; absent means add (the key the document stores as extrude.operation).'),
+      merge_target: optStr(MERGE_TARGET_NOTE),
+    },
   },
   set_extrude_field: {
     summary: 'Set one extrude field (distance, direction, operation, ...).',
@@ -701,15 +728,23 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_boolean: {
-    summary: 'Add a boolean feature, then add its tool bodies.',
-    fields: featureAddFields(),
+    summary: 'Add a boolean feature, optionally with its operation, target and tools in the same call.',
+    note: BOOLEAN_INLINE_NOTE + ' ' + BOOLEAN_ARRAY_TOOL_NOTE,
+    fields: {
+      ...featureAddFields(),
+      operation: optStr('union | subtract | intersect; defaults to union.'),
+      target: optStr('The body the tools fold into, e.g. body_ex1. Required to solve.'),
+      tools: optArr('Body ids, or an array feature ref (@<arrayId>) for every body of that array. At least one is required to solve.'),
+    },
   },
   set_boolean_field: {
     summary: 'Set one boolean field, e.g. operation.',
+    note: BOOLEAN_ARRAY_TOOL_NOTE,
     fields: { featureId: str(), field: fieldOf('boolean', 'set_boolean_field'), value: setterValue('boolean') },
   },
   add_boolean_tool: {
     summary: 'Add a tool body to a boolean.',
+    note: BOOLEAN_ARRAY_TOOL_NOTE,
     fields: { featureId: str(), tool: bodyQuery() },
   },
   remove_boolean_tool: {

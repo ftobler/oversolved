@@ -255,6 +255,12 @@ the body untouched; the other groups still apply (status `partial`).
     clearance: 0.1               # subtract only; signed mm, grows (+) or shrinks (-) every tool on all sides
 ```
 
+A `tools` entry naming an `array` or `circular_array` feature (`"@carr1"`)
+stands for that array's source body and every instance body, resolved at solve
+time, so a later count change is followed. The target is left out of the
+expansion. A list of body ids that names only some of one array's bodies solves
+with a warning naming both counts.
+
 ### hole
 
 ```yaml
@@ -358,6 +364,10 @@ A rotational array is its own feature kind (not a `mode` of `array`):
     operation: new               # new | add
     include_source: true
 ```
+
+A resolved `axis` overrides the stored pair; `axis_direction` alone rotates
+about the world origin and `axis_origin` alone uses +Z, the same rule as
+transform's `rotation_axis_origin` / `rotation_axis_direction`.
 
 `operation: add` unions each instance into the source body only where they
 intersect. Disjoint copies stay separate bodies, taking the source id plus

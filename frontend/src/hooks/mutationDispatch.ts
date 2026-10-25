@@ -159,7 +159,11 @@ export const mutationHandlers: MutationHandlers = {
   toggle_plane_visibility: (next) =>
     applyTogglePlaneVisibility(next),
   add_extrude: (next, m) =>
-    applyAddExtrude(next, m.featureId, m.label, m.sketchQuery, m.distance),
+    applyAddExtrude(next, m.featureId, m.label, m.sketchQuery, m.distance, {
+      direction: m.direction,
+      operation: m.operation,
+      merge_target: m.merge_target,
+    }),
   set_extrude_field: (next, m) =>
     applySetExtrudeField(next, m.featureId, m.field, m.value),
   add_extrude_profile: (next, m) =>
@@ -227,7 +231,7 @@ export const mutationHandlers: MutationHandlers = {
   remove_delete_face_ref: (next, m) =>
     applyRemoveDeleteFaceRef(next, m.featureId, m.index),
   add_boolean: (next, m) =>
-    applyAddBoolean(next, m.featureId, m.label),
+    applyAddBoolean(next, m.featureId, m.label, { operation: m.operation, target: m.target, tools: m.tools }),
   set_boolean_field: (next, m) =>
     applySetBooleanField(next, m.featureId, m.field, m.value),
   add_boolean_tool: (next, m) =>

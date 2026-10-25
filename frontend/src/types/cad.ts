@@ -1162,7 +1162,7 @@ export type Mutation =
   | { type: 'rename_feature'; featureId: string; label: string }
   | { type: 'toggle_sketch_plane_visibility' }
   | { type: 'toggle_plane_visibility' }
-  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number } & FeatureInsertion)
+  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number; direction?: ExtrudeDirection; operation?: ExtrudeOperation; merge_target?: string } & FeatureInsertion)
   | { type: 'set_extrude_field'; featureId: string; field: keyof ExtrudeFeatureDef; value: unknown }
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
@@ -1196,7 +1196,7 @@ export type Mutation =
   | ({ type: 'add_delete_face'; featureId: string; label?: string; faces?: string[] } & FeatureInsertion)
   | { type: 'add_delete_face_ref'; featureId: string; faceQuery: string }
   | { type: 'remove_delete_face_ref'; featureId: string; index: number }
-  | ({ type: 'add_boolean'; featureId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_boolean'; featureId: string; label?: string; operation?: BooleanFeatureDef['operation']; target?: string; tools?: string[] } & FeatureInsertion)
   | { type: 'set_boolean_field'; featureId: string; field: keyof BooleanFeatureDef; value: unknown }
   | { type: 'add_boolean_tool'; featureId: string; tool: string }
   | { type: 'remove_boolean_tool'; featureId: string; tool: string }

@@ -112,6 +112,7 @@ export function applyAddExtrude(
   label: string | undefined,
   sketchQuery: string,
   distance: number,
+  inline: Pick<ExtrudeFeatureDef, 'direction' | 'operation' | 'merge_target'> = {},
 ): void {
   // The distance is persisted verbatim into the doc. round(NaN) is still NaN,
   // so a non-finite distance would seed a broken extrude. Refuse before the
@@ -127,7 +128,10 @@ export function applyAddExtrude(
     extrude: {
       sketch: sketchQuery ? [sketchQuery] : [],
       distance,
-      direction: 'normal',
+      direction: inline.direction ?? 'normal',
+      // Absent keys stay absent, so a plain add writes the document it always did.
+      ...(inline.operation !== undefined && { operation: inline.operation }),
+      ...(inline.merge_target !== undefined && { merge_target: inline.merge_target }),
     },
   }
   pushFeature(doc, feature)
@@ -451,12 +455,22 @@ export function applyRemoveDeleteFaceRef(doc: PartDoc, featureId: string, index:
 
 // ─── Boolean ───
 
-export function applyAddBoolean(doc: PartDoc, featureId: string, label?: string): void {
+export function applyAddBoolean(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  inline: Partial<Pick<BooleanFeatureDef, 'operation' | 'target' | 'tools'>> = {},
+): void {
   const feature: PartFeature = {
     id: featureId,
     kind: 'boolean',
     label: label ?? 'Boolean',
-    boolean: { operation: 'union', target: '', tools: [] },
+    // The tool list is copied for the same journal reason as the fillet's edges.
+    boolean: {
+      operation: inline.operation ?? 'union',
+      target: inline.target ?? '',
+      tools: [...(inline.tools ?? [])],
+    },
   }
   pushFeature(doc, feature)
 }

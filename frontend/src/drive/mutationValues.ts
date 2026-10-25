@@ -738,11 +738,38 @@ function addSketch(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return targetProblem === null ? null : invalid(targetProblem)
 }
 
-function addExtrude(raw: RawStep): ValueViolation | null {
+// The fields a bulk add carries inline are checked against the same schema
+// definition their `set_<kind>_field` setter uses, so the two spellings of one
+// edit accept exactly the same values.
+function inlineFieldsProblem(
+  raw: RawStep,
+  ctx: ValueContext,
+  setter: Mutation['type'],
+  keys: readonly string[],
+): ValueViolation | null {
+  for (const key of keys) {
+    if (raw[key] === undefined) continue
+    const schema = ctx.fieldSchema(setter, key)
+    if (schema === null) continue
+    const problem = schemaValueProblem(raw[key], schema, `${raw.type as string} field ${json(key)}`)
+    if (problem !== null) return invalid(problem)
+  }
+  return null
+}
+
+function addExtrude(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const problem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
   if (problem !== null) return invalid(problem)
   if (!isFiniteNumber(raw.distance)) return invalid(`distance must be a finite number, got ${json(raw.distance)}`)
-  return null
+  return inlineFieldsProblem(raw, ctx, 'set_extrude_field', ['direction', 'operation', 'merge_target'])
+}
+
+function addBoolean(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  if (raw.tools !== undefined) {
+    const toolsProblem = stringListProblem(raw.tools, 'tools')
+    if (toolsProblem !== null) return invalid(toolsProblem)
+  }
+  return inlineFieldsProblem(raw, ctx, 'set_boolean_field', ['operation', 'target'])
 }
 
 function addRevolve(raw: RawStep): ValueViolation | null {
@@ -1014,7 +1041,7 @@ export const MUTATION_VALUE_RULES = {
   add_delete_face: addDeleteFace,
   add_delete_face_ref: queryField('faceQuery'),
   remove_delete_face_ref: indexField('index'),
-  add_boolean: 'none',
+  add_boolean: addBoolean,
   set_boolean_field: fieldValue,
   add_boolean_tool: queryField('tool'),
   remove_boolean_tool: queryField('tool'),

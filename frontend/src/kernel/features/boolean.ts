@@ -28,6 +28,7 @@ import { SubShapeMap } from '../occ/subshapeIdentity'
 import { resplitBody } from './bodySplit'
 import { transferBooleanNames } from './booleanLineage'
 import { readBodyNames } from '../occ/bodyNames'
+import { stripRefSigil } from '@/utils/refSigil'
 
 type Dict = Record<string, unknown>
 
@@ -81,6 +82,89 @@ function growTool(
   }
 }
 
+const ARRAY_KINDS = new Set(['array', 'circular_array'])
+
+/**
+ * Every live body one array feature stands for: its source body (instance 0
+ * under `operation: new`, the fused body under `add`) and every body the array
+ * minted, in store order. Resolved against the store at boolean time, so a
+ * later count change is followed without editing the boolean.
+ */
+function arrayMemberIds(arrayId: string, def: Dict, bodyStore: Record<string, Body>): string[] {
+  const sub = (def[def.kind as string] as Dict | undefined) ?? {}
+  const ids: string[] = []
+  const source = sub.source_body
+  if (typeof source === 'string' && source !== '') {
+    try {
+      ids.push(resolveBody(source, bodyStore).id)
+    } catch {
+      // A source that no longer resolves leaves only the minted copies.
+    }
+  }
+  for (const [bid, body] of Object.entries(bodyStore)) {
+    if (body.created_by === arrayId && !ids.includes(bid)) ids.push(bid)
+  }
+  return ids
+}
+
+/**
+ * The tool list with every array-feature ref (`@<arrayId>` or the bare id)
+ * expanded to that array's member bodies. Typing forty instance ids by hand
+ * was error-prone (sprocket F3), and a hand list froze at the count it was
+ * typed for (din_rail F1: raising the count left the new slots floating free).
+ * The target is dropped from an expansion, so `target: <source>, tools:
+ * [@ar1]` unions or subtracts the copies without naming the source as its own
+ * tool. Returns the expanded refs and the array ids that were named.
+ */
+function expandArrayTools(
+  toolRefs: string[],
+  targetId: string,
+  featuresById: Record<string, Dict>,
+  bodyStore: Record<string, Body>,
+): { refs: string[]; namedArrays: Set<string> } {
+  const refs: string[] = []
+  const namedArrays = new Set<string>()
+  for (const ref of toolRefs) {
+    const key = stripRefSigil(ref, '@')
+    const def = featuresById[key]
+    // A body id wins over a feature id of the same spelling.
+    if (def !== undefined && ARRAY_KINDS.has(def.kind as string) && !(key in bodyStore)) {
+      namedArrays.add(key)
+      refs.push(...arrayMemberIds(key, def, bodyStore).filter((id) => id !== targetId))
+    } else {
+      refs.push(ref)
+    }
+  }
+  return { refs, namedArrays }
+}
+
+/**
+ * A hand-typed tool list that names some but not all of one array's bodies,
+ * the din_rail F1 trap: the warning names the counts and the array ref that
+ * follows the count instead.
+ */
+function partialArrayWarnings(
+  toolIds: Set<string>,
+  targetId: string,
+  namedArrays: Set<string>,
+  featuresById: Record<string, Dict>,
+  bodyStore: Record<string, Body>,
+): string[] {
+  const warnings: string[] = []
+  for (const [fid, def] of Object.entries(featuresById)) {
+    if (!ARRAY_KINDS.has(def.kind as string) || namedArrays.has(fid)) continue
+    const members = arrayMemberIds(fid, def, bodyStore).filter((id) => id !== targetId)
+    const used = members.filter((id) => toolIds.has(id)).length
+    if (used > 0 && used < members.length) {
+      warnings.push(
+        `array ${fid} has ${members.length} instances, the boolean uses ${used}; ` +
+          `name '@${fid}' in tools to take every instance`,
+      )
+    }
+  }
+  return warnings
+}
+
 /** Solve a boolean feature into the body store (mirrors `_solve_boolean`). */
 export function solveBoolean(
   oc: OccModule,
@@ -89,12 +173,13 @@ export function solveBoolean(
   feature: Dict,
   _globalRepo: Repository,
   bodyStore: Record<string, Body>,
+  featuresById: Record<string, Dict> = {},
 ): BooleanResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.boolean as Dict) ?? {}
   const operation = (sub.operation as string) ?? 'union'
   const targetRef = (sub.target as string) ?? ''
-  const toolRefs = (sub.tools as string[]) ?? []
+  const authoredTools = (sub.tools as string[]) ?? []
   const keepTools = (sub.keep_tools as boolean) ?? false
   // Signed mm: grows (+) or shrinks (-) every tool of a subtract, isotropically.
   // Absent means 0; a non-zero value on union/intersect is ignored with a
@@ -109,13 +194,17 @@ export function solveBoolean(
   const clearance = typeof rawClearance === 'number' ? rawClearance : 0
 
   if (!targetRef) throw new Error("boolean: 'target' is required")
-  if (toolRefs.length === 0) throw new Error("boolean: 'tools' must have at least one entry")
+  if (authoredTools.length === 0) throw new Error("boolean: 'tools' must have at least one entry")
 
   const op = OP_MAP[operation]
   if (op === undefined) throw new Error(`boolean: unknown operation '${operation}'`)
 
   const targetBody = resolveBody(targetRef, bodyStore)
   if (targetBody.shape === null) throw new Error(`boolean: target '${targetRef}' has no shape`)
+  const { refs: toolRefs, namedArrays } = expandArrayTools(authoredTools, targetBody.id, featuresById, bodyStore)
+  if (toolRefs.length === 0) {
+    throw new Error(`boolean: the array tool(s) ${[...namedArrays].join(', ')} have no body besides the target`)
+  }
 
   let resultShape: OccShape = table.get<OccShape>(targetBody.shape)
   const consumedKeys: string[] = []
@@ -129,6 +218,16 @@ export function solveBoolean(
     result.solver_warning = result.solver_warning === undefined ? msg : `${result.solver_warning}; ${msg}`
   }
   if (op !== 'cut' && clearance !== 0) warn('clearance applies to subtract only; ignored')
+  // Resolved before any tool is consumed: the store still holds every member.
+  const explicitToolIds = new Set<string>()
+  for (const ref of toolRefs) {
+    try {
+      explicitToolIds.add(resolveBody(ref, bodyStore).id)
+    } catch {
+      // The tool loop below reports a bad ref by name.
+    }
+  }
+  for (const w of partialArrayWarnings(explicitToolIds, targetBody.id, namedArrays, featuresById, bodyStore)) warn(w)
 
   for (const toolRef of toolRefs) {
     const toolBody = resolveBody(toolRef, bodyStore)
