@@ -61,15 +61,44 @@ describe('classifyLoops with a hole tangent to its container', () => {
 
   it('keeps the disc when a side of it borders no filled area', () => {
     // The pocket alone: the disc's long arc faces the open plane, so the disc
-    // is an area of its own (the three-tangent-circles case), not a hole.
+    // is an area of its own, not a hole.
     const groups = classifyLoops([pocket, disc])
     expect(groups.map(([outer]) => outer)).toEqual([pocket, disc])
   })
 
-  it('keeps a loop bounded by two entities, a union region', () => {
-    // The pocket shares its arc with the disc but is bounded by the square's
-    // sides too: a crossing or a lens is part of the union, never a hole.
-    const groups = classifyLoops([pocket, rest, disc])
-    expect(groups.some(([outer]) => outer === pocket)).toBe(true)
+  it('fills an island inside the left-out disc again', () => {
+    // An r0.5 circle concentric with the disc nests in it (depth 1). The disc
+    // is a hole, so the island inside the hole is material: even/odd, one
+    // level down. Before the parity flip the island was attached to nothing
+    // and vanished with the disc.
+    const at = (deg: number) => [2 + 0.5 * Math.cos((deg * Math.PI) / 180), 2 + 0.5 * Math.sin((deg * Math.PI) / 180)]
+    const half = (a0: number, a1: number): LoopEdge => ({
+      kind: 'arc', id: 'island', center: [2, 2], radius: 0.5,
+      angle_start_deg: a0, angle_end_deg: a1, ccw: true, start: at(a0), end: at(a1),
+    })
+    const island = [half(0, 180), half(180, 360)]
+    const groups = classifyLoops([pocket, rest, disc, island])
+    expect(groups.map(([outer]) => outer)).toEqual([pocket, rest, island])
+    expect(groups.every(([, holes]) => holes.length === 0)).toBe(true)
+  })
+})
+
+describe('classifyLoops keeps a union region bounded by two curves', () => {
+  // Two r2 circles at (-1,0) and (1,0) cross at (0, +-sqrt3): two crescents
+  // and the lens. Every side of the lens is shared with a crescent, but it is
+  // bounded by two entities, so it is part of the union, never a hole.
+  const P = (cx: number, deg: number) => [cx + 2 * Math.cos((deg * Math.PI) / 180), 2 * Math.sin((deg * Math.PI) / 180)]
+  const arc = (id: string, cx: number, a0: number, a1: number, ccw: boolean, v0: string, v1: string): LoopEdge => ({
+    kind: 'arc', id, center: [cx, 0], radius: 2, angle_start_deg: a0, angle_end_deg: a1, ccw,
+    start: P(cx, a0), end: P(cx, a1), start_vertex: v0, end_vertex: v1,
+  })
+  // _t = (0, sqrt3), _b = (0, -sqrt3).
+  const lens = [arc('A', -1, -60, 60, true, '_b', '_t'), arc('B', 1, 120, 240, true, '_t', '_b')]
+  const left = [arc('A', -1, 60, 300, true, '_t', '_b'), arc('B', 1, 240, 120, false, '_b', '_t')]
+  const right = [arc('B', 1, 240, 480, true, '_b', '_t'), arc('A', -1, 60, -60, false, '_t', '_b')]
+
+  it('fills all three regions', () => {
+    const groups = classifyLoops([left, lens, right])
+    expect(groups.map(([outer]) => outer)).toEqual([left, lens, right])
   })
 })

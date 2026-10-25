@@ -332,19 +332,45 @@ export function classifyLoops(loops: LoopEdge[][]): [LoopEdge[], LoopEdge[][]][]
   if (loops.length === 0) return []
   if (loops.length === 1) return [[loops[0], []]]
 
-  const n = loops.length
   const { depth, container } = loopContainment(loops, CENTROID_ARC_SAMPLES)
-  const enclosed = enclosedCurveLoops(loops, depth)
+  return fillGroups(loops, depth, container).map(({ outer, holes }) =>
+    [loops[outer], dissolveAdjacentLoops(holes.map((i) => loops[i]))])
+}
 
-  const result: [LoopEdge[], LoopEdge[][]][] = []
+/**
+ * The even/odd fill decision over a containment analysis, as loop indices:
+ * every filled loop with the holes it carries. Shared by `classifyLoops` (what
+ * OCC builds) and the profile dump (what it reports), so the two cannot drift.
+ *
+ * A loop `enclosedCurveLoops` reads as a hole its neighbours already carve
+ * out is left out entirely, and its interior is a hole: every loop nested
+ * inside it flips parity, so an island inside that disc is filled again (and
+ * a hole in the island stays a hole of the island).
+ */
+export function fillGroups(
+  loops: LoopEdge[][],
+  depth: number[],
+  container: number[],
+): { outer: number; holes: number[] }[] {
+  const n = loops.length
+  const enclosed = enclosedCurveLoops(loops, depth)
+  const odd = depth.map((d, i) => {
+    let flips = 0
+    // The container chain is a strict nesting, so it ends; the bound only
+    // guards a malformed analysis.
+    for (let c = container[i], k = 0; c >= 0 && k < n; c = container[c], k++) {
+      if (enclosed.has(c)) flips += 1
+    }
+    return (d + flips) % 2 === 1
+  })
+  const groups: { outer: number; holes: number[] }[] = []
   for (let oi = 0; oi < n; oi++) {
-    if (depth[oi] % 2 === 1) continue  // a hole, attached to its container below
-    if (enclosed.has(oi)) continue  // a hole its neighbours already carve out
-    const holes: LoopEdge[][] = []
-    for (let i = 0; i < n; i++) if (depth[i] % 2 === 1 && container[i] === oi) holes.push(loops[i])
-    result.push([loops[oi], dissolveAdjacentLoops(holes)])
+    if (odd[oi] || enclosed.has(oi)) continue  // a hole, attached to its container below
+    const holes: number[] = []
+    for (let i = 0; i < n; i++) if (odd[i] && container[i] === oi) holes.push(i)
+    groups.push({ outer: oi, holes })
   }
-  return result
+  return groups
 }
 
 /**

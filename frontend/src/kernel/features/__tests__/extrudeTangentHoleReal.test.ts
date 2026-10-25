@@ -23,19 +23,26 @@ const DISC = Math.PI * 2 * 2
 
 /** The square with circles of radius 2 at `centres`, every entity fixed. */
 function spec(centres: number[][]) {
-  const entities: { id: string; kind: string }[] = [
-    { id: 's1', kind: 'line' }, { id: 's2', kind: 'line' },
-    { id: 's3', kind: 'line' }, { id: 's4', kind: 'line' },
-  ]
-  const initial: Record<string, number[]> = {
-    s1: [0, 0, 20, 0],
-    s2: [20, 0, 20, 20],
-    s3: [20, 20, 0, 20],
-    s4: [0, 20, 0, 0],
+  return circlesSpec(centres.map((c) => [c[0], c[1], 2]), true)
+}
+
+/** Circles `[cx, cy, r]`, optionally inside the 20x20 square, every entity fixed. */
+function circlesSpec(circles: number[][], withSquare: boolean) {
+  const entities: { id: string; kind: string }[] = []
+  const initial: Record<string, number[]> = {}
+  if (withSquare) {
+    entities.push(
+      { id: 's1', kind: 'line' }, { id: 's2', kind: 'line' },
+      { id: 's3', kind: 'line' }, { id: 's4', kind: 'line' },
+    )
+    initial.s1 = [0, 0, 20, 0]
+    initial.s2 = [20, 0, 20, 20]
+    initial.s3 = [20, 20, 0, 20]
+    initial.s4 = [0, 20, 0, 0]
   }
-  centres.forEach((c, i) => {
+  circles.forEach((c, i) => {
     entities.push({ id: `h${i}`, kind: 'circle' })
-    initial[`h${i}`] = [c[0], c[1], 2]
+    initial[`h${i}`] = c
   })
   return {
     features: [
@@ -109,5 +116,37 @@ describe.skipIf(!oc || !solveBytes)('a hole tangent to the outer loop (real OCC 
     expect(ex.exception).toBeUndefined()
     expect(volume(result)).toBeCloseTo((SQUARE - 4 * DISC) * DEPTH, 3)
     expect(bodyIds(result)).toHaveLength(5)
+  })
+
+  it('fills an island inside the corner hole', () => {
+    // Even/odd one level down: the r0.5 circle inside the hole is material.
+    const result = h.run(circlesSpec([[2, 2, 2], [2, 2, 0.5]], true))
+    const ex = h.res(result, 'ex1')
+    expect(ex.status).toBe('ok')
+    expect(volume(result)).toBeCloseTo((SQUARE - DISC + Math.PI * 0.25) * DEPTH, 3)
+  })
+
+  // Three unit circles, pairwise tangent, fence off a curvilinear triangle
+  // (area sqrt3 - pi/2); the whole sketch fills the three discs and it.
+  const RING = [[0, 0, 1], [2, 0, 1], [1, Math.sqrt(3), 1]]
+  const UNION = 2.5 * Math.PI + Math.sqrt(3)
+  const INSCRIBED = 2 / Math.sqrt(3) - 1  // the circle tangent to all three
+
+  it('cuts a clear circle inside the ring gap (the control)', () => {
+    // A circle clear of the ring nests in the gap's loop: a hole.
+    const r = 0.9 * INSCRIBED
+    const result = h.run(circlesSpec([...RING, [1, Math.sqrt(3) / 3, r]], false))
+    expect(volume(result)).toBeCloseTo((UNION - Math.PI * r * r) * DEPTH, 3)
+  })
+
+  it('cuts the circle tangent to the whole ring like the clear one', () => {
+    // Tangent to all three, the circle is traced as an area beside the three
+    // gap pieces instead of nesting in the gap; it is the same hole.
+    const r = INSCRIBED
+    const result = h.run(circlesSpec([...RING, [1, Math.sqrt(3) / 3, r]], false))
+    // The status is not pinned: the loop assembler reports one pinched gap
+    // boundary partial ("left 5 of 9 edges unused"), upstream of the fill
+    // rule and independent of it (backlog).
+    expect(volume(result)).toBeCloseTo((UNION - Math.PI * r * r) * DEPTH, 3)
   })
 })

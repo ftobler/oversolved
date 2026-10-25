@@ -18,6 +18,7 @@
 import {
   ANCHORED_KINDS,
   CENTROID_ARC_SAMPLES,
+  fillGroups,
   loopContainment,
   loopGeometryKey,
   loopPts,
@@ -247,7 +248,9 @@ function gapBand(gap: number): string | null {
 /**
  * Measure a profile: per-joint gaps against the tolerance ladder, per-loop area
  * at both sample counts, duplicate loops, degenerate edges, and the containment
- * the face builder will use. `groups` is derived from the raw loops BEFORE
+ * the face builder will use. `groups` is `fillGroups`, the fill decision
+ * `classifyLoops` builds (a tangent hole its neighbours carve out is left out
+ * here too), derived from the raw loops BEFORE
  * `dissolveAdjacentLoops`, so a plus-shaped void still reports as its five
  * touching holes here even though the builder receives one merged wire; the
  * 1-sample coarse pass is reported alongside as the chord comparison.
@@ -280,15 +283,7 @@ export function describeProfile(loops: LoopEdge[][]): ProfileReport {
   const { depth, container } = fine
   const coarse = single ? fine : loopContainment(loops)
 
-  const groups: { outer: number; holes: number[] }[] = []
-  for (let oi = 0; oi < loops.length; oi++) {
-    if (depth[oi] % 2 === 1) continue
-    const holes: number[] = []
-    for (let i = 0; i < loops.length; i++) {
-      if (depth[i] % 2 === 1 && container[i] === oi) holes.push(i)
-    }
-    groups.push({ outer: oi, holes })
-  }
+  const groups = fillGroups(loops, depth, container)
 
   const reasons: string[] = []
   // Not every reason is an anomaly. A loop of arcs ALWAYS has an areaCoarse far
