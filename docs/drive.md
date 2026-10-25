@@ -424,7 +424,10 @@ banner on stdout, so a client config must use the direct node invocation.
   with the valid list and the likely spelling (`plane` suggests `flatface`),
   including inside a `not`, where it would otherwise match everything. An empty
   match is a tool error whose message names the
-  nearest-miss count per predicate; when a `type` clause matched nothing it also
+  nearest-miss count per predicate. In an `and` the counts are sequential: the
+  first clause reads "matched N" over every candidate, each later one reads
+  "then ... left M of N", counted against what the earlier clauses kept, not
+  over the whole pool. When a `type` clause matched nothing it also
   lists the values present among the candidates and the full valid set for that
   kind. An unknown predicate key is an invalid
   argument rejected by name. The selector itself is an authoring aid and is

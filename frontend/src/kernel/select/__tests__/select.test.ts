@@ -459,7 +459,26 @@ describe('selectByPredicate: alignment and diagnostics', () => {
     const message = (error as Error).message
     expect(message).toContain('matched no edges')
     expect(message).toMatch(/parallel \[0, 0, 1\] matched 4/)
-    expect(message).toMatch(/type "spline" matched 0/)
+    // The second clause is counted against what the first left, and says so.
+    expect(message).toMatch(/then type "spline" left 0 of 4/)
+  })
+
+  // kcl enclosure F3: "within x min 140 matched 0" read as the clause's own
+  // count while it alone matched; the sequential count now names its pool.
+  it('phrases a later and-clause as what it left of the earlier ones', () => {
+    let error: unknown
+    try {
+      selectByPredicate({
+        kind: 'edge',
+        where: { and: [{ type: 'line' }, { parallel: [0, 0, 1] }, { within: { axis: 'x', min: 1000 } }] },
+      }, box())
+    } catch (e) {
+      error = e
+    }
+    const message = (error as Error).message
+    expect(message).toMatch(/type "line" matched 12/)
+    expect(message).toMatch(/then parallel \[0, 0, 1\] left 4 of 12/)
+    expect(message).toMatch(/then within \{"axis":"x","min":1000\} left 0 of 4/)
   })
 
   it('an unknown type names the present and valid values instead of guessing a synonym', () => {

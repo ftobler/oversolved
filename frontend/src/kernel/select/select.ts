@@ -178,19 +178,30 @@ function label(p: Predicate): string {
 
 /** Per-predicate nearest-miss counts. For a top-level `and` this walks the
  *  clauses in order, each measured against the set the previous clause left;
- *  every other shape reports one count over the incoming pool. */
+ *  every other shape reports one count over the incoming pool. The later
+ *  clauses are phrased "then ... left M of N" so a count is not read as the
+ *  clause's match over the whole pool: `within x min 140 matched 0` read as
+ *  independent while that predicate alone matched 30 (kcl enclosure F3). */
 function diagnose(p: Predicate, pool: Candidate[], ctx: EvalContext, kind: SelectKind): string[] {
   if ('and' in p) {
     const out: string[] = []
     let current = pool
-    for (const child of p.and) {
+    p.and.forEach((child, index) => {
       const matched = evaluate(child, current, ctx)
-      out.push(...describeOne(child, current, matched.length, ctx, kind))
+      const lines = describeOne(child, current, matched.length, ctx, kind)
+      out.push(...(index === 0 ? lines : lines.map(line => thenLine(line, child, matched.length, current.length))))
       current = matched
-    }
+    })
     return out
   }
   return describeOne(p, pool, evaluate(p, pool, ctx).length, ctx, kind)
+}
+
+/** A later `and` clause's line: what it left of what the earlier ones kept. */
+function thenLine(line: string, p: Predicate, matched: number, of: number): string {
+  const head = `${label(p)} matched ${matched}`
+  const rest = line.startsWith(head) ? line.slice(head.length) : ''
+  return `then ${label(p)} left ${matched} of ${of}${rest}`
 }
 
 /** A `type` clause that matched nothing also names the values it could have
