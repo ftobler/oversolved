@@ -171,6 +171,15 @@ const ops: McpCadOps = {
   },
 
   async export(req) {
+    // The same resolver and roots as run's `out`, checked before the export
+    // runs: a relative path used to land under frontend/ and an unwritable one
+    // surfaced as a raw JSON-RPC internal error (MCAD stepper F2).
+    let out: string
+    try {
+      out = resolveProjectPath(req.out, 'doc')
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
     const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
     let bytes
@@ -188,8 +197,11 @@ const ops: McpCadOps = {
     if (!bytes) {
       return { ok: false, error: 'export produced no solid (or the local solver is unavailable)' }
     }
-    const out = path.resolve(req.out)
-    writeFileSync(out, bytes)
+    try {
+      writeFileSync(out, bytes)
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
     return { ok: true, docHash: resolved.docHash, file: out, format: req.format, bytes: bytes.byteLength }
   },
 

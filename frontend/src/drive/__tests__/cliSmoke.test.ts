@@ -712,6 +712,24 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       expect(stl).toMatchObject({ ok: true, format: 'stl' })
       expect(readFileSync(stlFile).byteLength).toBe(stl.bytes)
 
+      // MCAD stepper F2: export's relative `out` resolves against the repo root
+      // like run's, and a path outside the scratch roots is a tool error naming
+      // them, not a raw JSON-RPC internal error.
+      const relative = toolPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: edited.docHash, format: 'step', out: 'tmp/drive-cli-smoke/mcp-relative.step' },
+      }))
+      expect(relative).toMatchObject({ ok: true, file: path.join(TMP_DIR, 'mcp-relative.step') })
+      expect(readFileSync(path.join(TMP_DIR, 'mcp-relative.step')).byteLength).toBeGreaterThan(0)
+      const outside = await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: edited.docHash, format: 'step', out: 'frontend/x.step' },
+      })
+      expect(outside.error).toBeUndefined()
+      const refused = outside.result as { isError?: boolean; content: Array<{ text: string }> }
+      expect(refused.isError).toBe(true)
+      expect((JSON.parse(refused.content[0].text) as { error: string }).error).toContain('tmp/, bugreports/')
+
       // An unknown handle is a tool failure naming the bound, not a crash.
       const unknown = await client.request('tools/call', {
         name: 'measure',

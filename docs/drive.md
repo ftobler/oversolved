@@ -524,9 +524,10 @@ banner on stdout, so a client config must use the direct node invocation.
 - `run` with `out` writes the final document (even the accepted prefix of a
   refused script) as JSON for a `.json` path and YAML otherwise, and adds
   `file` and `format` to the reply. `compare` with `referencePath` reads the
-  reference from a file instead of inline. Both resolve relative paths against
-  the repo root, so `tmp/x.json` names the project's tmp even though the server
-  runs with cwd `frontend/`. A written document must stay inside `tmp/` or
+  reference from a file instead of inline. `run`'s `out`, `export`'s `out` and
+  `compare`'s `referencePath` all resolve relative paths against the repo root,
+  so `tmp/x.json` names the project's tmp even though the server runs with cwd
+  `frontend/`. A written document or export must stay inside `tmp/` or
   `bugreports/`; a reference may also come from `scratch/`. Anything else is
   refused with the allowed directories named. The file reference goes through
   the same corpus validator as the inline object.

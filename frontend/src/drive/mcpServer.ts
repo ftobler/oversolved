@@ -371,7 +371,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         doc: DOC_SCHEMA,
         docHash: DOC_HASH_SCHEMA,
         format: { type: 'string', enum: ['step', 'stl'] },
-        out: { type: 'string' },
+        out: { type: 'string', description: 'The file to write; the path must resolve inside tmp/ or bugreports/ (relative paths resolve against the repo root).' },
         body: { type: 'string', description: 'Export this single body id; omit for the whole assembly.' },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
