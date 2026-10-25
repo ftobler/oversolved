@@ -112,8 +112,9 @@ fn a_line_tangent_to_an_arc_makes_one_contact_even_when_the_coordinates_are_larg
     // subtraction of the two coordinates leaves it a hair positive, the two
     // roots land ~1e-6 world apart (the square root of the rounding), and the
     // vertex merge fuses them while their split parameters stay distinct. The
-    // fix is `lc`'s graze-side collapse, mirroring `cc`: within the collapse
-    // budget the pair IS the single tangency contact.
+    // root a hair below the arc start used to wrap to the far end of the angle
+    // window and split the arc into its complement; `within_arc_span` now
+    // refuses a split outside the authored sweep, so the arc stays one span.
     let cases: [([f64; 2], f64, f64); 3] = [
         ([6.038896, -2.3], 3.4, 270.0), // origin, the bottom-right corner arc
         ([97.038896, 222.7], 3.4, 270.0), // the report offset's same corner
