@@ -35,7 +35,8 @@ import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { PartDoc } from '@/types/cad'
 import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { createHeadlessPart } from '@/drive/headlessPart'
-import { runHeadless, measureHeadless, compareHeadless, exportHeadless, seedBuiltins } from '@/drive/headlessOps'
+import { runHeadless, measureHeadless, compareHeadless, exportHeadless, seedBuiltins, emptyDriveDoc } from '@/drive/headlessOps'
+import { stampLoadedDoc } from '@/drive/mcpDocRef'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createDriveJournal, type ReproPayload } from '@/drive/journal'
@@ -125,7 +126,7 @@ function readDoc(file: string): PartDoc {
   // kernel half-parsed.
   const loaded = loadPartDoc(parsed, { name: file })
   if (!loaded.ok) throw new Error(docLoadErrorMessage(loaded.error))
-  return seedBuiltins(loaded.doc)
+  return seedBuiltins(stampLoadedDoc(loaded.doc))
 }
 
 function readSteps(file: string): ScriptStep[] {
@@ -177,7 +178,7 @@ async function runCommand(args: Args): Promise<number> {
   const steps = readSteps(scriptFile)
   const doc = args.flags.doc
     ? readDoc(args.flags.doc)
-    : seedBuiltins({ version: 1, kind: 'part', features: [] })
+    : emptyDriveDoc()
   const journal = createDriveJournal(doc)
   const result = await runHeadless({
     doc,
@@ -215,7 +216,7 @@ async function commandsCommand(): Promise<number> {
   // A fresh seeded session supplies the live enabled verdicts; reading the
   // catalog runs no spec body and starts no solve.
   const part = createHeadlessPart({
-    doc: seedBuiltins({ version: 1, kind: 'part', features: [] }),
+    doc: emptyDriveDoc(),
     docId: 'cli-commands',
   })
   printJson({

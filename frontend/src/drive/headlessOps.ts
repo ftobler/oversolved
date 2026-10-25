@@ -19,6 +19,7 @@ import type { MeasureRecord } from '@/kernel/occ/measure'
 import type { TranslationReference } from '@/translations/corpus'
 import { selectByPredicate, type SelectResult, type Selector } from '@/kernel/select'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
+import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import { createHeadlessPart, type HeadlessPart } from '@/drive/headlessPart'
 import { featureProblems, readSolveOutcomes, MISSING_VERDICT_STATUS, type FeatureProblem } from '@/drive/featureOutcome'
 import { featureDeltaRows, touchedFeatureIds, type FeatureDelta } from '@/drive/featureDeltas'
@@ -36,6 +37,17 @@ export function seedBuiltins(doc: PartDoc): PartDoc {
     doc.features = BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f }))
   }
   return doc
+}
+
+/**
+ * The empty document a headless driver starts from. It is stamped with the
+ * loader's ladder version: the drive writes current documents, and a stamp
+ * of 1 sent every reply back through the migration ladder on reload, which
+ * rewrote the `$sk1` sketch refs to `@sk1` and moved a YAML round-tripped
+ * docHash (din_clip F5, ANC101 F1).
+ */
+export function emptyDriveDoc(): PartDoc {
+  return seedBuiltins({ version: CURRENT_DOC_VERSION, kind: 'part', features: [] })
 }
 
 export interface HeadlessRunOptions {

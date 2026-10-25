@@ -9,6 +9,7 @@ import type { PartDoc } from '@/types/cad'
 import { DocHandleStore, DOC_HANDLE_CAPACITY } from '../docHandleStore'
 import { docHashOf } from '../docHash'
 import { resolveDoc, runReply, summarizeDoc } from '../mcpDocRef'
+import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 
 function doc(label: string, body = 'body_ex1'): PartDoc {
   return {
@@ -25,7 +26,9 @@ describe('resolveDoc', () => {
     const resolved = resolveDoc({ doc: doc('sk1') }, documents)
     expect(resolved).toMatchObject({ ok: true, docHash: docHashOf(doc('sk1')) })
     if (!resolved.ok) throw new Error('unreachable')
-    expect(documents.get(resolved.docHash)).toEqual(doc('sk1'))
+    // The handle names the payload as sent; the stored copy is the loaded one,
+    // stamped current so its next reload does not migrate it again.
+    expect(documents.get(resolved.docHash)).toEqual({ ...doc('sk1'), version: CURRENT_DOC_VERSION })
   })
 
   it('resolves a known handle', () => {

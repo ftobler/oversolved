@@ -507,7 +507,11 @@ banner on stdout, so a client config must use the direct node invocation.
   measurement reads each unique OCC shape once, not once per feature.
 - `run` with `steps: []` solves the given `doc` or `docHash` once and returns
   the same fields. It is the "inspect this document" call: the solve state has
-  a real `generation` and `features` is the document's problem list.
+  a real `generation` and `features` is the document's problem list. A reply's
+  `docHash` is stable: `run` with `steps: []` on it, by `docHash` or with its
+  exported YAML or JSON as `doc`, returns the same hash. A loaded `doc` is
+  stamped with the loader's current version, so a document an older stamp
+  migrated on the way in does not migrate again on its next reload.
 - `files` is `[{ id, path }]`, the CLI's `--file` flags in JSON form; paths
   resolve against the server's cwd.
 - `run` with `out` writes the final document (even the accepted prefix of a

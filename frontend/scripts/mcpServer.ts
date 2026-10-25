@@ -21,7 +21,7 @@ import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { PartDoc } from '@/types/cad'
 import { createHeadlessPart } from '@/drive/headlessPart'
-import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHeadless, seedBuiltins } from '@/drive/headlessOps'
+import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHeadless, emptyDriveDoc } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createDriveJournal } from '@/drive/journal'
@@ -47,7 +47,7 @@ setSketchTopology(loadTopology())
 const writeProtocol = routeKernelStdoutToStderr()
 
 function emptyPartDoc(): PartDoc {
-  return seedBuiltins({ version: 1, kind: 'part', features: [] })
+  return emptyDriveDoc()
 }
 
 // Paths resolve against the server's cwd, like the CLI's --file values.

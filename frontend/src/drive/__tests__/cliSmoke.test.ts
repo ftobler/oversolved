@@ -24,6 +24,7 @@ import { describe, it, expect } from 'vitest'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { docHashOf } from '@/drive/docHash'
 import { DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
+import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import { HOLE_ON_LINE_SKETCH } from './featureFixtures'
 
 const execFileAsync = promisify(execFile)
@@ -182,7 +183,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
       kind: string
       features: Array<{ id: string }>
     }
-    expect(jsonDoc).toMatchObject({ version: 1, kind: 'part' })
+    expect(jsonDoc).toMatchObject({ version: CURRENT_DOC_VERSION, kind: 'part' })
     expect(jsonDoc.features.map(feature => feature.id)).toContain('ex1')
 
     // 10 x 10 x 5 box: 6 faces, 12 edges, 8 vertices, volume 500.
@@ -524,7 +525,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
         version: number
         features: Array<{ id: string }>
       }
-      expect(written).toMatchObject({ version: 1 })
+      expect(written).toMatchObject({ version: CURRENT_DOC_VERSION })
       expect(written.features.map(feature => feature.id)).toContain('ex1')
       // The default reply is a handle, not the document: a session of calls
       // does not re-send the part.

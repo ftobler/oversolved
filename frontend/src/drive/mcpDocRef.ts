@@ -4,7 +4,7 @@
 // kernel.
 
 import type { PartDoc } from '@/types/cad'
-import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
+import { CURRENT_DOC_VERSION, docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { DocHandleStore, DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
 import { docHashOf } from '@/drive/docHash'
 import { formatFeatureProblem, type FeatureProblem } from '@/drive/featureOutcome'
@@ -15,6 +15,17 @@ import type { McpDocArguments } from '@/drive/mcpServer'
 export type ResolvedDoc =
   | { ok: true; doc: PartDoc; docHash: string }
   | { ok: false; error: string }
+
+/**
+ * Stamp a document the loader accepted with the ladder version: loadPartDoc
+ * migrated it, so it is current, and an older stamp left on it would rerun
+ * the ladder on the reply's next reload and rewrite the `$` refs the run's own
+ * mutations wrote since, moving the docHash of a mere inspect.
+ */
+export function stampLoadedDoc(doc: PartDoc): PartDoc {
+  doc.version = Math.max(CURRENT_DOC_VERSION, doc.version ?? 0)
+  return doc
+}
 
 /** Resolve the argument pair, storing a full doc under its content hash. */
 export function resolveDoc(req: McpDocArguments, documents: DocHandleStore): ResolvedDoc {
@@ -34,8 +45,9 @@ export function resolveDoc(req: McpDocArguments, documents: DocHandleStore): Res
   const docHash = docHashOf(req.doc)
   const loaded = loadPartDoc(req.doc, { name: 'mcp' })
   if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
-  documents.putAs(docHash, loaded.doc)
-  return { ok: true, doc: loaded.doc, docHash }
+  const doc = stampLoadedDoc(loaded.doc)
+  documents.putAs(docHash, doc)
+  return { ok: true, doc, docHash }
 }
 
 // The reply's one-line index of what the script built. Body ids are the live
