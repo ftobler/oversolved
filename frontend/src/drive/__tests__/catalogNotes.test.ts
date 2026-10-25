@@ -1,3 +1,5 @@
+// @vitest-environment node
+//
 // The catalog and schema notes the 2026-10-24 practice round found missing or
 // wrong (plan mcp-practice-fixups-3, item F). Each note is generated where the
 // rest of the catalog's notes are, so these pin the sentences a client reads.
@@ -5,7 +7,9 @@
 import { describe, it, expect } from 'vitest'
 import { MUTATION_CATALOG, mutationInfoOf } from '../mutationCatalog'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
-import type { Mutation } from '@/types/cad'
+import type { Mutation, SketchFeature } from '@/types/cad'
+import { featureParamsSchema } from '@/persistence/partDocSchema'
+import { runHeadless, emptyDriveDoc } from '../headlessOps'
 
 // Every note text of every row: the row note plus each field note.
 function allNotes(): Array<[string, string]> {
@@ -38,6 +42,47 @@ describe('F1: constraint kinds named in notes', () => {
         }
       }
     }
+  })
+})
+
+describe('F3: variables are named by label', () => {
+  it('says so on both variable rows and in the expression schema', () => {
+    for (const type of ['add_variable', 'set_variable_field'] as const) {
+      expect(mutationInfoOf(type).note, type).toContain('by the variable feature\'s `label`')
+    }
+    const schema = featureParamsSchema('extrude') as { properties: Record<string, { description?: string }> }
+    expect(schema.properties.distance.description).toContain('`label`')
+  })
+})
+
+describe('F4: symmetric extrude distance', () => {
+  it('names distance as the total on both extrude rows', () => {
+    for (const type of ['add_extrude', 'set_extrude_field'] as const) {
+      expect(mutationInfoOf(type).note, type).toContain('`distance` as the TOTAL length, half on each side')
+    }
+  })
+})
+
+describe('F5: add_center_rect created ids', () => {
+  it('documents the order the mutation actually creates', async () => {
+    expect(mutationInfoOf('add_center_rect').note).toContain('bottom, right, top, left')
+    const result = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [
+        { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' } },
+        { mutation: { type: 'add_center_rect', featureId: 'sk1', center: [0, 0], corner: [5, 3] } },
+      ],
+    })
+    const ids = result.outcome.steps[1].createdIds
+    const sketch = result.doc!.features!.find(feature => feature.id === 'sk1') as SketchFeature
+    const entityIds = ids.filter(id => sketch.entities!.some(entity => entity.id === id))
+    expect(entityIds).toHaveLength(5)
+    const [bottom, right, top, left, centre] = entityIds.map(id => sketch.initial![id])
+    expect([bottom[1], bottom[3]]).toEqual([-3, -3])
+    expect([right[0], right[2]]).toEqual([5, 5])
+    expect([top[1], top[3]]).toEqual([3, 3])
+    expect([left[0], left[2]]).toEqual([-5, -5])
+    expect(centre).toEqual([0, 0])
   })
 })
 

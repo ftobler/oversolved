@@ -290,13 +290,23 @@ const OFFSET_SIDE_NOTE =
   'An open selection keeps the per-entity rule: a line moves along the left normal of its start->end direction ' +
   'and a circle or arc grows its radius.'
 
+const VARIABLE_NAME_NOTE =
+  'An expression refers to a variable by the variable feature\'s `label` (the name; `add_variable` sanitizes it to an ' +
+  'identifier and suffixes `_2`, `_3`... on a clash), not by its featureId: `label: width` is used as `width * 2`.'
+
 // merge_target is a body id, not a ref: the practice runs guessed `@body_ex5`.
 const MERGE_TARGET_NOTE =
   'The bare body id the cut or add goes into, e.g. `body_ex5` (no @ sigil); absent means every body the tool reaches.'
 
+// The symmetric split is the one direction whose distance reads two ways
+// (sprocket, ppp0103 F2, ppp0105 F3).
+const EXTRUDE_FIELDS_NOTE =
+  '`direction: symmetric` takes `distance` as the TOTAL length, half on each side of the sketch plane ' +
+  '(distance 10 spans -5..+5); `normal` and `reverse` take it whole on one side. `merge_target` is the bare body id.'
+
 const EXTRUDE_INLINE_NOTE =
   'One call may carry the whole extrude: `direction`, `operation` and `merge_target` set the same keys ' +
-  '`set_extrude_field` does.'
+  '`set_extrude_field` does. ' + EXTRUDE_FIELDS_NOTE
 
 // The boolean refuses to solve without a target and a tool, so the catalog
 // names them up front (Case_Seam_Lip F5).
@@ -495,7 +505,10 @@ export const MUTATION_CATALOG = {
     summary: 'Add a rectangle by centre and corner.',
     note: '`corner` is the half-diagonal corner: the rectangle mirrors it through `center`, so '
       + 'center [0,0] with corner [1,1] gives a 2x2 rectangle. The feature also leaves a centre point entity '
-      + '(not construction geometry) that the two diagonal midpoint constraints reference; delete it if it is not wanted.',
+      + '(not construction geometry) that the two diagonal midpoint constraints reference; delete it if it is not wanted. '
+      + 'The created entity ids are the four lines, then the centre point: line 1 lies on the mirrored corner\'s y, '
+      + 'line 2 on `corner`\'s x, line 3 on `corner`\'s y, line 4 on the mirrored corner\'s x. With `corner` up and right '
+      + 'of `center` that is bottom, right, top, left, the add_rect order.',
     fields: {
       featureId: str(),
       center: point(),
@@ -588,6 +601,7 @@ export const MUTATION_CATALOG = {
   },
   set_extrude_field: {
     summary: 'Set one extrude field (distance, direction, operation, ...).',
+    note: EXTRUDE_FIELDS_NOTE,
     fields: { featureId: str(), field: fieldOf('extrude', 'set_extrude_field'), value: setterValue('extrude') },
   },
   add_extrude_profile: {
@@ -866,7 +880,7 @@ export const MUTATION_CATALOG = {
       'A variable must precede every feature that names it: an expression naming a variable defined later is refused with ' +
       '"<field>: variable \'<name>\' is defined after this feature (at index N); move it up with reorder_features". ' +
       'N is the index among the solved (non-builtin) features. `insertAt` and reorder_features.toIndex count the seeded ' +
-      'plane rows, so the first user slot is usually 4; a smaller N clamps there.',
+      'plane rows, so the first user slot is usually 4; a smaller N clamps there. ' + VARIABLE_NAME_NOTE,
     fields: {
       ...featureAddFields(),
       insertAt: insertAt(),
@@ -874,6 +888,7 @@ export const MUTATION_CATALOG = {
   },
   set_variable_field: {
     summary: 'Set one variable field, e.g. expression.',
+    note: VARIABLE_NAME_NOTE,
     fields: { featureId: str(), field: fieldOf('variable', 'set_variable_field'), value: setterValue('variable') },
   },
   add_helix: {

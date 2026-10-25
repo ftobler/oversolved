@@ -26,7 +26,12 @@ export type JsonSchema = Record<string, unknown>
 const REF: JsonSchema = { type: 'string', pattern: '^(?!\\$)' }
 const REF_LIST: JsonSchema = { type: 'array', items: REF }
 const REF_OR_LIST: JsonSchema = { anyOf: [REF, REF_LIST] }
-const NUMBER_OR_EXPR: JsonSchema = { anyOf: [{ type: 'number' }, { type: 'string' }] }
+// The description is what a schema reader sees beside every expression field:
+// an expression names a variable by its label, which the flange run guessed.
+const NUMBER_OR_EXPR: JsonSchema = {
+  anyOf: [{ type: 'number' }, { type: 'string' }],
+  description: 'A number, or an expression string; an expression names a variable by the variable feature\'s `label`, not its id.',
+}
 const VEC3: JsonSchema = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 }
 
 const BASE_PROPERTIES: JsonSchema = {
