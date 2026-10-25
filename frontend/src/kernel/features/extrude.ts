@@ -27,6 +27,7 @@ import { profileAreaReport } from './shared/profileLoops'
 import { loopCentroid } from '../profileLoops'
 import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
+import { makeTranslationTrsf, transformCopy } from '../occ/transforms'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
 import { resolveUpToPlane, orientToTarget, trimAtPlane, UP_TO_REACH, type CutPlane } from './upTo'
@@ -87,6 +88,33 @@ function bodyFaceName(
     return uuid ? { uuid, ancestry: [...(body.face_ancestry?.[uuid] ?? [])] } : null
   }
   return null
+}
+
+/**
+ * The opposite-direction probe a missed cut runs (bodyOps): the tool moved back
+ * by its own sweep spans the profile minus [0, sweep], which is exactly the
+ * prism the other `direction` builds. Built only when the cut missed.
+ */
+function oppositeCutProbe(
+  oc: OccModule,
+  scope: DisposeScope,
+  tool: OccShape,
+  sweep: Vec3,
+  direction: string,
+): { tool: () => OccShape | null; message: string } {
+  const other = direction === 'reverse' ? 'normal' : 'reverse'
+  const along = direction === 'reverse' ? 'against' : 'along'
+  return {
+    tool: () => {
+      try {
+        const back = makeTranslationTrsf(oc, scope, -sweep[0], -sweep[1], -sweep[2])
+        return scope.track(transformCopy(oc, scope, tool, back))
+      } catch {
+        return null  // a failed probe only loses the hint; the plain miss error still fires
+      }
+    },
+    message: `cutting ${along} the plane normal leaves the body; \`direction: ${other}\` cuts into it`,
+  }
 }
 
 /** Solve an extrude feature into the body store (mirrors `_solve_extrude`). */
@@ -297,6 +325,10 @@ export function solveExtrude(
   }
 
   let toolShape: OccShape
+  // The blind one-sided sweep, distance included: the tool spans the profile
+  // plus [0, sweep]. Set only on the plain normal/reverse branches, the ones a
+  // cut that misses can be flipped on.
+  let sweep: Vec3 | null = null
   if (usingFaces) {
     const faceNormalVec = profileNormal()
     const reverseVec = faceNormalVec.map((n) => -n) as Vec3
@@ -356,6 +388,7 @@ export function solveExtrude(
       toolShape = tool
     } else {
       const dir = direction === 'reverse' ? reverseVec : faceNormalVec
+      sweep = dir.map((c) => c * distance) as Vec3
       toolShape = fuseChain(
         scope,
         scope.track(prism(cqFaces[0], dir, distance, true)),
@@ -411,6 +444,7 @@ export function solveExtrude(
       Object.assign(names.edgeAncestry, edges.edgeAncestry)
     } else {
       toolShape = swept
+      if (direction !== 'symmetric') sweep = sweepDir.map((c) => c * length) as Vec3
     }
   }
 
@@ -454,6 +488,7 @@ export function solveExtrude(
     faceAncestry: names.faceAncestry,
     edgeAncestry: names.edgeAncestry,
     capAncestry: names.capAncestry,
+    ...(operation === 'cut' && sweep !== null && { oppositeProbe: oppositeCutProbe(oc, scope, toolShape, sweep, direction) }),
   })
   Object.assign(result, opResult)
 

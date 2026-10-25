@@ -42,6 +42,11 @@ export interface ApplyBodyOperationInput {
   faceAncestry?: Record<string, string[]> | null
   edgeAncestry?: Record<string, string[]> | null
   capAncestry?: Record<string, string[]> | null
+  // A cut that misses every target probes this before it fails: the same tool
+  // built the opposite way. When it would remove material the error names the
+  // one-field fix (`message`) instead of only "nothing to remove". A face
+  // sketch's normal points out of the body, so this is the common miss.
+  oppositeProbe?: { tool: () => OccShape | null; message: string }
 }
 
 export interface ApplyBodyOperationResult {
@@ -106,6 +111,7 @@ export function applyBodyOperation(
     faceAncestry = null,
     edgeAncestry = null,
     capAncestry = null,
+    oppositeProbe,
   } = input
 
   // The tool body's construction-name maps, carried onto a body the tool becomes
@@ -208,6 +214,15 @@ export function applyBodyOperation(
       cutBodyIds.push(...resplitBody(oc, scope, table, bodyStore, existingBody, newShape, featureId, names))
     }
     if (!cutAnything) {
+      const flipped = oppositeProbe?.tool() ?? null
+      if (flipped !== null) {
+        const reaches = targetIds.some((bid) => {
+          const handle = bodyStore[bid]?.shape
+          return handle != null && shapesIntersect(oc, table.get<OccShape>(handle), flipped)
+        })
+        scope.release(flipped)
+        if (reaches) throw new Error(`${opName}: ${oppositeProbe!.message}`)
+      }
       throw new Error(`${opName}: cut does not intersect any target body - nothing to remove`)
     }
     result.body_id = cutBodyId as string
