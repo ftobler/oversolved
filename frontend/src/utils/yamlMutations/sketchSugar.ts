@@ -6,6 +6,7 @@ import {
 import type { SketchLists } from './helpers'
 import { applyAddConstraint } from './sketch'
 import { offsetCorners, coordinateCorners, uniqueCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
+import { offsetSideFactors } from '@/utils/geometry/offsetSide'
 import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
 import { sameSnapVertex } from '@/utils/snapRefs'
 
@@ -230,9 +231,12 @@ export function applyAddNgon(
  *  by `distance`, with the sign selecting the side. Returns null for a degenerate
  *  source (a zero-length line) that has no well-defined normal.
  *
- *  Sign convention (locked by tests so a refactor cannot silently flip it): a
+ *  Seed rule (locked by tests so a refactor cannot silently flip it): a
  *  positive `distance` moves a line along the LEFT normal of its start->end
- *  direction `(-dy, dx)/L`, and grows the radius of a circle/arc (outward).
+ *  direction `(-dy, dx)/L`, and grows the radius of a circle/arc. This is the
+ *  per-entity rule an OPEN selection uses; applyAddOffset corrects the sign per
+ *  entity for a selection that closes into loops (geometry/offsetSide.ts), so
+ *  there a positive distance always goes out of the bounded region.
  *  Spline/ellipse have no clean parametric offset, so the seed is an exact copy.
  *  Shared with the connected-profile offset so both author identical seeds. */
 function offsetSeed(kind: string, p: number[], distance: number): number[] | null {
@@ -355,12 +359,21 @@ export function applyAddOffset(
   const cloneOf = new Map<string, string>()  // source id -> clone id
   const kindOf = new Map<string, string>()   // source id -> entity kind
 
+  // A selection that closes into loops offsets by side, not by seed rule:
+  // positive is out of the bounded region whatever each entity's direction.
+  const sources = sourceIds.flatMap((id) => {
+    const entity = feature.entities.find(e => e.id === id)
+    const params = feature.initial[id]
+    return entity && params ? [{ id, kind: entity.kind, params }] : []
+  })
+  const sideFactor = offsetSideFactors(sources)
+
   for (const srcId of sourceIds) {
     const src = feature.entities.find(e => e.id === srcId)
     const srcParams = feature.initial[srcId]
     if (!src || !srcParams) continue
 
-    const seed = offsetSeed(src.kind, srcParams, distance)
+    const seed = offsetSeed(src.kind, srcParams, distance * (sideFactor.get(srcId) ?? 1))
     if (!seed) continue  // degenerate source: no offset direction
 
     // Each clone is pushed before the next id is drawn, so reading the live list

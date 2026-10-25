@@ -190,7 +190,8 @@ function triangleRingDoc(): Record<string, unknown> {
       constraints: [],
     }] as Array<Record<string, unknown>>,
   }
-  applyAddOffset(doc as unknown as PartDoc, 'sk1', ['o1', 'o2', 'o3'], 2)
+  // A closed loop's negative offset is the inset one (positive goes outward).
+  applyAddOffset(doc as unknown as PartDoc, 'sk1', ['o1', 'o2', 'o3'], -2)
   doc.features.push({
     id: 'ex1', kind: 'extrude', sketch: '$sk1',
     distance: 120, direction: 'symmetric', operation: 'new',

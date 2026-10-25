@@ -54,7 +54,7 @@ export function offsetCorners(
  *  curve ends, so neither contributes an endpoint. Arc ends are derived from
  *  centre, radius and the degree angle pair, exactly as the draw/solve side
  *  reads them. */
-function endpointVertices(
+export function endpointVertices(
   kind: string,
   params: readonly number[],
 ): Array<{ vertexKey: string; point: [number, number] }> {

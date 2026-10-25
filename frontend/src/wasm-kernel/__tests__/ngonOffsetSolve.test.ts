@@ -194,9 +194,9 @@ describe.skipIf(!bytes)('connected-profile offset stays a closed profile after s
   // least-change solver holds the seeded inner square.
   it('small inward offset of a square solves to a smaller square', () => {
     const doc = emptySketch()
-    applyAddRect(doc, 'sk', [0, 0], [10, 10])  // CCW: +offset mites inward
+    applyAddRect(doc, 'sk', [0, 0], [10, 10])
     const srcIds = entities0(doc).map((e) => e.id)
-    applyAddOffset(doc, 'sk', srcIds, 2)
+    applyAddOffset(doc, 'sk', srcIds, -2)  // a closed loop's negative offset is inward
     const cloneIds = entities0(doc).map((e) => e.id).filter((id) => !srcIds.includes(id))
 
     const solved = solveFeature(doc)
@@ -219,7 +219,7 @@ describe.skipIf(!bytes)('connected-profile offset stays a closed profile after s
     ] as const) {
       applyAddEntity(doc, 'sk', 'line', [...params], id)
     }
-    applyAddOffset(doc, 'sk', ['o1', 'o2', 'o3'], 2)
+    applyAddOffset(doc, 'sk', ['o1', 'o2', 'o3'], -2)
     const cloneIds = entities0(doc).map((e) => e.id).filter((id) => !['o1', 'o2', 'o3'].includes(id))
     expect(cloneIds).toHaveLength(3)
 

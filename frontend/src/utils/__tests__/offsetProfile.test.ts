@@ -166,7 +166,8 @@ describe('applyAddOffset connectivity', () => {
     const f = feat(doc)
     const srcIds = f.entities!.map((e) => e.id)
     const lA = srcIds[0], lB = srcIds[1]
-    applyAddOffset(doc, 'sk', srcIds, 2)
+    // Inward, so the miter lands inside the rectangle.
+    applyAddOffset(doc, 'sk', srcIds, -2)
 
     // The lA/lB corner clones must meet at the miter (10-2, 0+2) = (8, 2),
     // which is NOT the offset of the corner (10, 0).
@@ -381,7 +382,8 @@ describe('applyAddOffset on a coordinate-only chain', () => {
       ['o2', [54, 0, 0, 85]],
       ['o3', [0, 85, -54, 0]],
     ])
-    applyAddOffset(doc, 'sk', srcIds, 2)
+    // The inset ring: a closed loop's negative offset goes inward.
+    applyAddOffset(doc, 'sk', srcIds, -2)
     const f = feat(doc)
 
     expect(f.entities!).toHaveLength(6)
