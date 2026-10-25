@@ -8,7 +8,8 @@ use super::super::{
 };
 use super::intersect::{collinear_overlap, intersect, Classified};
 use super::{
-    angle_in_arc, arc_tangent, dedup, degrees, has_param, norm_arc_param, Split, TopoEntity, Verts,
+    angle_in_arc, arc_is_full_turn, arc_tangent, dedup, degrees, has_param, norm_arc_param, Split,
+    TopoEntity, Verts,
 };
 use crate::radians;
 
@@ -318,14 +319,18 @@ pub(super) fn find_all_intersections(
 fn within_arc_span(e: &TopoEntity, p: f64, a0: f64) -> bool {
     match *e {
         TopoEntity::Arc {
-            radius, angle_end, ..
+            radius,
+            angle_start,
+            angle_end,
+            ..
         } => {
-            // A stored 360 degree arc is a full turn: `norm_arc_param` maps its
-            // end back onto `a0`, so the span check would drop every hit.
-            let raw = radians(angle_end);
-            if (raw - a0).abs() >= TWO_PI - 1e-9 {
+            // An arc whose angles coincide modulo a turn is the whole circle to
+            // `angle_in_arc`: `norm_arc_param` maps its end back onto `a0`, so
+            // the span check would drop every hit it accepted.
+            if arc_is_full_turn(angle_start, angle_end) {
                 return true;
             }
+            let raw = radians(angle_end);
             // The same endpoint slack `angle_in_arc` grants, in the same units:
             // the angular width of a MERGE-world chord at this radius, floored
             // at EPS. A contact inside that window still belongs to the corner.
@@ -776,4 +781,51 @@ pub(super) fn build_half_edge_graph(
     }
 
     (hes, he_eid)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn arc(a0: f64, a1: f64) -> TopoEntity {
+        TopoEntity::Arc {
+            construction: false,
+            center: [0.0, 0.0],
+            radius: 5.0,
+            angle_start: a0,
+            angle_end: a1,
+            start: [0.0, 0.0],
+            end: [0.0, 0.0],
+        }
+    }
+
+    #[test]
+    fn the_split_span_check_agrees_with_angle_in_arc_on_full_turns() {
+        // Every spelling `angle_in_arc` reads as the whole circle must keep
+        // every hit here too, or a crossing the domain check accepted is
+        // silently never split. A zero-span spelling is the case the old raw
+        // "end - start is a turn" test missed.
+        for (a0, a1) in [(0.0, 360.0), (90.0, 450.0), (30.0, 30.0), (200.0, -160.0)] {
+            let e = arc(a0, a1);
+            let start = radians(a0);
+            for deg in [10.0, 100.0, 190.0, 280.0] {
+                let p = norm_arc_param(radians(deg), start);
+                assert!(angle_in_arc(radians(deg), 5.0, a0, a1));
+                assert!(within_arc_span(&e, p, start), "{a0}..{a1} dropped {deg}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_hit_a_hair_below_the_start_is_not_split_at_the_far_end() {
+        // The DB9 corner: a contact just under a0 normalizes to a0 + 2pi - eps,
+        // past the authored end, and must not become a split.
+        let e = arc(270.0, 360.0);
+        let start = radians(270.0);
+        // Past SPLIT_EPS below, so the normalization wraps it.
+        let p = norm_arc_param(start - 1e-6, start);
+        assert!(!within_arc_span(&e, p, start));
+        let inside = norm_arc_param(radians(300.0), start);
+        assert!(within_arc_span(&e, inside, start));
+    }
 }

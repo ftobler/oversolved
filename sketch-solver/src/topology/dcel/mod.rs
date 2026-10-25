@@ -279,13 +279,23 @@ pub fn pymod(a: f64, b: f64) -> f64 {
     ((a % b) + b) % b
 }
 
+/// True when an arc's stored angles coincide modulo a turn, which the builder
+/// reads as the whole circle (every angle is on it). Shared by `angle_in_arc`
+/// and the split-span check so the two never disagree about which arcs have no
+/// endpoints to clip at.
+fn arc_is_full_turn(start_deg: f64, end_deg: f64) -> bool {
+    let s = pymod(radians(start_deg), TWO_PI);
+    let e = pymod(radians(end_deg), TWO_PI);
+    (s - e).abs() < EPS || (s - e).abs() > TWO_PI - EPS
+}
+
 fn angle_in_arc(a_rad: f64, r: f64, start_deg: f64, end_deg: f64) -> bool {
+    if arc_is_full_turn(start_deg, end_deg) {
+        return true;
+    }
     let s = pymod(radians(start_deg), TWO_PI);
     let e = pymod(radians(end_deg), TWO_PI);
     let a = pymod(a_rad, TWO_PI);
-    if (s - e).abs() < EPS || (s - e).abs() > TWO_PI - EPS {
-        return true;
-    }
     // The endpoint slack is the angular width of a MERGE-world chord at this
     // radius, floored at EPS so the window is never tighter than the old fixed
     // radian slack. The old EPS-radians window was 1e-9 * r world wide: four
