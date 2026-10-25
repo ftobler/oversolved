@@ -29,13 +29,11 @@ export interface Resolved3dGeometry {
 
 /** A lowered projection: the resolved entity kind plus its 2D params. The kind
  *  can differ from the declared kind (a tilted circle lowers to an ellipse).
- *  ``ccw`` is emitted only when the projection MIRRORS the source sweep (an
- *  anti-parallel source axis), because every arc consumer defaults to ccw and
- *  a mirrored arc would otherwise be read as its complement. */
+ *  Arc params are always the counter-clockwise spelling, the only one the
+ *  sketch arc entity has. */
 interface ProjectedParams {
   kind: string
   params: number[]
-  ccw?: boolean
 }
 
 function len3(a: number[]): number {
@@ -330,9 +328,12 @@ export function projectTo2d(
     const ea = Math.atan2(e2d[1] - c2d[1], e2d[0] - c2d[0]) * (180 / Math.PI)
     const r2d = len2d([s2d[0] - c2d[0], s2d[1] - c2d[1]])
     // An anti-parallel source axis mirrors the arc onto the plane, so the 2D
-    // sweep runs clockwise; say so explicitly or consumers read the complement.
-    const ccw = dot3(normalize3(axis), normalize3(cross3(plane.x_axis, plane.y_axis))) > 0
-    return { kind: 'arc', params: [...c2d, r2d, sa, ea], ...(ccw ? {} : { ccw: false }) }
+    // sweep runs clockwise from sa to ea. The sketch arc entity has no winding:
+    // the solver, the area builder and every preview read a0 -> a1
+    // counter-clockwise, so the mirrored arc is emitted as the same quarter
+    // read the other way round (its start is the source edge's end).
+    const mirrored = dot3(normalize3(axis), normalize3(cross3(plane.x_axis, plane.y_axis))) <= 0
+    return { kind: 'arc', params: mirrored ? [...c2d, r2d, ea, sa] : [...c2d, r2d, sa, ea] }
   }
   if (kindH === 'spline') {
     // Any sampled 3D curve (spline/NURBS) projects to 2D points, then a cubic

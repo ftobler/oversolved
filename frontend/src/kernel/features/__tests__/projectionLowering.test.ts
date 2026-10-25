@@ -194,25 +194,27 @@ describe('arc projection (3D body arc)', () => {
     expect(r).toBeCloseTo(5)
     expect(sa).toBeCloseTo(0)
     expect(ea).toBeCloseTo(90)
-    // Sweep direction preserved: no explicit ccw (consumers default to ccw).
-    expect(out.ccw).toBeUndefined()
+    expect(Object.keys(out)).toEqual(['kind', 'params'])
   })
 
-  it('marks an anti-parallel source axis as cw so consumers keep the same side', () => {
+  it('spells an anti-parallel source axis counter-clockwise, swapping the ends', () => {
     // Mirrored projection: the source sweeps 0 -> 90 deg around -Z, which on
-    // the sketch plane runs clockwise through the fourth quadrant.
+    // the sketch plane runs clockwise through the fourth quadrant. The sketch
+    // arc entity has no winding field (the solver, the area builder and every
+    // preview read a0 -> a1 counter-clockwise), so a `ccw: false` flag here
+    // was dropped and the arc became its 270 degree complement. The same
+    // quarter read counter-clockwise runs -90 -> 0.
     const g = resolve3dGeometry(
       {
         type: 'edge', kind: 'arc', center: [0, 0, 0], radius: 5,
         axis: [0, 0, -1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
       })!
     const out = projectTo2d(g, XY)!
-    expect(out.kind).toBe('arc')
-    expect(out.ccw).toBe(false)
+    expect(Object.keys(out)).toEqual(['kind', 'params'])
     const [, , r, sa, ea] = out.params
     expect(r).toBeCloseTo(5)
-    expect(sa).toBeCloseTo(0)
-    expect(ea).toBeCloseTo(-90)
+    expect(sa).toBeCloseTo(-90)
+    expect(ea).toBeCloseTo(0)
   })
 
   it('projects a sketch-local arc (2D angles, no 3D axis) straight through', () => {
