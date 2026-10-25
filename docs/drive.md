@@ -586,10 +586,12 @@ banner on stdout, so a client config must use the direct node invocation.
   plane's normal, the default) or `reverse`; a face sketch's normal points out
   of its face, so a hole on a face usually wants `reverse`, and a blind hole
   that misses every site warns with that fix when the reverse would cut. A
-  through counterbore or countersink widens its mouth on the material side
-  whichever direction it is written, so on a mouth at the body surface the two
-  directions give the same volume (a mouth inside the body keeps the authored
-  axis, since neither side is the entry).
+  `through_all` hole drills one way from its plane and never cuts the material
+  behind it. Under `normal` it finds the material side itself: the sites that
+  have material on one side only vote, every site drills the winning side (a
+  tie keeps `normal`), and a site that leaves material on the other side is
+  named in a warning. `reverse` is obeyed as written at every site. The run
+  reply's `featureDeltas` row carries the resolved `direction`.
   `hole.sketch` is spelled `@<sketchId>` (or a narrower
   viewport pick), not the profile consumers' `$<sketchId>` form, and a circle
   drills at its own radius while a point uses the feature `diameter`;

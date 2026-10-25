@@ -2,16 +2,17 @@
 //
 // Real-OCC tests for a through hole's widened mouth. A face sketch registers
 // the face's OUTWARD normal (postRegister's resolveSketchPlane), so the default
-// `direction: normal` points out of the material. The bore may run either way
-// for a through hole, but the counterbore step and the countersink cone must
-// widen on the material side, or the step bores the full depth at cb_diameter
-// and the cone cuts air. The volumes are analytic: the bore removes
-// pi r^2 t, the step adds the annulus pi (R^2 - r^2) over cb_depth, and the
-// cone adds the frustum between r and R less the bore cylinder it covers.
+// `direction: normal` points out of the material. Under `normal` a through hole
+// probes for the material side and drills there, so the counterbore step and
+// the countersink cone widen on the material side instead of boring the full
+// depth at cb_diameter or cutting air. `reverse` is the author's side and is
+// obeyed as written. The volumes are analytic: the bore removes pi r^2 t, the
+// step adds the annulus pi (R^2 - r^2) over cb_depth, and the cone adds the
+// frustum between r and R less the bore cylinder it covers.
 //
-// `normal` and `reverse` must agree in volume AND in the construction uuids
-// the stepped faces carry, so an existing pick keeps resolving whichever way
-// the user wrote the hole.
+// On a top-face sketch `normal` and `reverse` reach the same side, and must
+// agree in volume AND in the construction uuids the stepped faces carry, so an
+// existing pick keeps resolving whichever way the user wrote the hole.
 //
 // Skips when OCC.js is absent.
 
@@ -116,14 +117,27 @@ describe.skipIf(!oc)('a through counterbore widens on the material side (real OC
       expect(volume).toBeCloseTo(BOX_VOLUME - counterboreRemoved(BORE_R, PLATE_Z, CB_R, CB_DEPTH), 6)
     })
 
-    it(`a Front-plane mouth at z=0 keeps cutting with direction: ${direction}`, () => {
-      // The already-correct case: the plane normal points into the plate, so
-      // the entry side is the authored axis.
-      const { volume, result } = drill(0, 0, { ...COUNTERBORE, direction })
-      expect(result.status).toBe('ok')
-      expect(volume).toBeCloseTo(BOX_VOLUME - counterboreRemoved(BORE_R, PLATE_Z, CB_R, CB_DEPTH), 6)
-    })
   }
+
+  it('a Front-plane mouth at z=0 keeps cutting with direction: normal', () => {
+    // The already-correct case: the plane normal points into the plate, so
+    // the entry side is the authored axis.
+    const { volume, result } = drill(0, 0, { ...COUNTERBORE, direction: 'normal' })
+    expect(result.status).toBe('ok')
+    expect(result.direction).toBe('normal')
+    expect(volume).toBeCloseTo(BOX_VOLUME - counterboreRemoved(BORE_R, PLATE_Z, CB_R, CB_DEPTH), 6)
+  })
+
+  it('obeys direction: reverse out of a Front-plane mouth at z=0 and names the fix', () => {
+    // reverse is an authored side: it drills -z into the air below the plate
+    // rather than being probed back into it, and the warning names normal.
+    const { volume, result } = drill(0, 0, { ...COUNTERBORE, direction: 'reverse' })
+    expect(result.status).toBe('ok')
+    expect(result.hole_count).toBe(0)
+    expect(result.direction).toBe('reverse')
+    expect(String(result.solver_warning)).toContain('direction: normal drills into it')
+    expect(volume).toBeCloseTo(BOX_VOLUME, 6)
+  })
 
   it('opens an entry face below a plane that sits above it', () => {
     // The mouth sits above the top face: the step reaches back through the air

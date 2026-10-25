@@ -238,7 +238,7 @@ export const FEATURE_SCHEMA_BY_KIND = {
       // there; the kernel warns when a blind hole misses every site that way.
       direction: {
         enum: ['normal', 'reverse'],
-        description: "normal is the sketch plane's normal; a face sketch's normal points out of its face, so a hole on a face usually wants reverse",
+        description: "normal is the sketch plane's normal; a face sketch's normal points out of its face, so a hole on a face usually wants reverse. A through_all hole under normal drills whichever side its sites find the material on; reverse is obeyed as written",
       },
       target: REF,
       style: { enum: ['simple', 'counterbore', 'countersink'] },

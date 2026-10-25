@@ -46,6 +46,9 @@ interface HoleResult {
   body_id: string
   body_ids: string[]
   hole_count: number
+  // The side the hole drilled, as resolved: a through hole under `normal` may
+  // have voted `reverse`, which is otherwise only visible by measuring faces.
+  direction: 'normal' | 'reverse'
   // The cosmetic thread the drilled bores are for, if the feature names one: its
   // metadata plus one display helix per drilled site. A cosmetic thread changes
   // no geometry, so this rides the result rather than the body.
@@ -259,16 +262,14 @@ function fuseCutter(oc: OccModule, scope: DisposeScope, target: Cutter, tool: Cu
  * it with a cone whose included angle is `csAngle` (the cone runs from the wide
  * mouth radius down to the bore radius, so no separate floor is introduced).
  *
- * `start` and `boreAxis` place the bore (backed off outside the body for a
+ * `start` and `boreAxis` place the bore (backed off across any air gap for a
  * through hole); `mouth` and `mouthAxis` place the widened mouth, measured from
- * the drill site's plane INTO the material. For a through hole the two axes
- * differ: the bore may run either way across the body, but a counterbore step
- * or countersink cone built on the outward side cuts air. `airGap` is how far
- * the entry face sits below the sketch plane and `overhang` how far past the
- * plane the tool reaches (the gap plus a hair), so the mouth is opened at full
- * width at the FACE, with its depth measured from there. Both are zero for a
- * blind hole, whose mouth is on the face, and for a through hole whose entry
- * side the probe could not decide.
+ * the drill site's plane INTO the material. The solve passes one axis for both:
+ * the hole drills one way. `airGap` is how far the entry face sits below the
+ * sketch plane and `overhang` how far past the plane the tool reaches (the gap
+ * plus a hair), so the mouth is opened at full width at the FACE, with its
+ * depth measured from there. Both are zero for a blind hole, whose mouth is on
+ * the face, and for a through hole whose plane already touches the material.
  */
 function buildCutter(
   oc: OccModule,
@@ -363,37 +364,71 @@ function reachAlong(frame: { center: Vec3; half: Vec3 }, mouth: Vec3, dir: Vec3)
   return Math.max(0, (centre + projectedRadius(frame, dir)) - atMouth)
 }
 
-/** The axis pointing from a through hole's mouth INTO the material, read by
- *  probing a bore-radius cylinder either side; null when the probe cannot
- *  decide (both sides hit: the site is inside the body; neither: the body is out
- *  of reach, and the caller's miss handling decides). A face sketch registers
- *  the face's OUTWARD normal, so the authored axis points out of the body, and
- *  a widened mouth built along it cuts air or bores the full depth at
- *  cb_diameter.
+/** Which side of the sketch plane a through hole drills: along the plane
+ *  normal, or against it. */
+type DrillSide = 'normal' | 'reverse'
+
+/** What one site's side probe saw: material on one side only (that side), on
+ *  both (the plane runs through the body there), or on neither (out of reach). */
+type SideProbe = DrillSide | 'both' | 'none'
+
+/** Where a site's material lies relative to the sketch plane, read by probing a
+ *  bore-radius cylinder either way along the plane `normal`. A face sketch
+ *  registers the face's OUTWARD normal, so the authored axis points out of the
+ *  body there, and only the probe can tell which side the material is on.
  *
  *  Each probe reaches as far as the body's AABB along its direction, not just
  *  the mouth depth: a sketch plane can sit further above the entry face than
  *  the counterbore is deep, and a short probe would then miss on both sides and
  *  leave the side undecided. */
-function entryAxis(
+function probeSide(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
   frame: { center: Vec3; half: Vec3 },
   mouth: Vec3,
-  axis: Vec3,
+  normal: Vec3,
   radius: number,
   depth: number,
-): Vec3 | null {
-  const away = axis.map((n) => -n) as Vec3
-  const forward = makeCylinder(oc, scope, mouth, axis, radius, reachAlong(frame, mouth, axis) + depth)
+): SideProbe {
+  const away = normal.map((n) => -n) as Vec3
+  const forward = makeCylinder(oc, scope, mouth, normal, radius, reachAlong(frame, mouth, normal) + depth)
   const backward = makeCylinder(oc, scope, mouth, away, radius, reachAlong(frame, mouth, away) + depth)
   const forwardHits = intersects(oc, shape, forward)
   const backwardHits = intersects(oc, shape, backward)
   scope.release(forward)
   scope.release(backward)
-  if (forwardHits === backwardHits) return null
-  return forwardHits ? axis : away
+  if (forwardHits && backwardHits) return 'both'
+  if (forwardHits) return 'normal'
+  return backwardHits ? 'reverse' : 'none'
+}
+
+/**
+ * The one side a through hole drills at every site, and the sites that leave
+ * material on the other side of the plane uncut.
+ *
+ * The side is the feature's, not each site's: a site the probe cannot decide
+ * (the plane runs through the body there) used to take a symmetric bore and
+ * widen toward the authored normal while its decided neighbours widened the
+ * other way, so one hole opened its counterbores on two sides. The deciding
+ * sites vote and every site follows the winner; a tie, or no deciding site,
+ * keeps `normal`, the side the document names.
+ */
+function resolveDrillSide(probes: Array<{ eid: string; probe: SideProbe }>): {
+  side: DrillSide
+  otherSide: string[]
+} {
+  let normalVotes = 0
+  let reverseVotes = 0
+  for (const { probe } of probes) {
+    if (probe === 'normal') normalVotes++
+    else if (probe === 'reverse') reverseVotes++
+  }
+  const side: DrillSide = reverseVotes > normalVotes ? 'reverse' : 'normal'
+  const otherSide = probes
+    .filter(({ probe }) => probe === 'both' || (probe !== 'none' && probe !== side))
+    .map(({ eid }) => eid)
+  return { side, otherSide }
 }
 
 /**
@@ -547,8 +582,6 @@ export function solveHole(
   // Read at the first cut: a hole that places nothing never touches the shape.
   let names: ShapeNames | null = null
 
-  let throughDepth = 0.0
-  let throughBackOffset = 0.0
   let throughMargin = 0.0
   // How far a through-all bore runs inside the body, for the thread display.
   let throughSpan = 0.0
@@ -556,34 +589,18 @@ export function solveHole(
   let throughFrame: { center: Vec3; half: Vec3 } | null = null
   if (depthMode === 'through_all') {
     const { span, frame } = bodySpanAlong(oc, scope, currentShape, axis)
-    // Back the cutter off by the full projected span plus a hair so a site on
-    // the body's near face still clears the far face tangentially; the 3x
-    // length leaves ample margin on the forward side.
-    const margin = span * 1e-3 + 1e-6
-    throughDepth = span * 3.0
-    throughBackOffset = span + margin
+    // A hair past the far face so the bore clears it rather than ending on it.
+    throughMargin = span * 1e-3 + 1e-6
     throughSpan = span
-    throughMargin = margin
     throughFrame = frame
   }
 
+  // Each site's position and mouth geometry, settled before any cut so the
+  // drill side can be resolved across all of them first.
+  const sites: Array<{ eid: string; radius: number; center3d: Vec3; countersinkDepth: number }> = []
   let skippedCount = 0
   const skippedEntityIds: string[] = []
-  // The bores the thread display rides: one entry per site that actually cut,
-  // so a thread never draws where the hole removed nothing.
-  const threadSites: ThreadSite[] = []
-  // This hole's own cuts only, like boolean and bodyOps. Seeding with the body's
-  // previous diff credited the last modifier's surviving elements to the hole in a
-  // full build, while a build restored past that modifier has no diff to seed with.
-  let accumulatedDiff: BrepDiff | null = null
-  const missedSites: string[] = []
-  let cutAny = false
-  // Set when a missed blind site would cut with the opposite direction, so the
-  // all-missed warning can point at `direction` instead of only reporting.
-  let oppositeCuts = false
-
-  for (let i = 0; i < drilled.length; i++) {
-    const entity = drilled[i]
+  for (const entity of drilled) {
     const eid = entity.id as string
     const site = drillSite(globalRepo, sketchId, entity, radius)
     if (site === null) {
@@ -619,46 +636,87 @@ export function solveHole(
         )
       }
     }
+    sites.push({ eid, radius: site.radius, center3d, countersinkDepth })
+  }
 
-    // A widened mouth belongs on the material side. A blind hole keeps the
-    // authored axis (the warning names the fix when it misses); a through hole
-    // probes which side the body is on, because a face sketch's normal points
-    // out of the body.
-    const probed = depthMode === 'through_all' && style !== 'simple' && throughFrame !== null
-      ? entryAxis(oc, scope, currentShape, throughFrame, center3d, axis, site.radius,
-        style === 'counterbore' ? cbDepth : countersinkDepth)
-      : null
-    const mouthAxis: Vec3 = probed ?? axis
-    const airGap = probed !== null && throughFrame !== null
-      ? airGapAlong(throughFrame, center3d, mouthAxis)
+  // The one side every site drills. A blind hole and an authored `reverse` keep
+  // the authored axis. `normal` is also what every hole stored before this rule
+  // says, including the face-sketch through holes that relied on the probe to
+  // find the material, so a through hole under `normal` probes and votes.
+  // An authored `reverse` still probes, but only to know where the material
+  // behind each site's plane is (see materialBehind below), never to vote.
+  let side: DrillSide = direction === 'reverse' ? 'reverse' : 'normal'
+  let otherSideSites: string[] = []
+  let probes: Array<{ eid: string; probe: SideProbe }> = []
+  if (depthMode === 'through_all' && throughFrame !== null) {
+    const frame = throughFrame
+    probes = sites.map((s) => ({
+      eid: s.eid,
+      probe: probeSide(oc, scope, currentShape, frame, s.center3d, normal as Vec3, s.radius,
+        style === 'counterbore' ? cbDepth : s.countersinkDepth),
+    }))
+    if (direction !== 'reverse') {
+      const resolved = resolveDrillSide(probes)
+      side = resolved.side
+      otherSideSites = resolved.otherSide
+    }
+  }
+  const drillAxis: Vec3 = (side === 'normal' ? normal : normal.map((n) => -n)) as Vec3
+  // Whether a site's plane has material on the side the hole does not drill.
+  // Such a bore must start exactly on the plane so the material behind stays
+  // whole. Every other through bore starts a hair behind its entry: a cutter
+  // whose start disc only touches the body (a radial bore on a cylinder's
+  // tangent plane) leaves a sliver at the contact uncut.
+  const materialBehind = (i: number): boolean => {
+    const probe = probes[i]?.probe
+    return probe === 'both' || (probe !== undefined && probe !== 'none' && probe !== side)
+  }
+
+  // The bores the thread display rides: one entry per site that actually cut,
+  // so a thread never draws where the hole removed nothing.
+  const threadSites: ThreadSite[] = []
+  // This hole's own cuts only, like boolean and bodyOps. Seeding with the body's
+  // previous diff credited the last modifier's surviving elements to the hole in a
+  // full build, while a build restored past that modifier has no diff to seed with.
+  let accumulatedDiff: BrepDiff | null = null
+  const missedSites: string[] = []
+  let cutAny = false
+  // Set when a missed blind site would cut with the opposite direction, so the
+  // all-missed warning can point at `direction` instead of only reporting.
+  let oppositeCuts = false
+
+  for (let i = 0; i < sites.length; i++) {
+    const site = sites[i]
+    const { eid, center3d, countersinkDepth } = site
+
+    // A through hole drills one way: from the sketch plane (backed off across
+    // the air gap, plus a hair, when nothing lies behind it) to past the far
+    // face. Material behind the plane is never cut, which is what "through all"
+    // reads as; the old symmetric bore at an undecided site ran up through
+    // whatever sat on the plane's other side.
+    const airGap = depthMode === 'through_all' && throughFrame !== null
+      ? airGapAlong(throughFrame, center3d, drillAxis)
       : 0
-    const overhang = airGap > 0 ? airGap + throughMargin : 0
+    const overhang = depthMode === 'through_all' && !materialBehind(i) ? airGap + throughMargin : 0
 
     let start3d: Vec3
     let h: number
-    if (depthMode === 'through_all' && probed !== null) {
-      // One-way bore from the mouth's air side to past the far face. A bore
-      // backed off along the AUTHORED axis would protrude above the widened
-      // mouth when that axis points out of the body, and the fuse then splits
-      // its wall into the piece above the step and the piece below: only one
-      // can carry the bore role. Ending the bore at the step keeps one wall.
-      // The overhang counts twice: once to reach back to the mouth and once
-      // more because a mouth above the entry face is up to the same distance
-      // short of the far face.
-      start3d = backAlong(center3d, mouthAxis, overhang)
+    if (depthMode === 'through_all') {
+      // The bore starts at the step rather than protruding above the widened
+      // mouth: the fuse would split a protruding wall into the piece above the
+      // step and the piece below, and only one can carry the bore role. The
+      // overhang counts twice: once to reach back to the mouth and once more
+      // because a mouth above the entry face is up to the same distance short
+      // of the far face.
+      start3d = backAlong(center3d, drillAxis, overhang)
       h = throughSpan + 2.0 * overhang + throughMargin
-    } else if (depthMode === 'through_all') {
-      // An undecided site (inside the body, or outside it) keeps the symmetric
-      // back-off: the bore covers the body whichever way it turns out to lie.
-      start3d = backAlong(center3d, axis, throughBackOffset)
-      h = throughDepth
     } else {
       start3d = center3d
       h = depth
     }
 
     const cutter = buildCutter(
-      oc, scope, style, start3d, mouthAxis, center3d, mouthAxis, airGap, overhang,
+      oc, scope, style, start3d, drillAxis, center3d, drillAxis, airGap, overhang,
       site.radius, h, cbRadius, cbDepth, countersinkDepth,
     )
     const cyl = cutter.shape
@@ -667,14 +725,19 @@ export function solveHole(
       // Skipping the cut keeps it out of accumulatedDiff, so the body's stored
       // diff never gains a "whole tool deleted" entry for a miss.
       scope.release(cyl)
-      // A blind hole on a face sketch commonly points out of the body. Probe
-      // the other way so the all-missed warning can name the one-field fix;
-      // a site that misses both ways is a placement problem, not a direction
-      // one, and keeps the plain miss text.
-      if (depthMode !== 'through_all' && !oppositeCuts) {
-        const away = axis.map((n) => -n) as Vec3
+      // A hole on a face sketch commonly points out of the body. When the side
+      // is the author's (a blind hole, or a through hole set to reverse), probe
+      // the other way so the all-missed warning can name the one-field fix; a
+      // site that misses both ways is a placement problem, not a direction one,
+      // and keeps the plain miss text. A voted side already looked both ways.
+      const authoredSide = depthMode !== 'through_all' || direction === 'reverse'
+      if (authoredSide && !oppositeCuts) {
+        const away = drillAxis.map((n) => -n) as Vec3
+        const reach = depthMode === 'through_all' && throughFrame !== null
+          ? reachAlong(throughFrame, center3d, away) + throughMargin
+          : depth
         oppositeCuts = cutterReaches(
-          oc, scope, currentShape, style, center3d, away, site.radius, depth,
+          oc, scope, currentShape, style, center3d, away, site.radius, reach,
           cbRadius, cbDepth, countersinkDepth,
         )
       }
@@ -700,7 +763,9 @@ export function solveHole(
       toolUuidScope: null,
     })
     scope.release(cyl)
-    if (i > 0) scope.release(currentShape)
+    // Only a previous cut's own result is this solve's to free; until the first
+    // cut, currentShape is the target body's stored shape.
+    if (cutAny) scope.release(currentShape)
     currentShape = scope.track(res.shape)
     // Accumulate per-cut diffs so all rims survive, not just the last.
     accumulatedDiff = mergeBrepDiff(accumulatedDiff, res.diff)
@@ -715,11 +780,11 @@ export function solveHole(
     if (threadLength > 0) {
       threadSites.push({
         center: [
-          center3d[0] + mouthAxis[0] * threadStart,
-          center3d[1] + mouthAxis[1] * threadStart,
-          center3d[2] + mouthAxis[2] * threadStart,
+          center3d[0] + drillAxis[0] * threadStart,
+          center3d[1] + drillAxis[1] * threadStart,
+          center3d[2] + drillAxis[2] * threadStart,
         ],
-        axis: [mouthAxis[0], mouthAxis[1], mouthAxis[2]],
+        axis: [drillAxis[0], drillAxis[1], drillAxis[2]],
         radius: site.radius,
         length: threadLength,
       })
@@ -754,6 +819,7 @@ export function solveHole(
         // "removed material" matches the docstring: sites that cut minus those
         // that missed and therefore removed nothing.
         hole_count: placed - missedSites.length,
+        direction: side,
         solver_warning: `hole: the cut removed all of body '${targetBody.id}'; the body was deleted`,
       }
     }
@@ -766,6 +832,7 @@ export function solveHole(
     body_id: bodyIds[0],
     body_ids: bodyIds,
     hole_count: placed - missedSites.length,
+    direction: side,
   }
   if (thread !== null && threadSites.length > 0) {
     result.thread = {
@@ -792,6 +859,14 @@ export function solveHole(
     result.solver_warning = oppositeCuts
       ? `hole: direction: ${authored} cuts nothing in body '${targetBody.id}' at every drill site; direction: ${other} drills into it`
       : `hole: none of the ${placed} drill site(s) intersect body '${targetBody.id}'; nothing was removed`
+  } else if (otherSideSites.length > 0) {
+    // Every site cut, so this is no partial: the hole is whole, but it left
+    // material on the other side of the plane at these sites. Naming them is
+    // the only cue, since the volume looks plausible either way. `reverse` is
+    // the authored side that silences it.
+    const fix = side === 'normal' ? 'set direction: reverse to drill the other way' : 'set direction: reverse to keep it'
+    result.solver_warning =
+      `hole: sites ${otherSideSites.join(', ')} have material on the other side; drilled ${side} at all sites, ${fix}`
   }
   return result
 }

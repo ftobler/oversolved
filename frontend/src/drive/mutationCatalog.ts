@@ -190,6 +190,9 @@ const HOLE_FIELD_NOTE =
   '`direction` is the sketch plane\'s normal (the default) or its reverse; a face sketch\'s normal ' +
   'points out of the face, so a hole on a face usually wants `reverse`, and a blind hole that misses ' +
   'every site says so when the reverse would cut. ' +
+  'A through_all hole drills one way and never cuts the material behind its plane: under `normal` the sites ' +
+  'vote for the material side and all drill it (a tie keeps normal), a site with material on the other side is ' +
+  'named in a warning, and `reverse` is obeyed as written; the featureDeltas row reports the resolved `direction`. ' +
   '`depth_mode` is blind or through_all. `sketch` is a feature-level ref, so spell it ' +
   '@<sketchId> (or a narrower entity:/vertex:/? pick from the viewport), not the profile consumers\' ' +
   '$<sketchId> form; a $ ref is refused here. ' +

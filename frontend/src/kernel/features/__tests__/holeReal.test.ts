@@ -89,7 +89,11 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
           bodyStore,
           featuresById,
         )
-        expect(result).toEqual(c.result)
+        // The resolved drill side postdates the frozen Python snapshot, so it is
+        // checked on its own rather than written into the golden result.
+        const { direction, ...parity } = result
+        expect(parity).toEqual(c.result)
+        expect(direction).toBe('normal')
         expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(c.volume, 2)
       } finally {
         scope.dispose()
