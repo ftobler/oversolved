@@ -18,6 +18,7 @@ import {
   type JsonSchema,
 } from '@/persistence/partDocSchema'
 import { entityParamLayoutsSentence } from '@/registry/entityRegistry'
+import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { mutationValueViolation } from '@/drive/mutationValues'
 
 export type FieldType =
@@ -274,6 +275,21 @@ const ARRAY_OPERATION_NOTE =
   'separate bodies, taking the source id and `_1`, `_2`... siblings (the `run` reply summary names the live ids). ' +
   '`operation: new` keeps the source as instance 0 and mints one body per copy.'
 
+// Generated from the registry so the example cannot drift: the hand-written
+// note named `distance`, a kind the validator refuses (mountPlate F1).
+const CONSTRAINT_KIND_NOTE =
+  `The constraint kind, one of: ${[...CONSTRAINT_BY_KIND.keys()].join(', ')}. A line\'s dimension is ` +
+  '`length`; two points take `point_distance`.'
+
+// The side is relative to the loop, not to each line's drawn direction, so a
+// CW, CCW or projected loop all read the same (birdhouse F3, Case_Seam_Lip F6).
+const OFFSET_SIDE_NOTE =
+  'When the selected entities close into loops, a positive `distance` moves every copy out of the region the ' +
+  'loops bound and a negative one moves it inward, whatever the winding (OpenSCAD `offset(r>0)` and CadQuery ' +
+  'positive `offset2D` are outward too); a selected inner loop is a hole, so its positive offset shrinks it. ' +
+  'An open selection keeps the per-entity rule: a line moves along the left normal of its start->end direction ' +
+  'and a circle or arc grows its radius.'
+
 // merge_target is a body id, not a ref: the practice runs guessed `@body_ex5`.
 const MERGE_TARGET_NOTE =
   'The bare body id the cut or add goes into, e.g. `body_ex5` (no @ sigil); absent means every body the tool reaches.'
@@ -408,7 +424,7 @@ export const MUTATION_CATALOG = {
     note: VERTEX_REF_NOTE,
     fields: {
       featureId: str(),
-      kind: str('The constraint kind, e.g. coincident or distance.'),
+      kind: str(CONSTRAINT_KIND_NOTE),
       targets: arr('Entity or vertex refs the constraint names; see the row note for the spelling.'),
       value: optNum(),
       pos: optPoint(),
@@ -502,7 +518,8 @@ export const MUTATION_CATALOG = {
   apply_offset: {
     summary: 'Offset sketch entities by a distance. Each sourceId must name an entity in the featureId sketch; '
       + 'a connected chain (coincident or coordinate-joined) is refitted corner to corner.',
-    fields: { featureId: str(), sourceIds: arr(), distance: num() },
+    note: OFFSET_SIDE_NOTE,
+    fields: { featureId: str(), sourceIds: arr(), distance: num('Signed; see the row note for the side.') },
   },
   toggle_construction: {
     summary: 'Toggle construction mode on sketch entities.',
