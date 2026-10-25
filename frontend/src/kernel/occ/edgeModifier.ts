@@ -619,30 +619,34 @@ function applyEdgeModifier(
     }
   }
 
-  let built: OccShape | null = null
-  let buildReason = 'build_not_done'
-  try {
-    maker.Build()
-    if (maker.IsDone()) built = maker.Shape()
-  } catch {
-    buildReason = 'build_failed'
+  // A subset "holds" when it builds AND its result is valid or heals: the
+  // bisection below must not call a subset good whose shape the validity gate
+  // further down would refuse (ppp0103: one corrupting arc sank a chamfer
+  // whose other edge builds fine alone).
+  const holds = (list: OccShape[]): boolean => {
+    const probe = buildFresh(list)
+    if (!probe.ok) return false
+    let ok = isValidShape(oc, scope, probe.shape)
+    if (!ok) {
+      const healed = healShape(oc, scope, probe.shape)
+      ok = healed !== null
+      if (healed !== null) scope.release(healed.shape)
+    }
+    scope.release(probe.shape)
+    return ok
   }
-  if (built === null) {
-    // One or more picked edges can make the whole fillet/chamfer chain refuse,
-    // even though the rest of the set applies cleanly (the cast-bearing repro:
-    // ten edges fail as one build, eight of them build as one and two refuse
-    // alone). Find the refusals by bisecting the failing set, never by
-    // reordering or guessing: a subset that builds is entirely good, so only
-    // failing subsets are walked down. Then retry the good edges as ONE
-    // operation, keeping a single history for naming and the diff.
+
+  // One or more picked edges can make the whole fillet/chamfer chain refuse,
+  // even though the rest of the set applies cleanly (the cast-bearing repro:
+  // ten edges fail as one build, eight of them build as one and two refuse
+  // alone). Find the refusals by bisecting the failing set, never by
+  // reordering or guessing: a subset that holds is entirely good, so only
+  // failing subsets are walked down. Returns the refused `edges` indices.
+  const isolateBroken = (): Set<number> => {
     const broken = new Set<number>()
     const diagnose = (positions: number[]): void => {
       if (positions.length === 0) return
-      const probe = buildFresh(positions.map((p) => appliedEdges[p]))
-      if (probe.ok) {
-        scope.release(probe.shape)
-        return
-      }
+      if (holds(positions.map((p) => appliedEdges[p]))) return
       if (positions.length === 1) {
         broken.add(appliedIdx[positions[0]])
         return
@@ -659,15 +663,37 @@ function applyEdgeModifier(
       diagnose(all.slice(0, mid))
       diagnose(all.slice(mid))
     }
+    return broken
+  }
+
+  // Retry the good edges as ONE operation, keeping a single history for naming
+  // and the diff. Null when nothing was isolated or nothing is left.
+  const rebuildWithout = (broken: Set<number>): { maker: OccEdgeModifierMaker; shape: OccShape } | null => {
     const good = appliedEdges.filter((_, k) => !broken.has(appliedIdx[k]))
-    if (broken.size === 0 || good.length === 0) return fail(buildReason)
+    if (broken.size === 0 || good.length === 0) return null
     const retry = buildFresh(good)
-    if (!retry.ok) return fail(retry.reason)
-    maker = retry.maker
+    if (!retry.ok) return null
+    skippedIdx.push(...[...broken].sort((a, b) => a - b))
     // The probe builder tracks its shape so a failed probe can release it; a
     // successful retry hands ownership to the caller like the original maker.
-    built = scope.detach(retry.shape)
-    skippedIdx.push(...[...broken].sort((a, b) => a - b))
+    return { maker: retry.maker, shape: scope.detach(retry.shape) }
+  }
+
+  let built: OccShape | null = null
+  let buildReason = 'build_not_done'
+  let bisected = false
+  try {
+    maker.Build()
+    if (maker.IsDone()) built = maker.Shape()
+  } catch {
+    buildReason = 'build_failed'
+  }
+  if (built === null) {
+    bisected = true
+    const rebuilt = rebuildWithout(isolateBroken())
+    if (rebuilt === null) return fail(buildReason)
+    maker = rebuilt.maker
+    built = rebuilt.shape
   }
 
   // IsDone() is not a validity claim. On a pick whose blend runs into a
@@ -687,16 +713,29 @@ function applyEdgeModifier(
   //
   // Only the DECISION happens here. The repair is substituted at the return,
   // after the name and diff extraction below have read the maker's own output.
+  // This string reaches the user as the feature's failure message
+  // (utils/core/featureFailure.ts), so it names a way out rather than a kernel
+  // code: the reported document recovers at radius 0.1 where it corrupts at 0.15.
+  const INVALID = 'the operation produced invalid geometry; try a smaller radius/distance or fewer edges at once'
   let heal: ReturnType<typeof healShape> = null
   if (!isValidShape(oc, scope, built)) {
     heal = healShape(oc, scope, built)
     if (heal === null) {
       scope.release(built)
-      // This string reaches the user as the feature's failure message
-      // (utils/core/featureFailure.ts), so it names a way out rather than a
-      // kernel code: the reported document recovers at radius 0.1 where it
-      // corrupts at 0.15.
-      return fail('the operation produced invalid geometry; try a smaller radius/distance or fewer edges at once')
+      // A multi-edge set that corrupts may owe it to one edge: isolate it the
+      // same way a refused build is, and keep the rest as a partial result.
+      if (bisected || appliedEdges.length === 1) return fail(INVALID)
+      const rebuilt = rebuildWithout(isolateBroken())
+      if (rebuilt === null) return fail(INVALID)
+      maker = rebuilt.maker
+      built = rebuilt.shape
+      if (!isValidShape(oc, scope, built)) {
+        heal = healShape(oc, scope, built)
+        if (heal === null) {
+          scope.release(built)
+          return fail(INVALID)
+        }
+      }
     }
   }
 

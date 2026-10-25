@@ -14,11 +14,17 @@ import { geometryClassifiers } from '../geomHash'
 import { resolveBody, resolveBodyIds } from './shared/bodyResolution'
 import { buildFaceIndex, makeFaceIndexCache, resolveFacesByQuery, type FaceIndex } from './shared/faceResolution'
 import { resplitBody } from './bodySplit'
-import { canonicalEdges, canonicalVertices, assertAligned, readBodyNames } from '../occ/bodyNames'
+import { canonicalEdges, assertAligned, readBodyNames } from '../occ/bodyNames'
 import { namedElementCreator, newIndexSets } from '../occ/modifierAttribution'
 import { bodyFrame, compareEdgeSortKeys, edgeRepresentativePoint } from '../occ/tessellation'
 import { faceNormal, edgeToGeom, SubShapeDedup, SubShapeMultiIndex, type EdgeSortKey, type Vec3 } from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
+import {
+  chamferWidthDiagnosis,
+  edgeLabel,
+  filletWidthDiagnosis,
+  tangentChainDiagnosis,
+} from './edgeFailureDiagnosis'
 import {
   applyFilletWithLineage,
   applyChamferWithLineage,
@@ -344,76 +350,14 @@ type ApplyFn = (
   oldNames: OldNames | null,
 ) => EdgeModifierResult
 
-/** Whether `face` is bounded by `edge`. A face's edges are its own wrappers, so
- *  the match is `IsSame`, not object identity. */
-function faceHasEdge(oc: OccModule, scope: DisposeScope, face: OccShape, edge: OccShape): boolean {
-  return exploreEdges(oc, scope, face).some((fe) => (fe as OccSubShape).IsSame(edge as OccSubShape))
-}
+// The kernel's bare verdicts, which name no geometry: a failure carrying one
+// gets the generic way out so the hint survives even when no diagnosis fits.
+const OPAQUE_REASONS = new Set(['build_failed', 'build_not_done', 'maker_failed', 'no_edges_applied'])
 
-/** The width of `face` measured ACROSS `edge`: the largest perpendicular
- *  distance from the edge's line to a vertex of the face. This is the strip a
- *  chamfer has to fit into (the practice case: a 0.2 rim on a 2 mm shell).
- *  Null for a curved edge or a face with too few vertices to measure; those
- *  have no single width, and a wrong number in an error is worse than none. */
-function faceWidthAcrossEdge(
-  oc: OccModule,
-  scope: DisposeScope,
-  edge: OccShape,
-  face: OccShape,
-): number | null {
-  const curve = scope.track(new oc.BRepAdaptor_Curve_2(edge))
-  if (curve.GetType().value !== oc.GeomAbs_CurveType.GeomAbs_Line.value) return null
-  const vertices = canonicalVertices(oc, scope, edge)
-  if (vertices.length < 2) return null
-  const start = scope.track(oc.BRep_Tool.Pnt(vertices[0]))
-  const end = scope.track(oc.BRep_Tool.Pnt(vertices[vertices.length - 1]))
-  const dx = end.X() - start.X()
-  const dy = end.Y() - start.Y()
-  const dz = end.Z() - start.Z()
-  const len = Math.hypot(dx, dy, dz)
-  if (!(len > 1e-12)) return null
-  const ux = dx / len
-  const uy = dy / len
-  const uz = dz / len
-  let width = 0
-  for (const v of canonicalVertices(oc, scope, face)) {
-    const p = scope.track(oc.BRep_Tool.Pnt(v))
-    const rx = p.X() - start.X()
-    const ry = p.Y() - start.Y()
-    const rz = p.Z() - start.Z()
-    const along = rx * ux + ry * uy + rz * uz
-    const perp = Math.sqrt(Math.max(0, rx * rx + ry * ry + rz * rz - along * along))
-    if (Number.isFinite(perp)) width = Math.max(width, perp)
-  }
-  return width > 1e-9 ? width : null
-}
-
-/**
- * When a chamfer build fails, decide whether the distance could not fit into an
- * adjacent face. The failure carries no kernel detail (`build_failed`), so the
- * caller cannot tell a too-large distance from a bad pick. The message names the
- * measured width, which is what makes the fix obvious (0.25 on a 0.2 wall).
- * Null when every picked edge fits or no width could be measured; the caller
- * then keeps the kernel's own reason.
- */
-function chamferWidthDiagnosis(
-  oc: OccModule,
-  scope: DisposeScope,
-  shape: OccShape,
-  edges: OccShape[],
-  distance: number,
-): string | null {
-  let narrowest: number | null = null
-  for (const face of exploreFaces(oc, scope, shape)) {
-    for (const edge of edges) {
-      if (!faceHasEdge(oc, scope, face, edge)) continue
-      const width = faceWidthAcrossEdge(oc, scope, edge, face)
-      if (width !== null && (narrowest === null || width < narrowest)) narrowest = width
-    }
-  }
-  if (narrowest === null || distance < narrowest - 1e-9) return null
-  const shown = Number(narrowest.toPrecision(6))
-  return `distance ${distance} meets or exceeds the adjacent face width ${shown} on the picked edge; use a smaller distance`
+function withHint(reason: string): string {
+  return OPAQUE_REASONS.has(reason)
+    ? `${reason} (no reason from the kernel; try a smaller radius/distance or fewer edges at once)`
+    : reason
 }
 
 /**
@@ -555,6 +499,8 @@ function applyEdgeFeature(
 
   const applied: string[] = []
   const modifierFailures: string[] = []
+  // One line per edge the modifier refused while the rest of its group built.
+  const refusedEdges: string[] = []
   let handle: FeatureHandle | null = null
   for (const [bid, qlist] of groups) {
     let body: Body
@@ -624,8 +570,14 @@ function applyEdgeFeature(
       // feature reports ok. Report the kernel reason and leave the body alone.
       // A caller-supplied diagnosis replaces the opaque build reason when it
       // can name the geometry that refused (a chamfer too wide for its face).
+      // A tangent-chain note rides beside the kernel's reason rather than
+      // replacing it: some such picks build at a smaller value (a corner
+      // blend), others at none (ppp0103's half-boss arc), and only a build
+      // tells which.
       const diagnosis = failureDiagnosis?.(oldShape, topoEdges) ?? null
-      modifierFailures.push(`${bid}: ${diagnosis ?? res.reason ?? 'unknown failure'}`)
+      const chain = diagnosis === null ? tangentChainDiagnosis(oc, scope, oldShape, topoEdges) : null
+      const reason = withHint(res.reason ?? 'unknown failure')
+      modifierFailures.push(`${bid}: ${diagnosis ?? (chain === null ? reason : `${reason}; ${chain}`)}`)
       failed.push(...qlist.filter((q) => resolvedQueries.has(q)))
       continue
     }
@@ -633,10 +585,20 @@ function applyEdgeFeature(
     // Skipped/failed edges force a partial status so the user sees the warning.
     if (res.skippedEdgeIndices.length > 0) {
       // The indices are positions in the `edges` argument, which is topoEdges;
-      // map each back to the query that named it via queryOf.
+      // map each back to the query that named it via queryOf. Each refused
+      // edge is named by its position in the feature's `edges` list and its
+      // geometry, with the cause when one can be measured: a 27-edge batch
+      // that said only "1 edge(s) could not be applied" took five bisecting
+      // runs to place (cast_bearing_unit F2).
       for (const i of res.skippedEdgeIndices) {
-        const q = queryOf.get(topoEdges[i])
+        const edge = topoEdges[i]
+        const q = queryOf.get(edge)
         if (q !== undefined) failed.push(q)
+        if (edge === undefined) continue
+        const why = failureDiagnosis?.(oldShape, [edge])
+          ?? tangentChainDiagnosis(oc, scope, oldShape, [edge])
+          ?? 'refused by the kernel even alone; try a smaller radius/distance'
+        refusedEdges.push(`edges[${q === undefined ? '?' : edges.indexOf(q)}] (${edgeLabel(oc, scope, edge)}): ${why}`)
       }
     }
     // A chamfer removes material and can sever a thin web, so even this leaf
@@ -670,6 +632,7 @@ function applyEdgeFeature(
     const parts: string[] = []
     const notApplied = [...new Set([...unresolved, ...failed])]
     if (notApplied.length > 0) parts.push(`${notApplied.length} edge(s) could not be applied`)
+    parts.push(...refusedEdges)
     parts.push(...modifierFailures)
     // The edges list could repeat a query (a duplicate pick), so each chip
     // marker dedupes: the chips render one entry each. The two lists stay
@@ -707,6 +670,7 @@ export function solveFillet(
   // (r = d_bisector * sin(theta/2) for the included edge angle), but it is
   // close enough for a freehand tweak and re-anchors on every rebuild.
   (anchor, direction) => linearHandle('radius', anchor, direction, radius),
+  (shape, edges) => filletWidthDiagnosis(oc, scope, shape, edges, radius),
   )
 }
 

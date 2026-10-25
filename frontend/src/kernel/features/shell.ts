@@ -14,6 +14,7 @@ import { resplitBody } from './bodySplit'
 import { readBodyNames, type UuidArray } from '../occ/bodyNames'
 import { SubShapeDedup } from '../occ/primitives'
 import { applyShellWithLineage, type ShellDirection } from '../occ/thickSolid'
+import { exploreFaces } from '../occ/edgeModifier'
 import { bodyOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
 
 type Dict = Record<string, unknown>
@@ -45,6 +46,23 @@ function named(uuids: UuidArray | undefined): boolean {
  * bodies, a missing body, or a kernel refusal (a thickness past the local
  * radius), which leaves the body unchanged.
  */
+/** The smallest radius of a cylindrical, toroidal (minor) or spherical face of
+ *  `shape`: the round an inward offset shrinks first. Null when it has none. */
+function smallestRoundRadius(oc: OccModule, scope: DisposeScope, shape: OccShape): number | null {
+  let smallest: number | null = null
+  const types = oc.GeomAbs_SurfaceType
+  for (const face of exploreFaces(oc, scope, shape)) {
+    const surface = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+    const type = surface.GetType().value
+    let radius: number | null = null
+    if (type === types.GeomAbs_Cylinder.value) radius = scope.track(surface.Cylinder()).Radius()
+    else if (type === types.GeomAbs_Torus.value) radius = scope.track(surface.Torus()).MinorRadius()
+    else if (type === types.GeomAbs_Sphere.value) radius = scope.track(surface.Sphere()).Radius()
+    if (radius !== null && (smallest === null || radius < smallest)) smallest = radius
+  }
+  return smallest
+}
+
 export function solveShell(
   oc: OccModule,
   scope: DisposeScope,
@@ -114,6 +132,16 @@ export function solveShell(
     // The kernel refused: report the reason and leave the body alone. res.shape
     // is the UNCHANGED input, so resplitting it would re-register the same
     // geometry as a fresh handle and report success for a no-op.
+    const collapse = direction === 'inward' ? smallestRoundRadius(oc, scope, oldShape) : null
+    if (collapse !== null && collapse <= thickness + 1e-9) {
+      // An inward wall offsets every round face by the thickness; a fillet of
+      // radius <= thickness collapses to nothing there (Case_Seam_Lip F4), and
+      // the kernel says only build_failed.
+      throw new Error(
+        `shell: inward thickness ${thickness} >= fillet radius ${Number(collapse.toPrecision(6))}; ` +
+          'shell outward or use a smaller thickness',
+      )
+    }
     throw new Error(`shell: ${res.reason ?? 'unknown failure'}`)
   }
 
