@@ -610,6 +610,10 @@ export function solveHole(
   const sites: Array<{ eid: string; radius: number; center3d: Vec3; countersinkDepth: number }> = []
   let skippedCount = 0
   const skippedEntityIds: string[] = []
+  // Bores that overlap in the sketch merge into one cut without a word (kcl
+  // bracket F3); the pairs are named in the result's warning instead.
+  const siteDiscs: Array<{ id: string; xy: [number, number]; radius: number }> = []
+  const overlappingSites: string[] = []
   for (const entity of drilled) {
     const eid = entity.id as string
     const site = drillSite(globalRepo, sketchId, entity, radius)
@@ -619,6 +623,12 @@ export function solveHole(
       continue
     }
     const [x2d, y2d] = site.xy
+    for (const earlier of siteDiscs) {
+      if (Math.hypot(earlier.xy[0] - x2d, earlier.xy[1] - y2d) < earlier.radius + site.radius - 1e-9) {
+        overlappingSites.push(`${earlier.id}, ${eid}`)
+      }
+    }
+    siteDiscs.push({ id: eid, xy: [x2d, y2d], radius: site.radius })
     const center3d: Vec3 = [
       origin[0] + x2d * xAxis[0] + y2d * yAxis[0],
       origin[1] + x2d * xAxis[1] + y2d * yAxis[1],
@@ -882,6 +892,10 @@ export function solveHole(
     result.solver_warning =
       `hole: sites ${otherSideSites.join(', ')} have material on the other side; ` +
       `drilled ${side} at all sites (a through hole drills one side), ${fix}`
+  }
+  if (overlappingSites.length > 0) {
+    const note = `hole: drill sites overlap and merge into one cut: ${overlappingSites.map(pair => `sites ${pair}`).join('; ')}`
+    result.solver_warning = result.solver_warning === undefined ? note : `${result.solver_warning}; ${note}`
   }
   return result
 }
