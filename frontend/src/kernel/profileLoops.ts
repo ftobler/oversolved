@@ -334,15 +334,63 @@ export function classifyLoops(loops: LoopEdge[][]): [LoopEdge[], LoopEdge[][]][]
 
   const n = loops.length
   const { depth, container } = loopContainment(loops, CENTROID_ARC_SAMPLES)
+  const enclosed = enclosedCurveLoops(loops, depth)
 
   const result: [LoopEdge[], LoopEdge[][]][] = []
   for (let oi = 0; oi < n; oi++) {
     if (depth[oi] % 2 === 1) continue  // a hole, attached to its container below
+    if (enclosed.has(oi)) continue  // a hole its neighbours already carve out
     const holes: LoopEdge[][] = []
     for (let i = 0; i < n; i++) if (depth[i] % 2 === 1 && container[i] === oi) holes.push(loops[i])
     result.push([loops[oi], dissolveAdjacentLoops(holes)])
   }
   return result
+}
+
+/**
+ * The loops that are a closed curve's interior with filled areas all around
+ * it: a hole whose boundary touches its container, so the area builder cut it
+ * into a traced subdivision instead of nesting it.
+ *
+ * An r2 circle in the corner of a square, tangent to both sides, splits the
+ * square at the two tangent points. The builder then publishes three adjacent
+ * areas (the corner pocket, the rest of the square, the disc) and no loop is
+ * contained in another, so the containment depth reads the disc as a filled
+ * outer and the extrude fused it back: the full square, no hole, no word. The
+ * same circle clear of the sides, or touching one side at a single point, is
+ * nested and cut. The disc is the same region in all three; what decides it
+ * is that every side of it is shared with a filled area of the same level,
+ * which is what a hole inside that material is.
+ *
+ * Conservative on purpose: the loop must be traced pieces of ONE entity (so
+ * it is that closed curve's whole interior, nothing crosses it), and every
+ * piece must be the reverse side of an edge of another filled loop at the
+ * same depth. A disc with any side on the open plane (three mutually tangent
+ * circles, a circle sitting in a notch) keeps its area, and a loop bounded by
+ * two curves (a crossing, a venn lens) is a union region, not a hole.
+ */
+function enclosedCurveLoops(loops: LoopEdge[][], depth: number[]): Set<number> {
+  const candidates = new Set<number>()
+  loops.forEach((loop, i) => {
+    if (depth[i] % 2 === 1 || loop.length < 2) return
+    const owner = loop[0]['id']
+    if (typeof owner !== 'string' || !loop.every((e) => e['id'] === owner)) return
+    if (loop.some((e) => edgeMatch(e) === null)) return
+    candidates.add(i)
+  })
+  const out = new Set<number>()
+  for (const i of candidates) {
+    const neighbourKeys = new Set<string>()
+    loops.forEach((loop, j) => {
+      if (j === i || candidates.has(j) || depth[j] !== depth[i]) return
+      for (const e of loop) {
+        const m = edgeMatch(e)
+        if (m !== null) neighbourKeys.add(m.key)
+      }
+    })
+    if (loops[i].every((e) => neighbourKeys.has((edgeMatch(e) as EdgeMatch).key))) out.add(i)
+  }
+  return out
 }
 
 /**

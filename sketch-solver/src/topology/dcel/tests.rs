@@ -10,6 +10,7 @@ mod construction;
 mod db9;
 mod helpers;
 mod primitives;
+mod tangent_hole;
 
 #[test]
 fn a_point_between_two_vertices_merges_into_the_first_registered() {
