@@ -160,7 +160,7 @@ frontend-test:
 # The full main-gate fuzz suite: session fuzz, action matrix, geometry fuzz.
 fuzz:
     mkdir -p tmp
-    { just fuzz-session 200 40 && just action-matrix && just fuzz-geometry 1500 2; } 2>&1 | tee tmp/just_fuzz.log
+    { just fuzz-session 200 40 && just action-matrix && just fuzz-geometry 1500 4; } 2>&1 | tee tmp/just_fuzz.log
 
 # Seeded mutation and undo/redo fuzz over the mutation registry, driven
 # headlessly through DocSession with the real kernel. The PR gate skips the real
@@ -199,9 +199,10 @@ action-matrix:
 # clean is reported with its seed and step instead of wedging the run (the
 # browser worker keeps the same 30 s kill for the same reason: see
 # frontend/src/testing/robustnessFuzz/chainTimeout.ts). Each chain child holds
-# its own ~0.75 GB OCC kernel, so this recipe pins the pool to 2 and the vitest
-# forks to 1: the two suites run in sequence instead of two extra kernels deep
-# (raise workers on a wide, memory-rich box, not on the CI runner). The PR suite
+# its own ~0.75 GB OCC kernel, so the pool defaults to 2 and the vitest forks
+# are pinned to 1: the two suites run in sequence instead of two extra kernels
+# deep. The main gate passes 4 (about 3 GB of kernels, inside the CI runner's
+# 8 GB share); raise it further on a wide, memory-rich box. The PR suite
 # runs a bounded 24-chain-seed range and its identity sweep derives a quarter of
 # this one. The default 200 is the plan's acceptance range; the main gate runs
 # 1500; 5000 is the plan's dedicated full scale.

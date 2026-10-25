@@ -72,7 +72,7 @@ def test_main_gate_is_named_fuzz_not_nightly() -> None:
     for command in (
         "run: just fuzz-session 200 40",
         "run: just action-matrix",
-        "run: just fuzz-geometry 1500 2",
+        "run: just fuzz-geometry 1500 4",
     ):
         assert command in ci, f"the fuzz job no longer runs `{command}` as its own step"
 

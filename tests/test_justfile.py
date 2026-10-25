@@ -72,5 +72,5 @@ def test_fuzz_recipe_is_the_full_main_gate_suite() -> None:
             break
         body.append(line)
     text = "\n".join(body)
-    for command in ("just fuzz-session 200 40", "just action-matrix", "just fuzz-geometry 1500 2"):
+    for command in ("just fuzz-session 200 40", "just action-matrix", "just fuzz-geometry 1500 4"):
         assert command in text, f"`just fuzz` no longer runs `{command}`"

@@ -294,7 +294,7 @@ jobs:
 
       - name: Geometry fuzz (real kernel)
         if: ${{ !cancelled() }}
-        run: just fuzz-geometry 1500 2
+        run: just fuzz-geometry 1500 4
 
       # The fuzz logs are the job's report: a failing sweep leaves the seed,
       # step and refusal lines in its log even when the step aborts.
