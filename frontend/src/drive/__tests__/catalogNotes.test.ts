@@ -73,6 +73,16 @@ describe('F7: merge_target spelling', () => {
   })
 })
 
+describe('F12: face-sketch frame on the first read', () => {
+  it('the add_sketch row and its plane field name the centroid origin and the frames map', () => {
+    const row = mutationInfoOf('add_sketch')
+    for (const text of [row.note!, row.fields.plane.note!]) {
+      expect(text).toContain('origin = face centroid')
+      expect(text).toContain('`frames`')
+    }
+  })
+})
+
 describe('F5: add_center_rect created ids', () => {
   it('documents the order the mutation actually creates', async () => {
     expect(mutationInfoOf('add_center_rect').note).toContain('bottom, right, top, left')

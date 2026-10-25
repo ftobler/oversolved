@@ -114,7 +114,7 @@ const bodyQuery = () => query('A body id such as body_ex1, or a stored body quer
 // `select` is accepted beside the plane feature ref and the bare name.
 const PLANE_QUERY_NOTE =
   '@<planeId>, a bare plane name (Top, Front, Right), or a face query from `select` '
-  + '(the stored ?...:flatface string): a face query places the sketch on that face. '
+  + '(the stored ?...:flatface string): a face query places the sketch on that face, origin = face centroid. '
   + 'The run/measure reply `frames` map reports the resolved origin and axes.'
 
 // The params slot order per entity kind, generated from the entity registry so
@@ -249,7 +249,8 @@ const REVOLVE_AXIS_NOTE =
 const PLANE_REF_NOTE =
   '`plane` is "@builtin_plane_front", "@builtin_plane_top", "@builtin_plane_right", ' +
   'a bare builtin name (Front, Top, Right; case-sensitive), "@<planeId>" for a plane feature, ' +
-  'or a "?" face query from `select`. An unmatched NAME is refused with the valid names; ' +
+  'or a "?" face query from `select` (a face sketch takes origin = face centroid, axes from the face normal). ' +
+  'An unmatched NAME is refused with the valid names; ' +
   'a name never silently falls back to the XY plane. A face query is resolved after the solve; ' +
   'a plane or face query that does not resolve fails the sketch, naming the cause (a plane defined ' +
   'later in the log tells you to reorder). The run/measure reply `frames` map reports the resolved ' +
