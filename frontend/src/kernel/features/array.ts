@@ -134,6 +134,51 @@ export function buildArrayTransforms(
   return trsfs
 }
 
+/** A stored VEC3 field, or null when absent; a malformed value is a solve error. */
+function storedVec3(feature: Dict, key: string): number[] | null {
+  const v = feature[key]
+  if (v === undefined || v === null) return null
+  if (!Array.isArray(v) || v.length !== 3 || !v.every((c) => typeof c === 'number' && Number.isFinite(c))) {
+    throw new Error(`circular_array: ${key} must be three finite numbers, got ${JSON.stringify(v)}`)
+  }
+  return v as number[]
+}
+
+/**
+ * The circular array's rotation axis, with the same precedence transform uses
+ * for its rotation: an `axis` pick wins; else the stored `axis_origin` /
+ * `axis_direction` pair, where a direction alone rotates about the world
+ * origin and an origin alone uses +Z (transform's rule, so one default holds
+ * for both features). Neither is a solve error rather than a silent rotation
+ * about a world axis. The schema accepted the pair long before the leaf read it.
+ */
+function resolveCircularAxis(
+  feature: Dict,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+): [number[], number[]] {
+  // The pick can be a straight edge, circular edge, sketch line, sketch
+  // circle, cylindrical face, or planar face.
+  const axisQuery = (feature.axis as string) ?? ''
+  if (axisQuery) {
+    const axis = resolveAxisQueryStrict(axisQuery, globalRepo, bodyStore)
+    if (!axis) throw new Error(`circular_array: axis query '${axisQuery}' did not resolve to a usable axis`)
+    return axis
+  }
+  const origin = storedVec3(feature, 'axis_origin')
+  const direction = storedVec3(feature, 'axis_direction')
+  if (origin === null && direction === null) {
+    throw new Error(
+      'circular_array: axis is required; pick an edge, sketch entity, or face as `axis`, ' +
+        'or store the pair `axis_origin` + `axis_direction`',
+    )
+  }
+  const dir = direction ?? [0, 0, 1]
+  const len = Math.hypot(dir[0], dir[1], dir[2])
+  if (len < 1e-12) throw new Error('circular_array: axis_direction must be a non-zero vector')
+  return [origin ?? [0, 0, 0], dir.map((c) => c / len)]
+}
+
 /** Build circular array instance transforms (mirrors `_build_circular_transforms`). */
 export function buildCircularTransforms(
   oc: OccModule,
@@ -152,16 +197,7 @@ export function buildCircularTransforms(
   if (!Number.isFinite(step)) {
     throw new Error(`circular_array: step_angle must be a finite number, got ${feature.step_angle}`)
   }
-  // The rotation axis can be a straight edge, circular edge, sketch line,
-  // sketch circle, cylindrical face, or planar face; an empty or dangling pick
-  // is a solve error rather than a silent rotation about world Z.
-  const axisQuery = (feature.axis as string) ?? ''
-  if (!axisQuery) throw new Error('circular_array: axis is required; pick an edge, sketch entity, or face')
-  const axis = resolveAxisQueryStrict(axisQuery, globalRepo, bodyStore)
-  if (!axis) {
-    throw new Error(`circular_array: axis query '${axisQuery}' did not resolve to a usable axis`)
-  }
-  const [axisOrigin, resolvedDirection] = axis
+  const [axisOrigin, resolvedDirection] = resolveCircularAxis(feature, globalRepo, bodyStore)
   // Invert flips the axis direction, which reverses the sweep sense.
   const invert = (feature.invert_axis as boolean) ?? false
   const axisDirection = invert ? resolvedDirection.map((c) => (c === 0 ? 0 : -c)) : resolvedDirection

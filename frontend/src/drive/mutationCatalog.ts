@@ -274,6 +274,12 @@ const ARRAY_OPERATION_NOTE =
   'separate bodies, taking the source id and `_1`, `_2`... siblings (the `run` reply summary names the live ids). ' +
   '`operation: new` keeps the source as instance 0 and mints one body per copy.'
 
+// Same precedence as transform's rotation axis, so one rule covers both.
+const CIRCULAR_AXIS_NOTE =
+  'The rotation axis is `axis` (an edge, sketch entity or face ref), or the stored pair `axis_origin` (VEC3 point) ' +
+  'and `axis_direction` (VEC3, non-zero). A resolved `axis` overrides the pair; `axis_direction` alone rotates about ' +
+  'the world origin, and `axis_origin` alone uses +Z.'
+
 const FILLET_BULK_NOTE =
   'One call may carry the whole pick: `edges` appends the query strings `select` returned, and `radius` sets the ' +
   'radius in the same step. `add_fillet_edge` and `set_fillet_field` remain for later single-edge and field edits.'
@@ -722,12 +728,12 @@ export const MUTATION_CATALOG = {
   },
   add_circular_array: {
     summary: 'Add a circular array feature.',
-    note: ARRAY_OPERATION_NOTE,
+    note: ARRAY_OPERATION_NOTE + ' ' + CIRCULAR_AXIS_NOTE,
     fields: featureAddFields(),
   },
   set_circular_array_field: {
     summary: 'Set one circular-array field.',
-    note: ARRAY_OPERATION_NOTE,
+    note: ARRAY_OPERATION_NOTE + ' ' + CIRCULAR_AXIS_NOTE,
     fields: { featureId: str(), field: fieldOf('circular array', 'set_circular_array_field'), value: setterValue('circular_array') },
   },
   add_delete_body: {
