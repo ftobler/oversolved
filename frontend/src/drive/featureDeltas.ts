@@ -28,6 +28,8 @@ export interface FeatureDelta {
   // its bbox delta is its bbox; a zero baseline is the honest "from nothing".
   volumeDelta: number
   bboxDelta: number[] | null
+  // A hole's drill side as the kernel resolved it (FeatureOutcome.direction).
+  direction?: 'normal' | 'reverse'
 }
 
 export interface FeatureDeltaOptions {
@@ -108,6 +110,7 @@ export function featureDeltaRows(
           bbox: measure.bbox,
           volumeDelta: measure.volume - previousVolume,
           bboxDelta: subtractBbox(measure.bbox, previousBbox),
+          ...(outcome.direction !== undefined && { direction: outcome.direction }),
         })
       }
     }

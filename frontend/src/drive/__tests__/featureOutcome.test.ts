@@ -62,6 +62,18 @@ describe('readSolveOutcomes', () => {
     })
   })
 
+  it('keeps a hole\'s resolved drill side and ignores any other value there', () => {
+    expect(readSolveOutcomes({
+      h1: { status: 'ok', direction: 'reverse' },
+      h2: { status: 'ok', direction: 'normal' },
+      ex1: { status: 'ok', direction: 'symmetric' },
+    })).toEqual({
+      h1: { status: 'ok', direction: 'reverse' },
+      h2: { status: 'ok', direction: 'normal' },
+      ex1: { status: 'ok' },
+    })
+  })
+
   it('is empty for a missing result', () => {
     expect(readSolveOutcomes(undefined)).toEqual({})
     expect(readSolveOutcomes(null)).toEqual({})

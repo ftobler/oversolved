@@ -99,6 +99,9 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     const hole = result.doc?.features?.find(feature => feature.id === 'h1')
     if (hole?.kind !== 'hole') throw new Error('unreachable')
     expect(hole.hole).not.toHaveProperty('depth')
+    // The Front plane's normal points into the box, so the resolved side is
+    // the authored one, and the reply says which way the hole went.
+    expect(result.featureDeltas?.find(row => row.id === 'h1')?.direction).toBe('normal')
     const measured = await measureHeadless(result.doc!)
     expect(measured).not.toBeNull()
     // 10x10x10 box minus a 4 mm bore through the 10 mm height.

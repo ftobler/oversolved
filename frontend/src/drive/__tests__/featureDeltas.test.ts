@@ -67,6 +67,14 @@ describe('featureDeltaRows', () => {
     expect(rows[1].volumeDelta).toBe(14000 - 11922.743)
   })
 
+  it('carries a hole\'s resolved drill side on its row, and no side elsewhere', () => {
+    // A through hole under `normal` may have drilled `reverse`; the row says so
+    // without anyone measuring cylinder faces to find which way it went.
+    const rows = featureDeltaRows(DOC, MEASURES, { ...CLEAN, fi1: { status: 'ok', direction: 'reverse' } })
+    expect(rows.find(row => row.id === 'fi1')?.direction).toBe('reverse')
+    expect(rows.find(row => row.id === 'ex1')).not.toHaveProperty('direction')
+  })
+
   it('leaves features the solve never reached out of the rows', () => {
     const rows = featureDeltaRows(DOC, MEASURES.slice(0, 2), CLEAN)
     expect(rows.map(row => row.id)).toEqual(['sk1', 'ex1'])

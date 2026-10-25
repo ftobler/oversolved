@@ -17,6 +17,11 @@ export interface FeatureOutcome {
   // The kernel's fallback or no-op note on an otherwise good solve, e.g. a
   // hole whose every drill site missed.
   warning?: string
+  // The side a hole drilled, as the kernel resolved it. A through hole under
+  // `normal` drills wherever its sites find material, so this can differ from
+  // the authored field, and a counterbore on the wrong side is otherwise only
+  // visible by measuring its faces.
+  direction?: 'normal' | 'reverse'
 }
 
 /** A feature the solve did not finish cleanly, in feature log order. */
@@ -67,14 +72,18 @@ export function readSolveOutcomes(
   const outcomes: Record<string, FeatureOutcome> = {}
   for (const [id, feature] of Object.entries(result ?? {})) {
     if (typeof feature !== 'object' || feature === null) continue
-    const row = feature as { status?: unknown; exception?: unknown; solver_warning?: unknown }
+    const row = feature as { status?: unknown; exception?: unknown; solver_warning?: unknown; direction?: unknown }
     if (typeof row.status !== 'string') continue
     const exception = typeof row.exception === 'string' && row.exception !== '' ? row.exception : undefined
     const warning = typeof row.solver_warning === 'string' && row.solver_warning !== '' ? row.solver_warning : undefined
+    // Only the hole result writes this field; anything but a drill side word
+    // is not one and is dropped rather than echoed.
+    const direction = row.direction === 'normal' || row.direction === 'reverse' ? row.direction : undefined
     outcomes[id] = {
       status: row.status,
       ...(exception !== undefined && { exception }),
       ...(warning !== undefined && { warning }),
+      ...(direction !== undefined && { direction }),
     }
   }
   return outcomes
