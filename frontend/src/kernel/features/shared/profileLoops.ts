@@ -3,7 +3,14 @@
 // "no closed profile found" companions.
 
 import { TOL_LOOP_CLOSURE, TOL_TOPOLOGY_MERGE } from '../../solverConstants'
-import { ANCHORED_KINDS, loopGeometryKey, type LoopEdge } from '../../profileLoops'
+import {
+  ANCHORED_KINDS,
+  arcSamplePoints,
+  ellipseArcSamplePoints,
+  loopGeometryKey,
+  splineSamplePoints,
+  type LoopEdge,
+} from '../../profileLoops'
 
 type Dict = Record<string, unknown>
 
@@ -65,6 +72,32 @@ function onMergedVertices(
   if (startPos !== undefined) copy.start = [...startPos.pos]
   if (endPos !== undefined) copy.end = [...endPos.pos]
   return copy
+}
+
+/**
+ * True for an edge the builder's vertex merge collapsed to nothing: one vertex
+ * id at both ends and its whole extent within TOL_TOPOLOGY_MERGE of its start.
+ *
+ * The shared id alone is not enough. A self-closed spline or a full-turn arc
+ * also runs from a vertex back to itself with coinciding ends, and it is a
+ * whole profile, so the interior samples are what decide. The raw edge is
+ * measured, not its merged-vertex copy: after the snap both ends of a
+ * same-vertex edge are the same point by construction.
+ */
+function isMergedFragment(edge: Dict): boolean {
+  if (typeof edge.start_vertex !== 'string' || edge.start_vertex !== edge.end_vertex) return false
+  const s = edge.start as number[] | undefined | null
+  const en = edge.end as number[] | undefined | null
+  if (!Array.isArray(s) || !Array.isArray(en)) return false
+  const near = (p: number[]): boolean => Math.hypot(p[0] - s[0], p[1] - s[1]) <= TOL_TOPOLOGY_MERGE
+  if (!near(en)) return false
+  const e = edge as LoopEdge
+  const interior = [
+    ...arcSamplePoints(e, 3),
+    ...ellipseArcSamplePoints(e, 3),
+    ...splineSamplePoints(e, 3),
+  ]
+  return interior.every(near)
 }
 
 /**
@@ -146,18 +179,11 @@ export function extractProfileLoops(
         const s = se.start as number[] | undefined | null
         const en = se.end as number[] | undefined | null
         if (s === undefined || s === null || en === undefined || en === null) continue
-        // A boundary edge whose two ends the builder merged into ONE vertex is
-        // a zero-length fragment of a duplicate split (a near-tangent line/arc
-        // root a hair inside the arc). It bounds nothing and OCC would build it
-        // as a micro sliver beside the real face. Dropping it joins the two
+        // A zero-length fragment of a duplicate split (a near-tangent line/arc
+        // root a hair inside the arc) bounds nothing, and OCC would build it as
+        // a micro sliver beside the real face. Dropping it joins the two
         // neighbours at that vertex; the loop stays closed.
-        if (
-          typeof e.start_vertex === 'string' &&
-          e.start_vertex === e.end_vertex &&
-          Math.hypot(s[0] - en[0], s[1] - en[1]) <= TOL_TOPOLOGY_MERGE
-        ) {
-          continue
-        }
+        if (isMergedFragment(e)) continue
         rawEdges.push([s, en, se])
       }
       if (rawEdges.length < 1) continue
@@ -229,12 +255,12 @@ export function extractProfileLoops(
       // double-reporting (foundNext=false only fires while edges remain).
       if (!closed && loop.length > 0 && rawEdges.length - used.size === 0) {
         diagnostics?.push({
-            kind: 'unclosed',
-            startedAt: rawEdges[0][0],
-            used: used.size,
-            total: rawEdges.length,
-            surface: surfaceIndex,
-          })
+          kind: 'unclosed',
+          startedAt: rawEdges[0][0],
+          used: used.size,
+          total: rawEdges.length,
+          surface: surfaceIndex,
+        })
       }
     }
   }

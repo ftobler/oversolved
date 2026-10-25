@@ -170,6 +170,22 @@ describe('extractProfileLoops at the tolerance boundary', () => {
     }
   })
 
+  it('keeps a self-closed curve that starts and ends on one vertex', () => {
+    // A closed spline (and a full-turn arc) is one edge from a vertex back to
+    // itself, just like a zero-length fragment: same id at both ends, start and
+    // end coincide. Its interior is what tells it apart, so it must survive.
+    const spline = {
+      kind: 'spline', start: [0, 0], c1: [20, 20], c2: [-20, 20], end: [0, 0],
+      start_vertex: '_v0', end_vertex: '_v0',
+    }
+    expect(extractProfileLoops([{ boundary: [spline] }])).toHaveLength(1)
+    const fullArc = {
+      kind: 'arc', center: [0, 0], radius: 5, angle_start_deg: 0, angle_end_deg: 360, ccw: true,
+      start: [5, 0], end: [5, 0], start_vertex: '_v0', end_vertex: '_v0',
+    }
+    expect(extractProfileLoops([{ boundary: [fullArc] }])).toHaveLength(1)
+  })
+
   it('the anchored (arc) endpoint wins a merged joint, whichever edge comes first', () => {
     // Arc start (10,0) and a line's end 1e-5 away, both claiming vertex _v1.
     // The line is listed FIRST so a first-position-wins rule would move the
