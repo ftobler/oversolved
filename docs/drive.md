@@ -490,12 +490,16 @@ banner on stdout, so a client config must use the direct node invocation.
   module) is also `ok: false`, with `solve.lastError` naming the fault.
   `featureDeltas` answers "what did this step contribute": one row per feature
   this call changed, in log order, with `id`, `kind`, `status`, the cumulative
-  `volume` and `bbox` after it, and `volumeDelta`/`bboxDelta` from the previous
-  checkpoint. A row appears when the feature's checkpoint differs from the input
-  document's solve, when the feature is new, or when the steps touched a
-  solid-producing feature (so an edit that leaves the same volume still shows
-  its zero contribution); untouched planes and sketches from an earlier call do
-  not repeat. The first body's deltas start from zero. A failed, partial or
+  `volume` and `bbox` after it (the total over every live body, not one body's),
+  and `volumeDelta`/`bboxDelta` from the previous checkpoint. A feature that
+  built or changed one body also carries `body` (its id, e.g. the merge_target a
+  cut went into) and `bodyVolume` (that body's own volume after it). A row
+  appears when the feature's checkpoint differs from the input document's solve,
+  when the feature is new, or when the steps touched a solid-producing feature
+  (so an edit that leaves the same volume still shows its zero contribution);
+  untouched planes and sketches from an earlier call do not repeat, and neither
+  does an existing sketch or plane whose own delta is zero (an upstream edit
+  moves its cumulative checkpoint, not its contribution). The first body's deltas start from zero. A failed, partial or
   warning feature
   has no row (its checkpoint may hold half-applied geometry), but that
   checkpoint still sets the baseline for the next clean feature, so a later

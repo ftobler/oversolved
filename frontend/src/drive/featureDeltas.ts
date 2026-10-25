@@ -21,7 +21,8 @@ export interface FeatureDelta {
   id: string
   kind: string
   status: string
-  // Cumulative volume and bbox of the live bodies after this feature.
+  // Cumulative volume and bbox of ALL the live bodies after this feature, not
+  // the volume of the body it touched (ppp0105 read it as one body's).
   volume: number
   bbox: number[] | null
   // Change from the previous checkpoint. The first body starts from zero, so
@@ -30,6 +31,11 @@ export interface FeatureDelta {
   bboxDelta: number[] | null
   // A hole's drill side as the kernel resolved it (FeatureOutcome.direction).
   direction?: 'normal' | 'reverse'
+  // The body this feature built or changed (a merge_target cut's receiving
+  // body, say) and that body's own volume after it; absent when the feature
+  // names no live body.
+  body?: string
+  bodyVolume?: number
 }
 
 export interface FeatureDeltaOptions {
@@ -101,16 +107,21 @@ export function featureDeltaRows(
     const clean = outcome !== undefined && !isFeatureProblem(outcome)
     if (clean) {
       const kind = typeof feature.kind === 'string' ? feature.kind : 'unknown'
-      if (mode === 'all' || includeRow(id, kind, measure)) {
+      const volumeDelta = measure.volume - previousVolume
+      const bboxDelta = subtractBbox(measure.bbox, previousBbox)
+      if (mode === 'all' || includeRow(id, kind, measure, volumeDelta, bboxDelta)) {
+        const bodyId = isSolidProducingKind(kind) ? outcome.bodyId : undefined
+        const bodyVolume = bodyId === undefined ? undefined : measure.bodies?.[bodyId]
         rows.push({
           id,
           kind,
           status: outcome.status,
           volume: measure.volume,
           bbox: measure.bbox,
-          volumeDelta: measure.volume - previousVolume,
-          bboxDelta: subtractBbox(measure.bbox, previousBbox),
+          volumeDelta,
+          bboxDelta,
           ...(outcome.direction !== undefined && { direction: outcome.direction }),
+          ...(bodyId !== undefined && bodyVolume !== undefined && { body: bodyId, bodyVolume }),
         })
       }
     }
@@ -123,10 +134,22 @@ export function featureDeltaRows(
   // it cannot call anything unchanged; showing every clean row is the honest
   // fallback. Otherwise a feature is included when its checkpoint moved, when
   // it was added (no baseline row), or when the steps touched a solid feature.
-  function includeRow(id: string, kind: string, measure: FeatureMeasure): boolean {
+  // An existing reference feature (sketch, plane) whose own delta is zero is
+  // left out: its cumulative checkpoint moves with every upstream edit, so a
+  // variable edit listed each downstream sketch as a zero row (bearing notes).
+  // A newly added one keeps its row, which is how a run sees what it added.
+  function includeRow(
+    id: string,
+    kind: string,
+    measure: FeatureMeasure,
+    volumeDelta: number,
+    bboxDelta: number[] | null,
+  ): boolean {
     if (baseline === null) return true
     const before = baseline.get(id)
     if (before === undefined) return true
+    if (!isSolidProducingKind(kind) && closeNumber(volumeDelta, 0)
+      && (bboxDelta === null || bboxDelta.every(value => closeNumber(value, 0)))) return false
     if (!sameMeasure(measure, before)) return true
     return touched.has(id) && isSolidProducingKind(kind)
   }

@@ -22,6 +22,9 @@ export interface FeatureOutcome {
   // the authored field, and a counterbore on the wrong side is otherwise only
   // visible by measuring its faces.
   direction?: 'normal' | 'reverse'
+  // The body the feature built or changed (the kernel's `body_id`), e.g. the
+  // merge_target an extrude cut went into.
+  bodyId?: string
 }
 
 /** A feature the solve did not finish cleanly, in feature log order. */
@@ -72,18 +75,22 @@ export function readSolveOutcomes(
   const outcomes: Record<string, FeatureOutcome> = {}
   for (const [id, feature] of Object.entries(result ?? {})) {
     if (typeof feature !== 'object' || feature === null) continue
-    const row = feature as { status?: unknown; exception?: unknown; solver_warning?: unknown; direction?: unknown }
+    const row = feature as {
+      status?: unknown; exception?: unknown; solver_warning?: unknown; direction?: unknown; body_id?: unknown
+    }
     if (typeof row.status !== 'string') continue
     const exception = typeof row.exception === 'string' && row.exception !== '' ? row.exception : undefined
     const warning = typeof row.solver_warning === 'string' && row.solver_warning !== '' ? row.solver_warning : undefined
     // Only the hole result writes this field; anything but a drill side word
     // is not one and is dropped rather than echoed.
     const direction = row.direction === 'normal' || row.direction === 'reverse' ? row.direction : undefined
+    const bodyId = typeof row.body_id === 'string' && row.body_id !== '' ? row.body_id : undefined
     outcomes[id] = {
       status: row.status,
       ...(exception !== undefined && { exception }),
       ...(warning !== undefined && { warning }),
       ...(direction !== undefined && { direction }),
+      ...(bodyId !== undefined && { bodyId }),
     }
   }
   return outcomes

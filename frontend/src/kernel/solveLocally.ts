@@ -737,6 +737,9 @@ export interface FeatureMeasure {
   id: string
   volume: number
   bbox: Bbox6 | null
+  // Each live body's own volume at this checkpoint, so a delta row can name
+  // the body a feature changed beside the all-bodies total.
+  bodies?: Record<string, number>
 }
 
 function unionBbox(a: Bbox6 | null, b: Bbox6): Bbox6 {
@@ -766,7 +769,8 @@ function measureFeatureCheckpoints(
       if (!checkpoint) continue
       let volume = 0
       let bbox: Bbox6 | null = null
-      for (const body of Object.values(checkpoint.body_store_snapshot)) {
+      const bodies: Record<string, number> = {}
+      for (const [bodyId, body] of Object.entries(checkpoint.body_store_snapshot)) {
         if (body.shape == null) continue
         let measured = cache.get(body.shape)
         if (measured === undefined) {
@@ -776,8 +780,9 @@ function measureFeatureCheckpoints(
         }
         volume += measured.volume
         bbox = unionBbox(bbox, measured.bbox)
+        bodies[bodyId] = measured.volume
       }
-      out.push({ id, volume, bbox })
+      out.push({ id, volume, bbox, bodies })
     }
     return out
   } catch (e) {

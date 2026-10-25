@@ -63,6 +63,16 @@ describe('F4: symmetric extrude distance', () => {
   })
 })
 
+describe('F7: merge_target spelling', () => {
+  it('names the bare body id and the delta row field on every merge_target row', () => {
+    for (const type of ['add_extrude', 'set_extrude_field', 'set_revolve_field'] as const) {
+      const note = mutationInfoOf(type).note!
+      expect(note, type).toContain('bare body id')
+      expect(note, type).toContain('`body`')
+    }
+  })
+})
+
 describe('F5: add_center_rect created ids', () => {
   it('documents the order the mutation actually creates', async () => {
     expect(mutationInfoOf('add_center_rect').note).toContain('bottom, right, top, left')

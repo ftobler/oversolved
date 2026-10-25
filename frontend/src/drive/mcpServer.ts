@@ -283,6 +283,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'missing and makes ok false, as does a kernel fault, which also sets solve.lastError. featureDeltas gives volume and bbox after each feature this call '
       + 'changed or touched, with the change from the previous checkpoint, so an additive step\'s contribution '
       + 'is visible without repeating the whole history; a failed, partial or warning feature has no delta row. '
+      + 'A row\'s volume is the total over every live body; body and bodyVolume name the one body the feature '
+      + 'built or changed (a merge_target cut\'s receiving body) and its own volume. '
       + 'Pass featureDeltas: "all" to inspect every clean row instead. frames reports each sketch and add_plane '
       + 'feature\'s resolved {origin, x_axis, y_axis, normal}, so a face sketch\'s axes are read from the reply '
       + 'rather than guessed (a feature whose solve threw has no frame). With steps: [] the given document is solved '

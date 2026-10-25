@@ -102,6 +102,51 @@ describe('featureDeltaRows', () => {
     expect(rows.map(row => row.id)).toEqual(['fi1', 'ex3'])
   })
 
+  // Bearing notes: a variable edit moved every downstream checkpoint, so each
+  // sketch after the first extrude showed up as a zero-contribution row.
+  it('changed mode leaves out an existing sketch whose own delta is zero', () => {
+    const doc = {
+      ...DOC,
+      features: [{ id: 'sk1', kind: 'sketch' }, { id: 'ex1', kind: 'extrude' }, { id: 'sk2', kind: 'sketch' }],
+    } as unknown as PartDoc
+    const before: FeatureMeasure[] = [
+      { id: 'sk1', volume: 0, bbox: null },
+      { id: 'ex1', volume: 12000, bbox: [0, 0, 0, 40, 10, 30] },
+      { id: 'sk2', volume: 12000, bbox: [0, 0, 0, 40, 10, 30] },
+    ]
+    const after: FeatureMeasure[] = [
+      { id: 'sk1', volume: 0, bbox: null },
+      { id: 'ex1', volume: 24000, bbox: [0, 0, 0, 40, 20, 30] },
+      { id: 'sk2', volume: 24000, bbox: [0, 0, 0, 40, 20, 30] },
+    ]
+    const outcomes: Record<string, FeatureOutcome> = {
+      sk1: { status: 'ok' }, ex1: { status: 'ok' }, sk2: { status: 'ok' },
+    }
+    const rows = featureDeltaRows(doc, after, outcomes, { baseline: before, mode: 'changed' })
+    expect(rows.map(row => row.id)).toEqual(['ex1'])
+  })
+
+  // slide_latch F3 / ppp0105: the reply did not say which body took the
+  // material, and `volume` (all bodies) read like one body's volume.
+  it('names the body a feature changed and that body\'s own volume', () => {
+    const measures: FeatureMeasure[] = [
+      { id: 'sk1', volume: 0, bbox: null, bodies: {} },
+      { id: 'ex1', volume: 12000, bbox: [0, 0, 0, 40, 10, 30], bodies: { body_ex1: 8000, body_ex9: 4000 } },
+      { id: 'fi1', volume: 11922.743, bbox: [0, 0, 0, 40, 10, 30], bodies: { body_ex1: 7922.743, body_ex9: 4000 } },
+      { id: 'ex2', volume: 14000, bbox: [0, 0, 0, 50, 10, 30], bodies: { body_ex1: 7922.743, body_ex9: 6077.257 } },
+    ]
+    const outcomes: Record<string, FeatureOutcome> = {
+      sk1: { status: 'ok' },
+      ex1: { status: 'ok', bodyId: 'body_ex1' },
+      fi1: { status: 'ok', bodyId: 'body_ex1' },
+      ex2: { status: 'ok', bodyId: 'body_ex9' },
+    }
+    const rows = featureDeltaRows(DOC, measures, outcomes)
+    expect(rows[0].body).toBeUndefined()
+    expect(rows[1]).toMatchObject({ body: 'body_ex1', bodyVolume: 8000, volume: 12000 })
+    expect(rows[3]).toMatchObject({ body: 'body_ex9', bodyVolume: 6077.257 })
+  })
+
   it('all mode keeps every clean row even against an identical baseline', () => {
     const rows = featureDeltaRows(DOC, MEASURES, CLEAN, { baseline: MEASURES, mode: 'all' })
     expect(rows.map(row => row.id)).toEqual(['sk1', 'ex1', 'fi1', 'ex2'])

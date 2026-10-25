@@ -66,6 +66,10 @@ describe.skipIf(!ready)('an outward face-sketch cut names direction: reverse', (
   it('the reversed cut removes pi r^2 * 5', async () => {
     const result = await cutOnTopFace('reverse')
     expect(result.features).toEqual([])
+    // The delta row names the body the cut went into, with its own volume.
+    const row = result.featureDeltas!.find(delta => delta.id === 'cut1')!
+    expect(row.body).toBe('body_ex1')
+    expect(row.bodyVolume).toBeCloseTo(BOX_VOLUME - Math.PI * R * R * 5, 3)
     const measured = await measureHeadless(result.doc!)
     expect(measured!.measures.volume).toBeCloseTo(BOX_VOLUME - Math.PI * R * R * 5, 3)
   }, 120_000)

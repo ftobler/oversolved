@@ -296,13 +296,14 @@ const VARIABLE_NAME_NOTE =
 
 // merge_target is a body id, not a ref: the practice runs guessed `@body_ex5`.
 const MERGE_TARGET_NOTE =
-  'The bare body id the cut or add goes into, e.g. `body_ex5` (no @ sigil); absent means every body the tool reaches.'
+  'The bare body id the cut or add goes into, e.g. `body_ex5` (no @ sigil); absent means every body the tool reaches. ' +
+  'The feature\'s featureDeltas row names the receiving body as `body`, with its own `bodyVolume`.'
 
 // The symmetric split is the one direction whose distance reads two ways
 // (sprocket, ppp0103 F2, ppp0105 F3).
 const EXTRUDE_FIELDS_NOTE =
   '`direction: symmetric` takes `distance` as the TOTAL length, half on each side of the sketch plane ' +
-  '(distance 10 spans -5..+5); `normal` and `reverse` take it whole on one side. `merge_target` is the bare body id.'
+  '(distance 10 spans -5..+5); `normal` and `reverse` take it whole on one side. `merge_target`: ' + MERGE_TARGET_NOTE
 
 const EXTRUDE_INLINE_NOTE =
   'One call may carry the whole extrude: `direction`, `operation` and `merge_target` set the same keys ' +
@@ -619,7 +620,7 @@ export const MUTATION_CATALOG = {
   },
   set_revolve_field: {
     summary: 'Set one revolve field.',
-    note: REVOLVE_AXIS_NOTE,
+    note: REVOLVE_AXIS_NOTE + ' `merge_target`: ' + MERGE_TARGET_NOTE,
     fields: { featureId: str(), field: fieldOf('revolve', 'set_revolve_field'), value: setterValue('revolve') },
   },
   add_revolve_profile: {
