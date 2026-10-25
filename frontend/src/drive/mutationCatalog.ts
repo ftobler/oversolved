@@ -279,7 +279,7 @@ const ARRAY_OPERATION_NOTE =
 // Generated from the registry so the example cannot drift: the hand-written
 // note named `distance`, a kind the validator refuses (mountPlate F1).
 const CONSTRAINT_KIND_NOTE =
-  `The constraint kind, one of: ${[...CONSTRAINT_BY_KIND.keys()].join(', ')}. A line\'s dimension is ` +
+  `The constraint kind, one of: ${[...CONSTRAINT_BY_KIND.keys()].join(', ')}. A line's dimension is ` +
   '`length`; two points take `point_distance`.'
 
 // The side is relative to the loop, not to each line's drawn direction, so a

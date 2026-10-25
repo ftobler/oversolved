@@ -9,7 +9,7 @@
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { runHeadless, measureHeadless, emptyDriveDoc } from '../headlessOps'
-import type { PartDoc } from '@/types/cad'
+import type { ExtrudeDirection, PartDoc } from '@/types/cad'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
@@ -37,7 +37,7 @@ const ready = oc && solveBytes
 type Swap = (u: number, v: number) => [number, number]
 
 // [source plane, Oversolved plane, sketch swap, direction, source-frame bbox]
-const ROWS: Array<[string, string, Swap, string, number[]]> = [
+const ROWS: Array<[string, string, Swap, ExtrudeDirection, number[]]> = [
   ['XY', '@builtin_plane_front', (u, v) => [u, v], 'normal', [0, 0, 0, 10, 4, 3]],
   ['XZ', '@builtin_plane_top', (u, v) => [u, -v], 'reverse', [0, -3, 0, 10, 0, 4]],
   ['YZ', '@builtin_plane_right', (u, v) => [-v, u], 'normal', [0, 0, 0, 3, 10, 4]],
