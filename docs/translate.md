@@ -94,7 +94,20 @@ The runner emits CadQuery's own frame (XY plane, extrusion along +Z), and
 Y-up world and compares the numbers unchanged. Map the source frame before
 comparing. CadQuery's XY extrusion along +Z is Oversolved's Front plane, and a
 box centred on CadQuery's origin needs a symmetric or re-origined extrusion so
-its bbox and centroid land where the recipe does. A centroid or bbox row that
+its bbox and centroid land where the recipe does.
+
+The source's world coordinates are used unchanged, so each named source plane
+lands on one seeded plane with a fixed sketch-coordinate swap. CadQuery and
+build123d define `XY`, `XZ` and `YZ` the same way (normal, then local x and y):
+
+| Source plane | Source normal, x, y | Oversolved plane | Sketch point for source (u, v) | Extrude along source normal | Workplane offset d |
+| --- | --- | --- | --- | --- | --- |
+| `XY` | +Z, +X, +Y | Front (+Z, x +X, y +Y) | (u, v) | `direction: normal` | Front offset +d |
+| `XZ` | -Y, +X, +Z | Top (+Y, x +X, y -Z) | (u, -v) | `direction: reverse` | Top offset -d |
+| `YZ` | +X, +Y, +Z | Right (+X, x -Z, y +Y) | (-v, u) | `direction: normal` | Right offset +d |
+
+So `Plane.XZ` (normal -Y, local y +Z) is the Top plane flipped: negate the
+sketch y, extrude with `direction: reverse`, and negate an offset. A centroid or bbox row that
 fails while volume and area pass is the expected sign of a frame mismatch; the
 row says so, and it is not a geometry difference.
 
