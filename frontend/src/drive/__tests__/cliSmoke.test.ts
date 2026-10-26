@@ -934,7 +934,9 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
     // never returns. The server must kill that worker, answer the call, and
     // build the next document on a fresh one.
     const client = spawnMcp({
-      OVERSOLVED_MCP_SOLVE_BUDGET_MS: '3000',
+      // Roomy enough that a kernel boot under a loaded full suite (counted
+      // against the budget) never trips it before the first feature mark.
+      OVERSOLVED_MCP_SOLVE_BUDGET_MS: '10000',
       OVERSOLVED_MCP_TEST_HANG_FEATURE: 'ex_stuck',
     })
     try {
@@ -949,7 +951,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       expect(stuckResult.isError).toBe(true)
       expect(JSON.parse(stuckResult.content[0].text)).toEqual({
         ok: false,
-        error: 'solve timed out after 3 s in feature ex_stuck',
+        error: 'solve timed out after 10 s in feature ex_stuck',
       })
 
       const next = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
