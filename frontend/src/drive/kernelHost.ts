@@ -69,9 +69,9 @@ export function isKernelCallFailure(e: unknown): e is Error {
 }
 
 export interface KernelHost {
-  /** Run one kernel op; calls queue behind each other in arrival order. */
+  // Run one kernel op; calls queue behind each other in arrival order.
   call(op: KernelOp, args: unknown): Promise<unknown>
-  /** Terminate the worker (server shutdown, test teardown). */
+  // Terminate the worker (server shutdown, test teardown).
   dispose(): Promise<void>
 }
 
