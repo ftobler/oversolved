@@ -98,14 +98,23 @@ async function runOp(req: KernelRequest): Promise<unknown> {
 export function serveKernel(port: KernelPort): void {
   onFeatureStart((featureId) => port.postMessage({ kind: 'progress', featureId }))
   port.on('message', (req) => {
+    const fail = (e: unknown): void => {
+      const error = e instanceof Error
+        ? { name: e.name, message: e.message }
+        : { name: 'Error', message: String(e) }
+      port.postMessage({ kind: 'reply', id: req.id, ok: false, error })
+    }
     runOp(req).then(
-      (value) => port.postMessage({ kind: 'reply', id: req.id, ok: true, value }),
-      (e: unknown) => {
-        const error = e instanceof Error
-          ? { name: e.name, message: e.message }
-          : { name: 'Error', message: String(e) }
-        port.postMessage({ kind: 'reply', id: req.id, ok: false, error })
+      (value) => {
+        // A reply that cannot be structured-cloned must answer as an error: an
+        // unhandled throw here would kill the worker and lose the call.
+        try {
+          port.postMessage({ kind: 'reply', id: req.id, ok: true, value })
+        } catch (e) {
+          fail(e)
+        }
       },
+      fail,
     )
   })
 }

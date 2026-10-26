@@ -69,8 +69,9 @@ async function callKernel<T>(op: KernelOp, args: unknown): Promise<KernelAnswer<
   }
 }
 
-// stdout is the protocol channel, so the kernel's own prints must not land
-// there: the OCC STEP writer prints a transfer banner on stdout (Module.print
+// stdout is the protocol channel, so stray prints must not land there (the
+// kernel runs in the worker, whose stdout is piped to stderr above; this guards
+// this thread): the OCC STEP writer prints a transfer banner on stdout (Module.print
 // goes to console.log), which would corrupt the stream. Responses go through
 // the saved writer; every other stdout write is forwarded to stderr.
 const writeProtocol = routeKernelStdoutToStderr()

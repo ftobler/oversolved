@@ -137,4 +137,19 @@ describe('createKernelHost', () => {
     created[1].send({ kind: 'reply', id: created[1].last().id, ok: true, value: 'ok' })
     await expect(next).resolves.toBe('ok')
   })
+
+  it('refuses a call after dispose instead of respawning a worker', async () => {
+    const { host, created } = setup()
+    await host.dispose()
+    await expect(host.call('run', {})).rejects.toThrow('kernel host disposed')
+    expect(created).toHaveLength(0)
+  })
+
+  it('reports a synchronous spawn failure as a lost worker', async () => {
+    const host = createKernelHost({ budgetMs: 1000, factory: () => { throw new Error('no such module') } })
+    await expect(host.call('run', {})).rejects.toMatchObject({
+      name: 'KernelWorkerLost',
+      message: 'kernel worker failed to start: no such module',
+    })
+  })
 })

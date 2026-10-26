@@ -157,8 +157,14 @@ export function createKernelHost(opts: KernelHostOptions): KernelHost {
     return w
   }
 
+  let disposed = false
+
   const start = (op: KernelOp, args: unknown): Promise<unknown> =>
     new Promise((resolve, reject) => {
+      if (disposed) {
+        reject(new Error('kernel host disposed'))
+        return
+      }
       const id = nextId++
       // Armed before the post, so the kernel load at a fresh worker's first
       // call counts against the budget too: a load that never finishes is a
@@ -167,7 +173,10 @@ export function createKernelHost(opts: KernelHostOptions): KernelHost {
       try {
         ensureWorker().postMessage({ id, op, args })
       } catch (e) {
-        settle((p) => p.reject(e))
+        // A spawn failure is the same fault as a worker that dies: a tool
+        // error, like the asynchronous 'error' event.
+        const reason = e instanceof Error ? e.message : String(e)
+        settle((p) => p.reject(new KernelWorkerLost(`kernel worker failed to start: ${reason}`)))
       }
     })
 
@@ -180,6 +189,7 @@ export function createKernelHost(opts: KernelHostOptions): KernelHost {
     },
     async dispose() {
       const w = worker
+      disposed = true
       settle((p) => p.reject(new Error('kernel host disposed')))
       worker = null
       if (w) await Promise.resolve(w.terminate())
