@@ -335,7 +335,11 @@ manifest) and differ in what makes their expectation true:
   `npm run drive -- run|commands|measure|compare|export|replay ...` from `frontend/`.
 - The same surface (plus `compare`, `measure` and `export`) is served over MCP stdio by
   `npm run mcp`, a hand-rolled JSON-RPC loop with no SDK dependency; the tool
-  ops and the CLI share `src/drive/headlessOps.ts`.
+  ops and the CLI share `src/drive/headlessOps.ts`. The MCP server runs the
+  kernel in a `worker_threads` worker (`src/drive/kernelHost.ts`,
+  `kernelWorker.ts`, `scripts/mcpKernelWorker.ts`) so a stalled solve is
+  terminated and reported with the feature it stuck in; `build()` posts the
+  per-feature marks from `src/kernel/featureProgress.ts` that re-arm the budget.
 - Scripts, the inspect shape, the journal format, the CLI usage and the MCP
   tools are documented in `docs/drive.md`.
 
