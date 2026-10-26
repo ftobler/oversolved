@@ -48,6 +48,20 @@ just licenses       # npm run licenses:check
 just build          # npm run build
 ```
 
+## Rust Commands
+from the justfile: `just rust`
+
+`just rust` chains `rust-fmt` (`cargo fmt --all --check`), `rust-lint` (clippy
+with `-D warnings` plus `lint.py` on the crates) and `rust-test` (`cargo test
+--workspace`), the same three CI runs. Any Rust change must pass it, and must
+rebuild the WASM with `just wasm` before `just frontend`.
+
+```bash
+just rust-fmt   # cargo fmt --all --check (run `cargo fmt --all` to fix)
+just rust-lint  # clippy -D warnings + lint.py solver-core sketch-solver mate-solver
+just rust-test  # cargo test --workspace, including the in-gate sketch fuzz
+```
+
 ## Fuzz Suite
 from the justfile: `just fuzz`
 
@@ -77,7 +91,7 @@ just fuzz-sketch 0 300       # harvest a sketch range (writes fixtures)
 ## Conventions
 - The frontend goal is: If I delete the Viewport, the logic should still pass unit tests.
 - `code_guideline.md` should help navigate the codebase.
-- Test driven development. Frontend changes must pass `just frontend`. Python tooling changes must pass `just python`.
+- Test driven development. Frontend changes must pass `just frontend`. Python tooling changes must pass `just python`. Rust changes must pass `just rust`.
 - Gates tee a full copy of their output to `tmp/<gate>.log` while also printing to stdout.
 - For each feature try to make a test.
 - All CAD computation (solver + OpenCascade) runs in WASM inside Web Workers in the browser. Documents are stored in IndexedDB, the only permanent store; a folder or zip is only an import source or export destination. Nothing is sent to a server; there is no server.

@@ -61,10 +61,10 @@ static:
 
 # ─── gates ───
 
-# Run every gate (Python + frontend).
+# Run every gate (Python + Rust + frontend).
 default:
     mkdir -p tmp
-    { just python && just frontend; } 2>&1 | tee tmp/just_default.log
+    { just python && just rust && just frontend; } 2>&1 | tee tmp/just_default.log
 
 # Every Python gate. No Python runs at app runtime any more, so this covers only
 # the repo's own tooling: the icon generator under oversolved/ and the tests
@@ -246,6 +246,14 @@ sketch-fuzz from to:
 
 
 # ─── rust ───
+
+# The format check runs first: it is the cheapest and the one CI failed on when
+# agents ran only rust-test and rust-lint.
+
+# Every Rust gate (fmt check + clippy and comment lint + tests).
+rust:
+    mkdir -p tmp
+    { just rust-fmt && just rust-lint && just rust-test; } 2>&1 | tee tmp/just_rust.log
 
 # Test the Rust solver workspace (solver-core + sketch-solver + mate-solver).
 rust-test:

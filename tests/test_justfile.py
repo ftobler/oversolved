@@ -58,6 +58,30 @@ def test_every_recipe_has_a_one_line_summary() -> None:
     )
 
 
+def recipe_body(name: str) -> str:
+    """The recipe's lines up to the first blank line."""
+    lines = (ROOT / "justfile").read_text().splitlines()
+    start = lines.index(f"{name}:")
+    body: list[str] = []
+    for line in lines[start + 1:]:
+        if not line.strip():
+            break
+        body.append(line)
+    return "\n".join(body)
+
+
+def test_rust_recipe_runs_every_ci_rust_gate() -> None:
+    """`just rust` mirrors CI's rust job, format check included.
+
+    A branch once went green on rust-test and rust-lint alone and failed CI on
+    `cargo fmt --check`, so the aggregate pins all three.
+    """
+    text = recipe_body("rust")
+    for command in ("just rust-fmt", "just rust-lint", "just rust-test"):
+        assert command in text, f"`just rust` no longer runs `{command}`"
+    assert "just rust &&" in recipe_body("default"), "`just` no longer runs `just rust`"
+
+
 def test_fuzz_recipe_is_the_full_main_gate_suite() -> None:
     """`just fuzz` is the one entry point the main gate calls.
 
