@@ -16,6 +16,15 @@
  * hard: a face that does not sit on a true cylinder within FIT_TOL, wraps too
  * far around for a safe seam, or has holes, is left untouched; if the rebuilt
  * solid fails the validity or volume check the original shape is returned.
+ *
+ * Analytic cylinder faces join the clusters too, for a second reason: OCCT
+ * 7.4's UnifySameDomain face merge spins forever (never throws) on two
+ * coaxial partial cylinder faces whose axes run opposite ways, e.g. a lip
+ * extruded from a sketch arc (axis -Y) standing on a shell cavity's fillet
+ * wall (axis +Y) (bug-fuse-hang).  The first analytic member of a cluster
+ * sets the cluster's axis direction; every other member whose axis opposes it
+ * is rebuilt on the shared cylinder, so the merge only ever sees one
+ * direction.  An analytic member already pointing that way is left as it is.
  */
 
 import type { DisposeScope } from './disposeScope'
@@ -29,6 +38,7 @@ import type {
   OccSurfaceAdaptor,
 } from './occTypes'
 import { volumeOf } from './volume'
+import { faceSurfaceFrame } from './primitives'
 
 const FIT_SAMPLES = 7  // grid per direction -> 49 samples per face
 const FIT_TOL = 1e-6  // max radial deviation for "this face IS a cylinder"
@@ -185,8 +195,24 @@ function fitCylinder(oc: OccModule, scope: DisposeScope, face: OccShape): CylFit
   return { face, d, c: add(mul(e1, cx), mul(e2, cy)), r, pts, nMid, pMid }
 }
 
-/** Do two fits describe the same cylinder (coaxial, equal radius)? */
-function sameCylinder(a: CylFit, b: CylFit): boolean {
+/**
+ * A face on a cylinder: a fitted non-analytic face (`fit` set), or an analytic
+ * cylinder face whose exact axis was read off its surface (`fit` null until a
+ * rebuild needs its samples). An analytic `d` is the surface's own axis
+ * direction; a fitted `d` has an arbitrary sign.
+ */
+interface CylMember {
+  face: OccShape
+  d: V3
+  c: V3
+  r: number
+  fit: CylFit | null
+}
+
+type CylAxis = Pick<CylFit, 'd' | 'c' | 'r'>
+
+/** Do two cylinders coincide (coaxial, equal radius, either direction)? */
+function sameCylinder(a: CylAxis, b: CylAxis): boolean {
   if (Math.abs(Math.abs(dot(a.d, b.d)) - 1) > 1e-9) return false
   if (Math.abs(a.r - b.r) > CLUSTER_TOL) return false
   return norm(cross(sub(b.c, a.c), a.d)) < CLUSTER_TOL
@@ -227,7 +253,8 @@ function countWires(oc: OccModule, scope: DisposeScope, face: OccShape): number 
 }
 
 /**
- * Replace every non-analytic face of `shape` that sits on a true cylinder
+ * Replace every non-analytic face of `shape` that sits on a true cylinder,
+ * and every analytic cylinder face whose axis opposes a coaxial partner's,
  * with a face rebuilt on a shared analytic gp_Cylinder.  Returns the input
  * unchanged (`changed: false`) when nothing qualifies or any guard trips.
  * The returned swaps map raw faces to their canonical replacements so a
@@ -244,36 +271,65 @@ export function canonicalizeCylinderFaces(
     const planeType = oc.GeomAbs_SurfaceType.GeomAbs_Plane.value
     const cylType = oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value
 
-    // 1. Fit every non-analytic face; bail early when there are none (the
-    //    common case: booleans of analytic bodies).
-    const fits: CylFit[] = []
+    // 1. Fit every non-analytic face, and read the exact axis of every analytic
+    //    cylinder face. Bail early when there is nothing a rebuild could fix
+    //    (the common case: booleans of analytic bodies with no coaxial pair).
+    const members: CylMember[] = []
+    let fitCount = 0
     {
       const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
       for (; exp.More(); exp.Next()) {
         const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
         const ad = scope.track(new oc.BRepAdaptor_Surface_2(face, false))
         const t = ad.GetType().value
-        if (t === planeType || t === cylType) continue
+        if (t === planeType) continue
         if (countWires(oc, scope, face) !== 1) continue  // holes: skip, MakeFace takes one wire
+        if (t === cylType) {
+          const frame = faceSurfaceFrame(oc, scope, face)
+          if (frame?.radius === undefined) continue
+          members.push({ face, d: frame.axis, c: frame.origin, r: frame.radius, fit: null })
+          continue
+        }
         const fit = fitCylinder(oc, scope, face)
-        if (fit) fits.push(fit)
+        if (fit) {
+          members.push({ face, d: fit.d, c: fit.c, r: fit.r, fit })
+          fitCount++
+        }
       }
     }
-    if (fits.length === 0) return identity
+    if (fitCount === 0 && members.length < 2) return identity
 
-    // 2. Cluster coincident fits so both weld halves land on ONE cylinder.
-    const clusters: CylFit[][] = []
-    for (const fit of fits) {
-      const home = clusters.find((cl) => sameCylinder(cl[0], fit))
-      if (home) home.push(fit)
-      else clusters.push([fit])
+    // 2. Cluster coincident members so both weld halves land on ONE cylinder.
+    const clusters: CylMember[][] = []
+    for (const m of members) {
+      const home = clusters.find((cl) => sameCylinder(cl[0], m))
+      if (home) home.push(m)
+      else clusters.push([m])
     }
 
-    // 3. Rebuild each fitted face on its cluster's shared analytic cylinder.
+    // 3. Rebuild each fitted face on its cluster's shared analytic cylinder,
+    //    and every member of a cluster whose analytic axes disagree.
     const reshape = scope.track(new oc.BRepTools_ReShape())
     const swaps: CanonicalFaceSwap[] = []
-    for (const cluster of clusters) {
-      const g = cluster[0]
+    for (const members of clusters) {
+      // The first analytic member is exact, so it fixes the shared direction;
+      // without one the first fit does.
+      const anchor = members.find((m) => m.fit === null) ?? members[0]
+      // Flipping only the opposing faces is not enough: their pcurves still
+      // sit in u ranges of their own, and the merge spins on those as well (3
+      // of the 4 corners of the reported lip). One cylinder with one seam,
+      // placed in the gap all members leave free, gives every member pcurves in
+      // one u range, exactly as the fitted halves of a weld get.
+      const opposed = members.some((m) => m.fit === null && dot(m.d, anchor.d) < 0)
+      const rebuild = opposed ? members : members.filter((m) => m.fit !== null)
+      if (rebuild.length === 0) continue
+      const cluster: CylFit[] = []
+      for (const m of rebuild) {
+        const fit = m.fit ?? fitCylinder(oc, scope, m.face)
+        if (fit) cluster.push(fit)
+      }
+      if (cluster.length === 0) continue
+      const g = { d: anchor.d, c: anchor.c, r: anchor.r }
       const e1 = unit(cross(Math.abs(g.d[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0], g.d))
       const e2 = cross(g.d, e1)
       const seam = seamAngleFor(cluster, e1, e2, g.c)
