@@ -7,6 +7,7 @@ import {
 import { makeAncestryQuery, ref } from '../query'
 import type { Body } from '../types3d'
 import { makeDeps, makeTrackerDeps } from '../builderTestUtils'
+import { onFeatureStart } from '../featureProgress'
 
 describe('build with mock solvers', () => {
   it('returns a build_state with feature_order', () => {
@@ -18,6 +19,29 @@ describe('build with mock solvers', () => {
     expect(r._build_state.feature_order).toEqual(['sk1', 'sk2'])
     expect('sk1' in r._build_state.checkpoints).toBe(true)
     expect('sk2' in r._build_state.checkpoints).toBe(true)
+  })
+
+  it('marks each solved feature before solving it, so a host can name a stuck one', () => {
+    const order: string[] = []
+    const marks: string[] = []
+    const stop = onFeatureStart((fid) => marks.push(fid))
+    try {
+      build(
+        { features: [{ id: 'sk1', kind: 'sketch' }, { id: 'sk2', kind: 'sketch', suppressed: true }, { id: 'sk3', kind: 'sketch' }] },
+        {},
+        makeDeps({
+          trySolveFeature: (feature) => {
+            // The mark for this feature must already be out when it starts.
+            order.push(`${marks[marks.length - 1]}->${String(feature.id)}`)
+            return { status: 'ok' }
+          },
+        }),
+      )
+    } finally {
+      stop()
+    }
+    expect(marks).toEqual(['sk1', 'sk3'])
+    expect(order).toEqual(['sk1->sk1', 'sk3->sk3'])
   })
 
   it('marks suppressed features without solving', () => {

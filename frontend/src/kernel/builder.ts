@@ -9,6 +9,7 @@
 import { extractErrorMessage, isKernelTrap } from './errors'
 import { clearConsumedBodyAncestry, setCurrentFeatureId } from './query'
 import { BUILTIN_PLANE_RESULTS } from './solverConstants'
+import { markFeatureStart } from './featureProgress'
 import type { Body, FeatureCheckpoint, BuildState } from './types3d'
 import {
   type BuildDeps,
@@ -471,6 +472,7 @@ export function build(
     }
 
     setCurrentFeatureId(fid)
+    markFeatureStart(fid)
     try {
       const t0 = performance.now()
       const featureResult = deps.trySolveFeature(

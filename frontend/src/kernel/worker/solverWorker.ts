@@ -29,7 +29,10 @@ import type {
   ExportAssemblyRequest,
   FileBytes,
   OccProgressMessage,
+  FeatureProgressMessage,
+  SolverWorkerMessage,
 } from './solverProtocol'
+import { onFeatureStart } from '../featureProgress'
 import { SUPERSEDED_ERROR } from './solverProtocol'
 import { toPartBundle } from '../partBundle'
 import type { BodyResult } from '../../types/cad'
@@ -385,7 +388,7 @@ function oneShot<T>(job: () => Promise<T>, respond: (res: T) => void): ActorJob 
 // ─── Worker bootstrap (skipped on the main thread / in tests) ───
 
 interface WorkerCtx {
-  postMessage(message: SolveResponse | ExportResponse | BundleResponse | OccProgressMessage, transfer: Transferable[]): void
+  postMessage(message: SolverWorkerMessage, transfer: Transferable[]): void
   onmessage: ((e: MessageEvent<WorkerRequest>) => void) | null
 }
 
@@ -463,6 +466,20 @@ export function relayOccLoadProgress(
 }
 
 /**
+ * Relay each feature start of this thread's builds to the main thread, so a
+ * client that kills a stuck Worker can name the feature it stuck in. The post
+ * leaves while the build runs on: postMessage does not wait for this thread's
+ * event loop, so the mark lands even when the feature then never returns.
+ */
+export function relayFeatureProgress(
+  post: (message: FeatureProgressMessage, transfer: Transferable[]) => void,
+): () => void {
+  return onFeatureStart((featureId) => {
+    post({ kind: 'featureProgress', featureId }, [])
+  })
+}
+
+/**
  * Begin loading every wasm this Worker solves with (OCC and the sketch package,
  * which also carries topology) the moment it spawns, not on the first request.
  * The loaders are memoized, so a request that lands mid-load awaits the same
@@ -488,6 +505,7 @@ if (inWorker()) {
   // Subscribe before the preload starts so the main thread sees the download
   // from its first byte.
   relayOccLoadProgress((message, transfer) => { ctx.postMessage(message, transfer) })
+  relayFeatureProgress((message, transfer) => { ctx.postMessage(message, transfer) })
   preloadWorkerWasm()
   ctx.onmessage = (e) => {
     handleWorkerMessage(e.data, (res, transfer) => { ctx.postMessage(res, transfer) }, actor)

@@ -272,11 +272,13 @@ describe('useSolver', () => {
       expect(result.current.solveError).toBeNull()
     })
 
-    it('suppresses solveError for a solver worker timeout', async () => {
+    it('reports a solver worker timeout with the feature it stuck in', async () => {
+      // A timeout is a real failure of this document (bug-fuse-hang): the user
+      // should see where the solve stuck, unlike a cancel they asked for.
       const { result } = setupHook()
-      mockSolveLocally.mockRejectedValue(new Error('solver worker timed out'))
+      mockSolveLocally.mockRejectedValue(new Error('solve timed out after 30 s in feature ex2'))
       await act(async () => { await result.current.reSolve(solvableDoc()) })
-      expect(result.current.solveError).toBeNull()
+      expect(result.current.solveError).toBe('Error: solve timed out after 30 s in feature ex2')
     })
 
     it('other error messages still set solveError', async () => {

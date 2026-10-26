@@ -291,7 +291,7 @@ describe('solveViaWorker', () => {
       setSolverTimeoutForTest(1000)
       const p = solveViaWorker({ id: 'd' })  // worker never replies
       vi.advanceTimersByTime(1000)
-      await expect(p).rejects.toThrow('solver worker timed out')
+      await expect(p).rejects.toThrow('solve timed out after 1 s')
       expect(created[0].terminated).toBe(true)
       // Dropped worker respawns fresh on the next solve, rebuilding from feature 0.
       const p2 = solveViaWorker({ id: 'e' })
@@ -306,8 +306,48 @@ describe('solveViaWorker', () => {
       const p1 = solveViaWorker({ id: 'a' })
       const p2 = exportViaWorker({ id: 'b' }, { format: 'step' })
       vi.advanceTimersByTime(1000)
-      await expect(p1).rejects.toThrow('solver worker timed out')
-      await expect(p2).rejects.toThrow('solver worker timed out')
+      await expect(p1).rejects.toThrow('solve timed out after 1 s')
+      await expect(p2).rejects.toThrow('solve timed out after 1 s')
+    })
+
+    it('names the feature of the last progress mark and answers the next solve normally', async () => {
+      vi.useFakeTimers()
+      setSolverTimeoutForTest(1000)
+      const p = solveViaWorker({ id: 'd' })
+      // The worker marks each feature before solving it; ex2 is the one that never returns.
+      created[0].reply({ kind: 'featureProgress', featureId: 'ex1' })
+      created[0].reply({ kind: 'featureProgress', featureId: 'ex2' })
+      vi.advanceTimersByTime(1000)
+      await expect(p).rejects.toThrow('solve timed out after 1 s in feature ex2')
+      expect(created[0].terminated).toBe(true)
+      const p2 = solveViaWorker({ id: 'e' })
+      expect(created).toHaveLength(2)
+      created[1].reply({ id: created[1].posted[0].id, ok: true, payload: { solve_ms: 0, result: {}, bodies: {} } })
+      await expect(p2).resolves.not.toBeNull()
+    })
+
+    it('a progress mark re-arms the watchdog: it bounds the gap between features, not the solve', async () => {
+      vi.useFakeTimers()
+      setSolverTimeoutForTest(1000)
+      const p = solveViaWorker({ id: 'd' })
+      vi.advanceTimersByTime(800)
+      created[0].reply({ kind: 'featureProgress', featureId: 'ex1' })
+      vi.advanceTimersByTime(800)  // 1600 ms in, 800 ms since the mark
+      expect(created[0].terminated).toBe(false)
+      vi.advanceTimersByTime(200)
+      await expect(p).rejects.toThrow('solve timed out after 1 s in feature ex1')
+    })
+
+    it('a mark from an earlier solve does not name the next one', async () => {
+      vi.useFakeTimers()
+      setSolverTimeoutForTest(1000)
+      const p1 = solveViaWorker({ id: 'd' })
+      created[0].reply({ kind: 'featureProgress', featureId: 'ex1' })
+      created[0].reply({ id: created[0].posted[0].id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+      await expect(p1).resolves.not.toBeNull()
+      const p2 = solveViaWorker({ id: 'd' })  // hangs before any feature
+      vi.advanceTimersByTime(1000)
+      await expect(p2).rejects.toThrow(/^solve timed out after 1 s$/)
     })
 
     it('clears the watchdog on a normal reply so a settled request is never killed', async () => {
@@ -386,7 +426,7 @@ describe('solveViaWorker', () => {
       setSolverTimeoutForTest(1000)
       const p = solveViaWorker({ id: 'd' })
       vi.advanceTimersByTime(1000)
-      await expect(p).rejects.toThrow('solver worker timed out')
+      await expect(p).rejects.toThrow('solve timed out after 1 s')
       // The watchdog already spaced the drops, so the next solve respawns at
       // once instead of waiting out a cooldown.
       const p2 = solveViaWorker({ id: 'e' })

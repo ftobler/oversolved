@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest, relayOccLoadProgress, preloadWorkerWasm } from '../solverWorker'
+import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest, relayOccLoadProgress, relayFeatureProgress, preloadWorkerWasm } from '../solverWorker'
+import { markFeatureStart } from '../../featureProgress'
 import { reportOccCompiling, reportOccDownload, reportOccReady, resetOccLoadProgress } from '../../occ/loadProgress'
 import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from '../solverProtocol'
 import { SUPERSEDED_ERROR } from '../solverProtocol'
@@ -617,6 +618,18 @@ describe('relayOccLoadProgress', () => {
     unsubscribe()
     reportOccDownload(2, 2)
     expect(post).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('relayFeatureProgress', () => {
+  it('posts each feature start as an id-less mark with no transferables', () => {
+    const post = vi.fn()
+    const unsubscribe = relayFeatureProgress(post)
+    markFeatureStart('ex2')
+    expect(post).toHaveBeenLastCalledWith({ kind: 'featureProgress', featureId: 'ex2' }, [])
+    unsubscribe()
+    markFeatureStart('ex3')
+    expect(post).toHaveBeenCalledTimes(1)
   })
 })
 

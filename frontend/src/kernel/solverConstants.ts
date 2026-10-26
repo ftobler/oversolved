@@ -31,6 +31,14 @@ export const TOL_MOVE_FACE_TANGENT = 1e-3
 // count, and this constant has no Rust twin.
 export const OCC_CONFUSION = 1e-7
 
+// How long a kernel host waits for the next feature progress mark
+// (featureProgress.ts) before it presumes the solve stuck, kills its worker and
+// answers with a timeout naming the feature. It bounds the gap between marks,
+// not the whole call, so a long script of quick features is never cut off.
+// The MCP kernel host arms it (drive/kernelHost.ts); the browser solver client
+// keeps its watchdog off and leaves the call to the user's cancel button.
+export const SOLVE_STALL_BUDGET_MS = 30_000
+
 export const BUILTIN_PLANES: Record<string, Record<string, unknown>> = {
   builtin_plane_front: {
     origin: [0, 0, 0],

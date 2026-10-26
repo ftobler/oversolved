@@ -431,12 +431,12 @@ interface McpClient {
 }
 
 // One interactive child process: line-buffered stdout demuxed by response id.
-function spawnMcp(): McpClient {
+function spawnMcp(env: Record<string, string> = {}): McpClient {
   const child = spawn('node', [
     '--experimental-strip-types',
     '--loader=./scripts/driveCli.loader.mjs',
     'scripts/mcpServer.ts',
-  ], { cwd: FRONTEND_DIR, stdio: ['pipe', 'pipe', 'pipe'] })
+  ], { cwd: FRONTEND_DIR, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } })
 
   const pending = new Map<number, (response: McpResponse) => void>()
   let buffer = ''
@@ -923,6 +923,38 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       ])
       expect(ids.length).toBeGreaterThan(0)
       expect(new Set(ids).size).toBe(ids.length)
+    } finally {
+      await client.close()
+    }
+  }, 240_000)
+
+  it('answers a stalled solve with a timeout naming the feature, then serves the next call', async () => {
+    // The kernel worker's test hook spins forever when the build reaches
+    // ex_stuck (bug-fuse-hang D2): the stand-in for a kernel operation that
+    // never returns. The server must kill that worker, answer the call, and
+    // build the next document on a fresh one.
+    const client = spawnMcp({
+      OVERSOLVED_MCP_SOLVE_BUDGET_MS: '3000',
+      OVERSOLVED_MCP_TEST_HANG_FEATURE: 'ex_stuck',
+    })
+    try {
+      await client.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'cliSmoke', version: '0' } })
+      const stuckSteps = BOX_SCRIPT.steps.map(step =>
+        step.mutation.type === 'add_extrude' ? { mutation: { ...step.mutation, featureId: 'ex_stuck' } } : step)
+      const t0 = performance.now()
+      const stuck = await client.request('tools/call', { name: 'run', arguments: { steps: stuckSteps } })
+      expect(performance.now() - t0).toBeLessThan(60_000)
+      expect(stuck.error).toBeUndefined()
+      const stuckResult = stuck.result as { content: Array<{ text: string }>; isError?: boolean }
+      expect(stuckResult.isError).toBe(true)
+      expect(JSON.parse(stuckResult.content[0].text)).toEqual({
+        ok: false,
+        error: 'solve timed out after 3 s in feature ex_stuck',
+      })
+
+      const next = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
+      expect(next.ok).toBe(true)
+      expect(next.summary).toContain('body_ex1')
     } finally {
       await client.close()
     }

@@ -35,7 +35,11 @@
  * The watchdog machinery is kept intact behind `solveTimeoutMs` (Infinity in
  * production, lowered by `setSolverTimeoutForTest`) so the drop-and-respawn path
  * stays covered by tests and can be re-armed by setting a ceiling -- nothing
- * else has to change to bring it back.
+ * else has to change to bring it back. When armed it bounds the gap between
+ * the Worker's feature progress marks (featureProgress.ts), not the request,
+ * and its rejection names the feature of the last mark (`solve timed out after
+ * 30 s in feature ex2`), a real failure the error banner shows. The MCP kernel
+ * host (drive/kernelHost.ts) arms the same rule with SOLVE_STALL_BUDGET_MS.
  */
 
 import { noteWorkerError } from '@/recovery/crashReports'
@@ -47,10 +51,12 @@ import type {
   BundleOkResponse,
   SolverWorkerMessage,
   OccProgressMessage,
+  FeatureProgressMessage,
   AssemblyExportPartSpec,
   FileBytes,
 } from './solverProtocol'
 import type { PartBundle } from '../partBundle'
+import { solveTimeoutMessage } from '../featureProgress'
 import { applyOccLoadProgress, resetOccLoadProgress } from '../occ/loadProgress'
 
 /** Minimal Worker surface used here; lets tests inject a fake. */
@@ -125,10 +131,28 @@ const pending = new Map<number, Pending>()
 // storage read do not have to import this module.
 import { clearWorkerFileIds, fileDelta, markFilesSent } from './workerFiles'
 
-// A predicate rather than an inline check, so the negative branch narrows to
-// the response union (a compound condition does not narrow on its own).
+// The feature the running job last announced (featureProgress.ts), so a
+// watchdog kill can say where the solve stuck. Any reply ends the job it
+// belonged to, so it is cleared there: a mark never names a later solve.
+let lastFeatureId: string | null = null
+
+// Predicates rather than inline checks, so the negative branch narrows to the
+// response union (a compound condition does not narrow on its own).
 function isOccProgress(res: SolverWorkerMessage): res is OccProgressMessage {
   return 'kind' in res && res.kind === 'occProgress'
+}
+function isFeatureProgress(res: SolverWorkerMessage): res is FeatureProgressMessage {
+  return 'kind' in res && res.kind === 'featureProgress'
+}
+
+// The watchdog bounds the gap between feature marks, not the whole request: a
+// long document of quick features is honest work. Re-arm every in-flight timer.
+function rearmWatchdogs(): void {
+  for (const p of pending.values()) {
+    if (p.timer === null) continue
+    clearTimeout(p.timer)
+    p.timer = setTimeout(onTimeout, solveTimeoutMs)
+  }
 }
 
 function onMessage(e: { data: SolverWorkerMessage }): void {
@@ -139,6 +163,12 @@ function onMessage(e: { data: SolverWorkerMessage }): void {
     applyOccLoadProgress(res.progress)
     return
   }
+  if (isFeatureProgress(res)) {
+    lastFeatureId = res.featureId
+    rearmWatchdogs()
+    return
+  }
+  lastFeatureId = null
   const p = pending.get(res.id)
   if (!p) return  // stale or already-settled (e.g. after a crash drained pending)
   if (p.timer) clearTimeout(p.timer)
@@ -161,6 +191,7 @@ function dropWorker(err: Error): void {
   pending.clear()
   worker?.terminate()
   worker = null
+  lastFeatureId = null
   // A respawned worker has no cached bytes, so the next request must resend
   // everything it needs.
   clearWorkerFileIds()
@@ -187,7 +218,7 @@ function onTimeout(): void {
   // already cleared the watchdog timers, so no timeout can fire inside a window
   // a crash armed (and production never arms the watchdog at all). It stays to
   // match the documented intent that only a crash sets the timestamp.
-  dropWorker(new Error('solver worker timed out'))
+  dropWorker(new Error(solveTimeoutMessage(solveTimeoutMs, lastFeatureId)))
   workerCrashAt = 0
 }
 
@@ -369,6 +400,7 @@ export function setSolverWorkerForTest(
   }
   pending.clear()
   nextId = 1
+  lastFeatureId = null
   // The production default, so a test that says nothing about the watchdog gets
   // production behaviour. The timeout suite opts in explicitly.
   solveTimeoutMs = Infinity

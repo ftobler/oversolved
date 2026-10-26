@@ -5,40 +5,69 @@
 //   cd frontend && npm run mcp
 //
 // stdout carries protocol messages only; diagnostics go to stderr. Tool calls
-// are processed one at a time by the readline loop, which is what keeps the
-// process-wide kernel state single-writer even though every call builds a
-// fresh document session (the same one-session-per-operation shape the CLI has
-// per process).
+// are processed one at a time by the readline loop. Every kernel call runs in
+// the kernel worker thread (scripts/mcpKernelWorker.ts) behind
+// src/drive/kernelHost.ts: a solve that stops announcing features for
+// SOLVE_STALL_BUDGET_MS is killed and answered with a tool error naming the
+// feature, and the next call gets a fresh worker (bug-fuse-hang). The worker
+// keeps the kernel single-writer; documents and their docHash handles stay
+// here, so a killed worker loses only its checkpoint cache.
+//
+// OVERSOLVED_MCP_SOLVE_BUDGET_MS overrides the stall budget (the stall test
+// lowers it).
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { writeFileSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
-import { setOccLoader } from '@/kernel/solveLocally'
-import { KernelFault } from '@/kernel/errors'
-import { loadOcc, resetOcc } from '@/kernel/occ/loadOcc'
-import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { loadTopology } from '@/wasm-kernel/loadTopology'
-import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { Worker } from 'node:worker_threads'
 import type { PartDoc } from '@/types/cad'
 import { createHeadlessPart } from '@/drive/headlessPart'
-import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHeadless, emptyDriveDoc } from '@/drive/headlessOps'
+import { emptyDriveDoc, type HeadlessMeasure, type HeadlessCompareResult } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
-import { createDriveJournal } from '@/drive/journal'
 import { createMcpServer, type McpCadOps, type McpFileRef } from '@/drive/mcpServer'
 import { DocHandleStore } from '@/drive/docHandleStore'
-import { resolveDoc, runReply } from '@/drive/mcpDocRef'
+import { resolveDoc, runReply, type RunReplySource } from '@/drive/mcpDocRef'
 import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import type { ScriptStep } from '@/drive/scriptRunner'
+import type { SelectResult } from '@/kernel/select'
 import { parseReference } from '@/translations/corpus'
+import { createKernelHost, isKernelCallFailure, type KernelOp, type KernelWorkerLike } from '@/drive/kernelHost'
 import { routeKernelStdoutToStderr } from './kernelStdout'
 import { readProjectReference, resolveProjectPath, writeDocFile } from './docPath'
 
-// The headless OCC loader and the nodejs solver builds; without them the solve
-// reports the kernel unavailable instead of a document.
-setOccLoader(loadOcc, resetOcc)
-setSketchSolver(loadSolver())
-setSketchTopology(loadTopology())
+function budgetFromEnv(): number | undefined {
+  const raw = process.env.OVERSOLVED_MCP_SOLVE_BUDGET_MS
+  if (raw === undefined) return undefined
+  const ms = Number(raw)
+  if (!Number.isFinite(ms) || ms <= 0) throw new Error(`OVERSOLVED_MCP_SOLVE_BUDGET_MS must be a positive number, got "${raw}"`)
+  return ms
+}
+
+// The worker inherits this process's execArgv (the strip-types flag and the
+// alias loader). Its stdout is piped to our stderr: the kernel prints (the OCC
+// STEP writer's banner) must never reach the protocol channel.
+const kernel = createKernelHost({
+  budgetMs: budgetFromEnv(),
+  factory: () => {
+    const worker = new Worker(new URL('./mcpKernelWorker.ts', import.meta.url), { stdout: true })
+    worker.stdout.pipe(process.stderr)
+    return worker as unknown as KernelWorkerLike
+  },
+})
+
+type KernelAnswer<T> = { ok: true; value: T } | { ok: false; error: string }
+
+// A timeout, a lost worker or a kernel fault is a failed tool call with a
+// readable reason; anything else is a bug the server reports as internal.
+async function callKernel<T>(op: KernelOp, args: unknown): Promise<KernelAnswer<T>> {
+  try {
+    return { ok: true, value: await kernel.call(op, args) as T }
+  } catch (e) {
+    if (isKernelCallFailure(e)) return { ok: false, error: e.message }
+    throw e
+  }
+}
 
 // stdout is the protocol channel, so the kernel's own prints must not land
 // there: the OCC STEP writer prints a transfer banner on stdout (Module.print
@@ -97,17 +126,17 @@ const ops: McpCadOps = {
     } else {
       doc = emptyPartDoc()
     }
-    // The journal derives its id seed from the starting document, so a repeat
-    // of the same document and script mints the same ids and hashes the same
-    // document, while a call chained by docHash draws a fresh sequence.
-    const result = await runHeadless({
+    // The worker builds the drive journal from the starting document (its id
+    // seed), as the in-process run did.
+    const answer = await callKernel<RunReplySource>('run', {
       doc,
       steps: req.steps as ScriptStep[],
       docId: req.docId ?? 'mcp',
       files: readFiles(req.files),
-      journal: createDriveJournal(doc),
       ...(req.featureDeltas !== undefined && { featureDeltas: req.featureDeltas }),
     })
+    if (!answer.ok) return answer
+    const result = answer.value
     const reply = runReply(result, req.returnDoc === true, documents)
     if (out === undefined || result.doc === null) return reply
     try {
@@ -121,18 +150,13 @@ const ops: McpCadOps = {
   async measure(req) {
     const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
-    let measure
-    try {
-      measure = await measureHeadless(resolved.doc, {
-        docId: req.docId ?? 'mcp',
-        files: readFiles(req.files),
-      })
-    } catch (e) {
-      // A kernel fault is a failed tool call with a readable reason, not a
-      // protocol error: the same distinction the other tool failures make.
-      if (e instanceof KernelFault) return { ok: false, error: e.message }
-      throw e
-    }
+    const answer = await callKernel<HeadlessMeasure | null>('measure', {
+      doc: resolved.doc,
+      docId: req.docId ?? 'mcp',
+      files: readFiles(req.files),
+    })
+    if (!answer.ok) return answer
+    const measure = answer.value
     if (!measure) {
       return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
     }
@@ -156,10 +180,14 @@ const ops: McpCadOps = {
         return { ok: false, error: e instanceof Error ? e.message : String(e) }
       }
     }
-    const result = await compareHeadless(resolved.doc, reference, {
+    const answer = await callKernel<HeadlessCompareResult>('compare', {
+      doc: resolved.doc,
+      reference,
       docId: req.docId ?? 'mcp',
       files: readFiles(req.files),
     })
+    if (!answer.ok) return answer
+    const result = answer.value
     return {
       ok: result.ok,
       docHash: resolved.docHash,
@@ -182,18 +210,15 @@ const ops: McpCadOps = {
     }
     const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
-    let bytes
-    try {
-      bytes = await exportHeadless(resolved.doc, {
-        format: req.format,
-        bodyId: req.body ?? null,
-        docId: req.docId ?? 'mcp',
-        files: readFiles(req.files),
-      })
-    } catch (e) {
-      if (e instanceof KernelFault) return { ok: false, error: e.message }
-      throw e
-    }
+    const answer = await callKernel<Uint8Array | null>('export', {
+      doc: resolved.doc,
+      format: req.format,
+      bodyId: req.body ?? null,
+      docId: req.docId ?? 'mcp',
+      files: readFiles(req.files),
+    })
+    if (!answer.ok) return answer
+    const bytes = answer.value
     if (!bytes) {
       return { ok: false, error: 'export produced no solid (or the local solver is unavailable)' }
     }
@@ -209,17 +234,20 @@ const ops: McpCadOps = {
     const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
     try {
-      const result = await selectHeadless(resolved.doc, req.selector, {
+      const result = await kernel.call('select', {
+        doc: resolved.doc,
+        selector: req.selector,
         docId: req.docId ?? 'mcp',
         files: readFiles(req.files),
-      })
+      }) as SelectResult | null
       if (!result) {
         return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
       }
       return { ok: true, docHash: resolved.docHash, ...result }
     } catch (e) {
       // An empty match or a bad predicate expression is a tool failure, not a
-      // protocol error: the message names the offending clause.
+      // protocol error: the message names the offending clause. A timeout or a
+      // lost worker lands here too, with its own message.
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
     }
   },
@@ -234,6 +262,8 @@ async function main(): Promise<void> {
     const response = await server.handleLine(line)
     if (response !== null) writeProtocol(response + '\n')
   }
+  // stdin closed: the worker thread would keep the process alive otherwise.
+  await kernel.dispose()
 }
 
 main().catch((e: unknown) => {

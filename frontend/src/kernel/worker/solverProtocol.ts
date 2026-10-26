@@ -161,8 +161,20 @@ export interface OccProgressMessage {
   progress: OccLoadProgress
 }
 
+/**
+ * The running build is about to solve `featureId` (featureProgress.ts). Like
+ * OccProgressMessage it is a broadcast, not a reply: the Actor runs one job at
+ * a time, so a mark always belongs to the job in flight, and the client keeps
+ * the last one to name the feature if it has to give up on the solve.
+ */
+export interface FeatureProgressMessage {
+  kind: 'featureProgress'
+  featureId: string
+}
+
 /** Every message the solver Worker sends to the main thread. */
-export type SolverWorkerMessage = SolveResponse | ExportResponse | BundleResponse | OccProgressMessage
+export type SolverWorkerMessage =
+  | SolveResponse | ExportResponse | BundleResponse | OccProgressMessage | FeatureProgressMessage
 
 // ─── assembly protocol ───
 // Messages between the main thread and the Rust-only anchor solver worker.
