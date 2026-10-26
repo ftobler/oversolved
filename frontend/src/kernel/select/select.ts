@@ -200,8 +200,9 @@ function diagnose(p: Predicate, pool: Candidate[], ctx: EvalContext, kind: Selec
 /** A later `and` clause's line: what it left of what the earlier ones kept. */
 function thenLine(line: string, p: Predicate, matched: number, of: number): string {
   const head = `${label(p)} matched ${matched}`
-  const rest = line.startsWith(head) ? line.slice(head.length) : ''
-  return `then ${label(p)} left ${matched} of ${of}${rest}`
+  // A line the head does not open (never today) keeps its own text whole.
+  if (!line.startsWith(head)) return `then ${line}`
+  return `then ${label(p)} left ${matched} of ${of}${line.slice(head.length)}`
 }
 
 /** A `type` clause that matched nothing also names the values it could have

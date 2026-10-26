@@ -319,7 +319,8 @@ const BOOLEAN_INLINE_NOTE =
 const BOOLEAN_ARRAY_TOOL_NOTE =
   'A `tools` entry naming an array or circular_array feature (`@<arrayId>`) expands at solve time to that ' +
   'array\'s source body and every instance body, so it follows a later count change; the target is left out of ' +
-  'the expansion. A hand-typed list that names only some of one array\'s bodies solves with a warning.'
+  'the expansion; the array must come before the boolean in the log (a later one is refused as unresolved). A hand-typed list that names only some of ' +
+  'one array\'s bodies solves with a warning (also when the split is deliberate).'
 
 // Same precedence as transform's rotation axis, so one rule covers both.
 const CIRCULAR_AXIS_NOTE =

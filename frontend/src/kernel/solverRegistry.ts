@@ -273,7 +273,8 @@ export function createFeatureSolver(
     if ('exception' in resolved) {
       return { status: 'exception', exception: resolved.exception }
     }
-    // hole.ts takes featuresById as its 7th argument; other solvers ignore it.
+    // hole.ts and boolean.ts take featuresById as their 7th argument; other
+    // solvers ignore it.
     return dispatchFeature(kind, oc, scope, table, resolved.feature, globalRepo, bodyStore, featuresById)
   }
 }

@@ -8,7 +8,7 @@
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
-import { canonicalVertices } from '../occ/bodyNames'
+import { canonicalEdges, canonicalVertices } from '../occ/bodyNames'
 import { exploreEdges, exploreFaces } from '../occ/edgeModifier'
 
 type Vec3 = [number, number, number]
@@ -136,7 +136,7 @@ function endTangents(oc: OccModule, scope: DisposeScope, edge: OccShape): Array<
   const point = (u: number): Vec3 => {
     const p = curve.Value(u)
     const out: Vec3 = [p.X(), p.Y(), p.Z()]
-    ;(p as unknown as { delete(): void }).delete()
+    p.delete()
     return out
   }
   const ends: Array<{ at: Vec3; tangent: Vec3 }> = []
@@ -167,7 +167,9 @@ export function tangentNeighbourCount(
 ): number {
   const own = endTangents(oc, scope, edge)
   let count = 0
-  for (const other of exploreEdges(oc, scope, shape)) {
+  // The canonical (deduplicated) edge list: the raw explorer visits each edge
+  // once per adjacent face and would count every neighbour twice.
+  for (const other of canonicalEdges(oc, scope, shape)) {
     const sub = other as OccSubShape
     if (sub.IsSame(edge as OccSubShape) || picked.some((p) => sub.IsSame(p as OccSubShape))) continue
     const theirs = endTangents(oc, scope, other)
@@ -207,6 +209,6 @@ export function edgeLabel(oc: OccModule, scope: DisposeScope, edge: OccShape): s
   const kind = curve.GetType().value === oc.GeomAbs_CurveType.GeomAbs_Line.value ? 'line' : 'curve'
   const p = curve.Value((curve.FirstParameter() + curve.LastParameter()) / 2)
   const mid = [p.X(), p.Y(), p.Z()].map((c) => Number(c.toFixed(3)) + 0)
-  ;(p as unknown as { delete(): void }).delete()
+  p.delete()
   return `${kind} at [${mid.join(', ')}]`
 }

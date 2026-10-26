@@ -29,6 +29,7 @@ import { resplitBody } from './bodySplit'
 import { transferBooleanNames } from './booleanLineage'
 import { readBodyNames } from '../occ/bodyNames'
 import { stripRefSigil } from '@/utils/refSigil'
+import { nestedFeatureParams } from './shared/featureParams'
 
 type Dict = Record<string, unknown>
 
@@ -91,7 +92,9 @@ const ARRAY_KINDS = new Set(['array', 'circular_array'])
  * later count change is followed without editing the boolean.
  */
 function arrayMemberIds(arrayId: string, def: Dict, bodyStore: Record<string, Body>): string[] {
-  const sub = (def[def.kind as string] as Dict | undefined) ?? {}
+  // The builder folds legacy flat params only into the feature being solved, so
+  // an upstream array's source is read through the same canonicalizer.
+  const sub = (nestedFeatureParams(def).feature[def.kind as string] as Dict | undefined) ?? {}
   const ids: string[] = []
   const source = sub.source_body
   if (typeof source === 'string' && source !== '') {
@@ -129,13 +132,17 @@ function expandArrayTools(
     const def = featuresById[key]
     // A body id wins over a feature id of the same spelling.
     if (def !== undefined && ARRAY_KINDS.has(def.kind as string) && !(key in bodyStore)) {
+      // featuresById holds only the features solved so far, so an array defined
+      // after this boolean never reaches here: its ref stays unresolved below
+      // and the tool loop refuses it by name instead of consuming its source.
       namedArrays.add(key)
       refs.push(...arrayMemberIds(key, def, bodyStore).filter((id) => id !== targetId))
     } else {
       refs.push(ref)
     }
   }
-  return { refs, namedArrays }
+  // An array listed twice, or beside its own instance ids, folds each body once.
+  return { refs: [...new Set(refs)], namedArrays }
 }
 
 /**

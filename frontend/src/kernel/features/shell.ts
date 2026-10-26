@@ -5,7 +5,7 @@
 // name several bodies is an error, like the fillet `source_body` ambiguity.
 
 import type { DisposeScope } from '../occ/disposeScope'
-import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
+import type { OccModule, OccShape, OccSubShape, OccXYZ } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
@@ -38,6 +38,80 @@ function named(uuids: UuidArray | undefined): boolean {
   return uuids?.some((u) => u !== null) ?? false
 }
 
+type V3 = [number, number, number]
+const xyz = (p: { X(): number; Y(): number; Z(): number }): V3 => [p.X(), p.Y(), p.Z()]
+const dot = (a: V3, b: V3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+/**
+ * The smallest radius of a CONVEX round face of `shape` (cylinder, torus tube
+ * or sphere whose centre of curvature lies in the material): the round an
+ * inward offset collapses first. Concave rounds (a drilled hole, an inner
+ * fillet) grow under an inward offset and are skipped, and so are the faces the
+ * shell opens. Null when there is none.
+ */
+function smallestConvexRoundRadius(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  opened: OccShape[],
+): number | null {
+  let smallest: number | null = null
+  const types = oc.GeomAbs_SurfaceType
+  for (const face of exploreFaces(oc, scope, shape)) {
+    if (opened.some((o) => (o as OccSubShape).IsSame(face as OccSubShape))) continue
+    const surface = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+    const type = surface.GetType().value
+    const p = scope.track(new oc.gp_Pnt_1())
+    const du = scope.track(new oc.gp_Vec_1())
+    const dv = scope.track(new oc.gp_Vec_1())
+    surface.D1(
+      (surface.FirstUParameter() + surface.LastUParameter()) / 2,
+      (surface.FirstVParameter() + surface.LastVParameter()) / 2,
+      p, du, dv,
+    )
+    const at = xyz(p)
+    let radius: number
+    let centre: V3
+    if (type === types.GeomAbs_Cylinder.value || type === types.GeomAbs_Torus.value) {
+      const isCylinder = type === types.GeomAbs_Cylinder.value
+      const analytic = isCylinder ? scope.track(surface.Cylinder()) : scope.track(surface.Torus())
+      const position = scope.track(analytic.Position())
+      const a = xyz(scope.track(position.Location()))
+      const d = xyz(scope.track(position.Direction()))
+      const w: V3 = [at[0] - a[0], at[1] - a[1], at[2] - a[2]]
+      const along = dot(w, d)
+      if (isCylinder) {
+        radius = (analytic as { Radius(): number }).Radius()
+        centre = [a[0] + along * d[0], a[1] + along * d[1], a[2] + along * d[2]]
+      } else {
+        const torus = analytic as { MajorRadius(): number; MinorRadius(): number }
+        radius = torus.MinorRadius()
+        const perp: V3 = [w[0] - along * d[0], w[1] - along * d[1], w[2] - along * d[2]]
+        const len = Math.hypot(perp[0], perp[1], perp[2])
+        if (len < 1e-12) continue
+        const k = torus.MajorRadius() / len
+        centre = [a[0] + perp[0] * k, a[1] + perp[1] * k, a[2] + perp[2] * k]
+      }
+    } else if (type === types.GeomAbs_Sphere.value) {
+      const sphere = scope.track(surface.Sphere())
+      radius = sphere.Radius()
+      const position = scope.track(sphere.Position())
+      centre = xyz(scope.track(position.Location()))
+    } else {
+      continue
+    }
+    // Halfway from the surface to its centre of curvature: inside the material
+    // for a convex round, in the air for a concave one.
+    const probe = scope.track(new oc.gp_Pnt_3(
+      (at[0] + centre[0]) / 2, (at[1] + centre[1]) / 2, (at[2] + centre[2]) / 2,
+    )) as OccXYZ  // the same gp_Pnt the classifier reads, typed by its accessors
+    const classifier = scope.track(new oc.BRepClass3d_SolidClassifier_3(shape, probe, 1e-7))
+    if (classifier.State().value !== oc.TopAbs_State.TopAbs_IN.value) continue
+    if (smallest === null || radius < smallest) smallest = radius
+  }
+  return smallest
+}
+
 /**
  * Solve a shell feature (the generator `KIND_SOLVER.shell` dispatches to). It
  * resolves the target body and its picked faces, applies the shell, resplits
@@ -46,23 +120,6 @@ function named(uuids: UuidArray | undefined): boolean {
  * bodies, a missing body, or a kernel refusal (a thickness past the local
  * radius), which leaves the body unchanged.
  */
-/** The smallest radius of a cylindrical, toroidal (minor) or spherical face of
- *  `shape`: the round an inward offset shrinks first. Null when it has none. */
-function smallestRoundRadius(oc: OccModule, scope: DisposeScope, shape: OccShape): number | null {
-  let smallest: number | null = null
-  const types = oc.GeomAbs_SurfaceType
-  for (const face of exploreFaces(oc, scope, shape)) {
-    const surface = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
-    const type = surface.GetType().value
-    let radius: number | null = null
-    if (type === types.GeomAbs_Cylinder.value) radius = scope.track(surface.Cylinder()).Radius()
-    else if (type === types.GeomAbs_Torus.value) radius = scope.track(surface.Torus()).MinorRadius()
-    else if (type === types.GeomAbs_Sphere.value) radius = scope.track(surface.Sphere()).Radius()
-    if (radius !== null && (smallest === null || radius < smallest)) smallest = radius
-  }
-  return smallest
-}
-
 export function solveShell(
   oc: OccModule,
   scope: DisposeScope,
@@ -132,7 +189,7 @@ export function solveShell(
     // The kernel refused: report the reason and leave the body alone. res.shape
     // is the UNCHANGED input, so resplitting it would re-register the same
     // geometry as a fresh handle and report success for a no-op.
-    const collapse = direction === 'inward' ? smallestRoundRadius(oc, scope, oldShape) : null
+    const collapse = direction === 'inward' ? smallestConvexRoundRadius(oc, scope, oldShape, topoFaces) : null
     if (collapse !== null && collapse <= thickness + 1e-9) {
       // An inward wall offsets every round face by the thickness; a fillet of
       // radius <= thickness collapses to nothing there (Case_Seam_Lip F4), and

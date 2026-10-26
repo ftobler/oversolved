@@ -94,6 +94,15 @@ describe.skipIf(!ready)('boolean tools naming an array feature (real OCC + Rust 
     expect(eight!.measures.volume).toBeCloseTo(PLATE - 8 * SLOT, 3)
   }, 120_000)
 
+  it('refuses by name an array defined after the boolean instead of consuming its bare source', async () => {
+    const steps = arraySteps(6)
+    const boolean = m({ type: 'add_boolean', featureId: 'bo1', operation: 'subtract', target: 'body_ex1', tools: ['@ca1'] })
+    // Same features, the boolean inserted above the array.
+    const built = await runHeadless({ doc: emptyDriveDoc(), steps: [...steps.slice(0, 6), boolean, ...steps.slice(6)] })
+    const problem = built.features.find(feature => feature.id === 'bo1')
+    expect(problem?.message).toContain("body not found for ref '@ca1'")
+  }, 120_000)
+
   it('warns when a hand list names only some of one array\'s bodies', async () => {
     const built = await runHeadless({
       doc: emptyDriveDoc(),

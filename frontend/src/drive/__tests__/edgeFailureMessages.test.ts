@@ -113,6 +113,9 @@ describe.skipIf(!ready)('edge modifier and shell failure messages (real OCC + Ru
     expect(alone.problem?.status).toBe('exception')
     expect(alone.problem?.message).toContain('continues tangentially')
     expect(alone.problem?.message).toContain('pick the whole tangent chain')
+    // Each neighbour once: the arc meets the plate's straight edge and the
+    // boss's cylinder seam at its two ends, not each of them per adjacent face.
+    expect(alone.problem?.message).toMatch(/continues tangentially into 2 unpicked edge\(s\)/)
 
     for (const mutation of [
       { type: 'add_fillet', featureId: 'fi1', edges: [...arc, ...circle], radius: 0.5 },
