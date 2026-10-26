@@ -48,10 +48,17 @@ fn a_circle_touching_one_side_is_the_square_hole() {
     let t = detect_topology(&square_with_circle([2.0, 10.0]));
     assert_eq!(t.surfaces.len(), 2);
     let sq = t.surfaces.iter().find(|s| !is_disc(s)).expect("the square");
-    assert_eq!(sq.holes.len(), 1, "the touching circle is the square's hole");
+    assert_eq!(
+        sq.holes.len(),
+        1,
+        "the touching circle is the square's hole"
+    );
     assert!((net_area(sq) - SQUARE_MINUS_DISC).abs() < 1e-3);
     assert!(t.surfaces.iter().any(is_disc), "the disc is its own area");
-    assert_eq!(t.intersection_points, vec![("_v4".to_string(), [0.0, 10.0])]);
+    assert_eq!(
+        t.intersection_points,
+        vec![("_v4".to_string(), [0.0, 10.0])]
+    );
 }
 
 #[test]
