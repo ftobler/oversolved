@@ -181,6 +181,8 @@ export function describeMutation(m: Mutation): string {
     case 'set_helix_field':
       return `set helix ${m.field} to ${m.value}`
     case 'reorder_features':
+      if (m.before !== undefined) return `reorder ${m.featureId} before ${m.before}`
+      if (m.after !== undefined) return `reorder ${m.featureId} after ${m.after}`
       return `reorder ${m.featureId} to index ${m.toIndex}`
     case 'set_body_visibility':
       return `${m.visible ? 'show' : 'hide'} body ${m.bodyId}`

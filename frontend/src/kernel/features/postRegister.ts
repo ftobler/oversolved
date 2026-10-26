@@ -87,7 +87,12 @@ function unresolvedPlaneError(bare: string, context: SketchPlaneContext): Error 
     const planeAt = order.indexOf(bare)
     const sketchAt = context.sketchId === undefined ? -1 : order.indexOf(context.sketchId)
     if (sketchAt >= 0 && planeAt > sketchAt) {
-      return new Error(`plane '${bare}' is defined after this sketch; move the sketch below it or reorder`)
+      // Name the one-step fix: the anchor form needs no row counting
+      // (Extruder_Support F4 counted seventeen rows by hand).
+      return new Error(
+        `plane '${bare}' is defined after this sketch; move it up with ` +
+          `reorder_features {featureId: '${bare}', before: '${context.sketchId}'}`,
+      )
     }
     return new Error(
       `plane '${bare}' did not resolve; its plane feature comes before this sketch but reported no frame `

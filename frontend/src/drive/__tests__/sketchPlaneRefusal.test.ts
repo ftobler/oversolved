@@ -68,23 +68,54 @@ describe.skipIf(!ready)('sketch plane refusal (real OCC + Rust solver)', () => {
     expect(problem).toBeDefined()
     expect(problem!.status).toBe('exception')
     expect(problem!.message).toContain(
-      "plane 'pl1' is defined after this sketch; move the sketch below it or reorder",
+      "plane 'pl1' is defined after this sketch; move it up with reorder_features {featureId: 'pl1', before: 'sk2'}",
     )
     expect(forward.part.solveOutcomes().sk2.status).toBe('exception')
     // The refused sketch built nothing: only the box body is live.
     expect(forward.bodies).toEqual(['body_ex1'])
 
-    // The seeded rows are Origin, Top, Front, Right, so 4 is the first user slot.
+    // The fix the refusal names, with no rows counted: pl1 lands directly
+    // above sk2 (Extruder_Support F4 counted seventeen rows for a toIndex).
     const reordered = await runHeadless({
       doc: forward.doc!,
       docId: 'plane-reordered',
-      steps: [{ mutation: { type: 'reorder_features', featureId: 'pl1', toIndex: 4 } }],
+      steps: [{ mutation: { type: 'reorder_features', featureId: 'pl1', before: 'sk2' } }],
     })
     expect(reordered.ok).toBe(true)
     expect(reordered.features).toEqual([])
+    const ids = reordered.doc!.features!.map(feature => feature.id)
+    expect(ids.indexOf('pl1')).toBe(ids.indexOf('sk2') - 1)
     expect(reordered.part.solveOutcomes().sk2.status).toBe('underconstrained')
     // It built on pl1 (Top offset 5), not on the Front default.
     expect(reordered.frames!.sk2.origin).toEqual([0, 5, 0])
+  }, 120_000)
+
+  it('refuses a reorder naming both toIndex and before, or an unknown anchor', async () => {
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    for (const [mutation, text] of [
+      [{ type: 'reorder_features', featureId: 'ex1', toIndex: 4, before: 'sk1' }, 'exactly one of toIndex, before or after'],
+      [{ type: 'reorder_features', featureId: 'ex1', before: 'nope' }, '"nope" is not in the document'],
+      [{ type: 'add_plane', featureId: 'pl9', before: 'nope' }, '"nope" is not in the document'],
+    ] as const) {
+      const result = await runHeadless({ doc: emptyDoc(), steps: [...box.steps, { mutation } as never] })
+      const refused = result.outcome.steps[box.steps.length]
+      expect(refused.ok, mutation.type).toBe(false)
+      expect(refused.error?.message, mutation.type).toContain(text)
+    }
+  }, 120_000)
+
+  it('add_plane before inserts the plane directly above the named feature', async () => {
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const result = await runHeadless({
+      doc: emptyDoc(),
+      steps: [
+        ...box.steps,
+        { mutation: { type: 'add_plane', featureId: 'pl1', before: 'ex1', definition: { mode: 'offset', plane: '@builtin_plane_top', offset: 5 } } },
+      ],
+    })
+    expect(result.features).toEqual([])
+    const ids = result.doc!.features!.map(feature => feature.id)
+    expect(ids.indexOf('pl1')).toBe(ids.indexOf('ex1') - 1)
   }, 120_000)
 
   it('refuses a face query an upstream delete stopped resolving', async () => {

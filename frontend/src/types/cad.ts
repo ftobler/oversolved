@@ -1157,7 +1157,7 @@ export type Mutation =
   | ({ type: 'add_sketch'; featureId: string; label?: string; plane?: string } & FeatureInsertion)
   | { type: 'delete_feature'; featureId: string }
   | { type: 'set_feature_visibility'; featureId: string; visible: boolean }
-  | ({ type: 'add_plane'; featureId: string; label?: string; definition?: PlaneDef } & FeatureInsertion)
+  | ({ type: 'add_plane'; featureId: string; label?: string; definition?: PlaneDef; before?: string } & FeatureInsertion)
   | { type: 'set_plane_definition_field'; featureId: string; field: string; value: string | number }
   | { type: 'rename_feature'; featureId: string; label: string }
   | { type: 'toggle_sketch_plane_visibility' }
@@ -1225,7 +1225,9 @@ export type Mutation =
   | { type: 'set_variable_field'; featureId: string; field: keyof VariableFeatureDef; value: unknown }
   | ({ type: 'add_helix'; featureId: string; label?: string; reference?: string } & FeatureInsertion)
   | { type: 'set_helix_field'; featureId: string; field: keyof HelixFeatureDef; value: unknown }
-  | { type: 'reorder_features'; featureId: string; toIndex: number }
+  // Exactly one of toIndex (an absolute log slot), before or after (a feature id
+  // to land next to); the anchors spare a script from counting rows.
+  | { type: 'reorder_features'; featureId: string; toIndex?: number; before?: string; after?: string }
   | { type: 'set_body_visibility'; bodyId: string; visible: boolean }
   | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }
   | { type: 'set_feature_suppression'; featureId: string; suppressed: boolean }

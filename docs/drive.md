@@ -618,8 +618,10 @@ banner on stdout, so a client config must use the direct node invocation.
   `radius` in the same call; `toggle_construction` takes entity targets as
   `entity:<sketchId>:<entityId>` and `delete` takes entity, vertex or constraint
   refs (a bare id is refused); `add_variable` must sit
-  before every feature that names it, and `reorder_features.toIndex` counts the
-  seeded plane rows; `delete_feature` removes only the named row, so a
+  before every feature that names it, and `reorder_features` takes exactly one
+  of `toIndex` (which counts the seeded plane rows), `before: <featureId>` or
+  `after: <featureId>`, while `add_plane` takes `before` to insert in place;
+  `delete_feature` removes only the named row, so a
   dependent stays in the log and reports its missing input; and an array's
   `operation: add` only fuses copies that touch, so disjoint copies split into
   bodies named with `_1`, `_2`... suffixes.
@@ -631,7 +633,8 @@ banner on stdout, so a client config must use the direct node invocation.
   is refused with the valid list; a name never falls back to the XY plane. A
   face query is resolved after the solve, and a plane or face query that does
   not resolve fails the sketch with the cause named: a plane feature defined
-  later in the log (`move the sketch below it or reorder`) or a face query
+  later in the log (the message names the one-step fix,
+  `reorder_features {featureId: <planeId>, before: <sketchId>}`) or a face query
   nothing registers any more. Only an absent or empty query keeps Front.
 - A sketch on a face uses that face's frame: origin at the face centroid, and
   the in-plane axes from the face normal by `normalToFrame` (the same rule

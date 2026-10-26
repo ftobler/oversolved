@@ -571,6 +571,7 @@ export const MUTATION_CATALOG = {
     fields: {
       ...featureAddFields(),
       definition: shapedObj(planeDefinitionSchema(), 'The plane definition object; the schema lists its modes and fields.'),
+      before: optStr('A feature id; the new plane is inserted directly above it instead of appended.'),
     },
   },
   set_plane_definition_field: {
@@ -905,9 +906,17 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), field: fieldOf('helix', 'set_helix_field'), value: setterValue('helix') },
   },
   reorder_features: {
-    summary: 'Move a feature to an absolute index in the log.',
-    note: '`toIndex` counts the seeded plane rows, so the first user feature usually sits at index 4.',
-    fields: { featureId: str(), toIndex: num() },
+    summary: 'Move a feature to an absolute index in the log, or directly before or after another feature.',
+    note: 'Give exactly one of `toIndex`, `before` or `after`. `before: <featureId>` lands the feature directly above ' +
+      'that feature and `after` directly below it, with no rows to count; `toIndex` counts the seeded plane rows, so ' +
+      'the first user feature usually sits at index 4. A sketch that names a plane defined after it is fixed with ' +
+      '`{featureId: <planeId>, before: <sketchId>}`.',
+    fields: {
+      featureId: str(),
+      toIndex: optNum(),
+      before: optStr('A feature id; the moved feature lands directly above it.'),
+      after: optStr('A feature id; the moved feature lands directly below it.'),
+    },
   },
   set_body_visibility: {
     summary: 'Show or hide a body.',

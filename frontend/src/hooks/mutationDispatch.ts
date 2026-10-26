@@ -83,6 +83,8 @@ import {
   applySetPartRoughness,
   applySetPartTransmission,
   applyReorderFeatures,
+  applyMoveFeatureBefore,
+  reorderAnchorIndex,
   applyReorderPickField,
   applyAddMirror,
   applySetMirrorField,
@@ -148,8 +150,12 @@ export const mutationHandlers: MutationHandlers = {
     applyDeleteFeature(next, m.featureId),
   set_feature_visibility: (next, m) =>
     applySetFeatureVisibility(next, m.featureId, m.visible),
-  add_plane: (next, m) =>
-    applyAddPlane(next, m.featureId, m.label, m.definition as Record<string, unknown> | undefined),
+  add_plane: (next, m) => {
+    applyAddPlane(next, m.featureId, m.label, m.definition as Record<string, unknown> | undefined)
+    // `before` inserts the new plane directly above a feature, the one-step
+    // fix for a sketch that names a plane defined after it.
+    if (m.before !== undefined) applyMoveFeatureBefore(next, m.featureId, m.before)
+  },
   set_plane_definition_field: (next, m) =>
     applySetPlaneDefinitionField(next, m.featureId, m.field, m.value),
   rename_feature: (next, m) =>
@@ -303,7 +309,10 @@ export const mutationHandlers: MutationHandlers = {
   set_helix_field: (next, m) =>
     applySetHelixField(next, m.featureId, m.field, m.value),
   reorder_features: (next, m) =>
-    applyReorderFeatures(next, m.featureId, m.toIndex),
+  {
+    const toIndex = m.toIndex ?? reorderAnchorIndex(next, m)
+    if (toIndex !== null) applyReorderFeatures(next, m.featureId, toIndex)
+  },
   reorder_pick_field: (next, m) =>
     applyReorderPickField(next, m.featureId, m.field, m.fromIndex, m.toIndex),
   set_feature_suppression: (next, m) =>

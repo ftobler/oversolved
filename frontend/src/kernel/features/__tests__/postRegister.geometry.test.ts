@@ -64,7 +64,7 @@ describe('resolveSketchPlane', () => {
       pl1: { id: 'pl1', kind: 'plane' },
     }
     expect(() => resolveSketchPlane('@pl1', repo, { sketchId: 'sk1', featuresById: features })).toThrow(
-      "plane 'pl1' is defined after this sketch; move the sketch below it or reorder",
+      "plane 'pl1' is defined after this sketch; move it up with reorder_features {featureId: 'pl1', before: 'sk1'}",
     )
   })
 

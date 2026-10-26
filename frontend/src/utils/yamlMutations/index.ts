@@ -97,6 +97,8 @@ export {
   applyAddSketch,
   applyDeleteFeature,
   applyReorderFeatures,
+  applyMoveFeatureBefore,
+  reorderAnchorIndex,
   applySetRollback,
   applySetFeatureSuppression,
   applySetFeatureVisibility,

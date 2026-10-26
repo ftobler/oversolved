@@ -82,6 +82,30 @@ export function applyDeleteFeature(doc: PartDoc, featureId: string): void {
   doc.features = doc.features.filter(f => f.id !== featureId)
 }
 
+/**
+ * The reorder slot an anchor names: `before` X is X's own index (the move lands
+ * directly above X), `after` X is the slot below it. Null when no anchor is
+ * given or the anchor is not in the log; the value rule refuses an unknown id
+ * by name before a drive step gets here.
+ */
+export function reorderAnchorIndex(doc: PartDoc, anchor: { before?: string; after?: string }): number | null {
+  const id = anchor.before ?? anchor.after
+  if (id === undefined) return null
+  const at = (doc.features ?? []).findIndex(f => f.id === id)
+  if (at < 0) return null
+  return anchor.before !== undefined ? at : at + 1
+}
+
+/** Move a feature to sit directly above `beforeId` (add_plane's `before`). */
+export function applyMoveFeatureBefore(doc: PartDoc, featureId: string, beforeId: string): void {
+  const toIndex = reorderAnchorIndex(doc, { before: beforeId })
+  if (toIndex === null) {
+    warn(`applyMoveFeatureBefore: feature ${beforeId} not found`)
+    return
+  }
+  applyReorderFeatures(doc, featureId, toIndex)
+}
+
 export function applyReorderFeatures(doc: PartDoc, featureId: string, toIndex: number): void {
   if (!doc.features) return
   if (BUILTIN_FEATURE_IDS.has(featureId)) return

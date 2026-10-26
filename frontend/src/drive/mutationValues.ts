@@ -716,7 +716,35 @@ function setFeaturePlane(raw: RawStep, ctx: ValueContext): ValueViolation | null
   return targetProblem === null ? null : invalid(targetProblem)
 }
 
-function addPlane(raw: RawStep): ValueViolation | null {
+// A feature id an anchor field names must be in the document the step applies
+// to; the refusal names it rather than letting the move silently do nothing.
+function anchorProblem(raw: RawStep, key: string, ctx: ValueContext): string | null {
+  const id = raw[key]
+  if (typeof id !== 'string' || id.trim().length === 0) return `${key} must be a feature id, got ${json(id)}`
+  if (ctx.doc !== null && !(ctx.doc.features ?? []).some(f => f.id === id)) {
+    return `${key} names no feature: ${json(id)} is not in the document`
+  }
+  return null
+}
+
+function reorderFeatures(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const given = ['toIndex', 'before', 'after'].filter(key => raw[key] !== undefined)
+  if (given.length !== 1) {
+    return invalid(`give exactly one of toIndex, before or after, got ${given.length === 0 ? 'none' : given.join(', ')}`)
+  }
+  if (given[0] === 'toIndex') {
+    const problem = nonNegativeIndexProblem(raw.toIndex, 'toIndex')
+    return problem === null ? null : invalid(problem)
+  }
+  const problem = anchorProblem(raw, given[0], ctx)
+  return problem === null ? null : invalid(problem)
+}
+
+function addPlane(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  if (raw.before !== undefined) {
+    const problem = anchorProblem(raw, 'before', ctx)
+    if (problem !== null) return invalid(problem)
+  }
   const definition = raw.definition
   if (definition === undefined) return null
   if (!isRecord(definition)) return invalid(`definition must be a plane definition object, got ${json(definition)}`)
@@ -1070,7 +1098,7 @@ export const MUTATION_VALUE_RULES = {
   set_variable_field: fieldValue,
   add_helix: addHelix,
   set_helix_field: fieldValue,
-  reorder_features: indexField('toIndex'),
+  reorder_features: reorderFeatures,
   set_body_visibility: 'none',
   reorder_pick_field: reorderPickField,
   set_feature_suppression: 'none',
