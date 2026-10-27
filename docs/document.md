@@ -164,6 +164,7 @@ distance with a solver warning; a non-planar face target and
   sweep:
     sketch: "@sk1"              # profile ref (or list)
     path: "@sk2/spine"          # path ref (or list)
+    transition: mitre           # mitre | round, how a sharp path corner is turned
     operation: add              # new | add | cut
     merge_target: "@body_ex1"   # optional
 ```

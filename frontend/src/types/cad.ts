@@ -124,6 +124,7 @@ export type RevolveFeatureDef = {
 export type SweepFeatureDef = {
   sketch: string | string[]  // profile reference(s)
   path: string | string[]  // spine reference(s): sketch edges that form the path
+  transition?: 'mitre' | 'round'  // how the profile turns a sharp path corner; absent means mitre
   operation?: 'add' | 'cut' | 'new'
   merge_target?: string
 }

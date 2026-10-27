@@ -889,6 +889,7 @@ export function sweepProfileWithLineage(
   sketchId = '',
   createdBy = '',
   binormal: Vec3 | null = null,
+  roundCorners = false,
 ): LineageResult {
   if (loops.length === 0) throw new Error('sweep: no profile loops')
   if (spineEdges.length === 0) throw new Error('sweep: empty path')
@@ -903,7 +904,10 @@ export function sweepProfileWithLineage(
   scope.release(rawSpineWire)
   scope.release(rawOuterWire)
 
+  // A round corner falls back to the mitre like the mitre falls back to
+  // Transformed, so a refused arc never turns a buildable sweep into an error.
   const modes = [
+    ...(roundCorners ? [oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RoundCorner] : []),
     oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner,
     oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_Transformed,
   ]

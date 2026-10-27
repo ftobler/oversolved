@@ -737,7 +737,7 @@ export function solveSweep(
   const result: { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } = { status: 'ok', body_id: bodyId }
   const operation = ((sub.operation as string) ?? 'add') as BodyOperation
 
-  const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId, binormal)
+  const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId, binormal, sub.transition === 'round')
   const swept = scope.track(lineage.solid)
   for (const e of spineEdges) scope.release(e)
   // A profile taller than the pitch (or wider than the radius) makes the shell

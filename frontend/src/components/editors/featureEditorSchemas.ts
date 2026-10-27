@@ -76,6 +76,8 @@ export const SWEEP_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'sketch', label: 'Profile', multi: true,
       addMutationType: 'add_sweep_profile', addValueKey: 'sketchQuery',
       removeMutationType: 'remove_sweep_profile', transform: stripSelectionWrapper },
+    { type: 'select', key: 'transition', label: 'Corners', default: 'mitre',
+      options: [{ value: 'mitre', label: 'Mitre' }, { value: 'round', label: 'Round' }] },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',

@@ -161,7 +161,8 @@ export const FEATURE_SCHEMA_BY_KIND = {
     key: 'sweep',
     required: ['sketch', 'path'],
     properties: {
-      sketch: REF_OR_LIST, path: REF_OR_LIST, operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
+      sketch: REF_OR_LIST, path: REF_OR_LIST, transition: { enum: ['mitre', 'round'] },
+      operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
     },
   }),
   fillet: feature('fillet', {
