@@ -19,6 +19,11 @@ describe('tightenAxis', () => {
     expect(tightenAxis([0, 40], [1, 39], [0, 40], 0.2)).toEqual([0, 40])
   })
 
+  it('snaps tolerance padding back onto the face points', () => {
+    // A planar face bounded by a spline edge reads 1e-7 past the plane.
+    expect(tightenAxis([-1e-7, 13.0000001], [1, 13], [0, 13], 0.2)).toEqual([0, 13])
+  })
+
   it('tightens each side independently', () => {
     // Only the positive side was trimmed away; the negative one is sampled.
     expect(tightenAxis([-7.945, 7.945], [-7.945, 4], null, 0.5)).toEqual([-7.945, 4])

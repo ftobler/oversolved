@@ -158,9 +158,21 @@ export function tightenAxis(
     boundary === null ? sampled[1] : Math.max(sampled[1], boundary[1]),
   ]
   return [
-    optimal[0] >= evidence[0] - slack ? optimal[0] : evidence[0],
-    optimal[1] <= evidence[1] + slack ? optimal[1] : evidence[1],
+    keepOptimal(optimal[0], evidence[0], slack, -1) ? optimal[0] : evidence[0],
+    keepOptimal(optimal[1], evidence[1], slack, 1) ? optimal[1] : evidence[1],
   ]
+}
+
+// OCC pads an optimal read by the sub-shapes' tolerance (about 1e-7 once a
+// boolean or fillet leaves a spline edge on the face). A bound that far
+// outside the evidence is that padding, not a surface extreme the nodes missed.
+const TOLERANCE_PADDING = 1e-6
+
+/** Whether the optimal bound on one side is a real extreme rather than noise. */
+function keepOptimal(optimal: number, evidence: number, slack: number, side: -1 | 1): boolean {
+  const outward = side * (optimal - evidence)
+  const isPadding = outward > 0 && outward <= TOLERANCE_PADDING
+  return outward <= slack && !isPadding
 }
 
 /** A face's AABB, tightened to the trimmed region when OCC's read overshoots. */
