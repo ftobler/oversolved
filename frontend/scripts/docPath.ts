@@ -6,7 +6,7 @@
 // scratch/. This module does the resolution and the format choice in one
 // place so the two surfaces cannot drift.
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { stringify as stringifyYaml } from 'yaml'
@@ -75,6 +75,9 @@ export function serializeDocFile(doc: unknown, format: DocFileFormat): string {
  */
 export function writeDocFile(file: string, doc: unknown): { file: string; format: DocFileFormat } {
   const format = docFormatForPath(file)
+  // A fresh run directory (bugreports/<slug>/) does not exist yet; failing the
+  // reply of a solved run on a missing parent loses nothing but the author's time.
+  mkdirSync(path.dirname(file), { recursive: true })
   writeFileSync(file, serializeDocFile(doc, format))
   return { file, format }
 }

@@ -74,6 +74,15 @@ describe('document file format', () => {
     }
   })
 
+  it('creates a missing parent directory instead of failing a solved run', () => {
+    try {
+      const out = writeDocFile(path.join(TMP_CASE, 'fresh', 'run', 'doc.yaml'), DOC)
+      expect(parseYaml(readFileSync(out.file, 'utf8'))).toEqual(DOC)
+    } finally {
+      rmSync(TMP_CASE, { recursive: true, force: true })
+    }
+  })
+
   it('reads a reference through the same directory rule', () => {
     mkdirSync(TMP_CASE, { recursive: true })
     try {
