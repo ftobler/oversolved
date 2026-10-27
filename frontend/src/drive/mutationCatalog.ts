@@ -237,6 +237,12 @@ const TRANSFORM_NOTE =
 
 // The revolve axis resolves through the feature-level query repository, not the
 // sketch-local `$` namespace: @sk/entity and edge queries work, `$sk` does not.
+// Only the extrude add carries operation inline; a revolve or sweep that must cut
+// or start a new body needs the setter (Resin_Mold F2 read this as a missing field).
+const OPERATION_SETTER_NOTE = (setter: string): string =>
+  `the add row has no \`operation\` field, so follow it with ${setter} field "operation" value cut or new ` +
+  '(and `merge_target` to fuse into one body).'
+
 const REVOLVE_AXIS_NOTE =
   '`axis` is required and is a feature-level ref, not the profile\'s sketch-local $ form: name a sketch entity as ' +
   '@<sketchId>/<entityId> (a line, or a circle/arc whose center sits on the axis), or an edge query from `select`. ' +
@@ -618,7 +624,7 @@ export const MUTATION_CATALOG = {
   },
   add_revolve: {
     summary: 'Revolve a sketch about a picked axis.',
-    note: REVOLVE_AXIS_NOTE,
+    note: REVOLVE_AXIS_NOTE + ' A revolve adds to the body it touches by default; ' + OPERATION_SETTER_NOTE('set_revolve_field'),
     fields: { ...featureAddFields(), sketchQuery: sketchQuery(), angle: num(), axis: query(REVOLVE_AXIS_NOTE) },
   },
   set_revolve_field: {
@@ -636,6 +642,7 @@ export const MUTATION_CATALOG = {
   },
   add_sweep: {
     summary: 'Sweep a profile sketch along a path sketch.',
+    note: 'A sweep adds to the body it touches by default; ' + OPERATION_SETTER_NOTE('set_sweep_field'),
     fields: {
       ...featureAddFields(),
       sketchQuery: sketchQuery(),

@@ -342,6 +342,12 @@ describe('mutation catalog', () => {
     expect(info.fields.axis.note).toContain('@<sketchId>/<entityId>')
   })
 
+  it('points a revolve or sweep that must cut at the setter, since only extrude adds with an operation', () => {
+    expect(mutationInfoOf('add_revolve').note).toContain('set_revolve_field')
+    expect(mutationInfoOf('add_sweep').note).toContain('set_sweep_field')
+    expect(mutationInfoOf('add_revolve').fields.operation).toBeUndefined()
+  })
+
   it('says a variable must sit before its users and how the index is counted', () => {
     const info = mutationInfoOf('add_variable')
     expect(info.fields.insertAt).toBeDefined()
