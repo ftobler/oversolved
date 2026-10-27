@@ -24,6 +24,11 @@ describe('tightenAxis', () => {
     expect(tightenAxis([-1e-7, 13.0000001], [1, 13], [0, 13], 0.2)).toEqual([0, 13])
   })
 
+  it('does not take padding from the boundary read either', () => {
+    // The edge boxes carry the same 1e-7 padding as the face read.
+    expect(tightenAxis([-1e-7, 3.0000001], [0, 3], [-1e-7, 3.0000001], 0.2)).toEqual([0, 3])
+  })
+
   it('tightens each side independently', () => {
     // Only the positive side was trimmed away; the negative one is sampled.
     expect(tightenAxis([-7.945, 7.945], [-7.945, 4], null, 0.5)).toEqual([-7.945, 4])

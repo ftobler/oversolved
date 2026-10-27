@@ -153,9 +153,11 @@ export function tightenAxis(
   boundary: Axis | null,
   slack: number,
 ): [number, number] {
+  // The boundary read carries the same padding, so it only counts as evidence
+  // where it reaches past the nodes by more than that.
   const evidence: Axis = [
-    boundary === null ? sampled[0] : Math.min(sampled[0], boundary[0]),
-    boundary === null ? sampled[1] : Math.max(sampled[1], boundary[1]),
+    boundary === null || sampled[0] - boundary[0] <= TOLERANCE_PADDING ? sampled[0] : Math.min(sampled[0], boundary[0]),
+    boundary === null || boundary[1] - sampled[1] <= TOLERANCE_PADDING ? sampled[1] : Math.max(sampled[1], boundary[1]),
   ]
   return [
     keepOptimal(optimal[0], evidence[0], slack, -1) ? optimal[0] : evidence[0],
