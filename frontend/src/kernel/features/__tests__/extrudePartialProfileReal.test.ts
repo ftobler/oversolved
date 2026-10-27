@@ -99,4 +99,9 @@ describe.skipIf(!oc || !solveBytes)('square beside an open triangle (real OCC + 
     expect(ex.status).toBe('error')
     expect(String(ex.exception)).toContain('no closed profile found')
   })
+
+  it('names the open joint and its gap when the sketch has no area at all', () => {
+    const ex = h.res(h.run(spec(2e-5, false)), 'ex1')
+    expect(String(ex.exception)).toMatch(/nearest open ends \(40, 0\) and \(40, 0\.00002\) are 0\.00002 apart/)
+  })
 })

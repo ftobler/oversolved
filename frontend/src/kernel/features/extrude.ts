@@ -23,7 +23,7 @@ import { resolveDirection } from './shared/directionQuery'
 import { registerTopFace } from './shared/topFace'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { surfaceEntityIds } from './shared/bodyRef'
-import { profileAreaReport } from './shared/profileLoops'
+import { openJointHint, profileAreaReport } from './shared/profileLoops'
 import { loopCentroid } from '../profileLoops'
 import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
@@ -220,6 +220,10 @@ export function solveExtrude(
     )
     areaTotal += report.total
     areaBuilt += report.built
+    if (report.total === 0) {
+      const hint = openJointHint((topo.edges as Dict[]) ?? [])
+      if (hint !== null && !unbuildableReasons.includes(hint)) unbuildableReasons.push(hint)
+    }
     for (const reason of report.reasons) {
       if (!unbuildableReasons.includes(reason)) unbuildableReasons.push(reason)
     }

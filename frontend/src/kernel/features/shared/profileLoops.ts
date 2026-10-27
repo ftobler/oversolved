@@ -364,3 +364,38 @@ export function profileAreaReport(
   }
   return { built: total - failed.size, total, reasons }
 }
+
+/**
+ * Why a sketch with curves has no closed area at all: the nearest pair of free
+ * endpoints and how far apart they sit.
+ *
+ * The area builder merges endpoints only within TOL_TOPOLOGY_MERGE, so two ends
+ * a hand-typed coordinate apart (an arc end computed to four digits) never
+ * join and the sketch yields no area. The bare "no closed profile found" gives
+ * no hint where; this names the gap. Returns null when every endpoint pairs up
+ * or there are fewer than two free ends.
+ */
+export function openJointHint(edges: Dict[]): string | null {
+  const ends: number[][] = []
+  for (const e of edges) {
+    const s = e.start as number[] | undefined
+    const t = e.end as number[] | undefined
+    if (!s || !t) continue
+    ends.push(s, t)
+  }
+  const free = ends.filter((p, i) =>
+    !ends.some((q, j) => j !== i && Math.hypot(p[0] - q[0], p[1] - q[1]) <= TOL_TOPOLOGY_MERGE))
+  let best: { gap: number; a: number[]; b: number[] } | null = null
+  for (let i = 0; i < free.length; i++) {
+    for (let j = i + 1; j < free.length; j++) {
+      const gap = Math.hypot(free[i][0] - free[j][0], free[i][1] - free[j][1])
+      if (best === null || gap < best.gap) best = { gap, a: free[i], b: free[j] }
+    }
+  }
+  if (best === null) return null
+  const f = (p: number[]): string => `(${+p[0].toFixed(6)}, ${+p[1].toFixed(6)})`
+  return (
+    `the sketch has no closed area; its nearest open ends ${f(best.a)} and ${f(best.b)} ` +
+    `are ${+best.gap.toPrecision(3)} apart and join only within ${TOL_TOPOLOGY_MERGE}`
+  )
+}
