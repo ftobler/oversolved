@@ -41,10 +41,12 @@ export interface ScriptRunOutcome {
 // A step's result: the registry Result, the session Result, a bridge failure,
 // or null for the adapter's "no document" no-op. Anything else (a thrown
 // exception) is caught here and recorded as an error outcome, never allowed to
-// abort the script silently.
+// abort the script silently. A runner may be asynchronous (the assembly session
+// awaits an OCC bundle build to resolve a mate ref); the loop awaits it, so the
+// sync runners are unchanged.
 export type ScriptStepResult = CommandResult | Result | ScriptFailure | null
 
-export type ScriptStepRunner = (step: ScriptStep) => ScriptStepResult
+export type ScriptStepRunner = (step: ScriptStep) => ScriptStepResult | Promise<ScriptStepResult>
 
 function isObject(value: unknown): value is { [key: string]: unknown } {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -127,7 +129,7 @@ export async function runScript(
       outcome = malformed
     } else {
       try {
-        outcome = outcomeFor(index, step, run(step))
+        outcome = outcomeFor(index, step, await run(step))
       } catch (e) {
         outcome = {
           index,

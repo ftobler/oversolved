@@ -75,4 +75,26 @@ describe('runScript', () => {
     )
     expect(settled).toBe(2)
   })
+
+  it('awaits an async runner and stops at its first failure', async () => {
+    const seen: string[] = []
+    const outcome = await runScript([step('a'), step('b'), step('c')], async (s) => {
+      const id = commandOf(s)
+      seen.push(id)
+      return id === 'b' ? errorResult('no-document', 'boom') : okResult()
+    })
+    expect(seen).toEqual(['a', 'b'])
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps[1].error).toEqual({ code: 'no-document', message: 'boom' })
+  })
+
+  it('records a rejected promise as a thrown outcome', async () => {
+    const outcome = await runScript([step('a'), step('b')], async (s) => {
+      if (commandOf(s) === 'a') throw new Error('async kaboom')
+      return okResult()
+    })
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps).toHaveLength(1)
+    expect(outcome.steps[0].error).toEqual({ code: 'thrown', message: 'async kaboom' })
+  })
 })
