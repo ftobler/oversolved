@@ -201,6 +201,18 @@ export type MirrorFeatureDef = {
   merge?: boolean
 }
 
+/** Which side of a split plane survives: the normal side, the other side, or both. */
+export type SplitKeep = 'above' | 'below' | 'both'
+
+export type SplitFeatureDef = {
+  // One ref per body to cut; a feature ref means every body that feature made.
+  bodies: string[]
+  // @builtin_plane_*, Front/Top/Right, @<planeFeatureId>, or a ?...:flatface pick.
+  plane: string
+  // Default `above`, the side the plane's normal points to.
+  keep?: SplitKeep
+}
+
 export type TransformFeatureDef = {
   // One ref per body to move; picking is multi-select and the SAME transform is
   // applied to every one of them. A doc written before this field was plural
@@ -548,6 +560,11 @@ export type MirrorFeature = FeatureBase & {
   mirror: MirrorFeatureDef
 }
 
+export type SplitFeature = FeatureBase & {
+  kind: 'split'
+  split: SplitFeatureDef
+}
+
 export type VariableFeature = FeatureBase & {
   kind: 'variable'
   variable: VariableFeatureDef
@@ -587,6 +604,7 @@ export type PartFeature =
   | HoleFeature
   | TransformFeature
   | MirrorFeature
+  | SplitFeature
   | VariableFeature
   | HelixFeature
   | ImportStepFeature
@@ -1225,6 +1243,10 @@ export type Mutation =
   | { type: 'set_part_transmission'; bodyId: string; transmission: number }
   | ({ type: 'add_mirror'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }
+  | ({ type: 'add_split'; featureId: string; label?: string; bodies?: string[]; plane?: string; keep?: SplitKeep } & FeatureInsertion)
+  | { type: 'set_split_field'; featureId: string; field: keyof SplitFeatureDef; value: unknown }
+  | { type: 'add_split_body'; featureId: string; bodyQuery: string }
+  | { type: 'remove_split_body'; featureId: string; index: number }
   | ({ type: 'add_variable'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_variable_field'; featureId: string; field: keyof VariableFeatureDef; value: unknown }
   | ({ type: 'add_helix'; featureId: string; label?: string; reference?: string } & FeatureInsertion)

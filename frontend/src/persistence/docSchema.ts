@@ -649,6 +649,14 @@ function checkMirror(sub: DocRecord, field: string): void {
   checkOptional(sub, 'merge', field, checkBoolean)
 }
 
+const SPLIT_KEEP = ['above', 'below', 'both'] as const
+
+function checkSplit(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'bodies', field, checkRefList)
+  checkOptional(sub, 'plane', field, checkRef)
+  checkOptional(sub, 'keep', field, (v, f) => checkEnum(v, f, SPLIT_KEEP))
+}
+
 function checkVariable(sub: DocRecord, field: string): void {
   checkOptional(sub, 'expression', field, checkExpr)
   checkOptional(sub, 'value', field, checkFiniteNumber)
@@ -704,6 +712,7 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['hole', checkHole],
   ['transform', checkTransform],
   ['mirror', checkMirror],
+  ['split', checkSplit],
   ['variable', checkVariable],
   ['helix', checkHelix],
   ['import_step', checkImportStep],

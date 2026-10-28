@@ -108,6 +108,11 @@ const mirrorDoc = (): PartDoc => makeDoc({
   mirror: { body: '', plane: '', keep_original: true, merge: true },
 })
 
+const splitDoc = (): PartDoc => makeDoc({
+  id: 'sp1', kind: 'split', label: 'Split',
+  split: { bodies: ['@b1'], plane: '@builtin_plane_top', keep: 'above' },
+})
+
 const variableDoc = (): PartDoc => makeDoc({
   id: 'v1', kind: 'variable', label: 'v1',
   variable: { expression: '0' },
@@ -480,6 +485,27 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   set_mirror_field: {
     makeDoc: mirrorDoc,
     mutation: { type: 'set_mirror_field', featureId: 'm1', field: 'plane', value: '@top' },
+  },
+
+  // split
+  add_split: {
+    makeDoc: emptyDoc,
+    mutation: {
+      type: 'add_split', featureId: 'sp1', label: 'Split',
+      bodies: ['@ex1'], plane: '@builtin_plane_top', keep: 'above',
+    },
+  },
+  set_split_field: {
+    makeDoc: splitDoc,
+    mutation: { type: 'set_split_field', featureId: 'sp1', field: 'keep', value: 'both' },
+  },
+  add_split_body: {
+    makeDoc: splitDoc,
+    mutation: { type: 'add_split_body', featureId: 'sp1', bodyQuery: '@b2' },
+  },
+  remove_split_body: {
+    makeDoc: splitDoc,
+    mutation: { type: 'remove_split_body', featureId: 'sp1', index: 0 },
   },
 
   // variable

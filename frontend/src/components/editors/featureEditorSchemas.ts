@@ -317,6 +317,44 @@ export const MIRROR_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+/** A plane pick: a builtin or datum plane id, or a flat-face query. The
+ *  surface kind is the kernel classification carried in the query, so a curved
+ *  face is refused here rather than sampled from triangles. */
+const planePickRefusal = (id: string): string | null => {
+  if (id.startsWith('?')) {
+    return id.endsWith(':flatface') ? null : 'pick a plane or a flat face, not an edge, vertex or curved face'
+  }
+  if (id.startsWith('@body_')) return 'pick a plane or a flat face, not a body'
+  // A bare @ id is a builtin plane, a datum plane or a feature ref; the kernel
+  // names the ones that are not planes, so the chip lets them through.
+  if (id.startsWith('@') && !id.includes('/')) return null
+  if (id.startsWith('@')) return 'pick a plane or a flat face, not a sketch entity'
+  return 'pick a plane or a flat face'
+}
+
+export const SPLIT_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_split',
+  subKey: 'split',
+  defaults: { bodies: [], plane: '', keep: 'above' },
+  fields: [
+    // Plural, and without a `transform:` coercion for the same reason
+    // TRANSFORM_SCHEMA's field has none: `@ex1` here means every body that
+    // feature made, split siblings included.
+    { type: 'pick', key: 'bodies', label: 'Bodies', multi: true,
+      addMutationType: 'add_split_body', addValueKey: 'bodyQuery',
+      removeMutationType: 'remove_split_body',
+      emptyText: '(pick one or more bodies)' },
+    { type: 'pick', key: 'plane', label: 'Split Plane', transform: stripSelectionWrapper,
+      validatePick: planePickRefusal },
+    { type: 'select', key: 'keep', label: 'Keep', default: 'above',
+      options: [
+        { value: 'above', label: 'Above (normal side)' },
+        { value: 'below', label: 'Below' },
+        { value: 'both', label: 'Both' },
+      ] },
+  ],
+}
+
 export const ARRAY_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_array',
   subKey: 'array',
@@ -485,6 +523,7 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   hole: HOLE_SCHEMA,
   transform: TRANSFORM_SCHEMA,
   mirror: MIRROR_SCHEMA,
+  split: SPLIT_SCHEMA,
   array: ARRAY_SCHEMA,
   circular_array: CIRCULAR_ARRAY_SCHEMA,
   delete_body: DELETE_BODY_SCHEMA,

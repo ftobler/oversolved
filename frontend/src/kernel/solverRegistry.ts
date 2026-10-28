@@ -32,6 +32,7 @@ import { solveMoveFace } from './features/moveFace'
 import { solveDeleteFace } from './features/deleteFace'
 import { solveArray, solveCircularArray } from './features/array'
 import { solveTransform, solveMirror } from './features/transformMirror'
+import { solveSplit } from './features/splitByPlane'
 import { solveDeleteBody } from './features/deleteBody'
 import { solveImportStep } from './features/importStep'
 import { solveSketch } from './features/sketch'
@@ -92,6 +93,7 @@ const KIND_SOLVER: SolverTable = {
   circular_array: solveCircularArray,
   transform: solveTransform,
   mirror: solveMirror,
+  split: solveSplit,
   delete_body: solveDeleteBody,
   // Variables carry no OCC geometry. The builder path short-circuits them in
   // ``createFeatureSolver`` (passing the live variable context); this entry is

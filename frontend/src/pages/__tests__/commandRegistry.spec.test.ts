@@ -83,6 +83,13 @@ describe('command completeness', () => {
     expect(addFeature).toHaveBeenCalledWith('delete_face', undefined)
   })
 
+  it('add_split dispatches the split kind through the registry', () => {
+    const addFeature = vi.fn(() => okResult(['feat-1']))
+    const registry = partRegistry(partContext({ addFeature }))
+    expect(registry.execute('add_split')).toEqual({ ok: true, createdIds: ['feat-1'] })
+    expect(addFeature).toHaveBeenCalledWith('split', undefined)
+  })
+
   it('an unknown id is an error Result, not a throw', () => {
     const registry = partRegistry()
     const unknown = 'not_a_command' as (typeof COMMAND_NAMES)[number]

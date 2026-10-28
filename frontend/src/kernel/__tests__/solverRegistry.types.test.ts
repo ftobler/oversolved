@@ -31,6 +31,7 @@ import type {
   RevolveFeature,
   ShellFeature,
   SketchFeature,
+  SplitFeature,
   SweepFeature,
   TransformFeature,
   VariableFeature,
@@ -61,6 +62,7 @@ describe('the part feature union is closed', () => {
       | 'hole'
       | 'transform'
       | 'mirror'
+      | 'split'
       | 'variable'
       | 'helix'
       | 'import_step'
@@ -87,6 +89,7 @@ describe('solver dispatch maps each kind to its variant', () => {
     expectTypeOf<FeatureParam<'hole'>>().toEqualTypeOf<HoleFeature>()
     expectTypeOf<FeatureParam<'transform'>>().toEqualTypeOf<TransformFeature>()
     expectTypeOf<FeatureParam<'mirror'>>().toEqualTypeOf<MirrorFeature>()
+    expectTypeOf<FeatureParam<'split'>>().toEqualTypeOf<SplitFeature>()
     expectTypeOf<FeatureParam<'variable'>>().toEqualTypeOf<VariableFeature>()
     expectTypeOf<FeatureParam<'helix'>>().toEqualTypeOf<HelixFeature>()
   })

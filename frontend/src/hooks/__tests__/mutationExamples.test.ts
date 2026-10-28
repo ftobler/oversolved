@@ -27,7 +27,7 @@ describe('mutation example registry', () => {
     // completeness fact without importing one test file from another or
     // keeping a second copy of the list.
     expect(Object.keys(MUTATION_EXAMPLES).sort()).toEqual(Object.keys(mutationHandlers).sort())
-    expect(entries).toHaveLength(97)
+    expect(entries).toHaveLength(101)
   })
 
   it('declares exactly the label-only carriers', () => {

@@ -321,6 +321,7 @@ export function applyReorderPickField(doc: PartDoc, featureId: string, field: st
     case 'bodies':
       if (feature.kind === 'delete_body') arr = feature.delete_body?.bodies
       else if (feature.kind === 'transform') arr = feature.transform?.bodies
+      else if (feature.kind === 'split') arr = feature.split?.bodies
       break
     case 'sketch':
       // A bare-string sketch ref (legacy docs, or hand-authored YAML) is

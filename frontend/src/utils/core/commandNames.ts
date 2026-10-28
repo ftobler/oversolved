@@ -18,6 +18,7 @@ export const COMMAND_NAMES = [
   'add_shell',
   'add_move_face',
   'add_delete_face',
+  'add_split',
   'apply_offset',
   'set_tool_mirror',
 

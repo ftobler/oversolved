@@ -923,6 +923,53 @@ function addHole(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return null
 }
 
+// A split's inline fields: `bodies` is a pick list, `plane` goes through the
+// same target vocabulary `set_feature_plane`/`add_sketch` accept, and `keep` is
+// one of the three side names. Each refusal names the accepted values, because
+// "top" and "bottom" are the spellings an author brings from CadQuery.
+const SPLIT_KEEPS = ['above', 'below', 'both'] as const
+
+function splitPlaneProblem(plane: unknown, ctx: ValueContext): string | null {
+  if (typeof plane !== 'string' || plane.trim().length === 0) {
+    return `plane must be a non-empty plane reference such as "@builtin_plane_top", got ${json(plane)}`
+  }
+  const shapeProblem = refValueProblem(plane, 'plane')
+  return shapeProblem ?? planeTargetProblem(plane, ctx)
+}
+
+function splitKeepProblem(keep: unknown): string | null {
+  if (typeof keep === 'string' && (SPLIT_KEEPS as readonly string[]).includes(keep)) return null
+  return `keep must be one of ${SPLIT_KEEPS.map(k => `"${k}"`).join(', ')}, got ${json(keep)}`
+}
+
+function addSplit(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  if (raw.bodies !== undefined) {
+    const problem = stringListProblem(raw.bodies, 'bodies')
+    if (problem !== null) return invalid(problem)
+  }
+  if (raw.plane !== undefined) {
+    const problem = splitPlaneProblem(raw.plane, ctx)
+    if (problem !== null) return invalid(problem)
+  }
+  if (raw.keep !== undefined) {
+    const problem = splitKeepProblem(raw.keep)
+    if (problem !== null) return invalid(problem)
+  }
+  return null
+}
+
+// The generic setter check holds `keep` to its schema enum; `plane` needs the
+// target vocabulary on top, because the schema only knows it is a ref.
+function setSplitField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const generic = fieldValue(raw, ctx)
+  if (generic !== null) return generic
+  if (raw.field === 'plane' && raw.value !== null && raw.value !== undefined) {
+    const problem = splitPlaneProblem(raw.value, ctx)
+    if (problem !== null) return invalid(problem)
+  }
+  return null
+}
+
 function renamePart(raw: RawStep): ValueViolation | null {
   const name = raw.name
   if (typeof name !== 'string' || name.trim().length === 0) {
@@ -1094,6 +1141,10 @@ export const MUTATION_VALUE_RULES = {
   set_part_transmission: unitInterval('transmission'),
   add_mirror: 'none',
   set_mirror_field: fieldValue,
+  add_split: addSplit,
+  set_split_field: setSplitField,
+  add_split_body: queryField('bodyQuery'),
+  remove_split_body: indexField('index'),
   add_variable: 'none',
   set_variable_field: fieldValue,
   add_helix: addHelix,

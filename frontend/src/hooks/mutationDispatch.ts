@@ -88,6 +88,10 @@ import {
   applyReorderPickField,
   applyAddMirror,
   applySetMirrorField,
+  applyAddSplit,
+  applySetSplitField,
+  applyAddSplitBody,
+  applyRemoveSplitBody,
   applyAddVariable,
   applySetVariableField,
   applyAddHelix,
@@ -300,6 +304,14 @@ export const mutationHandlers: MutationHandlers = {
     applyAddMirror(next, m.featureId, m.label),
   set_mirror_field: (next, m) =>
     applySetMirrorField(next, m.featureId, m.field, m.value),
+  add_split: (next, m) =>
+    applyAddSplit(next, m.featureId, m.label, m.bodies, m.plane, m.keep),
+  set_split_field: (next, m) =>
+    applySetSplitField(next, m.featureId, m.field, m.value),
+  add_split_body: (next, m) =>
+    applyAddSplitBody(next, m.featureId, m.bodyQuery),
+  remove_split_body: (next, m) =>
+    applyRemoveSplitBody(next, m.featureId, m.index),
   add_variable: (next, m) =>
     applyAddVariable(next, m.featureId, m.label),
   set_variable_field: (next, m) =>

@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList } from './helpers'
 
 /** Append a feature, lazily initializing the features array. */
@@ -727,6 +727,60 @@ export function applySetMirrorField(
 ): void {
   const feature = findFeature(doc, featureId)
   setSubFeatureField(featureId, 'mirror', feature?.kind === 'mirror' ? feature.mirror : undefined, field, value, 'applySetMirrorField')
+}
+
+// ─── Split ───
+
+export function applyAddSplit(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  bodies?: string[],
+  plane?: string,
+  keep?: SplitKeep,
+): void {
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'split',
+    label: label ?? 'Split',
+    split: {
+      // The pick list is copied: the mutation payload may be journaled and
+      // replayed from the same array, and a later toggle must not edit it.
+      bodies: [...(bodies ?? [])],
+      plane: plane ?? '',
+      keep: keep ?? 'above',
+    },
+  })
+}
+
+export function applySetSplitField(
+  doc: PartDoc,
+  featureId: string,
+  field: keyof SplitFeatureDef,
+  value: unknown,
+): void {
+  const feature = findFeature(doc, featureId)
+  const sub = feature?.kind === 'split' ? feature.split : undefined
+  if (!sub) {
+    warn(`applySetSplitField: feature ${featureId} has no split`)
+    return
+  }
+  // The kind owns exactly three fields, so a typo from a script is refused by
+  // name rather than stored as a key no reader will ever look at.
+  if (field !== 'bodies' && field !== 'plane' && field !== 'keep') {
+    warn(`applySetSplitField: unknown split field ${JSON.stringify(field)}`)
+    return
+  }
+  setFeatureField(sub, field, value)
+}
+
+/** Toggle a body ref in/out of the split's pick list (re-picking removes). */
+export function applyAddSplitBody(doc: PartDoc, featureId: string, bodyQuery: string): void {
+  toggleListValue(doc, featureId, 'split', 'bodies', bodyQuery, 'applyAddSplitBody')
+}
+
+export function applyRemoveSplitBody(doc: PartDoc, featureId: string, index: number): void {
+  removeListAt(doc, featureId, 'split', 'bodies', index, 'applyRemoveSplitBody')
 }
 
 // ─── Variable ───

@@ -78,11 +78,10 @@ function prismBaseFace(
   if (typeof builder.FirstShape === 'function') {
     try {
       const first = scope.track(builder.FirstShape())
-      if (!(first as unknown as { IsNull(): boolean }).IsNull()) {
-        const E = oc.TopAbs_ShapeEnum
-        const exp = scope.track(new oc.TopExp_Explorer_2(first, E.TopAbs_FACE, E.TopAbs_SHAPE))
-        if (exp.More()) return scope.track(oc.TopoDS.Face_1(scope.track(exp.Current())))
-      }
+      // A null shape explores to nothing, so no IsNull probe is needed.
+      const E = oc.TopAbs_ShapeEnum
+      const exp = scope.track(new oc.TopExp_Explorer_2(first, E.TopAbs_FACE, E.TopAbs_SHAPE))
+      if (exp.More()) return scope.track(oc.TopoDS.Face_1(scope.track(exp.Current())))
     } catch {
       // Fall through to the Generated() image below.
     }

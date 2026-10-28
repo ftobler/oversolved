@@ -22,7 +22,7 @@ function faceVertices(scope: DisposeScope, face: OccShape): Vec3[] {
   const out: Vec3[] = []
   const seen: OccSubShape[] = []
   for (; exp.More(); exp.Next()) {
-    const vertex = scope.track(oc.TopoDS.Vertex_1(scope.track(exp.Current())))
+    const vertex = scope.track(oc.TopoDS.Vertex_1(scope.track(exp.Current()))) as unknown as OccSubShape
     // The explorer visits a shared vertex once per edge, so dedupe by identity.
     if (seen.some((s) => vertex.IsSame(s))) continue
     seen.push(vertex)

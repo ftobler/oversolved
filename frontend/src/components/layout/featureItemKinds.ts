@@ -22,6 +22,7 @@ export const EDIT_LABELS: Record<string, string> = {
   hole: 'hole',
   transform: 'transform',
   mirror: 'mirror',
+  split: 'split',
   variable: 'variable',
   helix: 'helix',
 }

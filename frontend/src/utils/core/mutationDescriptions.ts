@@ -172,6 +172,14 @@ export function describeMutation(m: Mutation): string {
       return `add mirror ${m.label ?? m.featureId}`
     case 'set_mirror_field':
       return `set mirror ${m.field} to ${m.value}`
+    case 'add_split':
+      return `add split ${m.label ?? m.featureId}`
+    case 'set_split_field':
+      return `set split ${m.field} to ${m.value}`
+    case 'add_split_body':
+      return `add split body ${m.bodyQuery}`
+    case 'remove_split_body':
+      return `remove split body at index ${m.index}`
     case 'add_variable':
       return `add variable ${m.label ?? m.featureId}`
     case 'set_variable_field':

@@ -189,6 +189,7 @@ describe('set_*_field field names', () => {
     set_hole_field: 'diameter',
     set_transform_field: 'rotation_axis',
     set_mirror_field: 'keep_original',
+    set_split_field: 'keep',
     set_variable_field: 'expression',
     set_helix_field: 'pitch',
   }

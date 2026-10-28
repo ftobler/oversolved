@@ -226,7 +226,7 @@ const CREATING_MUTATION_TYPES = new Set<Mutation['type']>([
   'add_move_face',
   'add_delete_face',
   'add_array', 'add_circular_array', 'add_delete_body', 'add_hole',
-  'add_transform', 'add_mirror', 'add_variable', 'add_helix',
+  'add_transform', 'add_mirror', 'add_split', 'add_variable', 'add_helix',
 ])
 
 function contentIds(doc: PartDoc): Set<string> {

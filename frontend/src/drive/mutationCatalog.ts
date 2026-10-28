@@ -153,6 +153,7 @@ export const FIELD_SETTER_KIND = {
   set_hole_field: 'hole',
   set_transform_field: 'transform',
   set_mirror_field: 'mirror',
+  set_split_field: 'split',
   set_variable_field: 'variable',
   set_helix_field: 'helix',
 } as const satisfies Record<FieldSetterType, FeatureKind>
@@ -224,6 +225,14 @@ const holeAddFields = () => {
     thread: thread === undefined ? optObj() : shapedObj(thread, 'The cosmetic thread spec: designation, nominal and pitch.'),
   }
 }
+
+const SPLIT_NOTE =
+  '`above` is the side the plane normal points to, `below` is the other side, and `both` keeps each side as its own body. ' +
+  'A picked planar face\'s normal is its OUTWARD normal, so `above` of a face pick is the air side. ' +
+  'Builtin normals: Front +Z, Top +Y, Right +X. ' +
+  '`bodies` is a list of body refs; a feature ref (@<featureId>) means every body that feature made. ' +
+  'With `both` the above half keeps the original body id and the below half becomes its `_1`, `_2`, ... siblings, ' +
+  'so @<featureId> still names all of it.'
 
 // The transform's axis trio is the one place an author has to choose a
 // spelling; the solver composes exactly one axis for the whole feature.
@@ -887,6 +896,29 @@ export const MUTATION_CATALOG = {
     summary: 'Set one mirror field.',
     fields: { featureId: str(), field: fieldOf('mirror', 'set_mirror_field'), value: setterValue('mirror') },
   },
+  add_split: {
+    summary: 'Add a split feature, optionally with its bodies, plane and kept side.',
+    note: SPLIT_NOTE,
+    fields: {
+      ...featureAddFields(),
+      bodies: optArr('Body refs to cut; a feature ref (@<featureId>) means every body that feature made.'),
+      plane: optStr('The cutting plane: @builtin_plane_*, Front/Top/Right, @<planeFeatureId>, or a ?...:flatface pick.'),
+      keep: optStr('above | below | both; absent means above.'),
+    },
+  },
+  set_split_field: {
+    summary: 'Set one split field, e.g. plane or keep.',
+    note: SPLIT_NOTE,
+    fields: { featureId: str(), field: fieldOf('split', 'set_split_field'), value: setterValue('split') },
+  },
+  add_split_body: {
+    summary: 'Add a body to a split.',
+    fields: { featureId: str(), bodyQuery: bodyQuery() },
+  },
+  remove_split_body: {
+    summary: 'Remove a split body by index.',
+    fields: { featureId: str(), index: num() },
+  },
   add_variable: {
     summary: 'Add a variable feature.',
     note:
@@ -1066,6 +1098,10 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   set_part_transmission: 'part style',
   add_mirror: 'features',
   set_mirror_field: 'features',
+  add_split: 'features',
+  set_split_field: 'features',
+  add_split_body: 'picks',
+  remove_split_body: 'picks',
   add_variable: 'features',
   set_variable_field: 'features',
   add_helix: 'features',

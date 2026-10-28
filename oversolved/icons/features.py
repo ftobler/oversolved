@@ -389,6 +389,37 @@ def feature_mirror(ctx):
     draw_dotted_line(ctx, 0.5, 0.12, 0.5, 0.88, 3)
 
 
+@icon("frontend/src/assets/icons/feature-split.svg")
+def feature_split(ctx):
+    """Icon for Split: a block cut by a plane line, the kept half solid."""
+    left, top, right, bottom = 0.2, 0.18, 0.8, 0.82
+    split_y = 0.5
+
+    # The dropped half stays an outline.
+    ctx.rectangle(left, split_y, right - left, bottom - split_y)
+    stroke(ctx, 1.5)
+
+    # The block's outer edge on the kept side, so the cut reads as inside a body.
+    ctx.move_to(left, top)
+    ctx.line_to(left, split_y)
+    ctx.move_to(right, top)
+    ctx.line_to(right, split_y)
+    ctx.move_to(left, top)
+    ctx.line_to(right, top)
+    stroke(ctx, 1.5)
+
+    # The kept (above) half is solid: a new path, so the fill does not swallow
+    # the outlines above.
+    ctx.new_path()
+    ctx.rectangle(left, top, right - left, split_y - top)
+    ctx.fill()
+
+    # The cutting plane, wider than the block so it reads as a plane.
+    ctx.move_to(0.1, split_y)
+    ctx.line_to(0.9, split_y)
+    stroke(ctx, 2.0)
+
+
 @icon("frontend/src/assets/icons/feature-transform.svg")
 def feature_transform(ctx):
     """Icon for Transform: ghost box shifted with translation arrows."""

@@ -22,7 +22,14 @@ export interface ResolvedPlane {
   normal: Vec3
 }
 
-type Dict = Record<string, unknown>
+/** The plane-shaped subset a repo record may carry; every field is optional
+ *  because a non-plane record (a point, a body) reaches the same lookup. */
+interface PlaneRecord {
+  origin?: number[]
+  normal?: number[]
+  x_axis?: number[]
+  type?: string
+}
 
 /**
  * Resolve a plane-shaped pick to an origin and a unit normal.
@@ -45,7 +52,7 @@ export function resolvePlaneRef(
   // `builtin_plane_top`, so translate before asking it anything.
   const bareId = resolveBarePlaneId(query) ?? resolveBarePlaneId(query.replace(/^@/, ''))
   const lookup = bareId !== null ? '@' + bareId : query
-  const planeData = globalRepo.query(lookup, null, bodyStore) as Dict | null
+  const planeData = globalRepo.query(lookup, null, bodyStore) as PlaneRecord | null
   if (planeData === null) throw new Error(`${leaf}: plane not found: ${JSON.stringify(query)}`)
 
   let origin: number[]
@@ -54,8 +61,8 @@ export function resolvePlaneRef(
     origin = planeData.origin as number[]
     normal = planeData.normal as number[]
   } else if (planeData.type === 'flatface' || planeData.type === 'plane') {
-    origin = (planeData.origin as number[]) ?? [0, 0, 0]
-    normal = (planeData.normal as number[]) ?? [0, 0, 1]
+    origin = planeData.origin ?? [0, 0, 0]
+    normal = planeData.normal ?? [0, 0, 1]
   } else {
     throw new Error(`${leaf}: plane query did not resolve to a plane: ${JSON.stringify(query)}`)
   }

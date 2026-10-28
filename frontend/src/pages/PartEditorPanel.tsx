@@ -21,6 +21,7 @@ import featureDeleteBodyIcon from '@/assets/icons/feature-delete-body.svg'
 import featureHoleIcon from '@/assets/icons/feature-hole.svg'
 import featureTransformIcon from '@/assets/icons/feature-transform.svg'
 import featureMirrorIcon from '@/assets/icons/feature-mirror.svg'
+import featureSplitIcon from '@/assets/icons/feature-split.svg'
 import featureVariableIcon from '@/assets/icons/feature-variable.svg'
 import featureHelixIcon from '@/assets/icons/feature-helix.svg'
 import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
@@ -117,6 +118,7 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Add Boolean" onClick={() => handleAddFeature('boolean')}><img src={featureBooleanIcon} alt="Add Boolean" /></button>
               <button className="editor-btn" title="Add Transform" onClick={() => handleAddFeature('transform')}><img src={featureTransformIcon} alt="Add Transform" /></button>
               <button className="editor-btn" title="Add Mirror" onClick={() => handleAddFeature('mirror')}><img src={featureMirrorIcon} alt="Add Mirror" /></button>
+              <button className="editor-btn" title="Add Split" onClick={() => handleAddFeature('split')}><img src={featureSplitIcon} alt="Add Split" /></button>
               <button className="editor-btn" title="Add Array" onClick={() => handleAddFeature('array')}><img src={featureArrayIcon} alt="Add Array" /></button>
               <button className="editor-btn" title="Add Circular Array" onClick={() => handleAddFeature('circular_array')}><img src={featureCircularArrayIcon} alt="Add Circular Array" /></button>
               <button className="editor-btn" title="Delete Body" onClick={() => handleAddFeature('delete_body')}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>

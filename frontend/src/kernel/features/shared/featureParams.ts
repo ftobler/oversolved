@@ -36,6 +36,7 @@ export const FEATURE_DEF_SUBKEY = {
   hole: 'hole',
   transform: 'transform',
   mirror: 'mirror',
+  split: 'split',
   variable: 'variable',
   helix: 'helix',
   plane: 'definition',

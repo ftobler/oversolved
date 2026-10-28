@@ -277,6 +277,18 @@ export const FEATURE_SCHEMA_BY_KIND = {
     required: ['body', 'plane'],
     properties: { body: REF, plane: REF, keep_original: { type: 'boolean' }, merge: { type: 'boolean' } },
   }),
+  split: feature('split', {
+    key: 'split',
+    required: ['bodies', 'plane'],
+    properties: {
+      bodies: REF_LIST,
+      plane: REF,
+      keep: {
+        enum: ['above', 'below', 'both'],
+        description: 'above is the side the plane normal points to (a picked face normal is outward); default above',
+      },
+    },
+  }),
   variable: feature('variable', {
     key: 'variable',
     required: ['expression'],

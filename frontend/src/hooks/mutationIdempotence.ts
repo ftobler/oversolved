@@ -52,6 +52,7 @@ export const IDEMPOTENT_MUTATION = {
   set_hole_field: true,
   set_transform_field: true,
   set_mirror_field: true,
+  set_split_field: true,
   set_variable_field: true,
   set_helix_field: true,
 
@@ -97,6 +98,7 @@ export const IDEMPOTENT_MUTATION = {
   remove_boolean_tool: true,
   remove_delete_body_ref: true,
   remove_transform_body: true,
+  remove_split_body: true,
 
   // ─── Deliberately excluded ───
 
@@ -146,6 +148,7 @@ export const IDEMPOTENT_MUTATION = {
   add_hole: false,
   add_transform: false,
   add_mirror: false,
+  add_split: false,
   add_variable: false,
   add_helix: false,
 
@@ -166,6 +169,7 @@ export const IDEMPOTENT_MUTATION = {
   add_boolean_tool: false,
   add_delete_body_ref: false,
   add_transform_body: false,
+  add_split_body: false,
 
   // Whole-feature delete and the global plane toggles. These CAN leave the doc
   // byte-identical (a delete of an absent or builtin id, a toggle with no
