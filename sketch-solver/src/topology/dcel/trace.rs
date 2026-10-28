@@ -25,6 +25,21 @@ pub(super) fn face_area(cycle: &[usize], hes: &[HalfEdge], verts: &Verts) -> f64
                     pts.push(bezier_point(start, c1, c2, end, k as f64 / 8.0));
                 }
             }
+            EdgeGeom::FitSpline {
+                ref poles,
+                ref knots,
+            } => {
+                // One mid sample per piece plus the shared joints is enough for
+                // the face-existence area; the fine sampling lives in
+                // `profile_loops::loop_pts`.
+                for k in 1..poles.len() {
+                    let u = knots[0]
+                        + (knots[knots.len() - 1] - knots[0]) * k as f64 / poles.len() as f64;
+                    pts.push(super::super::profile_loops::fit_chain_point(
+                        poles, knots, u,
+                    ));
+                }
+            }
             EdgeGeom::Arc {
                 center,
                 radius,
@@ -392,6 +407,41 @@ pub(super) fn build_standalone_splines(
             start_vertex: Some(v0.clone()),
             end_vertex: Some(v1),
         }])
+    })
+}
+
+/// A closed fit spline with no real splits is its own area. Its chain is one
+/// boundary edge, so the OCC writer builds one B-spline and the area is the
+/// chain's shoelace.
+pub(super) fn build_standalone_fit_splines(
+    fit_splines: &[(String, TopoEntity)],
+    splits: &HashMap<String, Vec<Split>>,
+    verts: &mut Verts,
+) -> Vec<SurfaceOut> {
+    build_standalone(fit_splines, splits, 2, |eid, e| {
+        let TopoEntity::FitSpline { curve, .. } = e else {
+            return None;
+        };
+        let u0 = curve.knots()[0];
+        let u1 = curve.knots()[curve.point_count() - 1];
+        let v0 = verts.vid(curve.eval(u0));
+        let v1 = verts.vid(curve.eval(u1));
+        if v0 != v1 {
+            return None;
+        }
+        let (poles, knots) = curve.sub_chain(u0, u1);
+        let mut edge = BoundaryEdge {
+            geom: EdgeGeom::FitSpline { poles, knots },
+            id: Some(eid.to_string()),
+            start_vertex: Some(v0),
+            end_vertex: Some(v1),
+        };
+        // Standalone loops are published CCW like the circle pass, so the
+        // oracle's signed-area check reads a positive face.
+        if crate::topology::profile_loops::loop_signed_area(std::slice::from_ref(&edge)) < 0.0 {
+            edge.geom = super::build::rev(&edge.geom);
+        }
+        Some(vec![edge])
     })
 }
 

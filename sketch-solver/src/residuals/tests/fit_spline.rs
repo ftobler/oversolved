@@ -346,6 +346,9 @@ fn the_param_layout_of_a_fit_entity_matches_its_record() {
         let entity = fit_entity(0, points, flags);
         let layout = ParamLayout::from_wire(entity.param_count, entity.flags).unwrap();
         assert_eq!(layout.points, points);
-        assert_eq!(layout.param_count(), entity.param_count);
+        assert_eq!(
+            2 * layout.points + 2 * (layout.handle_start as usize + layout.handle_end as usize),
+            entity.param_count
+        );
     }
 }

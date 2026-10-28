@@ -78,6 +78,28 @@ pub(crate) fn sample_spline(p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2, tol: f64) ->
     }
 }
 
+/// Flattened points of a C0 cubic Bezier chain, in traversal order.
+pub(crate) fn sample_fit_chain(poles: &[Vec2], tol: f64) -> Sampled {
+    let mut pts = vec![poles[0]];
+    for i in 0..poles.len() / 3 {
+        flatten_bezier(
+            poles[3 * i],
+            poles[3 * i + 1],
+            poles[3 * i + 2],
+            poles[3 * i + 3],
+            tol,
+            0,
+            &mut pts,
+        );
+    }
+    let start = poles[0];
+    let end = poles[poles.len() - 1];
+    Sampled {
+        pts,
+        closed: (start[0] - end[0]).abs() < EPS && (start[1] - end[1]).abs() < EPS,
+    }
+}
+
 fn flatten_bezier(
     p0: Vec2,
     c1: Vec2,
@@ -219,6 +241,7 @@ pub(crate) fn edge_polyline(eg: &EdgeGeom, tol: f64) -> Sampled {
             s
         }
         EdgeGeom::Spline { start, c1, c2, end } => sample_spline(start, c1, c2, end, tol),
+        EdgeGeom::FitSpline { ref poles, .. } => sample_fit_chain(poles, tol),
         EdgeGeom::Ellipse {
             center,
             a,
@@ -593,6 +616,30 @@ fn gl01_3(mut f: impl FnMut(f64) -> (f64, f64, f64)) -> (f64, f64, f64) {
     (0.5 * sum.0, 0.5 * sum.1, 0.5 * sum.2)
 }
 
+/// The three Green's-theorem integrals of one cubic Bezier in its traversal
+/// direction. A cubic's derivative is quadratic, so the integrands are degree
+/// five polynomials and the 16-point rule is exact, not approximate.
+fn bezier_integrals(p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2) -> (f64, f64, f64) {
+    let integrand = |p: Vec2, dp: Vec2| (p[0] * dp[1], p[0] * p[0] * dp[1], p[1] * p[1] * dp[0]);
+    gl01_3(|t| {
+        let p = crate::topology::curve_split::bezier_point(p0, c1, c2, p3, t);
+        let d0 = [3.0 * (c1[0] - p0[0]), 3.0 * (c1[1] - p0[1])];
+        let d1 = [
+            6.0 * (p0[0] - 2.0 * c1[0] + c2[0]),
+            6.0 * (p0[1] - 2.0 * c1[1] + c2[1]),
+        ];
+        let d2 = [
+            3.0 * (p3[0] - 3.0 * c2[0] + 3.0 * c1[0] - p0[0]),
+            3.0 * (p3[1] - 3.0 * c2[1] + 3.0 * c1[1] - p0[1]),
+        ];
+        let dp = [
+            d0[0] + d1[0] * t + d2[0] * t * t,
+            d0[1] + d1[1] * t + d2[1] * t * t,
+        ];
+        integrand(p, dp)
+    })
+}
+
 /// The three Green's-theorem integrals of one boundary edge in its traversal
 /// direction: `(integral x dy, integral x^2 dy, integral y^2 dx)`.
 fn edge_integrals(eg: &EdgeGeom) -> (f64, f64, f64) {
@@ -664,26 +711,21 @@ fn edge_integrals(eg: &EdgeGeom) -> (f64, f64, f64) {
                 integrand(p, dp)
             })
         }
-        EdgeGeom::Spline { start, c1, c2, end } => {
-            // A cubic's derivative is quadratic, so the integrands are degree
-            // five polynomials and the 16-point rule is exact, not approximate.
-            gl01_3(|t| {
-                let p = crate::topology::curve_split::bezier_point(start, c1, c2, end, t);
-                let d0 = [3.0 * (c1[0] - start[0]), 3.0 * (c1[1] - start[1])];
-                let d1 = [
-                    6.0 * (start[0] - 2.0 * c1[0] + c2[0]),
-                    6.0 * (start[1] - 2.0 * c1[1] + c2[1]),
-                ];
-                let d2 = [
-                    3.0 * (end[0] - 3.0 * c2[0] + 3.0 * c1[0] - start[0]),
-                    3.0 * (end[1] - 3.0 * c2[1] + 3.0 * c1[1] - start[1]),
-                ];
-                let dp = [
-                    d0[0] + d1[0] * t + d2[0] * t * t,
-                    d0[1] + d1[1] * t + d2[1] * t * t,
-                ];
-                integrand(p, dp)
-            })
+        EdgeGeom::Spline { start, c1, c2, end } => bezier_integrals(start, c1, c2, end),
+        EdgeGeom::FitSpline { ref poles, .. } => {
+            let mut total = (0.0, 0.0, 0.0);
+            for i in 0..poles.len() / 3 {
+                let (a, b, c) = bezier_integrals(
+                    poles[3 * i],
+                    poles[3 * i + 1],
+                    poles[3 * i + 2],
+                    poles[3 * i + 3],
+                );
+                total.0 += a;
+                total.1 += b;
+                total.2 += c;
+            }
+            total
         }
         EdgeGeom::Ellipse {
             center,

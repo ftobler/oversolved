@@ -1285,3 +1285,95 @@ fn face_areas(t: &super::super::dcel::TopologyOut) -> Vec<f64> {
     areas.sort_by(|a, b| a.total_cmp(b));
     areas
 }
+
+/// A `fit_spline` record for the fuzz: the points plus optional handles.
+fn fit_spline_entity(points: &[[f64; 2]], handles: Option<([f64; 2], [f64; 2])>) -> InputEntity {
+    InputEntity {
+        kind: Some("fit_spline".into()),
+        points: Some(points.to_vec()),
+        handle_start: handles.map(|h| h.0),
+        handle_end: handles.map(|h| h.1),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn fit_spline_motifs_pass_every_invariant() {
+    // A targeted arm rather than a new `Kind`: adding one to `KINDS` re-rolls
+    // every seed and re-baselines the whole catalogue. These four shapes cover
+    // the same ground the generator arm would: an open chain across a
+    // rectangle, a closed chain, a self-crossing figure-eight and a chain with
+    // both end handles.
+    let cases: Vec<Vec<(String, InputEntity)>> = vec![
+        vec![
+            (
+                "a".into(),
+                InputEntity {
+                    start: Some([0.0, 0.0]),
+                    end: Some([6.0, 0.0]),
+                    ..Default::default()
+                },
+            ),
+            (
+                "b".into(),
+                InputEntity {
+                    start: Some([6.0, 0.0]),
+                    end: Some([6.0, 4.0]),
+                    ..Default::default()
+                },
+            ),
+            (
+                "c".into(),
+                InputEntity {
+                    start: Some([6.0, 4.0]),
+                    end: Some([0.0, 4.0]),
+                    ..Default::default()
+                },
+            ),
+            (
+                "d".into(),
+                InputEntity {
+                    start: Some([0.0, 4.0]),
+                    end: Some([0.0, 0.0]),
+                    ..Default::default()
+                },
+            ),
+            (
+                "sp".into(),
+                fit_spline_entity(
+                    &[[-1.0, 2.0], [1.5, 3.5], [3.0, 1.0], [4.5, 3.5], [7.0, 2.0]],
+                    None,
+                ),
+            ),
+        ],
+        vec![(
+            "sp".into(),
+            fit_spline_entity(
+                &[[0.0, 0.0], [3.0, 1.0], [4.0, 4.0], [1.0, 4.0], [0.0, 0.0]],
+                None,
+            ),
+        )],
+        vec![(
+            "sp".into(),
+            fit_spline_entity(
+                &[[0.0, 0.0], [4.0, 4.0], [4.0, 0.0], [0.0, 4.0], [0.0, 0.0]],
+                None,
+            ),
+        )],
+        vec![(
+            "sp".into(),
+            fit_spline_entity(
+                &[[0.0, 0.0], [2.0, 3.0], [4.0, 0.0], [6.0, 3.0]],
+                Some(([0.5, 1.0], [5.5, 1.0])),
+            ),
+        )],
+    ];
+    for (seed, entities) in cases.iter().enumerate() {
+        let violations = check_generated(entities, seed as u32);
+        assert!(
+            violations.is_empty(),
+            "case {seed}: {:?}",
+            violations.iter().map(|v| v.render()).collect::<Vec<_>>()
+        );
+    }
+}

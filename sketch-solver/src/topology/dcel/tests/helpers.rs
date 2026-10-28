@@ -135,6 +135,22 @@ pub(super) fn spline_open(start: Vec2, c1: Vec2, c2: Vec2, end: Vec2) -> InputEn
     }
 }
 
+/// A `fit_spline` input record: the fit points in order and the optional
+/// handles as absolute points (D2).
+pub(super) fn fit_spline(
+    points: &[Vec2],
+    handle_start: Option<Vec2>,
+    handle_end: Option<Vec2>,
+) -> InputEntity {
+    InputEntity {
+        kind: Some("fit_spline".into()),
+        points: Some(points.to_vec()),
+        handle_start,
+        handle_end,
+        ..Default::default()
+    }
+}
+
 pub(super) fn as_construction(mut e: InputEntity) -> InputEntity {
     e.construction = true;
     e

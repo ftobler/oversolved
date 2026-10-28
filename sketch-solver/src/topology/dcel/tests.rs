@@ -8,6 +8,7 @@ use self::helpers::*;
 
 mod construction;
 mod db9;
+mod fit_spline;
 mod helpers;
 mod primitives;
 mod tangent_hole;

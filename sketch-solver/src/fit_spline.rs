@@ -84,14 +84,6 @@ pub struct ParamLayout {
 }
 
 impl ParamLayout {
-    pub fn param_count(self) -> usize {
-        2 * self.points + 2 * self.handles() as usize
-    }
-
-    pub fn handles(self) -> u8 {
-        (self.handle_start as u8) + (self.handle_end as u8)
-    }
-
     /// Decode a wire entity record's `(param_count, flags)` pair. Every
     /// malformed combination is refused here, at the one door, so the residual
     /// builders never index a param block that does not exist.
@@ -332,6 +324,13 @@ impl FitSpline {
         }
     }
 
+    /// The chord parameter of a piece-space parameter `s = piece + t`.
+    pub fn u_at(&self, s: f64) -> f64 {
+        let i = (s.floor() as usize).min(self.piece_count() - 1);
+        let t = (s - i as f64).clamp(0.0, 1.0);
+        self.knots[i] + t * (self.knots[i + 1] - self.knots[i])
+    }
+
     /// The closest point on the chain to `p`.
     ///
     /// `distance` is the full Euclidean distance and `signed` follows the side
@@ -376,6 +375,9 @@ impl FitSpline {
     /// the same curve over the sub-domain.
     pub fn sub_chain(&self, u0: f64, u1: f64) -> (Vec<[f64; 2]>, Vec<f64>) {
         let (u0, u1) = (u0.min(u1), u0.max(u1));
+        if u0 <= self.knots[0] && u1 >= self.knots[self.knots.len() - 1] {
+            return (self.poles(), self.knots.clone());
+        }
         let mut poles: Vec<[f64; 2]> = Vec::new();
         let mut knots: Vec<f64> = vec![u0];
         for i in 0..self.piece_count() {
@@ -646,16 +648,6 @@ fn de_casteljau(ctrl: &[[f64; 2]; 4], t: f64) -> ([[f64; 2]; 4], [[f64; 2]; 4]) 
     let p123 = lerp(p12, p23);
     let p = lerp(p012, p123);
     ([ctrl[0], p01, p012, p], [p, p123, p23, ctrl[3]])
-}
-
-/// The document layout's `handles` field as wire flags.
-pub fn flags_from_handles(handles: Option<&str>) -> u8 {
-    match handles {
-        Some("start") => FLAG_HANDLE_START,
-        Some("end") => FLAG_HANDLE_END,
-        Some("both") => HANDLE_FLAGS,
-        _ => 0,
-    }
 }
 
 #[cfg(test)]

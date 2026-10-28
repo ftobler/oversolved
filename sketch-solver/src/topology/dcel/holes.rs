@@ -46,6 +46,7 @@ use super::super::profile_loops::{
 };
 use super::super::TOL_TOPOLOGY_MERGE as MERGE;
 use super::{Split, SurfaceOut, TopoEntity};
+use crate::fit_spline::FitSpline;
 use crate::radians;
 use crate::tolerance::on_carrier_tol;
 use crate::MIN_SEMI_AXIS_SQ;
@@ -272,6 +273,7 @@ fn chain_loop(
         TopoEntity::Spline {
             start, c1, c2, end, ..
         } => spline_loop(id, start, c1, c2, end, splits),
+        TopoEntity::FitSpline { ref curve, .. } => fit_spline_loop(id, curve, splits),
         TopoEntity::Line { .. } | TopoEntity::Arc { .. } => None,
     }
 }
@@ -311,6 +313,31 @@ fn spline_loop(
     }])
 }
 
+/// The loop a closed fit spline bounds. Like `spline_loop`, but the chain is
+/// the whole entity's, and any real split means the curve is sliced rather than
+/// a single closed carrier.
+fn fit_spline_loop(
+    id: &str,
+    curve: &FitSpline,
+    splits: &HashMap<String, Vec<Split>>,
+) -> Option<Vec<BoundaryEdge>> {
+    let spl = splits.get(id)?;
+    if spl.len() > 2 {
+        return None;
+    }
+    let (v0, v1) = (spl.first()?.1.clone(), spl.get(1)?.1.clone());
+    if v0 != v1 {
+        return None;
+    }
+    let (poles, knots) = curve.sub_chain(curve.knots()[0], curve.knots()[curve.point_count() - 1]);
+    Some(vec![BoundaryEdge {
+        geom: EdgeGeom::FitSpline { poles, knots },
+        id: Some(id.to_string()),
+        start_vertex: Some(v0),
+        end_vertex: Some(v1),
+    }])
+}
+
 /// The region test of one closed entity. `None` for the kinds that never close
 /// on their own (lines, arcs, open splines) and for a degenerate ellipse, which
 /// the standalone pass also refuses to build a face from.
@@ -338,6 +365,9 @@ fn chain_carrier(
             theta: theta.unwrap_or(0.0),
         },
         TopoEntity::Spline { .. } => Carrier::Polygon(loop_pts(&loop_edges, SPLINE_CHAIN_SAMPLES)),
+        TopoEntity::FitSpline { .. } => {
+            Carrier::Polygon(loop_pts(&loop_edges, SPLINE_CHAIN_SAMPLES))
+        }
         TopoEntity::Line { .. } | TopoEntity::Arc { .. } => return None,
     })
 }

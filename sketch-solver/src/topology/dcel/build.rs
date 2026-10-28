@@ -11,6 +11,7 @@ use super::{
     angle_in_arc, arc_is_full_turn, arc_tangent, dedup, degrees, has_param, norm_arc_param, Split,
     TopoEntity, Verts,
 };
+use crate::fit_spline::FitSpline;
 use crate::radians;
 
 // ─── Half-edge geometry constructors ───
@@ -50,6 +51,14 @@ fn sub_spline_eg(ctrl: &BezierCtrl) -> EdgeGeom {
     }
 }
 
+/// The geometry of a fit-spline span between two piece-space parameters. The
+/// chain's own `sub_chain` does the de Casteljau splits, so a cut end piece is
+/// the same curve as the parent's.
+fn fit_spline_eg(curve: &FitSpline, s0: f64, s1: f64) -> EdgeGeom {
+    let (poles, knots) = curve.sub_chain(curve.u_at(s0), curve.u_at(s1));
+    EdgeGeom::FitSpline { poles, knots }
+}
+
 fn ellipse_arc_eg(
     c: Vec2,
     a: f64,
@@ -74,7 +83,7 @@ fn ellipse_arc_eg(
     }
 }
 
-fn rev(eg: &EdgeGeom) -> EdgeGeom {
+pub(super) fn rev(eg: &EdgeGeom) -> EdgeGeom {
     match *eg {
         EdgeGeom::Line { start, end } => EdgeGeom::Line {
             start: end,
@@ -86,6 +95,16 @@ fn rev(eg: &EdgeGeom) -> EdgeGeom {
             c1: c2,
             c2: c1,
         },
+        EdgeGeom::FitSpline {
+            ref poles,
+            ref knots,
+        } => {
+            let u_max = *knots.last().unwrap_or(&0.0);
+            EdgeGeom::FitSpline {
+                poles: poles.iter().rev().copied().collect(),
+                knots: knots.iter().rev().map(|u| u_max - u).collect(),
+            }
+        }
         EdgeGeom::EllipseArc {
             center,
             a,
@@ -137,6 +156,15 @@ pub(super) fn depart(eg: &EdgeGeom) -> f64 {
             if dx.abs() < EPS && dy.abs() < EPS {
                 dx = end[0] - start[0];
                 dy = end[1] - start[1];
+            }
+            dy.atan2(dx)
+        }
+        EdgeGeom::FitSpline { ref poles, .. } => {
+            let mut dx = poles[1][0] - poles[0][0];
+            let mut dy = poles[1][1] - poles[0][1];
+            if dx.abs() < EPS && dy.abs() < EPS {
+                dx = poles[3][0] - poles[0][0];
+                dy = poles[3][1] - poles[0][1];
             }
             dy.atan2(dx)
         }
@@ -208,6 +236,19 @@ pub(super) fn bend(eg: &EdgeGeom) -> f64 {
             let speed2 = d1[0] * d1[0] + d1[1] * d1[1];
             if speed2 < EPS {
                 return 0.0; // degenerate tangent: no curvature signal to tie-break on
+            }
+            (d1[0] * d2[1] - d1[1] * d2[0]) / speed2 * speed2.sqrt()
+        }
+        EdgeGeom::FitSpline { ref poles, .. } => {
+            let (p0, p1, p2) = (poles[0], poles[1], poles[2]);
+            let d1 = [3.0 * (p1[0] - p0[0]), 3.0 * (p1[1] - p0[1])];
+            let d2 = [
+                6.0 * (p0[0] - 2.0 * p1[0] + p2[0]),
+                6.0 * (p0[1] - 2.0 * p1[1] + p2[1]),
+            ];
+            let speed2 = d1[0] * d1[0] + d1[1] * d1[1];
+            if speed2 < EPS {
+                return 0.0;
             }
             (d1[0] * d2[1] - d1[1] * d2[0]) / speed2 * speed2.sqrt()
         }
@@ -379,12 +420,47 @@ fn to_curve(e: &TopoEntity) -> Curve {
             c2,
             p3: end,
         },
+        // A fit spline is a chain, not one curve; every caller that can see one
+        // goes through `curves_of`. The first piece is the honest single-curve
+        // answer if one ever reaches here.
+        TopoEntity::FitSpline { ref curve, .. } => {
+            let ctrl = curve.piece(0);
+            Curve::Bezier {
+                p0: ctrl[0],
+                c1: ctrl[1],
+                c2: ctrl[2],
+                p3: ctrl[3],
+            }
+        }
+    }
+}
+
+/// The carrier curves of an entity, each tagged with its piece index. A plain
+/// entity has one piece at index 0; a fit spline has one per cubic.
+fn curves_of(e: &TopoEntity) -> Vec<(usize, Curve)> {
+    match e {
+        TopoEntity::FitSpline { curve, .. } => (0..curve.piece_count())
+            .map(|i| {
+                let ctrl = curve.piece(i);
+                (
+                    i,
+                    Curve::Bezier {
+                        p0: ctrl[0],
+                        c1: ctrl[1],
+                        c2: ctrl[2],
+                        p3: ctrl[3],
+                    },
+                )
+            })
+            .collect(),
+        _ => vec![(0, to_curve(e))],
     }
 }
 
 /// Register a curve-intersection hit param into the per-kind split convention.
 fn register_hit(
     entry: &Tagged,
+    piece: usize,
     t: f64,
     v: &str,
     splits: &mut HashMap<String, Vec<Split>>,
@@ -410,6 +486,19 @@ fn register_hit(
             }
             if !has_param(spl, t) {
                 spl.push((t, v.to_string()));
+            }
+        }
+        TopoEntity::FitSpline { ref curve, .. } => {
+            // The fit-spline split convention is piece-space: `piece + t`, so a
+            // run between two hits is a contiguous sub-chain.
+            let s = piece as f64 + t;
+            let last = curve.piece_count() as f64;
+            if !(-EPS..=last + EPS).contains(&s) {
+                return;
+            }
+            let s = s.clamp(0.0, last);
+            if !has_param(spl, s) {
+                spl.push((s, v.to_string()));
             }
         }
         TopoEntity::Circle { .. } => {
@@ -488,6 +577,43 @@ pub(super) fn add_spline_self_intersections(
     lobe_vertex
 }
 
+/// Split each fit spline at its own crossings. Non-adjacent pieces are ordinary
+/// curve pairs, so a figure-eight through points slices into its lobes. The
+/// returned map is the lobe-vertex set per entity, the fit-spline counterpart of
+/// `add_spline_self_intersections`' single lobe vertex.
+pub(super) fn add_fit_spline_self_intersections(
+    fit_splines: &[(String, TopoEntity)],
+    splits: &mut HashMap<String, Vec<Split>>,
+    verts: &mut Verts,
+) -> HashMap<String, HashSet<String>> {
+    let mut lobes: HashMap<String, HashSet<String>> = HashMap::new();
+    for (eid, e) in fit_splines {
+        let TopoEntity::FitSpline { .. } = e else {
+            continue;
+        };
+        let pieces = curves_of(e);
+        for i in 0..pieces.len() {
+            for j in (i + 2)..pieces.len() {
+                for h in intersect_curves(&pieces[i].1, &pieces[j].1) {
+                    let v = verts.vid(h.point);
+                    let s_i = i as f64 + h.t_a;
+                    let s_j = j as f64 + h.t_b;
+                    if let Some(spl) = splits.get_mut(eid) {
+                        if !has_param(spl, s_i) {
+                            spl.push((s_i, v.clone()));
+                        }
+                        if !has_param(spl, s_j) {
+                            spl.push((s_j, v.clone()));
+                        }
+                    }
+                    lobes.entry(eid.clone()).or_default().insert(v);
+                }
+            }
+        }
+    }
+    lobes
+}
+
 pub(super) fn add_curve_intersections(
     tagged: &[Tagged],
     splits: &mut HashMap<String, Vec<Split>>,
@@ -498,17 +624,30 @@ pub(super) fn add_curve_intersections(
         for j in (i + 1)..tagged.len() {
             let a = &tagged[i];
             let b = &tagged[j];
-            let involves_curve =
-                matches!(a.e, TopoEntity::Ellipse { .. } | TopoEntity::Spline { .. })
-                    || matches!(b.e, TopoEntity::Ellipse { .. } | TopoEntity::Spline { .. });
+            let involves_curve = matches!(
+                a.e,
+                TopoEntity::Ellipse { .. }
+                    | TopoEntity::Spline { .. }
+                    | TopoEntity::FitSpline { .. }
+            ) || matches!(
+                b.e,
+                TopoEntity::Ellipse { .. }
+                    | TopoEntity::Spline { .. }
+                    | TopoEntity::FitSpline { .. }
+            );
             if !involves_curve {
                 continue;
             }
-            let hits = intersect_curves(&to_curve(&a.e), &to_curve(&b.e));
-            for h in hits {
-                let v = verts.vid(h.point);
-                register_hit(a, h.t_a, &v, splits, arc_a0);
-                register_hit(b, h.t_b, &v, splits, arc_a0);
+            let curves_a = curves_of(&a.e);
+            let curves_b = curves_of(&b.e);
+            for (piece_a, ca) in &curves_a {
+                for (piece_b, cb) in &curves_b {
+                    for h in intersect_curves(ca, cb) {
+                        let v = verts.vid(h.point);
+                        register_hit(a, *piece_a, h.t_a, &v, splits, arc_a0);
+                        register_hit(b, *piece_b, h.t_b, &v, splits, arc_a0);
+                    }
+                }
             }
         }
     }
@@ -532,6 +671,7 @@ pub(super) fn tag_entities(cls: &Classified, arcs: &[(String, TopoEntity)]) -> V
     push(arcs);
     push(&cls.ellipses);
     push(&cls.splines);
+    push(&cls.fit_splines);
     tagged
 }
 
@@ -550,6 +690,9 @@ pub(super) fn tag_entities(cls: &Classified, arcs: &[(String, TopoEntity)]) -> V
 fn hit_on_entity(entry: &Tagged, t: f64) -> bool {
     match entry.e {
         TopoEntity::Line { .. } | TopoEntity::Spline { .. } => (-EPS..=1.0 + EPS).contains(&t),
+        TopoEntity::FitSpline { ref curve, .. } => {
+            (-EPS..=curve.piece_count() as f64 + EPS).contains(&t)
+        }
         TopoEntity::Arc {
             radius,
             angle_start,
@@ -562,16 +705,28 @@ fn hit_on_entity(entry: &Tagged, t: f64) -> bool {
 
 /// Every point where `a` and `b` cross, taking the same two dispatch paths the
 /// real passes take (`intersect` for line/circle/arc, `intersect_curves` once an
-/// ellipse or a spline is involved) but yielding only world points.
+/// ellipse, spline or fit spline is involved) but yielding only world points.
 fn crossing_points(a: &Tagged, b: &Tagged) -> Vec<Vec2> {
-    if matches!(a.e, TopoEntity::Ellipse { .. } | TopoEntity::Spline { .. })
-        || matches!(b.e, TopoEntity::Ellipse { .. } | TopoEntity::Spline { .. })
-    {
-        return intersect_curves(&to_curve(&a.e), &to_curve(&b.e))
-            .into_iter()
-            .filter(|h| hit_on_entity(a, h.t_a) && hit_on_entity(b, h.t_b))
-            .map(|h| h.point)
-            .collect();
+    let curve_pair = matches!(
+        a.e,
+        TopoEntity::Ellipse { .. } | TopoEntity::Spline { .. } | TopoEntity::FitSpline { .. }
+    ) || matches!(
+        b.e,
+        TopoEntity::Ellipse { .. } | TopoEntity::Spline { .. } | TopoEntity::FitSpline { .. }
+    );
+    if curve_pair {
+        let mut points = Vec::new();
+        for (_, ca) in curves_of(&a.e) {
+            for (_, cb) in curves_of(&b.e) {
+                points.extend(
+                    intersect_curves(&ca, &cb)
+                        .into_iter()
+                        .filter(|h| hit_on_entity(a, h.t_a) && hit_on_entity(b, h.t_b))
+                        .map(|h| h.point),
+                );
+            }
+        }
+        return points;
     }
     intersect(&a.e, &b.e)
         .into_iter()
@@ -631,8 +786,10 @@ pub(super) fn build_half_edge_graph(
     arcs: &[(String, TopoEntity)],
     splits: &HashMap<String, Vec<Split>>,
     splines: &[(String, TopoEntity)],
+    fit_splines: &[(String, TopoEntity)],
     ellipses: &[(String, TopoEntity)],
     lobe_vertex: &HashMap<String, String>,
+    fit_lobes: &HashMap<String, HashSet<String>>,
 ) -> (Vec<HalfEdge>, Vec<String>) {
     let mut hes: Vec<HalfEdge> = Vec::new();
     let mut he_eid: Vec<String> = Vec::new();
@@ -776,6 +933,36 @@ pub(super) fn build_half_edge_graph(
             } else {
                 sub_spline_eg(&subdivide_bezier(&ctrl, *t0, *t1))
             };
+            push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
+        }
+    }
+
+    for (eid, e) in fit_splines {
+        let TopoEntity::FitSpline { curve, .. } = e else {
+            continue;
+        };
+        let spl = dedup(splits.get(eid).unwrap_or(&empty));
+        if spl.len() < 2 {
+            continue;
+        }
+        let m = curve.piece_count() as f64;
+        for k in 0..spl.len().saturating_sub(1) {
+            let (s0, v0) = &spl[k];
+            let (s1, v1) = &spl[k + 1];
+            if s1 <= s0 {
+                continue;
+            }
+            if v0 == v1 {
+                // The span between two parameters of one self-crossing is a
+                // lobe. Any other fused pair is a near tangency, a phantom
+                // sliver, and the whole closed curve is the standalone pass's.
+                let is_lobe = fit_lobes.get(eid).is_some_and(|set| set.contains(v0))
+                    && !(*s0 <= 0.0 && *s1 >= m);
+                if !is_lobe {
+                    continue;
+                }
+            }
+            let eg = fit_spline_eg(curve, *s0, *s1);
             push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
         }
     }

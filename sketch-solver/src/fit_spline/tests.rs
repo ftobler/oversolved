@@ -299,7 +299,7 @@ fn the_param_layout_refuses_every_malformed_wire_shape() {
     assert!(ParamLayout::from_wire(2 * 65, 0).is_err());
     // An unknown flag bit.
     assert!(ParamLayout::from_wire(6, 0b100).is_err());
-    assert_eq!(ParamLayout::from_wire(4, 0).unwrap().param_count(), 4);
+    assert_eq!(ParamLayout::from_wire(4, 0).unwrap().points, 2);
 }
 
 #[test]
@@ -314,13 +314,4 @@ fn split_params_reads_points_then_handles() {
     assert_eq!(points, vec![[0.0, 1.0], [2.0, 3.0]]);
     assert_eq!(start, Some([4.0, 5.0]));
     assert_eq!(end, Some([6.0, 7.0]));
-}
-
-#[test]
-fn handles_flag_bits_match_the_document_field() {
-    assert_eq!(flags_from_handles(None), 0);
-    assert_eq!(flags_from_handles(Some("start")), FLAG_HANDLE_START);
-    assert_eq!(flags_from_handles(Some("end")), FLAG_HANDLE_END);
-    assert_eq!(flags_from_handles(Some("both")), HANDLE_FLAGS);
-    assert_eq!(flags_from_handles(Some("nonsense")), 0);
 }
