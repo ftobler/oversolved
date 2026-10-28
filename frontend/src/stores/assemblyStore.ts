@@ -7,7 +7,7 @@ import type { EdgeCurve } from '@/kernel/partBundle'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
-import { bakeSolvedTransforms, findInstance, findMate, setMateRef, updateMate } from '@/utils/assemblyMutations'
+import { bakeSolvedTransforms, findInstance, findMate } from '@/utils/assemblyMutations'
 import { reduceEditingSubject, type EditingSubject } from '@/utils/assemblyEditingSubject'
 import type { AssemblySubject } from '@/utils/assemblySelection'
 import { runAssemblyOperation } from '@/utils/assemblyOperations'
@@ -538,9 +538,21 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const refA = activeMateField.field === 'ref_a' ? ref : mate?.ref_a
     const refB = activeMateField.field === 'ref_b' ? ref : mate?.ref_b
     const patch = mate ? captureMateOrientationPatch(mate, refA, refB, get().anchors, get().anchorDescriptors) : null
-    callbacks.mutateDocSession(ASSEMBLY_UNDO_LABELS.pickMateReference, d => {
-      const withRef = setMateRef(d, activeMateField.featureId, activeMateField.field, ref)
-      return patch ? updateMate(withRef, activeMateField.featureId, patch) : withRef
+    // The one ref write the operation table owns, shared with the drive (D9):
+    // the captured orientation rides the same step, so undo reverts ref and
+    // capture together.
+    runAssemblyOperation('set_mate_ref', {
+      id: activeMateField.featureId,
+      field: activeMateField.field,
+      ref,
+      ...(patch !== null && { patch }),
+    }, {
+      doc,
+      transforms: get().settledPoses(),
+      mutateSession: callbacks.mutateDocSession,
+      mutateOneShot: callbacks.mutateDoc,
+      requestSolve: callbacks.requestSolve,
+      requestSolveOrDefer: () => get().requestSolveOrDefer(),
     })
     set({ mateFieldDirty: true })
   },

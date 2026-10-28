@@ -231,6 +231,39 @@ describe('orientation capture on pick', () => {
     expect('flip' in mate).toBe(false)
     expect('angle' in mate).toBe(false)
   })
+
+  // The aim commit is one set_mate_ref operation through the host funnel, the
+  // same cell the drive runs: ref and captured orientation land in one undo step
+  // (D9), so the shared write cannot drift from the headless one.
+  it('commits the ref and the captured orientation as one set_mate_ref step', () => {
+    const mutateSession = vi.fn(mutateDoc)
+    setAssemblyCallbacks({ mutateDoc, mutateDocSession: mutateSession, requestSolve })
+    getState().setSolveResult({ ...SOLVE_RESULT, anchors: CAPTURE_ANCHORS })
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle([{ entityKey: VERT }])
+    mutateSession.mockClear()
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_b' })
+    getState().pickFromHitsOrCycle([{ entityKey: FACE_B }])
+
+    expect(mutateSession).toHaveBeenCalledTimes(1)
+    expect(mutateSession.mock.calls[0][0]).toBe('Pick mate reference')
+    const apply = mutateSession.mock.calls[0][1] as (doc: AssemblyDoc) => AssemblyDoc
+    const written = findMate(apply(getState().doc!), 'm1')!
+    expect(written.ref_b).toEqual({ part: 'h2', anchor: 'b_f' })
+    expect(written.flip).toBe(true)
+    expect(written.angle).toBe(180)
+  })
+
+  it('a same-part pick never reaches the funnel', () => {
+    const mutateSession = vi.fn(mutateDoc)
+    setAssemblyCallbacks({ mutateDoc, mutateDocSession: mutateSession, requestSolve })
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle([{ entityKey: VERT }])
+    mutateSession.mockClear()
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_b' })
+    getState().pickFromHitsOrCycle([{ entityKey: EDGE }])
+    expect(mutateSession).not.toHaveBeenCalled()
+  })
 })
 
 // A parameter edit is a document change like a pick, and it has to take the same

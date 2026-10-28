@@ -18,22 +18,9 @@ import { useUnsavedChangesStore, reconcileDirtyAfterRewind, type PinnedDirty } f
 import { assemblyDocEquals } from '@/utils/assemblyMutations'
 import { isSessionOpen } from '@/utils/assemblyEditingSubject'
 import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
+import { applyAssemblyEdit } from '@/utils/assemblyEdit'
 
-export type AssemblyMutationDecision = 'noop' | 'push' | 'fold'
-
-// The undo decision the old page funnels spelled out inline: a value no-op
-// leaves no step, an open editor folds the next edit into its coalescing
-// session, and anything else pushes immediately. Pure so the decision can be
-// unit tested without mounting the page.
-export function decideAssemblyMutation(args: {
-  pre: AssemblyDoc | null
-  next: AssemblyDoc | null
-  sessionOpen: boolean
-}): AssemblyMutationDecision {
-  if (!args.pre || !args.next) return 'noop'
-  if (args.next === args.pre || assemblyDocEquals(args.pre, args.next)) return 'noop'
-  return args.sessionOpen ? 'fold' : 'push'
-}
+export { decideAssemblyMutation, type AssemblyMutationDecision } from '@/utils/assemblyEdit'
 
 export function useAssemblyUndoRedo(
   docRef: React.MutableRefObject<AssemblyDoc | null>,
@@ -154,12 +141,11 @@ export function useAssemblyUndoRedo(
     const current = docRef.current
     if (!current) return
     const next = fn(current)
-    const decision = decideAssemblyMutation({ pre: current, next, sessionOpen })
-    if (decision === 'noop') return
-    if (decision === 'fold') recordSessionEdit(current, label)
-    else pushUndo(current, label)
-    docRef.current = next
-    setDoc(next)
+    const outcome = applyAssemblyEdit(assemblyHistory, current, label, next, sessionOpen)
+    if (outcome.decision === 'noop' || !outcome.doc) return
+    if (outcome.decision === 'fold') recordSessionEdit(current, label)
+    docRef.current = outcome.doc
+    setDoc(outcome.doc)
     useUnsavedChangesStore.getState().setDirty(true)
   }, [setDoc, docRef, pushUndo, recordSessionEdit, commitSession])
 
@@ -173,11 +159,10 @@ export function useAssemblyUndoRedo(
     const current = docRef.current
     if (!current) return
     const next = fn(current)
-    const decision = decideAssemblyMutation({ pre: current, next, sessionOpen: false })
-    if (decision === 'noop') return
-    pushUndo(current, label)
-    docRef.current = next
-    setDoc(next)
+    const outcome = applyAssemblyEdit(assemblyHistory, current, label, next, false)
+    if (outcome.decision === 'noop' || !outcome.doc) return
+    docRef.current = outcome.doc
+    setDoc(outcome.doc)
     useUnsavedChangesStore.getState().setDirty(true)
   }, [setDoc, docRef, pushUndo, commitSession])
 

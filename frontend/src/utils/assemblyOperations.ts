@@ -10,7 +10,7 @@
 // bakes first (when the cell says so) and then calls it, so an operation never
 // decides for itself whether to bake. Pure: no store, no callbacks, no React.
 
-import type { AssemblyDoc, MateKind, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, MateKind, MateRef, MateRefField, Transform3D } from '@/types/cad'
 import { ASSEMBLY_UNDO_LABELS, type AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import {
   appendMate,
@@ -28,6 +28,7 @@ import {
   setInstanceRotation,
   setInstanceVisible,
   setMateLabel,
+  setMateRef,
   updateMate,
   type EulerDeg,
   type MateParamPatch,
@@ -40,8 +41,16 @@ export type AssemblySolvePolicy = 'solve' | 'defer' | 'skip'
 // operation id an enumerable union and gives runAssemblyOperation a typed input
 // for whatever name a command carries.
 export interface AssemblyOperationInputs {
-  add_part: { docId: string; docRev: number }
-  duplicate_part: string
+  add_part: {
+    docId: string
+    docRev: number
+    handle?: string
+    featureId?: string
+    transform?: Transform3D
+    fixed?: boolean
+  }
+  // The UI names one handle; the drive also authors the copy's ids (D10).
+  duplicate_part: string | { handle: string; newHandle?: string; featureId?: string }
   delete_part: string
   set_part_visible: { handle: string; visible: boolean }
   set_builtin_visible: { id: string; visible: boolean }
@@ -49,7 +58,16 @@ export interface AssemblyOperationInputs {
   set_part_fixed_oneshot: { handle: string; fixed: boolean }
   set_part_position: { handle: string; pos: { tx: number; ty: number; tz: number } }
   set_part_rotation: { handle: string; euler: EulerDeg }
-  add_mate: { kind: MateKind; id: string }
+  add_mate: {
+    kind: MateKind
+    id: string
+    label?: string
+    ref_a?: MateRef
+    ref_b?: MateRef
+    patch?: MateParamPatch
+  }
+  // The one ref write the editor's aim commit and the drive share (D9).
+  set_mate_ref: { id: string; field: MateRefField; ref: MateRef; patch?: MateParamPatch }
   delete_mate: string
   update_mate: { id: string; patch: MateParamPatch }
   reorder_part: { movingHandle: string; beforeHandle: string | null }
@@ -104,11 +122,21 @@ export const ASSEMBLY_OPERATIONS: {
 } = {
   add_part: {
     id: 'add_part', label: ASSEMBLY_UNDO_LABELS.addPart, bake: true, undo: 'one-shot', solve: 'solve',
-    apply: (doc, input) => appendPartInstance(doc, input.docId, input.docRev),
+    apply: (doc, input) => appendPartInstance(doc, input.docId, input.docRev, {
+      ...(input.handle !== undefined && { handle: input.handle }),
+      ...(input.featureId !== undefined && { featureId: input.featureId }),
+      ...(input.transform !== undefined && { transform: input.transform }),
+      ...(input.fixed !== undefined && { fixed: input.fixed }),
+    }),
   },
   duplicate_part: {
     id: 'duplicate_part', label: ASSEMBLY_UNDO_LABELS.duplicatePart, bake: true, undo: 'one-shot', solve: 'solve',
-    apply: (doc, handle) => duplicateInstance(doc, handle),
+    apply: (doc, input) => typeof input === 'string'
+      ? duplicateInstance(doc, input)
+      : duplicateInstance(doc, input.handle, {
+        ...(input.newHandle !== undefined && { handle: input.newHandle }),
+        ...(input.featureId !== undefined && { featureId: input.featureId }),
+      }),
   },
   delete_part: {
     id: 'delete_part', label: ASSEMBLY_UNDO_LABELS.deletePart, bake: true, undo: 'one-shot', solve: 'solve',
@@ -151,7 +179,22 @@ export const ASSEMBLY_OPERATIONS: {
     // An unreferenced mate has nothing to constrain: the editor opens and arms
     // a field, and the solve lands when that field closes.
     id: 'add_mate', label: ASSEMBLY_UNDO_LABELS.addMate, bake: false, undo: 'one-shot', solve: 'skip',
-    apply: (doc, input) => appendMate(doc, input.kind, input.id),
+    apply: (doc, input) => appendMate(doc, input.kind, input.id, {
+      ...(input.label !== undefined && { label: input.label }),
+      ...(input.ref_a !== undefined && { ref_a: input.ref_a }),
+      ...(input.ref_b !== undefined && { ref_b: input.ref_b }),
+      ...(input.patch !== undefined && { patch: input.patch }),
+    }),
+  },
+  set_mate_ref: {
+    // One ref write shared by the editor's aim commit and the drive. It folds
+    // like the mate parameter edit it always rides with, and defers the solve
+    // while a chip is armed (the aim commit's contract).
+    id: 'set_mate_ref', label: ASSEMBLY_UNDO_LABELS.pickMateReference, bake: false, undo: 'fold', solve: 'defer',
+    apply: (doc, input) => {
+      const withRef = setMateRef(doc, input.id, input.field, input.ref)
+      return input.patch ? updateMate(withRef, input.id, input.patch) : withRef
+    },
   },
   delete_mate: {
     id: 'delete_mate', label: ASSEMBLY_UNDO_LABELS.deleteMate, bake: true, undo: 'one-shot', solve: 'solve',
