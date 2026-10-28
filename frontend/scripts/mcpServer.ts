@@ -16,7 +16,7 @@
 // OVERSOLVED_MCP_SOLVE_BUDGET_MS overrides the stall budget (the stall test
 // lowers it).
 
-import { writeFileSync, readFileSync } from 'node:fs'
+import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { Worker } from 'node:worker_threads'
@@ -140,6 +140,11 @@ const ops: McpCadOps = {
     // start from nothing, and the kind chooses which seeded document.
     let resolved: ResolvedDoc
     if (req.doc === undefined && req.docHash === undefined) {
+      // A fresh part run has no use for a binding; dropping it silently would
+      // turn a forgotten `kind` into a plausible empty success.
+      if (req.kind !== 'assembly' && req.parts !== undefined) {
+        return { ok: false, error: 'field "parts" applies only to an assembly document' }
+      }
       resolved = req.kind === 'assembly'
         ? resolveAssemblyDoc(emptyDriveAssemblyDoc(), req.parts, documents)
         : { ok: true, kind: 'part', doc: emptyPartDoc(), docHash: docHashOf(emptyPartDoc()) }
@@ -205,6 +210,7 @@ const ops: McpCadOps = {
           parts: resolved.parts,
           ...(files !== undefined && { files }),
         })
+        mkdirSync(path.dirname(out), { recursive: true })
         writeFileSync(out, bytes)
         return { ...reply, file: out, format: 'zip', bytes: bytes.byteLength }
       }

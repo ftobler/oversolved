@@ -208,7 +208,7 @@ export const ASSEMBLY_MUTATION_CATALOG = {
   },
   update_mate: {
     summary: 'Patch a mate\'s parameters; a null value deletes the key.',
-    note: MATE_PARAM_NOTE + ' A null (or an omitted field) deletes the key rather than storing it.',
+    note: MATE_PARAM_NOTE + ' A null deletes the key rather than storing it; at least one field must be present.',
     fields: {
       featureId: str(),
       flip: nullableBool(),

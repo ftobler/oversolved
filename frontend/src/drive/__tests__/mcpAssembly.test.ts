@@ -88,6 +88,13 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
 
       const plate = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: PLATE_STEPS } }))
       const pin = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: PIN_STEPS } }))
+
+      // A binding with no `kind` is refused, not dropped into an empty part.
+      const stray = errorPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { steps: [], parts: { plate: plate.docHash } },
+      }))
+      expect(stray.error).toContain('applies only to an assembly document')
       expect(typeof plate.docHash).toBe('string')
       expect(typeof pin.docHash).toBe('string')
       expect(plate.docHash).not.toBe(pin.docHash)

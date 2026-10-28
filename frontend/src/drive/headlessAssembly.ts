@@ -124,6 +124,12 @@ interface BundleMemoEntry {
   outcome: PartOutcome
 }
 
+// One memo for the whole worker, not one per session: every MCP call builds a
+// fresh session, and the key already folds the part content and the file ids,
+// so a run -> measure -> run sequence reuses the builds instead of paying for
+// them three times. The worker dying is what empties it (D7).
+const bundleMemo = new Map<string, BundleMemoEntry>()
+
 // The commands that only make sense against the editor UI. Each refusal names
 // the mutation or tool to use instead, the way the part side refuses
 // delete_selected.
@@ -149,7 +155,6 @@ function uiOnlyRefusal(command: string): ScriptFailure | null {
 export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessAssembly {
   const docBox: { current: AssemblyDoc } = { current: opts.doc }
   const history = new History<AssemblyDoc>({ cloneDoc: doc => structuredClone(doc), cap: 200 })
-  const memo = new Map<string, BundleMemoEntry>()
   const partOutcomes: Record<string, PartOutcome> = {}
   let last: AssemblyBuildResponse | null = null
   // The doc reference the last solve ran against. Solving does not change the
@@ -164,12 +169,12 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
   }
 
   function remember(key: string, entry: BundleMemoEntry): BundleMemoEntry {
-    memo.delete(key)
-    memo.set(key, entry)
-    while (memo.size > MEMO_CAPACITY) {
-      const oldest = memo.keys().next()
+    bundleMemo.delete(key)
+    bundleMemo.set(key, entry)
+    while (bundleMemo.size > MEMO_CAPACITY) {
+      const oldest = bundleMemo.keys().next()
       if (oldest.done) break
-      memo.delete(oldest.value)
+      bundleMemo.delete(oldest.value)
     }
     return entry
   }
@@ -180,10 +185,13 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
   // failed rather than blanking the whole reply.
   async function bundleFor(docId: string, partDoc: PartDoc): Promise<BundleMemoEntry> {
     const key = memoKey(partDoc)
-    const cached = memo.get(key)
+    const cached = bundleMemo.get(key)
     if (cached) {
-      memo.delete(key)
-      memo.set(key, cached)
+      bundleMemo.delete(key)
+      bundleMemo.set(key, cached)
+      // Two doc_ids may bind byte-identical content; the outcome belongs to
+      // each of them, not only to the one that paid for the build.
+      partOutcomes[docId] = cached.outcome
       return cached
     }
     const payload = partSolvePayload(partDoc, docId)
@@ -251,7 +259,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
     if (!instance) return new Error(`no instance "${handle}"`)
     const part = opts.parts.get(instance.doc_id)
     if (!part) return new Error(`part "${instance.doc_id}" is not bound`)
-    const entry = memo.get(memoKey(part))
+    const entry = bundleMemo.get(memoKey(part))
     if (!entry) return new Error(`part "${instance.doc_id}" has not been built`)
     if (entry.outcome.error !== undefined) return new Error(entry.outcome.error)
     return entry.index

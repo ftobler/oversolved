@@ -792,7 +792,7 @@ with the `parts` argument (`{ "<doc_id>": "<part docHash>" }`, or
   authored. `flip: true` is face-to-face contact between two outward normals;
   absent means parallel axes and canonical zero roll. Read the reply's
   `mateFrames` (each mate's posed anchors) to see which way an axis points.
-- Solved poses are never written back: `instances[].pose` carries
+- Solved poses are never written back: each `instances[]` row carries
   `{ handle, part, fixed, position, rotation, quaternion }`, and the document
   keeps its authored seeds. A bake-flagged operation still bakes the last
   solve's transforms, as the editor does.

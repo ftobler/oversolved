@@ -125,7 +125,7 @@ describe('resolveDriveRef', () => {
 })
 
 describe('buildPartAnchorIndex', () => {
-  it('keeps entity slots when the query array is shorter than the entity array', () => {
+  it('never mints a phantom query for an entity slot the response did not name', () => {
     const bundle: PartBundle = {
       doc_id: 'rail_400',
       content_hash: 'h',
@@ -133,19 +133,20 @@ describe('buildPartAnchorIndex', () => {
       bodies: [{
         mesh: { vertices: new Float32Array(0), indices: new Uint32Array(0), faceIdsPerTriangle: new Uint32Array(0) },
         edges: [],
-        // Two face slots, one edge slot, one vertex slot; the queries arrays are
-        // deliberately shorter than the entity arrays.
-        entityAnchors: { faces: [['a_face'], []], edges: [['a_edge']], vertices: [['a_vert']] },
+        // Three face slots, one edge slot, one vertex slot; the response names
+        // only two faces, so the third slot has no query to key on.
+        entityAnchors: { faces: [['a_face'], [], ['a_face_late']], edges: [['a_edge']], vertices: [['a_vert']] },
       }],
       anchors: { a_face: A_FACE, a_edge: A_EDGE, a_vert: planeAnchor('@u|v') },
     }
     const built = buildPartAnchorIndex(bundle, { body_ex1: BODY })
     expect(built.byQuery.get('q_face')).toEqual(['a_face'])
     expect(built.byQuery.get('q_edge')).toEqual(['a_edge'])
-    // The short query array is not padded into a phantom query; the second
-    // face slot's own query is present and records its empty anchor list.
+    // The second face slot's own query is present and records its empty anchor
+    // list; the unnamed third slot mints no key at all.
     expect(built.byQuery.get('q_face_b')).toEqual([])
     expect(built.byQuery.size).toBe(3)
+    expect([...built.byQuery.keys()].some(key => key === undefined || key === '')).toBe(false)
     expect(built.anchors.a_vert).toBeDefined()
   })
 
