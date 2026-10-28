@@ -72,6 +72,7 @@ One directory per case: `frontend/oracle/<NN-name>/`.
 | 43-annulus | 1 | 2638.93783 | 5409.82255 | faces 4, edges 6 | - | ok |
 | 44-hole-counterbore | 1 | 3612.11513 | 2070.79645 | - | ok | ok |
 | 45-split-holed-block-above | 1 | 401.825230 | 408.904862 | faces 8 | ok | ok |
+| 45-sweep-sections-frustum | 1 | 73.3038286 | 110.425810 | - | - | ok |
 | 46-split-holed-block-both | 2 | 803.650459 | 817.809725 | faces 16 | - | ok |
 
 ## Cases
@@ -910,6 +911,21 @@ Edit STEP round trip:
   - area 362.229799 -> 362.229799 (rel dev 7.53e-15)
   - centroid [5.00000000, 8.19526223, 5.00000000] -> [5.00000000, 8.19526223, 5.00000000] (max dev 5.15e-14)
   - bbox [0.00000000, 6.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] -> [0.00000000, 6.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] (max dev 0)
+### 45-sweep-sections-frustum
+
+`Two sections are interpolated linearly along the spine: cone frustum pi*h/3*(r1^2+r1*r2+r2^2), h = 10, r1 = 1, r2 = 2; area is the lateral cone pi*(r1+r2)*sqrt(h^2+(r2-r1)^2) plus both caps; centroid h*(r1^2+2*r1*r2+3*r2^2)/(4*(r1^2+r1*r2+r2^2)) from the small end`
+
+Live build (expected -> measured):
+  - volume 73.3038286 -> 73.3038286 (rel dev -1.94e-16)
+  - area 110.425810 -> 110.425810 (rel dev 0)
+  - centroid [0.00000000, 0.00000000, 6.07142857] -> [-4.72539553e-16, 4.06938590e-17, 6.07142857] (max dev 4.73e-16)
+  - bbox [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] -> [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] (max dev 0)
+
+STEP round trip:
+  - volume 73.3038286 -> 73.3038286 (rel dev -8.53e-15)
+  - area 110.425810 -> 110.425810 (rel dev -6.20e-14)
+  - centroid [0.00000000, 0.00000000, 6.07142857] -> [1.82957622e-15, 5.03836024e-17, 6.07142857] (max dev 2.66e-15)
+  - bbox [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] -> [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] (max dev 0)
 ### 46-split-holed-block-both
 
 `holed block 10^3, bore d5 along Z, kept both: V = 1000 - pi*r^2*L, A = (600 - 2 pi r^2 + 2 pi r L) + 2*50 (two caps of 50)`
