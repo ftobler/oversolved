@@ -165,9 +165,23 @@ distance with a solver warning; a non-planar face target and
     sketch: "@sk1"              # profile ref (or list)
     path: "@sk2/spine"          # path ref (or list)
     transition: mitre           # mitre | round, how a sharp path corner is turned
+    multisection: false         # sections along the path; see below
     operation: add              # new | add | cut
     merge_target: "@body_ex1"   # optional
 ```
+
+`multisection: true` treats every outer profile loop as one section and sweeps
+one body through all of them. The path must pierce each section's plane inside
+that section's loop, and that piercing point is the section's station: a section
+is placed where it is drawn, the sections are ordered by their station rather
+than by the order of the `sketch` list, and no parameter is stored. Between
+neighbouring stations the shape is interpolated: two sections are linear (a
+circle pair gives the cone frustum `pi*h/3*(r1^2+r1*r2+r2^2)`, a square pair the
+pyramid frustum), and more sections are skinned smoothly through all of them.
+A section the path does not pierce, a section with a hole, two sections at one
+station and a helix path with sections are refused by name. This is not a loft:
+there is no free-standing surface between profiles, and without the path nothing
+is built.
 
 ### fillet / chamfer
 

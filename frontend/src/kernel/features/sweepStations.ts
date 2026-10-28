@@ -203,7 +203,6 @@ function bisect(
   ta: number,
   da: number,
   tb: number,
-  db: number,
   frame: { n: Vec3; o: Vec3 },
 ): Crossing {
   let a = ta
@@ -267,7 +266,7 @@ export function findStation(
       const dCur = signedDistance(frame, cur)
       length += dist3(prev, cur)
       if (dPrev * dCur < 0) {
-        crossings.push(bisect(sampler, e, (k - 1) / SAMPLES_PER_EDGE, dPrev, t, dCur, frame))
+        crossings.push(bisect(sampler, e, (k - 1) / SAMPLES_PER_EDGE, dPrev, t, frame))
       } else if (Math.abs(dCur) <= ON_PLANE) {
         crossings.push({ edge: e, t, point: cur })
       }

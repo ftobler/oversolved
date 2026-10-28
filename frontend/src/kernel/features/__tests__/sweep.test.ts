@@ -74,6 +74,14 @@ describe('orderEdgesIntoChain', () => {
 
 // XY plane: sketchToWorld2d([u,v]) -> [u, v, 0].
 const planeXY = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+
+/** A closed square loop of half-width `half`, for section stubs. */
+function squareLoop(half: number): Edge[] {
+  const c: [number, number][] = [[-half, -half], [half, -half], [half, half], [-half, half]]
+  return c.map((p, i) => ({
+    kind: 'line', start: p, end: c[(i + 1) % 4],
+  }))
+}
 // Plane through (10,0,0) spanning world Z (its local x) and world Y (its local y).
 const planeZ = { origin: [10, 0, 0], x_axis: [0, 0, 1], y_axis: [0, 1, 0], normal: [1, 0, 0] }
 
@@ -400,6 +408,79 @@ describe('solveSweep guard paths', () => {
         new Repository(), {},
       ),
     ).toThrow(/spans two different sketch planes/)
+    // The refusal names the way out, so the user is not left guessing.
+    expect(() =>
+      solveSweep(
+        oc, scope, table,
+        { id: 'sw', sweep: { sketch: ['$skA', '$skB'], path: '$p' } },
+        new Repository(), {},
+      ),
+    ).toThrow(/set multisection to sweep through them as sections/)
+  })
+
+  it('does not throw the plane error when multisection is on', () => {
+    // With the opt-in the two planes are sections, so the solve goes on to the
+    // path: the missing path sketch is what surfaces, not the plane refusal.
+    const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+    const top = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0] }
+    vi.mocked(collectExtrudeLoops).mockImplementation((_oc, _scope, _table, sketchRef) => {
+      if (sketchRef === '$skB') return { loops: [[{ entity_id: 'e1' }]], plane: top, sketchId: 'skB', face: null }
+      return { loops: [[{ entity_id: 'e0' }]], plane, sketchId: 'skA', face: null }
+    })
+    expect(() =>
+      solveSweep(
+        oc, scope, table,
+        { id: 'sw', sweep: { sketch: ['$skA', '$skB'], path: '$p', multisection: true } },
+        new Repository(), {},
+      ),
+    ).toThrow(/path sketch not found: "p"/)
+  })
+
+  it('refuses a multisection section with a hole', () => {
+    const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+    const outer = squareLoop(10)
+    const hole = squareLoop(2)
+    vi.mocked(collectExtrudeLoops).mockImplementation((_oc, _scope, _table, sketchRef) => {
+      if (sketchRef === '$skH') return { loops: [outer, hole], plane, sketchId: 'skH', face: null }
+      return { loops: [squareLoop(4)], plane, sketchId: 'skA', face: null }
+    })
+    expect(() =>
+      solveSweep(
+        oc, scope, table,
+        { id: 'sw', sweep: { sketch: ['$skH', '$skA'], path: '$p', multisection: true } },
+        new Repository(), {},
+      ),
+    ).toThrow(/a multisection section cannot have a hole/)
+  })
+
+  it('refuses a multisection sweep with a single section', () => {
+    const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+    vi.mocked(collectExtrudeLoops).mockImplementation(() => (
+      { loops: [squareLoop(4)], plane, sketchId: 'skA', face: null }
+    ))
+    expect(() =>
+      solveSweep(
+        oc, scope, table,
+        { id: 'sw', sweep: { sketch: ['$skA'], path: '$p', multisection: true } },
+        new Repository(), {},
+      ),
+    ).toThrow(/multisection needs at least two sections/)
+  })
+
+  it('refuses a multisection sweep along a helix path', () => {
+    const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+    vi.mocked(collectExtrudeLoops).mockImplementation((_oc, _scope, _table, sketchRef) => (
+      { loops: [squareLoop(4)], plane, sketchId: String(sketchRef).slice(1), face: null }
+    ))
+    const repo = new Repository()
+    repo.register('_curve_hx1', { axis: [0, 0, 1], pitch: 1 })
+    expect(() =>
+      solveSweep(
+        oc, scope, table,
+        { id: 'sw', sweep: { sketch: ['$skA', '$skB'], path: '@hx1', multisection: true } },
+        repo, {},
+      ),
+    ).toThrow(/a multisection sweep cannot follow a helix path/)
   })
 
   // A closed square of topo edges per entity prefix, enough for the edge-precise
