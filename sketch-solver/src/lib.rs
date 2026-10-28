@@ -26,6 +26,9 @@
 pub mod api;
 pub mod codec;
 pub mod constraints;
+/// The interpolating spline through N fit points (the `fit_spline` entity):
+/// the solver, the area builder and the TS mirror all read this one algorithm.
+pub(crate) mod fit_spline;
 pub mod residuals;
 pub mod solve;
 #[cfg(test)]
