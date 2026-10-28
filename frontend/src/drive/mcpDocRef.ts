@@ -94,7 +94,7 @@ function unboundProblem(doc: AssemblyDoc, parts: Record<string, PartDoc>): strin
     + `bound parts: ${[...bound].sort().join(', ') || 'none'}. Bind each doc_id with the run call's \`parts\` argument.`
 }
 
-function resolveAssemblyDoc(
+export function resolveAssemblyDoc(
   rawDoc: unknown,
   rawParts: unknown,
   documents: DocHandleStore,

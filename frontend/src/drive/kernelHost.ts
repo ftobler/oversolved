@@ -19,7 +19,7 @@ import { solveTimeoutMessage } from '@/kernel/featureProgress'
 import { SOLVE_STALL_BUDGET_MS } from '@/kernel/solverConstants'
 
 /** The kernel operations a worker serves (kernelWorker.ts). */
-export type KernelOp = 'run' | 'measure' | 'compare' | 'export' | 'select'
+export type KernelOp = 'run' | 'measure' | 'compare' | 'export' | 'select' | 'assemblyRun' | 'assemblyMeasure' | 'assemblyCompare' | 'assemblyExport'
 
 export interface KernelRequest {
   id: number
@@ -86,6 +86,8 @@ interface InFlight {
   reject: (e: unknown) => void
   timer: ReturnType<typeof setTimeout>
   lastFeatureId: string | null
+  // The assembly bundle mark (`part <doc_id>`) that owns the feature marks.
+  lastPartId: string | null
 }
 
 function reviveError(shape: KernelErrorShape): Error {
@@ -120,7 +122,7 @@ export function createKernelHost(opts: KernelHostOptions): KernelHost {
 
   const onStall = (): void => {
     const w = worker
-    settle((p) => p.reject(new KernelTimeout(solveTimeoutMessage(budgetMs, p.lastFeatureId))))
+    settle((p) => p.reject(new KernelTimeout(solveTimeoutMessage(budgetMs, p.lastFeatureId, p.lastPartId))))
     if (w) drop(w)
   }
 
@@ -134,7 +136,8 @@ export function createKernelHost(opts: KernelHostOptions): KernelHost {
       if (msg.kind === 'progress') {
         const p = inFlight
         if (!p) return
-        p.lastFeatureId = msg.featureId
+        if (msg.featureId.startsWith('part ')) p.lastPartId = msg.featureId
+        else p.lastFeatureId = msg.featureId
         clearTimeout(p.timer)
         p.timer = setTimeout(onStall, budgetMs)
         return
@@ -169,7 +172,7 @@ export function createKernelHost(opts: KernelHostOptions): KernelHost {
       // Armed before the post, so the kernel load at a fresh worker's first
       // call counts against the budget too: a load that never finishes is a
       // stall like any other.
-      inFlight = { id, resolve, reject, timer: setTimeout(onStall, budgetMs), lastFeatureId: null }
+      inFlight = { id, resolve, reject, timer: setTimeout(onStall, budgetMs), lastFeatureId: null, lastPartId: null }
       try {
         ensureWorker().postMessage({ id, op, args })
       } catch (e) {

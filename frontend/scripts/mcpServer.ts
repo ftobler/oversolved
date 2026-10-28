@@ -22,13 +22,18 @@ import readline from 'node:readline'
 import { Worker } from 'node:worker_threads'
 import type { PartDoc } from '@/types/cad'
 import { createHeadlessPart } from '@/drive/headlessPart'
-import { emptyDriveDoc, type HeadlessMeasure, type HeadlessCompareResult } from '@/drive/headlessOps'
+import { emptyDriveDoc, type HeadlessMeasure, type HeadlessCompareResult, type HeadlessAssemblyMeasure, type HeadlessAssemblyCompare, type HeadlessAssemblyRunResult } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
+import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
 import { createMcpServer, type McpCadOps, type McpFileRef } from '@/drive/mcpServer'
 import { DocHandleStore } from '@/drive/docHandleStore'
-import { resolveDoc, runReply, type RunReplySource } from '@/drive/mcpDocRef'
+import { assemblyRunReply, requirePartDoc, resolveAssemblyDoc, resolveDoc, runReply, type ResolvedDoc, type RunReplySource } from '@/drive/mcpDocRef'
 import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
+import { ASSEMBLY_DOC_SCHEMA_JSON } from '@/persistence/assemblyDocSchema'
+import { createHeadlessAssembly, emptyDriveAssemblyDoc, type AssemblyScriptStep } from '@/drive/headlessAssembly'
+import { buildAssemblyWorkspaceZip } from '@/drive/assemblyWorkspaceZip'
+import { docHashOf } from '@/drive/docHash'
 import type { ScriptStep } from '@/drive/scriptRunner'
 import type { SelectResult } from '@/kernel/select'
 import { parseReference } from '@/translations/corpus'
@@ -57,6 +62,9 @@ const kernel = createKernelHost({
 })
 
 type KernelAnswer<T> = { ok: true; value: T } | { ok: false; error: string }
+
+// The kernel's assembly run reply, minus the live session it cannot clone.
+type AssemblyKernelResult = Omit<HeadlessAssemblyRunResult, 'session'>
 
 // A timeout, a lost worker or a kernel fault is a failed tool call with a
 // readable reason; anything else is a bug the server reports as internal.
@@ -95,15 +103,24 @@ const documents = new DocHandleStore()
 
 const ops: McpCadOps = {
   partDocSchema: () => PART_DOC_SCHEMA_JSON,
+  assemblyDocSchema: () => ASSEMBLY_DOC_SCHEMA_JSON,
 
   documentText: (docHash) => {
-    const doc = documents.get(docHash)
-    return doc === undefined ? null : JSON.stringify(doc)
+    const entry = documents.getEntry(docHash)
+    if (entry === undefined) return null
+    if (entry.kind === 'part') return JSON.stringify(entry.doc)
+    const parts: Record<string, string> = {}
+    for (const [docId, partDoc] of Object.entries(entry.parts)) parts[docId] = docHashOf(partDoc)
+    return JSON.stringify({ kind: 'assembly', assembly: entry.doc, parts })
   },
 
-  async commands() {
-    // A fresh seeded session supplies the live enabled verdicts; reading the
-    // catalog runs no spec body and starts no solve.
+  async commands(kind) {
+    if (kind === 'assembly') {
+      // A fresh session supplies the live enabled verdicts; the UI-only
+      // commands report their refusal as the verdict string.
+      const session = createHeadlessAssembly({ doc: emptyDriveAssemblyDoc(), parts: new Map() })
+      return { ok: true, commands: commandCatalog(ASSEMBLY_COMMAND_SPECS, id => session.registry.enabled(id)) }
+    }
     const part = createHeadlessPart({ doc: emptyPartDoc(), docId: 'mcp-commands' })
     return { ok: true, commands: commandCatalog(PART_COMMAND_SPECS, id => part.registry.enabled(id)) }
   },
@@ -119,29 +136,75 @@ const ops: McpCadOps = {
         return { ok: false, error: e instanceof Error ? e.message : String(e) }
       }
     }
-    let doc: PartDoc
-    if (req.doc !== undefined || req.docHash !== undefined) {
-      const resolved = resolveDoc(req, documents)
-      if (!resolved.ok) return { ok: false, error: resolved.error }
-      if (resolved.kind !== 'part') return { ok: false, error: 'assembly run is not wired yet' }
-      doc = resolved.doc
+    // A fresh document is the one case resolveDoc does not take: `run` may
+    // start from nothing, and the kind chooses which seeded document.
+    let resolved: ResolvedDoc
+    if (req.doc === undefined && req.docHash === undefined) {
+      resolved = req.kind === 'assembly'
+        ? resolveAssemblyDoc(emptyDriveAssemblyDoc(), req.parts, documents)
+        : { ok: true, kind: 'part', doc: emptyPartDoc(), docHash: docHashOf(emptyPartDoc()) }
     } else {
-      doc = emptyPartDoc()
+      resolved = resolveDoc(req, documents)
     }
-    // The worker builds the drive journal from the starting document (its id
-    // seed), as the in-process run did.
-    const answer = await callKernel<RunReplySource>('run', {
-      doc,
-      steps: req.steps as ScriptStep[],
-      docId: req.docId ?? 'mcp',
-      files: readFiles(req.files),
-      ...(req.featureDeltas !== undefined && { featureDeltas: req.featureDeltas }),
+    if (!resolved.ok) return { ok: false, error: resolved.error }
+    const files = readFiles(req.files)
+
+    if (resolved.kind === 'part') {
+      // The worker builds the drive journal from the starting document (its id
+      // seed), as the in-process run did.
+      const answer = await callKernel<RunReplySource>('run', {
+        doc: resolved.doc,
+        steps: req.steps as ScriptStep[],
+        docId: req.docId ?? 'mcp',
+        files,
+        ...(req.featureDeltas !== undefined && { featureDeltas: req.featureDeltas }),
+      })
+      if (!answer.ok) return answer
+      const result = answer.value
+      const reply = runReply(result, req.returnDoc === true, documents)
+      if (out === undefined || result.doc === null) return reply
+      try {
+        const written = writeDocFile(out, result.doc)
+        return { ...reply, file: written.file, format: written.format }
+      } catch (e) {
+        return { ...reply, ok: false, error: e instanceof Error ? e.message : String(e) }
+      }
+    }
+
+    if (req.featureDeltas !== undefined) {
+      return { ok: false, error: 'featureDeltas applies only to part documents' }
+    }
+    const answer = await callKernel<AssemblyKernelResult>('assemblyRun', {
+      doc: resolved.doc,
+      parts: resolved.parts,
+      steps: req.steps as AssemblyScriptStep[],
+      files,
     })
     if (!answer.ok) return answer
     const result = answer.value
-    const reply = runReply(result, req.returnDoc === true, documents)
-    if (out === undefined || result.doc === null) return reply
+    const reply = assemblyRunReply({
+      ok: result.ok,
+      outcome: result.outcome,
+      doc: result.doc,
+      binding: resolved.parts,
+      solve: result.solve,
+      mates: result.mates,
+      partProblems: result.parts,
+      instances: result.instances,
+      mateFrames: result.mateFrames,
+      summary: result.summary,
+    }, req.returnDoc === true, documents)
+    if (out === undefined) return reply
     try {
+      if (out.endsWith('.zip')) {
+        const bytes = await buildAssemblyWorkspaceZip({
+          doc: result.doc,
+          parts: resolved.parts,
+          ...(files !== undefined && { files }),
+        })
+        writeFileSync(out, bytes)
+        return { ...reply, file: out, format: 'zip', bytes: bytes.byteLength }
+      }
       const written = writeDocFile(out, result.doc)
       return { ...reply, file: written.file, format: written.format }
     } catch (e) {
@@ -152,17 +215,40 @@ const ops: McpCadOps = {
   async measure(req) {
     const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
-    const answer = await callKernel<HeadlessMeasure | null>('measure', {
+    const files = readFiles(req.files)
+    if (resolved.kind === 'part') {
+      const answer = await callKernel<HeadlessMeasure | null>('measure', {
+        doc: resolved.doc,
+        docId: req.docId ?? 'mcp',
+        files,
+      })
+      if (!answer.ok) return answer
+      const measure = answer.value
+      if (!measure) {
+        return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
+      }
+      return { ok: measure.ok, docHash: resolved.docHash, ...measure.measures, features: measure.features, frames: measure.frames }
+    }
+    const answer = await callKernel<HeadlessAssemblyMeasure | null>('assemblyMeasure', {
       doc: resolved.doc,
-      docId: req.docId ?? 'mcp',
-      files: readFiles(req.files),
+      parts: resolved.parts,
+      files,
     })
     if (!answer.ok) return answer
-    const measure = answer.value
-    if (!measure) {
+    const measured = answer.value
+    if (!measured) {
       return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
     }
-    return { ok: measure.ok, docHash: resolved.docHash, ...measure.measures, features: measure.features, frames: measure.frames }
+    return {
+      ok: measured.ok,
+      kind: 'assembly',
+      docHash: resolved.docHash,
+      ...measured.measures,
+      instances: measured.state.instances,
+      solve: measured.state.solve,
+      mates: measured.state.mates,
+      parts: measured.state.parts,
+    }
   },
 
   async compare(req) {
@@ -182,20 +268,46 @@ const ops: McpCadOps = {
         return { ok: false, error: e instanceof Error ? e.message : String(e) }
       }
     }
-    const answer = await callKernel<HeadlessCompareResult>('compare', {
+    const files = readFiles(req.files)
+    if (resolved.kind === 'part') {
+      const answer = await callKernel<HeadlessCompareResult>('compare', {
+        doc: resolved.doc,
+        reference,
+        docId: req.docId ?? 'mcp',
+        files,
+      })
+      if (!answer.ok) return answer
+      const result = answer.value
+      return {
+        ok: result.ok,
+        docHash: resolved.docHash,
+        pass: result.pass,
+        rows: result.rows,
+        measures: result.measures,
+        ...(result.error !== undefined && { error: result.error }),
+      }
+    }
+    const answer = await callKernel<HeadlessAssemblyCompare>('assemblyCompare', {
       doc: resolved.doc,
+      parts: resolved.parts,
       reference,
-      docId: req.docId ?? 'mcp',
-      files: readFiles(req.files),
+      files,
     })
     if (!answer.ok) return answer
     const result = answer.value
     return {
       ok: result.ok,
+      kind: 'assembly',
       docHash: resolved.docHash,
       pass: result.pass,
       rows: result.rows,
       measures: result.measures,
+      ...(result.state !== null && {
+        instances: result.state.instances,
+        solve: result.state.solve,
+        mates: result.state.mates,
+        parts: result.state.parts,
+      }),
       ...(result.error !== undefined && { error: result.error }),
     }
   },
@@ -212,15 +324,32 @@ const ops: McpCadOps = {
     }
     const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
-    const answer = await callKernel<Uint8Array | null>('export', {
-      doc: resolved.doc,
-      format: req.format,
-      bodyId: req.body ?? null,
-      docId: req.docId ?? 'mcp',
-      files: readFiles(req.files),
-    })
-    if (!answer.ok) return answer
-    const bytes = answer.value
+    const files = readFiles(req.files)
+    let bytes: Uint8Array | null
+    if (resolved.kind === 'part') {
+      const answer = await callKernel<Uint8Array | null>('export', {
+        doc: resolved.doc,
+        format: req.format,
+        bodyId: req.body ?? null,
+        docId: req.docId ?? 'mcp',
+        files,
+      })
+      if (!answer.ok) return answer
+      bytes = answer.value
+    } else {
+      if (req.body !== undefined) {
+        return { ok: false, error: 'per-instance export is not supported for an assembly; omit body' }
+      }
+      const answer = await callKernel<Uint8Array | null>('assemblyExport', {
+        doc: resolved.doc,
+        parts: resolved.parts,
+        format: req.format,
+        bodyId: null,
+        files,
+      })
+      if (!answer.ok) return answer
+      bytes = answer.value
+    }
     if (!bytes) {
       return { ok: false, error: 'export produced no solid (or the local solver is unavailable)' }
     }
@@ -233,11 +362,11 @@ const ops: McpCadOps = {
   },
 
   async select(req) {
-    const resolved = resolveDoc(req, documents)
-    if (!resolved.ok) return { ok: false, error: resolved.error }
+    const part = requirePartDoc(resolveDoc(req, documents), 'select')
+    if (!part.ok) return { ok: false, error: part.error }
     try {
       const result = await kernel.call('select', {
-        doc: resolved.doc,
+        doc: part.doc,
         selector: req.selector,
         docId: req.docId ?? 'mcp',
         files: readFiles(req.files),
@@ -245,7 +374,7 @@ const ops: McpCadOps = {
       if (!result) {
         return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
       }
-      return { ok: true, docHash: resolved.docHash, ...result }
+      return { ok: true, docHash: part.docHash, ...result }
     } catch (e) {
       // An empty match or a bad predicate expression is a tool failure, not a
       // protocol error: the message names the offending clause. A timeout or a

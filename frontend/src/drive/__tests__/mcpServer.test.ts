@@ -26,12 +26,13 @@ function fakeOps(answer: (tool: string, args: unknown) => McpToolPayload = () =>
   return {
     calls,
     ops: {
-      commands: async () => { calls.push({ tool: 'commands', args: undefined }); return answer('commands', undefined) },
+      commands: async (kind) => { calls.push({ tool: 'commands', args: { kind } }); return answer('commands', { kind }) },
       run: record('run') as McpCadOps['run'],
       measure: record('measure') as McpCadOps['measure'],
       compare: record('compare') as McpCadOps['compare'],
       export: record('export') as McpCadOps['export'],
       partDocSchema: () => '{"title":"Oversolved part document"}',
+      assemblyDocSchema: () => '{"$schema":"http://json-schema.org/draft-07/schema#","title":"Oversolved assembly document"}',
       select: record('select') as McpCadOps['select'],
       documentText: (docHash: string) => (docHash === 'known' ? '{"version":1}' : null),
     },
@@ -536,5 +537,68 @@ describe('createMcpServer', () => {
     const result = (response as { result: { isError?: boolean; content: Array<{ text: string }> } }).result
     expect(result.isError).toBeUndefined()
     expect(JSON.parse(result.content[0].text)).toMatchObject({ ok: true, pass: false })
+  })
+
+  it('validates kind and the assembly parts binding by path', async () => {
+    const { ops, calls } = fakeOps()
+    const server = createMcpServer(ops)
+
+    // kind only applies to a fresh document.
+    expectError(await request(server, 80, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], kind: 'assembly', doc: { kind: 'assembly', features: [] } },
+    }), -32602)
+    expectError(await request(server, 81, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], kind: 'cube' },
+    }), -32602)
+
+    // A parts entry of the wrong shape names its path.
+    const wrong = await request(server, 82, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], kind: 'assembly', parts: { rail: { document: {} } } },
+    })
+    expectError(wrong, -32602)
+    expect((wrong as { error: { message: string } }).error.message).toContain('parts.rail')
+
+    // A well-formed binding reaches the op with kind.
+    const ok = await request(server, 83, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], kind: 'assembly', parts: { rail: 'abc' } },
+    })
+    expect(ok).toMatchObject({ id: 83 })
+    expect(calls.at(-1)).toEqual({
+      tool: 'run',
+      args: { steps: [], files: [], kind: 'assembly', parts: { rail: 'abc' } },
+    })
+  })
+
+  it('routes commands kind and serves the assembly schema', async () => {
+    const { ops, calls } = fakeOps()
+    const server = createMcpServer(ops)
+
+    const assembly = await request(server, 84, 'tools/call', { name: 'commands', arguments: { kind: 'assembly' } })
+    expect(assembly).toMatchObject({ id: 84 })
+    expect(calls.at(-1)).toEqual({ tool: 'commands', args: { kind: 'assembly' } })
+    const part = await request(server, 85, 'tools/call', { name: 'commands', arguments: {} })
+    expect(part).toMatchObject({ id: 85 })
+    expect(calls.at(-1)).toEqual({ tool: 'commands', args: { kind: 'part' } })
+
+    const list = await request(server, 86, 'resources/list', {})
+    const resources = (list as { result: { resources: Array<{ uri: string }> } }).result.resources
+    expect(resources.map(resource => resource.uri)).toContain('oversolved://schema/assembly-document')
+    const read = await request(server, 87, 'resources/read', { uri: 'oversolved://schema/assembly-document' })
+    const contents = (read as { result: { contents: Array<{ text: string; mimeType: string }> } }).result.contents
+    expect(contents[0].mimeType).toBe('application/schema+json')
+    expect(JSON.parse(contents[0].text)).toMatchObject({ $schema: 'http://json-schema.org/draft-07/schema#' })
+  })
+
+  it('lists the assembly kind and parts on the run tool schema', () => {
+    const run = MCP_TOOLS.find(tool => tool.name === 'run')!
+    const properties = run.inputSchema.properties as Record<string, unknown>
+    expect(properties.kind).toBeDefined()
+    expect(properties.parts).toBeDefined()
+    const measure = MCP_TOOLS.find(tool => tool.name === 'measure')!
+    expect((measure.inputSchema.properties as Record<string, unknown>).parts).toBeDefined()
   })
 })
