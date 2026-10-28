@@ -13,6 +13,7 @@
 
 use super::{Problem, P2};
 use crate::constraints::{Constraint, Ref};
+use crate::fit_spline::split_params;
 use crate::{Input, Kind};
 
 /// Floor on a seed length, relative to the sketch scale, so a line drawn with
@@ -36,7 +37,7 @@ pub(super) fn geometry_scale(input: &Input, x0: &[f64], constraints: &[&Constrai
         if !input.entity_params_in_range(i) {
             continue;
         }
-        let ep = &x0[e.param_offset..e.param_offset + e.kind.param_count()];
+        let ep = &x0[e.param_offset..e.param_offset + e.param_count];
         match e.kind {
             Kind::Line => {
                 grow([ep[0], ep[1]], 0.0);
@@ -48,6 +49,13 @@ pub(super) fn geometry_scale(input: &Input, x0: &[f64], constraints: &[&Constrai
             Kind::Spline => {
                 for k in 0..4 {
                     grow([ep[2 * k], ep[2 * k + 1]], 0.0);
+                }
+            }
+            Kind::FitSpline => {
+                // Every fit point and both optional handles are defining
+                // points; the curve lies inside their hull.
+                for pair in ep.chunks_exact(2) {
+                    grow([pair[0], pair[1]], 0.0);
                 }
             }
         }
@@ -85,6 +93,20 @@ impl Problem<'_> {
     /// the line ends.
     pub(super) fn line_pair_len0(&self, a: u32, b: u32) -> f64 {
         (self.line_len0(a) * self.line_len0(b)).sqrt()
+    }
+
+    /// Seed length of a fit spline: its fit-point polyline, which is the curve's
+    /// own scale (the chain lies inside the hull of the points and handles).
+    pub(super) fn fit_len0(&self, index: u32) -> f64 {
+        let Some(layout) = self.fit_layout(index) else {
+            return MIN_LEN_REL * self.scale;
+        };
+        let (points, _, _) = split_params(self.params(&self.x0, index), layout);
+        let mut len = 0.0;
+        for i in 1..points.len() {
+            len += (points[i][0] - points[i - 1][0]).hypot(points[i][1] - points[i - 1][1]);
+        }
+        len.max(MIN_LEN_REL * self.scale)
     }
 
     /// `|da| * |db|` for normalizing a cross or dot product of two direction

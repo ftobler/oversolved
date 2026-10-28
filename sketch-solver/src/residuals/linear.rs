@@ -90,6 +90,7 @@ impl Problem<'_> {
         // The curve's unit normal at the contact; the line must run along it.
         let nd = match self.kind_of(arc_idx) {
             Kind::Spline => self.spline_normal(x, arc_idx, arc_pt, contact),
+            Kind::FitSpline => self.fit_spline_normal(x, arc_idx, arc_pt, contact),
             Kind::Ellipse => self.ellipse_normal(x, arc_idx, contact),
             _ => self.radius_dir(x, arc_idx, arc_pt, contact),
         };
@@ -110,6 +111,25 @@ impl Problem<'_> {
             _ => bezier_closest_t(sp, contact),
         };
         let d = bezier_deriv(sp, t);
+        let n = (d[0] * d[0] + d[1] * d[1]).sqrt();
+        if n < 1e-12 {
+            return [0.0, 0.0];
+        }
+        [-d[1] / n, d[0] / n]
+    }
+
+    /// Unit normal of a fit spline at the point a normal constraint names:
+    /// its start or end for those selectors, otherwise the closest point on
+    /// the chain to the contact. Mirrors `spline_normal`.
+    fn fit_spline_normal(&self, x: &[f64], index: u32, sel: PointSelector, contact: P2) -> P2 {
+        let Some(fit) = self.fit_spline(x, index) else {
+            return [0.0, 0.0];
+        };
+        let d = match sel {
+            PointSelector::Start => fit.derivative(0),
+            PointSelector::End => fit.derivative(fit.point_count() - 1),
+            _ => fit.deriv(fit.closest(contact).u),
+        };
         let n = (d[0] * d[0] + d[1] * d[1]).sqrt();
         if n < 1e-12 {
             return [0.0, 0.0];

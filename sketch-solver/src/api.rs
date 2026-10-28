@@ -84,10 +84,7 @@ mod tests {
         };
 
         let input = Input {
-            entities: vec![Entity {
-                kind: Kind::Line,
-                param_offset: 0,
-            }],
+            entities: vec![Entity::new(Kind::Line, 0)],
             params_initial: vec![0.2, -0.1, 9.5, 0.8],
             pinned_mask: Vec::new(),
             equality_pins: Vec::new(),
@@ -133,10 +130,7 @@ mod tests {
             ..Default::default()
         };
         let input = Input {
-            entities: vec![Entity {
-                kind: Kind::Line,
-                param_offset: 0,
-            }],
+            entities: vec![Entity::new(Kind::Line, 0)],
             params_initial: vec![0.0, 0.0, 9.5, 0.8],
             pinned_mask: Vec::new(),
             equality_pins: Vec::new(),

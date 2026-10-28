@@ -62,7 +62,7 @@ impl Problem<'_> {
             r.push(pt[1] - fix_y);
         } else {
             let off = self.offset_of(index);
-            let size = self.kind_of(index).param_count();
+            let size = self.param_count_of(index);
             for i in 0..size {
                 r.push(x[off + i] - self.x0[off + i]);
             }

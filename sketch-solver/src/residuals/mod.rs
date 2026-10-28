@@ -12,6 +12,8 @@
 //! constraint for solve, rank, and status.
 
 use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
+use crate::fit_spline::{split_params, FitSpline, ParamLayout};
+use crate::tolerance::resolution;
 use crate::{Entity, Input, Kind};
 
 use self::geom::{bezier_eval, is_curve, ref_kind};
@@ -89,7 +91,8 @@ impl<'a> Problem<'a> {
             c.refs.iter().all(|(_, r)| match r {
                 Ref::Entity { index, .. } => input.entity_params_in_range(*index as usize),
                 Ref::External { .. } => true,
-            }) && Self::operand_kinds_supply_slots(input, c)
+            }) && c.refs.iter().all(|(_, r)| Self::ref_valid(input, r))
+                && Self::operand_kinds_supply_slots(input, c)
         };
         let constraint_wire_indices: Vec<usize> = input
             .constraints
@@ -189,6 +192,40 @@ impl<'a> Problem<'a> {
             .collect();
         problem.curve_tangent_internal.extend(decided);
         problem
+    }
+
+    /// True when a reference names a slot the entity actually has.
+    ///
+    /// A fixed-size kind's selectors are validated upstream (the TS vertex-key
+    /// predicate) and its param block is large enough for every selector its
+    /// builders read, so nothing extra is needed. A `fit_spline` is different:
+    /// the fit-point count is authored, `Fit(k)` is positional, and the handles
+    /// are optional. A constraint naming `fit9` on a five-point spline, or
+    /// `c1` on one without a start handle, is dropped whole here, the same way
+    /// a stale entity index is. That is what keeps `point()` free of panics.
+    fn ref_valid(input: &Input, r: &Ref) -> bool {
+        let Ref::Entity { index, point } = r else {
+            return true;
+        };
+        let Some(entity) = input.entities.get(*index as usize) else {
+            return false;
+        };
+        if entity.kind != Kind::FitSpline {
+            return true;
+        }
+        let Ok(layout) = ParamLayout::from_wire(entity.param_count, entity.flags) else {
+            return false;
+        };
+        match *point {
+            PointSelector::Absent | PointSelector::Start | PointSelector::End => true,
+            PointSelector::Fit(k) => {
+                let k = k as usize;
+                k >= 1 && k + 1 < layout.points
+            }
+            PointSelector::C1 => layout.handle_start,
+            PointSelector::C2 => layout.handle_end,
+            _ => false,
+        }
     }
 
     /// Kind-aware counterpart to the range filter above. A well-formed
@@ -316,7 +353,7 @@ impl<'a> Problem<'a> {
                 continue;
             }
             let off = entity.param_offset;
-            if off + Kind::Arc.param_count() > x.len().min(self.x0.len()) {
+            if off + entity.param_count > x.len().min(self.x0.len()) {
                 continue;
             }
             for slot in [off + 3, off + 4] {
@@ -337,10 +374,33 @@ impl<'a> Problem<'a> {
         self.entities[index as usize].param_offset
     }
 
+    /// The entity's own param count (variable for `fit_spline`).
+    fn param_count_of(&self, index: u32) -> usize {
+        self.entities[index as usize].param_count
+    }
+
+    /// The fit-spline layout of an entity, or `None` for any other kind.
+    fn fit_layout(&self, index: u32) -> Option<ParamLayout> {
+        let entity = self.entities.get(index as usize)?;
+        if entity.kind != Kind::FitSpline {
+            return None;
+        }
+        ParamLayout::from_wire(entity.param_count, entity.flags).ok()
+    }
+
+    /// Rebuild the interpolated curve from the current iterate. The solver
+    /// floors a coincident chord span at the resolution so a degenerate input
+    /// stays finite; authoring and the area builder refuse it instead.
+    fn fit_spline(&self, x: &[f64], index: u32) -> Option<FitSpline> {
+        let layout = self.fit_layout(index)?;
+        let (points, handle_start, handle_end) = split_params(self.params(x, index), layout);
+        FitSpline::with_min_span(&points, handle_start, handle_end, resolution(self.scale)).ok()
+    }
+
     /// The flat param slice of one entity.
     fn params<'x>(&self, x: &'x [f64], index: u32) -> &'x [f64] {
         let off = self.offset_of(index);
-        let size = self.kind_of(index).param_count();
+        let size = self.param_count_of(index);
         &x[off..off + size]
     }
 
@@ -399,6 +459,34 @@ impl<'a> Problem<'a> {
                         PointSelector::C2 => [ep[4], ep[5]],
                         _ => bezier_eval(ep, 0.5),
                     },
+                    // Fit spline: the fit points are params 0..2N, then the
+                    // optional handles. `Fit(k)` is an interior point; the
+                    // filter in `ref_valid` guarantees k is in range and that a
+                    // handle selector has a handle.
+                    Kind::FitSpline => {
+                        let layout = self.fit_layout(index).unwrap_or(ParamLayout {
+                            points: 0,
+                            handle_start: false,
+                            handle_end: false,
+                        });
+                        let (points, handle_start, handle_end) =
+                            split_params(self.params(x, index), layout);
+                        match point {
+                            PointSelector::Start => points[0],
+                            PointSelector::End => points[layout.points - 1],
+                            PointSelector::Fit(k) => points[(k as usize).min(layout.points - 1)],
+                            PointSelector::C1 => handle_start.unwrap_or(points[0]),
+                            PointSelector::C2 => handle_end.unwrap_or(points[layout.points - 1]),
+                            _ => self
+                                .fit_spline(x, index)
+                                .map(|fit| {
+                                    fit.eval(
+                                        0.5 * (fit.knots()[0] + fit.knots()[fit.point_count() - 1]),
+                                    )
+                                })
+                                .unwrap_or(points[0]),
+                        }
+                    }
                 }
             }
         }

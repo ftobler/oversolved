@@ -54,22 +54,21 @@ pub enum FitSplineError {
     NonFinite,
 }
 
-impl FitSplineError {
-    /// The refusal text the area builder and the authoring sugar surface.
-    pub fn message(&self, id: &str) -> String {
-        match self {
-            FitSplineError::TooFewPoints => {
-                format!("fit spline '{id}' needs at least 2 fit points")
-            }
-            FitSplineError::TooManyPoints => {
-                format!("fit spline '{id}' has more than {MAX_FIT_POINTS} fit points")
-            }
-            FitSplineError::CoincidentPoints(i, j) => {
-                format!("fit spline '{id}' has coincident consecutive fit points {i},{j}")
-            }
-            FitSplineError::NonFinite => {
-                format!("fit spline '{id}' has a non-finite fit point or handle")
-            }
+/// The refusal text the area builder and the authoring sugar surface.
+#[allow(dead_code)]
+pub fn fit_spline_error_message(error: &FitSplineError, id: &str) -> String {
+    match error {
+        FitSplineError::TooFewPoints => {
+            format!("fit spline '{id}' needs at least 2 fit points")
+        }
+        FitSplineError::TooManyPoints => {
+            format!("fit spline '{id}' has more than {MAX_FIT_POINTS} fit points")
+        }
+        FitSplineError::CoincidentPoints(i, j) => {
+            format!("fit spline '{id}' has coincident consecutive fit points {i},{j}")
+        }
+        FitSplineError::NonFinite => {
+            format!("fit spline '{id}' has a non-finite fit point or handle")
         }
     }
 }
@@ -90,7 +89,7 @@ impl ParamLayout {
     }
 
     pub fn handles(self) -> u8 {
-        (self.handle_start as u8) * FLAG_HANDLE_START + (self.handle_end as u8) * FLAG_HANDLE_END
+        (self.handle_start as u8) + (self.handle_end as u8)
     }
 
     /// Decode a wire entity record's `(param_count, flags)` pair. Every
@@ -123,11 +122,12 @@ impl ParamLayout {
     }
 }
 
+/// The three pieces a fit-spline param block splits into: fit points, then the
+/// optional start and end handles.
+pub type SplitParams = (Vec<[f64; 2]>, Option<[f64; 2]>, Option<[f64; 2]>);
+
 /// Split a param block into its fit points and optional handles.
-pub fn split_params(
-    params: &[f64],
-    layout: ParamLayout,
-) -> (Vec<[f64; 2]>, Option<[f64; 2]>, Option<[f64; 2]>) {
+pub fn split_params(params: &[f64], layout: ParamLayout) -> SplitParams {
     let mut points = Vec::with_capacity(layout.points);
     for i in 0..layout.points {
         points.push([params[2 * i], params[2 * i + 1]]);
@@ -284,7 +284,7 @@ impl FitSpline {
     /// Piece index containing `u`, clamped to the domain.
     pub fn piece_at(&self, u: f64) -> usize {
         let last = self.piece_count() - 1;
-        if !(u > self.knots[0]) {
+        if u <= self.knots[0] {
             return 0;
         }
         if u >= self.knots[self.knots.len() - 1] {
@@ -535,9 +535,7 @@ fn solve_interior(points: &[[f64; 2]], knots: &[f64], derivatives: &mut [[f64; 2
             dprime[row][1] - cprime[row] * x[row + 1][1],
         ];
     }
-    for row in 0..m {
-        derivatives[row + 1] = x[row];
-    }
+    derivatives[1..=m].copy_from_slice(&x);
 }
 
 /// Evaluate a cubic Bezier at `t`.

@@ -33,6 +33,13 @@ impl Problem<'_> {
             }
             Kind::Ellipse => r.push(ellipse_point_residual(pa, ep)),
             Kind::Spline => r.push(spline_point_residual(pa, ep)),
+            Kind::FitSpline => {
+                let signed = self
+                    .fit_spline(x, entity_index)
+                    .map(|fit| fit.closest(pa).signed)
+                    .unwrap_or(0.0);
+                r.push(signed);
+            }
             _ => {}
         }
     }
@@ -93,6 +100,9 @@ impl Problem<'_> {
         } else if !self.ref_is_point(&b_ref) && matches!(b_entity, Some((_, Kind::Spline))) {
             let Some((b_idx, _)) = b_entity else { return };
             self.r_point_on_entity(x, a_ref, b_idx, Kind::Spline, r);
+        } else if !self.ref_is_point(&b_ref) && matches!(b_entity, Some((_, Kind::FitSpline))) {
+            let Some((b_idx, _)) = b_entity else { return };
+            self.r_point_on_entity(x, a_ref, b_idx, Kind::FitSpline, r);
         } else if !self.ref_is_point(&a_ref)
             && matches!(a_entity, Some((_, Kind::Line)))
             && self.ref_is_point(&b_ref)
@@ -119,6 +129,12 @@ impl Problem<'_> {
         {
             let Some((a_idx, _)) = a_entity else { return };
             self.r_point_on_entity(x, b_ref, a_idx, Kind::Spline, r);
+        } else if !self.ref_is_point(&a_ref)
+            && matches!(a_entity, Some((_, Kind::FitSpline)))
+            && self.ref_is_point(&b_ref)
+        {
+            let Some((a_idx, _)) = a_entity else { return };
+            self.r_point_on_entity(x, b_ref, a_idx, Kind::FitSpline, r);
         } else {
             let pa = self.point(x, a_ref);
             let pb = self.point(x, b_ref);
