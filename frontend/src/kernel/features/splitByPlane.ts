@@ -234,7 +234,9 @@ function applyOne(
   const toolFaceNames = new SubShapeMap<string>()
   toolFaceNames.set(cut.base, capName(featureId, cut.side))
   const produced = transferFor(oc, scope, names, cut.shape, cut.faceOrigin, toolFaceNames)
-  const ids = resplitBody(oc, scope, table, bodyStore, body, scope.track(cut.shape), featureId, produced)
+  // `cut.shape` is already tracked by the plan's scope, so it is handed over
+  // as-is: tracking it again would delete the same proxy twice.
+  const ids = resplitBody(oc, scope, table, bodyStore, body, cut.shape, featureId, produced)
   body.brep_diff = cut.diff
   return ids
 }
