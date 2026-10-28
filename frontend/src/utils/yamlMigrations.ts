@@ -1,5 +1,5 @@
 import type { PartDoc } from '@/types/cad'
-import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
+import { VERTEX_POINT_KEY_SUFFIXES } from '@/types/vertexKeys'
 import { featureRefId } from '@/kernel/query'
 import { FEATURE_DEF_SUBKEY, nestedFeatureParams } from '@/kernel/features/shared/featureParams'
 import { warn } from './yamlMutations/helpers'
@@ -22,7 +22,7 @@ function isPointOperand(ref: unknown, kindById: Map<string, string>): boolean {
   // entry in the sketch it is that entity, never `<other-entity><vertex-key>`,
   // even if it happens to end with a vertex key. Only a point entity counts.
   if (kindById.has(bare)) return kindById.get(bare) === 'point'
-  for (const key of VERTEX_POINT_KEYS) {
+  for (const key of VERTEX_POINT_KEY_SUFFIXES) {
     if (bare.length > key.length && bare.endsWith(key)) {
       const eid = bare.slice(0, -key.length)
       if (kindById.has(eid)) return true

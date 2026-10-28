@@ -277,6 +277,14 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
     },
     {
       "enabled": true,
+      "id": "set_tool_fit_spline",
+      "label": "Spline tool",
+      "params": [],
+      "shortcut": "s",
+      "undoable": false,
+    },
+    {
+      "enabled": true,
       "id": "set_tool_line",
       "label": "Line tool",
       "params": [],
@@ -330,9 +338,8 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
     {
       "enabled": true,
       "id": "set_tool_spline",
-      "label": "Spline tool",
+      "label": "Bezier tool",
       "params": [],
-      "shortcut": "s",
       "undoable": false,
     },
     {

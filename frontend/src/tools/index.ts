@@ -10,6 +10,9 @@ export function initializeTools(): void {
   toolRegistry.reset()
 
   for (const entity of ENTITIES) {
+    // The generic tool is enough even for the variable-size fit spline: its
+    // click collector builds the params from the placed points, so the
+    // registry's minimum `paramCount` is never used to size the entity.
     if (entity.activeTool) {
       toolRegistry.register(createDrawingTool({ entityKind: entity.activeTool, paramCount: entity.paramCount }))
     }

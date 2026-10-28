@@ -6,6 +6,8 @@ import {
   applyAddConstraint,
   applyDeleteElements,
   applyAddEntity,
+  applyInsertFitPoint,
+  applySetFitSplineHandle,
   applyAddEntityWithConstraint,
   applyAddProjectedEntity,
   applyAddRect,
@@ -127,9 +129,17 @@ export const mutationHandlers: MutationHandlers = {
   delete: (next, m) =>
     applyDeleteElements(next, m.targets),
   add_entity: (next, m) =>
-    applyAddEntity(next, m.featureId, m.kind, m.params, m.entityId),
+    applyAddEntity(next, m.featureId, m.kind, m.params, m.entityId, {
+      tangents: m.tangents, tangentScale: m.tangentScale,
+    }),
   add_entity_with_constraint: (next, m) =>
-    applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId),
+    applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId, {
+      tangents: m.tangents, tangentScale: m.tangentScale,
+    }),
+  insert_fit_point: (next, m) =>
+    applyInsertFitPoint(next, m.featureId, m.entityId, m.index, m.point),
+  set_fit_spline_handle: (next, m) =>
+    applySetFitSplineHandle(next, m.featureId, m.entityId, m.end, m.handle),
   add_projected_entity: (next, m) =>
     applyAddProjectedEntity(next, m.featureId, m.kind, m.source, m.entityId),
   add_rect: (next, m) =>

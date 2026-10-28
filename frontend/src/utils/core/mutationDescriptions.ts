@@ -202,6 +202,10 @@ export function describeMutation(m: Mutation): string {
       // The label is pre-composed from the doc diff at commit time, so there is
       // no per-type formatting left to do here.
       return m.description ?? 'apply preview'
+    case 'insert_fit_point':
+      return `insert fit point ${m.index} on ${m.entityId}`
+    case 'set_fit_spline_handle':
+      return m.handle ? `set ${m.end} handle on ${m.entityId}` : `remove ${m.end} handle on ${m.entityId}`
     default: {
       // Exhaustiveness guard. Every variant above is handled, so `m` narrows to
       // never here and the assignment is the whole check: dropping a case, or

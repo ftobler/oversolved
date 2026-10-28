@@ -8,6 +8,8 @@ import { describe, it, expect, vi } from 'vitest'
 // The tie-break drifted once between the four copies; this keeps it fixed.
 vi.mock('./vertexKeys', () => ({
   VERTEX_POINT_KEYS: ['c1', '1'] as const,
+  VERTEX_POINT_KEY_SUFFIXES: ['c1', '1'] as const,
+  isVertexPointKey: (key: string) => key === 'c1' || key === '1',
 }))
 
 import { resolveVertexRef } from './vertexRef'

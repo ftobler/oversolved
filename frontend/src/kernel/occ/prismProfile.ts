@@ -24,6 +24,7 @@ import {
   makeCircleEdge,
   makeLineEdge,
   makeBezierEdge,
+  makeBSplineChainEdge,
   makeEllipseEdge,
   makeWire,
   makeFaceFromWire,
@@ -234,10 +235,20 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: L
         uvTo3d(plane, edge['end'] as number[]),
       ]
       edges.push(scope.track(makeBezierEdge(oc, scope, poles)))
-    } else {
+    } else if (kind === 'fit_spline') {
+      // One fused run of the interpolating spline: the C0 chain poles lifted to
+      // 3D and the chord knots. OCC removes the interior knots to reach C2.
+      const poles = (edge['poles'] as number[][]).map(p => uvTo3d(plane, p))
+      const knots = edge['knots'] as number[]
+      edges.push(scope.track(makeBSplineChainEdge(oc, scope, poles, knots)))
+    } else if (kind === 'line' || kind === undefined) {
       const p1 = uvTo3d(plane, edge['start'] as number[])
       const p2 = uvTo3d(plane, edge['end'] as number[])
       edges.push(scope.track(makeLineEdge(oc, scope, p1, p2)))
+    } else {
+      // A kind this writer does not know must fail loud: silently drawing a
+      // chord across it is a wrong solid, not a missing edge.
+      throw new Error(`buildWire: unknown loop edge kind '${kind}'`)
     }
   }
   // A profile boundary that does not close is not a profile: without this the

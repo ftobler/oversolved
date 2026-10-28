@@ -33,9 +33,9 @@ describe.skipIf(!solveBytes)('sketch rev 3 wire (real wasm)', () => {
     const values = [25.4, 1234.567, 1e-9, -0.0, 1e6]
     const input: FlatInput = {
       entities: [
-        { kind: Kind.Point, offset: 0 },
-        { kind: Kind.Point, offset: 2 },
-        { kind: Kind.Point, offset: 4 },
+        { kind: Kind.Point, flags: 0, offset: 0, count: 2 },
+        { kind: Kind.Point, flags: 0, offset: 2, count: 2 },
+        { kind: Kind.Point, flags: 0, offset: 4, count: 2 },
       ],
       params: [...values, 0.1],
       pinnedMask: [],
@@ -73,10 +73,10 @@ describe.skipIf(!solveBytes)('sketch rev 3 wire (real wasm)', () => {
     // 1234.567017 and the 25.4 side was only exact to ~1e-5 mm.
     const input: FlatInput = {
       entities: [
-        { kind: Kind.Line, offset: 0 },
-        { kind: Kind.Line, offset: 4 },
-        { kind: Kind.Line, offset: 8 },
-        { kind: Kind.Line, offset: 12 },
+        { kind: Kind.Line, flags: 0, offset: 0, count: 4 },
+        { kind: Kind.Line, flags: 0, offset: 4, count: 4 },
+        { kind: Kind.Line, flags: 0, offset: 8, count: 4 },
+        { kind: Kind.Line, flags: 0, offset: 12, count: 4 },
       ],
       // Seeded a few units off the solution so the solver really moves.
       params: [

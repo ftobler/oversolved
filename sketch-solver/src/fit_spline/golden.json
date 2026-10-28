@@ -44,6 +44,10 @@
       ],
       "handle_start": null,
       "handle_end": null,
+      "tangents": [
+        null,
+        null
+      ],
       "scale": false,
       "degree": 3,
       "poles": [
@@ -489,6 +493,10 @@
       ],
       "handle_start": null,
       "handle_end": null,
+      "tangents": [
+        null,
+        null
+      ],
       "scale": false,
       "degree": 1,
       "poles": [
@@ -594,6 +602,10 @@
       ],
       "handle_start": null,
       "handle_end": null,
+      "tangents": [
+        null,
+        null
+      ],
       "scale": false,
       "degree": 2,
       "poles": [
@@ -757,6 +769,10 @@
       ],
       "handle_start": null,
       "handle_end": null,
+      "tangents": [
+        null,
+        null
+      ],
       "scale": false,
       "degree": 3,
       "poles": [
@@ -990,6 +1006,10 @@
       ],
       "handle_start": null,
       "handle_end": null,
+      "tangents": [
+        null,
+        null
+      ],
       "scale": false,
       "degree": 3,
       "poles": [
@@ -1273,6 +1293,16 @@
         2.74535599249993,
         0.2546440075000701
       ],
+      "tangents": [
+        [
+          0.0,
+          1.0
+        ],
+        [
+          -1.0,
+          1.0
+        ]
+      ],
       "scale": false,
       "degree": 3,
       "poles": [
@@ -1391,6 +1421,16 @@
       "handle_end": [
         3.372677996249965,
         0.2546440075000701
+      ],
+      "tangents": [
+        [
+          1.0,
+          0.5
+        ],
+        [
+          -0.5,
+          1.0
+        ]
       ],
       "scale": false,
       "degree": 3,
@@ -1570,6 +1610,16 @@
       "handle_end": [
         4.372677996249965,
         2.25464400750007
+      ],
+      "tangents": [
+        [
+          1.0,
+          0.5
+        ],
+        [
+          -0.5,
+          1.0
+        ]
       ],
       "scale": false,
       "degree": 3,
@@ -1809,6 +1859,16 @@
       "handle_end": [
         6.74535599249993,
         1.627322003750035
+      ],
+      "tangents": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          -1.0,
+          0.5
+        ]
       ],
       "scale": false,
       "degree": 3,
@@ -2094,6 +2154,13 @@
         0.37267799624996495
       ],
       "handle_end": null,
+      "tangents": [
+        [
+          1.0,
+          0.5
+        ],
+        null
+      ],
       "scale": false,
       "degree": 3,
       "poles": [
@@ -2265,6 +2332,13 @@
       "handle_end": [
         3.372677996249965,
         0.2546440075000701
+      ],
+      "tangents": [
+        null,
+        [
+          -0.5,
+          1.0
+        ]
       ],
       "scale": false,
       "degree": 3,
@@ -2442,6 +2516,13 @@
         0.37267799624996495
       ],
       "handle_end": null,
+      "tangents": [
+        [
+          1.0,
+          0.5
+        ],
+        null
+      ],
       "scale": false,
       "degree": 3,
       "poles": [
@@ -2673,6 +2754,13 @@
       "handle_end": [
         4.372677996249965,
         2.25464400750007
+      ],
+      "tangents": [
+        null,
+        [
+          -0.5,
+          1.0
+        ]
       ],
       "scale": false,
       "degree": 3,
@@ -2910,6 +2998,13 @@
         0.7453559924999299
       ],
       "handle_end": null,
+      "tangents": [
+        [
+          0.5,
+          1.0
+        ],
+        null
+      ],
       "scale": false,
       "degree": 3,
       "poles": [
@@ -3202,6 +3297,13 @@
         6.74535599249993,
         1.627322003750035
       ],
+      "tangents": [
+        null,
+        [
+          -1.0,
+          0.5
+        ]
+      ],
       "scale": false,
       "degree": 3,
       "poles": [
@@ -3485,6 +3587,16 @@
         2.5000000000000004,
         0.4999999999999999
       ],
+      "tangents": [
+        [
+          0.0,
+          1.0
+        ],
+        [
+          -1.0,
+          1.0
+        ]
+      ],
       "scale": true,
       "degree": 3,
       "poles": [
@@ -3603,6 +3715,16 @@
       "handle_end": [
         3.5555555555555554,
         -0.1111111111111116
+      ],
+      "tangents": [
+        [
+          1.0,
+          0.5
+        ],
+        [
+          -0.5,
+          1.0
+        ]
       ],
       "scale": true,
       "degree": 3,
@@ -3782,6 +3904,16 @@
       "handle_end": [
         5.0,
         0.9999999999999996
+      ],
+      "tangents": [
+        [
+          1.0,
+          0.5
+        ],
+        [
+          -0.5,
+          1.0
+        ]
       ],
       "scale": true,
       "degree": 3,
@@ -4021,6 +4153,16 @@
       "handle_end": [
         8.888888888888891,
         0.5555555555555556
+      ],
+      "tangents": [
+        [
+          0.5,
+          1.0
+        ],
+        [
+          -1.0,
+          0.5
+        ]
       ],
       "scale": true,
       "degree": 3,

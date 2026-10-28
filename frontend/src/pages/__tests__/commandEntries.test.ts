@@ -16,6 +16,7 @@ const PROGRAMMATIC_ONLY = new Set([
   'set_tool_mirror',
   'set_tool_point',
   'set_tool_ellipse',  // toolbar-only (no keyboard shortcut), like point
+  'set_tool_spline',  // toolbar-only: the `s` shortcut now opens the fit spline
   'set_tool_rect',
   'set_tool_center_rect',
   'set_tool_ngon',  // toolbar-only compound tool (no keyboard shortcut)

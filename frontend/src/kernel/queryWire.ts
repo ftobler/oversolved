@@ -5,7 +5,7 @@
 
 import { failLoud } from '@/utils/invariants'
 import { isDevOrTestBuild } from './isDevBuild'
-import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
+import { VERTEX_POINT_KEY_SUFFIXES } from '@/types/vertexKeys'
 import type { LocalQuery, AbsoluteQuery, AncestryQuery, Query } from '@/types/query'
 
 /** Local alias for the canonical Query union (re-exported by query.ts as QueryType). */
@@ -68,7 +68,7 @@ export function localFromString(s: string): LocalQuery {
   // the knownIds consumers (resolveLocal / resolveQueryRef) disambiguate those
   // strings by full entity-id membership. emitWire warns in dev/test when its
   // output re-parses differently rather than throwing.
-  for (const pt of VERTEX_POINT_KEYS) {
+  for (const pt of VERTEX_POINT_KEY_SUFFIXES) {
     if (body.length > pt.length && body.endsWith(pt)) {
       const residual = body.slice(0, -pt.length)
       if (ALPHA_SUFFIXES.has(pt) || isPlausibleEntityId(residual))

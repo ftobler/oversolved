@@ -30,6 +30,7 @@ export const COMMAND_NAMES = [
   'set_tool_arc',
   'set_tool_ellipse',
   'set_tool_spline',
+  'set_tool_fit_spline',
   'set_tool_point',
   'set_tool_project',
   'set_tool_rect',

@@ -30,6 +30,9 @@ import type { Mutation } from '@/types/cad'
 export const IDEMPOTENT_MUTATION = {
   // Labels and display flags: the doc may already carry the new value.
   rename_feature: true,
+  // Positional fit-point edits are never a repeat of the same state.
+  insert_fit_point: false,
+  set_fit_spline_handle: true,
   rename_part: true,
   set_feature_visibility: true,
   set_body_visibility: true,

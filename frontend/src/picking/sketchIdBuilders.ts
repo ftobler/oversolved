@@ -1,7 +1,8 @@
 import * as THREE from 'three'
-import type { Sketch, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline } from '@/types/cad'
+import type { Sketch, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, FitSpline } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
 import { sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS } from '@/utils/geometry/sketchHelpers'
+import { fitSplinePolyline } from '@/utils/geometry/fitSpline'
 
 // Pure builders that turn a sketch + plane matrix into the segment/vertex
 // buffers the sketchEntity / sketchVertex ID layers consume. Lives outside the
@@ -72,6 +73,12 @@ export function buildSketchSegments(
       for (let i = 0; i < pts.length - 1; i++) {
         appendSegment(positions, planeMatrix, v, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
       }
+    } else if (kind === 'fit_spline') {
+      const fs = entity as FitSpline
+      const pts = fitSplinePolyline(fs.points, fs.handleStart, fs.handleEnd)
+      for (let i = 0; i < pts.length - 1; i++) {
+        appendSegment(positions, planeMatrix, v, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
+      }
     } else {
       // point entities have no segments; they show only via the vertex layer.
       continue
@@ -136,6 +143,13 @@ export function buildSketchVertices(
       push(entityId, 'c1',    sp.p2[0], sp.p2[1])
       push(entityId, 'c2',    sp.p3[0], sp.p3[1])
       push(entityId, 'end',   sp.p4[0], sp.p4[1])
+    } else if (kind === 'fit_spline') {
+      const fs = entity as FitSpline
+      push(entityId, 'start', fs.points[0][0], fs.points[0][1])
+      fs.points.slice(1, -1).forEach((p, i) => push(entityId, `fit${i + 1}`, p[0], p[1]))
+      push(entityId, 'end', fs.points[fs.points.length - 1][0], fs.points[fs.points.length - 1][1])
+      if (fs.handleStart) push(entityId, 'c1', fs.handleStart[0], fs.handleStart[1])
+      if (fs.handleEnd) push(entityId, 'c2', fs.handleEnd[0], fs.handleEnd[1])
     } else if (kind === 'point') {
       const p = entity as PointEntity
       push(entityId, 'xy', p.x, p.y)

@@ -16,6 +16,7 @@ export type ToolId =
   | 'arc'
   | 'ellipse'
   | 'spline'
+  | 'fit_spline'
   | 'point'
   | 'ngon'
   | 'project'
@@ -29,7 +30,7 @@ export type ToolId =
 // they are deliberately absent here.
 export const ACTIVATABLE_TOOL_IDS = [
   'dimension', 'line', 'rect', 'center_rect', 'circle', 'arc', 'ellipse',
-  'spline', 'point', 'ngon', 'project', 'drag',
+  'spline', 'fit_spline', 'point', 'ngon', 'project', 'drag',
 ] as const satisfies readonly ToolId[]
 
 // The id union covered by ACTIVATABLE_TOOL_IDS.

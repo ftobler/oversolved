@@ -6,7 +6,9 @@ import {
 } from './helpers'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
+import { fitPointIndex } from '@/types/vertexKeys'
 import { hidePlanesIfFirstBoundSketch } from './partStyle'
+import { applyAddFitSpline, applyDeleteFitPoint, type FitSplineAddOptions } from './fitSpline'
 
 // The rect/ngon/offset sugar lives in a sibling module so this file stays a
 // focused set of the core sketch mutations. Re-exported here so the historical
@@ -319,7 +321,20 @@ export function applyDeleteElements(doc: PartDoc, targets: string[]): void {
     if (!byFeature[fid]) byFeature[fid] = { entities: new Set(), constraints: new Set() }
     if (parts[0] === 'entity') byFeature[fid].entities.add(parts[2])
     if (parts[0] === 'constraint') byFeature[fid].constraints.add(parts[2])
-    if (parts[0] === 'vertex') byFeature[fid].entities.add(parts[2])
+    if (parts[0] === 'vertex') {
+      // A `fit<k>` vertex on a fit spline is one point of a positional list,
+      // not the whole entity: removing it renumbers the later refs.
+      const key = parts[3]
+      if (key && fitPointIndex(key) !== null) {
+        const feature = findSketchFeature(doc, fid)
+        const def = feature?.entities?.find(e => e.id === parts[2])
+        if (def?.kind === 'fit_spline') {
+          applyDeleteFitPoint(doc, fid, parts[2], fitPointIndex(key) as number)
+          continue
+        }
+      }
+      byFeature[fid].entities.add(parts[2])
+    }
   }
   for (const [fid, { entities: entsToDelete, constraints: consToDelete }] of Object.entries(byFeature)) {
     const feature = findSketchFeature(doc, fid)
@@ -399,7 +414,14 @@ export function applyAddEntity(
   kind: string,
   params: number[],
   entityId?: string,
+  fit?: FitSplineAddOptions,
 ): void {
+  // A fit spline's params are the fit points, not a fixed layout, so its writer
+  // lives beside the insert/delete/handle editors that share the ref rules.
+  if (kind === 'fit_spline') {
+    applyAddFitSpline(doc, featureId, params, entityId, fit)
+    return
+  }
   const feature = resolveSketch(doc, featureId, 'entities', 'initial')
   if (!feature) return
   // The seed params are persisted verbatim into the doc. round(NaN) is still
@@ -436,7 +458,22 @@ export function applyAddEntityWithConstraint(
   constraintKind: string,
   snapEntityRef?: string,
   entityId?: string,
+  fit?: FitSplineAddOptions,
 ): void {
+  if (kind === 'fit_spline') {
+    const eid = applyAddFitSpline(doc, featureId, params, entityId, fit)
+    if (!eid) return
+    let target: string
+    if (snapEntityRef) target = snapEntityRef
+    else if (snapVertexId && snapVertexId.startsWith('@builtin_')) target = snapVertexId
+    else if (snapVertexId) target = snapVertexId
+    else return
+    applyAddConstraint(doc, featureId, constraintKind, [
+      `vertex:${featureId}:${eid}:${vertexKey}`,
+      target,
+    ])
+    return
+  }
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
   // Seed params are persisted verbatim (same gate as applyAddEntity); refusing

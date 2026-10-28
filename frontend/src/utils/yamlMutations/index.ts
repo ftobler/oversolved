@@ -26,6 +26,8 @@ export {
   applySetFeaturePlane,
 } from './sketch'
 
+export { applyInsertFitPoint, applySetFitSplineHandle, applyDeleteFitPoint, type FitSplineAddOptions } from './fitSpline'
+
 export {
   applyAddExtrude,
   applyAddExtrudeProfile,

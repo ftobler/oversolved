@@ -3,6 +3,7 @@
 import type { Sketch, Entity } from '@/types/cad'
 import { getEntityBounds } from '@/utils/geometry/sketchHelpers'
 import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier } from '@/utils/geometry/sketchHelpers'
+import { fitSplinePolyline } from '@/utils/geometry/fitSpline'
 
 // Default semi-minor/semi-major ratio for the two-click ellipse draw (golden
 // ratio). The second click only fixes the major axis; b is seeded from a. This
@@ -121,6 +122,15 @@ export function computePreviewPts(
   }
   if (tool === 'arc' && pts.length === 1 && h) {
     return [[pts[0][0], pts[0][1], 0], [h[0], h[1], 0]]
+  }
+  if (tool === 'fit_spline' && h) {
+    // Through the placed points plus the cursor. Fewer than two points is not
+    // a curve yet; a degenerate pair (the cursor on the last point) falls back
+    // to the polyline.
+    const all = [...pts.map(p => [p[0], p[1]] as [number, number]), [h[0], h[1]] as [number, number]]
+    const curve = fitSplinePolyline(all, undefined, undefined, 64)
+    if (curve.length >= 2) return curve.map(p => [p[0], p[1], 0] as [number, number, number])
+    return all.map(p => [p[0], p[1], 0] as [number, number, number])
   }
   if (tool === 'spline' && h) {
     // Build up the cubic Bezier across the 4 clicks: show the control polygon

@@ -250,7 +250,7 @@ export function partDocToSketches(
     const sketch: SketchInput = {
       id: feature.id,
       plane: feature.plane ?? null,
-      entities: entities.map((e) => ({ id: e.id, kind: e.kind, construction: e.construction })),
+      entities: entities.map((e) => ({ id: e.id, kind: e.kind, construction: e.construction, handles: e.handles })),
       initial: feature.initial ?? {},
       constraints,
       pinnedEntityIds,

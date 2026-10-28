@@ -9,6 +9,7 @@ import {
   ellipseArcSamplePoints,
   loopGeometryKey,
   splineSamplePoints,
+  fitSplineSamplePoints,
   type LoopEdge,
 } from '../../profileLoops'
 
@@ -96,6 +97,7 @@ function isMergedFragment(edge: Dict): boolean {
     ...arcSamplePoints(e, 3),
     ...ellipseArcSamplePoints(e, 3),
     ...splineSamplePoints(e, 3),
+    ...fitSplineSamplePoints(e, 3),
   ]
   return interior.every(near)
 }

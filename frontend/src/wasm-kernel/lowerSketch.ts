@@ -18,10 +18,12 @@ import {
   type FlatConstraint,
   type FlatInput,
   type FlatRef,
+  fitSelectorCode,
   Kind,
   Role,
   Sel,
 } from './codec'
+import { fitPointIndex } from '@/types/vertexKeys'
 
 const ENTITY_SIZES: Record<string, number> = { line: 4, circle: 3, arc: 5, point: 2, ellipse: 5, spline: 8 }
 const KIND_CODE: Record<string, number> = {
@@ -31,6 +33,7 @@ const KIND_CODE: Record<string, number> = {
   point: Kind.Point,
   ellipse: Kind.Ellipse,
   spline: Kind.Spline,
+  fit_spline: Kind.FitSpline,
 }
 // Keys must cover VERTEX_POINT_KEYS (types/vertexKeys.ts), which validates
 // dict-ref points upstream; anything it admits has to resolve here.
@@ -70,6 +73,8 @@ export interface SketchEntity {
   /** Reference geometry: it constrains the solve like any other entity but
    *  bounds no area, so the area builder skips it (`classify` in dcel.rs). */
   construction?: boolean
+  /** `fit_spline` only: which end handles the params carry. */
+  handles?: 'start' | 'end' | 'both'
 }
 
 export interface SketchInput {
@@ -90,6 +95,8 @@ export interface EntityLayout {
   kind: string
   offset: number
   size: number
+  /** Wire flag bits (`fit_spline` handles); 0 for every other kind. */
+  flags: number
   construction?: boolean
 }
 
@@ -156,16 +163,42 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     // layout arithmetic goes NaN and the kind byte encodes as 0, which the Rust
     // decoder reads back as a Line. A persisted or hand-edited document must
     // not silently solve with that entity's geometry missing.
-    if (!Object.hasOwn(ENTITY_SIZES, e.kind)) {
-      throw new Error(`lowerSketch: unknown entity kind '${e.kind}'`)
+    let size: number
+    let flags = 0
+    if (e.kind === 'fit_spline') {
+      // Variable size: the initial block IS the layout. Its length must be
+      // `2 N + 2 h` with `2 <= N <= 64`, exactly what the Rust `ParamLayout`
+      // will demand; a mismatch would shift every following entity's offset.
+      const init = e.id === ORIGIN_ID ? [] : sk.initial[e.id]
+      if (!Array.isArray(init)) throw new Error(`lowerSketch: fit_spline '${e.id}' has no initial params`)
+      const hasStart = e.handles === 'start' || e.handles === 'both'
+      const hasEnd = e.handles === 'end' || e.handles === 'both'
+      const handleCount = (hasStart ? 1 : 0) + (hasEnd ? 1 : 0)
+      flags = (hasStart ? 1 : 0) | (hasEnd ? 2 : 0)
+      const remaining = init.length - 2 * handleCount
+      if (remaining < 4 || remaining % 2 !== 0) {
+        throw new Error(`lowerSketch: fit_spline '${e.id}' has ${init.length} params, expected 2N + ${2 * handleCount} with N >= 2`)
+      }
+      const points = remaining / 2
+      if (points > 64) throw new Error(`lowerSketch: fit_spline '${e.id}' has ${points} fit points, the limit is 64`)
+      size = init.length
+    } else {
+      if (!Object.hasOwn(ENTITY_SIZES, e.kind)) {
+        throw new Error(`lowerSketch: unknown entity kind '${e.kind}'`)
+      }
+      size = ENTITY_SIZES[e.kind]
     }
-    const size = ENTITY_SIZES[e.kind]
-    layout.push({ id: e.id, kind: e.kind, offset: params.length, size, construction: e.construction })
+    layout.push({ id: e.id, kind: e.kind, offset: params.length, size, flags, construction: e.construction })
     const init = e.id === ORIGIN_ID ? [0, 0] : sk.initial[e.id] ?? new Array(size).fill(0)
     for (let i = 0; i < size; i++) params.push(init[i] ?? 0)
   })
 
-  const flatEntities = layout.map((l) => ({ kind: KIND_CODE[l.kind], offset: l.offset }))
+  const flatEntities = layout.map((l) => ({
+    kind: KIND_CODE[l.kind],
+    flags: l.flags,
+    offset: l.offset,
+    count: l.size,
+  }))
 
   const lowerRef = (refDict: Record<string, unknown>): FlatRef => {
     if (Array.isArray(refDict.external_xy)) {
@@ -182,7 +215,12 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
       // typo'd selector must never fall back into it.
       // Own-property guard: a plain table inherits Object.prototype members,
       // and an inherited function would encode as 0 (= absent) instead of failing.
-      const code = Object.hasOwn(SEL_CODE, pointName) ? SEL_CODE[pointName] : undefined
+      const fitIndex = fitPointIndex(pointName)
+      const code = fitIndex !== null
+        ? fitSelectorCode(fitIndex)
+        : Object.hasOwn(SEL_CODE, pointName)
+          ? SEL_CODE[pointName]
+          : undefined
       if (code === undefined) throw new Error(`lowerSketch: unknown point selector '${pointName}'`)
       point = code
     }

@@ -319,6 +319,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | `set_tool_dimension` | Dimension tool | `d` | no | sketch/part |
 | `set_tool_drag` | Drag tool | - | no | sketch/part |
 | `set_tool_ellipse` | Ellipse tool | - | no | sketch/part |
+| `set_tool_fit_spline` | Spline tool | `s` | no | sketch/part |
 | `set_tool_line` | Line tool | `l` | no | sketch/part |
 | `set_tool_mirror` | Mirror tool | `shift+m` | no | sketch/part |
 | `set_tool_ngon` | N-gon tool | - | no | sketch/part |
@@ -326,7 +327,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | `set_tool_project` | Project tool | `j` | no | sketch/part |
 | `set_tool_rect` | Rectangle tool | - | no | sketch/part |
 | `set_tool_select` | Select tool | - | no | sketch/part |
-| `set_tool_spline` | Spline tool | `s` | no | sketch/part |
+| `set_tool_spline` | Bezier tool | - | no | sketch/part |
 | `toggle_construction` | Toggle construction | `q` | yes | sketch/part |
 | `toggle_plane_visibility` | Toggle planes | `p` | yes | sketch/part |
 | `toggle_sketch_plane_visibility` | Toggle reference geometry | `y` | yes | sketch/part |

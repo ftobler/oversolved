@@ -230,6 +230,50 @@ export function makeBezierEdge(oc: OccModule, scope: DisposeScope, poles: Vec3[]
 }
 
 /**
+ * One B-spline edge through a C0 cubic Bezier chain.
+ *
+ * `poles` is the `3M + 1` chain (the fit-spline's pieces sharing each joint) and
+ * `knots` the `M + 1` chord parameters. The curve is built with interior
+ * multiplicity 3, which is the exact chain; each interior knot is then removed
+ * once, recovering the C2 clamped spline (and CadQuery's `N + 2` poles). A
+ * failed removal keeps multiplicity 3, the same geometry.
+ * @returns untracked - caller owns.
+ */
+export function makeBSplineChainEdge(
+  oc: OccModule,
+  scope: DisposeScope,
+  poles: Vec3[],
+  knots: number[],
+): OccShape {
+  if (poles.length !== 3 * (knots.length - 1) + 1) {
+    throw new Error(`make_bspline_chain_edge: ${poles.length} poles for ${knots.length} knots`)
+  }
+  const poleArr = scope.track(new oc.TColgp_Array1OfPnt_2(1, poles.length))
+  poles.forEach((p, i) => poleArr.SetValue(i + 1, scope.track(new oc.gp_Pnt_3(p[0], p[1], p[2]))))
+  const knotArr = scope.track(new oc.TColStd_Array1OfReal_2(1, knots.length))
+  knots.forEach((u, i) => knotArr.SetValue(i + 1, u))
+  const multArr = scope.track(new oc.TColStd_Array1OfInteger_2(1, knots.length))
+  knots.forEach((_, i) => {
+    const mult = i === 0 || i === knots.length - 1 ? 4 : 3
+    multArr.SetValue(i + 1, mult)
+  })
+  const curve = scope.track(new oc.Geom_BSplineCurve_1(poleArr, knotArr, multArr, 3, false))
+  for (let i = 2; i < knots.length; i++) {
+    // Interior knot indices are 1-based in OCC; the loop skips the first knot
+    // (index 1) and the last (index knots.length).
+    try {
+      curve.RemoveKnot(i, 1, 1e-7)
+    } catch {
+      // A removal that cannot meet the tolerance leaves multiplicity 3: the
+      // same curve, only a C0 representation. Never fail the edge for it.
+    }
+  }
+  const geomCurve = scope.track(new oc.Handle_Geom_Curve_2(curve))
+  const builder = scope.track(new oc.BRepBuilderAPI_MakeEdge_24(geomCurve))
+  return builder.Edge()
+}
+
+/**
  * An ellipse edge. `majorAxis`/`normal` orient the ellipse frame; `a >= b` are
  * the semi-major/semi-minor radii. When `u0`/`u1` (eccentric angles, radians)
  * are given and do not span a full turn, a trimmed elliptical arc is built (the

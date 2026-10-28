@@ -86,6 +86,9 @@ const ENTITY_SCHEMA: JsonSchema = {
     kind: { type: 'string' },
     construction: { type: 'boolean' },
     source: { type: 'string' },
+    // Fit splines only: which end handles the entity stores. The params carry
+    // the handle points themselves (D2), so the field is a layout selector.
+    handles: { enum: ['start', 'end', 'both'] },
   },
   additionalProperties: false,
 }

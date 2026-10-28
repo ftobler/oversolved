@@ -475,7 +475,7 @@ export function solveSketch(
     features[ent.id] = { status: STATUS_NAME[out.entityStatus[i]] }
     // Construction geometry solves like anything else but must bound no area,
     // so the flag rides along to the area builder, which skips those entities.
-    richGeom[ent.id] = { ...enrichSketchEntity(ent.kind, params), ...(ent.construction ? { construction: true } : {}) }
+    richGeom[ent.id] = { ...enrichSketchEntity(ent.kind, params, ent.flags), ...(ent.construction ? { construction: true } : {}) }
     if (ent.kind === 'point') pointPositions.push([params[0], params[1]])
   }
 
@@ -827,6 +827,23 @@ function paramsToPreview(
       case 'spline':
         sketch[ent.id] = { p1: [p[0], p[1]], p2: [p[2], p[3]], p3: [p[4], p[5]], p4: [p[6], p[7]] } as Entity
         break
+      case 'fit_spline': {
+        // The solved params are the fit points then the optional handles, the
+        // same order the document stores; `ent.flags` says which are present.
+        const handleCount = (ent.flags & 1 ? 1 : 0) + (ent.flags & 2 ? 1 : 0)
+        const n = (p.length - 2 * handleCount) / 2
+        const points: [number, number][] = []
+        for (let i = 0; i < n; i++) points.push([p[2 * i], p[2 * i + 1]])
+        let next = 2 * n
+        const fit: { points: [number, number][]; handleStart?: [number, number]; handleEnd?: [number, number] } = { points }
+        if (ent.flags & 1) {
+          fit.handleStart = [p[next], p[next + 1]]
+          next += 2
+        }
+        if (ent.flags & 2) fit.handleEnd = [p[next], p[next + 1]]
+        sketch[ent.id] = fit as Entity
+        break
+      }
     }
   }
   return { sketch, geometry }

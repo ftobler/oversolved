@@ -149,9 +149,9 @@ describe('pinnedMaskFor (projected-entity pinning)', () => {
   // Two lines (4 params each) then a circle (3): flat params 0..10, the origin
   // appended by lowerSketch is irrelevant to the helper which only sees layout.
   const layout: EntityLayout[] = [
-    { id: 'a', kind: 'line', offset: 0, size: 4 },
-    { id: 'b', kind: 'line', offset: 4, size: 4 },
-    { id: 'c', kind: 'circle', offset: 8, size: 3 },
+    { id: 'a', kind: 'line', offset: 0, size: 4, flags: 0 },
+    { id: 'b', kind: 'line', offset: 4, size: 4, flags: 0 },
+    { id: 'c', kind: 'circle', offset: 8, size: 3, flags: 0 },
   ]
   const nParams = 11
 

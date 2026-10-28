@@ -176,6 +176,7 @@ def build_cases() -> dict[str, object]:
         handle_start: tuple[float, float] | None,
         handle_end: tuple[float, float] | None,
         scale: bool,
+        tangents: tuple[tuple[float, float] | None, tuple[float, float] | None] = (None, None),
     ) -> None:
         us = chord_params(points)
         curve = _interpolate(points, load)
@@ -185,6 +186,10 @@ def build_cases() -> dict[str, object]:
                 "points": [list(p) for p in points],
                 "handle_start": list(handle_start) if handle_start is not None else None,
                 "handle_end": list(handle_end) if handle_end is not None else None,
+                "tangents": [
+                    list(tangents[0]) if tangents[0] is not None else None,
+                    list(tangents[1]) if tangents[1] is not None else None,
+                ],
                 "scale": scale,
                 "degree": curve.Degree(),
                 "poles": [
@@ -216,6 +221,7 @@ def build_cases() -> dict[str, object]:
             handle_point(points, us, t0, True),
             handle_point(points, us, t1, False),
             False,
+            (t0, t1),
         )
 
     # One handle, scale=False: the free end takes the Lagrange rule.
@@ -230,6 +236,7 @@ def build_cases() -> dict[str, object]:
             handle_point(points, us, t0, True),
             None,
             False,
+            (t0, None),
         )
         add(
             f"n{n}_end_noscale",
@@ -238,6 +245,7 @@ def build_cases() -> dict[str, object]:
             None,
             handle_point(points, us, t1, False),
             False,
+            (None, t1),
         )
 
     # Both handles, scale=True: OCP's ScaleTangents rescales each given vector.
@@ -257,6 +265,7 @@ def build_cases() -> dict[str, object]:
             handle_point(points, us, (scaled0[0], scaled0[1]), True),
             handle_point(points, us, (scaled1[0], scaled1[1]), False),
             True,
+            (t0, t1),
         )
 
     return {
