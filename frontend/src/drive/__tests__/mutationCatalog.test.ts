@@ -348,6 +348,16 @@ describe('mutation catalog', () => {
     expect(mutationInfoOf('add_revolve').fields.operation).toBeUndefined()
   })
 
+  it('explains how to sweep sections that sit on other planes', () => {
+    const add = mutationInfoOf('add_sweep')
+    expect(add.note).toContain('add_sweep_profile')
+    expect(add.note).toContain('multisection')
+    expect(add.note).toContain('pierced by the path')
+    // The setter's field list is generated from the schema, so the opt-in field
+    // is offered there without a second hand-kept list.
+    expect(mutationInfoOf('set_sweep_field').fields.field.note).toContain('multisection')
+  })
+
   it('says a variable must sit before its users and how the index is counted', () => {
     const info = mutationInfoOf('add_variable')
     expect(info.fields.insertAt).toBeDefined()

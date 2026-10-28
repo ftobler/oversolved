@@ -591,7 +591,10 @@ banner on stdout, so a client config must use the direct node invocation.
   `termination: blind|up_to`, `operation: new|replace`), and `add_plane`'s
   `definition` carries the same shape the part-document schema serves (its
   `mode` enum includes `offset`, and the common offset plane is
-  `{mode:"offset", plane:"@builtin_plane_top", offset:43}`).
+  `{mode:"offset", plane:"@builtin_plane_top", offset:43}`). A multisection
+  sweep is one `add_sweep_profile` per section and then
+  `set_sweep_field {field:"multisection", value:true}`; every section must be
+  pierced by the path.
   Guidance that a field list cannot carry lives in the row note: `hole` lists
   its required fields (`sketch`, `diameter`, `depth_mode`) and its optional ones
   (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,

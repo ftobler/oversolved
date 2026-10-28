@@ -1,0 +1,8 @@
+{
+  "method": "Two sections are interpolated linearly along the spine: cone frustum pi*h/3*(r1^2+r1*r2+r2^2), h = 10, r1 = 1, r2 = 2; area is the lateral cone pi*(r1+r2)*sqrt(h^2+(r2-r1)^2) plus both caps; centroid h*(r1^2+2*r1*r2+3*r2^2)/(4*(r1^2+r1*r2+r2^2)) from the small end",
+  "bodies": 1,
+  "volume": 73.30382858376184,
+  "area": 110.42580953036261,
+  "centroid": [0, 0, 6.071428571428571],
+  "bbox": [-2, -2, 0, 2, 2, 10]
+}

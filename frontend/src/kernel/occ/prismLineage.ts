@@ -209,6 +209,12 @@ export function buildPrismLineageMap(
    * (pre-heal) edge then answers empty and every side face goes unnamed.
    */
   sweptProfile: OccShape | null = null,
+  /**
+   * Per-role cap tokens for a multisection sweep, where the start and end caps
+   * come from different sections. Absent keeps the single `capTokens` list,
+   * which is what the single-profile paths have always used.
+   */
+  capTokensByRole: { start: string[]; end: string[] } | null = null,
 ): LineageMaps {
   const E = oc.TopAbs_ShapeEnum
   const solid = scope.track(prismBuilder.Shape())
@@ -330,6 +336,8 @@ export function buildPrismLineageMap(
   // adjacent faces' ancestry, and a cap's whole-loop list on a rim edge would
   // swamp the one profile entity that edge actually lies on.
   const capTokens = [...new Set(edgeEids.filter((eid): eid is string => eid !== null))].sort()
+  const capTokensFor = (which: 'start' | 'end'): string[] =>
+    capTokensByRole === null ? capTokens : capTokensByRole[which]
 
   // solid face -> construction uuid, its tokens the generating profile entity.
   const faceNames = new SubShapeMap<string>()
@@ -340,20 +348,24 @@ export function buildPrismLineageMap(
     const match = genIdx.get(sf)[0]
     if (createdBy) {
       let uuid: string | null = null
+      let capRole: 'start' | 'end' = 'start'
       if (match !== undefined) {
         uuid = sideUuids.get(sf) ?? null
       } else {
         // capCandidates is at most two faces; a linear IsSame find over it is
         // cheaper than an index build, so it stays a find.
         const cap = capCandidates.find((c) => (sf as OccSubShape).IsSame(c.face))
-        if (cap) uuid = mintFaceUuid(capFacePath(createdBy, cap.which, groupIndex))
+        if (cap) {
+          uuid = mintFaceUuid(capFacePath(createdBy, cap.which, groupIndex))
+          capRole = cap.which
+        }
       }
       if (uuid !== null) {
         faceNames.set(sf, uuid)
         if (match !== undefined) faceAncestry[uuid] = [match.eid]
         else {
           faceAncestry[uuid] = []
-          capAncestry[uuid] = capTokens
+          capAncestry[uuid] = capTokensFor(capRole)
         }
       }
     }
@@ -385,7 +397,7 @@ function prefixTokens(lineage: Record<string, string[]>, prefix: string): void {
 }
 
 /** Prefix every ancestry map of a LineageMaps in place. */
-function prefixLineageMaps(maps: LineageMaps, prefix: string): void {
+export function prefixLineageMaps(maps: LineageMaps, prefix: string): void {
   prefixTokens(maps.faceAncestry, prefix)
   prefixTokens(maps.edgeAncestry, prefix)
   prefixTokens(maps.capAncestry, prefix)
@@ -830,6 +842,10 @@ export function revolveProfileWithLineage(
  * that builds a solid cleanly. Pure loop, no face/profile dependency, so it
  * unit-tests with a stub `oc.BRepOffsetAPI_MakePipeShell` (no WASM needed).
  *
+ * `wires` is one wire for a single-profile sweep and one per section for a
+ * multisection sweep; `Add_1` is called once per wire, in the given order, so
+ * the single-wire call sequence is unchanged.
+ *
  * `lastError` is reset at the top of every attempt: a mode that throws sets
  * it, but the NEXT attempt clears it again before trying, so a mode that
  * fails silently (no exception, just `IsDone()`/`MakeSolid()` false) never
@@ -839,7 +855,7 @@ export function attemptPipeShellSweep(
   oc: OccModule,
   scope: DisposeScope,
   spineWire: OccShape,
-  outerWire: OccShape,
+  wires: OccShape[],
   modes: OccEnumValue[],
   // When set, orient the trihedron to this fixed direction (binormal mode)
   // instead of the default CorrectedFrenet frame. A helix path uses the helix
@@ -856,7 +872,7 @@ export function attemptPipeShellSweep(
         const dir = scope.track(new oc.gp_Dir_4(binormal[0], binormal[1], binormal[2]))
         builder.SetMode_3(dir)
       }
-      builder.Add_1(outerWire, false, false)
+      for (const wire of wires) builder.Add_1(wire, false, false)
       builder.Build()
       if (builder.IsDone() && builder.MakeSolid()) {
         return { result: { solid: builder.Shape(), pipeBuilder: builder }, lastError: null }
@@ -911,7 +927,7 @@ export function sweepProfileWithLineage(
     oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner,
     oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_Transformed,
   ]
-  const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, outerWire, modes, binormal)
+  const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], modes, binormal)
   if (lastError !== null) {
     const msg = extractErrorMessage(lastError)
     throw new Error(`sweep: BRepOffsetAPI_MakePipeShell failed: ${msg}`)

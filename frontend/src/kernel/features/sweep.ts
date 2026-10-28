@@ -19,7 +19,10 @@ import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { extractProfileLoops, profileAreaReport } from './shared/profileLoops'
 import { parseSketchEntityRef, surfaceEntityIds } from './shared/bodyRef'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
-import { sweepProfileWithLineage } from '../occ/prismLineage'
+import { sweepProfileWithLineage, type LineageResult } from '../occ/prismLineage'
+import { sweepSectionsWithLineage, type SweepSection } from '../occ/sweepSections'
+import { orderSections, type SectionInput, type SpineSampler, type Station } from './sweepStations'
+import { classifyLoops } from '../profileLoops'
 import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, type Vec3 } from '../occ/primitives'
 import { buildCurveEdge } from '../occ/helixEdge'
 import { descriptorFromRepo } from './helix'
@@ -551,6 +554,41 @@ function profileAxialSpan(loops: Dict[][], plane: PlaneLike, axis: Vec3): number
   return Number.isFinite(lo) ? hi - lo : 0
 }
 
+/**
+ * Sample the built spine for the station finder: one curve adaptor per spine
+ * edge, parameterised over the edge's own range. The adaptors stay in `scope`
+ * for the whole solve, so every section shares the same sampling.
+ */
+function spineSampler(oc: OccModule, scope: DisposeScope, spineEdges: OccShape[]): SpineSampler {
+  const adaptors = spineEdges.map((edge) => {
+    const curve = scope.track(new oc.BRepAdaptor_Curve_2(edge))
+    return { curve, first: curve.FirstParameter(), last: curve.LastParameter() }
+  })
+  return {
+    edgeCount: adaptors.length,
+    sample(edgeIdx: number, t: number): Vec3 {
+      const { curve, first, last } = adaptors[edgeIdx]
+      const p = curve.Value(first + (last - first) * t)
+      const out: Vec3 = [p.X(), p.Y(), p.Z()]
+      p.delete()
+      return out
+    },
+  }
+}
+
+/** The spine direction at a station, from two samples around its parameter.
+ *  It only decides which way the section wire faces, so a fallback to the
+ *  plane normal keeps a degenerate sample from failing the build. */
+function stationTangent(sampler: SpineSampler, station: Station, fallback: Vec3): Vec3 {
+  const t0 = Math.max(0, station.t - 1e-4)
+  const t1 = Math.min(1, station.t + 1e-4)
+  const a = sampler.sample(station.edge, t0)
+  const b = sampler.sample(station.edge, t1)
+  const d: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
+  const len = Math.hypot(d[0], d[1], d[2])
+  return len < 1e-12 ? fallback : [d[0] / len, d[1] / len, d[2] / len]
+}
+
 /** Solve a sweep feature into the body store (mirrors `_solve_sweep`). */
 export function solveSweep(
   oc: OccModule,
@@ -563,6 +601,9 @@ export function solveSweep(
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.sweep as Dict) ?? {}
   const mergeTarget = (sub.merge_target as string) ?? null
+  // Opt-in, absent means today's same-plane multi-profile sweep. Only a
+  // document that sets it changes body or message.
+  const multisection = sub.multisection === true
 
   const sketchRaw = sub.sketch
   const rawRefs: string[] = Array.isArray(sketchRaw)
@@ -602,6 +643,10 @@ export function solveSweep(
 
   const allLoops: Dict[][] = []
   const cqFaces: OccShape[] = []
+  // Multisection mode keeps each ref's loops on their OWN plane instead of
+  // lifting them all through the first plane, so the sections stay where they
+  // were drawn.
+  const sectionRefs: { sketchId: string; plane: PlaneLike; loops: Dict[][] }[] = []
   let firstPt: PlaneLike | null = null
   let firstSketchId = ''
   const profileErrors: string[] = []
@@ -621,6 +666,12 @@ export function solveSweep(
     }
     if (resolved.face !== null) {
       cqFaces.push(resolved.face)
+    } else if (multisection) {
+      sectionRefs.push({ sketchId: resolved.sketchId, plane: resolved.plane, loops: resolved.loops })
+      if (firstPt === null) {
+        firstPt = resolved.plane
+        firstSketchId = resolved.sketchId
+      }
     } else {
       allLoops.push(...resolved.loops)
       if (firstPt === null) {
@@ -632,7 +683,8 @@ export function solveSweep(
         // orientation; refuse it by name instead of building the wrong solid.
         throw new Error(
           `sweep: profile spans two different sketch planes ('${firstSketchId}' and ` +
-          `'${resolved.sketchId}'); build one feature per plane`,
+          `'${resolved.sketchId}'); build one feature per plane, or set multisection ` +
+          `to sweep through them as sections`,
         )
       }
     }
@@ -667,26 +719,38 @@ export function solveSweep(
       profileErrors.push(`sweep: picked profile edges do not form a closed loop (sketch ${sketchId})`)
       continue
     }
-    allLoops.push(...loops)
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
     }
-    if (firstPt === null) {
-      firstPt = plane
-      firstSketchId = sketchId
-    } else if (!samePlane(firstPt, plane)) {
-      // Every loop below is lifted through firstPt's frame, so a second sketch
-      // on a different plane would build its loops in the wrong place and
-      // orientation; refuse it by name instead of building the wrong solid.
-      throw new Error(
-        `sweep: profile spans two different sketch planes ('${firstSketchId}' and ` +
-        `'${sketchId}'); build one feature per plane`,
-      )
+    if (multisection) {
+      sectionRefs.push({ sketchId, plane, loops })
+      if (firstPt === null) {
+        firstPt = plane
+        firstSketchId = sketchId
+      }
+    } else {
+      allLoops.push(...loops)
+      if (firstPt === null) {
+        firstPt = plane
+        firstSketchId = sketchId
+      } else if (!samePlane(firstPt, plane)) {
+        // Every loop below is lifted through firstPt's frame, so a second sketch
+        // on a different plane would build its loops in the wrong place and
+        // orientation; refuse it by name instead of building the wrong solid.
+        throw new Error(
+          `sweep: profile spans two different sketch planes ('${firstSketchId}' and ` +
+          `'${sketchId}'); build one feature per plane, or set multisection ` +
+          `to sweep through them as sections`,
+        )
+      }
     }
   }
 
-  if (profileErrors.length && cqFaces.length === 0 && allLoops.length === 0) {
+  if (profileErrors.length && cqFaces.length === 0 && allLoops.length === 0 && sectionRefs.length === 0) {
     throw new Error(profileErrors.join('; '))
+  }
+  if (multisection && cqFaces.length > 0) {
+    throw new Error('sweep: face profiles are not yet supported; use a sketch profile')
   }
   if (cqFaces.length > 0 && allLoops.length > 0) {
     // Both were built; the leaf sweeps only the loops, so a mixed pick would
@@ -700,11 +764,33 @@ export function solveSweep(
   if (cqFaces.length > 0 && allLoops.length === 0) {
     throw new Error('sweep: face profiles are not yet supported; use a sketch profile')
   }
-  if (allLoops.length === 0) throw new Error('sweep: no closed profile found')
+  if (!multisection && allLoops.length === 0) throw new Error('sweep: no closed profile found')
+
+  // Every outer loop is one section; a section with a hole has no meaning here
+  // (the pipe shell carries one boundary), so refuse it instead of dropping the
+  // hole silently the way the single-profile path does.
+  const sectionInputs: SectionInput[] = []
+  if (multisection) {
+    for (const ref of sectionRefs) {
+      for (const [outer, holes] of classifyLoops(ref.loops)) {
+        if (holes.length > 0) throw new Error('sweep: a multisection section cannot have a hole')
+        sectionInputs.push({ sketchId: ref.sketchId, plane: ref.plane, loop: outer })
+      }
+    }
+    if (sectionInputs.length < 2) {
+      // A ref that failed to resolve is the cause the user needs to see; only
+      // with no failure at all is "needs two sections" the whole story.
+      if (profileErrors.length > 0) throw new Error(profileErrors.join('; '))
+      throw new Error('sweep: multisection needs at least two sections')
+    }
+  }
 
   // A curve path (a helix) is built from its descriptor; a sketch path keeps
   // the existing topology route. In v1 a helix path stands alone.
   const helixIds = [...new Set(pathRefs.map((r) => helixPathRef(r, globalRepo)).filter((x): x is string => x !== null))]
+  if (multisection && helixIds.length > 0) {
+    throw new Error('sweep: a multisection sweep cannot follow a helix path')
+  }
   let spineEdges: OccShape[]
   let binormal: Vec3 | null = null
   let helixPath = false
@@ -737,7 +823,37 @@ export function solveSweep(
   const result: { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } = { status: 'ok', body_id: bodyId }
   const operation = ((sub.operation as string) ?? 'add') as BodyOperation
 
-  const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId, binormal, sub.transition === 'round')
+  // In multisection mode each section is swept where it was drawn, in station
+  // order derived from the path; the single-profile path below is untouched.
+  let sections: SweepSection[] = []
+  let opSketchId = firstSketchId
+  if (multisection) {
+    // The path is checked before the stations: with no spine every section
+    // would report "not on the path", which names the wrong cause.
+    if (spineEdges.length === 0) throw new Error('sweep: empty path')
+    const sampler = spineSampler(oc, scope, spineEdges)
+    sections = orderSections(sectionInputs, sampler).map((s) => ({
+      sketchId: s.sketchId,
+      plane: s.plane,
+      loop: s.loop,
+      tangent: stationTangent(sampler, s.station, s.plane.normal as Vec3),
+      pick: s.pick,
+    }))
+  }
+
+  let lineage: LineageResult
+  if (multisection) {
+    const multi = sweepSectionsWithLineage(
+      oc, scope, sections, spineEdges, featureId, sub.transition === 'round',
+    )
+    opSketchId = multi.namingSketchId
+    lineage = multi
+  } else {
+    lineage = sweepProfileWithLineage(
+      oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId,
+      binormal, sub.transition === 'round',
+    )
+  }
   const swept = scope.track(lineage.solid)
   for (const e of spineEdges) scope.release(e)
   // A profile taller than the pitch (or wider than the radius) makes the shell
@@ -754,7 +870,7 @@ export function solveSweep(
     mergeTarget,
     bodyId,
     featureId,
-    sketchId: firstSketchId,
+    sketchId: opSketchId,
     opName: 'sweep',
     profileQueries,
     faceNames: lineage.faceNames,

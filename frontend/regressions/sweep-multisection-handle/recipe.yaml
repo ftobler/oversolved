@@ -1,0 +1,290 @@
+kind: part
+features:
+  - id: path
+    kind: sketch
+    label: Handle path
+    plane: "@builtin_plane_front"
+    entities:
+      - id: p0
+        kind: spline
+      - id: p1
+        kind: spline
+    initial:
+      p0:
+        - -10
+        - 0
+        - -10
+        - 5.590169943749474
+        - -5
+        - 5
+        - 0
+        - 5
+      p1:
+        - 0
+        - 5
+        - 5
+        - 5
+        - 10
+        - 5.590169943749474
+        - 10
+        - 0
+  - id: c0
+    kind: sketch
+    label: Start circle
+    plane: "@builtin_plane_top"
+    entities:
+      - id: c0e
+        kind: circle
+    initial:
+      c0e:
+        - -10
+        - 0
+        - 1
+  - id: c6
+    kind: sketch
+    label: End circle
+    plane: "@builtin_plane_top"
+    entities:
+      - id: c6e
+        kind: circle
+    initial:
+      c6e:
+        - 10
+        - 0
+        - 1
+  - id: cst
+    kind: sketch
+    label: Station normals
+    plane: "@builtin_plane_front"
+    entities:
+      - id: n1
+        kind: line
+      - id: n2
+        kind: line
+      - id: n3
+        kind: line
+      - id: n4
+        kind: line
+      - id: n5
+        kind: line
+    initial:
+      n1:
+        - -8.428892
+        - 3.8503
+        - -7.828239
+        - 3.05079
+      n2:
+        - -4.320748
+        - 4.978977
+        - -4.266879
+        - 3.980429
+      n3:
+        - 0
+        - 5
+        - 0
+        - 6
+      n4:
+        - 4.320748
+        - 4.978977
+        - 4.266879
+        - 3.980429
+      n5:
+        - 8.428892
+        - 3.8503
+        - 7.828239
+        - 3.05079
+  - id: pl1
+    kind: plane
+    definition:
+      mode: line_angle
+      line: "@cst/n1"
+      angle: 0
+  - id: pl2
+    kind: plane
+    definition:
+      mode: line_angle
+      line: "@cst/n2"
+      angle: 0
+  - id: pl3
+    kind: plane
+    definition:
+      mode: line_angle
+      line: "@cst/n3"
+      angle: 0
+  - id: pl4
+    kind: plane
+    definition:
+      mode: line_angle
+      line: "@cst/n4"
+      angle: 0
+  - id: pl5
+    kind: plane
+    definition:
+      mode: line_angle
+      line: "@cst/n5"
+      angle: 0
+  - id: k1
+    kind: sketch
+    label: Section 1
+    plane: "@pl1"
+    entities:
+      - id: l1
+        kind: line
+      - id: a1
+        kind: arc
+      - id: l2
+        kind: line
+      - id: a2
+        kind: arc
+      - id: l3
+        kind: line
+      - id: a3
+        kind: arc
+      - id: l4
+        kind: line
+      - id: a4
+        kind: arc
+    initial:
+      l1: [0.425, -1.5, -0.425, -1.5]
+      a1: [0.425, -1.3, 0.2, -90, 0]
+      l2: [0.625, -1.3, 0.625, 1.3]
+      a2: [0.425, 1.3, 0.2, 0, 90]
+      l3: [0.425, 1.5, -0.425, 1.5]
+      a3: [-0.425, 1.3, 0.2, 90, 180]
+      l4: [-0.625, 1.3, -0.625, -1.3]
+      a4: [-0.425, -1.3, 0.2, 180, 270]
+  - id: k2
+    kind: sketch
+    label: Section 2
+    plane: "@pl2"
+    entities:
+      - id: l1
+        kind: line
+      - id: a1
+        kind: arc
+      - id: l2
+        kind: line
+      - id: a2
+        kind: arc
+      - id: l3
+        kind: line
+      - id: a3
+        kind: arc
+      - id: l4
+        kind: line
+      - id: a4
+        kind: arc
+    initial:
+      l1: [0.425, -1.5, -0.425, -1.5]
+      a1: [0.425, -1.3, 0.2, -90, 0]
+      l2: [0.625, -1.3, 0.625, 1.3]
+      a2: [0.425, 1.3, 0.2, 0, 90]
+      l3: [0.425, 1.5, -0.425, 1.5]
+      a3: [-0.425, 1.3, 0.2, 90, 180]
+      l4: [-0.625, 1.3, -0.625, -1.3]
+      a4: [-0.425, -1.3, 0.2, 180, 270]
+  - id: k3
+    kind: sketch
+    label: Section 3
+    plane: "@pl3"
+    entities:
+      - id: l1
+        kind: line
+      - id: a1
+        kind: arc
+      - id: l2
+        kind: line
+      - id: a2
+        kind: arc
+      - id: l3
+        kind: line
+      - id: a3
+        kind: arc
+      - id: l4
+        kind: line
+      - id: a4
+        kind: arc
+    initial:
+      l1: [0.425, -1.5, -0.425, -1.5]
+      a1: [0.425, -1.3, 0.2, -90, 0]
+      l2: [0.625, -1.3, 0.625, 1.3]
+      a2: [0.425, 1.3, 0.2, 0, 90]
+      l3: [0.425, 1.5, -0.425, 1.5]
+      a3: [-0.425, 1.3, 0.2, 90, 180]
+      l4: [-0.625, 1.3, -0.625, -1.3]
+      a4: [-0.425, -1.3, 0.2, 180, 270]
+  - id: k4
+    kind: sketch
+    label: Section 4
+    plane: "@pl4"
+    entities:
+      - id: l1
+        kind: line
+      - id: a1
+        kind: arc
+      - id: l2
+        kind: line
+      - id: a2
+        kind: arc
+      - id: l3
+        kind: line
+      - id: a3
+        kind: arc
+      - id: l4
+        kind: line
+      - id: a4
+        kind: arc
+    initial:
+      l1: [0.425, -1.5, -0.425, -1.5]
+      a1: [0.425, -1.3, 0.2, -90, 0]
+      l2: [0.625, -1.3, 0.625, 1.3]
+      a2: [0.425, 1.3, 0.2, 0, 90]
+      l3: [0.425, 1.5, -0.425, 1.5]
+      a3: [-0.425, 1.3, 0.2, 90, 180]
+      l4: [-0.625, 1.3, -0.625, -1.3]
+      a4: [-0.425, -1.3, 0.2, 180, 270]
+  - id: k5
+    kind: sketch
+    label: Section 5
+    plane: "@pl5"
+    entities:
+      - id: l1
+        kind: line
+      - id: a1
+        kind: arc
+      - id: l2
+        kind: line
+      - id: a2
+        kind: arc
+      - id: l3
+        kind: line
+      - id: a3
+        kind: arc
+      - id: l4
+        kind: line
+      - id: a4
+        kind: arc
+    initial:
+      l1: [0.425, -1.5, -0.425, -1.5]
+      a1: [0.425, -1.3, 0.2, -90, 0]
+      l2: [0.625, -1.3, 0.625, 1.3]
+      a2: [0.425, 1.3, 0.2, 0, 90]
+      l3: [0.425, 1.5, -0.425, 1.5]
+      a3: [-0.425, 1.3, 0.2, 90, 180]
+      l4: [-0.625, 1.3, -0.625, -1.3]
+      a4: [-0.425, -1.3, 0.2, 180, 270]
+  - id: sw1
+    kind: sweep
+    label: Handle
+    sweep:
+      sketch:
+        - "@c0"
+        - "@k1"
+        - "@k2"
+        - "@k3"
+        - "@k4"
+        - "@k5"
+        - "@c6"
+      path: "@path"
+      multisection: true
+      operation: new

@@ -1,0 +1,54 @@
+{
+  "origin": {
+    "kind": "bug_report",
+    "ref": "build123d official examples/handle.py (feature/sweep-multisection.md)",
+    "date": "2026-10-28"
+  },
+  "license": {
+    "spdx": "Apache-2.0",
+    "source": "build123d official examples, examples/handle.py",
+    "commit": "8064bf73425d417b34f81557b7d19f1abbc2de0a"
+  },
+  "severity": "hard",
+  "what": "the build123d handle: two end circles r1 and five rounded-rectangle sections swept along a two-Bezier arch",
+  "features": {
+    "default": "ok",
+    "except": {
+      "path": "underconstrained",
+      "c0": "underconstrained",
+      "c6": "underconstrained",
+      "cst": "underconstrained",
+      "k1": "underconstrained",
+      "k2": "underconstrained",
+      "k3": "underconstrained",
+      "k4": "underconstrained",
+      "k5": "underconstrained"
+    }
+  },
+  "tolerance": {
+    "rel": 0.001,
+    "abs": 0.001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 94.78092472492837,
+    "area": 211.51619618916047,
+    "centroid": [
+      -1.1269579128919728e-11,
+      3.950928303587337,
+      -1.0250401474696985e-12
+    ],
+    "bbox": [
+      -10.999999999996362,
+      -2.1827872842550278e-11,
+      -1.5090611825629978,
+      10.999999999992724,
+      5.643719341342872,
+      1.509061182563004
+    ],
+    "faces": 22,
+    "edges": 50
+  },
+  "snapshot": true
+}

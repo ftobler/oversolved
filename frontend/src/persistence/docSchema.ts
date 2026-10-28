@@ -489,6 +489,7 @@ function checkSweep(sub: DocRecord, field: string): void {
   checkOptional(sub, 'sketch', field, checkRefOrRefList)
   checkOptional(sub, 'path', field, checkRefOrRefList)
   checkOptional(sub, 'transition', field, (v, f) => checkEnum(v, f, ['mitre', 'round'] as const))
+  checkOptional(sub, 'multisection', field, checkBoolean)
   checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, OPERATIONS))
   checkOptional(sub, 'merge_target', field, checkRef)
 }

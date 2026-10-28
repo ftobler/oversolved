@@ -1,0 +1,51 @@
+kind: part
+features:
+  - id: path
+    kind: sketch
+    plane: "@builtin_plane_top"
+    entities:
+      - id: l1
+        kind: line
+    initial:
+      l1:
+        - 0
+        - 0
+        - 0
+        - -10
+  - id: pl2
+    kind: plane
+    definition:
+      mode: offset
+      plane: "@builtin_plane_front"
+      offset: 10
+  - id: s1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: c1
+        kind: circle
+    initial:
+      c1:
+        - 0
+        - 0
+        - 1
+  - id: s2
+    kind: sketch
+    plane: "@pl2"
+    entities:
+      - id: c2
+        kind: circle
+    initial:
+      c2:
+        - 0
+        - 0
+        - 2
+  - id: sw1
+    kind: sweep
+    sweep:
+      sketch:
+        - $s1
+        - $s2
+      path: $path
+      multisection: true
+      operation: new

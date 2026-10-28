@@ -19,11 +19,14 @@ const MODE_B = { value: 2 } as unknown as OccEnumValue
 type Outcome = 'throw' | 'silent-fail' | 'success'
 
 /** A fake BRepOffsetAPI_MakePipeShell builder whose Build()/IsDone()/MakeSolid()
- *  behavior is scripted per instance via `outcome`. */
-function fakeBuilder(outcome: Outcome) {
+ *  behavior is scripted per instance via `outcome`. `addLog`, when given,
+ *  records every Add_1 profile so a caller can assert the call order. */
+function fakeBuilder(outcome: Outcome, addLog?: OccShape[]) {
   return {
     SetTransitionMode: (): void => {},
-    Add_1: (): void => {},
+    Add_1: (profile: OccShape): void => {
+      addLog?.push(profile)
+    },
     Build: (): void => {
       if (outcome === 'throw') throw new Error(`boom from ${outcome}`)
     },
@@ -37,11 +40,11 @@ function fakeBuilder(outcome: Outcome) {
 
 /** Fake oc module whose BRepOffsetAPI_MakePipeShell hands out builders from
  *  `outcomes`, in call order (one per mode attempted). */
-function fakeOcc(outcomes: Outcome[]): OccModule {
+function fakeOcc(outcomes: Outcome[], addLog?: OccShape[]): OccModule {
   let i = 0
   return {
     BRepOffsetAPI_MakePipeShell: function () {
-      const b = fakeBuilder(outcomes[i])
+      const b = fakeBuilder(outcomes[i], addLog)
       i++
       return b
     },
@@ -55,16 +58,36 @@ describe('attemptPipeShellSweep', () => {
   it('returns the first successful mode and no error', () => {
     const oc = fakeOcc(['success', 'success'])
     const scope = new DisposeScope()
-    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, outerWire, [MODE_A, MODE_B])
+    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], [MODE_A, MODE_B])
     expect(lastError).toBeNull()
     expect(result).not.toBeNull()
     expect(result?.solid).toEqual({ marker: 'solid' })
   })
 
+  it('adds one wire per section in the given order', () => {
+    const addLog: OccShape[] = []
+    const oc = fakeOcc(['success'], addLog)
+    const scope = new DisposeScope()
+    const wires = [
+      { marker: 's0' }, { marker: 's1' }, { marker: 's2' },
+    ] as unknown as OccShape[]
+    const { result } = attemptPipeShellSweep(oc, scope, spineWire, wires, [MODE_A])
+    expect(result).not.toBeNull()
+    expect(addLog).toEqual(wires)
+  })
+
+  it('adds the single profile wire exactly once', () => {
+    const addLog: OccShape[] = []
+    const oc = fakeOcc(['success'], addLog)
+    const scope = new DisposeScope()
+    attemptPipeShellSweep(oc, scope, spineWire, [outerWire], [MODE_A])
+    expect(addLog).toEqual([outerWire])
+  })
+
   it('falls through a throwing mode to a later successful mode, with no leftover error', () => {
     const oc = fakeOcc(['throw', 'success'])
     const scope = new DisposeScope()
-    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, outerWire, [MODE_A, MODE_B])
+    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], [MODE_A, MODE_B])
     expect(lastError).toBeNull()
     expect(result).not.toBeNull()
   })
@@ -72,7 +95,7 @@ describe('attemptPipeShellSweep', () => {
   it('reports the last exception when every mode throws', () => {
     const oc = fakeOcc(['throw', 'throw'])
     const scope = new DisposeScope()
-    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, outerWire, [MODE_A, MODE_B])
+    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], [MODE_A, MODE_B])
     expect(result).toBeNull()
     expect(lastError).toBeInstanceOf(Error)
     expect((lastError as Error).message).toBe('boom from throw')
@@ -83,7 +106,7 @@ describe('attemptPipeShellSweep', () => {
     // A stale lastError from mode A must not survive to the final result.
     const oc = fakeOcc(['throw', 'silent-fail'])
     const scope = new DisposeScope()
-    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, outerWire, [MODE_A, MODE_B])
+    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], [MODE_A, MODE_B])
     expect(result).toBeNull()
     expect(lastError).toBeNull()
   })
