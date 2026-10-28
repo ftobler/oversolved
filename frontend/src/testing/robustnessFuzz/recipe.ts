@@ -160,6 +160,18 @@ export interface RecipeHelix {
   turns: number
 }
 
+export interface RecipeSplit {
+  kind: 'split'
+  id: string
+  target: string
+  // The cutting plane is the world plane normal to this axis, at a fraction of
+  // the body's bbox along it (drawn 0.2..0.8 and grid-snapped at run time), so
+  // it always crosses the body instead of missing it.
+  axis: AxisName
+  fraction: number
+  keep: 'above' | 'below' | 'both'
+}
+
 export type RecipeStep =
   | RecipeStart
   | RecipeBoolean
@@ -171,6 +183,7 @@ export type RecipeStep =
   | RecipeMirror
   | RecipeShell
   | RecipeHelix
+  | RecipeSplit
 
 export interface Recipe {
   seed: number
@@ -188,6 +201,11 @@ export interface RecipeOptions {
   // every existing seed's chain stays byte-identical and the pinned findings
   // keep their seeds.
   startShape?: StartShapeKind
+  // Append one split step drawn from a DERIVED PRNG (`seed ^ SPLIT_SALT`),
+  // never from the main stream: every existing seed's chain stays
+  // byte-identical and the pinned findings keep their seeds, the same rule the
+  // ring start follows. Used by the dedicated split sweep.
+  splitTail?: boolean
 }
 
 // The number of leading display-sorted edges an edge pick is allowed to land
@@ -367,7 +385,28 @@ export function generateRecipe(seed: number, options: RecipeOptions = {}): Recip
     if (step === null) break
     steps.push(step)
   }
+  if (options.splitTail) steps.push(drawSplitTail(seed))
   return { seed, steps }
+}
+
+/**
+ * The one split step a `splitTail` recipe appends. Its stream is derived from
+ * the seed, so turning the option on never redraws the main chain: the same
+ * argument the ring start makes, and the reason every pinned seed keeps its
+ * seed.
+ */
+export const SPLIT_SALT = 0x5f3a71c9
+
+function drawSplitTail(seed: number): RecipeSplit {
+  const rnd = makePrng((seed ^ SPLIT_SALT) >>> 0)
+  return {
+    kind: 'split',
+    id: 'split_tail',
+    target: PRIMARY_BODY,
+    axis: drawOf(rnd, ['x', 'y', 'z'] as const),
+    fraction: drawInt(rnd, 2, 8) / 10,
+    keep: drawOf(rnd, ['above', 'below', 'both'] as const),
+  }
 }
 
 // ─── perturbation ───

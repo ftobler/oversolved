@@ -41,6 +41,13 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
     },
     {
       "enabled": true,
+      "id": "add_split",
+      "label": "Add split",
+      "params": [],
+      "undoable": true,
+    },
+    {
+      "enabled": true,
       "id": "add_transform",
       "label": "Add transform",
       "params": [],

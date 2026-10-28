@@ -1,0 +1,41 @@
+{
+  "bodies": {
+    "body_ex1": {
+      "created_by": "ex1",
+      "modified_by": [
+        "h1",
+        "sp1"
+      ],
+      "face_hashes": [
+        "gface_710faccb916814d3",
+        "gface_8fde6b877da9a80c",
+        "gface_a304e8c73b73b142",
+        "gface_a40c1bb230938273",
+        "gface_c98ae835545f54bf",
+        "gface_cd4a24980ddedf76",
+        "gface_e471c6160e3a4161",
+        "gface_f25065c3998fe51f"
+      ],
+      "edge_hashes": [
+        "gedge_00680d27e2310387",
+        "gedge_16548c0590d4a993",
+        "gedge_3051ace5a1f16d21",
+        "gedge_34cc9106dadd8b58",
+        "gedge_447a23b267f2e27d",
+        "gedge_50b23f9ba33c210f",
+        "gedge_5f461222afb0116f",
+        "gedge_6ee07461f546818c",
+        "gedge_890cd1a409356fb5",
+        "gedge_981a3d197f8851da",
+        "gedge_9e0fe3c647a6c418",
+        "gedge_a3ee0e8bf9448ab2",
+        "gedge_a8314de3b24717a4",
+        "gedge_ae5377455e41da5e",
+        "gedge_de573dc4c2b5a7c6",
+        "gedge_f714641ecc9c84b6",
+        "gedge_f9e06ed08e204dd0",
+        "gedge_fec1e95ee54e48a4"
+      ]
+    }
+  }
+}

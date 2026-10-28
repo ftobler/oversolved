@@ -33,6 +33,7 @@ function referencedBodies(step: RecipeStep): string[] {
     case 'mirror': return [step.target]
     case 'shell': return [step.target]
     case 'helix': return [step.target]
+    case 'split': return [step.target]
   }
 }
 
@@ -76,6 +77,7 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'mirror': return []
       case 'shell': return [step.thickness]
       case 'helix': return [step.pitch]
+      case 'split': return []
     }
   }
 
@@ -91,8 +93,35 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'mirror': return [step.face]
       case 'shell': return [step.face]
       case 'helix': return [step.face, step.turns]
+      case 'split': return [step.fraction * 10]
     }
   }
+
+  it('the split-tail option leaves the default chain byte-identical', () => {
+    // The tail is drawn from a derived PRNG, so turning the option on cannot
+    // redraw any existing seed's chain (the ring-start precedent).
+    for (let seed = 0; seed < 50; seed++) {
+      const plain = generateRecipe(seed)
+      const tailed = generateRecipe(seed, { splitTail: true })
+      expect(tailed.steps.slice(0, plain.steps.length)).toEqual(plain.steps)
+      expect(tailed.steps).toHaveLength(plain.steps.length + 1)
+    }
+  })
+
+  it('appends one split step with a drawn axis, fraction and keep side', () => {
+    const keeps = new Set<string>()
+    for (let seed = 0; seed < 50; seed++) {
+      const last = generateRecipe(seed, { splitTail: true }).steps.at(-1)!
+      expect(last.kind).toBe('split')
+      if (last.kind !== 'split') continue
+      expect(last.target).toBe(PRIMARY_BODY)
+      expect(['x', 'y', 'z']).toContain(last.axis)
+      expect(last.fraction).toBeGreaterThanOrEqual(0.2)
+      expect(last.fraction).toBeLessThanOrEqual(0.8)
+      keeps.add(last.keep)
+    }
+    expect(keeps).toEqual(new Set(['above', 'below', 'both']))
+  })
 
   it('draws one start plus at most eight edits, all on the grid', () => {
     for (let seed = 0; seed < SEEDS; seed++) {

@@ -1,0 +1,20 @@
+{
+  "method": "holed block 10^3, bore d5 along Z, kept both: V = 1000 - pi*r^2*L, A = (600 - 2 pi r^2 + 2 pi r L) + 2*50 (two caps of 50)",
+  "bodies": 2,
+  "volume": 803.650459150638,
+  "area": 817.8097245096172,
+  "centroid": [
+    5,
+    5,
+    5
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    10,
+    10,
+    10
+  ],
+  "faces": 16
+}

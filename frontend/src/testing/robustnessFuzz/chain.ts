@@ -17,8 +17,8 @@ import { DisposeScope, withTransientScope } from '@/kernel/occ/disposeScope'
 import { CountingScope } from '@/kernel/occ/countingScope'
 import { HandleTable, type OccHandle } from '@/kernel/occ/handleTable'
 import type { OccModule, OccShape } from '@/kernel/occ/occTypes'
-import { makeBoxAt, makeCylinder, edgeToGeom, type Vec3 } from '@/kernel/occ/primitives'
-import { volumeOf, countSolids, countSubShapes } from '@/kernel/occ/booleans'
+import { makeBoxAt, makeCylinder, edgeToGeom, shapeBndBox, readSolidVertices, type Vec3 } from '@/kernel/occ/primitives'
+import { volumeOf, countSolids, countSubShapes, exploreSolids } from '@/kernel/occ/booleans'
 import { transformCopy, makeTranslationTrsf, makeScaleTrsf } from '@/kernel/occ/transforms'
 import { extrudeProfileWithLineage, revolveProfileWithLineage, sketchLoopsToFace, revolveFace } from '@/kernel/occ/prismLineage'
 import { solidToEdges, readShapeFaceMetadata, bodyFrame } from '@/kernel/occ/tessellation'
@@ -30,6 +30,7 @@ import { solveArray, solveCircularArray } from '@/kernel/features/array'
 import { solveMirror } from '@/kernel/features/transformMirror'
 import { solveShell } from '@/kernel/features/shell'
 import { solveHelix } from '@/kernel/features/helix'
+import { solveSplit } from '@/kernel/features/splitByPlane'
 import { extractOccErrorMessage } from '@/kernel/errors'
 import { threadEntry } from '@/kernel/threadTable'
 import type { Repository } from '@/kernel/query'
@@ -361,6 +362,85 @@ function checkMonotonic(step: RecipeStep, targetBefore: number | undefined, edit
   }
 }
 
+// A split may legitimately refuse: the plane can miss the body or leave a side
+// empty once an earlier step moved the material. Any other message is a finding.
+const SPLIT_REFUSALS = /does not cross|nothing of body|unsound result/
+
+/**
+ * The split's invariants. A one-sided split keeps strictly less material than
+ * the body had and still some; keep both adds up to exactly the body it cut
+ * (1e-6 rel) and leaves at least two bodies. Every result body's bbox lies on
+ * its kept side (the above half keeps the target id), and no UUID may be
+ * claimed by two live faces -- the rule the merged transfer exists for.
+ */
+function checkSplit(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  bodyStore: Record<string, Body>,
+  targetBefore: number | undefined,
+  outcome: StepOutcome,
+  step: Extract<RecipeStep, { kind: 'split' }>,
+  stepIndex: number,
+  violations: ChainViolation[],
+): void {
+  const push = (message: string): void => { violations.push({ step: stepIndex, message }) }
+  if (targetBefore === undefined || outcome.splitPlane === undefined) {
+    push('the split step ran with no target volume to compare against')
+    return
+  }
+  const ids = outcome.editedIds ?? []
+  const volumes = ids.map((id) => {
+    const body = bodyStore[id]
+    return body === undefined || body.shape === null ? 0 : volumeOf(oc, scope, table.get<OccShape>(body.shape as OccHandle))
+  })
+  const sum = volumes.reduce((total, volume) => total + volume, 0)
+  const tol = 1e-6 * Math.max(1, Math.abs(targetBefore))
+  if (step.keep === 'both') {
+    if (ids.length < 2) push(`split keep both produced ${ids.length} body(ies)`)
+    if (Math.abs(sum - targetBefore) > tol) push(`split keep both halves add up to ${sum}, the body was ${targetBefore}`)
+  } else {
+    if (ids.length !== 1) push(`split keep ${step.keep} produced ${ids.length} body(ies)`)
+    const kept = volumes[0] ?? 0
+    if (!(kept > 0)) push(`split keep ${step.keep} kept volume ${kept}`)
+    else if (kept >= targetBefore - 1e-9 * Math.max(1, Math.abs(targetBefore))) {
+      push(`split keep ${step.keep} kept the whole body (${kept} of ${targetBefore})`)
+    }
+  }
+  const { axis, offset, span } = outcome.splitPlane
+  const index = axis === 'x' ? 0 : axis === 'y' ? 1 : 2
+  for (const id of ids) {
+    const body = bodyStore[id]
+    if (body === undefined || body.shape === null) continue
+    // Vertices, not the shape's bbox: a cut can leave a face with a large
+    // tolerance, and BRepBndLib.Add inflates the box by it (seed 14 grew by
+    // 2.56 mm). The cut is planar, so the kept side's extreme along its normal
+    // is on the cap's vertices. A vertex-less solid falls back to the bbox.
+    const solid = exploreSolids(oc, scope, table.get<OccShape>(body.shape as OccHandle))[0]
+    const verts = readSolidVertices(oc, scope, solid)
+    const box = shapeBndBox(oc, scope, solid)
+    const lo = verts.length > 0 ? Math.min(...verts.map((v) => v[index])) : box.min[index]
+    const hi = verts.length > 0 ? Math.max(...verts.map((v) => v[index])) : box.max[index]
+    const side = step.keep === 'both' ? (id === step.target ? 'above' : 'below') : step.keep
+    const distance = side === 'above' ? lo - offset : hi - offset
+    const wrongSide = side === 'above' ? distance < -1e-6 * span : distance > 1e-6 * span
+    if (wrongSide) {
+      push(
+        `split body ${id} reaches ${distance} past the ${side} side of the plane ` +
+        `(plane at ${offset}, extreme ${lo}..${hi})`,
+      )
+    }
+  }
+  const seen = new Set<string>()
+  for (const [id, body] of Object.entries(bodyStore)) {
+    for (const uuid of body.face_uuids ?? []) {
+      if (uuid === null) continue
+      if (seen.has(uuid)) push(`UUID ${uuid} is claimed by two live faces (again on ${id})`)
+      else seen.add(uuid)
+    }
+  }
+}
+
 function requireBody(bodyStore: Record<string, Body>, id: string): Body {
   const body = bodyStore[id]
   if (body === undefined || body.shape === null) throw new Error(`body '${id}' is not in the store`)
@@ -593,6 +673,9 @@ function pickFace(faces: AnyFace[], faceIndex: number): AnyFace {
 // The bodies an operation reports as its result, for the monotonic check.
 interface StepOutcome {
   editedIds?: string[]
+  // A split's plane and the target's span along its normal, so the side
+  // invariant knows where the cut was and how much tolerance the bbox read has.
+  splitPlane?: { axis: AxisName; offset: number; span: number }
 }
 
 /** One step against the live store. Throws on any feature refusal. */
@@ -742,6 +825,27 @@ function applyStep(
     }, repoForLeaves, bodyStore)
     return {}
   }
+  if (step.kind === 'split') {
+    // The plane crosses the body by construction: it is normal to the drawn
+    // axis at a drawn fraction of the body's own bbox along it, grid-snapped so
+    // the chain reads like an authored document.
+    const body = requireBody(bodyStore, step.target)
+    const bbox = shapeBndBox(oc, scope, table.get<OccShape>(body.shape as OccHandle))
+    const axis = axisVec(step.axis)
+    const index = step.axis === 'x' ? 0 : step.axis === 'y' ? 1 : 2
+    const raw = bbox.min[index] + step.fraction * (bbox.max[index] - bbox.min[index])
+    const offset = Math.round(raw / FUZZ_GRID_MM) * FUZZ_GRID_MM
+    const planeQuery = `@fuzz/plane/${step.id}`
+    repo.registerQuery(planeQuery, () => ({ type: 'plane', origin: scale(axis, offset), normal: axis }))
+    const result = solveSplit(oc, scope, table, {
+      id: step.id,
+      split: { bodies: [step.target], plane: planeQuery, keep: step.keep },
+    }, repoForLeaves, bodyStore)
+    return {
+      editedIds: result.body_ids,
+      splitPlane: { axis: step.axis, offset, span: Math.max(1e-9, bbox.max[index] - bbox.min[index]) },
+    }
+  }
   // mirror
   const body = requireBody(bodyStore, step.target)
   let planeQuery: string
@@ -787,6 +891,9 @@ function executeChain(oc: OccModule, recipe: Recipe, options: ChainRunOptions): 
           run.violations.push({ step: i, message: `injected fault at ${step.id}` })
         }
         checkStore(oc, scope, table, bodyStore, i, run.violations)
+        if (step.kind === 'split') {
+          checkSplit(oc, scope, table, bodyStore, before.get(step.target), outcome, step, i, run.violations)
+        }
         const editedVolumes = (outcome.editedIds ?? []).map((id) => {
           const edited = bodyStore[id]
           return edited === undefined || edited.shape === null ? 0 : volumeOf(oc, scope, table.get<OccShape>(edited.shape))
@@ -809,6 +916,11 @@ function executeChain(oc: OccModule, recipe: Recipe, options: ChainRunOptions): 
         } else {
           run.refusals.push({ step: i, message: message || '(empty error message)' })
           if (!message) run.violations.push({ step: i, message: 'a refusal carried no message' })
+          // A split may only refuse for an authoring reason or a soundness
+          // refusal; anything else is a finding, never a quiet pass.
+          if (step.kind === 'split' && message && !SPLIT_REFUSALS.test(message)) {
+            run.violations.push({ step: i, message: `split refused with an unexpected message: ${message}` })
+          }
           report = {
             step: i, kind: step.kind, status: 'refused', error: message,
             trackCount: scope.trackCount, releaseCount: scope.releaseCount, peakLive: scope.peakLive,

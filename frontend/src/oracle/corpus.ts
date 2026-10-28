@@ -21,6 +21,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { featureParamKey } from '@/persistence/partDocSchema'
+import type { FeatureKind } from '@/types/cad'
 
 // `import.meta.url` rather than `__dirname`: the translations tier imports
 // these validators from a plain Node ESM entry (the drive CLI and MCP server),
@@ -165,16 +167,19 @@ export function listOracleCases(): OracleCase[] {
 }
 
 /** Apply an edit to a parsed document in place: the named feature's field.
- *  Params live nested under the kind key (the one canonical spelling), so the
- *  edit always lands in the sub-dict; a feature without one names a base field
- *  the oracle corpus never edits. */
+ *  Params live nested under the kind's own sub-key (the one canonical
+ *  spelling), which is `definition` for a plane and the kind name for the rest,
+ *  so the edit reads `featureParamKey` rather than assuming `feature[kind]`.
+ *  A feature without a sub-dict names a base field the corpus never edits. */
 export function applyOracleEdit(doc: Record<string, unknown>, edit: OracleEdit): void {
   const features = (doc.features as Array<Record<string, unknown>>) ?? []
   const feature = features.find((f) => f.id === edit.feature)
   if (feature === undefined) throw new Error(`oracle edit: no feature '${edit.feature}'`)
-  const sub = feature[feature.kind as string] as Record<string, unknown> | undefined
+  const kind = String(feature.kind)
+  const key = featureParamKey(kind as FeatureKind) ?? kind
+  const sub = feature[key] as Record<string, unknown> | undefined
   if (sub === undefined) {
-    throw new Error(`oracle edit: feature '${edit.feature}' has no '${String(feature.kind)}' sub-dict`)
+    throw new Error(`oracle edit: feature '${edit.feature}' has no '${key}' sub-dict`)
   }
   sub[edit.field] = edit.value
 }

@@ -28,10 +28,10 @@ import {
 import { normalToFrame } from '../types3d'
 
 export interface HalfSpaceBox {
-  /** The prism solid: the material the caller cuts away. */
+  // The prism solid: the material the caller cuts away.
   shape: OccShape
-  /** The prism's start face, lying in the plane. Named by the caller so the
-   *  cap it leaves in the result carries a construction UUID. */
+  // The prism's start face, lying in the plane. Named by the caller so the cap
+  // it leaves in the result carries a construction UUID.
   base: OccShape
 }
 

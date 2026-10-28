@@ -16,7 +16,7 @@ import { Repository } from '../query'
 // ─── Ported-kind set completeness ───
 
 describe('PORTED_FEATURE_KINDS', () => {
-  it('contains all 22 leaf feature kinds (19 brep + sketch + plane + variable)', () => {
+  it('contains all 23 leaf feature kinds (20 brep + sketch + plane + variable)', () => {
     const expected = [
       'sketch',
       'plane',
@@ -24,7 +24,7 @@ describe('PORTED_FEATURE_KINDS', () => {
       'fillet', 'chamfer',
       'boolean', 'hole',
       'array', 'circular_array',
-      'transform', 'mirror',
+      'transform', 'mirror', 'split',
       'delete_body', 'import_step',
       'variable',
       'shell', 'helix',

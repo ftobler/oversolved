@@ -1,0 +1,45 @@
+{
+  "method": "holed block 10^3, bore d5 along Z, kept y >= 5: V = 500 - pi*r^2*L/2, A = 100 + 100 + 2*(50 - pi*r^2/2) + pi*r*L + 50, centroid y = (500*7.5 - Vh*(5 + 4r/(3 pi))) / V",
+  "bodies": 1,
+  "volume": 401.825229575319,
+  "area": 408.9048622548086,
+  "centroid": [
+    5,
+    7.851571402184829,
+    5
+  ],
+  "bbox": [
+    0,
+    5,
+    0,
+    10,
+    10,
+    10
+  ],
+  "faces": 8,
+  "edit": {
+    "what": "edit pl1.offset 5 -> 6 (the split plane moves up one mm)",
+    "method": "the kept side is y >= 6: V = 10*4*10 - A_seg*L with the circular segment A_seg = r^2 acos(d/r) - d sqrt(r^2-d^2), d = 1; A = cap(100 - 2 sqrt(r^2-d^2) L) + 100 + 80 + 2*(40 - A_seg) + r*2 acos(d/r)*L; centroid y = (400*8 - V_seg*(5 + (2/3)(r^2-d^2)^1.5/A_seg))/V; the cap UUID is offset independent, so a pick on it still resolves",
+    "feature": "pl1",
+    "field": "offset",
+    "value": 6,
+    "expect": {
+      "bodies": 1,
+      "volume": 350.4579109293162,
+      "area": 362.2297992726752,
+      "centroid": [
+        5,
+        8.195262228119958,
+        5
+      ],
+      "bbox": [
+        0,
+        6,
+        0,
+        10,
+        10,
+        10
+      ]
+    }
+  }
+}

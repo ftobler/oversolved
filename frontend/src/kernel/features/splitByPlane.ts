@@ -15,7 +15,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
-import type { SplitFeatureDef } from '@/types/cad'
+import type { SplitFeatureDef, SplitKeep } from '@/types/cad'
 import type { Repository } from '../query'
 import type { ShapeNames } from '../occ/bodyNames'
 import type { FaceOrigin } from '../occ/booleans'
@@ -29,9 +29,6 @@ import { resolvePlaneRef } from './shared/planes'
 import { transferBooleanNames } from './booleanLineage'
 import { resplitBody } from './bodySplit'
 
-/** The side of the plane a `keep` value names, or `both`. */
-export type SplitKeep = SplitFeatureDef['keep'] extends infer K ? Exclude<K, undefined> : never
-
 const KEEP_VALUES: readonly SplitKeep[] = ['above', 'below', 'both']
 
 export interface SplitResult {
@@ -43,18 +40,18 @@ export interface SplitResult {
   solver_warning?: string
 }
 
-/** One cut of one body against one half-space box. */
+// One cut of one body against one half-space box.
 interface HalfCut {
   side: SplitSide
   shape: OccShape
   diff: BrepDiff
   faceOrigin: FaceOrigin[]
-  /** The box face that becomes this half's cap, named by the transfer. */
+  // The box face that becomes this half's cap, named by the transfer.
   base: OccSubShape
 }
 
-/** Everything a body needs before any store mutation, so a later failure
- *  cannot leave the earlier bodies half applied. */
+// Everything a body needs before any store mutation, so a later failure cannot
+// leave the earlier bodies half applied.
 interface SplitPlan {
   body: Body
   names: ShapeNames

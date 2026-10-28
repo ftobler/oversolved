@@ -304,6 +304,42 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
   // class.
   const RING_SEEDS = envInt('ROBUSTNESS_FUZZ_RING_SEEDS', 8)
 
+  // The split tail is its own seed family: the step is drawn from a derived
+  // PRNG (`seed ^ SPLIT_SALT`), so the default sweep's recipes stay
+  // byte-identical and its pinned findings keep their seeds. The tail is
+  // appended after the drawn chain, so a chain that refuses earlier never
+  // reaches it; that is why the floor counts split steps that BUILT, not seeds.
+  const SPLIT_SEEDS = envInt('ROBUSTNESS_FUZZ_SPLIT_SEEDS', 24)
+
+  it('replays the split-tail range: no violation and no unexpected refusal', { timeout: Math.min(90 * 60_000, 60_000 + Math.ceil(SPLIT_SEEDS / WORKERS) * BUDGET_MS) }, async () => {
+    const problems: string[] = []
+    let splitBuilt = 0
+    const outcomes = await runSeedsBounded(SPLIT_SEEDS, WORKERS, (seed) =>
+      runChainWithTimeout(generateRecipe(seed, { splitTail: true }))
+        .catch((err: unknown) => {
+          throw new Error(`split seed ${seed}: the watchdog child failed: ${err instanceof Error ? err.message : String(err)}`)
+        }))
+    for (let seed = 0; seed < SPLIT_SEEDS; seed++) {
+      const guarded = outcomes[seed]
+      if (guarded.status === 'hang') {
+        const where = guarded.hang.step === null
+          ? 'before the first step'
+          : `at ${guarded.hang.phase} step ${guarded.hang.step} (${guarded.hang.kind})`
+        problems.push(`split seed ${seed}: HANG ${where}`)
+        continue
+      }
+      const { run } = guarded.replay
+      for (const v of run.violations) problems.push(`split seed ${seed}: step ${v.step}: ${v.message}`)
+      const last = run.reports.at(-1)
+      if (last?.kind === 'split' && last.status === 'built') splitBuilt++
+    }
+    console.log(`[robustness-fuzz] split sweep: ${SPLIT_SEEDS} seeds, ${splitBuilt} split steps built`)
+    expect(problems).toEqual([])
+    // Non-vacuity: the tail has to reach the split on a real share of the range
+    // (about half of the first 24 seeds build it), or the sweep proves nothing.
+    expect(splitBuilt).toBeGreaterThanOrEqual(Math.ceil(SPLIT_SEEDS / 3))
+  })
+
   it('replays a nested-loop (washer) start range: no violation', { timeout: Math.min(90 * 60_000, 60_000 + Math.ceil(RING_SEEDS / WORKERS) * BUDGET_MS) }, async () => {
     const problems: string[] = []
     let built = 0

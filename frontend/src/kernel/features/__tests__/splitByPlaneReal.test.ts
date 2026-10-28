@@ -132,7 +132,7 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
     const scope = new DisposeScope()
     try { return canonicalFaces(occ, scope, shapeOf(r, featureId, bodyId)).length } finally { scope.dispose() }
   }
-  /** Every UUID in the store, asserting no live face claims one twice. */
+  // Every UUID in the store, asserting no live face claims one twice.
   function expectUniqueFaceUuids(r: BuildResponse, featureId: string): void {
     const seen = new Set<string>()
     for (const [id, body] of Object.entries(snapshot(r, featureId))) {
@@ -144,7 +144,7 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
     }
   }
 
-  /** The index of the flat face whose centroid is nearest `at`. */
+  // The index of the flat face whose centroid is nearest `at`.
   function flatFaceIndex(mesh: FaceMesh, at: [number, number, number], tol = 1e-6): number {
     let best = -1
     let bestDist = Infinity
@@ -163,7 +163,7 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
   function uuidAt(r: BuildResponse, bodyId: string, at: [number, number, number]): string | undefined {
     return uuidTokenOf(faceQueryAt(r, bodyId, at))
   }
-  /** The UUIDs of every live face in `bodyId`. */
+  // The UUIDs of every live face in `bodyId`.
   function liveFaceUuids(r: BuildResponse, bodyId: string): string[] {
     return (meshOf(r, bodyId).face_queries ?? []).map(uuidTokenOf).filter((u): u is string => u !== undefined)
   }

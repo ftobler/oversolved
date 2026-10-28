@@ -1,0 +1,132 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: bottom
+        kind: line
+      - id: right
+        kind: line
+      - id: top
+        kind: line
+      - id: left
+        kind: line
+    initial:
+      bottom:
+        - 0
+        - 0
+        - 1
+        - 0
+      right:
+        - 1
+        - 0
+        - 1
+        - 1
+      top:
+        - 1
+        - 1
+        - 0
+        - 1
+      left:
+        - 0
+        - 1
+        - 0
+        - 0
+    constraints:
+      - id: c1
+        kind: coincident
+        a:
+          entity: bottom
+          point: end
+        b:
+          entity: right
+          point: start
+      - id: c2
+        kind: coincident
+        a:
+          entity: right
+          point: end
+        b:
+          entity: top
+          point: start
+      - id: c3
+        kind: coincident
+        a:
+          entity: top
+          point: end
+        b:
+          entity: left
+          point: start
+      - id: c4
+        kind: coincident
+        a:
+          entity: left
+          point: end
+        b:
+          entity: bottom
+          point: start
+      - id: c5
+        kind: horizontal
+        target:
+          entity: bottom
+      - id: c6
+        kind: horizontal
+        target:
+          entity: top
+      - id: c7
+        kind: vertical
+        target:
+          entity: right
+      - id: c8
+        kind: vertical
+        target:
+          entity: left
+      - id: c9
+        kind: length
+        target:
+          entity: bottom
+        value: 1
+      - id: c10
+        kind: length
+        target:
+          entity: left
+        value: 1
+  - id: ex1
+    kind: extrude
+    extrude:
+      sketch: $sk1
+      distance: 1
+      direction: normal
+      operation: new
+  - id: sk2
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: p1
+        kind: point
+    initial:
+      p1:
+        - 0.5
+        - 0.5
+  - id: h1
+    kind: hole
+    hole:
+      sketch: "@sk2"
+      diameter: 0.5
+      depth_mode: through_all
+      target: "@body_ex1"
+      direction: normal
+  - id: pl1
+    kind: plane
+    definition:
+      mode: offset
+      plane: "@builtin_plane_top"
+      offset: 0.5
+  - id: sp1
+    kind: split
+    split:
+      bodies:
+        - "@ex1"
+      plane: "@pl1"
+      keep: above
