@@ -125,6 +125,9 @@ export type SweepFeatureDef = {
   sketch: string | string[]  // profile reference(s)
   path: string | string[]  // spine reference(s): sketch edges that form the path
   transition?: 'mitre' | 'round'  // how the profile turns a sharp path corner; absent means mitre
+  // Opt-in: every resolved outer loop is one section the path pierces, blended
+  // between stations. Absent or false keeps the same-plane multi-profile sweep.
+  multisection?: boolean
   operation?: 'add' | 'cut' | 'new'
   merge_target?: string
 }

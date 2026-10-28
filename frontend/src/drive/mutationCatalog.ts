@@ -642,7 +642,9 @@ export const MUTATION_CATALOG = {
   },
   add_sweep: {
     summary: 'Sweep a profile sketch along a path sketch.',
-    note: 'A sweep adds to the body it touches by default; ' + OPERATION_SETTER_NOTE('set_sweep_field'),
+    note: 'A sweep adds to the body it touches by default; ' + OPERATION_SETTER_NOTE('set_sweep_field') +
+      ' Sections on other planes are added with `add_sweep_profile`, then `set_sweep_field` ' +
+      '`multisection` true; each section must be pierced by the path.',
     fields: {
       ...featureAddFields(),
       sketchQuery: sketchQuery(),

@@ -76,6 +76,10 @@ export const SWEEP_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'sketch', label: 'Profile', multi: true,
       addMutationType: 'add_sweep_profile', addValueKey: 'sketchQuery',
       removeMutationType: 'remove_sweep_profile', transform: stripSelectionWrapper },
+    // Off by default: with it on, each outer loop is a section the path pierces
+    // and the body is blended between them, so a same-plane multi-profile sweep
+    // keeps its old body until the user opts in.
+    { type: 'checkbox', key: 'multisection', label: 'Sections', default: false },
     { type: 'select', key: 'transition', label: 'Corners', default: 'mitre',
       options: [{ value: 'mitre', label: 'Mitre' }, { value: 'round', label: 'Round' }] },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',

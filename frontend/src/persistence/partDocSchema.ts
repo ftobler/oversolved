@@ -162,6 +162,7 @@ export const FEATURE_SCHEMA_BY_KIND = {
     required: ['sketch', 'path'],
     properties: {
       sketch: REF_OR_LIST, path: REF_OR_LIST, transition: { enum: ['mitre', 'round'] },
+      multisection: { type: 'boolean' },
       operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
     },
   }),
