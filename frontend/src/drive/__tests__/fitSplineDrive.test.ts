@@ -107,4 +107,40 @@ describe.skipIf(!ready)('fit_spline sweep path (real kernel)', () => {
     // CadQuery 2.8.0: 1.4226384594837815; the sweep mode may differ slightly.
     expect(measure!.measures.volume).toBeCloseTo(1.4226384594837815, 3)
   }, 120_000)
+
+  // A path chain is walked from a degree-1 end. With the fit spline and a tail
+  // line in the sketch, authoring the line first makes the walk start at the
+  // tail's free end, so the fit spline is traversed backward and its spine edge
+  // goes through the reversal branch (poles reversed, knots u_max - u). The
+  // same two entities authored the other way round walk forward. Same geometry,
+  // so the two volumes must agree.
+  const chainPath = (lineFirst: boolean): ScriptStep[] => {
+    const fit: ScriptStep = {
+      mutation: {
+        type: 'add_entity', featureId: 'sk_path', kind: 'fit_spline',
+        params: [0, 0, 1, 4, 3, 6], entityId: 'sp',
+        tangents: [[0, 1], [1, 0]],
+      },
+    }
+    const tail: ScriptStep = {
+      mutation: { type: 'add_entity', featureId: 'sk_path', kind: 'line', params: [3, 6, 5, 6], entityId: 'tail' },
+    }
+    return [
+      { mutation: { type: 'add_sketch', featureId: 'sk_path', plane: '@builtin_plane_front' } },
+      ...(lineFirst ? [tail, fit] : [fit, tail]),
+      { mutation: { type: 'add_sketch', featureId: 'sk_prof', plane: '@builtin_plane_top' } },
+      { mutation: { type: 'add_entity', featureId: 'sk_prof', kind: 'circle', params: [0, 0, 0.25], entityId: 'c' } },
+      { mutation: { type: 'add_sweep', featureId: 'sw1', sketchQuery: '$sk_prof', pathQuery: '$sk_path' } },
+    ]
+  }
+
+  it('gives the same volume when the fit-spline path is walked backward', async () => {
+    const forward = await runHeadless({ doc: emptyDriveDoc(), steps: chainPath(false) })
+    const backward = await runHeadless({ doc: emptyDriveDoc(), steps: chainPath(true) })
+    expect(forward.features).toEqual([])
+    expect(backward.features).toEqual([])
+    const forwardVolume = (await measureHeadless(forward.doc!))!.measures.volume
+    const backwardVolume = (await measureHeadless(backward.doc!))!.measures.volume
+    expect(backwardVolume).toBeCloseTo(forwardVolume, 6)
+  }, 120_000)
 })

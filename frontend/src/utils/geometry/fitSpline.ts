@@ -538,7 +538,10 @@ export function chainSamples(poles: readonly Pt[], knots: readonly number[], n: 
 }
 
 /** A rendered polyline through the curve, `n + 1` points inclusive. Returns []
- *  for a degenerate point list (the caller hides the entity). */
+ *  for a degenerate point list (the caller hides the entity), and falls back to
+ *  the fit-point polyline when interpolation refuses the block: a malformed
+ *  handle or a coincident span still leaves a visible entity instead of a
+ *  silently missing one. */
 export function fitSplinePolyline(
   points: readonly Pt[],
   handleStart?: Pt | null,
@@ -550,7 +553,7 @@ export function fitSplinePolyline(
   try {
     curve = interpolateFitSpline(points, handleStart, handleEnd)
   } catch {
-    return []
+    return points.map(p => [p[0], p[1]])
   }
   const u0 = curve.knots[0]
   const u1 = curve.knots[curve.knots.length - 1]

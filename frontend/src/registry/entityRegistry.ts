@@ -273,11 +273,27 @@ export const ENTITY_PARAM_LAYOUT: Record<EntityKind, readonly string[]> = {
 }
 
 /** Every entity kind's params slot list on one line, for the mutation catalog
- *  and the docs: `line [x1, y1, x2, y2]; circle [cx, cy, r]; ...`. */
+ *  and the docs: `line [x1, y1, x2, y2]; circle [cx, cy, r]; ...`. A variable
+ *  kind's list is its minimum block, so `fit_spline` also names the authored
+ *  point range and the optional handle slots. */
 export function entityParamLayoutsSentence(): string {
   return (Object.keys(ENTITY_PARAM_LAYOUT) as EntityKind[])
-    .map(kind => `${kind} [${ENTITY_PARAM_LAYOUT[kind].join(', ')}]`)
+    .map(kind => {
+      const slots = ENTITY_PARAM_LAYOUT[kind].join(', ')
+      if (kind !== 'fit_spline') return `${kind} [${slots}]`
+      return `${kind} [${slots}] (2..64 fit points, then the optional c1x, c1y and c2x, c2y handles)`
+    })
     .join('; ')
+}
+
+/** Which end handles a fit-spline block carries, from its wire flag bits
+ *  (`lowerSketch` writes bit0 start, bit1 end; the Rust codec uses the same
+ *  encoding). */
+export function fitSplineHandlesFromFlags(flags: number): 'start' | 'end' | 'both' | undefined {
+  const hasStart = (flags & 1) !== 0
+  const hasEnd = (flags & 2) !== 0
+  if (hasStart && hasEnd) return 'both'
+  return hasStart ? 'start' : hasEnd ? 'end' : undefined
 }
 
 /** The named vertices and coordinate pairs of a fit spline with `nPoints` fit
@@ -307,4 +323,49 @@ export function fitSplineVertices(
     coordPairs.push([next, next + 1])
   }
   return { vertices, coordPairs }
+}
+
+/** The fit-point count of a block of `nParams` scalars carrying `handles`, or
+ *  null when the block cannot be one (`2 N + 2 h` with `N >= 2`). */
+function fitSplinePointCount(
+  nParams: number,
+  handles?: 'start' | 'end' | 'both',
+): number | null {
+  const handleCount = handles === 'both' ? 2 : handles === 'start' || handles === 'end' ? 1 : 0
+  const remaining = nParams - 2 * handleCount
+  if (remaining < 4 || remaining % 2 !== 0) return null
+  return remaining / 2
+}
+
+/** The vertex-key -> [xIndex, yIndex] map of ONE entity instance. A static kind
+ *  reads its registry row; a `fit_spline` derives its positional `start`,
+ *  `fit<k>`, `end` and `c1`/`c2` keys from the block length and handles, which
+ *  is the only place its point count exists. Undefined for an unknown kind or a
+ *  malformed block, so a caller keeps its existing "no such vertex" path. */
+export function entityVertexIndices(
+  kind: string,
+  nParams?: number,
+  handles?: 'start' | 'end' | 'both',
+): Record<string, [number, number]> | undefined {
+  if (kind === 'fit_spline') {
+    const n = nParams === undefined ? null : fitSplinePointCount(nParams, handles)
+    if (n === null) return undefined
+    return Object.fromEntries(fitSplineVertices(n, handles).vertices.map(v => [v.key, v.indices]))
+  }
+  return VERTEX_INDICES[kind]
+}
+
+/** The coordinate pairs to translate for ONE entity instance, the instance-aware
+ *  counterpart of `ALL_COORD_INDICES` (`fit_spline` again derives them). */
+export function entityCoordPairs(
+  kind: string,
+  nParams?: number,
+  handles?: 'start' | 'end' | 'both',
+): [number, number][] | undefined {
+  if (kind === 'fit_spline') {
+    const n = nParams === undefined ? null : fitSplinePointCount(nParams, handles)
+    if (n === null) return undefined
+    return fitSplineVertices(n, handles).coordPairs
+  }
+  return ALL_COORD_INDICES[kind]
 }

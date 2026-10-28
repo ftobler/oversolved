@@ -25,7 +25,7 @@ function generateChain(n, { skipStatusPass = true, dragMode = true } = {}) {
   let cx = 0
   let cy = 0
   for (let i = 0; i < n; i++) {
-    entities.push({ kind: Kind.Line, offset: i * 4 })
+    entities.push({ kind: Kind.Line, flags: 0, offset: i * 4, count: 4 })
     const horizontal = i % 2 === 0
     const ex = horizontal ? cx + 1 : cx
     const ey = horizontal ? cy : cy + 1

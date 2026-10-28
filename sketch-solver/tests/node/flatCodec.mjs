@@ -5,10 +5,10 @@
 // constraints.rs/codec.rs: the vitest wasm-kernel suite owns boundary
 // coverage, so drift here only affects the ungated Node scripts.
 
-export const MAGIC_IN = 0x3347_4b53 // "SKG3": rev 4 (f64 scalars), mirrors sketch-solver/src/codec.rs
+export const MAGIC_IN = 0x3447_4b53 // "SKG4": rev 5, variable-size entity records
 export const MAGIC_OUT = 0x3452_4b53 // "SKR4": adds the per-constraint verdicts
 
-export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4, Spline: 5 }
+export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4, Spline: 5, FitSpline: 6 }
 export const CKind = {
   Horizontal: 0,
   Vertical: 1,
@@ -44,6 +44,11 @@ export const Sel = {
   C1: 9,
   C2: 10,
 }
+/** Interior fit-point selectors: `fit<k>` is wire code `32 + k`, k = 1..62
+ *  (32 itself is unused because Fit(0) is `start`). Mirrors
+ *  `PointSelector::Fit` in sketch-solver/src/constraints.rs. */
+export const FIT_SELECTOR_BASE = 32
+export const fitSelector = (k) => FIT_SELECTOR_BASE + k
 export const Status = { FullyConstrained: 0, Underconstrained: 1, Overconstrained: 2 }
 
 class Writer {
@@ -78,7 +83,9 @@ export function encodeInput(input) {
   w.u32(input.dragAnchorId ?? 0)
   for (const e of input.entities) {
     w.u8(e.kind)
+    w.u8(e.flags ?? 0)
     w.u32(e.offset)
+    w.u32(e.count)
   }
   for (const p of input.params) w.f64(p)
   const maskLen = Math.ceil(input.params.length / 8)

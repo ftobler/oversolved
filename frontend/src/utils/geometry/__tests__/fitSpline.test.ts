@@ -11,6 +11,7 @@ import {
   chordParams,
   FitSplineError,
   fitSplineFromParams,
+  fitSplinePolyline,
   handlesFromTangents,
   interpolateFitSpline,
   scaleTangents,
@@ -89,6 +90,18 @@ describe('fit spline golden parity', () => {
     })
   }
 
+  it('pins the one-sided ScaleTangents cases', () => {
+    // OCCT evaluates the Lagrange window from the first degree+1 points at the
+    // flagged end, so an end-only tangent is scaled by an extrapolation. The
+    // generic loops above read these cases; this keeps them in the fixture.
+    const names = cases.map(c => c.name)
+    for (const n of [3, 4, 5]) {
+      for (const side of ['start', 'end']) {
+        expect(names).toContain(`n${n}_${side}_scale`)
+      }
+    }
+  })
+
   it('scaleTangents reproduces the OCCT rule for every scaled case', () => {
     for (const c of cases.filter(c => c.scale)) {
       const points = c.points.map(pt)
@@ -137,5 +150,19 @@ describe('fit spline param decoding', () => {
   it('refuses an odd or short block', () => {
     expect(() => fitSplineFromParams([0, 0, 1, 1, 2], null)).toThrow(FitSplineError)
     expect(() => fitSplineFromParams([0, 0], null)).toThrow(FitSplineError)
+  })
+})
+
+describe('fit spline polyline', () => {
+  it('falls back to the fit-point polyline when interpolation refuses the block', () => {
+    // A coincident span makes interpolateFitSpline throw; the entity must stay
+    // visible (a chord through its fit points), not vanish.
+    const points: Pt[] = [[0, 0], [1, 1], [1, 1], [2, 0]]
+    expect(fitSplinePolyline(points)).toEqual(points)
+    expect(fitSplinePolyline(points, [0, -1], [2, 1])).toEqual(points)
+  })
+
+  it('still hides a degenerate point list', () => {
+    expect(fitSplinePolyline([[0, 0]])).toEqual([])
   })
 })

@@ -38,7 +38,8 @@ def test_the_fixture_parses_and_covers_every_required_case() -> None:
     cases = fixture["cases"]
     names = {case["name"] for case in cases}
     # The plan's required cases: Ex010, 2..5 points without handles, both
-    # handles with and without scaling, and one handle for 3..5 points.
+    # handles with and without scaling, and one handle (either end) for 3..5
+    # points with and without scaling.
     required = {
         "ex010",
         "n2",
@@ -59,6 +60,12 @@ def test_the_fixture_parses_and_covers_every_required_case() -> None:
         "n3_both_scale",
         "n4_both_scale",
         "n5_both_scale",
+        "n3_start_scale",
+        "n4_start_scale",
+        "n5_start_scale",
+        "n3_end_scale",
+        "n4_end_scale",
+        "n5_end_scale",
     }
     assert names == required
     for case in cases:

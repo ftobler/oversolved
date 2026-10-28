@@ -27,7 +27,7 @@ import {
   encodeInput, decodeOutput, STATUS_NAME, Status, CONSTRAINT_FLAG,
   type FlatInput, type SolverOutput,
 } from '@/wasm-kernel/codec'
-import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
+import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags } from '@/registry'
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, type TopologyBytes } from '../topologyDecorate'
@@ -706,8 +706,11 @@ export function prepareDragContext(
     const ent = layout[anchorIndex]
 
     const isEdge = dragVertexKey === null
+    // A fit spline's vertex keys are positional, so its map comes from the
+    // lowered block's length and handle flags rather than the static registry.
+    const handles = ent.kind === 'fit_spline' ? fitSplineHandlesFromFlags(ent.flags) : undefined
     if (!isEdge) {
-      const vi = VERTEX_INDICES[ent.kind]?.[dragVertexKey]
+      const vi = entityVertexIndices(ent.kind, ent.size, handles)?.[dragVertexKey]
       if (vi) {
         // The doc param layout and the lowered layout share per-kind ordering, so
         // the registry indices apply directly at the entity's offset.
@@ -723,7 +726,7 @@ export function prepareDragContext(
         }
       }
       // Ellipse axis endpoints are derived from center + a/b/theta, so like the
-      // arc endpoints below they have no direct param pair in VERTEX_INDICES.
+      // arc endpoints below they have no direct param pair in the vertex map.
       // Pin them by inverting the cursor into a/b/theta each frame.
       if (ent.kind === 'ellipse' && isEllipseAxisKey(dragVertexKey)) {
         input.options = { dragMode: true, dragAnchorId: anchorIndex, skipStatusPass: true }
@@ -739,7 +742,7 @@ export function prepareDragContext(
         }
       }
       // Arc start/end are derived from center + radius + angle, so they have no
-      // direct param pair in VERTEX_INDICES. Pin them via radius/angle instead
+      // direct param pair in the vertex map. Pin them via radius/angle instead
       // (params: [cx, cy, radius, angle_start, angle_end]).
       if (ent.kind === 'arc' && (dragVertexKey === 'start' || dragVertexKey === 'end')) {
         const angleIndex = ent.offset + (dragVertexKey === 'start' ? 3 : 4)
@@ -767,7 +770,7 @@ export function prepareDragContext(
     // translated position. Each solve frame applies the cursor delta to every
     // coordinate pair, then lets the solver resolve constraints on other
     // entities.
-    const coordPairs = ALL_COORD_INDICES[ent.kind]
+    const coordPairs = entityCoordPairs(ent.kind, ent.size, handles)
     if (!coordPairs) return null
     input.options = { dragMode: true, dragAnchorId: anchorIndex, skipStatusPass: true }
     return {

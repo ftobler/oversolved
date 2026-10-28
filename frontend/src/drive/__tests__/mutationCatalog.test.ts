@@ -228,6 +228,16 @@ describe('mutation catalog', () => {
     expect(mutationInfoOf('add_entity_with_constraint').fields.params.note).toBe(note)
   })
 
+  it('names fit_spline on both add rows and its 2..64 point range', () => {
+    for (const type of ['add_entity', 'add_entity_with_constraint'] as const) {
+      expect(mutationInfoOf(type).fields.kind.note, type).toContain('fit_spline')
+      // The registry layout is the two-point minimum; the note has to say the
+      // block is variable or a script sends a 64-point spline with no clue why
+      // the slot list looked short.
+      expect(mutationInfoOf(type).fields.params.note, type).toContain('2..64 fit points')
+    }
+  })
+
   it('emits the schema enum members of every setter kind', () => {
     const notes = new Set<string>()
     for (const [type, kind] of Object.entries(FIELD_SETTER_KIND)) {

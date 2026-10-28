@@ -13,6 +13,7 @@ import {
 } from '../profileDiagnostics'
 import { OCC_CONFUSION, TOL_LOOP_CLOSURE, TOL_TOPOLOGY_MERGE } from '../solverConstants'
 import type { LoopEdge } from '../profileLoops'
+import { interpolateFitSpline } from '@/utils/geometry/fitSpline'
 
 const square = (s: number): LoopEdge[] => [
   { kind: 'line', start: [0, 0], end: [s, 0], start_vertex: '_v0', end_vertex: '_v1' },
@@ -231,6 +232,21 @@ describe('validateSketchArea', () => {
 
   it('passes a circle expressed as two arcs', () => {
     expect(validateSketchArea({ boundary: circleAsTwoArcs(0, 0, 5) })).toEqual({ buildable: true })
+  })
+
+  it('passes a standalone closed fit spline (start == end)', () => {
+    // A closed interpolating spline is one self-closing edge, like a closed
+    // Bezier; its zero chord is by construction, not the degenerate-edge
+    // signal, so it must stay buildable.
+    const curve = interpolateFitSpline([[0, 0], [2, 1], [3, 0], [2, -1], [0, 0]])
+    const loop: LoopEdge[] = [{
+      kind: 'fit_spline',
+      start: [0, 0],
+      end: [0, 0],
+      poles: curve.poles(),
+      knots: [...curve.knots],
+    }]
+    expect(validateSketchArea({ boundary: loop })).toEqual({ buildable: true })
   })
 
   it('refuses an area with no boundary', () => {

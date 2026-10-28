@@ -51,7 +51,7 @@ fn chord_params(points: &[[f64; 2]]) -> Vec<f64> {
 fn every_golden_case_matches_ocp() {
     let fixture = golden();
     let cases = fixture["cases"].as_array().unwrap();
-    assert!(cases.len() >= 19, "the fixture lost cases");
+    assert!(cases.len() >= 25, "the fixture lost cases");
     for case in cases {
         let name = case["name"].as_str().unwrap();
         let points = point_list(&case["points"]);
@@ -133,6 +133,26 @@ fn every_golden_case_matches_ocp() {
             assert_eq!(mults.len(), knots.len());
             assert_eq!(mults.first(), Some(&4));
             assert_eq!(mults.last(), Some(&4));
+        }
+    }
+}
+
+#[test]
+fn the_one_sided_scaled_cases_are_in_the_fixture() {
+    // The generic loop above reads these like any other case; this pins that
+    // the fixture still carries the one-sided ScaleTangents cases, whose
+    // end-only window is an extrapolation by OCCT's own rule.
+    let fixture = golden();
+    let names: Vec<String> = fixture["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap().to_string())
+        .collect();
+    for n in 3..=5 {
+        for side in ["start", "end"] {
+            let name = format!("n{n}_{side}_scale");
+            assert!(names.contains(&name), "missing {name}");
         }
     }
 }

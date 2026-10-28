@@ -17,6 +17,10 @@ import {
   ENTITY_SHORTCUTS,
   VERTEX_INDICES,
   ALL_COORD_INDICES,
+  entityCoordPairs,
+  entityVertexIndices,
+  fitSplineHandlesFromFlags,
+  fitSplineVertices,
   getDefaultParams,
 } from '@/registry/entityRegistry'
 import { iconUrl } from '@/components/Toolbar/tools/toolUtils'
@@ -398,5 +402,42 @@ describe('entityRegistry shortcuts', () => {
     for (const key of ENTITY_SHORTCUTS.keys()) {
       expect(CONSTRAINT_SHORTCUTS.has(key)).toBe(false)
     }
+  })
+})
+
+// ─── Variable-size entity lookups ───
+
+describe('fit spline instance layout', () => {
+  it('derives start/fit<k>/end/c1/c2 from the authored block', () => {
+    const { vertices, coordPairs } = fitSplineVertices(4, 'both')
+    expect(vertices.map(v => v.key)).toEqual(['start', 'fit1', 'fit2', 'end', 'c1', 'c2'])
+    expect(vertices.map(v => v.indices)).toEqual([[0, 1], [2, 3], [4, 5], [6, 7], [8, 9], [10, 11]])
+    expect(coordPairs).toHaveLength(6)
+
+    // The instance-aware lookup is what the drag path reads: the same keys for
+    // the 12-scalar block (4 points + 2 handles).
+    expect(entityVertexIndices('fit_spline', 12, 'both')).toEqual(
+      Object.fromEntries(vertices.map(v => [v.key, v.indices])),
+    )
+    expect(entityCoordPairs('fit_spline', 12, 'both')).toEqual(coordPairs)
+  })
+
+  it('maps the wire flag bits to the handles the block carries', () => {
+    expect(fitSplineHandlesFromFlags(0)).toBeUndefined()
+    expect(fitSplineHandlesFromFlags(1)).toBe('start')
+    expect(fitSplineHandlesFromFlags(2)).toBe('end')
+    expect(fitSplineHandlesFromFlags(3)).toBe('both')
+  })
+
+  it('keeps the static kinds on their registry rows', () => {
+    expect(entityVertexIndices('line')).toBe(VERTEX_INDICES['line'])
+    expect(entityCoordPairs('line')).toBe(ALL_COORD_INDICES['line'])
+  })
+
+  it('returns undefined for an unknown kind or a malformed fit block', () => {
+    expect(entityVertexIndices('unknown')).toBeUndefined()
+    expect(entityCoordPairs('unknown')).toBeUndefined()
+    expect(entityVertexIndices('fit_spline', 11, 'both')).toBeUndefined()
+    expect(entityCoordPairs('fit_spline', 4, 'both')).toBeUndefined()
   })
 })

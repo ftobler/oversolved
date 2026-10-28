@@ -119,11 +119,11 @@ function vertexId(e: LoopEdge, key: 'start_vertex' | 'end_vertex'): string | nul
   return typeof v === 'string' ? v : null
 }
 
-const CURVE_KINDS = new Set(['arc', 'ellipse', 'ellipse_arc', 'spline'])
+const CURVE_KINDS = new Set(['arc', 'ellipse', 'ellipse_arc', 'spline', 'fit_spline'])
 
 /**
  * True for an edge that is a complete closed curve on its own: a full ellipse, a
- * full-turn arc or elliptical arc, a self-closing spline. Its start and end
+ * full-turn arc or elliptical arc, a self-closing spline (Bezier or fit spline). Its start and end
  * coincide BY CONSTRUCTION, so its zero chord is not the degenerate-edge signal
  * C10 is about, and calling it degenerate would mark a perfectly good area
  * unbuildable.

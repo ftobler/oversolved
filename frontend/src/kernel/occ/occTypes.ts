@@ -38,9 +38,19 @@ export interface OccIntArray extends OccDisposable {
 }
 
 /** Geom_BSplineCurve(poles, knots, multiplicities, degree), with the knot
- *  removal the fit-spline writer uses to recover the C2 form. */
+ *  removal the fit-spline writer uses to recover the C2 form. `NbPoles` and
+ *  `Continuity` are the read-back a real-OCC test uses to prove the writer
+ *  produced CadQuery's clamped C2 curve, not the C0 chain. */
 export interface OccBSplineCurve extends OccDisposable {
   RemoveKnot(index: number, multiplicity: number, tolerance: number): boolean
+  NbPoles(): number
+  Continuity(): OccEnumValue
+}
+
+/** Handle_Geom_BSplineCurve: the smart-pointer wrapper `BRepAdaptor_Curve`
+ *  hands back; `get()` reaches the curve without taking ownership of it. */
+export interface OccBSplineHandle extends OccDisposable {
+  get(): OccBSplineCurve
 }
 
 export interface OccPolygonBuilder extends OccDisposable {
@@ -549,6 +559,9 @@ export interface OccCurveAdaptor extends OccDisposable {
   Value(u: number): OccXYZ
   Circle(): OccCircle
   Ellipse(): OccEllipse
+  /** The B-spline this edge was built from (only when GetType is
+   *  GeomAbs_BSplineCurve). */
+  BSpline(): OccBSplineHandle
 }
 
 /** Opaque embind enum value (e.g. `TopAbs_ShapeEnum.TopAbs_FACE`). */
@@ -633,6 +646,7 @@ export interface OccModule extends OccBaseModule {
     GeomAbs_Line: OccEnumValue
     GeomAbs_Circle: OccEnumValue
     GeomAbs_Ellipse: OccEnumValue
+    GeomAbs_BSplineCurve: OccEnumValue
   }
 
   // ─── shape construction ───
@@ -884,6 +898,9 @@ export interface OccModule extends OccBaseModule {
   GeomAbs_Shape: {
     GeomAbs_C0: OccEnumValue
     GeomAbs_C1: OccEnumValue
+    GeomAbs_C2: OccEnumValue
+    GeomAbs_C3: OccEnumValue
+    GeomAbs_CN: OccEnumValue
   }
 
   // ─── fillet / chamfer leaf ───

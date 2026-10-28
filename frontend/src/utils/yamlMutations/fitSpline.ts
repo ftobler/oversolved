@@ -205,9 +205,10 @@ export function applyInsertFitPoint(
   points.splice(at, 0, [point[0], point[1]])
   if (fitPointsProblem(points)) return
   writeFitSpline(feature, entity.def, points, entity.handleStart, entity.handleEnd)
-  // A point inserted before interior point k shifts k to k+1; start/end keep
-  // their names (they now name the new endpoints).
-  rewriteConstraintRefs(feature, entityId, k => (k >= at + 1 ? k + 1 : k))
+  // `splice(at, 0, p)` moves the OLD point `at` to `at + 1`, so a ref on
+  // `fit<at>` (and every later one) shifts up; the inserted point itself starts
+  // unconstrained. Start/end keep their names (they now name the new endpoints).
+  rewriteConstraintRefs(feature, entityId, k => (k >= at ? k + 1 : k))
 }
 
 /** Set or remove one end handle. `null` removes it and every constraint that

@@ -28,6 +28,17 @@ function translateEntity(
     sp.p2 = [sp.p2[0] + dx, sp.p2[1] + dy]
     sp.p3 = [sp.p3[0] + dx, sp.p3[1] + dy]
     sp.p4 = [sp.p4[0] + dx, sp.p4[1] + dy]
+  } else if ('points' in entity) {
+    // A fit spline's handles are absolute points (D2), so they translate with
+    // the fit points, exactly like the Bezier control points above.
+    const fit = entity as {
+      points: [number, number][]
+      handleStart?: [number, number]
+      handleEnd?: [number, number]
+    }
+    fit.points = fit.points.map(([x, y]) => [x + dx, y + dy])
+    if (fit.handleStart) fit.handleStart = [fit.handleStart[0] + dx, fit.handleStart[1] + dy]
+    if (fit.handleEnd) fit.handleEnd = [fit.handleEnd[0] + dx, fit.handleEnd[1] + dy]
   } else if ('center' in entity) {
     const circ = entity as { center: [number, number] }
     circ.center = [circ.center[0] + dx, circ.center[1] + dy]

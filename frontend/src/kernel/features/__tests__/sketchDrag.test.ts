@@ -60,6 +60,16 @@ function rectSketchFeature(sketchId: string, w = 10, h = 6): SketchFeature {
 const CURSOR_TOL = 0.2
 const CONSTRAINT_TOL = 0.5
 
+/** Five fit points then both absolute handles (D2), the variable-size block. */
+function fitSplineFeature(sketchId: string): SketchFeature {
+  return {
+    id: sketchId, kind: 'sketch', plane: '@builtin_plane_front',
+    entities: [{ id: 'sp', kind: 'fit_spline', handles: 'both' }],
+    initial: { sp: [0, 0, 1, 2, 2, 0, 3, 2, 4, 0, -1, 0, 5, 0] },
+    constraints: [],
+  } as unknown as SketchFeature
+}
+
 describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM solver)', () => {
   beforeAll(() => {
     resetSketchSolver()
@@ -468,6 +478,67 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
       constraints: [],
     } as unknown as SketchFeature
     expect(prepareDragContext(feature, 'X1', null)).toBeNull()
+  })
+
+  // ─── Fit spline drags ───
+
+  it('builds a drag frame for every fit spline vertex key', () => {
+    const feature = fitSplineFeature('fitKeys')
+    for (const key of ['start', 'fit1', 'fit2', 'fit3', 'end', 'c1', 'c2']) {
+      const ctx = prepareDragContext(feature, 'sp', key)
+      expect(ctx, key).not.toBeNull()
+      // No movement: the cursor is the key's own position, which still has to
+      // produce a frame rather than a null fallback.
+      const cursor = ctx!.params0.slice(ctx!.cursorIndices[0], ctx!.cursorIndices[0] + 2) as [number, number]
+      expect(solveSketchDrag(ctx!, [...ctx!.params0], cursor), key).not.toBeNull()
+    }
+  })
+
+  it('dragging fit2 moves only that fit point', () => {
+    const feature = fitSplineFeature('fit2Drag')
+    const ctx = prepareDragContext(feature, 'sp', 'fit2')!
+    // fit2 is the third point: params 4,5.
+    expect(ctx.cursorIndices).toEqual([
+      ctx.entityParamOffset + 4,
+      ctx.entityParamOffset + 5,
+    ])
+    const before = [...feature.initial!.sp]
+    const result = solveSketchDrag(ctx, [...ctx.params0], [3.5, 2.5])
+    expect(result).not.toBeNull()
+    const fit = result!.sketch.sp as { points: [number, number][] }
+    expect(fit.points[2][0]).toBeCloseTo(3.5, 1)
+    expect(fit.points[2][1]).toBeCloseTo(2.5, 1)
+    // The other points and the handles keep their authored positions within
+    // the drag regularizer's drift.
+    result!.geometry.sp.forEach((value, i) => {
+      if (i === 4 || i === 5) return
+      expect(Math.abs(value - before[i]), `param ${i}`).toBeLessThan(0.05)
+    })
+  })
+
+  it('edge drag translates every fit point and handle', () => {
+    const feature = fitSplineFeature('fitEdgeDrag')
+    const ctx = prepareDragContext(feature, 'sp', null)!
+    expect(ctx.isEdgeDrag).toBe(true)
+    // Five points plus two handles.
+    expect(ctx.entityCoordPairs).toHaveLength(7)
+    const before = [...feature.initial!.sp]
+    const delta: [number, number] = [5, 2]
+    const result = solveSketchDrag(ctx, ctx.params0, delta, delta)
+    expect(result).not.toBeNull()
+    const fit = result!.sketch.sp as {
+      points: [number, number][]
+      handleStart: [number, number]
+      handleEnd: [number, number]
+    }
+    fit.points.forEach((point, i) => {
+      expect(point[0]).toBeCloseTo(before[2 * i] + delta[0], 0)
+      expect(point[1]).toBeCloseTo(before[2 * i + 1] + delta[1], 0)
+    })
+    expect(fit.handleStart[0]).toBeCloseTo(before[10] + delta[0], 0)
+    expect(fit.handleStart[1]).toBeCloseTo(before[11] + delta[1], 0)
+    expect(fit.handleEnd[0]).toBeCloseTo(before[12] + delta[0], 0)
+    expect(fit.handleEnd[1]).toBeCloseTo(before[13] + delta[1], 0)
   })
 
   it('edge drag translates the entity by delta and solves', () => {

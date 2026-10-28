@@ -269,6 +269,38 @@ def build_cases() -> dict[str, Any]:
             (t0, t1),
         )
 
+    # One handle, scale=True: the one-sided ScaleTangents path. OCCT advances
+    # the Lagrange window only after a flagged tangent FOLLOWING the first, so
+    # both one-sided cases evaluate the first `degree + 1` points at their
+    # flagged end; the end-only case is an extrapolation by design. The fixture
+    # pins the port so a "fix" of that quirk cannot pass unnoticed.
+    for n in (3, 4, 5):
+        points = POINTS[n]
+        us = chord_params(points)
+        t0, t1 = TANGENTS[n]
+        start_curve = _interpolate(points, _load_one(1, n, t0, True))
+        scaled0 = _end_derivative(start_curve, us[0])
+        add(
+            f"n{n}_start_scale",
+            points,
+            _load_one(1, n, t0, True),
+            handle_point(points, us, (scaled0[0], scaled0[1]), True),
+            None,
+            True,
+            (t0, None),
+        )
+        end_curve = _interpolate(points, _load_one(n, n, t1, True))
+        scaled1 = _end_derivative(end_curve, us[-1])
+        add(
+            f"n{n}_end_scale",
+            points,
+            _load_one(n, n, t1, True),
+            None,
+            handle_point(points, us, (scaled1[0], scaled1[1]), False),
+            True,
+            (None, t1),
+        )
+
     return {
         "source": {
             "tool": "OCP",

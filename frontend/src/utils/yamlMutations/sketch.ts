@@ -1,5 +1,5 @@
 import type { PartDoc, PartConstraint, PartTarget } from '@/types/cad'
-import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
+import { entityVertexIndices, entityCoordPairs } from '@/registry'
 import {
   warn, round, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
   resolveSketch, mintEntityId, CONSTRAINT_REF_FIELDS, refMatchesEntity,
@@ -105,9 +105,11 @@ export function applyMoveVertex(
   adoptSolvedGeometry(feature.initial, solvedGeometry)
   const params = feature.initial[entityId]
   if (!params) return
-  const kind = feature.entities?.find(e => e.id === entityId)?.kind
-  if (!kind) return
-  const indices = VERTEX_INDICES[kind]?.[vertexKey]
+  const def = feature.entities?.find(e => e.id === entityId)
+  if (!def) return
+  // Instance-aware: a fit spline's `fit<k>`/`c1`/`c2` keys exist only in its
+  // authored block, so its map is derived from the block length and handles.
+  const indices = entityVertexIndices(def.kind, params.length, def.handles)?.[vertexKey]
   if (indices) {
     params[indices[0]] = round(to[0])
     params[indices[1]] = round(to[1])
@@ -116,7 +118,7 @@ export function applyMoveVertex(
   // Ellipse axis endpoints are derived from center/a/b/theta, so like the arc
   // endpoints below they have no direct param pair. Invert the drop position
   // back into (a, b, theta) (params: [cx, cy, a, b, theta]).
-  if (kind === 'ellipse' && isEllipseAxisKey(vertexKey)) {
+  if (def.kind === 'ellipse' && isEllipseAxisKey(vertexKey)) {
     const next = ellipseAxisDrag(params, vertexKey, to)
     if (!next) return
     params[2] = round(next.a)
@@ -128,7 +130,7 @@ export function applyMoveVertex(
   // direct param pair. Map the drop position into the arc's radius and angle
   // (params: [cx, cy, radius, angle_start, angle_end]) so the endpoint lands on
   // `to`. The center is whatever the drag frame solved to (already in params).
-  if (kind === 'arc' && (vertexKey === 'start' || vertexKey === 'end')) {
+  if (def.kind === 'arc' && (vertexKey === 'start' || vertexKey === 'end')) {
     const dx = to[0] - params[0]
     const dy = to[1] - params[1]
     params[2] = round(Math.hypot(dx, dy))
@@ -166,9 +168,9 @@ export function applyMoveEntity(
   if (dx === 0 && dy === 0) return
   const params = feature.initial[entityId]
   if (!params) return
-  const kind = feature.entities?.find(e => e.id === entityId)?.kind
-  if (!kind) return
-  const coordPairs = ALL_COORD_INDICES[kind]
+  const def = feature.entities?.find(e => e.id === entityId)
+  if (!def) return
+  const coordPairs = entityCoordPairs(def.kind, params.length, def.handles)
   if (!coordPairs) return
   for (const [xi, yi] of coordPairs) {
     params[xi] = round(params[xi] + dx)
@@ -315,6 +317,11 @@ export function applyToggleConstruction(doc: PartDoc, targets: string[]): void {
 
 export function applyDeleteElements(doc: PartDoc, targets: string[]): void {
   const byFeature: Record<string, { entities: Set<string>; constraints: Set<string> }> = {}
+  // A `fit<k>` target removes one point of a positional list, so each removal
+  // renumbers the list under the remaining targets. Collect them per entity and
+  // apply them high-to-low once, which keeps every index naming the point the
+  // caller saw.
+  const fitPointDeletes: Record<string, Map<string, Set<number>>> = {}
   for (const t of targets) {
     const parts = t.split(':')
     const fid = parts[1]
@@ -322,18 +329,24 @@ export function applyDeleteElements(doc: PartDoc, targets: string[]): void {
     if (parts[0] === 'entity') byFeature[fid].entities.add(parts[2])
     if (parts[0] === 'constraint') byFeature[fid].constraints.add(parts[2])
     if (parts[0] === 'vertex') {
-      // A `fit<k>` vertex on a fit spline is one point of a positional list,
-      // not the whole entity: removing it renumbers the later refs.
       const key = parts[3]
       if (key && fitPointIndex(key) !== null) {
         const feature = findSketchFeature(doc, fid)
         const def = feature?.entities?.find(e => e.id === parts[2])
         if (def?.kind === 'fit_spline') {
-          applyDeleteFitPoint(doc, fid, parts[2], fitPointIndex(key) as number)
+          const perEntity = fitPointDeletes[fid] ?? (fitPointDeletes[fid] = new Map())
+          const indices = perEntity.get(parts[2]) ?? new Set<number>()
+          indices.add(fitPointIndex(key) as number)
+          perEntity.set(parts[2], indices)
           continue
         }
       }
       byFeature[fid].entities.add(parts[2])
+    }
+  }
+  for (const [fid, perEntity] of Object.entries(fitPointDeletes)) {
+    for (const [eid, indices] of perEntity) {
+      for (const k of [...indices].sort((a, b) => b - a)) applyDeleteFitPoint(doc, fid, eid, k)
     }
   }
   for (const [fid, { entities: entsToDelete, constraints: consToDelete }] of Object.entries(byFeature)) {

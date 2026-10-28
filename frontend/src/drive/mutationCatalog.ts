@@ -513,10 +513,10 @@ export const MUTATION_CATALOG = {
   },
   add_entity_with_constraint: {
     summary: 'Add a sketch entity and pin one of its vertices to a snap target.',
-    note: '`vertexKey` names the new entity vertex the snap constraint attaches: start/end on a line, center on a circle or arc, xy on a point.',
+    note: '`vertexKey` names the new entity vertex the snap constraint attaches: start/end on a line, center on a circle or arc, xy on a point, start/fit<k>/end/c1/c2 on a fit_spline.',
     fields: {
       featureId: str(),
-      kind: str('Entity kind: line, circle, arc, ellipse, spline or point.'),
+      kind: str('Entity kind: line, circle, arc, ellipse, spline, fit_spline or point. A fit_spline takes its flat fit points plus optional tangents/tangentScale.'),
       params: arr(ENTITY_PARAMS_NOTE),
       vertexKey: str(),
       snapVertexId: optStr(),

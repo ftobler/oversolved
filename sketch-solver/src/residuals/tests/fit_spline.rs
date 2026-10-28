@@ -166,7 +166,9 @@ fn a_line_tangent_at_the_start_rotates_the_handle_not_the_points() {
 #[test]
 fn a_tangent_without_a_handle_moves_the_fit_points() {
     // Raw solver input, no authoring sugar: the constraint has to be satisfied
-    // by the points, which is exactly why authoring adds a handle first.
+    // by the points. Authoring does not add a handle yet either, so a tangent
+    // picked on a handle-less end drives the fit points this way; see the
+    // fit-spline follow-ups in feature/backlog.md (item d).
     let mut params = ex010();
     params.extend_from_slice(&[3.0, 1.0, 3.0, 3.0]);
     let fit = fit_entity(0, 8, 0);

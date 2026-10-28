@@ -17,6 +17,10 @@ export {
   ENTITY_SHORTCUTS,
   VERTEX_INDICES,
   ALL_COORD_INDICES,
+  entityVertexIndices,
+  entityCoordPairs,
+  fitSplineHandlesFromFlags,
+  fitSplineVertices,
   TOOLBAR_ENTITIES,
   getDefaultParams,
 } from '@/registry/entityRegistry'

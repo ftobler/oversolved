@@ -12,7 +12,7 @@
 
 import { parse as parseYaml } from 'yaml'
 import type { AssemblyDoc, PartDoc } from '@/types/cad'
-import { isVertexPointKey, MAX_FIT_POINT_KEY } from '@/types/vertexKeys'
+import { isVertexPointKey } from '@/types/vertexKeys'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { evalExpr } from '@/kernel/evalExpr'
 import { threadEntry } from '@/kernel/threadTable'
@@ -35,6 +35,9 @@ export const MAX_FEATURES = 10_000
 export const MAX_FEATURE_LIST = 10_000
 // 2 * 64 fit points + 2 handles: a fit_spline's block is the largest kind.
 export const MAX_INITIAL_PARAMS = 132
+// A fit spline interpolates through at most 64 fit points; `fit1`..`fit62` are
+// the interior vertex keys (point 0 is `start`, point 63 is `end`).
+export const MAX_FIT_POINTS = 64
 export const MAX_ARRAY_COUNT = 1_000
 export const MAX_ARRAY_CELLS = 100_000
 export const MAX_EXPRESSION_LENGTH = 10_000
@@ -446,8 +449,8 @@ function checkFitSplineInitial(
     )
   }
   const points = remaining / 2
-  if (points > MAX_FIT_POINT_KEY + 2) {
-    fail(`${field}.${String(entity.id)}`, `has ${points} fit points, the limit is 64`)
+  if (points > MAX_FIT_POINTS) {
+    fail(`${field}.${String(entity.id)}`, `has ${points} fit points, the limit is ${MAX_FIT_POINTS}`)
   }
 }
 
