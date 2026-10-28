@@ -47,6 +47,7 @@ async function mcpRun(store: DocHandleStore, req: Partial<McpDocArguments>, step
   if (req.doc !== undefined || req.docHash !== undefined) {
     const resolved = resolveDoc(req as McpDocArguments, store)
     if (!resolved.ok) throw new Error(resolved.error)
+    if (resolved.kind !== 'part') throw new Error('expected a part document')
     doc = resolved.doc
   } else {
     doc = emptyDriveDoc()

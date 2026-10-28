@@ -5,12 +5,22 @@
 // policy the unknown-hash message promises.
 
 import { describe, it, expect } from 'vitest'
-import type { PartDoc } from '@/types/cad'
-import { DocHandleStore, DOC_HANDLE_CAPACITY } from '../docHandleStore'
+import type { AssemblyDoc, PartDoc } from '@/types/cad'
+import { DocHandleStore, DOC_HANDLE_CAPACITY, assemblyHandleOf } from '../docHandleStore'
 import { docHashOf } from '../docHash'
 
 function doc(label: string): PartDoc {
   return { version: 1, kind: 'part', features: [{ id: label, kind: 'sketch' }] } as PartDoc
+}
+
+function assembly(handle: string): AssemblyDoc {
+  return {
+    version: 1,
+    kind: 'assembly',
+    features: [{ id: `inst_${handle}`, kind: 'part_instance', instance: {
+      handle, doc_id: 'rail', doc_rev: 0, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 },
+    } }],
+  }
 }
 
 describe('DocHandleStore', () => {
@@ -77,5 +87,72 @@ describe('DocHandleStore', () => {
     }
     expect(pinnedEvicted).toBe(false)
     expect(store.get(pinned)).toEqual(doc('pinned'))
+  })
+})
+
+describe('DocHandleStore assembly entries', () => {
+  const rail = doc('rail')
+
+  it('hashes an assembly as the assembly document plus its part hashes', () => {
+    const store = new DocHandleStore()
+    const hash = store.putAssembly(assembly('left'), { rail })
+    expect(hash).toBe(docHashOf({ assembly: assembly('left'), parts: { rail: docHashOf(rail) } }))
+    expect(store.getEntry(hash)).toMatchObject({ kind: 'assembly', parts: { rail } })
+    // The part is readable at its own hash.
+    expect(store.get(docHashOf(rail))).toEqual(rail)
+  })
+
+  it('changes the handle when the bound part content changes', () => {
+    const store = new DocHandleStore()
+    const first = store.putAssembly(assembly('left'), { rail })
+    const second = store.putAssembly(assembly('left'), { rail: doc('rail2') })
+    expect(second).not.toBe(first)
+    expect(assemblyHandleOf(assembly('left'), { rail })).toBe(first)
+  })
+
+  it('re-puts the parts when an assembly is read', () => {
+    const store = new DocHandleStore(2)
+    const hash = store.putAssembly(assembly('left'), { rail })
+    // Evict the part by filling the store; the assembly entry survives.
+    store.put(doc('other'))
+    expect(store.get(docHashOf(rail))).toBeUndefined()
+    // Reading the assembly re-puts its parts.
+    expect(store.getEntry(hash)?.kind).toBe('assembly')
+    expect(store.get(docHashOf(rail))).toEqual(rail)
+  })
+
+  it('keeps an assembly resolvable after its part handle is evicted', () => {
+    const store = new DocHandleStore(2)
+    const hash = store.putAssembly(assembly('left'), { rail })
+    store.put(doc('x'))
+    expect(store.get(docHashOf(rail))).toBeUndefined()
+    const entry = store.getEntry(hash)
+    expect(entry?.kind).toBe('assembly')
+    if (entry?.kind !== 'assembly') throw new Error('unreachable')
+    expect(entry.doc).toEqual(assembly('left'))
+  })
+
+  it('clones on putAssembly and getEntry, so a caller cannot rewrite the handle', () => {
+    const store = new DocHandleStore()
+    const source = assembly('left')
+    const hash = store.putAssembly(source, { rail })
+    source.features![0].instance!.handle = 'mutated'
+    const entry = store.getEntry(hash)
+    if (entry?.kind !== 'assembly') throw new Error('unreachable')
+    entry.doc.features![0].instance!.handle = 'also-mutated'
+    entry.parts.rail.features![0].id = 'also-mutated'
+    const again = store.getEntry(hash)
+    if (again?.kind !== 'assembly') throw new Error('unreachable')
+    expect(again.doc).toEqual(assembly('left'))
+    expect(again.parts.rail).toEqual(rail)
+  })
+
+  it('keeps a part handle distinct from an assembly handle', () => {
+    const store = new DocHandleStore()
+    const partHash = store.put(rail)
+    const assemblyHash = store.putAssembly(assembly('left'), { rail })
+    expect(partHash).not.toBe(assemblyHash)
+    expect(store.get(assemblyHash)).toBeUndefined()
+    expect(store.getEntry(partHash)).toMatchObject({ kind: 'part' })
   })
 })

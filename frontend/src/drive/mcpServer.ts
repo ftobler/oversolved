@@ -50,6 +50,10 @@ export interface McpFileRef {
 export interface McpDocArguments {
   doc?: unknown
   docHash?: string
+  // Only with neither doc nor docHash: which fresh document to start.
+  kind?: 'part' | 'assembly'
+  // The assembly binding: doc_id -> part docHash or {doc}.
+  parts?: Record<string, unknown>
 }
 
 export interface McpRunRequest extends McpDocArguments {

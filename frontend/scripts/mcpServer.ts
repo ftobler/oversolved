@@ -123,6 +123,7 @@ const ops: McpCadOps = {
     if (req.doc !== undefined || req.docHash !== undefined) {
       const resolved = resolveDoc(req, documents)
       if (!resolved.ok) return { ok: false, error: resolved.error }
+      if (resolved.kind !== 'part') return { ok: false, error: 'assembly run is not wired yet' }
       doc = resolved.doc
     } else {
       doc = emptyPartDoc()

@@ -112,6 +112,7 @@ async function runCall(
   if (req.doc !== undefined || req.docHash !== undefined) {
     const resolved = resolveDoc(req, store)
     if (!resolved.ok) throw new Error(resolved.error)
+    if (resolved.kind !== 'part') throw new Error('expected a part document')
     doc = resolved.doc
   } else {
     doc = emptyDoc()
