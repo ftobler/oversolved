@@ -104,6 +104,11 @@ function squareBoundary(side: number, prefix: string): Dict[] {
   }))
 }
 
+/** The same boundary drawn the other way round: edges reversed and swapped. */
+function reverseBoundary(boundary: Dict[]): Dict[] {
+  return [...boundary].reverse().map((e) => ({ ...e, start: e['end'], end: e['start'] }))
+}
+
 function registerSection(repo: Repository, sketchId: string, plane: Dict, boundary: Dict[]): void {
   repo.register('_pt_' + sketchId, plane)
   repo.register('_topo_' + sketchId, { surfaces: [{ boundary }] })
@@ -225,8 +230,19 @@ describe.skipIf(!oc)('sweep multisection (real OCC)', () => {
     const ancestry = solved.body.face_ancestry ?? {}
     const tokens = Object.values(ancestry).flat()
     // The naming section is the first rounded rectangle (8 edges, earliest
-    // station), so each of its eight entities owns a wall.
-    for (let i = 1; i <= 8; i++) expect(tokens).toContain(`@s1/s1${i}`)
+    // station), so each of its eight entities names a wall. A `toContain` over
+    // the flattened tokens would pass with the eight names piled onto one face,
+    // so pin the owning faces: all eight entities name one, and the eight first
+    // owners are eight distinct faces. (One entity can own several walls: the
+    // circle seam splits some of them, which is why the map has 20 entries.)
+    const owners = new Map<string, string>()
+    for (const [uuid, names] of Object.entries(ancestry)) {
+      if (names.length !== 1 || !names[0].startsWith('@s1/')) continue
+      if (!owners.has(names[0])) owners.set(names[0], uuid)
+    }
+    const expected = Array.from({ length: 8 }, (_, i) => `@s1/s1${i + 1}`)
+    expect([...owners.keys()].sort()).toEqual(expected)
+    expect(new Set(owners.values()).size).toBe(8)
     // Caps carry their OWN end section's tokens, not the naming section's.
     const caps = tokenMultiset(solved.body.face_cap_ancestry)
     expect(caps).toEqual([JSON.stringify(['@c0/c0']), JSON.stringify(['@c6/c6'])].sort())
@@ -295,6 +311,27 @@ describe.skipIf(!oc)('sweep multisection (real OCC)', () => {
     expect(solved?.volume).toBeCloseTo(93.333333, 3)
   })
 
+  it('builds the same frustum from a section drawn clockwise', () => {
+    // A clockwise-drawn loop gives a face whose outward normal is -plane.normal,
+    // so orienting the wire by the plane instead of the face would leave the
+    // top section reversed. It must still build the same pyramid frustum.
+    const repo = new Repository()
+    repo.register('_pt_path', FRONT)
+    repo.register('_topo_path', {
+      edges: [{ entity_id: 'p0', edge_index: 0, kind: 'line', start: [0, 0], end: [0, 10] }],
+    })
+    const planeAt = (y: number): Dict => ({
+      origin: [0, y, 0], x_axis: [1, 0, 0], y_axis: [0, 0, 1], normal: [0, -1, 0],
+    })
+    registerSection(repo, 'a', planeAt(0), squareBoundary(2, 'a'))
+    registerSection(repo, 'b', planeAt(10), reverseBoundary(squareBoundary(4, 'b')))
+    const { solved, error } = solve(oc!, repo, {
+      sketch: ['@a', '@b'], path: '@path', multisection: true, operation: 'new',
+    })
+    expect(error).toBeNull()
+    expect(solved?.volume).toBeCloseTo(93.333333, 3)
+  })
+
   it('refuses an 8/4 edge-count mismatch by name instead of building it', () => {
     // The shipped 7.4 does not throw here (the probe measured a valid but wrong
     // 28-face solid), so the refusal has to come from the edge-count check.
@@ -311,8 +348,29 @@ describe.skipIf(!oc)('sweep multisection (real OCC)', () => {
     const { error } = solve(oc!, repo, {
       sketch: ['@a', '@b'], path: '@path', multisection: true, operation: 'new',
     })
-    expect(error).toMatch(/the sections could not be matched \(edge counts 8 at station 1, 4 at station 2\)/)
+    expect(error).toMatch(/the sections could not be matched \(edge counts 8 at section 1, 4 at section 2\)/)
     expect(error).toMatch(/give neighbouring sections the same number of edges/)
+  })
+
+  it('numbers the mismatch by the sketch pick list, not by station order', () => {
+    // The same two sections picked the other way round: the rounded rectangle is
+    // now section 1, so the numbers follow the list the user sees rather than
+    // where the path happens to put each section. The pair is still reported in
+    // station order, which is why the square comes first.
+    const repo = new Repository()
+    repo.register('_pt_path', FRONT)
+    repo.register('_topo_path', {
+      edges: [{ entity_id: 'p0', edge_index: 0, kind: 'line', start: [0, 0], end: [0, 10] }],
+    })
+    const planeAt = (y: number): Dict => ({
+      origin: [0, y, 0], x_axis: [1, 0, 0], y_axis: [0, 0, 1], normal: [0, -1, 0],
+    })
+    registerSection(repo, 'a', planeAt(10), roundedRectBoundary(2, 2, 0.2, 'a'))
+    registerSection(repo, 'b', planeAt(0), squareBoundary(2, 'b'))
+    const { error } = solve(oc!, repo, {
+      sketch: ['@a', '@b'], path: '@path', multisection: true, operation: 'new',
+    })
+    expect(error).toMatch(/the sections could not be matched \(edge counts 4 at section 2, 8 at section 1\)/)
   })
 
   it('refuses a section the path does not pass through', () => {

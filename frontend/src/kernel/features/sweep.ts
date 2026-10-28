@@ -828,12 +828,16 @@ export function solveSweep(
   let sections: SweepSection[] = []
   let opSketchId = firstSketchId
   if (multisection) {
+    // The path is checked before the stations: with no spine every section
+    // would report "not on the path", which names the wrong cause.
+    if (spineEdges.length === 0) throw new Error('sweep: empty path')
     const sampler = spineSampler(oc, scope, spineEdges)
     sections = orderSections(sectionInputs, sampler).map((s) => ({
       sketchId: s.sketchId,
       plane: s.plane,
       loop: s.loop,
       tangent: stationTangent(sampler, s.station, s.plane.normal as Vec3),
+      pick: s.pick,
     }))
   }
 

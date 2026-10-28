@@ -178,10 +178,13 @@ than by the order of the `sketch` list, and no parameter is stored. Between
 neighbouring stations the shape is interpolated: two sections are linear (a
 circle pair gives the cone frustum `pi*h/3*(r1^2+r1*r2+r2^2)`, a square pair the
 pyramid frustum), and more sections are skinned smoothly through all of them.
-A section the path does not pierce, a section with a hole, two sections at one
-station and a helix path with sections are refused by name. This is not a loft:
-there is no free-standing surface between profiles, and without the path nothing
-is built.
+A section with a hole, two sections at one station, a helix path with sections,
+and two neighbouring sections whose edge counts OCC cannot pair (a circle
+against a rectangle is fine, because the circle can be split to any count; a
+rounded rectangle against a sharp rectangle is refused) are refused by name.
+This is not a loft: the surface between sections is defined by the path (a loft
+has no defined surface between sections), a section the path does not pierce is
+refused, and without the path nothing is built.
 
 ### fillet / chamfer
 

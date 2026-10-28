@@ -18,7 +18,7 @@ import { loadOcc } from '../loadOcc'
 import { DisposeScope, drainList } from '../disposeScope'
 import { volumeOf } from '../volume'
 import { sketchLoopsToFace } from '../prismProfile'
-import { healWire, makeBezierEdge, makeLineEdge, makeWire, type Vec3 } from '../primitives'
+import { healWire, faceNormal, makeBezierEdge, makeLineEdge, makeWire, type Vec3 } from '../primitives'
 import type { OccModule, OccOrientableShape, OccShape, OccPipeShellBuilder } from '../occTypes'
 import type { PlaneLike } from '../../features/shared/planes'
 import type { LoopEdge } from '../../profileLoops'
@@ -64,6 +64,16 @@ function sectionPlane(st: Station): PlaneLike {
     // cross(x, y): the plane's own normal, which is parallel to the tangent.
     normal: [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]],
   }
+}
+
+/** The shipped `@builtin_plane_top`: sketch y is -world z, normal +world y. The
+ *  end circles live on this plane in the real build, and the circle seam
+ *  follows the frame's x axis. Probing them on a station frame with y = +world z
+ *  moves the seam, which splits two extra lateral faces: the same handle reads
+ *  20 faces here against the shipped 22. So the probe builds them the shipped
+ *  way, and its face-count pin covers the real build. */
+const TOP: PlaneLike = {
+  origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0],
 }
 
 /** A rounded rectangle loop in sketch coords: w along local x, h along local y,
@@ -113,57 +123,64 @@ function squareLoop(w: number, shift = 0): LoopEdge[] {
 
 /** A full circle as the two half arcs the sketch topology emits (the profile
  *  builder collapses them back to one closed circle edge). */
-function circleLoop(r: number): LoopEdge[] {
+function circleLoop(r: number, cx = 0, cy = 0): LoopEdge[] {
   const arc = (a0: number, a1: number): LoopEdge => {
     const rad = (deg: number): number => (deg * Math.PI) / 180
     return {
       kind: 'arc',
-      center: [0, 0],
+      center: [cx, cy],
       radius: r,
       angle_start_deg: a0,
       angle_end_deg: a1,
       ccw: true,
-      start: [r * Math.cos(rad(a0)), r * Math.sin(rad(a0))],
-      end: [r * Math.cos(rad(a1)), r * Math.sin(rad(a1))],
+      start: [cx + r * Math.cos(rad(a0)), cy + r * Math.sin(rad(a0))],
+      end: [cx + r * Math.cos(rad(a1)), cy + r * Math.sin(rad(a1))],
     } as LoopEdge
   }
   return [arc(0, 180), arc(180, 360)]
 }
 
-/** The healed outer wire of a section face, oriented so its normal agrees with
- *  the spine tangent at the station. */
+/** The healed outer wire of a section face, oriented so its face normal agrees
+ *  with the spine tangent at the station (the shipped rule in
+ *  `sweepSections.prepareSection`). */
 function sectionWire(
   occ: OccModule,
   scope: DisposeScope,
   loop: LoopEdge[],
   plane: PlaneLike,
-  tangent: [number, number],
+  tangent: Vec3,
 ): OccShape {
   const face = scope.track(sketchLoopsToFace(occ, scope, [loop], plane))
   const raw = scope.track(occ.BRepTools.OuterWire(face))
   const healed = scope.track(healWire(occ, scope, raw))
   scope.release(raw)
+  // Agree with the tangent: a section whose face points the other way is
+  // flipped, the way the shipped build orients its wires.
+  const normal = faceNormal(occ, scope, face)
   scope.release(face)
-  // Agree with the tangent: the section's own normal must point along it, so a
-  // reversed section is flipped instead of twisting the skin.
-  const dot = plane.normal[0] * tangent[0] + plane.normal[1] * tangent[1]
+  const dot = normal[0] * tangent[0] + normal[1] * tangent[1] + normal[2] * tangent[2]
   if (dot >= 0) return healed
   const flipped = scope.track((healed as unknown as OccOrientableShape).Reversed())
   scope.release(healed)
   return flipped
 }
 
-/** Build the handle's section wires in station order. */
+/** Build the handle's section wires in station order. The end circles sit on
+ *  the shipped `@builtin_plane_top` frame, so their seam matches the real
+ *  build; the five rounded rectangles sit on their own station planes. */
 function handleSections(occ: OccModule, scope: DisposeScope): OccShape[] {
-  return STATIONS.map((st, i) =>
-    sectionWire(
+  return STATIONS.map((st, i) => {
+    const end = i === 0 || i === STATIONS.length - 1
+    // The end circle's centre is the station point on world z = 0, and TOP's
+    // sketch v is -world z, so the loop's local y is 0.
+    return sectionWire(
       occ,
       scope,
-      i === 0 || i === STATIONS.length - 1 ? circleLoop(1) : roundedRectLoop(1.25, 3, 0.2),
-      sectionPlane(st),
-      st.t,
-    ),
-  )
+      end ? circleLoop(1, st.p[0], 0) : roundedRectLoop(1.25, 3, 0.2),
+      end ? TOP : sectionPlane(st),
+      [st.t[0], st.t[1], 0],
+    )
+  })
 }
 
 function spineWire(occ: OccModule, scope: DisposeScope): OccShape {
@@ -248,7 +265,11 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
       // and 94.7809299 in the shipped 7.4; the plan's band is 0.05.
       expect(Math.abs(volume - 94.7736)).toBeLessThan(0.05)
       expect(volume).toBeCloseTo(94.7809299, 3)
-      expect(faceCount(occ, scope, solid)).toBe(20)
+      // 22, the same count the shipped build and the handle regression pin: the
+      // end circles are on the shipped TOP frame, so the probe's seam is the
+      // real one. (With y = +z on the end sections the seam moves and the same
+      // handle reads 20.)
+      expect(faceCount(occ, scope, solid)).toBe(22)
     } finally {
       scope.dispose()
     }
@@ -269,6 +290,13 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
       for (let i = 1; i < perSection.length - 1; i++) expect(perSection[i]).toHaveLength(8)
       // The plan requires at least the FIRST section to answer in 7.4.
       expect(perSection[0].some((n) => n > 0)).toBe(true)
+      // And every section must answer: a section with a zero Generated size is
+      // one whose walls no entity could name, which is the whole point of
+      // asking per section.
+      for (let i = 0; i < perSection.length; i++) {
+        expect(perSection[i].length).toBeGreaterThan(0)
+        expect(perSection[i].every((n) => n > 0)).toBe(true)
+      }
     } finally {
       scope.dispose()
     }
@@ -314,7 +342,7 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
               ? roundedRectLoop(1.25, 3, 0.2)
               : squareLoop(1.25),
           sectionPlane(st),
-          st.t,
+          [st.t[0], st.t[1], 0],
         ),
       )
       const { done, solid, error } = pipeSweep(occ, scope, spine, wires)
@@ -382,20 +410,32 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
       const top: PlaneLike = {
         origin: [0, 0, 10], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1],
       }
+      // The spine runs +z, so [0, 0, 1] agrees with both planes and no section
+      // is flipped: a dot of zero (what an in-plane tangent gives) reverses
+      // nothing.
       const plain = [
-        sectionWire(occ, scope, squareLoop(2), base, [0, 0]),
-        sectionWire(occ, scope, squareLoop(2), top, [0, 0]),
+        sectionWire(occ, scope, squareLoop(2), base, [0, 0, 1]),
+        sectionWire(occ, scope, squareLoop(2), top, [0, 0, 1]),
       ]
       const vPlain = volumeOf(occ, scope, pipeSweep(occ, scope, spine, plain).solid as OccShape)
       const shifted = [
-        sectionWire(occ, scope, squareLoop(2, 2), base, [0, 0]),
-        sectionWire(occ, scope, squareLoop(2, 1), top, [0, 0]),
+        sectionWire(occ, scope, squareLoop(2, 2), base, [0, 0, 1]),
+        sectionWire(occ, scope, squareLoop(2, 1), top, [0, 0, 1]),
       ]
       const vShifted = volumeOf(occ, scope, pipeSweep(occ, scope, spine, shifted).solid as OccShape)
-      console.log('probe square shift:', JSON.stringify({ vPlain, vShifted }))
+      // A genuinely reversed section: the tangent points down the spine, so the
+      // top section's face disagrees with it and sectionWire reverses the wire.
+      const reversed = [
+        sectionWire(occ, scope, squareLoop(2), base, [0, 0, 1]),
+        sectionWire(occ, scope, squareLoop(2), top, [0, 0, -1]),
+      ]
+      const vReversed = volumeOf(occ, scope, pipeSweep(occ, scope, spine, reversed).solid as OccShape)
+      console.log('probe square shift:', JSON.stringify({ vPlain, vShifted, vReversed }))
       expect(vShifted).toBeCloseTo(vPlain, 6)
+      expect(vReversed).toBeCloseTo(vPlain, 6)
       // 2x2 over 10 mm is 40.
       expect(vPlain).toBeCloseTo(40, 6)
+      expect(vReversed).toBeCloseTo(40, 6)
     } finally {
       scope.dispose()
     }

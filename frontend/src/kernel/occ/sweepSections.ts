@@ -18,7 +18,7 @@ import type { OccModule, OccOrientableShape, OccShape } from './occTypes'
 import type { PlaneLike } from '../features/shared/planes'
 import type { LoopEdge } from '../profileLoops'
 import type { Vec3 } from './primitives'
-import { faceArea, healWire, makeWire } from './primitives'
+import { faceArea, faceNormal, healWire, makeWire } from './primitives'
 import { sketchLoopsToFace } from './prismProfile'
 import {
   attemptPipeShellSweep,
@@ -29,13 +29,15 @@ import {
 import { countSolids } from './booleans'
 import { volumeOf } from './volume'
 
-/** One section as the station finder ordered it: its plane, its outer loop and
- *  the spine direction at its station (used only to orient the wire). */
+/** One section as the station finder ordered it: its plane, its outer loop, the
+ *  spine direction at its station (used only to orient the wire) and its 1-based
+ *  position in the user's `sketch` pick list, which is how messages name it. */
 export type SweepSection = {
   sketchId: string
   plane: PlaneLike
   loop: LoopEdge[]
   tangent: Vec3
+  pick: number
 }
 
 // The plausibility gate is loose on purpose: it is a guard against a grossly
@@ -96,8 +98,14 @@ function sectionTokens(section: SweepSection): string[] {
 }
 
 /** Build one section's healed outer wire, oriented so its face normal agrees
- *  with the spine tangent at the station. A reversed section would twist the
- *  skin, so the direction is fixed here rather than left to OCC. */
+ *  with the spine tangent at the station. The FACE's own normal is the wire's
+ *  orientation, not the plane's: a clockwise-drawn loop gives a face whose
+ *  normal is `-plane.normal`, and reading the plane instead would reverse
+ *  exactly the sections that are already right.
+ *
+ *  OCC tolerates either winding (measured on equal squares: a reversed section
+ *  still measures 40.0), so this fixes the direction for determinism rather than
+ *  to avoid a twisted skin. */
 function prepareSection(
   oc: OccModule,
   scope: DisposeScope,
@@ -107,10 +115,11 @@ function prepareSection(
   const raw = scope.track(oc.BRepTools.OuterWire(face))
   let wire = scope.track(healWire(oc, scope, raw))
   scope.release(raw)
+  const normal = faceNormal(oc, scope, face)
   const dot =
-    section.plane.normal[0] * section.tangent[0] +
-    section.plane.normal[1] * section.tangent[1] +
-    section.plane.normal[2] * section.tangent[2]
+    normal[0] * section.tangent[0] +
+    normal[1] * section.tangent[1] +
+    normal[2] * section.tangent[2]
   if (dot < 0) {
     const flipped = scope.track((wire as OccOrientableShape).Reversed())
     scope.release(wire)
@@ -142,8 +151,9 @@ function refuseUnmatchable(prepared: PreparedSection[]): void {
     const b = prepared[i + 1].edges
     if (a > 1 && b > 1 && a !== b) {
       throw new Error(
-        `sweep: the sections could not be matched (edge counts ${a} at station ${i + 1}, ` +
-        `${b} at station ${i + 2}): OCC could not pair their vertices; ` +
+        `sweep: the sections could not be matched (edge counts ${a} at section ` +
+        `${prepared[i].section.pick}, ${b} at section ${prepared[i + 1].section.pick}): ` +
+        `OCC could not pair their vertices; ` +
         `give neighbouring sections the same number of edges`,
       )
     }
@@ -196,14 +206,15 @@ export function sweepSectionsWithLineage(
   scope.release(spineWire)
 
   // A twisted skin passes BRepCheck, so the acceptance bar is geometric: one
-  // solid and no more material than the largest section could carry.
+  // solid, right side out, and no more material than the largest section could
+  // carry. Each failure says which of the three it is.
   const maxArea = Math.max(...prepared.map((p) => p.area))
   const volume = volumeOf(oc, scope, solid)
-  if (
-    countSolids(oc, scope, solid) !== 1 ||
-    !(volume > 0) ||
-    volume > maxArea * spineLength(oc, scope, spineEdges) * PLAUSIBILITY_FACTOR
-  ) {
+  if (countSolids(oc, scope, solid) !== 1) {
+    throw new Error('sweep: multisection did not build one solid')
+  }
+  if (!(volume > 0)) throw new Error('sweep: multisection built inside out')
+  if (volume > maxArea * spineLength(oc, scope, spineEdges) * PLAUSIBILITY_FACTOR) {
     throw new Error('sweep: multisection result is self-intersecting')
   }
 

@@ -5,15 +5,13 @@ import { describe, it, expect } from 'vitest'
 import {
   findStation,
   orderSections,
-  loopPolygon2d,
-  pointInPolygon2d,
-  polygonCentroid2d,
+  pointOnOrInLoop,
   type SectionInput,
   type SpineSampler,
   type Vec3,
 } from '../sweepStations'
+import { CENTROID_ARC_SAMPLES, loopCentroid, pointInLoop, type LoopEdge } from '../../profileLoops'
 import type { PlaneLike } from '../shared/planes'
-import type { LoopEdge } from '../../profileLoops'
 
 function polyline(segments: [Vec3, Vec3][]): SpineSampler {
   return {
@@ -39,6 +37,48 @@ function squareLoop(cx: number, cy: number, half: number): LoopEdge[] {
     loop.push({ kind: 'line', start: c[i], end: c[(i + 1) % 4] } as LoopEdge)
   }
   return loop
+}
+
+const deg = (d: number): number => (d * Math.PI) / 180
+
+/** A CCW rounded rectangle in sketch coords, one radius per corner. */
+function roundedRectLoop(
+  w: number, h: number, r: { br: number; tr: number; tl: number; bl: number },
+): LoopEdge[] {
+  const hx = w / 2
+  const hy = h / 2
+  const line = (a: [number, number], b: [number, number]): LoopEdge => (
+    { kind: 'line', start: a, end: b }
+  )
+  const arc = (c: [number, number], a0: number, a1: number, radius: number): LoopEdge => ({
+    kind: 'arc', center: c, radius, angle_start_deg: a0, angle_end_deg: a1, ccw: true,
+    start: [c[0] + radius * Math.cos(deg(a0)), c[1] + radius * Math.sin(deg(a0))],
+    end: [c[0] + radius * Math.cos(deg(a1)), c[1] + radius * Math.sin(deg(a1))],
+  })
+  return [
+    line([-hx + r.bl, -hy], [hx - r.br, -hy]),
+    arc([hx - r.br, -hy + r.br], -90, 0, r.br),
+    line([hx, -hy + r.br], [hx, hy - r.tr]),
+    arc([hx - r.tr, hy - r.tr], 0, 90, r.tr),
+    line([hx - r.tr, hy], [-hx + r.tl, hy]),
+    arc([-hx + r.tl, hy - r.tl], 90, 180, r.tl),
+    line([-hx, hy - r.tl], [-hx, -hy + r.bl]),
+    arc([-hx + r.bl, -hy + r.bl], 180, 270, r.bl),
+  ]
+}
+
+/** The same loop drawn the other way round: the edge list reversed, every edge
+ *  swapped, and every arc's angles swapped with its winding flipped. */
+function reverseLoop(loop: LoopEdge[]): LoopEdge[] {
+  return [...loop].reverse().map((e) => {
+    const out: LoopEdge = { ...e, start: e['end'], end: e['start'] }
+    if (e['kind'] === 'arc') {
+      out['ccw'] = !(e['ccw'] as boolean)
+      out['angle_start_deg'] = e['angle_end_deg']
+      out['angle_end_deg'] = e['angle_start_deg']
+    }
+    return out
+  })
 }
 
 function section(sketchId: string, plane: PlaneLike, loop: LoopEdge[]): SectionInput {
@@ -75,11 +115,11 @@ describe('sweepStations findStation', () => {
   })
 
   it('refuses a near-tangent crossing at an absolute 5 degree floor', () => {
-    const deg = (2 * Math.PI) / 180
-    const n: Vec3 = [Math.sin(deg), Math.cos(deg), 0]
+    const twoDeg = deg(2)
+    const n: Vec3 = [Math.sin(twoDeg), Math.cos(twoDeg), 0]
     const plane: PlaneLike = {
       origin: [5, 0, 0],
-      x_axis: [Math.cos(deg), -Math.sin(deg), 0],
+      x_axis: [Math.cos(twoDeg), -Math.sin(twoDeg), 0],
       y_axis: [0, 0, 1],
       normal: n,
     }
@@ -101,6 +141,9 @@ describe('sweepStations orderSections', () => {
     const ordered = orderSections(sections, STRAIGHT)
     expect(ordered.map((s) => s.sketchId)).toEqual(['a', 'b', 'c'])
     expect(ordered.map((s) => Number(s.station.fraction.toFixed(9)))).toEqual([0, 0.5, 1])
+    // The pick index follows the user's list, not the station order, so the
+    // same section keeps its number in every message.
+    expect(ordered.map((s) => s.pick)).toEqual([2, 3, 1])
   })
 
   it('gives each end of a U spine the crossing nearest its own loop', () => {
@@ -141,19 +184,71 @@ describe('sweepStations orderSections', () => {
   })
 })
 
-describe('sweepStations loop geometry', () => {
+describe('sweepStations curved sections', () => {
+  it('finds the station of a clockwise rounded rectangle section', () => {
+    // A clockwise loop stores its arcs with ccw false, and the corners are
+    // deliberately unequal so the centroid sits off the centre. The U spine's
+    // two ends both pierce the section, so the centroid decides which crossing
+    // is the station: the sampler that read a reversed arc's angles backwards
+    // shifted the centroid far enough to pick the other end.
+    const loop = reverseLoop(roundedRectLoop(6, 3, { br: 1, tr: 1, tl: 0.1, bl: 0.1 }))
+    const u = polyline([
+      [[0.2, 0, 0], [0.2, 0, -5]],
+      [[0.2, 0, -5], [-0.6, 0, -5]],
+      [[-0.6, 0, -5], [-0.6, 0, 0]],
+    ])
+    const outcome = findStation(u, planeZ(0), loop)
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.station.point[0]).toBeCloseTo(0.2, 9)
+    // The centroid itself is orientation-independent.
+    const ccw = loopCentroid(roundedRectLoop(6, 3, { br: 1, tr: 1, tl: 0.1, bl: 0.1 }))
+    const cw = loopCentroid(loop)
+    expect(cw[0]).toBeCloseTo(ccw[0], 9)
+    expect(cw[1]).toBeCloseTo(ccw[1], 9)
+  })
+
+  it('finds the station of an ellipse_arc section whose arc crosses 0 degrees', () => {
+    // The section is a sliver at +x: an ellipse_arc from 350 to 10 degrees (so
+    // the start angle is greater than the end one) closed by its chord. The
+    // old local sampler ignored the winding and read the 340-degree COMPLEMENT,
+    // putting the centroid on the far side and refusing a station the path
+    // really pierces.
+    const loop = [
+      {
+        kind: 'ellipse_arc', center: [0, 0], a: 2, b: 1, theta: 0,
+        angle_start_deg: 350, angle_end_deg: 10, ccw: true,
+        start: [2 * Math.cos(deg(350)), Math.sin(deg(350))],
+        end: [2 * Math.cos(deg(10)), Math.sin(deg(10))],
+      },
+      {
+        kind: 'line',
+        start: [2 * Math.cos(deg(10)), Math.sin(deg(10))],
+        end: [2 * Math.cos(deg(350)), Math.sin(deg(350))],
+      },
+    ] as LoopEdge[]
+    // The spine pierces the sliver at (1.98, 0), between the arc and the chord.
+    const spine = polyline([[[1.98, 0, 0], [1.98, 0, 10]]])
+    const outcome = findStation(spine, planeZ(5), loop)
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.station.point[0]).toBeCloseTo(1.98, 9)
+    expect(outcome.station.fraction).toBeCloseTo(0.5, 9)
+  })
+})
+
+describe('sweepStations loop containment', () => {
   it('centroids a square at its centre', () => {
-    const poly = loopPolygon2d(squareLoop(3, -2, 2))
-    expect(polygonCentroid2d(poly)[0]).toBeCloseTo(3, 9)
-    expect(polygonCentroid2d(poly)[1]).toBeCloseTo(-2, 9)
+    expect(loopCentroid(squareLoop(3, -2, 2))[0]).toBeCloseTo(3, 9)
+    expect(loopCentroid(squareLoop(3, -2, 2))[1]).toBeCloseTo(-2, 9)
   })
 
   it('tests inside, outside and on the boundary', () => {
-    const poly = loopPolygon2d(squareLoop(0, 0, 1))
-    expect(pointInPolygon2d(poly, [0, 0])).toBe(true)
-    expect(pointInPolygon2d(poly, [0.99, 0])).toBe(true)
-    expect(pointInPolygon2d(poly, [2, 0])).toBe(false)
-    expect(pointInPolygon2d(poly, [1, 0])).toBe(true)
+    const loop = squareLoop(0, 0, 1)
+    expect(pointOnOrInLoop(loop, [0, 0])).toBe(true)
+    expect(pointOnOrInLoop(loop, [0.99, 0])).toBe(true)
+    expect(pointOnOrInLoop(loop, [2, 0])).toBe(false)
+    expect(pointOnOrInLoop(loop, [1, 0])).toBe(true)
   })
 
   it('samples an arc boundary as a curve, not as its chord', () => {
@@ -164,7 +259,7 @@ describe('sweepStations loop geometry', () => {
       angle_start_deg: 0, angle_end_deg: 180, ccw: true,
       start: [2, 0], end: [-2, 0],
     }] as LoopEdge[]
-    expect(pointInPolygon2d(loopPolygon2d(loop), [0, 1.9])).toBe(true)
-    expect(pointInPolygon2d(loopPolygon2d(loop), [0, 2.1])).toBe(false)
+    expect(pointInLoop([0, 1.9], loop, CENTROID_ARC_SAMPLES)).toBe(true)
+    expect(pointInLoop([0, 2.1], loop, CENTROID_ARC_SAMPLES)).toBe(false)
   })
 })

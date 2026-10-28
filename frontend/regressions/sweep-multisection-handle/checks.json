@@ -1,13 +1,13 @@
 {
   "origin": {
     "kind": "bug_report",
-    "ref": "bugreports/mcp-practice/03_build123d__build123d-official-examples__examples__handle.py (feature/sweep-multisection.md)",
+    "ref": "build123d official examples/handle.py (feature/sweep-multisection.md)",
     "date": "2026-10-28"
   },
   "license": {
     "spdx": "Apache-2.0",
     "source": "build123d official examples, examples/handle.py",
-    "commit": "bugreports/mcp-practice/03_build123d__build123d-official-examples__examples__handle.py"
+    "commit": "8064bf73425d417b34f81557b7d19f1abbc2de0a"
   },
   "severity": "hard",
   "what": "the build123d handle: two end circles r1 and five rounded-rectangle sections swept along a two-Bezier arch",
