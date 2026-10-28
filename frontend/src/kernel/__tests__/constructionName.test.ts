@@ -10,6 +10,7 @@ import {
   moveFaceExtendPath,
   moveFaceSetExtendPath,
   splitFacePath,
+  splitPlaneFacePath,
   importedFacePath,
   importedInstanceFacePath,
   mintFaceUuid,
@@ -58,6 +59,14 @@ describe('construction path grammar', () => {
     expect(importedFacePath('import1', 17)).toBe('import1|step|17')
     expect(importedInstanceFacePath('import1', 17, 0)).toBe('import1|step|17')
     expect(importedInstanceFacePath('import1', 17, 1)).toBe('import1|step|17|1')
+  })
+
+  it('names a split cap by its feature and side, and by nothing numeric', () => {
+    expect(splitPlaneFacePath('sp1', 'above')).toBe('sp1|splitcap|above')
+    expect(splitPlaneFacePath('sp1', 'below')).toBe('sp1|splitcap|below')
+    expect(mintFaceUuid(splitPlaneFacePath('sp1', 'above')))
+      .not.toBe(mintFaceUuid(splitPlaneFacePath('sp1', 'below')))
+    expect(splitPlaneFacePath('sp1', 'above')).not.toMatch(FLOAT_RE)
   })
 })
 

@@ -117,6 +117,20 @@ export function holeFacePath(createdBy: string, siteSlot: string, role: HoleFace
   return `${createdBy}|hole|${siteSlot}|${role}`
 }
 
+/** Which side of a split plane a cap closes: the normal side or the other one. */
+export type SplitSide = 'above' | 'below'
+
+/**
+ * The cap face a split leaves on one side of its plane:
+ * `<createdBy>|splitcap|<side>`. Symbolic only, like `holeFacePath`: the plane
+ * offset, the body's size and a `keep` change between one side and both all
+ * recompute the same UUID, so a pick on a cap survives the edit. The two sides
+ * get distinct names because they are two distinct faces when both are kept.
+ */
+export function splitPlaneFacePath(createdBy: string, side: SplitSide): string {
+  return `${createdBy}|splitcap|${side}`
+}
+
 /**
  * A child face that split off a parent face during a boolean/modifier op. The
  * integer `index` is assigned by `orderSplitChildren`, so two rebuilds of the
