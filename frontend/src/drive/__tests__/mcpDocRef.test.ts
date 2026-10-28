@@ -5,10 +5,10 @@
 // summary.
 
 import { describe, it, expect } from 'vitest'
-import type { PartDoc } from '@/types/cad'
-import { DocHandleStore, DOC_HANDLE_CAPACITY } from '../docHandleStore'
+import type { AssemblyDoc, PartDoc } from '@/types/cad'
+import { DocHandleStore, DOC_HANDLE_CAPACITY, assemblyHandleOf } from '../docHandleStore'
 import { docHashOf } from '../docHash'
-import { resolveDoc, runReply, summarizeDoc } from '../mcpDocRef'
+import { requirePartDoc, resolveDoc, runReply, summarizeDoc } from '../mcpDocRef'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 
 function doc(label: string, body = 'body_ex1'): PartDoc {
@@ -151,8 +151,7 @@ describe('runReply', () => {
     )
   })
 
-  it('says a refused step was not solved and never lists a consumed body', () => {
-    const consumed = {
+  it('says a refused step was not solved and never lists a consumed body', () => {    const consumed = {
       version: 1,
       kind: 'part',
       features: [
@@ -180,5 +179,76 @@ describe('runReply', () => {
     expect(refused.summary).toContain('bodies: not solved (step 1 refused)')
     expect(refused.summary).not.toContain('body_ex2')
     expect(refused.ok).toBe(false)
+  })
+})
+
+describe('resolveDoc for assemblies', () => {
+  const rail = doc('rail')
+
+  function assembly(handle = 'left'): AssemblyDoc {
+    return {
+      version: 1,
+      kind: 'assembly',
+      features: [{ id: `inst_${handle}`, kind: 'part_instance', instance: {
+        handle, doc_id: 'rail', doc_rev: 0, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 },
+      } }],
+    }
+  }
+
+  it('refuses a raw assembly doc with no binding, naming the unbound ids', () => {
+    const resolved = resolveDoc({ doc: assembly() }, new DocHandleStore())
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) throw new Error('unreachable')
+    expect(resolved.error).toContain('unbound part(s): rail')
+    expect(resolved.error).toContain('bound parts: none')
+  })
+
+  it('binds a raw assembly doc and mints the composite handle', () => {
+    const store = new DocHandleStore()
+    const resolved = resolveDoc({ doc: assembly(), parts: { rail: { doc: rail } } }, store)
+    expect(resolved).toMatchObject({ ok: true, kind: 'assembly' })
+    if (!resolved.ok || resolved.kind !== 'assembly') throw new Error('unreachable')
+    expect(resolved.docHash).toBe(assemblyHandleOf({ ...assembly(), version: CURRENT_DOC_VERSION }, { rail }))
+    expect(store.getEntry(resolved.docHash)).toMatchObject({ kind: 'assembly' })
+  })
+
+  it('merges a parts override on an assembly handle into a new hash', () => {
+    const store = new DocHandleStore()
+    const first = resolveDoc({ doc: assembly(), parts: { rail: { doc: rail } } }, store)
+    if (!first.ok || first.kind !== 'assembly') throw new Error('unreachable')
+    const edited = doc('rail-edited')
+    const merged = resolveDoc({ docHash: first.docHash, parts: { rail: { doc: edited } } }, store)
+    expect(merged).toMatchObject({ ok: true, kind: 'assembly' })
+    if (!merged.ok || merged.kind !== 'assembly') throw new Error('unreachable')
+    expect(merged.docHash).not.toBe(first.docHash)
+    expect(merged.parts.rail).toEqual({ ...edited, version: CURRENT_DOC_VERSION })
+  })
+
+  it('refuses a bound hash that names an assembly', () => {
+    const store = new DocHandleStore()
+    const inner = resolveDoc({ doc: assembly(), parts: { rail: { doc: rail } } }, store)
+    if (!inner.ok) throw new Error('unreachable')
+    const outer = resolveDoc({ doc: assembly('right'), parts: { rail: inner.docHash } }, store)
+    expect(outer.ok).toBe(false)
+    if (outer.ok) throw new Error('unreachable')
+    expect(outer.error).toContain('an assembly cannot be a part')
+  })
+
+  it('refuses parts on a part document', () => {
+    const resolved = resolveDoc({ doc: doc('sk1'), parts: { rail: { doc: rail } } }, new DocHandleStore())
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) throw new Error('unreachable')
+    expect(resolved.error).toContain('applies only to an assembly')
+  })
+
+  it('requirePartDoc refuses an assembly handle with the part-handle hint', () => {
+    const store = new DocHandleStore()
+    const resolved = resolveDoc({ doc: assembly(), parts: { rail: { doc: rail } } }, store)
+    if (!resolved.ok) throw new Error('unreachable')
+    const part = requirePartDoc(resolved, 'select')
+    expect(part.ok).toBe(false)
+    if (part.ok) throw new Error('unreachable')
+    expect(part.error).toContain("select runs on a part document; pass the part's docHash")
+    expect(part.error).toContain('parts')
   })
 })

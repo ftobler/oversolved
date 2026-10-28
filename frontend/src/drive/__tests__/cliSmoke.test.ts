@@ -14,23 +14,21 @@
 // the payload (the OCC STEP writer prints its own banner ahead of it). The MCP
 // server is spawned once and spoken to over newline-delimited JSON-RPC.
 
-import { execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createRequire } from 'node:module'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { docHashOf } from '@/drive/docHash'
 import { DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import { HOLE_ON_LINE_SKETCH } from './featureFixtures'
+import { spawnMcp, toolPayload, FRONTEND_DIR } from './mcpStdioClient'
 
 const execFileAsync = promisify(execFile)
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const FRONTEND_DIR = path.resolve(__dirname, '../../..')
 // The project-internal tmp at the worktree root; never the system /tmp.
 const TMP_DIR = path.resolve(FRONTEND_DIR, '../tmp/drive-cli-smoke')
 
@@ -417,74 +415,6 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
 })
 
 // ─── MCP server ───
-
-interface McpResponse {
-  jsonrpc: string
-  id?: number
-  result?: unknown
-  error?: { code: number; message: string }
-}
-
-interface McpClient {
-  request(method: string, params?: unknown): Promise<McpResponse>
-  close(): Promise<void>
-}
-
-// One interactive child process: line-buffered stdout demuxed by response id.
-function spawnMcp(env: Record<string, string> = {}): McpClient {
-  const child = spawn('node', [
-    '--experimental-strip-types',
-    '--loader=./scripts/driveCli.loader.mjs',
-    'scripts/mcpServer.ts',
-  ], { cwd: FRONTEND_DIR, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } })
-
-  const pending = new Map<number, (response: McpResponse) => void>()
-  let buffer = ''
-  child.stdout.setEncoding('utf8')
-  child.stdout.on('data', (chunk: string) => {
-    buffer += chunk
-    let newline = buffer.indexOf('\n')
-    while (newline >= 0) {
-      const line = buffer.slice(0, newline)
-      buffer = buffer.slice(newline + 1)
-      newline = buffer.indexOf('\n')
-      if (!line.trim()) continue
-      const message = JSON.parse(line) as McpResponse
-      if (typeof message.id === 'number') {
-        const resolve = pending.get(message.id)
-        if (resolve) {
-          pending.delete(message.id)
-          resolve(message)
-        }
-      }
-    }
-  })
-
-  let nextId = 1
-  return {
-    request: (method, params) => new Promise((resolve, reject) => {
-      const id = nextId++
-      const timer = setTimeout(() => {
-        pending.delete(id)
-        reject(new Error(`MCP ${method} timed out`))
-      }, 120_000)
-      pending.set(id, response => { clearTimeout(timer); resolve(response) })
-      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, ...(params !== undefined && { params }) }) + '\n')
-    }),
-    close: () => new Promise(resolve => {
-      child.once('exit', () => resolve())
-      child.stdin.end()
-    }),
-  }
-}
-
-// The JSON payload a tools/call result carries as its single text content.
-function toolPayload(response: McpResponse): Record<string, unknown> {
-  expect(response.error).toBeUndefined()
-  const result = response.result as { content: Array<{ type: string; text: string }>; isError?: boolean }
-  expect(result.isError).toBeUndefined()
-  return JSON.parse(result.content[0].text) as Record<string, unknown>
-}
 
 describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust solver)', () => {
   it('builds, edits a dimension, measures and exports over stdio by docHash', async () => {

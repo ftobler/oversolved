@@ -9,7 +9,7 @@
 // pile of redundant OCC-free solves.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AssemblyDoc, AssemblyFeature } from '@/types/cad'
+import type { AssemblyDoc } from '@/types/cad'
 import { docLoadErrorMessage, loadPartDocText } from '@/persistence/docSchema'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
@@ -23,8 +23,8 @@ import { getFileRegistry } from '@/stores/fileRegistry'
 import { fileIdsInSpec } from '@/stores/fileRegistry/resolve'
 import { partBundleKey } from '@/workspace/contentHash'
 import { workspaceStoreRevision } from '@/workspace/storeEvents'
-import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
-import type { MateSpec, AssemblySolveStatus } from '@/kernel/solveAssembly'
+import { partSpecs, mateSpecs } from '@/utils/assemblySolveInput'
+import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { dragTargetMate, dragTargetPoseMate } from '@/kernel/assemblyDrag'
 import { extractErrorMessage } from '@/kernel/errors'
 import { findInstance } from '@/utils/assemblyMutations'
@@ -56,50 +56,9 @@ function liveStatus(status: AssemblySolveStatus | undefined): AssemblySolveStatu
   return { ...status, verdict: 'none', error: undefined }
 }
 
-export function partSpecs(doc: AssemblyDoc): PartInputSpec[] {
-  return (doc.features ?? [])
-    .filter(f => f.kind === 'part_instance' && f.instance)
-    .map(f => ({
-      handle: f.instance!.handle,
-      doc_id: f.instance!.doc_id,
-      transform: f.instance!.transform,
-      fixed: f.instance!.fixed,
-    }))
-}
-
-export function mateSpecs(doc: AssemblyDoc): MateSpec[] {
-  return (doc.features ?? [])
-    .filter((f): f is AssemblyFeature => f.kind === 'mate' && !!f.mate)
-    .map(f => ({
-      id: f.id,
-      kind: f.mate!.kind,
-      // Rebuild each ref from its authored fields only. A hand-edited YAML
-      // could carry a stray `inlineAnchor`; dropping it keeps the solve's
-      // inline-anchor trust exemption (drag objective only) unreachable from a
-      // document. `anchor_descriptor` is the durable identity and must ride
-      // along, or a cold-cache resolve loses the only fallback it has.
-      ref_a: {
-        part: f.mate!.ref_a.part,
-        anchor: f.mate!.ref_a.anchor,
-        anchor_descriptor: f.mate!.ref_a.anchor_descriptor,
-      },
-      ref_b: {
-        part: f.mate!.ref_b.part,
-        anchor: f.mate!.ref_b.anchor,
-        anchor_descriptor: f.mate!.ref_b.anchor_descriptor,
-      },
-      flip: f.mate!.flip,
-      // Passed through in its authored form, scalar or vector: normalizing it
-      // needs the anchor axis, which only resolves inside the solve (see
-      // `mateOffsetVector` at solveAssembly.ts's record build).
-      offset: f.mate!.offset,
-      // Authored values, including an expression string: the solve boundary
-      // refuses an unresolved one rather than reading it as 0.
-      angle: f.mate!.angle,
-      radius: f.mate!.radius,
-      ratio: f.mate!.ratio,
-    }))
-}
+// The doc-to-solve adapter lives in utils/assemblySolveInput.ts so the headless
+// session reads the same one; re-exported here for the existing callers.
+export { partSpecs, mateSpecs } from '@/utils/assemblySolveInput'
 
 // The identity the burst cache is keyed to: the uuid plus the workspace store
 // revision, which bumps on every working-copy write. A mid-burst edit therefore

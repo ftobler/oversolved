@@ -32,7 +32,16 @@ export function markFeatureStart(featureId: string): void {
  * feature ex2`. `featureId` is the last mark received, null when the solve
  * stuck before reaching any feature (the kernel load, a sketch-only replay).
  */
-export function solveTimeoutMessage(budgetMs: number, featureId: string | null): string {
-  const where = featureId === null ? '' : ` in feature ${featureId}`
+export function solveTimeoutMessage(
+  budgetMs: number,
+  featureId: string | null,
+  partId: string | null = null,
+): string {
+  // An assembly bundle build marks `part <doc_id>` before the part's own
+  // features, so a stall inside a part names both the part and the feature it
+  // reached. A part build (the common case) has no partId and reads as before.
+  const where = partId !== null
+    ? ` in ${partId}${featureId === null ? '' : ` (feature ${featureId})`}`
+    : featureId === null ? '' : ` in feature ${featureId}`
   return `solve timed out after ${budgetMs / 1000} s${where}`
 }

@@ -829,7 +829,7 @@ function checkMateDef(value: unknown, field: string): void {
   for (const key of ['angle', 'radius']) checkOptional(mate, key, field, checkExpr)
 }
 
-const ASSEMBLY_FEATURE_KINDS = ['part_instance', 'mate', 'origin', 'plane'] as const
+export const ASSEMBLY_FEATURE_KINDS = ['part_instance', 'mate', 'origin', 'plane'] as const
 
 function checkAssemblyFeature(value: unknown, field: string): void {
   const feature = checkRecord(value, field)

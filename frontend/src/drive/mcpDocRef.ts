@@ -1,11 +1,15 @@
 // The document-handle operations shared by the MCP entry script: resolve a
-// `doc`/`docHash` argument against the store and build the `run` reply. They
-// live here, free of I/O, so the handle contract is unit-testable without the
-// kernel.
+// `doc`/`docHash`/`parts` argument against the store and build the `run`
+// replies. They live here, free of I/O, so the handle contract is unit-testable
+// without the kernel.
+//
+// An assembly handle is composite (D2): the binding (doc_id -> part content)
+// travels with it, and a `parts` merge on an existing handle overrides one
+// binding and yields a new hash.
 
-import type { PartDoc } from '@/types/cad'
-import { CURRENT_DOC_VERSION, docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
-import { DocHandleStore, DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
+import type { AssemblyDoc, PartDoc } from '@/types/cad'
+import { CURRENT_DOC_VERSION, docLoadErrorMessage, loadAssemblyDoc, loadPartDoc } from '@/persistence/docSchema'
+import { DocHandleStore, DOC_HANDLE_CAPACITY, assemblyHandleOf } from '@/drive/docHandleStore'
 import { docHashOf } from '@/drive/docHash'
 import { formatFeatureProblem, type FeatureProblem } from '@/drive/featureOutcome'
 import type { FeatureDelta } from '@/drive/featureDeltas'
@@ -13,7 +17,8 @@ import type { FeatureFrameMap } from '@/drive/featureFrames'
 import type { McpDocArguments } from '@/drive/mcpServer'
 
 export type ResolvedDoc =
-  | { ok: true; doc: PartDoc; docHash: string }
+  | { ok: true; kind: 'part'; doc: PartDoc; docHash: string }
+  | { ok: true; kind: 'assembly'; doc: AssemblyDoc; parts: Record<string, PartDoc>; docHash: string }
   | { ok: false; error: string }
 
 /**
@@ -27,19 +32,121 @@ export function stampLoadedDoc(doc: PartDoc): PartDoc {
   return doc
 }
 
+export function stampLoadedAssemblyDoc(doc: AssemblyDoc): AssemblyDoc {
+  doc.version = Math.max(CURRENT_DOC_VERSION, doc.version ?? 0)
+  return doc
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** Resolve the `parts` binding: a part docHash or an inline `{doc}` per doc_id. */
+function resolveBinding(
+  raw: unknown,
+  documents: DocHandleStore,
+): { ok: true; parts: Record<string, PartDoc> } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true, parts: {} }
+  if (!isRecord(raw)) return { ok: false, error: 'field "parts" must be an object mapping doc_id to a part docHash or {doc}' }
+  const parts: Record<string, PartDoc> = {}
+  for (const [docId, value] of Object.entries(raw)) {
+    if (typeof value === 'string') {
+      const entry = documents.getEntry(value)
+      if (!entry) {
+        return {
+          ok: false,
+          error: `parts.${docId}: unknown part docHash (the server keeps the last ${DOC_HANDLE_CAPACITY} documents); pass {doc} instead`,
+        }
+      }
+      if (entry.kind === 'assembly') {
+        return { ok: false, error: `parts.${docId}: an assembly cannot be a part; sub-assemblies are not supported` }
+      }
+      parts[docId] = entry.doc
+      continue
+    }
+    if (isRecord(value) && value.doc !== undefined) {
+      const docHash = docHashOf(value.doc)
+      const loaded = loadPartDoc(value.doc, { name: `parts.${docId}` })
+      if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+      const doc = stampLoadedDoc(loaded.doc)
+      documents.putAs(docHash, doc)
+      parts[docId] = doc
+      continue
+    }
+    return {
+      ok: false,
+      error: `parts.${docId} must be a part docHash string or an object with a "doc" field`,
+    }
+  }
+  return { ok: true, parts }
+}
+
+function unboundProblem(doc: AssemblyDoc, parts: Record<string, PartDoc>): string | null {
+  const bound = new Set(Object.keys(parts))
+  const unbound = new Set<string>()
+  for (const feature of doc.features ?? []) {
+    if (feature.kind === 'part_instance' && feature.instance && !bound.has(feature.instance.doc_id)) {
+      unbound.add(feature.instance.doc_id)
+    }
+  }
+  if (unbound.size === 0) return null
+  return `the assembly references unbound part(s): ${[...unbound].sort().join(', ')}; `
+    + `bound parts: ${[...bound].sort().join(', ') || 'none'}. Bind each doc_id with the run call's \`parts\` argument.`
+}
+
+export function resolveAssemblyDoc(
+  rawDoc: unknown,
+  rawParts: unknown,
+  documents: DocHandleStore,
+): ResolvedDoc {
+  const loaded = loadAssemblyDoc(rawDoc, { name: 'mcp' })
+  if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+  const doc = stampLoadedAssemblyDoc(loaded.doc)
+  const binding = resolveBinding(rawParts, documents)
+  if (!binding.ok) return binding
+  const unbound = unboundProblem(doc, binding.parts)
+  if (unbound !== null) return { ok: false, error: unbound }
+  documents.putAssembly(doc, binding.parts)
+  // The stored handle is the composite one; the raw doc's hash only named the
+  // payload the client sent and is not a valid handle for an assembly.
+  const handle = assemblyHandleOf(doc, binding.parts)
+  return { ok: true, kind: 'assembly', doc, parts: binding.parts, docHash: handle }
+}
+
 /** Resolve the argument pair, storing a full doc under its content hash. */
 export function resolveDoc(req: McpDocArguments, documents: DocHandleStore): ResolvedDoc {
   if (req.docHash !== undefined) {
-    const doc = documents.get(req.docHash)
-    if (!doc) {
+    const entry = documents.getEntry(req.docHash)
+    if (!entry) {
       return {
         ok: false,
         error: `unknown docHash (the server keeps the last ${DOC_HANDLE_CAPACITY} documents); pass doc instead`,
       }
     }
-    return { ok: true, doc, docHash: req.docHash }
+    if (entry.kind === 'part') {
+      if (req.parts !== undefined) {
+        return { ok: false, error: 'field "parts" applies only to an assembly document' }
+      }
+      return { ok: true, kind: 'part', doc: entry.doc, docHash: req.docHash }
+    }
+    if (req.parts === undefined) {
+      return { ok: true, kind: 'assembly', doc: entry.doc, parts: entry.parts, docHash: req.docHash }
+    }
+    const overrides = resolveBinding(req.parts, documents)
+    if (!overrides.ok) return overrides
+    const merged = { ...entry.parts, ...overrides.parts }
+    const unbound = unboundProblem(entry.doc, merged)
+    if (unbound !== null) return { ok: false, error: unbound }
+    if (Object.keys(overrides.parts).length === 0) {
+      return { ok: true, kind: 'assembly', doc: entry.doc, parts: merged, docHash: req.docHash }
+    }
+    const docHash = documents.putAssembly(entry.doc, merged)
+    return { ok: true, kind: 'assembly', doc: entry.doc, parts: merged, docHash }
   }
   if (req.doc === undefined) return { ok: false, error: 'no document: pass doc or docHash' }
+  const isAssembly = req.kind === 'assembly' || (isRecord(req.doc) && req.doc.kind === 'assembly')
+  if (isAssembly) return resolveAssemblyDoc(req.doc, req.parts, documents)
+  if (req.parts !== undefined) return { ok: false, error: 'field "parts" applies only to an assembly document' }
   // The loader migrates in place, so the raw hash must be taken first: the
   // handle names the payload the client sent, not the loader's normalized copy.
   const docHash = docHashOf(req.doc)
@@ -47,7 +154,7 @@ export function resolveDoc(req: McpDocArguments, documents: DocHandleStore): Res
   if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
   const doc = stampLoadedDoc(loaded.doc)
   documents.putAs(docHash, doc)
-  return { ok: true, doc, docHash }
+  return { ok: true, kind: 'part', doc, docHash }
 }
 
 // The reply's one-line index of what the script built. Body ids are the live
@@ -136,5 +243,66 @@ export function runReply(
     ...(result.frames !== undefined && result.frames !== null && { frames: result.frames }),
     ...(summary !== undefined && { summary }),
     ...(returnDoc && finalDoc && { doc: finalDoc }),
+  }
+}
+
+/**
+ * A tool that only understands parts (select) refuses an assembly handle by
+ * naming the part handles the assembly reply carries. The message is the one
+ * the tool surface documents, so it lives here beside the resolve it reads.
+ */
+export function requirePartDoc(
+  resolved: ResolvedDoc,
+  tool: string,
+): { ok: true; doc: PartDoc; docHash: string } | { ok: false; error: string } {
+  if (!resolved.ok) return { ok: false, error: resolved.error }
+  if (resolved.kind === 'assembly') {
+    return {
+      ok: false,
+      error: `${tool} runs on a part document; pass the part's docHash (see the assembly's \`parts\`)`,
+    }
+  }
+  return { ok: true, doc: resolved.doc, docHash: resolved.docHash }
+}
+
+export interface AssemblyRunReplySource {  ok: boolean
+  outcome: { steps: unknown[] }
+  doc: AssemblyDoc
+  // The binding the run used, so the composite handle can be minted.
+  binding: ReadonlyMap<string, PartDoc> | Record<string, PartDoc>
+  solve: unknown
+  mates: unknown[]
+  partProblems: unknown[]
+  instances: unknown[]
+  mateFrames: Record<string, unknown>
+  summary: string
+}
+
+/**
+ * Build an assembly `run` reply: the composite handle, the solve state, the
+ * problem lists, the solved poses and the mate frames, with the document only
+ * when the caller opts in.
+ */
+export function assemblyRunReply(
+  result: AssemblyRunReplySource,
+  returnDoc: boolean,
+  documents: DocHandleStore,
+): { ok: boolean; [key: string]: unknown } {
+  const binding = result.binding instanceof Map
+    ? Object.fromEntries(result.binding)
+    : result.binding
+  const docHash = documents.putAssembly(result.doc, binding)
+  return {
+    ok: result.ok,
+    kind: 'assembly',
+    steps: result.outcome.steps,
+    docHash,
+    solve: result.solve,
+    mates: result.mates,
+    parts: result.partProblems,
+    instances: result.instances,
+    mateFrames: result.mateFrames,
+    summary: result.summary,
+    ...(returnDoc && { doc: result.doc }),
   }
 }

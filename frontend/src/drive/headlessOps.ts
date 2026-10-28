@@ -10,9 +10,9 @@
 // invocation); a driver that keeps the process alive (MCP) must serialize its
 // calls, which its stdio loop does by construction.
 
-import type { PartDoc, BodyResult } from '@/types/cad'
+import type { PartDoc, BodyResult, AssemblyDoc, Transform3D } from '@/types/cad'
 import type { SolveSchedulerState } from '@/session/SolveScheduler'
-import { exportLocally, solveLocally, buildAndMeasureLocally, measureSolveFeatures, type FeatureMeasure, type LocalExportOptions } from '@/kernel/solveLocally'
+import { exportLocally, solveLocally, buildAndMeasureLocally, measureSolveFeatures, measureAssemblyLocally, exportAssemblyLocally, type FeatureMeasure, type LocalExportOptions } from '@/kernel/solveLocally'
 import { KernelFault } from '@/kernel/errors'
 import { compareMeasures, type MeasureRow } from '@/kernel/occ/measureTolerance'
 import type { MeasureRecord } from '@/kernel/occ/measure'
@@ -28,6 +28,20 @@ import { partSolvePayload } from '@/drive/solveWriteBack'
 import { docHashOf } from '@/drive/docHash'
 import type { CommandJournal } from '@/drive/journal'
 import type { ScriptRunOutcome, ScriptStep } from '@/drive/scriptRunner'
+import { createHeadlessAssembly, type AssemblyScriptStep } from '@/drive/headlessAssembly'
+import type { AssemblyBuildResponse, AssemblySolveStatus } from '@/kernel/solveAssembly'
+import {
+  instancePoses,
+  mateFrames,
+  mateProblems,
+  partProblems,
+  solveFailed,
+  summarizeAssembly,
+  type AssemblyPartProblem,
+  type InstancePose,
+  type MateFrame,
+  type MateProblem,
+} from '@/drive/assemblyOutcome'
 
 // The app seeds a fresh document with the builtin features (useDocumentState);
 // the headless drivers mirror that so commands that toggle plane/sketch
@@ -296,4 +310,180 @@ export async function selectHeadless(
   })
   if (!response) return null
   return selectByPredicate(selector, response.bodies as Record<string, BodyResult>)
+}
+
+// ─── assembly ───
+
+/** The state every assembly reply shares: the solve, its problem lists and the
+ *  solved poses. */
+export interface AssemblyState {
+  solve: AssemblySolveStatus
+  mates: MateProblem[]
+  parts: AssemblyPartProblem[]
+  instances: InstancePose[]
+  mateFrames: Record<string, MateFrame>
+  summary: string
+}
+
+function assemblyState(
+  doc: AssemblyDoc,
+  response: AssemblyBuildResponse,
+  outcomes: Record<string, { features: FeatureProblem[]; error?: string }>,
+  docHashes: ReadonlyMap<string, string>,
+): AssemblyState {
+  const mates = mateProblems(doc, response.status)
+  const parts = partProblems(doc, outcomes, docHashes)
+  return {
+    solve: response.status,
+    mates,
+    parts,
+    instances: instancePoses(doc, response.transforms),
+    mateFrames: mateFrames(doc, response),
+    summary: summarizeAssembly(doc, response.status, mates, parts),
+  }
+}
+
+/** The binding as part specs plus hashes, the shape measure/export need. */
+function assemblySpecs(
+  doc: AssemblyDoc,
+  parts: ReadonlyMap<string, PartDoc>,
+  transforms: Record<string, Transform3D>,
+): { handle: string; spec: Record<string, unknown>; transform: Transform3D }[] {
+  return (doc.features ?? [])
+    .filter(f => f.kind === 'part_instance' && f.instance)
+    .map((f) => {
+      const instance = f.instance!
+      const partDoc = parts.get(instance.doc_id)
+      if (!partDoc) throw new Error(`part "${instance.doc_id}" is not bound`)
+      return {
+        handle: instance.handle,
+        spec: partSolvePayload(partDoc, instance.doc_id),
+        transform: transforms[instance.handle] ?? instance.transform,
+      }
+    })
+}
+
+function docHashesOf(parts: ReadonlyMap<string, PartDoc>): Map<string, string> {
+  return new Map([...parts].map(([docId, partDoc]) => [docId, docHashOf(partDoc)]))
+}
+
+export interface HeadlessAssemblyRunOptions {
+  doc: AssemblyDoc
+  parts: ReadonlyMap<string, PartDoc>
+  steps: readonly AssemblyScriptStep[]
+  files?: ReadonlyMap<string, Uint8Array>
+}
+
+export interface HeadlessAssemblyRunResult extends AssemblyState {
+  ok: boolean
+  outcome: ScriptRunOutcome
+  doc: AssemblyDoc
+  session: ReturnType<typeof createHeadlessAssembly>
+}
+
+/**
+ * Run an assembly script through one headless session and report the end state.
+ * `ok` means every step applied and the final solve ran; a stale mate, a part
+ * build problem or an overconstrained verdict are data in `mates`/`parts` and
+ * the summary (D12).
+ */
+export async function runAssemblyHeadless(opts: HeadlessAssemblyRunOptions): Promise<HeadlessAssemblyRunResult> {
+  const session = createHeadlessAssembly({ doc: opts.doc, parts: opts.parts, ...(opts.files && { files: opts.files }) })
+  const outcome = await session.run(opts.steps)
+  const doc = session.getDoc()
+  const response = session.lastSolve()
+  if (response === null) throw new Error('the assembly run did not solve')
+  const state = assemblyState(doc, response, session.partOutcomes(), docHashesOf(opts.parts))
+  return {
+    ok: outcome.ok && !solveFailed(response.status),
+    outcome,
+    doc,
+    session,
+    ...state,
+  }
+}
+
+export interface HeadlessAssemblyMeasure {
+  ok: boolean
+  measures: MeasureRecord
+  state: AssemblyState
+}
+
+/**
+ * Solve and measure an assembly. Each distinct part doc is built once and
+ * placed per instance, and the per-body ids are `<handle>/<bodyId>`.
+ */
+export async function measureAssemblyHeadless(
+  doc: AssemblyDoc,
+  parts: ReadonlyMap<string, PartDoc>,
+  opts: { files?: ReadonlyMap<string, Uint8Array> } = {},
+): Promise<HeadlessAssemblyMeasure | null> {
+  const session = createHeadlessAssembly({ doc, parts, ...(opts.files && { files: opts.files }) })
+  const response = await session.solve()
+  const measures = await measureAssemblyLocally(assemblySpecs(doc, parts, response.transforms), opts.files)
+  if (measures === null) return null
+  return {
+    ok: !solveFailed(response.status),
+    measures,
+    state: assemblyState(doc, response, session.partOutcomes(), docHashesOf(parts)),
+  }
+}
+
+export interface HeadlessAssemblyCompare {
+  ok: boolean
+  pass: boolean
+  rows: MeasureRow[]
+  measures: MeasureRecord | null
+  state: AssemblyState | null
+  error?: string
+}
+
+/** Measure an assembly and compare it at the reference's tolerance. A failing
+ *  row is data; only an unavailable or unsolved kernel is `ok: false`. */
+export async function compareAssemblyHeadless(
+  doc: AssemblyDoc,
+  parts: ReadonlyMap<string, PartDoc>,
+  reference: TranslationReference,
+  opts: { files?: ReadonlyMap<string, Uint8Array> } = {},
+): Promise<HeadlessAssemblyCompare> {
+  let measured: HeadlessAssemblyMeasure | null
+  try {
+    measured = await measureAssemblyHeadless(doc, parts, opts)
+  } catch (e) {
+    return { ok: false, pass: false, rows: [], measures: null, state: null, error: e instanceof Error ? e.message : String(e) }
+  }
+  if (!measured) {
+    return {
+      ok: false, pass: false, rows: [], measures: null, state: null,
+      error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)',
+    }
+  }
+  if (!measured.ok) {
+    return {
+      ok: false, pass: false, rows: [], measures: measured.measures, state: measured.state,
+      error: measured.state.solve.error ?? 'the assembly solve did not run',
+    }
+  }
+  const { pass, rows } = compareMeasures(measured.measures, reference, {
+    tolerance: reference.tolerance,
+    topology: reference.topology,
+  })
+  return { ok: true, pass, rows, measures: measured.measures, state: measured.state }
+}
+
+export interface HeadlessAssemblyExportOptions extends LocalExportOptions {
+  files?: ReadonlyMap<string, Uint8Array>
+}
+
+/** Export an assembly's placed compound through OCC. Null when there is no
+ *  solid or the kernel is unavailable. */
+export async function exportAssemblyHeadless(
+  doc: AssemblyDoc,
+  parts: ReadonlyMap<string, PartDoc>,
+  opts: HeadlessAssemblyExportOptions,
+): Promise<Uint8Array | null> {
+  const session = createHeadlessAssembly({ doc, parts, ...(opts.files && { files: opts.files }) })
+  const response = await session.solve()
+  const { files, ...exportOpts } = opts
+  return exportAssemblyLocally(assemblySpecs(doc, parts, response.transforms), exportOpts, files)
 }

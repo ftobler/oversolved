@@ -23,6 +23,13 @@ export type ScriptStep =
   | { command: string; params?: unknown; continueOnError?: boolean }
   | { mutation: Mutation; continueOnError?: boolean }
 
+/** The shape the loop reads from any step: a command id or a typed mutation.
+ *  The assembly drive has its own mutation union, so the runner is generic over
+ *  the step type and this is the constraint both satisfy. */
+export type AnyScriptStep =
+  | { command: string; params?: unknown; continueOnError?: boolean }
+  | { mutation: { type: string }; continueOnError?: boolean }
+
 export interface ScriptStepOutcome {
   index: number
   kind: 'command' | 'mutation'
@@ -41,10 +48,12 @@ export interface ScriptRunOutcome {
 // A step's result: the registry Result, the session Result, a bridge failure,
 // or null for the adapter's "no document" no-op. Anything else (a thrown
 // exception) is caught here and recorded as an error outcome, never allowed to
-// abort the script silently.
+// abort the script silently. A runner may be asynchronous (the assembly session
+// awaits an OCC bundle build to resolve a mate ref); the loop awaits it, so the
+// sync runners are unchanged.
 export type ScriptStepResult = CommandResult | Result | ScriptFailure | null
 
-export type ScriptStepRunner = (step: ScriptStep) => ScriptStepResult
+export type ScriptStepRunner<S extends AnyScriptStep = ScriptStep> = (step: S) => ScriptStepResult | Promise<ScriptStepResult>
 
 function isObject(value: unknown): value is { [key: string]: unknown } {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -113,9 +122,9 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
  * solves each step started: the browser bridge passes the session idle, the CLI
  * passes its local scheduler's idle.
  */
-export async function runScript(
-  steps: readonly ScriptStep[],
-  run: ScriptStepRunner,
+export async function runScript<S extends AnyScriptStep = ScriptStep>(
+  steps: readonly S[],
+  run: ScriptStepRunner<S>,
   settle?: () => Promise<void> | void,
 ): Promise<ScriptRunOutcome> {
   const outcomes: ScriptStepOutcome[] = []
@@ -127,7 +136,7 @@ export async function runScript(
       outcome = malformed
     } else {
       try {
-        outcome = outcomeFor(index, step, run(step))
+        outcome = outcomeFor(index, step, await run(step))
       } catch (e) {
         outcome = {
           index,

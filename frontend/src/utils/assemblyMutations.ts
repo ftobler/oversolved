@@ -126,18 +126,37 @@ export function mintInstanceHandle(doc: AssemblyDoc): string {
   return handle
 }
 
+/**
+ * Explicit identity and placement for a new instance. The UI passes none and
+ * keeps the minted handle and identity drop; the drive passes all four so one
+ * script step is one deterministic undo entry (D10).
+ */
+export interface AppendInstanceOptions {
+  handle?: string
+  featureId?: string
+  transform?: Transform3D
+  fixed?: boolean
+}
+
 // Append a part instance for the picked part at its current rev. The instance
-// drops at the assembly origin with an identity transform.
-export function appendPartInstance(doc: AssemblyDoc, docId: string, docRev: number): AssemblyDoc {
+// drops at the assembly origin with an identity transform unless the caller
+// authors a pose.
+export function appendPartInstance(
+  doc: AssemblyDoc,
+  docId: string,
+  docRev: number,
+  options: AppendInstanceOptions = {},
+): AssemblyDoc {
   const instance: PartInstance = {
-    handle: mintInstanceHandle(doc),
+    handle: options.handle ?? mintInstanceHandle(doc),
     doc_id: docId,
     doc_rev: docRev,
-    transform: { ...IDENTITY_TRANSFORM },
+    transform: options.transform ? { ...options.transform } : { ...IDENTITY_TRANSFORM },
     visible: true,
   }
+  if (options.fixed !== undefined) instance.fixed = options.fixed
   const feature: AssemblyFeature = {
-    id: mintFeatureId(),
+    id: options.featureId ?? mintFeatureId(),
     kind: 'part_instance',
     instance,
   }
@@ -152,20 +171,24 @@ export function appendPartInstance(doc: AssemblyDoc, docId: string, docRev: numb
 // anchoring the assembly, so a second fixed copy at the same pose would
 // over-constrain the solve. Mates are relationships between parts rather than
 // properties of one, so they stay pointed at the original.
-export function duplicateInstance(doc: AssemblyDoc, handle: string): AssemblyDoc {
+export function duplicateInstance(
+  doc: AssemblyDoc,
+  handle: string,
+  options: { handle?: string; featureId?: string } = {},
+): AssemblyDoc {
   const source = features(doc).find(
     f => f.kind === 'part_instance' && f.instance?.handle === handle,
   )?.instance
   if (!source) return doc
   const instance: PartInstance = {
-    handle: mintInstanceHandle(doc),
+    handle: options.handle ?? mintInstanceHandle(doc),
     doc_id: source.doc_id,
     doc_rev: source.doc_rev,
     transform: { ...source.transform },
     visible: source.visible ?? true,
   }
   const feature: AssemblyFeature = {
-    id: mintFeatureId(),
+    id: options.featureId ?? mintFeatureId(),
     kind: 'part_instance',
     instance,
   }
@@ -453,25 +476,43 @@ export function defaultMateName(doc: AssemblyDoc, kind: MateKind, exceptId?: str
 }
 
 /**
- * Append a mate with both references empty. A mate is authored before it is
- * aimed: the user inserts the kind, then picks `ref_a` and `ref_b`. Until both
- * resolve, the solve reports it stale and it renders red, which is the same
- * signal a mate whose geometry was deleted gives.
+ * The explicit half of a new mate: a label, both refs and the parameter patch.
+ * The UI passes none of it (a mate is authored before it is aimed); a drive
+ * step passes the whole mate so one step is one undo entry (D9).
+ */
+export interface AppendMateOptions {
+  label?: string
+  ref_a?: MateRef
+  ref_b?: MateRef
+  patch?: MateParamPatch
+}
+
+/**
+ * Append a mate. A bare call carries both references empty: the user inserts the
+ * kind, then picks `ref_a` and `ref_b`. Until both resolve, the solve reports it
+ * stale and it renders red, the same signal a mate whose geometry was deleted
+ * gives.
  *
  * The caller mints `id` so it can select and arm the new mate in the same event.
  * The default label is minted and STORED here, so the tree never has to derive a
  * name from render position.
  */
-export function appendMate(doc: AssemblyDoc, kind: MateKind, id: string): AssemblyDoc {
+export function appendMate(
+  doc: AssemblyDoc,
+  kind: MateKind,
+  id: string,
+  options: AppendMateOptions = {},
+): AssemblyDoc {
+  const base: MateFeatureDef = {
+    kind,
+    label: options.label ?? defaultMateName(doc, kind),
+    ref_a: options.ref_a ? { ...options.ref_a } : { ...EMPTY_MATE_REF },
+    ref_b: options.ref_b ? { ...options.ref_b } : { ...EMPTY_MATE_REF },
+  }
   const feature: AssemblyFeature = {
     id,
     kind: 'mate',
-    mate: {
-      kind,
-      label: defaultMateName(doc, kind),
-      ref_a: { ...EMPTY_MATE_REF },
-      ref_b: { ...EMPTY_MATE_REF },
-    },
+    mate: options.patch ? applyMatePatch(base, options.patch) : base,
   }
   return { ...doc, features: [...features(doc), feature] }
 }
@@ -532,22 +573,29 @@ export function setMateRef(
 export type MateParamPatch = Partial<Pick<MateFeatureDef, 'flip' | 'ratio' | 'offset' | 'radius' | 'angle'>>
 
 /**
- * Patch a mate's parameters. An `undefined` value deletes the key rather than
- * storing it: the doc is serialized to YAML, where a present-but-undefined field
- * round-trips as `null` and reads back as a value the solver would use.
+ * Apply a parameter patch to a mate definition. An `undefined` value deletes the
+ * key rather than storing it: the doc is serialized to YAML, where a
+ * present-but-undefined field round-trips as `null` and reads back as a value
+ * the solver would use.
+ */
+function applyMatePatch(mate: MateFeatureDef, patch: MateParamPatch): MateFeatureDef {
+  const next: MateFeatureDef = { ...mate, ...patch }
+  for (const key of Object.keys(patch) as (keyof MateParamPatch)[]) {
+    if (patch[key] === undefined) delete next[key]
+  }
+  return next
+}
+
+/**
+ * Patch a mate's parameters. An `undefined` value deletes the key (see
+ * applyMatePatch).
  */
 export function updateMate(
   doc: AssemblyDoc,
   featureId: string,
   patch: MateParamPatch,
 ): AssemblyDoc {
-  return updateMateFeature(doc, featureId, m => {
-    const next: MateFeatureDef = { ...m, ...patch }
-    for (const key of Object.keys(patch) as (keyof MateParamPatch)[]) {
-      if (patch[key] === undefined) delete next[key]
-    }
-    return next
-  })
+  return updateMateFeature(doc, featureId, m => applyMatePatch(m, patch))
 }
 
 // ─── Reordering ───

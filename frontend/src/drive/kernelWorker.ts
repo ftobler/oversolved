@@ -12,22 +12,28 @@ import { setOccLoader } from '@/kernel/solveLocally'
 import { loadOcc, resetOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
+import { loadPkgNodeExport, PKG_MATE } from '@/wasm-kernel/loadPkgNode'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { onFeatureStart } from '@/kernel/featureProgress'
-import type { PartDoc } from '@/types/cad'
+import { setMateSolver } from '@/drive/headlessAssembly'
+import type { AssemblyDoc, PartDoc } from '@/types/cad'
 import type { Selector } from '@/kernel/select'
 import type { TranslationReference } from '@/translations/corpus'
 import type { ScriptStep } from '@/drive/scriptRunner'
 import { createDriveJournal } from '@/drive/journal'
-import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHeadless } from '@/drive/headlessOps'
+import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHeadless, runAssemblyHeadless, measureAssemblyHeadless, compareAssemblyHeadless, exportAssemblyHeadless } from '@/drive/headlessOps'
+import type { AssemblyScriptStep } from '@/drive/headlessAssembly'
 import type { KernelHostMessage, KernelRequest } from '@/drive/kernelHost'
 
-/** The headless OCC loader and the nodejs solver builds; without them every
- *  solve reports the kernel unavailable. */
+/** The headless OCC loader, the nodejs solver builds and the mate solver;
+ *  without them every solve reports the kernel unavailable. A missing mate
+ *  package leaves the slot null, which the assembly reply reports as the
+ *  `unavailable` verdict rather than a crash. */
 export function bootHeadlessKernel(): void {
   setOccLoader(loadOcc, resetOcc)
   setSketchSolver(loadSolver())
   setSketchTopology(loadTopology())
+  setMateSolver(loadPkgNodeExport<(input: Uint8Array) => Uint8Array>('solve_mate_bytes', PKG_MATE))
 }
 
 /** The `worker_threads` parentPort surface this module needs. */
@@ -56,6 +62,19 @@ export interface KernelExportArgs extends DocArgs {
 }
 export interface KernelSelectArgs extends DocArgs {
   selector: Selector
+}
+
+interface AssemblyDocArgs {
+  doc: AssemblyDoc
+  parts: Record<string, PartDoc>
+  files?: ReadonlyMap<string, Uint8Array>
+}
+export interface KernelAssemblyRunArgs extends AssemblyDocArgs {
+  steps: AssemblyScriptStep[]
+}
+export interface KernelAssemblyExportArgs extends AssemblyDocArgs {
+  format: 'step' | 'stl'
+  bodyId: string | null
 }
 
 async function runOp(req: KernelRequest): Promise<unknown> {
@@ -90,6 +109,34 @@ async function runOp(req: KernelRequest): Promise<unknown> {
     case 'select': {
       const a = req.args as KernelSelectArgs
       return selectHeadless(a.doc, a.selector, { docId: a.docId, files: a.files })
+    }
+    case 'assemblyRun': {
+      const a = req.args as KernelAssemblyRunArgs
+      // The live session holds a History and a command registry, neither of
+      // which is structured-cloneable; the reply is the data-only half.
+      const { session: _session, ...result } = await runAssemblyHeadless({
+        doc: a.doc,
+        parts: new Map(Object.entries(a.parts)),
+        steps: a.steps,
+        ...(a.files && { files: a.files }),
+      })
+      return result
+    }
+    case 'assemblyMeasure': {
+      const a = req.args as AssemblyDocArgs
+      return measureAssemblyHeadless(a.doc, new Map(Object.entries(a.parts)), a.files ? { files: a.files } : {})
+    }
+    case 'assemblyCompare': {
+      const a = req.args as AssemblyDocArgs & { reference: TranslationReference }
+      return compareAssemblyHeadless(a.doc, new Map(Object.entries(a.parts)), a.reference, a.files ? { files: a.files } : {})
+    }
+    case 'assemblyExport': {
+      const a = req.args as KernelAssemblyExportArgs
+      return exportAssemblyHeadless(a.doc, new Map(Object.entries(a.parts)), {
+        format: a.format,
+        bodyId: a.bodyId,
+        ...(a.files && { files: a.files }),
+      })
     }
   }
 }

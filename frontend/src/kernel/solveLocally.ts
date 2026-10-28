@@ -841,6 +841,118 @@ export interface AssemblyExportPart {
   transform: Transform3D
 }
 
+/** One placed body: the instance handle it belongs to and its world shape. */
+export interface AssemblyPlacedBody {
+  handle: string
+  bodyId: string
+  shape: OccShape
+}
+
+// A test-only count of how many part specs placeAssemblyParts actually built.
+// R3's dedupe assertion reads it: two instances of one doc must build once.
+let assemblyBuildCount = 0
+
+/** @internal test-only: how many builds the assembly placement path ran. */
+export function assemblyBuildCountForTest(): number {
+  return assemblyBuildCount
+}
+
+/** @internal test-only: reset the placement build counter. */
+export function resetAssemblyBuildCountForTest(): void {
+  assemblyBuildCount = 0
+}
+
+/**
+ * Build every distinct part doc once, then place a transformed copy per
+ * instance. One shared handle table owns both the source B-reps and the copies,
+ * because `BRepBuilderAPI_Transform` hands back a shape that still shares its
+ * source TShape (the reason `copyShape` exists): freeing a per-part table would
+ * pull the geometry out from under the compound.
+ *
+ * The dedupe is keyed on `spec.id`, which the drive's partSolvePayload stamps
+ * with the part's doc_id. A spec without an id is built per instance.
+ */
+function placeAssemblyParts(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  instances: readonly { handle: string; spec: Record<string, unknown>; transform: Transform3D }[],
+  files?: ReadonlyMap<string, Uint8Array>,
+): AssemblyPlacedBody[] {
+  const built = new Map<string, { bodyId: string; shape: OccShape }[]>()
+  const placed: AssemblyPlacedBody[] = []
+  for (const instance of instances) {
+    const key = typeof instance.spec.id === 'string' ? instance.spec.id : null
+    let bodies = key === null ? undefined : built.get(key)
+    if (!bodies) {
+      assemblyBuildCount++
+      const response = build(instance.spec, { prevState: null }, buildDeps(oc, scope, table, files))
+      const order = response._build_state.feature_order
+      const lastCp = order.length > 0 ? response._build_state.checkpoints[order[order.length - 1]] : undefined
+      bodies = []
+      for (const [bodyId, body] of Object.entries(lastCp?.body_store_snapshot ?? {})) {
+        if (body.shape == null) continue
+        bodies.push({ bodyId, shape: table.get<OccShape>(body.shape) })
+      }
+      if (key !== null) built.set(key, bodies)
+    }
+    for (const body of bodies) {
+      placed.push({
+        handle: instance.handle,
+        bodyId: body.bodyId,
+        shape: scope.track(transformCopy(oc, scope, body.shape, makeRigidTrsf(oc, scope, instance.transform))),
+      })
+    }
+  }
+  return placed
+}
+
+/** One part instance to measure: its spec, its solved placement and the handle
+ *  the per-body ids are prefixed with. */
+export interface AssemblyMeasurePart extends AssemblyExportPart {
+  handle: string
+}
+
+/**
+ * Measure an assembly's placed bodies. Each distinct part doc is built once and
+ * copied per instance, and the per-body ids are `<handle>/<bodyId>` so a
+ * compare against a CadQuery assembly can name the instance.
+ */
+export async function measureAssemblyLocally(
+  parts: readonly AssemblyMeasurePart[],
+  files?: ReadonlyMap<string, Uint8Array>,
+): Promise<MeasureRecord | null> {
+  const oc = await loadKernelForBuild()
+  if (!oc) return null
+
+  const scope = new DisposeScope()
+  const table = new HandleTable()
+  let faulted = false
+  try {
+    const placed = placeAssemblyParts(oc, scope, table, parts, files)
+    if (placed.length === 0) return null
+    return measureBodies(
+      oc,
+      scope,
+      placed.map(body => body.shape),
+      placed.map(body => `${body.handle}/${body.bodyId}`),
+    )
+  } catch (e) {
+    if (isKernelTrap(e)) {
+      faulted = true
+      recoverTrap(e)
+    }
+    throw e
+  } finally {
+    if (!faulted) {
+      cleanupKernel(() => {
+        scope.dispose()
+        table.disposeAll()
+      })
+    }
+  }
+}
+
 function serialiseShape(
   oc: OccModule,
   scope: DisposeScope,
@@ -881,18 +993,14 @@ export async function exportAssemblyLocally(
   const table = new HandleTable()
   let faulted = false
   try {
-    const placed: OccShape[] = []
-    for (const part of parts) {
-      const response = build(part.spec, { prevState: null }, buildDeps(oc, scope, table, files))
-      // A part with no solid (an empty doc, a sketch-only doc) contributes
-      // nothing rather than failing the whole export.
-      const shape = resolveExportShape(oc, scope, table, response._build_state, null, null)
-      if (!shape) continue
-      // `transformCopy` hands back a fresh shape nobody owns: the compound is
-      // read (serialised) before `scope.dispose()`, so the scope is its owner.
-      placed.push(scope.track(transformCopy(oc, scope, shape, makeRigidTrsf(oc, scope, part.transform))))
-    }
-    const compound = compoundOf(oc, scope, placed)
+    const placed = placeAssemblyParts(
+      oc,
+      scope,
+      table,
+      parts.map((part, index) => ({ handle: String(index), spec: part.spec, transform: part.transform })),
+      files,
+    )
+    const compound = compoundOf(oc, scope, placed.map(body => body.shape))
     if (!compound) return null
     return serialiseShape(oc, scope, compound, opts)
   } catch (e) {

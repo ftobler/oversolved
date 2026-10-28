@@ -85,6 +85,10 @@ describe('assembly operation coverage', () => {
     expect(d.deleteSubject).toHaveBeenCalledWith(expect.objectContaining({ kind: 'mate' }))
     invoked.add('delete_part')
     invoked.add('delete_mate')
+    // set_mate_ref is the editor's aim-commit write (the store calls it when a
+    // mate chip commits a pick), not a command: the command table inserts the
+    // mate and opens its editor, and the pick is what writes the reference.
+    invoked.add('set_mate_ref')
     for (const id of Object.keys(ASSEMBLY_OPERATIONS) as AssemblyOperationId[]) {
       expect(invoked.has(id), `operation "${id}" is not wired to any command`).toBe(true)
     }
