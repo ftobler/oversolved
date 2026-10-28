@@ -3,12 +3,71 @@
 // compute identical geometry. In TS both satisfy [[PlaneLike]], so the branch
 // collapses to one path.
 
+import type { Body } from '../../types3d'
+import type { Repository } from '../../query'
+import { resolveBarePlaneId } from '../../solverConstants'
+import type { Vec3 } from '@/utils/vec3'
+
 /** A plane as either a Frame3D or a plain `{origin, x_axis, y_axis, normal}` dict. */
 export interface PlaneLike {
   origin: number[]
   x_axis: number[]
   y_axis: number[]
   normal: number[]
+}
+
+/** A plane reduced to what a half-space or a mirror needs: a point and a unit normal. */
+export interface ResolvedPlane {
+  origin: Vec3
+  normal: Vec3
+}
+
+type Dict = Record<string, unknown>
+
+/**
+ * Resolve a plane-shaped pick to an origin and a unit normal.
+ *
+ * Accepts every spelling the plane vocabulary allows: a builtin plane feature
+ * ref or bare name (Front/Top/Right), a datum-plane feature ref, and a flat-face
+ * or plane geometry record from the repo. `leaf` names the calling feature in
+ * every failure, so a bad pick reads as the row the user was editing.
+ *
+ * The normal is normalized here once, so a caller that only needs the direction
+ * (mirror, half-space) never has to re-check its length.
+ */
+export function resolvePlaneRef(
+  globalRepo: Repository,
+  query: string,
+  bodyStore: Record<string, Body>,
+  leaf: string,
+): ResolvedPlane {
+  // A bare builtin name is a UI spelling, not a repo key: the repo holds
+  // `builtin_plane_top`, so translate before asking it anything.
+  const bareId = resolveBarePlaneId(query) ?? resolveBarePlaneId(query.replace(/^@/, ''))
+  const lookup = bareId !== null ? '@' + bareId : query
+  const planeData = globalRepo.query(lookup, null, bodyStore) as Dict | null
+  if (planeData === null) throw new Error(`${leaf}: plane not found: ${JSON.stringify(query)}`)
+
+  let origin: number[]
+  let normal: number[]
+  if ('x_axis' in planeData && 'normal' in planeData && 'origin' in planeData && !('type' in planeData)) {
+    origin = planeData.origin as number[]
+    normal = planeData.normal as number[]
+  } else if (planeData.type === 'flatface' || planeData.type === 'plane') {
+    origin = (planeData.origin as number[]) ?? [0, 0, 0]
+    normal = (planeData.normal as number[]) ?? [0, 0, 1]
+  } else {
+    throw new Error(`${leaf}: plane query did not resolve to a plane: ${JSON.stringify(query)}`)
+  }
+
+  const length = Math.hypot(normal[0], normal[1], normal[2])
+  if (!(length > 1e-10)) {
+    throw new Error(`${leaf}: plane normal must be a non-zero vector`)
+  }
+  return {
+    origin: [origin[0], origin[1], origin[2]],
+    normal: [normal[0] / length, normal[1] / length, normal[2] / length],
+  }
 }
 
 /** Transform 2D sketch coords to 3D world space (mirrors `_sketch_to_world_2d`). */

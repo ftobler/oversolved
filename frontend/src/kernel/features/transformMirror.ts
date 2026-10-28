@@ -12,6 +12,7 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { getPoint3d, type Repository } from '../query'
 import type { PlaneLike } from './shared/planes'
+import { resolvePlaneRef } from './shared/planes'
 import { resolveBody, resolveBodyRefList } from './shared/bodyResolution'
 import { makeMirrorTrsf, makeTranslationTrsf, makeRotationTrsf, makeScaleTrsf } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
@@ -249,19 +250,7 @@ export function solveMirror(
 
   const planeQuery = (cfg.plane as string) ?? ''
   if (!planeQuery) throw new Error('mirror: plane is required')
-  const planeData = globalRepo.query(planeQuery, null, bodyStore) as Dict | null
-  if (planeData === null) throw new Error(`mirror: plane not found: ${JSON.stringify(planeQuery)}`)
-  let origin: number[]
-  let normal: number[]
-  if ('x_axis' in planeData && 'normal' in planeData && 'origin' in planeData && !('type' in planeData)) {
-    origin = planeData.origin as number[]
-    normal = planeData.normal as number[]
-  } else if (planeData.type === 'flatface' || planeData.type === 'plane') {
-    origin = (planeData.origin as number[]) ?? [0, 0, 0]
-    normal = (planeData.normal as number[]) ?? [0, 0, 1]
-  } else {
-    throw new Error(`mirror: plane query did not resolve to a plane: ${JSON.stringify(planeQuery)}`)
-  }
+  const { origin, normal } = resolvePlaneRef(globalRepo, planeQuery, bodyStore, 'mirror')
 
   const keepOriginal = (cfg.keep_original as boolean) ?? true
   const merge = (cfg.merge as boolean) ?? true
@@ -271,10 +260,7 @@ export function solveMirror(
   // One mirror copy of one source body: no per-instance repetition, so the rows
   // are simply read once here (M37 Change 2a).
   const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames.faceNames, sourceNames.faceAncestry)
-  if (Math.hypot(normal[0], normal[1], normal[2]) < 1e-10) {
-    throw new Error('mirror: plane normal must be a non-zero vector')
-  }
-  const trsf = makeMirrorTrsf(oc, scope, [origin[0], origin[1], origin[2]], [normal[0], normal[1], normal[2]])
+  const trsf = makeMirrorTrsf(oc, scope, origin, normal)
   const { shape: mirroredRaw, builder } = transformCopyWithMapping(oc, scope, sourceShape, trsf)
   const mirrored = scope.track(mirroredRaw)
   // When replacing (keep_original: false), preserve the original body's face

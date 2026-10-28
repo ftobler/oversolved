@@ -33,7 +33,7 @@ import { type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape } from './occTypes'
 import { canonicalFaces, canonicalEdges } from './bodyNames'
 import { SubShapeMap } from './subshapeIdentity'
-import { faceCentroid } from './primitives'
+import { faceCentroid, bboxDiagonal } from './primitives'
 import { booleanWithDiff, type FaceOrigin } from './booleans'
 import type { BrepDiff } from '../types3d'
 import { TOL_MOVE_FACE_TANGENT } from '../solverConstants'
@@ -455,16 +455,6 @@ export function moveFaceCells(
   }
 
   return { cells: picked, capFaces, extensionOf }
-}
-
-function bboxDiagonal(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
-  const box = scope.track(new oc.Bnd_Box_1())
-  oc.BRepBndLib.Add(shape, box, false)
-  return Math.hypot(
-    box.GetXmax() - box.GetXmin(),
-    box.GetYmax() - box.GetYmin(),
-    box.GetZmax() - box.GetZmin(),
-  )
 }
 
 export interface ApplyMoveFaceResult {

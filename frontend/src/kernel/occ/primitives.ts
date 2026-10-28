@@ -727,6 +727,38 @@ export function solidCentroid(oc: OccModule, scope: DisposeScope, solid: OccShap
   return out
 }
 
+/** An axis-aligned bounding box read: the corners, their centre and the diagonal. */
+export interface ShapeBndBox {
+  min: Vec3
+  max: Vec3
+  centre: Vec3
+  diagonal: number
+}
+
+/**
+ * The shape's axis-aligned bounding box via `BRepBndLib.Add`, the cheap bound
+ * (each sub-shape's own tolerance is folded in). Not the measure path: the
+ * oracle's bbox is `faceBounds.shapeBbox`, which keeps a face's exact extremes.
+ * This one sizes tools that only have to be comfortably larger than the body.
+ */
+export function shapeBndBox(oc: OccModule, scope: DisposeScope, shape: OccShape): ShapeBndBox {
+  const box = scope.track(new oc.Bnd_Box_1())
+  oc.BRepBndLib.Add(shape, box, false)
+  const min: Vec3 = [box.GetXmin(), box.GetYmin(), box.GetZmin()]
+  const max: Vec3 = [box.GetXmax(), box.GetYmax(), box.GetZmax()]
+  return {
+    min,
+    max,
+    centre: [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2],
+    diagonal: Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]),
+  }
+}
+
+/** The bounding box diagonal, the scale a tool box is sized against. */
+export function bboxDiagonal(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
+  return shapeBndBox(oc, scope, shape).diagonal
+}
+
 /**
  * Cylinder axis direction from the V-derivative at the UV mid-point. For a
  * `gp_Cylinder` the V parameter runs along the axis, so dv is the axis
