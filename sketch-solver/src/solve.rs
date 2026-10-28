@@ -207,7 +207,7 @@ fn drag_reg_weights(input: &Input, n: usize) -> Vec<f64> {
         // pull, matching the out-of-range handling everywhere else.
         if let Some(end) = e
             .param_offset
-            .checked_add(e.kind.param_count())
+            .checked_add(e.param_count)
             .filter(|&end| end <= n)
         {
             for w in &mut weights[e.param_offset..end] {
@@ -432,7 +432,7 @@ fn entity_status(input: &Input, spectrum: &Spectrum, overall: Status) -> Vec<u8>
             if !input.entity_params_in_range(ei) {
                 return Status::Underconstrained.to_u8();
             }
-            let mut cols = e.param_offset..e.param_offset + e.kind.param_count();
+            let mut cols = e.param_offset..e.param_offset + e.param_count;
             let free = cols.any(|i| null.row(i).iter().any(|v| v.abs() > FREE_COMPONENT_TOL));
             if free {
                 Status::Underconstrained.to_u8()

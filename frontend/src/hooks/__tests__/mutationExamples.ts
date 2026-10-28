@@ -37,6 +37,12 @@ const sketchDoc = (): PartDoc => makeDoc(makeSketch('sk1', {
   constraints: [{ id: 'c1', kind: 'horizontal', target: '$l1' }],
 }))
 
+const docWithFitSpline = (): PartDoc => makeDoc(makeSketch('sk1', {
+  entities: [{ id: 'sp1', kind: 'fit_spline' }],
+  initial: { sp1: [0, 0, 2, 1, 4, 0] },
+  constraints: [],
+}))
+
 const circleDoc = (): PartDoc => makeDoc(makeSketch('sk1', {
   entities: [{ id: 'circ1', kind: 'circle' }, { id: 'ln1', kind: 'line' }],
   initial: { circ1: [5, 5, 3], ln1: [0, 0, 10, 0] },
@@ -232,6 +238,14 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   delete: {
     makeDoc: sketchDoc,
     mutation: { type: 'delete', targets: ['entity:sk1:l2'] },
+  },
+  insert_fit_point: {
+    makeDoc: () => docWithFitSpline(),
+    mutation: { type: 'insert_fit_point', featureId: 'sk1', entityId: 'sp1', index: 1, point: [1, 1] },
+  },
+  set_fit_spline_handle: {
+    makeDoc: () => docWithFitSpline(),
+    mutation: { type: 'set_fit_spline_handle', featureId: 'sk1', entityId: 'sp1', end: 'start', handle: [1, 1] },
   },
   add_entity: {
     makeDoc: sketchDoc,

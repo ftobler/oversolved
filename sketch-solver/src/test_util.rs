@@ -4,10 +4,7 @@ use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole
 use crate::{Entity, Input, Kind, Options};
 
 pub fn ent(kind: Kind, off: usize) -> Entity {
-    Entity {
-        kind,
-        param_offset: off,
-    }
+    Entity::new(kind, off)
 }
 
 pub fn line(off: usize) -> Entity {

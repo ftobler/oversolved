@@ -12,6 +12,7 @@ import type {
   TopologyEllipseArcEdge,
   Point,
 } from '@/types/cad'
+import { chainSamples } from '@/utils/geometry/fitSpline'
 
 const DEFAULT_SEGMENTS = 64
 const TWO_PI = 2 * Math.PI
@@ -96,6 +97,9 @@ export function tessellateBoundary(boundary: TopologyEdge[], segments = DEFAULT_
       pts.push(edge.end)
     } else if (edge.kind === 'spline') {
       pts.push(...splinePts(edge, segments))
+    } else if (edge.kind === 'fit_spline') {
+      pts.push(...chainSamples(edge.poles, edge.knots, segments))
+      pts.push(edge.end)
     } else if (edge.kind === 'ellipse_arc') {
       pts.push(...ellipseArcPts(edge, segments))
     } else {

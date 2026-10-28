@@ -21,11 +21,12 @@ pub(crate) struct Side<'a> {
 }
 
 pub(crate) fn side_ends(s: &Side<'_>) -> Option<(Vec2, Vec2)> {
-    match s.be.geom {
+    match &s.be.geom {
         EdgeGeom::Line { start, end }
         | EdgeGeom::Arc { start, end, .. }
         | EdgeGeom::EllipseArc { start, end, .. }
-        | EdgeGeom::Spline { start, end, .. } => Some((start, end)),
+        | EdgeGeom::Spline { start, end, .. } => Some((*start, *end)),
+        EdgeGeom::FitSpline { poles, .. } => Some((poles[0], poles[poles.len() - 1])),
         EdgeGeom::Ellipse { .. } => None,
     }
 }
@@ -225,6 +226,13 @@ pub(crate) fn reversed(eg: &EdgeGeom) -> EdgeGeom {
             c1: c2,
             c2: c1,
         },
+        EdgeGeom::FitSpline { poles, knots } => {
+            let u_max = *knots.last().unwrap_or(&0.0);
+            EdgeGeom::FitSpline {
+                poles: poles.iter().rev().copied().collect(),
+                knots: knots.iter().rev().map(|u| u_max - u).collect(),
+            }
+        }
         EdgeGeom::EllipseArc {
             center,
             a,
@@ -302,11 +310,12 @@ pub(crate) fn piece_of(out: &TopologyOut, id: &str, eg: &EdgeGeom) -> Option<usi
 }
 
 pub(crate) fn edge_end(eg: &EdgeGeom) -> Option<Vec2> {
-    match *eg {
+    match eg {
         EdgeGeom::Line { end, .. }
         | EdgeGeom::Arc { end, .. }
         | EdgeGeom::EllipseArc { end, .. }
-        | EdgeGeom::Spline { end, .. } => Some(end),
+        | EdgeGeom::Spline { end, .. } => Some(*end),
+        EdgeGeom::FitSpline { poles, .. } => poles.last().copied(),
         EdgeGeom::Ellipse { .. } => None,
     }
 }
@@ -448,11 +457,12 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
     let mut violations = Vec::new();
     let mut edges: Vec<(String, String)> = Vec::new();
     for (idx, e) in out.edges.iter().enumerate() {
-        let ends = match e.geom {
+        let ends = match &e.geom {
             EdgeGeom::Line { start, end }
             | EdgeGeom::Arc { start, end, .. }
             | EdgeGeom::EllipseArc { start, end, .. }
-            | EdgeGeom::Spline { start, end, .. } => Some((start, end)),
+            | EdgeGeom::Spline { start, end, .. } => Some((*start, *end)),
+            EdgeGeom::FitSpline { poles, .. } => Some((poles[0], poles[poles.len() - 1])),
             EdgeGeom::Ellipse { .. } => None,
         };
         let Some((s, t)) = ends else {
@@ -483,7 +493,10 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
         .iter()
         .filter(|s| {
             s.boundary.len() == 1
-                && matches!(s.boundary[0].geom, EdgeGeom::Spline { .. })
+                && matches!(
+                    s.boundary[0].geom,
+                    EdgeGeom::Spline { .. } | EdgeGeom::FitSpline { .. }
+                )
                 && s.boundary[0].start_vertex.is_some()
                 && s.boundary[0].start_vertex == s.boundary[0].end_vertex
                 && s.boundary[0]

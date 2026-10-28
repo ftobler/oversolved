@@ -84,6 +84,10 @@ const ENTITY_PARAM_NAMES: Record<EntityKind, readonly string[]> = {
   arc: ['cx', 'cy', 'radius', 'angle_start_deg', 'angle_end_deg'],
   ellipse: ['cx', 'cy', 'a', 'b', 'theta_deg'],
   spline: ['start_x', 'start_y', 'c1_x', 'c1_y', 'c2_x', 'c2_y', 'end_x', 'end_y'],
+  // Variable: `x0, y0, ..., xN-1, yN-1` then the optional handles. The names
+  // shown are the two-point minimum; `entityParamsProblem` special-cases the
+  // real count below.
+  fit_spline: ['x0', 'y0', 'x1', 'y1'],
   point: ['x', 'y'],
 }
 
@@ -105,6 +109,26 @@ function entityParamsProblem(kind: string, params: unknown[], where: string): st
   const kindProblem = entityKindProblem(kind, where)
   if (kindProblem !== null) return kindProblem
   const names = ENTITY_PARAM_NAMES[kind as EntityKind]
+  if (kind === 'fit_spline') {
+    // Variable: `2N` fit points, `2 <= N <= 64`, no zero span. The handles are
+    // not in `params`; the authoring `tangents` field carries them.
+    if (params.length % 2 !== 0) {
+      return `${where} fit_spline params are flat x/y fit points, so the count must be even, got ${params.length}`
+    }
+    const n = params.length / 2
+    if (n < 2 || n > 64) {
+      return `${where} fit_spline takes 2..64 fit points (2N params), got ${n} points`
+    }
+    for (let i = 0; i < params.length; i++) {
+      if (!isFiniteNumber(params[i])) return `${where} fit_spline param ${i} must be a finite number, got ${json(params[i])}`
+    }
+    for (let i = 1; i < n; i++) {
+      if (params[2 * i] === params[2 * i - 2] && params[2 * i + 1] === params[2 * i - 1]) {
+        return `${where} fit_spline has coincident consecutive fit points ${i - 1},${i}`
+      }
+    }
+    return null
+  }
   const expected = ENTITY_BY_KIND.get(kind)?.paramCount ?? names.length
   const shape = `${where} ${kind} takes ${expected} params [${names.join(', ')}]`
   if (params.length !== expected) {
@@ -582,8 +606,50 @@ function addEntity(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   if (!Array.isArray(params)) return invalid(`params must be a list of numbers, got ${json(params)}`)
   const problem = entityParamsProblem(kind, params, 'add_entity')
   if (problem !== null) return invalid(problem)
+  if (raw.tangents !== undefined) {
+    if (kind !== 'fit_spline') return invalid(`tangents is only valid on a fit_spline, not ${json(kind)}`)
+    const tangentProblem = fitTangentsProblem(raw.tangents)
+    if (tangentProblem !== null) return invalid(tangentProblem)
+  }
+  if (raw.tangentScale !== undefined && typeof raw.tangentScale !== 'boolean') {
+    return invalid(`tangentScale must be a boolean, got ${json(raw.tangentScale)}`)
+  }
   const idProblem = entityIdProblem(raw, ctx)
   return idProblem === null ? null : invalid(idProblem)
+}
+
+function fitTangentsProblem(value: unknown): string | null {
+  if (!Array.isArray(value) || value.length !== 2) {
+    return `tangents must be [start, end], each [tx, ty] or null, got ${json(value)}`
+  }
+  for (let i = 0; i < 2; i++) {
+    const t = value[i]
+    if (t === null || t === undefined) continue
+    if (!Array.isArray(t) || t.length !== 2 || !t.every(isFiniteNumber)) {
+      return `tangents[${i}] must be [tx, ty] or null, got ${json(t)}`
+    }
+    if (t[0] === 0 && t[1] === 0) return `tangents[${i}] must not be a zero vector`
+  }
+  return null
+}
+
+function insertFitPoint(raw: RawStep): ValueViolation | null {
+  if (typeof raw.entityId !== 'string' || raw.entityId.length === 0) return invalid('entityId must be a fit_spline entity id')
+  if (!Number.isInteger(raw.index) || (raw.index as number) < 0) return invalid(`index must be a non-negative integer, got ${json(raw.index)}`)
+  if (!Array.isArray(raw.point) || raw.point.length !== 2 || !raw.point.every(isFiniteNumber)) {
+    return invalid(`point must be [x, y], got ${json(raw.point)}`)
+  }
+  return null
+}
+
+function setFitSplineHandle(raw: RawStep): ValueViolation | null {
+  if (typeof raw.entityId !== 'string' || raw.entityId.length === 0) return invalid('entityId must be a fit_spline entity id')
+  if (raw.end !== 'start' && raw.end !== 'end') return invalid(`end must be "start" or "end", got ${json(raw.end)}`)
+  if (raw.handle === null) return null
+  if (!Array.isArray(raw.handle) || raw.handle.length !== 2 || !raw.handle.every(isFiniteNumber)) {
+    return invalid(`handle must be [x, y] or null, got ${json(raw.handle)}`)
+  }
+  return null
 }
 
 function addEntityWithConstraint(raw: RawStep, ctx: ValueContext): ValueViolation | null {
@@ -1067,6 +1133,8 @@ export const MUTATION_VALUE_RULES = {
   delete: deleteRule,
   add_entity: addEntity,
   add_entity_with_constraint: addEntityWithConstraint,
+  insert_fit_point: insertFitPoint,
+  set_fit_spline_handle: setFitSplineHandle,
   add_projected_entity: addProjectedEntity,
   add_rect: addRect,
   add_center_rect: addCenterRect,

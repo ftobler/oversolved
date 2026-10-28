@@ -32,6 +32,7 @@ use super::profile_loops::{BoundaryEdge, EdgeGeom, Vec2};
 use super::{
     TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE, TOL_TOPOLOGY_SPLIT as SPLIT_EPS, TWO_PI,
 };
+use crate::fit_spline::FitSpline;
 use crate::radians;
 
 mod build;
@@ -43,14 +44,15 @@ mod trace;
 mod tests;
 
 use build::{
-    add_curve_intersections, add_spline_self_intersections, build_half_edge_graph,
-    find_all_intersections, init_arc_splits, seed_construction_crossings, tag_entities,
+    add_curve_intersections, add_fit_spline_self_intersections, add_spline_self_intersections,
+    build_half_edge_graph, find_all_intersections, init_arc_splits, seed_construction_crossings,
+    tag_entities,
 };
 use holes::split_hole_faces;
 use intersect::classify;
 use trace::{
-    build_edge_queries, build_standalone_ellipses, build_standalone_splines,
-    build_standalone_surfaces, nest_surfaces, trace_face_cycles,
+    build_edge_queries, build_standalone_ellipses, build_standalone_fit_splines,
+    build_standalone_splines, build_standalone_surfaces, nest_surfaces, trace_face_cycles,
 };
 
 // The two near-tangency rules the area builder applies -- the gap budget for a
@@ -84,6 +86,11 @@ pub struct InputEntity {
     pub theta: Option<f64>,
     pub c1: Option<Vec2>,
     pub c2: Option<Vec2>,
+    /// Fit-spline input: the fit points in order, plus the optional handles as
+    /// absolute points (D2). The chain is built in `TryFrom<InputEntity>`.
+    pub points: Option<Vec<Vec2>>,
+    pub handle_start: Option<Vec2>,
+    pub handle_end: Option<Vec2>,
 }
 
 /// One classified, geometrically complete sketch entity. The variant is the
@@ -130,6 +137,14 @@ enum TopoEntity {
         // Genuinely optional: an unrotated ellipse omits it.
         theta: Option<f64>,
     },
+    /// An interpolating fit spline, kept as one entity: the chain is its own
+    /// geometry and every pass reads the pieces from `curve`, so a run between
+    /// two real intersections is one edge and the piece joints are never
+    /// vertices at all.
+    FitSpline {
+        construction: bool,
+        curve: FitSpline,
+    },
 }
 
 impl TopoEntity {
@@ -139,7 +154,8 @@ impl TopoEntity {
             | TopoEntity::Circle { construction, .. }
             | TopoEntity::Arc { construction, .. }
             | TopoEntity::Spline { construction, .. }
-            | TopoEntity::Ellipse { construction, .. } => construction,
+            | TopoEntity::Ellipse { construction, .. }
+            | TopoEntity::FitSpline { construction, .. } => construction,
         }
     }
 }
@@ -158,6 +174,17 @@ impl TryFrom<InputEntity> for TopoEntity {
     /// required field is dropped, never demoted to a neighbouring kind.
     fn try_from(e: InputEntity) -> Result<Self, IncompleteEntity> {
         let construction = e.construction;
+        if e.kind.as_deref() == Some("fit_spline") {
+            let Some(points) = e.points else {
+                return Err(IncompleteEntity);
+            };
+            let curve = FitSpline::new(&points, e.handle_start, e.handle_end)
+                .map_err(|_| IncompleteEntity)?;
+            return Ok(TopoEntity::FitSpline {
+                construction,
+                curve,
+            });
+        }
         if e.kind.as_deref() == Some("spline") {
             let (Some(start), Some(c1), Some(c2), Some(end)) = (e.start, e.c1, e.c2, e.end) else {
                 return Err(IncompleteEntity);
@@ -484,6 +511,24 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         );
     }
 
+    // A fit spline's split parameter is piece-space: `piece + t`, so a run
+    // between two real contacts is a contiguous sub-chain. The piece joints are
+    // not split params, which is why they never become vertices or edges.
+    for (eid, e) in &cls.fit_splines {
+        let TopoEntity::FitSpline { curve, .. } = e else {
+            continue;
+        };
+        let start = curve.eval(curve.knots()[0]);
+        let end = curve.eval(curve.knots()[curve.point_count() - 1]);
+        splits.insert(
+            eid.clone(),
+            vec![
+                (0.0, verts.vid(start)),
+                (curve.piece_count() as f64, verts.vid(end)),
+            ],
+        );
+    }
+
     for (eid, _) in &cls.ellipses {
         splits.insert(eid.clone(), vec![]);
     }
@@ -495,6 +540,7 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     // `endpoint_vids` is captured: a crossing is a real intersection point for
     // the snapshot list, not an endpoint.
     let lobe_vertex = add_spline_self_intersections(&cls.splines, &mut splits, &mut verts);
+    let fit_lobes = add_fit_spline_self_intersections(&cls.fit_splines, &mut splits, &mut verts);
 
     let mut elist: Vec<(String, TopoEntity)> = Vec::new();
     elist.extend(cls.lines.iter().cloned());
@@ -527,8 +573,10 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         &arcs,
         &splits,
         &cls.splines,
+        &cls.fit_splines,
         &cls.ellipses,
         &lobe_vertex,
+        &fit_lobes,
     );
 
     // The even/odd rule classifies every face, traced or standalone: an
@@ -538,6 +586,11 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     faces.extend(build_standalone_surfaces(&cls.circles, &splits));
     faces.extend(build_standalone_ellipses(&cls.ellipses, &splits));
     faces.extend(build_standalone_splines(&cls.splines, &splits, &mut verts));
+    faces.extend(build_standalone_fit_splines(
+        &cls.fit_splines,
+        &splits,
+        &mut verts,
+    ));
     let (mut surfaces, hole_shells) = split_hole_faces(
         faces,
         &he_eid,

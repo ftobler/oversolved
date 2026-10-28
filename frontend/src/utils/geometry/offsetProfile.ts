@@ -69,6 +69,10 @@ export function endpointVertices(
         { vertexKey: 'start', point: [params[0], params[1]] },
         { vertexKey: 'end', point: [params[6], params[7]] },
       ]
+    case 'fit_spline':
+      // Offset sugar copies a fit spline at source (a true offset is a backlog
+      // item), so the corner detector never needs its endpoints.
+      return []
     case 'arc': {
       const [cx, cy, r, a0, a1] = params
       const start = (a0 * Math.PI) / 180

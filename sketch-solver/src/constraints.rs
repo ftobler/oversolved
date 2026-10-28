@@ -38,6 +38,10 @@ pub enum PointSelector {
     /// (params `[4,5]`). The on-curve endpoints use `Start`/`End`.
     C1,
     C2,
+    /// An interior fit point of a `fit_spline`: `Fit(k)` is point `k` of the
+    /// list, `1 <= k <= N - 2`. `Start`/`End` are points 0 and N-1, and
+    /// `C1`/`C2` are the optional end handles.
+    Fit(u8),
 }
 
 impl PointSelector {
@@ -54,6 +58,9 @@ impl PointSelector {
             8 => PointSelector::MinorNeg,
             9 => PointSelector::C1,
             10 => PointSelector::C2,
+            // 32 is deliberately skipped: `Fit(0)` is `Start` and `Fit(N-1)` is
+            // `End`, so the wire carries only the interior points.
+            33..=94 => PointSelector::Fit(v - 32),
             _ => return None,
         })
     }
@@ -71,6 +78,7 @@ impl PointSelector {
             PointSelector::MinorNeg => 8,
             PointSelector::C1 => 9,
             PointSelector::C2 => 10,
+            PointSelector::Fit(k) => 32 + k,
         }
     }
 
@@ -300,12 +308,16 @@ mod tests {
             (PointSelector::MinorNeg, 8),
             (PointSelector::C1, 9),
             (PointSelector::C2, 10),
+            (PointSelector::Fit(1), 33),
+            (PointSelector::Fit(62), 94),
         ];
         for (sel, code) in all {
             assert_eq!(sel.to_u8(), code);
             assert_eq!(PointSelector::from_u8(code), Some(sel));
         }
         assert_eq!(PointSelector::from_u8(11), None);
+        assert_eq!(PointSelector::from_u8(32), None);
+        assert_eq!(PointSelector::from_u8(95), None);
         assert_eq!(PointSelector::from_u8(255), None);
     }
 

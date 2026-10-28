@@ -108,6 +108,7 @@ const TOOL_PICK_CONFIG: Record<NonNullable<ActiveTool>, ToolPickConfig> = {
   arc: SKETCH_DRAW,
   ellipse: SKETCH_DRAW,
   spline: SKETCH_DRAW,
+  fit_spline: SKETCH_DRAW,
   point: SKETCH_DRAW,
   ngon: SKETCH_DRAW,
   mirror: SKETCH_DRAW,

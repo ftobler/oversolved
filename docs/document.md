@@ -110,7 +110,10 @@ just dragged) that is never stored in the document.
 | `arc` | `[cx, cy, r, a0, a1]` | center, radius, start angle (deg), end angle (deg) |
 | `ellipse` | `[cx, cy, a, b, theta]` | center, semi-major (a>=b>=0), semi-minor, major-axis rotation (deg) |
 | `spline` | `[x1, y1, x2, y2, x3, y3, x4, y4]` | cubic Bezier: P1/P4 on-curve endpoints, P2/P3 control points |
+| `fit_spline` | `[x0, y0, ..., xN-1, yN-1]` + optional `[c1x, c1y]` / `[c2x, c2y]` | interpolating spline through N fit points (2..64); `handles` is `start`, `end` or `both` and says which end handles follow |
 | `center_rect` | compound (expanded to 4 lines) | xy, size |
+
+A `fit_spline` is the interpolating spline (CadQuery `spline(points, tangents)`): the document stores the fit points and, when the user authored end tangents, the two absolute handle points. The `handles` field is `start`, `end` or `both` and says which handle pair follows the points; absent means no handles. The curve is derived (clamped C2 cubic, chord parameters); the handles are the first piece's second control point and the last piece's third. Vertex keys are `start`, `fit1`..`fitN-2` (interior points), `end`, and `c1`/`c2` for the handles; `fit<k>` is positional, so inserting or deleting a point renumbers every later ref in the same mutation. The Bezier `spline` above is unchanged.
 
 Projection is not a kind: any base-kind entity (`line`/`circle`/`arc`/`point`) that carries a `source` field is projected from a 3D source and gets an automatic `fixed` constraint pinning it. Legacy `projected_*` kinds are still accepted on read and normalized to their base kind. Any entity can set `construction: true`.
 

@@ -51,6 +51,15 @@ pub enum EdgeGeom {
         c2: Vec2,
         end: Vec2,
     },
+    /// One run of an interpolating fit spline: the C0 cubic Bezier chain poles
+    /// (`3 M + 1` of them, sharing each joint) and the `M + 1` chord knots. A
+    /// run cut by an intersection carries the de Casteljau-split end pieces and
+    /// their interpolated end knots, so the same variant covers a whole entity
+    /// and any sub-edge of it.
+    FitSpline {
+        poles: Vec<Vec2>,
+        knots: Vec<f64>,
+    },
     /// A full closed ellipse standalone boundary edge: carries NO start/end (so
     /// `loop_pts` samples it via `ellipse_sample_points`, like the TS dict that
     /// lacks the `start` key).
@@ -65,11 +74,12 @@ pub enum EdgeGeom {
 impl EdgeGeom {
     /// The edge's start point, when it has one (everything but a full ellipse).
     pub fn start(&self) -> Option<Vec2> {
-        match *self {
+        match self {
             EdgeGeom::Line { start, .. }
             | EdgeGeom::Arc { start, .. }
             | EdgeGeom::EllipseArc { start, .. }
-            | EdgeGeom::Spline { start, .. } => Some(start),
+            | EdgeGeom::Spline { start, .. } => Some(*start),
+            EdgeGeom::FitSpline { poles, .. } => poles.first().copied(),
             EdgeGeom::Ellipse { .. } => None,
         }
     }
@@ -147,6 +157,72 @@ fn spline_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
 /// True for a spline edge whose start and end coincide (a closed self-loop).
 fn spline_is_closed(e: &EdgeGeom) -> bool {
     if let EdgeGeom::Spline { start, end, .. } = *e {
+        (start[0] - end[0]).hypot(start[1] - end[1]) < 1e-6
+    } else {
+        false
+    }
+}
+
+/// The piece index containing `u`, clamped into the chain's domain.
+pub fn fit_chain_piece(knots: &[f64], u: f64) -> usize {
+    let last = knots.len().saturating_sub(2);
+    if u <= knots[0] {
+        return 0;
+    }
+    if u >= knots[knots.len() - 1] {
+        return last;
+    }
+    let mut lo = 0;
+    let mut hi = knots.len() - 1;
+    while hi - lo > 1 {
+        let mid = (lo + hi) / 2;
+        if knots[mid] <= u {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    lo.min(last)
+}
+
+/// Evaluate a C0 cubic Bezier chain at chord parameter `u`.
+pub fn fit_chain_point(poles: &[Vec2], knots: &[f64], u: f64) -> Vec2 {
+    let i = fit_chain_piece(knots, u);
+    let h = knots[i + 1] - knots[i];
+    let t = if h > 0.0 {
+        ((u - knots[i]) / h).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let ctrl = [
+        poles[3 * i],
+        poles[3 * i + 1],
+        poles[3 * i + 2],
+        poles[3 * i + 3],
+    ];
+    bezier_point(ctrl[0], ctrl[1], ctrl[2], ctrl[3], t)
+}
+
+/// n interior points along a fit-spline chain edge; empty if not one.
+fn fit_spline_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
+    if let EdgeGeom::FitSpline { poles, knots } = e {
+        let (u0, u1) = (knots[0], knots[knots.len() - 1]);
+        (0..n)
+            .map(|k| {
+                let u = u0 + (u1 - u0) * (k as f64 + 1.0) / (n as f64 + 1.0);
+                fit_chain_point(poles, knots, u)
+            })
+            .collect()
+    } else {
+        vec![]
+    }
+}
+
+/// True for a fit-spline edge whose start and end coincide (a closed loop).
+fn fit_spline_is_closed(e: &EdgeGeom) -> bool {
+    if let EdgeGeom::FitSpline { poles, .. } = e {
+        let start = poles[0];
+        let end = poles[poles.len() - 1];
         (start[0] - end[0]).hypot(start[1] - end[1]) < 1e-6
     } else {
         false
@@ -236,6 +312,15 @@ pub fn loop_pts(loop_edges: &[BoundaryEdge], arc_samples: usize) -> Vec<Vec2> {
             arc_samples
         };
         pts.extend(spline_sample_points(e, spline_n));
+        // A fit-spline chain needs the same treatment: a closed one is a
+        // standalone polygon, and a long chain deserves more than the coarse
+        // arc count so its lobes read correctly.
+        let fit_n = if fit_spline_is_closed(e) {
+            (arc_samples * 4).max(16)
+        } else {
+            arc_samples.max(8)
+        };
+        pts.extend(fit_spline_sample_points(e, fit_n));
         // A full ellipse is a standalone closed loop: enough points to read as a
         // polygon on its own, independent of the coarse arc sample count.
         pts.extend(ellipse_sample_points(e, (arc_samples * 4).max(16)));

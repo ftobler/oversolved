@@ -192,6 +192,30 @@ fn real_curves(input: &[(String, InputEntity)]) -> Vec<(String, Curve)> {
         if e.construction {
             continue;
         }
+        // A fit spline is a chain, so the coverage ground truth needs every
+        // piece: sampling only the first would judge the face against a curve
+        // that stops at the first joint.
+        if e.kind.as_deref() == Some("fit_spline") {
+            if let Some(points) = &e.points {
+                if let Ok(curve) =
+                    crate::fit_spline::FitSpline::new(points, e.handle_start, e.handle_end)
+                {
+                    for i in 0..curve.piece_count() {
+                        let c = curve.piece(i);
+                        out.push((
+                            eid.clone(),
+                            Curve::Spline {
+                                p0: c[0],
+                                c1: c[1],
+                                c2: c[2],
+                                p3: c[3],
+                            },
+                        ));
+                    }
+                    continue;
+                }
+            }
+        }
         if let Some(c) = curve_of(e) {
             out.push((eid.clone(), c));
         }

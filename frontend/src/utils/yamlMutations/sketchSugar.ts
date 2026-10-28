@@ -379,7 +379,9 @@ export function applyAddOffset(
     // Each clone is pushed before the next id is drawn, so reading the live list
     // is what keeps the run collision-free.
     const dstId = mintEntityId(feature.entities)
-    feature.entities.push({ id: dstId, kind: src.kind })
+    // A fit_spline's handles field is part of its layout, so the at-source
+    // copy must carry it or the cloned params read the handles as fit points.
+    feature.entities.push({ id: dstId, kind: src.kind, ...(src.handles ? { handles: src.handles } : {}) })
     feature.initial[dstId] = seed.map(round)
     cloneOf.set(srcId, dstId)
     kindOf.set(srcId, src.kind)

@@ -69,3 +69,23 @@ describe('resolveVertexRef rejects non-refs', () => {
     expect(resolveVertexRef(KNOWN, true)).toBeNull()
   })
 })
+
+describe('resolveVertexRef fit-point keys', () => {
+  const KNOWN_FIT = new Set(['sp1', 'abfit3'])
+
+  it('splits $sp1fit3 into the entity and the interior fit point', () => {
+    expect(resolveVertexRef(KNOWN_FIT, '$sp1fit3')).toEqual({ entity: 'sp1', point: 'fit3' })
+    expect(resolveVertexRef(KNOWN_FIT, { entity: 'sp1', point: 'fit3' })).toEqual({ entity: 'sp1', point: 'fit3' })
+  })
+
+  it('lets an id that itself ends in fit3 win as the whole id', () => {
+    expect(resolveVertexRef(KNOWN_FIT, '$abfit3')).toEqual({ entity: 'abfit3' })
+  })
+
+  it('rejects fit0, fit, fit63 and fit01', () => {
+    for (const point of ['fit0', 'fit', 'fit63', 'fit01']) {
+      expect(resolveVertexRef(KNOWN_FIT, { entity: 'sp1', point }), point).toBeNull()
+      expect(resolveVertexRef(KNOWN_FIT, `$sp1${point}`), point).toBeNull()
+    }
+  })
+})

@@ -96,7 +96,7 @@ Selection IDs: `entity:<feat>:<eid>`, `vertex:<feat>:<eid>:<key>`, `constraint:<
 
 ### Layer 4: Tool Layer
 
-Tools receive sanitized pointer events via `toolRegistry` handlers (`onClick`, `onPointerDown`, `onPointerMove`, `onPointerUp`). Registered: dimension, drag, line, circle, arc, ellipse, point, project, spline, rect, center_rect, ngon.
+Tools receive sanitized pointer events via `toolRegistry` handlers (`onClick`, `onPointerDown`, `onPointerMove`, `onPointerUp`). Registered: dimension, drag, line, circle, arc, ellipse, point, project, spline, fit_spline, rect, center_rect, ngon.
 
 Not every interaction is a registered tool:
 - **Select** has no registered tool. Idle select is the dispatchSketchClick fallback (`state.toggleNormalSelection(id)` for the clicked entity/vertex) plus the DrawPlane backplane clear on empty-space clicks (`Drawing.tsx`). The toolbar select button dispatches `set_tool_drag`, and `getEffectiveTool(null)` resolves to `'drag'`.

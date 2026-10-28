@@ -26,6 +26,9 @@
 pub mod api;
 pub mod codec;
 pub mod constraints;
+/// The interpolating spline through N fit points (the `fit_spline` entity):
+/// the solver, the area builder and the TS mirror all read this one algorithm.
+pub(crate) mod fit_spline;
 pub mod residuals;
 pub mod solve;
 #[cfg(test)]
@@ -62,9 +65,9 @@ pub(crate) fn radians(deg: f64) -> f64 {
 /// reach the floor; an infinite axis squares to infinity and divides to zero.
 pub(crate) const MIN_SEMI_AXIS_SQ: f64 = 1e-12;
 
-/// Geometric entity kinds the solver understands: six, the four primitives
-/// (line, circle, arc, point) plus ellipse and spline. Projection is a
-/// pin-mask concern, not a kind.
+/// Geometric entity kinds the solver understands: seven, the four primitives
+/// (line, circle, arc, point) plus ellipse, the cubic Bezier spline, and the
+/// interpolating fit spline. Projection is a pin-mask concern, not a kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Line,
@@ -73,25 +76,28 @@ pub enum Kind {
     Point,
     Ellipse,
     Spline,
+    FitSpline,
 }
 
 impl Kind {
-    /// Number of scalar params in the flat array (the frontend lowering lays
-    /// entities out with the same sizes).
+    /// Number of scalar params in the flat array for the fixed-size kinds.
+    /// `fit_spline` is variable (`2 N + 2 h`), so its count rides the entity
+    /// record instead; every call site reads `Entity::param_count`.
     /// Ellipse is `[cx, cy, a, b, theta]` where `a >= b >= 0` are the semi-major
     /// and semi-minor radii and `theta` is the major-axis rotation (degrees, to
     /// match the arc-angle convention; the residuals convert to radians).
     /// Spline is a cubic Bezier `[x1, y1, x2, y2, x3, y3, x4, y4]`: P1/P4 are the
     /// on-curve endpoints, P2/P3 the off-curve control points.
-    pub fn param_count(self) -> usize {
-        match self {
+    pub fn fixed_param_count(self) -> Option<usize> {
+        Some(match self {
             Kind::Line => 4,
             Kind::Circle => 3,
             Kind::Arc => 5,
             Kind::Point => 2,
             Kind::Ellipse => 5,
             Kind::Spline => 8,
-        }
+            Kind::FitSpline => return None,
+        })
     }
 
     pub fn from_u8(v: u8) -> Option<Self> {
@@ -102,6 +108,7 @@ impl Kind {
             3 => Kind::Point,
             4 => Kind::Ellipse,
             5 => Kind::Spline,
+            6 => Kind::FitSpline,
             _ => return None,
         })
     }
@@ -114,17 +121,37 @@ impl Kind {
             Kind::Point => 3,
             Kind::Ellipse => 4,
             Kind::Spline => 5,
+            Kind::FitSpline => 6,
         }
     }
 }
 
-/// One sketch entity: its kind plus the offset into the flat param buffer.
-/// (The contract's `id_offset` into a separate id buffer is a TS-side concern;
-/// the crate works in entity *indices* and never sees string ids.)
+/// One sketch entity: its kind, the offset into the flat param buffer, the
+/// number of params it owns, and the per-kind flag bits (`fit_spline`'s end
+/// handles). (The contract's `id_offset` into a separate id buffer is a TS-side
+/// concern; the crate works in entity *indices* and never sees string ids.)
 #[derive(Debug, Clone)]
 pub struct Entity {
     pub kind: Kind,
     pub param_offset: usize,
+    /// For a fixed-size kind this must equal `kind.fixed_param_count()`; the
+    /// codec rejects a mismatch. `fit_spline` carries its own `2 N + 2 h`.
+    pub param_count: usize,
+    /// Kind-specific bits: `fit_spline` uses bit 0 for a start handle and bit 1
+    /// for an end handle. Zero for every other kind.
+    pub flags: u8,
+}
+
+impl Entity {
+    /// A fixed-size entity with the canonical param count and no flags.
+    pub fn new(kind: Kind, param_offset: usize) -> Self {
+        Entity {
+            kind,
+            param_offset,
+            param_count: kind.fixed_param_count().unwrap_or(0),
+            flags: 0,
+        }
+    }
 }
 
 /// Pin a single param to an explicit target value (constraint payload), as
@@ -176,7 +203,7 @@ impl Input {
         match self.entities.get(index) {
             Some(e) => e
                 .param_offset
-                .checked_add(e.kind.param_count())
+                .checked_add(e.param_count)
                 .is_some_and(|end| end <= self.params_initial.len()),
             None => false,
         }
@@ -259,12 +286,13 @@ mod tests {
 
     #[test]
     fn param_counts_match_the_wire_entity_sizes() {
-        assert_eq!(Kind::Line.param_count(), 4);
-        assert_eq!(Kind::Circle.param_count(), 3);
-        assert_eq!(Kind::Arc.param_count(), 5);
-        assert_eq!(Kind::Point.param_count(), 2);
-        assert_eq!(Kind::Ellipse.param_count(), 5);
-        assert_eq!(Kind::Spline.param_count(), 8);
+        assert_eq!(Kind::Line.fixed_param_count(), Some(4));
+        assert_eq!(Kind::Circle.fixed_param_count(), Some(3));
+        assert_eq!(Kind::Arc.fixed_param_count(), Some(5));
+        assert_eq!(Kind::Point.fixed_param_count(), Some(2));
+        assert_eq!(Kind::Ellipse.fixed_param_count(), Some(5));
+        assert_eq!(Kind::Spline.fixed_param_count(), Some(8));
+        assert_eq!(Kind::FitSpline.fixed_param_count(), None);
     }
 
     #[test]
@@ -307,13 +335,14 @@ mod tests {
             Kind::Point,
             Kind::Ellipse,
             Kind::Spline,
+            Kind::FitSpline,
         ];
         for (code, kind) in kinds.iter().enumerate() {
             assert_eq!(kind.to_u8() as usize, code);
             assert_eq!(Kind::from_u8(code as u8), Some(*kind));
         }
         // Anything past the defined range is rejected.
-        assert_eq!(Kind::from_u8(6), None);
+        assert_eq!(Kind::from_u8(7), None);
         assert_eq!(Kind::from_u8(u8::MAX), None);
     }
 }

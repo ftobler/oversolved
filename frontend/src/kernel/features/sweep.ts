@@ -23,7 +23,7 @@ import { sweepProfileWithLineage, type LineageResult } from '../occ/prismLineage
 import { sweepSectionsWithLineage, type SweepSection } from '../occ/sweepSections'
 import { orderSections, type SectionInput, type SpineSampler, type Station } from './sweepStations'
 import { classifyLoops } from '../profileLoops'
-import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, type Vec3 } from '../occ/primitives'
+import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, makeBSplineChainEdge, type Vec3 } from '../occ/primitives'
 import { buildCurveEdge } from '../occ/helixEdge'
 import { descriptorFromRepo } from './helix'
 import { stripRefSigil } from '@/utils/refSigil'
@@ -211,6 +211,9 @@ function pathRefWorldEdges(ref: string, globalRepo: Repository): [Dict[], string
     } else if (e.kind === 'spline') {
       we._plane = plane
       we._spline = { start: e.start as number[], c1: e.c1 as number[], c2: e.c2 as number[], end: e.end as number[] }
+    } else if (e.kind === 'fit_spline') {
+      we._plane = plane
+      we._fitSpline = { poles: e.poles as number[][], knots: e.knots as number[] }
     }
     worldEdges.push(we)
   }
@@ -272,6 +275,12 @@ type SplineParams = {
   c1: number[]
   c2: number[]
   end: number[]
+}
+
+/** The 2D chain descriptor of a fit-spline spine run. */
+type FitSplineParams = {
+  poles: number[][]
+  knots: number[]
 }
 
 /**
@@ -340,6 +349,9 @@ function spineCurvedEdge(
   if (e.kind === 'spline' && '_spline' in e) {
     return spineSplineEdge(oc, scope, e._plane as PlaneLike, e._spline as SplineParams, reversed)
   }
+  if (e.kind === 'fit_spline' && '_fitSpline' in e) {
+    return spineFitSplineEdge(oc, scope, e._plane as PlaneLike, e._fitSpline as FitSplineParams, reversed)
+  }
   return null
 }
 
@@ -392,6 +404,24 @@ function spineSplineEdge(
 ): OccShape {
   const poles = [sp.start, sp.c1, sp.c2, sp.end].map((p) => sketchToWorld2d(p, plane) as Vec3)
   return makeBezierEdge(oc, scope, reversed ? [...poles].reverse() : poles)
+}
+
+/**
+ * Build a spine fit-spline edge from its fused chain. A backward chain walk
+ * reverses the poles AND reflects the knots (`u_max - u`), so the same curve is
+ * traversed the other way; lifting the poles to 3D is the only frame change.
+ */
+function spineFitSplineEdge(
+  oc: OccModule, scope: DisposeScope, plane: PlaneLike, fp: FitSplineParams, reversed: boolean,
+): OccShape {
+  const poles = fp.poles.map((p) => sketchToWorld2d(p, plane) as Vec3)
+  if (!reversed) return makeBSplineChainEdge(oc, scope, poles, fp.knots)
+  const uMax = fp.knots[fp.knots.length - 1]
+  return makeBSplineChainEdge(
+    oc, scope,
+    [...poles].reverse(),
+    [...fp.knots].reverse().map(u => uMax - u),
+  )
 }
 
 /** A sketch-plane direction lifted to 3D (no origin offset), for the ellipse axis. */

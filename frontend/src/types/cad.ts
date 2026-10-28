@@ -12,7 +12,7 @@ export type NumberOrExpr = number | string
 // activeTool === null (the dispatchSketchClick fallback), so the union is
 // exactly the registry key type minus null (see toolRegistry.ts ToolId).
 // mirror/offset are forward-compat placeholders with no registered tool.
-export type ActiveTool = 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'spline' | 'point' | 'ngon' | 'project' | 'drag' | 'mirror' | 'offset' | null
+export type ActiveTool = 'dimension' | 'line' | 'rect' | 'center_rect' | 'circle' | 'arc' | 'ellipse' | 'spline' | 'fit_spline' | 'point' | 'ngon' | 'project' | 'drag' | 'mirror' | 'offset' | null
 
 // Which geometric space the current selection lives in.
 export type SelectionDomain = 'sketch_2d' | 'body_3d' | 'plane_3d' | 'mixed'
@@ -433,6 +433,8 @@ export interface PartEntityDef {
   kind: string
   construction?: boolean
   source?: string  // for projected entities: reference to source entity (e.g. "@sketch0/line1")
+  // `fit_spline` only: which end handles the initial params carry.
+  handles?: 'start' | 'end' | 'both'
 }
 
 export type PlaneDef = {
@@ -811,6 +813,19 @@ export interface Spline {
   construction?: boolean
 }
 
+/**
+ * An interpolating spline through N fit points. The handles are absolute points
+ * (D2), not vectors: the start handle is the first Bezier piece's second
+ * control point and the end handle is the last piece's third control point.
+ * The curve itself is derived (`utils/geometry/fitSpline.ts`).
+ */
+export interface FitSpline {
+  points: Point[]
+  handleStart?: Point
+  handleEnd?: Point
+  construction?: boolean
+}
+
 // Projected entity variants, read-only reference geometry from another sketch
 export interface ProjectedLineSegment extends LineSegment {
   projected: true
@@ -850,7 +865,7 @@ export type ProjectedEntity =
   | ProjectedEllipse
   | ProjectedSpline
 
-export type Entity = LineSegment | Circle | Arc | PointEntity | Ellipse | Spline | ProjectedEntity
+export type Entity = LineSegment | Circle | Arc | PointEntity | Ellipse | Spline | FitSpline | ProjectedEntity
 
 export function isProjectedEntity(e: Entity): e is ProjectedEntity {
   return 'projected' in e && (e as ProjectedEntity).projected === true
@@ -880,9 +895,12 @@ export function isProjectedSpline(e: Entity): e is ProjectedSpline {
   return isProjectedEntity(e) && 'p1' in e
 }
 
-export type EntityKind = 'line' | 'arc' | 'circle' | 'ellipse' | 'spline' | 'point'
+export type EntityKind = 'line' | 'arc' | 'circle' | 'ellipse' | 'spline' | 'fit_spline' | 'point'
 
 export function getEntityKind(entity: Entity): EntityKind {
+  // The fit spline carries a point list, so it must be read before the shape
+  // sniffing below (it has no start/end/center keys of its own).
+  if ('points' in entity) return 'fit_spline'
   if ('start' in entity && 'end' in entity && 'radius' in entity) return 'arc'
   if ('start' in entity && 'end' in entity) return 'line'
   if ('center' in entity && 'radius' in entity) return 'circle'
@@ -1011,6 +1029,19 @@ export interface TopologySplineEdge {
   c2: Point  // second cubic-Bezier control handle
 }
 
+/**
+ * One fused run of a fit spline: the C0 cubic Bezier chain poles (`3M + 1`) and
+ * the `M + 1` chord knots. A distinct kind from `spline` on purpose: a legacy
+ * reader of `c1`/`c2` would silently draw only the first piece.
+ */
+export interface TopologyFitSplineEdge {
+  kind: 'fit_spline'
+  start: Point
+  end: Point
+  poles: Point[]
+  knots: number[]
+}
+
 export interface TopologyEllipseEdge {
   kind: 'ellipse'
   center: Point
@@ -1045,6 +1076,7 @@ export type TopologyEdge =
   | TopologyLineEdge
   | TopologyArcEdge
   | TopologySplineEdge
+  | TopologyFitSplineEdge
   | TopologyEllipseEdge
   | TopologyEllipseArcEdge
 
@@ -1163,8 +1195,10 @@ export type Mutation =
   | { type: 'set_constraint_pos'; featureId: string; constraintId: string; pos: Point }
   | { type: 'set_constraint_sign'; featureId: string; constraintId: string; sign: number }
   | { type: 'delete'; targets: string[] }
-  | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string }
-  | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string; entityId?: string }
+  | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
+  | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string; entityId?: string; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
+  | { type: 'insert_fit_point'; featureId: string; entityId: string; index: number; point: Point }
+  | { type: 'set_fit_spline_handle'; featureId: string; entityId: string; end: 'start' | 'end'; handle: Point | null }
   | { type: 'add_projected_entity'; featureId: string; kind: string; source: string; entityId?: string }
   // The optional refs name what a click snapped onto (a `vertex:` ref, or an
   // `entity:` ref for a point on that curve); the writer pins the matching corner

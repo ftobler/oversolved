@@ -30,9 +30,12 @@ const VALID_PART = {
       id: 'sk1',
       kind: 'sketch',
       plane: '@builtin_plane_front',
-      initial: { line1: [0, 0, 20, 0] },
-      entities: [{ id: 'line1', kind: 'line' }],
-      constraints: [{ id: 'c1', kind: 'horizontal', a: '$line1' }],
+      initial: { line1: [0, 0, 20, 0], sp: [0, 0, 1, 2, 2, 0, 3, 3, 4, 4] },
+      entities: [{ id: 'line1', kind: 'line' }, { id: 'sp', kind: 'fit_spline', handles: 'both' }],
+      constraints: [
+        { id: 'c1', kind: 'horizontal', a: '$line1' },
+        { id: 'c2', kind: 'coincident', a: '$spc1', b: '$line1start' },
+      ],
     },
     { id: 'ex1', kind: 'extrude', extrude: { sketch: ['@sk1'], distance: 10, direction: 'normal' } },
     { id: 'a1', kind: 'array', array: { source_body: '@ex1', count_x: 4, count_y: 2, pitch_x: 15 } },
@@ -175,7 +178,7 @@ describe('loader fuzz (fixed seeds)', () => {
     const result = loadPartDoc(doc)
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.error.field).toBe('features[0].entities[1].id')
+    expect(result.error.field).toBe('features[0].entities[2].id')
     expect(result.error.message).toContain('duplicates entity id')
   })
 

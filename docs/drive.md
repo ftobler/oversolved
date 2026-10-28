@@ -595,6 +595,17 @@ banner on stdout, so a client config must use the direct node invocation.
   sweep is one `add_sweep_profile` per section and then
   `set_sweep_field {field:"multisection", value:true}`; every section must be
   pierced by the path.
+  A `fit_spline`'s `params` are its flat fit points (`x0, y0, ..., xN-1, yN-1`,
+  2..64 points). The optional `tangents` pair (`[start, end]`, each `[tx, ty]`
+  or null) is converted to the stored absolute end handles (the first piece's
+  second control point and the last piece's third); `tangentScale` defaults to
+  true, CadQuery's `scale=True`, and applies OCCT's `ScaleTangents` once at
+  authoring. With no tangents the ends take the Lagrange derivative, exactly
+  like CadQuery. Mapping: CadQuery `spline(points, tangents, scale)` is
+  `params: points`, `tangents`, `tangentScale: scale`. build123d's
+  `Spline(*pts, tangents, tangent_scalars)` is believed to normalize the
+  tangents, multiply by the scalars and interpolate with `scale=False`; that
+  mapping is UNVERIFIED until a tea_cup/handle practice re-run confirms it.
   Guidance that a field list cannot carry lives in the row note: `hole` lists
   its required fields (`sketch`, `diameter`, `depth_mode`) and its optional ones
   (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,

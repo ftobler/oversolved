@@ -2,6 +2,7 @@
 // topology needs lives here.
 
 import { TOL_NEAR_ZERO_AREA } from "./solverConstants"
+import { chainSamples } from "@/utils/geometry/fitSpline"
 
 // Sample count that makes a curved loop read as its true shape rather than as
 // its chord polygon: the centroid uses it, the viewport tessellates boundaries
@@ -19,7 +20,7 @@ export type LoopEdge = Record<string, unknown>
  * moves. Shared by the pure profile dump, the loop assembler's merged-vertex
  * snap and the OCC-side snapper (`snapLoopJoints`).
  */
-export const ANCHORED_KINDS = new Set(['arc', 'ellipse', 'ellipse_arc'])
+export const ANCHORED_KINDS = new Set(['arc', 'ellipse', 'ellipse_arc', 'fit_spline'])
 
 export function radians(deg: number): number {
   return (deg * Math.PI) / 180
@@ -80,6 +81,25 @@ export function splineSamplePoints(e: LoopEdge, n: number): number[][] {
     ])
   }
   return out
+}
+
+/** n interior points sampled along a fit-spline chain edge; empty if not one. */
+export function fitSplineSamplePoints(e: LoopEdge, n: number): number[][] {
+  if (e['kind'] !== 'fit_spline') return []
+  const poles = e['poles'] as number[][] | undefined
+  const knots = e['knots'] as number[] | undefined
+  if (!poles || !knots || knots.length < 2) return []
+  return chainSamples(poles as [number, number][], knots, n) as number[][]
+}
+
+/** True for a fit-spline edge whose start and end coincide (a closed loop). */
+function fitSplineIsClosed(e: LoopEdge): boolean {
+  if (e['kind'] !== 'fit_spline') return false
+  const poles = e['poles'] as number[][] | undefined
+  if (!poles || poles.length === 0) return false
+  const first = poles[0]
+  const last = poles[poles.length - 1]
+  return Math.hypot(first[0] - last[0], first[1] - last[1]) < 1e-6
 }
 
 /** True for a spline edge whose start and end coincide (a closed self-loop). */
@@ -147,6 +167,7 @@ export function loopPts(loop: LoopEdge[], arcSamples = 1): number[][] {
     // A self-closing spline (start == end) is a standalone closed loop, so it
     // needs enough points to read as a polygon on its own, like a full ellipse.
     pts.push(...splineSamplePoints(e, splineIsClosed(e) ? Math.max(arcSamples * 4, 16) : arcSamples))
+    pts.push(...fitSplineSamplePoints(e, fitSplineIsClosed(e) ? Math.max(arcSamples * 4, 16) : Math.max(arcSamples, 8)))
     // A full ellipse is a standalone closed loop: it needs enough points to read
     // as a polygon on its own, independent of the coarse arc sample count.
     pts.push(...ellipseSamplePoints(e, Math.max(arcSamples * 4, 16)))
@@ -466,6 +487,14 @@ function edgeMatch(e: LoopEdge): EdgeMatch | null {
     const c2 = e['c2'] as number[] | undefined
     const controls = c1 && c2 ? [pointKey(c1), pointKey(c2)].sort().join('|') : ''
     key = 'spline|' + pair + '|' + controls
+  } else if (kind === 'fit_spline') {
+    // The pole chain identifies the run; reversing an edge reverses the chain,
+    // so hash the lexicographically smaller spelling to keep the two faces
+    // sharing it on one key.
+    const poles = (e['poles'] as number[][] | undefined) ?? []
+    const forward = poles.map(pointKey).join('|')
+    const reverse = [...poles].reverse().map(pointKey).join('|')
+    key = 'fit_spline|' + pair + '|' + (forward < reverse ? forward : reverse)
   } else {
     return null
   }

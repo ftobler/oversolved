@@ -251,6 +251,51 @@ export function computeDrawClick(
     return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
   }
 
+  const finishFitSpline = (
+    points: [number, number][],
+    refs: (string | null)[],
+  ): DrawClickResult => {
+    const fitId = newEntityIdFn()
+    const params = points.flatMap(p => [p[0], p[1]])
+    const mutations: Mutation[] = [
+      { type: 'add_entity', featureId, kind: 'fit_spline', params, entityId: fitId },
+    ]
+    refs.forEach((ref, i) => {
+      if (!ref) return
+      const key = i === 0 ? 'start' : i === points.length - 1 ? 'end' : `fit${i}`
+      // A closed curve's end is the start vertex; the start constraint already
+      // ties it down.
+      if (i === points.length - 1 && sameSnapVertex(ref, refs[0] ?? null)) return
+      mutations.push(...insertCoincidentPoint(ref, {
+        featureId, vertexRef: `vertex:${featureId}:${fitId}:${key}`,
+      }))
+    })
+    return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
+  }
+
+  if (t === 'fit_spline') {
+    // Click fit points; Enter (or a click on the last point) finishes, a click
+    // on the first point closes the curve. Two points is the minimum.
+    const near = (p: readonly [number, number]): boolean =>
+      Math.hypot(p[0] - px, p[1] - py) <= SNAP_EPS
+    if (pts.length === 0) {
+      return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: startSnap(), gestureComplete: false }
+    }
+    const refs = pts.map((_, i) => snap.drawSnapRefs[i] ?? null)
+    if (pts.length >= 2 && near(pts[0])) {
+      // Closed: the last point repeats the first, the C0 seam CadQuery draws.
+      return finishFitSpline(
+        [...pts.map(p => [p[0], p[1]] as [number, number]), [pts[0][0], pts[0][1]]],
+        [...refs, refs[0] ?? null],
+      )
+    }
+    if (pts.length >= 2 && near(pts[pts.length - 1])) {
+      return finishFitSpline(pts.map(p => [p[0], p[1]] as [number, number]), refs)
+    }
+    const next: [number, number][] = [...pts.map(p => [p[0], p[1]] as [number, number]), [px, py]]
+    return { mutations: [], nextDrawPoints: next, nextDrawSnap: { refs: [...refs, clickedRef()] }, gestureComplete: false }
+  }
+
   if (t === 'spline') {
     // 4-click cubic Bezier: P1 (start), P2/P3 (control handles), P4 (end).
     if (pts.length === 0) {

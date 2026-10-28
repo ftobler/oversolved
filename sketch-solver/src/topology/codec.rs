@@ -12,6 +12,7 @@ use serde_json::{json, Map, Value};
 
 use super::dcel::{InputEntity, TopologyOut};
 use super::profile_loops::{BoundaryEdge, EdgeGeom, Vec2};
+use crate::fit_spline::{fit_spline_error_message, FitSpline};
 
 #[derive(Debug)]
 pub enum TopologyCodecError {
@@ -30,6 +31,10 @@ pub enum TopologyCodecError {
     /// philosophy: counts are untrusted, and here the cost of believing them
     /// is quadratic downstream, so the refusal happens at decode.
     TooManyEntities,
+    /// A `fit_spline` whose point list cannot be interpolated (coincident
+    /// consecutive points, too few or too many). The message names the entity
+    /// and the points, the same refusal the authoring sugar surfaces.
+    DegenerateFitSpline(String),
 }
 
 // Entity-count cap for one topology payload. Calibration: the Node bench
@@ -78,6 +83,14 @@ struct RawGeom {
     c1: Option<Vec2>,
     #[serde(default)]
     c2: Option<Vec2>,
+    /// Fit-spline input (`kind: "fit_spline"`): the fit points in order and the
+    /// optional handles as absolute points.
+    #[serde(default)]
+    points: Option<Vec<Vec2>>,
+    #[serde(default)]
+    handle_start: Option<Vec2>,
+    #[serde(default)]
+    handle_end: Option<Vec2>,
 }
 
 /// JS-style truthiness, matching `classifyEntities`' `if (ent["construction"])`.
@@ -107,6 +120,9 @@ impl From<RawGeom> for InputEntity {
             theta: g.theta,
             c1: g.c1,
             c2: g.c2,
+            points: g.points,
+            handle_start: g.handle_start,
+            handle_end: g.handle_end,
         }
     }
 }
@@ -117,13 +133,26 @@ impl From<RawGeom> for InputEntity {
 /// features that map overflowing literals to +-infinity instead of erroring.
 fn reject_non_finite(raw: &[(String, RawGeom)]) -> Result<(), TopologyCodecError> {
     for (_, g) in raw {
-        let pts = [g.start, g.end, g.center, g.c1, g.c2];
+        let pts = [
+            g.start,
+            g.end,
+            g.center,
+            g.c1,
+            g.c2,
+            g.handle_start,
+            g.handle_end,
+        ];
         if pts
             .into_iter()
             .flatten()
             .any(|p| p.iter().any(|x| !x.is_finite()))
         {
             return Err(TopologyCodecError::NonFinite);
+        }
+        if let Some(points) = &g.points {
+            if points.iter().flatten().any(|x| !x.is_finite()) {
+                return Err(TopologyCodecError::NonFinite);
+            }
         }
         let scalars = [g.radius, g.angle_start, g.angle_end, g.a, g.b, g.theta];
         if scalars.into_iter().flatten().any(|x| !x.is_finite()) {
@@ -140,6 +169,22 @@ pub fn decode_input(bytes: &[u8]) -> Result<Vec<(String, InputEntity)>, Topology
         return Err(TopologyCodecError::TooManyEntities);
     }
     reject_non_finite(&raw)?;
+    // A fit spline whose points cannot be interpolated is refused here, with the
+    // entity id, rather than dropped silently: the user authored a curve, and a
+    // coincident pair is an authoring mistake the UI must report.
+    for (eid, geom) in &raw {
+        if geom.kind.as_deref() != Some("fit_spline") {
+            continue;
+        }
+        let Some(points) = &geom.points else {
+            continue;
+        };
+        if let Err(error) = FitSpline::new(points, geom.handle_start, geom.handle_end) {
+            return Err(TopologyCodecError::DegenerateFitSpline(
+                fit_spline_error_message(&error, eid),
+            ));
+        }
+    }
     Ok(raw.into_iter().map(|(eid, g)| (eid, g.into())).collect())
 }
 
@@ -193,6 +238,10 @@ fn geom_is_finite(eg: &EdgeGeom) -> bool {
         EdgeGeom::Spline { start, c1, c2, end } => {
             pt_ok(start) && pt_ok(c1) && pt_ok(c2) && pt_ok(end)
         }
+        EdgeGeom::FitSpline {
+            ref poles,
+            ref knots,
+        } => poles.iter().all(pt_ok) && knots.iter().all(|u| u.is_finite()),
         EdgeGeom::Ellipse {
             center,
             a,
@@ -283,6 +332,19 @@ fn geom_fields(eg: &EdgeGeom, m: &mut Map<String, Value>) {
             m.insert("end".into(), pt(end));
             m.insert("c1".into(), pt(c1));
             m.insert("c2".into(), pt(c2));
+        }
+        EdgeGeom::FitSpline {
+            ref poles,
+            ref knots,
+        } => {
+            m.insert("kind".into(), json!("fit_spline"));
+            m.insert("start".into(), pt(poles[0]));
+            m.insert("end".into(), pt(poles[poles.len() - 1]));
+            m.insert(
+                "poles".into(),
+                Value::Array(poles.iter().map(|p| pt(*p)).collect()),
+            );
+            m.insert("knots".into(), json!(knots));
         }
         EdgeGeom::Ellipse {
             center,

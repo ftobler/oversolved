@@ -11,6 +11,8 @@ const ALL_MUTATION_TYPES = [
   'set_constraint_sign',
   'delete',
   'add_entity',
+  'insert_fit_point',
+  'set_fit_spline_handle',
   'add_entity_with_constraint',
   'add_projected_entity',
   'add_rect',

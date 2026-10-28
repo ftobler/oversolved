@@ -210,3 +210,14 @@ def toolbar_project(ctx):
     ctx.move_to(0.5 + r, 0.5 - (r + 0.03))
     ctx.line_to(0.5 + r, 0.5 + (r + 0.03))
     stroke(ctx, 2)
+
+
+@icon("frontend/src/assets/icons/toolbar-fit-spline.svg")
+def toolbar_fit_spline(ctx):
+    """Interpolating spline: a smooth curve through its fit points."""
+    ctx.move_to(0.12, 0.78)
+    ctx.curve_to(0.35, 0.08, 0.65, 0.92, 0.88, 0.22)
+    stroke(ctx, 2)
+    for x, y in ((0.12, 0.78), (0.5, 0.5), (0.88, 0.22)):
+        ctx.arc(px(x * 24), px(y * 24), px(3.6), 0, 2 * math.pi)
+        ctx.fill()

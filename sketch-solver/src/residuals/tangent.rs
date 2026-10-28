@@ -83,6 +83,25 @@ impl Problem<'_> {
             let (tx, ty) = (tan[0] / tn, tan[1] / tn);
             // sin(angle) times the line's seed length (see `scale.rs`).
             r.push(self.line_len0(line_idx) * (line_dir[0] * ty - line_dir[1] * tx));
+        } else if self.kind_of(arc_idx) == Kind::FitSpline {
+            // Line tangent to a fit spline: the end derivative is the stored
+            // handle's direction when the end has one, and the Lagrange end
+            // derivative otherwise (the authoring sugar adds the handle before
+            // it writes this constraint, so the solved case usually has one).
+            let Some(fit) = self.fit_spline(x, arc_idx) else {
+                return;
+            };
+            let tan = match arc_pt {
+                PointSelector::End => fit.derivative(fit.point_count() - 1),
+                PointSelector::Start => fit.derivative(0),
+                _ => {
+                    let closest = fit.closest([line_ep[0], line_ep[1]]);
+                    fit.deriv(closest.u)
+                }
+            };
+            let tn = (tan[0] * tan[0] + tan[1] * tan[1]).sqrt().max(1e-12);
+            let (tx, ty) = (tan[0] / tn, tan[1] / tn);
+            r.push(self.fit_len0(arc_idx) * (line_dir[0] * ty - line_dir[1] * tx));
         } else if matches!(self.kind_of(arc_idx), Kind::Circle | Kind::Arc) {
             // Line tangent to a circle or arc (identical math: an arc reuses its
             // underlying circle). If a coincident maps a line endpoint to the

@@ -14,7 +14,7 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MAGIC ("SKG3", little-endian on the wire)
+//!   u32  magic = MAGIC ("SKG4", little-endian on the wire)
 //!   u32  n_entities
 //!   u32  n_params            // f64 count of params_initial
 //!   u32  n_constraints
@@ -22,7 +22,7 @@
 //!   u8   drag_mode (0/1)
 //!   u8   skip_status_pass (0/1)
 //!   u32  drag_anchor_id
-//! entities:       n_entities x { u8 kind, u32 param_offset }
+//! entities:       n_entities x { u8 kind, u8 flags, u32 param_offset, u32 param_count }
 //! params_initial: n_params x f64
 //! pinned_mask:    ceil(n_params / 8) bytes (LSB-first within each byte)
 //! equality_pins:  n_equality_pins x { u32 param_index, f64 target }
@@ -70,17 +70,18 @@ use crate::constraints::{Axis, Constraint, PointSelector, Ref, RefRole};
 use crate::{Diagnostics, Entity, EqualityPin, Input, Kind, Options, Output};
 
 // Rev 4 of the wire layout: the output gained the per-constraint verdicts
-// (`constraint_flags` + `constraint_miss`) and their header count. The input
-// layout is unchanged from rev 3, so MAGIC stays. Rev 3 switched every scalar
-// from f32 to f64; the layout had already evolved once (the has_sign flag bit +
-// trailing sign f32 per constraint record, commit 9f81d31f) without moving
-// these values, so a stale js/wasm pairing decoded shifted offsets instead of
-// failing loudly. The magic IS the version handshake for a buffer that is built
-// and consumed within one process: bump BOTH sides of the boundary (this file
-// and frontend/src/wasm-kernel/codec.ts) on any layout change. Invalidating old
-// cached payloads is acceptable and safe post-wave-1: bundle-cache reads of
-// stale buffers degrade to cold rebuilds.
-pub const MAGIC: u32 = 0x3347_4B53; // "SKG3" in LE memory order
+// (`constraint_flags` + `constraint_miss`) and their header count. Rev 5 (this
+// one) makes the entity record variable-size: the `fit_spline` kind carries
+// `2 N + 2 h` params, so the record grew a flags byte and a param count. Rev 3
+// switched every scalar from f32 to f64; the layout had already evolved once
+// (the has_sign flag bit + trailing sign f32 per constraint record, commit
+// 9f81d31f) without moving these values, so a stale js/wasm pairing decoded
+// shifted offsets instead of failing loudly. The magic IS the version handshake
+// for a buffer that is built and consumed within one process: bump BOTH sides
+// of the boundary (this file and frontend/src/wasm-kernel/codec.ts) on any
+// layout change. Invalidating old cached payloads is acceptable and safe
+// post-wave-1: bundle-cache reads of stale buffers degrade to cold rebuilds.
+pub const MAGIC: u32 = 0x3447_4B53; // "SKG4" in LE memory order
 pub const MAGIC_OUT: u32 = 0x3452_4B53; // "SKR4" in LE memory order
 
 /// The rev 1 and rev 2 values (and rev 3, whose output lacked the
@@ -97,6 +98,8 @@ pub const MAGIC_REV2: u32 = 0x3247_4B53;
 pub const MAGIC_OUT_REV2: u32 = 0x3252_4B53;
 #[cfg(test)]
 pub const MAGIC_OUT_REV3: u32 = 0x3352_4B53;
+#[cfg(test)]
+pub const MAGIC_REV4: u32 = 0x3347_4B53;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CodecError {
@@ -108,6 +111,12 @@ pub enum CodecError {
     BadAxis(u8),
     BadRefType(u8),
     NonFinite,
+    /// A fixed-size kind arrived with a param count that is not its own.
+    BadParamCount(u8, u32),
+    /// A flag byte carried a bit the kind does not define.
+    BadFlags(u8),
+    /// A `fit_spline` record whose count is not `2 N + 2 h` with `2 <= N <= 64`.
+    BadFitLayout(u32, u8),
 }
 
 /// Lets `r.u32()?` inside a `Result<_, CodecError>` function convert the
@@ -152,15 +161,41 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
     let skip_status_pass = r.u8()? != 0;
     let drag_anchor_id = r.u32()?;
 
-    // Record widths for the pre-allocation caps below: entity = kind + offset,
-    // param = f64, pin = index + target, constraint = kind + n_refs + flags at
-    // its shortest. See `Reader::capacity_for` for why the counts are capped.
-    let mut entities = Vec::with_capacity(r.capacity_for(n_entities, 5));
+    // Record widths for the pre-allocation caps below: entity = kind + flags +
+    // offset + count, param = f64, pin = index + target, constraint = kind +
+    // n_refs + flags at its shortest. See `Reader::capacity_for` for why the
+    // counts are capped.
+    let mut entities = Vec::with_capacity(r.capacity_for(n_entities, 10));
     for _ in 0..n_entities {
         let kind_byte = r.u8()?;
         let kind = Kind::from_u8(kind_byte).ok_or(CodecError::BadKind(kind_byte))?;
+        let flags = r.u8()?;
         let param_offset = r.u32()? as usize;
-        entities.push(Entity { kind, param_offset });
+        let param_count = r.u32()? as usize;
+        match kind.fixed_param_count() {
+            Some(fixed) => {
+                if flags != 0 {
+                    return Err(CodecError::BadFlags(flags));
+                }
+                if param_count != fixed {
+                    return Err(CodecError::BadParamCount(kind_byte, param_count as u32));
+                }
+            }
+            None => {
+                // The one variable-size kind. Its layout owns the count and the
+                // flag bits; an unknown bit or a count that is not
+                // `2 N + 2 h` with `2 <= N <= 64` is refused here, at the one
+                // door, so no residual builder ever indexes a bad block.
+                crate::fit_spline::ParamLayout::from_wire(param_count, flags)
+                    .map_err(|_| CodecError::BadFitLayout(param_count as u32, flags))?;
+            }
+        }
+        entities.push(Entity {
+            kind,
+            param_offset,
+            param_count,
+            flags,
+        });
     }
 
     let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 8));
@@ -273,7 +308,9 @@ pub(crate) fn encode_input(input: &Input) -> Vec<u8> {
 
     for e in &input.entities {
         w.u8(e.kind.to_u8());
+        w.u8(e.flags);
         w.u32(e.param_offset as u32);
+        w.u32(e.param_count as u32);
     }
     for &p in &input.params_initial {
         w.f64(p);
@@ -434,16 +471,7 @@ mod tests {
     use super::*;
 
     fn sample_input() -> Input {
-        let entities = vec![
-            Entity {
-                kind: Kind::Line,
-                param_offset: 0,
-            },
-            Entity {
-                kind: Kind::Circle,
-                param_offset: 4,
-            },
-        ];
+        let entities = vec![Entity::new(Kind::Line, 0), Entity::new(Kind::Circle, 4)];
         let constraints = vec![
             Constraint {
                 kind_code: crate::ConstraintKind::Horizontal.to_u8(),
@@ -539,10 +567,7 @@ mod tests {
         // pattern, so -0.0 cannot pass as +0.0 and no silent narrowing hides.
         let values = [25.4, 1234.567, 1e-9, -0.0, 1e6];
         let input = Input {
-            entities: vec![Entity {
-                kind: Kind::Point,
-                param_offset: 0,
-            }],
+            entities: vec![Entity::new(Kind::Point, 0)],
             params_initial: values.to_vec(),
             pinned_mask: vec![0],
             equality_pins: vec![EqualityPin {
@@ -651,10 +676,7 @@ mod tests {
         // value; both must survive the codec, and the has_sign flag bit must be
         // independent of has_value.
         let input = Input {
-            entities: vec![Entity {
-                kind: Kind::Point,
-                param_offset: 0,
-            }],
+            entities: vec![Entity::new(Kind::Point, 0)],
             params_initial: vec![0.0, 0.0],
             pinned_mask: vec![0],
             equality_pins: Vec::new(),
@@ -721,10 +743,7 @@ mod tests {
     #[test]
     fn ellipse_entity_round_trips() {
         let input = Input {
-            entities: vec![Entity {
-                kind: Kind::Ellipse,
-                param_offset: 0,
-            }],
+            entities: vec![Entity::new(Kind::Ellipse, 0)],
             params_initial: vec![1.0, 2.0, 4.0, 2.0, 30.0],
             pinned_mask: vec![0],
             equality_pins: Vec::new(),
@@ -742,10 +761,7 @@ mod tests {
     #[test]
     fn spline_entity_round_trips() {
         let input = Input {
-            entities: vec![Entity {
-                kind: Kind::Spline,
-                param_offset: 0,
-            }],
+            entities: vec![Entity::new(Kind::Spline, 0)],
             params_initial: vec![0.0, 0.0, 1.0, 2.0, 3.0, 2.0, 4.0, 0.0],
             pinned_mask: vec![0],
             equality_pins: Vec::new(),
@@ -798,10 +814,7 @@ mod tests {
         // The other half of the same class: the index resolves, but the entity's
         // param block does not fit the buffer the header describes.
         let mut input = one_entity_input();
-        input.entities = vec![Entity {
-            kind: Kind::Line,
-            param_offset: 2,
-        }];
+        input.entities = vec![Entity::new(Kind::Line, 2)];
         input.params_initial = vec![0.0, 0.0, 1.0];
         input.pinned_mask = vec![0];
         let decoded = decode_input(&encode_input(&input)).expect("decode");
@@ -902,10 +915,7 @@ mod tests {
 
     fn one_entity_input() -> Input {
         Input {
-            entities: vec![Entity {
-                kind: Kind::Line,
-                param_offset: 0,
-            }],
+            entities: vec![Entity::new(Kind::Line, 0)],
             params_initial: Vec::new(),
             pinned_mask: Vec::new(),
             equality_pins: Vec::new(),
@@ -1150,5 +1160,122 @@ mod tests {
             decode_output(miss_cut),
             Err(CodecError::UnexpectedEof)
         ));
+    }
+
+    /// One fit_spline entity with `points` fit points and the given flag bits,
+    /// plus the params its record implies.
+    fn fit_input(points: usize, flags: u8) -> Input {
+        let handles = (flags & 1 != 0) as usize + (flags & 2 != 0) as usize;
+        let mut params: Vec<f64> = (0..points).flat_map(|i| [i as f64, i as f64]).collect();
+        params.extend(std::iter::repeat_n(9.0, 2 * handles));
+        Input {
+            entities: vec![Entity {
+                kind: Kind::FitSpline,
+                param_offset: 0,
+                param_count: 2 * points + 2 * handles,
+                flags,
+            }],
+            params_initial: params,
+            ..Default::default()
+        }
+    }
+
+    /// Patch the first entity record's flags and count bytes (the header is 26
+    /// bytes and the record is `kind, flags, offset, count`).
+    fn patch_entity_record(bytes: &mut [u8], flags: u8, count: u32) {
+        bytes[26 + 1] = flags;
+        bytes[26 + 6..26 + 10].copy_from_slice(&count.to_le_bytes());
+    }
+
+    #[test]
+    fn a_fit_spline_round_trips_with_its_count_and_flags() {
+        for (points, flags) in [(2, 0), (3, 1), (5, 2), (64, 3)] {
+            let input = fit_input(points, flags);
+            let decoded = decode_input(&encode_input(&input)).expect("decode");
+            let entity = &decoded.entities[0];
+            assert_eq!(entity.kind, Kind::FitSpline);
+            assert_eq!(entity.param_count, input.entities[0].param_count);
+            assert_eq!(entity.flags, flags);
+            assert_eq!(decoded.params_initial, input.params_initial);
+        }
+    }
+
+    #[test]
+    fn the_decoder_rejects_a_fixed_kind_with_the_wrong_count() {
+        let input = Input {
+            entities: vec![Entity::new(Kind::Line, 0)],
+            params_initial: vec![0.0; 4],
+            ..Default::default()
+        };
+        let mut bytes = encode_input(&input);
+        patch_entity_record(&mut bytes, 0, 6);
+        assert_eq!(
+            decode_input(&bytes).unwrap_err(),
+            CodecError::BadParamCount(0, 6)
+        );
+    }
+
+    #[test]
+    fn the_decoder_rejects_a_malformed_fit_spline() {
+        // An odd count, one point, sixty-five points and an unknown flag bit.
+        for (flags, count) in [(0u8, 7u32), (0, 2), (0, 130), (0b100, 6)] {
+            let input = fit_input(3, 0);
+            let mut bytes = encode_input(&input);
+            patch_entity_record(&mut bytes, flags, count);
+            assert!(
+                matches!(decode_input(&bytes), Err(CodecError::BadFitLayout(..))),
+                "flags {flags} count {count} decoded"
+            );
+        }
+        // A fixed kind cannot carry flags either.
+        let input = Input {
+            entities: vec![Entity::new(Kind::Line, 0)],
+            params_initial: vec![0.0; 4],
+            ..Default::default()
+        };
+        let mut bytes = encode_input(&input);
+        patch_entity_record(&mut bytes, 1, 4);
+        assert_eq!(decode_input(&bytes).unwrap_err(), CodecError::BadFlags(1));
+    }
+
+    #[test]
+    fn a_fit_point_selector_round_trips_on_the_constraint_wire() {
+        let input = Input {
+            entities: vec![Entity {
+                kind: Kind::FitSpline,
+                param_offset: 0,
+                param_count: 6,
+                flags: 0,
+            }],
+            params_initial: vec![0.0, 0.0, 1.0, 2.0, 3.0, 1.0],
+            constraints: vec![Constraint {
+                kind_code: crate::ConstraintKind::Coincident.to_u8(),
+                refs: vec![(
+                    RefRole::A,
+                    Ref::Entity {
+                        index: 0,
+                        point: PointSelector::Fit(1),
+                    },
+                )],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let decoded = decode_input(&encode_input(&input)).expect("decode");
+        assert_eq!(
+            decoded.constraints[0].refs[0].1,
+            Ref::Entity {
+                index: 0,
+                point: PointSelector::Fit(1),
+            }
+        );
+    }
+
+    #[test]
+    fn a_stale_rev_4_input_magic_is_rejected() {
+        let input = fit_input(2, 0);
+        let mut bytes = encode_input(&input);
+        bytes[0..4].copy_from_slice(&MAGIC_REV4.to_le_bytes());
+        assert_eq!(decode_input(&bytes).unwrap_err(), CodecError::BadMagic);
     }
 }

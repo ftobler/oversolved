@@ -16,7 +16,7 @@ import { loadSolver } from '../loadSolver'
 
 const solveBytes = loadSolver()
 
-const MAGIC_IN = 0x33474b53  // "SKG3"
+const MAGIC_IN = 0x34474b53  // "SKG4"
 const MAGIC_OUT = 0x34524b53  // "SKR4"
 const MAGIC_OUT_REV3 = 0x33524b53  // "SKR3" (no per-constraint verdicts)
 const MAGIC_OUT_REV2 = 0x32524b53  // "SKR2" (f32 layout)
@@ -122,7 +122,7 @@ describe('sketch wire magic', () => {
 describe.skipIf(!solveBytes)('sketch wire real-wasm round-trip', () => {
   it('solves a fixed, horizontal, length-10 line from a raw flat input', () => {
     const input: FlatInput = {
-      entities: [{ kind: Kind.Line, offset: 0 }],
+      entities: [{ kind: Kind.Line, flags: 0, offset: 0, count: 4 }],
       params: [0.2, -0.1, 9.5, 0.8],
       pinnedMask: [],
       equalityPins: [],

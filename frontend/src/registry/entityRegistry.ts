@@ -36,8 +36,14 @@ export interface EntityDef {
   // One-line description for documentation.
   description: string
 
-  // Number of scalar parameters in the flat array.
+  // Number of scalar parameters in the flat array. For a variable-size kind
+  // this is the MINIMUM (`fit_spline`: two points, no handles); the layout
+  // helper computes the real count from the authored points and handles.
   paramCount: number
+
+  // True when `paramCount` is only a floor: the entity's real block depends on
+  // authored data (`fit_spline`'s fit-point count and handles).
+  variableParams?: boolean
 
   // Default parameter values when no initial data exists.
   defaultParams: number[]
@@ -138,7 +144,7 @@ export const ENTITIES: readonly EntityDef[] = [
   },
   {
     kind: 'spline',
-    label: 'Spline',
+    label: 'Bezier',
     description: 'A cubic Bezier spline defined by four control points.',
     paramCount: 8,
     defaultParams: [0, 0, 0, 0, 0, 0, 0, 0],
@@ -150,8 +156,23 @@ export const ENTITIES: readonly EntityDef[] = [
     ],
     coordPairs: [[0, 1], [2, 3], [4, 5], [6, 7]],
     activeTool: 'spline',
-    shortcut: 's',
     toolbarIcon: 'toolbar-spline',
+    showInToolbar: true,
+  },
+  {
+    kind: 'fit_spline',
+    label: 'Spline',
+    description: 'An interpolating spline through N fit points, with optional end handles.',
+    // Minimum block: two fit points, no handles. The real count is
+    // `2 N + 2 h`; see `fitSplineVertices`.
+    paramCount: 4,
+    variableParams: true,
+    defaultParams: [0, 0, 1, 1],
+    vertices: [],
+    coordPairs: [],
+    activeTool: 'fit_spline',
+    shortcut: 's',
+    toolbarIcon: 'toolbar-fit-spline',
     showInToolbar: true,
   },
   {
@@ -245,6 +266,9 @@ export const ENTITY_PARAM_LAYOUT: Record<EntityKind, readonly string[]> = {
   arc: ['cx', 'cy', 'r', 'a0_deg', 'a1_deg'],
   ellipse: ['cx', 'cy', 'a', 'b', 'theta_deg'],
   spline: ['x1', 'y1', 'c1x', 'c1y', 'c2x', 'c2y', 'x2', 'y2'],
+  // Variable: `x0, y0, ..., xN-1, yN-1` then the optional `c1x, c1y` and
+  // `c2x, c2y`; the layout's length is the two-point minimum.
+  fit_spline: ['x0', 'y0', 'x1', 'y1'],
   point: ['x', 'y'],
 }
 
@@ -254,4 +278,33 @@ export function entityParamLayoutsSentence(): string {
   return (Object.keys(ENTITY_PARAM_LAYOUT) as EntityKind[])
     .map(kind => `${kind} [${ENTITY_PARAM_LAYOUT[kind].join(', ')}]`)
     .join('; ')
+}
+
+/** The named vertices and coordinate pairs of a fit spline with `nPoints` fit
+ *  points and the given end handles. The registry's own lists are empty because
+ *  the layout depends on the authored point count. */
+export function fitSplineVertices(
+  nPoints: number,
+  handles?: 'start' | 'end' | 'both',
+): { vertices: VertexDef[]; coordPairs: [number, number][] } {
+  const vertices: VertexDef[] = []
+  const coordPairs: [number, number][] = []
+  const push = (key: string, index: number): void => {
+    vertices.push({ key, indices: [2 * index, 2 * index + 1] })
+    coordPairs.push([2 * index, 2 * index + 1])
+  }
+  push('start', 0)
+  for (let k = 1; k < nPoints - 1; k++) push(`fit${k}`, k)
+  push('end', nPoints - 1)
+  let next = 2 * nPoints
+  if (handles === 'start' || handles === 'both') {
+    vertices.push({ key: 'c1', indices: [next, next + 1] })
+    coordPairs.push([next, next + 1])
+    next += 2
+  }
+  if (handles === 'end' || handles === 'both') {
+    vertices.push({ key: 'c2', indices: [next, next + 1] })
+    coordPairs.push([next, next + 1])
+  }
+  return { vertices, coordPairs }
 }

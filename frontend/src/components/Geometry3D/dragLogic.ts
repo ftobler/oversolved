@@ -9,6 +9,7 @@ import { findSnapTarget, collectVertexTargetsFlat, collectEntityCandidatesFlat }
 import { isPureClick, CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
 import { DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX } from '@/components/Geometry3D/constants'
 import { BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjection'
+import { VERTEX_POINT_KEY_SUFFIXES } from '@/types/vertexKeys'
 
 export interface DragMoveResult {
   snapTarget: SnapTarget | null
@@ -16,7 +17,7 @@ export interface DragMoveResult {
   effectivePosition: [number, number]
 }
 
-const COINCIDENT_VERTEX_KEYS = ['start', 'end', 'center', 'xy', 'major1', 'major2', 'minor1', 'minor2', 'c1', 'c2'] as const
+const COINCIDENT_VERTEX_KEYS = VERTEX_POINT_KEY_SUFFIXES
 
 /** Parse a local vertex ref like "$<entityId>start" into its parts.
  *  Returns null for non-local refs (e.g. "@builtin_origin"). */

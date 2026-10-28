@@ -27,6 +27,22 @@ export interface OccPntArray extends OccDisposable {
   SetValue(index: number, pnt: OccPnt): void
 }
 
+/** TColStd_Array1OfReal(lower, upper): 1-based f64 array (B-spline knots). */
+export interface OccRealArray extends OccDisposable {
+  SetValue(index: number, value: number): void
+}
+
+/** TColStd_Array1OfInteger(lower, upper): 1-based integer array (multiplicities). */
+export interface OccIntArray extends OccDisposable {
+  SetValue(index: number, value: number): void
+}
+
+/** Geom_BSplineCurve(poles, knots, multiplicities, degree), with the knot
+ *  removal the fit-spline writer uses to recover the C2 form. */
+export interface OccBSplineCurve extends OccDisposable {
+  RemoveKnot(index: number, multiplicity: number, tolerance: number): boolean
+}
+
 export interface OccPolygonBuilder extends OccDisposable {
   Add_1(p: OccPnt): void
   Close(): void
@@ -643,6 +659,19 @@ export interface OccModule extends OccBaseModule {
   TColgp_Array1OfPnt_2: new (lower: number, upper: number) => OccPntArray
   // Geom_BezierCurve(poles): a Bezier curve through the pole array.
   Geom_BezierCurve_1: new (poles: OccPntArray) => OccDisposable
+  // TColStd arrays: knots (f64) and multiplicities (integer).
+  TColStd_Array1OfReal_2: new (lower: number, upper: number) => OccRealArray
+  TColStd_Array1OfInteger_2: new (lower: number, upper: number) => OccIntArray
+  // Geom_BSplineCurve(poles, knots, multiplicities, degree): the fit-spline
+  // writer hands OCC the C0 chain, then removes the interior knots to reach
+  // the C2 form CadQuery builds.
+  Geom_BSplineCurve_1: new (
+    poles: OccPntArray,
+    knots: OccRealArray,
+    multiplicities: OccIntArray,
+    degree: number,
+    periodic: boolean,
+  ) => OccBSplineCurve
   // gp_Elips(axis, majorRadius, minorRadius): an ellipse in the axis frame.
   gp_Elips_2: new (axis: OccDisposable, majorRadius: number, minorRadius: number) => OccDisposable
   // Geom_Ellipse(elips): the parametric ellipse curve.

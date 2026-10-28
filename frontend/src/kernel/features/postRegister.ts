@@ -144,8 +144,9 @@ export function resolveSketchPlane(
   throw unresolvedPlaneError(bare, context)
 }
 
-/** Rich geometry for one solved entity. */
-export function enrichSketchEntity(kind: string, ep: number[]): Dict {
+/** Rich geometry for one solved entity. `flags` is the entity record's per-kind
+ *  bits (`fit_spline` handles); ignored by every other kind. */
+export function enrichSketchEntity(kind: string, ep: number[], flags = 0): Dict {
   const rad = (deg: number): number => (deg * Math.PI) / 180
   if (kind === 'line') return { start: [ep[0], ep[1]], end: [ep[2], ep[3]] }
   if (kind === 'circle') return { center: [ep[0], ep[1]], radius: ep[2] }
@@ -172,6 +173,22 @@ export function enrichSketchEntity(kind: string, ep: number[]): Dict {
     // disambiguates it from a line (both carry start/end and no radius).
     const [x1, y1, x2, y2, x3, y3, x4, y4] = ep
     return { kind: 'spline', start: [x1, y1], end: [x4, y4], c1: [x2, y2], c2: [x3, y3] }
+  }
+  if (kind === 'fit_spline') {
+    // Fit points then the optional handles as absolute points (D2). The wire
+    // flags say which handles are present; the area builder rebuilds the chain.
+    const handleCount = (flags & 1 ? 1 : 0) + (flags & 2 ? 1 : 0)
+    const n = (ep.length - 2 * handleCount) / 2
+    const points: [number, number][] = []
+    for (let i = 0; i < n; i++) points.push([ep[2 * i], ep[2 * i + 1]])
+    let next = 2 * n
+    const out: Dict = { kind: 'fit_spline', points }
+    if (flags & 1) {
+      out.handle_start = [ep[next], ep[next + 1]]
+      next += 2
+    }
+    if (flags & 2) out.handle_end = [ep[next], ep[next + 1]]
+    return out
   }
   if (kind === 'point') return { x: ep[0], y: ep[1] }
   return {}

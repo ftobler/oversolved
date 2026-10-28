@@ -1,5 +1,5 @@
 import type { PartDoc, PartFeature, PartConstraint, PartEntityDef, PartTarget, SketchFeature } from '@/types/cad'
-import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
+import { fitPointIndex, isVertexPointKey } from '@/types/vertexKeys'
 import { selectionToQuery, parseSelectionId, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { emitWire } from '@/utils/query'
 import { failLoud } from '@/utils/invariants'
@@ -219,5 +219,24 @@ export function refMatchesEntity(ref: unknown, entityId: string): boolean {
   const bare = ref.slice(1)
   if (bare === entityId) return true
   if (!bare.startsWith(entityId)) return false
-  return (VERTEX_POINT_KEYS as readonly string[]).includes(bare.slice(entityId.length))
+  return isVertexPointKey(bare.slice(entityId.length))
+}
+
+/** The host-local ref for one fit-spline point: `$<eid>fit<k>`. Lives here, the
+ *  constraint-operand emitter, so a feature writer never hand-builds a `$`. */
+export function fitPointRef(eid: string, k: number): string {
+  return `$${eid}fit${k}`
+}
+
+/** The fit-point index a `$<eid>fit<k>` ref names, or null when it names
+ *  something else (including a whole entity id). */
+export function parseFitPointRef(ref: string, eid: string): number | null {
+  const prefix = '$' + eid
+  if (!ref.startsWith(prefix)) return null
+  return fitPointIndex(ref.slice(prefix.length))
+}
+
+/** True when `ref` is the host-local vertex ref `$<eid><key>`. */
+export function isVertexKeyRef(ref: string, eid: string, key: string): boolean {
+  return ref === `$${eid}${key}`
 }

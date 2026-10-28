@@ -3,6 +3,7 @@
 use super::geom::is_curve;
 use super::Problem;
 use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
+use crate::fit_spline::ParamLayout;
 use crate::{Kind, DEG2RAD};
 use nalgebra::DMatrix;
 use solver_core::sparse::SparseRow;
@@ -98,7 +99,7 @@ impl Problem<'_> {
         for (_, rf) in &c.refs {
             if let Ref::Entity { index, .. } = rf {
                 let off = self.offset_of(*index);
-                let size = self.kind_of(*index).param_count();
+                let size = self.param_count_of(*index);
                 for i in 0..size {
                     seen.insert(off + i);
                 }
@@ -226,6 +227,40 @@ impl Problem<'_> {
                             (off + 7, 0.0, 0.125),
                         ],
                     },
+                    // Fit spline: every named selector is one of the entity's
+                    // own param pairs, so the Jacobian is the identity there.
+                    // The curve midpoint (an unnamed selector) depends on every
+                    // param; no analytic row reads it, and the finite-difference
+                    // fallback covers it if one ever does.
+                    Kind::FitSpline => {
+                        let layout = self.fit_layout(index).unwrap_or(ParamLayout {
+                            points: 0,
+                            handle_start: false,
+                            handle_end: false,
+                        });
+                        match point {
+                            PointSelector::Start => vec![(off, 1.0, 0.0), (off + 1, 0.0, 1.0)],
+                            PointSelector::End => {
+                                let base = off + 2 * layout.points.saturating_sub(1);
+                                vec![(base, 1.0, 0.0), (base + 1, 0.0, 1.0)]
+                            }
+                            PointSelector::Fit(k) => {
+                                let base = off + 2 * k as usize;
+                                vec![(base, 1.0, 0.0), (base + 1, 0.0, 1.0)]
+                            }
+                            PointSelector::C1 => {
+                                let base = off + 2 * layout.points;
+                                vec![(base, 1.0, 0.0), (base + 1, 0.0, 1.0)]
+                            }
+                            PointSelector::C2 => {
+                                let base = off
+                                    + 2 * layout.points
+                                    + if layout.handle_start { 2 } else { 0 };
+                                vec![(base, 1.0, 0.0), (base + 1, 0.0, 1.0)]
+                            }
+                            _ => Vec::new(),
+                        }
+                    }
                 }
             }
         }
@@ -507,12 +542,14 @@ impl Problem<'_> {
             || (!self.ref_is_point(&b_ref)
                 && (b_kind == Some(Kind::Line)
                     || b_kind == Some(Kind::Circle) || b_kind == Some(Kind::Arc)
-                    || b_kind == Some(Kind::Ellipse) || b_kind == Some(Kind::Spline)))
+                    || b_kind == Some(Kind::Ellipse)
+                    || b_kind == Some(Kind::Spline) || b_kind == Some(Kind::FitSpline)))
             // point-on-curve (reversed): A is a curve, B is a point
             || (!self.ref_is_point(&a_ref) && self.ref_is_point(&b_ref)
                 && (a_kind == Some(Kind::Line)
                     || a_kind == Some(Kind::Circle) || a_kind == Some(Kind::Arc)
-                    || a_kind == Some(Kind::Ellipse) || a_kind == Some(Kind::Spline)))
+                    || a_kind == Some(Kind::Ellipse)
+                    || a_kind == Some(Kind::Spline) || a_kind == Some(Kind::FitSpline)))
         )
     }
 
@@ -537,7 +574,7 @@ impl Problem<'_> {
             rows.push(ry.finish());
         } else {
             let off = self.offset_of(index);
-            let size = self.kind_of(index).param_count();
+            let size = self.param_count_of(index);
             for i in 0..size {
                 rows.push(vec![(off + i, 1.0)]);
             }

@@ -32,3 +32,31 @@ describe('useSketchIdRegistration spline', () => {
     expect(vtx.vertices[idx][1]).toBeCloseTo(3)
   })
 })
+
+const fitSketch = (): Sketch => ({
+  f1: {
+    points: [[0, 0], [1, 2], [3, 1], [4, 0]],
+    handleStart: [0.5, 1],
+    handleEnd: [3.5, 1],
+  } as never,
+})
+
+describe('useSketchIdRegistration fit_spline', () => {
+  it('registers the interpolated curve as a pickable entity edge', () => {
+    const seg = buildSketchSegments('S1', fitSketch(), identity)
+    expect(seg.edgeQueries).toContain('entity:S1:f1')
+    expect(seg.segmentPositions.length).toBeGreaterThan(0)
+    const edgeIdx = seg.edgeQueries.indexOf('entity:S1:f1')
+    expect([...seg.segmentToEdge].every(i => i === edgeIdx)).toBe(true)
+  })
+
+  it('registers start, fit<k>, end and both handles as pickable vertices', () => {
+    const vtx = buildSketchVertices('S1', fitSketch(), identity)
+    for (const key of ['start', 'fit1', 'fit2', 'end', 'c1', 'c2']) {
+      expect(vtx.vertexQueries).toContain(`vertex:S1:f1:${key}`)
+    }
+    const idx = vtx.vertexQueries.indexOf('vertex:S1:f1:fit1')
+    expect(vtx.vertices[idx][0]).toBeCloseTo(1)
+    expect(vtx.vertices[idx][1]).toBeCloseTo(2)
+  })
+})

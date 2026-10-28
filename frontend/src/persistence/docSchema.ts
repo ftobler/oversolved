@@ -12,7 +12,7 @@
 
 import { parse as parseYaml } from 'yaml'
 import type { AssemblyDoc, PartDoc } from '@/types/cad'
-import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
+import { isVertexPointKey, MAX_FIT_POINT_KEY } from '@/types/vertexKeys'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { evalExpr } from '@/kernel/evalExpr'
 import { threadEntry } from '@/kernel/threadTable'
@@ -33,7 +33,8 @@ export const CURRENT_DOC_VERSION = 3
 // can build in any reasonable time.
 export const MAX_FEATURES = 10_000
 export const MAX_FEATURE_LIST = 10_000
-export const MAX_INITIAL_PARAMS = 64
+// 2 * 64 fit points + 2 handles: a fit_spline's block is the largest kind.
+export const MAX_INITIAL_PARAMS = 132
 export const MAX_ARRAY_COUNT = 1_000
 export const MAX_ARRAY_CELLS = 100_000
 export const MAX_EXPRESSION_LENGTH = 10_000
@@ -330,7 +331,9 @@ function checkReferenceOperand(value: unknown, field: string): void {
   // resolveVertexRef matches a dict point against; an unknown name makes the
   // constraint unresolvable, and the lowerer would drop it without a word.
   if (operand.point !== undefined && operand.point !== null) {
-    checkEnum(operand.point, `${field}.point`, VERTEX_POINT_KEYS)
+    if (typeof operand.point !== 'string' || !isVertexPointKey(operand.point)) {
+      fail(`${field}.point`, `must be a vertex-point key, got ${JSON.stringify(operand.point)}`)
+    }
   }
 }
 
@@ -400,12 +403,52 @@ function checkPlaneDef(value: unknown, field: string): void {
   }
 }
 
+const HANDLE_MODES = ['start', 'end', 'both'] as const
+
 function checkEntity(value: unknown, field: string): void {
   const entity = checkRecord(value, field)
   checkId(entity.id, `${field}.id`)
   checkString(entity.kind, `${field}.kind`)
   checkOptional(entity, 'construction', field, checkBoolean)
   checkOptional(entity, 'source', field, checkString)
+  if (entity.handles !== undefined) {
+    // Handles exist only on a fit_spline: a line or spline carrying the field
+    // would be a writer bug the loader must not silently accept.
+    if (entity.kind !== 'fit_spline') {
+      fail(`${field}.handles`, `is only valid on a fit_spline, not ${JSON.stringify(entity.kind)}`)
+    }
+    checkEnum(entity.handles, `${field}.handles`, HANDLE_MODES)
+  }
+}
+
+/**
+ * A fit_spline's initial block must be `2N + 2h` finite scalars with
+ * `2 <= N <= 64`, where `h` is the handle count the entity's `handles` field
+ * implies. A wrong length would make the lowerer's variable-size layout
+ * disagree with the solver's `ParamLayout`, which is a hard error on the wire.
+ */
+function checkFitSplineInitial(
+  entity: DocRecord,
+  initial: DocRecord | null,
+  field: string,
+): void {
+  if (entity.kind !== 'fit_spline') return
+  const params = initial?.[entity.id as string]
+  if (!Array.isArray(params)) {
+    fail(`${field}.${String(entity.id)}`, 'a fit_spline needs an initial param list')
+  }
+  const handles = entity.handles === 'both' ? 2 : entity.handles === 'start' || entity.handles === 'end' ? 1 : 0
+  const remaining = params.length - 2 * handles
+  if (remaining < 4 || remaining % 2 !== 0) {
+    fail(
+      `${field}.${String(entity.id)}`,
+      `has ${params.length} params, expected 2N + ${2 * handles} with N >= 2`,
+    )
+  }
+  const points = remaining / 2
+  if (points > MAX_FIT_POINT_KEY + 2) {
+    fail(`${field}.${String(entity.id)}`, `has ${points} fit points, the limit is 64`)
+  }
 }
 
 // A sketch addresses its entities by id (constraint operands, the solve result
@@ -745,6 +788,12 @@ function checkFeature(value: unknown, field: string): void {
     eachEntry(constraints, `${field}.constraints`, checkConstraint)
   }
   if (feature.initial !== undefined) checkInitial(feature.initial, `${field}.initial`)
+  if (Array.isArray(feature.entities)) {
+    const initial = isRecord(feature.initial) ? feature.initial : null
+    for (const entity of feature.entities) {
+      if (isRecord(entity)) checkFitSplineInitial(entity, initial, `${field}.initial`)
+    }
+  }
   checkFeatureDefs(feature, field)
 }
 

@@ -6,7 +6,7 @@
  * Everything is little-endian. See codec.rs for the full layout documentation.
  */
 
-export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4, Spline: 5 } as const
+export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4, Spline: 5, FitSpline: 6 } as const
 
 export const ConstraintKindCode: Record<string, number> = {
   horizontal: 0,
@@ -50,6 +50,15 @@ export const Sel = {
   c1: 9, c2: 10,
 } as const
 
+/** Interior fit-point selectors: `fit<k>` is wire code `32 + k` for
+ *  `1 <= k <= 62`. 32 itself is unused because `Fit(0)` is `start` and the last
+ *  point is `end`. Mirrors `PointSelector::Fit` in the Rust constraints. */
+export const FIT_SELECTOR_BASE = 32
+
+export function fitSelectorCode(k: number): number {
+  return FIT_SELECTOR_BASE + k
+}
+
 export const AxisCode: Record<string, number> = { x: 0, y: 1, both: 2 }
 
 export const Status = { fully_constrained: 0, underconstrained: 1, overconstrained: 2 } as const
@@ -65,22 +74,24 @@ export const CONSTRAINT_FLAG = {
   redundant: 1 << 0,
 } as const
 
-// Rev 4 of the wire layout. The output gained the per-constraint verdicts (a
-// flag byte and an f64 miss per input constraint) plus their header count; the
-// input layout is unchanged from rev 3, whose scalars are f64 (rev 2 carried
-// f32, which quantized solved coordinates at ~6e-8 relative, 1e-5 to 1e-4 mm on
-// typical parts, far above OCCT's 1e-7 confusion). The magic IS the version
-// handshake: the layout evolved before (has_sign flag + trailing sign f32)
-// without moving these, so a stale js/wasm pairing decoded shifted offsets
-// instead of failing. Bump BOTH sides (these two and sketch-solver/src/codec.rs)
-// on any layout change. Invalidating stale cached payloads is acceptable and
-// safe post-wave-1: bundle-cache reads degrade to cold rebuilds.
-const MAGIC_IN = 0x33474b53  // "SKG3", little-endian on the wire
+// Rev 5 of the wire layout. The entity record gained a flags byte and a param
+// count, because `fit_spline` is variable-size (`2 N + 2 h`); rev 4's output
+// (per-constraint verdicts) is unchanged. The magic IS the version handshake:
+// the layout evolved before (has_sign flag + trailing sign f32) without moving
+// these, so a stale js/wasm pairing decoded shifted offsets instead of failing.
+// Bump BOTH sides (these two and sketch-solver/src/codec.rs) on any layout
+// change. Invalidating stale cached payloads is acceptable and safe
+// post-wave-1: bundle-cache reads degrade to cold rebuilds.
+const MAGIC_IN = 0x34474b53  // "SKG4", little-endian on the wire
 const MAGIC_OUT = 0x34524b53  // "SKR4"
 
 export interface FlatEntity {
   kind: number
+  // Per-kind bits; `fit_spline` uses bit0 start handle, bit1 end handle.
+  flags: number
   offset: number
+  // The entity's own scalar count (variable for `fit_spline`).
+  count: number
 }
 
 export type FlatRef =
@@ -186,7 +197,9 @@ export function encodeInput(input: FlatInput): Uint8Array {
 
   for (const e of input.entities) {
     w.u8(e.kind)
+    w.u8(e.flags)
     w.u32(e.offset)
+    w.u32(e.count)
   }
   for (const p of input.params) w.f64(p)
 

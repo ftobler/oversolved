@@ -395,6 +395,7 @@ pub(super) struct Classified {
     pub(super) circles: Vec<(String, TopoEntity)>,
     pub(super) arcs: Vec<(String, TopoEntity)>,
     pub(super) splines: Vec<(String, TopoEntity)>,
+    pub(super) fit_splines: Vec<(String, TopoEntity)>,
     pub(super) ellipses: Vec<(String, TopoEntity)>,
 }
 
@@ -414,6 +415,7 @@ impl Classified {
         let (r_circles, c_circles) = part(self.circles);
         let (r_arcs, c_arcs) = part(self.arcs);
         let (r_splines, c_splines) = part(self.splines);
+        let (r_fit_splines, c_fit_splines) = part(self.fit_splines);
         let (r_ellipses, c_ellipses) = part(self.ellipses);
         (
             Classified {
@@ -421,6 +423,7 @@ impl Classified {
                 circles: r_circles,
                 arcs: r_arcs,
                 splines: r_splines,
+                fit_splines: r_fit_splines,
                 ellipses: r_ellipses,
             },
             Classified {
@@ -428,6 +431,7 @@ impl Classified {
                 circles: c_circles,
                 arcs: c_arcs,
                 splines: c_splines,
+                fit_splines: c_fit_splines,
                 ellipses: c_ellipses,
             },
         )
@@ -438,6 +442,7 @@ impl Classified {
             && self.circles.is_empty()
             && self.arcs.is_empty()
             && self.splines.is_empty()
+            && self.fit_splines.is_empty()
             && self.ellipses.is_empty()
     }
 }
@@ -454,6 +459,7 @@ pub(super) fn classify(geometry: &[(String, InputEntity)]) -> Classified {
         };
         match &entity {
             TopoEntity::Spline { .. } => c.splines.push((eid.clone(), entity)),
+            TopoEntity::FitSpline { .. } => c.fit_splines.push((eid.clone(), entity)),
             TopoEntity::Ellipse { .. } => c.ellipses.push((eid.clone(), entity)),
             TopoEntity::Arc { .. } => c.arcs.push((eid.clone(), entity)),
             TopoEntity::Line { .. } => c.lines.push((eid.clone(), entity)),

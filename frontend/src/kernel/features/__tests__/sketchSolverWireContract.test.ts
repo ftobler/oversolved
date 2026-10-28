@@ -35,7 +35,7 @@ const solveBytes = loadSolver()
 
 function layoutOf(n: number): EntityLayout[] {
   return Array.from({ length: n }, (_, i) => ({
-    id: `e${i}`, kind: 'point', offset: i * 2, size: 2,
+    id: `e${i}`, kind: 'point', offset: i * 2, size: 2, flags: 0,
   }))
 }
 

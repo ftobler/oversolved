@@ -70,6 +70,7 @@ const num = (note?: string) => ({ type: 'number', required: true, ...(note !== u
 const optNum = () => ({ type: 'number', required: false } as const)
 const optObj = () => ({ type: 'object', required: false } as const)
 const bool = () => ({ type: 'boolean', required: true } as const)
+const optBool = () => ({ type: 'boolean', required: false } as const)
 const point = (note?: string) => ({ type: 'point', required: true, ...(note !== undefined && { note }) } as const)
 const optPoint = () => ({ type: 'point', required: false } as const)
 const arr = (note?: string) => ({ type: 'array', required: true, ...(note !== undefined && { note }) } as const)
@@ -485,9 +486,29 @@ export const MUTATION_CATALOG = {
     summary: 'Add one sketch entity of a kind with numeric params.',
     fields: {
       featureId: str(),
-      kind: str('Entity kind: line, circle, arc, ellipse, spline or point.'),
+      kind: str('Entity kind: line, circle, arc, ellipse, spline, fit_spline or point. A fit_spline takes its flat fit points plus optional tangents/tangentScale.'),
       params: arr(ENTITY_PARAMS_NOTE),
       entityId: optStr(),
+      tangents: optArr('fit_spline only: [start, end] end tangents, each [tx, ty] or null.'),
+      tangentScale: optBool(),
+    },
+  },
+  insert_fit_point: {
+    summary: 'Insert one fit point into a fit spline at a positional index.',
+    fields: {
+      featureId: str(),
+      entityId: str(),
+      index: num('Insertion index, 0..N (N appends after the last point).'),
+      point: point(),
+    },
+  },
+  set_fit_spline_handle: {
+    summary: 'Set or remove one end handle of a fit spline.',
+    fields: {
+      featureId: str(),
+      entityId: str(),
+      end: str('Which end: start or end.'),
+      handle: anyValue('Absolute handle point [x, y], or null to remove the handle.'),
     },
   },
   add_entity_with_constraint: {
@@ -502,6 +523,8 @@ export const MUTATION_CATALOG = {
       snapEntityRef: optStr(),
       constraintKind: str(),
       entityId: optStr(),
+      tangents: optArr('fit_spline only: [start, end] end tangents, each [tx, ty] or null.'),
+      tangentScale: optBool(),
     },
   },
   add_projected_entity: {
@@ -1024,6 +1047,8 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   delete: 'sketch',
   add_entity: 'sketch',
   add_entity_with_constraint: 'sketch',
+  insert_fit_point: 'sketch',
+  set_fit_spline_handle: 'sketch',
   add_projected_entity: 'sketch',
   add_rect: 'sketch',
   add_center_rect: 'sketch',

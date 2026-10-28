@@ -1,7 +1,7 @@
 import type {
   Sketch, Constraints, Point,
   PartEntityDef, SketchFeature, PartConstraint, ConstraintRender,
-  LineSegment, Circle, Arc, PointEntity, Ellipse, Spline,
+  LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, FitSpline,
   ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity, ProjectedEllipse, ProjectedSpline,
 } from '@/types/cad'
 import { getDefaultParams } from '@/registry'
@@ -12,6 +12,7 @@ import { segmentsAreParallel } from '@/utils/geometry/segmentGeometry'
 // editor store, which must stay Three-free.
 import { ellipseAxisPoints } from '@/utils/geometry/ellipseAxis'
 import { resolveVertexRef } from '@/types/vertexRef'
+import { fitPointIndex } from '@/types/vertexKeys'
 
 type ResolvedRef = { entity: string; point?: string } | null | undefined
 
@@ -106,6 +107,27 @@ export function unflattenGeometry(
         ...(construction && { construction: true }),
         ...(projTag ?? {}),
       } as Spline | ProjectedSpline
+    } else if (kind === 'fit_spline') {
+      // The flat block is the fit points then the optional handles (D2), the
+      // same order the document and the solver use; `handles` says how many.
+      const handleCount = entityDef.handles === 'both' ? 2 : entityDef.handles === 'start' || entityDef.handles === 'end' ? 1 : 0
+      const n = Math.max(0, (params.length - 2 * handleCount) / 2)
+      const points: Point[] = []
+      for (let i = 0; i < n; i++) points.push([params[2 * i] || 0, params[2 * i + 1] || 0])
+      let next = 2 * n
+      const fit: FitSpline = { points }
+      if (entityDef.handles === 'start' || entityDef.handles === 'both') {
+        fit.handleStart = [params[next] || 0, params[next + 1] || 0]
+        next += 2
+      }
+      if (entityDef.handles === 'end' || entityDef.handles === 'both') {
+        fit.handleEnd = [params[next] || 0, params[next + 1] || 0]
+      }
+      result[id] = {
+        ...fit,
+        ...(construction && { construction: true }),
+        ...(projTag ?? {}),
+      } as FitSpline
     } else if (kind === 'point') {
       result[id] = {
         x: params[0] || 0,
@@ -154,6 +176,15 @@ export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string 
     if (pt === 'c1') return [...sp.p2] as [number, number]
     if (pt === 'c2') return [...sp.p3] as [number, number]
     return [...sp.p1] as [number, number]
+  } else if (kind === 'fit_spline') {
+    const fs = entity as FitSpline
+    const last = fs.points[fs.points.length - 1]
+    if (pt === 'end') return [...last] as [number, number]
+    if (pt === 'c1') return [...(fs.handleStart ?? fs.points[0])] as [number, number]
+    if (pt === 'c2') return [...(fs.handleEnd ?? last)] as [number, number]
+    const k = fitPointIndex(pt ?? '')
+    if (k !== null && k < fs.points.length) return [...fs.points[k]] as [number, number]
+    return [...fs.points[0]] as [number, number]
   } else {
     const p = entity as PointEntity | ProjectedPointEntity
     return [p.x, p.y]

@@ -1,11 +1,12 @@
 import { Fragment, useMemo } from 'react'
 import { Line } from '@react-three/drei'
-import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, PartConstraint } from '@/types/cad'
+import type { Sketch, Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, FitSpline, PartConstraint } from '@/types/cad'
 import { isProjectedEntity } from '@/types/cad'
 import { suppressedCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints, ELLIPSE_AXIS_KEYS, pointTo3D, allFinite, entityCenter } from '@/utils/geometry/sketchHelpers'
 import { DashedLine } from '@/components/Geometry3D/dimensions'
+import { fitSplinePolyline } from '@/utils/geometry/fitSpline'
 import { VertexDot, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer } from '@/components/Geometry3D/constants'
 
@@ -94,6 +95,34 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
         {ELLIPSE_AXIS_KEYS.map(key => (
           <VertexDot key={key} x={ap[key][0]} y={ap[key][1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey={key} isEditing={isEditing} />
         ))}
+      </>
+    )
+  } else if ('points' in e) {
+    const fs = e as FitSpline
+    if (fs.points.length < 2 || !fs.points.every(p => allFinite(p[0], p[1]))) return null
+    const flat = fitSplinePolyline(fs.points, fs.handleStart, fs.handleEnd)
+    if (flat.length < 2) return null
+    const pts = flat.map(p => [p[0], p[1], 0] as [number, number, number])
+    const handleLine = (from: [number, number], to: [number, number]) =>
+      construction
+        ? <DashedLine points={[[from[0], from[1], 0], [to[0], to[1], 0]]} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
+        : <Line points={[[from[0], from[1], 0], [to[0], to[1], 0]]} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
+    return (
+      <>
+        <group>
+          {construction
+            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />}
+          {fs.handleStart ? handleLine(fs.points[0], fs.handleStart) : null}
+          {fs.handleEnd ? handleLine(fs.points[fs.points.length - 1], fs.handleEnd) : null}
+        </group>
+        <VertexDot x={fs.points[0][0]} y={fs.points[0][1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey="start" isEditing={isEditing} />
+        {fs.points.slice(1, -1).map((p, i) => (
+          <VertexDot key={i} x={p[0]} y={p[1]} px={3.5} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey={`fit${i + 1}`} isEditing={isEditing} />
+        ))}
+        <VertexDot x={fs.points[fs.points.length - 1][0]} y={fs.points[fs.points.length - 1][1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey="end" isEditing={isEditing} />
+        {fs.handleStart ? <VertexDot x={fs.handleStart[0]} y={fs.handleStart[1]} px={3} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey="c1" isEditing={isEditing} /> : null}
+        {fs.handleEnd ? <VertexDot x={fs.handleEnd[0]} y={fs.handleEnd[1]} px={3} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey="c2" isEditing={isEditing} /> : null}
       </>
     )
   } else if ('p1' in e) {

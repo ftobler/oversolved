@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, Point, Constraints } from '@/types/cad'
+import type { Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, FitSpline, Point, Constraints } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
 import { RENDER_KIND_TO_ICON } from '@/registry'
 import { iconModules } from '@/utils/core/iconModules'
@@ -196,6 +196,13 @@ export function getEntityBounds(entity: Entity): { minX: number; maxX: number; m
     // control points give a conservative axis-aligned box.
     const xs = [sp.p1[0], sp.p2[0], sp.p3[0], sp.p4[0]]
     const ys = [sp.p1[1], sp.p2[1], sp.p3[1], sp.p4[1]]
+    return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
+  } else if (kind === 'fit_spline') {
+    const fs = entity as FitSpline
+    // The chain lies inside the hull of the fit points and handles.
+    const pts = [...fs.points, ...(fs.handleStart ? [fs.handleStart] : []), ...(fs.handleEnd ? [fs.handleEnd] : [])]
+    const xs = pts.map(p => p[0])
+    const ys = pts.map(p => p[1])
     return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
   } else {
     const p = entity as PointEntity
