@@ -621,7 +621,12 @@ banner on stdout, so a client config must use the direct node invocation.
   applies scale first, then rotation, then translation, always about exactly
   one axis given either as `rotation_axis` (a ref) or as `rotation_axis_origin`
   plus `rotation_axis_direction`; `add_fillet` takes all of `edges` and
-  `radius` in the same call; `toggle_construction` takes entity targets as
+  `radius` in the same call; `add_split` takes `bodies`, `plane` and `keep`
+  inline, `above` is the side the plane normal points to (a picked face's
+  normal is outward, so `above` of a face pick is its air side), and with
+  `keep: "both"` the above half keeps the original body id while the below
+  half becomes its `_1`, `_2` siblings, so `@<featureId>` still names all of
+  it; `toggle_construction` takes entity targets as
   `entity:<sketchId>:<entityId>` and `delete` takes entity, vertex or constraint
   refs (a bare id is refused); `add_variable` must sit
   before every feature that names it, and `reorder_features` takes exactly one
@@ -631,11 +636,14 @@ banner on stdout, so a client config must use the direct node invocation.
   dependent stays in the log and reports its missing input; and an array's
   `operation: add` only fuses copies that touch, so disjoint copies split into
   bodies named with `_1`, `_2`... suffixes.
-- Plane refs are exact. `add_sketch.plane` and `set_feature_plane.plane` accept
+- Plane refs are exact. `add_sketch.plane`, `set_feature_plane.plane`,
+  `add_split.plane` and `set_split_field` with `field: "plane"` accept
   `@builtin_plane_front`, `@builtin_plane_top`, `@builtin_plane_right`, the bare
   names `Front`/`Top`/`Right` (case-sensitive), `@<planeId>` for a plane
   feature, or a `?` face query from `select` (the stored `?...:flatface`
-  string), so a face pick can place the sketch in one step. An unmatched NAME
+  string), so a face pick can place the sketch in one step (`add_split` and
+  `set_split_field` take the flat-face form only; a curved face is refused). An
+  unmatched NAME
   is refused with the valid list; a name never falls back to the XY plane. A
   face query is resolved after the solve, and a plane or face query that does
   not resolve fails the sketch with the cause named: a plane feature defined

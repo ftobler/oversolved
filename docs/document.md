@@ -408,6 +408,39 @@ body.
     merge: true                     # fuse mirror into source when keep_original
 ```
 
+### split
+
+```yaml
+- id: sp1
+  kind: split
+  split:
+    bodies: ["@ex1"]              # required, >= 1 body ref (a feature ref = all its bodies)
+    plane: "@pl1"                 # required: @builtin_plane_*, Front/Top/Right,
+                                  # @<plane feature id>, or a ?...:flatface query
+    keep: above                   # above | below | both (default above)
+```
+
+`above` is the side the plane normal points to. Builtin normals: Front +Z,
+Top +Y, Right +X. An `add_plane` feature has its own normal. A planar face pick
+uses the face's OUTWARD normal, so `above` of a picked body face is the air side
+of that face.
+
+`keep: both` keeps every piece. The original body id stays on the above half;
+the below half becomes split siblings (`<id>_1`, ...) of the same creator, so
+`@<featureId>` still names both halves and `part_style` (name, colour) stays on
+the above half. `keep: below` keeps only the other side.
+
+The cap the plane leaves is named `<featureId>|splitcap|<side>`, so a pick on a
+cap survives a plane offset edit, a body resize and a change between `above`
+and `both` (the above cap) or `below` and `both` (the below cap). Faces the
+plane crosses keep their UUID on the kept side; with `both` each crossed face
+gets one `split|i` child per half.
+
+A split fails loud rather than deleting silently: a plane that misses a body,
+or a kept side with no material, is a feature exception and the body is left
+exactly as it was. The other bodies are only touched after every picked body
+has passed, so one failing body does not leave the feature half applied.
+
 ### delete_body / import_step
 
 ```yaml

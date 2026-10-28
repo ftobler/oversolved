@@ -401,6 +401,7 @@ as a fallback seam for tests only.
 | Run linter | `npm run lint` | `frontend/` |
 | Run type checker | `mypy tests/ oversolved/` | root |
 | Add new command | add a `CommandSpec` to the editor's table | `frontend/src/pages/commandEntries.ts` / `assemblyCommandEntries.ts` |
+| Add new feature kind | the compile-time tethers, in order: `PartFeature` (`types/cad.ts`) -> `FEATURE_SCHEMA_BY_KIND` (`persistence/partDocSchema.ts`) -> `FEATURE_DEF_SUBKEY` (`kernel/features/shared/featureParams.ts`) -> `KIND_SOLVER` (`kernel/solverRegistry.ts`); then the runtime tables: `FEATURE_DEF_CHECKS` (`persistence/docSchema.ts`), `IDEMPOTENT_MUTATION`, `FIELD_SETTER_KIND` and the `MUTATION_VALUE_RULES` row, `mutationExamples`, and the editor schema; then the ratchets: `npm run regen:action-matrix`, `featureUnionRatchet` counts and the solver-registry kind list | `frontend/src/` |
 | Add new tool | `frontend/src/registry/entityRegistry.ts` | `frontend/src/registry/` |
 | Add new constraint | `frontend/src/registry/constraintRegistry.ts` | `frontend/src/registry/` |
 | Add new measurement | `frontend/src/registry/measurementRegistry.ts` | `frontend/src/registry/` |
