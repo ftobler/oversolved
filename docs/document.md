@@ -19,8 +19,11 @@ The same document is the target for every author: the GUI, the drive surface
 and MCP entry points in `frontend/scripts`), and the import/export paths. The
 JSON Schema in `persistence/partDocSchema.ts` is the contract.
 
-The assembly document (parts, instances, mates) is a separate format and is not
-covered here.
+The assembly document (parts, instances, mates) is a separate format. Its
+contract is the JSON Schema in `persistence/assemblyDocSchema.ts`, served over
+MCP as `oversolved://schema/assembly-document`: a `part_instance` names a
+workspace `doc_id`, and a `mate` carries two `{ part, anchor,
+anchor_descriptor }` refs plus the parameters its kind reads.
 
 ## Document Structure
 

@@ -335,6 +335,16 @@ the three shared names). Regenerate with `npm run docs:commands`;
 
 <!-- command-table:end -->
 
+The assembly editor's document operations are one declarative table,
+`ASSEMBLY_OPERATIONS` (`frontend/src/utils/assemblyOperations.ts`), not command
+ids: each row states `bake`/`undo`/`solve` and a pure `apply`. Commands call
+`runOperation(id, input)`; the drive calls the same table through
+`planAssemblyOperation`. `set_mate_ref` is the one row with no command of its
+own: the store's `commitAimToMateField` calls `runAssemblyOperation('set_mate_ref',
+{ id, field, ref, patch })` when a mate chip commits a pick, so the ref and the
+captured flip/angle land in one fold step. The drive's `set_mate_ref` mutation
+is the same cell.
+
 ## Keybindings
 
 Active core keys: `ctrl+z` (undo), `ctrl+shift+z`/`ctrl+y` (redo), `delete`/`backspace` (delete), `d` (dimension), `shift+m` (mirror), `q` (construction toggle), `y` (toggle reference geometry), `e` (add extrude, feature mode only), `p` (toggle plane visibility), `escape` (cancel).

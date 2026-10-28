@@ -305,8 +305,9 @@ npm run drive -- replay repro.json
   `undoable` flag, its param fields (`spec.params.fields`, the same schema the
   registry parses a call against) and the live `enabled` verdict from a fresh
   seeded session. Reading the catalog runs no spec body and starts no solve.
-  The catalog is the part editor's table (`PART_COMMAND_SPECS`); the assembly
-  editor's commands are not on this surface in v1.
+  The catalog is the part editor's table (`PART_COMMAND_SPECS`); the MCP
+  `commands` tool takes `kind: "assembly"` for the assembly editor's table
+  (`ASSEMBLY_COMMAND_SPECS`).
 - `measure` reports a `MeasureRecord`: `bodies`, `volume`, `area`, `centroid`
   (volume-weighted), `bbox` (a tight six-number box,
   `[xmin, ymin, zmin, xmax, ymax, zmax]`, computed from the faces so a trim that
@@ -379,13 +380,13 @@ banner on stdout, so a client config must use the direct node invocation.
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `commands` | none | the command catalog, the same shape as the CLI's `commands` |
-| `mutations` | none | the mutation vocabulary grouped by family, plus ready-to-run example scripts |
-| `run` | `steps`, optional `doc` or `docHash`, `returnDoc`, `featureDeltas: "all"`, `out`, `docId`, `files` | `{ ok, steps, docHash, solve, features, featureDeltas, frames, summary, doc?, file?, format? }`; chain with `docHash`, `returnDoc: true` for the document, `out` to write it |
-| `measure` | `doc` or `docHash`, optional `docId`, `files` | `{ ok, docHash, bodies, volume, area, centroid, bbox, faces, edges, vertices, perBody, features, frames }` |
-| `compare` | `doc` or `docHash`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
-| `export` | `doc` or `docHash`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, docHash, file, format, bytes }` |
-| `select` | `doc` or `docHash`, `selector`, optional `docId`, `files` | `{ ok, docHash, queries, items }`: the query strings a click would store, plus a geometry summary per item |
+| `commands` | optional `kind` (`part` default, or `assembly`) | the command catalog for that editor |
+| `mutations` | none | the part and assembly mutation vocabularies grouped by family, plus ready-to-run example scripts |
+| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `out`, `docId`, `files` | part: `{ ok, steps, docHash, solve, features, featureDeltas, frames, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
+| `measure` | `doc` or `docHash`, optional `parts`, `docId`, `files` | part: the `MeasureRecord` plus `features`/`frames`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }` |
+| `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
+| `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, docHash, file, format, bytes }` |
+| `select` | `doc` or `docHash`, `selector`, optional `docId`, `files` | `{ ok, docHash, queries, items }`: the query strings a click would store, plus a geometry summary per item; part documents only |
 
 - `select` runs a predicate over the solved bodies and returns the exact query
   strings a click would store, so a headless author (an LLM, a translator, the
@@ -564,11 +565,13 @@ banner on stdout, so a client config must use the direct node invocation.
   hint only when the Z-up to Y-up swap (`(x,y,z)` to `(x,z,-y)`) actually makes
   that row match; a positional miss the swap cannot explain reports just its
   axis delta.
-- The server also serves two fixed resources (`resources/list`,
+- The server serves three fixed resources (`resources/list`,
   `resources/read`): `oversolved://schema/part-document`, the JSON Schema for a
-  part document (`persistence/partDocSchema.ts`), and
-  `oversolved://catalog/mutations`, the same JSON the `mutations` tool returns.
-  A third, dynamic one is advertised through `resources/templates/list`:
+  part document (`persistence/partDocSchema.ts`),
+  `oversolved://schema/assembly-document` for an assembly
+  (`persistence/assemblyDocSchema.ts`), and `oversolved://catalog/mutations`,
+  the same JSON the `mutations` tool returns.
+  A fourth, dynamic one is advertised through `resources/templates/list`:
   `oversolved://doc/{docHash}` reads back any document the server still holds,
   so a caller fetches the bytes on demand instead of asking `run` to return
   them. Read the schema before authoring a
@@ -752,6 +755,65 @@ back in place of `docHash`.
 `render_png` is deliberately not offered: the browser's raster path is the
 three.js viewport (WebGL, DOM-bound) and the node tier has no offscreen
 renderer, so a render tool would mean a new rasterizer rather than a reuse.
+
+### Assemblies
+
+An assembly is driven through the same tools. Bind each `part_instance.doc_id`
+with the `parts` argument (`{ "<doc_id>": "<part docHash>" }`, or
+`{ doc: <part document> }` to send it inline), then `run` with
+`kind: "assembly"`:
+
+```jsonc
+{ "kind": "assembly",
+  "parts": { "plate": "<plateHash>", "pin": "<pinHash>" },
+  "steps": [
+    { "mutation": { "type": "add_part", "handle": "plate", "part": "plate", "fixed": true } },
+    { "mutation": { "type": "add_part", "handle": "pin", "part": "pin", "position": [30, 30, 40] } },
+    { "mutation": { "type": "add_mate", "featureId": "m1", "kind": "fixed",
+                    "ref_a": { "part": "plate", "selector": { "kind": "face", "where": { "and": [
+                      { "type": "flatface" }, { "extreme": { "axis": [0,0,1], "side": "max" } } ] } } },
+                    "ref_b": { "part": "pin", "selector": { "kind": "face", "where": { "and": [
+                      { "type": "flatface" }, { "extreme": { "axis": [0,0,1], "side": "min" } } ] } } },
+                    "flip": true } }
+  ] }
+```
+
+- The reply's `docHash` is the assembly handle. It folds the assembly document
+  and every bound part's content hash, so a chained `measure { "docHash": A1 }`
+  needs no second argument, and a part edit yields a new handle. `parts` on a
+  chained call overrides one binding and mints a new handle.
+- A mate ref is a part-local pick: `{ part: <handle>, query: <a select query> }`,
+  `{ part: <handle>, selector: <exactly one entity> }`, `{ part: <handle>,
+  anchor: <anchor id> }`, or the assembly frame
+  `{ part: "__assembly", anchor: "AssemblyTop" }`. Run `select` on the part's
+  own docHash to get queries; the selector is an authoring aid and is never
+  stored. Only `{ part, anchor, anchor_descriptor }` reaches the document.
+- There is no on-screen pose to capture headlessly: `flip` and `angle` are
+  authored. `flip: true` is face-to-face contact between two outward normals;
+  absent means parallel axes and canonical zero roll. Read the reply's
+  `mateFrames` (each mate's posed anchors) to see which way an axis points.
+- Solved poses are never written back: `instances[].pose` carries
+  `{ handle, part, fixed, position, rotation, quaternion }`, and the document
+  keeps its authored seeds. A bake-flagged operation still bakes the last
+  solve's transforms, as the editor does.
+- `ok` means the steps applied and the final solve ran. A stale mate, a mate
+  error, an overconstrained verdict, a part bundle that failed to build or a
+  part feature in `exception` are data in `mates` / `parts` and the summary's
+  `; problems:` suffix; `underconstrained` is a state (`solve.verdict`,
+  `solve.dof`), not a problem.
+- `measure` rehydrates each part's B-rep through OCC (one build per distinct
+  part doc), places it, and reports per-body ids `<handle>/<bodyId>`, so
+  `compare` works unchanged against a CadQuery assembly reference. `export`
+  writes the placed compound as one STEP/STL; `body` is refused for an assembly.
+- `run` with `out` ending in `.zip` writes a workspace archive with the
+  assembly, every bound part and every `files` entry, ready to import in the
+  browser. YAML/JSON `out` writes the assembly document alone.
+- `select` stays part-only: it refuses an assembly handle and points at the
+  part's docHash.
+- Non-goals: sub-assemblies, world-space or cross-instance selection,
+  orientation capture from a seed pose, mate expressions, STEP product
+  structure, interference checks and the browser drive bridge for the assembly
+  editor. See `feature/backlog.md`.
 
 ## What is still open
 
