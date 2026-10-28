@@ -264,10 +264,11 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
   function solve(): Promise<AssemblyBuildResponse> {
     const doc = docBox.current
     const relay = {
-      requestPartDoc: async (docId: string) => boundPart(docId) as unknown as Record<string, unknown>,
-      requestBuildBundle: async (docId: string, _hash: string, spec: Record<string, unknown>) => {
-        const part = spec as unknown as PartDoc
-        return (await bundleFor(docId, part)).bundle
+      // The relay's spec is ignored: the binding is the one source of part
+      // content, so the bundle key and the build use the same document.
+      requestPartDoc: async (docId: string) => ({ ...boundPart(docId) }),
+      requestBuildBundle: async (docId: string, _hash: string, _spec: Record<string, unknown>) => {
+        return (await bundleFor(docId, boundPart(docId))).bundle
       },
     }
     return solveAssembly(partSpecs(doc), {}, mateSpecs(doc), relay, mateSolver).then((response) => {

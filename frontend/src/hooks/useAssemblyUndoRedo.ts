@@ -147,7 +147,7 @@ export function useAssemblyUndoRedo(
     docRef.current = outcome.doc
     setDoc(outcome.doc)
     useUnsavedChangesStore.getState().setDirty(true)
-  }, [setDoc, docRef, pushUndo, recordSessionEdit, commitSession])
+  }, [setDoc, docRef, recordSessionEdit, commitSession])
 
   // A structural one-shot op (rename, reorder, delete, duplicate, visibility)
   // pushes its own step even while an editor session is open: the session's
@@ -164,7 +164,7 @@ export function useAssemblyUndoRedo(
     docRef.current = outcome.doc
     setDoc(outcome.doc)
     useUnsavedChangesStore.getState().setDirty(true)
-  }, [setDoc, docRef, pushUndo, commitSession])
+  }, [setDoc, docRef, commitSession])
 
   const applyUndoRedo = useCallback((direction: 'undo' | 'redo') => {
     // An undo mid-edit first closes the open session as its own entry, so the
