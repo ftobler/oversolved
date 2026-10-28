@@ -121,14 +121,18 @@ export function holeFacePath(createdBy: string, siteSlot: string, role: HoleFace
 export type SplitSide = 'above' | 'below'
 
 /**
- * The cap face a split leaves on one side of its plane:
- * `<createdBy>|splitcap|<side>`. Symbolic only, like `holeFacePath`: the plane
- * offset, the body's size and a `keep` change between one side and both all
- * recompute the same UUID, so a pick on a cap survives the edit. The two sides
- * get distinct names because they are two distinct faces when both are kept.
+ * The cap face a split leaves on one body's side of its plane:
+ * `<createdBy>|splitcap|<bodySlot>|<side>`. Symbolic only, like
+ * `holeFacePath`: the plane offset, the body's size and a `keep` change between
+ * one side and both all recompute the same UUID, so a pick on a cap survives the
+ * edit. The two sides get distinct names because they are two distinct faces
+ * when both are kept. `bodySlot` is the resolved body store key (stable across
+ * rebuilds): a split of several bodies mints one cap per body, and without the
+ * slot every body's cap on the same side would claim one UUID, which the
+ * resolver refuses as a collision by construction.
  */
-export function splitPlaneFacePath(createdBy: string, side: SplitSide): string {
-  return `${createdBy}|splitcap|${side}`
+export function splitPlaneFacePath(createdBy: string, bodySlot: string, side: SplitSide): string {
+  return `${createdBy}|splitcap|${bodySlot}|${side}`
 }
 
 /**

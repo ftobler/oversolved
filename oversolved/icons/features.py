@@ -395,6 +395,12 @@ def feature_split(ctx):
     left, top, right, bottom = 0.2, 0.18, 0.8, 0.82
     split_y = 0.5
 
+    # The kept (above) half is solid. Its fill is painted first, on its own
+    # path, so the outline strokes drawn afterwards sit on top of it.
+    ctx.new_path()
+    ctx.rectangle(left, top, right - left, split_y - top)
+    ctx.fill()
+
     # The dropped half stays an outline.
     ctx.rectangle(left, split_y, right - left, bottom - split_y)
     stroke(ctx, 1.5)
@@ -407,12 +413,6 @@ def feature_split(ctx):
     ctx.move_to(left, top)
     ctx.line_to(right, top)
     stroke(ctx, 1.5)
-
-    # The kept (above) half is solid: a new path, so the fill does not swallow
-    # the outlines above.
-    ctx.new_path()
-    ctx.rectangle(left, top, right - left, split_y - top)
-    ctx.fill()
 
     # The cutting plane, wider than the block so it reads as a plane.
     ctx.move_to(0.1, split_y)

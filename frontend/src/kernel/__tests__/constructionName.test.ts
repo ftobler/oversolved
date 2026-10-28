@@ -61,12 +61,16 @@ describe('construction path grammar', () => {
     expect(importedInstanceFacePath('import1', 17, 1)).toBe('import1|step|17|1')
   })
 
-  it('names a split cap by its feature and side, and by nothing numeric', () => {
-    expect(splitPlaneFacePath('sp1', 'above')).toBe('sp1|splitcap|above')
-    expect(splitPlaneFacePath('sp1', 'below')).toBe('sp1|splitcap|below')
-    expect(mintFaceUuid(splitPlaneFacePath('sp1', 'above')))
-      .not.toBe(mintFaceUuid(splitPlaneFacePath('sp1', 'below')))
-    expect(splitPlaneFacePath('sp1', 'above')).not.toMatch(FLOAT_RE)
+  it('names a split cap by its feature, body slot and side, and by nothing numeric', () => {
+    expect(splitPlaneFacePath('sp1', 'body_ex1', 'above')).toBe('sp1|splitcap|body_ex1|above')
+    expect(splitPlaneFacePath('sp1', 'body_ex1', 'below')).toBe('sp1|splitcap|body_ex1|below')
+    expect(mintFaceUuid(splitPlaneFacePath('sp1', 'body_ex1', 'above')))
+      .not.toBe(mintFaceUuid(splitPlaneFacePath('sp1', 'body_ex1', 'below')))
+    // Two bodies in one split each get their own cap: the body slot keeps the
+    // one UUID off two live faces.
+    expect(mintFaceUuid(splitPlaneFacePath('sp1', 'body_ex1', 'above')))
+      .not.toBe(mintFaceUuid(splitPlaneFacePath('sp1', 'body_ex2', 'above')))
+    expect(splitPlaneFacePath('sp1', 'body_ex1', 'above')).not.toMatch(FLOAT_RE)
   })
 })
 

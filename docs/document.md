@@ -425,21 +425,30 @@ Top +Y, Right +X. An `add_plane` feature has its own normal. A planar face pick
 uses the face's OUTWARD normal, so `above` of a picked body face is the air side
 of that face.
 
-`keep: both` keeps every piece. The original body id stays on the above half;
-the below half becomes split siblings (`<id>_1`, ...) of the same creator, so
-`@<featureId>` still names both halves and `part_style` (name, colour) stays on
-the above half. `keep: below` keeps only the other side.
+`keep: both` keeps every piece. The original body id stays on the above half
+(the geometric first solid of that side); every further piece becomes a sibling
+in geometric order (`<id>_1`, `<id>_2`, ...) of the same creator, so
+`@<featureId>` still names every piece and `part_style` (name, colour) stays on
+the above half. A one-sided keep can disconnect its kept side too (two arms
+above a slot), and each piece then becomes a sibling the same way. `keep: below`
+keeps only the other side.
 
-The cap the plane leaves is named `<featureId>|splitcap|<side>`, so a pick on a
-cap survives a plane offset edit, a body resize and a change between `above`
-and `both` (the above cap) or `below` and `both` (the below cap). Faces the
-plane crosses keep their UUID on the kept side; with `both` each crossed face
-gets one `split|i` child per half.
+The cap the plane leaves is named `<featureId>|splitcap|<bodyId>|<side>` (one
+per body and side), so a pick on a cap survives a plane offset edit, a body
+resize and a change between `above` and `both` (the above cap) or `below` and
+`both` (the below cap). Faces the plane crosses keep their UUID on the kept
+side; with `both` each crossed face gets one `split|i` child per half.
 
 A split fails loud rather than deleting silently: a plane that misses a body,
 or a kept side with no material, is a feature exception and the body is left
 exactly as it was. The other bodies are only touched after every picked body
-has passed, so one failing body does not leave the feature half applied.
+has passed and every name is minted, so one failing body does not leave the
+feature half applied. Accepted limitation: the final re-seat can still refuse
+when the result's pieces are a near-tie for the geometric sibling order (or a
+centroid cannot be read). That refusal happens after the earlier bodies were
+re-seated, so those keep the split while the failing body stays whole. Ordering
+is never guessed: a flipped body id would silently move a part's name and
+colour.
 
 ### delete_body / import_step
 

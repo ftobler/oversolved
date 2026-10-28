@@ -905,12 +905,14 @@ Edit: `edit pl1.offset 5 -> 6 (the split plane moves up one mm)` (pl1.offset = 6
   - area 362.229799 -> 362.229799 (rel dev 0)
   - centroid [5.00000000, 8.19526223, 5.00000000] -> [5.00000000, 8.19526223, 5.00000000] (max dev 8.88e-16)
   - bbox [0.00000000, 6.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] -> [0.00000000, 6.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] (max dev 8.88e-16)
+  - counts faces 8, edges 18 -> faces 8, edges 18
 
 Edit STEP round trip:
   - volume 350.457911 -> 350.457911 (rel dev -1.02e-14)
   - area 362.229799 -> 362.229799 (rel dev 7.53e-15)
   - centroid [5.00000000, 8.19526223, 5.00000000] -> [5.00000000, 8.19526223, 5.00000000] (max dev 5.15e-14)
   - bbox [0.00000000, 6.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] -> [0.00000000, 6.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] (max dev 0)
+  - counts faces 8, edges 18 -> faces 8, edges 18
 ### 45-sweep-sections-frustum
 
 `Two sections are interpolated linearly along the spine: cone frustum pi*h/3*(r1^2+r1*r2+r2^2), h = 10, r1 = 1, r2 = 2; area is the lateral cone pi*(r1+r2)*sqrt(h^2+(r2-r1)^2) plus both caps; centroid h*(r1^2+2*r1*r2+3*r2^2)/(4*(r1^2+r1*r2+r2^2)) from the small end`

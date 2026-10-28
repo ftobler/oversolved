@@ -24,10 +24,16 @@ function _ensureBodies(sub: { bodies?: string[]; body?: string }): string[] {
 // Shared body for the `applySet<Kind>Field` mutators that warn when the
 // sub-feature is absent and clear-on-empty via setFeatureField. `kind` is the
 // sub-feature key (which also reads as the word in the warning); `fn` keeps the
-// public caller name in the diagnostic.
-function setSubFeatureField(featureId: string, kind: string, sub: Record<string, unknown> | undefined, field: string, value: unknown, fn: string): boolean {
+// public caller name in the diagnostic. `allowed` is for the kinds whose fields
+// are a closed set: a field outside it is refused by name instead of stored as
+// a key no reader ever looks at (every other kind's setter is typed only).
+function setSubFeatureField(featureId: string, kind: string, sub: Record<string, unknown> | undefined, field: string, value: unknown, fn: string, allowed?: readonly string[]): boolean {
   if (sub === undefined) {
     warn(`${fn}: feature ${featureId} has no ${kind}`)
+    return false
+  }
+  if (allowed !== undefined && !allowed.includes(field)) {
+    warn(`${fn}: unknown ${kind} field ${JSON.stringify(field)}`)
     return false
   }
   setFeatureField(sub, field, value)
@@ -731,6 +737,11 @@ export function applySetMirrorField(
 
 // ─── Split ───
 
+// The side enum the schema and the kernel both accept; an unknown spelling is
+// refused by name rather than stored and read back as the above default.
+const SPLIT_KEEPS: readonly SplitKeep[] = ['above', 'below', 'both']
+const SPLIT_FIELDS: readonly string[] = ['bodies', 'plane', 'keep']
+
 export function applyAddSplit(
   doc: PartDoc,
   featureId: string,
@@ -739,6 +750,10 @@ export function applyAddSplit(
   plane?: string,
   keep?: SplitKeep,
 ): void {
+  if (keep !== undefined && !(SPLIT_KEEPS as readonly string[]).includes(keep)) {
+    warn(`applyAddSplit: unknown keep value ${JSON.stringify(keep)}; use one of ${SPLIT_KEEPS.map((v) => `"${v}"`).join(', ')}`)
+    return
+  }
   pushFeature(doc, {
     id: featureId,
     kind: 'split',
@@ -760,18 +775,7 @@ export function applySetSplitField(
   value: unknown,
 ): void {
   const feature = findFeature(doc, featureId)
-  const sub = feature?.kind === 'split' ? feature.split : undefined
-  if (!sub) {
-    warn(`applySetSplitField: feature ${featureId} has no split`)
-    return
-  }
-  // The kind owns exactly three fields, so a typo from a script is refused by
-  // name rather than stored as a key no reader will ever look at.
-  if (field !== 'bodies' && field !== 'plane' && field !== 'keep') {
-    warn(`applySetSplitField: unknown split field ${JSON.stringify(field)}`)
-    return
-  }
-  setFeatureField(sub, field, value)
+  setSubFeatureField(featureId, 'split', feature?.kind === 'split' ? feature.split : undefined, field, value, 'applySetSplitField', SPLIT_FIELDS)
 }
 
 /** Toggle a body ref in/out of the split's pick list (re-picking removes). */

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import {
   applyAddSplit,
@@ -7,7 +7,8 @@ import {
   applyRemoveSplitBody,
 } from '@/utils/yamlMutations'
 import { applyReorderPickField } from '@/utils/yamlMutations/partStyle'
-import { mutationHandlers } from '@/hooks/mutationDispatch'
+import { createDocSession } from '@/session/DocSession'
+import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
 import { featureAt } from '@/testing/featureAccess'
 
 const split0 = (doc: PartDoc) => featureAt(doc, 0, 'split').split
@@ -30,13 +31,42 @@ describe('applyAddSplit', () => {
     expect(split0(doc).bodies).toEqual(['@ex1'])
   })
 
-  it('lands at insertAt through the dispatch handler', () => {
-    const doc: PartDoc = { features: [{ id: 'sk1', kind: 'sketch' }] }
-    mutationHandlers.add_split(doc, {
+  it('lands at insertAt through the DocSession path', () => {
+    // Two features, so the middle position proves insertAt is honoured and not
+    // just "append at the end of a one-feature document". The handler appends
+    // and the session moves the row, so only the session path exercises it.
+    const cell: { current: PartDoc | null } = {
+      current: {
+        version: 1,
+        kind: 'part',
+        features: [{ id: 'sk1', kind: 'sketch' }, { id: 'sk2', kind: 'sketch' }],
+      },
+    }
+    const session = createDocSession({
+      cloneDoc: (source) => structuredClone(source),
+      doc: { get: () => cell.current, set: (next) => { cell.current = next } },
+      solve: createFakeSolveScheduler<PartDoc>(),
+      solveResults: { get: () => ({}), set: () => undefined },
+      editorFacts: () => ({ editingFeatureId: null, rollbackPosition: null }),
+      dirtyFacts: () => ({ dirty: false, saves: 0, savedHash: null }),
+    })
+    session.execute({
       type: 'add_split', featureId: 'sp1', label: 'Split', bodies: ['@ex1'], plane: '@pl1', keep: 'both', insertAt: 1,
     })
-    expect(doc.features!.map(f => f.id)).toEqual(['sk1', 'sp1'])
+    const doc = session.getDoc()!
+    expect(doc.features!.map(f => f.id)).toEqual(['sk1', 'sp1', 'sk2'])
     expect(featureAt(doc, 1, 'split').split).toMatchObject({ keep: 'both' })
+  })
+
+  it('refuses an unknown keep value by name instead of storing it', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const doc: PartDoc = {}
+    applyAddSplit(doc, 'sp1', undefined, ['@ex1'], '@pl1', 'top' as never)
+    expect(warnSpy).toHaveBeenCalledWith(
+      'applyAddSplit: unknown keep value "top"; use one of "above", "below", "both"',
+    )
+    expect(doc.features ?? []).toHaveLength(0)
+    warnSpy.mockRestore()
   })
 })
 
@@ -55,6 +85,15 @@ describe('applySetSplitField', () => {
     expect(split0(doc)).not.toHaveProperty('keep')
     applySetSplitField(doc, 'sp1', 'nonsense' as never, 1)
     expect(split0(doc)).not.toHaveProperty('nonsense')
+  })
+
+  it('warns by name on an unknown field through the shared setter', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const doc: PartDoc = { features: [{ id: 'sp1', kind: 'split', split: { bodies: [], plane: '@pl1' } }] }
+    applySetSplitField(doc, 'sp1', 'nonsense' as never, 1)
+    expect(warnSpy).toHaveBeenCalledWith('applySetSplitField: unknown split field "nonsense"')
+    expect(split0(doc)).not.toHaveProperty('nonsense')
+    warnSpy.mockRestore()
   })
 
   it('warns and no-ops on a wrong kind', () => {

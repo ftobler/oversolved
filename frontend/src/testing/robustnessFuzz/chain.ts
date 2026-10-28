@@ -191,6 +191,10 @@ export interface StepReport {
   trackCount: number
   releaseCount: number
   peakLive: number
+  // How many bodies the step reports as its result, when it reports any. A
+  // split can report several for a one-sided keep (a disconnected kept side),
+  // which the split invariants and their pinned cases assert on.
+  bodies?: number
 }
 
 export interface RefusalRecord {
@@ -368,9 +372,13 @@ const SPLIT_REFUSALS = /does not cross|nothing of body|unsound result/
 
 /**
  * The split's invariants. A one-sided split keeps strictly less material than
- * the body had and still some; keep both adds up to exactly the body it cut
- * (1e-6 rel) and leaves at least two bodies. Every result body's bbox lies on
- * its kept side (the above half keeps the target id), and no UUID may be
+ * the body had and still some; its kept side can disconnect into several bodies
+ * (the two arms of a U split above its base), so every reported body must sit on
+ * the kept side rather than exactly one existing. Keep both adds up to exactly
+ * the body it cut (1e-6 rel) and leaves at least two bodies. A keep-both half is
+ * classified by where its material sits relative to the plane, never by its id:
+ * the geometric sibling order can put a second above-half arm on a `_1` id too,
+ * and reading that as the below half would fail a correct split. No UUID may be
  * claimed by two live faces -- the rule the merged transfer exists for.
  */
 function checkSplit(
@@ -400,15 +408,17 @@ function checkSplit(
     if (ids.length < 2) push(`split keep both produced ${ids.length} body(ies)`)
     if (Math.abs(sum - targetBefore) > tol) push(`split keep both halves add up to ${sum}, the body was ${targetBefore}`)
   } else {
-    if (ids.length !== 1) push(`split keep ${step.keep} produced ${ids.length} body(ies)`)
-    const kept = volumes[0] ?? 0
-    if (!(kept > 0)) push(`split keep ${step.keep} kept volume ${kept}`)
-    else if (kept >= targetBefore - 1e-9 * Math.max(1, Math.abs(targetBefore))) {
-      push(`split keep ${step.keep} kept the whole body (${kept} of ${targetBefore})`)
+    // A kept side that disconnected reports every piece, so the count floor is
+    // one, not exactly one.
+    if (ids.length < 1) push(`split keep ${step.keep} produced no body`)
+    if (!(sum > 0)) push(`split keep ${step.keep} kept volume ${sum}`)
+    else if (sum >= targetBefore - 1e-9 * Math.max(1, Math.abs(targetBefore))) {
+      push(`split keep ${step.keep} kept the whole body (${sum} of ${targetBefore})`)
     }
   }
   const { axis, offset, span } = outcome.splitPlane
   const index = axis === 'x' ? 0 : axis === 'y' ? 1 : 2
+  const sideTol = 1e-6 * span
   for (const id of ids) {
     const body = bodyStore[id]
     if (body === undefined || body.shape === null) continue
@@ -421,12 +431,19 @@ function checkSplit(
     const box = shapeBndBox(oc, scope, solid)
     const lo = verts.length > 0 ? Math.min(...verts.map((v) => v[index])) : box.min[index]
     const hi = verts.length > 0 ? Math.max(...verts.map((v) => v[index])) : box.max[index]
-    const side = step.keep === 'both' ? (id === step.target ? 'above' : 'below') : step.keep
-    const distance = side === 'above' ? lo - offset : hi - offset
-    const wrongSide = side === 'above' ? distance < -1e-6 * span : distance > 1e-6 * span
-    if (wrongSide) {
+    // The plane cut the body in two, so each result body lies wholly on one
+    // side: its extreme nearest the plane must not cross it. That is also the
+    // only side label that stays right when a half disconnects.
+    const atOrAbove = lo >= offset - sideTol
+    const atOrBelow = hi <= offset + sideTol
+    const side = atOrAbove && !atOrBelow ? 'above' : atOrBelow && !atOrAbove ? 'below' : null
+    if (side === null) {
+      push(`split body ${id} spans the plane (extreme ${lo}..${hi}, plane at ${offset})`)
+      continue
+    }
+    if (step.keep !== 'both' && side !== step.keep) {
       push(
-        `split body ${id} reaches ${distance} past the ${side} side of the plane ` +
+        `split keep ${step.keep} left body ${id} on the ${side} side of the plane ` +
         `(plane at ${offset}, extreme ${lo}..${hi})`,
       )
     }
@@ -886,6 +903,7 @@ function executeChain(oc: OccModule, recipe: Recipe, options: ChainRunOptions): 
         report = {
           step: i, kind: step.kind, status: 'built',
           trackCount: scope.trackCount, releaseCount: scope.releaseCount, peakLive: scope.peakLive,
+          ...(outcome.editedIds !== undefined ? { bodies: outcome.editedIds.length } : {}),
         }
         if (options.faultAtId === step.id) {
           run.violations.push({ step: i, message: `injected fault at ${step.id}` })

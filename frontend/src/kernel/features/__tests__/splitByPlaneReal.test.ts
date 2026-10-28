@@ -22,6 +22,7 @@ import { makeBoxAt, shapeBndBox } from '../../occ/primitives'
 import { stepShapeToBytes } from '../../occ/stepIo'
 import { mintFaceUuid, splitFacePath, splitPlaneFacePath } from '../../constructionName'
 import { resolveBodyIds } from '../shared/bodyResolution'
+import { buildFaceIndex, resolveFacesByQuery } from '../shared/faceResolution'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
 import type { Body } from '../../types3d'
@@ -95,8 +96,8 @@ function split(id: string, bodies: string[], plane: string, keep?: string): Dict
 const uuidTokenOf = (q: string): string | undefined =>
   parseAncestry(q)[0].find((i) => i.startsWith('@u|'))?.slice('@u|'.length)
 
-const capUuid = (featureId: string, side: 'above' | 'below'): string =>
-  mintFaceUuid(splitPlaneFacePath(featureId, side))
+const capUuid = (featureId: string, bodySlot: string, side: 'above' | 'below'): string =>
+  mintFaceUuid(splitPlaneFacePath(featureId, bodySlot, side))
 
 const splitChildUuid = (parent: string, index: number): string => mintFaceUuid(splitFacePath(parent, index))
 
@@ -209,7 +210,7 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
     const before = new Set(liveFaceUuids(base, 'body_ex1'))
     const after = new Set(liveFaceUuids(r, 'body_ex1'))
     for (const uuid of after) {
-      if (uuid === capUuid('sp1', 'above')) continue
+      if (uuid === capUuid('sp1', 'body_ex1', 'above')) continue
       expect(before.has(uuid), `face ${uuid} was not a pre-split face`).toBe(true)
     }
   })
@@ -219,7 +220,7 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
     expect(h.res(r, 'sp1').status).toBe('ok')
     expect(volumeAt(r, 'sp1', 'body_ex1')).toBeCloseTo(500, 6)
     expect(bboxAt(r, 'sp1', 'body_ex1').max[1]).toBeCloseTo(5, 6)
-    expect(liveFaceUuids(r, 'body_ex1')).toContain(capUuid('sp1', 'below'))
+    expect(liveFaceUuids(r, 'body_ex1')).toContain(capUuid('sp1', 'body_ex1', 'below'))
     expectUniqueFaceUuids(r, 'sp1')
   })
 
@@ -256,7 +257,7 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
     })
     expect(capIndexes).toHaveLength(2)
     const capUuids = capIndexes.map((i) => uuidTokenOf(mesh.face_queries?.[i] ?? '')).sort()
-    const parent = capUuid('sp1', 'above')
+    const parent = capUuid('sp1', 'body_ex1', 'above')
     expect(capUuids).toEqual([splitChildUuid(parent, 0), splitChildUuid(parent, 1)].sort())
     expectUniqueFaceUuids(r, 'sp1')
   })
@@ -286,9 +287,54 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
     expect(liveFaceUuids(r, 'body_ex1')).not.toContain(sideBefore)
     expect(liveFaceUuids(r, 'body_ex1_1')).not.toContain(sideBefore)
     // Each half's cap carries its own side path.
-    expect(liveFaceUuids(r, 'body_ex1')).toContain(capUuid('sp1', 'above'))
-    expect(liveFaceUuids(r, 'body_ex1_1')).toContain(capUuid('sp1', 'below'))
+    expect(liveFaceUuids(r, 'body_ex1')).toContain(capUuid('sp1', 'body_ex1', 'above'))
+    expect(liveFaceUuids(r, 'body_ex1_1')).toContain(capUuid('sp1', 'body_ex1', 'below'))
     expectUniqueFaceUuids(r, 'sp1')
+  })
+
+  it('two bodies keep both: every body mints its own cap UUIDs and every cap pick resolves', () => {
+    const spec = (): { features: Dict[] } => ({
+      features: [
+        rectSketch('sk1', 10, 10),
+        extrude('ex1', '$sk1', 10),
+        // A second block, clear of the first, that the same plane also crosses.
+        rectSketch('sk2', 10, 10, { x0: 20 }),
+        extrude('ex2', '$sk2', 10),
+        planeOffset('pl1', '@builtin_plane_top', 5),
+        split('sp1', ['@ex1', '@ex2'], '@pl1', 'both'),
+      ],
+    })
+    const r = h.run(spec())
+    expect(h.res(r, 'sp1').status).toBe('ok')
+    expect(h.res(r, 'sp1').body_ids).toEqual(['body_ex1', 'body_ex1_1', 'body_ex2', 'body_ex2_1'])
+    // The cap is named per body as well as per side: two bodies would otherwise
+    // mint the same live UUID and every cap pick would be a collision.
+    expectUniqueFaceUuids(r, 'sp1')
+
+    const store = snapshot(r, 'sp1')
+    const scope = new DisposeScope()
+    try {
+      const capUuids: string[] = []
+      const caps: [bodyId: string, slot: string, side: 'above' | 'below'][] = [
+        ['body_ex1', 'body_ex1', 'above'],
+        ['body_ex1_1', 'body_ex1', 'below'],
+        ['body_ex2', 'body_ex2', 'above'],
+        ['body_ex2_1', 'body_ex2', 'below'],
+      ]
+      for (const [bodyId, slot, side] of caps) {
+        const uuid = capUuid('sp1', slot, side)
+        capUuids.push(uuid)
+        const query = (meshOf(r, bodyId).face_queries ?? []).find((q) => uuidTokenOf(q) === uuid)
+        expect(query, `${bodyId} carries its ${side} cap ${uuid}`).toBeTruthy()
+        const body = store[bodyId]
+        const index = buildFaceIndex(occ, scope, h.table, body)
+        const resolved = resolveFacesByQuery(occ, scope, h.table, body, index, [query as string], store)
+        expect(resolved.get(query as string), `${bodyId} ${side} cap pick resolves`).not.toBeNull()
+      }
+      expect(new Set(capUuids).size).toBe(4)
+    } finally {
+      scope.dispose()
+    }
   })
 
   it('pick persistence: face and edge picks survive the split and a plane offset edit', () => {
@@ -310,7 +356,7 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
     expect(h.res(first, 'sp1').status).toBe('ok')
     const capQuery = faceQueryAt(first, 'body_ex1', [5, 5, 5])
     const cap = uuidTokenOf(capQuery)
-    expect(cap).toBe(capUuid('sp1', 'above'))
+    expect(cap).toBe(capUuid('sp1', 'body_ex1', 'above'))
     expect(liveFaceUuids(first, 'body_ex1')).toContain(uuidTokenOf(topFace))
     expect((viewOf(first, 'body_ex1').edge_queries ?? []).map(uuidTokenOf)).toContain(uuidTokenOf(topEdge))
 

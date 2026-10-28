@@ -4,7 +4,11 @@
     "ref": "feature/split-by-plane.md",
     "date": "2026-10-28"
   },
-  "license": "own",
+  "license": {
+    "spdx": "Apache-2.0",
+    "source": "CadQuery official examples, examples/Ex021_Splitting_an_Object.py",
+    "commit": "102c16c14e42b6acca484efbf017f9ac2cc75789"
+  },
   "severity": "hard",
   "what": "a translation of CadQuery Ex021 (Splitting an Object, Apache-2.0) in CadQuery units: a 1 cube with a d0.5 through bore split at mid height, keep above",
   "features": {

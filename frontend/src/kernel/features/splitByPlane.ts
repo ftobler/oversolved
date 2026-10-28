@@ -9,7 +9,10 @@
 // Every body is computed before any body is re-seated, and a body the plane
 // misses is an exception rather than a silent skip: a split that keeps nothing
 // is an authoring error (a plane edited past the body), so the row goes red and
-// the body is left exactly as it was.
+// the body is left exactly as it was. The first pass also mints every name, so
+// a failed transfer is caught before the store changes too; only the re-seat
+// itself still runs in the second pass (see the accepted near-tie limitation in
+// docs/document.md).
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
@@ -27,7 +30,7 @@ import { mintFaceUuid, splitPlaneFacePath, type SplitSide } from '../constructio
 import { resolveBodyRefList } from './shared/bodyResolution'
 import { resolvePlaneRef } from './shared/planes'
 import { transferBooleanNames } from './booleanLineage'
-import { resplitBody } from './bodySplit'
+import { resplitBody, splitSolids } from './bodySplit'
 
 const KEEP_VALUES: readonly SplitKeep[] = ['above', 'below', 'both']
 
@@ -54,9 +57,16 @@ interface HalfCut {
 // leave the earlier bodies half applied.
 interface SplitPlan {
   body: Body
+  // The shape the body is re-seated on: the one kept cut, or the compound of
+  // both halves for `keep: both`.
+  shape: OccShape
+  // The construction names for `shape`, minted in the first pass: the transfer
+  // is store-free, so a failure here still leaves every body untouched.
   names: ShapeNames
-  above: HalfCut | null
-  below: HalfCut | null
+  diff: BrepDiff
+  // The solid that must keep `body.id` when the result disconnects. Only
+  // `keep: both` names one (the geometric first solid of the above half).
+  preferred: OccShape | null
 }
 
 function keepOf(cfg: Partial<SplitFeatureDef>): SplitKeep {
@@ -68,8 +78,8 @@ function keepOf(cfg: Partial<SplitFeatureDef>): SplitKeep {
   )
 }
 
-function capName(featureId: string, side: SplitSide): string {
-  return mintFaceUuid(splitPlaneFacePath(featureId, side))
+function capName(featureId: string, bodySlot: string, side: SplitSide): string {
+  return mintFaceUuid(splitPlaneFacePath(featureId, bodySlot, side))
 }
 
 /**
@@ -174,26 +184,72 @@ export function solveSplit(
     }
 
     const bases = new SubShapeMap<string>()
-    if (above !== null) bases.set(above.base, capName(featureId, 'above'))
-    if (below !== null) bases.set(below.base, capName(featureId, 'below'))
+    if (above !== null) bases.set(above.base, capName(featureId, key, 'above'))
+    if (below !== null) bases.set(below.base, capName(featureId, key, 'below'))
     if (above !== null) assertOnlyBaseToolFaces(above.faceOrigin, bases, key)
     if (below !== null) assertOnlyBaseToolFaces(below.faceOrigin, bases, key)
 
-    return { body, names, above, below }
+    if (keep === 'both') {
+      const halfAbove = above as HalfCut
+      const halfBelow = below as HalfCut
+      const compound = compoundOf(oc, scope, [halfAbove, halfBelow])
+      // One transfer over both halves together: a face the plane crosses has one
+      // output in each half, and two separate transfers would hand that face's
+      // UUID to both. One call makes it a genuine split and names the children.
+      const produced = transferFor(
+        oc, scope, names, compound,
+        [...halfAbove.faceOrigin, ...halfBelow.faceOrigin],
+        bases,
+      )
+      // The above half keeps the body id: it is the material on the normal
+      // side, which is what the id meant before the split. The geometric order
+      // bodySplit uses names that solid, never the OCC explorer order.
+      return {
+        body,
+        shape: compound,
+        names: produced,
+        diff: halfAbove.diff,
+        preferred: splitSolids(oc, scope, halfAbove.shape)[0] ?? null,
+      }
+    }
+    // One side: the other cut was never made, so the caps map holds exactly the
+    // kept side's base.
+    const kept = (keep === 'below' ? below : above) as HalfCut
+    return {
+      body,
+      shape: kept.shape,
+      names: transferFor(oc, scope, names, kept.shape, kept.faceOrigin, bases),
+      diff: kept.diff,
+      preferred: null,
+    }
   })
 
-  // Second pass: every body passed its guards, so the store may now change.
+  // Second pass: every body passed its guards and every name is minted, so the
+  // store may now change. Only the re-seat can still throw (bodySplit refuses a
+  // near-tie body order); that is an accepted limitation, documented.
   const allIds: string[] = []
   for (const plan of plans) {
-    const { body, names } = plan
-    const ids = keep === 'both'
-      ? applyBoth(oc, scope, table, bodyStore, body, names, plan.above as HalfCut, plan.below as HalfCut, featureId)
-      : applyOne(oc, scope, table, bodyStore, body, names, (keep === 'below' ? plan.below : plan.above) as HalfCut, featureId)
-    body.modified_by.push(featureId)
+    const ids = resplitBody(
+      oc, scope, table, bodyStore, plan.body, plan.shape, featureId, plan.names, plan.preferred,
+    )
+    plan.body.brep_diff = plan.diff
+    plan.body.modified_by.push(featureId)
     allIds.push(...ids)
   }
 
   return { status: 'ok', body_id: allIds[0], body_ids: allIds, operation: keep }
+}
+
+/** Both halves of a `keep: both` split as one compound, so one transfer sees
+ *  every piece (and a crossed face's two outputs) at once. */
+function compoundOf(oc: OccModule, scope: DisposeScope, halves: HalfCut[]): OccShape {
+  const compound = scope.track(new oc.TopoDS_Compound())
+  const builder = scope.track(new oc.BRep_Builder())
+  builder.MakeCompound(compound as never)
+  for (const half of halves) {
+    for (const solid of exploreSolids(oc, scope, half.shape)) builder.Add(compound as never, solid)
+  }
+  return compound
 }
 
 /** Names for a cut's result: the target's faces carry verbatim, each box base
@@ -219,60 +275,4 @@ function transferFor(
     // already unique to the split and carry verbatim.
     toolUuidScope: null,
   })
-}
-
-function applyOne(
-  oc: OccModule,
-  scope: DisposeScope,
-  table: HandleTable,
-  bodyStore: Record<string, Body>,
-  body: Body,
-  names: ShapeNames,
-  cut: HalfCut,
-  featureId: string,
-): string[] {
-  const toolFaceNames = new SubShapeMap<string>()
-  toolFaceNames.set(cut.base, capName(featureId, cut.side))
-  const produced = transferFor(oc, scope, names, cut.shape, cut.faceOrigin, toolFaceNames)
-  // `cut.shape` is already tracked by the plan's scope, so it is handed over
-  // as-is: tracking it again would delete the same proxy twice.
-  const ids = resplitBody(oc, scope, table, bodyStore, body, cut.shape, featureId, produced)
-  body.brep_diff = cut.diff
-  return ids
-}
-
-function applyBoth(
-  oc: OccModule,
-  scope: DisposeScope,
-  table: HandleTable,
-  bodyStore: Record<string, Body>,
-  body: Body,
-  names: ShapeNames,
-  above: HalfCut,
-  below: HalfCut,
-  featureId: string,
-): string[] {
-  // One transfer over both halves together: a face the plane crosses has one
-  // output in each half, and two separate transfers would hand that face's UUID
-  // to both. One call makes it a genuine split and names the children.
-  const compound = scope.track(new oc.TopoDS_Compound())
-  const builder = scope.track(new oc.BRep_Builder())
-  builder.MakeCompound(compound as never)
-  for (const cut of [above, below]) {
-    for (const solid of exploreSolids(oc, scope, cut.shape)) builder.Add(compound as never, solid)
-  }
-  const toolFaceNames = new SubShapeMap<string>()
-  toolFaceNames.set(above.base, capName(featureId, 'above'))
-  toolFaceNames.set(below.base, capName(featureId, 'below'))
-  const produced = transferFor(
-    oc, scope, names, compound,
-    [...above.faceOrigin, ...below.faceOrigin],
-    toolFaceNames,
-  )
-  // The above half keeps the body id: it is the material on the normal side,
-  // which is what the id meant before the split.
-  const preferred = exploreSolids(oc, scope, above.shape)[0] ?? null
-  const ids = resplitBody(oc, scope, table, bodyStore, body, compound, featureId, produced, preferred)
-  body.brep_diff = above.diff
-  return ids
 }

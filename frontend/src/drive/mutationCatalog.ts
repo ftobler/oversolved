@@ -231,8 +231,8 @@ const SPLIT_NOTE =
   'A picked planar face\'s normal is its OUTWARD normal, so `above` of a face pick is the air side. ' +
   'Builtin normals: Front +Z, Top +Y, Right +X. ' +
   '`bodies` is a list of body refs; a feature ref (@<featureId>) means every body that feature made. ' +
-  'With `both` the above half keeps the original body id and the below half becomes its `_1`, `_2`, ... siblings, ' +
-  'so @<featureId> still names all of it.'
+  'With `both` the above half keeps the original body id and every further piece becomes its `_1`, `_2`, ... ' +
+  'sibling in geometric order, so @<featureId> still names all of it.'
 
 // The transform's axis trio is the one place an author has to choose a
 // spelling; the solver composes exactly one axis for the whole feature.

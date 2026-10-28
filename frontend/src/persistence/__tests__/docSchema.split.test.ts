@@ -47,9 +47,11 @@ describe('split document validation', () => {
     expect(result.error.field).toBe('features[0].split.bodies')
   })
 
-  it('refuses a sketch-local $ plane ref through the schema ref pattern', () => {
-    // The loader folds flat params and does not enforce the pattern; the
-    // published schema is the contract that refuses `$` at feature level.
+  it('the published params schema refuses a sketch-local $ plane ref by pattern', () => {
+    // The loader folds flat params and checkRef accepts any string, so the
+    // loader does not refuse `$`; the published schema is the contract that
+    // does. This test pins the pattern itself.
+    expect(loadPartDoc(doc({ bodies: ['@ex1'], plane: '$sk1' })).ok).toBe(true)
     const params = featureParamsSchema('split')!
     const plane = (params.properties as Record<string, Record<string, unknown>>).plane
     const pattern = new RegExp(plane.pattern as string)

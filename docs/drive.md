@@ -624,9 +624,9 @@ banner on stdout, so a client config must use the direct node invocation.
   `radius` in the same call; `add_split` takes `bodies`, `plane` and `keep`
   inline, `above` is the side the plane normal points to (a picked face's
   normal is outward, so `above` of a face pick is its air side), and with
-  `keep: "both"` the above half keeps the original body id while the below
-  half becomes its `_1`, `_2` siblings, so `@<featureId>` still names all of
-  it; `toggle_construction` takes entity targets as
+  `keep: "both"` the above half keeps the original body id while every further
+  piece becomes a `_1`, `_2` sibling in geometric order, so `@<featureId>`
+  still names all of it; `toggle_construction` takes entity targets as
   `entity:<sketchId>:<entityId>` and `delete` takes entity, vertex or constraint
   refs (a bare id is refused); `add_variable` must sit
   before every feature that names it, and `reorder_features` takes exactly one
