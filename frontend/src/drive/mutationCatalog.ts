@@ -482,7 +482,6 @@ export const MUTATION_CATALOG = {
       entityId: optStr(),
       tangents: optArr('fit_spline only: [start, end] end tangents, each [tx, ty] or null.'),
       tangentScale: optBool(),
-      handles: optStr('fit_spline only: which end handles the entity stores.'),
     },
   },
   insert_fit_point: {
@@ -517,7 +516,6 @@ export const MUTATION_CATALOG = {
       entityId: optStr(),
       tangents: optArr('fit_spline only: [start, end] end tangents, each [tx, ty] or null.'),
       tangentScale: optBool(),
-      handles: optStr('fit_spline only: which end handles the entity stores.'),
     },
   },
   add_projected_entity: {

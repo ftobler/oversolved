@@ -1174,8 +1174,8 @@ export type Mutation =
   | { type: 'set_constraint_pos'; featureId: string; constraintId: string; pos: Point }
   | { type: 'set_constraint_sign'; featureId: string; constraintId: string; sign: number }
   | { type: 'delete'; targets: string[] }
-  | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string; tangents?: [Point | null, Point | null]; tangentScale?: boolean; handles?: 'start' | 'end' | 'both' }
-  | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string; entityId?: string; tangents?: [Point | null, Point | null]; tangentScale?: boolean; handles?: 'start' | 'end' | 'both' }
+  | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
+  | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string; entityId?: string; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
   | { type: 'insert_fit_point'; featureId: string; entityId: string; index: number; point: Point }
   | { type: 'set_fit_spline_handle'; featureId: string; entityId: string; end: 'start' | 'end'; handle: Point | null }
   | { type: 'add_projected_entity'; featureId: string; kind: string; source: string; entityId?: string }
