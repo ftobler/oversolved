@@ -213,7 +213,7 @@ function bisect(
     const p = sampler.sample(edge, m)
     const vm = signedDistance(frame, p)
     if (Math.abs(vm) < 1e-13) return { edge, t: m, point: p }
-    if (vm < 0 === va < 0) {
+    if ((vm < 0) === (va < 0)) {
       a = m
       va = vm
     } else {

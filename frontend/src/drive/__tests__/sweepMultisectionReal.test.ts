@@ -9,7 +9,8 @@
 
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
-import { runHeadless, measureHeadless, emptyDriveDoc } from '../headlessOps'
+import { runHeadless, emptyDriveDoc } from '../headlessOps'
+import { yieldToEventLoop } from '@/testing/yieldToEventLoop'
 import type { ScriptStep } from '../scriptRunner'
 import type { PartDoc } from '@/types/cad'
 import { loadOcc } from '@/kernel/occ/loadOcc'
@@ -126,13 +127,23 @@ function handleSteps(): ScriptStep[] {
 
 const MULTISECTION = m({ type: 'set_sweep_field', featureId: 'sw', field: 'multisection', value: true })
 
-async function runWith(steps: ScriptStep[]): Promise<Awaited<ReturnType<typeof runHeadless>>> {
-  return runHeadless({ doc: emptyDriveDoc(), steps: [...handleSteps(), ...steps] })
+type HeadlessRun = Awaited<ReturnType<typeof runHeadless>>
+
+/**
+ * Author the document (everything but the opt-in). It is a separate run so the
+ * event-loop watchdog sees a macrotask turn between the authoring solves and
+ * the one heavy build: the real kernel is synchronous WASM behind async
+ * signatures, so a single run of every step is one long block.
+ */
+async function author(): Promise<HeadlessRun> {
+  const run = await runHeadless({ doc: emptyDriveDoc(), steps: handleSteps() })
+  await yieldToEventLoop()
+  return run
 }
 
 describe.skipIf(!ready)('sweep multisection (real OCC + Rust solver)', () => {
   it('refuses the handle without the opt-in, naming the way out', async () => {
-    const run = await runWith([])
+    const run = await author()
     const failed = run.features.find((f) => f.id === 'sw')
     expect(failed).toBeDefined()
     expect(failed?.message).toMatch(/spans two different sketch planes/)
@@ -140,15 +151,23 @@ describe.skipIf(!ready)('sweep multisection (real OCC + Rust solver)', () => {
   }, 180_000)
 
   it('builds the handle once the field is set', async () => {
-    const run = await runWith([MULTISECTION])
+    const base = await author()
+    const run = await runHeadless({ doc: base.doc as PartDoc, steps: [MULTISECTION] })
     expect(run.features).toEqual([])
-    const volume = (await measureHeadless(run.doc as PartDoc))!.measures.volume
+    // The reply already measured the changed feature, so the test does not pay
+    // for a second full measurement pass over every checkpoint.
+    const swept = run.featureDeltas?.find((row) => row.id === 'sw')
+    expect(swept?.volume).toBeDefined()
     // build123d asserts 94.7736; the shipped 7.4 measures 94.7809299.
-    expect(Math.abs(volume - 94.7736)).toBeLessThan(0.05)
+    expect(Math.abs((swept?.volume ?? 0) - 94.7736)).toBeLessThan(0.05)
   }, 180_000)
 
   it('undoing the field step returns to the refusal', async () => {
-    const run = await runWith([MULTISECTION, { command: 'undo' } as ScriptStep])
+    const base = await author()
+    const run = await runHeadless({
+      doc: base.doc as PartDoc,
+      steps: [MULTISECTION, { command: 'undo' } as ScriptStep],
+    })
     const failed = run.features.find((f) => f.id === 'sw')
     expect(failed).toBeDefined()
     expect(failed?.message).toMatch(/spans two different sketch planes/)
