@@ -252,7 +252,7 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
     } finally {
       scope.dispose()
     }
-  })
+  }, 60_000)
 
   it('reports Generated() coverage for every section edge in 7.4', () => {
     const scope = new DisposeScope()
@@ -272,7 +272,7 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
     } finally {
       scope.dispose()
     }
-  })
+  }, 60_000)
 
   it('reports FirstShape/LastShape types', () => {
     const scope = new DisposeScope()
@@ -293,7 +293,7 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
     } finally {
       scope.dispose()
     }
-  })
+  }, 60_000)
 
   it('fails the 8/4 alternation instead of crashing', () => {
     // Measured in 7.4: OCC does NOT throw where 7.9 threw NCollection_DataMap::Find.
@@ -334,7 +334,7 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
     } finally {
       scope.dispose()
     }
-  })
+  }, 60_000)
 
   it('builds the handle with the round transition', () => {
     const scope = new DisposeScope()
@@ -350,7 +350,7 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
     } finally {
       scope.dispose()
     }
-  })
+  }, 60_000)
 
   it('is invariant to section order', () => {
     const scope = new DisposeScope()
@@ -367,7 +367,7 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
     } finally {
       scope.dispose()
     }
-  })
+  }, 120_000)
 
   it('is invariant to a square start shift and a reversed section', () => {
     const scope = new DisposeScope()

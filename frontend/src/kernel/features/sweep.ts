@@ -590,7 +590,8 @@ function stationTangent(sampler: SpineSampler, station: Station, fallback: Vec3)
 }
 
 /** Solve a sweep feature into the body store (mirrors `_solve_sweep`). */
-export function solveSweep(  oc: OccModule,
+export function solveSweep(
+  oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
   feature: Dict,
@@ -836,15 +837,19 @@ export function solveSweep(  oc: OccModule,
     }))
   }
 
-  const lineage: LineageResult = multisection
-    ? (() => {
-        const multi = sweepSectionsWithLineage(
-          oc, scope, sections, spineEdges, featureId, sub.transition === 'round',
-        )
-        opSketchId = multi.namingSketchId
-        return multi
-      })()
-    : sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId, binormal, sub.transition === 'round')
+  let lineage: LineageResult
+  if (multisection) {
+    const multi = sweepSectionsWithLineage(
+      oc, scope, sections, spineEdges, featureId, sub.transition === 'round',
+    )
+    opSketchId = multi.namingSketchId
+    lineage = multi
+  } else {
+    lineage = sweepProfileWithLineage(
+      oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId,
+      binormal, sub.transition === 'round',
+    )
+  }
   const swept = scope.track(lineage.solid)
   for (const e of spineEdges) scope.release(e)
   // A profile taller than the pitch (or wider than the radius) makes the shell

@@ -112,7 +112,7 @@ function prepareSection(
     section.plane.normal[1] * section.tangent[1] +
     section.plane.normal[2] * section.tangent[2]
   if (dot < 0) {
-    const flipped = scope.track((wire as unknown as OccOrientableShape).Reversed())
+    const flipped = scope.track((wire as OccOrientableShape).Reversed())
     scope.release(wire)
     wire = flipped
   }
