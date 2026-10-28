@@ -150,6 +150,9 @@ const ops: McpCadOps = {
     const files = readFiles(req.files)
 
     if (resolved.kind === 'part') {
+      if (out !== undefined && out.endsWith('.zip')) {
+        return { ok: false, error: 'a workspace zip needs an assembly document; run the assembly instead' }
+      }
       // The worker builds the drive journal from the starting document (its id
       // seed), as the in-process run did.
       const answer = await callKernel<RunReplySource>('run', {
