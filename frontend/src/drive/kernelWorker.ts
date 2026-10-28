@@ -12,8 +12,10 @@ import { setOccLoader } from '@/kernel/solveLocally'
 import { loadOcc, resetOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
+import { loadPkgNodeExport, PKG_MATE } from '@/wasm-kernel/loadPkgNode'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { onFeatureStart } from '@/kernel/featureProgress'
+import { setMateSolver } from '@/drive/headlessAssembly'
 import type { PartDoc } from '@/types/cad'
 import type { Selector } from '@/kernel/select'
 import type { TranslationReference } from '@/translations/corpus'
@@ -22,12 +24,15 @@ import { createDriveJournal } from '@/drive/journal'
 import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHeadless } from '@/drive/headlessOps'
 import type { KernelHostMessage, KernelRequest } from '@/drive/kernelHost'
 
-/** The headless OCC loader and the nodejs solver builds; without them every
- *  solve reports the kernel unavailable. */
+/** The headless OCC loader, the nodejs solver builds and the mate solver;
+ *  without them every solve reports the kernel unavailable. A missing mate
+ *  package leaves the slot null, which the assembly reply reports as the
+ *  `unavailable` verdict rather than a crash. */
 export function bootHeadlessKernel(): void {
   setOccLoader(loadOcc, resetOcc)
   setSketchSolver(loadSolver())
   setSketchTopology(loadTopology())
+  setMateSolver(loadPkgNodeExport<(input: Uint8Array) => Uint8Array>('solve_mate_bytes', PKG_MATE))
 }
 
 /** The `worker_threads` parentPort surface this module needs. */
