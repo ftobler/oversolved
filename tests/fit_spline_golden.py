@@ -21,6 +21,7 @@ import importlib.metadata
 import json
 import math
 import pathlib
+from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 GOLDEN = ROOT / "sketch-solver" / "src" / "fit_spline" / "golden.json"
@@ -82,7 +83,7 @@ def handle_point(
     return (points[-1][0] - h * tangent[0] / 3.0, points[-1][1] - h * tangent[1] / 3.0)
 
 
-def _interpolate(points: list[tuple[float, float]], load: object) -> object:
+def _interpolate(points: list[tuple[float, float]], load: Any) -> Any:
     """Run OCP's GeomAPI_Interpolate with the given `Load` call applied."""
     from OCP.GeomAPI import GeomAPI_Interpolate
     from OCP.gp import gp_Pnt
@@ -98,10 +99,10 @@ def _interpolate(points: list[tuple[float, float]], load: object) -> object:
     return interpolate.Curve()
 
 
-def _load_both(t0: tuple[float, float], t1: tuple[float, float], scale: bool):  # type: ignore[no-untyped-def]
+def _load_both(t0: tuple[float, float], t1: tuple[float, float], scale: bool) -> Any:
     from OCP.gp import gp_Vec
 
-    def load(interpolate) -> None:  # type: ignore[no-untyped-def]
+    def load(interpolate: Any) -> None:
         interpolate.Load(gp_Vec(t0[0], t0[1], 0.0), gp_Vec(t1[0], t1[1], 0.0), scale)
 
     return load
@@ -109,12 +110,12 @@ def _load_both(t0: tuple[float, float], t1: tuple[float, float], scale: bool):  
 
 def _load_one(
     index: int, count: int, tangent: tuple[float, float], scale: bool
-):  # type: ignore[no-untyped-def]
+) -> Any:
     from OCP.gp import gp_Vec
     from OCP.TColgp import TColgp_Array1OfVec
     from OCP.TColStd import TColStd_HArray1OfBoolean
 
-    def load(interpolate) -> None:  # type: ignore[no-untyped-def]
+    def load(interpolate: Any) -> None:
         tangents = TColgp_Array1OfVec(1, count)
         flags = TColStd_HArray1OfBoolean(1, count)
         for i in range(1, count + 1):
@@ -127,14 +128,14 @@ def _load_one(
     return load
 
 
-def _chain_poles(curve: object, us: list[float]) -> list[list[float]]:
+def _chain_poles(curve: Any, us: list[float]) -> list[list[float]]:
     """OCP's curve as the C0 cubic Bezier chain our solver builds.
 
     A degree 1 or 2 curve is raised first; then every interior chord parameter
     is inserted to multiplicity 3, which leaves exactly the per-span Bezier
     control points.
     """
-    chain = curve.Copy()  # type: ignore[attr-defined]
+    chain = curve.Copy()
     if chain.Degree() < 3:
         chain.IncreaseDegree(3)
     for i in range(1, len(us) - 1):
@@ -147,32 +148,32 @@ def _chain_poles(curve: object, us: list[float]) -> list[list[float]]:
     return [[chain.Pole(i).X(), chain.Pole(i).Y()] for i in range(1, chain.NbPoles() + 1)]
 
 
-def _samples(curve: object, us: list[float]) -> list[list[list[float]]]:
+def _samples(curve: Any, us: list[float]) -> list[list[list[float]]]:
     """9 interior points per span, at the chord parameter fractions."""
     spans: list[list[list[float]]] = []
     for i in range(len(us) - 1):
         span: list[list[float]] = []
         for k in range(1, SAMPLES_PER_SPAN + 1):
             u = us[i] + (us[i + 1] - us[i]) * k / (SAMPLES_PER_SPAN + 1)
-            point = curve.Value(u)  # type: ignore[attr-defined]
+            point = curve.Value(u)
             span.append([point.X(), point.Y()])
         spans.append(span)
     return spans
 
 
-def _end_derivative(curve: object, u: float) -> list[float]:
-    derivative = curve.DN(u, 1)  # type: ignore[attr-defined]
+def _end_derivative(curve: Any, u: float) -> list[float]:
+    derivative = curve.DN(u, 1)
     return [derivative.X(), derivative.Y()]
 
 
-def build_cases() -> dict[str, object]:
+def build_cases() -> dict[str, Any]:
     """The committed fixture, in a stable order."""
-    cases: list[dict[str, object]] = []
+    cases: list[dict[str, Any]] = []
 
     def add(
         name: str,
         points: list[tuple[float, float]],
-        load: object,
+        load: Any,
         handle_start: tuple[float, float] | None,
         handle_end: tuple[float, float] | None,
         scale: bool,
@@ -283,7 +284,7 @@ def main() -> None:
     fixture = build_cases()
     GOLDEN.parent.mkdir(parents=True, exist_ok=True)
     GOLDEN.write_text(json.dumps(fixture, indent=2) + "\n")
-    print(f"wrote {GOLDEN} ({len(fixture['cases'])} cases)")  # type: ignore[index]
+    print(f"wrote {GOLDEN} ({len(fixture['cases'])} cases)")
 
 
 if __name__ == "__main__":

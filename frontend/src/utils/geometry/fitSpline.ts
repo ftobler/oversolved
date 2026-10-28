@@ -26,22 +26,22 @@ export interface ClosestPoint {
 }
 
 export interface FitSplineCurve {
-  /** The fit points, in order. */
+  // The fit points, in order.
   readonly points: readonly Pt[]
-  /** The chord parameter at each fit point. */
+  // The chord parameter at each fit point.
   readonly knots: readonly number[]
-  /** The derivative at each fit point. */
+  // The derivative at each fit point.
   readonly derivatives: readonly Pt[]
   readonly pieceCount: number
   piece(i: number): [Pt, Pt, Pt, Pt]
-  /** The C0 cubic Bezier chain: `3 (N - 1) + 1` poles sharing each joint. */
+  // The C0 cubic Bezier chain: `3 (N - 1) + 1` poles sharing each joint.
   poles(): Pt[]
   eval(u: number): Pt
   deriv(u: number): Pt
   closest(p: Pt): ClosestPoint
-  /** The chain over `[u0, u1]`, as poles and knots for an OCC B-spline. */
+  // The chain over `[u0, u1]`, as poles and knots for an OCC B-spline.
   subChain(u0: number, u1: number): { poles: Pt[]; knots: number[] }
-  /** The piece-space parameter (`piece + t`) as a chord parameter. */
+  // The piece-space parameter (`piece + t`) as a chord parameter.
   uAt(s: number): number
 }
 

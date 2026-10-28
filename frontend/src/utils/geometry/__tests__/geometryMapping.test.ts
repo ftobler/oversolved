@@ -302,3 +302,24 @@ describe('deriveConstraints residual filter', () => {
     expect(deriveConstraints({ id: 'sk', kind: 'sketch' }, {} as Sketch)).toEqual({})
   })
 })
+
+describe('unflattenGeometry fit_spline', () => {
+  it('reads the points then the optional handles', () => {
+    const sketch = unflattenGeometry(
+      { sp: [0, 0, 1, 2, 3, 1, 4, 4, 5, 5] },
+      [{ id: 'sp', kind: 'fit_spline', handles: 'both' }],
+    )
+    expect(sketch.sp).toMatchObject({
+      points: [[0, 0], [1, 2], [3, 1]],
+      handleStart: [4, 4],
+      handleEnd: [5, 5],
+    })
+  })
+
+  it('reads a no-handle block and resolves fit<k> positions', () => {
+    const sketch = unflattenGeometry({ sp: [0, 0, 1, 2, 3, 1] }, [{ id: 'sp', kind: 'fit_spline' }])
+    expect(sketch.sp).toMatchObject({ points: [[0, 0], [1, 2], [3, 1]] })
+    expect(geomPoint(sketch, { entity: 'sp', point: 'fit1' })).toEqual([1, 2])
+    expect(geomPoint(sketch, { entity: 'sp', point: 'end' })).toEqual([3, 1])
+  })
+})

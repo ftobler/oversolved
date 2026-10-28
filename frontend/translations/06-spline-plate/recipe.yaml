@@ -1,0 +1,26 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: bottom
+        kind: line
+      - id: right
+        kind: line
+      - id: sp
+        kind: fit_spline
+      - id: left
+        kind: line
+    initial:
+      bottom: [0, 0, 3, 0]
+      right: [3, 0, 3, 1]
+      sp: [3, 1, 2.75, 1.5, 2.5, 1.75, 2, 1.5, 1.5, 1, 1, 1.25, 0.5, 1, 0, 1]
+      left: [0, 1, 0, 0]
+  - id: ex1
+    kind: extrude
+    extrude:
+      sketch: $sk1
+      distance: 0.5
+      direction: normal
+      operation: new

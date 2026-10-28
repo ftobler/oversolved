@@ -199,3 +199,74 @@ describe('pinnedMaskFor (projected-entity pinning)', () => {
     expect(input.pinnedMask).toEqual([])
   })
 })
+
+describe('lowerSketch fit_spline entity', () => {
+  it('lays out the variable block and flags without handles', () => {
+    const { input, layout } = lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'sp', kind: 'fit_spline' }],
+      initial: { sp: [0, 0, 1, 2, 3, 1] },
+      constraints: [],
+    })
+    const ent = layout.find(l => l.id === 'sp')!
+    expect(ent.kind).toBe('fit_spline')
+    expect(ent.size).toBe(6)
+    expect(ent.flags).toBe(0)
+    expect(input.entities[0]).toMatchObject({ kind: Kind.FitSpline, flags: 0, offset: 0, count: 6 })
+    expect(input.params.slice(0, 6)).toEqual([0, 0, 1, 2, 3, 1])
+  })
+
+  it('lays out both handles after the fit points and sets the flag bits', () => {
+    const { input, layout } = lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'sp', kind: 'fit_spline', handles: 'both' }],
+      initial: { sp: [0, 0, 1, 2, 3, 1, 4, 4, 5, 5] },
+      constraints: [],
+    })
+    expect(layout.find(l => l.id === 'sp')!.size).toBe(10)
+    expect(input.entities[0]).toMatchObject({ kind: Kind.FitSpline, flags: 3, count: 10 })
+    expect(input.params.slice(0, 10)).toEqual([0, 0, 1, 2, 3, 1, 4, 4, 5, 5])
+  })
+
+  it('encodes fit<k> as the 32 + k selector', () => {
+    const { input } = lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'sp', kind: 'fit_spline' }],
+      initial: { sp: [0, 0, 1, 2, 3, 1] },
+      constraints: [{ id: 'c1', kind: 'coincident', a: { entity: 'sp', point: 'fit1' }, b: { external_xy: [0, 0] } }],
+    })
+    const ref = input.constraints[0].refs[0].ref
+    expect(ref).toEqual({ kind: 'entity', index: 0, point: 33 })
+  })
+
+  it('fails loud on an odd or short initial block', () => {
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'sp', kind: 'fit_spline' }],
+      initial: { sp: [0, 0, 1, 2, 3] },
+      constraints: [],
+    })).toThrow(/fit_spline 'sp'/)
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'sp', kind: 'fit_spline' }],
+      initial: { sp: [0, 0] },
+      constraints: [],
+    })).toThrow(/fit_spline 'sp'/)
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'sp', kind: 'fit_spline' }],
+      initial: {},
+      constraints: [],
+    })).toThrow(/fit_spline 'sp'/)
+  })
+
+  it('rejects a 65-point block', () => {
+    const params = Array.from({ length: 65 }, (_, i) => [i, i]).flat()
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'sp', kind: 'fit_spline' }],
+      initial: { sp: params },
+      constraints: [],
+    })).toThrow(/limit is 64/)
+  })
+})

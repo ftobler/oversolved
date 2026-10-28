@@ -477,7 +477,7 @@ export const MUTATION_CATALOG = {
     summary: 'Add one sketch entity of a kind with numeric params.',
     fields: {
       featureId: str(),
-      kind: str('Entity kind: line, circle, arc, ellipse, spline, fit_spline or point.'),
+      kind: str('Entity kind: line, circle, arc, ellipse, spline, fit_spline or point. A fit_spline takes its flat fit points plus optional tangents/tangentScale.'),
       params: arr(ENTITY_PARAMS_NOTE),
       entityId: optStr(),
       tangents: optArr('fit_spline only: [start, end] end tangents, each [tx, ty] or null.'),

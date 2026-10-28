@@ -73,7 +73,7 @@ export interface SketchEntity {
   /** Reference geometry: it constrains the solve like any other entity but
    *  bounds no area, so the area builder skips it (`classify` in dcel.rs). */
   construction?: boolean
-  /** `fit_spline` only: which end handles the params carry. */
+  // `fit_spline` only: which end handles the params carry.
   handles?: 'start' | 'end' | 'both'
 }
 
@@ -95,7 +95,7 @@ export interface EntityLayout {
   kind: string
   offset: number
   size: number
-  /** Wire flag bits (`fit_spline` handles); 0 for every other kind. */
+  // Wire flag bits (`fit_spline` handles); 0 for every other kind.
   flags: number
   construction?: boolean
 }

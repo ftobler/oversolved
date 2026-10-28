@@ -1097,3 +1097,49 @@ describe('computeDrawClick - project tool', () => {
     expect(result.gestureComplete).toBe(true)
   })
 })
+
+describe('fit_spline draw gesture', () => {
+  const click = (
+    pts: [number, number][],
+    at: [number, number],
+    snap: DrawSnapState = emptySnap(),
+  ) => computeDrawClick('fit_spline', pts, at, snap, FEATURE, newId)
+
+  it('stages fit points click by click without mutating', () => {
+    let r = click([], [0, 0])
+    expect(r.mutations).toEqual([])
+    expect(r.nextDrawPoints).toEqual([[0, 0]])
+    r = click([[0, 0]], [1, 1])
+    expect(r.mutations).toEqual([])
+    expect(r.nextDrawPoints).toEqual([[0, 0], [1, 1]])
+  })
+
+  it('finishes on a click on the last point and emits one add_entity', () => {
+    const r = click([[0, 0], [1, 1], [2, 0]], [2, 0])
+    expect(r.gestureComplete).toBe(true)
+    expect(r.nextDrawPoints).toBeNull()
+    expect(r.mutations).toHaveLength(1)
+    expect(r.mutations[0]).toMatchObject({
+      type: 'add_entity', featureId: FEATURE, kind: 'fit_spline', params: [0, 0, 1, 1, 2, 0],
+    })
+  })
+
+  it('closes when the click lands on the first point', () => {
+    const r = click([[0, 0], [1, 1], [2, 0]], [0, 0])
+    expect(r.gestureComplete).toBe(true)
+    expect(r.mutations[0]).toMatchObject({
+      type: 'add_entity', kind: 'fit_spline', params: [0, 0, 1, 1, 2, 0, 0, 0],
+    })
+  })
+
+  it('pins a snapped start to the vertex it landed on', () => {
+    const snap = onVertex('vertex:S1:L1:end', [0, 0])
+    const first = click([], [0, 0], snap)
+    expect(first.nextDrawSnap?.refs).toEqual(['vertex:S1:L1:end'])
+    const carried = { ...snap, drawSnapRefs: first.nextDrawSnap!.refs }
+    const second = click(first.nextDrawPoints!, [1, 1], carried)
+    const last = click(second.nextDrawPoints!, [1, 1], carried)
+    expect(last.mutations[0]).toMatchObject({ type: 'add_entity', kind: 'fit_spline' })
+    expect(last.mutations.slice(1).some(m => m.type === 'add_constraint' && m.kind === 'coincident')).toBe(true)
+  })
+})

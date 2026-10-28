@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
+from typing import Any
 
 import pytest
 
@@ -26,15 +27,15 @@ golden_generator = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(golden_generator)
 
 
-def read_golden() -> dict[str, object]:
+def read_golden() -> dict[str, Any]:
     return json.loads(GOLDEN.read_text())
 
 
 def test_the_fixture_parses_and_covers_every_required_case() -> None:
     fixture = read_golden()
-    assert fixture["source"]["tool"] == "OCP"  # type: ignore[index]
+    assert fixture["source"]["tool"] == "OCP"
     assert fixture["samples_per_span"] == 9
-    cases = fixture["cases"]  # type: ignore[index]
+    cases = fixture["cases"]
     names = {case["name"] for case in cases}
     # The plan's required cases: Ex010, 2..5 points without handles, both
     # handles with and without scaling, and one handle for 3..5 points.
@@ -82,7 +83,7 @@ def test_the_fixture_parses_and_covers_every_required_case() -> None:
 def test_ex010_matches_the_plan_reference_numbers() -> None:
     # The plan pins these knots and the 10-pole C2 form; they are the fixture's
     # independent anchor, not just a copy of whatever OCP printed.
-    case = next(c for c in read_golden()["cases"] if c["name"] == "ex010")  # type: ignore[index]
+    case = next(c for c in read_golden()["cases"] if c["name"] == "ex010")
     assert case["knots"] == pytest.approx(
         [
             0.0,

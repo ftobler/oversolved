@@ -418,7 +418,7 @@ export interface PartEntityDef {
   kind: string
   construction?: boolean
   source?: string  // for projected entities: reference to source entity (e.g. "@sketch0/line1")
-  /** `fit_spline` only: which end handles the initial params carry. */
+  // `fit_spline` only: which end handles the initial params carry.
   handles?: 'start' | 'end' | 'both'
 }
 

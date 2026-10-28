@@ -2,6 +2,7 @@
 // extrude leaf: loopSignedArea, pointInLoop, classifyLoops. No OCC.
 
 import { describe, it, expect } from 'vitest'
+import { interpolateFitSpline } from '@/utils/geometry/fitSpline'
 import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, loopContainment, dissolveAdjacentLoops, arcSamplePoints, ellipseArcSamplePoints, loopPts, loopGeometryKey, CENTROID_ARC_SAMPLES, type LoopEdge } from '../profileLoops'
 import { extractProfileLoops } from '../features/shared/profileLoops'
 
@@ -914,5 +915,29 @@ describe('loopGeometryKey', () => {
 
   it('calls a copy of a loop the same loop', () => {
     expect(loopGeometryKey(square().map((e) => ({ ...e })))).toBe(loopGeometryKey(square()))
+  })
+})
+
+describe('fit_spline loop sampling', () => {
+  const curve = interpolateFitSpline([[0, 0], [1, 1], [2, 0], [1, -1], [0, 0]])
+  const edge: LoopEdge = {
+    kind: 'fit_spline', start: [0, 0], end: [0, 0],
+    poles: curve.poles(), knots: [...curve.knots],
+  }
+
+  it('samples the chain and encloses its area', () => {
+    const pts = loopPts([edge], 16)
+    expect(pts.length).toBeGreaterThan(16)
+    expect(Math.abs(loopSignedArea([edge]))).toBeGreaterThan(0.5)
+  })
+
+  it('keys a run the same when its poles and knots are reversed', () => {
+    const uMax = curve.knots[curve.knots.length - 1]
+    const reversed: LoopEdge = {
+      kind: 'fit_spline', start: [0, 0], end: [0, 0],
+      poles: [...curve.poles()].reverse(),
+      knots: [...curve.knots].reverse().map(u => uMax - u),
+    }
+    expect(loopGeometryKey([reversed])).toBe(loopGeometryKey([edge]))
   })
 })

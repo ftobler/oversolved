@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 
-import type { Entity, Sketch, Arc, LineSegment, PointEntity, Ellipse, Spline, Circle } from '@/types/cad'
+import type { Entity, Sketch, Arc, LineSegment, PointEntity, Ellipse, Spline, FitSpline, Circle } from '@/types/cad'
 
 /**
  * EntityItem is the single dispatch point from a sketch entity's shape to what
@@ -38,6 +38,11 @@ const ARC: Arc = { start: [1, 0], end: [0, 1], center: [0, 0], radius: 1, angle_
 const LINE: LineSegment = { start: [0, 0], end: [1, 1] }
 const POINT: PointEntity = { x: 2, y: 3 }
 const ELLIPSE: Ellipse = { center: [0, 0], a: 3, b: 2, theta: 0 }
+const FIT: FitSpline = {
+  points: [[0, 0], [1, 2], [3, 1], [4, 0]],
+  handleStart: [0.5, 1],
+  handleEnd: [3.5, 1],
+}
 const SPLINE: Spline = { p1: [0, 0], p2: [1, 1], p3: [2, 1], p4: [3, 0] }
 const CIRCLE: Circle = { center: [0, 0], radius: 2 }
 
@@ -110,6 +115,16 @@ describe('EntityItem shape dispatch', () => {
 
     expect(MockLine).toHaveBeenCalledTimes(1)
     expect(MockVertexDot.mock.calls.map(c => c[0].vertexKey)).toEqual(['start', 'c1', 'c2', 'end'])
+  })
+
+  it('draws a fit_spline as a polyline plus its handle lines and every fit point', () => {
+    renderItem(FIT as Entity)
+
+    // The curve and the two handle lines are three Line primitives.
+    expect(MockLine).toHaveBeenCalledTimes(3)
+    expect(MockVertexDot.mock.calls.map(c => c[0].vertexKey)).toEqual([
+      'start', 'fit1', 'fit2', 'end', 'c1', 'c2',
+    ])
   })
 
   it('draws a circle as a closed polyline plus its center', () => {

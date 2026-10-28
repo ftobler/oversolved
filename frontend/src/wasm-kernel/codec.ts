@@ -87,10 +87,10 @@ const MAGIC_OUT = 0x34524b53  // "SKR4"
 
 export interface FlatEntity {
   kind: number
-  /** Per-kind bits; `fit_spline` uses bit0 start handle, bit1 end handle. */
+  // Per-kind bits; `fit_spline` uses bit0 start handle, bit1 end handle.
   flags: number
   offset: number
-  /** The entity's own scalar count (variable for `fit_spline`). */
+  // The entity's own scalar count (variable for `fit_spline`).
   count: number
 }
 

@@ -17,9 +17,9 @@ export const MAX_FIT_POINTS = MAX_FIT_POINT_KEY + 2
 export type FitSplineHandles = 'start' | 'end' | 'both'
 
 export interface FitSplineAddOptions {
-  /** Authored end tangents as D-vectors; the writer converts them to handles. */
+  // Authored end tangents as D-vectors; the writer converts them to handles.
   tangents?: [Point | null, Point | null]
-  /** CadQuery's default: rescale the tangent magnitudes. */
+  // CadQuery's default: rescale the tangent magnitudes.
   tangentScale?: boolean
 }
 
