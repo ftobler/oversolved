@@ -359,11 +359,49 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect((await drive('run', boxScript, '--out', boxDoc)).payload.ok).toBe(true)
 
     const out = path.join(FRONTEND_DIR, 'refused-export.step')
-    const refused = await drive('export', boxDoc, '--format', 'step', '--out', out)
+    rmSync(out, { force: true })
+    try {
+      const refused = await drive('export', boxDoc, '--format', 'step', '--out', out)
+      expect(refused.status).toBe(1)
+      expect(refused.payload.ok).toBe(false)
+      expect(String(refused.payload.error)).toContain('must resolve inside tmp/, bugreports/')
+      expect(existsSync(out)).toBe(false)
+    } finally {
+      rmSync(out, { force: true })
+    }
+  }, 120_000)
+
+  it('writes the default export to tmp/out.step', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const boxScript = path.join(TMP_DIR, 'default-export-script.json')
+    const boxDoc = path.join(TMP_DIR, 'default-export.yaml')
+    writeFileSync(boxScript, JSON.stringify(BOX_SCRIPT, null, 1))
+    expect((await drive('run', boxScript, '--out', boxDoc)).payload.ok).toBe(true)
+
+    const out = path.resolve(TMP_DIR, '../out.step')
+    rmSync(out, { force: true })
+    const exported = await drive('export', boxDoc, '--format', 'step')
+    expect(exported.status).toBe(0)
+    expect(exported.payload).toMatchObject({ ok: true, file: out, format: 'step' })
+    expect(readFileSync(out).byteLength).toBe(exported.payload.bytes as number)
+  }, 120_000)
+
+  it('refuses a repro path outside the project before the script runs', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const boxScript = path.join(TMP_DIR, 'refused-repro-script.json')
+    writeFileSync(boxScript, JSON.stringify(BOX_SCRIPT, null, 1))
+    const outDoc = path.join(TMP_DIR, 'refused-repro-out.yaml')
+    const reproFile = path.join(FRONTEND_DIR, 'refused-repro.json')
+    rmSync(outDoc, { force: true })
+    rmSync(reproFile, { force: true })
+
+    const refused = await drive('run', boxScript, '--out', outDoc, '--repro', reproFile)
     expect(refused.status).toBe(1)
     expect(refused.payload.ok).toBe(false)
     expect(String(refused.payload.error)).toContain('must resolve inside tmp/, bugreports/')
-    expect(existsSync(out)).toBe(false)
+    // Resolved before the run: neither the out document nor the journal exists.
+    expect(existsSync(outDoc)).toBe(false)
+    expect(existsSync(reproFile)).toBe(false)
   }, 120_000)
 
   it('reports an export whose parent is a regular file as a clean failure', async () => {

@@ -276,11 +276,11 @@ surfaces cannot drift:
 
 ```bash
 cd frontend
-npm run drive -- run script.json [--doc doc.yaml] [--out doc.(yaml|json)] [--repro repro.json] [--file id=path] [--doc-id id]
+npm run drive -- run script.json [--doc doc.yaml] [--out tmp/doc.(yaml|json)] [--repro tmp/repro.json] [--file id=path] [--doc-id id]
 npm run drive -- commands
 npm run drive -- measure doc.yaml [--file id=path]
 npm run drive -- compare doc.yaml reference.json [--file id=path] [--doc-id id]
-npm run drive -- export doc.yaml --format step|stl [--out out.step] [--body bodyId] [--file id=path]
+npm run drive -- export doc.yaml --format step|stl [--out tmp/out.step] [--body bodyId] [--file id=path]
 npm run drive -- replay repro.json
 ```
 
@@ -293,15 +293,15 @@ npm run drive -- replay repro.json
   plane `frames` (also described there). The `--out` format is
   chosen by the extension: `.json` writes JSON, anything else writes YAML. The
   `--out` path must resolve inside the project's `tmp/` or `bugreports/`
-  (relative paths resolve against the repo root, not `frontend/`); anything
-  else is refused before the script runs. `--repro` follows the same path rule.
-  Both create a missing parent directory at write time. An empty script still
-  solves the given document once and prints the same fields, so `run` doubles
-  as the "inspect this document" call. Its journal derives every generation
-  seed from the starting document's hash, so two runs of one script on one
-  document produce byte-identical documents and the recorded repro replays
-  exactly (the `cliSmoke` suite runs the box script twice in two processes and
-  compares the printed `docHash`).
+  (relative paths resolve against the repo root, not `frontend/`). `--repro`
+  follows the same rule. Both are checked before the script runs, so a refused
+  path writes nothing, and both create a missing parent directory at write time.
+  An empty script still solves the given document once and prints the same
+  fields, so `run` doubles as the "inspect this document" call. Its journal
+  derives every generation seed from the starting document's hash, so two runs
+  of one script on one document produce byte-identical documents and the
+  recorded repro replays exactly (the `cliSmoke` suite runs the box script
+  twice in two processes and compares the printed `docHash`).
 - `commands` prints the command catalog: every spec id, label, shortcut,
   `undoable` flag, its param fields (`spec.params.fields`, the same schema the
   registry parses a call against) and the live `enabled` verdict from a fresh
@@ -771,7 +771,7 @@ previous reply; the full document never crosses the wire by default:
 }}}
 // {"ok":true,"pass":true,"rows":[...],"measures":{...}}
 {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"export","arguments":{
-  "docHash":"<hash2>","format":"step","out":"box.step"
+  "docHash":"<hash2>","format":"step","out":"tmp/box.step"
 }}}
 ```
 

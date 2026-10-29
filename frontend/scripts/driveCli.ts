@@ -109,7 +109,8 @@ const USAGE = `usage: drive <run|commands|measure|compare|export|replay> [args] 
   export <doc.(yaml|json)> --format step|stl [--out <file>] [--body <id>] [--file <id>=<path>]
   replay <repro.json>
 --out for run writes JSON for a .json path and YAML otherwise, inside tmp/ or bugreports/.
-All --out and --repro paths must resolve inside tmp/ or bugreports/; a missing parent is created.`
+All --out and --repro paths must resolve inside tmp/ or bugreports/ and are
+checked before the script runs; a missing parent is created.`
 
 // ─── file helpers ───
 
@@ -173,9 +174,10 @@ function readFiles(args: Args): ReadonlyMap<string, Uint8Array> | undefined {
 async function runCommand(args: Args): Promise<number> {
   const scriptFile = args.positional[0]
   if (!scriptFile) throw new UsageError('run needs a script file')
-  // Resolve the output before the script runs: a path outside tmp/ or
+  // Resolve both writes before the script runs: a path outside tmp/ or
   // bugreports/ must be refused without doing the work it would have saved.
   const out = args.flags.out === undefined ? null : resolveProjectPath(args.flags.out, 'doc')
+  const reproOut = args.flags.repro === undefined ? null : resolveProjectPath(args.flags.repro, 'doc')
   const steps = readSteps(scriptFile)
   const doc = args.flags.doc
     ? readDoc(args.flags.doc)
@@ -194,10 +196,9 @@ async function runCommand(args: Args): Promise<number> {
     if (!result.doc) throw new Error('run produced no document')
     saved = writeDocFile(out, result.doc)
   }
-  if (args.flags.repro) {
+  if (reproOut !== null) {
     const repro = journal.repro()
     if (!repro) throw new Error('run recorded no doc-changing command; nothing to reproduce')
-    const reproOut = resolveProjectPath(args.flags.repro, 'doc')
     // A fresh run directory may not exist yet, so make the parent at write time.
     mkdirSync(path.dirname(reproOut), { recursive: true })
     writeFileSync(reproOut, JSON.stringify(repro, null, 1) + '\n')
