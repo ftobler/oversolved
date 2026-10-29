@@ -165,9 +165,9 @@ function drilledEntities(
     if (sites.length === 0) {
       if (candidates.length > 0) {
         throw new Error(
-          `hole: sketch '${sketchId}' has all its points and circles construction; ` +
-          'construction geometry is reference only, so toggle a construction circle\'s construction flag off ' +
-          'to drill it, or add a non-construction point or circle',
+          `hole: sketch '${sketchId}' has only construction points and circles; ` +
+          'construction geometry is reference only, so add a non-construction point or circle, ' +
+          'or clear a circle\'s construction flag to drill it',
         )
       }
       throw new Error(
@@ -178,19 +178,20 @@ function drilledEntities(
   }
   const picked = entities.find((e) => e.id === entityId)
   if (picked === undefined) throw new Error(`hole: sketch '${sketchId}' has no entity '${entityId}'`)
-  if (picked.construction === true) {
+  const isSiteKind = picked.kind === 'point' || picked.kind === 'circle'
+  if (picked.construction === true && isSiteKind) {
     // toggle_construction only toggles non-point entities, so a construction
     // point's remedy is a plain point rather than a toggle.
-    const remedy = picked.kind === 'circle'
-      ? 'toggle its construction off to drill it'
-      : 'a construction point cannot be toggled, so add a plain point at that spot'
+    const remedy = picked.kind === 'point'
+      ? 'the UI cannot clear a construction point\'s flag, so add a plain point at that spot'
+      : 'toggle its construction off to drill it'
     throw new Error(
       `hole: '${entityId}' of sketch ${sketchId} is a construction ${picked.kind}, which names no drill site; ` +
-      `construction geometry is reference only, so ${remedy}, or pick a non-construction point or circle, ` +
+      `construction geometry is reference only; ${remedy}, or pick a non-construction point or circle, ` +
       'or the sketch itself',
     )
   }
-  if (picked.kind !== 'point' && picked.kind !== 'circle') {
+  if (!isSiteKind) {
     throw new Error(
       `hole: '${entityId}' of sketch ${sketchId} is a ${picked.kind}, which names no drill site; ` +
       'pick a sketch point or a circle, or the sketch itself',

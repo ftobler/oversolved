@@ -235,7 +235,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       }
     })
 
-    it('a whole-sketch pick drills every point and circle at the right size', () => {
+    it('a whole-sketch pick drills every non-construction point and circle at the right size', () => {
       // The whole-sketch meaning is every drill site in it: the two circles at
       // their own radii and the point at the feature's diameter, in the sketch's
       // entity order. The cosmetic thread reports one helix per site, so its

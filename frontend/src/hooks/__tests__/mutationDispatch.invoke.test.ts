@@ -140,7 +140,13 @@ describe('mutationHandlers forward sketch mutations', () => {
     const doc = sketchDoc()
     const n0 = sketch1(doc).entities!.length
     mutationHandlers.add_rect(doc, { type: 'add_rect', featureId: 'S1', p0: [0, 0], p1: [4, 4] })
+    const beforeCentre = new Set(sketch1(doc).entities!.map(e => e.id))
     mutationHandlers.add_center_rect(doc, { type: 'add_center_rect', featureId: 'S1', center: [0, 0], corner: [2, 2] })
+    const centre = sketch1(doc).entities!.find(e => e.kind === 'point' && !beforeCentre.has(e.id))
+    // The helper centre point is an ordinary point with no construction flag,
+    // so a whole-sketch hole drills one bore at the rectangle's centre.
+    expect(centre).toBeDefined()
+    expect(centre!.construction).toBeUndefined()
     mutationHandlers.add_ngon(doc, { type: 'add_ngon', featureId: 'S1', center: [0, 0], corner: [3, 0], sides: 6 })
     expect(sketch1(doc).entities!.length).toBeGreaterThan(n0)
   })

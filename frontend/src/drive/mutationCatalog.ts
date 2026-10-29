@@ -202,7 +202,7 @@ const HOLE_FIELD_NOTE =
   'The sketch\'s non-construction points and circles are drilled: a circle at its own radius, a point at the feature `diameter`. ' +
   'Construction points and circles are reference geometry, so a whole-sketch pick skips them (an n-gon\'s circumcircle, or a point or circle an author flags construction); ' +
   'line endpoints are not drill sites, while add_center_rect\'s helper centre point is an ordinary point and does drill. ' +
-  'a single point or circle picked alone drills only that one, and a picked construction one is refused. ' +
+  'A single point or circle picked alone drills only that one, and a picked construction one is refused. ' +
   '`style` widens the mouth: `counterbore` reads `cb_diameter` and `cb_depth`, `countersink` reads `cb_diameter` and `cs_angle` (degrees, default 90); absent means `simple`. ' +
   'An empty value clears any other field (the key is deleted), but `sketch` is stored verbatim, so send a sketch id rather than "".'
 

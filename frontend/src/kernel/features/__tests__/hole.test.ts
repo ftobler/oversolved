@@ -83,14 +83,14 @@ describe('solveHole guard paths', () => {
     expect(() => drill([
       { id: 'pc', kind: 'point', construction: true },
       { id: 'cc', kind: 'circle', construction: true },
-    ])).toThrow(/has all its points and circles construction/)
+    ])).toThrow(/has only construction points and circles/)
     // An n-gon sketch has non-construction lines, but its only circle is the
     // construction circumcircle, so it still has no drill site.
     expect(() => drill([
       { id: 'l1', kind: 'line' },
       { id: 'l2', kind: 'line' },
       { id: 'cc', kind: 'circle', construction: true },
-    ])).toThrow(/has all its points and circles construction/)
+    ])).toThrow(/has only construction points and circles/)
   })
 
   it('a zero-placed hole fails before touching modified_by', () => {
@@ -172,7 +172,8 @@ describe('solveHole sketch picks', () => {
 
   it('keeps the whole sketch for an area several entities bound', () => {
     // A rectangle's region names four lines and no single drill site, so the
-    // pick keeps meaning what `@sk` means: every point and circle in the sketch.
+    // pick keeps meaning what `@sk` means: every non-construction point and
+    // circle in the sketch.
     const q = makeAncestryQuery(['@sk/ln_a', '@sk/ln_b', 'surface:0', '@sk'], 'flatface')
     expect(() => drill(q)).toThrow(/all 2 drill site\(s\)/)
   })
@@ -189,10 +190,27 @@ describe('solveHole sketch picks', () => {
     // the remedy differs because the UI can only clear a circle's flag.
     expect(() => drill('entity:sk:pc', {
       sk: { entities: [{ id: 'pc', kind: 'point', construction: true }] },
-    })).toThrow(/'pc' of sketch sk is a construction point, which names no drill site.*a construction point cannot be toggled, so add a plain point/)
+    })).toThrow(/'pc' of sketch sk is a construction point, which names no drill site.*the UI cannot clear a construction point's flag, so add a plain point/)
     expect(() => drill('entity:sk:cc', {
       sk: { entities: [{ id: 'cc', kind: 'circle', construction: true }] },
     })).toThrow(/'cc' of sketch sk is a construction circle, which names no drill site.*toggle its construction off to drill it/)
+  })
+
+  it('refuses a construction line with the plain kind refusal', () => {
+    // The construction remedy speaks about points and circles; a construction
+    // line names no drill site for its kind, so it must not be told to add a
+    // plain point.
+    expect(() => drill('entity:sk:ln', {
+      sk: { entities: [{ id: 'ln', kind: 'line', construction: true }] },
+    })).toThrow(/'ln' of sketch sk is a line, which names no drill site; pick a sketch point or a circle, or the sketch itself/)
+  })
+
+  it('refuses a line vertex pick: line endpoints are not drill sites', () => {
+    // Clicking a line's endpoint in the viewport is a vertex pick, but a vertex
+    // of a line is still not a hole site.
+    expect(() => drill('vertex:sk:ln:start', {
+      sk: { entities: [{ id: 'ln', kind: 'line' }] },
+    })).toThrow(/'ln' of sketch sk is a line, which names no drill site/)
   })
 
   it('refuses a construction site through the vertex and area pick forms too', () => {
@@ -211,7 +229,7 @@ describe('solveHole sketch picks', () => {
     expect(() => drill('entity:sk:nope')).toThrow(/sketch 'sk' has no entity 'nope'/)
   })
 
-  it('drills every point and circle a whole-sketch pick names', () => {
+  it('drills every non-construction point and circle a whole-sketch pick names', () => {
     // The whole-sketch meaning is every drill site: two circles and a point are
     // three sites. None has solved geometry here, so the count in the message is
     // the whole drill set. Their sizes are the real-kernel suite's to pin.
