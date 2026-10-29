@@ -70,11 +70,30 @@ function radiusMatches(value: number | null, test: RadiusTest): boolean {
  *  in the kernel tolerance ladder (OCC_CONFUSION 1e-7 < 1e-6 <=
  *  TOL_TOPOLOGY_MERGE 1e-5), and is the same absolute floor `within` uses. */
 function centerMatches(value: Vec3 | null, test: CenterTest): boolean {
-  // A mate ref reaches the engine without validateSelector, so a missing point
-  // is a non-match rather than a TypeError on a raw undefined index.
-  if (value === null || !Array.isArray(test.point)) return false
-  const distance = Math.hypot(value[0] - test.point[0], value[1] - test.point[1], value[2] - test.point[2])
-  return distance <= (test.radius ?? 0) + DEFAULT_MEASURE_TOLERANCE.abs
+  // A mate ref reaches the engine without validateSelector, so a malformed
+  // test is a non-match rather than a TypeError on a raw undefined index.
+  if (value === null) return false
+  // Point-distance form.
+  if ('point' in test && Array.isArray(test.point)) {
+    const distance = Math.hypot(value[0] - test.point[0], value[1] - test.point[1], value[2] - test.point[2])
+    return distance <= (test.radius ?? 0) + DEFAULT_MEASURE_TOLERANCE.abs
+  }
+  // Axis-range form: one coordinate of the representative point.
+  if ('axis' in test && (test.axis === 'x' || test.axis === 'y' || test.axis === 'z')) {
+    const axis = test.axis === 'x' ? 0 : test.axis === 'y' ? 1 : 2
+    const coord = value[axis]
+    const tol = DEFAULT_MEASURE_TOLERANCE.abs
+    let min = test.min
+    let max = test.max
+    if (test.at !== undefined) {
+      min = test.at
+      max = test.at
+    }
+    if (min !== undefined && coord < min - tol) return false
+    if (max !== undefined && coord > max + tol) return false
+    return min !== undefined || max !== undefined
+  }
+  return false
 }
 
 /** Whether an element query's ancestry names `featureId`. The query string is

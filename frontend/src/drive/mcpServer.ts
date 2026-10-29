@@ -257,16 +257,35 @@ const SELECTOR_DEFS: Record<string, unknown> = {
             + 'min or max is open on that side.',
         },
         center: {
-          type: 'object',
-          required: ['point'],
-          properties: {
-            point: VEC3_SCHEMA,
-            radius: { type: 'number', minimum: 0 },
-          },
-          additionalProperties: false,
-          description: 'The point `extreme` projects must lie within `radius` of `point`: a line\'s midpoint, '
-            + 'a circle, arc or ellipse\'s conic centre, a spline\'s middle sample, or a face centroid. The '
-            + 'measure tolerance is always added to `radius`; omitting it leaves the tolerance alone.',
+          anyOf: [
+            {
+              type: 'object',
+              required: ['point'],
+              properties: {
+                point: VEC3_SCHEMA,
+                radius: { type: 'number', minimum: 0 },
+              },
+              additionalProperties: false,
+              description: 'The point `extreme` projects must lie within `radius` of `point`: a line\'s midpoint, '
+                + 'a circle, arc or ellipse\'s conic centre, a spline\'s middle sample, or a face centroid. The '
+                + 'measure tolerance is always added to `radius`; omitting it leaves the tolerance alone.',
+            },
+            {
+              type: 'object',
+              required: ['axis'],
+              properties: {
+                axis: { enum: ['x', 'y', 'z'] },
+                min: { type: 'number' },
+                max: { type: 'number' },
+                at: { type: 'number' },
+              },
+              additionalProperties: false,
+              description: 'One coordinate of the point `extreme` projects must lie inside this world-axis range: '
+                + 'a line\'s midpoint, a conic\'s centre, a spline\'s middle sample or a face centroid. `at` is '
+                + 'sugar for min = max = at, matched within the measure tolerance.',
+            },
+          ],
+          description: 'Either a 3D point distance (point/radius) or a world-axis range on the representative point (axis/min/max/at).',
         },
         on_face: { $ref: '#/$defs/selector' },
         created_by: { type: 'string' },
