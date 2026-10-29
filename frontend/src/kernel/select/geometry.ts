@@ -124,10 +124,16 @@ function isSeamEdge(c: Candidate): boolean {
   const mesh = c.body.mesh
   const seamLists = mesh?.face_seam_queries
   const faceEdges = mesh?.face_edge_queries
-  // A seam list shorter than the face list is a partial decode; trusting it
-  // would silently lose the seams of the faces it does not cover.
-  if (seamLists !== undefined && (faceEdges === undefined || seamLists.length === faceEdges.length)) {
-    return seamLists.some(list => list.includes(c.query))
+  if (seamLists !== undefined) {
+    if (faceEdges === undefined || seamLists.length === faceEdges.length) {
+      return seamLists.some(list => list.includes(c.query))
+    }
+    // A LONGER seam list means the face list was truncated. The count rule
+    // would see an edge whose missing neighbour is gone and call it a seam, so
+    // keep the edge rather than guess.
+    if (seamLists.length > faceEdges.length) return false
+    // A shorter seam list leaves the complete face list available: fall through
+    // to the count rule, which recovers the seam it did not cover.
   }
   if (!faceEdges || faceEdges.length === 0) return false
   let seen = 0

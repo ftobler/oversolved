@@ -156,21 +156,39 @@ describe('selectByPredicate: seam exclusion', () => {
   })
 
   it('a seam list shorter than the face list falls back to the count rule', () => {
-    // A partial decode that kept only the first face's seam list: the seam lives
-    // in the second face, so trusting the short list would keep it.
+    // A partial decode whose one preserved seam list belongs to the cap, not
+    // the lateral face. Trusting it would keep the seam; the face list is still
+    // complete, so the count fallback finds it in the second face.
     const bodies = {
       body_ex1: bodyResult(
         'body_ex1',
         [line([0, 0, 0], [0, 0, 10]), circle([0, 0, 0], 5, [0, 0, 1])],
         ['q_seam', 'q_bottom'],
-        [CYLINDER, CAP_BOTTOM],
-        ['f_cyl', 'f_bottom'],
-        [['q_seam', 'q_bottom'], ['q_bottom']],
+        [CAP_BOTTOM, CYLINDER],
+        ['f_bottom', 'f_cyl'],
+        [['q_bottom'], ['q_seam', 'q_bottom']],
         [[]],
       ),
     }
     expect(() => queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies))
       .toThrow(/parallel .* matched 0/)
+  })
+
+  it('a seam list longer than the face list keeps the edge', () => {
+    // A truncated face list cannot be used for the count rule: the missing face
+    // would make its edges look like seams, so keep them selectable instead.
+    const bodies = {
+      body_ex1: bodyResult(
+        'body_ex1',
+        [line([0, 0, 0], [0, 0, 10]), circle([0, 0, 0], 5, [0, 0, 1])],
+        ['q_seam', 'q_bottom'],
+        [CAP_BOTTOM],
+        ['f_bottom'],
+        [['q_bottom']],
+        [[], ['q_seam']],
+      ),
+    }
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies)).toEqual(['q_seam'])
   })
 
   it('an open shell keeps its free edges in parallel', () => {

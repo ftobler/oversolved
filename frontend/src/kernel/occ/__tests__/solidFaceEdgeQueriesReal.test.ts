@@ -128,25 +128,35 @@ describe.skipIf(!oc)('solidToFaceEdgeQueries (real OCC)', () => {
 
   // A cone apex (and a sphere pole) is a degenerated edge: `readSolidEdges`
   // skips it, and the per-face lookup must use the same list or its indices
-  // point at the neighbouring edge's query.
+  // point at the neighbouring edge's query. The apex sits at the origin so the
+  // degenerate sorts first; the old code therefore emptied the cap's boundary
+  // list and gave the lateral face the cap's query.
   it('keeps the sorted edge list aligned on a body with a degenerated edge', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const cone = scope.track(makeCone(oc!, scope, [0, 0, 0], [0, 0, 1], 5, 0, 10))
+      const cone = scope.track(makeCone(oc!, scope, [0, 0, 0], [0, 0, 1], 0, 5, 10))
       const handle = table.register(cone, 'cone1')
       const canonical = canonicalEdges(oc!, scope, table.get<OccShape>(handle))
       const degenerated = canonical.filter(edge => oc!.BRep_Tool.Degenerated?.(edge) ?? false)
       // The fixture must really contain one, or this test proves nothing.
       expect(degenerated.length).toBeGreaterThan(0)
 
-      const { edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'cone1', bodyId: '@body_cone' })
+      const { edges, edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'cone1', bodyId: '@body_cone' })
       const sorted = sortedUniqueEdges(oc!, scope, table.get<OccShape>(handle))
       expect(sorted).toHaveLength(edge_queries.length)
       expect(canonical.length).toBe(sorted.length + degenerated.length)
 
-      const { face_edge_queries } = solidToFaceEdgeQueries(oc!, table, handle, edge_queries)
-      for (const list of face_edge_queries) for (const query of list) expect(edge_queries).toContain(query)
+      const lineQuery = edge_queries[edges.findIndex(edge => edge.kind === 'line')]
+      const circleQuery = edge_queries[edges.findIndex(edge => edge.kind === 'circle')]
+      expect(lineQuery).toBeTruthy()
+      expect(circleQuery).toBeTruthy()
+
+      // Pin the content, not just the lengths: the top cap is bounded by the rim
+      // alone, the lateral cone face by the rim and its seam.
+      const { face_edge_queries, face_seam_queries } = solidToFaceEdgeQueries(oc!, table, handle, edge_queries)
+      expect(face_edge_queries).toEqual([[circleQuery], [circleQuery, lineQuery]])
+      expect(face_seam_queries).toEqual([[], [lineQuery]])
     } finally {
       scope.dispose()
     }
