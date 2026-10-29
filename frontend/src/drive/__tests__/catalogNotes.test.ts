@@ -63,6 +63,45 @@ describe('F4: symmetric extrude distance', () => {
   })
 })
 
+describe('F4: up-to termination on both extrude rows', () => {
+  it('names termination and up_to, and how up_to names a plane or face', () => {
+    for (const type of ['add_extrude', 'set_extrude_field'] as const) {
+      const note = mutationInfoOf(type).note!
+      expect(note, type).toContain('`termination: up_to`')
+      expect(note, type).toContain('`up_to`')
+      expect(note, type).toContain('@<planeId>')
+      expect(note, type).toContain('face query from `select`')
+      expect(note, type).toContain('used blind distance')
+    }
+  })
+
+  it('offers both fields inline on add_extrude', () => {
+    const add = mutationInfoOf('add_extrude')
+    expect(add.fields.termination).toBeDefined()
+    expect(add.fields.up_to).toBeDefined()
+    expect(add.fields.termination.required).toBe(false)
+    expect(add.fields.up_to.required).toBe(false)
+    expect(add.fields.up_to.note).toContain('@body_ex1/face/<n>')
+  })
+
+  it('carries termination and up_to from the inline add into the document', async () => {
+    const result = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [{
+        mutation: {
+          type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10,
+          termination: 'up_to', up_to: '@builtin_plane_front',
+        },
+      }],
+    })
+    const feature = result.doc!.features!.find(entry => entry.id === 'ex1')
+    expect(feature).toMatchObject({
+      kind: 'extrude',
+      extrude: { termination: 'up_to', up_to: '@builtin_plane_front' },
+    })
+  })
+})
+
 describe('F7: merge_target spelling', () => {
   it('names the bare body id and the delta row field on every merge_target row', () => {
     for (const type of ['add_extrude', 'set_extrude_field', 'set_revolve_field'] as const) {

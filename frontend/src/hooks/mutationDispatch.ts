@@ -181,6 +181,8 @@ export const mutationHandlers: MutationHandlers = {
   add_extrude: (next, m) =>
     applyAddExtrude(next, m.featureId, m.label, m.sketchQuery, m.distance, {
       direction: m.direction,
+      termination: m.termination,
+      up_to: m.up_to,
       operation: m.operation,
       merge_target: m.merge_target,
     }),

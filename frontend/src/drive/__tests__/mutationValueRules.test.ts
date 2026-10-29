@@ -75,6 +75,11 @@ describe('value rules cover the catalog', () => {
     ['add_extrude', { type: 'add_extrude', featureId: 'ex1', sketchQuery: '', distance: 5 }],
     ['add_extrude', { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, direction: 'sideways' }],
     ['add_extrude', { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, operation: 'merge' }],
+    ['add_extrude', { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, termination: 'touch' }],
+    ['add_extrude', {
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5,
+      termination: 'up_to', up_to: '$sk1',
+    }],
     ['add_boolean', { type: 'add_boolean', featureId: 'bo1', operation: 'difference' }],
     ['add_boolean', { type: 'add_boolean', featureId: 'bo1', tools: [''] }],
     ['set_extrude_field', { type: 'set_extrude_field', featureId: 'ex1', field: 'operation', value: 'copy' }],
@@ -602,6 +607,34 @@ describe('hole styles: the new fields cross the same boundary', () => {
     const error = refusal({ type: 'add_hole', featureId: 'ho1', style: 'spotface' })
     expect(error.code).toBe('invalid-mutation')
     expect(error.message).toContain('simple')
+  })
+})
+
+describe('finding: add_extrude carries the up-to termination inline', () => {
+  it('accepts termination up_to with a plane ref', () => {
+    expect(validateMutation({
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10,
+      termination: 'up_to', up_to: '@pl1',
+    })).toMatchObject({ ok: true })
+  })
+
+  it('accepts termination up_to with a face query or a body-face ref', () => {
+    for (const upTo of ['?15,4,9;@u|flatface', '@body_ex1/face/2']) {
+      expect(validateMutation({
+        type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10,
+        termination: 'up_to', up_to: upTo,
+      }), upTo).toMatchObject({ ok: true })
+    }
+  })
+
+  it('refuses a $ local ref and an unknown termination with the accepted spellings', () => {
+    expect(refusal({
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10,
+      termination: 'up_to', up_to: '$sk1',
+    }).message).toContain('"$"')
+    expect(refusal({
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, termination: 'touch',
+    }).message).toContain('blind')
   })
 })
 

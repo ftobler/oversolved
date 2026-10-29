@@ -855,7 +855,7 @@ function addExtrude(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const problem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
   if (problem !== null) return invalid(problem)
   if (!isFiniteNumber(raw.distance)) return invalid(`distance must be a finite number, got ${json(raw.distance)}`)
-  return inlineFieldsProblem(raw, ctx, 'set_extrude_field', ['direction', 'operation', 'merge_target'])
+  return inlineFieldsProblem(raw, ctx, 'set_extrude_field', ['direction', 'termination', 'up_to', 'operation', 'merge_target'])
 }
 
 function addBoolean(raw: RawStep, ctx: ValueContext): ValueViolation | null {

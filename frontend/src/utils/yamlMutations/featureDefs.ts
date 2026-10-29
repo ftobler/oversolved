@@ -118,7 +118,7 @@ export function applyAddExtrude(
   label: string | undefined,
   sketchQuery: string,
   distance: number,
-  inline: Pick<ExtrudeFeatureDef, 'direction' | 'operation' | 'merge_target'> = {},
+  inline: Pick<ExtrudeFeatureDef, 'direction' | 'termination' | 'up_to' | 'operation' | 'merge_target'> = {},
 ): void {
   // The distance is persisted verbatim into the doc. round(NaN) is still NaN,
   // so a non-finite distance would seed a broken extrude. Refuse before the
@@ -136,6 +136,8 @@ export function applyAddExtrude(
       distance,
       direction: inline.direction ?? 'normal',
       // Absent keys stay absent, so a plain add writes the document it always did.
+      ...(inline.termination !== undefined && { termination: inline.termination }),
+      ...(inline.up_to !== undefined && { up_to: inline.up_to }),
       ...(inline.operation !== undefined && { operation: inline.operation }),
       ...(inline.merge_target !== undefined && { merge_target: inline.merge_target }),
     },

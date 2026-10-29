@@ -49,6 +49,19 @@ describe('add_extrude', () => {
     applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10)
     expect(extrude0(doc).direction).toBe('normal')
   })
+
+  it('writes termination and up_to when the add carries them inline', () => {
+    const doc: PartDoc = structuredClone(baseDoc)
+    applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10, { termination: 'up_to', up_to: '@pl1' })
+    expect(extrude0(doc)).toMatchObject({ termination: 'up_to', up_to: '@pl1' })
+  })
+
+  it('leaves termination and up_to absent when the add omits them', () => {
+    const doc: PartDoc = structuredClone(baseDoc)
+    applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10)
+    expect(extrude0(doc)).not.toHaveProperty('termination')
+    expect(extrude0(doc)).not.toHaveProperty('up_to')
+  })
 })
 
 describe('normalizeRefList', () => {

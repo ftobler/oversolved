@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  oc, solveBytes, extrudeTestHarness, extrudeSpec,
+  oc, solveBytes, extrudeTestHarness, extrudeSpec, fullRectExtrudeSpec,
 } from '../extrudeRealSupport'
 
 /** A 2 x 2 rectangle sketch at an arbitrary (x, z) corner on the Front plane. */
@@ -86,5 +86,51 @@ describe.skipIf(!oc || !solveBytes)('extrude add bridging two bodies (real OCC +
     })
     expect(h.res(result, 'exCap').status).toBe('ok')
     expect(h.res(result, 'exCap').solver_warning).toBeUndefined()
+  })
+
+  it('warns when an additive extrude joins nothing and still mints one body', () => {
+    const result = h.run({
+      features: [
+        rectAt('skA', 0, 0, 2, 2),
+        extrudeSpec('skA', 'exA', { distance: 3 }),
+        // Beside the first post, sharing no volume with it: add has nothing to
+        // fuse with, so the profile becomes a body of its own.
+        rectAt('skB', 5, 0, 7, 2),
+        extrudeSpec('skB', 'exB', { distance: 3 }),
+      ],
+    })
+    expect(h.res(result, 'exA').status).toBe('ok')
+    expect(h.res(result, 'exA').solver_warning).toBeUndefined()
+    const disjoint = h.res(result, 'exB')
+    expect(disjoint.status).toBe('ok')
+    expect(String(disjoint.solver_warning)).toContain('add joined nothing')
+    expect(String(disjoint.solver_warning)).toContain("'body_exB'")
+    // Reporting only: the body count is the one the silent add already made.
+    expect(Object.keys(result.bodies).sort()).toEqual(['body_exA', 'body_exB'])
+    expect(disjoint.body_id).toBe('body_exB')
+  })
+
+  it('does not warn when the additive extrude fuses into the existing body', () => {
+    const result = h.run({
+      features: [
+        rectAt('skA', 0, 0, 2, 2),
+        extrudeSpec('skA', 'exA', { distance: 3 }),
+        // Overlapping the first post, so the add fuses into it.
+        rectAt('skB', 1, 0.5, 3, 1.5),
+        extrudeSpec('skB', 'exB', { distance: 3 }),
+      ],
+    })
+    const fused = h.res(result, 'exB')
+    expect(fused.status).toBe('ok')
+    expect(fused.solver_warning).toBeUndefined()
+    expect(fused.body_id).toBe('body_exA')
+    expect(Object.keys(result.bodies)).toEqual(['body_exA'])
+  })
+
+  it('does not warn for the first body in the document', () => {
+    const result = h.run(fullRectExtrudeSpec(2, 2, 3))
+    const first = h.res(result, 'ex1')
+    expect(first.status).toBe('ok')
+    expect(first.solver_warning).toBeUndefined()
   })
 })

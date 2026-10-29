@@ -318,15 +318,28 @@ const MERGE_TARGET_NOTE =
   'The bare body id the cut or add goes into, e.g. `body_ex5` (no @ sigil); absent means every body the tool reaches. ' +
   'The feature\'s featureDeltas row names the receiving body as `body`, with its own `bodyVolume`.'
 
+// Up-to was documented in the document schema and the document guide but not in
+// the mutation catalog, so a client authored the key it had to infer (Ex100).
+// The spelling list follows resolveUpToPlane: only absolute/query refs resolve.
+const EXTRUDE_UP_TO_NOTE =
+  '`termination: up_to` ends the extrude at the element `up_to` names instead of at `distance`: ' +
+  '`@builtin_plane_front`/`@<planeId>` for a plane, the same feature-level ref spelling as `add_sketch.plane`; ' +
+  'a planar body face (a face query from `select`, or `@body_ex1/face/<n>`), or a point or vertex query. ' +
+  'A target that does not resolve or matches several elements falls back to `distance` with a warning ' +
+  '(`used blind distance`); a non-planar face is refused, and so is `up_to` with `direction: symmetric`. ' +
+  'With bodies already in the document, an `add` whose profile shares no volume with any of them mints a ' +
+  'separate body and reports `add joined nothing`.'
+
 // The symmetric split is the one direction whose distance reads two ways
 // (sprocket, ppp0103 F2, ppp0105 F3).
 const EXTRUDE_FIELDS_NOTE =
   '`direction: symmetric` takes `distance` as the TOTAL length, half on each side of the sketch plane ' +
-  '(distance 10 spans -5..+5); `normal` and `reverse` take it whole on one side. `merge_target`: ' + MERGE_TARGET_NOTE
+  '(distance 10 spans -5..+5); `normal` and `reverse` take it whole on one side. `merge_target`: ' + MERGE_TARGET_NOTE +
+  ' ' + EXTRUDE_UP_TO_NOTE
 
 const EXTRUDE_INLINE_NOTE =
-  'One call may carry the whole extrude: `direction`, `operation` and `merge_target` set the same keys ' +
-  '`set_extrude_field` does. ' + EXTRUDE_FIELDS_NOTE
+  'One call may carry the whole extrude: `direction`, `termination`, `up_to`, `operation` and `merge_target` set ' +
+  'the same keys `set_extrude_field` does. ' + EXTRUDE_FIELDS_NOTE
 
 // The boolean refuses to solve without a target and a tool, so the catalog
 // names them up front (Case_Seam_Lip F5).
@@ -632,13 +645,15 @@ export const MUTATION_CATALOG = {
     fields: {},
   },
   add_extrude: {
-    summary: 'Extrude a sketch along its plane normal, optionally with its direction, operation and merge target.',
+    summary: 'Extrude a sketch along its plane normal, optionally with its direction, termination, operation and merge target.',
     note: EXTRUDE_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
       sketchQuery: sketchQuery(),
       distance: num(),
       direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as extrude.direction).'),
+      termination: optStr('blind | up_to; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance` (the key the document stores as extrude.termination).'),
+      up_to: optStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, a planar face query from `select` or `@body_ex1/face/<n>`, or a point/vertex query (the key the document stores as extrude.up_to).'),
       operation: optStr('add | cut | new; absent means add (the key the document stores as extrude.operation).'),
       merge_target: optStr(MERGE_TARGET_NOTE),
     },
