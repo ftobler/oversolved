@@ -63,7 +63,7 @@ describe('F4: symmetric extrude distance', () => {
   })
 })
 
-describe('F4: up-to termination on both extrude rows', () => {
+describe('up-to termination on both extrude rows', () => {
   it('names termination and up_to, and how up_to names a plane or face', () => {
     for (const type of ['add_extrude', 'set_extrude_field'] as const) {
       const note = mutationInfoOf(type).note!
@@ -72,7 +72,14 @@ describe('F4: up-to termination on both extrude rows', () => {
       expect(note, type).toContain('@<planeId>')
       expect(note, type).toContain('face query from `select`')
       expect(note, type).toContain('used blind distance')
+      expect(note, type).toContain('up_to has no target')
+      expect(note, type).toContain('read only when')
     }
+  })
+
+  it('keeps the add-time solve warning on the add row only', () => {
+    expect(mutationInfoOf('add_extrude').note).toContain('add joined nothing')
+    expect(mutationInfoOf('set_extrude_field').note).not.toContain('add joined nothing')
   })
 
   it('offers both fields inline on add_extrude', () => {
@@ -82,6 +89,8 @@ describe('F4: up-to termination on both extrude rows', () => {
     expect(add.fields.termination.required).toBe(false)
     expect(add.fields.up_to.required).toBe(false)
     expect(add.fields.up_to.note).toContain('@body_ex1/face/<n>')
+    expect(add.fields.up_to.note).toContain('otherwise it is ignored')
+    expect(add.fields.up_to.note).toContain('null or empty value clears it')
   })
 
   it('carries termination and up_to from the inline add into the document', async () => {

@@ -53,7 +53,7 @@ describe('resolveUpToPlane', () => {
   })
 
   it('resolves a point to a plane perpendicular to the extrude direction', () => {
-    const repo = repoReturning({ point: [1, 2, 4] })
+    const repo = repoReturning({ origin: [1, 2, 4] })
     const cut = resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repo, {})
     expect(cut).toEqual({ origin: [1, 2, 4], normal: [0, 0, 1] })
   })
@@ -97,10 +97,10 @@ describe('resolveUpToPlane', () => {
     expect(cut).toEqual({ origin: [1, 2, 3], normal: [0, 0, 1] })
   })
 
-  it('reads a point from its position fallback', () => {
-    const repo = repoReturning({ position: [4, 5, 6] })
+  it('resolves a sketch point through its external_xy coordinates', () => {
+    const repo = repoReturning({ external_xy: [4, 5] })
     const cut = resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repo, {})
-    expect(cut).toEqual({ origin: [4, 5, 6], normal: [0, 0, 1] })
+    expect(cut).toEqual({ origin: [4, 5, 0], normal: [0, 0, 1] })
   })
 
   it('throws on a degenerate normal of a registered plane', () => {
@@ -111,7 +111,7 @@ describe('resolveUpToPlane', () => {
   })
 
   it('throws on a degenerate direction when resolving a point', () => {
-    const repo = repoReturning({ point: [1, 2, 3] })
+    const repo = repoReturning({ origin: [1, 2, 3] })
     expect(() => resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 0], repo, {})).toThrow(
       /degenerate direction vector/,
     )

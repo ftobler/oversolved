@@ -8,13 +8,13 @@ import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBox, makePrism, makeCylinder, faceCentroid, faceNormal, faceSurfaceType, type Vec3 } from '../../occ/primitives'
-import { sortedFacesOf } from '../../occ/faceLoops'
+import { sortedFacesOf, computeFacePlane } from '../../occ/faceLoops'
 import { volumeOf } from '../../occ/booleans'
 import { solidToEdges } from '../../occ/tessellation'
 import { resolveProfileEdges, edgesToProfileFace } from '../edgeProfile'
-import { trimAtPlane } from '../upTo'
+import { trimAtPlane, resolveUpToPlane } from '../upTo'
 import { solveExtrude } from '../extrude'
-import { AmbiguousQueryError } from '../../query'
+import { AmbiguousQueryError, initGlobalRepo, makeAncestryQuery } from '../../query'
 import type { Repository } from '../../query'
 import type { Body } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
@@ -213,6 +213,116 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     }
   })
 
+  it('resolves the persisted slash body-face ref against the real body', () => {
+    // The authoring spelling `@<body>/face/<n>` is a literal repo key for a plain
+    // query, while body faces register under the construction key. The plain
+    // lookup returns null, so this pins the helper path the resolver now takes.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const repo = initGlobalRepo()
+      const ref = '@body_b/face/2'
+      expect(repo.query(ref)).toBeNull()
+
+      const cut = resolveUpToPlane(occ, scope, table, ref, [0, 0, 1], repo, bodyStore)
+      expect(cut).not.toBeNull()
+      const faces = sortedFacesOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      const plane = computeFacePlane(occ, scope, faces[2])
+      const n = cut!.normal
+      const parallel = n[0] * plane.normal[0] + n[1] * plane.normal[1] + n[2] * plane.normal[2]
+      expect(Math.abs(parallel)).toBeCloseTo(1, 6)
+      const offset =
+        (cut!.origin[0] - plane.origin[0]) * plane.normal[0] +
+        (cut!.origin[1] - plane.origin[1]) * plane.normal[1] +
+        (cut!.origin[2] - plane.origin[2]) * plane.normal[2]
+      expect(offset).toBeCloseTo(0, 6)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('resolves a registered body vertex as a point terminator', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const repo = initGlobalRepo()
+      // The payload _registerBrepVertexAncestry writes: a body vertex carries
+      // `origin`, never `point`/`position`.
+      repo.registerAncestor(['@body_b/vertex0'], {
+        type: 'vertex', body_id: 'body_b', vertex_index: 0, origin: [1, 2, 8],
+      })
+      const ref = makeAncestryQuery(['@body_b/vertex0'], 'vertex')
+      const cut = resolveUpToPlane(occ, scope, table, ref, [0, 0, 1], repo, {})
+      expect(cut).toEqual({ origin: [1, 2, 8], normal: [0, 0, 1] })
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('resolves a registered sketch point as a point terminator', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const repo = initGlobalRepo()
+      // postRegister writes the sketch point under `<sketch>/<entity>/xy` with
+      // `external_xy`; getPoint3d lifts it through the registered sketch plane.
+      repo.register('_pt_sk1', {
+        origin: [10, 0, 5], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1],
+      })
+      repo.register('sk1/p1/xy', { external_xy: [2, 3], sketch_id: 'sk1' })
+      const cut = resolveUpToPlane(occ, scope, table, '@sk1/p1/xy', [0, 0, 1], repo, {})
+      expect(cut).toEqual({ origin: [12, 3, 5], normal: [0, 0, 1] })
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('warns when termination is up_to but no target is set', () => {
+    // The staged editor hides distance while up_to has no pick. Falling back to
+    // the blind distance is correct, but it has to be named like every other
+    // fallback.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const loop = bottomLoop(table, bodyStore.body_b)
+      const result = solveExtrude(
+        occ, scope, table,
+        { id: 'ex2', extrude: { sketch: loop, distance: 3, termination: 'up_to', operation: 'new' } },
+        repoReturning(null), bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      expect(result.solver_warning).toContain('up_to has no target; used blind distance')
+      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
+      expect(vol).toBeCloseTo(300, 2)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('ignores up_to when termination is not up_to', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const loop = bottomLoop(table, bodyStore.body_b)
+      const result = solveExtrude(
+        occ, scope, table,
+        { id: 'ex2', extrude: { sketch: loop, distance: 3, up_to: 'plane_q', operation: 'new' } },
+        // A target seven ahead would give 700 if it were read; blind distance is 300.
+        repoReturning({ type: 'flatface', origin: [0, 0, 7], normal: [0, 0, 1] }),
+        bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      expect(result.solver_warning).toBeUndefined()
+      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
+      expect(vol).toBeCloseTo(300, 2)
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('throws when the up_to target body face is not planar', () => {
     // v1 supports planar terminators only; a cylindrical target face must fail
     // loud by name rather than be treated as an unresolved pick and quietly
@@ -258,6 +368,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       )
       expect(result.status).toBe('ok')
       expect(result.solver_warning).toMatch(/did not resolve/)
+      expect(result.solver_warning).toContain('used blind distance')
       const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
       expect(vol).toBeCloseTo(300, 2)  // blind 100 * 3
     } finally {

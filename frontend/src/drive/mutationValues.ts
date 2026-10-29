@@ -851,11 +851,28 @@ function inlineFieldsProblem(
   return null
 }
 
+// The inline clears an add payload may carry. The setter's applier deletes the
+// key on null or an empty string; the add applier applies the same rule.
+const EXTRUDE_INLINE_CLEARS: ReadonlySet<string> = new Set(['termination', 'up_to'])
+
 function addExtrude(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const problem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
   if (problem !== null) return invalid(problem)
   if (!isFiniteNumber(raw.distance)) return invalid(`distance must be a finite number, got ${json(raw.distance)}`)
-  return inlineFieldsProblem(raw, ctx, 'set_extrude_field', ['direction', 'termination', 'up_to', 'operation', 'merge_target'])
+  // Every remaining inline field follows the extrude schema, so a field added
+  // there is validated here without a second hand-kept key list. sketchQuery
+  // and distance are the two the explicit checks above own.
+  for (const field of featureFieldNames('extrude')) {
+    if (field === 'sketch' || field === 'distance') continue
+    const value = raw[field]
+    if (value === undefined || value === null) continue
+    if (value === '' && EXTRUDE_INLINE_CLEARS.has(field)) continue
+    const schema = ctx.fieldSchema('set_extrude_field', field)
+    if (schema === null) continue
+    const fieldProblem = schemaValueProblem(value, schema, `add_extrude field ${json(field)}`)
+    if (fieldProblem !== null) return invalid(fieldProblem)
+  }
+  return null
 }
 
 function addBoolean(raw: RawStep, ctx: ValueContext): ValueViolation | null {

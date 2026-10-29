@@ -62,6 +62,15 @@ describe('add_extrude', () => {
     expect(extrude0(doc)).not.toHaveProperty('termination')
     expect(extrude0(doc)).not.toHaveProperty('up_to')
   })
+
+  it('treats an empty or null termination and up_to as no key', () => {
+    for (const clear of ['', null] as const) {
+      const doc: PartDoc = structuredClone(baseDoc)
+      applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10, { termination: clear, up_to: clear })
+      expect(extrude0(doc), String(clear)).not.toHaveProperty('termination')
+      expect(extrude0(doc), String(clear)).not.toHaveProperty('up_to')
+    }
+  })
 })
 
 describe('normalizeRefList', () => {

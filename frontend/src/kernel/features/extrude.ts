@@ -326,6 +326,11 @@ export function solveExtrude(
     if (cutPlane === null && result.solver_warning === undefined) {
       result.solver_warning = `extrude: up_to target '${upToRef}' did not resolve; used blind distance`
     }
+  } else if (termination === 'up_to') {
+    // The staged editor hides `distance` while termination is up_to, but a
+    // script may still publish the state before it picks a target. Silence
+    // here read as an up-to that ignored its distance; name the fallback.
+    result.solver_warning = 'extrude: up_to has no target; used blind distance'
   }
 
   let toolShape: OccShape
@@ -508,7 +513,7 @@ export function solveExtrude(
   // warning. Report the state and the two fixes; do not change what was built
   // (the Ex014 disjoint-body note: warn about it, keep the body).
   if (
-    operation === 'add' && mergeTarget === null && opResult.body_id === bodyId &&
+    operation === 'add' && !mergeTarget && opResult.body_id === bodyId &&
     bodiesBefore.size > 0 && !bodiesBefore.has(opResult.body_id)
   ) {
     const minted = opResult.body_ids ?? [opResult.body_id]
@@ -528,7 +533,7 @@ export function solveExtrude(
   // stays separate: silently, before this check, the caller saw one fused body
   // and a second one it did not ask for. Name it and the one-step fix rather
   // than widening the operation here (user decision: warn now, fuse-all later).
-  if (operation === 'add' && mergeTarget === null && opResult.body_id !== bodyId) {
+  if (operation === 'add' && !mergeTarget && opResult.body_id !== bodyId) {
     const touched: string[] = []
     for (const otherId of Object.keys(bodyStore).sort()) {
       if (otherId === opResult.body_id || (opResult.body_ids ?? []).includes(otherId)) continue

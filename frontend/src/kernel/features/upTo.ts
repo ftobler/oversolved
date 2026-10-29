@@ -12,14 +12,17 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable, OccHandle } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { AmbiguousQueryError } from '../query'
+import { AmbiguousQueryError, getPoint3d } from '../query'
 import type { Vec3 } from '../occ/primitives'
 import { makePrism } from '../occ/primitives'
 import { dot, cross } from '@/utils/vec3'
 import { booleanWithHistory, countSolids, type FaceOrigin } from '../occ/booleans'
 import { extractOccFace, computeFacePlane } from '../occ/faceLoops'
+import { resolveFaceSlashFrame } from './faceProfile'
 
 type Dict = Record<string, unknown>
+
+const SLASH_FACE_REF = /^@[^/]+\/face\/\d+$/
 
 export interface CutPlane {
   origin: Vec3
@@ -46,12 +49,13 @@ function inPlaneAxes(normal: Vec3): [Vec3, Vec3] {
 
 /**
  * Resolve an `up_to` ref to a cutting plane. Handles registered planes/flatfaces
- * (origin + normal), planar body faces (body_id + face_index), and points
- * (point/position coordinate, plane normal = the extrude direction). Returns null
- * when the ref does not resolve (caller falls back to the blind distance).
- * Rethrows AmbiguousQueryError so the caller can report ambiguity distinctly
- * from a dangling pick. Throws when a face target is non-planar, so a bad pick
- * surfaces as an error.
+ * (origin + normal), planar body faces (body_id + face_index, or the persisted
+ * `@<body>/face/<n>` slash ref), and points/vertices (through getPoint3d, so a
+ * body vertex's `origin` and a sketch point's lifted `external_xy` both read).
+ * Returns null when the ref does not resolve (caller falls back to the blind
+ * distance). Rethrows AmbiguousQueryError so the caller can report ambiguity
+ * distinctly from a dangling pick. Throws when a face target is non-planar, so
+ * a bad pick surfaces as an error.
  */
 export function resolveUpToPlane(
   oc: OccModule,
@@ -73,7 +77,17 @@ export function resolveUpToPlane(
     // them. Rethrow so the caller can name the ambiguity in its warning.
     entry = null
   }
-  if (entry === null) return null
+  if (entry === null) {
+    // `@<body>/face/<n>` is the persisted pick spelling, and its key is not the
+    // construction key body faces register under (`@<body>/face<n>`). faceProfile
+    // owns that remap for every other face consumer, so reuse it here instead of
+    // keeping a second reading that drifts.
+    if (!SLASH_FACE_REF.test(upToRef)) return null
+    const frame = resolveFaceSlashFrame(oc, scope, table, upToRef, globalRepo, bodyStore)
+    const n = normalize(frame.normal)
+    if (n === null) throw new Error('extrude up_to: degenerate face normal')
+    return { origin: [...frame.origin] as Vec3, normal: n }
+  }
 
   // Registered plane / flatface (datum plane, an extrude top_face, ...).
   // Both tags are accepted because a datum plane registers as `plane`
@@ -107,14 +121,19 @@ export function resolveUpToPlane(
   }
 
   // Point / vertex: the plane through the point, perpendicular to the extrude.
-  const pt = (entry.point ?? entry.position) as number[] | undefined
-  if (Array.isArray(pt) && pt.length === 3) {
-    const n = normalize(directionVec)
-    if (n === null) throw new Error('extrude up_to: degenerate direction vector')
-    return { origin: [...pt] as Vec3, normal: n }
+  // Body vertices register `origin` and sketch points register `external_xy`
+  // lifted through their sketch plane, so the shared converter owns the reading
+  // (a bare `point`/`position` lookup missed both). Only the conversion is
+  // guarded: a degenerate direction is a real error, not an unresolved ref.
+  let pt: number[]
+  try {
+    pt = getPoint3d(entry, globalRepo)
+  } catch {
+    return null
   }
-
-  return null
+  const n = normalize(directionVec)
+  if (n === null) throw new Error('extrude up_to: degenerate direction vector')
+  return { origin: [...pt] as Vec3, normal: n }
 }
 
 /** Signed distance from `profileOrigin` to the cut plane along `directionVec`. */

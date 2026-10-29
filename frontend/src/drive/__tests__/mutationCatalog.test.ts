@@ -211,6 +211,23 @@ describe('mutation catalog', () => {
     for (const name of holeFields) expect(fields[name].required, name).toBe(false)
   })
 
+  it('lets add_extrude carry every field the extrude schema defines', () => {
+    // The value rules loop the schema fields, so the catalog row has to publish
+    // every one too. `sketch` is spelled `sketchQuery` in an add payload.
+    const schema = featureParamsSchema('extrude')!
+    const schemaFields = Object.keys(schema.properties as Record<string, unknown>)
+    const fields = mutationInfoOf('add_extrude').fields
+    for (const name of schemaFields) {
+      const inlineName = name === 'sketch' ? 'sketchQuery' : name
+      expect(fields[inlineName], name).toBeDefined()
+    }
+    const extras = Object.keys(fields).filter(
+      (name) => !['featureId', 'label', 'insertAt'].includes(name)
+        && name !== 'sketchQuery' && !schemaFields.includes(name),
+    )
+    expect(extras).toEqual([])
+  })
+
   it('names the params slot order of every add_entity kind from the entity registry', () => {
     const note = mutationInfoOf('add_entity').fields.params.note
     expect(note).toBeDefined()

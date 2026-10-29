@@ -110,6 +110,44 @@ describe.skipIf(!oc || !solveBytes)('extrude add bridging two bodies (real OCC +
     expect(disjoint.body_id).toBe('body_exB')
   })
 
+  it('does not warn for operation new or cut beside an existing body', () => {
+    const asNew = h.run({
+      features: [
+        rectAt('skA', 0, 0, 2, 2),
+        extrudeSpec('skA', 'exA', { distance: 3 }),
+        rectAt('skB', 5, 0, 7, 2),
+        extrudeSpec('skB', 'exB', { distance: 3, operation: 'new' }),
+      ],
+    })
+    expect(h.res(asNew, 'exB').solver_warning).toBeUndefined()
+    expect(Object.keys(asNew.bodies).sort()).toEqual(['body_exA', 'body_exB'])
+
+    const asCut = h.run({
+      features: [
+        rectAt('skA', 0, 0, 2, 2),
+        extrudeSpec('skA', 'exA', { distance: 3 }),
+        rectAt('skB', 1, 0.5, 3, 1.5),
+        extrudeSpec('skB', 'exB', { distance: 3, operation: 'cut' }),
+      ],
+    })
+    expect(h.res(asCut, 'exB').solver_warning).toBeUndefined()
+    expect(h.res(asCut, 'exB').body_id).toBe('body_exA')
+    expect(Object.keys(asCut.bodies)).toEqual(['body_exA'])
+  })
+
+  it('treats an empty merge_target as no target when warning about a join', () => {
+    const specB = extrudeSpec('skB', 'exB', { distance: 3 })
+    const result = h.run({
+      features: [
+        rectAt('skA', 0, 0, 2, 2),
+        extrudeSpec('skA', 'exA', { distance: 3 }),
+        rectAt('skB', 5, 0, 7, 2),
+        { ...specB, extrude: { ...specB.extrude, merge_target: '' } },
+      ],
+    })
+    expect(String(h.res(result, 'exB').solver_warning)).toContain('add joined nothing')
+  })
+
   it('does not warn when the additive extrude fuses into the existing body', () => {
     const result = h.run({
       features: [

@@ -65,6 +65,8 @@ export type MutationFamily = 'sketch' | 'features' | 'picks' | 'part style' | 'd
 // optional and nullable keys against its catalog row.
 const str = (note?: string) => ({ type: 'string', required: true, ...(note !== undefined && { note }) } as const)
 const optStr = (note?: string) => ({ type: 'string', required: false, ...(note !== undefined && { note }) } as const)
+const optNullableStr = (note?: string) =>
+  ({ type: 'string', required: false, nullable: true, ...(note !== undefined && { note }) } as const)
 const nullableStr = () => ({ type: 'string', required: false, nullable: true } as const)
 const num = (note?: string) => ({ type: 'number', required: true, ...(note !== undefined && { note }) } as const)
 const optNum = () => ({ type: 'number', required: false } as const)
@@ -323,10 +325,14 @@ const MERGE_TARGET_NOTE =
 // The spelling list follows resolveUpToPlane: only absolute/query refs resolve.
 const EXTRUDE_UP_TO_NOTE =
   '`termination: up_to` ends the extrude at the element `up_to` names instead of at `distance`: ' +
-  '`@builtin_plane_front`/`@<planeId>` for a plane, the same feature-level ref spelling as `add_sketch.plane`; ' +
+  '`@builtin_plane_front`/`@<planeId>` for a plane (`@<planeId>` is the spelling `add_sketch.plane` takes); ' +
   'a planar body face (a face query from `select`, or `@body_ex1/face/<n>`), or a point or vertex query. ' +
   'A target that does not resolve or matches several elements falls back to `distance` with a warning ' +
-  '(`used blind distance`); a non-planar face is refused, and so is `up_to` with `direction: symmetric`. ' +
+  '(`used blind distance`); an up_to with no `up_to` target does so too, with `up_to has no target; used blind distance`. ' +
+  'A non-planar face is refused, and so is `up_to` with `direction: symmetric`. `up_to` is read only when ' +
+  '`termination` is `up_to`; otherwise it is ignored.'
+
+const EXTRUDE_ADD_WARNING_NOTE =
   'With bodies already in the document, an `add` whose profile shares no volume with any of them mints a ' +
   'separate body and reports `add joined nothing`.'
 
@@ -339,7 +345,7 @@ const EXTRUDE_FIELDS_NOTE =
 
 const EXTRUDE_INLINE_NOTE =
   'One call may carry the whole extrude: `direction`, `termination`, `up_to`, `operation` and `merge_target` set ' +
-  'the same keys `set_extrude_field` does. ' + EXTRUDE_FIELDS_NOTE
+  'the same keys `set_extrude_field` does. ' + EXTRUDE_FIELDS_NOTE + ' ' + EXTRUDE_ADD_WARNING_NOTE
 
 // The boolean refuses to solve without a target and a tool, so the catalog
 // names them up front (Case_Seam_Lip F5).
@@ -652,8 +658,8 @@ export const MUTATION_CATALOG = {
       sketchQuery: sketchQuery(),
       distance: num(),
       direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as extrude.direction).'),
-      termination: optStr('blind | up_to; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance` (the key the document stores as extrude.termination).'),
-      up_to: optStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, a planar face query from `select` or `@body_ex1/face/<n>`, or a point/vertex query (the key the document stores as extrude.up_to).'),
+      termination: optNullableStr('blind | up_to; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance` (the key the document stores as extrude.termination). A null or empty value clears it, so the add writes no key.'),
+      up_to: optNullableStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, a planar face query from `select` or `@body_ex1/face/<n>`, or a point/vertex query (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it.'),
       operation: optStr('add | cut | new; absent means add (the key the document stores as extrude.operation).'),
       merge_target: optStr(MERGE_TARGET_NOTE),
     },

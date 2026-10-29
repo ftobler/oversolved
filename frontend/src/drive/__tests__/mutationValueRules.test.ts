@@ -636,6 +636,20 @@ describe('finding: add_extrude carries the up-to termination inline', () => {
       type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, termination: 'touch',
     }).message).toContain('blind')
   })
+
+  it('treats an inline null or empty termination and up_to as the setter clear', () => {
+    for (const clear of [null, '']) {
+      expect(validateMutation({
+        type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10,
+        termination: clear, up_to: clear,
+      }), String(clear)).toMatchObject({ ok: true })
+    }
+    // The other inline fields still hold their schema values, so a blank
+    // direction is refused rather than silently clearing to the default.
+    expect(refusal({
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, direction: '',
+    }).message).toContain('normal')
+  })
 })
 
 describe('the positive twin of a seeded script still validates', () => {
