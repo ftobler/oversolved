@@ -27,7 +27,7 @@ import {
   typeVocabulary,
   type Candidate,
 } from './geometry'
-import type { Predicate, RadiusTest, SelectKind, SelectResult, Selector, Vec3 } from './types'
+import type { CenterTest, Predicate, RadiusTest, SelectKind, SelectResult, Selector, Vec3 } from './types'
 
 // Direction tests compare normalized vectors: parallel means the axes coincide,
 // perpendicular means they cross at a right angle. The epsilon is an angle
@@ -61,6 +61,18 @@ function radiusMatches(value: number | null, test: RadiusTest): boolean {
   if (test.min !== undefined && value < test.min - DEFAULT_MEASURE_TOLERANCE.abs) return false
   if (test.max !== undefined && value > test.max + DEFAULT_MEASURE_TOLERANCE.abs) return false
   return true
+}
+
+/** A position match on the element's centre point. The named radius is
+ *  inclusive and the measure tolerance's absolute floor is always added, so a
+ *  radius of 0 still matches the point itself and an f64-solved centre is not
+ *  lost. The default radius is that same floor, the one resolution unit the
+ *  selector's position tests already use (1e-6, in the kernel ladder between
+ *  OCC's 1e-7 confusion and the 1e-5 topology merge). */
+function centerMatches(value: Vec3 | null, test: CenterTest): boolean {
+  if (value === null) return false
+  const distance = Math.hypot(value[0] - test.point[0], value[1] - test.point[1], value[2] - test.point[2])
+  return distance <= (test.radius ?? 0) + DEFAULT_MEASURE_TOLERANCE.abs
 }
 
 /** Whether an element query's ancestry names `featureId`. The query string is
@@ -156,6 +168,7 @@ function evaluate(p: Predicate, pool: Candidate[], ctx: EvalContext): Candidate[
   if ('type' in p) return pool.filter(c => typeOf(c) === p.type)
   if ('extreme' in p) return extremeGroup(p.extreme, pool)
   if ('within' in p) return withinGroup(p.within, pool)
+  if ('center' in p) return pool.filter(c => centerMatches(pointOf(c), p.center))
   if ('on_face' in p) return onFace(p.on_face, pool, ctx)
   if ('created_by' in p) return pool.filter(c => createdByMatches(c.query, p.created_by))
   return pool.filter(c => radiusMatches(radiusOf(c), p.radius))
@@ -168,6 +181,7 @@ function label(p: Predicate): string {
   // The whole clause, not an abbreviation: an author copies it back to fix it.
   if ('extreme' in p) return `extreme ${JSON.stringify(p.extreme)}`
   if ('within' in p) return `within ${JSON.stringify(p.within)}`
+  if ('center' in p) return `center ${JSON.stringify(p.center)}`
   if ('on_face' in p) return `on_face {${p.on_face.kind}}`
   if ('created_by' in p) return `created_by "${p.created_by}"`
   if ('radius' in p) return `radius ${JSON.stringify(p.radius)}`

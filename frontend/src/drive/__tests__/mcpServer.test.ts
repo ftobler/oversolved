@@ -113,6 +113,13 @@ describe('createMcpServer', () => {
     expect(call({ kind: 'edge', where: { within: { axis: 'z' } } })).toBe(true)
     expect(call({ kind: 'edge', where: { within: { axis: 'up', min: 1 } } })).toBe(false)
     expect(call({ kind: 'edge', where: { within: { axis: 'z', near: 1 } } })).toBe(false)
+    // A point match: the point is required, the radius is an optional
+    // non-negative number, and an unknown key is refused by the schema.
+    expect(call({ kind: 'edge', where: { center: { point: [0, 0, 3] } } })).toBe(true)
+    expect(call({ kind: 'edge', where: { center: { point: [0, 0, 3], radius: 0.5 } } })).toBe(true)
+    expect(call({ kind: 'edge', where: { center: { point: [0, 0, 3], radius: -1 } } })).toBe(false)
+    expect(call({ kind: 'edge', where: { center: { radius: 1 } } })).toBe(false)
+    expect(call({ kind: 'edge', where: { center: { point: [0, 0, 3], near: 1 } } })).toBe(false)
     // The schema leaves the one-key rule to validateSelector, which names
     // `and`; capping maxProperties here made the client report only "at most
     // 1 entry" and hid that guidance.

@@ -11,7 +11,7 @@ import { loadOcc } from '../../occ/loadOcc'
 import { measureLocally, setSolveLocalsForTest, solveLocally } from '../../solveLocally'
 import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { selectByPredicate } from '@/kernel/select'
+import { selectByPredicate, SelectorError } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
 import { resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
@@ -69,6 +69,28 @@ function firstBody(bodies: Record<string, BodyResult>): BodyResult {
 
 function faceCount(body: BodyResult): number {
   return body.mesh?.face_data?.length ?? 0
+}
+
+/** The edge queries a face boundary list carries once, which on a solved solid
+ *  are its seams: a normal edge is shared by two faces, a seam is met twice
+ *  inside its own face and so listed once. */
+function seamQueries(body: BodyResult): Set<string> {
+  const counts = new Map<string, number>()
+  for (const list of body.mesh?.face_edge_queries ?? []) {
+    for (const query of list) counts.set(query, (counts.get(query) ?? 0) + 1)
+  }
+  return new Set([...counts].filter(([, count]) => count === 1).map(([query]) => query))
+}
+
+/** The queries of the edges that run along Z, the plate extrusion direction. */
+function zLineQueries(body: BodyResult): string[] {
+  return (body.edges ?? []).flatMap((edge, index) => {
+    if (edge.kind !== 'line') return []
+    const length = Math.hypot(edge.end[0] - edge.start[0], edge.end[1] - edge.start[1], edge.end[2] - edge.start[2])
+    if (length === 0 || Math.abs(edge.end[2] - edge.start[2]) / length < 1 - 1e-6) return []
+    const query = body.edge_queries?.[index] ?? ''
+    return query ? [query] : []
+  })
 }
 
 describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)', () => {
@@ -255,5 +277,71 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     }
     const types = kept.items.map((item) => (item.geometry as { surface_type: string }).surface_type).sort()
     expect(types).toEqual(['cylinderface', 'flatface'])
+  })
+
+  it('picks a corner edge by the midpoint of its curve', async () => {
+    const bodies = await bodiesOf({ id: 'sel-center', features: [rectSketch('sk1', 10, 10), extrude('ex1', 6)] })
+    const selected = selectByPredicate({ kind: 'edge', where: { center: { point: [0, 0, 3] } } }, bodies)
+    expect(selected.queries).toHaveLength(1)
+    const geometry = selected.items[0].geometry as { kind: string; start: number[]; end: number[] }
+    expect(geometry.kind).toBe('line')
+    expect([geometry.start, geometry.end]).toContainEqual([0, 0, 0])
+    expect([geometry.start, geometry.end]).toContainEqual([0, 0, 6])
+  })
+
+  it('parallel drops the bore seam of a plate with a through hole', async () => {
+    const bodies = await bodiesOf({
+      id: 'sel-seam',
+      features: [
+        rectSketch('sk1', 20, 10),
+        extrude('ex1', 10),
+        {
+          id: 'sk2', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [{ id: 'p', kind: 'point' }], initial: { p: [10, 5] }, constraints: [],
+        },
+        { id: 'ho1', kind: 'hole', hole: { sketch: '@sk2', diameter: 4, depth_mode: 'through_all', target: 'body_ex1' } },
+      ],
+    })
+    const body = firstBody(bodies)
+    const seams = seamQueries(body)
+    expect(seams.size, 'the bore lateral seam').toBe(1)
+    // Today's unfiltered reading: the four plate corners plus the seam.
+    const alongZ = zLineQueries(body)
+    expect(alongZ).toHaveLength(5)
+    expect(alongZ).toEqual(expect.arrayContaining([...seams]))
+
+    const selected = selectByPredicate({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies)
+    expect(selected.queries).toHaveLength(4)
+    for (const query of selected.queries) expect(seams.has(query)).toBe(false)
+  })
+
+  it('a bare cylinder is now a clean empty parallel match', async () => {
+    const bodies = await bodiesOf({
+      id: 'sel-cylinder',
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', plane: '@builtin_plane_top',
+          entities: [{ id: 'c1', kind: 'circle' }], initial: { c1: [0, 15, 5] }, constraints: [],
+        },
+        { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
+      ],
+    })
+    // The seam is the only Y-parallel line, so the old reading matched one edge.
+    const body = firstBody(bodies)
+    const yLines = (body.edges ?? []).filter((edge) => {
+      if (edge.kind !== 'line') return false
+      const length = Math.hypot(edge.end[0] - edge.start[0], edge.end[1] - edge.start[1], edge.end[2] - edge.start[2])
+      return length > 0 && Math.abs(edge.end[1] - edge.start[1]) / length > 1 - 1e-6
+    })
+    expect(yLines).toHaveLength(1)
+    expect(seamQueries(body).size).toBe(1)
+
+    expect(() => selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, bodies))
+      .toThrow(SelectorError)
+    try {
+      selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, bodies)
+    } catch (e) {
+      expect((e as Error).message).toContain('parallel [0, 1, 0] matched 0')
+    }
   })
 })

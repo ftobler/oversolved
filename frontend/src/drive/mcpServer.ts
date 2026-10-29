@@ -256,6 +256,18 @@ const SELECTOR_DEFS: Record<string, unknown> = {
           description: 'The element\'s whole bounding box must lie inside this world-axis range; a missing '
             + 'min or max is open on that side.',
         },
+        center: {
+          type: 'object',
+          required: ['point'],
+          properties: {
+            point: VEC3_SCHEMA,
+            radius: { type: 'number', minimum: 0 },
+          },
+          additionalProperties: false,
+          description: 'The element\'s centre point must lie within `radius` of `point`: an edge\'s midpoint, '
+            + 'a circle or arc\'s centre, a spline\'s middle sample, or a face centroid. `radius` defaults to '
+            + 'the kernel measure tolerance.',
+        },
         on_face: { $ref: '#/$defs/selector' },
         created_by: { type: 'string' },
         radius: {
@@ -426,7 +438,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'would store, plus a geometry summary per item. Run it after `run`, then feed the queries to a feature '
       + '(fillet, chamfer, hole, ...). Omit `where` to take every candidate: {from:"body_ex1",kind:"edge"} is '
       + 'all edges of that body. An edge direction test reads the edge\'s own tangent, so a fillet arc\'s underlying '
-      + 'circle axis is not a direction; a full circle has no single tangent. A `type` outside the kind\'s vocabulary is invalid params with the valid list '
+      + 'circle axis is not a direction; a full circle has no single tangent. A seam edge (a cylinder\'s lateral '
+      + 'seam) is a face artefact, not a selectable edge, and matches no direction test. A `type` outside the kind\'s vocabulary is invalid params with the valid list '
       + 'and a "did you mean" hint. An empty match is an error naming the nearest-miss count per predicate. '
       + 'Returns the docHash it ran against. ' + worldFrameSentence(),
     inputSchema: {

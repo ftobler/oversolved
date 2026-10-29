@@ -3,14 +3,15 @@
 // (`parallelish`) is rejected rather than silently matching everything, which
 // is the same contract the tool schemas keep for top-level fields.
 
-import type { Predicate, RadiusTest, SelectKind, Selector, Vec3 } from './types'
+import type { CenterTest, Predicate, RadiusTest, SelectKind, Selector, Vec3 } from './types'
 import { SelectorError } from './errors'
 import { suggestTypeName, typeVocabulary } from './geometry'
 
 // Every predicate key the grammar admits. `and`/`or`/`not` compose; the rest
 // are leaves. Kept as data so the unknown-key rejection and the schema agree.
 export const PREDICATE_KEYS = [
-  'and', 'or', 'not', 'parallel', 'perpendicular', 'type', 'extreme', 'within', 'on_face', 'created_by', 'radius',
+  'and', 'or', 'not', 'parallel', 'perpendicular', 'type', 'extreme', 'within', 'center', 'on_face', 'created_by',
+  'radius',
 ] as const
 
 const SELECTOR_KEYS = ['from', 'kind', 'where']
@@ -40,6 +41,30 @@ function vec3(v: unknown, path: string): Vec3 {
     throw new SelectorError(`${path} must be a non-zero axis`)
   }
   return [v[0], v[1], v[2]]
+}
+
+/** A world point, unlike `vec3`, may be the origin: a point match at zero is
+ *  meaningful, so the zero-axis refusal does not apply. */
+function point3(v: unknown, path: string): Vec3 {
+  if (!Array.isArray(v) || v.length !== 3 || !v.every(n => typeof n === 'number' && Number.isFinite(n))) {
+    throw new SelectorError(`${path} must be three finite numbers`)
+  }
+  return [v[0], v[1], v[2]]
+}
+
+function centerTest(v: unknown, path: string): CenterTest {
+  const record = asObject(v, path)
+  rejectUnknown(record, ['point', 'radius'], path)
+  if (record.point === undefined) throw new SelectorError(`${path}.point is required`)
+  const out: CenterTest = { point: point3(record.point, `${path}.point`) }
+  if (record.radius !== undefined) {
+    const radius = record.radius
+    if (typeof radius !== 'number' || !Number.isFinite(radius) || radius < 0) {
+      throw new SelectorError(`${path}.radius must be a non-negative finite number`)
+    }
+    out.radius = radius
+  }
+  return out
 }
 
 function radiusTest(v: unknown, path: string): RadiusTest {
@@ -149,6 +174,8 @@ function predicate(raw: unknown, path: string): Predicate {
     }
     case 'on_face':
       return { on_face: selector(value, `${path}.on_face`) }
+    case 'center':
+      return { center: centerTest(value, `${path}.center`) }
     case 'created_by':
       if (typeof value !== 'string' || value.length === 0) throw new SelectorError(`${path}.created_by must be a non-empty string`)
       return { created_by: value }

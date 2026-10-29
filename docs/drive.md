@@ -401,7 +401,10 @@ banner on stdout, so a client config must use the direct node invocation.
   grouped so a box top yields all four edges), `within` (the element's whole
   bounding box inside a world-axis range; `{"within":{"axis":"z","min":10,
   "max":20}}` names the edges between z=10 and z=20, and a missing `min` or
-  `max` is open on that side), `on_face` (edges bounding the
+  `max` is open on that side), `center` (the element's centre point within a
+  distance of a world point; `{"center":{"point":[5,0,0],"radius":0.5}}` names
+  an edge whose midpoint is near that point, and the radius defaults to the
+  kernel measure tolerance), `on_face` (edges bounding the
   selected faces), `created_by` (ancestry through the query engine) and
   `radius`. A multi-key example:
   `{"and":[{"type":"line"},{"parallel":[0,1,0]}]}`. `extreme.axis` is a world
@@ -413,10 +416,13 @@ banner on stdout, so a client config must use the direct node invocation.
   underlying curve's axis: a line's direction, an arc or partial ellipse's
   tangent at the middle of its sweep, a spline's tangent at its middle sample.
   A full circle has no single tangent, so no `parallel`/`perpendicular` clause
-  matches it; select it by `type` and `radius`. This is what makes a filleted
-  plate behave: the fillet's boundary arcs are swept in an XZ plane, so they do
-  not match `parallel: [0,1,0]` even though their circle's axis is Y, while the
-  straight Y edges (the fillet's tangent seams included) still do. On a flat
+  matches it; select it by `type` and `radius`. A seam edge is excluded the same
+  way: a full cylinder's lateral seam runs along the axis it closes, so it would
+  otherwise match that axis, but it is not an edge a click can draw. This is
+  what makes a filleted plate behave: the fillet's boundary arcs are swept in an
+  XZ plane, so they do not match `parallel: [0,1,0]` even though their circle's
+  axis is Y, while the straight Y edges (the fillet's tangent boundary edges
+  included) still do. On a flat
   face `parallel` tests the normal; on a curved analytic face (cylinder, cone,
   torus) it tests the analytic axis from `surface_frame`, not the radial normal,
   so `parallel: [0,1,0]` names a Y-axis cylinder rather than one of its seams. A

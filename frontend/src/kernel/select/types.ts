@@ -16,6 +16,13 @@ export type RadiusTest =
   | number
   | { eq?: number; min?: number; max?: number }
 
+/** A point match: an element's centre must lie within `radius` of `point`.
+ *  The radius is optional; its default is the measurement tolerance. */
+export interface CenterTest {
+  point: Vec3
+  radius?: number
+}
+
 /** The structured predicate grammar, modeled on CadQuery string selectors. */
 export type Predicate =
   | { and: Predicate[] }
@@ -36,6 +43,11 @@ export type Predicate =
   // min or max is open on that side; a cone of edges "between z=10 and z=20"
   // does not need the extreme chains.
   | { within: { axis: 'x' | 'y' | 'z'; min?: number; max?: number } }
+  // The element's centre point lies within `radius` of a world point. This is
+  // the position sibling of `extreme`: a line's midpoint, a curve's centre, a
+  // spline's middle sample or a face centroid. Omit `radius` for the measure
+  // tolerance, the same position budget `within` and `radius` use.
+  | { center: CenterTest }
   // Edges bounding the faces the inner selector names (adjacency).
   | { on_face: Selector }
   // Ancestry contains this feature id (resolved through the query engine).
