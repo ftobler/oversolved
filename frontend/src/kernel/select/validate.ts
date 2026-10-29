@@ -3,7 +3,7 @@
 // (`parallelish`) is rejected rather than silently matching everything, which
 // is the same contract the tool schemas keep for top-level fields.
 
-import type { CenterTest, Predicate, RadiusTest, SelectKind, Selector, Vec3 } from './types'
+import type { CenterAxisTest, CenterPointTest, CenterTest, Predicate, RadiusTest, SelectKind, Selector, Vec3 } from './types'
 import { SelectorError } from './errors'
 import { suggestTypeName, typeVocabulary } from './geometry'
 
@@ -54,17 +54,69 @@ function point3(v: unknown, path: string): Vec3 {
 
 function centerTest(v: unknown, path: string): CenterTest {
   const record = asObject(v, path)
-  rejectUnknown(record, ['point', 'radius'], path)
-  if (record.point === undefined) throw new SelectorError(`${path}.point is required`)
-  const out: CenterTest = { point: point3(record.point, `${path}.point`) }
-  if (record.radius !== undefined) {
-    const radius = record.radius
-    if (typeof radius !== 'number' || !Number.isFinite(radius) || radius < 0) {
-      throw new SelectorError(`${path}.radius must be a non-negative finite number`)
-    }
-    out.radius = radius
+  // Two shapes share the `center` key: a 3D point distance (point/radius) and
+  // a world-axis range on the representative point (axis/min/max/at). Branch
+  // on which marker is present; a record carrying neither or both is refused.
+  const hasPoint = record.point !== undefined
+  const hasAxis = record.axis !== undefined
+  if (hasPoint && hasAxis) {
+    throw new SelectorError(`${path} must carry either point/radius or axis/min/max/at, not both`)
   }
-  return out
+  if (hasPoint) {
+    rejectUnknown(record, ['point', 'radius'], path)
+    const out: CenterPointTest = { point: point3(record.point, `${path}.point`) }
+    if (record.radius !== undefined) {
+      const radius = record.radius
+      if (typeof radius !== 'number' || !Number.isFinite(radius) || radius < 0) {
+        throw new SelectorError(`${path}.radius must be a non-negative finite number`)
+      }
+      out.radius = radius
+    }
+    return out
+  }
+  if (hasAxis) {
+    rejectUnknown(record, ['axis', 'min', 'max', 'at'], path)
+    const axis = record.axis
+    if (axis !== 'x' && axis !== 'y' && axis !== 'z') {
+      throw new SelectorError(`${path}.axis must be "x", "y" or "z"`)
+    }
+    const out: CenterAxisTest = { axis }
+    let hasRange = false
+    if (record.at !== undefined) {
+      const at = record.at
+      if (typeof at !== 'number' || !Number.isFinite(at)) {
+        throw new SelectorError(`${path}.at must be a finite number`)
+      }
+      out.at = at
+      hasRange = true
+    }
+    for (const key of ['min', 'max'] as const) {
+      if (record[key] === undefined) continue
+      const n = record[key]
+      if (typeof n !== 'number' || !Number.isFinite(n)) {
+        throw new SelectorError(`${path}.${key} must be a finite number`)
+      }
+      out[key] = n
+      hasRange = true
+    }
+    if (record.at !== undefined && (record.min !== undefined || record.max !== undefined)) {
+      throw new SelectorError(`${path} must not combine "at" with "min"/"max"`)
+    }
+    if (!hasRange) {
+      throw new SelectorError(`${path} needs at least one of min/max/at`)
+    }
+    if (out.min !== undefined && out.max !== undefined && out.min > out.max) {
+      throw new SelectorError(`${path}.min (${out.min}) must not exceed max (${out.max})`)
+    }
+    return out
+  }
+  // Neither marker. Decide which form the author intended from the remaining
+  // keys: range keys imply the axis form, radius implies the point form.
+  const axisForm = record.min !== undefined || record.max !== undefined || record.at !== undefined
+  if (axisForm) {
+    throw new SelectorError(`${path}.axis is required`)
+  }
+  throw new SelectorError(`${path}.point is required`)
 }
 
 function radiusTest(v: unknown, path: string): RadiusTest {
