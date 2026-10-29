@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import Ajv from 'ajv'
 import { createMcpServer, MCP_TOOLS, type McpCadOps, type McpToolPayload } from '../mcpServer'
+import { PREDICATE_KEYS } from '@/kernel/select'
 import { MUTATION_CATALOG_URI } from '../mutationCatalogPayload'
 import { DOC_HANDLE_CAPACITY } from '../docHandleStore'
 import { REFERENCE_FRAME_SENTENCE, addPlaneFrameSentence, faceFrameSentence, worldFrameSentence } from '../worldFrame'
@@ -124,6 +125,12 @@ describe('createMcpServer', () => {
     // `and`; capping maxProperties here made the client report only "at most
     // 1 entry" and hid that guidance.
     expect(call({ kind: 'edge', where: { parallel: [0, 0, 1], type: 'line' } })).toBe(true)
+    // The advertised predicate keys are the validator's grammar, so a predicate
+    // added to one side only fails here rather than drifting silently.
+    const predicateDef = (tool!.inputSchema as {
+      $defs: { predicate: { properties: Record<string, unknown> } }
+    }).$defs.predicate
+    expect(Object.keys(predicateDef.properties).sort()).toEqual([...PREDICATE_KEYS].sort())
     // The `type` description lists the real vocabulary, derived from the same
     // tables the engine reads, so `plane` is not advertised as an alias.
     const schemaText = JSON.stringify(tool!.inputSchema)

@@ -17,7 +17,10 @@ export type RadiusTest =
   | { eq?: number; min?: number; max?: number }
 
 /** A point match: an element's centre must lie within `radius` of `point`.
- *  The radius is optional; its default is the measurement tolerance. */
+ *  "Centre" is the same representative point `extreme` projects: a line's
+ *  midpoint, a conic's centre (NOT its mid-sweep point), a spline's middle
+ *  sample, or a face centroid. The radius is optional; the measure tolerance's
+ *  absolute floor is the default and is always added to a supplied radius. */
 export interface CenterTest {
   point: Vec3
   radius?: number
@@ -44,9 +47,10 @@ export type Predicate =
   // does not need the extreme chains.
   | { within: { axis: 'x' | 'y' | 'z'; min?: number; max?: number } }
   // The element's centre point lies within `radius` of a world point. This is
-  // the position sibling of `extreme`: a line's midpoint, a curve's centre, a
-  // spline's middle sample or a face centroid. Omit `radius` for the measure
-  // tolerance, the same position budget `within` and `radius` use.
+  // the position sibling of `extreme`: a line's midpoint, a conic's centre (not
+  // its mid-sweep point), a spline's middle sample or a face centroid. Omit
+  // `radius` for the measure tolerance's absolute floor, which is also added to
+  // a supplied radius, the same position budget `within` and `radius` use.
   | { center: CenterTest }
   // Edges bounding the faces the inner selector names (adjacency).
   | { on_face: Selector }

@@ -233,7 +233,11 @@ export function tessellateBodies(
         modifiedBy: body.modified_by,
       })
       // Per-face boundary edge queries: a face pick projects as a closed wire.
-      mesh.face_edge_queries = solidToFaceEdgeQueries(oc, table, body.shape, edgeResult.edge_queries)
+      const faceEdgeData = solidToFaceEdgeQueries(oc, table, body.shape, edgeResult.edge_queries)
+      mesh.face_edge_queries = faceEdgeData.face_edge_queries
+      // The edges each face meets twice, so the selector can tell a seam from
+      // an open shell's free edge (both are listed by one face only).
+      mesh.face_seam_queries = faceEdgeData.face_seam_queries
       out[bodyId] = {
         mesh,
         edges: edgeResult.edges,

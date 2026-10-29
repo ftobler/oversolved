@@ -287,6 +287,10 @@ export interface Mesh3D {
   face_queries?: string[]
   // Per-face boundary edge ancestry queries, aligned with `face_queries`.
   face_edge_queries?: string[][]
+  // Per-face seam edge queries: an edge the face meets twice (a full cylinder's
+  // lateral seam), aligned with `face_edge_queries`. Absent on a body decoded
+  // before this field existed.
+  face_seam_queries?: string[][]
 }
 
 export interface EdgeDataLine {

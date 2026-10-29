@@ -68,6 +68,11 @@ export interface TessMesh {
   face_created_by?: string[]
   // Per-face boundary edge ancestry queries, aligned with `face_queries`.
   face_edge_queries?: string[][]
+  // Per-face seam edge queries: an edge the face meets twice (a full cylinder's
+  // lateral seam). Aligned with `face_edge_queries`; an open shell's free edge
+  // is met once and appears in neither seam list. Absent on a body decoded
+  // before this field existed, where the selector falls back to a face-list count.
+  face_seam_queries?: string[][]
   is_fallback: boolean
 }
 
@@ -806,6 +811,12 @@ function sortedUniqueEdges(oc: OccModule, scope: DisposeScope, solid: OccShape):
   return entries.map((e) => e.shape)
 }
 
+/** The per-face boundary edge queries and the seam edges seen inside each face. */
+export interface FaceEdgeQueryData {
+  face_edge_queries: string[][]
+  face_seam_queries: string[][]
+}
+
 /**
  * For each face of a solid (in the same flat-before-curved order as
  * `solidToMesh().face_queries`), the ancestry queries of its boundary edges.
@@ -814,13 +825,19 @@ function sortedUniqueEdges(oc: OccModule, scope: DisposeScope, solid: OccShape):
  * (`IsSame`) so the returned queries are exactly the ones a direct edge pick
  * would carry. This is what lets the project tool turn a face pick into a closed
  * wire of projected entities (full-brep-projection face silhouette).
+ *
+ * A face's boundary walk meets a seam edge twice (the same face on both sides
+ * of a full cylinder, cone, sphere or torus), and `face_edge_queries` lists it
+ * once. `face_seam_queries` keeps that second visit: an edge this face meets
+ * twice is a seam of this face. An open shell's free edge is met once and is
+ * not a seam, which is what keeps the two apart when no second face shares it.
  */
 export function solidToFaceEdgeQueries(
   oc: OccModule,
   table: HandleTable,
   handle: OccHandle,
   edgeQueries: string[],
-): string[][] {
+): FaceEdgeQueryData {
   const solid = table.get(handle)
   const scope = new DisposeScope()
   try {
@@ -845,18 +862,29 @@ export function solidToFaceEdgeQueries(
     }
     faces.sort((a, b) => compareFaceSortKeys(a.sortKey, b.sortKey))
 
-    return faces.map(({ shape }) => {
+    const faceEdgeQueries: string[][] = []
+    const faceSeamQueries: string[][] = []
+    for (const { shape } of faces) {
       const seen = new SubShapeDedup()
       const queries: string[] = []
+      const seams: string[] = []
       const eexp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
       for (; eexp.More(); eexp.Next()) {
         const edge = scope.track(oc.TopoDS.Edge_1(eexp.Current())) as OccSubShape
-        if (!seen.add(edge)) continue
         const idx = edgeIndex.get(edge)
-        if (idx >= 0 && edgeQueries[idx]) queries.push(edgeQueries[idx])
+        const query = idx >= 0 ? edgeQueries[idx] : ''
+        if (!seen.add(edge)) {
+          // The face meets this edge again: it is this face's seam. A second
+          // visit can only be the same face on both sides of a closed surface.
+          if (query && !seams.includes(query)) seams.push(query)
+          continue
+        }
+        if (query) queries.push(query)
       }
-      return queries
-    })
+      faceEdgeQueries.push(queries)
+      faceSeamQueries.push(seams)
+    }
+    return { face_edge_queries: faceEdgeQueries, face_seam_queries: faceSeamQueries }
   } finally {
     scope.dispose()
   }

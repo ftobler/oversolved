@@ -112,16 +112,19 @@ function conicTangent(
   ])
 }
 
-/** Whether an edge is a face seam: it is one face's own boundary met twice (a
- *  full cylinder's lateral seam), so `face_edge_queries` lists it once while an
- *  ordinary edge is shared by two faces and listed twice. The boundary lists
- *  must be complete for the body (every solved face reports at least one), or
- *  an unnamed neighbour would make an ordinary edge look like a seam. A body
- *  without `face_edge_queries` simply reports no seams, keeping the older
- *  reading. */
-export function isSeamEdge(c: Candidate): boolean {
+/** Whether an edge is a face seam: an edge its own face meets twice (a full
+ *  cylinder, cone, sphere or torus closes on itself). `face_seam_queries` emits
+ *  exactly that second visit, so a free edge of an open shell, which is also
+ *  listed by only one face, is not mistaken for a seam. Bodies decoded before
+ *  the seam list existed fall back to the face-boundary count; that rule cannot
+ *  tell the two apart, so it is only trusted when every face reported a boundary
+ *  (a missing or unnamed neighbour would otherwise look like a seam). */
+function isSeamEdge(c: Candidate): boolean {
   if (c.kind !== 'edge' || !c.query) return false
-  const faceEdges = c.body.mesh?.face_edge_queries
+  const mesh = c.body.mesh
+  const seamLists = mesh?.face_seam_queries
+  if (seamLists !== undefined) return seamLists.some(list => list.includes(c.query))
+  const faceEdges = mesh?.face_edge_queries
   if (!faceEdges || faceEdges.length === 0) return false
   let seen = 0
   for (const list of faceEdges) {
@@ -138,9 +141,10 @@ export function isSeamEdge(c: Candidate): boolean {
  *  (a line's direction, a conic's tangent at mid-sweep, a spline's tangent at
  *  its middle sample), a flat face's normal or a curved analytic face's axis
  *  (not its radial normal, which would make "parallel" mean a seam). A full
- *  circle has no single tangent, and a seam edge no selectable direction: it
- *  runs along the axis it closes, so a direction test would pick the fabric
- *  itself, not an edge a user drew. */
+ *  circle has no single tangent. A seam has no direction either: it is the
+ *  face meeting itself, not a boundary between two faces, so there is no other
+ *  surface to compare against. On a cylinder it happens to lie along the axis
+ *  and so used to match `parallel`; the other predicates still return it. */
 export function directionOf(c: Candidate): Vec3 | null {
   if (c.kind === 'face') {
     const fd = c.body.mesh?.face_data?.[c.index]

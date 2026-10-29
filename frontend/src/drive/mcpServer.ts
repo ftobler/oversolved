@@ -264,9 +264,9 @@ const SELECTOR_DEFS: Record<string, unknown> = {
             radius: { type: 'number', minimum: 0 },
           },
           additionalProperties: false,
-          description: 'The element\'s centre point must lie within `radius` of `point`: an edge\'s midpoint, '
-            + 'a circle or arc\'s centre, a spline\'s middle sample, or a face centroid. `radius` defaults to '
-            + 'the kernel measure tolerance.',
+          description: 'The point `extreme` projects must lie within `radius` of `point`: a line\'s midpoint, '
+            + 'a circle, arc or ellipse\'s conic centre, a spline\'s middle sample, or a face centroid. The '
+            + 'measure tolerance is always added to `radius`; omitting it leaves the tolerance alone.',
         },
         on_face: { $ref: '#/$defs/selector' },
         created_by: { type: 'string' },
@@ -438,8 +438,9 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'would store, plus a geometry summary per item. Run it after `run`, then feed the queries to a feature '
       + '(fillet, chamfer, hole, ...). Omit `where` to take every candidate: {from:"body_ex1",kind:"edge"} is '
       + 'all edges of that body. An edge direction test reads the edge\'s own tangent, so a fillet arc\'s underlying '
-      + 'circle axis is not a direction; a full circle has no single tangent. A seam edge (a cylinder\'s lateral '
-      + 'seam) is a face artefact, not a selectable edge, and matches no direction test. A `type` outside the kind\'s vocabulary is invalid params with the valid list '
+      + 'circle axis is not a direction; a full circle has no single tangent. A seam edge is the face meeting '
+      + 'itself, not a boundary between two faces, so it has no direction to compare and matches neither parallel '
+      + 'nor perpendicular; the other predicates still return it and a click can pick it. A `type` outside the kind\'s vocabulary is invalid params with the valid list '
       + 'and a "did you mean" hint. An empty match is an error naming the nearest-miss count per predicate. '
       + 'Returns the docHash it ran against. ' + worldFrameSentence(),
     inputSchema: {

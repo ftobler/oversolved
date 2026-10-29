@@ -63,14 +63,17 @@ function radiusMatches(value: number | null, test: RadiusTest): boolean {
   return true
 }
 
-/** A position match on the element's centre point. The named radius is
- *  inclusive and the measure tolerance's absolute floor is always added, so a
- *  radius of 0 still matches the point itself and an f64-solved centre is not
- *  lost. The default radius is that same floor, the one resolution unit the
- *  selector's position tests already use (1e-6, in the kernel ladder between
- *  OCC's 1e-7 confusion and the 1e-5 topology merge). */
+/** A position match on the element's centre point. The named radius is an
+ *  absolute distance, so only `DEFAULT_MEASURE_TOLERANCE.abs` is added (the
+ *  relative term of a measure budget scales with an expected value, and a point
+ *  match has none); the default radius is that same floor. The floor is 1e-6,
+ *  in the kernel tolerance ladder (OCC_CONFUSION 1e-7 < 1e-6 <=
+ *  TOL_TOPOLOGY_MERGE 1e-5), and is the budget the selector's other position
+ *  tests already use. */
 function centerMatches(value: Vec3 | null, test: CenterTest): boolean {
-  if (value === null) return false
+  // A mate ref reaches the engine without validateSelector, so a missing point
+  // is a non-match rather than a TypeError on a raw undefined index.
+  if (value === null || !Array.isArray(test.point)) return false
   const distance = Math.hypot(value[0] - test.point[0], value[1] - test.point[1], value[2] - test.point[2])
   return distance <= (test.radius ?? 0) + DEFAULT_MEASURE_TOLERANCE.abs
 }

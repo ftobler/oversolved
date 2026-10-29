@@ -8,6 +8,11 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
+import { DisposeScope } from '../../occ/disposeScope'
+import { HandleTable } from '../../occ/handleTable'
+import { makeFaceFromWire, makeLineEdge, makeWire } from '../../occ/primitives'
+import { solidToEdges, solidToFaceEdgeQueries } from '../../occ/tessellation'
+import type { OccModule, OccShape } from '../../occ/occTypes'
 import { measureLocally, setSolveLocalsForTest, solveLocally } from '../../solveLocally'
 import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
@@ -71,15 +76,10 @@ function faceCount(body: BodyResult): number {
   return body.mesh?.face_data?.length ?? 0
 }
 
-/** The edge queries a face boundary list carries once, which on a solved solid
- *  are its seams: a normal edge is shared by two faces, a seam is met twice
- *  inside its own face and so listed once. */
+/** The producer's own seam list for a body, not the selector's check, so the
+ *  expectation stays independent of the code it judges. */
 function seamQueries(body: BodyResult): Set<string> {
-  const counts = new Map<string, number>()
-  for (const list of body.mesh?.face_edge_queries ?? []) {
-    for (const query of list) counts.set(query, (counts.get(query) ?? 0) + 1)
-  }
-  return new Set([...counts].filter(([, count]) => count === 1).map(([query]) => query))
+  return new Set((body.mesh?.face_seam_queries ?? []).flat())
 }
 
 /** The queries of the edges that run along Z, the plate extrusion direction. */
@@ -91,6 +91,41 @@ function zLineQueries(body: BodyResult): string[] {
     const query = body.edge_queries?.[index] ?? ''
     return query ? [query] : []
   })
+}
+
+/** An open bent sheet: two planar faces sharing one edge. Its free boundary
+ *  edges belong to one face each, exactly like a seam, so the count fallback
+ *  would drop them; the producer's seam list keeps them selectable. */
+function openBentSheet(occ: OccModule, scope: DisposeScope): OccShape {
+  const occAny = occ as unknown as {
+    TopoDS_Shell: new () => OccShape
+    BRep_Builder: new () => {
+      MakeShell(shell: OccShape): void
+      Add(shell: OccShape, part: OccShape): void
+      delete(): void
+    }
+  }
+  const edge = (a: [number, number, number], b: [number, number, number]): OccShape =>
+    scope.track(makeLineEdge(occ, scope, a, b))
+  const shared = edge([-8, 0, 0], [-8, 0, 10])
+  const faceA = scope.track(makeFaceFromWire(occ, scope, scope.track(makeWire(occ, scope, [
+    shared,
+    edge([-8, 0, 10], [-8, 10, 10]),
+    edge([-8, 10, 10], [-8, 10, 0]),
+    edge([-8, 10, 0], [-8, 0, 0]),
+  ], { requireClosed: true }))))
+  const faceB = scope.track(makeFaceFromWire(occ, scope, scope.track(makeWire(occ, scope, [
+    shared,
+    edge([-8, 0, 10], [-18, 0, 10]),
+    edge([-18, 0, 10], [-18, 0, 0]),
+    edge([-18, 0, 0], [-8, 0, 0]),
+  ], { requireClosed: true }))))
+  const shell = scope.track(new occAny.TopoDS_Shell())
+  const builder = scope.track(new occAny.BRep_Builder())
+  builder.MakeShell(shell)
+  builder.Add(shell, faceA)
+  builder.Add(shell, faceB)
+  return shell
 }
 
 describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)', () => {
@@ -289,6 +324,105 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     expect([geometry.start, geometry.end]).toContainEqual([0, 0, 6])
   })
 
+  it('picks a curved edge by its conic centre', async () => {
+    const bodies = await bodiesOf({
+      id: 'sel-center-circle',
+      features: [
+        rectSketch('sk1', 20, 10),
+        extrude('ex1', 10),
+        {
+          id: 'sk2', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [{ id: 'p', kind: 'point' }], initial: { p: [10, 5] }, constraints: [],
+        },
+        { id: 'ho1', kind: 'hole', hole: { sketch: '@sk2', diameter: 4, depth_mode: 'through_all', target: 'body_ex1' } },
+      ],
+    })
+    const selected = selectByPredicate({ kind: 'edge', where: { center: { point: [10, 5, 0] } } }, bodies)
+    expect(selected.queries).toHaveLength(1)
+    expect(selected.items[0].geometry).toMatchObject({ kind: 'circle', center: [10, 5, 0], radius: 2 })
+  })
+
+  it('finds the short connecting edge of two intersecting chamfers by its centre', async () => {
+    const base = [rectSketch('sk1', 20, 10), extrude('ex1', 6)]
+    const baseBodies = await bodiesOf({ id: 'sel-chamfer', features: base })
+    // Two edges that meet at the corner (0,0,6): the front-left vertical and
+    // the front-top edge along X.
+    const vertical = selectByPredicate({
+      kind: 'edge',
+      where: { and: [
+        { parallel: [0, 0, 1] },
+        { extreme: { axis: [1, 0, 0], side: 'min' } },
+        { extreme: { axis: [0, 1, 0], side: 'min' } },
+      ] },
+    }, baseBodies)
+    const top = selectByPredicate({
+      kind: 'edge',
+      where: { and: [
+        { parallel: [1, 0, 0] },
+        { extreme: { axis: [0, 0, 1], side: 'max' } },
+        { extreme: { axis: [0, 1, 0], side: 'min' } },
+      ] },
+    }, baseBodies)
+    expect(vertical.queries).toHaveLength(1)
+    expect(top.queries).toHaveLength(1)
+
+    const chamfered = await bodiesOf({
+      id: 'sel-chamfer',
+      features: [
+        ...base,
+        {
+          id: 'ch1', kind: 'chamfer',
+          chamfer: { edges: [...vertical.queries, ...top.queries], distance: 2 },
+        },
+      ],
+    })
+    // The two chamfer planes meet on the short edge (2,0,4)-(0,2,6); a 1 mm
+    // radius around its midpoint excludes every other edge's representative
+    // point (the nearest is 2.4 mm away).
+    const selected = selectByPredicate({ kind: 'edge', where: { center: { point: [1, 1, 5], radius: 1 } } }, chamfered)
+    expect(selected.queries).toHaveLength(1)
+    const geometry = selected.items[0].geometry as { kind: string; start: number[]; end: number[]; length: number }
+    expect(geometry.kind).toBe('line')
+    expect(geometry.length).toBeCloseTo(Math.sqrt(12), 6)
+    // The solve leaves f64 noise on the endpoints, so compare within a micron.
+    const ends = [geometry.start, geometry.end]
+    const hasPoint = (p: number[]): boolean =>
+      ends.some(end => end.every((value, i) => Math.abs(value - p[i]) < 1e-6))
+    expect(hasPoint([2, 0, 4])).toBe(true)
+    expect(hasPoint([0, 2, 6])).toBe(true)
+  })
+
+  it('an open bent sheet keeps its free edges in parallel', () => {
+    const scope = new DisposeScope()
+    try {
+      const table = new HandleTable()
+      const handle = table.register(openBentSheet(oc!, scope), 'bend1')
+      const edges = solidToEdges(oc!, table, handle, { createdBy: 'bend1', bodyId: 'body_bend' })
+      const faceData = solidToFaceEdgeQueries(oc!, table, handle, edges.edge_queries)
+      // An open shell has no seam: every face meets each of its edges once.
+      expect(faceData.face_seam_queries.flat()).toEqual([])
+      const body: BodyResult = {
+        id: 'body_bend',
+        created_by: 'bend1',
+        modified_by: [],
+        edges: edges.edges,
+        edge_queries: edges.edge_queries,
+        mesh: {
+          vertices: [],
+          faces: [],
+          face_edge_queries: faceData.face_edge_queries,
+          face_seam_queries: faceData.face_seam_queries,
+        },
+      }
+      const selected = selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, { body_bend: body })
+      // The two Y edges of the first face are free (one face each). The old
+      // count rule called them seams and returned none.
+      expect(selected.queries).toHaveLength(2)
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('parallel drops the bore seam of a plate with a through hole', async () => {
     const bodies = await bodiesOf({
       id: 'sel-seam',
@@ -342,6 +476,16 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
       selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, bodies)
     } catch (e) {
       expect((e as Error).message).toContain('parallel [0, 1, 0] matched 0')
+    }
+
+    // The seam also runs perpendicular to X, so the other direction test had a
+    // seam-only match before and is now empty too.
+    expect(() => selectByPredicate({ kind: 'edge', where: { perpendicular: [1, 0, 0] } }, bodies))
+      .toThrow(SelectorError)
+    try {
+      selectByPredicate({ kind: 'edge', where: { perpendicular: [1, 0, 0] } }, bodies)
+    } catch (e) {
+      expect((e as Error).message).toContain('perpendicular [1, 0, 0] matched 0')
     }
   })
 })

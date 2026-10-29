@@ -82,12 +82,38 @@ describe('selectByPredicate: center', () => {
       .toEqual(['q_near'])
   })
 
-  it('an empty match names the center clause like every other predicate', () => {
-    try {
-      selectByPredicate({ kind: 'edge', where: { center: { point: [100, 0, 0] } } }, edges())
-    } catch (e) {
-      expect((e as Error).message).toContain('center {"point":[100,0,0]} matched 0')
+  it('matches an arc by its conic centre, not the point at mid-sweep', () => {
+    // pointOf reads the underlying conic's centre for an arc, exactly as the
+    // geometry summary reports it. The point on the curve at mid-sweep is a
+    // different point and must not match.
+    const arc: EdgeData = {
+      kind: 'arc', center: [0, 0, 0], radius: 5, axis: [0, 0, 1], x_axis: [1, 0, 0],
+      angle_start: 0, angle_end: Math.PI / 2,
     }
+    const bodies = { body_ex1: bodyResult('body_ex1', [arc], ['q_arc']) }
+    expect(queriesOf({ kind: 'edge', where: { center: { point: [0, 0, 0] } } }, bodies))
+      .toEqual(['q_arc'])
+    const midSweep: V3 = [5 / Math.SQRT2, 5 / Math.SQRT2, 0]
+    expect(() => queriesOf({ kind: 'edge', where: { center: { point: midSweep } } }, bodies))
+      .toThrow(SelectorError)
+  })
+
+  it('an empty match names the center clause like every other predicate', () => {
+    expect(() => selectByPredicate({ kind: 'edge', where: { center: { point: [100, 0, 0] } } }, edges()))
+      .toThrow(/center .* matched 0/)
+  })
+
+  it('treats a missing point from an unvalidated mate ref as a clean non-match', () => {
+    // assemblyRefs.ts reaches the engine without validateSelector: a bad point
+    // must be an empty match with diagnostics, not a raw TypeError.
+    let error: unknown
+    try {
+      selectByPredicate({ kind: 'edge', where: { center: {} as never } }, edges())
+    } catch (e) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(SelectorError)
+    expect((error as Error).message).toContain('center {} matched 0')
   })
 
   it('a face selector matches by its centroid, following within and extreme', () => {

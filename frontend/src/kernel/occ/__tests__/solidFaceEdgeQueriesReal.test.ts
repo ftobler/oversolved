@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
 import { HandleTable } from '../handleTable'
-import { buildBox } from '../shapes'
+import { buildBox, buildCylinder } from '../shapes'
 import { makeBox } from '../primitives'
 import { applyFilletWithLineage } from '../edgeModifier'
 import { solidToEdges, solidToFaceEdgeQueries } from '../tessellation'
@@ -30,7 +30,8 @@ describe.skipIf(!oc)('solidToFaceEdgeQueries (real OCC)', () => {
     const opts = { createdBy: 'box1', bodyId: '@body_1' }
 
     const { edge_queries } = solidToEdges(oc!, table, handle, opts)
-    const faceEdgeQueries = solidToFaceEdgeQueries(oc!, table, handle, edge_queries)
+    const { face_edge_queries: faceEdgeQueries, face_seam_queries: faceSeamQueries } =
+      solidToFaceEdgeQueries(oc!, table, handle, edge_queries)
 
     // A box has 6 faces, 12 edges; each face is bounded by 4 edges.
     expect(faceEdgeQueries).toHaveLength(6)
@@ -41,12 +42,38 @@ describe.skipIf(!oc)('solidToFaceEdgeQueries (real OCC)', () => {
         expect(q.length).toBeGreaterThan(0)
       }
     }
+    // A closed box has no seam: no face meets an edge twice.
+    expect(faceSeamQueries).toHaveLength(6)
+    for (const fs of faceSeamQueries) expect(fs).toEqual([])
 
     // Every edge appears on exactly two faces (closed box manifold).
     const counts = new Map<string, number>()
     for (const fe of faceEdgeQueries) for (const q of fe) counts.set(q, (counts.get(q) ?? 0) + 1)
     expect(counts.size).toBe(12)
     for (const c of counts.values()) expect(c).toBe(2)
+  })
+
+  // A full cylinder's lateral face meets its seam edge twice, so the boundary
+  // list carries it once while the seam list carries it: the earlier count rule
+  // could not tell that from an open shell's free edge.
+  it('reports a cylinder lateral seam from the second visit inside its face', () => {
+    const table = new HandleTable()
+    const handle = buildCylinder(oc!, table, { center: [0, 0, 0], axis: [0, 0, 1], radius: 5, height: 10 })
+    const { edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'cyl1', bodyId: '@body_cyl' })
+    const { face_edge_queries, face_seam_queries } = solidToFaceEdgeQueries(oc!, table, handle, edge_queries)
+
+    expect(face_seam_queries).toHaveLength(face_edge_queries.length)
+    const seamQueries = face_seam_queries.flat()
+    expect(seamQueries).toHaveLength(1)
+    expect(edge_queries).toContain(seamQueries[0])
+    // The seam is listed once in the boundary list it belongs to.
+    const seamFace = face_seam_queries.findIndex(list => list.length > 0)
+    expect(face_edge_queries[seamFace]).toContain(seamQueries[0])
+    expect(face_edge_queries.flat().filter(q => q === seamQueries[0])).toHaveLength(1)
+    // The two rims are ordinary shared edges, listed in no seam list.
+    for (const q of face_edge_queries.flat()) {
+      if (q !== seamQueries[0]) expect(face_seam_queries.flat()).not.toContain(q)
+    }
   })
 
   // Curved edges that meet at shared vertices are the case where identity
@@ -64,7 +91,7 @@ describe.skipIf(!oc)('solidToFaceEdgeQueries (real OCC)', () => {
 
       const handle = table.register(res.shape)
       const { edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'fillet1', bodyId: '@body_1' })
-      const faceEdgeQueries = solidToFaceEdgeQueries(oc!, table, handle, edge_queries)
+      const { face_edge_queries: faceEdgeQueries } = solidToFaceEdgeQueries(oc!, table, handle, edge_queries)
 
       // A fillet turns one of the box's 6 faces into a rounded transition, so
       // the solid gains a face and edges; every returned query is a real,
