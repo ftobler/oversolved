@@ -87,9 +87,19 @@ const ARRAY_KINDS = new Set(['array', 'circular_array'])
 
 /**
  * Every live body one array feature stands for: its source body (instance 0
- * under `operation: new`, the fused body under `add`) and every body the array
- * minted, in store order. Resolved against the store at boolean time, so a
- * later count change is followed without editing the boolean.
+ * under `operation: new`, the fused body under `add`), every body the array
+ * minted, and every body the array's OWN disjoint split produced, in store
+ * order. Resolved against the store at boolean time, so a later count change is
+ * followed without editing the boolean.
+ *
+ * The split siblings are the `add` case: `resplitBody` hands them the SOURCE
+ * body's `created_by` (the spoke's extrude, not the array), so `created_by`
+ * alone missed them and the boolean fused only the source instance (car-wheel
+ * F4). `split_from` records the feature whose split minted the sibling, and it
+ * is not inherited: a body a LATER feature split off (a nested array, a union
+ * of disjoint material folded into a copy) belongs to that feature, not this
+ * array. `modified_by` is deliberately NOT consulted either: it would catch
+ * both of those over-attributions.
  */
 function arrayMemberIds(arrayId: string, def: Dict, bodyStore: Record<string, Body>): string[] {
   // The builder folds legacy flat params only into the feature being solved, so
@@ -105,7 +115,9 @@ function arrayMemberIds(arrayId: string, def: Dict, bodyStore: Record<string, Bo
     }
   }
   for (const [bid, body] of Object.entries(bodyStore)) {
-    if (body.created_by === arrayId && !ids.includes(bid)) ids.push(bid)
+    if (body.created_by === arrayId || body.split_from?.feature === arrayId) {
+      if (!ids.includes(bid)) ids.push(bid)
+    }
   }
   return ids
 }

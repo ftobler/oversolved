@@ -93,6 +93,17 @@ export interface Body {
    * modifications and cut splits; native tools never set it.
    */
   imported?: boolean
+  /**
+   * Runtime-only provenance for a body a split minted: the feature whose solve
+   * broke it off and the body it was a solid of (features/bodySplit.ts). A
+   * later split of the body writes its own entry on the new siblings; the entry
+   * is never inherited, so it always names the split that produced that body.
+   * It is never persisted and never part of a geometry hash; its job is to let a
+   * feature ref find the `<source>_N` copies an `operation: add` array split
+   * into, which carry the source body's `created_by` rather than the array's
+   * (features/boolean.ts arrayMemberIds).
+   */
+  split_from?: { feature: string; body: string }
 }
 
 /** Cached state at a single feature boundary for partial rebuild. */

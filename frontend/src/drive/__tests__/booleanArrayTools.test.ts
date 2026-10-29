@@ -5,7 +5,9 @@
 // is followed (sprocket F3 typed 40 ids by hand; din_rail F1 raised a count
 // and left the new slots floating free). A hand list that names only some of
 // one array's bodies warns. The add_boolean / add_extrude inline fields carry
-// the whole feature in one call. Real kernel, gated like the drive suites.
+// the whole feature in one call. The add-array copies (`split_from`
+// provenance) are covered by kernel/features/__tests__/boolean.arrayAddSplit.
+// Real kernel, gated like the drive suites.
 
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
