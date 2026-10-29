@@ -342,7 +342,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     expect(selected.items[0].geometry).toMatchObject({ kind: 'circle', center: [10, 5, 0], radius: 2 })
   })
 
-  it('finds the short connecting edge of two intersecting chamfers by its centre', async () => {
+  it('selects the short chamfer edge by a point', async () => {
     const base = [rectSketch('sk1', 20, 10), extrude('ex1', 6)]
     const baseBodies = await bodiesOf({ id: 'sel-chamfer', features: base })
     // Two edges that meet at the corner (0,0,6): the front-left vertical and
@@ -376,9 +376,9 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
         },
       ],
     })
-    // The two chamfer planes meet on the short edge (2,0,4)-(0,2,6); a 1 mm
-    // radius around its midpoint excludes every other edge's representative
-    // point (the nearest is 2.4 mm away).
+    // The two chamfer planes meet on the short edge (2,0,4)-(0,2,6). That
+    // midpoint names it, and a 1 mm radius is tighter than every other edge's
+    // representative point (the nearest is 2.4 mm away).
     const selected = selectByPredicate({ kind: 'edge', where: { center: { point: [1, 1, 5], radius: 1 } } }, chamfered)
     expect(selected.queries).toHaveLength(1)
     const geometry = selected.items[0].geometry as { kind: string; start: number[]; end: number[]; length: number }
@@ -401,6 +401,17 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
       const faceData = solidToFaceEdgeQueries(oc!, table, handle, edges.edge_queries)
       // An open shell has no seam: every face meets each of its edges once.
       expect(faceData.face_seam_queries.flat()).toEqual([])
+      // Two four-sided faces meet along one shared edge: 8 incidences over 7
+      // distinct edges, and every free edge is listed exactly once.
+      expect(faceData.face_edge_queries).toHaveLength(2)
+      expect(faceData.face_edge_queries[0]).toHaveLength(4)
+      expect(faceData.face_edge_queries[1]).toHaveLength(4)
+      const incidences = faceData.face_edge_queries.flat()
+      expect(incidences).toHaveLength(8)
+      const counts = new Map<string, number>()
+      for (const query of incidences) counts.set(query, (counts.get(query) ?? 0) + 1)
+      expect(counts.size).toBe(edges.edge_queries.length)
+      expect([...counts.values()].sort()).toEqual([1, 1, 1, 1, 1, 1, 2])
       const body: BodyResult = {
         id: 'body_bend',
         created_by: 'bend1',

@@ -123,8 +123,12 @@ function isSeamEdge(c: Candidate): boolean {
   if (c.kind !== 'edge' || !c.query) return false
   const mesh = c.body.mesh
   const seamLists = mesh?.face_seam_queries
-  if (seamLists !== undefined) return seamLists.some(list => list.includes(c.query))
   const faceEdges = mesh?.face_edge_queries
+  // A seam list shorter than the face list is a partial decode; trusting it
+  // would silently lose the seams of the faces it does not cover.
+  if (seamLists !== undefined && (faceEdges === undefined || seamLists.length === faceEdges.length)) {
+    return seamLists.some(list => list.includes(c.query))
+  }
   if (!faceEdges || faceEdges.length === 0) return false
   let seen = 0
   for (const list of faceEdges) {

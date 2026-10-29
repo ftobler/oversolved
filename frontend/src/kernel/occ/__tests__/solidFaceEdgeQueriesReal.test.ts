@@ -9,9 +9,18 @@ import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
 import { HandleTable } from '../handleTable'
 import { buildBox, buildCylinder } from '../shapes'
-import { makeBox } from '../primitives'
+import {
+  makeBSplineChainEdge,
+  makeBox,
+  makeCone,
+  makeFaceFromWire,
+  makeLineEdge,
+  makePrism,
+  makeWire,
+} from '../primitives'
 import { applyFilletWithLineage } from '../edgeModifier'
-import { solidToEdges, solidToFaceEdgeQueries } from '../tessellation'
+import { canonicalEdges } from '../bodyNames'
+import { solidToEdges, solidToFaceEdgeQueries, sortedUniqueEdges } from '../tessellation'
 import type { OccShape } from '../occTypes'
 
 const oc = await loadOcc()
@@ -112,6 +121,54 @@ describe.skipIf(!oc)('solidToFaceEdgeQueries (real OCC)', () => {
       let incidences = 0
       for (const fe of faceEdgeQueries) incidences += fe.length
       expect(incidences).toBe(2 * edge_queries.length)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  // A cone apex (and a sphere pole) is a degenerated edge: `readSolidEdges`
+  // skips it, and the per-face lookup must use the same list or its indices
+  // point at the neighbouring edge's query.
+  it('keeps the sorted edge list aligned on a body with a degenerated edge', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const cone = scope.track(makeCone(oc!, scope, [0, 0, 0], [0, 0, 1], 5, 0, 10))
+      const handle = table.register(cone, 'cone1')
+      const canonical = canonicalEdges(oc!, scope, table.get<OccShape>(handle))
+      const degenerated = canonical.filter(edge => oc!.BRep_Tool.Degenerated?.(edge) ?? false)
+      // The fixture must really contain one, or this test proves nothing.
+      expect(degenerated.length).toBeGreaterThan(0)
+
+      const { edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'cone1', bodyId: '@body_cone' })
+      const sorted = sortedUniqueEdges(oc!, scope, table.get<OccShape>(handle))
+      expect(sorted).toHaveLength(edge_queries.length)
+      expect(canonical.length).toBe(sorted.length + degenerated.length)
+
+      const { face_edge_queries } = solidToFaceEdgeQueries(oc!, table, handle, edge_queries)
+      for (const list of face_edge_queries) for (const query of list) expect(edge_queries).toContain(query)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('keeps the sorted edge list aligned on a spline-bearing body', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const spline = scope.track(makeBSplineChainEdge(
+        oc!, scope, [[0, 0, 0], [0, 5, 0], [10, 5, 0], [10, 0, 0]], [0, 1],
+      ))
+      const toTop = scope.track(makeLineEdge(oc!, scope, [10, 0, 0], [10, 10, 0]))
+      const close = scope.track(makeLineEdge(oc!, scope, [10, 10, 0], [0, 0, 0]))
+      const wire = scope.track(makeWire(oc!, scope, [spline, toTop, close], { requireClosed: true }))
+      const face = scope.track(makeFaceFromWire(oc!, scope, wire))
+      const solid = scope.track(makePrism(oc!, scope, face, [0, 0, 1], 4))
+      const handle = table.register(solid, 'spline1')
+
+      const { edges, edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'spline1', bodyId: '@body_spline' })
+      expect(edges.some(edge => edge.kind === 'spline')).toBe(true)
+      expect(sortedUniqueEdges(oc!, scope, table.get<OccShape>(handle))).toHaveLength(edge_queries.length)
     } finally {
       scope.dispose()
     }

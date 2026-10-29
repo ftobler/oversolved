@@ -795,16 +795,23 @@ export function solidToEdges(
 }
 
 /** The sorted unique edges of a solid, retaining the OCC sub-shape so a face's
- *  boundary edge can be matched back to its position (and thus its query). The
- *  sort mirrors `solidToEdges` exactly, so index i lines up with `edge_queries[i]`. */
-function sortedUniqueEdges(oc: OccModule, scope: DisposeScope, solid: OccShape): OccSubShape[] {
+ *  boundary edge can be matched back to its position (and thus its query).
+ *  Degenerated edges (a cone apex, a sphere pole) are dropped after the identity
+ *  dedup, exactly as `readSolidEdges` drops them, so the sort and the resulting
+ *  indices line up with `solidToEdges`' `edge_queries`. Exported only for the
+ *  real test that pins that alignment. */
+export function sortedUniqueEdges(oc: OccModule, scope: DisposeScope, solid: OccShape): OccSubShape[] {
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_EDGE, E.TopAbs_SHAPE))
   const dedup = new SubShapeDedup()
   const uniq: OccSubShape[] = []
   for (; exp.More(); exp.Next()) {
     const edge = scope.track(oc.TopoDS.Edge_1(exp.Current())) as OccSubShape
-    if (dedup.add(edge)) uniq.push(edge)
+    if (!dedup.add(edge)) continue
+    // Degenerated edges have no EdgeData in solidToEdges, so keeping one here
+    // shifts every later index onto its neighbour's query.
+    if (oc.BRep_Tool.Degenerated?.(edge)) continue
+    uniq.push(edge)
   }
   const entries = uniq.map((shape) => ({ shape, sortKey: edgeToGeom(oc, scope, shape as unknown as OccShape).sortKey }))
   entries.sort((a, b) => compareEdgeSortKeys(a.sortKey, b.sortKey))

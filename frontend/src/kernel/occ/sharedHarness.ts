@@ -20,7 +20,7 @@ import type { BuildState } from '../types3d'
 import { initGlobalRepo } from '../query'
 import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
-import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
+import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries } from '../occ/tessellation'
 import { extractBrepMetadata } from '../solveLocally'
 import { copyShape } from '../occ/transforms'
 import { assertOneSolidPerBody } from '../features/bodySplit'
@@ -118,6 +118,11 @@ export class SharedHarness {
               newElements: newIndexSets(body.brep_new, body.shape),
               modifiedBy: body.modified_by,
             })
+            // The same per-face boundary and seam arrays production tessellateBodies
+            // emits, so selector tests through this harness see the same data.
+            const faceEdgeData = solidToFaceEdgeQueries(this.oc, table, body.shape, edgeResult.edge_queries)
+            mesh.face_edge_queries = faceEdgeData.face_edge_queries
+            mesh.face_seam_queries = faceEdgeData.face_seam_queries
             out[body.id] = {
               mesh,
               edges: edgeResult.edges,

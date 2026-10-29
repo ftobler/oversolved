@@ -50,7 +50,7 @@ export type Predicate =
   // the position sibling of `extreme`: a line's midpoint, a conic's centre (not
   // its mid-sweep point), a spline's middle sample or a face centroid. Omit
   // `radius` for the measure tolerance's absolute floor, which is also added to
-  // a supplied radius, the same position budget `within` and `radius` use.
+  // a supplied radius, the same absolute floor `within` uses.
   | { center: CenterTest }
   // Edges bounding the faces the inner selector names (adjacency).
   | { on_face: Selector }

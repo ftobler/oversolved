@@ -142,9 +142,35 @@ describe('selectByPredicate: seam exclusion', () => {
       .toEqual(['q_wall'])
   })
 
+  it('the other predicates still return the seam', () => {
+    const bodies = cylinder()
+    expect(queriesOf({ kind: 'edge', where: { type: 'line' } }, bodies)).toContain('q_seam')
+    expect(queriesOf({ kind: 'edge', where: { center: { point: [5, 0, 5] } } }, bodies)).toContain('q_seam')
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies)).not.toContain('q_seam')
+    expect(queriesOf({ kind: 'edge', where: { perpendicular: [1, 1, 0] } }, bodies)).not.toContain('q_seam')
+  })
+
   it('a body without the seam list still drops the seam through the count fallback', () => {
     expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, cylinder({ seamFlag: false })))
       .toEqual(['q_wall'])
+  })
+
+  it('a seam list shorter than the face list falls back to the count rule', () => {
+    // A partial decode that kept only the first face's seam list: the seam lives
+    // in the second face, so trusting the short list would keep it.
+    const bodies = {
+      body_ex1: bodyResult(
+        'body_ex1',
+        [line([0, 0, 0], [0, 0, 10]), circle([0, 0, 0], 5, [0, 0, 1])],
+        ['q_seam', 'q_bottom'],
+        [CYLINDER, CAP_BOTTOM],
+        ['f_cyl', 'f_bottom'],
+        [['q_seam', 'q_bottom'], ['q_bottom']],
+        [[]],
+      ),
+    }
+    expect(() => queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies))
+      .toThrow(/parallel .* matched 0/)
   })
 
   it('an open shell keeps its free edges in parallel', () => {

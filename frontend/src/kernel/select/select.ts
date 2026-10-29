@@ -68,8 +68,7 @@ function radiusMatches(value: number | null, test: RadiusTest): boolean {
  *  relative term of a measure budget scales with an expected value, and a point
  *  match has none); the default radius is that same floor. The floor is 1e-6,
  *  in the kernel tolerance ladder (OCC_CONFUSION 1e-7 < 1e-6 <=
- *  TOL_TOPOLOGY_MERGE 1e-5), and is the budget the selector's other position
- *  tests already use. */
+ *  TOL_TOPOLOGY_MERGE 1e-5), and is the same absolute floor `within` uses. */
 function centerMatches(value: Vec3 | null, test: CenterTest): boolean {
   // A mate ref reaches the engine without validateSelector, so a missing point
   // is a non-match rather than a TypeError on a raw undefined index.
