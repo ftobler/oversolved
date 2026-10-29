@@ -242,9 +242,11 @@ export function registerSplitBodies(
  * transfers to the HandleTable.
  *
  * `body` keeps its identity (id, created_by, modified_by, sketch_id,
- * brep_diff, profile_queries, imported) and takes the first solid; siblings are
- * fresh bodies that inherit those fields, minus the diff -- the diff describes
- * the whole pre-split shape and no sibling owns all of it. `produced` are the
+ * brep_diff, profile_queries, imported, and any `split_from` it already had) and
+ * takes the first solid; siblings are fresh bodies that inherit those fields,
+ * minus the diff (the diff describes the whole pre-split shape and no sibling
+ * owns all of it), and carry `split_from` naming this split (see
+ * `Body.split_from`). `produced` are the
  * construction names the producer built for the WHOLE new shape, keyed by its
  * faces and edges; this writes them onto each sibling's own sub-shapes. The
  * old handle is released here.
@@ -326,6 +328,12 @@ export function resplitBody(
   body.shape = table.register(scope.detach(solids[0]), featureId)
   if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
 
+  // The split this sibling line began in. Deliberately NOT inherited by a
+  // later split of the sibling: membership means "minted by THIS feature's
+  // split", so a nested add array's copies belong to the inner array, and a
+  // disjoint union folded into a copy does not hand the merged material to the
+  // outer array (features/boolean.ts arrayMemberIds).
+  const splitFrom = { feature: featureId, body: body.id }
   for (let i = 1; i < solids.length; i++) {
     const id = mintSiblingId(body.id, i, bodyStore)
     bodyStore[id] = {
@@ -336,6 +344,7 @@ export function resplitBody(
       sketch_id: body.sketch_id,
       brep_diff: null,
       profile_queries: [...body.profile_queries],
+      split_from: { ...splitFrom },
       ...namesForSolid(oc, scope, solids[i], produced, true),
       ...(body.imported ? { imported: true } : {}),
     }

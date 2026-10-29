@@ -33,6 +33,7 @@ function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
     sketch_id: body.sketch_id,
     brep_diff: body.brep_diff,
     profile_queries: [...body.profile_queries],
+    ...(body.split_from ? { split_from: { ...body.split_from } } : {}),
     ...(body.face_uuids ? { face_uuids: [...body.face_uuids] } : {}),
     ...(body.edge_uuids ? { edge_uuids: [...body.edge_uuids] } : {}),
     ...(body.face_ancestry ? { face_ancestry: { ...body.face_ancestry } } : {}),

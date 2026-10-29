@@ -8,6 +8,8 @@ import { makeAncestryQuery, ref } from '../query'
 import type { Body } from '../types3d'
 import { makeDeps, makeTrackerDeps } from '../builderTestUtils'
 import { onFeatureStart } from '../featureProgress'
+import { snapshotBodies } from '../builderSnapshot'
+import { bareBody } from '../features/shared/bodyResolution'
 
 describe('build with mock solvers', () => {
   it('returns a build_state with feature_order', () => {
@@ -526,5 +528,19 @@ describe('edge cases', () => {
     const sk1Ancestral = (sk1Snap.ancestral as Record<string, unknown>) ?? {}
     const hasSk2After = Object.keys(sk1Ancestral).some((k) => k.includes('@sk2'))
     expect(hasSk2After).toBe(false)
+  })
+})
+
+describe('body snapshot provenance', () => {
+  it('carries split_from, so a restored body would keep its array membership', () => {
+    const body: Body = {
+      ...bareBody('body_ex2_1', 'ex2'),
+      split_from: { feature: 'ca1', body: 'body_ex2' },
+    }
+    const snap = snapshotBodies({ body_ex2_1: body })
+    expect(snap.body_ex2_1.split_from).toEqual({ feature: 'ca1', body: 'body_ex2' })
+    // A copy, not the live entry: a later resplit of the restored body must not
+    // rewrite the provenance the checkpoint still holds.
+    expect(snap.body_ex2_1.split_from).not.toBe(body.split_from)
   })
 })
