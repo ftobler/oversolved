@@ -310,11 +310,12 @@ with a warning naming both counts.
 The `sketch` pick drills every non-construction point and circle in the sketch:
 a point at the feature `diameter`, a circle at its own radius. Construction
 geometry is reference only and is skipped by a whole-sketch pick: an n-gon's
-circumcircle and a construction shape's centre point are the usual cases. A pick
-that names one point or circle (`entity:<sk>:<eid>`, `vertex:<sk>:<eid>:<sub>`,
-or a single-entity area query) drills only that one; a line, arc or spline names
-no drill site and is refused by name, and so is a construction point or circle
-named on its own.
+circumcircle, or a point or circle an author flags construction. Line endpoints
+are not drill sites, while `add_center_rect`'s helper centre point is an
+ordinary point entity and does drill. A pick that names one point or circle
+(`entity:<sk>:<eid>`, `vertex:<sk>:<eid>:<sub>`, or a single-entity area query)
+drills only that one; a line, arc or spline names no drill site and is refused
+by name, and so is a construction point or circle named on its own.
 
 `style` widens the mouth in the same one cut. A `counterbore` reads
 `cb_diameter` (wider than the bore) and `cb_depth` (the flat-bottomed step, less

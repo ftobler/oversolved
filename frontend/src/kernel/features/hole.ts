@@ -148,9 +148,11 @@ function drillSite(
  * (drillSite).
  *
  * Construction points and circles are reference geometry (an n-gon's
- * circumcircle, a rectangle's centre point), never a drill site: a whole-sketch
- * pick skips them, and a pick that names one is refused rather than silently
- * drilling or skipping it.
+ * circumcircle, or a point or circle an author flags construction), never a
+ * drill site: a whole-sketch pick skips them, and a pick that names one is
+ * refused rather than silently drilling or skipping it. Line endpoints are not
+ * drill sites either, while add_center_rect's helper centre point is an
+ * ordinary point entity and does drill.
  */
 function drilledEntities(
   entities: Dict[],
@@ -163,8 +165,9 @@ function drilledEntities(
     if (sites.length === 0) {
       if (candidates.length > 0) {
         throw new Error(
-          `hole: sketch '${sketchId}' has only construction points and circles; ` +
-          'construction geometry is reference only, so the hole needs a non-construction point or circle',
+          `hole: sketch '${sketchId}' has all its points and circles construction; ` +
+          'construction geometry is reference only, so toggle a construction circle\'s construction flag off ' +
+          'to drill it, or add a non-construction point or circle',
         )
       }
       throw new Error(
@@ -176,9 +179,15 @@ function drilledEntities(
   const picked = entities.find((e) => e.id === entityId)
   if (picked === undefined) throw new Error(`hole: sketch '${sketchId}' has no entity '${entityId}'`)
   if (picked.construction === true) {
+    // toggle_construction only toggles non-point entities, so a construction
+    // point's remedy is a plain point rather than a toggle.
+    const remedy = picked.kind === 'circle'
+      ? 'toggle its construction off to drill it'
+      : 'a construction point cannot be toggled, so add a plain point at that spot'
     throw new Error(
       `hole: '${entityId}' of sketch ${sketchId} is a construction ${picked.kind}, which names no drill site; ` +
-      'construction geometry is reference only, so pick a non-construction point or circle, or the sketch itself',
+      `construction geometry is reference only, so ${remedy}, or pick a non-construction point or circle, ` +
+      'or the sketch itself',
     )
   }
   if (picked.kind !== 'point' && picked.kind !== 'circle') {

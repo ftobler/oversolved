@@ -271,10 +271,11 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
     })
 
     it('a whole-sketch pick skips construction points and circles', () => {
-      // A point toggled to construction and an n-gon's construction circumcircle
-      // are reference geometry, so the whole-sketch meaning must not drill them.
-      // Both sit on the body and would remove material if they were sites, so
-      // the volume pins that only the real point was drilled.
+      // A construction-flagged point (a document can carry one; the UI's toggle
+      // skips points) and an n-gon's construction circumcircle are reference
+      // geometry, so the whole-sketch meaning must not drill them. Both sit on
+      // the body and would remove material if they were sites, so the volume
+      // pins that only the real point was drilled.
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
@@ -325,6 +326,38 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         expect(result.hole_count).toBe(1)
         const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
         expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * 2 * 2 * 5, 2)
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('a construction circle does not set off the counterbore mouth-size check', () => {
+      // The widened mouth must be wider than every bore it drills. If the
+      // construction circle were a site, its r6 would beat the cb r4 and throw
+      // before any cut; skipped, the point's r2 bore takes the counterbore,
+      // which removes the bore plus the wider step annulus.
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      try {
+        const repo = new Repository()
+        repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+        repo.register('sk/cc', { external_params: [10, 10, 6], kind: 'circle', sketch_id: 'sk' })
+        repo.register('sk/p1/xy', { external_xy: [10, 10] })
+        const bodyStore = boxTarget(occ, scope, table)
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: {
+            sketch: '@sk', diameter: 4, depth: 5, target: 'body_t',
+            style: 'counterbore', cb_diameter: 8, cb_depth: 2,
+          },
+        }, repo, bodyStore, {
+          sk: { entities: [{ id: 'cc', kind: 'circle', construction: true }, { id: 'p1', kind: 'point' }] },
+        })
+        expect(result.status).toBe('ok')
+        expect(result.hole_count).toBe(1)
+        const removed = Math.PI * 2 * 2 * 5 + Math.PI * (4 * 4 - 2 * 2) * 2
+        const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        expect(volume).toBeCloseTo(20 * 20 * 10 - removed, 2)
       } finally {
         scope.dispose()
       }
