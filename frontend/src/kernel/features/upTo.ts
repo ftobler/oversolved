@@ -10,7 +10,7 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable, OccHandle } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { Body, Frame3D } from '../types3d'
 import type { Repository } from '../query'
 import { AmbiguousQueryError, getPoint3d } from '../query'
 import type { Vec3 } from '../occ/primitives'
@@ -83,7 +83,17 @@ export function resolveUpToPlane(
     // owns that remap for every other face consumer, so reuse it here instead of
     // keeping a second reading that drifts.
     if (!SLASH_FACE_REF.test(upToRef)) return null
-    const frame = resolveFaceSlashFrame(oc, scope, table, upToRef, globalRepo, bodyStore)
+    let frame: Frame3D
+    try {
+      frame = resolveFaceSlashFrame(oc, scope, table, upToRef, globalRepo, bodyStore)
+    } catch (e) {
+      // The slash ref names a face explicitly, so a body/remap failure stays
+      // loud. Only the non-planar refusal is reworded into the up-to contract.
+      if (e instanceof Error && /flat faces/.test(e.message)) {
+        throw new Error('extrude up_to: target face is not planar (v1 supports planar targets only)')
+      }
+      throw e
+    }
     const n = normalize(frame.normal)
     if (n === null) throw new Error('extrude up_to: degenerate face normal')
     return { origin: [...frame.origin] as Vec3, normal: n }

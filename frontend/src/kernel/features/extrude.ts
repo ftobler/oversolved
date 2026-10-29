@@ -304,6 +304,9 @@ export function solveExtrude(
   let faceNormal0: Vec3 | null = null
   const profileNormal = (): Vec3 => (faceNormal0 ??= faceNormal(oc, scope, cqFaces[0]))
   let cutPlane: CutPlane | null = null
+  // The up-to fallback note is held until after the body operation runs, so a
+  // body-op warning cannot overwrite it (applyBodyOperation assigns its own).
+  let upToWarning: string | undefined
   if (termination === 'up_to' && upToRef) {
     if (direction === 'symmetric') {
       throw new Error('extrude up_to: symmetric direction is not supported')
@@ -320,17 +323,17 @@ export function solveExtrude(
       // other error (non-planar target, kernel failures) stays a loud feature
       // failure exactly as before.
       if (!(e instanceof AmbiguousQueryError)) throw e
-      result.solver_warning =
+      upToWarning =
         `extrude: up_to target '${upToRef}' matched several elements (${e instanceof Error ? e.message : String(e)}); used blind distance`
     }
-    if (cutPlane === null && result.solver_warning === undefined) {
-      result.solver_warning = `extrude: up_to target '${upToRef}' did not resolve; used blind distance`
+    if (cutPlane === null && upToWarning === undefined) {
+      upToWarning = `extrude: up_to target '${upToRef}' did not resolve; used blind distance`
     }
   } else if (termination === 'up_to') {
     // The staged editor hides `distance` while termination is up_to, but a
     // script may still publish the state before it picks a target. Silence
     // here read as an up-to that ignored its distance; name the fallback.
-    result.solver_warning = 'extrude: up_to has no target; used blind distance'
+    upToWarning = 'extrude: up_to has no target; used blind distance'
   }
 
   let toolShape: OccShape
@@ -506,6 +509,14 @@ export function solveExtrude(
     ...(operation === 'cut' && sweep !== null && { oppositeProbe: oppositeCutProbe(oc, scope, toolShape, sweep, direction) }),
   })
   Object.assign(result, opResult)
+
+  // The body operation may have written its own warning (a no-op cut/add).
+  // Compose rather than assign so the up-to fallback is not lost.
+  if (upToWarning !== undefined) {
+    result.solver_warning = result.solver_warning === undefined
+      ? upToWarning
+      : `${upToWarning}; ${result.solver_warning}`
+  }
 
   // An add with no merge target fuses the first body it reaches and mints a new
   // body when it reaches none. Minting is the correct geometry, but a profile

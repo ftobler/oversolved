@@ -140,14 +140,17 @@ Projection is not a kind: any base-kind entity (`line`/`circle`/`arc`/`point`) t
     direction: normal           # normal | reverse | symmetric
     operation: new              # new | add | cut
     termination: blind          # blind | up_to
-    up_to: "@body_ex1/face/0"   # up_to only: a plane, a point, or a planar face
+    up_to: "@body_ex1/face/0"   # up_to only: a plane, a planar face, a vertex query, or a sketch point ref
     merge_target: "@body_ex1"   # optional: the body the result fuses into
 ```
 
 `up_to` trims the extrude at the picked element instead of at `distance`. A
-target that does not resolve, or meets several elements, falls back to the blind
-distance with a solver warning; a non-planar face target and
-`direction: symmetric` are refused.
+query target that does not resolve, or meets several elements, falls back to the
+blind distance with a solver warning; an up_to with no `up_to` target does so
+too. A `@<bodyId>/face/<n>` ref that no longer names a face (the body is gone,
+the index is out of range, or the remap fails) fails the feature instead, since
+that spelling is a persisted pick rather than a query. A non-planar face target
+and `direction: symmetric` are refused.
 
 ### revolve
 

@@ -323,6 +323,139 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     }
   })
 
+  it('solves an extrude that terminates on the slash body-face ref', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const loop = bottomLoop(table, bodyStore.body_b)
+      const faces = sortedFacesOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      const topIdx = faces.findIndex((f) => faceNormal(occ, scope, f)[2] > 0.9)
+      expect(topIdx).toBeGreaterThanOrEqual(0)
+
+      const result = solveExtrude(
+        occ, scope, table,
+        {
+          id: 'ex2',
+          extrude: {
+            sketch: loop, distance: 999, termination: 'up_to',
+            up_to: `@body_b/face/${topIdx}`, operation: 'new',
+          },
+        },
+        initGlobalRepo(), bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      expect(result.solver_warning).toBeUndefined()
+      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
+      expect(vol).toBeCloseTo(1000, 2)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('uses the named body plane for a slash face on another body', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      // A 6-tall cylinder at x=40: its top plane (z=6) differs from the box's
+      // top plane (z=10), so a resolver reading the wrong body is visible.
+      const cyl = makeCylinder(occ, scope, [40, 0, 0], [0, 0, 1], 5, 6)
+      bodyStore.body_cyl = {
+        id: 'body_cyl', created_by: 'cy1', modified_by: [],
+        shape: table.register(cyl, 'cy1'), sketch_id: 'skc',
+        brep_diff: null, profile_queries: [],
+      }
+      const cylFaces = sortedFacesOf(occ, scope, cyl)
+      const topIdx = cylFaces.findIndex((f) => faceNormal(occ, scope, f)[2] > 0.9)
+      expect(topIdx).toBeGreaterThanOrEqual(0)
+
+      const cut = resolveUpToPlane(
+        occ, scope, table, `@body_cyl/face/${topIdx}`, [0, 0, 1], initGlobalRepo(), bodyStore,
+      )
+      expect(cut).not.toBeNull()
+      expect(cut!.origin[2]).toBeCloseTo(6, 6)
+      expect(cut!.normal[2]).toBeCloseTo(1, 6)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('names the up-to contract when a slash face is not planar', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const cyl = makeCylinder(occ, scope, [40, 0, 0], [0, 0, 1], 5, 10)
+      bodyStore.body_cyl = {
+        id: 'body_cyl', created_by: 'cy1', modified_by: [],
+        shape: table.register(cyl, 'cy1'), sketch_id: 'skc',
+        brep_diff: null, profile_queries: [],
+      }
+      const sideIdx = sortedFacesOf(occ, scope, cyl)
+        .findIndex((f) => faceSurfaceType(occ, scope, f) === 'cylinderface')
+      expect(sideIdx).toBeGreaterThanOrEqual(0)
+
+      expect(() =>
+        resolveUpToPlane(
+          occ, scope, table, `@body_cyl/face/${sideIdx}`, [0, 0, 1], initGlobalRepo(), bodyStore,
+        ),
+      ).toThrow(/extrude up_to: target face is not planar/)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('lifts a sketch point through a tilted sketch plane', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const c = Math.SQRT1_2
+      const repo = initGlobalRepo()
+      repo.register('_pt_sk1', {
+        origin: [1, 2, 3], x_axis: [1, 0, 0], y_axis: [0, c, c], normal: [0, -c, c],
+      })
+      repo.register('sk1/p1/xy', { external_xy: [2, 4], sketch_id: 'sk1' })
+      const cut = resolveUpToPlane(occ, scope, table, '@sk1/p1/xy', [0, 0, 1], repo, {})
+      expect(cut).not.toBeNull()
+      expect(cut!.origin[0]).toBeCloseTo(3, 6)
+      expect(cut!.origin[1]).toBeCloseTo(2 + 4 * c, 6)
+      expect(cut!.origin[2]).toBeCloseTo(3 + 4 * c, 6)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('keeps the no-target warning alongside the join-touch warning', () => {
+    // A 2 x 2 x 2 tool fully inside the 10-box also touches the inner body it
+    // was taken from, so the add appends its own warning. The up_to fallback
+    // must survive the composition, not be replaced by it.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const inner = makeBox(occ, scope, 2, 2, 2)
+      const innerBody: Body = {
+        id: 'body_inner', created_by: 'in1', modified_by: [],
+        shape: table.register(inner, 'in1'), sketch_id: 'ski',
+        brep_diff: null, profile_queries: [],
+      }
+      // The profile edges name this body, so its entry must resolve in the store.
+      bodyStore.body_inner = innerBody
+      const loop = bottomLoop(table, innerBody)
+      const result = solveExtrude(
+        occ, scope, table,
+        { id: 'ex2', extrude: { sketch: loop, distance: 2, termination: 'up_to', operation: 'add' } },
+        repoReturning(null), bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      expect(result.solver_warning).toContain('up_to has no target; used blind distance')
+      expect(result.solver_warning).toContain('also touches body_inner')
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('throws when the up_to target body face is not planar', () => {
     // v1 supports planar terminators only; a cylindrical target face must fail
     // loud by name rather than be treated as an unresolved pick and quietly

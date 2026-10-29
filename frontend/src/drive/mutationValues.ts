@@ -852,8 +852,8 @@ function inlineFieldsProblem(
 }
 
 // The inline clears an add payload may carry. The setter's applier deletes the
-// key on null or an empty string; the add applier applies the same rule.
-const EXTRUDE_INLINE_CLEARS: ReadonlySet<string> = new Set(['termination', 'up_to'])
+// key on an empty string for `up_to`; the add applier applies the same rule.
+const EXTRUDE_INLINE_CLEARS: ReadonlySet<string> = new Set(['up_to'])
 
 function addExtrude(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const problem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
@@ -1121,6 +1121,14 @@ function fieldValue(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return problem === null ? null : invalid(problem)
 }
 
+// `up_to` is a ref with a natural empty clear: the applier deletes the key, but
+// the shared ref rule refuses an empty string. Accept it only for this field,
+// matching the inline add.
+function setExtrudeField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  if (raw.field === 'up_to' && raw.value === '') return null
+  return fieldValue(raw, ctx)
+}
+
 // The revolve angle is the one numeric field whose semantic range the schema
 // cannot express with the shared number-or-expression union: a non-positive
 // angle builds no solid. Applied on top of the generic field check.
@@ -1169,7 +1177,7 @@ export const MUTATION_VALUE_RULES = {
   toggle_sketch_plane_visibility: 'none',
   toggle_plane_visibility: 'none',
   add_extrude: addExtrude,
-  set_extrude_field: fieldValue,
+  set_extrude_field: setExtrudeField,
   add_extrude_profile: queryField('sketchQuery'),
   remove_extrude_profile: indexField('index'),
   add_revolve: addRevolve,

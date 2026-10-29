@@ -326,9 +326,12 @@ const MERGE_TARGET_NOTE =
 const EXTRUDE_UP_TO_NOTE =
   '`termination: up_to` ends the extrude at the element `up_to` names instead of at `distance`: ' +
   '`@builtin_plane_front`/`@<planeId>` for a plane (`@<planeId>` is the spelling `add_sketch.plane` takes); ' +
-  'a planar body face (a face query from `select`, or `@body_ex1/face/<n>`), or a point or vertex query. ' +
-  'A target that does not resolve or matches several elements falls back to `distance` with a warning ' +
+  'a planar body face (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback); ' +
+  'a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`). ' +
+  'A query target that does not resolve or matches several elements falls back to `distance` with a warning ' +
   '(`used blind distance`); an up_to with no `up_to` target does so too, with `up_to has no target; used blind distance`. ' +
+  'A `@<bodyId>/face/<n>` ref that no longer names a face (the body is gone, the index is out of range, or the ' +
+  'remap fails) fails the feature instead of falling back: that ref is a persisted pick. ' +
   'A non-planar face is refused, and so is `up_to` with `direction: symmetric`. `up_to` is read only when ' +
   '`termination` is `up_to`; otherwise it is ignored.'
 
@@ -658,8 +661,8 @@ export const MUTATION_CATALOG = {
       sketchQuery: sketchQuery(),
       distance: num(),
       direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as extrude.direction).'),
-      termination: optNullableStr('blind | up_to; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance` (the key the document stores as extrude.termination). A null or empty value clears it, so the add writes no key.'),
-      up_to: optNullableStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, a planar face query from `select` or `@body_ex1/face/<n>`, or a point/vertex query (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it.'),
+      termination: optNullableStr('blind | up_to; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance` (the key the document stores as extrude.termination). A null value clears it, so the add writes no key.'),
+      up_to: optNullableStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, a planar body face (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback), a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`) (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it.'),
       operation: optStr('add | cut | new; absent means add (the key the document stores as extrude.operation).'),
       merge_target: optStr(MERGE_TARGET_NOTE),
     },

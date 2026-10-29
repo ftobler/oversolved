@@ -63,11 +63,13 @@ describe('add_extrude', () => {
     expect(extrude0(doc)).not.toHaveProperty('up_to')
   })
 
-  it('treats an empty or null termination and up_to as no key', () => {
+  it('treats a null termination and an empty or null up_to as no key', () => {
+    const nullTermination = structuredClone(baseDoc)
+    applyAddExtrude(nullTermination, 'ex1', undefined, '$sk1', 10, { termination: null })
+    expect(extrude0(nullTermination)).not.toHaveProperty('termination')
     for (const clear of ['', null] as const) {
       const doc: PartDoc = structuredClone(baseDoc)
-      applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10, { termination: clear, up_to: clear })
-      expect(extrude0(doc), String(clear)).not.toHaveProperty('termination')
+      applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10, { up_to: clear })
       expect(extrude0(doc), String(clear)).not.toHaveProperty('up_to')
     }
   })
