@@ -24,7 +24,7 @@
 // must resolve inside the project's tmp/ or bugreports/.
 // Every command prints one JSON object on stdout; diagnostics go to stderr.
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { setOccLoader } from '@/kernel/solveLocally'
@@ -277,6 +277,9 @@ async function exportCommand(args: Args): Promise<number> {
     return 1
   }
   const out = path.resolve(args.flags.out ?? `out.${format}`)
+  // A fresh run directory does not exist yet; the parent is made at write time
+  // so the export is not lost after the kernel work is done.
+  mkdirSync(path.dirname(out), { recursive: true })
   writeFileSync(out, bytes)
   printJson({ ok: true, file: out, format, bytes: bytes.byteLength })
   return 0

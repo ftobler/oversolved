@@ -17,7 +17,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createRequire } from 'node:module'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
@@ -334,6 +334,24 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(run.payload.error).toContain('step 0')
     expect(run.payload.error).toContain('needs a command or a mutation')
   }, 60_000)
+
+  it('creates the export parent directory when a fresh nested path is asked for', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const boxScript = path.join(TMP_DIR, 'parent-script.json')
+    const boxDoc = path.join(TMP_DIR, 'parent.yaml')
+    writeFileSync(boxScript, JSON.stringify(BOX_SCRIPT, null, 1))
+    expect((await drive('run', boxScript, '--out', boxDoc)).payload.ok).toBe(true)
+
+    // A fresh run directory does not exist yet; the export must create it at
+    // write time instead of failing with ENOENT after the kernel work is done.
+    const nestedDir = path.join(TMP_DIR, 'does/not/exist')
+    rmSync(nestedDir, { recursive: true, force: true })
+    const stepFile = path.join(nestedDir, 'part.step')
+    const exported = await drive('export', boxDoc, '--format', 'step', '--out', stepFile)
+    expect(exported.status).toBe(0)
+    expect(exported.payload).toMatchObject({ ok: true, file: stepFile, format: 'step' })
+    expect(readFileSync(stepFile).byteLength).toBe(exported.payload.bytes as number)
+  }, 120_000)
 
   it('re-imports an exported STEP file and matches the measures', async () => {
     mkdirSync(TMP_DIR, { recursive: true })
@@ -708,6 +726,36 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       await client.close()
     }
   }, 240_000)
+
+  it('creates the export parent directory when a fresh nested path is asked for', async () => {
+    const client = spawnMcp()
+    try {
+      await client.request('initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'cliSmoke', version: '0' },
+      })
+      const built = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { steps: BOX_SCRIPT.steps },
+      }))
+      expect(built.ok).toBe(true)
+
+      // The export's `out` may name a directory a fresh run has not made yet;
+      // the tool creates it at write time rather than returning ENOENT.
+      const nestedDir = path.join(TMP_DIR, 'does/not/exist')
+      rmSync(nestedDir, { recursive: true, force: true })
+      const stepFile = path.join(nestedDir, 'part.step')
+      const exported = toolPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: built.docHash, format: 'step', out: stepFile },
+      }))
+      expect(exported).toMatchObject({ ok: true, file: stepFile, format: 'step' })
+      expect(readFileSync(stepFile).byteLength).toBe(exported.bytes as number)
+    } finally {
+      await client.close()
+    }
+  }, 120_000)
 
   it('chains the first session by docHash: box, select, fillet, compare, export', async () => {
     mkdirSync(TMP_DIR, { recursive: true })

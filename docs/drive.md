@@ -530,8 +530,9 @@ banner on stdout, so a client config must use the direct node invocation.
   so `tmp/x.json` names the project's tmp even though the server runs with cwd
   `frontend/`. A written document or export must stay inside `tmp/` or
   `bugreports/`; a reference may also come from `scratch/`. Anything else is
-  refused with the allowed directories named. The file reference goes through
-  the same corpus validator as the inline object.
+  refused with the allowed directories named. A missing parent directory is
+  created at write time, so a fresh run directory needs no pre-making. The file
+  reference goes through the same corpus validator as the inline object.
 - `compare` takes its `reference` inline (the agent has just produced it) and
   validates it through the corpus parser, so a reference missing `tolerance`
   or carrying a malformed bbox is JSON-RPC invalid-params, not a tool error.

@@ -363,6 +363,9 @@ const ops: McpCadOps = {
       return { ok: false, error: 'export produced no solid (or the local solver is unavailable)' }
     }
     try {
+      // A fresh run directory does not exist yet; the parent is made at write
+      // time so the export is not lost after the kernel work is done.
+      mkdirSync(path.dirname(out), { recursive: true })
       writeFileSync(out, bytes)
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
