@@ -8,7 +8,6 @@
 // examples against a resolver, and the real-kernel suite runs the pin on a plate.
 
 import type { ScriptStep } from '@/drive/scriptRunner'
-import type { Selector } from '@/kernel/select'
 import type { AssemblyWireMutation } from './assemblyMutationCatalog'
 
 export interface AssemblyMutationExample {
@@ -19,15 +18,11 @@ export interface AssemblyMutationExample {
   steps: Array<{ mutation: AssemblyWireMutation }>
 }
 
-const AXES: Record<'x' | 'y' | 'z', [number, number, number]> = {
-  x: [1, 0, 0],
-  y: [0, 1, 0],
-  z: [0, 0, 1],
-}
-
-const FLAT_FACE = (axis: 'x' | 'y' | 'z', side: 'min' | 'max'): Selector => ({
-  kind: 'face',
-  where: { and: [{ type: 'flatface' }, { extreme: { axis: AXES[axis], side } }] },
+// The letter axis is the sugar mate selectors accept, so the served example
+// shows the short spelling an author can use instead of the world vector.
+const FLAT_FACE = (axis: 'x' | 'y' | 'z', side: 'min' | 'max') => ({
+  kind: 'face' as const,
+  where: { and: [{ type: 'flatface' as const }, { extreme: { axis, side } }] },
 })
 
 const PLATE_PARTS: Record<string, ScriptStep[]> = {

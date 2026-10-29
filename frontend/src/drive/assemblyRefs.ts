@@ -5,19 +5,22 @@
 //
 // Queries are compared, never parsed: the selector/query grammar belongs to the
 // kernel's query engine, so an exact-equality miss is refused with advice to
-// re-run `select` rather than guessed at here. The selector is an authoring aid
-// like the part-side `select` and is never stored.
+// re-run `select` rather than guessed at here. A selector is validated by the
+// same grammar the part-side `select` tool uses, then compared; it is an
+// authoring aid and is never stored.
 
 import type { AssemblyDoc, BodyResult, MateAnchorDescriptor, MateRef } from '@/types/cad'
 import type { Anchor, BodyMesh, PartBundle } from '@/kernel/partBundle'
-import { selectByPredicate, type Selector } from '@/kernel/select'
+import { selectByPredicate, SelectorError, validateSelector, type Selector } from '@/kernel/select'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 import { findInstance } from '@/utils/assemblyMutations'
 
-/** A mate ref as an agent authors it: a part pick, an anchor id, or the frame. */
+/** A mate ref as an agent authors it: a part pick, an anchor id, or the frame.
+ *  The selector is raw JSON: it is validated where it is resolved, exactly like
+ *  the `select` tool's argument, so the sugar and refusals cannot drift. */
 export type DriveMateRef =
   | { part: string; query: string }
-  | { part: string; selector: Selector }
+  | { part: string; selector: unknown }
   | { part: string; anchor: string }
 
 /**
@@ -33,7 +36,10 @@ export interface PartAnchorIndex {
 
 export type ResolvedDriveRef =
   | { ok: true; ref: MateRef }
-  | { ok: false; code: 'unknown-target' | 'unresolved-ref'; message: string }
+  | { ok: false; code: 'unknown-target' | 'unresolved-ref' | 'invalid-ref'; message: string }
+
+/** The failure half: the classification a caller forwards into its own error. */
+export type DriveRefFailure = Extract<ResolvedDriveRef, { ok: false }>
 
 const BUILTIN_NAMES = Object.keys(ASSEMBLY_BUILTIN_ANCHORS)
 
@@ -139,10 +145,20 @@ function queryRef(part: string, query: string, index: PartAnchorIndex, docId: st
   return { ok: true, ref: { part, anchor: ids[0], anchor_descriptor: anchorDescriptor(anchor) } }
 }
 
-function selectorQuery(ref: { selector: Selector }, index: PartAnchorIndex): { ok: true; query: string } | ResolvedDriveRef {
+function selectorQuery(ref: { selector: unknown }, index: PartAnchorIndex): { ok: true; query: string } | ResolvedDriveRef {
+  // Structural validation first: the engine only understands vectors, so the
+  // letter axis sugar must be expanded here, and a typo must read as a bad
+  // ref rather than as a candidate set that happened to project to NaN.
+  let selector: Selector
+  try {
+    selector = validateSelector(ref.selector)
+  } catch (e) {
+    if (!(e instanceof SelectorError)) throw e
+    return { ok: false, code: 'invalid-ref', message: e.message }
+  }
   let result: ReturnType<typeof selectByPredicate>
   try {
-    result = selectByPredicate(ref.selector, index.bodies)
+    result = selectByPredicate(selector, index.bodies)
   } catch (e) {
     // The select engine owns the nearest-miss wording; pass it through.
     return { ok: false, code: 'unresolved-ref', message: e instanceof Error ? e.message : String(e) }

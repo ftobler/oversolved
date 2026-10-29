@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest'
 import type { AssemblyDoc } from '@/types/cad'
+import { validateSelector } from '@/kernel/select'
 import { ASSEMBLY_OPERATIONS, planAssemblyOperation, type AssemblyOperationId } from '@/utils/assemblyOperations'
 import {
   ASSEMBLY_MUTATION_CATALOG,
@@ -36,9 +37,18 @@ function docWithLeft(): AssemblyDoc {
 }
 
 // A stand-in for the kernel: a selector/query resolves to a deterministic anchor
-// id per part, which is all the validator needs to build a stored ref.
+// id per part, which is all the validator needs to build a stored ref. The
+// selector still goes through the real grammar check, so a served example with a
+// typo fails here rather than shipping unnoticed.
 function stubResolver(ref: DriveMateRef): ResolvedDriveRef {
   if ('anchor' in ref) return { ok: true, ref: { part: ref.part, anchor: ref.anchor } }
+  if ('selector' in ref) {
+    try {
+      validateSelector(ref.selector)
+    } catch (e) {
+      return { ok: false, code: 'invalid-ref', message: e instanceof Error ? e.message : String(e) }
+    }
+  }
   return { ok: true, ref: { part: ref.part, anchor: `a_${ref.part}` } }
 }
 
@@ -127,6 +137,24 @@ describe('validateAssemblyMutation refusals', () => {
       ref_a: { part: 'left', anchor: 'a' }, ref_b: { part: 'left', anchor: 'b' },
     })
     expect(!result.ok && result.error.message).toContain('two different parts')
+  })
+
+  it('keeps a malformed selector an invalid ref, not a failed match', () => {
+    const invalid = (): ResolvedDriveRef => ({
+      ok: false,
+      code: 'invalid-ref',
+      message: 'selector.where.type "plane" is not a valid face surface type',
+    })
+    const result = validateAssemblyMutation(
+      {
+        type: 'add_mate', featureId: 'm2', kind: 'fixed',
+        ref_a: { part: 'left', selector: { kind: 'face', where: { type: 'plane' } } },
+        ref_b: { part: 'right', anchor: 'b' },
+      },
+      { doc: docWithLeft(), boundPartIds: new Set(['rail_400', 'panel']), resolveRef: invalid },
+    )
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-ref' } })
+    expect(!result.ok && result.error.message).toContain('face surface type')
   })
 
   it('refuses a rotation of length 2', () => {

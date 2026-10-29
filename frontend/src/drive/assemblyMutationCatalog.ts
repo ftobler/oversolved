@@ -18,7 +18,7 @@ import { findInstance, findMate } from '@/utils/assemblyMutations'
 import { MATE_KINDS, MATE_KIND_LABELS, mateParams } from '@/utils/mateKinds'
 import { quatFromEulerXyz } from '@/utils/transform3d'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
-import type { DriveMateRef, ResolvedDriveRef } from '@/drive/assemblyRefs'
+import type { DriveMateRef, DriveRefFailure, ResolvedDriveRef } from '@/drive/assemblyRefs'
 
 export type Vec3Tuple = [number, number, number]
 
@@ -263,6 +263,7 @@ export type AssemblyValidationErrorCode =
   | 'invalid-mutation'
   | 'unknown-target'
   | 'unresolved-ref'
+  | 'invalid-ref'
 
 export type AssemblyValidation =
   | { ok: true; operation: AssemblyOperationId; input: AssemblyOperationInputs[AssemblyOperationId] }
@@ -432,13 +433,13 @@ function builtinProblem(doc: AssemblyDoc | null, id: string): string | null {
   return `id "${id}" names no built-in reference feature; built-ins: ${ids.join(', ') || 'none'}`
 }
 
-function resolveRef(ctx: AssemblyValidationContext, ref: unknown, label: string): { ok: true; ref: MateRef } | { ok: false; message: string } {
+function resolveRef(ctx: AssemblyValidationContext, ref: unknown, label: string): { ok: true; ref: MateRef } | { ok: false; message: string; code?: DriveRefFailure['code'] } {
   const shape = refShapeProblem(ref, label)
   if (shape !== null) return { ok: false, message: shape }
   const drive = ref as DriveMateRef
   if (ctx.resolveRef) {
     const resolved = ctx.resolveRef(drive)
-    return resolved.ok ? resolved : { ok: false, message: resolved.message }
+    return resolved.ok ? resolved : { ok: false, message: resolved.message, code: resolved.code }
   }
   if ('anchor' in drive) return { ok: true, ref: { part: drive.part, anchor: drive.anchor } }
   return {
@@ -446,6 +447,12 @@ function resolveRef(ctx: AssemblyValidationContext, ref: unknown, label: string)
     message: `${label} uses a ${'query' in drive ? 'query' : 'selector'}, which needs the part build; `
       + 'the drive resolves it before the step runs',
   }
+}
+
+/** A malformed selector is a ref typo, not a failed match: keep the two
+ *  failures distinct so a caller fixes the expression instead of re-picking. */
+function failRef(failed: { message: string; code?: DriveRefFailure['code'] }): AssemblyValidation {
+  return fail(failed.code === 'invalid-ref' ? 'invalid-ref' : 'unresolved-ref', failed.message)
 }
 
 function mateKindParamProblem(kind: string, param: string): string | null {
@@ -650,9 +657,9 @@ function validateValues(
         if (problem !== null) return fail('invalid-mutation', problem)
       }
       const refA = resolveRef(ctx, raw.ref_a, 'ref_a')
-      if (!refA.ok) return fail('unresolved-ref', refA.message)
+      if (!refA.ok) return failRef(refA)
       const refB = resolveRef(ctx, raw.ref_b, 'ref_b')
-      if (!refB.ok) return fail('unresolved-ref', refB.message)
+      if (!refB.ok) return failRef(refB)
       if (refA.ref.part === refB.ref.part) {
         return fail('invalid-mutation', `a mate needs two different parts; both refs name "${refA.ref.part}"`)
       }
@@ -680,7 +687,7 @@ function validateValues(
         return fail('invalid-mutation', `field must be "ref_a" or "ref_b", got ${json(field)}`)
       }
       const resolved = resolveRef(ctx, raw.ref, 'ref')
-      if (!resolved.ok) return fail('unresolved-ref', resolved.message)
+      if (!resolved.ok) return failRef(resolved)
       if (mate) {
         const other = field === 'ref_a' ? mate.ref_b : mate.ref_a
         if (other.part !== '' && other.part === resolved.ref.part) {

@@ -823,7 +823,10 @@ with the `parts` argument (`{ "<doc_id>": "<part docHash>" }`, or
   anchor: <anchor id> }`, or the assembly frame
   `{ part: "__assembly", anchor: "AssemblyTop" }`. Run `select` on the part's
   own docHash to get queries; the selector is an authoring aid and is never
-  stored. Only `{ part, anchor, anchor_descriptor }` reaches the document.
+  stored. A mate selector is validated exactly like the `select` tool's
+  argument, so the `"x" | "y" | "z"` extreme-axis sugar works and a typo is
+  refused with the same wording. Only `{ part, anchor, anchor_descriptor }`
+  reaches the document.
 - There is no on-screen pose to capture headlessly: `flip` and `angle` are
   authored. `flip: true` is face-to-face contact between two outward normals;
   absent means parallel axes and canonical zero roll. Read the reply's

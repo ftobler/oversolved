@@ -88,6 +88,11 @@ const FLAT = (axis: [number, number, number], side: 'min' | 'max') => ({
   where: { and: [{ type: 'flatface' }, { extreme: { axis, side } }] },
 })
 
+const FLAT_LETTER = (axis: 'x' | 'y' | 'z', side: 'min' | 'max') => ({
+  kind: 'face' as const,
+  where: { and: [{ type: 'flatface' }, { extreme: { axis, side } }] },
+})
+
 const PIN_SCRIPT: AssemblyScriptStep[] = [
   { mutation: { type: 'add_part', handle: 'plate', part: 'plate', fixed: true } },
   { mutation: { type: 'add_part', handle: 'pin', part: 'pin', position: [30, 30, 40] } },
@@ -150,6 +155,43 @@ describeReal('headless assembly with the real mate solver', () => {
     expect(mate.ref_a.anchor_descriptor).toBeDefined()
     expect(mate.ref_b.anchor_descriptor).toBeDefined()
     expect(JSON.stringify(doc)).not.toContain('selector')
+  }, 180_000)
+
+  it('resolves letter axes in mate selectors', async () => {
+    const steps: AssemblyScriptStep[] = [
+      { mutation: { type: 'add_part', handle: 'plate', part: 'plate', fixed: true } },
+      { mutation: { type: 'add_part', handle: 'pin', part: 'pin', position: [30, 30, 40] } },
+      { mutation: {
+        type: 'add_mate',
+        featureId: 'm1',
+        kind: 'fixed',
+        ref_a: { part: 'plate', selector: FLAT_LETTER('z', 'max') },
+        ref_b: { part: 'pin', selector: FLAT_LETTER('z', 'min') },
+        flip: true,
+      } },
+    ]
+    const result = await runAssemblyHeadless({ doc: emptyDriveAssemblyDoc(), parts: binding(), steps })
+    expect(result.ok).toBe(true)
+    expect(result.mates).toEqual([])
+    expect(result.solve.verdict).toBe('fully_constrained')
+  }, 180_000)
+
+  it('refuses a malformed selector as an invalid ref', async () => {
+    const steps: AssemblyScriptStep[] = [
+      { mutation: { type: 'add_part', handle: 'plate', part: 'plate', fixed: true } },
+      { mutation: { type: 'add_part', handle: 'pin', part: 'pin', position: [30, 30, 40] } },
+      { mutation: {
+        type: 'add_mate',
+        featureId: 'm1',
+        kind: 'fixed',
+        ref_a: { part: 'plate', selector: { kind: 'face', where: { type: 'plane' } } },
+        ref_b: { part: 'pin', anchor: 'nope' },
+      } },
+    ]
+    const result = await runAssemblyHeadless({ doc: emptyDriveAssemblyDoc(), parts: binding(), steps })
+    expect(result.ok).toBe(false)
+    expect(result.outcome.steps[2].error).toMatchObject({ code: 'invalid-ref' })
+    expect(result.outcome.steps[2].error!.message).toContain('did you mean "flatface"')
   }, 180_000)
 
   it('reports a rebind that deletes the base face as a stale ref, ok stays true', async () => {

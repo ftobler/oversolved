@@ -17,7 +17,7 @@ import { KernelFault } from '@/kernel/errors'
 import { compareMeasures, type MeasureRow } from '@/kernel/occ/measureTolerance'
 import type { MeasureRecord } from '@/kernel/occ/measure'
 import type { TranslationReference } from '@/translations/corpus'
-import { selectByPredicate, type SelectResult, type Selector } from '@/kernel/select'
+import { selectByPredicate, validateSelector, type SelectResult } from '@/kernel/select'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import { createHeadlessPart, type HeadlessPart } from '@/drive/headlessPart'
@@ -298,13 +298,16 @@ export interface HeadlessSelectOptions {
  * Select faces or edges by predicate over a document's solve output, returning
  * the query strings a click would have stored. Null when the kernel is
  * unavailable; throws SelectorError on an invalid expression or an empty match
- * (the caller surfaces that as `{ ok: false, error }`).
+ * (the caller surfaces that as `{ ok: false, error }`). The selector is
+ * validated here, at the headless boundary, so every caller gets the same
+ * grammar and the letter axis sugar even when it skipped the MCP check.
  */
 export async function selectHeadless(
   doc: PartDoc,
-  selector: Selector,
+  selectorRaw: unknown,
   opts: HeadlessSelectOptions = {},
 ): Promise<SelectResult | null> {
+  const selector = validateSelector(selectorRaw)
   const response = await solveLocally(partSolvePayload(doc, opts.docId ?? 'headless'), {
     ...(opts.files ? { files: opts.files } : {}),
   })
