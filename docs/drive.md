@@ -624,6 +624,8 @@ banner on stdout, so a client config must use the direct node invocation.
   `hole.sketch` is spelled `@<sketchId>` (or a narrower
   viewport pick), not the profile consumers' `$<sketchId>` form, and a circle
   drills at its own radius while a point uses the feature `diameter`;
+  construction points and circles are skipped by a whole-sketch pick, and
+  picking one alone is refused by name;
   `add_center_rect` takes the half-diagonal corner (center `[0,0]` with corner
   `[1,1]` is 2x2) and leaves a centre point entity; `add_rect` creates its line
   ids in bottom, right, top, left order; `add_revolve` takes the required

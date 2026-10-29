@@ -2,9 +2,11 @@
 // or through-all) and boolean-cuts it from the target body. Composite of the cut boolean
 // + cylinder primitive.
 //
-// The ref is a pick chip's raw value, so it names either a whole sketch (every point and circle
-// in it) or ONE picked entity -- a point, or a circle that carries its own radius. A circle
-// drills at its own radius either way; a point takes the feature's `diameter`.
+// The ref is a pick chip's raw value, so it names either a whole sketch (every
+// non-construction point and circle in it) or ONE picked entity -- a point, or
+// a circle that carries its own radius. A circle drills at its own radius either
+// way; a point takes the feature's `diameter`. Construction points and circles
+// are skipped by a whole-sketch pick and refused when picked alone.
 // parseHoleSketchRef / drilledEntities / drillSite below are that rule; a pick that names no
 // drill site is refused there by name.
 //
@@ -141,8 +143,14 @@ function drillSite(
  * The entities this hole drills. A pick that named one entity drills that one
  * and nothing else -- a user who clicked a single point does not expect the
  * other points in the sketch to be drilled too. A pick that named the sketch
- * drills every point and circle in it, in the sketch's entity order; each point
- * takes the feature's diameter and each circle its own radius (drillSite).
+ * drills every non-construction point and circle in it, in the sketch's entity
+ * order; each point takes the feature's diameter and each circle its own radius
+ * (drillSite).
+ *
+ * Construction points and circles are reference geometry (an n-gon's
+ * circumcircle, a rectangle's centre point), never a drill site: a whole-sketch
+ * pick skips them, and a pick that names one is refused rather than silently
+ * drilling or skipping it.
  */
 function drilledEntities(
   entities: Dict[],
@@ -150,8 +158,15 @@ function drilledEntities(
   entityId: string | null,
 ): Dict[] {
   if (entityId === null) {
-    const sites = entities.filter((e) => e.kind === 'point' || e.kind === 'circle')
+    const candidates = entities.filter((e) => e.kind === 'point' || e.kind === 'circle')
+    const sites = candidates.filter((e) => e.construction !== true)
     if (sites.length === 0) {
+      if (candidates.length > 0) {
+        throw new Error(
+          `hole: sketch '${sketchId}' has only construction points and circles; ` +
+          'construction geometry is reference only, so the hole needs a non-construction point or circle',
+        )
+      }
       throw new Error(
         `hole: sketch '${sketchId}' has no point or circle entities; the hole needs a point or circle in its sketch`,
       )
@@ -160,6 +175,12 @@ function drilledEntities(
   }
   const picked = entities.find((e) => e.id === entityId)
   if (picked === undefined) throw new Error(`hole: sketch '${sketchId}' has no entity '${entityId}'`)
+  if (picked.construction === true) {
+    throw new Error(
+      `hole: '${entityId}' of sketch ${sketchId} is a construction ${picked.kind}, which names no drill site; ` +
+      'construction geometry is reference only, so pick a non-construction point or circle, or the sketch itself',
+    )
+  }
   if (picked.kind !== 'point' && picked.kind !== 'circle') {
     throw new Error(
       `hole: '${entityId}' of sketch ${sketchId} is a ${picked.kind}, which names no drill site; ` +

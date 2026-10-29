@@ -69,6 +69,28 @@ describe('solveHole guard paths', () => {
     ).toThrow("hole: sketch 'sk' has no point or circle entities; the hole needs a point or circle in its sketch")
   })
 
+  it('names construction when every point and circle in the sketch is construction', () => {
+    // A construction point or circle is reference geometry: it names no drill
+    // site. When the sketch holds nothing else, the refusal must say so rather
+    // than claim the sketch has no point or circle at all.
+    const repo = new Repository()
+    repo.register('_pt_sk', PLANE)
+    let message = ''
+    try {
+      solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: 'body_t' } }, repo, {
+        body_t: { ...nullBody('body_t'), shape: 1 as never },
+      }, { sk: { entities: [
+        { id: 'pc', kind: 'point', construction: true },
+        { id: 'cc', kind: 'circle', construction: true },
+      ] } })
+    } catch (e) {
+      message = (e as Error).message
+    }
+    expect(message).toMatch(/only construction points and circles/)
+    expect(message).toMatch(/construction geometry is reference only/)
+    expect(message).not.toMatch(/has no point or circle entities/)
+  })
+
   it('a zero-placed hole fails before touching modified_by', () => {
     // The zero-placed branch leaves brep_diff stale on purpose; pushing
     // modified_by before the throw made ancestry re-read that stale diff and
@@ -157,6 +179,17 @@ describe('solveHole sketch picks', () => {
     // A body face in the sketch field: nothing to narrow, and nothing to guess.
     const q = makeAncestryQuery(['@body_ex1', '@ex1'], 'flatface')
     expect(() => drill(q)).toThrow(/has no plane transform registered/)
+  })
+
+  it('refuses a construction point or circle picked as a drill site, by name', () => {
+    // Construction geometry is never a drill site: an explicit pick of one is
+    // refused with construction named as the reason, not silently skipped.
+    expect(() => drill('entity:sk:pc', {
+      sk: { entities: [{ id: 'pc', kind: 'point', construction: true }] },
+    })).toThrow(/'pc' of sketch sk is a construction point, which names no drill site/)
+    expect(() => drill('entity:sk:cc', {
+      sk: { entities: [{ id: 'cc', kind: 'circle', construction: true }] },
+    })).toThrow(/'cc' of sketch sk is a construction circle, which names no drill site/)
   })
 
   it('refuses an entity the sketch does not have', () => {
