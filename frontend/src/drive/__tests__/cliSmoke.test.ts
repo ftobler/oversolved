@@ -25,7 +25,7 @@ import { docHashOf } from '@/drive/docHash'
 import { DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import { HOLE_ON_LINE_SKETCH } from './featureFixtures'
-import { spawnMcp, toolPayload, FRONTEND_DIR } from './mcpStdioClient'
+import { spawnMcp, toolPayload, errorPayload, FRONTEND_DIR } from './mcpStdioClient'
 
 const execFileAsync = promisify(execFile)
 
@@ -351,6 +351,48 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(exported.status).toBe(0)
     expect(exported.payload).toMatchObject({ ok: true, file: stepFile, format: 'step' })
     expect(readFileSync(stepFile).byteLength).toBe(exported.payload.bytes as number)
+  }, 120_000)
+
+  it('reports an export whose parent is a regular file as a clean failure', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const boxScript = path.join(TMP_DIR, 'not-a-dir-script.json')
+    const boxDoc = path.join(TMP_DIR, 'not-a-dir.yaml')
+    writeFileSync(boxScript, JSON.stringify(BOX_SCRIPT, null, 1))
+    expect((await drive('run', boxScript, '--out', boxDoc)).payload.ok).toBe(true)
+
+    // An existing regular file cannot be the export's parent: the mkdir fails
+    // as a named error and the process exits 1, never an uncaught crash.
+    const notADir = path.join(TMP_DIR, 'not-a-dir')
+    writeFileSync(notADir, 'not a directory\n')
+    try {
+      const out = path.join(notADir, 'part.step')
+      const exported = await drive('export', boxDoc, '--format', 'step', '--out', out)
+      expect(exported.status).toBe(1)
+      expect(exported.payload.ok).toBe(false)
+      expect(String(exported.payload.error)).toMatch(/EEXIST|ENOTDIR|already exists|not a directory/i)
+    } finally {
+      rmSync(notADir, { force: true })
+    }
+  }, 120_000)
+
+  it('creates the repro parent directory when a fresh nested path is asked for', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const boxScript = path.join(TMP_DIR, 'repro-parent-script.json')
+    const boxDoc = path.join(TMP_DIR, 'repro-parent.yaml')
+    const commandScript = path.join(TMP_DIR, 'repro-parent-cmd.json')
+    writeFileSync(boxScript, JSON.stringify(BOX_SCRIPT, null, 1))
+    writeFileSync(commandScript, JSON.stringify(COMMAND_SCRIPT, null, 1))
+    expect((await drive('run', boxScript, '--out', boxDoc)).payload.ok).toBe(true)
+
+    // As with the export, a fresh run directory does not exist yet; the
+    // recorded journal must create it at write time.
+    const nestedDir = path.join(TMP_DIR, 'repro/does/not/exist')
+    rmSync(nestedDir, { recursive: true, force: true })
+    const reproFile = path.join(nestedDir, 'repro.json')
+    const recorded = await drive('run', commandScript, '--doc', boxDoc, '--repro', reproFile)
+    expect(recorded.status).toBe(0)
+    expect(recorded.payload.ok).toBe(true)
+    expect((JSON.parse(readFileSync(reproFile, 'utf8')) as { kind: string }).kind).toBe('oversolved-repro')
   }, 120_000)
 
   it('re-imports an exported STEP file and matches the measures', async () => {
@@ -753,6 +795,38 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       expect(exported).toMatchObject({ ok: true, file: stepFile, format: 'step' })
       expect(readFileSync(stepFile).byteLength).toBe(exported.bytes as number)
     } finally {
+      await client.close()
+    }
+  }, 120_000)
+
+  it('reports an export whose parent is a regular file as a tool error', async () => {
+    const client = spawnMcp()
+    const notADir = path.join(TMP_DIR, 'not-a-dir')
+    try {
+      await client.request('initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'cliSmoke', version: '0' },
+      })
+      const built = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { steps: BOX_SCRIPT.steps },
+      }))
+      expect(built.ok).toBe(true)
+
+      // An existing regular file cannot be the export's parent: the mkdir fails
+      // inside the write's try, so the caller gets a tool error and not a raw
+      // JSON-RPC internal error.
+      writeFileSync(notADir, 'not a directory\n')
+      const response = await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: built.docHash, format: 'step', out: path.join(notADir, 'part.step') },
+      })
+      const failed = errorPayload(response)
+      expect(failed.ok).toBe(false)
+      expect(String(failed.error)).toMatch(/EEXIST|ENOTDIR|already exists|not a directory/i)
+    } finally {
+      rmSync(notADir, { force: true })
       await client.close()
     }
   }, 120_000)

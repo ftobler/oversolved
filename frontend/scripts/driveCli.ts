@@ -196,7 +196,11 @@ async function runCommand(args: Args): Promise<number> {
   if (args.flags.repro) {
     const repro = journal.repro()
     if (!repro) throw new Error('run recorded no doc-changing command; nothing to reproduce')
-    writeFileSync(path.resolve(args.flags.repro), JSON.stringify(repro, null, 1) + '\n')
+    const reproOut = path.resolve(args.flags.repro)
+    // A fresh run directory does not exist yet; the parent is made at write
+    // time so the recorded journal is not lost.
+    mkdirSync(path.dirname(reproOut), { recursive: true })
+    writeFileSync(reproOut, JSON.stringify(repro, null, 1) + '\n')
   }
 
   printJson({

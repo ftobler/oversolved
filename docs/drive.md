@@ -329,7 +329,7 @@ npm run drive -- replay repro.json
   document the settle could not answer for (a missing verdict) is `ok: false`
   instead, because comparing its empty measure to a reference would be
   meaningless.
-- `export` writes STEP or STL bytes.
+- `export` writes STEP or STL bytes, creating a missing parent directory.
 - `replay` applies the recorded mutations to a fresh session under the
   payload's seed, verifies each step's before and after hash and exits nonzero
   on divergence.
