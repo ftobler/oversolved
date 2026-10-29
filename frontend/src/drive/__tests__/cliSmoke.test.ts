@@ -17,7 +17,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createRequire } from 'node:module'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
@@ -342,8 +342,6 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     writeFileSync(boxScript, JSON.stringify(BOX_SCRIPT, null, 1))
     expect((await drive('run', boxScript, '--out', boxDoc)).payload.ok).toBe(true)
 
-    // A fresh run directory does not exist yet; the export must create it at
-    // write time instead of failing with ENOENT after the kernel work is done.
     const nestedDir = path.join(TMP_DIR, 'does/not/exist')
     rmSync(nestedDir, { recursive: true, force: true })
     const stepFile = path.join(nestedDir, 'part.step')
@@ -353,6 +351,21 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(readFileSync(stepFile).byteLength).toBe(exported.payload.bytes as number)
   }, 120_000)
 
+  it('refuses an export out path outside the project and writes nothing', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const boxScript = path.join(TMP_DIR, 'refused-export-script.json')
+    const boxDoc = path.join(TMP_DIR, 'refused-export.yaml')
+    writeFileSync(boxScript, JSON.stringify(BOX_SCRIPT, null, 1))
+    expect((await drive('run', boxScript, '--out', boxDoc)).payload.ok).toBe(true)
+
+    const out = path.join(FRONTEND_DIR, 'refused-export.step')
+    const refused = await drive('export', boxDoc, '--format', 'step', '--out', out)
+    expect(refused.status).toBe(1)
+    expect(refused.payload.ok).toBe(false)
+    expect(String(refused.payload.error)).toContain('must resolve inside tmp/, bugreports/')
+    expect(existsSync(out)).toBe(false)
+  }, 120_000)
+
   it('reports an export whose parent is a regular file as a clean failure', async () => {
     mkdirSync(TMP_DIR, { recursive: true })
     const boxScript = path.join(TMP_DIR, 'not-a-dir-script.json')
@@ -360,18 +373,16 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     writeFileSync(boxScript, JSON.stringify(BOX_SCRIPT, null, 1))
     expect((await drive('run', boxScript, '--out', boxDoc)).payload.ok).toBe(true)
 
-    // An existing regular file cannot be the export's parent: the mkdir fails
-    // as a named error and the process exits 1, never an uncaught crash.
     const notADir = path.join(TMP_DIR, 'not-a-dir')
-    writeFileSync(notADir, 'not a directory\n')
     try {
+      writeFileSync(notADir, 'not a directory\n')
       const out = path.join(notADir, 'part.step')
       const exported = await drive('export', boxDoc, '--format', 'step', '--out', out)
       expect(exported.status).toBe(1)
       expect(exported.payload.ok).toBe(false)
-      expect(String(exported.payload.error)).toMatch(/EEXIST|ENOTDIR|already exists|not a directory/i)
+      expect(String(exported.payload.error)).toMatch(/EEXIST/)
     } finally {
-      rmSync(notADir, { force: true })
+      rmSync(notADir, { recursive: true, force: true })
     }
   }, 120_000)
 
@@ -384,8 +395,6 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     writeFileSync(commandScript, JSON.stringify(COMMAND_SCRIPT, null, 1))
     expect((await drive('run', boxScript, '--out', boxDoc)).payload.ok).toBe(true)
 
-    // As with the export, a fresh run directory does not exist yet; the
-    // recorded journal must create it at write time.
     const nestedDir = path.join(TMP_DIR, 'repro/does/not/exist')
     rmSync(nestedDir, { recursive: true, force: true })
     const reproFile = path.join(nestedDir, 'repro.json')
@@ -783,8 +792,6 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       }))
       expect(built.ok).toBe(true)
 
-      // The export's `out` may name a directory a fresh run has not made yet;
-      // the tool creates it at write time rather than returning ENOENT.
       const nestedDir = path.join(TMP_DIR, 'does/not/exist')
       rmSync(nestedDir, { recursive: true, force: true })
       const stepFile = path.join(nestedDir, 'part.step')
@@ -800,6 +807,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
   }, 120_000)
 
   it('reports an export whose parent is a regular file as a tool error', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
     const client = spawnMcp()
     const notADir = path.join(TMP_DIR, 'not-a-dir')
     try {
@@ -824,9 +832,9 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       })
       const failed = errorPayload(response)
       expect(failed.ok).toBe(false)
-      expect(String(failed.error)).toMatch(/EEXIST|ENOTDIR|already exists|not a directory/i)
+      expect(String(failed.error)).toMatch(/EEXIST/)
     } finally {
-      rmSync(notADir, { force: true })
+      rmSync(notADir, { recursive: true, force: true })
       await client.close()
     }
   }, 120_000)

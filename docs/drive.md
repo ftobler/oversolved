@@ -292,9 +292,10 @@ npm run drive -- replay repro.json
   feature problems (`features`, see the MCP section) and the resolved sketch and
   plane `frames` (also described there). The `--out` format is
   chosen by the extension: `.json` writes JSON, anything else writes YAML. The
-  path must resolve inside the project's `tmp/` or `bugreports/` (relative paths
-  resolve against the repo root, not `frontend/`); anything else is refused
-  before the script runs. An empty script still
+  `--out` path must resolve inside the project's `tmp/` or `bugreports/`
+  (relative paths resolve against the repo root, not `frontend/`); anything
+  else is refused before the script runs. `--repro` follows the same path rule.
+  Both create a missing parent directory at write time. An empty script still
   solves the given document once and prints the same fields, so `run` doubles
   as the "inspect this document" call. Its journal derives every generation
   seed from the starting document's hash, so two runs of one script on one
@@ -329,7 +330,8 @@ npm run drive -- replay repro.json
   document the settle could not answer for (a missing verdict) is `ok: false`
   instead, because comparing its empty measure to a reference would be
   meaningless.
-- `export` writes STEP or STL bytes, creating a missing parent directory.
+- `export` writes STEP or STL bytes to `--out` (default `tmp/out.<format>`),
+  creating a missing parent directory.
 - `replay` applies the recorded mutations to a fresh session under the
   payload's seed, verifies each step's before and after hash and exits nonzero
   on divergence.

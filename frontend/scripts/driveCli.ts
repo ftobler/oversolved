@@ -108,7 +108,8 @@ const USAGE = `usage: drive <run|commands|measure|compare|export|replay> [args] 
   compare <doc.(yaml|json)> <reference.json> [--file <id>=<path>] [--doc-id <id>]
   export <doc.(yaml|json)> --format step|stl [--out <file>] [--body <id>] [--file <id>=<path>]
   replay <repro.json>
---out for run writes JSON for a .json path and YAML otherwise, inside tmp/ or bugreports/.`
+--out for run writes JSON for a .json path and YAML otherwise, inside tmp/ or bugreports/.
+All --out and --repro paths must resolve inside tmp/ or bugreports/; a missing parent is created.`
 
 // ─── file helpers ───
 
@@ -196,9 +197,8 @@ async function runCommand(args: Args): Promise<number> {
   if (args.flags.repro) {
     const repro = journal.repro()
     if (!repro) throw new Error('run recorded no doc-changing command; nothing to reproduce')
-    const reproOut = path.resolve(args.flags.repro)
-    // A fresh run directory does not exist yet; the parent is made at write
-    // time so the recorded journal is not lost.
+    const reproOut = resolveProjectPath(args.flags.repro, 'doc')
+    // A fresh run directory may not exist yet, so make the parent at write time.
     mkdirSync(path.dirname(reproOut), { recursive: true })
     writeFileSync(reproOut, JSON.stringify(repro, null, 1) + '\n')
   }
@@ -269,6 +269,9 @@ async function exportCommand(args: Args): Promise<number> {
   if (!file) throw new UsageError('export needs a document file')
   const format = args.flags.format
   if (format !== 'step' && format !== 'stl') throw new UsageError('export needs --format step|stl')
+  // Resolve the output before the kernel export runs: a path outside tmp/ or
+  // bugreports/ must be refused without doing the work it would have saved.
+  const out = resolveProjectPath(args.flags.out ?? `tmp/out.${format}`, 'doc')
   const doc = readDoc(file)
   const bytes = await exportHeadless(doc, {
     format,
@@ -280,9 +283,7 @@ async function exportCommand(args: Args): Promise<number> {
     printJson({ ok: false, error: 'export produced no solid (or the local solver is unavailable)' })
     return 1
   }
-  const out = path.resolve(args.flags.out ?? `out.${format}`)
-  // A fresh run directory does not exist yet; the parent is made at write time
-  // so the export is not lost after the kernel work is done.
+  // A fresh run directory may not exist yet, so make the parent at write time.
   mkdirSync(path.dirname(out), { recursive: true })
   writeFileSync(out, bytes)
   printJson({ ok: true, file: out, format, bytes: bytes.byteLength })

@@ -75,8 +75,7 @@ export function serializeDocFile(doc: unknown, format: DocFileFormat): string {
  */
 export function writeDocFile(file: string, doc: unknown): { file: string; format: DocFileFormat } {
   const format = docFormatForPath(file)
-  // A fresh run directory (bugreports/<slug>/) does not exist yet; failing the
-  // reply of a solved run on a missing parent loses nothing but the author's time.
+  // A fresh run directory (bugreports/<slug>/) may not exist yet.
   mkdirSync(path.dirname(file), { recursive: true })
   writeFileSync(file, serializeDocFile(doc, format))
   return { file, format }
