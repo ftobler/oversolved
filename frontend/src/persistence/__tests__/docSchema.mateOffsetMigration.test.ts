@@ -89,9 +89,37 @@ describe('the fixed mate offset sign flip', () => {
     expect(mates(result.doc).m_tan.offset).toBe(5)
   })
 
+  it('flips a kindless assembly identified by its mates', () => {
+    // `validateAssembly` tolerates a missing `kind` (kindless documents are a
+    // real historical shape, classified by workspace metadata), so the guard
+    // must too: a kindless document carrying a `mate` is a kindless assembly,
+    // and its old-sign offsets would otherwise load untouched.
+    const doc = {
+      features: [{ id: 'm1', kind: 'mate', mate: { kind: 'fixed', ref_a: REF_A, ref_b: REF_B, offset: 7 } }],
+    }
+    const result = loadAssemblyDoc(doc)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.migrations).toContain('mate-offset-plus-convention')
+    expect(mates(result.doc).m1.offset).toBe(-7)
+    expect(result.doc.version).toBe(CURRENT_DOC_VERSION)
+  })
+
+  it('leaves a kindless document without mates untouched', () => {
+    // No `kind` and no mate feature identifies nothing as an assembly, so the
+    // flip must not run: a kindless part loads through the same shape.
+    const doc: Record<string, unknown> = {
+      features: [{ id: 'e1', kind: 'extrude', params: { depth: 10 } }],
+    }
+    const applied = migrate(doc, 3)
+    expect(applied).not.toContain('mate-offset-plus-convention')
+    expect(doc.version).toBeUndefined()
+  })
+
   it('leaves part documents untouched', () => {
-    // The step guards on `kind: assembly`; a part record with a mate-shaped
-    // feature must come through `migrate` with its offset and stamp intact.
+    // The step guards on assembly shape: an explicit `kind: assembly`, or
+    // kindless with a mate present. A part record with a mate-shaped feature
+    // must come through `migrate` with its offset and stamp intact.
     const doc: Record<string, unknown> = {
       version: 3,
       kind: 'part',

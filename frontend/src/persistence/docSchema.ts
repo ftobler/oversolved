@@ -204,7 +204,8 @@ function stepDropRedundantInlineStepPayload(doc: DocRecord): number {
 // offset; the solver, the docs and every other offset-reading kind now agree
 // on PLUS (B at A + R_a * offset). Stored fixed offsets are negated once so
 // they keep solving to the same pose. Assembly documents only: a `mate`
-// feature exists nowhere else.
+// feature exists nowhere else, which is also what identifies a kindless
+// document as a kindless assembly (see `flipsMateOffsets`).
 //
 // Unlike the other steps this one is NOT idempotent by construction -- a
 // second run would negate back -- so as soon as it flips anything it stamps
@@ -212,9 +213,9 @@ function stepDropRedundantInlineStepPayload(doc: DocRecord): number {
 // recurring on every later load. An assembly carrying no fixed offset is left
 // unstamped; the step runs on it every load and rewrites nothing.
 function stepMateOffsetPlusConvention(doc: DocRecord): number {
-  if (doc.kind !== 'assembly') return 0
   const features = doc.features
   if (!isRecordList(features, MAX_FEATURES)) return 0
+  if (!flipsMateOffsets(doc, features)) return 0
   let flipped = 0
   for (const feature of features) {
     const row = feature as DocRecord
@@ -225,6 +226,18 @@ function stepMateOffsetPlusConvention(doc: DocRecord): number {
   }
   if (flipped > 0) doc.version = CURRENT_DOC_VERSION
   return flipped
+}
+
+// `validateAssembly` deliberately tolerates a missing `kind` (kindless
+// documents are a real historical shape, classified by workspace metadata), so
+// the step's guard must too: a kindless document whose features include a
+// `mate` is a kindless assembly, since a `mate` feature exists in no other
+// document kind. An explicit non-assembly `kind` (the stamped-part protection)
+// never flips, whatever its features carry.
+function flipsMateOffsets(doc: DocRecord, features: DocRecord[]): boolean {
+  if (doc.kind === 'assembly') return true
+  if (doc.kind !== undefined) return false
+  return features.some(feature => feature.kind === 'mate')
 }
 
 /** Negate one fixed mate's authored offset in place. A number flips sign, an

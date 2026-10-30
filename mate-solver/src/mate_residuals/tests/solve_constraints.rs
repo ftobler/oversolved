@@ -239,10 +239,11 @@ fn fixed_with_offset() {
 }
 
 /// The legacy authoring form -- a bare scalar offset along A's axis -- must
-/// still land in exactly the place it did before `offset` became a vector.
-/// Written against the vector constructor with the scalar expanded by hand,
-/// so it pins the equivalence rather than inheriting it from the `mate`
-/// helper the older tests share.
+/// still land in exactly the place its hand-expanded axial vector form puts
+/// it: both forms share the plus convention, so a scalar `s` and the vector
+/// `s * axis_a` are equivalent. Written against the vector constructor with
+/// the scalar expanded by hand, so it pins the equivalence rather than
+/// inheriting it from the `mate` helper the older tests share.
 #[test]
 fn scalar_offset_and_its_axial_vector_agree() {
     let build = |offset: [f64; 3]| MateInput {

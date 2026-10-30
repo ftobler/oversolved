@@ -215,8 +215,8 @@ pub struct Mate {
     /// a clearance for the first, a plane separation along A's normal for the
     /// second). The pre-vector scalar form is a special case of this one: a
     /// scalar `s` is `s * axis_a` in A's local frame, and
-    /// `R_a * (s * axis_a) = s * a_w` is exactly what the scalar residual used
-    /// to add.
+    /// `R_a * (s * axis_a) = s * a_w` is exactly what the residual adds once
+    /// the scalar expands to the vector form.
     pub offset: [f64; 3],
     /// Gear-like ratio for CopyRotation: `roll_b = ratio * roll_a`.
     pub ratio: f64,
