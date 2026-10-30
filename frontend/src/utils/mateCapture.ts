@@ -57,6 +57,7 @@ export function captureMateOrientationPatch(
   // static producer predating x_axis) resets the angle rather than measuring
   // against a wrong frame or keeping a value captured off different anchors --
   // the mate then holds the canonical zero roll.
+  // A rotating mate's angle is an explicit lock, so a re-pick leaves it alone.
   if (mateCapturesAngle(mate.kind)) {
     const measurable = poseA.x_axis && poseB.x_axis
     // Normalised into the editor's [0, 360) authoring form, so a captured roll

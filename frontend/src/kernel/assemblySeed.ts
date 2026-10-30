@@ -119,6 +119,13 @@ function roll(a: Pose, b: Pose, m: MateWireRecord): number {
   return Math.atan2(dot(cross(xa, xb), w), dot(xa, xb))
 }
 
+/** The scalar offset along A's local axis, the part a rotating mate reads
+ *  (mate.rs `axial_offset`); 0 for a degenerate axis. */
+function axialOffset(m: MateWireRecord): number {
+  const n = Math.hypot(...m.axisA)
+  return n < 1e-10 ? 0 : dot(m.offset, m.axisA) / n
+}
+
 /** Whether the mate already holds for the pair of poses (the placing rows only). */
 function satisfied(a: Pose, b: Pose, m: MateWireRecord): boolean {
   const pa = point(a, m.pointA)
@@ -134,7 +141,9 @@ function satisfied(a: Pose, b: Pose, m: MateWireRecord): boolean {
     if (Math.hypot(...gap) > SATISFIED_TOL) return false
     return Math.abs(wrapPi(roll(a, b, m) - m.angle)) <= SATISFIED_TOL
   }
-  if (m.kindCode === KIND_ROTATING) return Math.hypot(...sub(pa, pb)) <= SATISFIED_TOL
+  if (m.kindCode === KIND_ROTATING) {
+    return Math.hypot(...sub(add3(pa, scale(aw, axialOffset(m))), pb)) <= SATISFIED_TOL
+  }
   if (m.kindCode === KIND_SLIDING_ROTATING) return Math.hypot(...cross(sub(pa, pb), aw)) <= SATISFIED_TOL
   return true
 }
@@ -158,7 +167,8 @@ function placeB(a: Pose, b: Pose, m: MateWireRecord): Pose | null {
   if (m.kindCode === KIND_ROTATING || m.kindCode === KIND_SLIDING_ROTATING) {
     const q = quatNormalize(quatMultiply(quatBetween(dir(b, m.axisB), scale(aw, s)), b.q))
     const moved: Pose = { t: b.t, q }
-    const gap = sub(pa, point(moved, m.pointB))
+    const target = m.kindCode === KIND_ROTATING ? add3(pa, scale(aw, axialOffset(m))) : pa
+    const gap = sub(target, point(moved, m.pointB))
     // Rotating pins the point; sliding-rotating leaves the slide along the axis free.
     const shift = m.kindCode === KIND_ROTATING ? gap : sub(gap, scale(aw, dot(gap, aw)))
     return { t: add3(b.t, shift), q }
@@ -184,7 +194,9 @@ function placeA(a: Pose, b: Pose, m: MateWireRecord): Pose | null {
   if (m.kindCode === KIND_ROTATING || m.kindCode === KIND_SLIDING_ROTATING) {
     const q = quatNormalize(quatMultiply(quatBetween(dir(a, m.axisA), scale(bw, s)), a.q))
     const moved: Pose = { t: a.t, q }
-    const gap = sub(pb, point(moved, m.pointA))
+    // A's axis lands on s * B's, so A's anchor sits `offset` back along it.
+    const target = m.kindCode === KIND_ROTATING ? sub(pb, scale(bw, s * axialOffset(m))) : pb
+    const gap = sub(target, point(moved, m.pointA))
     const shift = m.kindCode === KIND_ROTATING ? gap : sub(gap, scale(bw, dot(gap, bw)))
     return { t: add3(a.t, shift), q }
   }

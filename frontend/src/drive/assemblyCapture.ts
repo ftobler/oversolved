@@ -113,7 +113,7 @@ export function captureMateAtSeeds(input: SeedMateCaptureInput): SeedMateCapture
   }
   if (input.explicit?.angle !== undefined) {
     merged.angle = input.explicit.angle
-    if (input.explicit.angle !== captured.angle) overridden.push('angle')
+    if (readsAngle && input.explicit.angle !== captured.angle) overridden.push('angle')
   }
 
   return {

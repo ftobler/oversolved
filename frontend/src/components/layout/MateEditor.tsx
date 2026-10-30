@@ -232,7 +232,7 @@ export function MateEditor({
               <WheelNumberInput
                 ariaLabel={MATE_PARAM_LABELS.angle}
                 value={angleText}
-                placeholder="0"
+                placeholder={mate.kind === 'rotating' ? 'free' : '0'}
                 onChange={raw => {
                   setAngleText(raw)
                   if (raw === '') { onUpdate({ angle: undefined }); return }

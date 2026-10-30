@@ -87,6 +87,25 @@ describe('seedAssembly', () => {
     expect(pb[2]).toBeCloseTo(3, 9)
   })
 
+  it('seeds a rotating mate offset along A\'s axis, from either side', () => {
+    const p = params([[[0, 0, 0], ID], [[9, 9, 9], ID]])
+    const m = record({ kindCode: 4, bodyA: 0, bodyB: 1, offset: [0, 0, 2.5], pointA: [1, 2, 3] })
+    const fromA = seedAssembly(p, Uint8Array.of(0b01), [m])
+    expect(worldPoint(fromA, 1, [0, 0, 0])).toEqual([1, 2, 5.5])
+    // Grounding B instead: A's anchor must sit the offset back along the axis.
+    const fromB = seedAssembly(p, Uint8Array.of(0b10), [m])
+    const pa = worldPoint(fromB, 0, m.pointA)
+    expect(pa[0]).toBeCloseTo(9, 9)
+    expect(pa[1]).toBeCloseTo(9, 9)
+    expect(pa[2]).toBeCloseTo(6.5, 9)
+  })
+
+  it('leaves a rotating seed that already holds its offset bit-exact', () => {
+    const p = params([[[0, 0, 0], ID], [[1, 2, 5.5], ID]])
+    const m = record({ kindCode: 4, bodyA: 0, bodyB: 1, offset: [0, 0, 2.5], pointA: [1, 2, 3] })
+    expect(Array.from(seedAssembly(p, Uint8Array.of(0b01), [m]))).toEqual(Array.from(p))
+  })
+
   it('returns a seed that already satisfies its mate bit-exact', () => {
     const q: Quat = [0.1, 0.2, 0.3, Math.sqrt(1 - 0.14)]
     const p = params([[[0, 0, 0], ID], [[0.3, 0.2, 0.1], q]])
