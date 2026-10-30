@@ -23,7 +23,7 @@ import type { MateCapture } from '@/drive/scriptRunner'
  *  canonical roll frame is derived from the LOCAL axis then rotated, the same
  *  rule solveAssembly poses the solved anchors by, so a captured angle means
  *  the same thing at a seed and at a solve. */
-function posedAnchor(anchor: Anchor, t: Transform3D): AnchorPose {
+export function posedAnchor(anchor: Anchor, t: Transform3D): AnchorPose {
   const quat = transformQuat(t)
   const local = rotateVector(quat, anchor.point)
   const axis = rotateVector(quat, anchor.axis)

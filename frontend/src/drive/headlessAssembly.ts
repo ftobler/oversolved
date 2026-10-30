@@ -12,7 +12,7 @@
 // operation still bakes the LAST solve's transforms, exactly as the editor
 // does, because that is the operation's contract.
 
-import type { AssemblyDoc, BodyResult, PartDoc } from '@/types/cad'
+import type { AssemblyDoc, BodyResult, PartDoc, Transform3D } from '@/types/cad'
 import { History } from '@/session/History'
 import { okResult } from '@/session/result'
 import { CommandRegistry } from '@/utils/core/commandSpec'
@@ -28,7 +28,7 @@ import {
 import { applyAssemblyEdit } from '@/utils/assemblyEdit'
 import { ASSEMBLY_UNDO_LABELS, type AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
-import { findMate, partInstances, setInstanceFixedFromSolved } from '@/utils/assemblyMutations'
+import { findInstance, findMate, partInstances, setInstanceFixedFromSolved } from '@/utils/assemblyMutations'
 import { partSpecs, mateSpecs } from '@/utils/assemblySolveInput'
 import { solveAssembly, type AssemblyBuildResponse } from '@/kernel/solveAssembly'
 import { solveLocally } from '@/kernel/solveLocally'
@@ -40,8 +40,9 @@ import { partBundleKey } from '@/workspace/contentHash'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import { stepSeedFor, seededIdSource } from '@/drive/seededIds'
 import { setIdSource } from '@/utils/yamlMutations'
-import { runScript, type KeptPose, type MateCapture, type ScriptRunOutcome, type ScriptFailure } from '@/drive/scriptRunner'
-import type { AssemblyWireMutation } from '@/drive/assemblyMutationCatalog'
+import { runScript, type AnnotatedSuccess, type KeptPose, type MateCapture, type ScriptRunOutcome, type ScriptFailure } from '@/drive/scriptRunner'
+import type { AssemblyWireMutation, PartPatternRequest } from '@/drive/assemblyMutationCatalog'
+import { expandPartPattern } from '@/drive/assemblyPatternExpand'
 import { captureMateAtSeeds, seedAnchorTable } from '@/drive/assemblyCapture'
 import { featureProblems, readSolveOutcomes, type FeatureProblem } from '@/drive/featureOutcome'
 import { validateAssemblyMutation } from '@/drive/assemblyMutationCatalog'
@@ -410,6 +411,104 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
   const registry = new CommandRegistry<AssemblyCommandContext>(() => context)
   for (const spec of ASSEMBLY_COMMAND_SPECS) registry.register(spec)
 
+  // One validated wire mutation against the live doc. `solveAfter: false` is
+  // the pattern's inner loop, which solves once at the end instead of per copy.
+  async function runMutation(
+    mutation: AssemblyWireMutation,
+    solveAfter: boolean,
+  ): Promise<ScriptFailure | AnnotatedSuccess> {
+    const validated = validateAssemblyMutation(mutation, {
+      doc: docBox.current,
+      boundPartIds: new Set(opts.parts.keys()),
+      resolveRef,
+    })
+    if (!validated.ok) return failure(validated.error.code, validated.error.message)
+    if ('macro' in validated) return runPartPattern(validated.pattern)
+    needsSolve = false
+    // Capture runs before the step writes anything: the seeds it measures
+    // are the ones the solve below starts from. Its patch already lets an
+    // explicit flip/angle in this same step win, and says which it beat.
+    const capture = captureRequested(mutation) ? captureStep(mutation, validated.input) : null
+    const input = capture === null ? validated.input : capture.input
+    let poseKept: KeptPose | undefined
+    if (mutation.type === 'set_part_fixed' && mutation.bake === false) {
+      // The authored seed stays: only the flag is written, so a pose the
+      // last solve diverged to never lands in the document. The editor
+      // path keeps baking; this is the headless escape hatch for exactly
+      // that case. Empty transforms route the flag through the guarded
+      // setter (assemblyOperations' rationale for the editor cells): an
+      // absent `fixed` means false, so re-setting an already-correct flag
+      // is absorbed as a no-op instead of materializing a permanent
+      // `fixed: false` key and charging a dead undo entry.
+      const { handle, fixed } = mutation
+      applyEdit(ASSEMBLY_UNDO_LABELS.fixUnfixPart, doc => setInstanceFixedFromSolved(doc, handle, fixed, {}))
+      poseKept = 'seed'
+    } else {
+      runAssemblyOperation(validated.operation, input as never, host())
+      // A toggle that runs before this session ever solved has no last
+      // solve to bake, so the seed it reports keeping is still the
+      // authored one; anything else took the bake path.
+      if (mutation.type === 'set_part_fixed') poseKept = last === null ? 'seed' : 'solved'
+    }
+    if (needsSolve && solveAfter) await solve()
+    return {
+      ...okResult(),
+      ...(capture !== null && { captured: capture.captured }),
+      ...(poseKept !== undefined && { poseKept }),
+    }
+  }
+
+  // A pattern is all or nothing: the copies and their mates are placed through
+  // the ordinary add_part and add_mate paths, then folded into one undo entry.
+  // A copy that fails restores the doc and the stack to before the step, so a
+  // half-built ring never survives a refusal.
+  async function runPartPattern(request: PartPatternRequest): Promise<ScriptFailure | AnnotatedSuccess> {
+    const entry = await bundleFor(request.part, boundPart(request.part))
+    if (entry.outcome.error !== undefined) {
+      return failure('unresolved-ref', `could not build part "${request.part}": ${entry.outcome.error}`)
+    }
+    // add_part bakes the last solve into every non-fixed seed, so the pose the
+    // holes sit at once the copies are in is the solved one, not the stale seed.
+    const poseOf = (handle: string): Transform3D | undefined => {
+      const instance = findInstance(docBox.current, handle)
+      return instance?.fixed === true ? instance.transform : (last?.transforms[handle] ?? instance?.transform)
+    }
+    const expansion = expandPartPattern(request, { doc: docBox.current, indexFor, partIndex: entry.index, poseOf })
+    if (!expansion.ok) return failure(expansion.code, expansion.message)
+    const before = docBox.current
+    const mark = history.mark()
+    needsSolve = false
+    for (const copy of expansion.copies) {
+      runAssemblyOperation('add_part', {
+        docId: request.part,
+        docRev: 0,
+        handle: copy.handle,
+        featureId: copy.featureId,
+        transform: copy.transform,
+      }, host())
+    }
+    const captured: MateCapture[] = []
+    for (const copy of expansion.copies) {
+      const result = await runMutation(copy.mate, false)
+      if (!result.ok) {
+        docBox.current = before
+        history.rollbackTo(mark)
+        needsSolve = false
+        return failure(result.code, `${copy.handle}: ${result.message}`)
+      }
+      if (result.captured !== undefined) captured.push(result.captured)
+    }
+    // One undo entry for the whole ring: restore the stacks, then push the
+    // pre-pattern doc under the pattern's label.
+    history.rollbackTo(mark)
+    history.push(ASSEMBLY_UNDO_LABELS.addPartPattern, before)
+    await solve()
+    return {
+      ...okResult(expansion.copies.flatMap(copy => [copy.featureId, copy.mate.featureId])),
+      ...(captured.length > 0 && { captured: captured[0] }),
+    }
+  }
+
   const run = async (steps: readonly AssemblyScriptStep[]): Promise<ScriptRunOutcome> => {
     if (steps.length === 0) {
       await solve()
@@ -431,45 +530,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
         // A ref needs the part build, which is async: build every instance's
         // part first so the synchronous resolver has an index.
         await ensureBundles()
-        const mutation = step.mutation
-        const validated = validateAssemblyMutation(mutation, {
-          doc: docBox.current,
-          boundPartIds: new Set(opts.parts.keys()),
-          resolveRef,
-        })
-        if (!validated.ok) return failure(validated.error.code, validated.error.message)
-        needsSolve = false
-        // Capture runs before the step writes anything: the seeds it measures
-        // are the ones the solve below starts from. Its patch already lets an
-        // explicit flip/angle in this same step win, and says which it beat.
-        const capture = captureRequested(mutation) ? captureStep(mutation, validated.input) : null
-        const input = capture === null ? validated.input : capture.input
-        let poseKept: KeptPose | undefined
-        if (mutation.type === 'set_part_fixed' && mutation.bake === false) {
-          // The authored seed stays: only the flag is written, so a pose the
-          // last solve diverged to never lands in the document. The editor
-          // path keeps baking; this is the headless escape hatch for exactly
-          // that case. Empty transforms route the flag through the guarded
-          // setter (assemblyOperations' rationale for the editor cells): an
-          // absent `fixed` means false, so re-setting an already-correct flag
-          // is absorbed as a no-op instead of materializing a permanent
-          // `fixed: false` key and charging a dead undo entry.
-          const { handle, fixed } = mutation
-          applyEdit(ASSEMBLY_UNDO_LABELS.fixUnfixPart, doc => setInstanceFixedFromSolved(doc, handle, fixed, {}))
-          poseKept = 'seed'
-        } else {
-          runAssemblyOperation(validated.operation, input as never, host())
-          // A toggle that runs before this session ever solved has no last
-          // solve to bake, so the seed it reports keeping is still the
-          // authored one; anything else took the bake path.
-          if (mutation.type === 'set_part_fixed') poseKept = last === null ? 'seed' : 'solved'
-        }
-        if (needsSolve) await solve()
-        return {
-          ...okResult(),
-          ...(capture !== null && { captured: capture.captured }),
-          ...(poseKept !== undefined && { poseKept }),
-        }
+        return runMutation(step.mutation, true)
       },
     )
     // The run always ends with a solve of the final document, but a step that

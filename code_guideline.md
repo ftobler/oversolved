@@ -286,6 +286,7 @@ are user-entered takes them as data and the dialog is only a front end.
 |---------|--------|
 | `insert_part_instance` / `add_part` | Open the picker and append a part instance |
 | `duplicate_part` / `delete_part` | Duplicate or delete a part instance |
+| `add_part_pattern` (drive only) | One instance plus mate per hole a selector matches, one undo entry |
 | `set_part_visible` / `set_part_fixed*` | Toggle visibility or the fixed flag |
 | `insert_mate_<kind>` / `update_mate` / `delete_mate` | Mate authoring |
 | `export_assembly` / `cancel_edit` | Assembly-level actions |

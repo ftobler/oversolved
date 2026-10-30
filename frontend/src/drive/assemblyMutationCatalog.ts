@@ -32,6 +32,20 @@ export type DriveMateOffset = number | { x?: number; y?: number; z?: number }
  */
 export type AssemblyWireMutation =
   | { type: 'add_part'; handle: string; part: string; position?: Vec3Tuple; rotation?: Vec3Tuple; fixed?: boolean }
+  | {
+    type: 'add_part_pattern'
+    handlePrefix: string
+    part: string
+    kind: MateKind
+    ref_a: DriveMateRef
+    ref_b: DrivePatternRefB
+    flip?: boolean
+    offset?: DriveMateOffset
+    angle?: number
+    radius?: number
+    ratio?: number
+    capture?: boolean
+  }
   | { type: 'duplicate_part'; handle: string; newHandle: string }
   | { type: 'delete_part'; handle: string }
   | { type: 'set_part_position'; handle: string; position: Vec3Tuple }
@@ -70,9 +84,17 @@ export type AssemblyWireMutation =
 
 export type AssemblyWireType = AssemblyWireMutation['type']
 
+/** The wire types that expand into several operations in the drive session
+ *  instead of mapping onto one. */
+export type AssemblyMacroType = 'add_part_pattern'
+
+/** The new part's side of a pattern mate: its part is filled per copy, so the
+ *  ref names only the pick. */
+export type DrivePatternRefB = { selector: unknown } | { query: string } | { anchor: string }
+
 /** The one row where the wire spelling and the operation id differ: the drive
  *  exposes the structural one-shot toggle, never the fold twin. */
-export const ASSEMBLY_OPERATION_BY_MUTATION: Readonly<Record<AssemblyWireType, AssemblyOperationId>> = {
+export const ASSEMBLY_OPERATION_BY_MUTATION: Readonly<Record<Exclude<AssemblyWireType, AssemblyMacroType>, AssemblyOperationId>> = {
   add_part: 'add_part',
   duplicate_part: 'duplicate_part',
   delete_part: 'delete_part',
@@ -188,6 +210,36 @@ export const ASSEMBLY_MUTATION_CATALOG = {
       fixed: optBool(),
     },
   },
+  add_part_pattern: {
+    summary: 'Add one instance of a part per match of a hole selector, each with its mate, as one undo step.',
+    note: 'A macro: it expands into plain add_part and add_mate steps, so the document stores only ordinary '
+      + 'instances and mates, never the pattern. `ref_a.selector` names the pattern side and must match one or '
+      + 'more entities (a ring of holes, a row); each match, visited by angle about the ring or along the row, '
+      + 'becomes the instance `<handlePrefix><i>` (i from 0) seeded so its `ref_b` anchor lands on the match, '
+      + 'plus the mate `<handlePrefix><i>_mate`. `ref_b` is the pick on the new part (a selector naming exactly '
+      + 'one entity, a query or an anchor id) and carries no `part`. Pass flip: true for face-to-face contact; '
+      + 'the seeds put the roll at the canonical zero, so a fixed mate holds that roll and a rotating one stays '
+      + 'free. The pattern does not follow later edits to the pattern part: re-expand after changing the hole '
+      + 'count. The step result lists the created instance handles and mate ids in `createdIds`, and with '
+      + 'capture its `captured` reports the first copy. A failing copy rolls the whole step back. ' + MATE_PARAM_NOTE,
+    fields: {
+      handlePrefix: str('Prefix of every instance handle, followed by the copy index: nut -> nut0, nut1, ...'),
+      part: str('The bound part doc_id every copy instantiates.'),
+      kind: str(`One of ${MATE_KINDS.join(', ')}; the mate kind of every copy.`),
+      ref_a: ref('The pattern side: {part: <instance handle>, selector: <a select selector matching every hole>}. Only the selector form is accepted.'),
+      ref_b: {
+        type: 'object',
+        required: true,
+        note: 'The pick on the new part, without a `part`: {selector: <names exactly one entity>}, {query: ...} or {anchor: ...}.',
+      },
+      flip: optBool(),
+      offset: offsetOptional(),
+      angle: optNum('Degrees in [0, 360); the absolute roll between the anchors\' canonical frames.'),
+      radius: optNum('Tangential clearance radius.'),
+      ratio: optNum('Copy-rotation ratio.'),
+      capture: optBool(CAPTURE_NOTE),
+    },
+  },
   duplicate_part: {
     summary: 'Copy an instance onto an explicit new handle.',
     fields: {
@@ -281,6 +333,7 @@ export type AssemblyMutationCatalog = typeof ASSEMBLY_MUTATION_CATALOG
 
 export const ASSEMBLY_MUTATION_FAMILY: Record<AssemblyWireType, AssemblyMutationFamily> = {
   add_part: 'parts',
+  add_part_pattern: 'parts',
   duplicate_part: 'parts',
   delete_part: 'parts',
   set_part_position: 'parts',
@@ -306,8 +359,13 @@ export type AssemblyValidationErrorCode =
   | 'unresolved-ref'
   | 'invalid-ref'
 
+/** A validated pattern request: shape-checked, not yet expanded (the match
+ *  count needs the part builds, which only the drive session has). */
+export type PartPatternRequest = Extract<AssemblyWireMutation, { type: 'add_part_pattern' }>
+
 export type AssemblyValidation =
   | { ok: true; operation: AssemblyOperationId; input: AssemblyOperationInputs[AssemblyOperationId] }
+  | { ok: true; macro: AssemblyMacroType; pattern: PartPatternRequest }
   | { ok: false; error: { code: AssemblyValidationErrorCode; message: string } }
 
 export interface AssemblyValidationContext {
@@ -624,6 +682,49 @@ function validateValues(
           ...(raw.fixed !== undefined && { fixed: raw.fixed as boolean }),
         },
       }
+    }
+    case 'add_part_pattern': {
+      const prefix = raw.handlePrefix as string
+      if (prefix === '' || prefix === ASSEMBLY_HANDLE) {
+        return fail('invalid-mutation', `handlePrefix "${prefix}" must be a non-empty prefix and never "${ASSEMBLY_HANDLE}"`)
+      }
+      const partProblem = boundProblem(ctx, raw.part as string)
+      if (partProblem !== null) return fail('unknown-target', partProblem)
+      const kind = raw.kind as string
+      if (!(MATE_KINDS as readonly string[]).includes(kind)) {
+        return fail('invalid-mutation', `kind ${json(kind)} is not a mate kind; use one of ${MATE_KINDS.join(', ')}`)
+      }
+      for (const param of paramFieldsPresent(raw)) {
+        const problem = mateParamProblem(kind, param, raw[param])
+        if (problem !== null) return fail('invalid-mutation', problem)
+      }
+      const refAShape = refShapeProblem(raw.ref_a, 'ref_a')
+      if (refAShape !== null) return fail('invalid-mutation', refAShape)
+      const refA = raw.ref_a as { part: string }
+      if (!('selector' in refA)) {
+        return fail('invalid-mutation', 'ref_a of a pattern must use a selector that matches every hole, not a query or anchor')
+      }
+      const instance = instanceProblem(doc, refA.part, 'ref_a.part')
+      if (instance !== null) return fail('unknown-target', instance)
+      const refB = raw.ref_b
+      if (!isRecord(refB)) return fail('invalid-mutation', `ref_b must be a pick object, got ${json(refB)}`)
+      const forms = ['query', 'selector', 'anchor'].filter(key => refB[key] !== undefined)
+      if (forms.length !== 1) {
+        return fail('invalid-mutation', `ref_b needs exactly one of query, selector or anchor (got ${forms.length === 0 ? 'none' : forms.join(', ')})`)
+      }
+      const form = forms[0]
+      if (form === 'selector' ? !isRecord(refB.selector) : typeof refB[form] !== 'string' || refB[form] === '') {
+        return fail('invalid-mutation', form === 'selector'
+          ? 'ref_b.selector must be a selector object'
+          : `ref_b.${form} must be a non-empty string`)
+      }
+      const extra = Object.keys(refB).find(key => !['query', 'selector', 'anchor'].includes(key))
+      if (extra !== undefined) {
+        return fail('invalid-mutation', extra === 'part'
+          ? 'ref_b carries no part: the pattern fills it per copy'
+          : `ref_b has no field ${json(extra)}`)
+      }
+      return { ok: true, macro: 'add_part_pattern', pattern: raw as PartPatternRequest }
     }
     case 'duplicate_part': {
       const source = instanceProblem(doc, raw.handle as string, 'handle')

@@ -11,6 +11,12 @@ export interface HistoryEntry<Doc, Meta = unknown> {
   meta?: Meta
 }
 
+/** The stacks as History.mark saw them, for rolling a compound step back. */
+export interface HistoryMark<Doc, Meta = unknown> {
+  undo: HistoryEntry<Doc, Meta>[]
+  redo: HistoryEntry<Doc, Meta>[]
+}
+
 export interface HistoryOptions<Doc> {
   // Entry snapshots and the departing-doc counterparts both go through this, so
   // the freeze's clone semantics live in one place and part and assembly can
@@ -78,6 +84,22 @@ export class History<Doc, Meta = unknown> {
 
   redo(current: Doc): HistoryEntry<Doc, Meta> | null {
     return this.move('redo', current)
+  }
+
+  // A compound step (a pattern expansion) pushes many entries. The mark is the
+  // two stacks as they were, so the step can be rolled back whole or folded
+  // into one entry without index arithmetic: a capped stack drops its oldest
+  // entries as the compound pushes, which would shift any saved length.
+  mark(): HistoryMark<Doc, Meta> {
+    return { undo: this.undoStack, redo: this.redoStack }
+  }
+
+  // Put both stacks back as `mark` saw them. PAIRING CONTRACT as restoreSnapshot:
+  // the caller restores the live doc itself.
+  rollbackTo(mark: HistoryMark<Doc, Meta>): void {
+    this.undoStack = mark.undo
+    this.redoStack = mark.redo
+    this.snapshot = null
   }
 
   saveSnapshot(): void {

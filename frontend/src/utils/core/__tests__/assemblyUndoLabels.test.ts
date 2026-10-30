@@ -8,6 +8,7 @@ import { ASSEMBLY_UNDO_LABELS } from '@/utils/core/assemblyUndoLabels'
 const ALL_ASSEMBLY_UNDO_LABELS = [
   'Add mate',
   'Add part',
+  'Add part pattern',
   'Delete mate',
   'Delete part',
   'Duplicate part',

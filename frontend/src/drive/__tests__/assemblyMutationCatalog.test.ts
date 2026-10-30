@@ -60,7 +60,9 @@ describe('ASSEMBLY_MUTATION_CATALOG', () => {
   it('covers every operation except the hidden fold twin', () => {
     const expected = (Object.keys(ASSEMBLY_OPERATIONS) as AssemblyOperationId[])
       .filter(id => id !== 'set_part_fixed_oneshot')
-    expect(Object.keys(ASSEMBLY_MUTATION_CATALOG).sort()).toEqual(expected.sort())
+    // add_part_pattern is the one macro: it expands in the drive session into
+    // add_part and add_mate operations and has no operation of its own.
+    expect(Object.keys(ASSEMBLY_MUTATION_CATALOG).sort()).toEqual([...expected, 'add_part_pattern'].sort())
     // Every row maps onto a real operation, and the one wire spelling that
     // differs is the structural fixed toggle.
     for (const [type, operation] of Object.entries(ASSEMBLY_OPERATION_BY_MUTATION)) {
@@ -180,7 +182,7 @@ describe('validateAssemblyMutation refusals', () => {
   it('accepts a null parameter as the documented delete', () => {
     const result = validate({ type: 'update_mate', featureId: 'm1', angle: null })
     expect(result.ok).toBe(true)
-    if (!result.ok) throw new Error('unreachable')
+    if (!result.ok || 'macro' in result) throw new Error('unreachable')
     expect(result.operation).toBe('update_mate')
     expect(result.input).toEqual({ id: 'm1', patch: { angle: undefined } })
   })
@@ -194,7 +196,7 @@ describe('the catalog examples', () => {
       for (const [index, step] of example.steps.entries()) {
         const validated = validateAssemblyMutation(step.mutation, { doc, boundPartIds, resolveRef: stubResolver })
         expect(validated.ok, `${example.name} step ${index}: ${validated.ok ? '' : validated.error.message}`).toBe(true)
-        if (!validated.ok) throw new Error('unreachable')
+        if (!validated.ok || 'macro' in validated) throw new Error('unreachable')
         const plan = planAssemblyOperation(validated.operation, validated.input as never, { doc, transforms: {} })
         expect(plan).not.toBeNull()
         doc = plan!.doc

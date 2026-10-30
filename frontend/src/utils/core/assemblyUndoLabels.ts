@@ -5,6 +5,7 @@
 export const ASSEMBLY_UNDO_LABELS = {
   addMate: 'Add mate',
   addPart: 'Add part',
+  addPartPattern: 'Add part pattern',
   duplicatePart: 'Duplicate part',
   deletePart: 'Delete part',
   toggleVisibility: 'Toggle visibility',

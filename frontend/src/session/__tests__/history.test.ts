@@ -14,6 +14,32 @@ const doc = (label: string, items: number[] = []): Doc => ({ label, items })
 const makeHistory = (cap = 50, cloneDoc: (d: Doc) => Doc = structuredClone) =>
   new History<Doc>({ cloneDoc, cap })
 
+describe('mark and rollbackTo', () => {
+  it('restores both stacks after a compound step pushed several entries', () => {
+    const history = makeHistory()
+    history.push('keep', doc('a'))
+    history.push('undone', doc('b'))
+    history.undo(doc('c'))
+    const mark = history.mark()
+    history.push('x', doc('d'))
+    history.push('y', doc('e'))
+    history.rollbackTo(mark)
+    expect(history.undoLabels()).toEqual(['keep'])
+    expect(history.redoLabels()).toEqual(['undone'])
+  })
+
+  it('restores a capped stack whose oldest entries the compound step dropped', () => {
+    const history = makeHistory(3)
+    for (const label of ['a', 'b', 'c']) history.push(label, doc(label))
+    const mark = history.mark()
+    history.push('x', doc('x'))
+    history.push('y', doc('y'))
+    expect(history.undoLabels()).toEqual(['c', 'x', 'y'])
+    history.rollbackTo(mark)
+    expect(history.undoLabels()).toEqual(['a', 'b', 'c'])
+  })
+})
+
 describe('push, undo and redo', () => {
   it('round-trips a doc through undo and redo with its label', () => {
     const history = makeHistory()

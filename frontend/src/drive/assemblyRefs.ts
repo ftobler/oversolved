@@ -145,34 +145,43 @@ function queryRef(part: string, query: string, index: PartAnchorIndex, docId: st
   return { ok: true, ref: { part, anchor: ids[0], anchor_descriptor: anchorDescriptor(anchor) } }
 }
 
-function selectorQuery(ref: { selector: unknown }, index: PartAnchorIndex): { ok: true; query: string } | ResolvedDriveRef {
-  // Structural validation first: the engine only understands vectors, so the
-  // letter axis sugar must be expanded here, and a typo must read as a bad
-  // ref rather than as a candidate set that happened to project to NaN.
+/** Every query a selector names in one part's build. Structural validation
+ *  comes first: the engine only understands vectors, so the letter axis sugar
+ *  must be expanded here, and a typo must read as a bad ref rather than as a
+ *  candidate set that happened to project to NaN. */
+export function selectorMatches(
+  rawSelector: unknown,
+  index: PartAnchorIndex,
+): { ok: true; queries: string[] } | DriveRefFailure {
   let selector: Selector
   try {
-    selector = validateSelector(ref.selector)
+    selector = validateSelector(rawSelector)
   } catch (e) {
     if (!(e instanceof SelectorError)) throw e
     return { ok: false, code: 'invalid-ref', message: e.message }
   }
-  let result: ReturnType<typeof selectByPredicate>
   try {
-    result = selectByPredicate(selector, index.bodies)
+    return { ok: true, queries: selectByPredicate(selector, index.bodies).queries }
   } catch (e) {
     // The select engine owns the nearest-miss wording; pass it through.
     return { ok: false, code: 'unresolved-ref', message: e instanceof Error ? e.message : String(e) }
   }
-  if (result.queries.length !== 1) {
-    const shown = result.queries.slice(0, 4).map(query => `"${query}"`).join(', ')
+}
+
+function selectorQuery(ref: { selector: unknown }, index: PartAnchorIndex): { ok: true; query: string } | ResolvedDriveRef {
+  const matched = selectorMatches(ref.selector, index)
+  if (!matched.ok) return matched
+  const { queries } = matched
+  if (queries.length !== 1) {
+    const shown = queries.slice(0, 4).map(query => `"${query}"`).join(', ')
     return {
       ok: false,
       code: 'unresolved-ref',
-      message: `selector matched ${result.queries.length} entities; make it name exactly one`
+      message: `selector matched ${queries.length} entities; make it name exactly one`
         + (shown === '' ? '' : ` (first matches: ${shown})`),
     }
   }
-  return { ok: true, query: result.queries[0] }
+  return { ok: true, query: queries[0] }
 }
 
 /**
