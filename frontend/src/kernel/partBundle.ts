@@ -4,7 +4,7 @@
 // assembly worker never touches OCC or runs solveLocally. The bundle is cached
 // in IndexedDb keyed by (doc_id, content_hash); a miss triggers a cold rebuild.
 
-import type { EdgeData, BodyResult, FaceData, MateAnchorDescriptor } from '../types/cad'
+import type { EdgeData, BodyResult, FaceData, MateAnchorDescriptor, Mesh3D } from '../types/cad'
 import { sha256Hex } from './sha256'
 import { constructionUuidToken, parseAncestry, partitionAncestryIds } from './queryWire'
 import { cross, sub } from '@/utils/vec3'
@@ -94,12 +94,15 @@ export interface PartBundle {
 /**
  * Bumped whenever a bundle field's MEANING changes in a way that would strand
  * a cached bundle with stale semantics (not just a new optional field). The
- * `surface_frame`-derived anchor axes change is the first such case: a bundle
+ * `surface_frame`-derived anchor axes change was the first such case: a bundle
  * cached under an older schema keeps its wrong cylinder/cone/sphere/torus axes
- * forever unless the cache treats a schema mismatch as a miss. See
- * `bundleCache.bundleCacheGet`.
+ * forever unless the cache treats a schema mismatch as a miss. Schema 2 moves
+ * the cylinder/cone/torus anchor POINT too, from the surface frame origin (an
+ * end of the face, or outside it) to the face's own axial midpoint, so a cached
+ * schema-1 bundle would hand an already-solved assembly its old end-anchored
+ * pose. See `bundleCache.bundleCacheGet`.
  */
-export const BUNDLE_SCHEMA = 1
+export const BUNDLE_SCHEMA = 2
 
 // Bumped whenever geometry-producing code changes at an unchanged BUNDLE_SCHEMA
 // (a tessellation tweak, a boolean-op fix, a builder behavior change). The
@@ -385,19 +388,113 @@ function edgeAnchorPoint(ed: EdgeData): Vec3 {
 }
 
 /**
+ * The anchor kinds whose point is one representative point of an AXIS rather
+ * than the face's whole identity. They are the kinds whose extent is measured
+ * axially at build time (`faceAxialMidpoints`) and the kinds descriptor
+ * matching measures against the axis line. A sphere is absent on purpose: its
+ * centre IS its identity, and its axis is a placeholder.
+ */
+const AXIAL_ANCHOR_KINDS: ReadonlySet<string> = new Set(['cylinder', 'cone', 'torus'])
+
+/** One mesh vertex, in typed-array or tuple-array shape. */
+function vertexAt(verts: Mesh3D['vertices'], i: number): Vec3 {
+  return verts instanceof Float32Array ? [verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]] : verts[i]
+}
+
+/**
+ * For every cylinder/cone/torus face, the axial parameter t such that
+ * `origin + t * normalize(axis)` is the MIDPOINT of that face's own extent.
+ *
+ * `surface_frame.origin` is wherever OCC built the surface: the extrude's start
+ * plane, the cut tool's start, the cone's construction point. That is an end of
+ * the face or outside the face entirely, and a mate welds whatever point it is
+ * handed, so the anchor has to be the middle of the face it names. The extent
+ * comes from the body's own tessellation: one pass over the triangles serves
+ * every face, where a per-face scan would be quadratic.
+ *
+ * A face whose extent cannot be measured (no mesh, no triangle-to-face map, a
+ * sliver that tessellated to nothing) gets no entry, and its anchor falls back
+ * to the frame origin -- the old anchor, which is at least on the axis.
+ */
+function faceAxialMidpoints(bodyResult: BodyResult, fds: FaceData[]): Map<number, number> {
+  const out = new Map<number, number>()
+  const wanted = new Set<number>()
+  const origins: Vec3[] = []
+  const axes: Vec3[] = []
+  for (let i = 0; i < fds.length; i++) {
+    const fd = fds[i]
+    const kind = faceTypeToAnchorKind(fd.surface_type)
+    if (!kind || !AXIAL_ANCHOR_KINDS.has(kind)) continue
+    const frame = fd.surface_frame
+    if (!frame) continue
+    wanted.add(i)
+    origins[i] = frame.origin
+    axes[i] = normalize(frame.axis)
+  }
+  if (wanted.size === 0) return out
+
+  const mesh = bodyResult.mesh
+  const triangles = mesh?.faces
+  const triangleToFace = mesh?.triangle_to_face
+  const vertices = mesh?.vertices
+  if (!triangles || !triangleToFace || !vertices) return out
+  const isFlat = triangles instanceof Uint32Array
+  const cornerIndex = (tri: number, k: number): number =>
+    isFlat ? (triangles as Uint32Array)[tri * 3 + k] : (triangles as [number, number, number][])[tri][k]
+  const triCount = isFlat ? (triangles as Uint32Array).length / 3 : triangles.length
+
+  const spans = new Map<number, { lo: number; hi: number }>()
+  for (let tri = 0; tri < triCount; tri++) {
+    const face = triangleToFace[tri]
+    if (!wanted.has(face)) continue
+    const origin = origins[face]
+    const axis = axes[face]
+    for (let k = 0; k < 3; k++) {
+      const v = vertexAt(vertices, cornerIndex(tri, k))
+      const t = (v[0] - origin[0]) * axis[0] + (v[1] - origin[1]) * axis[1] + (v[2] - origin[2]) * axis[2]
+      const span = spans.get(face)
+      if (!span) {
+        spans.set(face, { lo: t, hi: t })
+      } else {
+        if (t < span.lo) span.lo = t
+        if (t > span.hi) span.hi = t
+      }
+    }
+  }
+  for (const [face, span] of spans) out.set(face, (span.lo + span.hi) / 2)
+  return out
+}
+
+/**
  * A face anchor's point + axis. A plane's axis IS its normal (unchanged). A
  * curved face's axis comes ONLY from `surface_frame` -- never from
  * `normal`, which is radial on a cylinder/cone and would make a coaxial mate
  * align two radial vectors instead of two axes. No frame (a bundle built
  * before this field existed, or an unreadable surface class) means no anchor:
  * fail-safe over fail-wrong.
+ *
+ * For an axial kind the point is the midpoint of the face's own extent along
+ * that axis (`axialMid`), not the frame origin: two mated features then meet in
+ * the middle of their faces instead of at one end. An unmeasurable extent keeps
+ * the frame origin, so the failure mode is the old anchor, never a stray point.
  */
-function faceAnchorPointAxis(kind: AnchorKind, fd: FaceData): { point: Vec3; axis: Vec3 } | null {
+function faceAnchorPointAxis(
+  kind: AnchorKind, fd: FaceData, axialMid?: number,
+): { point: Vec3; axis: Vec3 } | null {
   if (kind === 'plane') return { point: fd.centroid, axis: fd.normal }
   const frame = fd.surface_frame
   if (!frame) return null
   if (kind === 'sphere') return { point: frame.origin, axis: [0, 0, 1] }
-  return { point: frame.origin, axis: frame.axis }
+  if (axialMid === undefined) return { point: frame.origin, axis: frame.axis }
+  const n = normalize(frame.axis)
+  return {
+    point: [
+      frame.origin[0] + n[0] * axialMid,
+      frame.origin[1] + n[1] * axialMid,
+      frame.origin[2] + n[2] * axialMid,
+    ],
+    axis: frame.axis,
+  }
 }
 
 function edgeAnchorAxis(ed: EdgeData): Vec3 {
@@ -470,6 +567,8 @@ export function extractBodyAnchors(
   const fqs = bodyResult.mesh?.face_queries
   const fds = bodyResult.mesh?.face_data
   if (fds) {
+    // Measured once per body: one pass over its triangles, not one per face.
+    const axialMids = faceAxialMidpoints(bodyResult, fds)
     for (let i = 0; i < fds.length; i++) {
       entityAnchors.faces.push([])
       const fd = fds[i]
@@ -478,7 +577,7 @@ export function extractBodyAnchors(
       if (!desc) continue
       const kind = faceTypeToAnchorKind(fd?.surface_type)
       if (!kind) continue
-      const pa = faceAnchorPointAxis(kind, fd)
+      const pa = faceAnchorPointAxis(kind, fd, axialMids.get(i))
       if (!pa) continue
       emit(entityAnchors.faces, {
         kind,
@@ -549,26 +648,65 @@ export interface AnchorMatchInput {
   kind: string
   created_by: string
   point: Vec3
+  // Carried by a bundle anchor, absent from a stored descriptor: the axis an
+  // axial kind is matched against. A descriptor point is a position captured at
+  // pick time, so after the anchor moved from the surface frame origin to the
+  // face's axial midpoint it can sit at either end of that axis (or past one);
+  // the distance to the AXIS LINE still names the face, where a 3D point
+  // distance can prefer a sibling face on another axis.
+  axis?: Vec3
 }
 
-/** The unique candidate id nearest `p`, or undefined for an empty set or a tie. */
+/** Primary (distance to the axis line, or to the point) then axial offset. */
+interface MatchKey {
+  primary: number
+  secondary: number
+}
+
+function matchKey(p: Vec3, a: AnchorMatchInput): MatchKey {
+  if (a.axis && AXIAL_ANCHOR_KINDS.has(a.kind)) {
+    const n = normalize(a.axis)
+    const dx = p[0] - a.point[0]
+    const dy = p[1] - a.point[1]
+    const dz = p[2] - a.point[2]
+    const along = dx * n[0] + dy * n[1] + dz * n[2]
+    // Clamped: a point ON the line squares to a hair below zero from rounding.
+    const perpSq = Math.max(0, dx * dx + dy * dy + dz * dz - along * along)
+    return { primary: perpSq, secondary: along * along }
+  }
+  return { primary: distSq(p, a.point), secondary: 0 }
+}
+
+/**
+ * Whether key `a` clearly beats `b`: clearly better on the primary, or within
+ * the tie epsilon on the primary and clearly better on the secondary. A margin
+ * the epsilon cannot see orders nothing, which is what keeps a near-tie
+ * refusing instead of picking a side on rounding noise.
+ */
+function keyBeats(a: MatchKey, b: MatchKey): boolean {
+  if (a.primary <= b.primary - ANCHOR_TIE_EPSILON_SQ) return true
+  if (b.primary <= a.primary - ANCHOR_TIE_EPSILON_SQ) return false
+  return a.secondary <= b.secondary - ANCHOR_TIE_EPSILON_SQ
+}
+
+/**
+ * The id of the candidate that clearly beats EVERY other one, or undefined for
+ * an empty set or a tie. Beating only the nearest rival is not enough: a
+ * candidate no epsilon can separate from the winner means there is no unique
+ * answer, and a tie refuses rather than guessing.
+ */
 function uniqueNearestId(candidates: [string, AnchorMatchInput][], p: Vec3): string | undefined {
   if (candidates.length === 0) return undefined
   if (candidates.length === 1) return candidates[0][0]
-  let bestId: string | undefined
-  let bestDist = Infinity
-  let secondDist = Infinity
-  for (const [id, a] of candidates) {
-    const d = distSq(p, a.point)
-    if (d < bestDist - ANCHOR_TIE_EPSILON_SQ) {
-      secondDist = bestDist
-      bestDist = d
-      bestId = id
-    } else if (d < secondDist - ANCHOR_TIE_EPSILON_SQ) {
-      secondDist = d
-    }
+  const keys = candidates.map(([, a]) => matchKey(p, a))
+  let winner = 0
+  for (let i = 1; i < candidates.length; i++) {
+    if (keyBeats(keys[i], keys[winner])) winner = i
   }
-  return bestId && Math.abs(bestDist - secondDist) >= ANCHOR_TIE_EPSILON_SQ ? bestId : undefined
+  for (let i = 0; i < candidates.length; i++) {
+    if (i !== winner && !keyBeats(keys[winner], keys[i])) return undefined
+  }
+  return candidates[winner][0]
 }
 
 /**

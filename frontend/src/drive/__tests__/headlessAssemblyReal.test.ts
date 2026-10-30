@@ -605,4 +605,120 @@ describeReal('headless assembly with the real mate solver', () => {
     expect(again).toEqual(first.instances)
     expect(docHashOf(session.getDoc())).toBe(docHashOf(first.doc))
   }, 180_000)
+
+  // ─── Curved anchors are the face's own axial midpoint ───
+
+  // A cylinder wall of the given height, anchored at its own midpoint.
+  function pinDocOf(height: number): PartDoc {
+    return { version: 1, kind: 'part', features: [circleSketch('sk1', 5), extrude('sk1', 'ex1', height)] } as PartDoc
+  }
+
+  /** A plate straddling z = 0 with an off-centre through hole: the hole wall
+   *  spans the plate only, so its midpoint is (10, 10, 0) in part-local terms. */
+  function cageDoc(): PartDoc {
+    return {
+      version: 1, kind: 'part',
+      features: [
+        rectSketch('sk1', 20, 20),
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 1, direction: 'symmetric', operation: 'new' } },
+        circleSketchAt('sk2', 10, 10, 5),
+        { id: 'ex2', kind: 'extrude', extrude: { sketch: '$sk2', distance: 2, direction: 'symmetric', operation: 'cut' } },
+      ],
+    } as unknown as PartDoc
+  }
+
+  /** A ball whose centre is the part origin: the revolve of a half-disc about
+   *  its own diameter, so the sphere anchor sits at (0, 0, 0). */
+  function ballDoc(): PartDoc {
+    return {
+      version: 1, kind: 'part',
+      features: [
+        {
+          id: 'skax', kind: 'sketch', label: 'Axis', plane: '@builtin_plane_front',
+          entities: [{ id: 'ax', kind: 'line' }],
+          initial: { ax: [0, -1, 0, 1] },
+          constraints: [{ id: 'fx', kind: 'fixed', target: { entity: 'ax' } }],
+        },
+        {
+          // Coordinate-closed profile, each entity pinned so the solve keeps the
+          // seeded half-disc instead of rescaling it along a free DOF.
+          id: 'skprof', kind: 'sketch', label: 'Ball profile', plane: '@builtin_plane_front',
+          entities: [{ id: 'half', kind: 'arc' }, { id: 'join', kind: 'line' }],
+          initial: { half: [0, 0, 3, -90, 90], join: [0, 3, 0, -3] },
+          constraints: [
+            { id: 'f1', kind: 'fixed', target: { entity: 'half' } },
+            { id: 'f2', kind: 'fixed', target: { entity: 'join' } },
+          ],
+        },
+        { id: 'rev1', kind: 'revolve', sketch: '$skprof', angle: 360, axis: '@skax/ax', operation: 'new' },
+      ],
+    } as unknown as PartDoc
+  }
+
+  const CYLINDER_FACE = { kind: 'face' as const, where: { type: 'cylinderface' } }
+  // A full sphere may tessellate as more than one face, so the extreme narrows
+  // the pick to one of them instead of failing on an ambiguous match.
+  const SPHERE_FACE = {
+    kind: 'face' as const,
+    where: { and: [{ type: 'sphereface' }, { extreme: { axis: [0, 0, 1], side: 'max' } }] },
+  }
+
+  it('mating two pins by their walls meets their axial midpoints, not their end faces', async () => {
+    const parts = new Map([['tall', pinDocOf(10)], ['short', pinDocOf(4)]])
+    const steps: AssemblyScriptStep[] = [
+      { mutation: { type: 'add_part', handle: 'tall', part: 'tall', fixed: true } },
+      { mutation: { type: 'add_part', handle: 'short', part: 'short', position: [20, 0, 5] } },
+      { mutation: {
+        type: 'add_mate',
+        featureId: 'm1',
+        kind: 'rotating',
+        ref_a: { part: 'tall', selector: CYLINDER_FACE },
+        ref_b: { part: 'short', selector: CYLINDER_FACE },
+      } },
+    ]
+    const result = await runAssemblyHeadless({ doc: emptyDriveAssemblyDoc(), parts, steps })
+    expect(result.ok).toBe(true)
+
+    // The tall wall spans z 0..10 and the short one z 0..4, so meeting at the
+    // midpoints puts both frames at z = 5 and the short pin at z = 3. Anchored
+    // at the sweep start instead, the two BOTTOMS met: the short pin sat at
+    // z = 0 with its top at 4.
+    const refA = result.mateFrames.m1.ref_a!
+    const refB = result.mateFrames.m1.ref_b!
+    for (const point of [refA.point, refB.point]) {
+      expect(point[0]).toBeCloseTo(0, 4)
+      expect(point[1]).toBeCloseTo(0, 4)
+      expect(point[2]).toBeCloseTo(5, 4)
+    }
+    const short = result.instances.find((instance) => instance.handle === 'short')!
+    expect(short.position[2]).toBeCloseTo(3, 4)
+    // Roll about the shared axis is the one DOF this joint leaves open.
+    expect(result.solve.verdict).toBe('underconstrained')
+  }, 180_000)
+
+  it('a ball seated in a cage hole lands on the hole wall midpoint at z = 0', async () => {
+    const parts = new Map([['cage', cageDoc()], ['ball', ballDoc()]])
+    const steps: AssemblyScriptStep[] = [
+      { mutation: { type: 'add_part', handle: 'cage', part: 'cage', fixed: true } },
+      { mutation: { type: 'add_part', handle: 'ball', part: 'ball', position: [10, 10, 5] } },
+      { mutation: {
+        type: 'add_mate',
+        featureId: 'm1',
+        kind: 'spherical',
+        ref_a: { part: 'cage', selector: CYLINDER_FACE },
+        ref_b: { part: 'ball', selector: SPHERE_FACE },
+      } },
+    ]
+    const result = await runAssemblyHeadless({ doc: emptyDriveAssemblyDoc(), parts, steps })
+    expect(result.ok).toBe(true)
+
+    // The hole wall exists only inside the plate (z -0.5..0.5), so its midpoint
+    // is z = 0; the ball's centre, which is its own part origin, must sit there.
+    const ball = result.instances.find((instance) => instance.handle === 'ball')!
+    expect(ball.position[0]).toBeCloseTo(10, 4)
+    expect(ball.position[1]).toBeCloseTo(10, 4)
+    expect(ball.position[2]).toBeCloseTo(0, 4)
+    // A spherical mate pins the centre only; the ball keeps its three spins.
+    expect(result.solve.verdict).toBe('underconstrained')
+  }, 180_000)
 })
