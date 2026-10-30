@@ -5,7 +5,7 @@
 //! the closures `residuals(x)` and `jacobian(x, n)` built by `MateProblem`.
 //!
 //! Residuals per mate kind:
-//! - Fixed:              point coincidence + offset vector in A's frame (3) + signed axis difference w/ flip (3) + absolute roll to authored angle (1)
+//! - Fixed:              point coincidence plus the offset vector in A's frame (3) + signed axis difference w/ flip (3) + absolute roll to authored angle (1)
 //! - Spherical:          point coincidence (3)
 //! - Parallel:           dot product of axes minus sign (1)
 //! - Sliding:            signed axis difference w/ flip (3) + perp displacement cross (3) + absolute roll to authored angle (1)
@@ -398,16 +398,18 @@ impl MateProblem {
             match mate.kind {
                 MateKind::Fixed => {
                     // Point coincidence with a 3D offset carried in A's frame:
-                    // p_a - p_b - R_a * offset. The offset rotates with A, so a
+                    // p_a + R_a * offset - p_b. The offset rotates with A, so a
                     // weld holds the same relative placement however the pair is
                     // oriented -- a world-frame offset would slide the parts
-                    // apart the moment A turned.
+                    // apart the moment A turned. The sign is B's anchor at A's
+                    // anchor PLUS the offset, the convention every document,
+                    // catalog note and the other offset-reading kinds promise.
                     let pa = world_point(x, off_a, &mate.a.geometry.point);
                     let pb = world_point(x, off_b, &mate.b.geometry.point);
                     let off_w = world_direction(x, off_a, &mate.offset);
-                    r.push(pa[0] - pb[0] - off_w[0]);
-                    r.push(pa[1] - pb[1] - off_w[1]);
-                    r.push(pa[2] - pb[2] - off_w[2]);
+                    r.push(pa[0] + off_w[0] - pb[0]);
+                    r.push(pa[1] + off_w[1] - pb[1]);
+                    r.push(pa[2] + off_w[2] - pb[2]);
                     // Axis alignment with a DEFINITE sign: a_w - sign * b_w.
                     // cross(a_w, b_w) vanishes for both parallel and anti-parallel
                     // b_w, so the weld could settle either way and flip a part

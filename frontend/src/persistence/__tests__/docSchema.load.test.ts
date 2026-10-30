@@ -19,7 +19,7 @@ import {
 import {
   ALL_HISTORICAL_ASSEMBLY_DOCS,
   ALL_HISTORICAL_PART_DOCS,
-  CURRENT_V3_PART,
+  CURRENT_V4_PART,
   LEGACY_V0_PART,
   LEGACY_V1_PART,
 } from '@/persistence/__fixtures__/historicalDocs'
@@ -112,15 +112,16 @@ describe('the version gate', () => {
   it('skips every step at the current version, stale keys included', () => {
     // The stamp is the document's promise that it is already current; the
     // ladder does not second-guess it, even when a healable-looking key sits
-    // in the payload. Nothing in this app writes the stamp, so this boundary
-    // only arises for a document another writer stamped.
+    // in the payload. The app writes the stamp only where a migration step
+    // flips stored data (the mate offset sign flip) or where a drive tier
+    // saves, so an older stamp from another writer is the normal case here.
     const doc = staleBodyPick()
     expect(migrate(doc, CURRENT_DOC_VERSION)).toEqual([])
     expect((doc.features[0].transform as { body?: string }).body).toBe('@body_ex1')
   })
 
   it('the current-version fixture is stamped at CURRENT_DOC_VERSION', () => {
-    const result = loadPartDocText(CURRENT_V3_PART.text, { name: CURRENT_V3_PART.name })
+    const result = loadPartDocText(CURRENT_V4_PART.text, { name: CURRENT_V4_PART.name })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(docVersion(result.doc)).toBe(CURRENT_DOC_VERSION)

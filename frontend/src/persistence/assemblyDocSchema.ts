@@ -63,7 +63,9 @@ const MATE_OFFSET: JsonSchema = {
       additionalProperties: false,
     },
   ],
-  description: 'A scalar along A\'s anchor axis, or a vector in body A\'s local frame; a missing component is 0.',
+  description: 'A scalar along A\'s anchor axis, or a vector in body A\'s local frame; a missing component is 0. '
+    + 'B\'s anchor sits at A\'s anchor plus the offset (fixed); parallel_plane_distance reads it as the plane '
+    + 'separation along A\'s normal and tangential as a surface clearance.',
 }
 
 const MATE_DEF: JsonSchema = {

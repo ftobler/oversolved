@@ -264,7 +264,7 @@ impl MateProblem {
         }
     }
 
-    /// Point coincidence with a local-frame offset vector: `p_a - p_b - R_a * offset`.
+    /// Point coincidence with a local-frame offset vector: `p_a + R_a * offset - p_b`.
     #[allow(clippy::too_many_arguments)]
     fn fill_point_coincidence_offset(
         &self,
@@ -292,9 +292,9 @@ impl MateProblem {
             // `+=` throughout: see fill_point_coincidence's self-mate note.
             // ∂r/∂t_a = +I
             j[(r, off_a + comp)] += 1.0;
-            // ∂r/∂q_a_i = drot_dq(q_a)(p_a)[i][comp] - drot_dq(q_a)(offset)[i][comp]
+            // ∂r/∂q_a_i = drot_dq(q_a)(p_a)[i][comp] + drot_dq(q_a)(offset)[i][comp]
             for qi in 0..4 {
-                j[(r, off_a + 3 + qi)] += dpa[qi][comp] - d_off[qi][comp];
+                j[(r, off_a + 3 + qi)] += dpa[qi][comp] + d_off[qi][comp];
             }
             // ∂r/∂t_b = -I
             j[(r, off_b + comp)] += -1.0;

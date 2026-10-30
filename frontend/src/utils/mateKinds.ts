@@ -102,6 +102,17 @@ export function mateParams(kind: MateKind): readonly MateParam[] {
   return MATE_PARAMS[kind] ?? []
 }
 
+// The offset SIGN convention, per kind (mate_residuals.rs residual formulas):
+// - fixed: a full 3D translation in A's local frame; B's anchor lands at A's
+//   anchor PLUS the rotated offset (`p_a + R_a * offset - p_b = 0`).
+// - parallel_plane_distance: the plane separation along A's normal; positive
+//   puts B that distance along A's axis from A (`dot(p_b - p_a, a_w) - offset`).
+// - tangential: a clearance added to the contact distance (the surface
+//   distance minus the radius term equals the offset), so positive widens the
+//   gap between the surfaces.
+// `sliding` deliberately reads no offset: an offset along a prismatic joint's
+// axis would pin its only translational DOF, which is a motor, not a mate.
+
 /**
  * Whether a mate kind reads an anchor's axis in its residual. Fixed, sliding,
  * rotating, sliding_rotating, parallel, parallel_plane_distance and
@@ -218,9 +229,11 @@ export function normalizeMateAngleDeg(deg: number): number {
  * knows about the older one. A bare number is the original scalar offset, a
  * signed distance along A's anchor axis, so it expands to `offset * axisA` --
  * which the solver rotates back to `offset * a_w`, exactly what the scalar
- * residual used to subtract. Assembly documents are user YAML stored verbatim
- * with no content migration anywhere in the stack, so that equivalence is the
- * back-compat guarantee, not a convenience.
+ * residual adds to place B's anchor at A's anchor PLUS the offset. Assembly
+ * documents are otherwise user YAML stored verbatim: the one content
+ * migration in the stack is the loader's one-time
+ * `mate-offset-plus-convention` sign flip (persistence/docSchema.ts), after
+ * which both authoring forms keep solving to the same pose.
  *
  * An expression string or non-finite component still yields 0 here for display
  * and back-compat, but the solve only reaches this after

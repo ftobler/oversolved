@@ -129,11 +129,12 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
         'pin/body_ex1', 'plate/body_ex1',
       ])
 
-      // Offset the mate by 5 along the plate normal: the pin rises from z 10 to
-      // 15, and an undo in the same call returns to A1's pose.
+      // Offset the mate by 5 along the plate normal (plus convention: B at A
+      // plus the offset): the pin rises from z 10 to 15, and an undo in the
+      // same call returns to A1's pose.
       const moved = toolPayload(await client.request('tools/call', {
         name: 'run',
-        arguments: { docHash: a1, steps: [{ mutation: { type: 'update_mate', featureId: 'm1', offset: { z: -5 } } }] },
+        arguments: { docHash: a1, steps: [{ mutation: { type: 'update_mate', featureId: 'm1', offset: { z: 5 } } }] },
       }))
       const movedPin = (moved.instances as Array<{ handle: string; position: number[] }>).find(i => i.handle === 'pin')!
       expect(movedPin.position[2]).toBeCloseTo(15, 3)
@@ -143,7 +144,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
         arguments: {
           docHash: a1,
           steps: [
-            { mutation: { type: 'update_mate', featureId: 'm1', offset: { z: -5 } } },
+            { mutation: { type: 'update_mate', featureId: 'm1', offset: { z: 5 } } },
             { command: 'undo' },
           ],
         },

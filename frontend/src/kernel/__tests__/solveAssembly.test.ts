@@ -78,7 +78,8 @@ describe('solveAssembly', () => {
   // The tolerant dual-read at the wire. A legacy document authored `offset: 7`
   // as a distance along A's anchor axis; the record now carries a vector, and
   // the scalar has to arrive as exactly that same displacement or every saved
-  // assembly shifts. There is no document migration to lean on.
+  // assembly shifts. The scalar keeps its authoring form all the way to the
+  // wire; the one-time document sign flip lives in the loader, not here.
   it('expands a legacy scalar offset along the A anchor axis on the wire', async () => {
     const { relay } = makeRelay()
     await bundleCachePut(makeAxialBundle('doc-a', '1'))

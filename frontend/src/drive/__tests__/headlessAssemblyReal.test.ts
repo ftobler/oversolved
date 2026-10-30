@@ -16,6 +16,7 @@ import { docHashOf } from '@/drive/docHash'
 import { createHeadlessAssembly, emptyDriveAssemblyDoc, setMateSolver, type AssemblyScriptStep } from '../headlessAssembly'
 import { runAssemblyHeadless } from '../headlessOps'
 import { instancePoses } from '../assemblyOutcome'
+import { ASSEMBLY_MUTATION_EXAMPLES } from '../assemblyExamples'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -212,6 +213,106 @@ describeReal('headless assembly with the real mate solver', () => {
     expect(result.ok).toBe(true)
     expect(result.mates).toEqual([])
     expect(result.solve.verdict).toBe('fully_constrained')
+  }, 180_000)
+
+  // The plus convention against the real kernel: B's anchor lands at A's
+  // anchor PLUS the offset, scalar along A's axis, vector in A's local frame.
+  // Each case welds the same face pair on two plate instances so the anchor
+  // frames are unambiguous, then reads the posed anchors back.
+  it('places B at A plus a scalar offset along the +Y face axis', async () => {
+    const result = await runAssemblyHeadless({
+      doc: emptyDriveAssemblyDoc(),
+      parts: binding(),
+      steps: [PIN_SCRIPT[0], { mutation: { type: 'add_part', handle: 'plate2', part: 'plate' } }, {
+        mutation: {
+          type: 'add_mate', featureId: 'm1', kind: 'fixed',
+          ref_a: { part: 'plate', selector: FLAT_LETTER('y', 'max') },
+          ref_b: { part: 'plate2', selector: FLAT_LETTER('y', 'max') },
+          offset: 10,
+        },
+      }],
+    })
+    expect(result.ok).toBe(true)
+    expect(result.solve.verdict).toBe('fully_constrained')
+    const frames = result.mateFrames.m1
+    const [ax, ay, az] = frames.ref_a!.point
+    const [bx, by, bz] = frames.ref_b!.point
+    expect(bx - ax).toBeCloseTo(0, 6)
+    expect(by - ay).toBeCloseTo(10, 6)
+    expect(bz - az).toBeCloseTo(0, 6)
+  }, 180_000)
+
+  it('places B at A plus an off-axis vector offset on an identity A', async () => {
+    const result = await runAssemblyHeadless({
+      doc: emptyDriveAssemblyDoc(),
+      parts: binding(),
+      steps: [PIN_SCRIPT[0], { mutation: { type: 'add_part', handle: 'plate2', part: 'plate' } }, {
+        mutation: {
+          type: 'add_mate', featureId: 'm1', kind: 'fixed',
+          ref_a: { part: 'plate', selector: FLAT_LETTER('y', 'max') },
+          ref_b: { part: 'plate2', selector: FLAT_LETTER('y', 'max') },
+          offset: { x: 10 },
+        },
+      }],
+    })
+    expect(result.ok).toBe(true)
+    expect(result.solve.verdict).toBe('fully_constrained')
+    const frames = result.mateFrames.m1
+    const [ax, ay, az] = frames.ref_a!.point
+    const [bx, by, bz] = frames.ref_b!.point
+    expect(bx - ax).toBeCloseTo(10, 6)
+    expect(by - ay).toBeCloseTo(0, 6)
+    expect(bz - az).toBeCloseTo(0, 6)
+  }, 180_000)
+
+  it('rotates the vector offset with A: {x: 10} on a 90 deg rolled A lands at +10 Y', async () => {
+    // A quarter turn about Z maps the local (10, 0, 0) to the world (0, 10, 0);
+    // a world-frame offset would leave B at +10 X regardless of A's pose.
+    const result = await runAssemblyHeadless({
+      doc: emptyDriveAssemblyDoc(),
+      parts: binding(),
+      steps: [
+        { mutation: { type: 'add_part', handle: 'plate', part: 'plate', fixed: true, rotation: [0, 0, 90] } },
+        { mutation: { type: 'add_part', handle: 'plate2', part: 'plate' } },
+        {
+          mutation: {
+            type: 'add_mate', featureId: 'm1', kind: 'fixed',
+            ref_a: { part: 'plate', selector: FLAT_LETTER('z', 'max') },
+            ref_b: { part: 'plate2', selector: FLAT_LETTER('z', 'max') },
+            offset: { x: 10 },
+          },
+        },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    expect(result.solve.verdict).toBe('fully_constrained')
+    const frames = result.mateFrames.m1
+    const [ax, ay, az] = frames.ref_a!.point
+    const [bx, by, bz] = frames.ref_b!.point
+    expect(bx - ax).toBeCloseTo(0, 6)
+    expect(by - ay).toBeCloseTo(10, 6)
+    expect(bz - az).toBeCloseTo(0, 6)
+  }, 180_000)
+
+  it('runs the served pin_on_plate example, pinning the offset sign', async () => {
+    // The example is what the drive catalog serves to agents; it authors
+    // offset 5, so its pin's base anchor must sit 5 along the plate top
+    // face's outward normal (plus convention), floating above the plate.
+    const example = ASSEMBLY_MUTATION_EXAMPLES.find(e => e.name === 'pin_on_plate')!
+    const result = await runAssemblyHeadless({
+      doc: emptyDriveAssemblyDoc(),
+      parts: binding(),
+      steps: example.steps,
+    })
+    expect(result.ok).toBe(true)
+    expect(result.mates).toEqual([])
+    expect(result.solve.verdict).toBe('fully_constrained')
+    const frames = result.mateFrames.m1
+    const [ax, ay, az] = frames.ref_a!.point
+    const [bx, by, bz] = frames.ref_b!.point
+    expect(bx - ax).toBeCloseTo(0, 6)
+    expect(by - ay).toBeCloseTo(0, 6)
+    expect(bz - az).toBeCloseTo(5, 6)
   }, 180_000)
 
   it('refuses a malformed selector as an invalid ref', async () => {

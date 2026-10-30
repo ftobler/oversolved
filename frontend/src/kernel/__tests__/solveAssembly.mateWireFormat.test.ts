@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { encodeMateInput, decodeMateOutput } from '../solveAssembly'
 import { makeEchoSolver, readMateWireFixture, freshDb } from '../solveAssemblyTestUtils'
+import { loadAssemblyDocText } from '@/persistence/docSchema'
+import { LEGACY_V3_ASSEMBLY_OFFSETS } from '@/persistence/__fixtures__/historicalDocs'
+import { mateOffsetVector } from '@/utils/mateKinds'
 
 beforeEach(() => { freshDb() })
 
@@ -64,6 +67,39 @@ describe('mate wire format', () => {
       perpA: [0, 1, 0], perpB: [0, 1, 0], weight: 1,
     }])
     expect(encodedWithMate.length - encoded.length).toBe(fixture.record_bytes)
+  })
+
+  it('carries the migrated authored offset vector unchanged', () => {
+    // The loader's mate-offset-plus-convention step negates a stored fixed
+    // offset once, on the document. The wire must then carry that authored
+    // (post-migration) vector through unflipped: a second negation here would
+    // move every legacy assembly again, silently.
+    const loaded = loadAssemblyDocText(LEGACY_V3_ASSEMBLY_OFFSETS.text)
+    expect(loaded.ok).toBe(true)
+    if (!loaded.ok) return
+    const feature = (loaded.doc.features ?? []).find(f => f.id === 'm_vector')!
+    // Authored {x: 3, y: -4} at version 3 flips to {x: -3, y: 4} at load.
+    const offset = mateOffsetVector(feature.mate!.offset, [0, 0, 1])
+    expect(offset).toEqual([-3, 4, 0])
+
+    const params = new Float64Array(7)
+    const fixedMask = new Uint8Array([0])
+    const encoded = encodeMateInput(1, params, fixedMask, [{
+      kindCode: 0,
+      bodyA: 0, bodyB: 0,
+      anchorKindA: 0, anchorKindB: 0,
+      pointA: [0, 0, 0], axisA: [0, 0, 1],
+      pointB: [0, 0, 0], axisB: [0, 0, 1],
+      flip: false, offset, ratio: 1, radius: 0, angle: 0,
+      perpA: [0, 1, 0], perpB: [0, 1, 0], weight: 1,
+    }])
+    // The offset is the 24-byte run at record bytes 108..132 (after the two
+    // point/axis triples and the flags byte), read back bit-exact.
+    const recordStart = 81
+    const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
+    expect(view.getFloat64(recordStart + 108, true)).toBe(-3)
+    expect(view.getFloat64(recordStart + 116, true)).toBe(4)
+    expect(view.getFloat64(recordStart + 124, true)).toBe(0)
   })
 
   it('places angle at the documented offset in the mate record', () => {

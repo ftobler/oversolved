@@ -18,14 +18,15 @@ import { evalExpr } from '@/kernel/evalExpr'
 import { threadEntry } from '@/kernel/threadTable'
 import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams } from '@/utils/yamlMigrations'
 
-// The version the ladder migrates to. A document carrying `version` 3 or newer
+// The version the ladder migrates to. A document carrying `version` 4 or newer
 // skips every step; anything older (including an unstamped document, reads as 0)
 // runs the steps whose target version it is behind. The step at 3 canonicalizes
 // the two spellings the format used to tolerate (feature refs `$id` -> `@id`,
-// flat params -> nested); the historic heals target 2 deliberately: the version
-// stamps predate them, so a document stamped 1 can still carry the stale shapes
-// they fix.
-export const CURRENT_DOC_VERSION = 3
+// flat params -> nested); the step at 4 flips stored fixed-mate offsets to the
+// plus convention and stamps the document it changed (see the step's own note).
+// The historic heals target 2 deliberately: the version stamps predate them, so
+// a document stamped 1 can still carry the stale shapes they fix.
+export const CURRENT_DOC_VERSION = 4
 
 // Caps. Chosen far above what a real document holds while well below what would
 // hang a solve: an entity list of 10k is already far past a hand-authored
@@ -100,6 +101,10 @@ interface MigrationStep {
 // touches and skips anything that does not have the shape it heals: a garbage
 // document just reaches the validator untouched and is rejected there.
 const MIGRATION_STEPS: MigrationStep[] = [
+  // The fixed-mate offset sign flip. The loop below keys every step off the
+  // version captured before any step ran, so this one's stamp of the documents
+  // it flips cannot skip a sibling step in the same pass.
+  { id: 'mate-offset-plus-convention', to: 4, apply: stepMateOffsetPlusConvention },
   // Canonicalization runs before plural-body-picks: a flat legacy singular
   // `body` has to be folded into the sub-def first, or the plural step (which
   // reads the sub-def only) never sees it.
@@ -193,6 +198,79 @@ function stepDropRedundantInlineStepPayload(doc: DocRecord): number {
     }
   }
   return dropped
+}
+
+// A fixed mate's `offset` used to mean B's anchor at A's anchor MINUS the
+// offset; the solver, the docs and every other offset-reading kind now agree
+// on PLUS (B at A + R_a * offset). Stored fixed offsets are negated once so
+// they keep solving to the same pose. Assembly documents only: a `mate`
+// feature exists nowhere else.
+//
+// Unlike the other steps this one is NOT idempotent by construction -- a
+// second run would negate back -- so as soon as it flips anything it stamps
+// the document with the new version, and the stamp is what stops the flip
+// recurring on every later load. An assembly carrying no fixed offset is left
+// unstamped; the step runs on it every load and rewrites nothing.
+function stepMateOffsetPlusConvention(doc: DocRecord): number {
+  if (doc.kind !== 'assembly') return 0
+  const features = doc.features
+  if (!isRecordList(features, MAX_FEATURES)) return 0
+  let flipped = 0
+  for (const feature of features) {
+    const row = feature as DocRecord
+    if (row.kind !== 'mate') continue
+    const mate = row.mate
+    if (!isRecord(mate) || mate.kind !== 'fixed') continue
+    if (negateMateOffset(mate)) flipped++
+  }
+  if (flipped > 0) doc.version = CURRENT_DOC_VERSION
+  return flipped
+}
+
+/** Negate one fixed mate's authored offset in place. A number flips sign, an
+ *  expression string wraps as `-(...)` (the solve refuses such a mate today,
+ *  but it must round-trip with the sign flipped), and a partial vector flips
+ *  only the components it actually carries; an absent offset and any other
+ *  shape are left for the validator to accept or reject. Answers whether the
+ *  record was rewritten. */
+function negateMateOffset(mate: DocRecord): boolean {
+  const offset = mate.offset
+  if (typeof offset === 'number') {
+    mate.offset = negateOffsetNumber(offset)
+    return true
+  }
+  if (typeof offset === 'string') {
+    mate.offset = negateOffsetExpr(offset)
+    return true
+  }
+  if (isRecord(offset)) {
+    let touched = false
+    for (const comp of ['x', 'y', 'z']) {
+      const v = offset[comp]
+      if (typeof v === 'number') {
+        offset[comp] = negateOffsetNumber(v)
+        touched = true
+      } else if (typeof v === 'string') {
+        offset[comp] = negateOffsetExpr(v)
+        touched = true
+      }
+    }
+    return touched
+  }
+  return false
+}
+
+/** The negation of an authored offset component. Zero stays `0` so the flip
+ *  cannot author a `-0` that would round-trip into the YAML as junk. */
+function negateOffsetNumber(v: number): number {
+  return v === 0 ? 0 : -v
+}
+
+/** An expression negated with the parens operator precedence needs: a bare
+ *  `a + b` would otherwise re-read as `(-a) + b`. The double paren on an
+ *  already-wrapped expression is redundant but never wrong. */
+function negateOffsetExpr(expr: string): string {
+  return `-(${expr})`
 }
 
 // ─── primitive guards ───
