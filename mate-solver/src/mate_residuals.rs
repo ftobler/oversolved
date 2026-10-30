@@ -170,6 +170,11 @@ const ROT_DAMP_SCALE: f64 = 500.0;
 const ANTIPARALLEL_TOL: f64 = 1e-9;
 const ANTIPARALLEL_NUDGE: f64 = 1e-3;
 
+/// The verdict retry costs up to six extra solves, so it only runs on small
+/// problems (about 60 bodies of simple mates); a large genuinely overconstrained
+/// assembly keeps the plain verdict instead of paying that on every edit.
+const RETRY_CELL_BUDGET: usize = 100_000;
+
 /// Cell ceiling on the dense Jacobian this solver will allocate.
 ///
 /// The dense LM driver materialises the m*n Jacobian plus a J^T J of n*n and
@@ -1260,6 +1265,7 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     if status == MateStatus::Overconstrained
         && !live
         && lm_result.residual_norm.is_finite()
+        && m * n_red <= RETRY_CELL_BUDGET
         && retry_reaches_tolerance(input, &problem, &params_solved)
     {
         status = MateStatus::NotConverged;

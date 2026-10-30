@@ -32,6 +32,10 @@ const KIND_SLIDING_ROTATING = 5
 
 const PLACING_KINDS: ReadonlySet<number> = new Set([KIND_FIXED, KIND_SPHERICAL, KIND_ROTATING, KIND_SLIDING_ROTATING])
 
+const PLACE_RANK: Record<number, number> = {
+  [KIND_FIXED]: 0, [KIND_ROTATING]: 1, [KIND_SLIDING_ROTATING]: 1, [KIND_SPHERICAL]: 2,
+}
+
 /** A mate already holding within this (model units / unit axis) keeps its seed. */
 const SATISFIED_TOL = 1e-6
 
@@ -207,29 +211,32 @@ export function seedAssembly(
   const grounded = (i: number) => ((fixedMask[Math.floor(i / 8)] ?? 0) >> (i % 8) & 1) === 1
   for (let i = 0; i < bodyCount; i++) placed[i] = grounded(i)
 
-  let progress = true
-  while (progress) {
-    progress = false
+  // Each round places the one unplaced body reachable through the most
+  // constraining placing mate (fixed before rotating before spherical), ties by
+  // mate order: a spherical listed before a fixed weld on the same pair must not
+  // win and leave the half turn to the solver.
+  for (;;) {
+    let best: MateWireRecord | null = null
     for (const m of mates) {
       if (m.weight !== 1 || m.bodyA === m.bodyB || !PLACING_KINDS.has(m.kindCode)) continue
       // A negative index is the wire's dropped-body sentinel (an inline anchor on
       // a handle that names no loaded part); the solver drops that mate too.
       if (m.bodyA < 0 || m.bodyB < 0 || m.bodyA >= bodyCount || m.bodyB >= bodyCount) continue
-      const aPlaced = placed[m.bodyA]
-      const bPlaced = placed[m.bodyB]
-      if (aPlaced === bPlaced) continue
-      const a = readPose(out, m.bodyA)
-      const b = readPose(out, m.bodyB)
-      const target = aPlaced ? m.bodyB : m.bodyA
-      if (!satisfied(a, b, m)) {
-        const next = aPlaced ? placeB(a, b, m) : placeA(a, b, m)
-        if (next) writePose(out, target, next)
-      }
-      // Reached either way: a consistent seed counts as placed, so the walk
-      // continues through it.
-      placed[target] = true
-      progress = true
+      if (placed[m.bodyA] === placed[m.bodyB]) continue
+      if (best === null || PLACE_RANK[m.kindCode] < PLACE_RANK[best.kindCode]) best = m
     }
+    if (best === null) break
+    const aPlaced = placed[best.bodyA]
+    const a = readPose(out, best.bodyA)
+    const b = readPose(out, best.bodyB)
+    const target = aPlaced ? best.bodyB : best.bodyA
+    if (!satisfied(a, b, best)) {
+      const next = aPlaced ? placeB(a, b, best) : placeA(a, b, best)
+      if (next) writePose(out, target, next)
+    }
+    // Reached either way: a consistent seed counts as placed, so the walk
+    // continues through it.
+    placed[target] = true
   }
   return out
 }

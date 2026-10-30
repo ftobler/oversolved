@@ -133,3 +133,13 @@ describe('seedAssembly', () => {
     expect(Array.from(p)).toEqual(Array.from(copy))
   })
 })
+
+describe('seedAssembly mate ranking', () => {
+  it('lets a fixed weld place a part before an earlier spherical mate on the same pair', () => {
+    const p = params([[[0, 0, 0], ID], [[0, 0, 0], ID]])
+    const sph = record({ kindCode: 1, bodyA: 0, bodyB: 1, pointA: [0, 0, 5] })
+    const weld = record({ bodyA: 0, bodyB: 1, flip: true, pointA: [0, 0, 5] })
+    const seeded = seedAssembly(p, Uint8Array.of(0b01), [sph, weld])
+    expect(worldDir(seeded, 1, [0, 0, 1])[2]).toBeCloseTo(-1, 9)
+  })
+})
