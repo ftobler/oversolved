@@ -6,6 +6,9 @@
 
 import { describe, it, expect } from 'vitest'
 import { MUTATION_CATALOG, mutationInfoOf } from '../mutationCatalog'
+import { ASSEMBLY_MUTATION_CATALOG } from '../assemblyMutationCatalog'
+import { MATE_KINDS, mateParams } from '@/utils/mateKinds'
+import type { MateKind } from '@/types/cad'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import type { Mutation, SketchFeature } from '@/types/cad'
 import { featureParamsSchema } from '@/persistence/partDocSchema'
@@ -165,5 +168,56 @@ describe('F2: apply_offset side', () => {
     expect(note).toContain('out of the region')
     expect(note).toContain('whatever the winding')
     expect(note).toContain('open selection')
+  })
+})
+
+// The assembly catalog's mate notes are hand-written prose against mateParams.
+// The claims cannot be regenerated mechanically (kinds reading the same list
+// share one clause), so the claims are parsed and DERIVED: every clause's
+// subject kinds must list exactly the params mateParams gives them, and every
+// kind must be covered, so the next parameter-table change fails here instead
+// of leaving the prose behind.
+function mateParamClaims(note: string): Array<[string[], string[]]> {
+  const intro = '(see mateParams): '
+  const last = 'copy_rotation reads ratio'
+  const start = note.indexOf(intro)
+  const end = note.indexOf(last)
+  expect(start, 'MATE_PARAM_NOTE intro').toBeGreaterThanOrEqual(0)
+  expect(end, 'MATE_PARAM_NOTE last clause').toBeGreaterThan(start)
+  return note
+    .slice(start + intro.length, end + last.length)
+    .split('; ')
+    .map(clause => {
+      const parsed = /^(.*) reads? (.*)$/.exec(clause)
+      expect(parsed, `MATE_PARAM_NOTE clause "${clause}"`).not.toBeNull()
+      const [, subjects, listed] = parsed!
+      return [subjects.split(' and '), listed === 'none' ? [] : listed.split(', ')] as [string[], string[]]
+    })
+}
+
+describe('assembly catalog: mate param claims', () => {
+  it('states exactly the mateParams table in every note that shares MATE_PARAM_NOTE', () => {
+    for (const type of ['add_mate', 'update_mate'] as const) {
+      const claims = mateParamClaims(ASSEMBLY_MUTATION_CATALOG[type].note!)
+      const covered = new Set(claims.flatMap(([kinds]) => kinds))
+      expect([...covered].sort(), type).toEqual([...MATE_KINDS].sort())
+      for (const [kinds, params] of claims) {
+        for (const kind of kinds) {
+          expect(params, `${type} note claim for ${kind}`).toEqual([...mateParams(kind as MateKind)])
+        }
+      }
+    }
+  })
+
+  it('names exactly the flip-less kinds as the ones capture cannot measure', () => {
+    // captureMateOrientationPatch returns null exactly for a kind whose params
+    // exclude flip, which is the prose claim the capture note makes.
+    const captureNothing = MATE_KINDS.filter(kind => !mateParams(kind).includes('flip'))
+    for (const type of ['add_mate', 'set_mate_ref'] as const) {
+      const note = ASSEMBLY_MUTATION_CATALOG[type].fields.capture.note!
+      const listed = /no authored orientation \(([^)]+)\) captures nothing/.exec(note)
+      expect(listed, type).not.toBeNull()
+      expect(listed![1].split(', '), type).toEqual(captureNothing)
+    }
   })
 })

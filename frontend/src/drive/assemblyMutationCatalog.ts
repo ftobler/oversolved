@@ -36,7 +36,7 @@ export type AssemblyWireMutation =
   | { type: 'delete_part'; handle: string }
   | { type: 'set_part_position'; handle: string; position: Vec3Tuple }
   | { type: 'set_part_rotation'; handle: string; rotation: Vec3Tuple }
-  | { type: 'set_part_fixed'; handle: string; fixed: boolean }
+  | { type: 'set_part_fixed'; handle: string; fixed: boolean; bake?: boolean }
   | { type: 'set_part_visible'; handle: string; visible: boolean }
   | { type: 'set_builtin_visible'; id: string; visible: boolean }
   | {
@@ -51,8 +51,9 @@ export type AssemblyWireMutation =
     angle?: number
     radius?: number
     ratio?: number
+    capture?: boolean
   }
-  | { type: 'set_mate_ref'; featureId: string; field: MateRefField; ref: DriveMateRef }
+  | { type: 'set_mate_ref'; featureId: string; field: MateRefField; ref: DriveMateRef; capture?: boolean }
   | {
     type: 'update_mate'
     featureId: string
@@ -112,7 +113,7 @@ const nullableStr = () => ({ type: 'string', required: true, nullable: true } as
 const optNum = (note?: string) => ({ type: 'number', required: false, ...(note !== undefined && { note }) } as const)
 const nullableNum = () => ({ type: 'number', required: false, nullable: true } as const)
 const bool = () => ({ type: 'boolean', required: true } as const)
-const optBool = () => ({ type: 'boolean', required: false } as const)
+const optBool = (note?: string) => ({ type: 'boolean', required: false, ...(note !== undefined && { note }) } as const)
 const nullableBool = () => ({ type: 'boolean', required: false, nullable: true } as const)
 const vec3 = (note: string) => ({ type: 'vec3', required: true, note } as const)
 const optVec3 = (note: string) => ({ type: 'vec3', required: false, note } as const)
@@ -132,12 +133,46 @@ const REF_NOTE =
   + '{part: <handle>, anchor: <anchor id>}, or the assembly frame {part: "__assembly", anchor: "AssemblyTop"} '
   + '(AssemblyOrigin, AssemblyTop, AssemblyFront, AssemblyRight). The selector is an authoring aid and is never stored.'
 
+// How `flip` reads, for every row that takes it: the axes as `select` lists
+// them, not an idealised face normal, because a circle edge's axis carries the
+// orientation its own construction gave it.
+const FLIP_NOTE =
+  'flip compares the two anchors\' axes as `select` lists them (the `axis` of a circle item, the normal of a '
+  + 'flat face, the analytic axis of a cylinder): for faces that is the outward normal, so face-to-face contact '
+  + 'between two outward normals needs flip: true, while for circle edges it is the edge\'s own orientation, '
+  + 'which depends on how the edge was made. Absent means the default (parallel axes, canonical zero roll).'
+
+// The recipe, stated on the row that takes the flag: update_mate shares
+// MATE_PARAM_NOTE but has no capture field of its own, so it must not read as
+// if it did.
+const CAPTURE_RECIPE_NOTE =
+  ' The recommended headless recipe is to place the parts roughly and pass capture: true; the served '
+  + 'pin_on_plate example shows it.'
+
 const MATE_PARAM_NOTE =
   'Only the parameters the kind reads are accepted (see mateParams): fixed reads offset, flip, angle; '
   + 'sliding reads flip, angle; rotating and sliding_rotating read flip; spherical reads none; parallel reads flip; '
   + 'parallel_plane_distance reads offset, flip; tangential reads offset, radius; copy_rotation reads ratio. '
-  + 'face-to-face contact between two outward normals needs flip: true. Absent means the default '
-  + '(parallel axes, canonical zero roll); there is no on-screen pose to capture headlessly (D5).'
+  + FLIP_NOTE
+
+// What capture does and when it lands, shared by the two rows that take the
+// flag. The example it points at is the one the `mutations` tool serves, so a
+// client can copy the recipe instead of reconstructing it from prose.
+const CAPTURE_NOTE =
+  'Place the parts roughly (add_part position/rotation), then pass capture: true: the step measures flip and '
+  + 'angle from the instances\' current seeds and freezes the pose you seeded into the mate, instead of making '
+  + 'you guess a canonical roll and learn each circle edge\'s axis direction from a failed solve. An explicit '
+  + 'flip/angle in the same step wins over the captured value, and the step result carries '
+  + '`captured: {flip, angle}` (angle only for the kinds that read a roll) naming what was measured and which '
+  + 'keys the explicit values beat. Default false, '
+  + 'so a document authored without capture keeps its meaning. A kind with no authored orientation '
+  + '(spherical, tangential, copy_rotation) captures nothing.'
+
+const BAKE_NOTE =
+  'By default the step bakes the last solve\'s transforms into the instance seeds, exactly as the editor does, '
+  + 'so the document keeps the pose on screen. Pass bake: false to keep the authored seed instead: use it right '
+  + 'after a solve you do not trust, so a diverged pose is never frozen into the document. The step result '
+  + 'reports which pose was kept as `poseKept: "solved" | "seed"`.'
 
 export const ASSEMBLY_MUTATION_CATALOG = {
   add_part: {
@@ -173,7 +208,8 @@ export const ASSEMBLY_MUTATION_CATALOG = {
   },
   set_part_fixed: {
     summary: 'Fix or unfix a part instance (the structural one-shot toggle).',
-    fields: { handle: str(), fixed: bool() },
+    note: BAKE_NOTE,
+    fields: { handle: str(), fixed: bool(), bake: optBool() },
   },
   set_part_visible: {
     summary: 'Show or hide a part instance.',
@@ -185,7 +221,7 @@ export const ASSEMBLY_MUTATION_CATALOG = {
   },
   add_mate: {
     summary: 'Add a complete mate (both refs, parameters and an optional label) as one step.',
-    note: REF_NOTE + ' ' + MATE_PARAM_NOTE,
+    note: REF_NOTE + ' ' + MATE_PARAM_NOTE + CAPTURE_RECIPE_NOTE,
     fields: {
       featureId: str('The mate feature id; unique in this assembly.'),
       kind: str(`One of ${MATE_KINDS.join(', ')}.`),
@@ -197,6 +233,7 @@ export const ASSEMBLY_MUTATION_CATALOG = {
       angle: optNum('Degrees in [0, 360); the absolute roll between the anchors\' canonical frames.'),
       radius: optNum('Tangential clearance radius.'),
       ratio: optNum('Copy-rotation ratio.'),
+      capture: optBool(CAPTURE_NOTE),
     },
   },
   set_mate_ref: {
@@ -206,6 +243,7 @@ export const ASSEMBLY_MUTATION_CATALOG = {
       featureId: str(),
       field: str('ref_a or ref_b.'),
       ref: ref(REF_NOTE),
+      capture: optBool(CAPTURE_NOTE),
     },
   },
   update_mate: {

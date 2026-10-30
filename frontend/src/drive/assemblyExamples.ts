@@ -40,8 +40,8 @@ const PLATE_PARTS: Record<string, ScriptStep[]> = {
 
 const PIN_ON_PLATE: AssemblyMutationExample = {
   name: 'pin_on_plate',
-  summary: 'A fixed pin floating 5 above a fixed 100 x 60 x 10 plate: one fixed mate, flip true for contact, '
-    + 'offset 5 puts the pin anchor 5 along the plate face normal (plus convention).',
+  summary: 'A fixed pin floating 5 above a fixed 100 x 60 x 10 plate: seeded roughly, capture: true freezes the '
+    + 'contact, flip true for contact, offset 5 puts the pin anchor 5 along the plate face normal (plus convention).',
   parts: PLATE_PARTS,
   steps: [
     { mutation: { type: 'add_part', handle: 'plate', part: 'plate', fixed: true } },
@@ -56,6 +56,7 @@ const PIN_ON_PLATE: AssemblyMutationExample = {
       // Plus convention: the pin's anchor sits 5 along the plate face's
       // outward normal, floating above the plate rather than sunk into it.
       offset: 5,
+      capture: true,
     } },
   ],
 }

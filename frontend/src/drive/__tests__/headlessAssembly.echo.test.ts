@@ -113,6 +113,39 @@ describe('createHeadlessAssembly', () => {
     expect(s.lastSolve()!.transforms.right.tx).toBeCloseTo(50, 9)
   })
 
+  it('a bake: false fixed toggle writes no flag and no undo entry when the flag is already correct', async () => {
+    setMateSolver(makeEchoSolver())
+    const s = session()
+    await s.run(STEPS)
+    const before = s.getDoc()
+    const rightBefore = partInstances(before).find(i => i.handle === 'right')!
+    // The instance never carried a `fixed` key: an absent key means false, so
+    // this toggle is a value no-op that must stay a document no-op.
+    expect(rightBefore).not.toHaveProperty('fixed')
+    const depth = s.history.undoLength()
+    const toggle: AssemblyScriptStep[] = [
+      { mutation: { type: 'set_part_fixed', handle: 'right', fixed: false, bake: false } },
+    ]
+
+    const first = await s.run(toggle)
+    expect(first.ok).toBe(true)
+    expect(first.steps[0]).toMatchObject({ ok: true, poseKept: 'seed' })
+    // The flag-only write keeps the guarded setter's promise: no materialized
+    // `fixed: false` key and no dead undo entry for re-setting false.
+    const rightAfter = partInstances(s.getDoc()).find(i => i.handle === 'right')!
+    expect(rightAfter).toEqual(rightBefore)
+    expect(rightAfter).not.toHaveProperty('fixed')
+    expect(s.getDoc()).toEqual(before)
+    expect(s.history.undoLength()).toBe(depth)
+
+    // Repeating it charges nothing either: the already-correct case is a
+    // no-op the undo funnel absorbs.
+    const second = await s.run(toggle)
+    expect(second.ok).toBe(true)
+    expect(s.getDoc()).toEqual(before)
+    expect(s.history.undoLength()).toBe(depth)
+  })
+
   it('ids are exactly the authored ones and a rerun hashes the same doc', async () => {
     setMateSolver(makeEchoSolver())
     const first = session()
