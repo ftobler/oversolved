@@ -64,7 +64,9 @@ const SEEDS = envInt('ROBUSTNESS_FUZZ_SEEDS', 24)
 // and the justfile pins VITEST_MAX_FORKS beside it.
 configureChainWorkers(envInt('ROBUSTNESS_FUZZ_WORKERS', 2))
 const WORKERS = chainWorkerCount()
-const BUDGET_MS = 4_000
+// Per-seed wall budget. 8 s leaves headroom for a slow arm board (Pi 5, a full
+// suite sharing its cores) and is overridable for slower hosts.
+const BUDGET_MS = envInt('ROBUSTNESS_FUZZ_BUDGET_MS', 8_000)
 // The wall budget covers SEEDS worth of recipes spread over WORKERS children:
 // the pool turns the per-seed cost into a per-worker cost, so the cap divides
 // with it or a wide run would fail a sweep the job budget still allows.
