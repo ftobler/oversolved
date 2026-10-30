@@ -308,7 +308,11 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
         anchors,
         ...(added.patch !== undefined && { explicit: added.patch }),
       })
-      return capture === null ? null : { input: { ...added, patch: capture.patch }, captured: capture.captured }
+      // The capture owns flip/angle only: merge over the step's own patch so
+      // the other authored params (offset, radius, ratio) survive, while the
+      // patch's flip/angle stay the explicit-wins values capture computed.
+      return capture === null ? null
+        : { input: { ...added, patch: { ...added.patch, ...capture.patch } }, captured: capture.captured }
     }
     if (mutation.type !== 'set_mate_ref') return null
     const existing = findMate(docBox.current, mutation.featureId)
@@ -320,7 +324,9 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
       ref_b: mutation.field === 'ref_b' ? aimed.ref : existing.ref_b,
       anchors,
     })
-    return capture === null ? null : { input: { ...aimed, patch: capture.patch }, captured: capture.captured }
+    // Same merge rule as add_mate: only flip/angle come from the capture.
+    return capture === null ? null
+      : { input: { ...aimed, patch: { ...aimed.patch, ...capture.patch } }, captured: capture.captured }
   }
 
   function solve(): Promise<AssemblyBuildResponse> {

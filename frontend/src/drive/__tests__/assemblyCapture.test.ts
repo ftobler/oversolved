@@ -254,11 +254,12 @@ interface BoxStepOptions {
   turnedOver?: boolean
   flip?: boolean
   angle?: number
+  offset?: number
   refB?: string
 }
 
 function boxSteps(options: BoxStepOptions = {}): AssemblyScriptStep[] {
-  const { capture = false, turnedOver = true, flip, angle, refB = 'face' } = options
+  const { capture = false, turnedOver = true, flip, angle, offset, refB = 'face' } = options
   return [
     { mutation: { type: 'add_part', handle: 'a', part: 'box_a', fixed: true } },
     { mutation: { type: 'add_part', handle: 'b', part: 'box_b', ...(turnedOver ? { rotation: [180, 0, 0] } : { position: [100, 0, 0] }) } },
@@ -267,6 +268,7 @@ function boxSteps(options: BoxStepOptions = {}): AssemblyScriptStep[] {
       ref_a: { part: 'a', anchor: 'face' }, ref_b: { part: 'b', anchor: refB },
       ...(flip !== undefined && { flip }),
       ...(angle !== undefined && { angle }),
+      ...(offset !== undefined && { offset }),
       ...(capture && { capture: true }),
     } },
   ]
@@ -330,6 +332,18 @@ describe('the drive captures at the seeds', () => {
     expect(outcome.ok).toBe(true)
     expect(outcome.steps[2].captured).toEqual({ flip: true, angle: 180, overridden: ['angle'] })
     expect(findMate(session.getDoc(), 'm1')).toMatchObject({ flip: true, angle: 90 })
+  })
+
+  it("keeps the step's own offset when the capture freezes its orientation", async () => {
+    // The capture patch owns only flip/angle; the step's other authored
+    // params ride in the same input patch and must survive the merge (a
+    // served pin_on_plate with offset 5 silently lost its offset otherwise).
+    setMateSolver(makeEchoSolver())
+    const session = sessionWith(BOX_ANCHORS)
+    const outcome = await session.run(boxSteps({ capture: true, offset: 5 }))
+    expect(outcome.ok).toBe(true)
+    expect(outcome.steps[2].captured).toEqual({ flip: true, angle: 180 })
+    expect(findMate(session.getDoc(), 'm1')).toMatchObject({ flip: true, angle: 180, offset: 5 })
   })
 
   it('re-measures the re-aimed slot through set_mate_ref with capture', async () => {
