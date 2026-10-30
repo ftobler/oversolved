@@ -115,7 +115,7 @@ impl MateProblem {
                     row += 1;
                 }
                 MateKind::Rotating => {
-                    self.fill_point_coincidence(
+                    self.fill_point_coincidence_offset(
                         &mut j,
                         row,
                         off_a,
@@ -123,6 +123,7 @@ impl MateProblem {
                         x,
                         &mate.a.geometry.point,
                         &mate.b.geometry.point,
+                        &mate.axial_offset_vector(),
                     );
                     row += 3;
                     self.fill_axis_difference(
@@ -136,6 +137,10 @@ impl MateProblem {
                         axis_sign(mate.flip),
                     );
                     row += 3;
+                    if mate.angle_set {
+                        self.fill_roll_fd(&mut j, row, mi, off_a, off_b, x, &mut scratch);
+                        row += 1;
+                    }
                 }
                 MateKind::SlidingRotating => {
                     self.fill_axis_difference(

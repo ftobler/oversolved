@@ -13,7 +13,7 @@ import type { MateFeatureDef, MateRef } from '@/types/cad'
 import { dot } from '@/utils/gizmoMath'
 import { lookupAnchor, type AnchorDescriptorTable, type AnchorTable } from '@/utils/anchorGizmos'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
-import { isMateRefEmpty, mateParams, normalizeMateAngleDeg } from '@/utils/mateKinds'
+import { isMateRefEmpty, mateCapturesAngle, mateParams, normalizeMateAngleDeg } from '@/utils/mateKinds'
 import { rollAboutAxisDeg } from '@/utils/mateOrientation'
 
 /** Round to make the captured value read like a number a user typed. 3
@@ -57,7 +57,7 @@ export function captureMateOrientationPatch(
   // static producer predating x_axis) resets the angle rather than measuring
   // against a wrong frame or keeping a value captured off different anchors --
   // the mate then holds the canonical zero roll.
-  if (params.includes('angle')) {
+  if (mateCapturesAngle(mate.kind)) {
     const measurable = poseA.x_axis && poseB.x_axis
     // Normalised into the editor's [0, 360) authoring form, so a captured roll
     // reads the same as one typed or clicked into the box: rollAboutAxisDeg

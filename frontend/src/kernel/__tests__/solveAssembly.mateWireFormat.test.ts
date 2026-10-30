@@ -44,8 +44,8 @@ describe('mate wire format', () => {
     const fixture = readMateWireFixture()
     // The rev and both magics are pinned here as literals as well as through the
     // fixture, so a stale fixture cannot hide a constant that moved on one side.
-    expect(fixture.rev).toBe(4)
-    expect(fixture.magic).toBe(0x3453544D)
+    expect(fixture.rev).toBe(5)
+    expect(fixture.magic).toBe(0x3553544D)
     expect(fixture.magic_out).toBe(0x3352544D)
     // One empty body, no mates: header 20 + bodies 4 + params 56 + mask 1 = 81 bytes
     const params = new Float64Array(7)
@@ -64,7 +64,7 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [1, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
-      perpA: [0, 1, 0], perpB: [0, 1, 0], weight: 1,
+      perpA: [0, 1, 0], perpB: [0, 1, 0], angleSet: false, weight: 1,
     }])
     expect(encodedWithMate.length - encoded.length).toBe(fixture.record_bytes)
   })
@@ -91,7 +91,7 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [0, 0, 0], axisB: [0, 0, 1],
       flip: false, offset, ratio: 1, radius: 0, angle: 0,
-      perpA: [0, 1, 0], perpB: [0, 1, 0], weight: 1,
+      perpA: [0, 1, 0], perpB: [0, 1, 0], angleSet: false, weight: 1,
     }])
     // The offset is the 24-byte run at record bytes 108..132 (after the two
     // point/axis triples and the flags byte), read back bit-exact.
@@ -117,7 +117,7 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [0, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: Math.PI / 4,
-      perpA: [0, 1, 0], perpB: [0, 1, 0], weight: 1,
+      perpA: [0, 1, 0], perpB: [0, 1, 0], angleSet: false, weight: 1,
     }])
     const recordStart = 81
     const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
@@ -137,7 +137,7 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [0, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
-      perpA: [1, 0, 0], perpB: [0, 0, 1], weight: 0.25,
+      perpA: [1, 0, 0], perpB: [0, 0, 1], angleSet: false, weight: 0.25,
     }])
     // angle ends at record byte 156; perp_a is 156..180, perp_b is 180..204,
     // and the weight f64 is the last field at 204..212.

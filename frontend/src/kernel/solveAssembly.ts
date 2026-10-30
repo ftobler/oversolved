@@ -166,9 +166,9 @@ const ANCHOR_KIND_TO_U8: Record<string, number> = {
 // Input wire magic. The header magic is the version handshake: any change to the
 // mate record's shape, field meaning or stride MUST bump this (or MATE_MAGIC_OUT
 // for the output layout) in the same commit as the mirror on the Rust side.
-// Spelled in little-endian bytes (`MATE_MAGIC.to_le_bytes()` reads "MTS4"); the
+// Spelled in little-endian bytes (`MATE_MAGIC.to_le_bytes()` reads "MTS5"); the
 // record widened every scalar to f64 (stride 212) and the magic bumped with it.
-const MATE_MAGIC = 0x3453_544D  // "MTS4" in LE
+const MATE_MAGIC = 0x3553_544D  // "MTS5" in LE
 const MATE_MAGIC_OUT = 0x3352_544D  // "MTR3" in LE
 const BPB = 7  // params per body (tx,ty,tz,qx,qy,qz,qw) = 7 f64s = 56 bytes
 
@@ -263,6 +263,9 @@ export interface MateWireRecord {
   /** Radians. Fixed/Sliding's absolute roll target between the anchors'
    *  canonical frames; see mate_residuals.rs abs_roll_residual. */
   angle: number
+  /** Rotating only: lock the roll to `angle` (flags bit 1). Unset, the hinge
+   *  roll stays free; `angle` 0 alone cannot say which. */
+  angleSet: boolean
   // The canonical in-plane reference direction of each anchor's LOCAL axis
   // (utils/mateOrientation.ts canonicalPerp). Carried on the wire so the solver
   // measures roll against the exact frame the editor captured the angle with,
@@ -340,7 +343,7 @@ export function encodeMateInput(
     w.setFloat64(pos, m.axisB[0], true); pos += 8
     w.setFloat64(pos, m.axisB[1], true); pos += 8
     w.setFloat64(pos, m.axisB[2], true); pos += 8
-    const flags = m.flip ? 1 : 0
+    const flags = (m.flip ? 1 : 0) | (m.angleSet ? 2 : 0)
     w.setUint8(pos, flags); pos += 1
     w.setFloat64(pos, m.offset[0], true); pos += 8
     w.setFloat64(pos, m.offset[1], true); pos += 8
@@ -673,6 +676,7 @@ export async function solveAssembly(
       ratio,
       radius,
       angle,
+      angleSet: mate.kind === 'rotating' && typeof mate.angle === 'number',
       perpA: canonicalPerp(rA.anchor!.axis),
       perpB: canonicalPerp(rB.anchor!.axis),
       weight: typeof mate.weight === 'number' ? mate.weight : 1,

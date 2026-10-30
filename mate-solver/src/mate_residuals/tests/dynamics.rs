@@ -161,23 +161,36 @@ fn mate_residual_count_matches_actual_residuals_pushed() {
     // bumping the matching residuals() push count (or the reverse), which
     // would otherwise write a residual row into another mate's block
     // instead of failing loudly.
-    let expected: &[(MateKind, usize)] = &[
-        (MateKind::Fixed, 7),
-        (MateKind::Spherical, 3),
-        (MateKind::Parallel, 1),
-        (MateKind::Sliding, 7),
-        (MateKind::Rotating, 6),
-        (MateKind::SlidingRotating, 6),
-        (MateKind::Tangential, 1),
-        (MateKind::CopyRotation, 1),
-        (MateKind::ParallelPlaneDistance, 2),
+    // The bool is `angle_set`: a Rotating mate gains its roll row with it.
+    let expected: &[(MateKind, bool, usize)] = &[
+        (MateKind::Fixed, false, 7),
+        (MateKind::Spherical, false, 3),
+        (MateKind::Parallel, false, 1),
+        (MateKind::Sliding, false, 7),
+        (MateKind::Rotating, false, 6),
+        (MateKind::Rotating, true, 7),
+        (MateKind::SlidingRotating, false, 6),
+        (MateKind::Tangential, false, 1),
+        (MateKind::CopyRotation, false, 1),
+        (MateKind::ParallelPlaneDistance, false, 2),
     ];
-    for &(kind, want) in expected {
+    for &(kind, angle_set, want) in expected {
+        let mut one = mate(
+            kind,
+            mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+            mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+            false,
+            0.0,
+            1.0,
+            0.0,
+        );
+        one.angle_set = angle_set;
         assert_eq!(
-            mate_residual_count(kind),
+            mate_residual_count(&one),
             want,
-            "mate_residual_count({:?})",
-            kind
+            "mate_residual_count({:?}, angle_set={})",
+            kind,
+            angle_set
         );
 
         let input = MateInput {
@@ -186,15 +199,7 @@ fn mate_residual_count_matches_actual_residuals_pushed() {
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
             ],
             fixed_mask: vec![0],
-            mates: vec![mate(
-                kind,
-                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
-                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
-                false,
-                0.0,
-                1.0,
-                0.0,
-            )],
+            mates: vec![one],
         };
         let p = MateProblem::new(&input);
         let x: Vec<f64> = input.params_initial.clone();

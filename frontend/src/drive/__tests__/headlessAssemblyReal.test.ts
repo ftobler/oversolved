@@ -696,6 +696,45 @@ describeReal('headless assembly with the real mate solver', () => {
     expect(result.solve.verdict).toBe('underconstrained')
   }, 180_000)
 
+  // Two pins mated by their walls through one rotating mate carrying `extra`.
+  async function rotatingPins(extra: Record<string, unknown>) {
+    const parts = new Map([['tall', pinDocOf(10)], ['short', pinDocOf(4)]])
+    const steps: AssemblyScriptStep[] = [
+      { mutation: { type: 'add_part', handle: 'tall', part: 'tall', fixed: true } },
+      { mutation: { type: 'add_part', handle: 'short', part: 'short', position: [20, 0, 5] } },
+      { mutation: {
+        type: 'add_mate',
+        featureId: 'm1',
+        kind: 'rotating',
+        ref_a: { part: 'tall', selector: CYLINDER_FACE },
+        ref_b: { part: 'short', selector: CYLINDER_FACE },
+        ...extra,
+      } as never },
+    ]
+    return runAssemblyHeadless({ doc: emptyDriveAssemblyDoc(), parts, steps })
+  }
+
+  it('a rotating mate offset slides B along A\'s axis and leaves the roll free', async () => {
+    const plain = await rotatingPins({})
+    const shifted = await rotatingPins({ offset: 2 })
+    expect(shifted.ok).toBe(true)
+    const z = (r: typeof plain) => r.instances.find((i) => i.handle === 'short')!.position[2]
+    // Plus convention: B's anchor lands `offset` along A's axis from A's, so
+    // the shift follows the axis direction the wall happens to carry.
+    const axisZ = shifted.mateFrames.m1.ref_a!.axis[2]
+    expect(Math.abs(axisZ)).toBeCloseTo(1, 4)
+    expect(z(shifted) - z(plain)).toBeCloseTo(2 * axisZ, 4)
+    expect(shifted.solve.verdict).toBe('underconstrained')
+  }, 180_000)
+
+  it('a rotating mate angle locks the roll, taking the hinge to fully constrained', async () => {
+    const free = await rotatingPins({})
+    const locked = await rotatingPins({ angle: 120 })
+    expect(locked.ok).toBe(true)
+    expect(locked.solve.dof).toBe(free.solve.dof - 1)
+    expect(locked.solve.verdict).toBe('fully_constrained')
+  }, 180_000)
+
   it('a ball seated in a cage hole lands on the hole wall midpoint at z = 0', async () => {
     const parts = new Map([['cage', cageDoc()], ['ball', ballDoc()]])
     const steps: AssemblyScriptStep[] = [

@@ -9,7 +9,7 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MATE_MAGIC ("MTS4")
+//!   u32  magic = MATE_MAGIC ("MTS5")
 //!   u32  n_bodies
 //!   u32  n_params            // n_bodies * 7
 //!   u32  n_mates
@@ -32,11 +32,11 @@
 //!   f64  axis_a_x, axis_a_y, axis_a_z     // anchor axis in body A local frame
 //!   f64  point_b_x, point_b_y, point_b_z  // anchor point in body B local frame
 //!   f64  axis_b_x, axis_b_y, axis_b_z     // anchor axis in body B local frame
-//!   u8   flags               // bit 0 = flip
+//!   u8   flags               // bit 0 = flip, bit 1 = angle_set (Rotating: lock the roll to `angle`)
 //!   f64  offset_x, offset_y, offset_z  // offset vector in body A's LOCAL frame
 //!   f64  ratio               // for CopyRotation (gear-like ratio)
 //!   f64  radius              // for Tangential (mate-side radius fallback)
-//!   f64  angle               // radians, Fixed/Sliding's absolute roll target (TS encodes degrees -> radians)
+//!   f64  angle               // radians, absolute roll target of Fixed/Sliding, and of Rotating when angle_set (TS encodes degrees -> radians)
 //!   f64  perp_a_x, perp_a_y, perp_a_z  // canonical in-plane frame of A's LOCAL axis
 //!   f64  perp_b_x, perp_b_y, perp_b_z  // canonical in-plane frame of B's LOCAL axis
 //!   f64  weight              // row scale on this mate's residuals/Jacobian (1 for real mates, small for the drag objective)
@@ -70,7 +70,7 @@ use crate::codec::{finite, CodecError, Reader, Writer};
 // plain `MAGIC` in sketch-solver/src/codec.rs): the two crates version their
 // buffers separately and never read each other's bytes, so the naming
 // asymmetry is deliberate and not a rename target.
-pub const MATE_MAGIC: u32 = 0x3453_544D; // "MTS4" in LE
+pub const MATE_MAGIC: u32 = 0x3553_544D; // "MTS5" in LE
 pub const MATE_MAGIC_OUT: u32 = 0x3352_544D; // "MTR3" in LE
 
 /// All mate kinds.
@@ -226,6 +226,11 @@ pub struct Mate {
     /// Fixed's seed-relative roll target, in radians. Read only by `Fixed`; see
     /// the seed-relative roll residual in `mate_residuals.rs`.
     pub angle: f64,
+    /// Rotating only: the roll is locked to `angle` (one extra row). Unset, the
+    /// roll about the shared axis stays free, so a hinge locked at 0 and a free
+    /// hinge differ, which `angle` alone cannot say. Fixed and Sliding always
+    /// read `angle` and ignore this.
+    pub angle_set: bool,
     /// Row scale `s` on this mate's residual block and Jacobian rows, so its
     /// least-squares contribution is `s^2 * r^2`. Real mates author 1; the live
     /// drag objective authors a small value so it follows the cursor where the
@@ -254,6 +259,19 @@ impl Mate {
             return 0.0;
         }
         (self.offset[0] * a[0] + self.offset[1] * a[1] + self.offset[2] * a[2]) / n2.sqrt()
+    }
+
+    /// `axial_offset` as a vector along A's local axis, for the kinds (Rotating)
+    /// whose point coincidence shifts by it. The perpendicular part of the
+    /// authored offset is dropped for the reason `axial_offset` gives.
+    pub fn axial_offset_vector(&self) -> [f64; 3] {
+        let a = &self.a.geometry.axis;
+        let n = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt();
+        if n < 1e-10 {
+            return [0.0; 3];
+        }
+        let s = self.axial_offset() / n;
+        [a[0] * s, a[1] * s, a[2] * s]
     }
 }
 
@@ -401,6 +419,7 @@ fn read_mate_record(r: &mut Reader<'_>) -> Result<Mate, CodecError> {
 
     let flags = r.u8()?;
     let flip = (flags & 0b001) != 0;
+    let angle_set = (flags & 0b010) != 0;
 
     let offset = read_vec3(r)?;
     let ratio = read_f64(r)?;
@@ -437,6 +456,7 @@ fn read_mate_record(r: &mut Reader<'_>) -> Result<Mate, CodecError> {
         ratio,
         radius,
         angle,
+        angle_set,
         weight,
     })
 }
@@ -521,6 +541,9 @@ pub(crate) fn encode_mate_input(input: &MateInput) -> Vec<u8> {
         let mut flags = 0u8;
         if m.flip {
             flags |= 0b001;
+        }
+        if m.angle_set {
+            flags |= 0b010;
         }
         w.u8(flags);
 

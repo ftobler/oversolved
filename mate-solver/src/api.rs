@@ -79,6 +79,7 @@ mod tests {
                 ratio: 1.0,
                 radius: 0.0,
                 angle: 0.0,
+                angle_set: false,
                 weight: 1.0,
             }],
         }

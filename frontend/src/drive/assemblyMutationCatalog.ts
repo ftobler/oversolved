@@ -151,7 +151,7 @@ const CAPTURE_RECIPE_NOTE =
 
 const MATE_PARAM_NOTE =
   'Only the parameters the kind reads are accepted (see mateParams): fixed reads offset, flip, angle; '
-  + 'sliding reads flip, angle; rotating and sliding_rotating read flip; spherical reads none; parallel reads flip; '
+  + 'sliding reads flip, angle; rotating reads offset (along A\'s axis), flip and an optional angle that locks the roll (absent = free hinge); sliding_rotating reads flip; spherical reads none; parallel reads flip; '
   + 'parallel_plane_distance reads offset, flip; tangential reads offset, radius; copy_rotation reads ratio. '
   + FLIP_NOTE
 

@@ -66,6 +66,7 @@ pub(super) fn mate_with_angle(
         ratio,
         radius,
         angle,
+        angle_set: false,
         weight: 1.0,
     }
 }
@@ -107,6 +108,7 @@ pub(super) fn mate_with_offset_vec(
         ratio,
         radius,
         angle: 0.0,
+        angle_set: false,
         weight: 1.0,
     }
 }

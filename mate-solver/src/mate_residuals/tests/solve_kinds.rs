@@ -399,6 +399,92 @@ fn rotating_keeps_one_free_dof() {
     assert_eq!(out.overall_status, MateStatus::Underconstrained.to_u8());
 }
 
+/// A rotating mate between body 0 (grounded, +Z axis through the origin) and a
+/// free body 1 seeded at `(5, 0, 0)` rolled `seed_deg` about Z. `offset` is the
+/// axial offset and `angle` the locked roll in degrees (`None` leaves it free).
+fn rotating_input(seed_deg: f64, offset: f64, angle: Option<f64>) -> MateInput {
+    let (qz, qw) = quat_roll_z(seed_deg);
+    let mut m = mate_with_angle(
+        MateKind::Rotating,
+        mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+        mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+        false,
+        offset,
+        1.0,
+        0.0,
+        angle.unwrap_or(0.0).to_radians(),
+    );
+    m.angle_set = angle.is_some();
+    MateInput {
+        bodies: (0..2).map(|_| RigidBody).collect(),
+        params_initial: vec![
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 5.0, 0.0, 0.0, 0.0, 0.0, qz, qw,
+        ],
+        fixed_mask: vec![0b0000_0001],
+        mates: vec![m],
+    }
+}
+
+fn roll_deg_of(out: &MateOutput) -> f64 {
+    (2.0 * out.params_solved[12].atan2(out.params_solved[13])).to_degrees()
+}
+
+#[test]
+fn rotating_with_offset_slides_b_along_a_axis_and_keeps_roll_free() {
+    let out = solve_mate(&rotating_input(0.0, 2.5, None));
+    // B's anchor (its origin) lands `offset` along A's +Z axis; plus convention.
+    assert!(
+        out.params_solved[7].abs() < 1e-3,
+        "tx {}",
+        out.params_solved[7]
+    );
+    assert!(
+        out.params_solved[8].abs() < 1e-3,
+        "ty {}",
+        out.params_solved[8]
+    );
+    assert!(
+        (out.params_solved[9] - 2.5).abs() < 1e-3,
+        "tz should hold the 2.5 offset, got {}",
+        out.params_solved[9]
+    );
+    assert_eq!(out.diagnostics.dof, 1);
+}
+
+#[test]
+fn rotating_with_angle_locks_roll() {
+    let out = solve_mate(&rotating_input(0.0, 0.0, Some(120.0)));
+    assert_eq!(out.diagnostics.dof, 0);
+    assert_eq!(out.overall_status, MateStatus::FullyConstrained.to_u8());
+    let roll = roll_deg_of(&out);
+    assert!(
+        (roll - 120.0).abs() < 0.5,
+        "roll should be 120 deg, got {roll}"
+    );
+}
+
+#[test]
+fn rotating_angle_change_resolves_from_previous_pose() {
+    let first = solve_mate(&rotating_input(0.0, 0.0, Some(30.0)));
+    let mut next = rotating_input(0.0, 0.0, Some(75.0));
+    next.params_initial = first.params_solved.clone();
+    let out = solve_mate(&next);
+    let roll = roll_deg_of(&out);
+    assert!(
+        (roll - 75.0).abs() < 0.5,
+        "roll should follow to 75 deg, got {roll}"
+    );
+}
+
+#[test]
+fn rotating_locked_at_zero_differs_from_free() {
+    // A seed rolled 40 deg: free keeps it, locked-at-0 pulls it back.
+    let free = solve_mate(&rotating_input(40.0, 0.0, None));
+    let locked = solve_mate(&rotating_input(40.0, 0.0, Some(0.0)));
+    assert!((roll_deg_of(&free) - 40.0).abs() < 1.0);
+    assert!(roll_deg_of(&locked).abs() < 1.0);
+}
+
 #[test]
 fn underconstrained_assembly_status() {
     let input = MateInput {

@@ -417,6 +417,48 @@ fn jacobian_vs_fd_rotating() {
 }
 
 #[test]
+fn jacobian_vs_fd_rotating_with_offset_and_angle() {
+    let mut m = mate_with_angle(
+        MateKind::Rotating,
+        mate_ref(0, 1.0, 2.0, 3.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+        mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+        false,
+        1.5,
+        1.0,
+        0.0,
+        0.4,
+    );
+    m.angle_set = true;
+    let input = MateInput {
+        bodies: (0..2).map(|_| RigidBody).collect(),
+        params_initial: vec![
+            0.1,
+            0.0,
+            0.0,
+            0.05,
+            0.0,
+            0.1,
+            f64::sqrt(1.0 - 0.0025 - 0.01),
+            2.0,
+            3.0,
+            4.0,
+            0.2,
+            -0.1,
+            0.5,
+            f64::sqrt(1.0 - 0.04 - 0.01 - 0.25),
+        ],
+        fixed_mask: vec![0],
+        mates: vec![m],
+    };
+    let p = MateProblem::new(&input);
+    assert_eq!(p.m, 7);
+    let x: Vec<f64> = input.params_initial.clone();
+    let j_analytic = p.jacobian(&x);
+    let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
+    compare_jacobians(&j_analytic, &j_fd, 1e-3);
+}
+
+#[test]
 fn jacobian_vs_fd_sliding_rotating() {
     let input = MateInput {
         bodies: (0..2).map(|_| RigidBody).collect(),

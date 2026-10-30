@@ -11,7 +11,7 @@ function record(over: Partial<MateWireRecord> & Pick<MateWireRecord, 'bodyA' | '
     kindCode: 0, anchorKindA: 0, anchorKindB: 0,
     pointA: [0, 0, 0], pointB: [0, 0, 0], axisA, axisB,
     flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
-    perpA: canonicalPerp(axisA), perpB: canonicalPerp(axisB), weight: 1,
+    perpA: canonicalPerp(axisA), perpB: canonicalPerp(axisB), angleSet: false, weight: 1,
     ...over,
   }
 }

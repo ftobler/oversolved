@@ -10,7 +10,9 @@ import {
   MATE_KIND_LABELS,
   MATE_KIND_TO_U8,
   isMateRefEmpty,
+  mateCapturesAngle,
   mateKindCode,
+  mateOffsetIsAxial,
   mateParams,
   mateOffsetVector,
   mateReadsAxis,
@@ -104,7 +106,7 @@ describe('mateParams', () => {
       spherical: [],
       parallel: ['flip'],
       sliding: ['flip', 'angle'],
-      rotating: ['flip'],
+      rotating: ['offset', 'flip', 'angle'],
       sliding_rotating: ['flip'],
       tangential: ['offset', 'radius'],
       copy_rotation: ['ratio'],
@@ -123,9 +125,17 @@ describe('mateParams', () => {
     expect(mateParams('fixed')).toEqual(['offset', 'flip', 'angle'])
   })
 
-  it('offers angle only where the solver reads a roll target (fixed and sliding)', () => {
+  it('offers angle only where the solver reads a roll target (fixed, sliding, rotating)', () => {
     const withAngle = MATE_KINDS.filter(k => mateParams(k).includes('angle'))
-    expect(withAngle).toEqual(['fixed', 'sliding'])
+    expect(withAngle).toEqual(['fixed', 'sliding', 'rotating'])
+  })
+
+  it('reads a rotating offset as one axial distance, and never captures its angle', () => {
+    expect(mateParams('rotating')).toContain('offset')
+    expect(mateOffsetIsAxial('rotating')).toBe(true)
+    expect(mateCapturesAngle('rotating')).toBe(false)
+    expect(mateCapturesAngle('fixed')).toBe(true)
+    expect(mateCapturesAngle('sliding')).toBe(true)
   })
 
   it('gives copy_rotation only its ratio', () => {

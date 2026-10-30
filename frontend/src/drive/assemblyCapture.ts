@@ -14,7 +14,7 @@ import type { Anchor, AnchorPose } from '@/kernel/partBundle'
 import { partInstances, type MateParamPatch } from '@/utils/assemblyMutations'
 import { buildAnchorTable, type AnchorTable } from '@/utils/anchorGizmos'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
-import { mateParams } from '@/utils/mateKinds'
+import { mateCapturesAngle } from '@/utils/mateKinds'
 import { canonicalPerp } from '@/utils/mateOrientation'
 import { rotateVector, transformQuat } from '@/utils/transform3d'
 import type { MateCapture } from '@/drive/scriptRunner'
@@ -95,7 +95,7 @@ export function captureMateAtSeeds(input: SeedMateCaptureInput): SeedMateCapture
     input.anchors,
   )
   if (patch === null) return null
-  const readsAngle = mateParams(input.kind).includes('angle')
+  const readsAngle = mateCapturesAngle(input.kind)
   // `patch.angle` is undefined exactly when the roll measured as the default 0
   // (or the kind reads no roll at all, where readsAngle is false). The patch's
   // angle is typed as the wire's NumberOrExpr, but capture only ever writes a

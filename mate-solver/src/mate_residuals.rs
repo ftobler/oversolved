@@ -28,7 +28,7 @@
 //! - Parallel:           dot product of axes minus sign (1)
 //! - Sliding:            signed axis difference w/ flip (3) + perp displacement cross (3) + absolute roll to authored angle (1)
 //!   -- prismatic: slide is the only free DOF
-//! - Rotating:           point coincidence (3) + signed axis difference w/ flip (3)
+//! - Rotating:           point coincidence plus the axial offset along A's axis (3) + signed axis difference w/ flip (3) + absolute roll to authored angle (1, only when `angle_set`)
 //! - SlidingRotating:    signed axis difference w/ flip (3) + perp displacement cross (3)
 //!   -- cylindrical: slide + roll are free DOF
 //! - Tangential:         signed-distance formula (1), surface-pair dependent
@@ -202,13 +202,14 @@ fn dense_cells_over_budget(m: usize, n: usize, budget: usize) -> bool {
 /// can drive it directly: a future arm that bumps this without bumping the
 /// matching `residuals()` push count -- or the reverse -- fails that test
 /// loudly instead of writing a residual row into another mate's block.
-fn mate_residual_count(kind: MateKind) -> usize {
-    match kind {
+fn mate_residual_count(mate: &Mate) -> usize {
+    match mate.kind {
         MateKind::Fixed => 7,
         MateKind::Spherical => 3,
         MateKind::Parallel => 1,
         MateKind::Sliding => 7,
-        MateKind::Rotating => 6,
+        // The roll row exists only when the mate locks an angle.
+        MateKind::Rotating => 6 + usize::from(mate.angle_set),
         MateKind::SlidingRotating => 6,
         MateKind::Tangential => 1,
         MateKind::CopyRotation => 1,
@@ -303,7 +304,7 @@ impl MateProblem {
             }
         }
 
-        let mate_residual_total: usize = mates.iter().map(|m| mate_residual_count(m.kind)).sum();
+        let mate_residual_total: usize = mates.iter().map(mate_residual_count).sum();
         // The rows are the mates' rows and nothing else: grounding and unit
         // norm are state invariants now, not residuals. `mate_residual_count`
         // and the per-mate slicing in `solve_mate_impl` are therefore exact.
@@ -427,7 +428,10 @@ impl MateProblem {
                 let twist_b0 = twist_angle(qb.0, qb.1, qb.2, qb.3, &seed_b);
                 seed_twist[i] = (twist_a0, twist_b0);
             }
-            if matches!(m.kind, MateKind::Fixed | MateKind::Sliding) {
+            if matches!(
+                m.kind,
+                MateKind::Fixed | MateKind::Sliding | MateKind::Rotating
+            ) {
                 roll_frames[i] = Some((m.a.geometry.perp, m.b.geometry.perp));
             }
         }
@@ -812,12 +816,16 @@ impl MateProblem {
                     r.push(self.abs_roll_residual(x, mi, off_a, off_b, mate.angle));
                 }
                 MateKind::Rotating => {
-                    // Point coincidence.
+                    // Point coincidence, shifted along A's axis by the axial
+                    // offset (plus convention, like Fixed's): B's anchor sits
+                    // `offset` along A's axis from A's anchor, so a hinge can
+                    // be centred between two edges at different heights.
                     let pa = world_point(x, off_a, &mate.a.geometry.point);
                     let pb = world_point(x, off_b, &mate.b.geometry.point);
-                    r.push(pa[0] - pb[0]);
-                    r.push(pa[1] - pb[1]);
-                    r.push(pa[2] - pb[2]);
+                    let off_w = world_direction(x, off_a, &mate.axial_offset_vector());
+                    r.push(pa[0] + off_w[0] - pb[0]);
+                    r.push(pa[1] + off_w[1] - pb[1]);
+                    r.push(pa[2] + off_w[2] - pb[2]);
                     // Signed axis difference w/ flip (see Fixed's arm).
                     let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
                     let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
@@ -825,6 +833,11 @@ impl MateProblem {
                     r.push(a_w[0] - s * b_w[0]);
                     r.push(a_w[1] - s * b_w[1]);
                     r.push(a_w[2] - s * b_w[2]);
+                    // Optional joint angle: the same absolute roll Fixed pins.
+                    // Without it the roll about the axis is the hinge's DOF.
+                    if mate.angle_set {
+                        r.push(self.abs_roll_residual(x, mi, off_a, off_b, mate.angle));
+                    }
                 }
                 MateKind::SlidingRotating => {
                     // Cylindrical: signed axis difference + perp displacement
@@ -1085,7 +1098,7 @@ fn retry_reaches_tolerance(input: &MateInput, problem: &MateProblem, solved: &[f
     let mut start = 0usize;
     let mut worst: Option<(usize, f64)> = None;
     for (pos, mate) in problem.mates.iter().enumerate() {
-        let count = mate_residual_count(mate.kind);
+        let count = mate_residual_count(mate);
         let norm = rows[start..start + count]
             .iter()
             .map(|v| v * v)
@@ -1282,7 +1295,7 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     let mut mate_residuals = vec![f64::NAN; problem.input_mate_count];
     for (kept_pos, &input_index) in problem.kept_input_indices.iter().enumerate() {
         let m = &problem.mates[kept_pos];
-        let count = mate_residual_count(m.kind);
+        let count = mate_residual_count(m);
         mate_residuals[input_index] = solved_residuals[block_start..block_start + count]
             .iter()
             .map(|v| v * v)

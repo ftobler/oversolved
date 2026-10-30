@@ -60,6 +60,7 @@ fn sample_input() -> MateInput {
         ratio: 1.0,
         radius: 0.0,
         angle: 0.0,
+        angle_set: false,
         weight: 1.0,
     };
     MateInput {
@@ -309,6 +310,7 @@ fn parallel_mate_with_flip_round_trips() {
             ratio: 1.0,
             radius: 0.0,
             angle: 0.0,
+            angle_set: false,
             weight: 1.0,
         }],
     };
@@ -356,6 +358,7 @@ fn offset_ratio_radius_round_trip() {
             ratio: 2.0,
             radius: 3.0,
             angle: 0.7,
+            angle_set: false,
             weight: 1.0,
         }],
     };
@@ -415,7 +418,7 @@ fn mate_weight_round_trips() {
 /// reads too. The fixture puts the magic-bump rule in front of the editor.
 #[test]
 fn mate_wire_fixture_matches_the_constants() {
-    assert_eq!(fixture_u64("rev"), 4);
+    assert_eq!(fixture_u64("rev"), 5);
     assert_eq!(MATE_MAGIC as u64, fixture_u64("magic"));
     assert_eq!(MATE_MAGIC_OUT as u64, fixture_u64("magic_out"));
 }
@@ -553,4 +556,25 @@ fn nonfinite_ratio_radius_angle_rejected() {
     assert_nonfinite_rejected("ratio", |input, v| input.mates[0].ratio = v);
     assert_nonfinite_rejected("radius", |input, v| input.mates[0].radius = v);
     assert_nonfinite_rejected("angle", |input, v| input.mates[0].angle = v);
+}
+
+// MTS4 records had no angle_set bit; a stale encoder's rotating mate would
+// decode as a free hinge, so the old magic must fail loud instead.
+#[test]
+fn previous_rev_magic_is_rejected() {
+    let mut bytes = encode_mate_input(&sample_input());
+    bytes[0..4].copy_from_slice(&0x3453_544Du32.to_le_bytes());
+    assert!(matches!(
+        decode_mate_input(&bytes),
+        Err(CodecError::BadMagic)
+    ));
+}
+
+#[test]
+fn angle_set_flag_round_trips() {
+    let mut input = sample_input();
+    input.mates[0].angle_set = true;
+    let decoded = decode_mate_input(&encode_mate_input(&input)).expect("decode");
+    assert!(decoded.mates[0].angle_set);
+    assert!(!decoded.mates[0].flip);
 }

@@ -812,7 +812,7 @@ describeReal('every mate kind solves as itself against the real mate solver', ()
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [0, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
-      perpA: [0, 1, 0], perpB: [0, 1, 0], weight: 1,
+      perpA: [0, 1, 0], perpB: [0, 1, 0], angleSet: false, weight: 1,
     }])
 
     const output = solveMate!(bytes)

@@ -76,9 +76,10 @@ export const MATE_KIND_LABELS: Record<MateKind, string> = {
 export type MateParam = 'offset' | 'flip' | 'ratio' | 'radius' | 'angle'
 
 // Which kind reads which parameter, per mate_residuals.rs's residual formulas:
-// offset serves Fixed / ParallelPlaneDistance / Tangential; ratio is
+// offset serves Fixed / Rotating / ParallelPlaneDistance / Tangential; ratio is
 // CopyRotation's alone; radius is Tangential's mate-side fallback; angle is
-// Fixed's and Sliding's absolute roll target. Every axis mate reads `flip`
+// Fixed's and Sliding's absolute roll target, and Rotating's optional one (an
+// absent angle leaves the hinge free; a present 0 locks it at 0). Every axis mate reads `flip`
 // (which side its signed axis-difference residual welds); the editor captures
 // flip -- and angle, where read -- from the on-screen pose when both refs are
 // picked (utils/mateCapture.ts), so a mate holds what it was authored at as
@@ -89,7 +90,7 @@ export type MateParam = 'offset' | 'flip' | 'ratio' | 'radius' | 'angle'
 const MATE_PARAMS: Record<MateKind, readonly MateParam[]> = {
   fixed: ['offset', 'flip', 'angle'],
   sliding: ['flip', 'angle'],
-  rotating: ['flip'],
+  rotating: ['offset', 'flip', 'angle'],
   sliding_rotating: ['flip'],
   spherical: [],
   parallel: ['flip'],
@@ -105,6 +106,8 @@ export function mateParams(kind: MateKind): readonly MateParam[] {
 // The offset SIGN convention, per kind (mate_residuals.rs residual formulas):
 // - fixed: a full 3D translation in A's local frame; B's anchor lands at A's
 //   anchor PLUS the rotated offset (`p_a + R_a * offset - p_b = 0`).
+// - rotating: the scalar part along A's axis only; B's anchor lands that far
+//   along A's axis from A's anchor (`p_a + offset * a_w - p_b`).
 // - parallel_plane_distance: the plane separation along A's normal; positive
 //   puts B that distance along A's axis from A (`dot(p_b - p_a, a_w) - offset`).
 // - tangential: a clearance added to the contact distance (the surface
@@ -190,7 +193,16 @@ export function unresolvedMateParams(mate: {
  * nothing, which is why the editor keeps them on a single box.
  */
 export function mateOffsetIsAxial(kind: MateKind): boolean {
-  return kind === 'tangential' || kind === 'parallel_plane_distance'
+  return kind === 'tangential' || kind === 'parallel_plane_distance' || kind === 'rotating'
+}
+
+/**
+ * Whether pick-time capture should measure the roll into `angle`. Rotating
+ * reads an angle but only as an explicit lock: capturing it would pin every
+ * hinge at the pose it was picked in and take its one DOF away.
+ */
+export function mateCapturesAngle(kind: MateKind): boolean {
+  return kind !== 'rotating' && mateParams(kind).includes('angle')
 }
 
 export const MATE_PARAM_LABELS: Record<MateParam, string> = {
