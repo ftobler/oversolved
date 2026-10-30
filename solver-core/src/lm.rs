@@ -130,6 +130,36 @@ pub fn solve_lm_damped(
     jac: &impl Fn(&[f64]) -> DMatrix<f64>,
     damp_scale: &[f64],
 ) -> LmResult {
+    let mut no_retract = |_state: &mut [f64]| {};
+    solve_lm_damped_retract(x0, f, jac, damp_scale, &mut no_retract)
+}
+
+/// As `solve_lm_damped`, with a retraction hook: `retract(&mut x)` runs after
+/// every ACCEPTED step and can rewrite the state while leaving the pose the
+/// closures evaluate unchanged -- the mate solver uses it to fold a body's
+/// rotation vector back toward its reference once it has strayed far enough
+/// that the rotation-vector exponential stops being a well-conditioned chart
+/// (see `MateProblem::retract`). Two consequences the caller relies on:
+///
+///   - `jac` is only ever asked for a Jacobian of a retracted (or initial)
+///     state, so a retraction that re-bases the state's redundant coordinates
+///     never leaves a stale linearisation behind;
+///   - the seed-anchor cost is re-read at the retracted `x`, because the fold
+///     may have zeroed coordinates the trial vector's price included. With a
+///     retract that changes nothing, that re-read recomputes `cost_new`
+///     exactly and the arithmetic stays bit-identical to `solve_lm_damped`.
+///
+/// The contract on `retract`: it must leave `f(x)` unchanged (the pose is the
+/// same), and it should be a no-op on a state that is already folded -- the
+/// anchor target is `x0`, so an initial state handed in with non-zero
+/// increments would be re-anchored against a target the fold has moved past.
+pub fn solve_lm_damped_retract(
+    x0: &[f64],
+    f: &impl Fn(&[f64]) -> Vec<f64>,
+    jac: &impl Fn(&[f64]) -> DMatrix<f64>,
+    damp_scale: &[f64],
+    retract: &mut dyn FnMut(&mut [f64]),
+) -> LmResult {
     let n = x0.len();
     // Length contract: one entry per param. Deliberately NOT debug_assert'ed:
     // release wasm compiles asserts out anyway, and the defensive reads in
@@ -268,6 +298,11 @@ pub fn solve_lm_damped(
                     let dx = norm2(delta.as_slice());
                     let cost_drop = cost - cost_new;
                     x = x_new;
+                    // The retraction runs before anything reads `x` again, so
+                    // the Jacobian below and the anchor target after it both
+                    // see the folded state with its redundant coordinates back
+                    // at their reference.
+                    retract(&mut x);
                     r = r_new;
                     jacm = jac(&x);
                     jtj = jacm.transpose() * &jacm;
@@ -277,7 +312,12 @@ pub fn solve_lm_damped(
                     // Convergence on tiny step or tiny relative cost reduction.
                     let xnorm = norm2(&x).max(1e-30);
                     converged = dx < XTOL * xnorm || cost_drop < FTOL * cost.max(1e-30);
-                    cost = cost_new;
+                    // Re-read the cost at the retracted point rather than
+                    // reusing `cost_new`: the fold zeroed whatever coordinates
+                    // it folded, and the anchor priced those on the trial
+                    // vector. For a retract that changed nothing this
+                    // recomputes `cost_new` exactly.
+                    cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x, &target);
                     if proximal {
                         // The anchor follows the iterate, so its cost drops to 0.
                         target.clone_from(&x);
@@ -580,6 +620,61 @@ mod tests {
         let r = solve_lm_damped(&[0.0], &f, &jac, &[]);
         assert!((r.x[0] - 5.0).abs() < 1e-6, "x={}", r.x[0]);
         assert!(r.residual_norm < 1e-4, "res={}", r.residual_norm);
+    }
+
+    // The retraction hook, which is the whole reason the variant above exists:
+    // a caller whose residual closure reads hidden reference state can fold
+    // accepted steps into it, so the visible state only ever carries the
+    // increment since the last fold. Without the hook the reference would stay
+    // pinned at its seed and the correction could only land in the increment;
+    // with it, the composition reference + increment is what converges -- and
+    // the driver re-reads the anchor cost at the folded point, which is what
+    // keeps the stored cost consistent with the state it describes. (The mate
+    // solver folds more selectively than this test does; see
+    // `MateProblem::retract` for the radius and why.)
+    #[test]
+    fn solve_lm_damped_retract_folds_accepted_steps_into_the_reference() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+        let reference = Rc::new(Cell::new(0.0));
+        let f = {
+            let reference = Rc::clone(&reference);
+            move |x: &[f64]| vec![reference.get() + x[0] - 5.0]
+        };
+        let jac = |_: &[f64]| DMatrix::from_row_slice(1, 1, &[1.0]);
+        let mut retract = {
+            let reference = Rc::clone(&reference);
+            move |x: &mut [f64]| {
+                reference.set(reference.get() + x[0]);
+                x[0] = 0.0;
+            }
+        };
+
+        let r = solve_lm_damped_retract(&[0.0], &f, &jac, &[1.0], &mut retract);
+
+        assert!((reference.get() + r.x[0] - 5.0).abs() < 1e-6);
+        assert_eq!(r.x[0], 0.0, "the increment must read zero after the fold");
+        assert!(
+            (reference.get() - 5.0).abs() < 1e-6,
+            "ref={}",
+            reference.get()
+        );
+        assert!(r.residual_norm < 1e-6, "res={}", r.residual_norm);
+    }
+
+    // A retract that changes nothing must leave the arithmetic alone: same
+    // converged answer, same residual, as the plain driver.
+    #[test]
+    fn solve_lm_damped_retract_no_op_matches_solve_lm_damped() {
+        let f = |x: &[f64]| vec![x[0] * x[0] - 2.0, x[1] - x[0]];
+        let jac = |x: &[f64]| DMatrix::from_row_slice(2, 2, &[2.0 * x[0], 0.0, -1.0, 1.0]);
+        let damp = [1.0_f64, 1.0];
+        let mut noop = |_state: &mut [f64]| {};
+        let plain = solve_lm_damped(&[3.0, 1.0], &f, &jac, &damp);
+        let hooked = solve_lm_damped_retract(&[3.0, 1.0], &f, &jac, &damp, &mut noop);
+        assert_eq!(plain.x, hooked.x);
+        assert_eq!(plain.residual_norm, hooked.residual_norm);
+        assert_eq!(plain.iters, hooked.iters);
     }
 
     #[test]

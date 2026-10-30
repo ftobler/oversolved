@@ -17,6 +17,114 @@ fn jacobian_vs_fd_spherical() {
     compare_jacobians(&j_analytic, &j_fd, 1e-3);
 }
 
+// ─── The manifold Jacobian: d r / d (t, w), chain included ───
+
+/// One two-body fixture per mate kind for the manifold cross-check: the free
+/// body seeded off identity in BOTH halves (a translation the seed never saw,
+/// a rotation vector of 0.78 rad about a skew axis), so the finite difference
+/// perturbs `w` itself and measures `dexp_drot` as well as the fillers under
+/// it. Anchors sit off the free body's origin so its rotation columns carry
+/// real lever.
+fn manifold_fd_input(kind: MateKind) -> MateInput {
+    let q = {
+        let raw = [0.2_f64, -0.3, 0.4, 0.85];
+        let n = raw.iter().map(|v| v * v).sum::<f64>().sqrt();
+        [raw[0] / n, raw[1] / n, raw[2] / n, raw[3] / n]
+    };
+    let (ak_a, ak_b) = match kind {
+        MateKind::Spherical => (AnchorKind::Point, AnchorKind::Point),
+        MateKind::Sliding
+        | MateKind::Rotating
+        | MateKind::SlidingRotating
+        | MateKind::CopyRotation => (AnchorKind::Cylinder, AnchorKind::Cylinder),
+        MateKind::Tangential => (AnchorKind::Plane, AnchorKind::Cylinder),
+        _ => (AnchorKind::Plane, AnchorKind::Plane),
+    };
+    let (offset, ratio, radius, angle) = match kind {
+        MateKind::Tangential => (0.0, 1.0, 2.5, 0.0),
+        MateKind::CopyRotation => (0.0, 2.0, 0.0, 0.0),
+        MateKind::ParallelPlaneDistance => (5.0, 1.0, 0.0, 0.0),
+        MateKind::Sliding => (0.0, 1.0, 0.0, 0.7),
+        _ => (0.0, 1.0, 0.0, 0.0),
+    };
+    let mut a = mate_ref(0, 1.0, -2.0, 0.5, 0.0, 0.0, 1.0, ak_a);
+    a.geometry.perp = [0.0, 1.0, 0.0];
+    let mut b = mate_ref(1, 2.0, 1.5, -1.0, 0.0, 0.0, 1.0, ak_b);
+    b.geometry.perp = [0.0, 1.0, 0.0];
+    MateInput {
+        bodies: (0..2).map(|_| RigidBody).collect(),
+        params_initial: vec![
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // grounded body 0
+            3.0, -2.0, 5.0, q[0], q[1], q[2], q[3],
+        ],
+        fixed_mask: vec![0b0000_0001],
+        mates: vec![mate_with_angle(
+            kind, a, b, false, offset, ratio, radius, angle,
+        )],
+    }
+}
+
+/// The manifold Jacobian against finite differences taken IN THE STATE: the
+/// probe steps `t` and `w`, not the four quaternion components, so this is the
+/// check on the `dexp_drot` chain and on `expand` together. The base point is
+/// pushed off the seed first (translation plus a skew rotation vector) so the
+/// chain is exercised where `w != 0`, not only at the seed's identity
+/// expansion.
+fn compare_manifold_jacobian(input: &MateInput) {
+    let p = MateProblem::new(input);
+    let mut y = p.reduced_x0();
+    assert!(y.len() % 6 == 0 && y.len() >= 6, "fixture shape");
+    for block in y.chunks_mut(6) {
+        block[0] += 1.5;
+        block[1] -= 0.7;
+        block[2] += 0.4;
+        block[3] = 0.4;
+        block[4] = -0.3;
+        block[5] = 0.6;
+    }
+    let j_analytic = p.jacobian_reduced(&y);
+    let j_fd = lm::fd_jacobian(&|yy| p.residuals_reduced(yy), &y, p.m);
+    assert_eq!(j_analytic.nrows(), p.m);
+    assert_eq!(j_analytic.ncols(), y.len());
+    compare_jacobians(&j_analytic, &j_fd, 1e-3);
+}
+
+#[test]
+fn manifold_jacobian_vs_fd_for_every_mate_kind() {
+    for kind in MateKind::ALL {
+        let input = manifold_fd_input(kind);
+        // A non-finite residual (the unsupported tangential pairs) would make
+        // the comparison meaningless; every case above is a supported one.
+        let p = MateProblem::new(&input);
+        assert!(
+            p.residuals_reduced(&p.reduced_x0())
+                .iter()
+                .all(|v| v.is_finite()),
+            "{:?} fixture must be finitely resolvable",
+            kind
+        );
+        compare_manifold_jacobian(&input);
+    }
+}
+
+/// The chain again at a large rotation increment: the exponential's
+/// derivative degrades as `w` grows, and the cross-check must hold well inside
+/// that drift (the retraction keeps evaluations below 4 radians).
+#[test]
+fn manifold_jacobian_vs_fd_at_a_large_increment() {
+    let input = manifold_fd_input(MateKind::Fixed);
+    let p = MateProblem::new(&input);
+    let mut y = p.reduced_x0();
+    for block in y.chunks_mut(6) {
+        block[3] = -2.5;
+        block[4] = 1.5;
+        block[5] = 2.0; // |w| = 3.5, just under the retraction radius
+    }
+    let j_analytic = p.jacobian_reduced(&y);
+    let j_fd = lm::fd_jacobian(&|yy| p.residuals_reduced(yy), &y, p.m);
+    compare_jacobians(&j_analytic, &j_fd, 1e-3);
+}
+
 // A soft mate must yield to a stiff one. Both pull the same free body's
 // anchor to different targets; with equal rows the body lands at the
 // midpoint, and only a row scale makes it land on the stiff target. Fails

@@ -11,7 +11,10 @@ use super::{Mate, MateKind, MateProblem};
 // ─── Jacobian ───
 
 impl MateProblem {
-    /// Build the full dense Jacobian (m × n) at x.
+    /// Build the mate-row Jacobian (m x n) at the 7-param pose `x`, in the
+    /// 7-param column layout (`body_index * 7`). This is the raw material
+    /// `jacobian_reduced` chains into the LM state's columns; it carries no
+    /// global rows (unit norm and grounding are state, not residuals).
     pub(super) fn jacobian(&self, x: &[f64]) -> DMatrix<f64> {
         let mut j = DMatrix::zeros(self.m, self.n);
         let mut row = 0usize;
@@ -198,31 +201,51 @@ impl MateProblem {
             scale_rows(&mut j, row_start, row, mate.weight);
         }
 
-        // Quaternion norm residuals (1 per body whose full block is in the
-        // buffer).
-        for bi in 0..self.bodies.len() {
-            if !self.body_block_present(bi, x.len()) {
-                continue;
-            }
-            let off = bi * 7;
-            j[(row, off + 3)] = 2.0 * x[off + 3];
-            j[(row, off + 4)] = 2.0 * x[off + 4];
-            j[(row, off + 5)] = 2.0 * x[off + 5];
-            j[(row, off + 6)] = 2.0 * x[off + 6];
-            row += 1;
-        }
+        debug_assert_eq!(row, self.m, "mate rows did not fill the matrix");
+        j
+    }
 
-        // Grounded-body pin residuals (7 per grounded body in the buffer).
+    /// The manifold Jacobian (m x n_red) at the reduced state `y`: the 7-param
+    /// Jacobian at `expand(y)`, with each FREE body's four quaternion columns
+    /// chained through `d(exp(w) q_ref)/dw` (see `dexp_drot`) into its three
+    /// rotation-vector columns, and every grounded body's columns dropped --
+    /// a grounded pose is a constant in the residuals, so it has no derivative
+    /// to report. The chain is exact at whatever `w` the state holds, so the
+    /// fillers above are untouched by the parameterisation change: they keep
+    /// differentiating the residuals they have always built, and this only
+    /// re-bases their columns onto the state LM steps.
+    pub(super) fn jacobian_reduced(&self, y: &[f64]) -> DMatrix<f64> {
+        let x = self.expand(y);
+        let j_full = self.jacobian(&x);
+        let q_ref = self.q_ref.borrow();
+        let mut j = DMatrix::zeros(self.m, self.n_red);
         for bi in 0..self.bodies.len() {
-            if self.grounded[bi] && self.body_block_present(bi, x.len()) {
-                let off = bi * 7;
-                for jj in 0..7 {
-                    j[(row, off + jj)] = 1.0;
-                    row += 1;
+            let Some(col) = self.body_col[bi] else {
+                continue;
+            };
+            let off = bi * 7;
+            let w = [y[col + 3], y[col + 4], y[col + 5]];
+            let base = bi * 4;
+            let reference = [
+                q_ref[base],
+                q_ref[base + 1],
+                q_ref[base + 2],
+                q_ref[base + 3],
+            ];
+            let d = dexp_drot(&reference, &w);
+            for r in 0..self.m {
+                for k in 0..3 {
+                    j[(r, col + k)] = j_full[(r, off + k)];
+                }
+                for c in 0..3 {
+                    let mut acc = 0.0;
+                    for qi in 0..4 {
+                        acc += j_full[(r, off + 3 + qi)] * d[qi][c];
+                    }
+                    j[(r, col + 3 + c)] = acc;
                 }
             }
         }
-
         j
     }
 
@@ -484,7 +507,9 @@ impl MateProblem {
     /// the old analytic `fill_copy_rotation` filler linearised about a fixed
     /// seed axis and disagreed with the residual off the seed. Same trusted
     /// pattern as `fill_tangential`; the roll row is a single residual, so this
-    /// is cheap.
+    /// is cheap. The cone guard inside `abs_roll_residual` is what keeps this
+    /// difference well-posed: the residual it differentiates is continuous and
+    /// bounded in slope everywhere, so no guard is needed on top.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn fill_roll_fd(
         &self,

@@ -1,8 +1,26 @@
 //! Mate residual builders and analytic Jacobian for the 3D rigid-body solver.
 //!
-//! Each rigid body carries 7 params: translation (tx, ty, tz) followed by a
-//! unit quaternion (qx, qy, qz, qw). The solver reuses `solve_lm` (`lm.rs`) via
-//! the closures `residuals(x)` and `jacobian(x, n)` built by `MateProblem`.
+//! The wire keeps its 7 params per body: translation (tx, ty, tz) followed by
+//! a unit quaternion (qx, qy, qz, qw). What LM optimises is smaller. Each FREE
+//! body contributes 6 state entries -- translation (3) plus a rotation vector
+//! `w` (3) about its seeded orientation -- and a grounded body contributes
+//! none: its pose is a constant in the residuals, never a parameter.
+//! `expand` composes each evaluation's pose as `q = exp(w) * q_ref` over the
+//! per-body reference `q_ref` (the normalised seed), so the residuals below
+//! always see a unit quaternion and `params_solved` reports unit quaternions
+//! without any normalisation step. That is why a converged solve is converged
+//! in the pose the host shows: there is no soft unit-norm residual left to
+//! trade a point gap against, and no grounded pin row a least-squares optimum
+//! can outvote. `dexp_drot` chains the existing quaternion derivatives through
+//! `dq/dw` exactly, at whatever `w` the state holds, so the state stays
+//! anchored to the seed rather than being folded step by step -- the seed
+//! anchor then keeps meaning "stay oriented as you were placed"
+//! (`ROT_DAMP_SCALE` records how the damping was re-measured). The one fold
+//! is `retract`, driven through `lm::solve_lm_damped_retract`: past a
+//! rotation-vector radius of 4 radians `exp` starts losing conditioning and at
+//! a full turn it collapses outright, so a stray body is re-based onto its
+//! reference there with the pose unchanged. The wire and the rank analysis
+//! only ever meet a well-conditioned chart.
 //!
 //! Residuals per mate kind:
 //! - Fixed:              point coincidence plus the offset vector in A's frame (3) + signed axis difference w/ flip (3) + absolute roll to authored angle (1)
@@ -29,12 +47,9 @@
 //! parts drifted apart rotationally, an authored angle re-applied itself on
 //! every reseed (a ratchet), and the weld side flipped when a drag swung the
 //! axes past perpendicular.
-//!
-//! Global soft residuals:
-//! - Quaternion unit-norm per body (1 residual each)
-//! - Grounded-body pin per param (7 residuals each)
 
 use nalgebra::DMatrix;
+use std::cell::RefCell;
 
 use crate::mate::{
     AnchorKind, Mate, MateDiagnostics, MateInput, MateKind, MateOutput, MateStatus, RigidBody,
@@ -43,7 +58,9 @@ use solver_core::lm;
 
 /// Pre-built problem: holds decodings from MateInput for fast residual/Jacobian eval.
 pub struct MateProblem {
-    /// Number of scalar params (n_bodies * 7).
+    /// The seed buffer's length (n_bodies * 7): the WIRE dimension. The
+    /// dimension LM optimises is `n_red`; `n` sizes the 7-param pose buffer
+    /// every residual indexes through `body_index * 7`.
     n: usize,
     /// Copy of the seed params widened to f64.
     x0: Vec<f64>,
@@ -59,10 +76,32 @@ pub struct MateProblem {
     kept_input_indices: Vec<usize>,
     /// Per-body param offsets.
     bodies: Vec<RigidBody>,
-    /// Which bodies are grounded (grounded = not movable).
-    grounded: Vec<bool>,
-    /// Total residual count m.
+    /// Total residual count m: the mate rows only. The two global row groups
+    /// the pre-manifold solver appended (one unit-norm row per body, seven
+    /// pin rows per grounded body) are gone; grounding and unit norm are now
+    /// properties of the state, not residuals. `mate_residual_count` and the
+    /// per-mate slicing are unaffected.
     m: usize,
+    /// Reduced LM state dimension: 6 per free body (translation + rotation
+    /// vector), 0 per grounded body. This is the `n` of every rank/dof
+    /// and damping computation.
+    n_red: usize,
+    /// Per body, its first column in the reduced state, or `None` when the
+    /// body is no solver parameter at all: grounded (its pose is a constant
+    /// in the residuals) or its 7-param block is missing from the seed
+    /// buffer (same drop-don't-panic posture as the stale-mate filter).
+    body_col: Vec<Option<usize>>,
+    /// Reference quaternion per body, unit by construction: the base the
+    /// reduced state composes through as `exp(w) * q_ref`. It starts as the
+    /// normalised seed, so `w = 0` reads "oriented as seeded" and the seed
+    /// anchor keeps its meaning; `retract` re-bases it whenever `w` strays
+    /// past `FOLD_W` (the pose is unchanged by that fold, only the chart is).
+    /// `RefCell` because the residual and Jacobian closures borrow the
+    /// problem immutably while the LM driver's retract hook re-bases through
+    /// the same storage. Only free bodies are read; a body whose block is
+    /// missing from the seed buffer keeps the identity placeholder and
+    /// contributes no columns anyway.
+    q_ref: RefCell<Vec<f64>>,
     /// Seed-frame world axes for CopyRotation (fixed at problem build time).
     /// `fill_copy_rotation` linearises about THESE, never the current
     /// quaternion's axis -- the current axis drifts as the body rotates away
@@ -88,12 +127,41 @@ pub struct MateProblem {
     scale: f64,
 }
 
-/// How much stiffer the LM step damps a body's rotation params than its
-/// translation params. It weights only the Marquardt damping term (which shapes
-/// each step, not the residual), so an underdetermined solve descends toward
-/// sliding a part rather than spinning it, while a mate that genuinely needs a
-/// rotation still converges to it -- the damping never enters the convergence
-/// condition. See `rotation_damp_scale` and `lm::solve_lm_damped`.
+/// How much stiffer the LM step damps a free body's rotation vectors than its
+/// translations. `reduced_damp_scale` divides both by the seed's largest
+/// J^T J diagonal, so what this constant fixes is the RATIO between the two:
+/// the slide-over-spin preference, and nothing about the drawing's size.
+///
+/// Why 500 -- the pre-manifold value, kept as a measured result rather than
+/// inherited: what this weights is damping per unit of ANCHOR motion, and in
+/// both parameterisations the rotation columns already carry the lever arm
+/// squared (the quaternion derivative `drot_vec_dq` scales with the local
+/// anchor length, `d r / d w` with the world lever), so the lever cancels and
+/// only `damp_r / damp_t` survives. A rotation vector differs from a
+/// quaternion vector by the factor 2 (`q_vec = sin(theta/2) axis`) and its
+/// Jacobian entry differs by that factor squared, so 500 in radians weighs a
+/// radian as 500 in quaternions did. The observable it guards is
+/// `free_body_reaches_point_more_by_translating_than_rotating`, a point
+/// coincidence the body could close either by sliding 3 units or by spinning
+/// about its offset anchor; measured on that fixture, the slide's share reads
+/// tx = 1.97 at 10 (and the solve burns its whole 200-step phase hunting the
+/// anchor), 2.47 at 50, 2.73 at 100, 2.95 at 500, 2.99 at 2000 against an
+/// assertion of tx > 2.5 -- so 10 and 50 fail it, 100 passes, and 500 keeps
+/// the pre-manifold constant while converging in 33 iterations. The whole
+/// suite is green from 100 to 10000, which is the band to re-measure in if a
+/// future change moves these numbers.
+///
+/// The division by `max_diag` is the scale half: the driver reads its own
+/// `lambda0 = 1e-3 * max_diag` off the same diagonal, which under this
+/// parameterisation grows with the lever arm squared, so at a 400-unit lever
+/// lambda0 is 320 and an undivided scale would start rotation at 1.6e5 times
+/// its own curvature (and translation at 320 times) -- a dozen-plus accepted
+/// steps of pure lambda-shrinkage before any step is Gauss-Newton sized.
+/// Divided out, each column starts at `1e-3 * its base ratio` whatever the
+/// drawing measures.
+///
+/// It weights only the Marquardt damping and the seed anchor, never the
+/// residual and never the convergence condition.
 const ROT_DAMP_SCALE: f64 = 500.0;
 
 /// Cell ceiling on the dense Jacobian this solver will allocate.
@@ -225,18 +293,42 @@ impl MateProblem {
         }
 
         let mate_residual_total: usize = mates.iter().map(|m| mate_residual_count(m.kind)).sum();
-        // The per-body residual loops index body_index * 7 against x/x0, so a
-        // body whose full 7-param block is not in the seed buffer cannot
-        // contribute any row. The wire path validates the counts; an
-        // in-memory caller does not, and matching the stale-mate filter's
-        // drop-don't-panic posture above, the missing body is skipped here
-        // rather than indexed off the end mid-solve.
-        let block_present = block_within;
-        let quat_rows = (0..n_bodies).filter(|&bi| block_present(bi)).count();
-        let grounded_rows = (0..n_bodies)
-            .filter(|&bi| grounded[bi] && block_present(bi))
-            .count();
-        let m = mate_residual_total + quat_rows + 7 * grounded_rows;
+        // The rows are the mates' rows and nothing else: grounding and unit
+        // norm are state invariants now, not residuals. `mate_residual_count`
+        // and the per-mate slicing in `solve_mate_impl` are therefore exact.
+        let m = mate_residual_total;
+
+        // Reduced state layout. A body becomes a solver parameter only when it
+        // is free AND its whole 7-param block sits in the seed buffer: a
+        // grounded body's pose is a constant in the residuals, and a body
+        // whose block is missing cannot be read at all (its mates were dropped
+        // above for exactly that reason). Each parameter owns 6 columns --
+        // translation verbatim plus the rotation increment that composes onto
+        // `q_ref`.
+        let mut body_col: Vec<Option<usize>> = vec![None; n_bodies];
+        let mut n_red = 0usize;
+        for bi in 0..n_bodies {
+            if !grounded[bi] && block_within(bi) {
+                body_col[bi] = Some(n_red);
+                n_red += 6;
+            }
+        }
+
+        // Seed quaternions enter the state normalised: "unit by construction"
+        // starts here, so a host buffer carrying a non-unit quaternion solves
+        // and reports the pose its normalisation names. A GROUNDED body's
+        // buffer never passes through this -- it is echoed bit-exact from the
+        // seed in `expand`.
+        let mut q_ref = vec![0.0; n_bodies * 4];
+        for bi in 0..n_bodies {
+            let base = bi * 4;
+            q_ref[base..base + 4].copy_from_slice(&[0.0, 0.0, 0.0, 1.0]);
+            if block_within(bi) {
+                let off = bi * 7;
+                let seed_q = [x0[off + 3], x0[off + 4], x0[off + 5], x0[off + 6]];
+                q_ref[base..base + 4].copy_from_slice(&quat_normalize(&seed_q));
+            }
+        }
 
         // Precompute seed-frame world axes for CopyRotation mates plus each
         // body's twist at the seed pose about those axes, and the pose-free
@@ -274,8 +366,10 @@ impl MateProblem {
             input_mate_count: input.mates.len(),
             kept_input_indices,
             bodies: input.bodies.clone(),
-            grounded,
             m,
+            n_red,
+            body_col,
+            q_ref: RefCell::new(q_ref),
             seed_axes,
             seed_twist,
             roll_frames,
@@ -305,7 +399,10 @@ impl MateProblem {
     /// falls into it as the axis residuals align the axes, so near a solution
     /// this is the plain dihedral roll. The wrap keeps the residual in
     /// (-pi, pi]: a target of +179 deg and a pose at -179 deg are 2 deg apart,
-    /// not 358.
+    /// not 358. Far from a solution `xb` can lean onto `w` instead, where the
+    /// projection has no length and the angle has no meaning; the code below
+    /// says so rather than letting `atan2` of a vanishing pair pretend the
+    /// roll is fine.
     fn abs_roll_residual(
         &self,
         x: &[f64],
@@ -314,6 +411,46 @@ impl MateProblem {
         off_b: usize,
         target: f64,
     ) -> f64 {
+        let (sin_r, cos_r) = self.roll_dihedral(x, mi, off_a, off_b);
+        let frame_len = (sin_r * sin_r + cos_r * cos_r).sqrt();
+        let error = wrap_to_pi(sin_r.atan2(cos_r) - target);
+        if frame_len >= Self::ROLL_FRAME_TRUST {
+            return error;
+        }
+        // Inside the cone where B's canonical reference lines up with A's
+        // axis -- which happens exactly when the two axes are near
+        // perpendicular, i.e. nowhere near a solution -- `atan2` is evaluating
+        // a pair whose length is heading to zero: the angle is undefined, and
+        // worse, `atan2(0, 0)` reads 0, so the undefined pose reads "roll
+        // satisfied". That false minimum is a trap: a descent chasing the axis
+        // residual walks into it, the row's finite-difference slope explodes to
+        // ~2*pi/eps over a 1e-6 step, J^T J picks up the square, and LM freezes
+        // into a false convergence on a pose whose axis residual is still
+        // sqrt(2). Fade the error to the worst case (+pi) across the cone
+        // instead: continuous at the rim, maximum rather than minimum at the
+        // apex, and bounded in slope, so the row keeps its guidance without the
+        // trap. The fade factor is a smoothstep, not a plain `min(1, x)`:
+        // smoothstep leaves the rim with zero derivative, so the two branches
+        // meet C1 and a finite difference straddling the rim measures the real
+        // slope instead of a kink (measured: the linear version skewed the roll
+        // row's 1e-6 stencil by ~24 against a true slope of ~11, which is
+        // exactly the kind of wrong Jacobian that sends a step uphill).
+        //
+        // Every solution has frame_len near 1, where f is exactly 1 and nothing
+        // here is in force.
+        let x = frame_len / Self::ROLL_FRAME_TRUST;
+        let f = if x >= 1.0 {
+            1.0
+        } else {
+            x * x * (3.0 - 2.0 * x)
+        };
+        f * error + (1.0 - f) * std::f64::consts::PI
+    }
+
+    /// The roll angle's argument pair `(sin_r, cos_r)` at pose `x`, split out
+    /// of `abs_roll_residual` because its LENGTH is what says whether the
+    /// angle exists at all (see `ROLL_FRAME_TRUST`).
+    fn roll_dihedral(&self, x: &[f64], mi: usize, off_a: usize, off_b: usize) -> (f64, f64) {
         let mate = &self.mates[mi];
         let (xa_l, xb_l) = self.roll_frames[mi].unwrap_or(([1.0, 0.0, 0.0], [1.0, 0.0, 0.0]));
         let w = normalise_axis(&world_direction(x, off_a, &mate.a.geometry.axis));
@@ -322,36 +459,189 @@ impl MateProblem {
         let cr = cross3(&xa_w, &xb_w);
         let sin_r = cr[0] * w[0] + cr[1] * w[1] + cr[2] * w[2];
         let cos_r = xa_w[0] * xb_w[0] + xa_w[1] * xb_w[1] + xa_w[2] * xb_w[2];
-        wrap_to_pi(sin_r.atan2(cos_r) - target)
+        (sin_r, cos_r)
     }
 
-    /// Per-param multiplier on the LM Marquardt damping term: rotation params of
-    /// ungrounded bodies are damped `ROT_DAMP_SCALE` times stiffer than their
-    /// translation, so a step trades a spin for a slide where the constraints
-    /// leave the choice open. Grounded bodies are pinned regardless, so their
-    /// scale is left at 1.0.
-    fn rotation_damp_scale(&self) -> Vec<f64> {
-        let mut scale = vec![1.0; self.n];
-        for bi in 0..self.bodies.len() {
-            if self.grounded[bi] || !self.body_block_present(bi, self.n) {
-                continue;
+    /// Half-width of the cone (measured as the length of `(sin_r, cos_r)`,
+    /// the sine of the angle between B's reference and A's axis) inside which
+    /// the dihedral is treated as undefined. Measured, not guessed: at 0.1 the
+    /// false minima still rimmed the cone -- a solve settled one part outside
+    /// it, where `atan2` is already meaningless (its 1e-6 stencil then skews by
+    /// ~24 against a true slope of ~11) and the row's value trades against the
+    /// axis rows into a stationary point with an axis residual of sqrt(2) --
+    /// while 0.2, 0.3 and 0.5 all carry the suite green. Every solution sits
+    /// at frame_len near 1 (aligned axes put B's reference perpendicular to
+    /// A's axis), so any half-width below 1 leaves the solved pose on the pure
+    /// branch with f = 1; 0.3 is the middle of the green band.
+    const ROLL_FRAME_TRUST: f64 = 0.3;
+
+    /// Per-param multiplier on the LM Marquardt damping, over the REDUCED
+    /// state: one entry per state entry, `1` on a body's translations and
+    /// `ROT_DAMP_SCALE` on its rotation increments, so a step trades a spin
+    /// for a slide where the constraints leave the choice open. Grounded
+    /// bodies have no entries at all now, which is what replaced their old
+    /// "scale 1.0 because they are pinned anyway" row.
+    ///
+    /// Both are divided by the seed Jacobian's largest J^T J diagonal. That
+    /// diagonal is also what sets the driver's initial damping
+    /// (`lambda0 = 1e-3 * max_diag`), and under the manifold parameterisation
+    /// it grows with the square of the drawing's lever arms (a rotation
+    /// column is O(lever), a translation column O(1)). Dividing it out keeps
+    /// the damping relative to each column's own curvature constant across
+    /// scales, so the first step stays Gauss-Newton-like on a 10000-unit
+    /// lever instead of taking dozens of iterations to burn lambda down --
+    /// and it leaves the ROT_DAMP_SCALE ratio as the only slide-over-spin
+    /// knob, which is the thing worth measuring.
+    fn reduced_damp_scale(&self) -> Vec<f64> {
+        let y0 = self.reduced_x0();
+        let j0 = self.jacobian_reduced(&y0);
+        let mut max_diag = 0.0;
+        for c in 0..j0.ncols() {
+            let diag = (0..j0.nrows())
+                .map(|r| j0[(r, c)] * j0[(r, c)])
+                .sum::<f64>();
+            if diag > max_diag {
+                max_diag = diag;
             }
-            let off = bi * 7;
-            for j in 3..7 {
-                scale[off + j] = ROT_DAMP_SCALE;
+        }
+        // An all-zero Jacobian (no mates left, every body grounded) has no
+        // scale to divide by; 1.0 keeps the entries finite and the ratio
+        // intact rather than producing inf.
+        let norm = if max_diag > 0.0 { max_diag } else { 1.0 };
+        let mut scale = vec![1.0 / norm; self.n_red];
+        for bi in 0..self.bodies.len() {
+            if let Some(col) = self.body_col[bi] {
+                for j in 0..3 {
+                    scale[col + 3 + j] = ROT_DAMP_SCALE / norm;
+                }
             }
         }
         scale
     }
 
-    /// Build the residuals closure for `solve_lm`.
-    pub fn residuals_fn(&self) -> impl Fn(&[f64]) -> Vec<f64> + '_ {
-        |x: &[f64]| self.residuals(x)
+    // ─── Manifold state: expand / reduced closures ───
+
+    /// The LM starting state: each free body's seed translation, with its
+    /// rotation vector at zero (the seed orientation IS `q_ref`, so `w` reads
+    /// the rotation AWAY from the seed). Zeroed on purpose: the driver's
+    /// anchor target is `x0`, and `retract` only re-bases bodies that have
+    /// strayed, so an unfolded start is what keeps "w = 0" meaning the same
+    /// thing as the anchor's target for the whole solve.
+    pub(crate) fn reduced_x0(&self) -> Vec<f64> {
+        let mut y = Vec::with_capacity(self.n_red);
+        for bi in 0..self.bodies.len() {
+            if let Some(col) = self.body_col[bi] {
+                let off = bi * 7;
+                debug_assert_eq!(col, y.len(), "reduced column map drifted");
+                y.extend_from_slice(&self.x0[off..off + 3]);
+                y.extend_from_slice(&[0.0; 3]);
+            }
+        }
+        y
     }
 
-    /// Build the dense Jacobian closure for `solve_lm`.
+    /// Materialise the 7-param pose buffer the residual and Jacobian builders
+    /// read, from the reduced state plus the per-body reference quaternions.
+    ///
+    /// Grounded (and block-less) bodies pass through as the seed bytes: their
+    /// pose is a constant, echoed bit-exact. A free body takes its translation
+    /// from the state and composes `exp(w) * q_ref`, normalised -- unit by
+    /// construction at every `w`, which is what `params_solved` reports. The
+    /// `w = 0` branch reproduces `q_ref` itself (no rounding pass), so a body
+    /// the solver never moved comes back as its own seed quaternion.
+    pub(crate) fn expand(&self, y: &[f64]) -> Vec<f64> {
+        let mut x = self.x0.clone();
+        let q_ref = self.q_ref.borrow();
+        for bi in 0..self.bodies.len() {
+            let Some(col) = self.body_col[bi] else {
+                continue;
+            };
+            let off = bi * 7;
+            x[off] = y[col];
+            x[off + 1] = y[col + 1];
+            x[off + 2] = y[col + 2];
+            let w = [y[col + 3], y[col + 4], y[col + 5]];
+            let base = bi * 4;
+            let q = [
+                q_ref[base],
+                q_ref[base + 1],
+                q_ref[base + 2],
+                q_ref[base + 3],
+            ];
+            let composed = if w == [0.0, 0.0, 0.0] {
+                q
+            } else {
+                quat_normalize(&quat_mul(&quat_exp(&w), &q))
+            };
+            x[off + 3] = composed[0];
+            x[off + 4] = composed[1];
+            x[off + 5] = composed[2];
+            x[off + 6] = composed[3];
+        }
+        x
+    }
+
+    /// The LM driver's retraction hook: fold any body whose rotation vector
+    /// has strayed past `FOLD_W` back onto its reference (`w = 0`, `q_ref`
+    /// taking over the pose), leaving every other coordinate untouched. The
+    /// pose is identical before and after -- only the chart changes -- so the
+    /// residual the accept test priced still describes the state.
+    ///
+    /// Why the radius exists: `exp(w)` is a well-conditioned chart on the
+    /// rotation group for small `w` and degenerates at `|w| = 2*pi`, where a
+    /// full turn has wrapped onto itself and the chain `d(exp(w) q_ref)/dw`
+    /// loses two dimensions. A solve CAN land there -- a chain of flipped
+    /// mates driven from identity spins one body a full turn and then reports
+    /// two phantom DOF off the collapsed Jacobian (that is the regression
+    /// `two_flipped_fixed_chain_from_identity` pins). Folding at 4 radians
+    /// keeps every Jacobian evaluation far from the degeneracy while staying
+    /// above any orientation a mate legitimately asks of a body from its
+    /// seed (a half-turn weld needs pi). The cost: a body folded this way
+    /// forgets where it was seeded -- the anchor's `w = 0` target then means
+    /// "as re-based", which only matters past the radius, where the anchor's
+    /// quadratic price was already negligible.
+    pub(crate) fn retract(&self, y: &mut [f64]) {
+        const FOLD_W: f64 = 4.0;
+        let mut q_ref = self.q_ref.borrow_mut();
+        for bi in 0..self.bodies.len() {
+            let Some(col) = self.body_col[bi] else {
+                continue;
+            };
+            let w = [y[col + 3], y[col + 4], y[col + 5]];
+            let norm2 = w[0] * w[0] + w[1] * w[1] + w[2] * w[2];
+            if norm2.is_nan() || norm2 <= FOLD_W * FOLD_W {
+                continue; // in chart, nothing to fold (a NaN state never gets here)
+            }
+            let base = bi * 4;
+            let q = [
+                q_ref[base],
+                q_ref[base + 1],
+                q_ref[base + 2],
+                q_ref[base + 3],
+            ];
+            let folded = quat_normalize(&quat_mul(&quat_exp(&w), &q));
+            q_ref[base..base + 4].copy_from_slice(&folded);
+            y[col + 3] = 0.0;
+            y[col + 4] = 0.0;
+            y[col + 5] = 0.0;
+        }
+    }
+
+    /// Residuals over the reduced state (the closure
+    /// `solve_lm_damped_retract` walks). Identical rows to `residuals` on the
+    /// pose it expands to.
+    pub(crate) fn residuals_reduced(&self, y: &[f64]) -> Vec<f64> {
+        self.residuals(&self.expand(y))
+    }
+
+    /// Build the residuals closure over the reduced state.
+    pub fn residuals_fn(&self) -> impl Fn(&[f64]) -> Vec<f64> + '_ {
+        |y: &[f64]| self.residuals_reduced(y)
+    }
+
+    /// Build the dense Jacobian closure over the reduced state (m x n_red).
     pub fn jacobian_fn(&self) -> impl Fn(&[f64]) -> DMatrix<f64> + '_ {
-        |x: &[f64]| self.jacobian(x)
+        |y: &[f64]| self.jacobian_reduced(y)
     }
 }
 
@@ -363,30 +653,9 @@ use math::*;
 // ─── Residuals ───
 
 impl MateProblem {
-    fn get_quat(&self, x: &[f64], body_idx: usize) -> (f64, f64, f64, f64) {
-        let off = body_idx * 7;
-        (x[off + 3], x[off + 4], x[off + 5], x[off + 6])
-    }
-
-    /// True while body `bi`'s full 7-param block fits in the buffer. The two
-    /// global residual loops (quaternion norm, grounded pins) index
-    /// `bi * 7` unconditionally; a body past the buffer must contribute no
-    /// rows instead of panicking the worker. `m` was computed with exactly
-    /// this filter in `new`, so row counts stay consistent.
-    fn body_block_present(&self, bi: usize, len: usize) -> bool {
-        debug_assert_eq!(
-            len,
-            self.x0.len(),
-            "param buffer drifted from the seed length"
-        );
-        // Checked to match `new`'s block filter: an unchecked `(bi + 1) * 7`
-        // wraps on wasm32 for absurd body counts.
-        bi.checked_add(1)
-            .and_then(|next| next.checked_mul(7))
-            .is_some_and(|end| end <= self.x0.len().min(len))
-    }
-
-    /// Compute the full residual vector at x.
+    /// Compute the residual vector at the 7-param pose `x`: one block per kept
+    /// mate, in mate order, exactly `m` rows. The state-derived properties
+    /// (unit norm, grounded pose) are not residuals here; see the module doc.
     fn residuals(&self, x: &[f64]) -> Vec<f64> {
         let mut r = Vec::with_capacity(self.m);
 
@@ -576,32 +845,10 @@ impl MateProblem {
             }
 
             // The mate's own rows carry its weight, so an under-weighted drag
-            // objective yields to a real mate in the same least-squares sum. The
-            // global rows (quaternion norm, grounded pin) that follow are never
-            // scaled: they hold the parameterization, not a mate.
+            // objective yields to a real mate in the same least-squares sum.
             if mate.weight != 1.0 {
                 for v in &mut r[start..] {
                     *v *= mate.weight;
-                }
-            }
-        }
-
-        // Quaternion unit-norm soft residuals (one per body whose full block
-        // is in the buffer).
-        for bi in 0..self.bodies.len() {
-            if !self.body_block_present(bi, x.len()) {
-                continue;
-            }
-            let (qx, qy, qz, qw) = self.get_quat(x, bi);
-            r.push(qx * qx + qy * qy + qz * qz + qw * qw - 1.0);
-        }
-
-        // Grounded-body pin residuals (pull each param to x0).
-        for bi in 0..self.bodies.len() {
-            if self.grounded[bi] && self.body_block_present(bi, x.len()) {
-                let off = bi * 7;
-                for j in 0..7 {
-                    r.push(x[off + j] - self.x0[off + j]);
                 }
             }
         }
@@ -693,21 +940,22 @@ const RANK_REL_TOL: f64 = 1e-10;
 /// Rank cutoff for a Jacobian whose largest singular value is `smax`.
 ///
 /// The naive form from the review, `1e-6 * smax`, does not work on THIS
-/// matrix and was rejected on measured spectra: the Jacobian mixes units, so
-/// grounded-body pins, quaternion-norm rows and translation columns stay
-/// dimensionless O(1) however small the model is drawn. `smax` therefore
-/// never shrinks with geometry, and `1e-6 * smax` can sit above the very
-/// singular values that must keep counting -- a 1e-7-scale triple spherical
-/// weld measured sigma = {2.3e-6, 2.0e-6, 1.2e-6} against a proposed cutoff
-/// of 2.6e-6, demoting it from rank 14 to rank 11 (the exact bug class this
+/// matrix and was rejected on measured spectra: the Jacobian mixes units, and
+/// the translation columns are a ratio of model-unit residual to model-unit
+/// step, so they stay dimensionless O(1) however small the model is drawn.
+/// `smax` therefore never shrinks with geometry, and `1e-6 * smax` can sit
+/// above the very singular values that must keep counting -- a 1e-7-scale
+/// triple spherical weld carries genuine constraint directions around 1e-6,
+/// where a cutoff at `1e-6 * smax` discards them (the exact bug class this
 /// fix exists to remove). `1e-10 * smax` keeps the relative spirit with real
 /// margins on both sides: four-plus orders above the finite-difference noise
 /// of the roll/tangential filler rows (measured junk at ~1e-12 and below),
 /// and well below the smallest genuine geometric direction for any sane
-/// modelling scale down to nanometres (measured 1.2e-8 at 1e-9). A true zero
-/// direction (a hinge's free roll measured 6.5e-18) stays excluded. An
-/// all-zero spectrum falls back to the legacy absolute cutoff; every
-/// direction is rank-deficient there under any positive tolerance anyway.
+/// modelling scale down to nanometres (rotation columns track the lever arm,
+/// so ~1e-8 at a 1e-9 drawing). A true zero direction (a hinge's free roll
+/// measured 6.5e-18) stays excluded. An all-zero spectrum falls back to the
+/// legacy absolute cutoff; every direction is rank-deficient there under any
+/// positive tolerance anyway.
 fn singular_value_cutoff(smax: f64) -> f64 {
     if smax > 0.0 {
         RANK_REL_TOL * smax
@@ -773,13 +1021,14 @@ pub fn solve_mate_live(input: &MateInput) -> MateOutput {
 /// always passes `DENSE_CELL_BUDGET`) and the live fast-path selected.
 fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     let problem = MateProblem::new(input);
-    let n = problem.n;
     let m = problem.m;
+    let n_red = problem.n_red;
 
     // Refuse before the first dense allocation: past this point every step
-    // reserves matrices proportional to m*n, and an OOM there aborts the
-    // worker instead of returning the failing status below.
-    if dense_cells_over_budget(m, n, budget) {
+    // reserves matrices proportional to m*n (the 7-param fill matrix, which is
+    // the larger of the two the manifold chain allocates), and an OOM there
+    // aborts the worker instead of returning the failing status below.
+    if dense_cells_over_budget(m, problem.n, budget) {
         return MateOutput {
             params_solved: input.params_initial.clone(),
             overall_status: MateStatus::Overconstrained.to_u8(),
@@ -796,17 +1045,28 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
         };
     }
 
-    let x0_f64: Vec<f64> = input.params_initial.clone();
-
+    let y0 = problem.reduced_x0();
     let residuals_fn = problem.residuals_fn();
     let jacobian_fn = problem.jacobian_fn();
 
-    // Rotation params are damped stiffer than translation so an underdetermined
-    // solve slides a part rather than spinning it (ROT_DAMP_SCALE). This weights
-    // only the LM step, never the residual, so the reported diagnostics below are
-    // untouched and a mate that needs a rotation still reaches it.
-    let damp_scale = problem.rotation_damp_scale();
-    let lm_result = lm::solve_lm_damped(&x0_f64, &residuals_fn, &jacobian_fn, &damp_scale);
+    // Rotation vectors are damped stiffer than translations so an
+    // underdetermined solve slides a part rather than spinning it
+    // (ROT_DAMP_SCALE). This weights only the LM step and the seed anchor,
+    // never the residual, so the reported diagnostics below are untouched and
+    // a mate that needs a rotation still reaches it.
+    // Cost note: the scale needs the seed Jacobian, so this is one extra
+    // O(m*n) build per solve, the same order as one LM iteration, and it
+    // runs on every live drag tick too. If the sparse-LM migration ever
+    // lands, fold this into the driver so the seed Jacobian is built once.
+    let damp_scale = problem.reduced_damp_scale();
+    // The retraction hook: it folds a rotation vector that has strayed past
+    // the chart's radius back onto its reference, which is what keeps every
+    // Jacobian evaluation (the driver asks only after retracting) away from
+    // the degeneracy of `exp` at a full turn. The pose is unchanged by the
+    // fold, so the residual the accept test priced still holds.
+    let mut retract = |y: &mut [f64]| problem.retract(y);
+    let lm_result =
+        lm::solve_lm_damped_retract(&y0, &residuals_fn, &jacobian_fn, &damp_scale, &mut retract);
 
     // Rank analysis via SVD. Skipped on a live drag tick, which reads only the
     // pose and discards the verdict: the SVD is pure per-frame cost there, and
@@ -819,8 +1079,15 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     let (rank, dof) = if live {
         (0u32, 0u32)
     } else {
-        let dof = if m == 0 || n == 0 || poisoned {
+        let dof = if n_red == 0 || poisoned {
+            // No free body (or no trusted residuals): nothing can move.
             0usize
+        } else if m == 0 {
+            // No mate rows at all, so the Jacobian is empty and every free
+            // DOF is unconstrained. The driver returns before touching the
+            // state here, so there is no spectrum to read -- and calling the
+            // SVD of an empty matrix would report rank 0 anyway.
+            n_red
         } else {
             let svd = lm_result.jacobian.svd(true, false);
             // The rank cutoff must scale with the drawing unit: an assembly laid
@@ -832,9 +1099,9 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
             let smax = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
             let tol = singular_value_cutoff(smax);
             let rank = svd.singular_values.iter().filter(|&&s| s > tol).count();
-            n.saturating_sub(rank)
+            n_red.saturating_sub(rank)
         };
-        ((n - dof) as u32, dof as u32)
+        ((n_red - dof) as u32, dof as u32)
     };
 
     let status = mate_status(
@@ -844,14 +1111,18 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
         problem.geometry_scale(),
     );
 
-    let params_solved: Vec<f64> = lm_result.x.clone();
+    // The wire layout is still 7 params per body; composing the final unit
+    // quaternions here is the only place the reduced state and the seed buffer
+    // meet. A grounded body comes back as its own seed bytes, bit-exact.
+    let params_solved: Vec<f64> = problem.expand(&lm_result.x);
 
     // Per-mate residual norms at the solved pose, one per INPUT mate. Kept
     // mates are sliced by the per-kind counts `residuals()` pushed them in; a
     // dropped mate keeps its slot as NaN so a later residual cannot shift under
     // the host's positional fold. The host reads a non-finite value as "no
-    // residual".
-    let solved_residuals = problem.residuals(&lm_result.x);
+    // residual". `params_solved` is the very pose the solver minimised over,
+    // so this is the residual the host can re-derive from the poses it shows.
+    let solved_residuals = problem.residuals(&params_solved);
     let mut block_start = 0usize;
     let mut mate_residuals = vec![f64::NAN; problem.input_mate_count];
     for (kept_pos, &input_index) in problem.kept_input_indices.iter().enumerate() {

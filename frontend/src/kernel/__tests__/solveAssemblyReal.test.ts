@@ -119,8 +119,10 @@ describeReal('solveAssembly with the real mate solver', () => {
 
     expect(result.status.mates['m1'].stale).toBe(false)
     expect(result.status.mates['m1'].error).toBeUndefined()
-    // The instance `fixed` pin is a soft residual, not a hard clamp, so `pa` drifts by
-    // ~1e-6 rather than staying bit-exact at its seed.
+    // A `fixed` instance is not a solver parameter at all (grounded bodies are
+    // out of the state, not pinned inside it), so pa cannot drift: the echo
+    // below is the seed. Kept as a distance check rather than equality only
+    // because the bit-exact variant of this claim lives in its own test.
     expect(dist(result.transforms['pa'])).toBeLessThan(0.001)
     // pb's anchor must land on pa's anchor, i.e. at the world origin.
     expect(dist(result.transforms['pb'])).toBeLessThan(0.01)
@@ -201,9 +203,10 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(dist({ ...result.transforms['pb'], tx: result.transforms['pb'].tx - seed.tx, ty: result.transforms['pb'].ty - seed.ty, tz: result.transforms['pb'].tz - seed.tz })).toBeLessThan(0.01)
   })
 
-  // The adversarial case for a soft pin: the mate CANNOT be satisfied by moving
-  // anything free, because nothing is free. A least-squares optimum would split
-  // the error across both pinned bodies and rotate them.
+  // Nothing is free here, and nothing needs to be: grounded bodies are out of
+  // the solver's parameters entirely, so an unsatisfiable mate cannot split
+  // its error across them by rotating them. The compromise it used to find
+  // (both pins yielding to least squares) is now simply unavailable.
   it('holds both parts when two fixed parts are mated to each other', async () => {
     const seedA: Transform3D = at(0, 0, 0)
     const seedB: Transform3D = at(4, 0, 0)

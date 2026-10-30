@@ -200,8 +200,10 @@ export function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Arr
 
 /**
  * An echo solver that scales `bodyIndex`'s whole quaternion by `scale` before
- * returning it -- standing in for the soft unit-norm residual only holding
- * |q| to within LM's tolerance, not exactly (Stage C).
+ * returning it -- a stand-in for a wire carrying a non-unit quaternion at all
+ * (the mate solver now emits unit quaternions by construction, but a stale
+ * worker, a cached build or a hand-rolled solver can still hand one over, and
+ * the decode boundary must not care).
  */
 export function makeScaledQwSolver(bodyIndex: number, scale: number): (input: Uint8Array) => Uint8Array {
   return (input: Uint8Array): Uint8Array => {
