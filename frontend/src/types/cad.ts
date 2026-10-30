@@ -1189,6 +1189,13 @@ export type EntityStatus = Record<string, ConstraintStatus>
 // reproduce the insertion instead of re-deriving it from transient editor state.
 type FeatureInsertion = { insertAt?: number }
 
+/** An authoring aid: a `select` selector naming the pick. The headless drive
+ *  resolves it against the settled solve before the mutation applies and stores
+ *  the query string it resolved to; a selector is never persisted. The inner
+ *  shape stays `unknown` because the kernel's selector grammar validates it
+ *  where it is resolved (the same contract as an assembly mate ref). */
+export type SelectorRef = { selector: unknown }
+
 export type Mutation =
   | { type: 'move_vertex'; featureId: string; entityId: string; vertexKey: string; to: Point; solvedGeometry?: Record<string, number[]> }
   | { type: 'move_vertex_with_constraint'; featureId: string; entityId: string; vertexKey: string; to: Point; constraintKind: string; snapVertexId?: string; snapEntityRef?: string; solvedGeometry?: Record<string, number[]> }
@@ -1213,8 +1220,8 @@ export type Mutation =
   | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number; centerRef?: string | null; cornerRef?: string | null }
   | { type: 'apply_offset'; featureId: string; sourceIds: string[]; distance: number }
   | { type: 'toggle_construction'; targets: string[] }
-  | { type: 'set_feature_plane'; featureId: string; plane: string }
-  | ({ type: 'add_sketch'; featureId: string; label?: string; plane?: string } & FeatureInsertion)
+  | { type: 'set_feature_plane'; featureId: string; plane: string | SelectorRef }
+  | ({ type: 'add_sketch'; featureId: string; label?: string; plane?: string | SelectorRef } & FeatureInsertion)
   | { type: 'delete_feature'; featureId: string }
   | { type: 'set_feature_visibility'; featureId: string; visible: boolean }
   | ({ type: 'add_plane'; featureId: string; label?: string; definition?: PlaneDef; before?: string } & FeatureInsertion)
@@ -1245,7 +1252,7 @@ export type Mutation =
   | { type: 'remove_fillet_edge'; featureId: string; index: number }
   | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_chamfer_edge'; featureId: string; index: number }
-  | ({ type: 'add_shell'; featureId: string; label?: string; faces?: string[]; thickness?: NumberOrExpr; direction?: ShellDirection } & FeatureInsertion)
+  | ({ type: 'add_shell'; featureId: string; label?: string; faces?: (string | SelectorRef)[]; thickness?: NumberOrExpr; direction?: ShellDirection } & FeatureInsertion)
   | { type: 'set_shell_field'; featureId: string; field: keyof ShellFeatureDef; value: unknown }
   | { type: 'add_shell_face'; featureId: string; faceQuery: string }
   | { type: 'remove_shell_face'; featureId: string; index: number }
@@ -1260,9 +1267,9 @@ export type Mutation =
   | { type: 'set_boolean_field'; featureId: string; field: keyof BooleanFeatureDef; value: unknown }
   | { type: 'add_boolean_tool'; featureId: string; tool: string }
   | { type: 'remove_boolean_tool'; featureId: string; tool: string }
-  | ({ type: 'add_array'; featureId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_array'; featureId: string; label?: string } & Partial<ArrayFeatureDef> & FeatureInsertion)
   | { type: 'set_array_field'; featureId: string; field: keyof ArrayFeatureDef; value: unknown }
-  | ({ type: 'add_circular_array'; featureId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_circular_array'; featureId: string; label?: string } & Partial<CircularArrayFeatureDef> & FeatureInsertion)
   | { type: 'set_circular_array_field'; featureId: string; field: keyof CircularArrayFeatureDef; value: unknown }
   | ({ type: 'add_delete_body'; featureId: string; bodies?: string[]; label?: string } & FeatureInsertion)
   | { type: 'add_delete_body_ref'; featureId: string; bodyQuery: string }
@@ -1279,7 +1286,7 @@ export type Mutation =
   | { type: 'set_part_metalness'; bodyId: string; metalness: number }
   | { type: 'set_part_roughness'; bodyId: string; roughness: number }
   | { type: 'set_part_transmission'; bodyId: string; transmission: number }
-  | ({ type: 'add_mirror'; featureId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_mirror'; featureId: string; label?: string } & Partial<MirrorFeatureDef> & FeatureInsertion)
   | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }
   | ({ type: 'add_split'; featureId: string; label?: string; bodies?: string[]; plane?: string; keep?: SplitKeep } & FeatureInsertion)
   | { type: 'set_split_field'; featureId: string; field: keyof SplitFeatureDef; value: unknown }

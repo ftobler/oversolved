@@ -167,9 +167,10 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
 }
 
 // The input document's per-feature checkpoints, measured without writing the
-// solve back: the run must author on the document it was handed, and the
-// journal's baseline hash is that same pre-solve doc. Null when the kernel is
-// unavailable or the measurement cannot be trusted.
+// solve back: the baseline measurement reads the document it was handed. The
+// run itself settles (and bakes) the doc once before its first step when that
+// step names a selector, so the journal's baseline hash is that settled doc in
+// that case; replay is unaffected because each entry carries its seed.
 async function measureBaselineFeatures(opts: HeadlessRunOptions): Promise<FeatureMeasure[] | null> {
   try {
     const payload = partSolvePayload(opts.doc, opts.docId ?? 'headless')

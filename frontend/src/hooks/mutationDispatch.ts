@@ -1,4 +1,4 @@
-import type { PartDoc, Mutation } from '@/types/cad'
+import type { PartDoc, Mutation, SelectorRef } from '@/types/cad'
 import {
   applyMoveVertex,
   applyMoveEntity,
@@ -107,6 +107,24 @@ type MutationHandlers = {
   [K in Mutation['type']]: (doc: PartDoc, m: Extract<Mutation, { type: K }>) => void
 }
 
+// A pick field that also accepts a selector aid. The headless drive resolves a
+// selector into the query string before the mutation reaches an applier, and
+// the boundary refuses one that did not resolve, so only the stored string form
+// lands here. A selector arriving anyway came through an internal caller that
+// bypassed both gates (DocSession.execute, or journal replay with
+// allowInternal), so it is loud instead of silently dropped.
+const UNRESOLVED_PICK =
+  'a {selector} pick reached the applier unresolved; the drive resolves it before the step runs'
+const resolvedQuery = (value: string | SelectorRef | undefined): string | undefined => {
+  if (value === undefined || typeof value === 'string') return value
+  throw new Error(UNRESOLVED_PICK)
+}
+const resolvedQueries = (value: (string | SelectorRef)[] | undefined): string[] | undefined =>
+  value?.map((entry) => {
+    if (typeof entry === 'string') return entry
+    throw new Error(UNRESOLVED_PICK)
+  })
+
 export const mutationHandlers: MutationHandlers = {
   move_vertex: (next, m) =>
     applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to, m.solvedGeometry),
@@ -156,10 +174,13 @@ export const mutationHandlers: MutationHandlers = {
     applyAddOffset(next, m.featureId, m.sourceIds, m.distance),
   toggle_construction: (next, m) =>
     applyToggleConstruction(next, m.targets),
-  set_feature_plane: (next, m) =>
-    applySetFeaturePlane(next, m.featureId, m.plane),
+  set_feature_plane: (next, m) => {
+    const plane = resolvedQuery(m.plane)
+    if (plane === undefined) throw new Error('set_feature_plane needs a plane')
+    applySetFeaturePlane(next, m.featureId, plane)
+  },
   add_sketch: (next, m) =>
-    applyAddSketch(next, m.featureId, m.label, m.plane),
+    applyAddSketch(next, m.featureId, m.label, resolvedQuery(m.plane)),
   delete_feature: (next, m) =>
     applyDeleteFeature(next, m.featureId),
   set_feature_visibility: (next, m) =>
@@ -231,7 +252,7 @@ export const mutationHandlers: MutationHandlers = {
   remove_chamfer_edge: (next, m) =>
     applyRemoveChamferEdge(next, m.featureId, m.index),
   add_shell: (next, m) =>
-    applyAddShell(next, m.featureId, m.label, m.faces, m.thickness, m.direction),
+    applyAddShell(next, m.featureId, m.label, resolvedQueries(m.faces), m.thickness, m.direction),
   set_shell_field: (next, m) =>
     applySetShellField(next, m.featureId, m.field, m.value),
   add_shell_face: (next, m) =>
@@ -260,12 +281,16 @@ export const mutationHandlers: MutationHandlers = {
     applyAddBooleanTool(next, m.featureId, m.tool),
   remove_boolean_tool: (next, m) =>
     applyRemoveBooleanTool(next, m.featureId, m.tool),
-  add_array: (next, m) =>
-    applyAddArray(next, m.featureId, m.label),
+  add_array: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
+    applyAddArray(next, featureId, label, inline)
+  },
   set_array_field: (next, m) =>
     applySetArrayField(next, m.featureId, m.field, m.value),
-  add_circular_array: (next, m) =>
-    applyAddCircularArray(next, m.featureId, m.label),
+  add_circular_array: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
+    applyAddCircularArray(next, featureId, label, inline)
+  },
   set_circular_array_field: (next, m) =>
     applySetCircularArrayField(next, m.featureId, m.field, m.value),
   set_body_visibility: (next, m) =>
@@ -312,8 +337,10 @@ export const mutationHandlers: MutationHandlers = {
     applySetPartRoughness(next, m.bodyId, m.roughness),
   set_part_transmission: (next, m) =>
     applySetPartTransmission(next, m.bodyId, m.transmission),
-  add_mirror: (next, m) =>
-    applyAddMirror(next, m.featureId, m.label),
+  add_mirror: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
+    applyAddMirror(next, featureId, label, inline)
+  },
   set_mirror_field: (next, m) =>
     applySetMirrorField(next, m.featureId, m.field, m.value),
   add_split: (next, m) =>

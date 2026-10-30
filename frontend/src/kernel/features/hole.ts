@@ -18,7 +18,7 @@
 // the true extent, matching Python's Bnd_Box-sized cylinder.
 
 import { DisposeScope } from '../occ/disposeScope'
-import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
+import type { OccModule, OccShape, OccSubShape, OccXYZ } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
@@ -33,6 +33,7 @@ import { SubShapeMap } from '../occ/subshapeIdentity'
 import { holeFacePath, mintFaceUuid, type HoleFaceRole } from '../constructionName'
 import { absolute, emitWire, featureRefId } from '../query'
 import { bodyFrame } from '../occ/tessellation'
+import { sameEnum } from '../occ/enumValue'
 import { booleanWithDiff, volumeOf } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
 import { transferBooleanNames } from './booleanLineage'
@@ -530,6 +531,57 @@ function intersects(oc: OccModule, shape: OccShape, tool: OccShape): boolean {
 }
 
 /**
+ * The body a hole with no authored target drills into: the one its sites sit on
+ * or in. A face sketch's sites lie ON the face they were sketched on, so a
+ * boundary hit counts (the enclosure's lid is not the first body); a plane
+ * sketch floating above the part classifies OUT everywhere, and the old
+ * first-body default still answers, with the existing miss warning if it is
+ * the wrong body.
+ *
+ * The best score wins, first body on a tie, so the choice follows the geometry
+ * rather than the store order.
+ */
+function defaultTargetBody(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  bodyStore: Record<string, Body>,
+  sites: ReadonlyArray<{ center3d: Vec3 }>,
+): Body | null {
+  if (sites.length === 0) return null
+  const shaped = Object.values(bodyStore).filter(body => body.shape !== null)
+  // One candidate needs no classification, which is also the common case.
+  if (shaped.length === 1) return shaped[0]
+  const state = oc.TopAbs_State
+  let best: Body | null = null
+  let bestScore = 0
+  for (const body of shaped) {
+    if (body.shape === null) continue
+    const shape = table.get<OccShape>(body.shape)
+    let score = 0
+    for (const site of sites) {
+      const [x, y, z] = site.center3d
+      try {
+        const probe = scope.track(new oc.gp_Pnt_3(x, y, z)) as OccXYZ
+        const classifier = scope.track(new oc.BRepClass3d_SolidClassifier_3(shape, probe, 1e-7))
+        const verdict = classifier.State()
+        if (sameEnum(verdict, state.TopAbs_IN)) score += 2
+        else if (sameEnum(verdict, state.TopAbs_ON)) score += 1
+      } catch {
+        // A body whose shape is not a classifiable solid cannot claim a site;
+        // the first-body fallback still answers and the cut names its own
+        // failure, as it did before the default followed the sites.
+      }
+    }
+    if (score > bestScore) {
+      best = body
+      bestScore = score
+    }
+  }
+  return best
+}
+
+/**
  * Solve a hole feature into the body store (mirrors `_solve_hole`).
  *
  * The result's accounting split: a site is MISSED when it had geometry but the
@@ -605,39 +657,25 @@ export function solveHole(
   const normal = plane.normal
   const axis: Vec3 = (direction === 'normal' ? normal : normal.map((n) => -n)) as Vec3
 
-  let targetBody: Body
+  // An authored target is settled before the sketch content, so a bad target
+  // is reported as such even when the sketch is also unusable (the guard order
+  // the editor and the scripts rely on). A default target needs the sites, so
+  // that path waits for them below.
+  let targetBody: Body | null = null
   if (targetRef) {
     targetBody = resolveBody(targetRef, bodyStore)
-  } else {
-    const ids = Object.keys(bodyStore)
-    if (ids.length === 0) throw new Error('hole: no bodies in body_store and no target specified')
-    targetBody = bodyStore[ids[0]]
+    if (targetBody.shape === null) throw new Error(`hole: target body '${targetBody.id}' has no shape`)
+  } else if (Object.keys(bodyStore).length === 0) {
+    throw new Error('hole: no bodies in body_store and no target specified')
   }
-  if (targetBody.shape === null) throw new Error(`hole: target body '${targetBody.id}' has no shape`)
 
   const sketchFeature = featuresById[sketchId] ?? {}
   const drilled = drilledEntities((sketchFeature.entities as Dict[]) ?? [], sketchId, entityId)
 
-  let currentShape = table.get<OccShape>(targetBody.shape)
-  // The body's names, carried through every drill cut by its face history.
-  // Read at the first cut: a hole that places nothing never touches the shape.
-  let names: ShapeNames | null = null
-
-  let throughMargin = 0.0
-  // How far a through-all bore runs inside the body, for the thread display.
-  let throughSpan = 0.0
-  // The body's edge-sampled AABB, kept for a widened mouth's air-side reach.
-  let throughFrame: { center: Vec3; half: Vec3 } | null = null
-  if (depthMode === 'through_all') {
-    const { span, frame } = bodySpanAlong(oc, scope, currentShape, axis)
-    // A hair past the far face so the bore clears it rather than ending on it.
-    throughMargin = span * 1e-3 + 1e-6
-    throughSpan = span
-    throughFrame = frame
-  }
-
   // Each site's position and mouth geometry, settled before any cut so the
-  // drill side can be resolved across all of them first.
+  // drill side can be resolved across all of them first. Settled before the
+  // target too: a hole with no authored target drills into the body its sites
+  // sit on, so the sites must exist before that body is chosen.
   const sites: Array<{ eid: string; radius: number; center3d: Vec3; countersinkDepth: number }> = []
   let skippedCount = 0
   const skippedEntityIds: string[] = []
@@ -688,6 +726,32 @@ export function solveHole(
       }
     }
     sites.push({ eid, radius: site.radius, center3d, countersinkDepth })
+  }
+
+  // The body the sites drill: the authored target settled above, or the body
+  // they sit on.
+  if (targetBody === null) {
+    const ids = Object.keys(bodyStore)
+    targetBody = defaultTargetBody(oc, scope, table, bodyStore, sites) ?? bodyStore[ids[0]]
+  }
+  if (targetBody.shape === null) throw new Error(`hole: target body '${targetBody.id}' has no shape`)
+
+  let currentShape = table.get<OccShape>(targetBody.shape)
+  // The body's names, carried through every drill cut by its face history.
+  // Read at the first cut: a hole that places nothing never touches the shape.
+  let names: ShapeNames | null = null
+
+  let throughMargin = 0.0
+  // How far a through-all bore runs inside the body, for the thread display.
+  let throughSpan = 0.0
+  // The body's edge-sampled AABB, kept for a widened mouth's air-side reach.
+  let throughFrame: { center: Vec3; half: Vec3 } | null = null
+  if (depthMode === 'through_all') {
+    const { span, frame } = bodySpanAlong(oc, scope, currentShape, axis)
+    // A hair past the far face so the bore clears it rather than ending on it.
+    throughMargin = span * 1e-3 + 1e-6
+    throughSpan = span
+    throughFrame = frame
   }
 
   // The one side every site drills. A blind hole and an authored `reverse` keep
