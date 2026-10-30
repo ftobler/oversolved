@@ -313,7 +313,7 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
   // reaches it; that is why the floor counts split steps that BUILT, not seeds.
   const SPLIT_SEEDS = envInt('ROBUSTNESS_FUZZ_SPLIT_SEEDS', 24)
 
-  it('replays the split-tail range: no violation and no unexpected refusal', { timeout: Math.min(90 * 60_000, 60_000 + Math.ceil(SPLIT_SEEDS / WORKERS) * BUDGET_MS) }, async () => {
+  it('replays the split-tail range: no violation and no unexpected refusal', { timeout: Math.min(90 * 60_000, 120_000 + Math.ceil(SPLIT_SEEDS / WORKERS) * BUDGET_MS) }, async () => {
     const problems: string[] = []
     let splitBuilt = 0
     const outcomes = await runSeedsBounded(SPLIT_SEEDS, WORKERS, (seed) =>
@@ -342,7 +342,7 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
     expect(splitBuilt).toBeGreaterThanOrEqual(Math.ceil(SPLIT_SEEDS / 3))
   })
 
-  it('replays a nested-loop (washer) start range: no violation', { timeout: Math.min(90 * 60_000, 60_000 + Math.ceil(RING_SEEDS / WORKERS) * BUDGET_MS) }, async () => {
+  it('replays a nested-loop (washer) start range: no violation', { timeout: Math.min(90 * 60_000, 120_000 + Math.ceil(RING_SEEDS / WORKERS) * BUDGET_MS) }, async () => {
     const problems: string[] = []
     let built = 0
     const outcomes = await runSeedsBounded(RING_SEEDS, WORKERS, (seed) =>

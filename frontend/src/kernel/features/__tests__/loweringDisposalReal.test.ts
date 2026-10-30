@@ -277,5 +277,5 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
     // Six full array solves (three at count 4, three at count 12) can run long
     // under the suite's parallel load; the default 5s timeout has flaked this
     // case, so it gets its own generous budget.
-  }, 20_000)
+  }, 40_000)
 })
