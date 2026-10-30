@@ -703,9 +703,10 @@ export interface MateOffsetVec {
 /**
  * A mate's offset in either authoring form. A bare number is the original
  * scalar: a signed distance along body A's anchor axis, which is the vector
- * `offset * axis_a` in that same local frame. Both forms are read, neither is
- * migrated -- assembly documents are user YAML stored verbatim, so a doc
- * written before the widening must keep solving to the identical pose. See
+ * `offset * axis_a` in that same local frame. Both forms are read. The sign
+ * means B's anchor sits at A's anchor PLUS the offset; documents authored
+ * against the old minus convention are flipped once by the loader's
+ * `mate-offset-plus-convention` step (persistence/docSchema.ts). See
  * `mateOffsetVector` in utils/mateKinds.ts, the one place that normalizes it.
  */
 export type MateOffset = NumberOrExpr | MateOffsetVec

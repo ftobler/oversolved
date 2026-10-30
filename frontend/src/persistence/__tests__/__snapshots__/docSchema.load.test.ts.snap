@@ -148,7 +148,7 @@ exports[`golden documents load and migrate > loads current v2 part: stamped one 
 
 exports[`golden documents load and migrate > loads current v2 part: stamped one behind the ladder, nothing to migrate 2`] = `[]`;
 
-exports[`golden documents load and migrate > loads current v3 part: stamped at the ladder current version, nothing to migrate 1`] = `
+exports[`golden documents load and migrate > loads current v3 part: stamped one behind the ladder, nothing to migrate 1`] = `
 {
   "features": [
     {
@@ -187,7 +187,48 @@ exports[`golden documents load and migrate > loads current v3 part: stamped at t
 }
 `;
 
-exports[`golden documents load and migrate > loads current v3 part: stamped at the ladder current version, nothing to migrate 2`] = `[]`;
+exports[`golden documents load and migrate > loads current v3 part: stamped one behind the ladder, nothing to migrate 2`] = `[]`;
+
+exports[`golden documents load and migrate > loads current v4 part: stamped at the ladder current version, nothing to migrate 1`] = `
+{
+  "features": [
+    {
+      "id": "Origin",
+      "kind": "origin",
+    },
+    {
+      "constraints": [
+        {
+          "a": "$line1",
+          "id": "c1",
+          "kind": "horizontal",
+        },
+      ],
+      "entities": [
+        {
+          "id": "line1",
+          "kind": "line",
+        },
+      ],
+      "id": "sk1",
+      "initial": {
+        "line1": [
+          0,
+          0,
+          20,
+          0,
+        ],
+      },
+      "kind": "sketch",
+      "plane": "@builtin_plane_front",
+    },
+  ],
+  "kind": "part",
+  "version": 4,
+}
+`;
+
+exports[`golden documents load and migrate > loads current v4 part: stamped at the ladder current version, nothing to migrate 2`] = `[]`;
 
 exports[`golden documents load and migrate > loads legacy part: pre-versioning heals: dead axis constraint, singular body picks, stale inline payload 1`] = `
 {
@@ -290,5 +331,124 @@ exports[`golden documents load and migrate > loads legacy v1 part: version: 1 do
 exports[`golden documents load and migrate > loads legacy v1 part: version: 1 does not excuse a legacy shape 2`] = `
 [
   "plural-body-picks",
+]
+`;
+
+exports[`golden documents load and migrate > loads legacy v3 assembly offsets: fixed-mate offsets negate to the plus convention, tangential offset does not 1`] = `
+{
+  "features": [
+    {
+      "id": "AssemblyOrigin",
+      "kind": "origin",
+    },
+    {
+      "id": "f1",
+      "instance": {
+        "doc_id": "part-1",
+        "doc_rev": 3,
+        "handle": "hA",
+        "transform": {
+          "qw": 1,
+          "qx": 0,
+          "qy": 0,
+          "qz": 0,
+          "tx": 0,
+          "ty": 0,
+          "tz": 0,
+        },
+      },
+      "kind": "part_instance",
+    },
+    {
+      "id": "m_scalar",
+      "kind": "mate",
+      "mate": {
+        "kind": "fixed",
+        "offset": -7,
+        "ref_a": {
+          "anchor": "__assembly/AssemblyOrigin",
+          "part": "__assembly",
+        },
+        "ref_b": {
+          "anchor": "hA/origin",
+          "part": "hA",
+        },
+      },
+    },
+    {
+      "id": "m_vector",
+      "kind": "mate",
+      "mate": {
+        "kind": "fixed",
+        "offset": {
+          "x": -3,
+          "y": 4,
+        },
+        "ref_a": {
+          "anchor": "__assembly/AssemblyOrigin",
+          "part": "__assembly",
+        },
+        "ref_b": {
+          "anchor": "hA/origin",
+          "part": "hA",
+        },
+      },
+    },
+    {
+      "id": "m_expr",
+      "kind": "mate",
+      "mate": {
+        "kind": "fixed",
+        "offset": "-(w / 2)",
+        "ref_a": {
+          "anchor": "__assembly/AssemblyOrigin",
+          "part": "__assembly",
+        },
+        "ref_b": {
+          "anchor": "hA/origin",
+          "part": "hA",
+        },
+      },
+    },
+    {
+      "id": "m_tangential",
+      "kind": "mate",
+      "mate": {
+        "kind": "tangential",
+        "offset": 5,
+        "ref_a": {
+          "anchor": "__assembly/AssemblyOrigin",
+          "part": "__assembly",
+        },
+        "ref_b": {
+          "anchor": "hA/origin",
+          "part": "hA",
+        },
+      },
+    },
+    {
+      "id": "m_absent",
+      "kind": "mate",
+      "mate": {
+        "kind": "fixed",
+        "ref_a": {
+          "anchor": "__assembly/AssemblyOrigin",
+          "part": "__assembly",
+        },
+        "ref_b": {
+          "anchor": "hA/origin",
+          "part": "hA",
+        },
+      },
+    },
+  ],
+  "kind": "assembly",
+  "version": 4,
+}
+`;
+
+exports[`golden documents load and migrate > loads legacy v3 assembly offsets: fixed-mate offsets negate to the plus convention, tangential offset does not 2`] = `
+[
+  "mate-offset-plus-convention",
 ]
 `;

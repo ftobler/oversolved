@@ -208,9 +208,9 @@ fn fixed_mate_with_angle_rolls_to_ninety_degrees() {
 #[test]
 fn fixed_with_offset() {
     // Fixed mate with linear offset. Body 0 grounded at origin with Z axis.
-    // The residual is: p_a_w - p_b_w - offset * a_w = 0
-    // So p_b_w = p_a_w - offset * a_w. With p_a=(0,0,0) and a_w=(0,0,1):
-    // p_b_w = (0,0,-10). Body 1's anchor at local origin, so tz = -10.
+    // The residual is: p_a_w + offset * a_w - p_b_w = 0
+    // So p_b_w = p_a_w + offset * a_w. With p_a=(0,0,0) and a_w=(0,0,1):
+    // p_b_w = (0,0,10). Body 1's anchor at local origin, so tz = 10.
     let input = MateInput {
         bodies: (0..2).map(|_| RigidBody).collect(),
         params_initial: vec![
@@ -229,20 +229,21 @@ fn fixed_with_offset() {
         )],
     };
     let out = solve_mate(&input);
-    // Body 1's tz should be -10 (p_b_w = p_a_w - offset*a_w = (0,0,0) - 10*(0,0,1)).
+    // Body 1's tz should be +10 (p_b_w = p_a_w + offset*a_w = (0,0,0) + 10*(0,0,1)).
     assert!(
-        (out.params_solved[9] - (-10.0)).abs() < 1e-2,
-        "tz should be ~-10, got {}",
+        (out.params_solved[9] - 10.0).abs() < 1e-2,
+        "tz should be ~10, got {}",
         out.params_solved[9]
     );
     assert!(out.diagnostics.residual_norm < 1e-2);
 }
 
 /// The legacy authoring form -- a bare scalar offset along A's axis -- must
-/// still land in exactly the place it did before `offset` became a vector.
-/// Written against the vector constructor with the scalar expanded by hand,
-/// so it pins the equivalence rather than inheriting it from the `mate`
-/// helper the older tests share.
+/// still land in exactly the place its hand-expanded axial vector form puts
+/// it: both forms share the plus convention, so a scalar `s` and the vector
+/// `s * axis_a` are equivalent. Written against the vector constructor with
+/// the scalar expanded by hand, so it pins the equivalence rather than
+/// inheriting it from the `mate` helper the older tests share.
 #[test]
 fn scalar_offset_and_its_axial_vector_agree() {
     let build = |offset: [f64; 3]| MateInput {
@@ -264,16 +265,16 @@ fn scalar_offset_and_its_axial_vector_agree() {
     // `offset: 7` on a Z axis is the vector (0, 0, 7).
     let legacy = solve_mate(&build([0.0, 0.0, 7.0]));
     assert!(
-        (legacy.params_solved[9] - (-7.0)).abs() < 1e-2,
-        "tz should be ~-7, got {}",
+        (legacy.params_solved[9] - 7.0).abs() < 1e-2,
+        "tz should be ~7, got {}",
         legacy.params_solved[9]
     );
     assert!(legacy.diagnostics.residual_norm < 1e-2);
 }
 
 /// An offset with components off A's axis translates the weld sideways --
-/// the whole point of the widening. p_b = p_a - R_a * offset, and with A at
-/// identity that is just the negated offset.
+/// the whole point of the widening. p_b = p_a + R_a * offset, and with A at
+/// identity that is just the offset itself.
 #[test]
 fn fixed_with_off_axis_offset_vector() {
     let input = MateInput {
@@ -293,7 +294,7 @@ fn fixed_with_off_axis_offset_vector() {
         )],
     };
     let out = solve_mate(&input);
-    for (i, want) in [-3.0, -4.0, -2.0].into_iter().enumerate() {
+    for (i, want) in [3.0, 4.0, 2.0].into_iter().enumerate() {
         assert!(
             (out.params_solved[7 + i] as f64 - want).abs() < 1e-2,
             "body 1 t[{}] should be ~{}, got {}",
@@ -308,7 +309,7 @@ fn fixed_with_off_axis_offset_vector() {
 /// The frame decision, pinned: the offset lives in body A's LOCAL frame, so
 /// rotating A rotates the applied offset with it. Body 0 is grounded a
 /// quarter turn about Z, which maps the local offset (3, 4, 0) to the world
-/// (-4, 3, 0); body 1 must therefore land at (4, -3, 0), not (-3, -4, 0).
+/// (-4, 3, 0); body 1 must therefore land at (-4, 3, 0), not (3, 4, 0).
 /// Switching to a world-frame offset moves this assertion.
 #[test]
 fn fixed_offset_vector_rotates_with_body_a() {
@@ -331,13 +332,13 @@ fn fixed_offset_vector_rotates_with_body_a() {
     };
     let out = solve_mate(&input);
     assert!(
-        (out.params_solved[7] as f64 - 4.0).abs() < 1e-2,
-        "tx should be ~4, got {}",
+        (out.params_solved[7] as f64 - (-4.0)).abs() < 1e-2,
+        "tx should be ~-4, got {}",
         out.params_solved[7]
     );
     assert!(
-        (out.params_solved[8] as f64 - (-3.0)).abs() < 1e-2,
-        "ty should be ~-3, got {}",
+        (out.params_solved[8] as f64 - 3.0).abs() < 1e-2,
+        "ty should be ~3, got {}",
         out.params_solved[8]
     );
     assert!(out.diagnostics.residual_norm < 1e-2);

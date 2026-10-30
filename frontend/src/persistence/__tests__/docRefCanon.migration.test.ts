@@ -145,7 +145,9 @@ describe('the ladder gate', () => {
     const doc = () => ({
       features: [{ id: 'ex1', kind: 'extrude', distance: 5 }],
     }) as unknown as Record<string, unknown>
-    expect(migrate(doc(), CURRENT_DOC_VERSION - 1)).toContain('canonical-feature-params')
+    // The canonicalization steps target version 3; anything behind THAT runs
+    // them, whatever the ladder's top version currently is.
+    expect(migrate(doc(), 2)).toContain('canonical-feature-params')
     expect(migrate(doc(), CURRENT_DOC_VERSION)).toEqual([])
   })
 

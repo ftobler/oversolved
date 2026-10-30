@@ -208,12 +208,15 @@ pub struct Mate {
     pub b: MateRef,
     pub flip: bool,
     /// Offset vector expressed in body A's LOCAL frame, so it rotates with A:
-    /// the world offset is `R_a * offset`. Read by Fixed (all three components,
-    /// as a full 3D translation), and by Tangential and ParallelPlaneDistance
-    /// through `axial_offset` (those residuals are a single signed distance).
-    /// The pre-vector scalar form is a special case of this one: a scalar `s`
-    /// is `s * axis_a` in A's local frame, and `R_a * (s * axis_a) = s * a_w`
-    /// is exactly what the scalar residual used to subtract.
+    /// the world offset is `R_a * offset`. Fixed adds it to A's anchor to place
+    /// B's anchor at A's anchor PLUS the offset (all three components, as a
+    /// full 3D translation). Tangential and ParallelPlaneDistance read it
+    /// through `axial_offset` (those residuals are a single signed distance:
+    /// a clearance for the first, a plane separation along A's normal for the
+    /// second). The pre-vector scalar form is a special case of this one: a
+    /// scalar `s` is `s * axis_a` in A's local frame, and
+    /// `R_a * (s * axis_a) = s * a_w` is exactly what the residual adds once
+    /// the scalar expands to the vector form.
     pub offset: [f64; 3],
     /// Gear-like ratio for CopyRotation: `roll_b = ratio * roll_a`.
     pub ratio: f64,

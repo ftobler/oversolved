@@ -266,9 +266,11 @@ describe('mateSummary', () => {
 })
 
 describe('mateOffsetVector', () => {
-  // The tolerant dual-read. Assembly documents are user YAML kept verbatim with
-  // no content migration anywhere in the stack, so the legacy scalar form has to
-  // keep working forever -- there is no version gate that could ever retire it.
+  // The tolerant dual-read. Assembly documents are user YAML stored verbatim
+  // except for the one content migration in the stack: the loader's one-time
+  // `mate-offset-plus-convention` sign flip of fixed-mate offsets
+  // (persistence/docSchema.ts). The legacy scalar form therefore still has to
+  // keep working; it is migrated on load, not retired.
   const Z: Vec3 = [0, 0, 1]
 
   it('expands a legacy scalar along body A\'s anchor axis', () => {

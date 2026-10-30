@@ -117,7 +117,9 @@ const nullableBool = () => ({ type: 'boolean', required: false, nullable: true }
 const vec3 = (note: string) => ({ type: 'vec3', required: true, note } as const)
 const optVec3 = (note: string) => ({ type: 'vec3', required: false, note } as const)
 const ref = (note: string) => ({ type: 'ref', required: true, note } as const)
-const OFFSET_NOTE = 'A number along A\'s anchor axis, or a partial {x,y,z} in body A\'s local frame.'
+const OFFSET_NOTE = 'A number along A\'s anchor axis, or a partial {x,y,z} in body A\'s local frame. '
+  + 'The sign convention is "B lands at A plus the offset": fixed translates B\'s anchor by it, '
+  + 'parallel_plane_distance reads it as the plane separation along A\'s normal, and tangential as a clearance.'
 const offsetOptional = () => ({ type: 'offset', required: false, note: OFFSET_NOTE } as const)
 const offsetNullable = () => ({ type: 'offset', required: false, nullable: true, note: OFFSET_NOTE } as const)
 

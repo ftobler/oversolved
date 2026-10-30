@@ -854,6 +854,14 @@ with the `parts` argument (`{ "<doc_id>": "<part docHash>" }`, or
   authored. `flip: true` is face-to-face contact between two outward normals;
   absent means parallel axes and canonical zero roll. Read the reply's
   `mateFrames` (each mate's posed anchors) to see which way an axis points.
+- A mate `offset` is a number along A's anchor axis or a partial `{x, y, z}`
+  in body A's local frame (it rotates with A). The sign reads "B's anchor
+  sits at A's anchor PLUS the offset": the `add_mate` above with
+  `"offset": 10` would rest the pin's anchor 10 above the plate's top face
+  (its outward normal), `"-10"` would sink it 10 into the plate.
+  `parallel_plane_distance` reads the same value as the plane separation along
+  A's normal, `tangential` as a surface clearance, and `sliding` refuses an
+  offset (it would pin the joint's only translational DOF).
 - Solved poses are never written back: each `instances[]` row carries
   `{ handle, part, fixed, position, rotation, quaternion }`, and the document
   keeps its authored seeds. A bake-flagged operation still bakes the last
