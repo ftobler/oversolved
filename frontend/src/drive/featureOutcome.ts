@@ -17,6 +17,11 @@ export interface FeatureOutcome {
   // The kernel's fallback or no-op note on an otherwise good solve, e.g. a
   // hole whose every drill site missed.
   warning?: string
+  // A warning an earlier feature emitted that a later feature made moot, e.g.
+  // an "also touches ... add a boolean union" the later union resolved. The
+  // problem list ignores it; it stays available to a caller that wants to show
+  // the history.
+  resolvedWarning?: string
   // The side a hole drilled, as the kernel resolved it. A through hole under
   // `normal` drills wherever its sites find material, so this can differ from
   // the authored field, and a counterbore on the wrong side is otherwise only
@@ -76,11 +81,15 @@ export function readSolveOutcomes(
   for (const [id, feature] of Object.entries(result ?? {})) {
     if (typeof feature !== 'object' || feature === null) continue
     const row = feature as {
-      status?: unknown; exception?: unknown; solver_warning?: unknown; direction?: unknown; body_id?: unknown
+      status?: unknown; exception?: unknown; solver_warning?: unknown
+      resolved_warning?: unknown; direction?: unknown; body_id?: unknown
     }
     if (typeof row.status !== 'string') continue
     const exception = typeof row.exception === 'string' && row.exception !== '' ? row.exception : undefined
     const warning = typeof row.solver_warning === 'string' && row.solver_warning !== '' ? row.solver_warning : undefined
+    const resolvedWarning = typeof row.resolved_warning === 'string' && row.resolved_warning !== ''
+      ? row.resolved_warning
+      : undefined
     // Only the hole result writes this field; anything but a drill side word
     // is not one and is dropped rather than echoed.
     const direction = row.direction === 'normal' || row.direction === 'reverse' ? row.direction : undefined
@@ -89,6 +98,7 @@ export function readSolveOutcomes(
       status: row.status,
       ...(exception !== undefined && { exception }),
       ...(warning !== undefined && { warning }),
+      ...(resolvedWarning !== undefined && { resolvedWarning }),
       ...(direction !== undefined && { direction }),
       ...(bodyId !== undefined && { bodyId }),
     }
