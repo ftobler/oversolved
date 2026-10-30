@@ -833,9 +833,17 @@ with the `parts` argument (`{ "<doc_id>": "<part docHash>" }`, or
                       { "type": "flatface" }, { "extreme": { "axis": [0,0,1], "side": "max" } } ] } } },
                     "ref_b": { "part": "pin", "selector": { "kind": "face", "where": { "and": [
                       { "type": "flatface" }, { "extreme": { "axis": [0,0,1], "side": "min" } } ] } } },
-                    "flip": true } }
+                    "capture": true,
+                    "offset": 5 } }
   ] }
 ```
+
+The pin is seeded roughly (it is still 40 mm in the air) and `capture: true`
+freezes the contact the seeds imply, so no `flip` or `angle` is written by
+hand. The served `pin_on_plate` example does both at once: it captures the
+orientation and authors `offset: 5`, floating the pin's anchor 5 above the
+plate's top face (the plus convention, below). A script that skips capture and
+authors `flip: true` by hand is equally valid.
 
 - The reply's `docHash` is the assembly handle. It folds the assembly document
   and every bound part's content hash, so a chained `measure { "docHash": A1 }`
@@ -850,22 +858,45 @@ with the `parts` argument (`{ "<doc_id>": "<part docHash>" }`, or
   argument, so the `"x" | "y" | "z"` extreme-axis sugar works and a typo is
   refused with the same wording. Only `{ part, anchor, anchor_descriptor }`
   reaches the document.
-- There is no on-screen pose to capture headlessly: `flip` and `angle` are
-  authored. `flip: true` is face-to-face contact between two outward normals;
-  absent means parallel axes and canonical zero roll. Read the reply's
-  `mateFrames` (each mate's posed anchors) to see which way an axis points.
+- `flip` compares the two anchors' axes as `select` lists them (the `axis` of a
+  circle item, the normal of a flat face, the analytic axis of a cylinder): for
+  faces that is the outward normal, so `flip: true` is face-to-face contact
+  between two outward normals; for circle edges it is the edge's own
+  orientation, which depends on how the edge was made (an extruded hole's
+  circle reads the same way on the top and on the bottom face). Absent means
+  parallel axes and canonical zero roll.
+- The recommended recipe is to place the parts roughly (`add_part`'s
+  `position`/`rotation` are exactly the kind of pose the editor captures from)
+  and pass `capture: true` on `add_mate` or `set_mate_ref`: once the refs
+  resolve, the step measures `flip` and `angle` (only for the kinds that read
+  a roll) at the instance seeds, the same poses the solve starts from, and
+  freezes them into the mate. The solve then holds the pose you seeded instead
+  of one you found by trial solving, without having to learn each circle edge's
+  axis direction from a failed solve first. An explicit `flip`/`angle` in the
+  same step wins over the captured value, and the step result carries
+  `captured: { flip, angle }` (plus `overridden: [...]` when an explicit value
+  beat a captured one) so the reply says what was frozen into the document. The
+  default is `capture: false`, so a document authored before this existed keeps
+  its meaning, and a kind with no authored orientation (spherical, tangential,
+  copy_rotation) captures nothing. Read the reply's `mateFrames` (each mate's
+  posed anchors) to see which way an axis points at the solved pose.
 - A mate `offset` is a number along A's anchor axis or a partial `{x, y, z}`
   in body A's local frame (it rotates with A). The sign reads "B's anchor
   sits at A's anchor PLUS the offset": the `add_mate` above with
-  `"offset": 10` would rest the pin's anchor 10 above the plate's top face
-  (its outward normal), `"-10"` would sink it 10 into the plate.
+  `"offset": 5` rests the pin's anchor 5 above the plate's top face (its
+  outward normal), while a negative value sinks it into the plate.
   `parallel_plane_distance` reads the same value as the plane separation along
   A's normal, `tangential` as a surface clearance, and `sliding` refuses an
   offset (it would pin the joint's only translational DOF).
 - Solved poses are never written back: each `instances[]` row carries
   `{ handle, part, fixed, position, rotation, quaternion }`, and the document
   keeps its authored seeds. A bake-flagged operation still bakes the last
-  solve's transforms, as the editor does.
+  solve's transforms, as the editor does. `set_part_fixed` is one of them: its
+  default bakes the pose on screen into the seed and reports
+  `poseKept: "solved"`, while `bake: false` keeps the authored seed and reports
+  `poseKept: "seed"`; pass it right after a solve you do not trust, so a
+  diverged pose is never frozen into the document. A call whose first step is
+  the toggle has no solve to bake yet, so it reports `poseKept: "seed"` too.
 - `ok` means the steps applied and the final solve ran. A stale mate, a mate
   error, an overconstrained verdict, a part bundle that failed to build or a
   part feature in `exception` are data in `mates` / `parts` and the summary's
@@ -880,10 +911,9 @@ with the `parts` argument (`{ "<doc_id>": "<part docHash>" }`, or
   browser. YAML/JSON `out` writes the assembly document alone.
 - `select` stays part-only: it refuses an assembly handle and points at the
   part's docHash.
-- Non-goals: sub-assemblies, world-space or cross-instance selection,
-  orientation capture from a seed pose, mate expressions, STEP product
-  structure, interference checks and the browser drive bridge for the assembly
-  editor. See `feature/backlog.md`.
+- Non-goals: sub-assemblies, world-space or cross-instance selection, mate
+  expressions, STEP product structure, interference checks and the browser
+  drive bridge for the assembly editor. See `feature/backlog.md`.
 
 ## What is still open
 

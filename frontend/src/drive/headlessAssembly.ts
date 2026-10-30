@@ -26,13 +26,13 @@ import {
   type AssemblyOperationInputs,
 } from '@/utils/assemblyOperations'
 import { applyAssemblyEdit } from '@/utils/assemblyEdit'
-import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
+import { ASSEMBLY_UNDO_LABELS, type AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
-import { partInstances } from '@/utils/assemblyMutations'
+import { findMate, partInstances, setInstanceFixed } from '@/utils/assemblyMutations'
 import { partSpecs, mateSpecs } from '@/utils/assemblySolveInput'
 import { solveAssembly, type AssemblyBuildResponse } from '@/kernel/solveAssembly'
 import { solveLocally } from '@/kernel/solveLocally'
-import { toPartBundle, type PartBundle } from '@/kernel/partBundle'
+import { toPartBundle, type Anchor, type PartBundle } from '@/kernel/partBundle'
 import { markFeatureStart } from '@/kernel/featureProgress'
 import { partSolvePayload } from '@/drive/solveWriteBack'
 import { docHashOf } from '@/drive/docHash'
@@ -40,8 +40,9 @@ import { partBundleKey } from '@/workspace/contentHash'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import { stepSeedFor, seededIdSource } from '@/drive/seededIds'
 import { setIdSource } from '@/utils/yamlMutations'
-import { runScript, type ScriptRunOutcome, type ScriptFailure } from '@/drive/scriptRunner'
+import { runScript, type KeptPose, type MateCapture, type ScriptRunOutcome, type ScriptFailure } from '@/drive/scriptRunner'
 import type { AssemblyWireMutation } from '@/drive/assemblyMutationCatalog'
+import { captureMateAtSeeds, seedAnchorTable } from '@/drive/assemblyCapture'
 import { featureProblems, readSolveOutcomes, type FeatureProblem } from '@/drive/featureOutcome'
 import { validateAssemblyMutation } from '@/drive/assemblyMutationCatalog'
 import { buildPartAnchorIndex, resolveDriveRef, type DriveMateRef, type PartAnchorIndex, type ResolvedDriveRef } from '@/drive/assemblyRefs'
@@ -269,6 +270,59 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
     return resolveDriveRef(ref, docBox.current, indexFor)
   }
 
+  // A part's local bundle anchors for the seed table, or nothing when its
+  // build is unavailable: a ref into that part could not have resolved
+  // either, so the capture reports nothing rather than a partial frame.
+  function localAnchorsFor(handle: string): Readonly<Record<string, Anchor>> | undefined {
+    const index = indexFor(handle)
+    return index instanceof Error ? undefined : index.anchors
+  }
+
+  // Only the two mate-writing mutations take the flag, and only when it is
+  // spelled true: capture stays opt-in, so a document authored headlessly
+  // before this existed keeps its meaning.
+  function captureRequested(mutation: AssemblyWireMutation): boolean {
+    return (mutation.type === 'add_mate' || mutation.type === 'set_mate_ref') && mutation.capture === true
+  }
+
+  /**
+   * The validated input with the captured orientation merged into its `patch`,
+   * measured at the seeds the next solve starts from (the same table the
+   * reply's mateFrames would carry, posed at the seeds instead of the solved
+   * poses), plus the report for the step result. For set_mate_ref this step
+   * writes one slot, so the mate's other slot is the second half of the pair;
+   * an unfilled one captures nothing, and null leaves the input untouched.
+   */
+  function captureStep(
+    mutation: AssemblyWireMutation,
+    input: AssemblyOperationInputs[AssemblyOperationId],
+  ): { input: AssemblyOperationInputs[AssemblyOperationId]; captured: MateCapture } | null {
+    const anchors = seedAnchorTable(docBox.current, localAnchorsFor)
+    if (mutation.type === 'add_mate') {
+      const added = input as AssemblyOperationInputs['add_mate']
+      if (!added.ref_a || !added.ref_b) return null
+      const capture = captureMateAtSeeds({
+        kind: added.kind,
+        ref_a: added.ref_a,
+        ref_b: added.ref_b,
+        anchors,
+        ...(added.patch !== undefined && { explicit: added.patch }),
+      })
+      return capture === null ? null : { input: { ...added, patch: capture.patch }, captured: capture.captured }
+    }
+    if (mutation.type !== 'set_mate_ref') return null
+    const existing = findMate(docBox.current, mutation.featureId)
+    if (!existing) return null
+    const aimed = input as AssemblyOperationInputs['set_mate_ref']
+    const capture = captureMateAtSeeds({
+      kind: existing.kind,
+      ref_a: mutation.field === 'ref_a' ? aimed.ref : existing.ref_a,
+      ref_b: mutation.field === 'ref_b' ? aimed.ref : existing.ref_b,
+      anchors,
+    })
+    return capture === null ? null : { input: { ...aimed, patch: capture.patch }, captured: capture.captured }
+  }
+
   function solve(): Promise<AssemblyBuildResponse> {
     const doc = docBox.current
     const relay = {
@@ -371,16 +425,41 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
         // A ref needs the part build, which is async: build every instance's
         // part first so the synchronous resolver has an index.
         await ensureBundles()
-        const validated = validateAssemblyMutation(step.mutation, {
+        const mutation = step.mutation
+        const validated = validateAssemblyMutation(mutation, {
           doc: docBox.current,
           boundPartIds: new Set(opts.parts.keys()),
           resolveRef,
         })
         if (!validated.ok) return failure(validated.error.code, validated.error.message)
         needsSolve = false
-        runAssemblyOperation(validated.operation, validated.input as never, host())
+        // Capture runs before the step writes anything: the seeds it measures
+        // are the ones the solve below starts from. Its patch already lets an
+        // explicit flip/angle in this same step win, and says which it beat.
+        const capture = captureRequested(mutation) ? captureStep(mutation, validated.input) : null
+        const input = capture === null ? validated.input : capture.input
+        let poseKept: KeptPose | undefined
+        if (mutation.type === 'set_part_fixed' && mutation.bake === false) {
+          // The authored seed stays: only the flag is written, so a pose the
+          // last solve diverged to never lands in the document. The editor
+          // path keeps baking; this is the headless escape hatch for exactly
+          // that case.
+          const { handle, fixed } = mutation
+          applyEdit(ASSEMBLY_UNDO_LABELS.fixUnfixPart, doc => setInstanceFixed(doc, handle, fixed))
+          poseKept = 'seed'
+        } else {
+          runAssemblyOperation(validated.operation, input as never, host())
+          // A toggle that runs before this session ever solved has no last
+          // solve to bake, so the seed it reports keeping is still the
+          // authored one; anything else took the bake path.
+          if (mutation.type === 'set_part_fixed') poseKept = last === null ? 'seed' : 'solved'
+        }
         if (needsSolve) await solve()
-        return okResult()
+        return {
+          ...okResult(),
+          ...(capture !== null && { captured: capture.captured }),
+          ...(poseKept !== undefined && { poseKept }),
+        }
       },
     )
     // The run always ends with a solve of the final document, but a step that

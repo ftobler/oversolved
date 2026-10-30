@@ -1,9 +1,9 @@
 // @vitest-environment node
 //
 // The headless assembly session against the real OCC kernel and the real Rust
-// mate solver: the pin-on-plate script (R1) and the failure posture (R2). A
-// stale ref, a failed part feature and an overconstrained verdict are data; only
-// a missing solver is a failed call.
+// mate solver: the pin-on-plate script (R1), the capture-driven bolt stack and
+// the failure posture (R2). A stale ref, a failed part feature and an
+// overconstrained verdict are data; only a missing solver is a failed call.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { loadOcc } from '@/kernel/occ/loadOcc'
@@ -149,6 +149,56 @@ function binding(pin: PartDoc = pinDoc()): Map<string, PartDoc> {
   return new Map([['plate', plateDoc()], ['pin', pin]])
 }
 
+/** A circle sketch at any centre of the Front plane, for a bore in a plate. */
+function circleSketchAt(sketchId: string, cx: number, cy: number, radius: number) {
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'Bore', plane: '@builtin_plane_front',
+    entities: [{ id: 'c1', kind: 'circle' as const }],
+    initial: { c1: [cx, cy, radius] },
+  }
+}
+
+/** A 100 x 100 x 10 flange plate with one 6 mm bore through its centre. */
+function flangeDoc(): PartDoc {
+  return {
+    version: 1, kind: 'part',
+    features: [
+      rectSketch('sk1', 100, 100),
+      extrude('sk1', 'ex1', 10),
+      circleSketchAt('sk2', 50, 50, 6),
+      { id: 'ex2', kind: 'extrude', extrude: { sketch: '$sk2', distance: 30, direction: 'normal', operation: 'cut' } },
+    ],
+  } as PartDoc
+}
+
+/** A cap screw: an 8 mm head over a 16 mm shank, fused into one body. */
+function boltDoc(): PartDoc {
+  return {
+    version: 1, kind: 'part',
+    features: [
+      circleSketch('sk1', 8),
+      extrude('sk1', 'ex1', 6),
+      circleSketch('sk2', 4),
+      { id: 'ex2', kind: 'extrude', extrude: { sketch: '$sk2', distance: 16, direction: 'normal', operation: 'add' } },
+    ],
+  } as PartDoc
+}
+
+// The bore's circle on the flange's top face and the shank's circle on its top
+// end: both are `circle` edges, so their axis direction is the edge's own and
+// only capture can say which way round the contact is.
+const CIRCLE_TOP = {
+  kind: 'edge' as const,
+  where: { and: [{ type: 'circle' as const }, { extreme: { axis: 'z', side: 'max' as const } }] },
+}
+
+// The head's top face is the annulus around the shank at z = 6: not the body's
+// z-extreme, so it is named by its own z band.
+const HEAD_TOP = {
+  kind: 'face' as const,
+  where: { and: [{ type: 'flatface' as const }, { within: { axis: 'z', min: 5, max: 7 } }] },
+}
+
 describeReal('headless assembly with the real mate solver', () => {
   beforeAll(() => {
     resetSketchSolver()
@@ -194,6 +244,61 @@ describeReal('headless assembly with the real mate solver', () => {
     expect(mate.ref_a.anchor_descriptor).toBeDefined()
     expect(mate.ref_b.anchor_descriptor).toBeDefined()
     expect(JSON.stringify(doc)).not.toContain('selector')
+  }, 180_000)
+
+  it('authors a bolt through a flange from seeds and capture alone', async () => {
+    // The whole stack is placed by seeds: the bolt sits 6 mm under the plate
+    // with its shank flush with the top face, and neither mate carries a flip
+    // or an angle. Capture reads both from that pose, so every mate is exact
+    // without the script ever spelling an orientation.
+    const steps: AssemblyScriptStep[] = [
+      { mutation: { type: 'add_part', handle: 'flange', part: 'flange', fixed: true } },
+      { mutation: { type: 'add_part', handle: 'bolt', part: 'bolt', position: [50, 50, -6] } },
+      { mutation: {
+        type: 'add_mate', featureId: 'm_shank', kind: 'fixed',
+        ref_a: { part: 'flange', selector: CIRCLE_TOP },
+        ref_b: { part: 'bolt', selector: CIRCLE_TOP },
+        capture: true,
+      } },
+      { mutation: {
+        type: 'add_mate', featureId: 'm_head', kind: 'fixed',
+        ref_a: { part: 'flange', selector: FLAT([0, 0, 1], 'min') },
+        ref_b: { part: 'bolt', selector: HEAD_TOP },
+        capture: true,
+      } },
+    ]
+    const result = await runAssemblyHeadless({
+      doc: emptyDriveAssemblyDoc(),
+      parts: new Map([['flange', flangeDoc()], ['bolt', boltDoc()]]),
+      steps,
+    })
+    expect(result.ok).toBe(true)
+    expect(result.parts).toEqual([])
+    expect(result.mates).toEqual([])
+    expect(result.solve.verdict).toBe('fully_constrained')
+    expect(result.solve.dof).toBe(0)
+
+    // Both steps report what they measured, and the contact mate's captured
+    // flip is the face-to-face one: the flange's bottom outward normal against
+    // the head's top one, neither of them authored by the script.
+    expect(result.outcome.steps[2].captured).toEqual(
+      expect.objectContaining({ flip: expect.any(Boolean), angle: expect.any(Number) }),
+    )
+    expect(result.outcome.steps[3].captured).toEqual({ flip: true, angle: expect.any(Number) })
+    const doc = result.doc
+    const headMate = (doc.features ?? []).find(feature => feature.id === 'm_head')!.mate!
+    expect(headMate.flip).toBe(true)
+    expect(JSON.stringify(doc)).not.toContain('capture')
+
+    // The seed the solve started from is the pose it held: the bolt did not
+    // move, and both mates solved to zero residual.
+    const bolt = result.instances.find(instance => instance.handle === 'bolt')!
+    expect(bolt.position[0]).toBeCloseTo(50, 4)
+    expect(bolt.position[1]).toBeCloseTo(50, 4)
+    expect(bolt.position[2]).toBeCloseTo(-6, 4)
+    expect(bolt.quaternion[3]).toBeCloseTo(1, 4)
+    expect(result.mateFrames.m_shank.residual).toBeLessThan(1e-6)
+    expect(result.mateFrames.m_head.residual).toBeLessThan(1e-6)
   }, 180_000)
 
   it('resolves letter axes in mate selectors', async () => {

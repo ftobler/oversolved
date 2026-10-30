@@ -30,6 +30,25 @@ export type AnyScriptStep =
   | { command: string; params?: unknown; continueOnError?: boolean }
   | { mutation: { type: string }; continueOnError?: boolean }
 
+/**
+ * What a `capture: true` mate step measured at the instances' seeds and froze
+ * into the document: `flip` from which way the two anchor axes point, `angle`
+ * (only for the kinds that read a roll) from the roll between their canonical
+ * frames. `overridden` names the keys the same step spelled explicitly, so the
+ * captured value did not land there and the document carries the explicit one.
+ * Only the assembly drive produces it; a step that captured nothing has no
+ * `captured` field at all.
+ */
+export interface MateCapture {
+  flip: boolean
+  angle?: number
+  overridden?: ('flip' | 'angle')[]
+}
+
+/** Which pose a `set_part_fixed` step froze into the instance's seed: the last
+ *  solve's transforms (the default bake) or the authored seed (`bake: false`). */
+export type KeptPose = 'solved' | 'seed'
+
 export interface ScriptStepOutcome {
   index: number
   kind: 'command' | 'mutation'
@@ -38,6 +57,10 @@ export interface ScriptStepOutcome {
   ok: boolean
   createdIds: string[]
   error?: { code: string; message: string }
+  // Present only when the step measured an orientation into the document.
+  captured?: MateCapture
+  // Present only on a fixed toggle, which always reports the pose it kept.
+  poseKept?: KeptPose
 }
 
 export interface ScriptRunOutcome {
@@ -46,12 +69,23 @@ export interface ScriptRunOutcome {
 }
 
 // A step's result: the registry Result, the session Result, a bridge failure,
-// or null for the adapter's "no document" no-op. Anything else (a thrown
-// exception) is caught here and recorded as an error outcome, never allowed to
-// abort the script silently. A runner may be asynchronous (the assembly session
-// awaits an OCC bundle build to resolve a mate ref); the loop awaits it, so the
-// sync runners are unchanged.
-export type ScriptStepResult = CommandResult | Result | ScriptFailure | null
+// an assembly success decorated with what it wrote (the capture report, the
+// pose a fixed toggle kept), or null for the adapter's "no document" no-op.
+// Anything else (a thrown exception) is caught here and recorded as an error
+// outcome, never allowed to abort the script silently. A runner may be
+// asynchronous (the assembly session awaits an OCC bundle build to resolve a
+// mate ref); the loop awaits it, so the sync runners are unchanged.
+export type ScriptStepResult = CommandResult | Result | AnnotatedSuccess | ScriptFailure | null
+
+/** A success that also reports what the step wrote into the document: the
+ *  assembly session's only decorated result (see MateCapture, KeptPose). Every
+ *  other runner returns a plain SessionSuccess, which this shape extends. */
+export interface AnnotatedSuccess {
+  ok: true
+  createdIds: string[]
+  captured?: MateCapture
+  poseKept?: KeptPose
+}
 
 export type ScriptStepRunner<S extends AnyScriptStep = ScriptStep> = (step: S) => ScriptStepResult | Promise<ScriptStepResult>
 
@@ -108,9 +142,17 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
   if (result === null) return { index, kind, id, ok: true, createdIds: [] }
   if (result.ok) {
     // The registry's CommandResult and the session's Result both carry
-    // createdIds on success; the failure shapes carry code/message.
+    // createdIds on success; the failure shapes carry code/message. The two
+    // assembly annotations ride only on the decorated success, so a step that
+    // captured nothing or kept no pose reports neither.
     const createdIds = 'createdIds' in result ? result.createdIds : []
-    return { index, kind, id, ok: true, createdIds }
+    const captured = 'captured' in result ? result.captured : undefined
+    const poseKept = 'poseKept' in result ? result.poseKept : undefined
+    return {
+      index, kind, id, ok: true, createdIds,
+      ...(captured !== undefined && { captured }),
+      ...(poseKept !== undefined && { poseKept }),
+    }
   }
   return { index, kind, id, ok: false, createdIds: [], error: { code: result.code, message: result.message } }
 }
