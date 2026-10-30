@@ -242,9 +242,18 @@ fn mate_naming_a_body_outside_the_assembly_is_dropped() {
     assert_eq!(p.residuals(&x).len(), 0);
     assert_eq!(p.m, 0);
 
-    // The whole solve survives and leaves the free body where it was.
+    // The whole solve survives and leaves the free body where it was, and
+    // the empty Jacobian's verdict is the honest one: no rows constrain the
+    // free body's reduced state, so all six of its DOF are unconstrained
+    // and the status says Underconstrained, not FullyConstrained.
     let out = solve_mate(&input);
     assert!((out.params_solved[7] - 5.0).abs() < 1e-3);
+    assert_eq!(
+        out.overall_status,
+        MateStatus::Underconstrained.to_u8(),
+        "zero mates over a free body is underconstrained, not solved"
+    );
+    assert_eq!(out.diagnostics.dof, 6, "dof must equal n_red when m == 0");
 }
 
 #[test]
@@ -737,6 +746,45 @@ fn supplied_perp_drives_the_roll() {
     assert!(
         (roll + std::f64::consts::FRAC_PI_2).abs() < 1e-12,
         "the supplied perp must set the frame, got {roll}"
+    );
+}
+
+#[test]
+fn zero_length_perp_makes_the_roll_row_unsatisfiable() {
+    // Deliberate: a zero-length wire perp has no direction to measure a roll
+    // from, and the old `atan2(0, 0)` read that as a satisfied row. The cone
+    // guard now fades the row to +pi at every pose, so a Fixed mate with a
+    // malformed perp fails loud as Overconstrained instead of being silently
+    // accepted with a phantom zero roll.
+    let mut a = mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane);
+    a.geometry.perp = [0.0, 0.0, 0.0];
+    let mut b = mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane);
+    b.geometry.perp = [0.0, 0.0, 0.0];
+    let input = MateInput {
+        bodies: (0..2).map(|_| RigidBody).collect(),
+        params_initial: vec![
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: identity, grounded
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1: identity
+        ],
+        fixed_mask: vec![0b0000_0001],
+        mates: vec![mate(MateKind::Fixed, a, b, false, 0.0, 1.0, 0.0)],
+    };
+
+    // The roll row alone pins the failure: whatever pose the other rows
+    // reach, this one stays at pi.
+    let p = MateProblem::new(&input);
+    let x = p.x0.clone();
+    let roll = p.abs_roll_residual(&x, 0, 0, 7, 0.0);
+    assert!(
+        (roll - std::f64::consts::PI).abs() < 1e-12,
+        "a zero-length perp must fade the roll to pi, got {roll}"
+    );
+
+    let out = solve_mate(&input);
+    assert_eq!(
+        out.overall_status,
+        MateStatus::Overconstrained.to_u8(),
+        "a malformed perp must fail loud, not fake a satisfied roll"
     );
 }
 

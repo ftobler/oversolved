@@ -1052,6 +1052,10 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     // (ROT_DAMP_SCALE). This weights only the LM step and the seed anchor,
     // never the residual, so the reported diagnostics below are untouched and
     // a mate that needs a rotation still reaches it.
+    // Cost note: the scale needs the seed Jacobian, so this is one extra
+    // O(m*n) build per solve, the same order as one LM iteration, and it
+    // runs on every live drag tick too. If the sparse-LM migration ever
+    // lands, fold this into the driver so the seed Jacobian is built once.
     let damp_scale = problem.reduced_damp_scale();
     // The retraction hook: it folds a rotation vector that has strayed past
     // the chart's radius back onto its reference, which is what keeps every
