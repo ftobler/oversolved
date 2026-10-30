@@ -11,5 +11,6 @@ mod dynamics;
 mod jacobian_fd;
 mod manifold;
 mod roll_scale;
+mod seeding;
 mod solve_constraints;
 mod solve_kinds;

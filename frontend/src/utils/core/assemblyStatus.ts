@@ -70,6 +70,16 @@ export function mateFailure(
     Number.isFinite(result.residual) &&
     result.residual > MATE_RESIDUAL_TOL
   ) {
+    // A non-converged solve is a reseed problem, not a conflict: say so, so
+    // the user does not start deleting mates.
+    if (status?.verdict === 'not_converged') {
+      return {
+        failed: true,
+        level: 'warning',
+        message: 'The solver did not reach this mate from the seed; reseed the part or check flip.',
+        cause: 'error',
+      }
+    }
     return {
       failed: true,
       level: 'error',
@@ -116,6 +126,15 @@ export function assemblyVerdict(
       failed: true,
       level: 'error',
       message: `The mates cannot all be satisfied${which}.`,
+      verdict,
+      cause: 'error',
+    }
+  }
+  if (verdict === 'not_converged') {
+    return {
+      failed: true,
+      level: 'warning',
+      message: 'The solver did not converge from the current seed; reseed a part or check flip.',
       verdict,
       cause: 'error',
     }

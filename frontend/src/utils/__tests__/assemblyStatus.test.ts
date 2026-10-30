@@ -36,6 +36,19 @@ describe('assemblyVerdict', () => {
     expect(mark.message).toContain('m2')
   })
 
+  it('marks not_converged as an amber reseed hint, not a conflict', () => {
+    const mark = assemblyVerdict(stub({ verdict: 'not_converged', mates: { m1: { stale: false } } }))
+    expect(mark).toMatchObject({ failed: true, level: 'warning', verdict: 'not_converged' })
+    expect(mark.message).not.toContain('cannot all be satisfied')
+    expect(mark.message).toContain('reseed')
+  })
+
+  it('words a residual mate under a not_converged solve as a seed problem', () => {
+    const status = stub({ verdict: 'not_converged', mates: { m1: { stale: false, residual: 1.2 } } })
+    expect(mateFailure('m1', status)).toMatchObject({ failed: true, level: 'warning' })
+    expect(mateFailure('m1', status).message).toContain('did not reach this mate')
+  })
+
   it('carries the transport error for failed and unavailable', () => {
     expect(assemblyVerdict(stub({ verdict: 'failed', error: 'bad magic' }))).toMatchObject({
       failed: true, level: 'error', message: 'bad magic',

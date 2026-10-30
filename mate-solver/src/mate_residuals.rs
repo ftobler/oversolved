@@ -164,6 +164,12 @@ pub struct MateProblem {
 /// residual and never the convergence condition.
 const ROT_DAMP_SCALE: f64 = 500.0;
 
+/// How close to exactly opposite (`dot + 1`) a seeded axis pair must be to get
+/// the symmetry-break nudge, and the nudge's size in radians. Small enough to
+/// leave no trace in a solved pose, large enough for LM to see a gradient.
+const ANTIPARALLEL_TOL: f64 = 1e-9;
+const ANTIPARALLEL_NUDGE: f64 = 1e-3;
+
 /// Cell ceiling on the dense Jacobian this solver will allocate.
 ///
 /// The dense LM driver materialises the m*n Jacobian plus a J^T J of n*n and
@@ -328,6 +334,70 @@ impl MateProblem {
                 let seed_q = [x0[off + 3], x0[off + 4], x0[off + 5], x0[off + 6]];
                 q_ref[base..base + 4].copy_from_slice(&quat_normalize(&seed_q));
             }
+        }
+
+        // Symmetry break: axes exactly opposite to what the mate asks sit on a
+        // stationary point of the axis residual (zero gradient in every
+        // rotation), so LM would exit at once with the full residual. Nudge the
+        // free side's reference by a tiny, deterministic rotation about a
+        // direction perpendicular to A's axis. Only the chart's reference moves;
+        // the mate then sees a nonzero gradient and swings the body round.
+        for m in &mates {
+            if !matches!(
+                m.kind,
+                MateKind::Fixed
+                    | MateKind::Sliding
+                    | MateKind::Rotating
+                    | MateKind::SlidingRotating
+                    | MateKind::Parallel
+                    | MateKind::ParallelPlaneDistance
+            ) {
+                continue;
+            }
+            let (ia, ib) = (m.a.body_index as usize, m.b.body_index as usize);
+            let target = if body_col[ib].is_some() {
+                ib
+            } else if body_col[ia].is_some() {
+                ia
+            } else {
+                continue;
+            };
+            let rot = |bi: usize, axis: &[f64; 3]| {
+                let q = &q_ref[bi * 4..bi * 4 + 4];
+                let mut pose = [0.0, 0.0, 0.0, q[0], q[1], q[2], q[3]];
+                pose[..3].copy_from_slice(&[0.0; 3]);
+                world_direction(&pose, 0, axis)
+            };
+            let a_w = normalise_axis(&rot(ia, &m.a.geometry.axis));
+            let b_w = normalise_axis(&rot(ib, &m.b.geometry.axis));
+            let s = axis_sign(m.flip);
+            let dot = s * (a_w[0] * b_w[0] + a_w[1] * b_w[1] + a_w[2] * b_w[2]);
+            if dot >= -1.0 + ANTIPARALLEL_TOL {
+                continue;
+            }
+            // Cross with the world axis A is least aligned with, so the
+            // perpendicular never degenerates and never depends on hash order.
+            let least = if a_w[0].abs() <= a_w[1].abs() && a_w[0].abs() <= a_w[2].abs() {
+                [1.0, 0.0, 0.0]
+            } else if a_w[1].abs() <= a_w[2].abs() {
+                [0.0, 1.0, 0.0]
+            } else {
+                [0.0, 0.0, 1.0]
+            };
+            let p = normalise_axis(&cross3(&a_w, &least));
+            let nudge = quat_exp(&[
+                p[0] * ANTIPARALLEL_NUDGE,
+                p[1] * ANTIPARALLEL_NUDGE,
+                p[2] * ANTIPARALLEL_NUDGE,
+            ]);
+            let base = target * 4;
+            let cur = [
+                q_ref[base],
+                q_ref[base + 1],
+                q_ref[base + 2],
+                q_ref[base + 3],
+            ];
+            q_ref[base..base + 4].copy_from_slice(&quat_normalize(&quat_mul(&nudge, &cur)));
         }
 
         // Precompute seed-frame world axes for CopyRotation mates plus each
@@ -1000,6 +1070,72 @@ fn mate_status(residual_norm: f64, m: usize, dof: usize, scale: f64) -> MateStat
     }
 }
 
+/// Retry the solve from half-turned seeds of the worst mate's free bodies and
+/// report whether any attempt reaches the status tolerance. A half turn about
+/// each world axis covers the usual trap (a face-to-face fixed mate seeded
+/// back to back); the budget is at most six extra solves, paid only when the
+/// first solve already failed.
+fn retry_reaches_tolerance(input: &MateInput, problem: &MateProblem, solved: &[f64]) -> bool {
+    let rows = problem.residuals(solved);
+    let mut start = 0usize;
+    let mut worst: Option<(usize, f64)> = None;
+    for (pos, mate) in problem.mates.iter().enumerate() {
+        let count = mate_residual_count(mate.kind);
+        let norm = rows[start..start + count]
+            .iter()
+            .map(|v| v * v)
+            .sum::<f64>()
+            .sqrt();
+        if worst.is_none_or(|(_, w)| norm > w) {
+            worst = Some((pos, norm));
+        }
+        start += count;
+    }
+    let Some((pos, _)) = worst else {
+        return false;
+    };
+    let mate = &problem.mates[pos];
+    let tol = RESIDUAL_REL_TOL * problem.geometry_scale();
+    for bi in [mate.b.body_index as usize, mate.a.body_index as usize] {
+        if problem.body_col[bi].is_none() {
+            continue;
+        }
+        for axis in [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]] {
+            let mut alt = input.clone();
+            let off = bi * 7;
+            let q = [
+                alt.params_initial[off + 3],
+                alt.params_initial[off + 4],
+                alt.params_initial[off + 5],
+                alt.params_initial[off + 6],
+            ];
+            let half = quat_exp(&[
+                axis[0] * std::f64::consts::PI,
+                axis[1] * std::f64::consts::PI,
+                axis[2] * std::f64::consts::PI,
+            ]);
+            let turned = quat_normalize(&quat_mul(&half, &quat_normalize(&q)));
+            alt.params_initial[off + 3..off + 7].copy_from_slice(&turned);
+            let attempt = MateProblem::new(&alt);
+            let y0 = attempt.reduced_x0();
+            let damp = attempt.reduced_damp_scale();
+            let mut retract = |y: &mut [f64]| attempt.retract(y);
+            let res = lm::solve_lm_damped_retract(
+                &y0,
+                &attempt.residuals_fn(),
+                &attempt.jacobian_fn(),
+                &damp,
+                &mut retract,
+            );
+            let rms = res.residual_norm / (attempt.m.max(1) as f64).sqrt();
+            if res.residual_norm.is_finite() && rms <= tol {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 // ─── Solve entry point ───
 
 /// Run the mate solver: build a Problem, call solve_lm, compute status, build output.
@@ -1104,7 +1240,7 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
         ((n_red - dof) as u32, dof as u32)
     };
 
-    let status = mate_status(
+    let mut status = mate_status(
         lm_result.residual_norm,
         m,
         dof as usize,
@@ -1115,6 +1251,19 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     // quaternions here is the only place the reduced state and the seed buffer
     // meet. A grounded body comes back as its own seed bytes, bit-exact.
     let params_solved: Vec<f64> = problem.expand(&lm_result.x);
+
+    // A residual above tolerance is not always a conflict: LM can stall in a
+    // local minimum of a perfectly satisfiable system. Retry from other seeds
+    // before blaming the mates, so the user is told to reseed rather than to
+    // delete a mate. The retry only decides the verdict; the pose reported is
+    // the first descent's. Skipped on a live drag tick, which discards it.
+    if status == MateStatus::Overconstrained
+        && !live
+        && lm_result.residual_norm.is_finite()
+        && retry_reaches_tolerance(input, &problem, &params_solved)
+    {
+        status = MateStatus::NotConverged;
+    }
 
     // Per-mate residual norms at the solved pose, one per INPUT mate. Kept
     // mates are sliced by the per-kind counts `residuals()` pushed them in; a

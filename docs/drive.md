@@ -902,7 +902,12 @@ authors `flip: true` by hand is equally valid.
   error, an overconstrained verdict, a part bundle that failed to build or a
   part feature in `exception` are data in `mates` / `parts` and the summary's
   `; problems:` suffix; `underconstrained` is a state (`solve.verdict`,
-  `solve.dof`), not a problem.
+  `solve.dof`), not a problem. `not_converged` is a problem row too, but a
+  different remedy: the mates are consistent and the solver stalled from the
+  seed, so reseed the part or check `flip` instead of deleting a mate. Parts
+  reachable from a fixed part through fixed, spherical, rotating or
+  sliding_rotating mates are seeded in closed form before the solve, so an
+  identity seed no longer needs a hand-placed half turn.
 - `measure` rehydrates each part's B-rep through OCC (one build per distinct
   part doc), places it, and reports per-body ids `<handle>/<bodyId>`, so
   `compare` works unchanged against a CadQuery assembly reference. `export`

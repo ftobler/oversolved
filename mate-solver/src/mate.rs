@@ -292,6 +292,9 @@ pub enum MateStatus {
     FullyConstrained,
     Underconstrained,
     Overconstrained,
+    /// The residual stayed above tolerance, but a retry from another seed
+    /// reached it: the mates are consistent, the first descent just stalled.
+    NotConverged,
 }
 
 impl MateStatus {
@@ -300,6 +303,7 @@ impl MateStatus {
             MateStatus::FullyConstrained => 0,
             MateStatus::Underconstrained => 1,
             MateStatus::Overconstrained => 2,
+            MateStatus::NotConverged => 3,
         }
     }
 }

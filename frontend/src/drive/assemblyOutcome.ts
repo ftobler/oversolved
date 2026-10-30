@@ -14,7 +14,7 @@ import { quatToEulerXyz } from '@/utils/transform3d'
 import { round } from '@/utils/yamlMutations/helpers'
 import type { FeatureProblem } from '@/drive/featureOutcome'
 
-export type MateProblemStatus = 'stale' | 'error' | 'residual' | 'overconstrained'
+export type MateProblemStatus = 'stale' | 'error' | 'residual' | 'overconstrained' | 'not_converged'
 
 export interface MateProblem {
   id: string
@@ -92,6 +92,9 @@ export function mateProblems(doc: AssemblyDoc, status: AssemblySolveStatus): Mat
   const verdict = assemblyVerdict(status)
   if (verdict.verdict === 'overconstrained') {
     problems.push({ id: '*', kind: 'assembly', status: 'overconstrained', message: verdict.message })
+  }
+  if (verdict.verdict === 'not_converged') {
+    problems.push({ id: '*', kind: 'assembly', status: 'not_converged', message: verdict.message })
   }
   return problems
 }

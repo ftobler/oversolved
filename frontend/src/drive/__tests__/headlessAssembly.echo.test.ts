@@ -98,9 +98,17 @@ describe('createHeadlessAssembly', () => {
   it('a bake op writes the previous solve into the other instance seed', async () => {
     setMateSolver(makeTranslateSolver(10))
     const s = session()
+    // A parallel mate, not the fixed STEPS one: the mate seeding places a
+    // fixed mate's part in closed form, which would replace the authored seed
+    // this test chains the translate solver and the bake through.
+    const parallelSteps = STEPS.map(step => (
+      'mutation' in step && step.mutation.type === 'add_mate'
+        ? { mutation: { ...step.mutation, kind: 'parallel' } }
+        : step
+    )) as AssemblyScriptStep[]
     const outcome = await s.run([
-      ...STEPS,
-      // A deferred solve cell: the fixed mate solves here, moving body 1.
+      ...parallelSteps,
+      // A deferred solve cell: the mate solves here, moving body 1.
       { mutation: { type: 'update_mate', featureId: 'm1', flip: true } },
       // The structural fixed toggle bakes every non-fixed solved pose.
       { mutation: { type: 'set_part_fixed', handle: 'left', fixed: false } },

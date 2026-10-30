@@ -401,7 +401,9 @@ describe('the drive captures at the seeds', () => {
       { mutation: { type: 'add_part', handle: 'left', part: 'box_a', fixed: true } },
       { mutation: { type: 'add_part', handle: 'right', part: 'box_b', position: [30, 0, 0] } },
       { mutation: {
-        type: 'add_mate', featureId: 'm1', kind: 'fixed',
+        // Parallel, not fixed: the mate seeding would place a fixed mate's part
+        // in closed form and replace the authored seed this test tracks.
+        type: 'add_mate', featureId: 'm1', kind: 'parallel',
         ref_a: { part: 'left', anchor: 'face' }, ref_b: { part: 'right', anchor: 'face' },
       } },
       // The deferred solve moves right to x = 40; the toggle then reads it.

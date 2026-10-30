@@ -17,6 +17,7 @@ import { mateKindCode, mateOffsetVector, mateReadsAxis, unresolvedMateParams } f
 import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
 import { isDevOrTestBuild } from './isDevBuild'
 import { STATUS_NAME } from '@/wasm-kernel/codec'
+import { seedAssembly } from './assemblySeed'
 
 export type { AnchorPose }
 
@@ -79,7 +80,12 @@ export interface MateResult {
 }
 
 /** The Rust solver's overall verdict, straight off the wire code. */
-export type MateVerdict = typeof STATUS_NAME[number]
+export type MateVerdict = typeof MATE_STATUS_NAME[number]
+
+// The mate wire shares the sketch codes 0-2 and adds 3: the residual stayed
+// above tolerance but a retry from another seed reached it, so the mates are
+// consistent and the first descent merely stalled (mate-solver mate_status).
+const MATE_STATUS_NAME = [...STATUS_NAME, 'not_converged'] as const
 
 /** The assembly counterpart of a failed feature result: one part bundle that
  *  could not be loaded or built. Runtime-only; never written to the document. */
@@ -401,10 +407,10 @@ export function decodeMateOutput(buf: Uint8Array, expectedParams: number): Decod
   return { paramsSolved, overallStatus, mateResiduals, residualNorm, rank, dof, iters, ms }
 }
 
-// Codes are indices into STATUS_NAME. Throwing on an out-of-range code keeps a
+// Codes are indices into MATE_STATUS_NAME. Throwing on an out-of-range code keeps a
 // codec skew loud rather than letting an undefined verdict flow into the UI.
 function mateVerdict(code: number): MateVerdict {
-  const name = STATUS_NAME[code]
+  const name = MATE_STATUS_NAME[code]
   if (!name) throw new Error(`mate solver returned unknown status code ${code}`)
   return name
 }
@@ -712,7 +718,11 @@ export async function solveAssembly(
   }
 
   const transforms: Record<string, Transform3D> = {}
-  const encoded = encodeMateInput(bodyCount, paramsInitial, fixedMask, mateRecords)
+  // Seeds only: the solver starts from the closed-form placement, the document
+  // keeps its authored poses. A part is echoed from `part.transform` whenever
+  // the solve does not run, so nothing downstream reads the seeded copy.
+  const seeded = seedAssembly(paramsInitial, fixedMask, mateRecords)
+  const encoded = encodeMateInput(bodyCount, seeded, fixedMask, mateRecords)
   let status: AssemblySolveStatus
 
   if (solveMateFn && mateRecords.length > 0) {
