@@ -28,7 +28,7 @@ import {
 import { applyAssemblyEdit } from '@/utils/assemblyEdit'
 import { ASSEMBLY_UNDO_LABELS, type AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
-import { findMate, partInstances, setInstanceFixed } from '@/utils/assemblyMutations'
+import { findMate, partInstances, setInstanceFixedFromSolved } from '@/utils/assemblyMutations'
 import { partSpecs, mateSpecs } from '@/utils/assemblySolveInput'
 import { solveAssembly, type AssemblyBuildResponse } from '@/kernel/solveAssembly'
 import { solveLocally } from '@/kernel/solveLocally'
@@ -443,9 +443,13 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
           // The authored seed stays: only the flag is written, so a pose the
           // last solve diverged to never lands in the document. The editor
           // path keeps baking; this is the headless escape hatch for exactly
-          // that case.
+          // that case. Empty transforms route the flag through the guarded
+          // setter (assemblyOperations' rationale for the editor cells): an
+          // absent `fixed` means false, so re-setting an already-correct flag
+          // is absorbed as a no-op instead of materializing a permanent
+          // `fixed: false` key and charging a dead undo entry.
           const { handle, fixed } = mutation
-          applyEdit(ASSEMBLY_UNDO_LABELS.fixUnfixPart, doc => setInstanceFixed(doc, handle, fixed))
+          applyEdit(ASSEMBLY_UNDO_LABELS.fixUnfixPart, doc => setInstanceFixedFromSolved(doc, handle, fixed, {}))
           poseKept = 'seed'
         } else {
           runAssemblyOperation(validated.operation, input as never, host())

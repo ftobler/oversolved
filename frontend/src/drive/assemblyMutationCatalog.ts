@@ -163,7 +163,8 @@ const CAPTURE_NOTE =
   + 'angle from the instances\' current seeds and freezes the pose you seeded into the mate, instead of making '
   + 'you guess a canonical roll and learn each circle edge\'s axis direction from a failed solve. An explicit '
   + 'flip/angle in the same step wins over the captured value, and the step result carries '
-  + '`captured: {flip, angle}` naming what was measured and which keys the explicit values beat. Default false, '
+  + '`captured: {flip, angle}` (angle only for the kinds that read a roll) naming what was measured and which '
+  + 'keys the explicit values beat. Default false, '
   + 'so a document authored without capture keeps its meaning. A kind with no authored orientation '
   + '(spherical, tangential, copy_rotation) captures nothing.'
 

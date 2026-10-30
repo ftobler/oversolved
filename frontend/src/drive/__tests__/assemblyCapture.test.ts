@@ -179,6 +179,19 @@ describe('captureMateAtSeeds', () => {
     expect(agreed!.patch).toEqual({ flip: true, angle: 180 })
   })
 
+  it('lets an explicit angle beat the captured roll and names the key it beat', () => {
+    const capture = captureMateAtSeeds({
+      kind: 'fixed',
+      ref_a: { part: 'box_a', anchor: 'face' },
+      ref_b: { part: 'box_b', anchor: 'face' },
+      anchors: table(seeded({ box_a: IDENTITY, box_b: seedAt([0, 0, 0], [180, 0, 0]) }), BOX_ANCHORS),
+      explicit: { angle: 90 },
+    })
+    expect(capture!.captured).toEqual({ flip: true, angle: 180, overridden: ['angle'] })
+    expect(capture!.patch.flip).toBe(true)
+    expect(capture!.patch.angle).toBe(90)
+  })
+
   it('captures nothing for a kind without orientation, an empty slot or a missing anchor', () => {
     const anchors = table(seeded({ box_a: IDENTITY, box_b: IDENTITY }), BOX_ANCHORS)
     expect(captureMateAtSeeds({
@@ -240,11 +253,12 @@ interface BoxStepOptions {
   // The default seed turns box_b over; false seeds it side by side instead.
   turnedOver?: boolean
   flip?: boolean
+  angle?: number
   refB?: string
 }
 
 function boxSteps(options: BoxStepOptions = {}): AssemblyScriptStep[] {
-  const { capture = false, turnedOver = true, flip, refB = 'face' } = options
+  const { capture = false, turnedOver = true, flip, angle, refB = 'face' } = options
   return [
     { mutation: { type: 'add_part', handle: 'a', part: 'box_a', fixed: true } },
     { mutation: { type: 'add_part', handle: 'b', part: 'box_b', ...(turnedOver ? { rotation: [180, 0, 0] } : { position: [100, 0, 0] }) } },
@@ -252,6 +266,7 @@ function boxSteps(options: BoxStepOptions = {}): AssemblyScriptStep[] {
       type: 'add_mate', featureId: 'm1', kind: 'fixed',
       ref_a: { part: 'a', anchor: 'face' }, ref_b: { part: 'b', anchor: refB },
       ...(flip !== undefined && { flip }),
+      ...(angle !== undefined && { angle }),
       ...(capture && { capture: true }),
     } },
   ]
@@ -284,13 +299,19 @@ describe('the drive captures at the seeds', () => {
 
   it('reports an unresolvable ref exactly as it would without capture', async () => {
     setMateSolver(makeEchoSolver())
-    const failing = (capture: boolean) => sessionWith(BOX_ANCHORS).run(boxSteps({ capture, refB: 'nope' }))
-    const withCapture = await failing(true)
-    const without = await failing(false)
+    const withCaptureSession = sessionWith(BOX_ANCHORS)
+    const withoutSession = sessionWith(BOX_ANCHORS)
+    const withCapture = await withCaptureSession.run(boxSteps({ capture: true, refB: 'nope' }))
+    const without = await withoutSession.run(boxSteps({ refB: 'nope' }))
     expect(withCapture.ok).toBe(false)
     expect(withCapture.steps[2].captured).toBeUndefined()
     expect(withCapture.steps[2].error).toEqual(without.steps[2].error)
     expect(withCapture.steps[2].error!.code).toBe('unresolved-ref')
+    // The failing step wrote nothing: no mate was appended, and the document
+    // the capture run left behind is the one the same script without capture
+    // produced.
+    expect(findMate(withCaptureSession.getDoc(), 'm1')).toBeUndefined()
+    expect(withCaptureSession.getDoc()).toEqual(withoutSession.getDoc())
   })
 
   it('lets an explicit flip beat the captured one and says so in the result', async () => {
@@ -300,6 +321,15 @@ describe('the drive captures at the seeds', () => {
     expect(outcome.ok).toBe(true)
     expect(outcome.steps[2].captured).toEqual({ flip: true, angle: 180, overridden: ['flip'] })
     expect(findMate(session.getDoc(), 'm1')).toMatchObject({ flip: false, angle: 180 })
+  })
+
+  it('lets an explicit angle beat the captured roll and says so in the result', async () => {
+    setMateSolver(makeEchoSolver())
+    const session = sessionWith(BOX_ANCHORS)
+    const outcome = await session.run(boxSteps({ capture: true, angle: 90 }))
+    expect(outcome.ok).toBe(true)
+    expect(outcome.steps[2].captured).toEqual({ flip: true, angle: 180, overridden: ['angle'] })
+    expect(findMate(session.getDoc(), 'm1')).toMatchObject({ flip: true, angle: 90 })
   })
 
   it('re-measures the re-aimed slot through set_mate_ref with capture', async () => {
@@ -323,6 +353,32 @@ describe('the drive captures at the seeds', () => {
     expect(second.ok).toBe(true)
     expect(second.steps[0]).toMatchObject({ ok: true, captured: { flip: true, angle: 180 } })
     expect(findMate(session.getDoc(), 'm1')).toMatchObject({ flip: true, angle: 180 })
+  })
+
+  it('deletes an authored flip and angle when the re-measure lands on the default', async () => {
+    setMateSolver(makeEchoSolver())
+    const session = sessionWith(BOX_ANCHORS)
+    // Authored by capture: the turned-over pair freezes flip and angle.
+    const first = await session.run(boxSteps({ capture: true }))
+    expect(first.ok).toBe(true)
+    expect(findMate(session.getDoc(), 'm1')).toMatchObject({ flip: true, angle: 180 })
+
+    // Re-aim at the underside, which meets box_a's face parallel with agreeing
+    // canonical frames: the capture measures the default, so its undefined
+    // patch keys DELETE the authored values through applyMatePatch rather than
+    // leaving stale ones on a mate whose pose no longer implies them.
+    const second = await session.run([{
+      mutation: {
+        type: 'set_mate_ref', featureId: 'm1', field: 'ref_b',
+        ref: { part: 'b', anchor: 'under' }, capture: true,
+      },
+    }])
+    expect(second.ok).toBe(true)
+    expect(second.steps[0]).toMatchObject({ ok: true, captured: { flip: false, angle: 0 } })
+    const mate = findMate(session.getDoc(), 'm1')!
+    expect(mate.ref_b).toMatchObject({ part: 'b', anchor: 'under' })
+    expect(mate).not.toHaveProperty('flip')
+    expect(mate).not.toHaveProperty('angle')
   })
 
   it('keeps the authored seed with bake: false and reports the pose it kept', async () => {

@@ -81,6 +81,16 @@ describe('ASSEMBLY_MUTATION_CATALOG', () => {
       expect(ASSEMBLY_MUTATION_FAMILY[type as AssemblyWireMutation['type']]).toBeDefined()
     }
   })
+
+  // headlessAssembly's capture runs BEFORE the step writes anything, so the
+  // seeds it measures are the ones the step's own solve starts from. That
+  // claim (its capture-before-operation comment) only holds while both
+  // mate-writing operations leave the seeds unbaked: a bake flag here would
+  // make the capture report measure poses the document no longer keeps.
+  it('keeps both mate-writing operations unbaked, which the pre-op capture assumes', () => {
+    expect(ASSEMBLY_OPERATIONS.add_mate.bake).toBe(false)
+    expect(ASSEMBLY_OPERATIONS.set_mate_ref.bake).toBe(false)
+  })
 })
 
 describe('validateAssemblyMutation refusals', () => {

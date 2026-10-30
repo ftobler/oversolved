@@ -868,18 +868,19 @@ authors `flip: true` by hand is equally valid.
 - The recommended recipe is to place the parts roughly (`add_part`'s
   `position`/`rotation` are exactly the kind of pose the editor captures from)
   and pass `capture: true` on `add_mate` or `set_mate_ref`: once the refs
-  resolve, the step measures `flip` and `angle` (only for the kinds that read
-  a roll) at the instance seeds, the same poses the solve starts from, and
-  freezes them into the mate. The solve then holds the pose you seeded instead
-  of one you found by trial solving, without having to learn each circle edge's
-  axis direction from a failed solve first. An explicit `flip`/`angle` in the
-  same step wins over the captured value, and the step result carries
-  `captured: { flip, angle }` (plus `overridden: [...]` when an explicit value
-  beat a captured one) so the reply says what was frozen into the document. The
-  default is `capture: false`, so a document authored before this existed keeps
-  its meaning, and a kind with no authored orientation (spherical, tangential,
-  copy_rotation) captures nothing. Read the reply's `mateFrames` (each mate's
-  posed anchors) to see which way an axis points at the solved pose.
+  resolve, the step measures `flip` and `angle` at the instance seeds, the same
+  poses the solve starts from, and freezes them into the mate. The solve then
+  holds the pose you seeded instead of one you found by trial solving, without
+  having to learn each circle edge's axis direction from a failed solve first.
+  An explicit `flip`/`angle` in the same step wins over the captured value,
+  and the step result carries `captured: { flip, angle }` (angle only for the
+  kinds that read a roll; plus `overridden: [...]` when an explicit value beat
+  a captured one) so the reply says what was frozen into the document. The
+  default is `capture: false`, so a document authored before this existed
+  keeps its meaning, and a kind with no authored orientation (spherical,
+  tangential, copy_rotation) captures nothing.
+  Read the reply's `mateFrames` (each mate's posed anchors) to see which way an
+  axis points at the solved pose.
 - A mate `offset` is a number along A's anchor axis or a partial `{x, y, z}`
   in body A's local frame (it rotates with A). The sign reads "B's anchor
   sits at A's anchor PLUS the offset": the `add_mate` above with
