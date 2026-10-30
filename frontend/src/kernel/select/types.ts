@@ -21,10 +21,24 @@ export type RadiusTest =
  *  midpoint, a conic's centre (NOT its mid-sweep point), a spline's middle
  *  sample, or a face centroid. The radius is optional; the measure tolerance's
  *  absolute floor is the default and is always added to a supplied radius. */
-export interface CenterTest {
+export interface CenterPointTest {
   point: Vec3
   radius?: number
 }
+
+/** An axis-range match: one coordinate of the element's centre point must lie
+ *  inside a world-axis range, like `within` but tested on the representative
+ *  point instead of the whole bounding box. `at` is sugar for `min = max = at`
+ *  (matched within the measure tolerance). */
+export interface CenterAxisTest {
+  axis: 'x' | 'y' | 'z'
+  min?: number
+  max?: number
+  at?: number
+}
+
+/** Either form of the `center` predicate. */
+export type CenterTest = CenterPointTest | CenterAxisTest
 
 /** The structured predicate grammar, modeled on CadQuery string selectors. */
 export type Predicate =

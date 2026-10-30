@@ -403,10 +403,12 @@ banner on stdout, so a client config must use the direct node invocation.
   "max":20}}` names the edges between z=10 and z=20, and a missing `min` or
   `max` is open on that side), `center` (the point `extreme` projects: a line's
   midpoint, a circle, arc or ellipse's conic centre, a spline's middle sample or
-  a face centroid, within a distance of a world point;
-  `{"center":{"point":[5,0,0],"radius":0.5}}`; the measure tolerance is always
+  a face centroid, either within a distance of a world point
+  (`{"center":{"point":[5,0,0],"radius":0.5}}`; the measure tolerance is always
   added to the radius, so 0.5 is effectively 0.500001, and omitting it leaves
-  the tolerance alone), `on_face` (edges bounding the
+  the tolerance alone) or inside a world-axis range on that point
+  (`{"center":{"axis":"z","at":0}}` or `{"center":{"axis":"z","min":10,"max":20}}`;
+  `at` is sugar for min = max = at), `on_face` (edges bounding the
   selected faces), `created_by` (ancestry through the query engine) and
   `radius`. A multi-key example:
   `{"and":[{"type":"line"},{"parallel":[0,1,0]}]}`. `extreme.axis` is a world
@@ -492,6 +494,10 @@ banner on stdout, so a client config must use the direct node invocation.
   built. A feature can solve to `exception` or `partial`, or succeed with a
   `solver_warning` (a fallback, or a hole that removed nothing), and `ok`
   stays true: that is data like a failing compare row, not a failed call. The
+  exception is a warning a later feature made moot: when a later union or merge
+  fused the bodies a "the new solid also touches ..." warning named, the kernel
+  moves that text to `resolved_warning` (exposed as `resolvedWarning` on the
+  outcome) and the feature is not listed. The
   `features` list carries every such feature in feature log order as
   `{ id, kind, status, message }`, where `message` is the kernel's own
   exception or warning text; it is always present and empty for a clean build.

@@ -283,10 +283,11 @@ the body untouched; the other groups still apply (status `partial`).
 ```
 
 A `tools` entry naming an `array` or `circular_array` feature (`"@carr1"`)
-stands for that array's source body and every instance body, resolved at solve
-time, so a later count change is followed. The target is left out of the
-expansion. A list of body ids that names only some of one array's bodies solves
-with a warning naming both counts.
+stands for that array's source body, every instance body, and every body an
+`operation: add` array split off as a disjoint copy, resolved at solve time, so
+a later count change is followed. The target is left out of the expansion. A
+list of body ids that names only some of one array's bodies solves with a
+warning naming both counts.
 
 ### hole
 

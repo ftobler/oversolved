@@ -112,7 +112,10 @@ export const BUNDLE_SCHEMA = 1
 // 2: the solver wire moved to f64 (rev 3). Solved geometry is no longer
 // f32-quantized, so a bundle cached under the f32 wire carries positions this
 // code would not reproduce and must read back as a miss.
-export const BUNDLE_BUILD_ID = 2
+// 3: an `@<arrayId>` boolean tool now folds every copy a disjoint add array
+// split into. A document using that ref solved to different geometry before,
+// so its cached bundle must read back as a miss.
+export const BUNDLE_BUILD_ID = 3
 
 // Deterministic fingerprint of the code that produced a bundle. Stamped on the
 // cached record and compared at the cache's single call site (bundleCacheGet):

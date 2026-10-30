@@ -83,6 +83,44 @@ function emptyPart(): PartDoc {
   return { version: 1, kind: 'part', features: [] } as PartDoc
 }
 
+/** A rectangle sketch offset along x, so several posts can share a plane. */
+function rectSketchAt(sketchId: string, x0: number, w: number, h: number) {
+  const base = rectSketch(sketchId, w, h)
+  const shift = (quad: number[]) => [quad[0] + x0, quad[1], quad[2] + x0, quad[3]]
+  return {
+    ...base,
+    initial: {
+      bottom: shift(base.initial.bottom),
+      right: shift(base.initial.right),
+      top: shift(base.initial.top),
+      left: shift(base.initial.left),
+    },
+  }
+}
+
+/**
+ * The stale-warning repro as a part: three posts, one additive bar reaching all
+ * three (it fuses into the first and warns about the other two), then a union
+ * that fuses everything. It must solve with no problems, so an assembly using
+ * it reports no part problems.
+ */
+function bridgePart(): PartDoc {
+  const post = (n: number, x0: number) => [
+    rectSketchAt(`sk${n}`, x0, 2, 2),
+    { id: `ex${n}`, kind: 'extrude', extrude: { sketch: `$sk${n}`, distance: 3, direction: 'normal', operation: 'new' } },
+  ]
+  return {
+    version: 1,
+    kind: 'part',
+    features: [
+      ...post(1, 0), ...post(2, 5), ...post(3, 10),
+      rectSketchAt('sk4', 1, 10, 2),
+      { id: 'ex4', kind: 'extrude', extrude: { sketch: '$sk4', distance: 3, direction: 'normal', operation: 'add' } },
+      { id: 'bo1', kind: 'boolean', boolean: { operation: 'union', target: 'body_ex1', tools: ['body_ex2', 'body_ex3'] } },
+    ],
+  } as unknown as PartDoc
+}
+
 const FLAT = (axis: [number, number, number], side: 'min' | 'max') => ({
   kind: 'face' as const,
   where: { and: [{ type: 'flatface' }, { extreme: { axis, side } }] },
@@ -219,6 +257,14 @@ describeReal('headless assembly with the real mate solver', () => {
     expect(pin).toBeDefined()
     expect(pin!.features.map(problem => problem.id)).toContain('h1')
     expect(pin!.features[0]).toMatchObject({ status: 'exception' })
+  }, 180_000)
+
+  it('has no part problems once a union resolved a touch warning', async () => {
+    const parts = new Map([['plate', bridgePart()], ['pin', pinDoc()]])
+    const result = await runAssemblyHeadless({ doc: emptyDriveAssemblyDoc(), parts, steps: PIN_SCRIPT })
+    expect(result.ok).toBe(true)
+    expect(result.parts.find(part => part.docId === 'plate')).toBeUndefined()
+    expect(result.summary).not.toContain('(part) problems')
   }, 180_000)
 
   it('reports two conflicting fixed mates as an overconstrained row', async () => {
