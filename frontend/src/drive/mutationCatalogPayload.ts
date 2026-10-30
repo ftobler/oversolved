@@ -94,6 +94,75 @@ function assemblyCatalogPayload(): AssemblyCatalogPayload {
   }
 }
 
+/** Every family name the `family` filter accepts, part families first. */
+export function catalogFamilyNames(): string[] {
+  return [...MUTATION_FAMILIES, ...ASSEMBLY_MUTATION_FAMILIES]
+}
+
+export interface MutationCatalogFilter {
+  kind?: 'part' | 'assembly'
+  family?: string
+}
+
+export type FilteredCatalog =
+  | { ok: true; payload: Partial<MutationCatalogPayload> }
+  | { ok: false; error: string }
+
+/**
+ * Narrow the full catalog to one kind and/or family. No filter returns the
+ * payload unchanged. A family belongs to one kind, so naming it picks the kind;
+ * naming a family of the other kind than `kind` is refused with the valid list.
+ */
+export function filterMutationCatalog(full: MutationCatalogPayload, filter: MutationCatalogFilter): FilteredCatalog {
+  const { kind, family } = filter
+  const partFamilies: readonly string[] = MUTATION_FAMILIES
+  const assemblyFamilies: readonly string[] = ASSEMBLY_MUTATION_FAMILIES
+  let scope = kind
+  if (family !== undefined) {
+    const familyKind = partFamilies.includes(family) ? 'part' : assemblyFamilies.includes(family) ? 'assembly' : null
+    const valid = kind === 'part' ? partFamilies : kind === 'assembly' ? assemblyFamilies : catalogFamilyNames()
+    if (familyKind === null || (kind !== undefined && familyKind !== kind)) {
+      return { ok: false, error: `unknown ${kind ?? ''} family "${family}"; valid families: ${valid.join(', ')}`.replace('  ', ' ') }
+    }
+    scope = familyKind
+  }
+  const pick = <T extends Record<string, unknown>>(families: T): Partial<T> => (
+    family === undefined ? families : ({ [family]: families[family] } as Partial<T>)
+  )
+  if (scope === undefined) return { ok: true, payload: full }
+  // A family filter keeps only the examples whose steps use one of its types.
+  const typesOf = (listings: { type: string }[] | undefined) => new Set((listings ?? []).map(l => l.type))
+  const usesType = (mutationTypes: string[], types: Set<string>) => family === undefined || mutationTypes.some(t => types.has(t))
+  if (scope === 'part') {
+    const families = pick(full.families) as MutationCatalogPayload['families']
+    const types = typesOf(family === undefined ? undefined : full.families[family as MutationFamily])
+    return {
+      ok: true,
+      payload: {
+        families,
+        examples: full.examples.filter(example => usesType(
+          example.steps.map(step => ('mutation' in step ? (step.mutation as { type: string }).type : '')),
+          types,
+        )),
+      },
+    }
+  }
+  const families = pick(full.assembly.families) as AssemblyCatalogPayload['families']
+  const types = typesOf(family === undefined ? undefined : full.assembly.families[family as AssemblyMutationFamily])
+  return {
+    ok: true,
+    payload: {
+      assembly: {
+        families,
+        examples: full.assembly.examples.filter(example => usesType(
+          example.steps.map(step => step.mutation.type),
+          types,
+        )),
+      },
+    },
+  }
+}
+
 /** The visible catalog grouped by family, plus the runnable examples. */
 export function mutationCatalogPayload(): MutationCatalogPayload {
   const families = Object.fromEntries(

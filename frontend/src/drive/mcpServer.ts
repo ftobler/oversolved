@@ -20,7 +20,8 @@ import { ASSEMBLY_DOC_SCHEMA_URI } from '@/persistence/assemblyDocSchema'
 import { MATE_KINDS } from '@/utils/mateKinds'
 import { validateSelector, typeVocabulary, type Selector } from '@/kernel/select'
 import { parseReference, type TranslationReference } from '@/translations/corpus'
-import { MUTATION_CATALOG_URI, mutationCatalogPayload } from '@/drive/mutationCatalogPayload'
+import { MUTATION_CATALOG_URI, mutationCatalogPayload, filterMutationCatalog, catalogFamilyNames } from '@/drive/mutationCatalogPayload'
+import { ASSEMBLY_DETAILS, type AssemblyDetail } from '@/drive/assemblyDetail'
 import { DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
 import {
   worldFrameSentence,
@@ -69,10 +70,13 @@ export interface McpRunRequest extends McpDocArguments {
   // Write the final document here (YAML or JSON by extension). Project paths
   // only; the entry script resolves and enforces the directory rule.
   out?: string
+  // Assembly replies only; undefined means the default (full).
+  detail?: AssemblyDetail
 }
 
 export interface McpMeasureRequest extends McpDocArguments {
   docId?: string
+  detail?: AssemblyDetail
   files: McpFileRef[]
 }
 
@@ -157,6 +161,15 @@ const KIND_SCHEMA = {
   type: 'string',
   enum: ['part', 'assembly'],
   description: 'Only with neither doc nor docHash: the kind of fresh document to start (default part).',
+}
+
+const DETAIL_SCHEMA = {
+  type: 'string',
+  enum: [...ASSEMBLY_DETAILS],
+  description: 'Assembly replies only (default full). summary: ok, docHash, solve verdict/dof/iters, mate and part problems, summary. '
+    + 'changed: adds the poses that moved against the starting document\'s solve (run only), the mate frames of mates this call added, edited '
+    + 'or that have a problem, solve.mates only for problem mates, and refused steps in full (accepted steps become stepsAccepted). '
+    + 'full: every instance, mate frame and step.',
 }
 
 // The assembly binding. A bound {doc} is loaded and stored under its own hash,
@@ -337,8 +350,16 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     name: 'mutations',
     description: 'List the mutation vocabulary grouped by family (sketch, features, picks, part style, document), '
       + 'with each type\'s summary and fields, plus ready-to-run example scripts. Mutation steps author geometry; '
-      + 'commands act on the current selection.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      + 'commands act on the current selection. The full catalog is large: pass kind ("part" or "assembly") and/or '
+      + 'family (' + catalogFamilyNames().join(', ') + ') to fetch only that slice; an unknown family is refused with the valid list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: KIND_SCHEMA,
+        family: { type: 'string', description: 'One family name; filters the part or assembly families.' },
+      },
+      additionalProperties: false,
+    },
   },
   {
     name: 'run',
@@ -372,6 +393,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         steps: { type: 'array', items: { type: 'object' }, description: 'Script steps: {command,params} or {mutation}; mutation types: see the `mutations` tool (part and assembly).' },
         returnDoc: { type: 'boolean', description: 'Include the full final document in the reply (default false; the docHash resource serves it either way).' },
         featureDeltas: { type: 'string', enum: ['all'], description: 'Pass "all" to list every clean feature; the default lists only features this call changed or touched.' },
+        detail: DETAIL_SCHEMA,
         out: { type: 'string', description: 'Write the final document here. YAML or JSON by extension, or .zip for a workspace zip of the assembly and its parts; the path must resolve inside tmp/ or bugreports/ (relative paths resolve against the repo root).' },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
@@ -392,6 +414,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         doc: DOC_SCHEMA,
         docHash: DOC_HASH_SCHEMA,
         parts: PARTS_SCHEMA,
+        detail: DETAIL_SCHEMA,
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
@@ -599,6 +622,14 @@ function readKind(value: unknown): 'part' | 'assembly' | undefined {
   return value
 }
 
+function readDetail(value: unknown): AssemblyDetail | undefined {
+  if (value === undefined) return undefined
+  if (!(ASSEMBLY_DETAILS as readonly unknown[]).includes(value)) {
+    throw new McpInvalidParams(`field "detail" must be one of ${ASSEMBLY_DETAILS.map(d => `"${d}"`).join(', ')}`)
+  }
+  return value as AssemblyDetail
+}
+
 // Reject unknown fields by name: the inputSchema is additionalProperties false
 // on every tool, so a typo must fail here rather than be silently ignored.
 function rejectUnknown(record: Record<string, unknown>, allowed: readonly string[]): void {
@@ -644,7 +675,7 @@ function readDocArguments(
 
 function parseRunArgs(raw: unknown): McpRunRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'docHash', 'kind', 'parts', 'steps', 'docId', 'files', 'returnDoc', 'featureDeltas', 'out'])
+  rejectUnknown(record, ['doc', 'docHash', 'kind', 'parts', 'steps', 'docId', 'files', 'returnDoc', 'featureDeltas', 'out', 'detail'])
   if (!Array.isArray(record.steps)) throw new McpInvalidParams('field "steps" must be an array')
   for (const [index, step] of record.steps.entries()) asObject(step, `field "steps[${index}]"`)
   const returnDoc = optionalBoolean(record.returnDoc, 'returnDoc')
@@ -658,8 +689,10 @@ function parseRunArgs(raw: unknown): McpRunRequest {
     throw new McpInvalidParams('field "kind" only applies to a fresh document; pass doc or docHash to continue one')
   }
   const parts = readParts(record.parts)
+  const detail = readDetail(record.detail)
   return {
     ...readDocArguments(record, 'run'),
+    ...(detail !== undefined && { detail }),
     ...(kind !== undefined && { kind }),
     ...(parts !== undefined && { parts }),
     steps: record.steps,
@@ -673,10 +706,12 @@ function parseRunArgs(raw: unknown): McpRunRequest {
 
 function parseMeasureArgs(raw: unknown): McpMeasureRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'docHash', 'parts', 'docId', 'files'])
+  rejectUnknown(record, ['doc', 'docHash', 'parts', 'docId', 'files', 'detail'])
   const parts = readParts(record.parts)
+  const detail = readDetail(record.detail)
   return {
     ...readDocArguments(record, 'exactly-one'),
+    ...(detail !== undefined && { detail }),
     ...(parts !== undefined && { parts }),
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
@@ -763,9 +798,15 @@ async function callTool(ops: McpCadOps, name: string, args: unknown): Promise<Mc
       rejectUnknown(record, ['kind'])
       return ops.commands(readKind(record.kind) ?? 'part')
     }
-    case 'mutations':
-      rejectUnknown(asObject(args ?? {}, 'arguments'), [])
-      return { ok: true, ...mutationCatalogPayload() }
+    case 'mutations': {
+      const record = asObject(args ?? {}, 'arguments')
+      rejectUnknown(record, ['kind', 'family'])
+      const kind = readKind(record.kind)
+      const family = optionalString(record.family, 'family')
+      const filtered = filterMutationCatalog(mutationCatalogPayload(), { ...(kind && { kind }), ...(family && { family }) })
+      if (!filtered.ok) throw new McpInvalidParams(filtered.error)
+      return { ok: true, ...filtered.payload }
+    }
     case 'run': return ops.run(parseRunArgs(args))
     case 'measure': return ops.measure(parseMeasureArgs(args))
     case 'compare': return ops.compare(parseCompareArgs(args))
@@ -804,7 +845,8 @@ export function createMcpServer(ops: McpCadOps): McpServer {
             capabilities: { tools: {}, resources: {} },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
             instructions: 'Drive the CAD document headlessly: commands lists the registry, mutations lists the '
-              + 'mutation vocabulary and example scripts, run executes scripts, '
+              + 'mutation vocabulary and example scripts (large: fetch it by kind and family, e.g. family "mates"), run executes scripts, '
+              + 'and an assembly run or measure takes detail "summary" or "changed" to keep the reply small, '
               + 'measure reports geometry facts, compare checks a document against a reference, '
               + 'select finds faces/edges by predicate over the solve output, '
               + 'and export writes STEP or STL. The part-document JSON Schema is '

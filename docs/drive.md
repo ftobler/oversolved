@@ -54,7 +54,7 @@ never a thrown exception crossing the bridge.
 |---|---|---|
 | `commands()` | none | `{ id, label, shortcut?, enabled: true \| reason }[]` for the live spec table |
 | `execute(id, params?)` | command id, raw params | the registry `Result` (`ok` + `createdIds`, or `code`/`message`) |
-| `script(steps)` | step array (below) | `{ ok, steps: [{ index, kind, id, ok, createdIds, error? }] }` |
+| `script(steps)` | step array (below) | `{ ok, steps: [{ index, kind, id, ok, createdIds, constraints?, error? }] }` |
 | `inspect()` | none | session, editor and probe facts (below) |
 | `idle()` | none | resolves when no solve is pending or running |
 | `hitTest(x, y, opts?)` | CSS pixels, optional window size and layer list | ordered `ProbeHit[]` |
@@ -383,9 +383,9 @@ banner on stdout, so a client config must use the direct node invocation.
 | Tool | Arguments | Returns |
 |---|---|---|
 | `commands` | optional `kind` (`part` default, or `assembly`) | the command catalog for that editor |
-| `mutations` | none | the part and assembly mutation vocabularies grouped by family, plus ready-to-run example scripts |
-| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `out`, `docId`, `files` | part: `{ ok, steps, docHash, solve, features, featureDeltas, frames, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
-| `measure` | `doc` or `docHash`, optional `parts`, `docId`, `files` | part: the `MeasureRecord` plus `features`/`frames`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }` |
+| `mutations` | optional `kind` (`part` or `assembly`), optional `family` (`sketch`, `features`, `picks`, `part style`, `document`, `parts`, `mates`) | the mutation vocabularies grouped by family plus ready-to-run example scripts; no argument returns both whole (about 90 kB), a filter returns only that slice and an unknown family is refused with the valid list |
+| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, steps, docHash, solve, features, featureDeltas, frames, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
+| `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`frames`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }` |
 | `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
 | `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, docHash, file, format, bytes }` |
 | `select` | `doc` or `docHash`, `selector`, optional `docId`, `files` | `{ ok, docHash, queries, items }`: the query strings a click would store, plus a geometry summary per item; part documents only |
@@ -845,6 +845,21 @@ orientation and authors `offset: 5`, floating the pin's anchor 5 above the
 plate's top face (the plus convention, below). A script that skips capture and
 authors `flip: true` by hand is equally valid.
 
+- `detail` trims an assembly `run` or `measure` reply to what changed (default
+  `full`, today's reply). `summary` keeps `ok`, `docHash`, the solve verdict,
+  dof and iterations, the mate and part problems and the one-line `summary`.
+  `changed` adds, for `run`, the instances whose solved pose moved against the
+  starting document's solve (a throwaway extra solve, paid only for this
+  level), the mate frames of mates the call added or edited or that have a
+  problem, `solve.mates` for problem mates only, and the refused steps whole
+  (accepted ones collapse to `stepsAccepted`). `measure` has no starting
+  document, so `changed` lists no instances there. A part document refuses
+  `detail`. Under `summary` and `changed` the reply's `steps` key becomes
+  `stepsAccepted` (a count) plus `steps` holding only the refused ones.
+- `add_rect`, `add_center_rect` and `add_ngon` steps report `createdIds` as
+  the entity ids in minting order (rect: bottom, right, top, left lines) plus
+  `constraints: <count>`; the constraint ids stay readable from the document
+  resource. Other mutations list every id they create.
 - The reply's `docHash` is the assembly handle. It folds the assembly document
   and every bound part's content hash, so a chained `measure { "docHash": A1 }`
   needs no second argument, and a part edit yields a new handle. `parts` on a

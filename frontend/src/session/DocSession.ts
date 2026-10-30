@@ -19,6 +19,7 @@ import {
   type Result,
   type SessionErrorCode,
   type SessionFailure,
+  type SessionSuccess,
 } from '@/session/result'
 import type { SolveOptions, SolveScheduler, SolveSchedulerState } from '@/session/SolveScheduler'
 import {
@@ -215,6 +216,10 @@ const PREVIEW_COMMIT_FALLBACK: Mutation = { type: 'preview_commit', description:
 // The mutations that can add a doc-addressable id (a feature, an entity, a
 // constraint). The id set is only diffed for dispatches that contain one, so
 // the drag path pays nothing for a field it can never fill.
+// The helpers whose reply lists entities and counts constraints instead of
+// naming every constraint id.
+const COMPACT_CREATED_TYPES = new Set<Mutation['type']>(['add_rect', 'add_center_rect', 'add_ngon'])
+
 const CREATING_MUTATION_TYPES = new Set<Mutation['type']>([
   'add_constraint',
   'add_entity', 'add_entity_with_constraint', 'add_projected_entity',
@@ -570,7 +575,7 @@ export class DocSession {
       if (!gesture.firstMutation) gesture.firstMutation = mutations[0]
       this.landApplied(current, mutations, applied)
       this.reportDocChange(mutations, group, current, applied.next, unsettled)
-      return okResult(this.createdIdsFor(mutations, current, applied.next))
+      return this.createdIdsFor(mutations, current, applied.next)
     }
     const result = this.landMutations(mutations, current, applied)
     this.reportDocChange(mutations, group, current, applied.next, unsettled)
@@ -649,7 +654,7 @@ export class DocSession {
 
     this.landApplied(current, mutations, applied)
     this.emit({ type: 'changed' })
-    return okResult(this.createdIdsFor(mutations, current, applied.next))
+    return this.createdIdsFor(mutations, current, applied.next)
   }
 
   // The doc swap and the solve request, shared by every path that lands a
@@ -769,10 +774,19 @@ export class DocSession {
     return false
   }
 
-  private createdIdsFor(mutations: Mutation[], before: PartDoc, after: PartDoc): string[] {
-    return mutations.some(m => CREATING_MUTATION_TYPES.has(m.type))
-      ? createdIdsBetween(before, after)
-      : []
+  private createdIdsFor(mutations: Mutation[], before: PartDoc, after: PartDoc): SessionSuccess {
+    if (!mutations.some(m => CREATING_MUTATION_TYPES.has(m.type))) return okResult()
+    const created = createdIdsBetween(before, after)
+    if (!mutations.every(m => COMPACT_CREATED_TYPES.has(m.type))) return okResult(created)
+    // A rect or n-gon mints a dozen coincident/equal/horizontal constraints
+    // beside its lines. The ids list keeps the entities in minting order and
+    // the constraints collapse to a count; the document resource has their ids.
+    const constraintIds = new Set<string>()
+    for (const feature of after.features ?? []) {
+      if (feature.kind === 'sketch') for (const c of feature.constraints ?? []) constraintIds.add(c.id)
+    }
+    const ids = created.filter(id => !constraintIds.has(id))
+    return okResult(ids, created.length - ids.length)
   }
 
   private requestSolve(doc: PartDoc, mutations: Mutation[], restorable: Record<string, SketchData> | null): void {

@@ -376,10 +376,16 @@ export interface HeadlessAssemblyRunOptions {
   parts: ReadonlyMap<string, PartDoc>
   steps: readonly AssemblyScriptStep[]
   files?: ReadonlyMap<string, Uint8Array>
+  // Solve the starting document in a throwaway session so the reply can list
+  // only the poses the script moved. A separate session, because a pre-solve on
+  // the run's own session would change what a later fixed toggle bakes.
+  baseline?: boolean
 }
 
 export interface HeadlessAssemblyRunResult extends AssemblyState {
   ok: boolean
+  // The starting document's solved poses; null unless `baseline` was asked.
+  baselineInstances: InstancePose[] | null
   outcome: ScriptRunOutcome
   doc: AssemblyDoc
   session: ReturnType<typeof createHeadlessAssembly>
@@ -392,6 +398,17 @@ export interface HeadlessAssemblyRunResult extends AssemblyState {
  * the summary (D12).
  */
 export async function runAssemblyHeadless(opts: HeadlessAssemblyRunOptions): Promise<HeadlessAssemblyRunResult> {
+  let baselineInstances: InstancePose[] | null = null
+  if (opts.baseline === true) {
+    // A starting document that does not solve (a stale mate the script repairs)
+    // has no baseline; the run itself still reports its own solve.
+    try {
+      const start = createHeadlessAssembly({ doc: opts.doc, parts: opts.parts, ...(opts.files && { files: opts.files }) })
+      baselineInstances = instancePoses(opts.doc, (await start.solve()).transforms)
+    } catch {
+      baselineInstances = null
+    }
+  }
   const session = createHeadlessAssembly({ doc: opts.doc, parts: opts.parts, ...(opts.files && { files: opts.files }) })
   const outcome = await session.run(opts.steps)
   const doc = session.getDoc()
@@ -403,6 +420,7 @@ export async function runAssemblyHeadless(opts: HeadlessAssemblyRunOptions): Pro
     outcome,
     doc,
     session,
+    baselineInstances,
     ...state,
   }
 }

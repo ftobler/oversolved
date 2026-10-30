@@ -15,6 +15,9 @@ import { formatFeatureProblem, type FeatureProblem } from '@/drive/featureOutcom
 import type { FeatureDelta } from '@/drive/featureDeltas'
 import type { FeatureFrameMap } from '@/drive/featureFrames'
 import type { McpDocArguments } from '@/drive/mcpServer'
+import type { AssemblyPartProblem, InstancePose, MateFrame, MateProblem } from '@/drive/assemblyOutcome'
+import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
+import { shapeAssemblyState, shapeSteps, type AssemblyDetail, type AssemblyDetailContext } from '@/drive/assemblyDetail'
 
 export type ResolvedDoc =
   | { ok: true; kind: 'part'; doc: PartDoc; docHash: string }
@@ -270,11 +273,11 @@ export interface AssemblyRunReplySource {  ok: boolean
   doc: AssemblyDoc
   // The binding the run used, so the composite handle can be minted.
   binding: ReadonlyMap<string, PartDoc> | Record<string, PartDoc>
-  solve: unknown
-  mates: unknown[]
-  partProblems: unknown[]
-  instances: unknown[]
-  mateFrames: Record<string, unknown>
+  solve: AssemblySolveStatus
+  mates: MateProblem[]
+  partProblems: AssemblyPartProblem[]
+  instances: InstancePose[]
+  mateFrames: Record<string, MateFrame>
   summary: string
 }
 
@@ -287,22 +290,34 @@ export function assemblyRunReply(
   result: AssemblyRunReplySource,
   returnDoc: boolean,
   documents: DocHandleStore,
+  shaping: { detail: AssemblyDetail; context: AssemblyDetailContext } = {
+    detail: 'full',
+    context: { inputDoc: null, baseline: null },
+  },
 ): { ok: boolean; [key: string]: unknown } {
   const binding = result.binding instanceof Map
     ? Object.fromEntries(result.binding)
     : result.binding
   const docHash = documents.putAssembly(result.doc, binding)
-  return {
-    ok: result.ok,
-    kind: 'assembly',
-    steps: result.outcome.steps,
-    docHash,
+  const state = shapeAssemblyState({
     solve: result.solve,
     mates: result.mates,
     parts: result.partProblems,
     instances: result.instances,
     mateFrames: result.mateFrames,
     summary: result.summary,
+  }, shaping.detail, result.doc, shaping.context)
+  return {
+    ok: result.ok,
+    kind: 'assembly',
+    ...shapeSteps(result.outcome.steps as { ok: boolean }[], shaping.detail),
+    docHash,
+    solve: state.solve,
+    mates: state.mates,
+    parts: state.parts,
+    ...(state.instances !== undefined && { instances: state.instances }),
+    ...(state.mateFrames !== undefined && { mateFrames: state.mateFrames }),
+    summary: state.summary,
     ...(returnDoc && { doc: result.doc }),
   }
 }

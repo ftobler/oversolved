@@ -56,6 +56,8 @@ export interface ScriptStepOutcome {
   id: string
   ok: boolean
   createdIds: string[]
+  // Present only when createdIds omits the constraints (rect, n-gon): their count.
+  constraints?: number
   error?: { code: string; message: string }
   // Present only when the step measured an orientation into the document.
   captured?: MateCapture
@@ -148,8 +150,10 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
     const createdIds = 'createdIds' in result ? result.createdIds : []
     const captured = 'captured' in result ? result.captured : undefined
     const poseKept = 'poseKept' in result ? result.poseKept : undefined
+    const constraints = 'constraints' in result ? result.constraints : undefined
     return {
       index, kind, id, ok: true, createdIds,
+      ...(constraints !== undefined && { constraints }),
       ...(captured !== undefined && { captured }),
       ...(poseKept !== undefined && { poseKept }),
     }

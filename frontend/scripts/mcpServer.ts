@@ -28,6 +28,7 @@ import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
 import { createMcpServer, type McpCadOps, type McpFileRef } from '@/drive/mcpServer'
 import { DocHandleStore } from '@/drive/docHandleStore'
+import { shapeAssemblyState, DEFAULT_ASSEMBLY_DETAIL } from '@/drive/assemblyDetail'
 import { assemblyRunReply, requirePartDoc, resolveAssemblyDoc, resolveDoc, runReply, type ResolvedDoc, type RunReplySource } from '@/drive/mcpDocRef'
 import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import { ASSEMBLY_DOC_SCHEMA_JSON } from '@/persistence/assemblyDocSchema'
@@ -158,6 +159,9 @@ const ops: McpCadOps = {
       if (out !== undefined && out.endsWith('.zip')) {
         return { ok: false, error: 'a workspace zip needs an assembly document; run the assembly instead' }
       }
+      if (req.detail !== undefined) {
+        return { ok: false, error: 'detail applies only to assembly documents' }
+      }
       // The worker builds the drive journal from the starting document (its id
       // seed), as the in-process run did.
       const answer = await callKernel<RunReplySource>('run', {
@@ -182,11 +186,14 @@ const ops: McpCadOps = {
     if (req.featureDeltas !== undefined) {
       return { ok: false, error: 'featureDeltas applies only to part documents' }
     }
+    const detail = req.detail ?? DEFAULT_ASSEMBLY_DETAIL
     const answer = await callKernel<AssemblyKernelResult>('assemblyRun', {
       doc: resolved.doc,
       parts: resolved.parts,
       steps: req.steps as AssemblyScriptStep[],
       files,
+      // Only `changed` compares poses, so only it pays for the extra solve.
+      ...(detail === 'changed' && { baseline: true }),
     })
     if (!answer.ok) return answer
     const result = answer.value
@@ -201,7 +208,10 @@ const ops: McpCadOps = {
       instances: result.instances,
       mateFrames: result.mateFrames,
       summary: result.summary,
-    }, req.returnDoc === true, documents)
+    }, req.returnDoc === true, documents, {
+      detail,
+      context: { inputDoc: resolved.doc, baseline: result.baselineInstances },
+    })
     if (out === undefined) return reply
     try {
       if (out.endsWith('.zip')) {
@@ -226,6 +236,9 @@ const ops: McpCadOps = {
     if (!resolved.ok) return { ok: false, error: resolved.error }
     const files = readFiles(req.files)
     if (resolved.kind === 'part') {
+      if (req.detail !== undefined) {
+        return { ok: false, error: 'detail applies only to assembly documents' }
+      }
       const answer = await callKernel<HeadlessMeasure | null>('measure', {
         doc: resolved.doc,
         docId: req.docId ?? 'mcp',
@@ -248,15 +261,19 @@ const ops: McpCadOps = {
     if (!measured) {
       return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
     }
+    // A measure has no starting document to diff against, so `changed` lists
+    // no instances and no clean mate frames; only the problems and the numbers.
+    const detail = req.detail ?? DEFAULT_ASSEMBLY_DETAIL
+    const state = shapeAssemblyState(measured.state, detail, resolved.doc, { inputDoc: resolved.doc, baseline: null })
     return {
       ok: measured.ok,
       kind: 'assembly',
       docHash: resolved.docHash,
       ...measured.measures,
-      instances: measured.state.instances,
-      solve: measured.state.solve,
-      mates: measured.state.mates,
-      parts: measured.state.parts,
+      ...(detail === 'full' && { instances: measured.state.instances }),
+      solve: state.solve,
+      mates: state.mates,
+      parts: state.parts,
     }
   },
 

@@ -153,6 +153,32 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
       const undonePin = (undone.instances as Array<{ handle: string; position: number[] }>).find(i => i.handle === 'pin')!
       expect(undonePin.position[2]).toBeCloseTo(10, 3)
 
+      // detail "changed" lists only what the call moved: the one-field edit
+      // moves the pin, and an edit that changes nothing lists no instance.
+      const changed = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { docHash: a1, detail: 'changed', steps: [{ mutation: { type: 'update_mate', featureId: 'm1', offset: { z: 5 } } }] },
+      }))
+      expect(changed.stepsAccepted).toBe(1)
+      expect(changed.steps).toBeUndefined()
+      expect((changed.instances as Array<{ handle: string }>).map(i => i.handle)).toEqual(['pin'])
+      expect(Object.keys(changed.mateFrames as object)).toEqual(['m1'])
+      const quiet = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { docHash: a1, detail: 'changed', steps: [] },
+      }))
+      expect(quiet.instances).toEqual([])
+      expect(quiet.mateFrames).toEqual({})
+      const brief = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { docHash: a1, detail: 'summary', steps: [] },
+      }))
+      expect(brief.instances).toBeUndefined()
+      expect((brief.solve as { verdict: string }).verdict).toBe('fully_constrained')
+      const briefMeasure = toolPayload(await client.request('tools/call', { name: 'measure', arguments: { docHash: a1, detail: 'summary' } }))
+      expect(briefMeasure.instances).toBeUndefined()
+      expect(briefMeasure.volume as number).toBeCloseTo(TOTAL_VOLUME, 3)
+
       const exported = toolPayload(await client.request('tools/call', {
         name: 'export',
         arguments: { docHash: a1, format: 'step', out: stepFile },

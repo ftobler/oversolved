@@ -22,6 +22,9 @@ export interface SessionFailure {
 export interface SessionSuccess {
   ok: true
   createdIds: string[]
+  // Present only when createdIds leaves the constraints out: how many the
+  // mutation minted (a rect or n-gon helper).
+  constraints?: number
 }
 
 export interface OpenedSuccess {
@@ -33,8 +36,8 @@ export type Result = SessionSuccess | SessionFailure
 
 export type OpenedResult = OpenedSuccess | SessionFailure
 
-export function okResult(createdIds: string[] = []): SessionSuccess {
-  return { ok: true, createdIds }
+export function okResult(createdIds: string[] = [], constraints?: number): SessionSuccess {
+  return constraints === undefined ? { ok: true, createdIds } : { ok: true, createdIds, constraints }
 }
 
 export function openedResult(id: string): OpenedSuccess {

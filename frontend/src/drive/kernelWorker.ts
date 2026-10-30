@@ -71,6 +71,8 @@ interface AssemblyDocArgs {
 }
 export interface KernelAssemblyRunArgs extends AssemblyDocArgs {
   steps: AssemblyScriptStep[]
+  // Also solve the starting document, for a reply that lists only moved poses.
+  baseline?: boolean
 }
 export interface KernelAssemblyExportArgs extends AssemblyDocArgs {
   format: 'step' | 'stl'
@@ -118,6 +120,7 @@ async function runOp(req: KernelRequest): Promise<unknown> {
         doc: a.doc,
         parts: new Map(Object.entries(a.parts)),
         steps: a.steps,
+        ...(a.baseline === true && { baseline: true }),
         ...(a.files && { files: a.files }),
       })
       return result
