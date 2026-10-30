@@ -17,7 +17,7 @@
 // mutations the app itself produced, and refusing a historical value would make
 // an old journal unreplayable.
 
-import type { EntityKind, Mutation, PartDoc } from '@/types/cad'
+import type { EntityKind, FeatureKind, Mutation, PartDoc } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
@@ -771,15 +771,36 @@ function planeTargetProblem(value: string, ctx: ValueContext): string | null {
     + '(bare builtin names are case-sensitive)'
 }
 
-function setFeaturePlane(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  const plane = raw.plane
+// A `{selector}` pick is an authoring aid: the headless drive resolves it
+// against the settled solve before this boundary runs, so an object that still
+// reaches the value rules is on a surface with no solved body set (the browser
+// bridge). Refuse it by name instead of storing the object in the document.
+const UNRESOLVED_SELECTOR =
+  'a {selector} pick needs the solved bodies; the headless drive resolves it before the step runs, '
+  + 'so pass the query string `select` returned instead'
+
+function selectorRefProblem(value: unknown, label: string): string | null {
+  if (!isRecord(value)) return `${label} must be {selector: <a select selector>}, got ${json(value)}`
+  const keys = Object.keys(value)
+  if (keys.length !== 1 || !isRecord(value.selector)) {
+    return `${label} must be {selector: <a select selector>} and carry nothing else, got ${json(value)}`
+  }
+  return `${label}: ${UNRESOLVED_SELECTOR}`
+}
+
+function planeRefProblem(plane: unknown, ctx: ValueContext): string | null {
+  if (isRecord(plane)) return selectorRefProblem(plane, 'plane')
   if (typeof plane !== 'string' || plane.trim().length === 0) {
-    return invalid(`plane must be a non-empty plane reference such as "@builtin_plane_front", got ${json(plane)}`)
+    return `plane must be a non-empty plane reference such as "@builtin_plane_front", got ${json(plane)}`
   }
   const problem = refValueProblem(plane, 'plane')
-  if (problem !== null) return invalid(problem)
-  const targetProblem = planeTargetProblem(plane, ctx)
-  return targetProblem === null ? null : invalid(targetProblem)
+  if (problem !== null) return problem
+  return planeTargetProblem(plane, ctx)
+}
+
+function setFeaturePlane(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const problem = planeRefProblem(raw.plane, ctx)
+  return problem === null ? null : invalid(problem)
 }
 
 // A feature id an anchor field names must be in the document the step applies
@@ -821,15 +842,9 @@ function addPlane(raw: RawStep, ctx: ValueContext): ValueViolation | null {
 }
 
 function addSketch(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  const plane = raw.plane
-  if (plane === undefined) return null
-  if (typeof plane !== 'string' || plane.trim().length === 0) {
-    return invalid(`plane must be a non-empty plane reference such as "@builtin_plane_front", got ${json(plane)}`)
-  }
-  const problem = refValueProblem(plane, 'plane')
-  if (problem !== null) return invalid(problem)
-  const targetProblem = planeTargetProblem(plane, ctx)
-  return targetProblem === null ? null : invalid(targetProblem)
+  if (raw.plane === undefined) return null
+  const problem = planeRefProblem(raw.plane, ctx)
+  return problem === null ? null : invalid(problem)
 }
 
 // The fields a bulk add carries inline are checked against the same schema
@@ -881,6 +896,41 @@ function addBoolean(raw: RawStep, ctx: ValueContext): ValueViolation | null {
     if (toolsProblem !== null) return invalid(toolsProblem)
   }
   return inlineFieldsProblem(raw, ctx, 'set_boolean_field', ['operation', 'target'])
+}
+
+// The array and mirror adds carry the same fields their setters set, so each
+// present one is held to that field's schema definition, exactly like add_hole:
+// an unknown enum spelling or a bad vector is refused at the boundary instead
+// of stored and read back as a default.
+function inlineFeatureFieldsProblem(
+  raw: RawStep,
+  ctx: ValueContext,
+  kind: FeatureKind,
+  setter: Mutation['type'],
+): ValueViolation | null {
+  for (const field of featureFieldNames(kind)) {
+    const value = raw[field]
+    // Null is the documented clear, and the applier writes no key for it on an
+    // add (a circular array's step_angle is the field the union spells | null).
+    if (value === undefined || value === null) continue
+    const schema = ctx.fieldSchema(setter, field)
+    if (schema === null) continue
+    const problem = schemaValueProblem(value, schema, `${raw.type as string} field ${json(field)}`)
+    if (problem !== null) return invalid(problem)
+  }
+  return null
+}
+
+function addArray(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  return inlineFeatureFieldsProblem(raw, ctx, 'array', 'set_array_field')
+}
+
+function addCircularArray(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  return inlineFeatureFieldsProblem(raw, ctx, 'circular_array', 'set_circular_array_field')
+}
+
+function addMirror(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  return inlineFeatureFieldsProblem(raw, ctx, 'mirror', 'set_mirror_field')
 }
 
 function addRevolve(raw: RawStep): ValueViolation | null {
@@ -956,9 +1006,31 @@ function addChamfer(raw: RawStep): ValueViolation | null {
   return null
 }
 
+// Each shell face entry is a query string or a selector the drive resolves. A
+// string is checked like any other reference list; a selector that survives to
+// here is on a surface with no solved bodies, so name that.
+function facePickListProblem(value: unknown, label: string): string | null {
+  if (!Array.isArray(value)) {
+    return `${label} must be a list of face queries or {selector} entries, got ${json(value)}`
+  }
+  for (let i = 0; i < value.length; i++) {
+    const entry = value[i]
+    if (isRecord(entry)) {
+      const problem = selectorRefProblem(entry, `${label}[${i}]`)
+      if (problem !== null) return problem
+      continue
+    }
+    if (typeof entry !== 'string') {
+      return `${label}[${i}] must be a face query or {selector: <a select selector>}, got ${json(entry)}`
+    }
+    if (entry.trim().length === 0) return `${label}[${i}] must be a non-empty reference, got ${json(entry)}`
+  }
+  return null
+}
+
 function addShell(raw: RawStep): ValueViolation | null {
   if (raw.faces !== undefined) {
-    const facesProblem = stringListProblem(raw.faces, 'faces')
+    const facesProblem = facePickListProblem(raw.faces, 'faces')
     if (facesProblem !== null) return invalid(facesProblem)
   }
   if (raw.thickness !== undefined) {
@@ -1213,9 +1285,9 @@ export const MUTATION_VALUE_RULES = {
   set_boolean_field: fieldValue,
   add_boolean_tool: queryField('tool'),
   remove_boolean_tool: queryField('tool'),
-  add_array: 'none',
+  add_array: addArray,
   set_array_field: fieldValue,
-  add_circular_array: 'none',
+  add_circular_array: addCircularArray,
   set_circular_array_field: fieldValue,
   add_delete_body: addDeleteBody,
   add_delete_body_ref: queryField('bodyQuery'),
@@ -1232,7 +1304,7 @@ export const MUTATION_VALUE_RULES = {
   set_part_metalness: unitInterval('metalness'),
   set_part_roughness: unitInterval('roughness'),
   set_part_transmission: unitInterval('transmission'),
-  add_mirror: 'none',
+  add_mirror: addMirror,
   set_mirror_field: fieldValue,
   add_split: addSplit,
   set_split_field: setSplitField,

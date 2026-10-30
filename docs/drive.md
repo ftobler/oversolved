@@ -629,7 +629,11 @@ banner on stdout, so a client config must use the direct node invocation.
   (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,
   `cs_angle`), with `depth` required only for a blind hole because a
   `through_all` hole is sized by the target body and stores no depth; all are
-  optional in an `add_hole` payload. `hole.direction` is `normal` (the sketch
+  optional in an `add_hole` payload. With no `target` the hole drills the body
+  its drill sites sit on or in, so a face sketch whose sites lie on or in the
+  material picks that body even when it is not the first; a site outside every
+  body (a plane sketch in the air) falls back to the first body and the miss
+  warning names it. `hole.direction` is `normal` (the sketch
   plane's normal, the default) or `reverse`; a face sketch's normal points out
   of its face, so a hole on a face usually wants `reverse`, and a blind hole
   that misses every site warns with that fix when the reverse would cut. A
@@ -666,7 +670,14 @@ banner on stdout, so a client config must use the direct node invocation.
   `delete_feature` removes only the named row, so a
   dependent stays in the log and reports its missing input; and an array's
   `operation: add` only fuses copies that touch, so disjoint copies split into
-  bodies named with `_1`, `_2`... suffixes.
+  bodies named with `_1`, `_2`... suffixes. The three array/mirror adds take
+  their whole payload inline: `add_array` takes every linear-array field
+  (`source_body`, `mode`, `operation`, `include_source`, `count_x`/`pitch_x`,
+  `direction_x_query`, `invert_x`, and the rectangular `_y` siblings),
+  `add_circular_array` takes `source_body`, `operation`, `include_source`,
+  `count`, `step_angle`, `axis`/`axis_origin`/`axis_direction` and
+  `invert_axis`, and `add_mirror` takes `body`, `plane`, `keep_original` and
+  `merge`, so one call replaces the add plus one setter per field.
 - Plane refs are exact. `add_sketch.plane`, `set_feature_plane.plane`,
   `add_split.plane` and `set_split_field` with `field: "plane"` accept
   `@builtin_plane_front`, `@builtin_plane_top`, `@builtin_plane_right`, the bare
@@ -681,6 +692,12 @@ banner on stdout, so a client config must use the direct node invocation.
   later in the log (the message names the one-step fix,
   `reorder_features {featureId: <planeId>, before: <sketchId>}`) or a face query
   nothing registers any more. Only an absent or empty query keeps Front.
+  `add_sketch.plane` and `set_feature_plane.plane` also take the selector
+  itself, `{selector: <a select selector naming exactly one face>}`: the
+  headless drive resolves it against the settled solve and stores the query
+  string it matched, so no `select` round trip or paste is needed. The same
+  form is accepted per `add_shell.faces` entry, where a selector may expand to
+  several faces; a selector is never stored.
 - A sketch on a face uses that face's frame: origin at the face centroid, and
   the in-plane axes from the face normal by `normalToFrame` (the same rule
   every body face is registered with). For the six world-axis normals:

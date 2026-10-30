@@ -6,7 +6,7 @@
 // sessions in one process would interleave their caches; split into two
 // processes instead of isolating the globals.
 
-import type { PartDoc, Mutation, SketchData } from '@/types/cad'
+import type { PartDoc, Mutation, SketchData, BodyResult } from '@/types/cad'
 import { createDocSession, type DocSession } from '@/session/DocSession'
 import type { SolveOptions, SolveScheduler } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
@@ -24,6 +24,7 @@ import { readSolveOutcomes, type FeatureOutcome } from '@/drive/featureOutcome'
 import { featureFrames, type FeatureFrameMap } from '@/drive/featureFrames'
 import { docHashOf } from '@/drive/docHash'
 import { seededIdSource, stepSeedFor } from '@/drive/seededIds'
+import { resolveSelectionAids, usesSelectionAid } from '@/drive/selectionAids'
 import { setIdSource } from '@/utils/yamlMutations'
 
 export interface HeadlessPartOptions {
@@ -184,7 +185,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     }
     return runScript(
       steps,
-      step => {
+      async step => {
         // Seed each step from the settled document before it and the step
         // itself, and install the source before any handler runs, so internal
         // mints (add_rect, add_ngon, constraint ids) and every apply a command
@@ -194,11 +195,26 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
         if (opts.journal) opts.journal.beginStep(seed)
         else setIdSource(seededIdSource(seed))
         if ('command' in step) return registry.execute(step.command as CommandName, step.params)
+        // A selector pick names geometry the last solve produced. Resolve it
+        // against the settled document before the boundary validates it; a run
+        // that starts from an unsolved document (a fresh doc, or a chained
+        // docHash whose reply carried no bodies) solves once first. That solve
+        // writes back like every step's solve, so the document the first step
+        // authors on is the settled one and the journal baseline is that same
+        // baked doc; replay is unaffected because each entry carries its seed.
+        let bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
+        if (bodies === undefined && usesSelectionAid(step.mutation)) {
+          session.refreshSolve()
+          await solve.idle()
+          bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
+        }
+        const resolved = resolveSelectionAids(step.mutation, bodies ?? null)
+        if (!resolved.ok) return { ok: false, code: resolved.code, message: resolved.message }
         // The script carries untyped JSON; validate before the cast so a typo
         // is a named step failure and the doc stays as it was. The live doc lets
         // the value rules refuse a duplicate id or a delete target that names
         // nothing instead of reporting an ok that changed nothing.
-        const validated = validateMutation(step.mutation, { doc: docBox.current })
+        const validated = validateMutation(resolved.mutation, { doc: docBox.current })
         if (!validated.ok) return { ok: false, code: validated.error.code, message: validated.error.message }
         return session.execute(validated.mutation)
       },

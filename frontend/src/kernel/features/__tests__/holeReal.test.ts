@@ -136,10 +136,10 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       }
     })
 
-    it('no target defaults to first body in store', () => {
+    it('no target drills the body its sites sit on (the first here)', () => {
       /**
-       * When the hole spec omits a target, the hole defaults to the first body in the body
-       * store.
+       * When the hole spec omits a target, the hole drills the body its drill
+       * sites sit on or in; this fixture's single body is that body.
        */
       const scope = new DisposeScope()
       const table = new HandleTable()
@@ -164,6 +164,125 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
         expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_first.shape!))).toBeLessThan(1000)
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('no target picks the second body when the sites sit on it', () => {
+      // A face sketch is ON its body's face, so the default target follows the
+      // sites instead of the store order: the enclosure's lid is not body 1.
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      try {
+        const repo = new Repository()
+        // The sketch plane is the centre of body_second's top face.
+        repo.register('_pt_sk', { origin: [50, 10, 10], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+        repo.register('sk/p1/xy', { external_xy: [0, 0] })
+        const first = makeBoxAt(occ, scope, [0, 0, 0], 20, 20, 10)
+        const second = makeBoxAt(occ, scope, [40, 0, 0], 20, 20, 10)
+        const bodyStore: Record<string, Body> = {
+          body_first: {
+            id: 'body_first', created_by: 'ex_first', modified_by: [],
+            shape: table.register(first, 'ex_first'),
+            sketch_id: 'sk_first', brep_diff: null,
+            profile_queries: [],
+          },
+          body_second: {
+            id: 'body_second', created_by: 'ex_second', modified_by: [],
+            shape: table.register(second, 'ex_second'),
+            sketch_id: 'sk_second', brep_diff: null,
+            profile_queries: [],
+          },
+        }
+        // No `target`: the site is ON body_second's top face, so it drills there.
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: { sketch: '@sk', diameter: 4, depth: 5, direction: 'reverse' },
+        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        expect(result.status).toBe('ok')
+        expect(result.body_id).toBe('body_second')
+        expect(result.hole_count).toBe(1)
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_first.shape!))).toBeCloseTo(20 * 20 * 10, 6)
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_second.shape!))).toBeLessThan(20 * 20 * 10)
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('no target picks the second body when a site is inside it', () => {
+      // A plane sketch inside the material classifies IN, not ON; the same
+      // geometric rule picks the enclosing body.
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      try {
+        const repo = new Repository()
+        repo.register('_pt_sk', { origin: [50, 10, 5], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+        repo.register('sk/p1/xy', { external_xy: [0, 0] })
+        const first = makeBoxAt(occ, scope, [0, 0, 0], 20, 20, 10)
+        const second = makeBoxAt(occ, scope, [40, 0, 0], 20, 20, 10)
+        const bodyStore: Record<string, Body> = {
+          body_first: {
+            id: 'body_first', created_by: 'ex_first', modified_by: [],
+            shape: table.register(first, 'ex_first'),
+            sketch_id: 'sk_first', brep_diff: null,
+            profile_queries: [],
+          },
+          body_second: {
+            id: 'body_second', created_by: 'ex_second', modified_by: [],
+            shape: table.register(second, 'ex_second'),
+            sketch_id: 'sk_second', brep_diff: null,
+            profile_queries: [],
+          },
+        }
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: { sketch: '@sk', diameter: 4, depth: 4 },
+        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        expect(result.status).toBe('ok')
+        expect(result.body_id).toBe('body_second')
+        expect(result.hole_count).toBe(1)
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_first.shape!))).toBeCloseTo(20 * 20 * 10, 6)
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_second.shape!))).toBeLessThan(20 * 20 * 10)
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('no target keeps the first body when every site classifies OUT', () => {
+      // A plane sketch above the part classifies OUT everywhere; with two bodies
+      // the classifier runs on both, both score zero, and the first-body
+      // fallback still answers (the miss warning names it).
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      try {
+        const repo = new Repository()
+        repo.register('_pt_sk', { origin: [5, 5, 50], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+        repo.register('sk/p1/xy', { external_xy: [0, 0] })
+        const first = makeBox(occ, scope, 10, 10, 10)
+        const second = makeBoxAt(occ, scope, [100, 0, 0], 10, 10, 10)
+        const bodyStore: Record<string, Body> = {
+          body_first: {
+            id: 'body_first', created_by: 'ex_first', modified_by: [],
+            shape: table.register(first, 'ex_first'),
+            sketch_id: 'sk_first', brep_diff: null,
+            profile_queries: [],
+          },
+          body_second: {
+            id: 'body_second', created_by: 'ex_second', modified_by: [],
+            shape: table.register(second, 'ex_second'),
+            sketch_id: 'sk_second', brep_diff: null,
+            profile_queries: [],
+          },
+        }
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: { sketch: '@sk', diameter: 4, depth: 5 },
+        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        expect(result.status).toBe('ok')
+        expect(result.body_id).toBe('body_first')
+        expect(result.hole_count).toBe(0)
+        expect(result.solver_warning).toContain('body_first')
       } finally {
         scope.dispose()
       }

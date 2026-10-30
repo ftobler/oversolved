@@ -7,6 +7,23 @@ function pushFeature(doc: PartDoc, feature: PartFeature): void {
   doc.features.push(feature)
 }
 
+/** A feature's sub-definition as the generic setters write it. The schema owns
+ *  which keys are real; the appliers only copy values into it, so the bag type
+ *  is an index signature rather than a second copy of every field. */
+type FieldBag = { [key: string]: unknown }
+
+/** Copy a bulk add's inline fields onto the freshly built default definition.
+ *  The setters' clear rule applies: an empty or null value deletes the key, so
+ *  `add_array {count_x: ""}` lands the same document as add + setter. An absent
+ *  key writes nothing. Arrays are copied so a journaled step and its replay
+ *  cannot share one list. */
+function mergeInlineFields<T extends object>(target: T, inline: Partial<T>): void {
+  for (const [field, value] of Object.entries(inline)) {
+    if (value === undefined) continue
+    setFeatureField(target, field, Array.isArray(value) ? [...value] : value)
+  }
+}
+
 /** Materialize the plural body list a body mutator indexes. A doc that reached
  *  the mutator unmigrated carries only the singular legacy `body`; seed `bodies`
  *  from it so the user's original pick is not silently dropped on the next save.
@@ -96,9 +113,10 @@ export function applySetHoleField(doc: PartDoc, featureId: string, field: keyof 
   setFeatureField(sub, field, value)
 }
 
-function setFeatureField(obj: Record<string, unknown>, field: string, value: unknown): void {
+function setFeatureField(obj: object, field: string, value: unknown): void {
+  const bag = obj as FieldBag
   if (value === undefined || value === null || value === '') {
-    delete obj[field]
+    delete bag[field]
     return
   }
   // Strings, selects and ref lists pass through; only a numeric write is
@@ -107,7 +125,7 @@ function setFeatureField(obj: Record<string, unknown>, field: string, value: unk
     warn(`setFeatureField: refusing non-finite value for ${field}`)
     return
   }
-  obj[field] = value
+  bag[field] = value
 }
 
 // ─── Extrude ───
@@ -517,20 +535,28 @@ export function applyRemoveBooleanTool(doc: PartDoc, featureId: string, tool: st
 
 // ─── Array ───
 
-export function applyAddArray(doc: PartDoc, featureId: string, label?: string): void {
-  const feature: PartFeature = {
-    id: featureId,
-    kind: 'array',
-    label: label ?? 'Array',
-    array: {
-      mode: 'linear',
-      count_x: 2,
-      pitch_x: 20,
-      operation: 'add',
-      include_source: true,
-    },
+export function applyAddArray(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  inline: Partial<ArrayFeatureDef> = {},
+): void {
+  const array: ArrayFeatureDef = {
+    mode: 'linear',
+    count_x: 2,
+    pitch_x: 20,
+    operation: 'add',
+    include_source: true,
   }
-  pushFeature(doc, feature)
+  mergeInlineFields(array, inline)
+  // A rectangular mode reads a second direction; the setter seeds it when it
+  // switches modes, so an inline switch gets the same defaults. Only an ABSENT
+  // value is seeded: a count_y or pitch_y expression is a real authored value.
+  if (array.mode === 'rectangular') {
+    if (array.count_y === undefined) array.count_y = 2
+    if (array.pitch_y === undefined) array.pitch_y = 20
+  }
+  pushFeature(doc, { id: featureId, kind: 'array', label: label ?? 'Array', array })
 }
 
 export function applySetArrayMode(
@@ -546,32 +572,38 @@ export function applySetArrayMode(
   }
   sub.mode = mode
   if (mode === 'linear') {
-    if (typeof sub.count_x !== 'number') sub.count_x = 2
-    if (typeof sub.pitch_x !== 'number') sub.pitch_x = 20
+    if (sub.count_x === undefined) sub.count_x = 2
+    if (sub.pitch_x === undefined) sub.pitch_x = 20
     delete sub.count_y
     delete sub.pitch_y
   } else if (mode === 'rectangular') {
-    if (typeof sub.count_x !== 'number') sub.count_x = 2
-    if (typeof sub.pitch_x !== 'number') sub.pitch_x = 20
-    if (typeof sub.count_y !== 'number') sub.count_y = 2
-    if (typeof sub.pitch_y !== 'number') sub.pitch_y = 20
+    if (sub.count_x === undefined) sub.count_x = 2
+    if (sub.pitch_x === undefined) sub.pitch_x = 20
+    if (sub.count_y === undefined) sub.count_y = 2
+    if (sub.pitch_y === undefined) sub.pitch_y = 20
   }
 }
 
 // ─── Circular Array ───
 
-export function applyAddCircularArray(doc: PartDoc, featureId: string, label?: string): void {
-  const feature: PartFeature = {
+export function applyAddCircularArray(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  inline: Partial<CircularArrayFeatureDef> = {},
+): void {
+  const circularArray: CircularArrayFeatureDef = {
+    count: 4,
+    operation: 'add',
+    include_source: true,
+  }
+  mergeInlineFields(circularArray, inline)
+  pushFeature(doc, {
     id: featureId,
     kind: 'circular_array',
     label: label ?? 'Circular Array',
-    circular_array: {
-      count: 4,
-      operation: 'add',
-      include_source: true,
-    },
-  }
-  pushFeature(doc, feature)
+    circular_array: circularArray,
+  })
 }
 
 export function applySetCircularArrayField(doc: PartDoc, featureId: string, field: keyof CircularArrayFeatureDef, value: unknown): void {
@@ -725,13 +757,15 @@ export function applySetTransformField(
 
 // ─── Mirror ───
 
-export function applyAddMirror(doc: PartDoc, featureId: string, label?: string): void {
-  pushFeature(doc, {
-    id: featureId,
-    kind: 'mirror',
-    label: label ?? 'Mirror',
-    mirror: { body: '', plane: '', keep_original: true, merge: true },
-  })
+export function applyAddMirror(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  inline: Partial<MirrorFeatureDef> = {},
+): void {
+  const mirror: MirrorFeatureDef = { body: '', plane: '', keep_original: true, merge: true }
+  mergeInlineFields(mirror, inline)
+  pushFeature(doc, { id: featureId, kind: 'mirror', label: label ?? 'Mirror', mirror })
 }
 
 export function applySetMirrorField(

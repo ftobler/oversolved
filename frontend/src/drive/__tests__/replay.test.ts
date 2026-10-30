@@ -7,7 +7,7 @@
 // with several applies keeps one source instead of resetting it per entry.
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { CommandJournal, JOURNAL_CAPACITY, createDriveJournal, journalSink } from '../journal'
+import { CommandJournal, JOURNAL_CAPACITY, createDriveJournal, journalSink, type ReproPayload } from '../journal'
 import { replayJournal } from '../replay'
 import { docHashOf } from '../docHash'
 import { driveSeedFor } from '../seededIds'
@@ -119,5 +119,34 @@ describe('repro version compatibility', () => {
     const replay = await replayJournal(repro, fresh.session)
     expect(replay.ok).toBe(true)
     expect(replay.finalHash).toBe(docHashOf(recorded.cell.current))
+  })
+
+  it('reports an unresolved selector payload as a thrown step and keeps the doc', async () => {
+    // Replay skips the value rules (allowInternal), so a selector payload can
+    // reach the applier. That must be a named thrown step, not a silent
+    // unbind, and the doc must stay as it was.
+    const doc = sketchDoc()
+    const payload: Mutation = { type: 'add_sketch', featureId: 'sk2', plane: { selector: { kind: 'face' } } }
+    const repro: ReproPayload = {
+      kind: 'oversolved-repro',
+      version: 2,
+      docHash: docHashOf(doc),
+      doc: structuredClone(doc),
+      seed: 1,
+      warnings: [],
+      journal: [{
+        kind: 'mutation',
+        payload,
+        docHashBefore: docHashOf(doc),
+        docHashAfter: docHashOf(doc),
+        mintIndex: 0,
+        at: 0,
+      }],
+    }
+    const fresh = makeSession(structuredClone(doc))
+    const replay = await replayJournal(repro, fresh.session)
+    expect(replay.ok).toBe(false)
+    expect(replay.steps[0].error?.code).toBe('thrown')
+    expect(fresh.cell.current?.features?.some(feature => feature.id === 'sk2')).toBe(false)
   })
 })

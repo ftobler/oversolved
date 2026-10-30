@@ -29,6 +29,9 @@ export type FieldType =
   | 'array'
   | 'object'
   | 'query'
+  // A query string, or a `{selector}` authoring aid the headless drive resolves
+  // into the query string before the mutation applies.
+  | 'queryOrSelector'
   // A field whose applier accepts a string or a number (a definition value).
   | 'scalar'
   // A pass-through value whose shape belongs to the applier (set_*_field).
@@ -81,7 +84,13 @@ const obj = (note?: string) => ({ type: 'object', required: true, ...(note !== u
 const shapedObj = (shape: JsonSchema, note?: string) =>
   ({ type: 'object', required: false, shape, ...(note !== undefined && { note }) } as const)
 const query = (note: string) => ({ type: 'query', required: true, note } as const)
-const optQuery = (note: string) => ({ type: 'query', required: false, note } as const)
+// A pick an author may name with `select`'s grammar instead of pasting the
+// query string it returned; the drive resolves the selector, the document
+// stores only the query.
+const optQueryOrSelector = (note: string) =>
+  ({ type: 'queryOrSelector', required: false, note } as const)
+const queryOrSelector = (note: string) =>
+  ({ type: 'queryOrSelector', required: true, note } as const)
 // The pass-through setter value: null is the documented clear (a deleted
 // field), so it is nullable even though the applier owns the real type.
 const anyValue = (note?: string) =>
@@ -89,6 +98,10 @@ const anyValue = (note?: string) =>
 // A number-or-expression field a bulk add can carry in its own payload.
 const optScalar = (note?: string) =>
   ({ type: 'scalar', required: false, ...(note !== undefined && { note }) } as const)
+// The circular array's step_angle is the one inline field the union spells
+// `| null`; null is the documented clear, so the add row must admit it too.
+const optNullableScalar = (note?: string) =>
+  ({ type: 'scalar', required: false, nullable: true, ...(note !== undefined && { note }) } as const)
 
 // The insert slot and the drag snapshot are journal/gesture plumbing: both ride
 // on a payload the app produces, never on one a script authors.
@@ -118,6 +131,9 @@ const bodyQuery = () => query('A body id such as body_ex1, or a stored body quer
 const PLANE_QUERY_NOTE =
   '@<planeId>, a bare plane name (Top, Front, Right), or a face query from `select` '
   + '(the stored ?...:flatface string): a face query places the sketch on that face, origin = face centroid. '
+  + 'Instead of pasting that query string, `plane` also takes the selector itself as `{selector: <a select '
+  + 'selector naming exactly one face>}`; the headless drive resolves it against the settled solve and stores the '
+  + 'query it matched, so the document never carries a selector. '
   + 'The run/measure reply `frames` map reports the resolved origin and axes.'
 
 // The params slot order per entity kind, generated from the entity registry so
@@ -192,6 +208,9 @@ const HOLE_FIELD_NOTE =
   'A blind add with no depth keeps the editor default of 20. ' +
   'The optional fields are direction, target, thread, style, cb_diameter, cb_depth, cs_angle; ' +
   'they are all optional in an `add_hole` payload. ' +
+  'With no `target` the hole drills the body its drill sites sit on or in (a face sketch whose sites lie on or in ' +
+  'the material picks that body even when it is not the first); a site outside every body falls back to the ' +
+  'first body and the miss warning names it. ' +
   '`direction` is the sketch plane\'s normal (the default) or its reverse; a face sketch\'s normal ' +
   'points out of the face, so a hole on a face usually wants `reverse`, and a blind hole that misses ' +
   'every site says so when the reverse would cut. ' +
@@ -222,7 +241,7 @@ const holeAddFields = () => {
     depth_mode: optStr('blind | through_all.'),
     depth: optScalar(),
     direction: optStr('normal | reverse.'),
-    target: optStr('The body to drill into; the first body when absent.'),
+    target: optStr('The body to drill into; the body the drill sites sit on or in when absent.'),
     style: optStr('simple | counterbore | countersink (absent means simple).'),
     cb_diameter: optScalar(),
     cb_depth: optScalar(),
@@ -295,6 +314,18 @@ const ARRAY_OPERATION_NOTE =
   '`operation: add` unions each instance into the source body when they intersect; disjoint copies split into ' +
   'separate bodies, taking the source id and `_1`, `_2`... siblings (the `run` reply summary names the live ids). ' +
   '`operation: new` keeps the source as instance 0 and mints one body per copy.'
+
+// One call may carry a whole array: the add row takes the same names its
+// setter does, so a six-copy linear array is not seven steps (batch B F2). The
+// list is generated from the schema so a new field cannot drift.
+const arrayInlineNote = (kind: FeatureKind, setter: string): string =>
+  `One call may carry the whole array: ${featureFieldNames(kind).join(', ')} are accepted inline and store the ` +
+  `same keys ${setter} sets.`
+
+const MIRROR_INLINE_NOTE =
+  'One call may carry the whole mirror: ' +
+  `${featureFieldNames('mirror').join(', ')} are accepted inline and store the same keys ` +
+  '`set_mirror_field` sets.'
 
 // Generated from the registry so the example cannot drift: the hand-written
 // note named `distance`, a kind the validator refuses (mountPlate F1).
@@ -391,6 +422,13 @@ const SHELL_BULK_NOTE =
   'One call may carry the whole pick: `faces` appends the query strings `select` returned, and `thickness` and ' +
   '`direction` set the wall in the same step. `add_shell_face` and `set_shell_field` remain for later single-face ' +
   'and field edits. ' + SHELL_SIGN_NOTE
+
+// The shell face list is a pick list like a fillet's edges, so each entry takes
+// the same two spellings.
+const SHELL_FACES_NOTE =
+  'Each `faces` entry is a face query from `select`, or `{selector: <a select selector>}`: a selector expands to ' +
+  'one entry per face it matches, so one entry can open several faces. The headless drive resolves a selector ' +
+  'against the settled solve before the shell applies; the document stores only query strings.'
 
 const fieldOf = (label: string, type: FieldSetterType) =>
   str(`The ${label} field to set. Valid fields: ${(setterFieldNames(type) ?? []).join(', ')}.`)
@@ -609,7 +647,7 @@ export const MUTATION_CATALOG = {
   set_feature_plane: {
     summary: 'Move a sketch to another plane.',
     note: PLANE_REF_NOTE,
-    fields: { featureId: str(), plane: query(PLANE_QUERY_NOTE) },
+    fields: { featureId: str(), plane: queryOrSelector(PLANE_QUERY_NOTE) },
   },
   add_sketch: {
     summary: 'Add a sketch feature, optionally on a plane.',
@@ -617,7 +655,7 @@ export const MUTATION_CATALOG = {
     fields: {
       featureId: str(),
       label: optStr(),
-      plane: optQuery(PLANE_QUERY_NOTE),
+      plane: optQueryOrSelector(PLANE_QUERY_NOTE),
       insertAt: insertAt(),
     },
   },
@@ -778,11 +816,12 @@ export const MUTATION_CATALOG = {
   },
   add_shell: {
     summary: 'Add a shell feature, optionally with its removed faces, thickness and direction in the same call.',
-    note: SHELL_BULK_NOTE,
+    note: SHELL_BULK_NOTE + ' ' + SHELL_FACES_NOTE,
     fields: {
       ...featureAddFields(),
       faces: optArr(
-        'Face queries from `select` to remove (the openings); the same array the document stores as shell.faces. ' +
+        'Face queries from `select` to remove (the openings), or `{selector}` entries the drive resolves; ' +
+        'the same array the document stores as shell.faces. ' +
         'May be empty when `source_body` names a body for a closed hollow.',
       ),
       thickness: optScalar('A positive number or an expression string; defaults to 1 when omitted.'),
@@ -855,9 +894,25 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), tool: bodyQuery() },
   },
   add_array: {
-    summary: 'Add a linear array feature.',
-    note: ARRAY_OPERATION_NOTE,
-    fields: featureAddFields(),
+    summary: 'Add a linear array feature, optionally with its source, counts, pitches and operation.',
+    note: ARRAY_OPERATION_NOTE + ' ' + arrayInlineNote('array', 'set_array_field'),
+    fields: {
+      ...featureAddFields(),
+      source_body: optStr('The body to copy, e.g. body_ex2.'),
+      mode: optStr('linear | rectangular; defaults to linear.'),
+      operation: optStr('add | new; defaults to add.'),
+      include_source: optBool(),
+      count_x: optScalar(),
+      pitch_x: optScalar(),
+      direction_x: optPoint(),
+      direction_x_query: optStr(),
+      invert_x: optBool(),
+      count_y: optScalar(),
+      pitch_y: optScalar(),
+      direction_y: optPoint(),
+      direction_y_query: optStr(),
+      invert_y: optBool(),
+    },
   },
   set_array_field: {
     summary: 'Set one linear-array field.',
@@ -865,9 +920,21 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), field: fieldOf('array', 'set_array_field'), value: setterValue('array') },
   },
   add_circular_array: {
-    summary: 'Add a circular array feature.',
-    note: ARRAY_OPERATION_NOTE + ' ' + CIRCULAR_AXIS_NOTE,
-    fields: featureAddFields(),
+    summary: 'Add a circular array feature, optionally with its source, count, angle and axis.',
+    note: ARRAY_OPERATION_NOTE + ' ' + CIRCULAR_AXIS_NOTE + ' '
+      + arrayInlineNote('circular_array', 'set_circular_array_field'),
+    fields: {
+      ...featureAddFields(),
+      source_body: optStr('The body to copy, e.g. body_ex2.'),
+      operation: optStr('add | new; defaults to add.'),
+      include_source: optBool(),
+      count: optScalar(),
+      step_angle: optNullableScalar(),
+      axis: optStr('An edge, sketch entity or face ref; overrides the stored origin/direction pair.'),
+      axis_origin: optPoint(),
+      axis_direction: optPoint(),
+      invert_axis: optBool(),
+    },
   },
   set_circular_array_field: {
     summary: 'Set one circular-array field.',
@@ -939,8 +1006,15 @@ export const MUTATION_CATALOG = {
     fields: { bodyId: str(), transmission: num() },
   },
   add_mirror: {
-    summary: 'Add a mirror feature.',
-    fields: featureAddFields(),
+    summary: 'Add a mirror feature, optionally with its body, plane and merge flags.',
+    note: MIRROR_INLINE_NOTE,
+    fields: {
+      ...featureAddFields(),
+      body: optStr('The body to mirror, e.g. body_ex2.'),
+      plane: optStr('The mirror plane: @builtin_plane_*, a bare name, @<planeId>, or a face query.'),
+      keep_original: optBool(),
+      merge: optBool(),
+    },
   },
   set_mirror_field: {
     summary: 'Set one mirror field.',
@@ -1231,6 +1305,9 @@ function matchesType(type: FieldType, value: unknown): boolean {
     case 'string':
     case 'query':
       return typeof value === 'string'
+    case 'queryOrSelector':
+      return typeof value === 'string'
+        || (isRecord(value) && Object.keys(value).length === 1 && isRecord(value.selector))
     case 'number':
       return typeof value === 'number' && Number.isFinite(value)
     case 'boolean':
