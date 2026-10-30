@@ -494,6 +494,10 @@ banner on stdout, so a client config must use the direct node invocation.
   built. A feature can solve to `exception` or `partial`, or succeed with a
   `solver_warning` (a fallback, or a hole that removed nothing), and `ok`
   stays true: that is data like a failing compare row, not a failed call. The
+  exception is a warning a later feature made moot: when a later union or merge
+  fused the bodies a "the new solid also touches ..." warning named, the kernel
+  moves that text to `resolved_warning` (exposed as `resolvedWarning` on the
+  outcome) and the feature is not listed. The
   `features` list carries every such feature in feature log order as
   `{ id, kind, status, message }`, where `message` is the kernel's own
   exception or warning text; it is always present and empty for a clean build.

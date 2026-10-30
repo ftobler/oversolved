@@ -18,6 +18,7 @@ import {
   type RebuildValidation,
 } from './builderTypes'
 import { stableJson, hashCheckpointSpec, hashResultDict, diffRepoSnapshot } from './builderHash'
+import { resolveTouchWarnings } from './resolveTouchWarnings'
 import {
   RESTORE_OWNER,
   snapshotRepo,
@@ -681,6 +682,11 @@ export function build(
 
   // Builtin planes are always addressable in the result.
   Object.assign(result, BUILTIN_PLANE_RESULTS)
+
+  // A later feature can make an earlier "also touches" warning no longer true.
+  // Resolve against the final stack before the result crosses the boundary; the
+  // checkpoints keep each feature's own unresolved row.
+  resolveTouchWarnings(newState.feature_order, newCheckpoints, result)
 
   const response: BuildResponse = {
     solve_ms: buildMs,
