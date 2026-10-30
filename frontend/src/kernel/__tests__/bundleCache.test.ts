@@ -189,6 +189,16 @@ describe('bundleCache', () => {
     expect(await bundleCacheHas('docA', 'h1')).toBe(false)
   })
 
+  it('the released schema 1 reads back as a miss, so pre-axial-mid anchors cannot serve', async () => {
+    // Schema 1 is the released one, where a cylinder/cone/torus anchor sat at
+    // the surface frame origin instead of the face's axial midpoint. Those
+    // records must cold-rebuild rather than hand their pose to a new solve.
+    expect(BUNDLE_SCHEMA).toBeGreaterThan(1)
+    await bundleCachePut({ ...fixtureBundle('docA', 'h1'), schema: 1 })
+    expect(await bundleCacheGet('docA', 'h1')).toBeUndefined()
+    expect(await bundleCacheHas('docA', 'h1')).toBe(false)
+  })
+
   it('a record built by different code reads back as a miss; a matching fingerprint is a hit', async () => {
     await bundleCachePut(fixtureBundle('docA', 'h1'))
     expect(await bundleCacheGet('docA', 'h1')).toBeDefined()
