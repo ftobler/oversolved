@@ -141,32 +141,22 @@ fn copy_rotation_ratio_one_descends_the_short_way_through_a_full_turn() {
     // residual points B forward through the former branch cut to the
     // nearest representative of its seed orientation; before the wrap the
     // raw 340-degree-equivalent error dragged it the long way around.
+    //
+    // The start pose is spelled as a rotation vector over the seed (the
+    // reduced state's `w`), which is how the manifold solver names "parked
+    // 340 deg away"; `expand` composes it into the pose the residuals see.
     let input = copy_rotation_input(1.0, 0.0, 0.0);
     let p = MateProblem::new(&input);
     let res = p.residuals_fn();
     let jac = p.jacobian_fn();
-    let damp = p.rotation_damp_scale();
-    let half = 340.0_f64.to_radians() / 2.0;
-    let x_start = vec![
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        half.sin(),
-        half.cos(),
-    ];
-    let out = lm::solve_lm_damped(&x_start, &res, &jac, &damp);
+    let damp = p.reduced_damp_scale();
+    let mut y_start = p.reduced_x0(); // body 0 is grounded, so only body 1's 6
+    y_start[5] = 340.0_f64.to_radians(); // entries are here: w_z parks the roll
+    let out = lm::solve_lm_damped(&y_start, &res, &jac, &damp);
     assert!(out.residual_norm < 1e-3, "rn={}", out.residual_norm);
-    let qz = out.x[12];
-    let qw = out.x[13];
+    let x = p.expand(&out.x);
+    let qz = x[12];
+    let qw = x[13];
     let roll_mod = (2.0 * qz.atan2(qw)).rem_euclid(2.0 * std::f64::consts::PI);
     assert!(
         !(0.05..=2.0 * std::f64::consts::PI - 0.05).contains(&roll_mod),

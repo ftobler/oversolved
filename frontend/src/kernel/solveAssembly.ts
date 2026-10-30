@@ -732,11 +732,14 @@ export async function solveAssembly(
         }
       }
 
-      // The boundary: the unit-norm constraint on qx..qw is a SOFT residual
-      // (mate_residuals.rs), so the solved quaternion is unit only to within
-      // LM's tolerance. makeTransform normalizes here, once, so every
-      // downstream consumer (posed anchors, transformed meshes, transformed
-      // edge curves) inherits a unit quaternion and never has to again.
+      // The boundary: q is unit by construction (mate_solver composes every
+      // pose as exp(w) * q_ref over a normalised reference, so there is no
+      // unit-norm residual left to trade a point gap against), which means
+      // what this loop reads is already the pose the solver minimised over.
+      // makeTransform normalizes anyway, once, because it is one sqrt and
+      // every downstream consumer (posed anchors, transformed meshes,
+      // transformed edge curves) then inherits a unit quaternion and never
+      // has to think about it again.
       for (const part of parts) {
         const bodyIndex = handleToIndex.get(part.handle)
         // A failed bundle never entered the solver: keep its placement.
@@ -745,14 +748,12 @@ export async function solveAssembly(
           continue
         }
         // A `fixed` part is echoed from its SEED, bit-exact, never from the
-        // solver's output. The pin is a soft least-squares residual
-        // (mate_residuals.rs), not a hard clamp: it can be outvoted, and a
-        // pinned body is in fact the cheapest thing in the system to rotate
-        // (rotation_damp_scale leaves pinned bodies at 1.0 while every free
-        // body's rotation is damped ROT_DAMP_SCALE = 500x). Even when it holds,
-        // it holds only to LM tolerance -- and bakeSolvedTransforms would write
-        // that error back into the seed, so the drift ratchets solve after
-        // solve. Fixed means fixed: position AND orientation.
+        // solver's output. That used to be a defence against a soft pin row
+        // (grounded bodies are out of the free parameters entirely now, so the
+        // solver cannot move them even internally); it stays because it is the
+        // contract: bakeSolvedTransforms would write any solver-side error
+        // back into the seed and ratchet it solve after solve. Fixed means
+        // fixed: position AND orientation.
         if (part.fixed) {
           transforms[part.handle] = { ...part.transform }
           continue

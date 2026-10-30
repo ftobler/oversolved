@@ -1,7 +1,9 @@
 //! Shared quaternion, 3-vector and roll-angle helpers for the mate
-//! residuals and Jacobian. Split out of `mate_residuals.rs`; the formulas
-//! are unchanged. Visibility is `pub(super)` because the residual builders
-//! and the Jacobian fillers live in sibling modules.
+//! residuals and Jacobian. Split out of `mate_residuals.rs`; the residual
+//! formulas are unchanged, and the manifold helpers at the bottom are the
+//! ones the rotation-increment state composes through. Visibility is
+//! `pub(super)` because the residual builders and the Jacobian fillers live
+//! in sibling modules.
 
 // ─── Quaternion / transform helpers ───
 
@@ -64,6 +66,121 @@ pub(super) fn normalise_axis(v: &[f64; 3]) -> [f64; 3] {
     }
     let inv = 1.0 / n2.sqrt();
     [v[0] * inv, v[1] * inv, v[2] * inv]
+}
+
+// ─── Manifold rotation state (rotation vector increments over a unit reference) ───
+
+/// Quaternion product `a * b` (apply `b` first, then `a`), (x, y, z, w) layout.
+pub(super) fn quat_mul(a: &[f64; 4], b: &[f64; 4]) -> [f64; 4] {
+    [
+        a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+        a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+        a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+        a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+    ]
+}
+
+/// Unit quaternion closest to `q`. A zero (or degenerate) quaternion reads as
+/// the identity rather than NaN: the seed comes from a host buffer the codec
+/// gates for finiteness, not for norm, so a zero quaternion is legal input.
+pub(super) fn quat_normalize(q: &[f64; 4]) -> [f64; 4] {
+    let n = (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]).sqrt();
+    if !(n.is_finite() && n > 0.0) {
+        return [0.0, 0.0, 0.0, 1.0];
+    }
+    let inv = 1.0 / n;
+    [q[0] * inv, q[1] * inv, q[2] * inv, q[3] * inv]
+}
+
+/// Unit quaternion of the rotation vector `w` (axis times angle), the
+/// `exp(w)` the manifold state composes onto its reference. The small-angle
+/// branch keeps `exp(0)` exactly the identity, so a body at its seed composes
+/// back to the reference quaternion itself instead of a rounded copy of it.
+pub(super) fn quat_exp(w: &[f64; 3]) -> [f64; 4] {
+    let theta2 = w[0] * w[0] + w[1] * w[1] + w[2] * w[2];
+    if theta2 < 1e-16 {
+        // sin(t/2)/t and cos(t/2) to second order; exact enough that the two
+        // branches agree to well below one ulp at the switch point.
+        let s = 0.5 - theta2 / 48.0;
+        return [w[0] * s, w[1] * s, w[2] * s, 1.0 - theta2 / 8.0];
+    }
+    let theta = theta2.sqrt();
+    let s = (0.5 * theta).sin() / theta;
+    [w[0] * s, w[1] * s, w[2] * s, (0.5 * theta).cos()]
+}
+
+/// `d(exp(w) * q_ref)/dw`, the 4x3 chain the manifold Jacobian applies to the
+/// existing per-kind quaternion derivatives (row per quaternion component,
+/// column per rotation-vector component).
+///
+/// With `p = exp(w)` and `q = p * q_ref`, the chain factorises as
+/// `dq/dw = (dq/dp) * (dp/dw)`: the left factor is the constant
+/// `[[qw*I - [q_vec]_x], [-q_vec]]` of `q_ref` (and `q_ref` itself for the
+/// scalar half), the right factor the derivative of the rotation-vector
+/// exponential. It is exact at EVERY `w`, which is what lets the LM state keep
+/// `w` relative to the seed instead of folding every accepted step back into
+/// a reference: no re-linearisation point is ever stale.
+pub(super) fn dexp_drot(q_ref: &[f64; 4], w: &[f64; 3]) -> [[f64; 3]; 4] {
+    let (rx, ry, rz, rw) = (q_ref[0], q_ref[1], q_ref[2], q_ref[3]);
+    let theta2 = w[0] * w[0] + w[1] * w[1] + w[2] * w[2];
+
+    // d(exp(w))/dw split into its vector and scalar halves:
+    //   d p_vec / d w = f(w) I + (f'(t)/t) * w w^T   with f(t) = sin(t/2)/t
+    //   d p_w   / d w = -(sin(t/2) / (2t)) * w^T
+    // The small-angle branch uses the same series `quat_exp` does, so both
+    // halves stay continuous (and exact for w = 0) across the switch point.
+    let (f, fp_over_t, sin_half_over_2t): (f64, f64, f64) = if theta2 < 1e-16 {
+        (
+            0.5 - theta2 / 48.0,
+            -1.0 / 24.0 + theta2 / 960.0,
+            -0.25 + theta2 / 96.0,
+        )
+    } else {
+        let theta = theta2.sqrt();
+        let half = 0.5 * theta;
+        let (s, c) = (half.sin(), half.cos());
+        (
+            s / theta,
+            (0.5 * c * theta - s) / (theta * theta * theta),
+            -s / (2.0 * theta),
+        )
+    };
+    let mut dp_dv = [[0.0; 3]; 3];
+    for i in 0..3 {
+        for j in 0..3 {
+            dp_dv[i][j] = if i == j { f } else { 0.0 } + fp_over_t * w[i] * w[j];
+        }
+    }
+    let dp_dw: [f64; 3] = [
+        sin_half_over_2t * w[0],
+        sin_half_over_2t * w[1],
+        sin_half_over_2t * w[2],
+    ];
+
+    // Left factor of the chain, dq/dp: its vector rows are rw*I - [q_vec]_x
+    // and its scalar row -q_vec^T (from q = p * q_ref, differentiating the
+    // vector half), plus [q_vec; rw] for the scalar half of p.
+    let skew = [[0.0, -rz, ry], [rz, 0.0, -rx], [-ry, rx, 0.0]];
+    let q_vec = [rx, ry, rz];
+    let mut out = [[0.0; 3]; 4];
+    for i in 0..3 {
+        for c in 0..3 {
+            let mut acc = q_vec[i] * dp_dw[c];
+            for k in 0..3 {
+                let left = if i == k { rw } else { 0.0 } - skew[i][k];
+                acc += left * dp_dv[k][c];
+            }
+            out[i][c] = acc;
+        }
+    }
+    for c in 0..3 {
+        let mut acc = rw * dp_dw[c];
+        for k in 0..3 {
+            acc += -q_vec[k] * dp_dv[k][c];
+        }
+        out[3][c] = acc;
+    }
+    out
 }
 
 // ─── Derivatives of rotation with respect to quaternion components ───

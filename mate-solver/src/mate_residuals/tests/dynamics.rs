@@ -199,14 +199,12 @@ fn mate_residual_count_matches_actual_residuals_pushed() {
         let p = MateProblem::new(&input);
         let x: Vec<f64> = input.params_initial.clone();
         let pushed = p.residuals(&x).len();
-        // Total = per-mate residuals + n_bodies (unit-norm) + 0 grounded.
+        // The rows are the mate's rows alone: the unit-norm and grounded-pin
+        // rows this used to subtract `2` for are gone with the manifold state.
         assert_eq!(
-            pushed - 2,
-            want,
-            "kind {:?} pushed {} mate residuals, want {}",
-            kind,
-            pushed - 2,
-            want
+            pushed, want,
+            "kind {:?} pushed {} rows, want {}",
+            kind, pushed, want
         );
         assert_eq!(
             p.m, pushed,
@@ -238,9 +236,11 @@ fn mate_naming_a_body_outside_the_assembly_is_dropped() {
     };
     let p = MateProblem::new(&input);
     let x: Vec<f64> = input.params_initial.clone();
-    // Only the two quaternion-norm rows and the grounded body's 7 pins remain.
-    assert_eq!(p.residuals(&x).len(), 9);
-    assert_eq!(p.m, 9);
+    // The whole mate is gone, and with the global rows gone too there is
+    // nothing left to push: m is exactly zero, not "the parameterisation
+    // rows".
+    assert_eq!(p.residuals(&x).len(), 0);
+    assert_eq!(p.m, 0);
 
     // The whole solve survives and leaves the free body where it was.
     let out = solve_mate(&input);
@@ -304,13 +304,13 @@ fn mate_whose_body_block_overruns_the_params_is_dropped() {
     let p = MateProblem::new(&input);
     assert!(p.mates.is_empty());
 
-    // The quaternion-norm loop used to panic right here: body 1's unit-
-    // norm row indexed its missing block off the end of x. The dropped
-    // body contributes no rows and m tracks exactly what survives (one
-    // row for body 0), so residuals, Jacobian and a full solve all stay
-    // panic-free.
+    // Body 1's missing block used to panic the quaternion-norm loop (it
+    // indexed the block off the end of x); with the global rows gone and the
+    // drop decided once in `new`, m tracks exactly the mate rows that
+    // survive -- here zero -- and residuals, Jacobian and a full solve all
+    // stay panic-free.
     let x: Vec<f64> = input.params_initial.clone();
-    assert_eq!(p.m, 1);
+    assert_eq!(p.m, 0);
     assert_eq!(p.residuals(&x).len(), p.m);
     let j = p.jacobian(&x);
     assert_eq!(j.nrows(), p.m);
@@ -322,13 +322,13 @@ fn mate_whose_body_block_overruns_the_params_is_dropped() {
         "a truncated buffer is malformed input, not a failed constraint set"
     );
 
-    // Same overrun with the MISSING body grounded: this is the path that
-    // panicked inside the grounded-pin loop (x[off + j] past the buffer).
-    // It must degrade identically.
+    // Same overrun with the MISSING body grounded: the path that used to
+    // panic inside the grounded-pin loop (x[off + j] past the buffer). It
+    // must degrade identically.
     let mut input = input;
     input.fixed_mask = vec![0b0000_0010];
     let p = MateProblem::new(&input);
-    assert_eq!(p.m, 1);
+    assert_eq!(p.m, 0);
     assert_eq!(p.residuals(&x).len(), p.m);
     assert_eq!(p.jacobian(&x).nrows(), p.m);
     let out = solve_mate(&input);
@@ -336,10 +336,11 @@ fn mate_whose_body_block_overruns_the_params_is_dropped() {
 }
 
 #[test]
-fn rotation_damp_scale_stiffens_only_free_body_rotation() {
-    // body 0 grounded, body 1 free. The damping scale must lift the four
-    // rotation params of the free body and leave translation (and the whole
-    // grounded body) at 1.0.
+fn reduced_damp_scale_stiffens_only_free_body_rotation() {
+    // body 0 grounded, body 1 free. The reduced state is 6 entries: the
+    // grounded body has no columns at all (that pin-row removal is what made
+    // "grounded" a state property), translation stays at the base scale and
+    // the free body's rotation increments take ROT_DAMP_SCALE.
     let input = MateInput {
         bodies: (0..2).map(|_| RigidBody).collect(),
         params_initial: vec![
@@ -349,21 +350,52 @@ fn rotation_damp_scale_stiffens_only_free_body_rotation() {
         mates: vec![],
     };
     let p = MateProblem::new(&input);
-    let scale = p.rotation_damp_scale();
-    assert_eq!(scale.len(), 14);
-    assert!(
-        scale[0..7].iter().all(|&s| s == 1.0),
-        "grounded body stays at 1.0"
+    let scale = p.reduced_damp_scale();
+    assert_eq!(
+        scale.len(),
+        6,
+        "a grounded body must contribute no state columns"
     );
     assert!(
-        scale[7..10].iter().all(|&s| s == 1.0),
-        "free-body translation stays at 1.0"
+        scale[0..3].iter().all(|&s| s == 1.0),
+        "free-body translation stays at the base scale, got {:?}",
+        &scale[0..3]
     );
     assert!(
-        scale[10..14].iter().all(|&s| s == ROT_DAMP_SCALE),
-        "free-body rotation is stiffened"
+        scale[3..6].iter().all(|&s| s == ROT_DAMP_SCALE),
+        "free-body rotation increments are stiffened, got {:?}",
+        &scale[3..6]
     );
     const { assert!(ROT_DAMP_SCALE > 1.0) };
+}
+
+#[test]
+fn reduced_damp_scale_keeps_the_rotation_ratio_at_any_curvature() {
+    // With a real Jacobian the entries divide by the seed's largest J^T J
+    // diagonal (so the driver's lambda0, which comes from that same diagonal,
+    // cannot make the first step damping-dominated on a long-lever drawing).
+    // The invariant the damping tests depend on is the RATIO, not the value.
+    let input = two_body_input();
+    let p = MateProblem::new(&input);
+    let y0 = p.reduced_x0();
+    let j0 = p.jacobian_reduced(&y0);
+    let max_diag = (0..j0.ncols())
+        .map(|c| {
+            (0..j0.nrows())
+                .map(|r| j0[(r, c)] * j0[(r, c)])
+                .sum::<f64>()
+        })
+        .fold(0.0_f64, f64::max);
+    assert!(max_diag > 0.0, "the fixture must carry curvature");
+
+    let scale = p.reduced_damp_scale();
+    assert!((scale[0] * max_diag - 1.0).abs() < 1e-9 * max_diag);
+    assert!(
+        (scale[3] * max_diag - ROT_DAMP_SCALE).abs() < 1e-9 * max_diag,
+        "rotation keeps its {}x ratio, got {}",
+        ROT_DAMP_SCALE,
+        scale[3] * max_diag
+    );
 }
 
 #[test]
@@ -747,12 +779,13 @@ fn dense_cell_guard_flags_products_over_budget_and_overflow() {
 
 #[test]
 fn solve_mate_refuses_an_assembly_past_the_dense_budget_without_allocating() {
-    // The two-body fixture is 12x14 = 168 cells, so a budget of 100 refuses
+    // The two-body fixture is 3 mate rows x 14 params = 42 cells for the
+    // 7-param fill matrix the budget guards, so a budget of 40 refuses
     // it before the first Jacobian allocation: the seed passes through
     // untouched and the failing status comes back instead of the worker
     // dying inside a dense factorization it can never finish.
     let input = two_body_input();
-    let out = solve_mate_impl(&input, 100, false);
+    let out = solve_mate_impl(&input, 40, false);
     assert_eq!(out.overall_status, MateStatus::Overconstrained.to_u8());
     assert_eq!(out.params_solved, input.params_initial);
     assert_eq!(out.diagnostics.iters, 0);

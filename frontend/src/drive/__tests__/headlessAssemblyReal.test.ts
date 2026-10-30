@@ -298,6 +298,98 @@ describeReal('headless assembly with the real mate solver', () => {
     }
   }, 180_000)
 
+  // Six fixed mates over seven instances: one grounded hub with a cube mated
+  // to each of its six faces. Every child is seeded at identity rotation on
+  // the exact point-coincidence position, so the whole solve is six absolute
+  // rolls (the canonical perp frames of two opposite faces are anti-parallel,
+  // which reads as a pi roll error) plus the translations those rolls then
+  // need -- and the verdict must come back fully constrained, dof 0, with no
+  // mate flagged. This is the frame case for the manifold solver: six
+  // simultaneous half-turns over a reduced state whose quaternions are unit
+  // by construction and whose grounded hub has no columns at all.
+  it('fixes six mates around a hub and reaches fully_constrained', async () => {
+    // The cube spans [0, 20]^3: `rectSketch` starts its rectangle at the
+    // origin, so the part origin is a corner and every face centre below is
+    // read off that footprint.
+    const cube = (): PartDoc => ({
+      version: 1,
+      kind: 'part',
+      features: [rectSketch('sk1', 20, 20), extrude('sk1', 'ex1', 20)],
+    } as unknown as PartDoc)
+    const parts = new Map<string, PartDoc>([['cube', cube()]])
+    const mate = (
+      featureId: string,
+      child: string,
+      hubSel: ReturnType<typeof FLAT_LETTER>,
+      childSel: ReturnType<typeof FLAT_LETTER>,
+    ): AssemblyScriptStep => ({
+      mutation: {
+        type: 'add_mate', featureId, kind: 'fixed',
+        ref_a: { part: 'hub', selector: hubSel },
+        ref_b: { part: child, selector: childSel },
+        flip: true,
+      },
+    })
+    // Child placements: each child's mated face centre sits on the hub's face
+    // centre at identity rotation, so the seed carries no point error and the
+    // roll rows carry all the work.
+    const children: [string, [number, number, number]][] = [
+      ['up', [10, 10, 20]],
+      ['down', [10, 10, -20]],
+      ['east', [20, 0, 0]],
+      ['west', [-20, 0, 0]],
+      ['north', [0, 20, 0]],
+      ['south', [0, -20, 0]],
+    ]
+    const steps: AssemblyScriptStep[] = [
+      { mutation: { type: 'add_part', handle: 'hub', part: 'cube', fixed: true } },
+      ...children.map(([handle, position]): AssemblyScriptStep => ({
+        mutation: { type: 'add_part', handle, part: 'cube', position },
+      })),
+      // Each hub face against the touching face of the child seeded there.
+      mate('m_up', 'up', FLAT_LETTER('z', 'max'), FLAT_LETTER('z', 'min')),
+      mate('m_down', 'down', FLAT_LETTER('z', 'min'), FLAT_LETTER('z', 'max')),
+      mate('m_east', 'east', FLAT_LETTER('x', 'max'), FLAT_LETTER('x', 'min')),
+      mate('m_west', 'west', FLAT_LETTER('x', 'min'), FLAT_LETTER('x', 'max')),
+      mate('m_north', 'north', FLAT_LETTER('y', 'max'), FLAT_LETTER('y', 'min')),
+      mate('m_south', 'south', FLAT_LETTER('y', 'min'), FLAT_LETTER('y', 'max')),
+    ]
+
+    const result = await runAssemblyHeadless({ doc: emptyDriveAssemblyDoc(), parts, steps })
+    expect(
+      result.ok,
+      JSON.stringify({ mates: result.mates, errors: result.outcome.steps.map(s => s.error ?? null) }),
+    ).toBe(true)
+    expect(result.mates).toEqual([])
+    expect(result.solve.verdict).toBe('fully_constrained')
+    expect(result.solve.dof).toBe(0)
+
+    // The hub is echoed, not solved: still exactly where it was placed.
+    const hub = result.instances.find(instance => instance.handle === 'hub')!
+    expect(hub.position).toEqual([0, 0, 0])
+    expect(hub.quaternion).toEqual([0, 0, 0, 1])
+
+    // Residual honesty, over every non-stale mate of the assembly: the wire's
+    // number and the distance between the anchors as the host posed them must
+    // be the same number. Each mate here is a converged Fixed, so its axis and
+    // roll rows are spent and its residual IS the posed point gap; a solver
+    // reporting a smaller number would be marking mates green against a pose
+    // nobody is looking at (which is what the old soft-norm trade did at
+    // lever).
+    let checked = 0
+    for (const [id, frame] of Object.entries(result.mateFrames)) {
+      const residual = result.solve.mates[id]?.residual
+      if (residual === undefined || !frame.ref_a || !frame.ref_b) continue  // stale or dropped
+      const a = frame.ref_a.point
+      const b = frame.ref_b.point
+      const gap = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+      expect(residual).toBeLessThan(1e-9)
+      expect(Math.abs(residual - gap)).toBeLessThanOrEqual(1e-9 * Math.max(residual, gap, 1))
+      checked++
+    }
+    expect(checked).toBe(6)
+  }, 300_000)
+
   it('an inspect call returns the same handle and the same poses', async () => {
     const first = await runAssemblyHeadless({ doc: emptyDriveAssemblyDoc(), parts: binding(), steps: PIN_SCRIPT })
     const session = createHeadlessAssembly({ doc: first.doc, parts: binding() })
