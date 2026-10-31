@@ -7,7 +7,7 @@
  * See feature/chip-selection-consistency.md.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, render } from '@testing-library/react'
+import { act, fireEvent, render } from '@testing-library/react'
 import { PlaneEditor } from '@/components/editors/PlaneEditor'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature, PlaneFeature, PlaneDef, Mutation } from '@/types/cad'
@@ -144,6 +144,38 @@ describe('PlaneEditor pick chips', () => {
       featureId: 'pl1',
       field: 'point',
       value: '',
+    })
+  })
+})
+
+// origin_rotation edits through the same chip and setter machinery: the origin
+// is a pick (the vertex-query spelling), the axis a scalar letter (the setter
+// is scalar-only), and the angle a plain expression field.
+describe('PlaneEditor origin_rotation', () => {
+  it('offers the mode and its axis select, and dispatches the axis letter', () => {
+    const onMutation = vi.fn()
+    renderEditor(onMutation, { mode: 'origin_rotation', origin: '@builtin_origin', rotation_axis: 'x', rotation_angle: 30 })
+    const selects = [...document.querySelectorAll('.plane-editor select.feature-field-select')]
+    expect(selects).toHaveLength(2)  // mode + axis
+    expect([...selects[0].options].map(o => o.value)).toContain('origin_rotation')
+    expect(selects[1].value).toBe('x')
+    fireEvent.change(selects[1], { target: { value: 'y' } })
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_plane_definition_field', featureId: 'pl1', field: 'rotation_axis', value: 'y',
+    })
+  })
+
+  it('picking the origin chip dispatches the origin field', () => {
+    const onMutation = vi.fn()
+    renderEditor(onMutation, { mode: 'origin_rotation' })
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'pl1', field: 'origin' })
+    })
+    act(() => {
+      useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
+    })
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_plane_definition_field', featureId: 'pl1', field: 'origin', value: '@builtin_origin',
     })
   })
 })

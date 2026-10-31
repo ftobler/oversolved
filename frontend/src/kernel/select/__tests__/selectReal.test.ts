@@ -499,4 +499,50 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
       expect((e as Error).message).toContain('perpendicular [1, 0, 0] matched 0')
     }
   })
+
+  it('names the one box corner the three-extreme idiom selects, at its real point', async () => {
+    const bodies = await bodiesOf({ id: 'sel-corner', features: [rectSketch('sk1', 10, 10), extrude('ex1', 5)] })
+    const corner = selectByPredicate({
+      kind: 'vertex',
+      where: {
+        and: [
+          { extreme: { axis: [1, 0, 0], side: 'max' } },
+          { extreme: { axis: [0, 1, 0], side: 'max' } },
+          { extreme: { axis: [0, 0, 1], side: 'max' } },
+        ],
+      },
+    }, bodies)
+    expect(corner.queries).toHaveLength(1)
+    const geo = corner.items[0].geometry
+    expect(geo.kind).toBe('vertex')
+    if (geo.kind === 'vertex') {
+      geo.point.forEach((v, i) => expect(v).toBeCloseTo([10, 10, 5][i], 6))
+    }
+  })
+
+  it('the corner query is one of the body arrays a viewport click reads', async () => {
+    const bodies = await bodiesOf({ id: 'sel-corner-click', features: [rectSketch('sk1', 10, 10), extrude('ex1', 5)] })
+    const body = firstBody(bodies)
+    const corner = selectByPredicate({
+      kind: 'vertex',
+      where: {
+        and: [
+          { extreme: { axis: [1, 0, 0], side: 'max' } },
+          { extreme: { axis: [0, 1, 0], side: 'max' } },
+          { extreme: { axis: [0, 0, 1], side: 'max' } },
+        ],
+      },
+    }, bodies)
+    const vertices = body.vertices ?? []
+    const queries = body.vertex_queries ?? []
+    expect(queries).toHaveLength(vertices.length)
+    // The vertex the click sees (same index in both arrays) is the corner the
+    // idiom selected, so the select query and the click hit the same corner.
+    const idx = vertices.findIndex(p => p[0] === 10 && p[1] === 10 && p[2] === 5)
+    expect(idx).toBeGreaterThanOrEqual(0)
+    expect(queries[idx]).toBe(corner.queries[0])
+    // A click on an unnamed vertex falls back to body/index; the selector only
+    // returns kernel-named queries, the documented divergence from the edge path.
+    expect(topoFallbackQuery(body.id, 'vertex', idx)).not.toBe(corner.queries[0])
+  })
 })

@@ -125,10 +125,22 @@ Mirroring a selection (`mirror_entities`) writes plain authored entities: the co
 - id: pl1
   kind: plane
   definition:
-    mode: offset                 # offset | three_point | plane_point | line_angle | on_face | on_face_edge_angle | edge_point
+    mode: offset                 # offset | three_point | plane_point | line_angle | on_face | on_face_edge_angle | edge_point | origin_rotation
     plane: "@builtin_plane_front"
     offset: 10.0
     rotation: 0.0
+```
+
+`origin_rotation` places the plane at its own origin and swings the parent axes:
+
+```yaml
+- id: pl2
+  kind: plane
+  definition:
+    mode: origin_rotation        # origin plus a rotation about an axis
+    origin: "@sk1/p1"            # a point ref (or [x, y, z] world coordinates)
+    rotation_axis: z             # x | y | z (or [x, y, z] direction)
+    rotation_angle: 45.0         # degrees, required with rotation_axis
 ```
 
 ### extrude

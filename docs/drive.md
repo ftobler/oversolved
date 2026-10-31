@@ -394,7 +394,11 @@ banner on stdout, so a client config must use the direct node invocation.
   strings a click would store, so a headless author (an LLM, a translator, the
   fuzzer) can pick a fillet/chamfer/hole target without a pointer. The selector
   is a structured language modeled on CadQuery's string selectors: `kind` is
-  `edge` or `face`; `where` is one predicate, and several are composed with
+  `edge`, `face` or `vertex` (a vertex candidate is a body corner: the position
+  predicates test the vertex's own point, its `type` vocabulary is just
+  `vertex`, and a direction or radius clause matches none of them; the AND of
+  three `extreme` clauses names one corner, the workplane-on-a-vertex idiom);
+  `where` is one predicate, and several are composed with
   `and`/`or`/`not` (each predicate object carries exactly one key; two keys
   side by side are refused with the `and` form to use), over `parallel`,
   `perpendicular`, `type`, `extreme` (the min/max-projection group, tolerance
@@ -758,6 +762,13 @@ banner on stdout, so a client config must use the direct node invocation.
     holds both the edge and the point; normal is x cross y. When the point
     lies on the edge, y comes from x crossed with world +Z (world +X when x is
     nearly parallel to Z).
+  - `origin_rotation`: origin is the `origin` field (a point ref such as a
+    selected vertex, or `[x, y, z]` world coordinates); the axes are the
+    parent plane's axes (world XY when no `plane` is named) swung about
+    `rotation_axis` (`x`, `y`, `z` or a `[x, y, z]` direction) by
+    `rotation_angle` degrees, Rodrigues, with the normal rebuilt as x cross y.
+    `rotation_axis` and `rotation_angle` are required together; the common
+    in-plane `rotation` still applies last.
 - Read the frame from the reply. Every `run` and `measure` reply carries
   `frames`, an object keyed by feature id whose entries are
   `{origin, x_axis, y_axis, normal}` for each sketch and `add_plane` feature

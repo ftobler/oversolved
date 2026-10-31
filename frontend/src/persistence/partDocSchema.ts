@@ -113,7 +113,7 @@ const CONSTRAINT_SCHEMA: JsonSchema = {
 const PLANE_DEF: JsonSchema = {
   type: 'object',
   properties: {
-    mode: { enum: ['offset', 'three_point', 'plane_point', 'line_angle', 'edge_point', 'on_face', 'on_face_edge_angle'] },
+    mode: { enum: ['offset', 'three_point', 'plane_point', 'line_angle', 'edge_point', 'on_face', 'on_face_edge_angle', 'origin_rotation'] },
     plane: REF,
     offset: NUMBER_OR_EXPR,
     p1: REF,
@@ -125,6 +125,14 @@ const PLANE_DEF: JsonSchema = {
     face: REF,
     angle: NUMBER_OR_EXPR,
     rotation: NUMBER_OR_EXPR,
+    // origin_rotation names its own origin: a point/vertex ref or world
+    // coordinates. It is the one plane field that may carry coordinates.
+    origin: { anyOf: [REF, VEC3] },
+    // origin_rotation's turn: a world axis letter or a direction vector, with the
+    // angle in degrees. A bare direction, not the edge ref transform's
+    // rotation_axis names.
+    rotation_axis: { anyOf: [{ enum: ['x', 'y', 'z'] }, VEC3] },
+    rotation_angle: NUMBER_OR_EXPR,
   },
   additionalProperties: false,
 }

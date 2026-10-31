@@ -342,7 +342,7 @@ describe('mutation catalog', () => {
       expect(mutationInfoOf(type).note, type).toContain('`frames`')
     }
     expect(mutationInfoOf('add_sketch').fields.plane.note).toContain('frames')
-    for (const mode of ['offset', 'three_point', 'plane_point', 'line_angle', 'on_face', 'edge_point']) {
+    for (const mode of ['offset', 'three_point', 'plane_point', 'line_angle', 'on_face', 'on_face_edge_angle', 'edge_point', 'origin_rotation']) {
       expect(mutationInfoOf('add_plane').note, mode).toContain(mode)
     }
   })

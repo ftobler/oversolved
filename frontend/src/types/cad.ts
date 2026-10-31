@@ -442,7 +442,7 @@ export interface PartEntityDef {
 }
 
 export type PlaneDef = {
-  mode?: 'offset' | 'three_point' | 'plane_point' | 'line_angle' | 'edge_point' | 'on_face' | 'on_face_edge_angle'
+  mode?: 'offset' | 'three_point' | 'plane_point' | 'line_angle' | 'edge_point' | 'on_face' | 'on_face_edge_angle' | 'origin_rotation'
   plane?: string
   offset?: NumberOrExpr
   p1?: string
@@ -454,6 +454,15 @@ export type PlaneDef = {
   face?: string
   angle?: NumberOrExpr
   rotation?: NumberOrExpr
+  // origin_rotation: the plane's own origin, a resolved point/vertex ref or world
+  // coordinates. Unlike plane_point, the frame sits ON this point rather than
+  // sliding the parent origin along the normal to reach it.
+  origin?: string | [number, number, number]
+  // origin_rotation: the axis the parent axes swing about: a world axis letter or
+  // a direction vector, degrees right-hand. This is a direction, not the edge ref
+  // that transform's rotation_axis names.
+  rotation_axis?: 'x' | 'y' | 'z' | [number, number, number]
+  rotation_angle?: NumberOrExpr
 }
 
 // A feature is a closed discriminated union: each variant pins its literal

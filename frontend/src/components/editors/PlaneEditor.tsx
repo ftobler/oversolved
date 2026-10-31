@@ -56,7 +56,7 @@ export function PlaneEditor({
       </>
     )
   }
-  const numField = (field: 'offset' | 'angle' | 'rotation', label: string, defaultVal: number) => (
+  const numField = (field: 'offset' | 'angle' | 'rotation' | 'rotation_angle', label: string, defaultVal: number) => (
     <div className="feature-field-row">
       <span className="feature-field-label">{label}</span>
       <ExpressionInput
@@ -83,6 +83,7 @@ export function PlaneEditor({
           <option value="line_angle">Rotate on line</option>
           <option value="edge_point">Line and point</option>
           <option value="on_face">On face</option>
+          <option value="origin_rotation">Origin and rotation</option>
         </select>
       </div>
       {mode === 'offset' && (
@@ -138,6 +139,32 @@ export function PlaneEditor({
           <span className="feature-field-label">Face</span>
           {pickChip('face', 'plane', def.face)}
         </div>
+      )}
+      {mode === 'origin_rotation' && (
+        <>
+          <div className="feature-field-row feature-field-row--stacked">
+            <span className="feature-field-label">Origin</span>
+            {/* The chip edits the ref spelling; a vector origin authored through
+                drive has no chip to show. */}
+            {pickChip('origin', 'point', typeof def.origin === 'string' ? def.origin : undefined)}
+          </div>
+          {/* The setter is scalar-only, so the UI offers the three axis letters;
+              a vector axis authored through drive stays untouched. */}
+          <div className="feature-field-row">
+            <span className="feature-field-label">Axis</span>
+            <select
+              className="feature-field-select"
+              value={['x', 'y', 'z'].includes(String(def.rotation_axis ?? '')) ? String(def.rotation_axis) : 'z'}
+              onChange={(e) => { e.stopPropagation(); onMutation({ type: 'set_plane_definition_field', featureId: fid, field: 'rotation_axis', value: e.target.value }) }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <option value="x">X</option>
+              <option value="y">Y</option>
+              <option value="z">Z</option>
+            </select>
+          </div>
+          {numField('rotation_angle', 'Angle', 0)}
+        </>
       )}
       {numField('rotation', 'Rotation', 0)}
     </div>

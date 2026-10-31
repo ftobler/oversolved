@@ -733,6 +733,7 @@ describe('batch B: an empty value is the clear of a pick, not of any field', () 
 describe('review: the plane definition setter cannot clear a field', () => {
   const PLANE_DEFINITION_FIELDS = [
     'mode', 'plane', 'offset', 'p1', 'p2', 'p3', 'point', 'line', 'edge', 'face', 'angle', 'rotation',
+    'origin', 'rotation_axis', 'rotation_angle',
   ] as const
 
   it.each(PLANE_DEFINITION_FIELDS)('refuses null for %s with the scalar message', (field) => {
@@ -754,6 +755,9 @@ describe('review: the plane definition setter cannot clear a field', () => {
       ['p1', '@sk1/p1'], ['p2', '@sk1/p2'], ['p3', '@sk1/p3'], ['point', '@sk1/p1'],
       ['line', '@sk1/l1'], ['edge', '?edge'], ['face', '?face'], ['angle', 30],
       ['rotation', 'angle / 2'],
+      // origin_rotation's settable spellings: a ref for the origin, a letter
+      // for the axis, plain degrees for the angle.
+      ['origin', '@sk1/p1'], ['rotation_axis', 'x'], ['rotation_angle', 45],
     ] as const) {
       expect(validateMutation({ type: 'set_plane_definition_field', featureId: 'p1', field, value }), field)
         .toMatchObject({ ok: true })
@@ -768,6 +772,59 @@ describe('review: the plane definition setter cannot clear a field', () => {
       .toBe('set_hole_field field "diameter" must be a value, not an empty string')
     expect(refusal({ type: 'set_plane_definition_field', featureId: 'p1', field: 'angle', value: '' }).message)
       .toBe('set_plane_definition_field field "angle" must be a value, not an empty string')
+  })
+})
+
+// origin_rotation is the one plane mode whose origin and axis arrive in two
+// spellings (ref or coordinates). The drive boundary checks the shape and
+// keeps the setter scalar-only; the kernel half (the required pair, the
+// unresolvable origin) is pinned at run level in planeRunTests.
+describe('origin_rotation: the new mode crosses the boundary in its scalar spellings', () => {
+  const legal = (definition: Record<string, unknown>) =>
+    validateMutation({ type: 'add_plane', featureId: 'pl1', definition })
+
+  it('accepts the ref spelling and the coordinate spelling of origin and axis', () => {
+    expect(legal({ mode: 'origin_rotation', origin: '@sk1/p1', rotation_axis: 'z', rotation_angle: 45 })).toMatchObject({ ok: true })
+    expect(legal({ mode: 'origin_rotation', origin: [4, 5, 6], rotation_axis: [0, 1, 0], rotation_angle: 45 })).toMatchObject({ ok: true })
+  })
+
+  it('refuses a misspelled mode and names origin_rotation among the legal ones', () => {
+    const error = refusal({ type: 'add_plane', featureId: 'pl1', definition: { mode: 'origin_rotate' } })
+    expect(error.message).toContain('origin_rotate')
+    expect(error.message).toContain('origin_rotation')
+  })
+
+  it('refuses an unknown definition field by name', () => {
+    const error = refusal({
+      type: 'add_plane',
+      featureId: 'pl1',
+      definition: { mode: 'origin_rotation', origin: [0, 0, 0], rotation_axis: 'z', rotation_about: 45 },
+    })
+    expect(error.message).toContain('rotation_about')
+    expect(error.message).toContain('no field')
+  })
+
+  it('refuses an empty origin ref instead of defaulting the plane somewhere', () => {
+    const error = refusal({
+      type: 'add_plane',
+      featureId: 'pl1',
+      definition: { mode: 'origin_rotation', origin: '', rotation_axis: 'z', rotation_angle: 45 },
+    })
+    expect(error.message).toContain('origin')
+  })
+
+  it('keeps the setter scalar-only, so the vector spellings stay in the definition', () => {
+    const origin = refusal({ type: 'set_plane_definition_field', featureId: 'pl1', field: 'origin', value: [1, 2, 3] })
+    expect(origin.message).toContain('must be scalar, got array')
+    const axis = refusal({ type: 'set_plane_definition_field', featureId: 'pl1', field: 'rotation_axis', value: [0, 0, 1] })
+    expect(axis.message).toContain('must be scalar, got array')
+  })
+
+  it('carries the mode and its fields in the add_plane note the client reads', () => {
+    const note = mutationInfoOf('add_plane').note ?? ''
+    expect(note).toContain('origin_rotation')
+    expect(note).toContain('rotation_axis')
+    expect(note).toContain('rotation_angle')
   })
 })
 

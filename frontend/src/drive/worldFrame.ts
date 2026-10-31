@@ -93,7 +93,7 @@ export function faceFrameSentence(): string {
 }
 
 // Each add_plane mode's frame, in the order the plane schema lists the modes.
-// The keys are the schema's mode enum (checked by worldFrame.test.ts), so a mode
+// The keys are the schema's mode enum (checked by faceFrameDocs.test.ts), so a mode
 // added to the schema fails the test until its frame is stated here.
 const ADD_PLANE_FRAME_BY_MODE: Record<string, string> = {
   offset: 'the parent axes, origin moved along the normal by offset',
@@ -103,6 +103,7 @@ const ADD_PLANE_FRAME_BY_MODE: Record<string, string> = {
   edge_point: 'origin the point, x along the edge, y from the point to the edge line',
   on_face: 'origin the face centroid, the face normal, normalToFrame axes (a slash face pick keeps its own frame)',
   on_face_edge_angle: 'origin the face centroid, the face normal, x from the edge rotated by angle',
+  origin_rotation: 'origin the origin field (a point ref or world coordinates), the parent axes (world XY when no plane is named) swung about rotation_axis by rotation_angle degrees',
 }
 
 /** The `add_plane` mode names the frame sentence covers, for the drift test. */

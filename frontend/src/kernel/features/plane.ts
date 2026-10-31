@@ -1,12 +1,14 @@
-// The datum-plane leaf. Seven modes build a 3D frame (offset, three_point, plane_point,
-// line_angle, on_face, on_face_edge_angle, edge_point), an optional in-plane rotation is
-// applied, and the resulting frame is registered under the feature id so downstream sketches
-// resolve their plane through it (mirrors the bare-id register Python did in `_solve_plane`).
+// The datum-plane leaf. Eight modes build a 3D frame (offset, three_point, plane_point,
+// line_angle, on_face, on_face_edge_angle, edge_point, origin_rotation), an optional
+// in-plane rotation is applied, and the resulting frame is registered under the feature id
+// so downstream sketches resolve their plane through it (mirrors the bare-id register Python
+// did in `_solve_plane`).
 // The result carries `plane`; the frontend derives the plane_transform from it
 // (useSolver.applySolveResult).
 
 import type { Repository } from '../query'
 import { getPoint3d } from '../query'
+import { BUILTIN_PLANES } from '../solverConstants'
 import type { Body, Frame3D } from '../types3d'
 import { normalToFrame } from '../types3d'
 import type { PlaneLike } from './shared/planes'
@@ -277,6 +279,104 @@ function planeOffset(def: Dict, repo: Repository): Frame3D {
   return frame(origin, xAxis, yAxis, normal)
 }
 
+// The three world axes, addressable as one letter on the wire. The letter is the
+// common code-CAD `rotate=(60,0,0)` case, and it is a scalar the field setter can
+// carry; a stored vector covers an axis no letter names.
+const WORLD_AXIS_BY_LETTER: Record<string, Vec3> = {
+  x: [1, 0, 0],
+  y: [0, 1, 0],
+  z: [0, 0, 1],
+}
+
+function rotationAxisOf(def: Dict): Vec3 {
+  const raw = def.rotation_axis
+  if (typeof raw === 'string') {
+    const axis = WORLD_AXIS_BY_LETTER[raw.trim().toLowerCase()]
+    if (axis !== undefined) return axis
+    throw new Error('rotation_axis must be "x", "y" or "z" or three finite numbers')
+  }
+  if (Array.isArray(raw) && raw.length === 3 && raw.every(n => typeof n === 'number' && Number.isFinite(n))) {
+    try {
+      // A zero-length vector is not a direction: `normalize` refuses it, and the
+      // refusal has to name the field the caller must fix.
+      return normalize(raw)
+    } catch {
+      throw new Error('rotation_axis must be a non-zero direction')
+    }
+  }
+  throw new Error('rotation_axis must be "x", "y" or "z" or three finite numbers')
+}
+
+/** Rodrigues rotation of `v` about a unit axis by `degrees` (right-hand rule):
+ *  about world +X, +Y swings toward +Z, so a 60 degree tilt of the XY frame tips
+ *  its normal to [0, -sin60, cos60], the same reading cadquery's rotate=(60,0,0)
+ *  gives a workplane. */
+function rotateAbout(v: Vec3, axis: Vec3, degrees: number): Vec3 {
+  const radians = (degrees * Math.PI) / 180
+  const cosA = Math.cos(radians)
+  const sinA = Math.sin(radians)
+  const perp = cross(axis, v)
+  const along = dot(axis, v)
+  return [
+    v[0] * cosA + perp[0] * sinA + axis[0] * along * (1 - cosA),
+    v[1] * cosA + perp[1] * sinA + axis[1] * along * (1 - cosA),
+    v[2] * cosA + perp[2] * sinA + axis[2] * along * (1 - cosA),
+  ]
+}
+
+/** The mode's origin: a stored world point, or a ref the query engine resolves
+ *  (a `select` kind "vertex" query is the corner-pick spelling). */
+function originPointOf(def: Dict, repo: Repository): Vec3 {
+  const raw = def.origin
+  if (raw === undefined) {
+    throw new Error('origin_rotation needs an origin: a point ref or three coordinates')
+  }
+  if (typeof raw === 'string') {
+    const resolved = repo.query(raw) as Dict | null
+    if (resolved === null) throw new Error(`origin not found: ${JSON.stringify(raw)}`)
+    return getPoint3d(resolved, repo) as Vec3
+  }
+  if (Array.isArray(raw) && raw.length === 3 && raw.every(n => typeof n === 'number' && Number.isFinite(n))) {
+    return [raw[0], raw[1], raw[2]] as Vec3
+  }
+  throw new Error('origin must be three finite numbers or a point ref')
+}
+
+/** The origin-plus-rotation mode: the parent frame's axes (the world XY frame
+ *  when no parent is named) swung about one axis, then moved to the origin. The
+ *  origin is the authored point itself, not a projection onto the parent plane
+ *  the way `plane_point` places it. */
+function planeOriginRotation(def: Dict, repo: Repository): Frame3D {
+  const origin = originPointOf(def, repo)
+  const parentQuery = def.plane
+  let parent: Dict | null
+  if (parentQuery === undefined || parentQuery === '') {
+    parent = BUILTIN_PLANES.builtin_plane_front
+  } else {
+    if (typeof parentQuery !== 'string') throw new Error('plane must be a ref string')
+    parent = repo.query(parentQuery) as Dict | null
+    if (parent === null) throw new Error(`plane not found: ${JSON.stringify(parentQuery)}`)
+  }
+  const { normal, xAxis, yAxis } = planeAxes(parent)
+
+  const hasAxis = def.rotation_axis !== undefined
+  const hasAngle = def.rotation_angle !== undefined
+  // Half a rotation is not a rotation: an axis with no angle (or the reverse)
+  // is the mistake to name, not a silent zero turn.
+  if (hasAngle && !hasAxis) throw new Error('rotation_angle needs rotation_axis: "x", "y" or "z" or three finite numbers')
+  if (hasAxis && !hasAngle) throw new Error('rotation_axis needs rotation_angle in degrees')
+  if (!hasAngle) return frame(origin, xAxis, yAxis, normal)
+
+  const angle = Number(def.rotation_angle)
+  if (!Number.isFinite(angle)) throw new Error(`rotation_angle must be a finite number of degrees, got ${JSON.stringify(def.rotation_angle)}`)
+  const axis = rotationAxisOf(def)
+  const x = rotateAbout(xAxis, axis, angle)
+  const y = rotateAbout(yAxis, axis, angle)
+  // The turn is rebuilt from x and y rather than trusted from the rotated parent
+  // normal, so a f64 drift cannot tilt the frame out of its own plane.
+  return frame(origin, x, y, cross(x, y))
+}
+
 // ─── Dispatch ───
 
 /** Solve a plane feature (mirrors `_solve_plane`). The OCC context is only
@@ -302,6 +402,7 @@ export function solvePlane(
     case 'on_face_edge_angle': f = planeOnFaceEdgeAngle(definition, globalRepo, bodyStore, oc, scope, table); break
     case 'edge_point': f = planeEdgePoint(definition, globalRepo, bodyStore); break
     case 'offset': f = planeOffset(definition, globalRepo); break
+    case 'origin_rotation': f = planeOriginRotation(definition, globalRepo); break
     default: throw new Error(`unknown plane mode: ${JSON.stringify(mode)}`)
   }
 

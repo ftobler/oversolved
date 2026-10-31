@@ -480,11 +480,32 @@ function checkCount(value: unknown, field: string): number | null {
 
 const DIRECTIONS = ['normal', 'reverse', 'symmetric'] as const
 const OPERATIONS = ['add', 'cut', 'new'] as const
-const PLANE_MODES = ['offset', 'three_point', 'plane_point', 'line_angle', 'edge_point', 'on_face', 'on_face_edge_angle'] as const
+const PLANE_MODES = ['offset', 'three_point', 'plane_point', 'line_angle', 'edge_point', 'on_face', 'on_face_edge_angle', 'origin_rotation'] as const
 const MATE_KINDS = [
   'fixed', 'sliding', 'rotating', 'sliding_rotating', 'tangential',
   'copy_rotation', 'spherical', 'parallel', 'parallel_plane_distance',
 ] as const
+
+// origin_rotation names its own origin: a ref the query engine resolves (a vertex
+// pick from `select`) or world coordinates, the one plane field that may carry
+// coordinates at all.
+function checkRefOrVec3(value: unknown, field: string): void {
+  if (Array.isArray(value)) checkVec3(value, field)
+  else checkRef(value, field)
+}
+
+// origin_rotation's turn axis: a world axis letter or a direction vector. It is
+// deliberately not a ref, because the axis this mode turns about is a direction,
+// not the edge ref transform's rotation_axis names.
+const ROTATION_AXES = ['x', 'y', 'z'] as const
+
+function checkRotationAxis(value: unknown, field: string): void {
+  if (Array.isArray(value)) {
+    checkVec3(value, field)
+    return
+  }
+  checkEnum(value, field, ROTATION_AXES)
+}
 
 function checkPlaneDef(value: unknown, field: string): void {
   const def = checkRecord(value, field)
@@ -492,9 +513,11 @@ function checkPlaneDef(value: unknown, field: string): void {
   for (const key of ['plane', 'p1', 'p2', 'p3', 'point', 'line', 'edge', 'face']) {
     checkOptional(def, key, field, checkRef)
   }
-  for (const key of ['offset', 'angle', 'rotation']) {
+  for (const key of ['offset', 'angle', 'rotation', 'rotation_angle']) {
     checkOptional(def, key, field, checkExpr)
   }
+  checkOptional(def, 'origin', field, checkRefOrVec3)
+  checkOptional(def, 'rotation_axis', field, checkRotationAxis)
 }
 
 const HANDLE_MODES = ['start', 'end', 'both'] as const

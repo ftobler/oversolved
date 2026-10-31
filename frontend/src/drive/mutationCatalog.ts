@@ -323,7 +323,10 @@ const PLANE_MODE_NOTE =
   'three_point takes p1 as origin and p1->p2 as x; plane_point keeps the parent axes with the origin ' +
   'moved along the normal by the point\'s signed distance from the plane; line_angle takes the line ' +
   'start as origin and the line as x; the face modes take the face centroid and normal ' +
-  '(on_face_edge_angle/edge_point take x from the edge). docs/drive.md (MCP Server, add_plane frames) ' +
+  '(on_face_edge_angle/edge_point take x from the edge); origin_rotation takes its own origin ' +
+  '(a point or vertex ref, or three world coordinates, the one plane field that may carry coordinates) ' +
+  'and swings the parent axes about rotation_axis ("x", "y", "z" or a direction vector) by rotation_angle ' +
+  'degrees, world XY when no plane is named. docs/drive.md (MCP Server, add_plane frames) ' +
   'has the exact conventions, and the run/measure reply `frames` map reports the frame each plane resolved.'
 
 // The array's "add" is a union only where the copies touch. Disjoint instances
@@ -493,7 +496,9 @@ const planeDefinitionValue = () =>
     note: 'The new value for the named plane definition field; its type follows PLANE_DEF in persistence/partDocSchema.ts.'
       + enumFieldsNote('plane')
       + ' An empty value is refused. A null value is refused too (the wire requires a scalar); '
-      + 'this mutation cannot delete a plane definition field.',
+      + 'this mutation cannot delete a plane definition field. origin_rotation\'s vector fields take only '
+      + 'their scalar spelling here (origin a point ref, rotation_axis an "x"/"y"/"z" letter); author the '
+      + 'coordinate or vector spelling in add_plane\'s definition object.',
   } as const)
 
 /** The enum-valued fields of a feature kind, as `name: a|b|c`, read from the
