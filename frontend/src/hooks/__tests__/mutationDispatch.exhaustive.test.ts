@@ -19,6 +19,7 @@ const ALL_MUTATION_TYPES = [
   'add_center_rect',
   'add_ngon',
   'apply_offset',
+  'mirror_entities',
   'toggle_construction',
   'set_feature_plane',
   'add_sketch',

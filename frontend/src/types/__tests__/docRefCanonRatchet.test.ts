@@ -2,10 +2,11 @@
 // grow back.
 //
 // 1. A feature-level reference to a feature is `@id`. No non-test source builds
-//    a `$<id>` feature ref. The three host-local `$` emitters below are the
-//    only legitimate ones (a sketch's own constraint operands, a local vertex
-//    ref, and the wire codec's local branch); a feature writer routes through
-//    the query engine instead.
+//    a `$<id>` feature ref. The four host-local `$` emitters below are the
+//    only legitimate ones (a sketch's own constraint operands, the mirrored
+//    clone of those operands, a local vertex ref in the drag loop, and the wire
+//    codec's local branch); a feature writer routes through the query engine
+//    instead.
 // 2. No leaf solver overlays flat params over the sub-dict. The overlay can be
 //    spelled several ways (`{ ...sub, ...feature }`, `{ ...sub, ...rest }` after
 //    destructuring the kind key out, either order, or an Object.assign); all of
@@ -71,6 +72,7 @@ describe('doc-ref-canon ratchets', () => {
   // vertex ref in the drag loop, and the wire codec's own local branch.
   const DOLLAR_EMIT_ALLOWLIST = new Set([
     'utils/yamlMutations/helpers.ts',
+    'utils/yamlMutations/sketchMirror.ts',
     'components/Geometry3D/dragLogic.ts',
     'kernel/queryWire.ts',
   ])

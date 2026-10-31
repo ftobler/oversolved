@@ -275,6 +275,10 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
     makeDoc: sketchDoc,
     mutation: { type: 'apply_offset', featureId: 'sk1', sourceIds: ['l1'], distance: 2 },
   },
+  mirror_entities: {
+    makeDoc: sketchDoc,
+    mutation: { type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l2'], line: 'l1' },
+  },
   toggle_construction: {
     makeDoc: sketchDoc,
     mutation: { type: 'toggle_construction', targets: ['entity:sk1:l2'] },

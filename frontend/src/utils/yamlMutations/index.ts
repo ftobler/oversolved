@@ -28,6 +28,8 @@ export {
 
 export { applyInsertFitPoint, applySetFitSplineHandle, applyDeleteFitPoint, type FitSplineAddOptions } from './fitSpline'
 
+export { applyMirrorEntities } from './sketchMirror'
+
 export {
   applyAddExtrude,
   applyAddExtrudeProfile,

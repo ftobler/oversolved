@@ -118,6 +118,9 @@ export const IDEMPOTENT_MUTATION = {
   add_center_rect: false,
   add_ngon: false,
   apply_offset: false,
+  // mirror_entities mints fresh entity ids per dispatch like the add_* family:
+  // re-running it clones the sources a second time.
+  mirror_entities: false,
 
   // Structural edits. A resolved add_constraint appends a fresh unique id, and
   // toggle_construction flips the flag so re-dispatching it is a real change

@@ -34,6 +34,8 @@ export function describeMutation(m: Mutation): string {
       return `add ${m.sides}-gon in ${m.featureId}`
     case 'apply_offset':
       return `offset ${m.sourceIds.length} entity(ies) by ${m.distance} in ${m.featureId}`
+    case 'mirror_entities':
+      return `mirror ${m.sourceIds.length} entity(ies) about ${m.line} in ${m.featureId}`
     case 'toggle_construction':
       return `toggle construction on ${m.targets.length} element(s)`
     case 'set_feature_plane':

@@ -21,6 +21,7 @@ import type { EntityKind, FeatureKind, Mutation, PartDoc } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
+import { mirrorAxisFromLineParams } from '@/utils/geometry/mirrorSketch'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 
 export type ValueViolationCode = 'invalid-mutation' | 'unknown-target'
@@ -761,6 +762,51 @@ function applyOffset(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return null
 }
 
+// The applier skips what it cannot mirror (the axis listed as a source, a
+// projected entity, a degenerate axis); at the boundary each of those is a
+// refusal naming the id, so an authored step never silently mirrors a subset.
+function mirrorEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const sourceProblem = nonEmptyStringsProblem(raw.sourceIds, 'sourceIds')
+  if (sourceProblem !== null) return invalid(sourceProblem)
+  if (typeof raw.line !== 'string') return invalid(`line must be an entity id string, got ${json(raw.line)}`)
+  const featureId = raw.featureId
+  if (ctx.doc === null || typeof featureId !== 'string') return null
+  const sketch = sketchOf(ctx.doc, featureId)
+  if (sketch === undefined) {
+    return unknownTarget(`mirror_entities names no sketch feature ${json(featureId)}`)
+  }
+  const byId = new Map((sketch.entities ?? []).map(entity => [entity.id, entity]))
+  const axis = byId.get(raw.line)
+  if (axis === undefined) {
+    return unknownTarget(
+      `mirror_entities line ${json(raw.line)} names no entity in sketch ${featureId}; use a bare entity id from that sketch`,
+    )
+  }
+  if (axis.kind !== 'line') {
+    return invalid(`mirror_entities line ${json(raw.line)} names a ${json(axis.kind)}; the axis must be a line entity`)
+  }
+  if (mirrorAxisFromLineParams(sketch.initial?.[raw.line] ?? []) === null) {
+    return invalid(`mirror_entities line ${json(raw.line)} has no usable axis: its params need two distinct finite points`)
+  }
+  for (const id of raw.sourceIds as string[]) {
+    const entity = byId.get(id)
+    if (entity === undefined) {
+      return unknownTarget(
+        `mirror_entities source id ${json(id)} names no entity in sketch ${featureId}; use a bare entity id from that sketch`,
+      )
+    }
+    if (id === raw.line) {
+      return invalid(`mirror_entities line ${json(raw.line)} must not also be a sourceId; the axis is not mirrored`)
+    }
+    if (entity.source !== undefined) {
+      return invalid(
+        `mirror_entities source id ${json(id)} names a projected entity; projected geometry re-projects from its source and is not mirrored`,
+      )
+    }
+  }
+  return null
+}
+
 // The bare builtin names resolveSketchPlane accepts. They stay case-sensitive:
 // accepting "top" would shadow a user plane whose id is exactly that, so the
 // boundary refuses an unmatched spelling with the valid names instead of
@@ -1287,6 +1333,7 @@ export const MUTATION_VALUE_RULES = {
   add_center_rect: addCenterRect,
   add_ngon: addNgon,
   apply_offset: applyOffset,
+  mirror_entities: mirrorEntities,
   toggle_construction: toggleConstructionRule,
   set_feature_plane: setFeaturePlane,
   add_sketch: addSketch,

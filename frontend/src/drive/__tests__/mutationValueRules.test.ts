@@ -72,6 +72,7 @@ describe('value rules cover the catalog', () => {
     ['add_center_rect', { type: 'add_center_rect', featureId: 'sk1', center: [0, 0], corner: [1] }],
     ['add_ngon', { type: 'add_ngon', featureId: 'sk1', center: [0, 0], corner: [1, 1], sides: 2 }],
     ['apply_offset', { type: 'apply_offset', featureId: 'sk1', sourceIds: [], distance: 2 }],
+    ['mirror_entities', { type: 'mirror_entities', featureId: 'sk1', sourceIds: [], line: 'l1' }],
     ['toggle_construction', { type: 'toggle_construction', targets: ['l1'] }],
     ['set_feature_plane', { type: 'set_feature_plane', featureId: 'sk1', plane: '' }],
     ['add_sketch', { type: 'add_sketch', featureId: 'sk1', plane: 'a plane with spaces' }],
@@ -324,6 +325,60 @@ describe('finding 5: add_constraint target spelling', () => {
       type: 'add_constraint', featureId: 'sk1', kind: 'coincident',
       targets: ['entity:sk1:l1', 'vertex:sk1:l1:start'],
     })).toMatchObject({ ok: true })
+  })
+})
+
+describe('finding: mirror_entities values', () => {
+  it('refuses a non-line axis and a degenerate one, naming the line', () => {
+    const doc = sketchDoc()
+    doc.features[0].entities = [
+      ...(doc.features[0].entities ?? []),
+      { id: 'c9', kind: 'circle' },
+      { id: 'lz', kind: 'line' },
+    ] as PartDoc['features']
+    doc.features[0].initial = { ...doc.features[0].initial, c9: [0, 0, 3], lz: [4, 4, 4, 4] } as never
+    const notALine = refusal(
+      { type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1'], line: 'c9' }, doc)
+    expect(notALine.code).toBe('invalid-mutation')
+    expect(notALine.message).toContain('c9')
+    expect(notALine.message).toContain('line')
+
+    const zeroLength = refusal(
+      { type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1'], line: 'lz' }, doc)
+    expect(zeroLength.code).toBe('invalid-mutation')
+    expect(zeroLength.message).toContain('lz')
+  })
+
+  it('refuses an axis that is also one of the sources', () => {
+    const doc = sketchDoc()
+    const error = refusal({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1'], line: 'l1' }, doc)
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('mirrored')
+  })
+
+  it('refuses unknown source and axis ids', () => {
+    const source = refusal({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l2'], line: 'l1' }, sketchDoc())
+    expect(source.code).toBe('unknown-target')
+    expect(source.message).toContain('l2')
+    const axis = refusal({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1'], line: 'l1b' }, sketchDoc())
+    expect(axis.code).toBe('unknown-target')
+    expect(axis.message).toContain('l1b')
+  })
+
+  it('accepts a normal line and a construction line as the axis', () => {
+    const withAxis = sketchDoc()
+    withAxis.features[0].entities = [
+      ...(withAxis.features[0].entities ?? []),
+      { id: 'ax', kind: 'line', construction: true },
+      { id: 'l2', kind: 'line' },
+    ] as PartDoc['features']
+    withAxis.features[0].initial = {
+      ...withAxis.features[0].initial,
+      ax: [0, -5, 0, 5],
+      l2: [2, 2, 2, 7],
+    } as never
+    expect(validateMutation({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1', 'l2'], line: 'ax' }, withAxis))
+      .toMatchObject({ ok: true })
   })
 })
 

@@ -1220,6 +1220,7 @@ export type Mutation =
   | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point; centerRef?: string | null; cornerRef?: string | null }
   | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number; centerRef?: string | null; cornerRef?: string | null }
   | { type: 'apply_offset'; featureId: string; sourceIds: string[]; distance: number }
+  | { type: 'mirror_entities'; featureId: string; sourceIds: string[]; line: string }
   | { type: 'toggle_construction'; targets: string[] }
   | { type: 'set_feature_plane'; featureId: string; plane: string | SelectorRef }
   | ({ type: 'add_sketch'; featureId: string; label?: string; plane?: string | SelectorRef } & FeatureInsertion)

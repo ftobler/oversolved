@@ -353,6 +353,18 @@ const CONSTRAINT_KIND_NOTE =
   `The constraint kind, one of: ${[...CONSTRAINT_BY_KIND.keys()].join(', ')}. A line's dimension is ` +
   '`length`; two points take `point_distance`.'
 
+// Mirror carry-over is the fact an author cannot infer from the mutation shape;
+// the rules are pinned in yamlMutations/sketchMirror.ts and its test.
+const MIRROR_ENTITIES_NOTE =
+  'Each source becomes a new authored entity (fresh ids, mirrored params, the construction flag carried); ' +
+  'this is geometry, not a live mirror relation, and editing the source later does not move the copy. ' +
+  'Constraints carry when every operand is a source or the axis line (an entity pinned to the axis mirrors to ' +
+  'a copy pinned to the same axis): vertex refs remap by position, so a mirrored arc\'s `start` and `end` swap ' +
+  '(arcs keep their authored CCW sweep), values are unchanged, and sign-carrying dimensions ' +
+  '(`point_distance_x`, `point_distance_y`, `line_distance`, `angle`) flip their side. `horizontal`/`vertical` ' +
+  'survive only on a horizontal, vertical, or 45-deg axis (on a 45-deg axis they swap); any other operand ' +
+  'outside the mirror set drops that constraint. Projected entities are refused: their geometry re-projects.'
+
 // The side is relative to the loop, not to each line's drawn direction, so a
 // CW, CCW or projected loop all read the same (birdhouse F3, Case_Seam_Lip F6).
 const OFFSET_SIDE_NOTE =
@@ -669,6 +681,15 @@ export const MUTATION_CATALOG = {
       + 'a connected chain (coincident or coordinate-joined) is refitted corner to corner.',
     note: OFFSET_SIDE_NOTE,
     fields: { featureId: str(), sourceIds: arr(), distance: num('Signed; see the row note for the side.') },
+  },
+  mirror_entities: {
+    summary: 'Mirror sketch entities about a line of the same sketch, adding the mirrored copies as authored geometry.',
+    note: MIRROR_ENTITIES_NOTE,
+    fields: {
+      featureId: str(),
+      sourceIds: arr('Bare entity ids of the featureId sketch; the axis may not be one of them, and projected entities are refused.'),
+      line: str('Entity id of one line-kind entity of the same sketch (normal or construction); it is the axis and is not mirrored.'),
+    },
   },
   toggle_construction: {
     summary: 'Toggle construction mode on sketch entities.',
@@ -1187,6 +1208,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   add_center_rect: 'sketch',
   add_ngon: 'sketch',
   apply_offset: 'sketch',
+  mirror_entities: 'sketch',
   toggle_construction: 'sketch',
   set_feature_plane: 'sketch',
   add_sketch: 'sketch',
