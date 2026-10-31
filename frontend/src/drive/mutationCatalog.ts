@@ -363,7 +363,9 @@ const MIRROR_ENTITIES_NOTE =
   '(arcs keep their authored CCW sweep), values are unchanged, and sign-carrying dimensions ' +
   '(`point_distance_x`, `point_distance_y`, `line_distance`, `angle`) flip their side. `horizontal`/`vertical` ' +
   'survive only on a horizontal, vertical, or 45-deg axis (on a 45-deg axis they swap); any other operand ' +
-  'outside the mirror set drops that constraint. Projected entities are refused: their geometry re-projects.'
+  'outside the mirror set drops that constraint. Projected entities are refused: their geometry re-projects. ' +
+  'A source that lies on the axis mirrors to itself and is refused too; the original edge then serves both ' +
+  'halves of a mirrored profile.'
 
 // The side is relative to the loop, not to each line's drawn direction, so a
 // CW, CCW or projected loop all read the same (birdhouse F3, Case_Seam_Lip F6).

@@ -21,7 +21,7 @@ import type { EntityKind, FeatureKind, Mutation, PartDoc } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
-import { mirrorAxisFromLineParams } from '@/utils/geometry/mirrorSketch'
+import { mirrorAxisFromLineParams, mirrorEntityParams } from '@/utils/geometry/mirrorSketch'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 
 export type ValueViolationCode = 'invalid-mutation' | 'unknown-target'
@@ -785,7 +785,8 @@ function mirrorEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null 
   if (axis.kind !== 'line') {
     return invalid(`mirror_entities line ${json(raw.line)} names a ${json(axis.kind)}; the axis must be a line entity`)
   }
-  if (mirrorAxisFromLineParams(sketch.initial?.[raw.line] ?? []) === null) {
+  const axisLine = mirrorAxisFromLineParams(sketch.initial?.[raw.line] ?? [])
+  if (axisLine === null) {
     return invalid(`mirror_entities line ${json(raw.line)} has no usable axis: its params need two distinct finite points`)
   }
   for (const id of raw.sourceIds as string[]) {
@@ -801,6 +802,14 @@ function mirrorEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null 
     if (entity.source !== undefined) {
       return invalid(
         `mirror_entities source id ${json(id)} names a projected entity; projected geometry re-projects from its source and is not mirrored`,
+      )
+    }
+    const original = sketch.initial?.[id] ?? []
+    const mirrored = mirrorEntityParams(entity.kind, original, axisLine, entity.handles)
+    if (mirrored !== null && mirrored.length === original.length
+      && mirrored.every((v, i) => Math.abs(v - original[i]) < 1e-9)) {
+      return invalid(
+        `mirror_entities source id ${json(id)} lies on the axis line ${json(raw.line)}: its mirror is itself, so drop it from sourceIds`,
       )
     }
   }

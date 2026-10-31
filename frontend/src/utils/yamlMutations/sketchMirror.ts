@@ -192,6 +192,15 @@ export function applyMirrorEntities(
       warn('mirror_entities: entity block cannot be mirrored', { featureId, id, kind: def.kind })
       continue
     }
+    // An entity sitting on the axis mirrors to itself. Cloning it would put a
+    // second coincident edge in the sketch (a seam edge of a half profile is
+    // the everyday case), so the copy is dropped and the original edge serves
+    // both halves.
+    const original = feature.initial[id] ?? []
+    if (original.length === params.length && params.every((v, i) => Math.abs(v - original[i]) < 1e-9)) {
+      warn('mirror_entities: the entity lies on the axis and mirrors to itself, skipped', { featureId, id })
+      continue
+    }
     copies.push({ srcId: id, def, params })
   }
   if (copies.length === 0) return

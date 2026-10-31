@@ -365,6 +365,20 @@ describe('finding: mirror_entities values', () => {
     expect(axis.message).toContain('l1b')
   })
 
+  it('refuses a source that lies on the axis: its mirror is itself', () => {
+    const doc = sketchDoc()
+    doc.features[0].entities = [
+      ...(doc.features[0].entities ?? []),
+      { id: 'ax', kind: 'line', construction: true },
+      { id: 'on', kind: 'line' },
+    ] as PartDoc['features']
+    doc.features[0].initial = { ...doc.features[0].initial, ax: [0, 0, 0, 10], on: [0, 2, 0, 6] } as never
+    const error = refusal({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['on'], line: 'ax' }, doc)
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('on')
+    expect(error.message).toContain('itself')
+  })
+
   it('accepts a normal line and a construction line as the axis', () => {
     const withAxis = sketchDoc()
     withAxis.features[0].entities = [

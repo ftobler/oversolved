@@ -90,7 +90,7 @@ describe('applyMirrorEntities entities', () => {
     expect(f.initial[newIds[3]]).toEqual([-3, 0, 1, 0, 180]) // a1: center flips, CCW span kept
     expect(f.initial[newIds[4]]).toEqual([-4, 2, 1])         // c1
     expect(f.initial[newIds[5]]).toEqual([-5, 6])            // p1
-    expect(f.initial[newIds[6]]).toEqual([-1, 1, -2, 2, -3, 1, -1.2, 1.2, -2.8, 1.2]) // f1
+    expect(f.initial[newIds[6]]).toEqual([-1, 1, -2, 2, -3, 1, -1.2, 1.2, -2.8, 1.2])  // f1
   })
 
   it('carries construction and fit-spline handle flags onto the clone', () => {
@@ -100,9 +100,9 @@ describe('applyMirrorEntities entities', () => {
     const originals = new Set(['ax', 'l1', 'l2', 'l9', 'cl', 'a1', 'c1', 'p1', 'f1', 'pj'])
     const added = f.entities.filter(e => !originals.has(e.id))
     const clClone = added.find(e => JSON.stringify(f.initial[e.id]) === '[-1,1,-3,1]')!
-    expect(clClone.construction).toBe(true)   // construction carries over
+    expect(clClone.construction).toBe(true)  // construction carries over
     const fitClone = added.find(e => e.kind === 'fit_spline')!
-    expect(fitClone.handles).toBe('both')     // the handle block flag carries over
+    expect(fitClone.handles).toBe('both')  // the handle block flag carries over
     // The originals keep their flags too.
     expect(f.entities.find(e => e.id === 'cl')?.construction).toBe(true)
     expect(f.entities.find(e => e.id === 'ax')?.construction).toBeUndefined()
@@ -139,6 +139,32 @@ describe('applyMirrorEntities entities', () => {
     applyMirrorEntities(doc, 'sk', [], 'ax')
     expect(feat(doc).entities).toHaveLength(10)
     expect(feat(doc).constraints).toHaveLength(14)
+  })
+
+  it('skips a source that lies on the axis: its mirror is the same edge', () => {
+    const doc = halfDoc()
+    // A seam edge collinear with `ax` (x=0), the shape a half profile closes
+    // with. Cloning it would stack a second coincident edge on the seam.
+    doc.features[0].entities!.push({ id: 'seam', kind: 'line' })
+    doc.features[0].initial!.seam = [0, 1, 0, 9]
+    applyMirrorEntities(doc, 'sk', ['l1', 'seam'], 'ax')
+    const f = feat(doc)
+    const originals = new Set(['ax', 'l1', 'l2', 'l9', 'cl', 'a1', 'c1', 'p1', 'f1', 'pj', 'seam'])
+    const added = f.entities.filter(e => !originals.has(e.id))
+    expect(added).toHaveLength(1)  // only l1 got a copy
+    expect(f.initial[added[0].id]).toEqual([-2, 0, -2, 4])
+    // The original seam stays exactly where it was; it serves both halves.
+    expect(f.initial.seam).toEqual([0, 1, 0, 9])
+  })
+
+  it('a circle centered on the axis mirrors to itself and is skipped too', () => {
+    const doc = halfDoc()
+    doc.features[0].entities!.push({ id: 'ring', kind: 'circle' })
+    doc.features[0].initial!.ring = [0, 3, 2]
+    applyMirrorEntities(doc, 'sk', ['ring'], 'ax')
+    const f = feat(doc)
+    expect(f.entities.filter(e => e.id === 'ring')).toHaveLength(1)
+    expect(f.initial.ring).toEqual([0, 3, 2])
   })
 })
 
