@@ -220,6 +220,28 @@ function schemaAccepts(schema: JsonSchema, value: unknown): boolean {
   return true
 }
 
+// A field value the schema could only hold as a plain string (a
+// number-or-expression union) must carry something: an empty expression names
+// nothing. Only a ref field reads "" as the documented clear, and only where
+// EMPTY_REF_CLEARS admits it, so a blank never silently deletes a key or
+// reverts a field to its default.
+function blankStringProblem(value: unknown, schema: JsonSchema, label: string): string | null {
+  if (value !== '' || isRefSchema(schema)) return null
+  const acceptsPlainString = (candidate: JsonSchema): boolean => {
+    if (candidate.type === 'string') return typeof candidate.pattern !== 'string'
+    if (Array.isArray(candidate.enum) || 'const' in candidate) return false
+    return Array.isArray(candidate.anyOf)
+      && (candidate.anyOf as JsonSchema[]).some(acceptsPlainString)
+  }
+  if (!acceptsPlainString(schema)) return null
+  return `${label} must be a value, not an empty string; null clears an optional field`
+}
+
+/** The schema check one authored field's value is held to. */
+function fieldValueProblem(value: unknown, schema: JsonSchema, label: string): string | null {
+  return blankStringProblem(value, schema, label) ?? schemaValueProblem(value, schema, label)
+}
+
 // Walk the schema for every ref it declares and apply the shape rule to each.
 // Arrays recurse through items, REF_OR_LIST picks the branch the value's JSON
 // type already selects, and object fields are walked by property name.
@@ -860,15 +882,35 @@ function inlineFieldsProblem(
     if (raw[key] === undefined) continue
     const schema = ctx.fieldSchema(setter, key)
     if (schema === null) continue
-    const problem = schemaValueProblem(raw[key], schema, `${raw.type as string} field ${json(key)}`)
+    const problem = fieldValueProblem(raw[key], schema, `${raw.type as string} field ${json(key)}`)
     if (problem !== null) return invalid(problem)
   }
   return null
 }
 
-// The inline clears an add payload may carry. The setter's applier deletes the
-// key on an empty string for `up_to`; the add applier applies the same rule.
-const EXTRUDE_INLINE_CLEARS: ReadonlySet<string> = new Set(['up_to'])
+// The ref fields an empty string clears, for the setter and its inline add in
+// one row each. The applier deletes the key on "", but the shared ref rule
+// refuses an empty string, so the boundary admits the clear only for the fields
+// named here: each one is optional in its kind's schema (clearing a required ref
+// would save a document the loader then refuses), and the rules test holds the
+// list to that rule. A ref the caller still has to name (a hole sketch, a split
+// plane, a revolve axis) keeps the refusal. Enum and number fields refuse an
+// empty value too, so a blank never silently reverts a field to its default.
+const UP_TO: ReadonlySet<string> = new Set(['up_to'])
+const HOLE_TARGET: ReadonlySet<string> = new Set(['target'])
+export const EMPTY_REF_CLEARS: Readonly<Record<string, ReadonlySet<string>>> = {
+  add_extrude: UP_TO,
+  set_extrude_field: UP_TO,
+  add_hole: HOLE_TARGET,
+  set_hole_field: HOLE_TARGET,
+}
+
+/** True when an empty string is the documented clear for this (mutation, field).
+ *  A setter names the field in `field` and its value in `value`; an inline add
+ *  carries the value under the field name, so both read one table. */
+function clearsOnEmpty(type: Mutation['type'], field: unknown, value: unknown): boolean {
+  return typeof field === 'string' && value === '' && (EMPTY_REF_CLEARS[type]?.has(field) ?? false)
+}
 
 function addExtrude(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const problem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
@@ -881,10 +923,10 @@ function addExtrude(raw: RawStep, ctx: ValueContext): ValueViolation | null {
     if (field === 'sketch' || field === 'distance') continue
     const value = raw[field]
     if (value === undefined || value === null) continue
-    if (value === '' && EXTRUDE_INLINE_CLEARS.has(field)) continue
+    if (clearsOnEmpty(raw.type as Mutation['type'], field, value)) continue
     const schema = ctx.fieldSchema('set_extrude_field', field)
     if (schema === null) continue
-    const fieldProblem = schemaValueProblem(value, schema, `add_extrude field ${json(field)}`)
+    const fieldProblem = fieldValueProblem(value, schema, `add_extrude field ${json(field)}`)
     if (fieldProblem !== null) return invalid(fieldProblem)
   }
   return null
@@ -915,7 +957,7 @@ function inlineFeatureFieldsProblem(
     if (value === undefined || value === null) continue
     const schema = ctx.fieldSchema(setter, field)
     if (schema === null) continue
-    const problem = schemaValueProblem(value, schema, `${raw.type as string} field ${json(field)}`)
+    const problem = fieldValueProblem(value, schema, `${raw.type as string} field ${json(field)}`)
     if (problem !== null) return invalid(problem)
   }
   return null
@@ -1070,9 +1112,10 @@ function addHole(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   for (const field of featureFieldNames('hole')) {
     const value = raw[field]
     if (value === undefined) continue
+    if (clearsOnEmpty(raw.type as Mutation['type'], field, value)) continue
     const schema = ctx.fieldSchema('set_hole_field', field)
     if (schema === null) continue
-    const problem = schemaValueProblem(value, schema, `add_hole field ${json(field)}`)
+    const problem = fieldValueProblem(value, schema, `add_hole field ${json(field)}`)
     if (problem !== null) return invalid(problem)
   }
   return null
@@ -1189,15 +1232,22 @@ function fieldValue(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   if (!isFieldSetterRule(type)) return null
   const schema = ctx.fieldSchema(type, field)
   if (schema === null) return null
-  const problem = schemaValueProblem(raw.value, schema, `${type} field ${json(field)}`)
+  const problem = fieldValueProblem(raw.value, schema, `${type} field ${json(field)}`)
   return problem === null ? null : invalid(problem)
 }
 
-// `up_to` is a ref with a natural empty clear: the applier deletes the key, but
-// the shared ref rule refuses an empty string. Accept it only for this field,
-// matching the inline add.
+// `up_to` and a hole's `target` are the two refs with a natural empty clear;
+// EMPTY_REF_CLEARS says which, and every other field takes the schema check.
 function setExtrudeField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  if (raw.field === 'up_to' && raw.value === '') return null
+  if (clearsOnEmpty(raw.type as Mutation['type'], raw.field as string, raw.value)) return null
+  return fieldValue(raw, ctx)
+}
+
+// A hole's `target` is a pick the solve can derive instead: with no target the
+// hole drills the body its drill sites sit on, so an empty string is the clear
+// the note promises rather than a refused reference.
+function setHoleField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  if (clearsOnEmpty(raw.type as Mutation['type'], raw.field as string, raw.value)) return null
   return fieldValue(raw, ctx)
 }
 
@@ -1293,7 +1343,7 @@ export const MUTATION_VALUE_RULES = {
   add_delete_body_ref: queryField('bodyQuery'),
   remove_delete_body_ref: indexField('index'),
   add_hole: addHole,
-  set_hole_field: fieldValue,
+  set_hole_field: setHoleField,
   add_transform: 'none',
   set_transform_field: fieldValue,
   add_transform_body: queryField('bodyQuery'),

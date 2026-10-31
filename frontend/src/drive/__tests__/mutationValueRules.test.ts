@@ -15,8 +15,11 @@ import { describe, it, expect } from 'vitest'
 import { MUTATION_CATALOG, MUTATION_VALUE_RULES, validateMutation } from '../mutationCatalog'
 import type { Mutation, PartDoc } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
-import { seedBuiltins, runHeadless } from '../headlessOps'
+import { seedBuiltins, runHeadless, emptyDriveDoc } from '../headlessOps'
 import { loadPartDoc } from '@/persistence/docSchema'
+import { featureParamsSchema } from '@/persistence/partDocSchema'
+import { FIELD_SETTER_KIND } from '../mutationCatalog'
+import { EMPTY_REF_CLEARS } from '../mutationValues'
 
 function seededDoc(): PartDoc {
   return seedBuiltins({ version: 1, kind: 'part', features: [] })
@@ -164,6 +167,28 @@ describe('value rules cover the catalog', () => {
     expect(['invalid-mutation', 'unknown-target']).toContain(error.code)
     expect(error.message.length).toBeGreaterThan(20)
     expect(error.message).not.toBe(`mutation type "${type}" is invalid`)
+  })
+
+  // The empty-clear table is a decision, not a list: a field it names is cleared
+  // by "" and must therefore be a ref the kind's schema makes optional, because
+  // deleting a required key would save a document the loader refuses. Each add
+  // row shares its Set object with the setter that writes the same keys, so the
+  // two paths cannot drift.
+  it('clears only optional ref fields, and the add row mirrors its setter', () => {
+    expect(EMPTY_REF_CLEARS.add_extrude).toBe(EMPTY_REF_CLEARS.set_extrude_field)
+    expect(EMPTY_REF_CLEARS.add_hole).toBe(EMPTY_REF_CLEARS.set_hole_field)
+    for (const [type, fields] of Object.entries(EMPTY_REF_CLEARS)) {
+      if (!type.startsWith('set_')) continue
+      const kind = FIELD_SETTER_KIND[type as keyof typeof FIELD_SETTER_KIND]
+      expect(kind, type).toBeDefined()
+      const params = featureParamsSchema(kind)!
+      const required = (params.required as string[] | undefined) ?? []
+      const properties = params.properties as Record<string, Record<string, unknown>>
+      for (const field of fields) {
+        expect(required, `${type}.${field}`).not.toContain(field)
+        expect(typeof properties[field]?.pattern, `${type}.${field}`).toBe('string')
+      }
+    }
   })
 
   it('skips the value rules on the replay path', () => {
@@ -541,6 +566,86 @@ describe('finding 8: hole field values', () => {
     expect(validateMutation({
       type: 'set_hole_field', featureId: 'ho1', field: 'sketch', value: '@sk1',
     })).toMatchObject({ ok: true })
+  })
+})
+
+// Batch B docs finding: the note promised "an empty value clears any other
+// field" while the boundary refused it for `target` (a ref) and for every enum.
+// The rule is now one sentence: an empty string clears only the optional ref
+// picks the value table names, and every other field refuses it.
+describe('batch B: an empty value is the clear of a pick, not of any field', () => {
+  it('accepts an empty target on the setter and on the inline add', () => {
+    expect(validateMutation({
+      type: 'set_hole_field', featureId: 'ho1', field: 'target', value: '',
+    })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_hole', featureId: 'ho1', sketch: '@sk1', diameter: 4,
+      depth_mode: 'through_all', target: '',
+    })).toMatchObject({ ok: true })
+    // The up_to twin, already accepted, keeps the same shape.
+    expect(validateMutation({
+      type: 'set_extrude_field', featureId: 'ex1', field: 'up_to', value: '',
+    })).toMatchObject({ ok: true })
+  })
+
+  it('refuses an empty value on a field that must hold a reference, an enum member or a value', () => {
+    // A ref the caller still has to name.
+    expect(refusal({ type: 'set_hole_field', featureId: 'ho1', field: 'sketch', value: '' }).message)
+      .toContain('non-empty reference')
+    // A whitespace-only pick is not a clear either: the ref rule names it.
+    expect(refusal({ type: 'set_hole_field', featureId: 'ho1', field: 'target', value: '  ' }).message)
+      .toContain('non-empty reference')
+    // The enums name their members instead of quietly taking the default.
+    for (const [field, needle] of [['depth_mode', 'blind'], ['style', 'simple'], ['direction', 'normal']] as const) {
+      expect(refusal({ type: 'set_hole_field', featureId: 'ho1', field, value: '' }).message, field)
+        .toContain(needle)
+    }
+    // A number-or-expression field takes a number or a real expression: a blank
+    // expression would delete a key the document schema requires (diameter) or
+    // silently drop a dimension (cb_diameter).
+    for (const field of ['diameter', 'cb_diameter', 'cs_angle']) {
+      const error = refusal({ type: 'set_hole_field', featureId: 'ho1', field, value: '' })
+      expect(error.message, field).toContain('not an empty string')
+    }
+    expect(refusal({ type: 'add_hole', featureId: 'ho1', diameter: '' }).message)
+      .toContain('not an empty string')
+    expect(refusal({ type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: '' }).message)
+      .toContain('not an empty string')
+  })
+
+  it('stores no target key when the clear runs through the drive', async () => {
+    const cleared = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [{
+        mutation: {
+          type: 'add_hole', featureId: 'ho1', sketch: '@sk1', diameter: 4,
+          depth_mode: 'through_all', target: '',
+        },
+      }],
+    })
+    const added = cleared.doc?.features?.find(feature => feature.id === 'ho1')
+    if (added?.kind !== 'hole') throw new Error('the add_hole step stored no hole feature')
+    expect(added.hole).toMatchObject({ diameter: 4, depth_mode: 'through_all' })
+    // The empty string is the clear, so the key the solve would have to resolve
+    // is simply absent and the hole drills the body its sites sit on.
+    expect(added.hole).not.toHaveProperty('target')
+
+    const setter = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [
+        {
+          mutation: {
+            type: 'add_hole', featureId: 'ho2', sketch: '@sk1', diameter: 4,
+            depth_mode: 'through_all', target: '@body_ex1',
+          },
+        },
+        { mutation: { type: 'set_hole_field', featureId: 'ho2', field: 'target', value: '' } },
+      ],
+    })
+    const edited = setter.doc?.features?.find(feature => feature.id === 'ho2')
+    if (edited?.kind !== 'hole') throw new Error('the setter step lost the hole')
+    expect(edited.hole).toMatchObject({ diameter: 4 })
+    expect(edited.hole).not.toHaveProperty('target')
   })
 })
 

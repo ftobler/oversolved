@@ -712,6 +712,10 @@ export function applyAddHole(
   const hole: HoleFeatureDef = { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' }
   const defined = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined))
   Object.assign(hole, defined)
+  // An inline `target: ""` is the boundary's clear for that pick (the same empty
+  // string the setter deletes), and an add has no key to delete yet: store no
+  // target so the solve drills the body its drill sites sit on.
+  if (hole.target === undefined || hole.target === '') delete hole.target
   // A through_all bore is sized by the body it cuts, so the blind default is
   // not part of its contract. Drop it when the caller supplied none instead of
   // persisting a depth the solve then ignores.
