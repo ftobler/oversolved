@@ -341,6 +341,53 @@ export function idbTransaction<T>(
   }))
 }
 
+// Read-modify-write of one record ACROSS STORES in a single readwrite
+// transaction, the store-scoped sibling of idbReadModifyWrite. `mutate` sees the
+// record read back plus every store in the unit, may write the other stores
+// itself, and its return value (when defined) goes to `keyedStore` under the
+// same key. A throw aborts the whole unit, so a caller can refuse inside the
+// transaction and leave nothing behind.
+//
+// The put is issued from inside the get's onsuccess, exactly as
+// idbReadModifyWrite does, because a transaction closes once its request queue
+// drains and control returns to the event loop; awaiting between the read and
+// the write would let it close first.
+export function idbUpdateFrom<T>(
+  storeNames: string[],
+  keyedStore: string,
+  key: IDBValidKey,
+  mutate: (existing: T | undefined, stores: Record<string, IDBObjectStore>) => T | undefined,
+): Promise<T | undefined> {
+  return openDb().then(db => new Promise<T | undefined>((resolve, reject) => {
+    const transaction = db.transaction(storeNames, 'readwrite')
+    const stores: Record<string, IDBObjectStore> = {}
+    for (const name of storeNames) stores[name] = transaction.objectStore(name)
+    let result: T | undefined
+    let failure: unknown
+    const abort = (err: unknown): void => {
+      if (failure === undefined) failure = err
+      try {
+        transaction.abort()
+      } catch {
+        // Already aborting or done; the transaction's own handlers settle the promise.
+      }
+    }
+    const getReq = stores[keyedStore].get(key) as IDBRequest<T | undefined>
+    getReq.onsuccess = () => {
+      try {
+        result = mutate(getReq.result, stores)
+        if (result !== undefined) stores[keyedStore].put(result)
+      } catch (err) {
+        abort(err)
+      }
+    }
+    getReq.onerror = () => abort(getReq.error ?? new Error('IndexedDB read failed'))
+    transaction.oncomplete = () => resolve(result)
+    transaction.onerror = () => reject(failure ?? transaction.error ?? new Error('IndexedDB transaction failed'))
+    transaction.onabort = () => reject(failure ?? transaction.error ?? new Error('IndexedDB transaction aborted'))
+  }))
+}
+
 // Read-modify-write in ONE readwrite transaction: the get and the put share a
 // single `db.transaction(...)` call instead of each going through `tx()`
 // separately. Two transactions would let a concurrent writer (another save,
