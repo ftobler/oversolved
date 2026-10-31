@@ -5,7 +5,7 @@ import {
   SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
   FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME,
 } from '../IdPipeline'
-import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '../layerNames'
+import { FACE_LAYER_NAME, EDGE_LAYER_NAME, REFERENCE_EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '../layerNames'
 import { IdImage } from './pickCanvasHarness'
 
 /**
@@ -31,6 +31,7 @@ const LADDER = [
   PLANE_LAYER_NAME,          // -10
   FACE_LAYER_NAME,           //   0
   EDGE_LAYER_NAME,           //  10
+  REFERENCE_EDGE_LAYER_NAME, //  15
   VERTEX_LAYER_NAME,         //  20
   SKETCH_SURFACE_LAYER_NAME, //  30
   SKETCH_ENTITY_LAYER_NAME,  //  40

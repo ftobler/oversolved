@@ -149,6 +149,11 @@ describe('HelixCurve ID registration', () => {
     }))
   })
 
+  it('registers as reference geometry, on a layer the section does not clip', async () => {
+    await renderHelix()
+    expect(MockRegister).toHaveBeenCalledWith(expect.objectContaining({ layer: 'reference' }))
+  })
+
   it('does not register while hidden, so a hidden helix cannot be picked', async () => {
     await renderHelix({ visible: false })
     expect(MockRegister).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }))

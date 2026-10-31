@@ -40,6 +40,9 @@ export default function HelixCurve({
     edges: [curve],
     edgeQueries: [`@${featureId}`],
     enabled: visible,
+    // Reference curve: the section clips bodies, not this, so its pick must
+    // stay on the unclipped layer the curve is drawn on.
+    layer: 'reference',
   })
 
   if (!visible || curve.points.length < 2) return null

@@ -21,9 +21,12 @@ export function useEdgeIdRegistration(params: {
   edges: EdgeData[] | undefined
   edgeQueries: ReadonlyArray<string> | undefined
   enabled?: boolean
+  // Reference curves register beside the B-rep edges but on a layer the section
+  // does not clip, matching how they are drawn.
+  layer?: 'edge' | 'reference'
 }): void {
   const pipeline = useIdPipeline()
-  const { featureId, bodyId, edges, edgeQueries, enabled = true } = params
+  const { featureId, bodyId, edges, edgeQueries, enabled = true, layer = 'edge' } = params
   const bodyKey = bodyKeyFor(featureId, bodyId)
 
   useRegisteredBody(pipeline, enabled, bodyKey,
@@ -45,15 +48,16 @@ export function useEdgeIdRegistration(params: {
           + `${segmentPositions.length / 6} built segments for ${bodyKey}`,
         )
       }
+      const target = layer === 'reference' ? p.referenceEdgeLayer : p.edgeLayer
       try {
-        p.edgeLayer.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries: resolvedQueries, perPrimitivePickKeys: true })
+        target.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries: resolvedQueries, perPrimitivePickKeys: true })
         return true
       } catch (err) {
         if (isDevBuild()) console.warn('Edge ID registration failed; continuing without edge picking for this body', { bodyKey, err })
         return false
       }
     },
-    (p) => p.edgeLayer.unregisterBody(bodyKey),
-    [featureId, bodyId, edges, edgeQueries],
+    (p) => (layer === 'reference' ? p.referenceEdgeLayer : p.edgeLayer).unregisterBody(bodyKey),
+    [featureId, bodyId, edges, edgeQueries, layer],
   )
 }

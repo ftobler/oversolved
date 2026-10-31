@@ -8,7 +8,7 @@ import { EdgeIdLayer } from './EdgeIdLayer'
 import { VertexIdLayer } from './VertexIdLayer'
 import type { IdLayer } from './IdLayer'
 import {
-  FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+  FACE_LAYER_NAME, EDGE_LAYER_NAME, REFERENCE_EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME,
   SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
   FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME, pickPriorityOf,
@@ -132,6 +132,7 @@ export class IdPipeline {
   readonly resolver: IdResolver
   readonly faceLayer: FaceIdLayer
   readonly edgeLayer: EdgeIdLayer
+  readonly referenceEdgeLayer: EdgeIdLayer
   readonly vertexLayer: VertexIdLayer
   readonly planeLayer: FaceIdLayer
   readonly sketchEntityLayer: EdgeIdLayer
@@ -170,6 +171,11 @@ export class IdPipeline {
   // "nothing" id over the cut opening and writes depth, which is what stops an
   // edge or interior back face behind the solid-looking cap from being picked.
   private sectionActive = false
+  // Bumps when the ID target is swapped (the section adds or drops its stencil).
+  // The debug overlay binds the target's texture in an effect, so it needs a
+  // value that changes when the texture identity does, not just when the
+  // pipeline identity does.
+  private targetRevision = 0
   private readonly capBackMaterial = new THREE.MeshBasicMaterial({
     side: THREE.BackSide,
     colorWrite: false,
@@ -247,6 +253,11 @@ export class IdPipeline {
     this.edgeLayer = new EdgeIdLayer(this.registry, {
       name: EDGE_LAYER_NAME, priority: pickPriorityOf(EDGE_LAYER_NAME),
     })
+    // Reference curves share the face depth but are never handed the section
+    // plane: the visible helix is drawn unclipped, so its pick must be too.
+    this.referenceEdgeLayer = new EdgeIdLayer(this.registry, {
+      name: REFERENCE_EDGE_LAYER_NAME, priority: pickPriorityOf(REFERENCE_EDGE_LAYER_NAME),
+    })
     // depth-test-against-prev keeps B-rep face depth alive for the sketch surface
     // layer. The vertex cubes have real depth extent, so ordinary depth testing
     // ranks vertex over edge over face without any always-win escape hatch.
@@ -317,6 +328,7 @@ export class IdPipeline {
     this.addLayer(this.planeLayer)           // -10  behind everything
     this.addLayer(this.faceLayer)            //   0
     this.addLayer(this.edgeLayer)            //  10
+    this.addLayer(this.referenceEdgeLayer)   //  15
     this.addLayer(this.vertexLayer)  //  20
     this.addLayer(this.sketchSurfaceLayer)  //  30
     this.addLayer(this.sketchEntityLayer)    //  40
@@ -340,6 +352,7 @@ export class IdPipeline {
     if (this.sectionActive === active) return
     this.sectionActive = active
     this.target.setStencil(active)
+    this.targetRevision++
     this.faceLayer.setClipping(active)
     this.edgeLayer.setClipping(active)
     this.vertexLayer.setClipping(active)
@@ -348,6 +361,11 @@ export class IdPipeline {
 
   isSectionActive(): boolean {
     return this.sectionActive
+  }
+
+  // Identity counter for the current ID render target.
+  getTargetRevision(): number {
+    return this.targetRevision
   }
 
   /**

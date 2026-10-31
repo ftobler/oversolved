@@ -4,6 +4,7 @@ import type * as THREE from 'three'
 import IdDebugOverlay from '../IdDebugOverlay'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 import type { IdPipeline } from '@/picking/IdPipeline'
+import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
 /**
  * The debug overlay is mounted directly (outside a real Canvas) so its effects
@@ -29,18 +30,18 @@ vi.mock('../IdDebugOverlayMaterial', () => ({
 function fakePipeline(texture: unknown): IdPipeline {
   return {
     isDisposed: () => false,
+    getTargetRevision: () => 0,
     target: { target: { texture } },
   } as unknown as IdPipeline
 }
 
-// The pipeline store notifies mounted subscribers, so every swap is an act
-// boundary; without one React warns about an unwrapped update.
 const publish = (p: IdPipeline | null) => act(() => setLivePipeline(p))
 
 beforeEach(() => {
   mat.dispose.mockClear()
   mat.make.mockClear()
   mat.update.mockClear()
+  useSectionStore.setState({ ...DEFAULT_SECTION_STATE })
   publish(null)
 })
 
@@ -77,5 +78,28 @@ describe('IdDebugOverlay direct mount', () => {
     const { unmount } = render(<IdDebugOverlay />)
     unmount()
     expect(mat.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('rebinds the live texture when the section swaps the render target', () => {
+    const first = { name: 'first' } as unknown as THREE.Texture
+    const second = { name: 'second' } as unknown as THREE.Texture
+    const pipeline = {
+      isDisposed: () => false,
+      target: { target: { texture: first } },
+      getTargetRevision: () => 0,
+    } as unknown as IdPipeline
+    publish(pipeline)
+    render(<IdDebugOverlay />)
+    expect(mat.update.mock.calls.at(-1)?.[1]).toBe(first)
+
+    // A section toggle recreates the ID target with a stencil attachment and
+    // disposes the old texture. The overlay must follow the new identity.
+    act(() => {
+      ;(pipeline.target.target as { texture: THREE.Texture }).texture = second
+      pipeline.getTargetRevision = () => 1
+      useSectionStore.setState({ ...DEFAULT_SECTION_STATE, enabled: true, resolved: true })
+    })
+
+    expect(mat.update.mock.calls.at(-1)?.[1]).toBe(second)
   })
 })

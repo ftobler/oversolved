@@ -107,6 +107,18 @@ describe('resolveSectionFrame', () => {
     expect(frame).toEqual({ normal: [0, 0, 1], point: [4, 5, 6] })
   })
 
+  it('forwards the stored pickKey so a shared face query resolves to the clicked owner', () => {
+    const seen: Array<string | undefined> = []
+    resolveSectionFrame({ kind: 'query', query: '?dup', pickKey: 'ex2/body_2#face#0' }, {
+      planeTransform: () => null,
+      faceFrame: (_q, pickKey) => {
+        seen.push(pickKey)
+        return { normal: [0, 0, 1], point: [2, 0, 0] }
+      },
+    })
+    expect(seen).toEqual(['ex2/body_2#face#0'])
+  })
+
   it('returns null when the picked plane or face no longer resolves', () => {
     expect(resolveSectionFrame({ kind: 'query', query: 'gone' }, NO_SOURCES)).toBeNull()
   })

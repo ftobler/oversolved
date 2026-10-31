@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useIdPipeline } from '@/picking'
+import { useSectionActive } from '@/viewport/useSection'
 import { buildOverlayMaterial, updateOverlayTexture } from './IdDebugOverlayMaterial'
 
 /**
@@ -18,7 +19,12 @@ import { buildOverlayMaterial, updateOverlayTexture } from './IdDebugOverlayMate
  */
 export default function IdDebugOverlay() {
   const pipeline = useIdPipeline()
+  // The section swaps the ID target (stencil on/off), which replaces and
+  // disposes its texture. Subscribe to the toggle so this component re-runs its
+  // bind effect with the revision below instead of sampling the dead one.
+  const sectionActive = useSectionActive()
   const [material] = useState(buildOverlayMaterial)
+  const targetRevision = pipeline?.getTargetRevision() ?? 0
 
   useEffect(() => {
     return () => { material.dispose() }
@@ -26,7 +32,7 @@ export default function IdDebugOverlay() {
 
   useEffect(() => {
     updateOverlayTexture(material, pipeline?.target.target.texture ?? null)
-  }, [material, pipeline])
+  }, [material, pipeline, targetRevision, sectionActive])
 
   if (!pipeline) return null
 

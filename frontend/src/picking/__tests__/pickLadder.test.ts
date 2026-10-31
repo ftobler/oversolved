@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import { IdPipeline } from '../IdPipeline'
 import {
-  FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+  FACE_LAYER_NAME, EDGE_LAYER_NAME, REFERENCE_EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME,
   SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
   FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME,
@@ -23,6 +23,7 @@ describe('pick ladder as data', () => {
       { name: PLANE_LAYER_NAME, priority: -10 },
       { name: FACE_LAYER_NAME, priority: 0 },
       { name: EDGE_LAYER_NAME, priority: 10 },
+      { name: REFERENCE_EDGE_LAYER_NAME, priority: 15 },
       { name: VERTEX_LAYER_NAME, priority: 20 },
       { name: SKETCH_SURFACE_LAYER_NAME, priority: 30 },
       { name: SKETCH_ENTITY_LAYER_NAME, priority: 40 },

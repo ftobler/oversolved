@@ -6,6 +6,11 @@
 // existing import sites keep working unchanged.
 export const FACE_LAYER_NAME = 'face'
 export const EDGE_LAYER_NAME = 'edge'
+// Reference curves (the helix) are sketch-class geometry, not a body edge: the
+// section must not clip them in the pick buffer because it does not clip them
+// on screen. Its own layer, one rung above the body edges it draws beside,
+// keeps that rule from leaking into the B-rep edge layer.
+export const REFERENCE_EDGE_LAYER_NAME = 'referenceEdge'
 export const VERTEX_LAYER_NAME = 'vertex'
 export const PLANE_LAYER_NAME = 'planeFace'
 export const SKETCH_SURFACE_LAYER_NAME = 'sketchSurface'
@@ -43,6 +48,7 @@ export const PICK_LADDER: readonly PickLayerRung[] = [
   { name: PLANE_LAYER_NAME, priority: -10 },
   { name: FACE_LAYER_NAME, priority: 0 },
   { name: EDGE_LAYER_NAME, priority: 10 },
+  { name: REFERENCE_EDGE_LAYER_NAME, priority: 15 },
   { name: VERTEX_LAYER_NAME, priority: 20 },
   { name: SKETCH_SURFACE_LAYER_NAME, priority: 30 },
   { name: SKETCH_ENTITY_LAYER_NAME, priority: 40 },
@@ -71,7 +77,7 @@ export function pickPriorityOf(layer: string): number {
  * is deliberately absent: it is the assembly editor's namespace.
  */
 export const PART_EDITOR_PICK_LAYER_NAMES = [
-  FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+  FACE_LAYER_NAME, EDGE_LAYER_NAME, REFERENCE_EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME,
   SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
   DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME,

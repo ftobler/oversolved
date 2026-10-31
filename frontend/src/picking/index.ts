@@ -30,7 +30,7 @@ export { useFeatureHandleIdRegistration, featureHandleKey } from './useFeatureHa
 export { getLivePipeline } from './IdPipelineContext'
 export { idToRGB, rgbToId, idToRGBNormalized, EMPTY_ID, MAX_ID } from './idEncoding'
 export {
-  PART_EDITOR_PICK_LAYER_NAMES,
+  PART_EDITOR_PICK_LAYER_NAMES, REFERENCE_EDGE_LAYER_NAME,
   PICK_LADDER, PICK_LAYER_PRIORITIES, pickPriorityOf,
   type PickLayerRung,
 } from './layerNames'
