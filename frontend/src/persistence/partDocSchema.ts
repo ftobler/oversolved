@@ -51,6 +51,9 @@ interface SubDef {
   // necessity depends on another field (hole.depth is required only when
   // depth_mode is blind).
   allOf?: JsonSchema[]
+  // The container may be absent: a builtin reference plane is just {id, kind}
+  // and carries no definition.
+  optional?: boolean
 }
 
 // The param-container key each kind registered with feature(), so callers can
@@ -73,7 +76,7 @@ function feature(kind: FeatureKind, sub: SubDef): JsonSchema {
       ...(sub.allOf !== undefined && { allOf: sub.allOf }),
       additionalProperties: false,
     }
-    required.push(sub.key)
+    if (sub.optional !== true) required.push(sub.key)
   }
   return { type: 'object', properties, required, additionalProperties: false }
 }
@@ -143,7 +146,7 @@ const SKETCH_SCHEMA = feature('sketch', {
 export const FEATURE_SCHEMA_BY_KIND = {
   origin: feature('origin', { key: null, properties: {} }),
   sketch: SKETCH_SCHEMA,
-  plane: feature('plane', { key: 'definition', properties: PLANE_DEF.properties as JsonSchema }),
+  plane: feature('plane', { key: 'definition', optional: true, properties: PLANE_DEF.properties as JsonSchema }),
   extrude: feature('extrude', {
     key: 'extrude',
     required: ['sketch', 'distance'],

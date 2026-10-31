@@ -54,14 +54,14 @@ describe('runScript', () => {
     expect(outcome.steps[0].error).toEqual({ code: 'thrown', message: 'kaboom' })
   })
 
-  it('treats the adapter null no-op as success and supports mutation steps', async () => {
+  it('treats the adapter null as a no-document failure and supports mutation steps', async () => {
     const kinds: string[] = []
     const outcome = await runScript([mutationStep(), step('undo')], (s) => {
       kinds.push('mutation' in s ? 'mutation' : 'command')
       return 'mutation' in s ? null : okResult()
     })
-    expect(kinds).toEqual(['mutation', 'command'])
-    expect(outcome.ok).toBe(true)
+    expect(kinds).toEqual(['mutation'])
+    expect(outcome.ok).toBe(false)
     expect(outcome.steps[0].kind).toBe('mutation')
     expect(outcome.steps[0].id).toBe('set_rollback')
   })
@@ -96,5 +96,11 @@ describe('runScript', () => {
     expect(outcome.ok).toBe(false)
     expect(outcome.steps).toHaveLength(1)
     expect(outcome.steps[0].error).toEqual({ code: 'thrown', message: 'async kaboom' })
+  })
+
+  it('reports a null result as a no-document failure, never as ok', async () => {
+    const outcome = await runScript([step('a')], () => null)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps[0].error).toMatchObject({ code: 'no-document' })
   })
 })

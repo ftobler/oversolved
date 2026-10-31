@@ -11,6 +11,7 @@ import type { AssemblyDoc, PartDoc } from '@/types/cad'
 import { CURRENT_DOC_VERSION, docLoadErrorMessage, loadAssemblyDoc, loadPartDoc } from '@/persistence/docSchema'
 import { DocHandleStore, DOC_HANDLE_CAPACITY, assemblyHandleOf } from '@/drive/docHandleStore'
 import { docHashOf } from '@/drive/docHash'
+import { assemblyDocStrictProblem, partDocStrictProblem } from '@/drive/strictDoc'
 import { formatFeatureProblem, type FeatureProblem } from '@/drive/featureOutcome'
 import type { FeatureDelta } from '@/drive/featureDeltas'
 import type { FeatureFrameMap } from '@/drive/featureFrames'
@@ -71,6 +72,8 @@ function resolveBinding(
       const docHash = docHashOf(value.doc)
       const loaded = loadPartDoc(value.doc, { name: `parts.${docId}` })
       if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+      const strict = partDocStrictProblem(loaded.doc)
+      if (strict !== null) return { ok: false, error: `parts.${docId}: ${strict}` }
       const doc = stampLoadedDoc(loaded.doc)
       documents.putAs(docHash, doc)
       parts[docId] = doc
@@ -104,6 +107,8 @@ export function resolveAssemblyDoc(
 ): ResolvedDoc {
   const loaded = loadAssemblyDoc(rawDoc, { name: 'mcp' })
   if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+  const strict = assemblyDocStrictProblem(loaded.doc)
+  if (strict !== null) return { ok: false, error: strict }
   const doc = stampLoadedAssemblyDoc(loaded.doc)
   const binding = resolveBinding(rawParts, documents)
   if (!binding.ok) return binding
@@ -155,6 +160,8 @@ export function resolveDoc(req: McpDocArguments, documents: DocHandleStore): Res
   const docHash = docHashOf(req.doc)
   const loaded = loadPartDoc(req.doc, { name: 'mcp' })
   if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+  const strict = partDocStrictProblem(loaded.doc)
+  if (strict !== null) return { ok: false, error: strict }
   const doc = stampLoadedDoc(loaded.doc)
   documents.putAs(docHash, doc)
   return { ok: true, kind: 'part', doc, docHash }

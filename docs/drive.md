@@ -751,7 +751,10 @@ banner on stdout, so a client config must use the direct node invocation.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; unknown fields are rejected by name, so a typo never fails
-  silently.
+  silently. That includes an inline `doc` (or a `parts` `{doc}`): after the
+  load it is checked against the served part or assembly schema, so a
+  misspelled key refuses with its path. The browser loader is deliberately
+  tolerant of unknown keys, so a newer file still opens in an older build.
 - `initialize` instructions and the `select` description carry one generated
   world-frame sentence (from `BUILTIN_PLANES`): Y is up, each builtin plane's
   normal and sketch axes, and that an extrude goes along the normal. It is

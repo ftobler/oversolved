@@ -684,9 +684,28 @@ function checkBooleanDef(sub: DocRecord, field: string): void {
 function checkCountPair(sub: DocRecord, field: string): void {
   const x = sub.count_x === undefined ? null : checkCount(sub.count_x, `${field}.count_x`)
   const y = sub.count_y === undefined ? null : checkCount(sub.count_y, `${field}.count_y`)
-  if (x !== null && y !== null && x * y > MAX_ARRAY_CELLS) {
-    fail(`${field}.count_x`, `count_x x count_y is ${x * y}, the limit is ${MAX_ARRAY_CELLS}`)
-  }
+  const cells = arrayCellsProblem(x, y)
+  if (cells !== null) fail(`${field}.count_x`, cells)
+}
+
+function arrayCellsProblem(x: number | null, y: number | null): string | null {
+  if (x === null || y === null || x * y <= MAX_ARRAY_CELLS) return null
+  return `count_x x count_y is ${x * y}, the limit is ${MAX_ARRAY_CELLS}`
+}
+
+/** The refusal the loader would give an array count, as a message or null. The
+ *  editor, the setter mutations and the loader all decide through this, so a
+ *  value one of them accepts never makes the document unloadable. `other` is the
+ *  sibling count of a rectangular array, for the cells cap. */
+export function arrayCountProblem(
+  field: 'count' | 'count_x' | 'count_y',
+  value: number,
+  other?: number | null,
+): string | null {
+  if (!Number.isInteger(value) || value < 1) return `must be an integer >= 1, got ${value}`
+  if (value > MAX_ARRAY_COUNT) return `must be at most ${MAX_ARRAY_COUNT}, got ${value}`
+  if (field === 'count') return null
+  return arrayCellsProblem(value, other ?? null)
 }
 
 function checkArray(sub: DocRecord, field: string): void {

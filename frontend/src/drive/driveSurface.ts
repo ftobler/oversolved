@@ -260,9 +260,9 @@ export function createDriveSurface(deps: DriveSurfaceDeps): DriveSurface {
     }
     try {
       const result = deps.executeMutation(validated.mutation)
-      // The adapter's no-document no-op reads as success: nothing was wrong
-      // with the step, there was simply no document to apply it to.
-      return result ?? { ok: true, createdIds: [] }
+      // The adapter's null means there was no document to apply the step to:
+      // a script run before the editor mounted must not report every step ok.
+      return result ?? { ok: false, code: 'no-document', message: 'no document is open to apply the step to' }
     } catch (e) {
       return {
         ok: false,

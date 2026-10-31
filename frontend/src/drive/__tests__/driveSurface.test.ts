@@ -112,6 +112,13 @@ describe('drive surface', () => {
     expect(outcome.steps.map(s => s.id)).toEqual(['ok', 'fail'])
   })
 
+  it('answers no-document when the mutation adapter has no document to apply to', async () => {
+    const surface = createDriveSurface(deps({ executeMutation: () => null }))
+    const outcome = await surface.script([{ mutation: { type: 'rename_feature', featureId: 'f1', label: 'x' } }])
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps[0].error).toMatchObject({ code: 'no-document' })
+  })
+
   it('routes mutation steps to the mutation executor', async () => {
     const seen: Mutation[] = []
     const surface = createDriveSurface(deps({

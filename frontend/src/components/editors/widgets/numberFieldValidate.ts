@@ -1,4 +1,4 @@
-import type { NumberFieldDef } from './fieldTypes'
+import type { NumberFieldDef, SchemaData } from './fieldTypes'
 
 /** The one rule the numeric widget hands to `ExpressionInput`: null accepts
  *  the value, a string is the reason it is refused (the same contract as a
@@ -13,8 +13,11 @@ import type { NumberFieldDef } from './fieldTypes'
  *  array count, or a count below its declared `min`) still reaches the
  *  mutation. `!(v >= field.min)` (rather than `v < field.min`) also catches
  *  NaN, which fails both comparisons. */
-export function validateNumberFieldValue(field: NumberFieldDef, v: number): string | null {
+export function validateNumberFieldValue(field: NumberFieldDef, v: number, data?: SchemaData): string | null {
   if (field.parse === 'int' && !Number.isInteger(v)) return 'must be a whole number'
   if (field.min != null && !(v >= field.min)) return `must be at least ${field.min}`
-  return field.validate ? field.validate(v) : null
+  if (field.max != null && !(v <= field.max)) return `must be at most ${field.max}`
+  const own = field.validate ? field.validate(v) : null
+  if (own !== null || !field.validateWith || !data) return own
+  return field.validateWith(v, data)
 }

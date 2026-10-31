@@ -141,7 +141,12 @@ function malformedStep(index: number, step: unknown): ScriptStepOutcome | null {
 function outcomeFor(index: number, step: unknown, result: ScriptStepResult): ScriptStepOutcome {
   const kind = stepKind(step)
   const id = stepId(step)
-  if (result === null) return { index, kind, id, ok: true, createdIds: [] }
+  if (result === null) {
+    return {
+      index, kind, id, ok: false, createdIds: [],
+      error: { code: 'no-document', message: 'no document is open to apply the step to' },
+    }
+  }
   if (result.ok) {
     // The registry's CommandResult and the session's Result both carry
     // createdIds on success; the failure shapes carry code/message. The two

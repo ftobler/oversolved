@@ -77,6 +77,7 @@ export function FeatureEditor({
               key={`${field.key}:${i}`}
               field={nf}
               value={rawVal as string | number | undefined}
+              data={data}
               arrayData={nf.arrayField != null ? arrayFieldData[nf.arrayField] : undefined}
               fid={fid}
               onMutation={onMutation}

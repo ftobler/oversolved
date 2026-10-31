@@ -4,7 +4,7 @@ import type { NumberFieldWidgetProps } from './fieldTypes'
 import { validateNumberFieldValue } from './numberFieldValidate'
 
 export function NumberFieldWidget({
-  field, value, arrayData, fid, onMutation, mutationType,
+  field, value, data, arrayData, fid, onMutation, mutationType,
 }: NumberFieldWidgetProps) {
   const dv = field.default ?? 0
   const isArraySplice = field.arrayField != null && field.arrayIndex != null
@@ -15,7 +15,7 @@ export function NumberFieldWidget({
         value={value ?? dv}
         ariaLabel={field.label}
         unit={field.unit}
-        validate={(v) => validateNumberFieldValue(field, v)}
+        validate={(v) => validateNumberFieldValue(field, v, data)}
         onChange={(v) => {
           if (isArraySplice && arrayData) {
             const arr = [...arrayData]

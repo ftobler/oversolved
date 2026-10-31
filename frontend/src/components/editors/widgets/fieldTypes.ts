@@ -19,10 +19,14 @@ export interface NumberFieldDef extends BaseFieldDef {
   // accepts, a string is the reason the value is refused and what the user
   // sees. Use the shared rules in numberFieldValidate.ts.
   validate?: (v: number) => string | null
+  // The same contract for a rule that reads the sibling fields (an array's
+  // cells cap needs the other count); runs after `validate`.
+  validateWith?: (v: number, data: SchemaData) => string | null
   unit?: string
   arrayField?: string
   arrayIndex?: number
   min?: number
+  max?: number
 }
 
 export interface SelectFieldDef extends BaseFieldDef {
@@ -90,6 +94,7 @@ export interface WidgetBaseProps {
 export interface NumberFieldWidgetProps extends WidgetBaseProps {
   field: NumberFieldDef
   value: string | number | undefined
+  data?: SchemaData
   arrayData?: (string | number)[]
   mutationType: string
 }

@@ -516,10 +516,14 @@ function mateProblem(doc: AssemblyDoc | null, featureId: string): string | null 
   return `featureId "${featureId}" names no mate; mates: ${ids.join(', ') || 'none'}`
 }
 
-function uniqueMateProblem(doc: AssemblyDoc | null, featureId: string): string | null {
+// A feature id is unique across the whole assembly (instances, planes and the
+// origin as well as mates), or two features would answer to one id.
+function uniqueFeatureIdProblem(doc: AssemblyDoc | null, featureId: string): string | null {
   if (doc === null) return null
-  if (!findMate(doc, featureId)) return null
-  return `featureId "${featureId}" already names a mate; pick a new id`
+  const existing = doc.features ?? []
+  if (!existing.some(f => f.id === featureId)) return null
+  const ids = existing.map(f => f.id).join(', ')
+  return `featureId "${featureId}" already names a feature; pick a new id (existing: ${ids})`
 }
 
 function builtinProblem(doc: AssemblyDoc | null, id: string): string | null {
@@ -658,6 +662,8 @@ function validateValues(
       const handle = raw.handle as string
       const handleProblem = uniqueHandleProblem(doc, handle, 'handle')
       if (handleProblem !== null) return fail('invalid-mutation', handleProblem)
+      const idProblem = uniqueFeatureIdProblem(doc, `inst_${handle}`)
+      if (idProblem !== null) return fail('invalid-mutation', idProblem)
       const partProblem = boundProblem(ctx, raw.part as string)
       if (partProblem !== null) return fail('unknown-target', partProblem)
       if (raw.position !== undefined) {
@@ -732,6 +738,8 @@ function validateValues(
       const newHandle = raw.newHandle as string
       const unique = uniqueHandleProblem(doc, newHandle, 'newHandle')
       if (unique !== null) return fail('invalid-mutation', unique)
+      const idProblem = uniqueFeatureIdProblem(doc, `inst_${newHandle}`)
+      if (idProblem !== null) return fail('invalid-mutation', idProblem)
       return {
         ok: true,
         operation: 'duplicate_part',
@@ -788,7 +796,7 @@ function validateValues(
     }
     case 'add_mate': {
       const featureId = raw.featureId as string
-      const unique = uniqueMateProblem(doc, featureId)
+      const unique = uniqueFeatureIdProblem(doc, featureId)
       if (unique !== null) return fail('invalid-mutation', unique)
       const kind = raw.kind as string
       if (!(MATE_KINDS as readonly string[]).includes(kind)) {

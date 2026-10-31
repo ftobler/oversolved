@@ -7,6 +7,7 @@ import type { ThreadSpec } from '@/types/cad'
 import { resolveBodyPickRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
 import { stripSelectionWrapper } from '@/utils/query/selectionId'
 import { positive, nonNegative, finite, between } from '@/utils/core/valueRules'
+import { arrayCountProblem, MAX_ARRAY_COUNT } from '@/persistence/docSchema'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- schema data is a heterogeneous bag of editor values
 type SchemaData = Record<string, any>
@@ -355,6 +356,12 @@ export const SPLIT_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+// The other count of a rectangular array for the cells cap; a linear array has
+// one axis, so its hidden count_y never binds.
+function siblingCount(other: unknown, mode: unknown): number | null {
+  return mode === 'rectangular' && typeof other === 'number' ? other : null
+}
+
 export const ARRAY_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_array',
   subKey: 'array',
@@ -376,14 +383,16 @@ export const ARRAY_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'direction_x_query', label: 'Direction X', transform: resolveAxisQuery,
       emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert_x', label: 'Invert X', default: false },
-    { type: 'number', key: 'count_x', label: 'Count X', default: 2, parse: 'int', validate: positive, min: 1 },
+    { type: 'number', key: 'count_x', label: 'Count X', default: 2, parse: 'int', validate: positive, min: 1,
+      max: MAX_ARRAY_COUNT, validateWith: (v, d) => arrayCountProblem('count_x', v, siblingCount(d.count_y, d.mode)) },
     { type: 'number', key: 'pitch_x', label: 'Pitch X', default: 20, validate: nonNegative, min: 0 },
     { type: 'pick', key: 'direction_y_query', label: 'Direction Y', transform: resolveAxisQuery,
       showWhen: (d) => d.mode === 'rectangular', emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert_y', label: 'Invert Y', default: false,
       showWhen: (d) => d.mode === 'rectangular' },
     { type: 'number', key: 'count_y', label: 'Count Y', default: 2,
-      showWhen: (d) => d.mode === 'rectangular', parse: 'int', validate: positive, min: 1 },
+      showWhen: (d) => d.mode === 'rectangular', parse: 'int', validate: positive, min: 1,
+      max: MAX_ARRAY_COUNT, validateWith: (v, d) => arrayCountProblem('count_y', v, siblingCount(d.count_x, d.mode)) },
     { type: 'number', key: 'pitch_y', label: 'Pitch Y', default: 20,
       showWhen: (d) => d.mode === 'rectangular', validate: nonNegative, min: 0 },
   ],
@@ -400,7 +409,8 @@ export const CIRCULAR_ARRAY_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'new', label: 'New' }] },
     { type: 'checkbox', key: 'include_source', label: 'Include src', default: true },
-    { type: 'number', key: 'count', label: 'Count', default: 4, parse: 'int', validate: positive, min: 1 },
+    { type: 'number', key: 'count', label: 'Count', default: 4, parse: 'int', validate: positive, min: 1,
+      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v) },
     { type: 'checkbox', key: '_evenly_spaced', label: 'Evenly spaced', default: true,
       isChecked: (d) => d.step_angle == null,
       getMutation: (checked, d) => ({ field: 'step_angle', value: checked ? null : (360 / (d.count ?? 4)) }) },

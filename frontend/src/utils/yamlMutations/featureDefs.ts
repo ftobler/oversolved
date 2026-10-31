@@ -1,5 +1,6 @@
 import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList } from './helpers'
+import { arrayCountProblem } from '@/persistence/docSchema'
 
 /** Append a feature, lazily initializing the features array. */
 function pushFeature(doc: PartDoc, feature: PartFeature): void {
@@ -96,7 +97,23 @@ export function applySetArrayField(doc: PartDoc, featureId: string, field: keyof
     applySetArrayMode(doc, featureId, value as 'linear' | 'rectangular')
     return
   }
+  if (refuseArrayCount(sub, field, value, 'applySetArrayField')) return
   setFeatureField(sub, field, value)
+}
+
+/** Refuse a count the loader would refuse (the cap, the cells cap), so the
+ *  document cannot be saved into a state that fails to reopen. A clear (null or
+ *  empty) is not a count and passes to the setter. */
+function refuseArrayCount(sub: object, field: string, value: unknown, fn: string): boolean {
+  if (field !== 'count' && field !== 'count_x' && field !== 'count_y') return false
+  if (typeof value !== 'number') return false
+  const bag = sub as FieldBag
+  const siblingKey = field === 'count_x' ? 'count_y' : field === 'count_y' ? 'count_x' : null
+  const sibling = siblingKey !== null && typeof bag[siblingKey] === 'number' ? bag[siblingKey] as number : null
+  const problem = arrayCountProblem(field, value, sibling)
+  if (problem === null) return false
+  warn(`${fn}: refusing ${field}: ${problem}`)
+  return true
 }
 
 export function applySetHoleField(doc: PartDoc, featureId: string, field: keyof HoleFeatureDef, value: unknown): void {
@@ -556,6 +573,19 @@ export function applyAddArray(
     if (array.count_y === undefined) array.count_y = 2
     if (array.pitch_y === undefined) array.pitch_y = 20
   }
+  // The inline counts cross the same limits the setters and the loader hold.
+  // A pair is judged together, so each is checked against the other.
+  for (const field of ['count_x', 'count_y'] as const) {
+    const other = array[field === 'count_x' ? 'count_y' : 'count_x']
+    const value = array[field]
+    // An expression count is the solver's to resolve; only numbers are known.
+    if (typeof value !== 'number') continue
+    const problem = arrayCountProblem(field, value, typeof other === 'number' ? other : null)
+    if (problem !== null) {
+      warn(`applyAddArray: refusing ${field}: ${problem}`)
+      return
+    }
+  }
   pushFeature(doc, { id: featureId, kind: 'array', label: label ?? 'Array', array })
 }
 
@@ -598,6 +628,13 @@ export function applyAddCircularArray(
     include_source: true,
   }
   mergeInlineFields(circularArray, inline)
+  if (typeof circularArray.count === 'number') {
+    const problem = arrayCountProblem('count', circularArray.count)
+    if (problem !== null) {
+      warn(`applyAddCircularArray: refusing count: ${problem}`)
+      return
+    }
+  }
   pushFeature(doc, {
     id: featureId,
     kind: 'circular_array',
@@ -608,7 +645,9 @@ export function applyAddCircularArray(
 
 export function applySetCircularArrayField(doc: PartDoc, featureId: string, field: keyof CircularArrayFeatureDef, value: unknown): void {
   const feature = findFeature(doc, featureId)
-  setSubFeatureField(featureId, 'circular_array', feature?.kind === 'circular_array' ? feature.circular_array : undefined, field, value, 'applySetCircularArrayField')
+  const sub = feature?.kind === 'circular_array' ? feature.circular_array : undefined
+  if (sub !== undefined && refuseArrayCount(sub, field, value, 'applySetCircularArrayField')) return
+  setSubFeatureField(featureId, 'circular_array', sub, field, value, 'applySetCircularArrayField')
 }
 
 // ─── Delete Body ───

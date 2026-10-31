@@ -2,12 +2,14 @@
 // about to open and decide whether it holds edits the stored bytes do not. The
 // editor is held back while the user answers, so the accepted snapshot can be
 // handed to the loader (recovery/restore.ts) before it reads anything.
-import { loadPartDocText } from '@/persistence/docSchema'
+import { docLoadErrorMessage, loadPartDoc, loadPartDocText } from '@/persistence/docSchema'
+import { recordCrashReport } from '@/recovery/crashReports'
 import {
   readRecoveryJournal,
   recoveryAhead,
   type RecoveryJournalRecord,
 } from '@/recovery/journal'
+import { docHashOf } from '@/drive/docHash'
 import { getPreviewStore } from '@/stores/previewStore'
 
 export interface RecoveryOffer {
@@ -44,6 +46,19 @@ export async function findRecoveryOffer(
   const stored = loadPartDocText(storedText, { name: docId })
   if (!stored.ok) return null
   if (!recoveryAhead(stored.doc, record)) return null
+  // The snapshot is journal bytes from whatever build wrote them, so it crosses
+  // the loader too: an old one is migrated, a refused one is declined and
+  // logged. What the offer hands on is the loader's output, never the raw row.
+  const snapshot = loadPartDoc(structuredClone(record.doc), { name: docId })
+  if (!snapshot.ok) {
+    void recordCrashReport({
+      source: 'error',
+      message: `recovery snapshot refused: ${docLoadErrorMessage(snapshot.error)}`,
+      snapshot: null,
+    })
+    return null
+  }
+  record = { ...record, doc: snapshot.doc, docHash: docHashOf(snapshot.doc) }
   let thumbnail: string | null = null
   try {
     thumbnail = (await getPreviewStore().get(workspace, docId)) ?? null
