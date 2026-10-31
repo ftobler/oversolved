@@ -110,7 +110,8 @@ const USAGE = `usage: drive <run|commands|measure|compare|export|replay> [args] 
   replay <repro.json>
 --out for run writes JSON for a .json path and YAML otherwise, inside tmp/ or bugreports/.
 All --out and --repro paths must resolve inside tmp/ or bugreports/ and are
-checked before the script runs; a missing parent is created.`
+checked before the script runs; a missing parent is created.
+--file paths resolve against the repo root and must stay inside tmp/, bugreports/ or scratch/.`
 
 // ─── file helpers ───
 

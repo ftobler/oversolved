@@ -639,6 +639,19 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       }))
       expect(holeMeasure.features).toEqual(holeFeatures)
 
+      // The same failed hole through export: the file is still written, but
+      // the reply carries the real feature problem rather than an empty list.
+      const holeExportFile = path.join(TMP_DIR, 'mcp-hole.step')
+      const holeExport = errorPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: hole.docHash, format: 'step', out: holeExportFile },
+      }))
+      expect(holeExport.ok).toBe(false)
+      const holeExportFeatures = holeExport.features as Array<Record<string, unknown>>
+      expect(holeExportFeatures).toHaveLength(1)
+      expect(holeExportFeatures[0]).toMatchObject({ id: 'h1', kind: 'hole', status: 'exception' })
+      expect(readFileSync(holeExportFile).byteLength).toBe(holeExport.bytes as number)
+
       // A doc passed to select is stored and its hash returned, so a later
       // call can chain on the handle without re-sending the document.
       const selectedByDoc = toolPayload(await client.request('tools/call', {

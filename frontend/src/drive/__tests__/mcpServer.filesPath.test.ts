@@ -6,7 +6,7 @@
 // the read roots or one that does not exist is a tool error naming the entry.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { REPO_ROOT, readProjectFiles, resolveProjectPath } from '../../../scripts/docPath'
 import { McpToolError } from '../toolError'
@@ -65,6 +65,22 @@ describe('MCP files paths', () => {
     // real path is frontend/package.json, which the real check refuses.
     expect(() => resolveProjectPath(throughLink, 'input'))
       .toThrow(/must resolve inside/)
+  })
+
+  it('refuses a dangling symlink on a write path instead of creating its outside target', () => {
+    const target = path.join(REPO_ROOT, 'frontend', 'mcp-dangling-target.txt')
+    const link = path.join(CASE_DIR, 'dangling')
+    rmSync(target, { force: true })
+    symlinkSync(target, link, 'file')
+    try {
+      // The output path is never written: resolution refuses the link before
+      // the caller reaches writeFileSync.
+      expect(() => resolveProjectPath(path.join('tmp', 'mcp-files-path', 'dangling'), 'doc'))
+        .toThrow(/must resolve inside/)
+      expect(existsSync(target)).toBe(false)
+    } finally {
+      rmSync(target, { force: true })
+    }
   })
 
   it('refuses a missing file as a tool error naming the files entry', () => {

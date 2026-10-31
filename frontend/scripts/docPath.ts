@@ -6,7 +6,7 @@
 // come from scratch/. This module does the resolution and the format choice in
 // one place so the two surfaces cannot drift.
 
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { stringify as stringifyYaml } from 'yaml'
@@ -38,9 +38,11 @@ function isInside(root: string, target: string): boolean {
 
 /**
  * The real path of a file that may not exist yet. Resolution starts at the
- * deepest existing ancestor, so a fresh output directory is checked by the
- * link-free parent it will be created under, while a symlinked parent is
- * followed and caught by the caller's real containment check.
+ * deepest existing ancestor and follows every symlink it meets, including a
+ * dangling one whose target does not exist yet: only a component that does not
+ * exist at all is appended unchanged. A write through a link therefore lands
+ * at the path this returns, so the caller's containment check sees where the
+ * write would actually go.
  */
 function realPathOf(target: string): string {
   let existing = target
@@ -56,6 +58,20 @@ function realPathOf(target: string): string {
       // error instead of a path refusal.
       const code = (e as NodeJS.ErrnoException).code
       if (code !== 'ENOENT' && code !== 'ENOTDIR') throw e
+      let link: string | null = null
+      try {
+        if (lstatSync(existing).isSymbolicLink()) link = readlinkSync(existing)
+      } catch (le) {
+        const linkCode = (le as NodeJS.ErrnoException).code
+        if (linkCode !== 'ENOENT' && linkCode !== 'ENOTDIR') throw le
+      }
+      if (link !== null) {
+        // A dangling link is not a missing directory. Resolve through its
+        // target so the real check judges where the write would create a file;
+        // an outside target is refused there.
+        const followed = path.resolve(path.dirname(existing), link)
+        return path.resolve(realPathOf(followed), ...missing)
+      }
       const parent = path.dirname(existing)
       if (parent === existing) return target
       missing.unshift(path.basename(existing))
@@ -66,10 +82,10 @@ function realPathOf(target: string): string {
 
 /**
  * Resolve a caller-supplied path against the repo root and refuse anything
- * outside the purpose's allowed directories. Both the written path and its
- * real path are checked, so a symlink inside a root cannot point out of it. The
- * error names the directories so a caller can correct the path instead of
- * guessing.
+ * outside the purpose's allowed directories. Both the written path and the
+ * path its symlinks resolve to are checked, with a dangling link followed to
+ * its target, so a link inside a root cannot point out of it. The error names
+ * the directories so a caller can correct the path instead of guessing.
  */
 export function resolveProjectPath(input: string, purpose: ProjectPathPurpose): string {
   if (input.trim() === '') throw new Error('path must not be empty')
