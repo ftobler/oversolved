@@ -117,6 +117,8 @@ A `fit_spline` is the interpolating spline (CadQuery `spline(points, tangents)`)
 
 Projection is not a kind: any base-kind entity (`line`/`circle`/`arc`/`point`) that carries a `source` field is projected from a 3D source and gets an automatic `fixed` constraint pinning it. Legacy `projected_*` kinds are still accepted on read and normalized to their base kind. Any entity can set `construction: true`.
 
+Mirroring a selection (`mirror_entities`) writes plain authored entities: the copies are ordinary rows with their own ids, and there is no stored mirror relation, so moving the originals later does not move them. A constraint is carried over only when every one of its operands is a mirrored source or the axis line; a constraint that reaches anything else stays with the originals alone.
+
 ### plane
 
 ```yaml

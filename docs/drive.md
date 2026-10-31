@@ -670,7 +670,11 @@ banner on stdout, so a client config must use the direct node invocation.
   piece becomes a `_1`, `_2` sibling in geometric order, so `@<featureId>`
   still names all of it; `toggle_construction` takes entity targets as
   `entity:<sketchId>:<entityId>` and `delete` takes entity, vertex or constraint
-  refs (a bare id is refused); `add_variable` must sit
+  refs (a bare id is refused); `mirror_entities` takes `sourceIds` as bare entity
+  ids of one sketch plus `line`, the id of exactly one `line` entity of that same
+  sketch (normal or construction) which is the axis and is never mirrored, and
+  the mirrored copies are plain authored geometry, not a live mirror relation;
+  `add_variable` must sit
   before every feature that names it, and `reorder_features` takes exactly one
   of `toIndex` (which counts the seeded plane rows), `before: <featureId>` or
   `after: <featureId>`, while `add_plane` takes `before` to insert in place;
