@@ -60,12 +60,18 @@ export class KernelWorkerLost extends Error {
 
 /**
  * The failures a server reports as a tool error (`ok: false` with the
- * message) rather than an internal error: the kernel itself failed the call,
- * and the next call gets a working kernel again.
+ * message) rather than an internal error. A timeout, a lost worker or a trap
+ * leaves the next call a working kernel, and an ExportSelectionError is the
+ * caller's own bad body id: all of them are tool failures rather than bugs.
  */
 export function isKernelCallFailure(e: unknown): e is Error {
   return e instanceof Error
-    && (e.name === 'KernelTimeout' || e.name === 'KernelWorkerLost' || e.name === 'KernelFault')
+    && (
+      e.name === 'KernelTimeout'
+      || e.name === 'KernelWorkerLost'
+      || e.name === 'KernelFault'
+      || e.name === 'ExportSelectionError'
+    )
 }
 
 export interface KernelHost {

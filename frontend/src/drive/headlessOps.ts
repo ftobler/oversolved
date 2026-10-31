@@ -12,7 +12,7 @@
 
 import type { PartDoc, BodyResult, AssemblyDoc, Transform3D } from '@/types/cad'
 import type { SolveSchedulerState } from '@/session/SolveScheduler'
-import { exportLocally, solveLocally, buildAndMeasureLocally, measureSolveFeatures, measureAssemblyLocally, exportAssemblyLocally, type FeatureMeasure, type LocalExportOptions } from '@/kernel/solveLocally'
+import { exportLocallyInspect, solveLocally, buildAndMeasureLocally, measureSolveFeatures, measureAssemblyLocally, exportAssemblyLocally, type FeatureMeasure, type LocalExportOptions } from '@/kernel/solveLocally'
 import { KernelFault } from '@/kernel/errors'
 import { compareMeasures, type MeasureRow } from '@/kernel/occ/measureTolerance'
 import type { MeasureRecord } from '@/kernel/occ/measure'
@@ -284,10 +284,26 @@ export interface HeadlessExportOptions extends LocalExportOptions {
   files?: ReadonlyMap<string, Uint8Array>
 }
 
-/** Export a document through the local kernel; null when there is no solid. */
-export async function exportHeadless(doc: PartDoc, opts: HeadlessExportOptions): Promise<Uint8Array | null> {
+export interface HeadlessExport {
+  // Null when the build left no solid to serialise.
+  bytes: Uint8Array | null
+  // The features the export build did not finish cleanly, in feature log
+  // order; the same list a run or measure reply carries.
+  features: FeatureProblem[]
+  // An export's ok is stricter than a run's: the file is the answer, so any
+  // failed, partial or warned feature makes it a different model than the
+  // document describes. It stays separate from the file itself: the caller
+  // still gets the bytes, and the reply says they are not the whole story.
+  ok: boolean
+}
+
+/** Export a document through the local kernel; null when the kernel is unavailable. */
+export async function exportHeadless(doc: PartDoc, opts: HeadlessExportOptions): Promise<HeadlessExport | null> {
   const { docId, files, ...exportOpts } = opts
-  return exportLocally(partSolvePayload(doc, docId ?? 'headless'), exportOpts, files)
+  const outcome = await exportLocallyInspect(partSolvePayload(doc, docId ?? 'headless'), exportOpts, files)
+  if (outcome === null) return null
+  const features = featureProblems(doc, readSolveOutcomes(outcome.response.result))
+  return { bytes: outcome.bytes, features, ok: features.length === 0 }
 }
 
 export interface HeadlessSelectOptions {
@@ -497,15 +513,33 @@ export interface HeadlessAssemblyExportOptions extends LocalExportOptions {
   files?: ReadonlyMap<string, Uint8Array>
 }
 
-/** Export an assembly's placed compound through OCC. Null when there is no
- *  solid or the kernel is unavailable. */
+export interface HeadlessAssemblyExport extends AssemblyState {
+  // Null when the placed parts produced no solid.
+  bytes: Uint8Array | null
+  // False when the solve did not run, or when a mate or a bound part reported
+  // a problem: the file then holds seed or best-effort poses, not the solved
+  // assembly the reply describes. The bytes are still returned.
+  ok: boolean
+}
+
+/**
+ * Export an assembly's placed compound through OCC. Null when the kernel is
+ * unavailable. The reply carries the same solve, mate and part verdicts a
+ * measure reply does, so a failed solve is never reported as a clean file.
+ */
 export async function exportAssemblyHeadless(
   doc: AssemblyDoc,
   parts: ReadonlyMap<string, PartDoc>,
   opts: HeadlessAssemblyExportOptions,
-): Promise<Uint8Array | null> {
+): Promise<HeadlessAssemblyExport | null> {
   const session = createHeadlessAssembly({ doc, parts, ...(opts.files && { files: opts.files }) })
   const response = await session.solve()
+  const state = assemblyState(doc, response, session.partOutcomes(), docHashesOf(parts))
   const { files, ...exportOpts } = opts
-  return exportAssemblyLocally(assemblySpecs(doc, parts, response.transforms), exportOpts, files)
+  const bytes = await exportAssemblyLocally(assemblySpecs(doc, parts, response.transforms), exportOpts, files)
+  return {
+    bytes,
+    ok: !solveFailed(response.status) && state.mates.length === 0 && state.parts.length === 0,
+    ...state,
+  }
 }

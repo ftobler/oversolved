@@ -274,21 +274,31 @@ async function exportCommand(args: Args): Promise<number> {
   // bugreports/ must be refused without doing the work it would have saved.
   const out = resolveProjectPath(args.flags.out ?? `tmp/out.${format}`, 'doc')
   const doc = readDoc(file)
-  const bytes = await exportHeadless(doc, {
+  const exported = await exportHeadless(doc, {
     format,
     bodyId: args.flags.body ?? null,
     docId: args.flags['doc-id'] ?? 'cli',
     files: readFiles(args),
   })
-  if (!bytes) {
-    printJson({ ok: false, error: 'export produced no solid (or the local solver is unavailable)' })
+  if (!exported) {
+    printJson({ ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' })
+    return 1
+  }
+  if (!exported.bytes) {
+    printJson({ ok: false, features: exported.features, error: 'export produced no solid' })
     return 1
   }
   // A fresh run directory may not exist yet, so make the parent at write time.
   mkdirSync(path.dirname(out), { recursive: true })
-  writeFileSync(out, bytes)
-  printJson({ ok: true, file: out, format, bytes: bytes.byteLength })
-  return 0
+  writeFileSync(out, exported.bytes)
+  printJson({
+    ok: exported.ok,
+    file: out,
+    format,
+    bytes: exported.bytes.byteLength,
+    features: exported.features,
+  })
+  return exported.ok ? 0 : 1
 }
 
 async function replayCommand(args: Args): Promise<number> {

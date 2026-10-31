@@ -331,7 +331,10 @@ npm run drive -- replay repro.json
   instead, because comparing its empty measure to a reference would be
   meaningless.
 - `export` writes STEP or STL bytes to `--out` (default `tmp/out.<format>`),
-  creating a missing parent directory.
+  creating a missing parent directory. The reply carries the same `features`
+  problem list a run or measure reply does; a failed, partial or warned feature
+  makes `ok` false and exits 1 while the file is still written, so a file that
+  differs from the document is never reported as a clean export.
 - `replay` applies the recorded mutations to a fresh session under the
   payload's seed, verifies each step's before and after hash and exits nonzero
   on divergence.
@@ -387,7 +390,7 @@ banner on stdout, so a client config must use the direct node invocation.
 | `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, steps, docHash, solve, features, featureDeltas, frames, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
 | `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`frames`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }` |
 | `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
-| `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, docHash, file, format, bytes }` |
+| `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, docHash, features, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }` |
 | `select` | `doc` or `docHash`, `selector`, optional `docId`, `files` | `{ ok, docHash, queries, items }`: the query strings a click would store, plus a geometry summary per item; part documents only |
 
 - `select` runs a predicate over the solved bodies and returns the exact query
@@ -513,6 +516,15 @@ banner on stdout, so a client config must use the direct node invocation.
   from the solve`, and makes `ok` false: an empty solve result must never read
   as a clean build. A kernel fault (a WASM trap that repeated on the reloaded
   module) is also `ok: false`, with `solve.lastError` naming the fault.
+  `export` is the one reply whose `ok` is stricter than a run's: the file is
+  the answer, so any feature in `features` (failed, partial or warned) makes it
+  `ok: false` even though the bytes are still written. An assembly export
+  carries `solve`, `mates`, `parts`, `instances` and `summary` like a measure,
+  and is `ok: false` when the solve did not run or a mate or bound part reported
+  a problem: the file then holds seed or best-effort poses, and the reply says
+  so instead of presenting them as the solved assembly. A `body` that names no
+  live body is a tool error naming the live ids (`ExportSelectionError`), not
+  an internal error.
   `featureDeltas` answers "what did this step contribute": one row per feature
   this call changed, in log order, with `id`, `kind`, `status`, the cumulative
   `volume` and `bbox` after it (the total over every live body, not one body's),
@@ -541,8 +553,12 @@ banner on stdout, so a client config must use the direct node invocation.
   exported YAML or JSON as `doc`, returns the same hash. A loaded `doc` is
   stamped with the loader's current version, so a document an older stamp
   migrated on the way in does not migrate again on its next reload.
-- `files` is `[{ id, path }]`, the CLI's `--file` flags in JSON form; paths
-  resolve against the server's cwd.
+- `files` is `[{ id, path }]`, the CLI's `--file` flags in JSON form. A path
+  resolves through the same project rule as `out`: relative paths against the
+  repo root, so `tmp/x.step` names the project's tmp even though the server runs
+  with cwd `frontend/`, and the file must stay inside `tmp/`, `bugreports/` or
+  `scratch/`. A missing file or a path outside those roots is a tool error
+  naming the `files[]` entry, not a JSON-RPC internal error.
 - `run` with `out` writes the final document (even the accepted prefix of a
   refused script) as JSON for a `.json` path and YAML otherwise, and adds
   `file` and `format` to the reply. `compare` with `referencePath` reads the
@@ -789,8 +805,11 @@ banner on stdout, so a client config must use the direct node invocation.
   Y-up, in the same frame the document and `compare` use.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
-  arguments; unknown fields are rejected by name, so a typo never fails
-  silently. A step's mutation goes through the catalog validator, and there the
+  arguments; a user error a valid request reaches (an unknown export `body`, a
+  `files` path outside the read roots or one that cannot be read) is the same
+  `ok: false` payload, never a -32603 internal error. Unknown fields are
+  rejected by name, so a typo never fails silently. A step's mutation goes
+  through the catalog validator, and there the
   refusal also names the nearest field the row declares (`cs_diameter` -> did
   you mean `cb_diameter`?), so one call fixes the guess. No field alias is
   accepted: one meaning keeps one spelling, the same rule the `select`
@@ -851,6 +870,7 @@ previous reply; the full document never crosses the wire by default:
 {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"export","arguments":{
   "docHash":"<hash2>","format":"step","out":"tmp/box.step"
 }}}
+// {"ok":true,"docHash":"<hash2>","features":[],"file":".../tmp/box.step","format":"step","bytes":...}
 ```
 
 When a caller needs the document itself (to save it, or to hand-edit it before

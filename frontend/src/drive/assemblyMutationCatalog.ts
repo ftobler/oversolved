@@ -552,10 +552,11 @@ function resolveRef(ctx: AssemblyValidationContext, ref: unknown, label: string)
   }
 }
 
-/** A malformed selector is a ref typo, not a failed match: keep the two
- *  failures distinct so a caller fixes the expression instead of re-picking. */
+/** The resolver's own classification, so a caller can tell a misspelled part
+ *  handle (unknown-target) from a query the build no longer carries
+ *  (unresolved-ref) from a malformed selector (invalid-ref). */
 function failRef(failed: { message: string; code?: DriveRefFailure['code'] }): AssemblyValidation {
-  return fail(failed.code === 'invalid-ref' ? 'invalid-ref' : 'unresolved-ref', failed.message)
+  return fail(failed.code ?? 'unresolved-ref', failed.message)
 }
 
 function mateKindParamProblem(kind: string, param: string): string | null {

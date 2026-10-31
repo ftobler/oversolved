@@ -35,6 +35,18 @@ export class KernelFault extends Error {
 }
 
 /**
+ * An export asked for a body id the build does not have. The id came from the
+ * request, not from the document, so the MCP host answers it as a tool failure
+ * naming the live bodies rather than as an internal error.
+ */
+export class ExportSelectionError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ExportSelectionError'
+  }
+}
+
+/**
  * Whether a throw is a WASM trap rather than a document/build error.
  *
  * `WebAssembly.RuntimeError` is the out-of-bounds/unreachable case this fix was
