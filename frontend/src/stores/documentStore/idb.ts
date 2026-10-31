@@ -364,8 +364,14 @@ export function idbUpdateFrom<T>(
     for (const name of storeNames) stores[name] = transaction.objectStore(name)
     let result: T | undefined
     let failure: unknown
+    let failed = false
     const abort = (err: unknown): void => {
-      if (failure === undefined) failure = err
+      // A flag rather than `failure === undefined`: a mutate that throws
+      // undefined still aborted the unit, and the handlers must say so.
+      if (!failed) {
+        failure = err
+        failed = true
+      }
       try {
         transaction.abort()
       } catch {
@@ -383,8 +389,10 @@ export function idbUpdateFrom<T>(
     }
     getReq.onerror = () => abort(getReq.error ?? new Error('IndexedDB read failed'))
     transaction.oncomplete = () => resolve(result)
-    transaction.onerror = () => reject(failure ?? transaction.error ?? new Error('IndexedDB transaction failed'))
-    transaction.onabort = () => reject(failure ?? transaction.error ?? new Error('IndexedDB transaction aborted'))
+    // When the abort came from `mutate` or the read, its reason is the one the
+    // caller can act on; a transaction-level error only speaks when it did not.
+    transaction.onerror = () => reject(failed ? failure : transaction.error ?? new Error('IndexedDB transaction failed'))
+    transaction.onabort = () => reject(failed ? failure : transaction.error ?? new Error('IndexedDB transaction aborted'))
   }))
 }
 

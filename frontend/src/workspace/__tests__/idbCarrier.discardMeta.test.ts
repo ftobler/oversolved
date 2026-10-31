@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { IdbCarrier } from '../idbCarrier'
+import { STORE_WORKSPACE_META } from '@/stores/documentStore/idb'
+import { IdbCarrier, readWorkspaceMeta, writeWorkspaceMeta } from '../idbCarrier'
 import type { WorkspaceTree } from '../types'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb, seedWorkspace } from './idbHarness'
+
+const originalPut = IDBObjectStore.prototype.put
 
 const assemblyText = (partId: string): string =>
   `kind: assembly\nfeatures:\n  - kind: part_instance\n    instance:\n      handle: h1\n      doc_id: ${partId}\n      doc_rev: 1\n`
@@ -60,5 +63,40 @@ describe('discard restores the meta row the checkpoint adopted', () => {
     await carrier.discard()
 
     expect(await carrier.referencesOf('asm')).toEqual(['f', 'p'])
+  })
+
+  // A row written before the snapshot existed has nothing to restore, so a
+  // discard after an upgrade must repair the rows and leave the structure the
+  // user still has alone: clearing it would silently empty their trash.
+  it('leaves the structure alone when the meta predates the snapshot', async () => {
+    const carrier = await checkpointedCarrier()
+    const meta = await readWorkspaceMeta('ws-meta')
+    const legacy = { ...meta! }
+    delete legacy.savedReferences
+    delete legacy.savedTrash
+    delete legacy.savedProvenance
+    await writeWorkspaceMeta(legacy)
+
+    await carrier.remove('p')
+    await carrier.removeReference('asm', 'f')
+    const before = await carrier.open()
+
+    const puts: string[] = []
+    const patched = function (this: IDBObjectStore, ...args: unknown[]) {
+      puts.push(this.name)
+      return (originalPut as unknown as (...a: unknown[]) => IDBRequest).apply(this, args)
+    }
+    IDBObjectStore.prototype.put = patched as typeof IDBObjectStore.prototype.put
+    try {
+      await carrier.discard()
+    } finally {
+      IDBObjectStore.prototype.put = originalPut
+    }
+
+    expect(puts).not.toContain(STORE_WORKSPACE_META)
+    const after = await carrier.open()
+    expect(after.manifest.trash).toEqual(before.manifest.trash)
+    expect(after.manifest.references).toEqual(before.manifest.references)
+    expect(after.contents.get('asm')?.text).toBe(assemblyText('p'))
   })
 })

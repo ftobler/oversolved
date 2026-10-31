@@ -47,7 +47,9 @@ describe('saveEntry cost', () => {
 
   // A save used to reach the workspace row through the whole-tree write, and
   // that row's updatedAt is the modified time the library tile shows and sorts
-  // on. Dropping the whole-tree write must not freeze it.
+  // on. Dropping the whole-tree write must not freeze it. Both gestures that
+  // adopt the checkpoint stamp it: a save and a bare Keep, and a discard does
+  // too, because it is the recovery reset moving the workspace.
   it('advances the workspace modified time', async () => {
     const store = new IdbWorkspaceStore()
     const { workspace } = await store.create('Doc', { docKind: 'part' })
@@ -60,5 +62,18 @@ describe('saveEntry cost', () => {
 
     const [summary] = await store.list()
     expect(summary.updatedAt).toBeGreaterThan(created.updatedAt)
+  })
+
+  it('stamps the modified time on a bare Keep and on a discard', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Doc', { docKind: 'part' })
+    await new Promise(resolve => setTimeout(resolve, 2))
+    await store.checkpoint(workspace)
+    const kept = (await store.list())[0].updatedAt
+    expect(kept).toBeGreaterThan((await store.list())[0].createdAt)
+
+    await new Promise(resolve => setTimeout(resolve, 2))
+    await store.discard(workspace)
+    expect((await store.list())[0].updatedAt).toBeGreaterThan(kept)
   })
 })

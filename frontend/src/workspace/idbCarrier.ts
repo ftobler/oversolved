@@ -425,25 +425,7 @@ export class IdbCarrier implements WorkspaceCarrier {
   }
 
   async write(entry: WorkspaceEntry): Promise<void> {
-    const meta = await this.requireMeta()
-    if (meta.trash.includes(entry.id)) throw new Error(`Entry is trashed: ${entry.id}`)
-    const previous = await this.getRecord(entry.id)
-    if (!previous) throw new Error(`Entry not found: ${entry.id}`)
-    const merged = mergeContentForWrite(entry, previous)
-    // A byte-identical save is a no-op. `rev` is a change ordinal now, not the
-    // bundle-cache key (A11), but churning it on a save that changed nothing
-    // would still light the dirty dot against the checkpoint. The live save path
-    // is adapter save -> writeEntry -> here, which has no other content guard.
-    if (!entryChanged(previous, merged)) return
-    const record = entryToRecord(this.workspace, merged, previous.path, previous.rev + 1, Date.now())
-    await idbTransaction(
-      [STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
-      'readwrite',
-      stores => {
-        stores[STORE_WORKSPACE_ENTRIES].put(record)
-        stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
-      },
-    )
+    await this.writeRecord(entry, null)
   }
 
   // One working-copy write together with the outgoing edges its text implies.
@@ -451,11 +433,19 @@ export class IdbCarrier implements WorkspaceCarrier {
   // leaves edges describing text that was not stored, and a stored document
   // never disagrees with the edges derived from its own text.
   async writeWithReferences(entry: WorkspaceEntry, targets: string[]): Promise<void> {
+    await this.writeRecord(entry, targets)
+  }
+
+  // The one record-write implementation both entry paths share, so the no-op
+  // rule lives in one place. A byte-identical write changes nothing: `rev` is a
+  // change ordinal now, not the bundle-cache key (A11), but churning it on a save
+  // that changed nothing would still light the dirty dot against the checkpoint.
+  // Document text arrives with its edge set; a file entry, or a document whose
+  // text has no parseable mapping, passes null and lands only its row.
+  private async writeRecord(entry: WorkspaceEntry, targets: string[] | null): Promise<void> {
     const previous = await this.getRecord(entry.id)
     if (!previous) throw new Error(`Entry not found: ${entry.id}`)
     const merged = mergeContentForWrite(entry, previous)
-    // The byte-identical guard of write(): a save that changes no content and
-    // moves no edge writes nothing, so it cannot churn the dirty dot.
     const changed = entryChanged(previous, merged)
     await idbUpdateFrom<WorkspaceMetaRecord>(
       [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
@@ -469,6 +459,7 @@ export class IdbCarrier implements WorkspaceCarrier {
           stores[STORE_WORKSPACE_ENTRIES].put(record)
           stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
         }
+        if (targets === null) return undefined
         const references = reconciledReferences(meta.references, entry.id, targets)
         return references === undefined ? undefined : { ...meta, references, updatedAt: Date.now() }
       },
@@ -603,7 +594,10 @@ export class IdbCarrier implements WorkspaceCarrier {
     // Same pre-transaction read window as save(): a concurrent tab's write can
     // land between these reads and the checkpoint transaction, so this
     // checkpoint adopts a slightly stale working copy. The next explicit save
-    // re-adopts, so the cost is a missed rev, not lost content.
+    // re-adopts, so the cost is a missed rev, not lost content. The structure
+    // snapshots come from that same earlier meta read, so they can lag the rows
+    // this checkpoint adopts as well; the next checkpoint re-adopts both
+    // together.
     const meta = await this.requireMeta()
     const working = await workspaceEntryRecords(this.workspace)
     const saved = await savedEntryRecords(this.workspace)
