@@ -164,6 +164,40 @@ describe('section pick dispatch', () => {
     expect(useSectionStore.getState().pickError).toBeNull()
   })
 
+  it('right-click cancels the armed pick and clears the error', async () => {
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([FACE_LAYER_NAME, PLANE_LAYER_NAME]),
+    }))
+    useSectionStore.setState({ pickError: SECTION_PICK_MISS_REASON })
+
+    act(() => {
+      canvas.dispatchEvent(new MouseEvent('contextmenu', { button: 2, clientX: 100, clientY: 100 }))
+    })
+
+    expect(useSectionStore.getState().picking).toBe(false)
+    expect(useSectionStore.getState().pickError).toBeNull()
+  })
+
+  it('the first click after a cancel is not swallowed by the section pick', async () => {
+    pipeline.resolveSync = vi.fn().mockReturnValue(PLANE_HIT)
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([FACE_LAYER_NAME, PLANE_LAYER_NAME]),
+    }))
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+    expect(useSectionStore.getState().picking).toBe(false)
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+
+    expect(useSketchEditorStore.getState().normalSelection.has('@Plane1')).toBe(true)
+  })
+
   it('filters hover to faces and planes while the pick is armed', async () => {
     pipeline.resolveAsync = vi.fn().mockResolvedValue(PLANE_HIT)
     renderHook(() => useIdBufferPointerDispatch({

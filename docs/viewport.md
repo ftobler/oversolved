@@ -204,7 +204,8 @@ Picking follows the cut in the GPU, not by filtering hits in JS:
   drawing tool whose hover filter excludes them. Hover uses the same narrowed
   set while the pick is armed. A curved face is refused with a reason. A miss
   over the model keeps the pick armed and shows the reason; a second empty
-  click, Escape, right-click, or the Pick button cancels and clears it.
+  click, Escape, right-click (which does not open the part context menu while
+  armed), or the Pick button cancels and clears it.
 - Every section change calls `markDirty('section')` and clears/invalidates the
   hover scheduler, so a hover resolved against the previous cut cannot land.
 - The rubber band reads the same ID target, so it inherits the clip and cap.

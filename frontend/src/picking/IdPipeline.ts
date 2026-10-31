@@ -331,7 +331,7 @@ export class IdPipeline {
     this.addLayer(this.planeLayer)           // -10  behind everything
     this.addLayer(this.faceLayer)            //   0
     this.addLayer(this.edgeLayer)            //  10
-    this.addLayer(this.referenceEdgeLayer)   //  15
+    this.addLayer(this.referenceEdgeLayer)   //  10
     this.addLayer(this.vertexLayer)  //  20
     this.addLayer(this.sketchSurfaceLayer)  //  30
     this.addLayer(this.sketchEntityLayer)    //  40
