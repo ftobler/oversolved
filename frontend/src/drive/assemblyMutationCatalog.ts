@@ -538,7 +538,9 @@ function builtinProblem(doc: AssemblyDoc | null, id: string): string | null {
 
 function resolveRef(ctx: AssemblyValidationContext, ref: unknown, label: string): { ok: true; ref: MateRef } | { ok: false; message: string; code?: DriveRefFailure['code'] } {
   const shape = refShapeProblem(ref, label)
-  if (shape !== null) return { ok: false, message: shape }
+  // A malformed ref is its own class: the caller fixes the object rather than
+  // re-picking geometry.
+  if (shape !== null) return { ok: false, code: 'invalid-ref', message: shape }
   const drive = ref as DriveMateRef
   if (ctx.resolveRef) {
     const resolved = ctx.resolveRef(drive)
@@ -552,10 +554,11 @@ function resolveRef(ctx: AssemblyValidationContext, ref: unknown, label: string)
   }
 }
 
-/** A malformed selector is a ref typo, not a failed match: keep the two
- *  failures distinct so a caller fixes the expression instead of re-picking. */
+/** The resolver's own classification, so a caller can tell a misspelled part
+ *  handle (unknown-target) from a query the build no longer carries
+ *  (unresolved-ref) from a malformed selector (invalid-ref). */
 function failRef(failed: { message: string; code?: DriveRefFailure['code'] }): AssemblyValidation {
-  return fail(failed.code === 'invalid-ref' ? 'invalid-ref' : 'unresolved-ref', failed.message)
+  return fail(failed.code ?? 'unresolved-ref', failed.message)
 }
 
 function mateKindParamProblem(kind: string, param: string): string | null {

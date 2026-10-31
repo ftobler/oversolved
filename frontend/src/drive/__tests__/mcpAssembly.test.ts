@@ -55,6 +55,17 @@ const MATE = {
   },
 }
 
+// A second fixed mate at a different offset cannot hold with m1: the pair is
+// the overconstrained export case.
+const CONFLICTING_MATE = {
+  mutation: {
+    type: 'add_mate', featureId: 'm2', kind: 'fixed',
+    ref_a: { part: 'plate', selector: FLAT([0, 0, 1], 'max') },
+    ref_b: { part: 'pin', selector: FLAT([0, 0, 1], 'min') },
+    flip: true, offset: 10,
+  },
+}
+
 const PLATE_VOLUME = 6000 * 10
 const PIN_VOLUME = Math.PI * 25 * 20
 const TOTAL_VOLUME = PLATE_VOLUME + PIN_VOLUME
@@ -184,13 +195,42 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
         arguments: { docHash: a1, format: 'step', out: stepFile },
       }))
       expect(exported).toMatchObject({ ok: true, format: 'step', docHash: a1 })
-      expect(readFileSync(stepFile).byteLength).toBeGreaterThan(0)
+      // An assembly export carries the measure-style verdict, not just bytes:
+      // a clean export has a clean solve, no mate or part problems, and the
+      // poses it wrote.
+      expect(exported.kind).toBe('assembly')
+      expect(exported.solve).toMatchObject({ verdict: 'fully_constrained' })
+      expect(exported.mates).toEqual([])
+      expect(exported.parts).toEqual([])
+      expect((exported.instances as Array<{ handle: string }>).map(i => i.handle).sort()).toEqual(['pin', 'plate'])
+      expect(String(exported.summary)).toContain('instances: plate (plate, fixed), pin (pin)')
+      expect(readFileSync(stepFile).byteLength).toBe(exported.bytes as number)
 
       const refusedBody = errorPayload(await client.request('tools/call', {
         name: 'export',
         arguments: { docHash: a1, format: 'step', out: stepFile, body: 'body_ex1' },
       }))
       expect(String(refusedBody.error)).toContain('per-instance export')
+
+      // Two conflicting fixed mates make the solve overconstrained. The export
+      // still writes the best-effort placement, but says so: ok false with the
+      // verdict and the wildcard mate problem.
+      const conflicted = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { docHash: a1, steps: [CONFLICTING_MATE] },
+      }))
+      expect((conflicted.solve as { verdict: string }).verdict).toBe('overconstrained')
+      const conflictFile = path.join(OUT_DIR, 'pin_plate_overconstrained.step')
+      const conflictExport = errorPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: conflicted.docHash, format: 'step', out: conflictFile },
+      }))
+      expect(conflictExport.ok).toBe(false)
+      expect(conflictExport.kind).toBe('assembly')
+      expect((conflictExport.solve as { verdict: string }).verdict).toBe('overconstrained')
+      expect(conflictExport.mates).toContainEqual(expect.objectContaining({ id: '*', status: 'overconstrained' }))
+      expect(conflictExport.parts).toEqual([])
+      expect(readFileSync(conflictFile).byteLength).toBeGreaterThan(0)
 
       const zipped = toolPayload(await client.request('tools/call', {
         name: 'run',

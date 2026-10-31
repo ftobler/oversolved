@@ -110,7 +110,8 @@ const USAGE = `usage: drive <run|commands|measure|compare|export|replay> [args] 
   replay <repro.json>
 --out for run writes JSON for a .json path and YAML otherwise, inside tmp/ or bugreports/.
 All --out and --repro paths must resolve inside tmp/ or bugreports/ and are
-checked before the script runs; a missing parent is created.`
+checked before the script runs; a missing parent is created.
+--file paths resolve against the repo root and must stay inside tmp/, bugreports/ or scratch/.`
 
 // ─── file helpers ───
 
@@ -154,7 +155,8 @@ function printJson(value: unknown): void {
 
 // The solve file map from repeated `--file <id>=<path>` flags: the bytes for
 // an import_step feature's file_id, exactly what the browser's file registry
-// hands the worker.
+// hands the worker. The path follows the project read rule, the same one the
+// MCP `files` map uses, so one spelling names one file on both surfaces.
 function readFiles(args: Args): ReadonlyMap<string, Uint8Array> | undefined {
   const entries = args.repeated.file ?? []
   if (entries.length === 0) return undefined
@@ -164,7 +166,8 @@ function readFiles(args: Args): ReadonlyMap<string, Uint8Array> | undefined {
     if (eq <= 0 || eq === entry.length - 1) {
       throw new UsageError(`--file expects <id>=<path>, got "${entry}"`)
     }
-    files.set(entry.slice(0, eq), new Uint8Array(readFileSync(path.resolve(entry.slice(eq + 1)))))
+    const file = resolveProjectPath(entry.slice(eq + 1), 'input')
+    files.set(entry.slice(0, eq), new Uint8Array(readFileSync(file)))
   }
   return files
 }
@@ -274,21 +277,31 @@ async function exportCommand(args: Args): Promise<number> {
   // bugreports/ must be refused without doing the work it would have saved.
   const out = resolveProjectPath(args.flags.out ?? `tmp/out.${format}`, 'doc')
   const doc = readDoc(file)
-  const bytes = await exportHeadless(doc, {
+  const exported = await exportHeadless(doc, {
     format,
     bodyId: args.flags.body ?? null,
     docId: args.flags['doc-id'] ?? 'cli',
     files: readFiles(args),
   })
-  if (!bytes) {
-    printJson({ ok: false, error: 'export produced no solid (or the local solver is unavailable)' })
+  if (!exported) {
+    printJson({ ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' })
+    return 1
+  }
+  if (!exported.bytes) {
+    printJson({ ok: false, features: exported.features, error: 'export produced no solid' })
     return 1
   }
   // A fresh run directory may not exist yet, so make the parent at write time.
   mkdirSync(path.dirname(out), { recursive: true })
-  writeFileSync(out, bytes)
-  printJson({ ok: true, file: out, format, bytes: bytes.byteLength })
-  return 0
+  writeFileSync(out, exported.bytes)
+  printJson({
+    ok: exported.ok,
+    file: out,
+    format,
+    bytes: exported.bytes.byteLength,
+    features: exported.features,
+  })
+  return exported.ok ? 0 : 1
 }
 
 async function replayCommand(args: Args): Promise<number> {

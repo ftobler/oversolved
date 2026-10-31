@@ -29,6 +29,7 @@ import {
   addPlaneFrameSentence,
   REFERENCE_FRAME_SENTENCE,
 } from '@/drive/worldFrame'
+import { McpToolError } from '@/drive/toolError'
 
 // The protocol revisions whose initialize handshake this server accepts. The
 // three methods implemented here exist unchanged in all of them, so a client
@@ -82,7 +83,7 @@ export interface McpMeasureRequest extends McpDocArguments {
 
 export interface McpExportRequest extends McpDocArguments {
   format: 'step' | 'stl'
-  // Where the bytes are written, resolved against the server's cwd.
+  // Where the bytes are written, resolved against the repo root.
   out: string
   body?: string
   docId?: string
@@ -138,7 +139,8 @@ export interface McpToolDefinition {
 
 const FILE_LIST_SCHEMA = {
   type: 'array',
-  description: 'STEP bytes for import_step features: the feature file_id and a file path.',
+  description: 'STEP bytes for import_step features: the feature file_id and a file path. Paths resolve '
+    + 'against the repo root and must stay inside tmp/, bugreports/ or scratch/.',
   items: {
     type: 'object',
     required: ['id', 'path'],
@@ -462,7 +464,11 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
   },
   {
     name: 'export',
-    description: 'Export a document to STEP or STL and write the bytes to `out`. Returns the written path and size.',
+    description: 'Export a document to STEP or STL and write the bytes to `out`. Returns the written path and size, '
+      + 'plus features (part) or solve/mates/parts (assembly). A feature that failed, only partly applied, or '
+      + 'warned, and an assembly whose solve did not run or whose mates or bound parts reported a problem, make '
+      + 'the reply ok false with the file still written: the bytes are not the clean model the document describes. '
+      + 'An unknown body id is a tool error naming the live body ids.',
     inputSchema: {
       type: 'object',
       required: ['format', 'out'],
@@ -932,7 +938,16 @@ export function createMcpServer(ops: McpCadOps): McpServer {
           const params = asObject(request.params ?? {}, 'params')
           const name = params.name
           if (typeof name !== 'string') throw new McpInvalidParams('tools/call needs a tool name')
-          const payload = await callTool(ops, name, params.arguments)
+          let payload: McpToolPayload
+          try {
+            payload = await callTool(ops, name, params.arguments)
+          } catch (e) {
+            // A user error the op raised (a bad body id, an unreadable input
+            // path) is a tool failure, not a server bug: answer it in the
+            // payload so the client sees isError and a fixable message.
+            if (!(e instanceof McpToolError)) throw e
+            payload = { ok: false, error: e.message }
+          }
           return success(id, {
             content: [{ type: 'text', text: JSON.stringify(payload, null, 1) }],
             ...(payload.ok === false && { isError: true }),

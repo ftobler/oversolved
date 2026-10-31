@@ -295,12 +295,14 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(run.payload).toMatchSnapshot()
   }, 60_000)
 
-  it('reports a failed feature while ok stays true', async () => {
+  it('reports a failed feature while ok stays true, and an export of it as ok false', async () => {
     mkdirSync(TMP_DIR, { recursive: true })
     const holeScript = path.join(TMP_DIR, 'hole-line-sketch.json')
+    const holeDoc = path.join(TMP_DIR, 'hole-line-sketch.yaml')
+    const stepFile = path.join(TMP_DIR, 'hole-line-sketch.step')
     writeFileSync(holeScript, JSON.stringify({ steps: HOLE_ON_LINE_SKETCH }, null, 1))
 
-    const run = await drive('run', holeScript)
+    const run = await drive('run', holeScript, '--out', holeDoc)
     expect(run.status).toBe(0)
     expect(run.payload.ok).toBe(true)
     expect((run.payload.solve as { lastError: string | null }).lastError).toBeNull()
@@ -308,7 +310,18 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(features).toHaveLength(1)
     expect(features[0]).toMatchObject({ id: 'h1', kind: 'hole', status: 'exception' })
     expect(features[0].message).toMatch(/has no point/)
-  }, 120_000)
+
+    // The export still writes the file but must not report it as clean: the
+    // hole is named in the reply's own problem list.
+    const exported = await drive('export', holeDoc, '--format', 'step', '--out', stepFile)
+    expect(exported.status).toBe(1)
+    expect(exported.payload.ok).toBe(false)
+    const exportedFeatures = exported.payload.features as Array<Record<string, unknown>>
+    expect(exportedFeatures).toHaveLength(1)
+    expect(exportedFeatures[0]).toMatchObject({ id: 'h1', kind: 'hole', status: 'exception' })
+    expect(existsSync(stepFile)).toBe(true)
+    expect(readFileSync(stepFile).byteLength).toBe(exported.payload.bytes as number)
+  }, 180_000)
 
   it('refuses an out path outside the project before running the script', async () => {
     mkdirSync(TMP_DIR, { recursive: true })
@@ -477,6 +490,16 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
       expect(afterCentroid[axis]).toBeCloseTo(beforeCentroid[axis], 6)
     }
     expectBbox(after.payload.bbox, [0, 0, 0, 10, 10, 5])
+
+    // The flag follows the project read rule on both surfaces: a repo-root
+    // relative spelling finds the same file, while a path outside the roots is
+    // refused before the build.
+    const relative = await drive('measure', importDoc, '--file', 'f1=tmp/drive-cli-smoke/box3.step')
+    expect(relative.status).toBe(0)
+    expect(relative.payload.volume as number).toBeCloseTo(before.payload.volume as number, 6)
+    const refused = await drive('measure', importDoc, '--file', 'f1=frontend/package.json')
+    expect(refused.status).toBe(1)
+    expect(String(refused.payload.error)).toContain('must resolve inside tmp/, bugreports/, scratch/')
   }, 180_000)
 
   it('compares the seed translation against its reference and fails a perturbed one by name', async () => {
@@ -616,6 +639,19 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       }))
       expect(holeMeasure.features).toEqual(holeFeatures)
 
+      // The same failed hole through export: the file is still written, but
+      // the reply carries the real feature problem rather than an empty list.
+      const holeExportFile = path.join(TMP_DIR, 'mcp-hole.step')
+      const holeExport = errorPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: hole.docHash, format: 'step', out: holeExportFile },
+      }))
+      expect(holeExport.ok).toBe(false)
+      const holeExportFeatures = holeExport.features as Array<Record<string, unknown>>
+      expect(holeExportFeatures).toHaveLength(1)
+      expect(holeExportFeatures[0]).toMatchObject({ id: 'h1', kind: 'hole', status: 'exception' })
+      expect(readFileSync(holeExportFile).byteLength).toBe(holeExport.bytes as number)
+
       // A doc passed to select is stored and its hash returned, so a later
       // call can chain on the handle without re-sending the document.
       const selectedByDoc = toolPayload(await client.request('tools/call', {
@@ -708,7 +744,11 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
         arguments: { docHash: edited.docHash, format: 'step', out: stepFile },
       }))
       expect(exported).toMatchObject({ ok: true, format: 'step', docHash: edited.docHash })
-      expect(readFileSync(stepFile).byteLength).toBeGreaterThan(0)
+      // A part export carries the same features channel a run or measure has;
+      // the box builds cleanly, so the list is present and empty.
+      expect(exported.features).toEqual([])
+      expect(exported.solve).toBeUndefined()
+      expect(readFileSync(stepFile).byteLength).toBe(exported.bytes as number)
 
       // Select the four vertical edges by predicate, then fillet exactly those
       // queries: the selector output is what a click would have stored.

@@ -16,17 +16,17 @@
 // OVERSOLVED_MCP_SOLVE_BUDGET_MS overrides the stall budget (the stall test
 // lowers it).
 
-import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
+import { writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { Worker } from 'node:worker_threads'
 import type { PartDoc } from '@/types/cad'
 import { createHeadlessPart } from '@/drive/headlessPart'
-import { emptyDriveDoc, type HeadlessMeasure, type HeadlessCompareResult, type HeadlessAssemblyMeasure, type HeadlessAssemblyCompare, type HeadlessAssemblyRunResult } from '@/drive/headlessOps'
+import { emptyDriveDoc, type HeadlessMeasure, type HeadlessCompareResult, type HeadlessAssemblyMeasure, type HeadlessAssemblyCompare, type HeadlessAssemblyRunResult, type HeadlessExport, type HeadlessAssemblyExport } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
-import { createMcpServer, type McpCadOps, type McpFileRef } from '@/drive/mcpServer'
+import { createMcpServer, type McpCadOps } from '@/drive/mcpServer'
 import { DocHandleStore } from '@/drive/docHandleStore'
 import { shapeAssemblyState, DEFAULT_ASSEMBLY_DETAIL } from '@/drive/assemblyDetail'
 import { assemblyRunReply, requirePartDoc, resolveAssemblyDoc, resolveDoc, runReply, type ResolvedDoc, type RunReplySource } from '@/drive/mcpDocRef'
@@ -40,7 +40,7 @@ import type { SelectResult } from '@/kernel/select'
 import { parseReference } from '@/translations/corpus'
 import { createKernelHost, isKernelCallFailure, type KernelOp, type KernelWorkerLike } from '@/drive/kernelHost'
 import { routeKernelStdoutToStderr } from './kernelStdout'
-import { readProjectReference, resolveProjectPath, writeDocFile } from './docPath'
+import { readProjectFiles, readProjectReference, resolveProjectPath, writeDocFile } from './docPath'
 
 function budgetFromEnv(): number | undefined {
   const raw = process.env.OVERSOLVED_MCP_SOLVE_BUDGET_MS
@@ -87,14 +87,6 @@ const writeProtocol = routeKernelStdoutToStderr()
 
 function emptyPartDoc(): PartDoc {
   return emptyDriveDoc()
-}
-
-// Paths resolve against the server's cwd, like the CLI's --file values.
-function readFiles(files: McpFileRef[]): ReadonlyMap<string, Uint8Array> | undefined {
-  if (files.length === 0) return undefined
-  const map = new Map<string, Uint8Array>()
-  for (const file of files) map.set(file.id, new Uint8Array(readFileSync(path.resolve(file.path))))
-  return map
 }
 
 // The docHash chain: in-process, content-addressed and bounded, so a session
@@ -153,7 +145,7 @@ const ops: McpCadOps = {
       resolved = resolveDoc(req, documents)
     }
     if (!resolved.ok) return { ok: false, error: resolved.error }
-    const files = readFiles(req.files)
+    const files = readProjectFiles(req.files)
 
     if (resolved.kind === 'part') {
       if (out !== undefined && out.endsWith('.zip')) {
@@ -234,7 +226,7 @@ const ops: McpCadOps = {
   async measure(req) {
     const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
-    const files = readFiles(req.files)
+    const files = readProjectFiles(req.files)
     if (resolved.kind === 'part') {
       if (req.detail !== undefined) {
         return { ok: false, error: 'detail applies only to assembly documents' }
@@ -294,7 +286,7 @@ const ops: McpCadOps = {
         return { ok: false, error: e instanceof Error ? e.message : String(e) }
       }
     }
-    const files = readFiles(req.files)
+    const files = readProjectFiles(req.files)
     if (resolved.kind === 'part') {
       const answer = await callKernel<HeadlessCompareResult>('compare', {
         doc: resolved.doc,
@@ -350,10 +342,14 @@ const ops: McpCadOps = {
     }
     const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
-    const files = readFiles(req.files)
-    let bytes: Uint8Array | null
+    const files = readProjectFiles(req.files)
+    // The reply carries the build verdict beside the file: export used to be
+    // the one tool with no problem channel, so a part with a failed feature or
+    // an assembly with a failed solve exported as a clean `ok: true` (E-2).
+    let exported: HeadlessExport | HeadlessAssemblyExport | null
+    let verdict: Record<string, unknown>
     if (resolved.kind === 'part') {
-      const answer = await callKernel<Uint8Array | null>('export', {
+      const answer = await callKernel<HeadlessExport | null>('export', {
         doc: resolved.doc,
         format: req.format,
         bodyId: req.body ?? null,
@@ -361,12 +357,13 @@ const ops: McpCadOps = {
         files,
       })
       if (!answer.ok) return answer
-      bytes = answer.value
+      exported = answer.value
+      verdict = exported === null ? {} : { features: exported.features }
     } else {
       if (req.body !== undefined) {
         return { ok: false, error: 'per-instance export is not supported for an assembly; omit body' }
       }
-      const answer = await callKernel<Uint8Array | null>('assemblyExport', {
+      const answer = await callKernel<HeadlessAssemblyExport | null>('assemblyExport', {
         doc: resolved.doc,
         parts: resolved.parts,
         format: req.format,
@@ -374,19 +371,37 @@ const ops: McpCadOps = {
         files,
       })
       if (!answer.ok) return answer
-      bytes = answer.value
+      exported = answer.value
+      verdict = exported === null ? {} : {
+        kind: 'assembly',
+        solve: exported.solve,
+        mates: exported.mates,
+        parts: exported.parts,
+        instances: exported.instances,
+        summary: exported.summary,
+      }
     }
-    if (!bytes) {
-      return { ok: false, error: 'export produced no solid (or the local solver is unavailable)' }
+    if (exported === null) {
+      return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
+    }
+    if (exported.bytes === null) {
+      return { ...verdict, ok: false, error: 'export produced no solid' }
     }
     try {
       // A fresh run directory may not exist yet, so make the parent at write time.
       mkdirSync(path.dirname(out), { recursive: true })
-      writeFileSync(out, bytes)
+      writeFileSync(out, exported.bytes)
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+      return { ...verdict, ok: false, error: e instanceof Error ? e.message : String(e) }
     }
-    return { ok: true, docHash: resolved.docHash, file: out, format: req.format, bytes: bytes.byteLength }
+    return {
+      ...verdict,
+      ok: exported.ok,
+      docHash: resolved.docHash,
+      file: out,
+      format: req.format,
+      bytes: exported.bytes.byteLength,
+    }
   },
 
   async select(req) {
@@ -397,7 +412,7 @@ const ops: McpCadOps = {
         doc: part.doc,
         selector: req.selector,
         docId: req.docId ?? 'mcp',
-        files: readFiles(req.files),
+        files: readProjectFiles(req.files),
       }) as SelectResult | null
       if (!result) {
         return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }

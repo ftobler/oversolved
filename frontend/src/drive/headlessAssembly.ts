@@ -32,6 +32,7 @@ import { findInstance, findMate, partInstances, setInstanceFixedFromSolved } fro
 import { partSpecs, mateSpecs } from '@/utils/assemblySolveInput'
 import { solveAssembly, type AssemblyBuildResponse } from '@/kernel/solveAssembly'
 import { solveLocally } from '@/kernel/solveLocally'
+import { KernelFault } from '@/kernel/errors'
 import { toPartBundle, type Anchor, type PartBundle } from '@/kernel/partBundle'
 import { markFeatureStart } from '@/kernel/featureProgress'
 import { partSolvePayload } from '@/drive/solveWriteBack'
@@ -131,6 +132,19 @@ interface BundleMemoEntry {
 // so a run -> measure -> run sequence reuses the builds instead of paying for
 // them three times. The worker dying is what empties it (D7).
 const bundleMemo = new Map<string, BundleMemoEntry>()
+
+/**
+ * A failure that describes the kernel, not the part, must not be memoised: a
+ * trap has already reloaded the module and an unprovisioned kernel can appear
+ * on the next call, so serving the failure forever would turn one bad moment
+ * into a property of the document (E-4). Everything else is the part's own
+ * build answer and is deterministic for the cached content.
+ */
+function isTransientBundleFailure(e: unknown): boolean {
+  if (e instanceof KernelFault || (e instanceof Error && e.name === 'KernelFault')) return true
+  const message = e instanceof Error ? e.message : String(e)
+  return /local solver unavailable|not provisioned/i.test(message)
+}
 
 // The commands that only make sense against the editor UI. Each refusal names
 // the mutation or tool to use instead, the way the part side refuses
@@ -233,7 +247,9 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
         outcome: { features: [], error: `bundle build failed: ${message}` },
       }
       partOutcomes[docId] = entry.outcome
-      return remember(key, entry)
+      // The failure is still this call's answer; only a deterministic one is
+      // kept for later calls.
+      return isTransientBundleFailure(e) ? entry : remember(key, entry)
     }
   }
 

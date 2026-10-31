@@ -9,7 +9,7 @@
 
 import { build, RESTORE_OWNER, type BuildDeps, type BuildResponse } from './builder'
 import { isDevBuild } from './isDevBuild'
-import { extractErrorMessage, isKernelTrap, KernelFault } from './errors'
+import { ExportSelectionError, extractErrorMessage, isKernelTrap, KernelFault } from './errors'
 import { initGlobalRepo } from './query'
 import { createFeatureSolver } from './solverRegistry'
 import { initSketchSolver, consumeSketchTrap, isSketchTopologyReady, resetSketchSolverAfterTrap } from './features/sketch'
@@ -594,22 +594,34 @@ function resolveExportShape(
   bodyIds: readonly string[] | null,
 ): OccShape | null {
   const order = state.feature_order
-  if (!order.length) return null
+  const chosen = bodyIds && bodyIds.length > 0
+    ? [...new Set(bodyIds)]
+    : bodyId ? [bodyId] : null
+  const refuseMissing = (id: string, live: readonly string[]): never => {
+    // Name the live ids in the refusal: the caller picked the id, so the
+    // answer has to be the set it can pick from.
+    throw new ExportSelectionError(
+      `export: body '${id}' not found; live bodies: ${live.join(', ') || 'none'}`,
+    )
+  }
+  if (!order.length) {
+    if (chosen) refuseMissing(chosen[0], [])
+    return null
+  }
   // Bodies accumulate across the feature stack, so the last feature's snapshot
   // is the final body set (deletions already removed). Its shape handles are
   // retained in `table` until disposeAll, so they are safe to dereference here.
   const lastCp = state.checkpoints[order[order.length - 1]]
-  if (!lastCp) return null
+  if (!lastCp) {
+    if (chosen) refuseMissing(chosen[0], [])
+    return null
+  }
   const bodies = lastCp.body_store_snapshot
-  const chosen = bodyIds && bodyIds.length > 0
-    ? [...new Set(bodyIds)]
-    : bodyId ? [bodyId] : null
   if (chosen) {
+    const live = Object.keys(bodies).filter(id => bodies[id].shape != null)
     const solids = chosen.map((id) => {
       const body = bodies[id]
-      if (!body || body.shape == null) {
-        throw new Error(`export: body '${id}' not found`)
-      }
+      if (!body || body.shape == null) return refuseMissing(id, live)
       return table.get<OccShape>(body.shape)
     })
     return compoundOf(oc, scope, solids)
@@ -634,19 +646,32 @@ function compoundOf(oc: OccModule, scope: DisposeScope, shapes: OccShape[]): Occ
   return compound
 }
 
+/** The authored spec an export build takes (the solve payload plus its
+ *  rollback position). Kept named so the inspect and bytes-only entries share
+ *  one shape. */
+type ExportSpec = Record<string, unknown>
+
+/** What an export build left behind: the bytes and the build they came from.
+ *  The response is what lets a reply report the features the file was made
+ *  from, so a partial or failed feature is visible beside the file. */
+export interface LocalExportOutcome {
+  bytes: Uint8Array | null
+  response: BuildResponse
+}
+
 /**
  * Build a document and serialise the result to STEP or STL bytes, entirely in
  * the WASM kernel (no backend round-trip). Returns ``null`` when OCC.js is
- * unavailable or the document produced no solid body.
+ * unavailable; the bytes are null when the document produced no solid body.
  *
  * Runs a fresh full build on an ephemeral handle table so it never disturbs
  * ``solveLocally``'s persistent cross-solve cache.
  */
-export async function exportLocally(
-  spec: Record<string, unknown>,
+export async function exportLocallyInspect(
+  spec: ExportSpec,
   opts: LocalExportOptions,
   files?: ReadonlyMap<string, Uint8Array>,
-): Promise<Uint8Array | null> {
+): Promise<LocalExportOutcome | null> {
   const oc = await loadKernelForBuild()
   if (!oc) return null
 
@@ -656,8 +681,7 @@ export async function exportLocally(
   try {
     const response = build(spec, { prevState: null }, buildDeps(oc, scope, table, files))
     const shape = resolveExportShape(oc, scope, table, response._build_state, opts.bodyId ?? null, opts.bodyIds ?? null)
-    if (!shape) return null
-    return serialiseShape(oc, scope, shape, opts)
+    return { bytes: shape ? serialiseShape(oc, scope, shape, opts) : null, response }
   } catch (e) {
     if (isKernelTrap(e)) {
       faulted = true
@@ -674,6 +698,16 @@ export async function exportLocally(
       })
     }
   }
+}
+
+/** The bytes only, for callers that do not report the build. */
+export async function exportLocally(
+  spec: ExportSpec,
+  opts: LocalExportOptions,
+  files?: ReadonlyMap<string, Uint8Array>,
+): Promise<Uint8Array | null> {
+  const outcome = await exportLocallyInspect(spec, opts, files)
+  return outcome?.bytes ?? null
 }
 
 // ─── local measure ───
