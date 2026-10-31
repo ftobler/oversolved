@@ -145,8 +145,9 @@ describe('applyMirrorEntities entities', () => {
     const doc = halfDoc()
     // A seam edge collinear with `ax` (x=0), the shape a half profile closes
     // with. Cloning it would stack a second coincident edge on the seam.
-    doc.features[0].entities!.push({ id: 'seam', kind: 'line' })
-    doc.features[0].initial!.seam = [0, 1, 0, 9]
+    const sketch = sketchAt(doc)
+    sketch.entities!.push({ id: 'seam', kind: 'line' })
+    sketch.initial!.seam = [0, 1, 0, 9]
     applyMirrorEntities(doc, 'sk', ['l1', 'seam'], 'ax')
     const f = feat(doc)
     const originals = new Set(['ax', 'l1', 'l2', 'l9', 'cl', 'a1', 'c1', 'p1', 'f1', 'pj', 'seam'])
@@ -159,8 +160,9 @@ describe('applyMirrorEntities entities', () => {
 
   it('a circle centered on the axis mirrors to itself and is skipped too', () => {
     const doc = halfDoc()
-    doc.features[0].entities!.push({ id: 'ring', kind: 'circle' })
-    doc.features[0].initial!.ring = [0, 3, 2]
+    const sketch = sketchAt(doc)
+    sketch.entities!.push({ id: 'ring', kind: 'circle' })
+    sketch.initial!.ring = [0, 3, 2]
     applyMirrorEntities(doc, 'sk', ['ring'], 'ax')
     const f = feat(doc)
     expect(f.entities.filter(e => e.id === 'ring')).toHaveLength(1)

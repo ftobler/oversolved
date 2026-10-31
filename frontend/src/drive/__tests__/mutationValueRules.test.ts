@@ -22,6 +22,7 @@ import { applySetPlaneDefinitionField } from '@/utils/yamlMutations/partStyle'
 import { applySetHoleField } from '@/utils/yamlMutations/featureDefs'
 import { FIELD_SETTER_KIND } from '../mutationCatalog'
 import { EMPTY_REF_CLEARS } from '../mutationValues'
+import { sketchAt } from '@/testing/featureAccess'
 
 function seededDoc(): PartDoc {
   return seedBuiltins({ version: 1, kind: 'part', features: [] })
@@ -331,12 +332,13 @@ describe('finding 5: add_constraint target spelling', () => {
 describe('finding: mirror_entities values', () => {
   it('refuses a non-line axis and a degenerate one, naming the line', () => {
     const doc = sketchDoc()
-    doc.features[0].entities = [
-      ...(doc.features[0].entities ?? []),
+    const sketch = sketchAt(doc)
+    sketch.entities = [
+      ...(sketch.entities ?? []),
       { id: 'c9', kind: 'circle' },
       { id: 'lz', kind: 'line' },
-    ] as PartDoc['features']
-    doc.features[0].initial = { ...doc.features[0].initial, c9: [0, 0, 3], lz: [4, 4, 4, 4] } as never
+    ]
+    sketch.initial = { ...sketch.initial, c9: [0, 0, 3], lz: [4, 4, 4, 4] }
     const notALine = refusal(
       { type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1'], line: 'c9' }, doc)
     expect(notALine.code).toBe('invalid-mutation')
@@ -367,12 +369,13 @@ describe('finding: mirror_entities values', () => {
 
   it('refuses a source that lies on the axis: its mirror is itself', () => {
     const doc = sketchDoc()
-    doc.features[0].entities = [
-      ...(doc.features[0].entities ?? []),
+    const sketch = sketchAt(doc)
+    sketch.entities = [
+      ...(sketch.entities ?? []),
       { id: 'ax', kind: 'line', construction: true },
       { id: 'on', kind: 'line' },
-    ] as PartDoc['features']
-    doc.features[0].initial = { ...doc.features[0].initial, ax: [0, 0, 0, 10], on: [0, 2, 0, 6] } as never
+    ]
+    sketch.initial = { ...sketch.initial, ax: [0, 0, 0, 10], on: [0, 2, 0, 6] }
     const error = refusal({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['on'], line: 'ax' }, doc)
     expect(error.code).toBe('invalid-mutation')
     expect(error.message).toContain('on')
@@ -381,17 +384,18 @@ describe('finding: mirror_entities values', () => {
 
   it('accepts a normal line and a construction line as the axis', () => {
     const withAxis = sketchDoc()
-    withAxis.features[0].entities = [
-      ...(withAxis.features[0].entities ?? []),
+    const sketch = sketchAt(withAxis)
+    sketch.entities = [
+      ...(sketch.entities ?? []),
       { id: 'ax', kind: 'line', construction: true },
       { id: 'l2', kind: 'line' },
-    ] as PartDoc['features']
-    withAxis.features[0].initial = {
-      ...withAxis.features[0].initial,
+    ]
+    sketch.initial = {
+      ...sketch.initial,
       ax: [0, -5, 0, 5],
       l2: [2, 2, 2, 7],
-    } as never
-    expect(validateMutation({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1', 'l2'], line: 'ax' }, withAxis))
+    }
+    expect(validateMutation({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1', 'l2'], line: 'ax' }, { doc: withAxis }))
       .toMatchObject({ ok: true })
   })
 })

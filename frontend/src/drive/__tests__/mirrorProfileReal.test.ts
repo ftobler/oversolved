@@ -9,9 +9,10 @@
 
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
-import type { PartDoc, PartFeature } from '@/types/cad'
+import type { PartDoc } from '@/types/cad'
 import { runHeadless, measureHeadless, emptyDriveDoc, type HeadlessRunResult } from '../headlessOps'
 import type { ScriptStep } from '../scriptRunner'
+import { featureById } from '@/testing/featureAccess'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
@@ -56,8 +57,7 @@ async function mirroredHalf(): Promise<HeadlessRunResult> {
 }
 
 function sketchEntities(doc: PartDoc): Record<string, number[]> {
-  const sketch = doc.features.find((f: PartFeature) => f.id === 'sk1')
-  return sketch?.initial ?? {}
+  return featureById(doc, 'sk1', 'sketch').initial ?? {}
 }
 
 describe.skipIf(!ready)('mirror_entities extrudes to the symmetric volume (real kernel)', () => {
