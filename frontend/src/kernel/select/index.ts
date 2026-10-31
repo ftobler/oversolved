@@ -18,4 +18,5 @@ export type {
   SelectResult,
   Selector,
   Vec3,
+  VertexGeometry,
 } from './types'

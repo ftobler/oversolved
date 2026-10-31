@@ -25,6 +25,7 @@ import {
   suggestTypeName,
   typeOf,
   typeVocabulary,
+  vertexCandidates,
   type Candidate,
 } from './geometry'
 import type { CenterTest, Predicate, RadiusTest, SelectKind, SelectResult, Selector, Vec3 } from './types'
@@ -247,7 +248,7 @@ function thenLine(line: string, p: Predicate, matched: number, of: number): stri
 function typeDetail(p: { type: string }, pool: Candidate[], kind: SelectKind): string {
   const present = [...new Set(pool.map(typeOf).filter((t): t is string => t !== null))].sort()
   const valid = typeVocabulary(kind)
-  const noun = kind === 'edge' ? 'edge kinds' : 'face types'
+  const noun = kind === 'edge' ? 'edge kinds' : kind === 'face' ? 'face types' : 'vertex types'
   const suggestion = suggestTypeName(p.type, kind)
   const hint = suggestion === null ? '' : `; did you mean "${suggestion}"?`
   return `${label(p)} matched 0${hint}; present ${noun}: ${present.join(', ') || 'none'}; valid ${noun}: ${valid.join(', ')}`
@@ -260,7 +261,7 @@ function describeOne(p: Predicate, pool: Candidate[], matched: number, ctx: Eval
 }
 
 function emptyError(selector: Selector, pool: Candidate[], ctx: EvalContext): SelectorError {
-  const what = selector.kind === 'edge' ? 'edges' : 'faces'
+  const what = selector.kind === 'edge' ? 'edges' : selector.kind === 'face' ? 'faces' : 'vertices'
   const details = selector.where ? diagnose(selector.where, pool, ctx, selector.kind) : ['no candidates']
   const count = `${pool.length} candidate${pool.length === 1 ? '' : 's'}`
   return new SelectorError(`selector matched no ${what} (${count}: ${details.join(', ')})`)
@@ -270,9 +271,8 @@ function candidatesFor(selector: Selector, bodies: Record<string, BodyResult>): 
   if (selector.from !== undefined && !(selector.from in bodies)) {
     throw new SelectorError(`no body named "${selector.from}"`)
   }
-  return selector.kind === 'edge'
-    ? edgeCandidates(bodies, selector.from)
-    : faceCandidates(bodies, selector.from)
+  if (selector.kind === 'edge') return edgeCandidates(bodies, selector.from)
+  return selector.kind === 'face' ? faceCandidates(bodies, selector.from) : vertexCandidates(bodies, selector.from)
 }
 
 /** Run a selector, throwing SelectorError with diagnostics on an empty match. */
@@ -285,10 +285,10 @@ function runSelector(selector: Selector, bodies: Record<string, BodyResult>): Ca
 }
 
 /**
- * Select faces or edges by predicate over a solved body set. Returns the
+ * Select faces, edges or vertices by predicate over a solved body set. Returns the
  * queries to store plus a per-item geometry summary, in deterministic order
- * (body id sorted, then face/edge index). Throws SelectorError on an invalid
- * expression or an empty match.
+ * (body id sorted, then face/edge/vertex index). Throws SelectorError on an
+ * invalid expression or an empty match.
  */
 export function selectByPredicate(selector: Selector, bodies: Record<string, BodyResult>): SelectResult {
   const candidates = runSelector(selector, bodies)

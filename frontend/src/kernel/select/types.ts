@@ -9,7 +9,7 @@
 /** A 3-vector in world coordinates. */
 export type Vec3 = [number, number, number]
 
-export type SelectKind = 'edge' | 'face'
+export type SelectKind = 'edge' | 'face' | 'vertex'
 
 /** A radius test: a bare number is `eq`; an object carries any of eq/min/max. */
 export type RadiusTest =
@@ -51,7 +51,8 @@ export type Predicate =
   // matches neither test.
   | { parallel: Vec3 }
   | { perpendicular: Vec3 }
-  // Edge kind ('line', 'circle', ...) or face surface_type ('flatface', ...).
+  // Edge kind ('line', 'circle', ...), face surface_type ('flatface', ...) or
+  // the one vertex type name ('vertex').
   | { type: string }
   // The min/max-projection group of the current candidate set (CQ ">Z"), grouped
   // within the measure tolerance so a box top yields all four of its edges.
@@ -104,12 +105,19 @@ export interface FaceGeometry {
   axis?: Vec3
 }
 
+/** A vertex is a point: it has no length, normal or extent, so the summary is
+ *  the position itself, which is what a workplane placed on it needs. */
+export interface VertexGeometry {
+  kind: 'vertex'
+  point: Vec3
+}
+
 export interface SelectItem {
   query: string
   kind: SelectKind
   body: string
   index: number
-  geometry: EdgeGeometry | FaceGeometry
+  geometry: EdgeGeometry | FaceGeometry | VertexGeometry
 }
 
 /** What a selector returns: the queries to store, and the per-item detail. */

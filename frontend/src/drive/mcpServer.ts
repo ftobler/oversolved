@@ -231,7 +231,8 @@ const EXTREME_AXIS_SCHEMA = {
 // same tables the engine's typeOf and the query hierarchy read, so the schema
 // cannot advertise a name the selector would never match.
 
-const TYPE_DESCRIPTION = `Edge kind (${typeVocabulary('edge').join(', ')}) or face surface type (${typeVocabulary('face').join(', ')}).`
+const TYPE_DESCRIPTION = `Edge kind (${typeVocabulary('edge').join(', ')}), face surface type (${typeVocabulary('face').join(', ')}) `
+  + `or vertex type (${typeVocabulary('vertex').join(', ')}).`
 
 // A `$ref` fragment resolves against the schema-document root, which for a tool
 // is the whole `inputSchema`. These definitions are therefore spread into that
@@ -320,7 +321,11 @@ const SELECTOR_DEFS: Record<string, unknown> = {
       required: ['kind'],
       properties: {
         from: { type: 'string', description: 'Body id to restrict to; omit for every body.' },
-        kind: { enum: ['edge', 'face'] },
+        kind: {
+          enum: ['edge', 'face', 'vertex'],
+          description: 'Topology to pick. A vertex is a corner point: only the position predicates name one '
+            + '(extreme, center, within, type "vertex", created_by); parallel, perpendicular and radius match none.',
+        },
         where: { $ref: '#/$defs/predicate' },
       },
       additionalProperties: false,
@@ -476,13 +481,17 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
   },
   {
     name: 'select',
-    description: 'Find faces or edges by predicate over the solved document and return the query strings a click '
+    description: 'Find faces, edges or vertices by predicate over the solved document and return the query strings a click '
       + 'would store, plus a geometry summary per item. Run it after `run`, then feed the queries to a feature '
       + '(fillet, chamfer, hole, ...). Omit `where` to take every candidate: {from:"body_ex1",kind:"edge"} is '
       + 'all edges of that body. An edge direction test reads the edge\'s own tangent, so a fillet arc\'s underlying '
       + 'circle axis is not a direction; a full circle has no single tangent. A seam edge is the face meeting '
       + 'itself, not a boundary between two faces, so it has no direction to compare and matches neither parallel '
-      + 'nor perpendicular; the other predicates still return it and a click can pick it. A `type` outside the kind\'s vocabulary is invalid params with the valid list '
+      + 'nor perpendicular; the other predicates still return it and a click can pick it. A vertex is a corner point, '
+      + 'so name it with the position predicates: {kind:"vertex",where:{and:[{extreme:{axis:[0,0,1],side:"max"}},'
+      + '{extreme:{axis:[1,0,0],side:"min"}},{extreme:{axis:[0,1,0],side:"min"}}]}} is the top x-min y-min corner, '
+      + 'the workplane-on-a-vertex idiom. `on_face` is the face-to-edge aid and needs an inner kind "face". '
+      + 'A `type` outside the kind\'s vocabulary is invalid params with the valid list '
       + 'and a "did you mean" hint. An empty match is an error naming the nearest-miss count per predicate. '
       + 'Returns the docHash it ran against. ' + worldFrameSentence(),
     inputSchema: {

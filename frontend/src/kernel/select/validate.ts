@@ -247,7 +247,7 @@ function validateTypeNames(p: Predicate, kind: SelectKind, path: string): void {
     const valid = typeVocabulary(kind)
     if (valid.includes(p.type)) return
     const suggestion = suggestTypeName(p.type, kind)
-    const noun = kind === 'edge' ? 'edge kind' : 'face surface type'
+    const noun = kind === 'edge' ? 'edge kind' : kind === 'face' ? 'face surface type' : 'vertex type'
     throw new SelectorError(
       `${path}.type "${p.type}" is not a valid ${noun}`
       + `${suggestion === null ? '' : `; did you mean "${suggestion}"?`}; valid: ${valid.join(', ')}`,
@@ -269,7 +269,9 @@ export function selector(raw: unknown, path = 'selector'): Selector {
   const record = asObject(raw, path)
   rejectUnknown(record, SELECTOR_KEYS, path)
   const kind = record.kind
-  if (kind !== 'edge' && kind !== 'face') throw new SelectorError(`${path}.kind must be "edge" or "face"`)
+  if (kind !== 'edge' && kind !== 'face' && kind !== 'vertex') {
+    throw new SelectorError(`${path}.kind must be "edge", "face" or "vertex"`)
+  }
   if (record.from !== undefined && (typeof record.from !== 'string' || record.from.length === 0)) {
     throw new SelectorError(`${path}.from must be a non-empty string`)
   }

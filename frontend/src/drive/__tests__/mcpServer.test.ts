@@ -304,8 +304,21 @@ describe('createMcpServer', () => {
     expectError(await request(server, 22, 'tools/call', { name: 'select', arguments: { doc: {} } }), -32602)
     expectError(await request(server, 23, 'tools/call', {
       name: 'select',
-      arguments: { doc: {}, selector: { kind: 'vertex' } },
+      arguments: { doc: {}, selector: { kind: 'solid' } },
     }), -32602)
+
+    // A vertex selector is a legal kind: the corner-point idiom reaches the op.
+    const vertex = await request(server, 27, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'vertex', where: { extreme: { axis: 'z', side: 'max' } } } },
+    })
+    expect(vertex).toMatchObject({ id: 27 })
+    expect(calls.at(-1)).toEqual({
+      tool: 'select',
+      args: expect.objectContaining({
+        selector: { kind: 'vertex', where: { extreme: { axis: [0, 0, 1], side: 'max' } } },
+      }),
+    })
 
     // Two side-by-side predicate keys reach validateSelector (the schema does
     // not cap the object), so the error can name `and` and show the wrap.

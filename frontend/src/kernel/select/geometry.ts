@@ -1,5 +1,5 @@
 // The candidate model and its geometry accessors: the one place the engine
-// reads a solved body's edge/face arrays. The arrays are positional and can
+// reads a solved body's edge/face/vertex arrays. The arrays are positional and can
 // come up short of their primitive list (the alignment trap documented in
 // kernel/partBundle.ts), so every loop here is bounded by the PRIMITIVE array
 // (`edges`, `face_data`) and reads the parallel query array defensively; a
@@ -7,7 +7,7 @@
 
 import type { BodyResult, EdgeData } from '@/types/cad'
 import type { SurfaceType } from '@/kernel/occ/primitives'
-import type { EdgeGeometry, FaceGeometry, SelectKind, Vec3 } from './types'
+import type { EdgeGeometry, FaceGeometry, SelectKind, Vec3, VertexGeometry } from './types'
 
 /** One selectable element, resolved to its owning body and index. */
 export interface Candidate {
@@ -72,6 +72,25 @@ export function faceCandidates(bodies: Record<string, BodyResult>, from?: string
   return out
 }
 
+/** Every named vertex of the bodies, in body-then-index order. The kernel
+ *  emits a tessellation's corner vertices with a `@<bodyId>/vertexN` ancestry
+ *  query each (`builderAncestry.ts`), and those queries are what a click on a
+ *  corner stores, so a vertex selector is the authored path to the same string. */
+export function vertexCandidates(bodies: Record<string, BodyResult>, from?: string): Candidate[] {
+  const out: Candidate[] = []
+  for (const bodyId of sortedBodyIds(bodies)) {
+    if (from !== undefined && bodyId !== from) continue
+    const body = bodies[bodyId]
+    const vertices = body.vertices ?? []
+    for (let index = 0; index < vertices.length; index++) {
+      const query = body.vertex_queries?.[index] ?? ''
+      if (!query) continue
+      out.push({ body, bodyId, kind: 'vertex', index, query })
+    }
+  }
+  return out
+}
+
 /** Body ids sorted, so the output order does not depend on object key
  *  insertion: the same document and solve must yield the same list. */
 export function sortedBodyIds(bodies: Record<string, BodyResult>): string[] {
@@ -80,6 +99,11 @@ export function sortedBodyIds(bodies: Record<string, BodyResult>): string[] {
 
 function edgeData(c: Candidate): EdgeData | undefined {
   return c.body.edges?.[c.index]
+}
+
+function vertexData(c: Candidate): Vec3 | undefined {
+  if (c.kind !== 'vertex') return undefined
+  return c.body.vertices?.[c.index]
 }
 
 // A curved analytic face carries a radial `normal` and its real axis in
@@ -156,6 +180,9 @@ function isSeamEdge(c: Candidate): boolean {
  *  surface to compare against. On a cylinder it happens to lie along the axis
  *  and so used to match `parallel`; the other predicates still return it. */
 export function directionOf(c: Candidate): Vec3 | null {
+  // A vertex is a point: it has no tangent, normal or axis to compare, so a
+  // direction test can never name one.
+  if (c.kind === 'vertex') return null
   if (c.kind === 'face') {
     const fd = c.body.mesh?.face_data?.[c.index]
     if (!fd) return null
@@ -195,8 +222,9 @@ export function directionOf(c: Candidate): Vec3 | null {
 }
 
 /** The point an `extreme` projection reads: a face centroid, a line midpoint,
- *  a curved edge's centre. */
+ *  a curved edge's centre, or a vertex standing right there. */
 export function pointOf(c: Candidate): Vec3 | null {
+  if (c.kind === 'vertex') return vertexData(c) ?? null
   if (c.kind === 'face') return c.body.mesh?.face_data?.[c.index]?.centroid ?? null
   const ed = edgeData(c)
   if (!ed) return null
@@ -218,6 +246,7 @@ export function pointOf(c: Candidate): Vec3 | null {
 /** The radius of a circle/arc edge or a cylinder face; null for anything a
  *  radius test cannot answer. */
 export function radiusOf(c: Candidate): number | null {
+  if (c.kind === 'vertex') return null
   if (c.kind === 'face') {
     const fd = c.body.mesh?.face_data?.[c.index]
     if (fd?.surface_type !== 'cylinderface') return null
@@ -230,6 +259,7 @@ export function radiusOf(c: Candidate): number | null {
 }
 
 export function typeOf(c: Candidate): string | null {
+  if (c.kind === 'vertex') return 'vertex'
   if (c.kind === 'face') return c.body.mesh?.face_data?.[c.index]?.surface_type ?? null
   return edgeData(c)?.kind ?? null
 }
@@ -298,6 +328,12 @@ function faceBounds(c: Candidate): Bounds3 | null {
  *  reads its mesh triangles; a solve without `triangle_to_face` has no face
  *  bounds and matches nothing. */
 export function bboxOf(c: Candidate): Bounds3 | null {
+  if (c.kind === 'vertex') {
+    // A vertex's box degenerates to its own point, so `within` tests the point
+    // and a corner authored exactly on the range boundary is inside.
+    const point = vertexData(c)
+    return point === undefined ? null : boundsOfPoints([point])
+  }
   if (c.kind === 'face') return faceBounds(c)
   const ed = edgeData(c)
   if (!ed) return null
@@ -350,10 +386,15 @@ const FACE_TYPE_SET: Record<SurfaceType, true> = {
 const EDGE_KINDS: readonly string[] = Object.keys(EDGE_KIND_SET)
 const FACE_TYPES: readonly string[] = Object.keys(FACE_TYPE_SET)
 
+// A vertex has no sub-kinds to enumerate: the kernel reports one topology name
+// for it, and the query engine's TYPE_HIERARCHY carries `vertex` as a leaf.
+const VERTEX_TYPES: readonly string[] = ['vertex']
+
 /** The `type` predicate vocabulary for a selector kind, read from the same
  *  tables as typeOf: edge kinds from the EdgeData union and face surface types
  *  from the SurfaceType union. */
 export function typeVocabulary(kind: SelectKind): readonly string[] {
+  if (kind === 'vertex') return VERTEX_TYPES
   return kind === 'edge' ? EDGE_KINDS : FACE_TYPES
 }
 
@@ -419,7 +460,11 @@ export function suggestTypeName(type: string, kind: SelectKind): string | null {
 }
 
 /** The per-item geometry summary the agent reads back. */
-export function geometryOf(c: Candidate): EdgeGeometry | FaceGeometry {
+export function geometryOf(c: Candidate): EdgeGeometry | FaceGeometry | VertexGeometry {
+  if (c.kind === 'vertex') {
+    // The candidate came out of the vertex array, so its point is present.
+    return { kind: 'vertex', point: vertexData(c)! }
+  }
   if (c.kind === 'face') {
     const fd = c.body.mesh!.face_data![c.index]
     return {

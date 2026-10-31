@@ -534,7 +534,9 @@ describe('validateSelector', () => {
 
   it('rejects unknown top-level keys, a bad kind and a bad vector', () => {
     expect(() => validateSelector({ kind: 'edge', typo: 1 })).toThrow(/unknown key "typo"/)
-    expect(() => validateSelector({ kind: 'vertex' })).toThrow(/kind must be/)
+    // "vertex" is a legal kind (pinned in selectVertex.test.ts); an invented
+    // topology name is what this refusal guards.
+    expect(() => validateSelector({ kind: 'solid' })).toThrow(/kind must be/)
     expect(() => validateSelector({ kind: 'edge', where: { parallel: [0, 0] } })).toThrow(/three finite numbers/)
   })
 
