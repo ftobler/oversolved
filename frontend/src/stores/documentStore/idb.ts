@@ -391,8 +391,13 @@ export function idbUpdateFrom<T>(
     transaction.oncomplete = () => resolve(result)
     // When the abort came from `mutate` or the read, its reason is the one the
     // caller can act on; a transaction-level error only speaks when it did not.
-    transaction.onerror = () => reject(failed ? failure : transaction.error ?? new Error('IndexedDB transaction failed'))
-    transaction.onabort = () => reject(failed ? failure : transaction.error ?? new Error('IndexedDB transaction aborted'))
+    // A thrown undefined still reads as a failure, so it gets a real message.
+    transaction.onerror = () => reject(failed
+      ? failure ?? new Error('IndexedDB transaction failed')
+      : transaction.error ?? new Error('IndexedDB transaction failed'))
+    transaction.onabort = () => reject(failed
+      ? failure ?? new Error('IndexedDB transaction aborted')
+      : transaction.error ?? new Error('IndexedDB transaction aborted'))
   }))
 }
 

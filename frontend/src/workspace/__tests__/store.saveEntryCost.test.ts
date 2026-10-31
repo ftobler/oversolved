@@ -47,9 +47,9 @@ describe('saveEntry cost', () => {
 
   // A save used to reach the workspace row through the whole-tree write, and
   // that row's updatedAt is the modified time the library tile shows and sorts
-  // on. Dropping the whole-tree write must not freeze it. Both gestures that
-  // adopt the checkpoint stamp it: a save and a bare Keep, and a discard does
-  // too, because it is the recovery reset moving the workspace.
+  // on. Dropping the whole-tree write must not freeze it. The gestures that
+  // adopt the checkpoint stamp it (a save and a bare Keep), and a discard stamps
+  // it too, because the recovery reset moves the workspace.
   it('advances the workspace modified time', async () => {
     const store = new IdbWorkspaceStore()
     const { workspace } = await store.create('Doc', { docKind: 'part' })

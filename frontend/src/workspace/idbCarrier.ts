@@ -447,6 +447,14 @@ export class IdbCarrier implements WorkspaceCarrier {
     if (!previous) throw new Error(`Entry not found: ${entry.id}`)
     const merged = mergeContentForWrite(entry, previous)
     const changed = entryChanged(previous, merged)
+    // A plain no-op write still has to refuse a trashed entry, but it has nothing
+    // to store and no edges to reconcile: a read-only meta check keeps it off the
+    // readwrite lock the full path takes.
+    if (!changed && targets === null) {
+      const meta = await this.requireMeta()
+      if (meta.trash.includes(entry.id)) throw new Error(`Entry is trashed: ${entry.id}`)
+      return
+    }
     await idbUpdateFrom<WorkspaceMetaRecord>(
       [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
       STORE_WORKSPACE_META,

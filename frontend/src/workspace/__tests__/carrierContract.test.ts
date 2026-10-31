@@ -117,6 +117,14 @@ describe.each(adapters)('WorkspaceCarrier contract: $name', (adapter) => {
     await expect(carrier.write(fileEntry('b', 'b.step', bytesOf([9])))).rejects.toThrow(/trashed/)
   })
 
+  // A plain write carries the row only: the edge set a text implies belongs to
+  // the caller that derived it, so a write must neither add nor clear edges. The
+  // sample holds a -> b, and this text no longer names b.
+  it('write leaves the outgoing reference edges alone', async () => {
+    await carrier.write(documentEntry('a', 'A', { text: 'kind: assembly\nfeatures: []\n', docKind: 'assembly' }))
+    expect((await carrier.open()).manifest.references).toEqual({ a: ['b'] })
+  })
+
   it('clone mints a fresh id and copies content and name', async () => {
     const cloneId = await carrier.clone('a')
     expect(cloneId).not.toBe('a')
