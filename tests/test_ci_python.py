@@ -5,7 +5,9 @@ tooling only (no runtime, no distributed package), so the matrix promised
 support nobody consumes while the version everyone develops on was covered
 only by accident. Every workflow now pins one literal interpreter, the version
 the local .venv comes from, and these guards keep the pins from drifting apart
-or away from `pyproject.toml`'s floor.
+or away from `pyproject.toml`'s floor. The same reasoning retired the wheel
+build and its artifact upload from the `python` job; the last test keeps them
+out.
 """
 
 import pathlib
@@ -68,3 +70,17 @@ def test_ci_python_matches_the_requires_python_floor() -> None:
         f"pyproject declares requires-python {requires_python!r} but CI tests {version}; "
         "the declared floor and the tested version move together"
     )
+
+
+def test_no_workflow_builds_or_uploads_a_wheel() -> None:
+    """The `oversolved-wheel` artifact is dropped for good (ci-hygiene).
+
+    The `python` job already installs the package editable, so the packaging
+    backend is exercised; the extra `python -m build` step only produced a
+    wheel no job, page, or person ever downloaded. A re-added wheel step means
+    a distribution channel without a consumer, so it fails here first.
+    """
+    for rel in WORKFLOWS:
+        text = (ROOT / rel).read_text()
+        for forbidden in ("oversolved-wheel", "dist/*.whl", "-m build"):
+            assert forbidden not in text, f"{rel} reintroduces a wheel build or upload ({forbidden!r})"
