@@ -144,6 +144,13 @@ Projection is not a kind: any base-kind entity (`line`/`circle`/`arc`/`point`) t
     merge_target: "@body_ex1"   # optional: the body the result fuses into
 ```
 
+One sketch is one profile, and a profile fills even/odd: a loop nested inside
+another becomes a hole (a disc plus a circle is a washer), while loops that cross
+each other are filled as their union. A circle meant as a hole that pokes past
+the rim of another loop therefore adds a bump where it crosses instead of cutting
+a notch, and nothing warns about it; keep a cut loop inside its boundary, or cut
+with a separate sketch. The same rule reads a `revolve` or `sweep` profile.
+
 `up_to` trims the extrude at the picked element instead of at `distance`. A
 query target that does not resolve, or meets several elements, falls back to the
 blind distance with a solver warning; an up_to with no `up_to` target does so
@@ -312,7 +319,10 @@ warning naming both counts.
 ```
 
 The `sketch` pick drills every non-construction point and circle in the sketch:
-a point at the feature `diameter`, a circle at its own radius. Construction
+a point at the feature `diameter`, a circle at its own radius. A circle names
+its own size, so a sketch whose drill sites are all circles never reads
+`diameter`, though the document still requires the field and a point site added
+later does use it. Construction
 geometry is reference only and is skipped by a whole-sketch pick: an n-gon's
 circumcircle, or a point or circle an author flags construction. Line endpoints
 are not drill sites, while `add_center_rect`'s helper centre point is an

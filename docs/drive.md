@@ -629,7 +629,11 @@ banner on stdout, so a client config must use the direct node invocation.
   (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,
   `cs_angle`), with `depth` required only for a blind hole because a
   `through_all` hole is sized by the target body and stores no depth; all are
-  optional in an `add_hole` payload. With no `target` the hole drills the body
+  optional in an `add_hole` payload. An empty value clears the `target` pick, on
+  the inline add and on `set_hole_field` alike (the hole then drills the body its
+  drill sites sit on); every other field refuses an empty value rather than
+  silently reverting to its default, and `null` clears any field. With no
+  `target` the hole drills the body
   its drill sites sit on or in, so a face sketch whose sites lie on or in the
   material picks that body even when it is not the first; a site outside every
   body (a plane sketch in the air) falls back to the first body and the miss
@@ -645,7 +649,9 @@ banner on stdout, so a client config must use the direct node invocation.
   reply's `featureDeltas` row carries the resolved `direction`.
   `hole.sketch` is spelled `@<sketchId>` (or a narrower
   viewport pick), not the profile consumers' `$<sketchId>` form, and a circle
-  drills at its own radius while a point uses the feature `diameter`;
+  drills at its own radius while a point uses the feature `diameter`; a sketch
+  whose drill sites are all circles never reads `diameter`, though the document
+  still requires the field and a point site added later does use it;
   construction points and circles are skipped by a whole-sketch pick, and
   picking one alone is refused by name;
   `add_center_rect` takes the half-diagonal corner (center `[0,0]` with corner
@@ -678,6 +684,13 @@ banner on stdout, so a client config must use the direct node invocation.
   `count`, `step_angle`, `axis`/`axis_origin`/`axis_direction` and
   `invert_axis`, and `add_mirror` takes `body`, `plane`, `keep_original` and
   `merge`, so one call replaces the add plus one setter per field.
+- A sketch is one profile, and a profile fills even/odd: a loop nested inside
+  another is a hole (a disc plus a circle becomes a washer), while loops that
+  CROSS each other are filled as their union. A circle meant as a hole that
+  pokes past the rim of another loop therefore adds a bump where it crosses
+  instead of cutting a notch, with no warning: `Ex007` measures 1.5036 against
+  the 1.4726 of the same sketch with that hole inside the rim. Keep a cut loop
+  inside its boundary, or cut with a separate sketch.
 - Plane refs are exact. `add_sketch.plane`, `set_feature_plane.plane`,
   `add_split.plane` and `set_split_field` with `field: "plane"` accept
   `@builtin_plane_front`, `@builtin_plane_top`, `@builtin_plane_right`, the bare

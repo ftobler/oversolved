@@ -27,6 +27,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { DisposeScope } from '../../occ/disposeScope'
 import { volumeOf } from '../../occ/booleans'
 import { canonicalFaces } from '../../occ/bodyNames'
+import { shapeBbox } from '../../occ/faceBounds'
 import type { OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
 
@@ -64,6 +65,17 @@ function sketchOf(
   return { id, kind: 'sketch', plane, entities, initial, constraints: [] }
 }
 
+// The area two circles share: the two circular segments their common chord cuts.
+function circleLens(r1: number, r2: number, d: number): number {
+  const a = (d * d - r2 * r2 + r1 * r1) / (2 * d)
+  const b = (d * d + r2 * r2 - r1 * r1) / (2 * d)
+  const segment = (r: number, x: number): number => {
+    const ratio = Math.min(1, Math.max(-1, x / r))
+    return r * r * Math.acos(ratio) - x * Math.sqrt(Math.max(r * r - x * x, 0))
+  }
+  return segment(r1, a) + segment(r2, b)
+}
+
 // The key-cap cut tool: a r4 circle with a plus of two crossing rects inside it.
 function keyCapPocketSketch() {
   return sketchOf(
@@ -95,6 +107,9 @@ describe.skipIf(!oc || !solveBytes)('extrude with overlapping sketch loops (real
       return {
         volume: volumeOf(oc!, scope, shape),
         faces: canonicalFaces(oc!, scope, shape).length,
+        // The exact AABB [minx, miny, minz, maxx, maxy, maxz]; the rim-crossing
+        // case is pinned on its x extent, not only on volume.
+        bbox: shapeBbox(oc!, scope, shape),
         valid: scope.track(new oc!.BRepCheck_Analyzer(shape, true)).IsValid_2(),
       }
     } finally {
@@ -189,6 +204,76 @@ describe.skipIf(!oc || !solveBytes)('extrude with overlapping sketch loops (real
     const g = gauges(result, 'exn', 'body_exn')
     expect(g.volume).toBeCloseTo(DISK_MINUS_PLUS * 5, 2)
     expect(g.faces).toBe(15)
+    expect(g.valid).toBe(true)
+  })
+
+  // Ex007 F1: the rim-crossing hole. An R2 disc 0.125 thick with four R0.25
+  // holes at (+-1.5, 0) and (0, +-1.5); the +x one moves to (1.9, 0), so it
+  // pokes 0.15 past the rim. Even/odd fill keeps the lens solid and ADDS the
+  // crescent, so the solid is (disc union circle) minus the three nested holes:
+  // a bump, not the notch a `hole()` would cut, and no warning is raised. The
+  // catalog states that rule on every profile field, so the number behind it is
+  // pinned here.
+  it('Ex007: a hole circle crossing the rim is added, not cut', () => {
+    const r1 = 2
+    const r2 = 0.25
+    const distance = 1.9
+    const thickness = 0.125
+    const lens = circleLens(r1, r2, distance)
+    const expected = (Math.PI * r1 * r1 + Math.PI * r2 * r2 - lens - 3 * Math.PI * r2 * r2) * thickness
+
+    const result = h.run({
+      features: [
+        { id: 'Origin', kind: 'origin' },
+        { id: 'Top', kind: 'plane', visible: false },
+        sketchOf('sk1', '@builtin_plane_top', [], [
+          { id: 'disc', at: [0, 0, r1] },
+          { id: 'h1', at: [-1.5, 0, r2] },
+          { id: 'h2', at: [0, -1.5, r2] },
+          { id: 'h3', at: [0, 1.5, r2] },
+          { id: 'h4', at: [distance, 0, r2] },
+        ]),
+        {
+          id: 'ex1', kind: 'extrude',
+          extrude: { sketch: ['$sk1'], distance: thickness, direction: 'normal', operation: 'new' },
+        },
+      ],
+    })
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const g = gauges(result, 'ex1', 'body_ex1')
+    expect(g.volume).toBeCloseTo(expected, 3)
+    // The crescent is solid, so the body reaches x = 1.9 + 0.25 = 2.15, past the
+    // rim at 2. A cut notch would leave the bbox at the rim.
+    expect(g.bbox[3]).toBeCloseTo(2.15, 6)
+    expect(g.valid).toBe(true)
+  })
+
+  it('Ex007 control: the same four holes inside the rim cut their circles', () => {
+    const r1 = 2
+    const r2 = 0.25
+    const thickness = 0.125
+    const result = h.run({
+      features: [
+        { id: 'Origin', kind: 'origin' },
+        { id: 'Top', kind: 'plane', visible: false },
+        sketchOf('sk1', '@builtin_plane_top', [], [
+          { id: 'disc', at: [0, 0, r1] },
+          { id: 'h1', at: [-1.5, 0, r2] },
+          { id: 'h2', at: [1.5, 0, r2] },
+          { id: 'h3', at: [0, -1.5, r2] },
+          { id: 'h4', at: [0, 1.5, r2] },
+        ]),
+        {
+          id: 'ex1', kind: 'extrude',
+          extrude: { sketch: ['$sk1'], distance: thickness, direction: 'normal', operation: 'new' },
+        },
+      ],
+    })
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const g = gauges(result, 'ex1', 'body_ex1')
+    expect(g.volume).toBeCloseTo((Math.PI * r1 * r1 - 4 * Math.PI * r2 * r2) * thickness, 3)
+    // Control side of the pin: inside the rim the bbox stops at the rim itself.
+    expect(g.bbox[3]).toBeCloseTo(r1, 6)
     expect(g.valid).toBe(true)
   })
 
