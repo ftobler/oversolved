@@ -81,9 +81,17 @@ describe('solvePlane origin_rotation', () => {
     }))
     close(byVector.plane.normal, [0, -SIN60, COS60])
     const byLetter = run(initGlobalRepo(), planeFeature('pl2', {
-      mode: 'origin_rotation', origin: [0, -1.5, 1], rotation_axis: 'X', rotation_angle: 60,
+      mode: 'origin_rotation', origin: [0, -1.5, 1], rotation_axis: 'x', rotation_angle: 60,
     }))
     close(byVector.plane.y_axis, byLetter.plane.y_axis)
+  })
+
+  it('refuses an axis letter outside the wire enum spelling', () => {
+    // One spelling path: the kernel accepts exactly the lowercase letters the
+    // schema enum names, so a lenient kernel reading cannot outlive the wire check.
+    expect(() => run(initGlobalRepo(), planeFeature('pl1', {
+      mode: 'origin_rotation', origin: [0, 0, 0], rotation_axis: 'X', rotation_angle: 60,
+    }))).toThrow(/rotation_axis must be "x", "y" or "z" or three finite numbers/)
   })
 
   it('rotates about an arbitrary axis through the parent axes', () => {
@@ -118,6 +126,14 @@ describe('solvePlane origin_rotation', () => {
     expect(() => run(initGlobalRepo(), planeFeature('pl1', {
       mode: 'origin_rotation', origin: [0, 0, 0], plane: '@nope',
     }))).toThrow(/plane not found: "@nope"/)
+  })
+
+  it('refuses an empty parent plane like the other modes do', () => {
+    // Leaving `plane` out is the world XY spelling; an empty string is the same
+    // mistake the offset and point modes refuse with `plane not found: ""`.
+    expect(() => run(initGlobalRepo(), planeFeature('pl1', {
+      mode: 'origin_rotation', origin: [0, 0, 0], plane: '',
+    }))).toThrow(/plane not found: ""/)
   })
 
   it('refuses half a rotation pair by naming both fields', () => {

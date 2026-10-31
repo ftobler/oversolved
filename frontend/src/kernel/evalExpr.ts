@@ -86,7 +86,7 @@ export const EXPR_FIELDS_BY_KIND: { [K in ExprFieldKind]: readonly (keyof ExprPa
   array: ['pitch_x', 'pitch_y', 'count_x', 'count_y'],
   circular_array: ['step_angle', 'count'],
   transform: ['rotation_angle', 'scale'],
-  plane: ['offset', 'angle', 'rotation'],
+  plane: ['offset', 'angle', 'rotation', 'rotation_angle'],
   helix: ['radius', 'pitch', 'turns', 'height', 'helix_angle', 'offset', 'start_angle'],
   import_step: ['scale'],
   boolean: ['clearance'],

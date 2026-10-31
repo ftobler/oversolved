@@ -126,10 +126,35 @@ describe.skipIf(!ready)('vertex picks and origin_rotation planes through the hea
     const frame = run.frames?.sk2
     expect(frame, 'the sketch frame is in the reply').toBeDefined()
     close(frame!.origin, [20, 10, -15])
+    close(frame!.x_axis, [1, 0, 0])
+    close(frame!.y_axis, [0, COS60, SIN60])
     close(frame!.normal, [0, -SIN60, COS60])
     const extrude = run.featureDeltas?.find(row => row.id === 'ex2')
     expect(extrude, 'the extrude measured').toBeDefined()
     expect(extrude!.volume).toBeGreaterThan(0)
+  }, 240_000)
+
+  it('evaluates an expression rotation_angle at the solve, like the other plane numerics', async () => {
+    const run = await runHeadless({
+      doc: structuredClone(await boxDoc()),
+      steps: [
+        step({ type: 'add_variable', featureId: 'tilt', label: 'tilt' }),
+        step({ type: 'set_variable_field', featureId: 'tilt', field: 'expression', value: '30 * 2' }),
+        step({
+          type: 'add_plane', featureId: 'pl3', label: 'Named tilt',
+          definition: { mode: 'origin_rotation', origin: [0, 0, 0], rotation_axis: 'z', rotation_angle: 'tilt' },
+        }),
+      ],
+    })
+    expect(run.ok).toBe(true)
+    expect(run.features, 'the expression angle solves clean').toEqual([])
+    const frame = run.frames?.pl3
+    expect(frame, 'the plane frame is in the reply').toBeDefined()
+    // tilt = 60 degrees about +Z swings the world XY axes; the frame could only
+    // carry this angle if the variable expression was evaluated before the leaf.
+    close(frame!.x_axis, [0.5, SIN60, 0])
+    close(frame!.y_axis, [-SIN60, 0.5, 0])
+    close(frame!.normal, [0, 0, 1])
   }, 240_000)
 
   it('names the kernel refusals as feature exceptions in the reply', async () => {

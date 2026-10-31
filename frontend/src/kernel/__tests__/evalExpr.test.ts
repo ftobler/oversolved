@@ -112,6 +112,15 @@ describe('evalFeatureParams', () => {
     expect(sub.distance).toBe(-6)
   })
 
+  it('lists and evaluates the plane numeric fields, rotation_angle among them', () => {
+    // The origin_rotation turn is numeric like offset/angle/rotation, so the
+    // solve evaluates its expression before the plane leaf sees it.
+    expect(EXPR_FIELDS_BY_KIND.plane).toEqual(['offset', 'angle', 'rotation', 'rotation_angle'])
+    const sub: Record<string, unknown> = { mode: 'origin_rotation', rotation_angle: 'tilt / 2' }
+    evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.plane, { tilt: 60 })
+    expect(sub.rotation_angle).toBe(30)
+  })
+
   it('reports a variable defined later by name and log index', () => {
     const sub: Record<string, unknown> = { distance: 'width*2' }
     evalFeatureParams(sub, ['distance'], {}, { width: 7 })

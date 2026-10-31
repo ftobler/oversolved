@@ -140,7 +140,7 @@ Mirroring a selection (`mirror_entities`) writes plain authored entities: the co
     mode: origin_rotation        # origin plus a rotation about an axis
     origin: "@sk1/p1"            # a point ref (or [x, y, z] world coordinates)
     rotation_axis: z             # x | y | z (or [x, y, z] direction)
-    rotation_angle: 45.0         # degrees, required with rotation_axis
+    rotation_angle: 45.0         # degrees; rotation_axis and rotation_angle are required together
 ```
 
 ### extrude

@@ -281,7 +281,8 @@ function planeOffset(def: Dict, repo: Repository): Frame3D {
 
 // The three world axes, addressable as one letter on the wire. The letter is the
 // common code-CAD `rotate=(60,0,0)` case, and it is a scalar the field setter can
-// carry; a stored vector covers an axis no letter names.
+// carry; a stored vector covers an axis no letter names. The accepted letters are
+// exactly the wire schema's enum: one spelling path, no silent case folding.
 const WORLD_AXIS_BY_LETTER: Record<string, Vec3> = {
   x: [1, 0, 0],
   y: [0, 1, 0],
@@ -291,7 +292,7 @@ const WORLD_AXIS_BY_LETTER: Record<string, Vec3> = {
 function rotationAxisOf(def: Dict): Vec3 {
   const raw = def.rotation_axis
   if (typeof raw === 'string') {
-    const axis = WORLD_AXIS_BY_LETTER[raw.trim().toLowerCase()]
+    const axis = WORLD_AXIS_BY_LETTER[raw]
     if (axis !== undefined) return axis
     throw new Error('rotation_axis must be "x", "y" or "z" or three finite numbers')
   }
@@ -350,9 +351,11 @@ function planeOriginRotation(def: Dict, repo: Repository): Frame3D {
   const origin = originPointOf(def, repo)
   const parentQuery = def.plane
   let parent: Dict | null
-  if (parentQuery === undefined || parentQuery === '') {
+  if (parentQuery === undefined) {
     parent = BUILTIN_PLANES.builtin_plane_front
   } else {
+    // An empty parent is refused the way the other modes refuse it: the caller
+    // must either name a plane or leave the field out to get world XY.
     if (typeof parentQuery !== 'string') throw new Error('plane must be a ref string')
     parent = repo.query(parentQuery) as Dict | null
     if (parent === null) throw new Error(`plane not found: ${JSON.stringify(parentQuery)}`)
