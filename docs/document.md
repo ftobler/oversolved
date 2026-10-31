@@ -252,6 +252,18 @@ An empty `faces` list makes a closed hollow (one solid with an inner void), so
 `source_body` is required: no face names the body. Faces naming several bodies
 is an error.
 
+`thickness` is a magnitude and `direction` carries the side: `inward` keeps the
+outer skin where it is and hollows from inside, `outward` grows the part. The
+wall joins with sharp edges (OCC's intersection join): the offset walls of two
+kept faces meet at a sharp edge, so a shell keeps the part's authored corners
+and an outward shell of a sharp solid has sharp outer corners. The arc join,
+which rounds those corners instead, is only the fallback the kernel uses when
+the sharp build refuses (a removed face whose boundary is filleted). CadQuery's
+`shell()` takes a signed thickness and defaults to `kind="arc"`, so a translated
+outward shell of a sharp part measures smaller than this one; the sign maps as
+positive -> `outward` and negative -> `inward`, with the magnitude as
+`thickness`.
+
 ### move_face
 
 ```yaml

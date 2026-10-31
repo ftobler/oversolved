@@ -449,11 +449,23 @@ const CHAMFER_BULK_NOTE =
 // direction field carries the side. CadQuery's `.shell()` takes a signed
 // thickness and its negative value is the inward one, so a translated model
 // flips the sign into `direction` rather than passing it through.
+// Ex017: the sign mapping alone read as "the same solid". The join has to be
+// named too. applyShellWithLineage builds with OCC's intersection join, so the
+// offset walls meet at sharp edges and an outward shell of a sharp part keeps
+// sharp outer corners; CadQuery's default `kind="arc"` rounds those edges and
+// measures smaller. The arc join here is only the fallback for a build the sharp
+// one genuinely refuses (a removed face bounded by fillets), never a field to
+// set, and the arc option itself stays in feature/backlog.md.
 const SHELL_SIGN_NOTE =
   '`thickness` is always positive and a negative value is refused; the side is carried by `direction: inward|outward`. ' +
   'The default is `inward` (the outer skin stays where it is and material is removed from inside). ' +
   "CadQuery's signed thickness maps as positive -> `outward` and negative -> `inward`, with the magnitude as " +
-  '`thickness`.'
+  '`thickness`. ' +
+  'The wall joins with SHARP edges (OCC\'s intersection join): the offset walls of two kept faces meet at a sharp ' +
+  'corner, so a shell keeps the part\'s authored corners. CadQuery\'s `.shell()` defaults to `kind="arc"`, which ' +
+  'rounds those offset edges instead, so the sign mapping is not an equivalence: on a sharp part an outward shell ' +
+  'measures LARGER here than the arc-join shell CadQuery builds. The arc join appears here only when the sharp ' +
+  'build refuses (a removed face bounded by fillets); it is not a field to set.'
 
 const SHELL_BULK_NOTE =
   'One call may carry the whole pick: `faces` appends the query strings `select` returned, and `thickness` and ' +

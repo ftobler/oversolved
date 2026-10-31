@@ -238,6 +238,36 @@ describe('F5: add_center_rect created ids', () => {
   })
 })
 
+// Ex017: the shell note mapped CadQuery's signed thickness and stopped there,
+// which reads as "same result". Our wall joins sharp (OCC intersection join) and
+// CadQuery's shell defaults to kind="arc", so an outward shell of a sharp part
+// differs by the edge rounds. The note has to name the join it builds.
+describe('Ex017: the shell note names the join', () => {
+  it('states the sharp join, the arc-join difference, and the arc fallback', () => {
+    for (const type of ['add_shell', 'set_shell_field'] as const) {
+      const note = mutationInfoOf(type).note!
+      expect(note, type).toContain('sharp')
+      expect(note, type).toContain('intersection join')
+      expect(note, type).toContain('arc')
+      expect(note, type).toContain('kind="arc"')
+      // The sign mapping stays, but it no longer reads as an equivalence.
+      expect(note, type).toContain('positive -> `outward`')
+      expect(note, type).toContain('negative -> `inward`')
+      expect(note, type).not.toContain('same result')
+      expect(note, type).not.toContain('the same volume')
+    }
+  })
+
+  it('names the arc join only as the fallback the kernel actually uses', () => {
+    // applyShellWithLineage tries GeomAbs_Intersection first and GeomAbs_Arc
+    // only after that build fails, so the note must not read as a choice.
+    for (const type of ['add_shell', 'set_shell_field'] as const) {
+      const note = mutationInfoOf(type).note!
+      expect(note, type).toContain('only when the sharp build refuses')
+    }
+  })
+})
+
 describe('F2: apply_offset side', () => {
   it('states the side relative to the loop', () => {
     const note = mutationInfoOf('apply_offset' as Mutation['type']).note!

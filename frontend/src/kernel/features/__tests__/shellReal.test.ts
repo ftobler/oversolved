@@ -161,6 +161,33 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
     }
   })
 
+  // The Ex017 shape at its own scale: a 2 mm cube, top removed, shelled 0.05
+  // outward. The sharp join gives 2.1 x 2.1 x 2.05 less the 8 open cavity; an
+  // arc join (CadQuery's default `kind="arc"`) rounds the four outer edges and
+  // the corner tops and measures 1.031678. This is the number docs/drive.md
+  // quotes, and the face count is what says the join stayed sharp: a rounded
+  // edge or corner would add faces.
+  it('Ex017 scale: 2 mm cube top open, outward t=0.05 -> V=1.0405, still 11 faces', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = boxBody(scope, table, 2)
+      const body = bodyStore.body_b
+      const q = faceQuery(body.face_uuids![topFaceIndex(scope, table, body)]!)
+      const res = solveShell(occ, scope, table, { id: 'sh1', shell: { faces: [q], thickness: 0.05, direction: 'outward' } }, new Repository(), bodyStore)
+      expect(res.status).toBe('ok')
+      const shape = shelledShape(scope, table, body)
+      expect(volumeOf(occ, scope, shape)).toBeCloseTo(2.1 * 2.1 * 2.05 - 8, 6)
+      expect(canonicalFaces(occ, scope, shape)).toHaveLength(11)
+      const box = scope.track(new occ.Bnd_Box_1())
+      occ.BRepBndLib.Add(shape, box, false)
+      expect([box.GetXmin(), box.GetYmin(), box.GetZmin(), box.GetXmax(), box.GetYmax(), box.GetZmax()].map((n) => Number(n.toFixed(3))))
+        .toEqual([-0.05, -0.05, -0.05, 2.05, 2.05, 2])
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('two opposite faces open makes a tube: V=360', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()

@@ -667,8 +667,15 @@ banner on stdout, so a client config must use the direct node invocation.
   applies scale first, then rotation, then translation, always about exactly
   one axis given either as `rotation_axis` (a ref) or as `rotation_axis_origin`
   plus `rotation_axis_direction`; `add_fillet` takes all of `edges` and
-  `radius` in the same call; `add_split` takes `bodies`, `plane` and `keep`
-  inline, `above` is the side the plane normal points to (a picked face's
+  `radius` in the same call; `add_shell` takes `faces`, `thickness` and
+  `direction` in the same call, `thickness` is a positive magnitude with
+  `direction` carrying the side, and its wall joins with sharp edges, so an
+  outward shell of a sharp part keeps sharp outer corners where CadQuery's
+  `shell()` (default `kind="arc"`) rounds them: `Ex017` measures 1.0405
+  against CadQuery's 1.031678 on a 2 mm cube shelled 0.05 outward. The arc
+  join here is only the fallback for a build the sharp join refuses;
+  `add_split` takes `bodies`, `plane` and `keep` inline, `above` is the side the
+  plane normal points to (a picked face's
   normal is outward, so `above` of a face pick is its air side), and with
   `keep: "both"` the above half keeps the original body id while every further
   piece becomes a `_1`, `_2` sibling in geometric order, so `@<featureId>`
