@@ -80,8 +80,9 @@ export interface WorkspaceStore {
   open(workspace: string): Promise<OpenWorkspace>
   close(workspace: string): Promise<void>
   save(workspace: string, tree: WorkspaceTree): Promise<void>
-  // One entry's explicit save: write the record, then the whole-tree write and
-  // the checkpoint.
+  // One entry's explicit save: the record write, then the checkpoint. The
+  // checkpoint adopts the working copy directly; a whole-tree save here would
+  // re-read and diff every record to persist nothing new.
   saveEntry(workspace: string, entry: WorkspaceEntry): Promise<void>
   // An adopted bag's landing: the same write as save, named for the gesture
   // that performs it.
@@ -224,8 +225,9 @@ export class IdbWorkspaceStore implements WorkspaceStore {
   }
 
   async saveEntry(workspace: string, entry: WorkspaceEntry): Promise<void> {
-    await this.writeEntry(workspace, entry)
-    await this.save(workspace, await this.carrier(workspace).open())
+    await this.writeRecord(workspace, entry)
+    await this.carrier(workspace).checkpoint()
+    bumpWorkspaceStoreRevision()
   }
 
   // Adoption's landing. An import copies bytes in and forgets where they came
@@ -348,14 +350,15 @@ export class IdbWorkspaceStore implements WorkspaceStore {
   }
 
   async writeEntry(workspace: string, entry: WorkspaceEntry): Promise<void> {
-    await this.adoptFiles(workspace, entry)
-    await this.carrier(workspace).write(entry)
+    await this.writeRecord(workspace, entry)
     bumpWorkspaceStoreRevision()
   }
 
   async addEntry(workspace: string, entry: WorkspaceEntry): Promise<string> {
-    await this.adoptFiles(workspace, entry)
-    await this.carrier(workspace).add(entry)
+    const carrier = this.carrier(workspace)
+    const references = await this.adoptFiles(workspace, entry)
+    if (references === null) await carrier.add(entry)
+    else await carrier.addWithReferences(entry, references)
     bumpWorkspaceStoreRevision()
     return entry.id
   }
@@ -427,22 +430,25 @@ export class IdbWorkspaceStore implements WorkspaceStore {
     return carrier
   }
 
-  // Membership write-through and content-driven edge reconciliation. Any file id
-  // the document's import_step features name is copied from C1's flat registry
-  // into the workspace under the same id; every part_instance.doc_id the document
-  // names is an assembly-to-part edge. The document's outgoing edges are then
-  // reconciled to exactly that set, so an edit or undo that removes a reference
-  // also removes the edge. Deriving the assembly edges from the text rather than
-  // recording them at the mutation site is what keeps undo consistent for free.
-  private async adoptFiles(workspace: string, entry: WorkspaceEntry): Promise<void> {
-    if (entry.kind !== 'document' || entry.text === undefined) return
+  // Membership write-through and the edge set the document's text implies. Any
+  // file id the document's import_step features name is copied from C1's flat
+  // registry into the workspace under the same id; every part_instance.doc_id the
+  // document names is an assembly-to-part edge. The edges are returned rather
+  // than written, so the caller lands them in the same transaction as the text
+  // they describe; an edit or undo that removes a reference then removes the
+  // edge with the write that stored it. Deriving the assembly edges from the
+  // text rather than recording them at the mutation site is what keeps undo
+  // consistent for free. Null when the entry carries no document text, which is
+  // a plain record write with nothing to reconcile.
+  private async adoptFiles(workspace: string, entry: WorkspaceEntry): Promise<string[] | null> {
+    if (entry.kind !== 'document' || entry.text === undefined) return null
     let parsed: unknown
     try {
       parsed = parseYaml(entry.text)
     } catch {
-      return
+      return null
     }
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
     const spec = parsed as Record<string, unknown>
     const carrier = this.carrier(workspace)
     const desired = new Set<string>()
@@ -464,13 +470,16 @@ export class IdbWorkspaceStore implements WorkspaceStore {
       if (present) desired.add(id)
     }
     for (const id of partDocIdsInSpec(spec)) desired.add(id)
-    const current = await carrier.referencesOf(entry.id)
-    for (const to of current) {
-      if (!desired.has(to)) await carrier.removeReference(entry.id, to)
-    }
-    for (const to of desired) {
-      if (!current.includes(to)) await carrier.addReference(entry.id, to)
-    }
+    return [...desired].sort()
+  }
+
+  // The record write both entry paths share, without the store revision bump so
+  // a save can bump once after its checkpoint lands.
+  private async writeRecord(workspace: string, entry: WorkspaceEntry): Promise<void> {
+    const carrier = this.carrier(workspace)
+    const references = await this.adoptFiles(workspace, entry)
+    if (references === null) await carrier.write(entry)
+    else await carrier.writeWithReferences(entry, references)
   }
 
   private async requireMeta(workspace: string): Promise<WorkspaceMetaRecord> {

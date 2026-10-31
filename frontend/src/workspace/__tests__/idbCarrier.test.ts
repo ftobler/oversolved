@@ -210,6 +210,10 @@ describe('IdbCarrier', () => {
     await expect(carrier.read('a')).rejects.toThrow(/trashed/)
     await expect(carrier.write(documentEntry('a', 'A', { text: 'kind: part\n# x\n' })))
       .rejects.toThrow(/trashed/)
+    // A byte-identical write is skipped before the transaction, so the shortcut
+    // has to keep the trash check it would otherwise inherit from that write.
+    await expect(carrier.write(documentEntry('a', 'A', { text: 'kind: part\n' })))
+      .rejects.toThrow(/trashed/)
 
     await carrier.restore('a')
     await expect(carrier.read('a')).resolves.toMatchObject({ id: 'a' })

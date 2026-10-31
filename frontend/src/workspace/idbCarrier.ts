@@ -30,6 +30,7 @@ import {
   idbGetFrom,
   idbPutTo,
   idbTransaction,
+  idbUpdateFrom,
 } from '@/stores/documentStore/idb'
 import { suggestedCloneName } from '@/stores/documentStore/cloneName'
 import { randomUuid } from '@/utils/randomUuid'
@@ -56,6 +57,14 @@ export interface WorkspaceMetaRecord {
   // meta written before the v7 shape carries none and readers fall back to the
   // saved records until the next checkpoint stamps it.
   savedRevs?: Record<string, number>
+  // The checkpoint's copy of the structure the entry rows do not carry. A
+  // discard that reset only the rows would put the text of the last save back
+  // while leaving references, trash and provenance describing the edits it
+  // threw away, so checkpoint() snapshots them here. A row written before this
+  // snapshot existed carries none, and discard then leaves the structure alone.
+  savedReferences?: ReferenceEdges
+  savedTrash?: string[]
+  savedProvenance?: ProvenanceRecord[]
   // One-shot content migrations already applied to this workspace, by id. A
   // migration that has to read every payload cannot afford to re-decide that on
   // every open, so it marks itself here and a reopen costs this meta read.
@@ -342,8 +351,10 @@ export class IdbCarrier implements WorkspaceCarrier {
     // transaction is not a drop-in change: the getAll -> compute -> put chain
     // must stay in a single transaction task, and idbTransaction runs `build`
     // synchronously while its result is needed to decide the writes. Left as a
-    // known C2 concurrency limit; write()/remove()/restore() each do one
-    // record and are not exposed to it.
+    // known C2 concurrency limit. The per-record paths do not share it: write()
+    // and add() put one row, writeWithReferences() puts a row and its edges in
+    // one transaction, and remove()/restore()/addReference()/removeReference()
+    // read and rewrite the meta row inside one transaction.
     const meta = await this.requireMeta()
     const existing = new Map((await workspaceEntryRecords(this.workspace)).map(record => [record.id, record]))
     const now = Date.now()
@@ -414,34 +425,57 @@ export class IdbCarrier implements WorkspaceCarrier {
   }
 
   async write(entry: WorkspaceEntry): Promise<void> {
-    const meta = await this.requireMeta()
-    if (meta.trash.includes(entry.id)) throw new Error(`Entry is trashed: ${entry.id}`)
+    await this.writeRecord(entry, null)
+  }
+
+  // One working-copy write together with the outgoing edges its text implies.
+  // The row and the edge map land in one transaction, so a rejected write never
+  // leaves edges describing text that was not stored, and a stored document
+  // never disagrees with the edges derived from its own text.
+  async writeWithReferences(entry: WorkspaceEntry, targets: string[]): Promise<void> {
+    await this.writeRecord(entry, targets)
+  }
+
+  // The one record-write implementation both entry paths share, so the no-op
+  // rule lives in one place. A byte-identical write changes nothing: `rev` is a
+  // change ordinal now, not the bundle-cache key (A11), but churning it on a save
+  // that changed nothing would still light the dirty dot against the checkpoint.
+  // Document text arrives with its edge set; a file entry, or a document whose
+  // text has no parseable mapping, passes null and lands only its row.
+  private async writeRecord(entry: WorkspaceEntry, targets: string[] | null): Promise<void> {
     const previous = await this.getRecord(entry.id)
     if (!previous) throw new Error(`Entry not found: ${entry.id}`)
     const merged = mergeContentForWrite(entry, previous)
-    // A byte-identical save is a no-op. `rev` is a change ordinal now, not the
-    // bundle-cache key (A11), but churning it on a save that changed nothing
-    // would still light the dirty dot against the checkpoint. The live save path
-    // is adapter save -> writeEntry -> here, which has no other content guard.
-    if (!entryChanged(previous, merged)) return
-    const record = entryToRecord(this.workspace, merged, previous.path, previous.rev + 1, Date.now())
-    await idbTransaction(
-      [STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
-      'readwrite',
-      stores => {
-        stores[STORE_WORKSPACE_ENTRIES].put(record)
-        stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
+    const changed = entryChanged(previous, merged)
+    // A plain no-op write still has to refuse a trashed entry, but it has nothing
+    // to store and no edges to reconcile: a read-only meta check keeps it off the
+    // readwrite lock the full path takes.
+    if (!changed && targets === null) {
+      const meta = await this.requireMeta()
+      if (meta.trash.includes(entry.id)) throw new Error(`Entry is trashed: ${entry.id}`)
+      return
+    }
+    await idbUpdateFrom<WorkspaceMetaRecord>(
+      [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
+      STORE_WORKSPACE_META,
+      this.workspace,
+      (meta, stores) => {
+        if (!meta) throw new Error(`Workspace not found: ${this.workspace}`)
+        if (meta.trash.includes(entry.id)) throw new Error(`Entry is trashed: ${entry.id}`)
+        if (changed) {
+          const record = entryToRecord(this.workspace, merged, previous.path, previous.rev + 1, Date.now())
+          stores[STORE_WORKSPACE_ENTRIES].put(record)
+          stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
+        }
+        if (targets === null) return undefined
+        const references = reconciledReferences(meta.references, entry.id, targets)
+        return references === undefined ? undefined : { ...meta, references, updatedAt: Date.now() }
       },
     )
   }
 
   async add(entry: WorkspaceEntry): Promise<void> {
-    if (await this.getRecord(entry.id)) throw new Error(`Entry already exists: ${entry.id}`)
-    // Path uniqueness reads the mirror: paths live there, so this check never
-    // materializes a payload.
-    const metas = await workspaceEntryMetas(this.workspace)
-    const path = pathFor(entry.kind, entry.name, candidate => metas.some(meta => meta.path === candidate))
-    const record = entryToRecord(this.workspace, entry, path, 1, Date.now())
+    const record = await this.newRecord(entry)
     await idbTransaction(
       [STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
       'readwrite',
@@ -452,18 +486,46 @@ export class IdbCarrier implements WorkspaceCarrier {
     )
   }
 
+  // add() plus the edges the new entry's text implies, in one transaction: an
+  // assembly's part edges must exist the moment its row does, and must not
+  // outlive a row that never landed.
+  async addWithReferences(entry: WorkspaceEntry, targets: string[]): Promise<void> {
+    const record = await this.newRecord(entry)
+    await idbUpdateFrom<WorkspaceMetaRecord>(
+      [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
+      STORE_WORKSPACE_META,
+      this.workspace,
+      (meta, stores) => {
+        if (!meta) throw new Error(`Workspace not found: ${this.workspace}`)
+        stores[STORE_WORKSPACE_ENTRIES].put(record)
+        stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
+        const references = reconciledReferences(meta.references, entry.id, targets)
+        return references === undefined ? undefined : { ...meta, references, updatedAt: Date.now() }
+      },
+    )
+  }
+
+  // The working-copy row for a brand-new entry, path uniqueness included. Paths
+  // live in the payload-free mirror, so the check never materializes a payload.
+  private async newRecord(entry: WorkspaceEntry): Promise<WorkspaceEntryRecord> {
+    if (await this.getRecord(entry.id)) throw new Error(`Entry already exists: ${entry.id}`)
+    const metas = await workspaceEntryMetas(this.workspace)
+    const path = pathFor(entry.kind, entry.name, candidate => metas.some(meta => meta.path === candidate))
+    return entryToRecord(this.workspace, entry, path, 1, Date.now())
+  }
+
   async remove(id: string): Promise<void> {
-    const meta = await this.requireMeta()
     if (!(await this.getRecord(id))) throw new Error(`Entry not found: ${id}`)
-    if (meta.trash.includes(id)) return
-    await this.putMeta({ ...meta, trash: [...meta.trash, id].sort(), updatedAt: Date.now() })
+    await this.updateMeta(meta => meta.trash.includes(id)
+      ? undefined
+      : { ...meta, trash: [...meta.trash, id].sort(), updatedAt: Date.now() })
   }
 
   async restore(id: string): Promise<void> {
-    const meta = await this.requireMeta()
     if (!(await this.getRecord(id))) throw new Error(`Entry not found: ${id}`)
-    if (!meta.trash.includes(id)) return
-    await this.putMeta({ ...meta, trash: meta.trash.filter(entry => entry !== id), updatedAt: Date.now() })
+    await this.updateMeta(meta => meta.trash.includes(id)
+      ? { ...meta, trash: meta.trash.filter(entry => entry !== id), updatedAt: Date.now() }
+      : undefined)
   }
 
   async clone(id: string, name?: string): Promise<string> {
@@ -495,18 +557,21 @@ export class IdbCarrier implements WorkspaceCarrier {
   }
 
   async addReference(from: string, to: string): Promise<void> {
-    const meta = await this.requireMeta()
-    const targets = [...(meta.references[from] ?? []), to]
-    await this.putMeta({ ...meta, references: canonicalizeReferences({ ...meta.references, [from]: targets }), updatedAt: Date.now() })
+    await this.updateMeta(meta => ({
+      ...meta,
+      references: canonicalizeReferences({ ...meta.references, [from]: [...(meta.references[from] ?? []), to] }),
+      updatedAt: Date.now(),
+    }))
   }
 
   async removeReference(from: string, to: string): Promise<void> {
-    const meta = await this.requireMeta()
-    const targets = (meta.references[from] ?? []).filter(id => id !== to)
-    const references = { ...meta.references }
-    if (targets.length === 0) delete references[from]
-    else references[from] = targets
-    await this.putMeta({ ...meta, references: canonicalizeReferences(references), updatedAt: Date.now() })
+    await this.updateMeta(meta => {
+      const targets = (meta.references[from] ?? []).filter(id => id !== to)
+      const references = { ...meta.references }
+      if (targets.length === 0) delete references[from]
+      else references[from] = targets
+      return { ...meta, references: canonicalizeReferences(references), updatedAt: Date.now() }
+    })
   }
 
   async maxWorkingRev(): Promise<number> {
@@ -537,7 +602,10 @@ export class IdbCarrier implements WorkspaceCarrier {
     // Same pre-transaction read window as save(): a concurrent tab's write can
     // land between these reads and the checkpoint transaction, so this
     // checkpoint adopts a slightly stale working copy. The next explicit save
-    // re-adopts, so the cost is a missed rev, not lost content.
+    // re-adopts, so the cost is a missed rev, not lost content. The structure
+    // snapshots come from that same earlier meta read, so they can lag the rows
+    // this checkpoint adopts as well; the next checkpoint re-adopts both
+    // together.
     const meta = await this.requireMeta()
     const working = await workspaceEntryRecords(this.workspace)
     const saved = await savedEntryRecords(this.workspace)
@@ -547,11 +615,20 @@ export class IdbCarrier implements WorkspaceCarrier {
     const toDelete = saved.filter(record => !workingIds.has(record.id))
     // The checkpoint adopts the whole working copy, so its rev map is exactly the
     // working revs. Stamping it here is what lets a later read answer the dirty
-    // dot without touching the checkpoint payloads.
+    // dot without touching the checkpoint payloads. The structure snapshots ride
+    // along so discard can put back the references, trash and provenance that
+    // belong to the adopted text.
     const nextMeta: WorkspaceMetaRecord = {
       ...meta,
       savedAt: Date.now(),
+      // The workspace row's updatedAt is the modified time the library tile
+      // shows and sorts on, so the gesture that adopts a save moves it too. The
+      // whole-tree save stamped it before; a single-entry save still has to.
+      updatedAt: Date.now(),
       savedRevs: Object.fromEntries(working.map(record => [record.id, record.rev])),
+      savedReferences: meta.references,
+      savedTrash: [...meta.trash],
+      savedProvenance: meta.provenance.map(record => ({ ...record })),
     }
     await idbTransaction([STORE_WORKSPACE_SAVED, STORE_WORKSPACE_META], 'readwrite', stores => {
       for (const record of toPut) stores[STORE_WORKSPACE_SAVED].put(record)
@@ -561,12 +638,25 @@ export class IdbCarrier implements WorkspaceCarrier {
   }
 
   // The recovery prompt's discard: reset the working copy to the checkpoint.
-  // Every row is grouped in one transaction so the reset cannot be seen half done.
+  // Every row and the meta row are grouped in one transaction so the reset
+  // cannot be seen half done.
   async discard(): Promise<WorkspaceTree> {
+    const meta = await this.requireMeta()
     const working = await workspaceEntryRecords(this.workspace)
     const saved = await savedEntryRecords(this.workspace)
+    // The text comes back from the checkpoint rows, and the structure the rows
+    // do not carry comes back from the snapshot checkpoint() stamped beside
+    // them. A meta written before that snapshot existed has nothing to restore,
+    // so its structure is left as it is.
+    const nextMeta: WorkspaceMetaRecord | undefined = meta.savedReferences === undefined ? undefined : {
+      ...meta,
+      references: meta.savedReferences,
+      trash: [...(meta.savedTrash ?? [])],
+      provenance: (meta.savedProvenance ?? []).map(record => ({ ...record })),
+      updatedAt: Date.now(),
+    }
     await idbTransaction(
-      [STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
+      [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
       'readwrite',
       stores => {
         for (const record of working) {
@@ -577,6 +667,7 @@ export class IdbCarrier implements WorkspaceCarrier {
           stores[STORE_WORKSPACE_ENTRIES].put(record)
           stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
         }
+        if (nextMeta) stores[STORE_WORKSPACE_META].put(nextMeta)
       },
     )
     return this.open()
@@ -586,10 +677,21 @@ export class IdbCarrier implements WorkspaceCarrier {
     return idbGetFrom<WorkspaceEntryRecord>(STORE_WORKSPACE_ENTRIES, [this.workspace, id])
   }
 
-  private async putMeta(meta: WorkspaceMetaRecord): Promise<void> {
-    await idbTransaction([STORE_WORKSPACE_META], 'readwrite', stores => {
-      stores[STORE_WORKSPACE_META].put(meta)
-    })
+  // A structure edit read and written in one transaction. Two editors (a delete
+  // and an edge reconcile, say) that each read the row and then wrote it back
+  // would lose one update; a read and a write inside one transaction serialize
+  // against every other writer of the store. Returning undefined leaves the row
+  // untouched.
+  private async updateMeta(edit: (meta: WorkspaceMetaRecord) => WorkspaceMetaRecord | undefined): Promise<void> {
+    await idbUpdateFrom<WorkspaceMetaRecord>(
+      [STORE_WORKSPACE_META],
+      STORE_WORKSPACE_META,
+      this.workspace,
+      meta => {
+        if (!meta) throw new Error(`Workspace not found: ${this.workspace}`)
+        return edit(meta)
+      },
+    )
   }
 
   private async requireMeta(): Promise<WorkspaceMetaRecord> {
@@ -597,6 +699,19 @@ export class IdbCarrier implements WorkspaceCarrier {
     if (!meta) throw new Error(`Workspace not found: ${this.workspace}`)
     return meta
   }
+}
+
+// One source's outgoing edge set replaced with what its text implies. Undefined
+// when the map already says exactly that, so a write that moves no edge leaves
+// the meta row alone.
+function reconciledReferences(references: ReferenceEdges, from: string, targets: string[]): ReferenceEdges | undefined {
+  const next = [...new Set(targets)].sort()
+  const current = references[from] ?? []
+  if (current.length === next.length && current.every((id, index) => id === next[index])) return undefined
+  const out = { ...references }
+  if (next.length === 0) delete out[from]
+  else out[from] = next
+  return canonicalizeReferences(out)
 }
 
 // A tree row plus its content, with a lazy file payload filled back in from the

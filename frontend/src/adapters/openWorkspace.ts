@@ -92,9 +92,9 @@ export class OpenWorkspaceDocumentStore implements WorkspaceDocuments {
   async save(id: string, input: { content: string }): Promise<void> {
     const workspace = openWorkspace()
     const entry = await this.store.readEntry(workspace, id)
-    // One record plus the whole-tree carrier write and checkpoint. The carrier
-    // stays in step with the working copy, and a crash between the two writes
-    // is the only way the working copy is left ahead (U7's input).
+    // One record write plus the checkpoint. The carrier stays in step with the
+    // working copy, and a crash between the two writes is the only way the
+    // working copy is left ahead (U7's input).
     await this.store.saveEntry(workspace, {
       id: entry.id,
       kind: 'document',

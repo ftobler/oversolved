@@ -72,8 +72,10 @@ interface UnsavedChangesState {
 }
 
 // Guards against an older `open` resolving after a newer one and writing a
-// stale `ahead` back: a save fires both a writeEntry and a checkpoint event, so
-// two refreshes race and the later-started one must win.
+// stale `ahead` back. A save bumps once, after its checkpoint, but the seam
+// still emits on overlapping gestures: two concurrent saves, and the paths that
+// keep a writeEntry and a checkpoint apart and so fire twice. Two refreshes can
+// therefore race and the later-started one must win.
 let refreshToken = 0
 
 export const useUnsavedChangesStore = create<UnsavedChangesState>((set, get) => ({

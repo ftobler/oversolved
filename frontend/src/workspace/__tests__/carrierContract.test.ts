@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { STORE_WORKSPACE_META, idbDeleteFrom } from '@/stores/documentStore/idb'
 import type { WorkspaceCarrier } from '../carrier'
 import type { WorkspaceTree } from '../types'
 import { MemoryCarrier } from '../memoryCarrier'
-import { IdbCarrier } from '../idbCarrier'
+import { IdbCarrier, replaceWorkspaceRows, type WorkspaceEntryRecord, type WorkspaceMetaRecord } from '../idbCarrier'
 import { addReference } from '../refs'
 import { serializeTree } from '../serializer'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
@@ -116,6 +117,14 @@ describe.each(adapters)('WorkspaceCarrier contract: $name', (adapter) => {
     await expect(carrier.write(fileEntry('b', 'b.step', bytesOf([9])))).rejects.toThrow(/trashed/)
   })
 
+  // A plain write carries the row only: the edge set a text implies belongs to
+  // the caller that derived it, so a write must neither add nor clear edges. The
+  // sample holds a -> b, and this text no longer names b.
+  it('write leaves the outgoing reference edges alone', async () => {
+    await carrier.write(documentEntry('a', 'A', { text: 'kind: assembly\nfeatures: []\n', docKind: 'assembly' }))
+    expect((await carrier.open()).manifest.references).toEqual({ a: ['b'] })
+  })
+
   it('clone mints a fresh id and copies content and name', async () => {
     const cloneId = await carrier.clone('a')
     expect(cloneId).not.toBe('a')
@@ -132,5 +141,50 @@ describe.each(adapters)('WorkspaceCarrier contract: $name', (adapter) => {
     const second = await carrier.open()
     expect(second.manifest.entries.a.name).toBe('A')
     expect(second.manifest.references.a).toEqual(['b'])
+  })
+})
+
+// The IndexedDB record paths check the entry row before the workspace row, so a
+// gesture on a workspace that holds no rows names the entry, while a row left
+// without its meta row names the workspace. That order is what decides whether a
+// caller hears "missing entry" or "broken workspace", so it is pinned here beside
+// the shared contract; the memory conformer has no meta row to lose.
+describe('IdbCarrier remove and restore precedence', () => {
+  beforeEach(resetWorkspaceIdb)
+
+  it('names the entry when the workspace holds no rows at all', async () => {
+    const carrier = new IdbCarrier('purged')
+    await expect(carrier.remove('ghost')).rejects.toThrow('Entry not found: ghost')
+    await expect(carrier.restore('ghost')).rejects.toThrow('Entry not found: ghost')
+  })
+
+  it('names the workspace when the entry row survived without its meta', async () => {
+    const workspace = 'orphaned'
+    const record: WorkspaceEntryRecord = {
+      workspace,
+      id: 'a',
+      path: 'documents/A.yaml',
+      kind: 'document',
+      name: 'A',
+      text: 'kind: part\n',
+      rev: 1,
+      contentHash: 'sha',
+      updatedAt: 0,
+    }
+    const meta: WorkspaceMetaRecord = {
+      workspace,
+      name: 'orphan',
+      createdAt: 0,
+      updatedAt: 0,
+      references: {},
+      provenance: [],
+      trash: [],
+    }
+    await replaceWorkspaceRows(workspace, meta, [record])
+    await idbDeleteFrom(STORE_WORKSPACE_META, workspace)
+
+    const carrier = new IdbCarrier(workspace)
+    await expect(carrier.remove('a')).rejects.toThrow('Workspace not found: orphaned')
+    await expect(carrier.restore('a')).rejects.toThrow('Workspace not found: orphaned')
   })
 })
