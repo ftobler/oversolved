@@ -5,6 +5,7 @@ use crate::{solve_sketch, ConstraintKind, EqualityPin, Options, Status};
 
 mod coincident_tangent;
 mod ellipse_distance;
+mod fd_scale;
 mod filtering;
 mod fit_spline;
 mod midpoint_spline_jacobian;

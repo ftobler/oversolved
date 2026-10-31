@@ -125,8 +125,9 @@ fn a_line_tangent_at_the_start_rotates_the_handle_not_the_points() {
     // Fit points and the line are pinned, so the only free params are the
     // start handle's two scalars. The tangent row must satisfy itself there.
     let mut params = ex010();
-    params.extend_from_slice(&[4.0, 3.0]); // start handle, not axis aligned
-    params.extend_from_slice(&[3.0, 1.0, 3.0, 3.0]); // line start/end
+    // A start handle that is not axis aligned, then the line's endpoints.
+    params.extend_from_slice(&[4.0, 3.0]);
+    params.extend_from_slice(&[3.0, 1.0, 3.0, 3.0]);
     let fit = fit_entity(0, 8, FLAG_HANDLE_START);
     let line = ent(Kind::Line, 18);
     let constraints = vec![Constraint {

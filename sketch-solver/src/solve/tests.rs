@@ -335,7 +335,8 @@ fn line_pinned_at_origin_with_length_but_no_orientation_is_underconstrained() {
 #[test]
 fn pinned_mask_holds_point_and_reports_fully_constrained() {
     let mut inp = input(vec![point(0)], vec![2.0, 3.0], vec![]);
-    inp.pinned_mask = vec![0b11]; // pin both params to initial
+    // Pin both params at their initial values.
+    inp.pinned_mask = vec![0b11];
     let out = solve_sketch(&inp);
     assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
     assert!((out.params_solved[0] - 2.0).abs() < 1e-5);
@@ -621,7 +622,8 @@ fn point_distance_to_axis_endpoints_dimensions_major_and_minor_radius() {
         vec![0.0, 0.0, 1.0, 1.0, 0.0],
         vec![pd_major, pd_minor],
     );
-    inp.pinned_mask = vec![0b0001_0011]; // pin cx(0), cy(1), theta(4)
+    // Pin cx (0), cy (1) and theta (4); the two radii stay free.
+    inp.pinned_mask = vec![0b0001_0011];
 
     let out = solve_sketch(&inp);
     assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
@@ -642,8 +644,9 @@ fn drag_reg_weights_bump_only_the_anchor_entity() {
         ..input(vec![line(0), point(4)], vec![0.0; 6], vec![])
     };
     let w = drag_reg_weights(&inp, 6);
-    assert_eq!(&w[0..4], &[REG_WEIGHT_BASE; 4]); // line stays at base
-    assert_eq!(&w[4..6], &[REG_WEIGHT_DRAG; 2]); // point (anchor) bumped
+    // The line keeps the base pull; the dragged point is bumped.
+    assert_eq!(&w[0..4], &[REG_WEIGHT_BASE; 4]);
+    assert_eq!(&w[4..6], &[REG_WEIGHT_DRAG; 2]);
 }
 
 #[test]
@@ -894,11 +897,9 @@ fn a_parallel_implied_by_four_horizontals_is_flagged_redundant() {
     // references, so it adds no rank. The four horizontals themselves do
     // (each acts on a different line).
     let entities = vec![line(0), line(4), line(8), line(12)];
+    // The rectangle's sides, in bottom, right, top, left order.
     let params = vec![
-        0.0, 0.0, 10.0, 0.0, // bottom
-        10.0, 0.0, 10.0, 6.0, // right
-        10.0, 6.0, 0.0, 6.0, // top
-        0.0, 6.0, 0.0, 0.0, // left
+        0.0, 0.0, 10.0, 0.0, 10.0, 0.0, 10.0, 6.0, 10.0, 6.0, 0.0, 6.0, 0.0, 6.0, 0.0, 0.0,
     ];
     let horiz = |i| c_target(ConstraintKind::Horizontal, i, PointSelector::Absent);
     let constraints = vec![
@@ -1191,11 +1192,10 @@ fn arc_branches_are_rebased_onto_the_authored_spelling() {
 
 #[test]
 fn a_non_finite_jacobian_returns_a_verdict_without_decomposing_it() {
-    // A NaN coordinate makes both the residual and the Jacobian entries
-    // non-finite. The solve must come back with the failing verdict and no
-    // rank rather than hand the matrix to nalgebra's SVD, which never
-    // converges on NaN and would wedge the worker: the channel's timeout is
-    // the regression detector.
+    // End-to-end shape of the failure: a NaN coordinate makes the residual
+    // non-finite too, so the driver returns early. The gate itself is pinned
+    // directly below; this test is the integration tripwire that a malformed
+    // sketch still answers (the channel's timeout catches a wedged worker).
     use std::sync::mpsc;
     use std::time::Duration;
     let mut length = c_target(ConstraintKind::Length, 0, PointSelector::Absent);
@@ -1204,13 +1204,60 @@ fn a_non_finite_jacobian_returns_a_verdict_without_decomposing_it() {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let out = solve_sketch(&inp);
-        tx.send((out.overall_status, out.diagnostics.rank)).unwrap();
+        tx.send((
+            out.overall_status,
+            out.diagnostics.rank,
+            out.diagnostics.dof,
+        ))
+        .unwrap();
     });
-    let (status, rank) = rx
+    let (status, rank, dof) = rx
         .recv_timeout(Duration::from_secs(10))
         .expect("solve did not return: a non-finite Jacobian reached the SVD");
     assert_eq!(status, Status::Overconstrained.to_u8());
     assert_eq!(rank, 0, "a skipped spectrum must not invent a rank");
+    assert_eq!(
+        dof, 0,
+        "a skipped spectrum must not report every param free"
+    );
+}
+
+#[test]
+fn the_spectrum_of_a_non_finite_jacobian_never_reaches_the_svd() {
+    // The gate at the SVD itself: nalgebra's decomposition never converges on
+    // NaN, so this call must refuse the matrix before the factorization. A
+    // finite matrix still produces the real spectrum.
+    let nan = DMatrix::from_row_slice(2, 2, &[1.0, f64::NAN, 0.0, 1.0]);
+    let spectrum = Spectrum::of(&nan, 2, true);
+    assert_eq!(spectrum.rank, 0);
+    assert_eq!(spectrum.null.ncols(), 0);
+    assert!(spectrum.null_sv.is_empty());
+
+    let finite = DMatrix::from_row_slice(1, 2, &[1.0, 0.0]);
+    assert_eq!(Spectrum::of(&finite, 2, true).rank, 1);
+}
+
+#[test]
+fn a_non_finite_jacobian_forces_overconstrained_whatever_the_residual() {
+    // The verdict branch: a residual under the width with a full rank would
+    // read FullyConstrained, and a partial rank Underconstrained. Neither is
+    // trustworthy when the Jacobian could not be decomposed.
+    assert_eq!(
+        overall_status(false, 0.0, 4, 4, 1.0),
+        Status::Overconstrained
+    );
+    assert_eq!(
+        overall_status(true, 0.0, 4, 4, 1.0),
+        Status::FullyConstrained
+    );
+    assert_eq!(
+        overall_status(true, 0.0, 2, 4, 1.0),
+        Status::Underconstrained
+    );
+    assert_eq!(
+        overall_status(true, f64::NAN, 4, 4, 1.0),
+        Status::Overconstrained
+    );
 }
 
 /// Two lines whose placement reads the finite-difference angle row, drawn

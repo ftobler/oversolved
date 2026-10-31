@@ -39,13 +39,25 @@ impl RowBuf {
 
 /// Central-difference step for one param: `cbrt(eps)` is the three-point
 /// stencil's truncation/round-off balance, times the param's own magnitude and
-/// floored at the sketch scale. The floor used to be a fixed 1.0, which on a
-/// 0.01 mm sketch stepped 6e-4 of the geometry: the derivative became a chord
-/// across a visible arc instead of a tangent. A zero-scale problem has no
-/// scale to read, so it keeps the unit floor.
-fn fd_step(xj: f64, scale: f64) -> f64 {
-    let floor = if scale > 0.0 { scale } else { 1.0 };
+/// floored at the problem's local length. The floor used to be a fixed 1.0,
+/// which on a 0.01 mm sketch stepped 6e-4 of the geometry: the derivative
+/// became a chord across a visible arc instead of a tangent. A zero floor has
+/// nothing to read and keeps the unit step.
+fn fd_step(xj: f64, floor: f64) -> f64 {
+    let floor = if floor > 0.0 { floor } else { 1.0 };
     f64::EPSILON.cbrt() * xj.abs().max(floor)
+}
+
+/// Bounding-box diagonal of a point list, the local scale of a chain carrier.
+fn bbox_span(points: &[[f64; 2]]) -> f64 {
+    let (mut min, mut max) = ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]);
+    for p in points {
+        for (k, v) in p.iter().enumerate() {
+            min[k] = min[k].min(*v);
+            max[k] = max[k].max(*v);
+        }
+    }
+    (max[0] - min[0]).hypot(max[1] - min[1])
 }
 
 impl Problem<'_> {
@@ -135,8 +147,9 @@ impl Problem<'_> {
             return Vec::new();
         }
         let mut rows: Vec<RowBuf> = (0..k).map(|_| RowBuf::new()).collect();
+        let floor = self.fd_floor(c, x);
         for j in self.involved_params(c) {
-            let h = fd_step(x[j], self.scale());
+            let h = fd_step(x[j], floor);
             xp[j] = x[j] + h;
             let fp = self.residual_one_vec(c, xp);
             xp[j] = x[j] - h;
@@ -148,6 +161,57 @@ impl Problem<'_> {
             }
         }
         rows.into_iter().map(RowBuf::finish).collect()
+    }
+
+    /// The finite-difference floor for one constraint: the sketch scale reduced
+    /// to the world span of the entities it touches.
+    ///
+    /// The sketch scale is the bounding-box diagonal of the whole drawing, so
+    /// a millimetre feature inside a metre-wide sketch would be differenced at
+    /// a step proportional to the metre. Taking the smallest involved entity
+    /// span keeps the step proportional to the thing the residual is computed
+    /// on. A point operand has no span of its own and leaves the sketch scale.
+    fn fd_floor(&self, c: &Constraint, x: &[f64]) -> f64 {
+        let mut floor = self.scale();
+        for (_, r) in &c.refs {
+            let Ref::Entity { index, .. } = r else {
+                continue;
+            };
+            let span = self.entity_span(*index, x);
+            if span > 0.0 {
+                floor = floor.min(span);
+            }
+        }
+        floor
+    }
+
+    /// A characteristic world span of one entity at `x`: line length, circle or
+    /// arc diameter, the ellipse's major diameter, or the bounding-box diagonal
+    /// of a spline's control points or a fit spline's fit points. A point is 0,
+    /// which `fd_floor` reads as "no local scale".
+    fn entity_span(&self, index: u32, x: &[f64]) -> f64 {
+        let ep = self.params(x, index);
+        match self.kind_of(index) {
+            Kind::Line => (ep[2] - ep[0]).hypot(ep[3] - ep[1]),
+            Kind::Circle | Kind::Arc => 2.0 * ep[2].abs(),
+            Kind::Ellipse => 2.0 * ep[2].abs().max(ep[3].abs()),
+            Kind::Point => 0.0,
+            Kind::Spline => bbox_span(&[
+                [ep[0], ep[1]],
+                [ep[2], ep[3]],
+                [ep[4], ep[5]],
+                [ep[6], ep[7]],
+            ]),
+            Kind::FitSpline => {
+                let Some(layout) = self.fit_layout(index) else {
+                    return 0.0;
+                };
+                let points: Vec<[f64; 2]> = (0..layout.points)
+                    .map(|i| [ep[2 * i], ep[2 * i + 1]])
+                    .collect();
+                bbox_span(&points)
+            }
+        }
     }
 
     /// True when the constraint names a fit spline through a selector
@@ -637,12 +701,12 @@ mod tests {
     use super::fd_step;
 
     #[test]
-    fn the_finite_difference_step_is_floored_at_the_problem_scale() {
+    fn the_finite_difference_step_floor_tracks_the_caller_length() {
         // A param at (or through) zero used to step by cbrt(eps) * 1.0 whatever
         // the drawing's size: 6e-6 world, or 6e-4 of a 0.01 mm sketch, which
         // differenced a curve over a visible arc. The floor now tracks the
-        // geometry, so the step is the same fraction of the sketch at any
-        // scale.
+        // length the caller passes, so the step is the same fraction of the
+        // feature at any scale.
         let small = fd_step(0.0, 0.01);
         let large = fd_step(0.0, 100.0);
         assert!(
@@ -654,8 +718,8 @@ mod tests {
         // what keeps a coordinate far from the origin differenced relatively.
         assert!(fd_step(50.0, 0.01) > fd_step(0.5, 0.01));
         assert_eq!(fd_step(50.0, 0.01), fd_step(50.0, 1.0));
-        // A zero scale (no geometry to read) keeps the unit floor rather than
-        // dividing by a zero step.
+        // A zero floor has nothing to read and keeps the unit step rather than
+        // dividing by a zero one.
         assert_eq!(fd_step(0.0, 0.0), f64::EPSILON.cbrt());
     }
 }

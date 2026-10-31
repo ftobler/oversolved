@@ -1088,6 +1088,25 @@ fn mate_status(residual_norm: f64, m: usize, dof: usize, scale: f64) -> MateStat
     }
 }
 
+/// The verdict for a finished solve: a Jacobian that could not be decomposed
+/// is a failure whatever the residual reads, because the rank pass was skipped
+/// and `dof` is a placeholder. Kept separate from the solve so the branch is
+/// testable without constructing a mate whose residual is finite but whose
+/// derivative is not.
+fn solved_status(
+    jacobian_finite: bool,
+    residual_norm: f64,
+    m: usize,
+    dof: usize,
+    scale: f64,
+) -> MateStatus {
+    if jacobian_finite {
+        mate_status(residual_norm, m, dof, scale)
+    } else {
+        MateStatus::Overconstrained
+    }
+}
+
 /// Retry the solve from half-turned seeds of the worst mate's free bodies and
 /// report whether any attempt reaches the status tolerance. A half turn about
 /// each world axis covers the usual trap (a face-to-face fixed mate seeded
@@ -1225,10 +1244,10 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     // Rank analysis via SVD. Skipped on a live drag tick, which reads only the
     // pose and discards the verdict: the SVD is pure per-frame cost there, and
     // the full solve on pointer-up is what owns the rank/dof the editor shows.
-    // Also skipped when the residuals or the Jacobian are poisoned: nalgebra's
-    // SVD convergence test never fires on NaN, so this call would spin forever
-    // and wedge the serialized worker. `mate_status` then reports the failure
-    // instead of a rank that cannot be trusted.
+    // Also skipped when the residuals or the Jacobian are poisoned: the SVD
+    // has no answer for NaN and would spin or abort, wedging the serialized
+    // worker. `mate_status` then reports the failure instead of a rank that
+    // cannot be trusted.
     let poisoned = !lm_result.residual_norm.is_finite() || !lm_result.jacobian_finite;
     let (rank, dof) = if live {
         (0u32, 0u32)
@@ -1262,16 +1281,13 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     // assembly: the rank pass above was skipped, so `dof` is a placeholder.
     // Report the failing verdict instead of letting an under-tolerance residual
     // with a poisoned matrix read as FullyConstrained.
-    let mut status = if lm_result.jacobian_finite {
-        mate_status(
-            lm_result.residual_norm,
-            m,
-            dof as usize,
-            problem.geometry_scale(),
-        )
-    } else {
-        MateStatus::Overconstrained
-    };
+    let mut status = solved_status(
+        lm_result.jacobian_finite,
+        lm_result.residual_norm,
+        m,
+        dof as usize,
+        problem.geometry_scale(),
+    );
 
     // The wire layout is still 7 params per body; composing the final unit
     // quaternions here is the only place the reduced state and the seed buffer

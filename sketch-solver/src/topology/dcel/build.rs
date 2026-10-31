@@ -582,10 +582,15 @@ pub(super) fn add_spline_self_intersections(
 /// inside ONE cubic (a double point, `bezier_self_crossing`) and two adjacent
 /// pieces can meet again away from their shared joint. Non-adjacent pieces are
 /// ordinary curve pairs, so a figure-eight through points slices into its lobes.
+///
 /// The joint itself is never a crossing: it is an interior chain parameter, not
-/// a vertex, so its hit is filtered out. The returned map is the lobe-vertex set
-/// per entity, the fit-spline counterpart of `add_spline_self_intersections`'
-/// single lobe vertex.
+/// a vertex. It is recognised in WORLD space, `TOL_TOPOLOGY_MERGE` from the
+/// shared endpoint, not by a parameter window: the box recursion reports a
+/// hit's parameters only to about `FLAT / piece chord`, so a window in
+/// parameter space stops recognising the joint once the piece is drawn below
+/// unit size and mints every joint as a vertex. The returned map is the
+/// lobe-vertex set per entity, the fit-spline counterpart of
+/// `add_spline_self_intersections`' single lobe vertex.
 pub(super) fn add_fit_spline_self_intersections(
     fit_splines: &[(String, TopoEntity)],
     splits: &mut HashMap<String, Vec<Split>>,
@@ -609,10 +614,16 @@ pub(super) fn add_fit_spline_self_intersections(
         }
         for i in 0..pieces.len() {
             for j in (i + 1)..pieces.len() {
+                // Adjacent pieces share piece i's end point, the world position
+                // the joint filter compares a hit against.
+                let joint = if j == i + 1 {
+                    bezier_end(&pieces[i].1)
+                } else {
+                    None
+                };
                 for h in intersect_curves(&pieces[i].1, &pieces[j].1) {
-                    // Adjacent pieces meet at their shared joint by
-                    // construction; only a second contact is a self-crossing.
-                    let at_joint = j == i + 1 && h.t_a >= 1.0 - SPLIT_EPS && h.t_b <= SPLIT_EPS;
+                    let at_joint = joint
+                        .is_some_and(|p| (h.point[0] - p[0]).hypot(h.point[1] - p[1]) <= MERGE);
                     if at_joint {
                         continue;
                     }
@@ -622,18 +633,30 @@ pub(super) fn add_fit_spline_self_intersections(
         }
         for (s_a, s_b, point) in crossings {
             let v = verts.vid(point);
-            if let Some(spl) = splits.get_mut(eid) {
-                if !has_param(spl, s_a) {
-                    spl.push((s_a, v.clone()));
-                }
-                if !has_param(spl, s_b) {
-                    spl.push((s_b, v.clone()));
-                }
+            // A missing split bucket means the entity was not seeded; skip it
+            // rather than index, and do not record a lobe the graph cannot use.
+            let Some(spl) = splits.get_mut(eid) else {
+                continue;
+            };
+            if !has_param(spl, s_a) {
+                spl.push((s_a, v.clone()));
+            }
+            if !has_param(spl, s_b) {
+                spl.push((s_b, v.clone()));
             }
             lobes.entry(eid.clone()).or_default().insert(v);
         }
     }
     lobes
+}
+
+/// The end point of a cubic Bezier carrier, the shared joint of an adjacent
+/// piece pair. `None` for a carrier that is not a Bezier.
+fn bezier_end(c: &Curve) -> Option<Vec2> {
+    match *c {
+        Curve::Bezier { p3, .. } => Some(p3),
+        _ => None,
+    }
 }
 
 pub(super) fn add_curve_intersections(

@@ -142,7 +142,9 @@ pub const RANK_TOL: f64 = 1e-6;
 /// A param is free when some null direction moves it by more than this. The
 /// null basis is orthonormal, so a genuinely free param reads O(1) and a
 /// constrained one reads round-off; absolute because the basis is already
-/// normalized, in the same dimensionless space as [`RANK_TOL`].
+/// normalized. Read the caveat in [`RANK_TOL`]: the parameter space mixes
+/// lengths and arc/ellipse angle degrees, so "O(1)" is a component of an
+/// orthonormal vector, not a world distance.
 pub const FREE_COMPONENT_TOL: f64 = 1e-6;
 
 /// A constraint row whose remainder after orthogonalisation against every

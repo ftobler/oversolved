@@ -224,6 +224,49 @@ fn adjacent_pieces_that_cross_again_close_their_lobe() {
 }
 
 #[test]
+fn the_chain_topology_is_the_same_at_every_sketch_scale() {
+    // A piece joint is an interior chain parameter, never a vertex, and the
+    // rule that recognises it reads world distance to the shared endpoint.
+    // The old parameter window (1e-7 wide) stopped recognising it below unit
+    // scale, where the box recursion's parameter accuracy is FLAT / chord, so
+    // every joint became a vertex and the chain fragmented.
+    let scaled = |s: f64| -> Vec<(String, InputEntity)> {
+        vec![(
+            "sp".into(),
+            fit_spline(&EX010.map(|p| [p[0] * s, p[1] * s]), None, None),
+        )]
+    };
+    let base = detect_topology(&scaled(1.0));
+    assert_eq!((base.vertices.len(), base.edges.len()), (2, 1));
+    for s in [0.1, 0.01] {
+        let t = detect_topology(&scaled(s));
+        assert_eq!(t.vertices.len(), 2, "s={s}: a joint became a vertex");
+        assert_eq!(t.edges.len(), 1, "s={s}: the chain was split");
+        assert!(t.surfaces.is_empty(), "s={s}: a phantom sliver face");
+    }
+}
+
+#[test]
+fn a_scaled_closed_loop_keeps_its_one_edge_boundary() {
+    // The same world-distance rule on the closed case: the seam and the piece
+    // joints must stay off the split list at every size.
+    let points = [[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [1.0, -1.0], [0.0, 0.0]];
+    let base = detect_topology(&[("sp".into(), fit_spline(&points, None, None))]);
+    assert_eq!(base.surfaces.len(), 1);
+    assert_eq!(base.surfaces[0].boundary.len(), 1);
+    for s in [0.1, 0.01] {
+        let scaled: Vec<[f64; 2]> = points.iter().map(|p| [p[0] * s, p[1] * s]).collect();
+        let t = detect_topology(&[("sp".into(), fit_spline(&scaled, None, None))]);
+        assert_eq!(t.surfaces.len(), 1, "s={s}");
+        assert_eq!(
+            t.surfaces[0].boundary.len(),
+            1,
+            "s={s}: the seam or a joint was split"
+        );
+    }
+}
+
+#[test]
 fn a_degenerate_fit_spline_is_refused_by_the_codec() {
     use crate::topology::codec::{decode_input, TopologyCodecError};
     let payload = serde_json::json!([

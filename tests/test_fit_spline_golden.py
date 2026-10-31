@@ -112,7 +112,8 @@ def test_the_edge_cases_carry_their_purpose() -> None:
     points = cases["tiny_chord"]["points"]
     us = golden_generator.chord_params([tuple(p) for p in points])
     spans = [b - a for a, b in zip(us, us[1:])]
-    assert min(spans) < 2e-3 and max(spans) > 1.0
+    assert min(spans) == pytest.approx(2**0.5 * 1e-3)
+    assert max(spans) > 1.0
 
 
 def test_ex010_matches_the_plan_reference_numbers() -> None:

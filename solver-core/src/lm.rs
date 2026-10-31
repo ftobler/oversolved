@@ -39,8 +39,8 @@ pub struct LmResult {
     pub residual_norm: f64,
     /// True when `jacobian` can be handed to a decomposition. Calculated, not
     /// assumed: a caller's Jacobian closure can return a NaN entry at a finite
-    /// residual (a singular derivative, a bad probe), and nalgebra's SVD
-    /// convergence test never fires on NaN, so decomposing that matrix wedges
+    /// residual (a singular derivative, a bad probe), and nalgebra's SVD has no
+    /// answer for NaN (it can spin or panic), so decomposing that matrix wedges
     /// the worker. A false flag also covers the non-finite-residual exit,
     /// whose returned matrix is a placeholder.
     pub jacobian_finite: bool,
@@ -67,8 +67,8 @@ pub fn fd_jacobian(f: &impl Fn(&[f64]) -> Vec<f64>, x: &[f64], m: usize) -> DMat
 
 /// As [`fd_jacobian`], with the step floored at `scale`.
 ///
-/// Unconditionally compiled (not `#[cfg(test)]`) because both solver crates'
-/// test suites call it across the crate boundary, where `cfg(test)` does not
+/// Unconditionally compiled (not `#[cfg(test)]`) because the sketch solver's
+/// test suite calls it across the crate boundary, where `cfg(test)` does not
 /// reach.
 pub fn fd_jacobian_scaled(
     f: &impl Fn(&[f64]) -> Vec<f64>,
@@ -388,8 +388,9 @@ pub struct SpLmResult {
     pub residual_norm: f64,
     /// True when the residual and every entry of the last sparse Jacobian were
     /// finite. The drag path reads it to refuse a frame whose Jacobian went
-    /// singular; the internal CG solve silently truncates on a bad matrix
-    /// otherwise.
+    /// non-finite; the internal CG solve also truncates on an indefinite damped
+    /// system, which this flag does not report (that path raises lambda and
+    /// retries, and the residual check decides the frame).
     pub jacobian_finite: bool,
     pub iters: u32,
 }
@@ -944,7 +945,7 @@ mod tests {
 
     // A finite residual with a NaN Jacobian entry: the driver must report the
     // matrix as undecomposable. Both solver crates gate their SVD on this flag
-    // because nalgebra's SVD never converges on NaN and would wedge the worker.
+    // because the SVD has no answer for NaN and would wedge the worker.
     #[test]
     fn solve_lm_reports_a_non_finite_jacobian() {
         let f = |x: &[f64]| vec![x[0] - 5.0];

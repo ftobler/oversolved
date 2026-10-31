@@ -309,3 +309,23 @@ fn tangential_cone_branches_use_the_plane_and_axis_formulas() {
     );
     assert!(r.abs() < 1e-12, "cone/cone parallel: {r}");
 }
+
+#[test]
+fn a_non_finite_jacobian_reads_overconstrained_whatever_the_residual() {
+    // A converged residual with no DOF reads FullyConstrained on its own. A
+    // matrix nobody could factor is still a failure: this is the branch the
+    // solve takes when `lm_result.jacobian_finite` is false, because the rank
+    // and dof are placeholders then.
+    assert_eq!(
+        solved_status(true, 0.0, 1, 0, 1.0),
+        MateStatus::FullyConstrained
+    );
+    assert_eq!(
+        solved_status(false, 0.0, 1, 0, 1.0),
+        MateStatus::Overconstrained
+    );
+    assert_eq!(
+        solved_status(false, f64::NAN, 1, 0, 1.0),
+        MateStatus::Overconstrained
+    );
+}

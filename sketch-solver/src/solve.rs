@@ -27,6 +27,26 @@ fn satisfied(residual_norm: f64, scale: f64) -> bool {
 const REG_WEIGHT_BASE: f64 = 1e-3;
 const REG_WEIGHT_DRAG: f64 = 5e-2;
 
+/// The solve's overall verdict from its final residual, Jacobian health and
+/// rank. A non-finite residual or Jacobian is a failure whatever the rank
+/// reads: the rank pass is a placeholder zero then, so it cannot claim the
+/// system is constrained.
+fn overall_status(
+    jacobian_finite: bool,
+    residual_norm: f64,
+    rank: usize,
+    n: usize,
+    scale: f64,
+) -> Status {
+    if !jacobian_finite || !satisfied(residual_norm, scale) {
+        Status::Overconstrained
+    } else if rank < n {
+        Status::Underconstrained
+    } else {
+        Status::FullyConstrained
+    }
+}
+
 pub fn solve_sketch(input: &Input) -> Output {
     let problem = Problem::new(input);
     let x0: Vec<f64> = problem.x0.clone();
@@ -107,9 +127,9 @@ pub fn solve_sketch(input: &Input) -> Output {
 
     let jac = result.jacobian;
     // One SVD serves the rank and, unless skipped, the whole status pass. A
-    // non-finite Jacobian is never handed to it: nalgebra's SVD convergence
-    // test does not fire on NaN, so the decomposition would spin forever and
-    // wedge the worker. That solve has no trustworthy rank either.
+    // non-finite Jacobian is never handed to it: the decomposition has no
+    // answer for NaN (it can spin or panic), so it would wedge the worker.
+    // That solve has no trustworthy rank either.
     let spectrum = if result.jacobian_finite {
         Spectrum::of(&jac, n, !input.options.skip_status_pass)
     } else {
@@ -130,13 +150,13 @@ pub fn solve_sketch(input: &Input) -> Output {
     // fall through to FullyConstrained. A non-finite Jacobian is the same
     // verdict: the rank above is placeholder zero, so the solve cannot claim
     // to be constrained.
-    let status = if !result.jacobian_finite || !satisfied(result.residual_norm, problem.scale()) {
-        Status::Overconstrained
-    } else if rank < n {
-        Status::Underconstrained
-    } else {
-        Status::FullyConstrained
-    };
+    let status = overall_status(
+        result.jacobian_finite,
+        result.residual_norm,
+        rank,
+        n,
+        problem.scale(),
+    );
 
     // `result.x` is not read again, so move it instead of cloning.
     let mut params_solved = result.x;
@@ -192,7 +212,14 @@ pub fn solve_sketch(input: &Input) -> Output {
         diagnostics: Diagnostics {
             residual_norm: result.residual_norm,
             rank: rank as u32,
-            dof: n.saturating_sub(rank) as u32,
+            // A skipped spectrum leaves no usable rank: report dof 0, the same
+            // reading the mate solver gives a poisoned Jacobian, rather than
+            // `n`, which would tell the UI every param is free.
+            dof: if result.jacobian_finite {
+                n.saturating_sub(rank) as u32
+            } else {
+                0
+            },
             iters: result.iters,
             // Wall-clock is measured by the JS host (it has performance.now());
             // the crate has no portable clock on wasm32-unknown-unknown.
@@ -380,6 +407,15 @@ impl Spectrum {
                 null: DMatrix::zeros(0, 0),
                 null_sv: Vec::new(),
             };
+        }
+        // The last line of defence: nalgebra's SVD has no answer for a NaN
+        // entry (its convergence test never fires there, and 0.33 panics on the
+        // NaN singular value), so a single non-finite entry either spins or
+        // aborts the worker. Callers gate on `LmResult::jacobian_finite` as
+        // well, but the matrix itself is checked here so no future caller can
+        // reach the SVD with one.
+        if !j.iter().all(|v| v.is_finite()) {
+            return Spectrum::non_finite();
         }
         // A thin SVD of an m x n matrix only returns min(m, n) right vectors,
         // so with fewer rows than params part of the null space would be
