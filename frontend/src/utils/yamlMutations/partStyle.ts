@@ -275,7 +275,11 @@ export function applySetPlaneDefinitionField(
     warn('applySetPlaneDefinitionField: ignoring non-finite value', { featureId, field, value })
     return
   }
-  const definition: Record<string, string | number | undefined> = feature.definition
+  // The scalar value lands on the definition under the named field. The write
+  // is scalar because the wire's value rule is scalar; origin_rotation's vector
+  // spellings (origin, rotation_axis) exist only in the definition object an
+  // add_plane authors, never through this setter.
+  const definition: Record<string, unknown> = feature.definition
   definition[field] = value
 }
 

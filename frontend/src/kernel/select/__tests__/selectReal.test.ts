@@ -17,7 +17,7 @@ import { measureLocally, setSolveLocalsForTest, solveLocally } from '../../solve
 import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { selectByPredicate, SelectorError } from '@/kernel/select'
-import type { Selector } from '@/kernel/select'
+import type { Selector, VertexGeometry } from '@/kernel/select'
 import { resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import type { BodyResult } from '@/types/cad'
@@ -515,9 +515,9 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     expect(corner.queries).toHaveLength(1)
     const geo = corner.items[0].geometry
     expect(geo.kind).toBe('vertex')
-    if (geo.kind === 'vertex') {
-      geo.point.forEach((v, i) => expect(v).toBeCloseTo([10, 10, 5][i], 6))
-    }
+    // EdgeGeometry.kind is `string`, so the geometry union needs the cast.
+    const cornerPoint = (geo as VertexGeometry).point
+    cornerPoint.forEach((v, i) => expect(v).toBeCloseTo([10, 10, 5][i], 6))
   })
 
   it('the corner query is one of the body arrays a viewport click reads', async () => {

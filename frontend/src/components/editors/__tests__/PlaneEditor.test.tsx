@@ -155,7 +155,7 @@ describe('PlaneEditor origin_rotation', () => {
   it('offers the mode and its axis select, and dispatches the axis letter', () => {
     const onMutation = vi.fn()
     renderEditor(onMutation, { mode: 'origin_rotation', origin: '@builtin_origin', rotation_axis: 'x', rotation_angle: 30 })
-    const selects = [...document.querySelectorAll('.plane-editor select.feature-field-select')]
+    const selects = [...document.querySelectorAll<HTMLSelectElement>('.plane-editor select.feature-field-select')]
     expect(selects).toHaveLength(2)  // mode + axis
     expect([...selects[0].options].map(o => o.value)).toContain('origin_rotation')
     expect(selects[1].value).toBe('x')

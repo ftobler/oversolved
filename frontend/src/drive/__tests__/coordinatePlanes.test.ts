@@ -10,6 +10,7 @@ import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { runHeadless, selectHeadless, seedBuiltins } from '../headlessOps'
+import type { VertexGeometry } from '@/kernel/select'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
@@ -82,7 +83,7 @@ describe.skipIf(!ready)('vertex picks and origin_rotation planes through the hea
     expect(picked!.queries).toHaveLength(1)
     const corner = picked!.items[0].geometry
     expect(corner.kind).toBe('vertex')
-    if (corner.kind === 'vertex') close(corner.point, CORNER)
+    close((corner as VertexGeometry).point, CORNER)  // EdgeGeometry.kind is `string`, so the union needs the cast
   }, 240_000)
 
   it('puts an origin_rotation plane on that vertex query and reports the frame', async () => {
