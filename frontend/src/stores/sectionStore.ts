@@ -39,6 +39,8 @@ export interface SectionState {
   toggleFlipped: () => void
   setPicking: (picking: boolean) => void
   setPickError: (error: string | null) => void
+  // Abandon an armed pick without changing the current section plane.
+  cancelPicking: () => void
   setResolved: (resolved: boolean) => void
   setCapturing: (capturing: boolean) => void
   // Turn off because the source no longer resolves, with a reason to show.
@@ -60,6 +62,8 @@ export const DEFAULT_SECTION_STATE = {
 
 export const SECTION_SOURCE_GONE_REASON = 'Section off: the picked plane or face no longer resolves after the solve.'
 export const SECTION_FACE_NOT_FLAT_REASON = 'Pick a flat face or a plane.'
+export const SECTION_PICK_MISS_REASON = 'Click a flat face or a reference plane.'
+export const SECTION_PICK_HINT = 'Click a flat face or a reference plane in the viewport.'
 
 export const useSectionStore = create<SectionState>((set, get) => ({
   ...DEFAULT_SECTION_STATE,
@@ -82,6 +86,8 @@ export const useSectionStore = create<SectionState>((set, get) => ({
   setPicking: (picking) => set({ picking, pickError: picking ? null : get().pickError }),
 
   setPickError: (pickError) => set({ pickError }),
+
+  cancelPicking: () => set({ picking: false, pickError: null }),
 
   setResolved: (resolved) => {
     if (get().resolved === resolved) return

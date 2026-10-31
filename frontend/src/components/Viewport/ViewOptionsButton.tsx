@@ -20,7 +20,8 @@ import iconEyeIcon from '@/assets/icons/icon-eye.svg'
 import {
   useViewOptionsStore,
 } from '@/stores/viewOptionsStore'
-import { useSectionStore } from '@/stores/sectionStore'
+import { SECTION_PICK_HINT, useSectionStore } from '@/stores/sectionStore'
+import { useNotifySafe } from '@/contexts/ToastContext'
 import { BUILTIN_SECTION_PLANES, type BuiltinSectionPlaneId } from '@/viewport/sectionPlane'
 import type { CurvatureKind } from '@/adapters/preferences'
 import { MAX_BRIGHTNESS, MAX_ZEBRA_STRIPES, MIN_BRIGHTNESS, MIN_ZEBRA_STRIPES } from '@/adapters/preferences'
@@ -102,6 +103,7 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
   const sectionReason = useSectionStore(s => s.disabledReason)
   const sectionPicking = useSectionStore(s => s.picking)
   const sectionPickError = useSectionStore(s => s.pickError)
+  const notify = useNotifySafe()
 
   const setShading = useViewOptionsStore(s => s.setShading)
   const setEdges = useViewOptionsStore(s => s.setEdges)
@@ -119,6 +121,7 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
   const setSectionOffset = useSectionStore(s => s.setOffset)
   const setSectionFlipped = useSectionStore(s => s.setFlipped)
   const setSectionPicking = useSectionStore(s => s.setPicking)
+  const cancelSectionPicking = useSectionStore(s => s.cancelPicking)
 
   // Escape and an outside pointer both close. A second eye click goes through
   // the button's own toggle; a row click deliberately does not close, so a
@@ -140,6 +143,13 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [open])
+
+  // The card closes on an outside pointer, so a refused or missed viewport pick
+  // cannot rely on the card note being on screen. Toast it as well; the card
+  // still repeats the reason while it is open.
+  useEffect(() => {
+    if (sectionPickError) notify(sectionPickError, 'warning')
+  }, [sectionPickError, notify])
 
   // One roving order over the interactive rows. Buttons already answer
   // Space/Enter; this adds the pointer-free movement the plan asks for.
@@ -383,7 +393,7 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
                     className={`view-options-segment-btn${sectionPicking ? ' active' : ''}`}
                     aria-pressed={sectionPicking}
                     title={sectionPlane.kind === 'query' ? `Picked ${sectionPlane.query}` : 'Pick a face or plane in the viewport'}
-                    onClick={() => setSectionPicking(!sectionPicking)}
+                    onClick={() => sectionPicking ? cancelSectionPicking() : setSectionPicking(true)}
                     data-view-row
                   >
                     {sectionPlane.kind === 'query' ? 'Picked' : 'Pick'}
@@ -399,7 +409,7 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
                 <div className="view-options-note" role="status">{sectionPickError}</div>
               )}
               {sectionPicking && (
-                <div className="view-options-note" role="status">Click a face or plane in the viewport.</div>
+                <div className="view-options-note" role="status">{SECTION_PICK_HINT}</div>
               )}
               <div className="view-options-range-row">
                 <span className="view-options-label">Offset</span>

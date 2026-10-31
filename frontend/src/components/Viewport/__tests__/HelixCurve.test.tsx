@@ -139,7 +139,7 @@ describe('HelixCurve start marker', () => {
 })
 
 describe('HelixCurve ID registration', () => {
-  it('registers on the edge layer under its own feature id', async () => {
+  it('registers on the reference-edge layer under its own feature id', async () => {
     await renderHelix()
     expect(MockRegister).toHaveBeenCalledWith(expect.objectContaining({
       featureId: HELIX_ID,
@@ -147,6 +147,11 @@ describe('HelixCurve ID registration', () => {
       edgeQueries: [`@${HELIX_ID}`],
       enabled: true,
     }))
+  })
+
+  it('registers as reference geometry, on a layer the section does not clip', async () => {
+    await renderHelix()
+    expect(MockRegister).toHaveBeenCalledWith(expect.objectContaining({ layer: 'reference' }))
   })
 
   it('does not register while hidden, so a hidden helix cannot be picked', async () => {

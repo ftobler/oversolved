@@ -130,6 +130,7 @@ pixel scan order, mark order** (`IdResolver.resolvePixelWindowAll`).
 | -10 | `planeFace` | reference/user/sketch plane quads |
 | 0 | `face` | B-rep faces (assembly reuses it with positional keys) |
 | 10 | `edge` | B-rep edges |
+| 10 | `referenceEdge` | reference curves (helix); same rung, distance-ordered against edges |
 | 20 | `vertex` | B-rep vertices (3 px pick cubes) |
 | 30 | `sketchSurface` | sketch topology area fill |
 | 40 | `sketchEntity` | sketch entity lines |
@@ -156,14 +157,18 @@ document load. The source is a builtin Front/Top/Right plane or a
 against the solve results (`plane_transform`) and the planar-face frame. If the
 picked source stops resolving after a solve, the section turns off and the eye
 dropdown shows why; a curved face is refused at pick time with a specific
-reason (it has no planar frame to cut with).
+reason (it has no planar frame to cut with). The frame is read from the solve's
+body meshes through `viewport/faceFrameFromSolve.ts`, so hiding the source body
+does not switch the section off, and the picked face's `pickKey` is stored with
+the query so a shared query keeps cutting on the face the user clicked.
 
 One `THREE.Plane` (`viewport/sectionClipping.ts`) is shared by every clipped
 material and updated in place, so moving the plane costs no recompile. Clipped:
 body faces and edges, the preview overlay, the part's hovered/selected vertex
 dots, the assembly highlight overlays, and the face/edge/vertex ID layers. Not
-clipped: sketches, reference and user planes, helixes, the origin,
-dimension and constraint overlays, and the orientation cube.
+clipped: sketches, reference and user planes, helixes (drawn and picked on the
+unclipped `referenceEdge` ID layer), the origin, dimension and constraint
+overlays, and the orientation cube.
 
 three clips the half where a point's signed distance to the plane is negative.
 The unflipped section therefore builds its plane with the negated source normal,
@@ -187,13 +192,20 @@ stencil and it runs the same cap component.
 Picking follows the cut in the GPU, not by filtering hits in JS:
 
 - `IdPipeline.setSectionActive` attaches the shared plane to the three B-rep ID
-  layers and gives `IdRenderTarget` a stencil for the duration.
+  layers and gives `IdRenderTarget` a stencil for the duration. The
+  `referenceEdge` layer stays unclipped, so the helix picks where it is drawn.
 - After the face layer, `IdPipeline` runs the same stencil count and draws a
   DoubleSide cap quad in the reserved empty id (`vec4(0)`) with depth write. The
   solid-looking cap consequently picks nothing, instead of exposing the interior
-  back faces the DoubleSide ID material would otherwise show.
-- An armed plane/face pick resolves against the editor's consumed layers rather
-  than the active tool's hover filter, so it still works under a drawing tool.
+  back faces the DoubleSide ID material would otherwise show. The reference
+  layer renders after that cap, so a helix behind the cut face is occluded in
+  the pick buffer exactly as the visible cap occludes it.
+- An armed section pick resolves only the face and plane layers, even under a
+  drawing tool whose hover filter excludes them. Hover uses the same narrowed
+  set while the pick is armed. A curved face is refused with a reason. A miss
+  over the model keeps the pick armed and shows the reason; a second empty
+  click, Escape, right-click (which does not open the part context menu while
+  armed), or the Pick button cancels and clears it.
 - Every section change calls `markDirty('section')` and clears/invalidates the
   hover scheduler, so a hover resolved against the previous cut cannot land.
 - The rubber band reads the same ID target, so it inherits the clip and cap.

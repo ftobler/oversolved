@@ -13,17 +13,20 @@ import { planeAdapter } from './planeAdapter'
 import { originAdapter } from './originAdapter'
 import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 import type { ActiveTool } from '@/types/cad'
-import { findEdgeKindForQuery, findFaceFrame } from './bodyDispatchCallbacks'
+import { findEdgeKindForQuery } from './bodyDispatchCallbacks'
 import { dispatchSketchClick } from './dispatchSketchClick'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import { takeBandClickConsumed } from './bandClickGuard'
 import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
-import { useSectionStore, SECTION_FACE_NOT_FLAT_REASON } from '@/stores/sectionStore'
-import { sectionPickSource } from '@/viewport/sectionPick'
+import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useSectionStore, SECTION_FACE_NOT_FLAT_REASON, SECTION_PICK_MISS_REASON } from '@/stores/sectionStore'
+import { sectionPickLayers, sectionPickSource } from '@/viewport/sectionPick'
+import { faceFrameFromSolve } from '@/viewport/faceFrameFromSolve'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
-  SKETCH_SURFACE_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME, PART_EDITOR_PICK_LAYER_NAMES,
+  SKETCH_SURFACE_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME, REFERENCE_EDGE_LAYER_NAME,
+  PART_EDITOR_PICK_LAYER_NAMES,
 } from '@/picking'
 
 /**
@@ -184,6 +187,7 @@ export function resolvePickAtEvent(
 const hoverAdapters: Record<string, ((entityKey: string, pickKey?: string) => void) | undefined> = {
   [FACE_LAYER_NAME]: brepFaceAdapter.onHover,
   [EDGE_LAYER_NAME]: brepEdgeAdapter.onHover,
+  [REFERENCE_EDGE_LAYER_NAME]: setSelectionIdOnHover,
   [VERTEX_LAYER_NAME]: brepVertexAdapter.onHover,
   [SKETCH_ENTITY_LAYER_NAME]: sketchEntityAdapter.onHover,
   [SKETCH_VERTEX_LAYER_NAME]: sketchVertexAdapter.onHover,
@@ -241,11 +245,23 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     // so idle hover still allocates nothing.
     let allowedCache: ReadonlySet<string> | null = null
     let allowedCacheTool: ActiveTool | undefined
+    let allowedCacheSectionPicking: boolean | undefined
     const computeAllowed = (): ReadonlySet<string> => {
       const tool = useSketchEditorStore.getState().activeTool
-      if (allowedCache === null || tool !== allowedCacheTool) {
+      const sectionPicking = useSectionStore.getState().picking
+      if (
+        allowedCache === null
+        || tool !== allowedCacheTool
+        || sectionPicking !== allowedCacheSectionPicking
+      ) {
         allowedCacheTool = tool
-        allowedCache = effectiveAllowedLayers(consumedLayers, tool)
+        allowedCacheSectionPicking = sectionPicking
+        // An armed section pick is a face/plane gesture. Hover uses the same
+        // narrow set as the click, so the highlight cannot promise an edge the
+        // pick will refuse.
+        allowedCache = sectionPicking
+          ? sectionPickLayers(consumedLayers)
+          : effectiveAllowedLayers(consumedLayers, tool)
       }
       return allowedCache
     }
@@ -382,6 +398,13 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       }
     })
 
+    // Arming or disarming a section pick changes which layer set hover may
+    // resolve from. Drop the highlight now instead of waiting for the pointer
+    // to move: an edge lit under the armed cursor is a promise the pick refuses.
+    const unsubSectionPicking = useSectionStore.subscribe((state, prev) => {
+      if (state.picking !== prev.picking) clearHover()
+    })
+
     /**
      * Hover resolves are capped at ~two per animation frame by the scheduler:
      * the first move in a frame resolves immediately, and every further move
@@ -429,25 +452,39 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         return
       }
       // An armed section pick owns this click: resolve against the editor's
-      // consumed layers, not the active tool's filter. Under a drawing tool the
-      // face and plane layers are excluded from hover, but a section pick is a
-      // distinct gesture and must still see them.
+      // consumed layers, narrowed to the face and plane layers. Under a drawing
+      // tool the face and plane layers are excluded from hover, but a section
+      // pick is a distinct gesture and must still see them.
       const sectionPicking = useSectionStore.getState().picking
       const hit = sectionPicking && glRef.current
-        ? resolvePickAtEvent(e, attached, glRef.current, consumedLayers)
+        ? resolvePickAtEvent(e, attached, glRef.current, sectionPickLayers(consumedLayers))
         : resolveSync(e, attached)
       if (sectionPicking) {
         const source = hit ? sectionPickSource(hit) : null
-        if (source) {
-          // A curved face has no planar frame to cut with. Refuse it and say
-          // why, instead of storing a source that would auto-disable later.
-          if (hit!.layer === FACE_LAYER_NAME && !findFaceFrame(hit!.entityKey, hit!.pickKey)) {
-            useSectionStore.getState().setPickError(SECTION_FACE_NOT_FLAT_REASON)
-            setLastClickIdHit(true)
-            return
+        if (!source) {
+          // A miss over the model is not a cancel: the first one says what the
+          // pick expects and stays armed. A second miss means the user cannot
+          // find a target, so it disarms rather than leaving every later click
+          // swallowed.
+          if (useSectionStore.getState().pickError !== null) {
+            useSectionStore.getState().cancelPicking()
+          } else {
+            useSectionStore.getState().setPickError(SECTION_PICK_MISS_REASON)
           }
-          useSectionStore.getState().setPlane(source)
+          setLastClickIdHit(true)
+          return
         }
+        // A curved face has no planar frame to cut with. Refuse it and say
+        // why, instead of storing a source that would auto-disable later.
+        if (
+          hit!.layer === FACE_LAYER_NAME
+          && !faceFrameFromSolve(usePartEditorStore.getState().bodies, hit!.entityKey, hit!.pickKey)
+        ) {
+          useSectionStore.getState().setPickError(SECTION_FACE_NOT_FLAT_REASON)
+          setLastClickIdHit(true)
+          return
+        }
+        useSectionStore.getState().setPlane(source)
         useSectionStore.getState().setPicking(false)
         setLastClickIdHit(true)
         return
@@ -552,6 +589,20 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       }
     }
 
+    // The armed section pick owns Escape and the context menu while it is on:
+    // without a cancel path a miss would keep swallowing every canvas click.
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !useSectionStore.getState().picking) return
+      e.preventDefault()
+      e.stopPropagation()
+      useSectionStore.getState().cancelPicking()
+    }
+    const onContextMenu = (e: MouseEvent) => {
+      if (!useSectionStore.getState().picking) return
+      e.preventDefault()
+      useSectionStore.getState().cancelPicking()
+    }
+
     const onPointerDown = (e: MouseEvent) => {
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
@@ -574,6 +625,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       c.addEventListener('pointerdown', onPointerDown)
       c.addEventListener('click', onClick)
       c.addEventListener('dblclick', onDoubleClick)
+      c.addEventListener('contextmenu', onContextMenu)
+      window.addEventListener('keydown', onKeyDown, true)
       // A DOM overlay inside the R3F container (constraint tile, dimension
       // label) is a sibling of the canvas, not a descendant, so moving onto one
       // fires pointerleave here. The move/click listeners never see those
@@ -597,6 +650,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     return () => {
       if (raf) cancelAnimationFrame(raf)
       unsubStoreHover()
+      unsubSectionPicking()
       // Also bumps hoverEpoch, so a readback launched just before unmount
       // cannot write a stale hover into the store after this hook is gone.
       clearHover()
@@ -606,6 +660,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         attached.removeEventListener('pointerdown', onPointerDown)
         attached.removeEventListener('click', onClick)
         attached.removeEventListener('dblclick', onDoubleClick)
+        attached.removeEventListener('contextmenu', onContextMenu)
+        window.removeEventListener('keydown', onKeyDown, true)
         attached.removeEventListener('pointerleave', clearHover)
         attached = null
       }

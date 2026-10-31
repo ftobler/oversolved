@@ -11,6 +11,9 @@ import type { ShowGroup, ShowGroupState } from '@/components/Viewport/viewOption
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
+const h = vi.hoisted(() => ({ notify: vi.fn() }))
+vi.mock('@/contexts/ToastContext', () => ({ useNotifySafe: () => h.notify }))
+
 const SHOW_STATES: Record<ShowGroup, ShowGroupState> = {
   planes: { visible: true, disabled: false },
   sketches: { visible: false, disabled: false },
@@ -35,6 +38,7 @@ const row = (name: string) => screen.getByRole('menuitemcheckbox', { name })
 beforeEach(() => {
   localStorage.clear()
   vi.restoreAllMocks()
+  h.notify.mockClear()
   reset()
 })
 
@@ -261,7 +265,21 @@ describe('ViewOptionsButton Section', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Pick' }))
     expect(useSectionStore.getState().picking).toBe(true)
-    expect(screen.getByRole('status').textContent).toContain('Click a face or plane')
+    expect(screen.getByRole('status').textContent).toContain('Click a flat face or a reference plane')
+  })
+
+  it('cancels an armed pick and clears its error from the card', () => {
+    useSectionStore.setState({
+      enabled: true,
+      picking: true,
+      pickError: 'Click a flat face or a reference plane.',
+    })
+    render(<ViewOptionsButton />)
+    open()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pick' }))
+    expect(useSectionStore.getState().picking).toBe(false)
+    expect(useSectionStore.getState().pickError).toBeNull()
   })
 
   it('shows the picked source', () => {
@@ -298,5 +316,12 @@ describe('ViewOptionsButton Section', () => {
     open()
 
     expect(screen.getByRole('status').textContent).toContain('flat face')
+  })
+
+  it('toasts a pick reason even when the card is closed', () => {
+    useSectionStore.setState({ enabled: true, pickError: 'Click a flat face or a reference plane.' })
+    render(<ViewOptionsButton />)
+
+    expect(h.notify).toHaveBeenCalledWith('Click a flat face or a reference plane.', 'warning')
   })
 })

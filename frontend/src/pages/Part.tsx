@@ -55,7 +55,7 @@ import { showGroupStates, showGroupToggleMutations, type ShowGroup } from '@/com
 import { buildContextMenu } from './buildContextMenu'
 import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from './buildContextMenu'
 import { resolveSelectionNormalTarget } from './selectionNormalTarget'
-import { findFaceFrame } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { faceFrameFromSolve } from '@/viewport/faceFrameFromSolve'
 import RenameDialog from '@/components/dialogs/RenameDialog'
 import RawDocumentDialog from '@/components/dialogs/RawDocumentDialog'
 import { suggestedCloneName, stepImportLimitError } from '@/stores/documentStore'
@@ -1219,7 +1219,7 @@ export default function Part() {
       // resolving the selection.
       selectedNormalTarget: targetId
         ? null
-        : resolveSelectionNormalTarget(store.normalSelection, store.selectedPicks, features, BUILT_IN_IDS, findFaceFrame),
+        : resolveSelectionNormalTarget(store.normalSelection, store.selectedPicks, features, BUILT_IN_IDS, (query, pickKey) => faceFrameFromSolve(bodies, query, pickKey)),
       features,
       visibleFeatures: visibleFeaturesWithEdit,
       activeSketchFeatureId: activeSketchFeatureId ?? undefined,
@@ -1253,7 +1253,7 @@ export default function Part() {
     setContextMenu({ position: pos, targetId, items })
   }, [handleRebuild, handleRemoveDanglingContent, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
     handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
-    features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels, hasDanglingContent,
+    features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels, hasDanglingContent, bodies,
     viewportRef, handleSetPartColorPopover])
 
   useEffect(() => {

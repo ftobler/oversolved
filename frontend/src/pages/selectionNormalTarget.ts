@@ -7,9 +7,9 @@ import type { FaceFrame, NormalTarget } from '@/pages/buildContextMenu'
  * Only a lone plane or a lone planar face has a single normal; two picks, an
  * edge, a vertex or a sketch entity name no view direction, so they yield null.
  *
- * `faceFrameFor` is the body-registry lookup (findFaceFrame) injected so this
- * stays a pure decision the tests drive without a mounted viewport. It answers
- * null for anything that is not a registered flat face, which is how edges and
+ * `faceFrameFor` is the solve-mesh face lookup (faceFrameFromSolve) injected so
+ * this stays a pure decision the tests drive without a mounted viewport. It
+ * answers null for anything that is not a planar face, which is how edges and
  * curved faces drop out here. A face target keeps its query unchanged, since that
  * is what New Sketch hands the kernel as the sketch plane.
  */

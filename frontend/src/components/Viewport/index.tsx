@@ -429,7 +429,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
     if (click.wasDrag) return
 
-    if (e.button === 2 && onRightClick) {
+    // An armed section pick owns right-click as its cancel gesture; opening the
+    // part context menu at the same time would bury the cancel.
+    if (e.button === 2 && onRightClick && !useSectionStore.getState().picking) {
       onRightClick([e.clientX, e.clientY])
     }
   }, [onRightClick, rubberBand])

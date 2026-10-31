@@ -50,6 +50,20 @@ describe('IdDebugOverlay', () => {
     pipeline.dispose()
   })
 
+  it('bumps the target revision and replaces the texture when the section toggles', () => {
+    const pipeline = new IdPipeline({ width: 16, height: 16 })
+    const beforeTexture = pipeline.target.target.texture
+    const beforeRevision = pipeline.getTargetRevision()
+
+    pipeline.setSectionActive(true)
+
+    // The overlay keys its texture bind on this revision: the stencil swap
+    // disposes the old target, so sampling the old texture reads garbage.
+    expect(pipeline.getTargetRevision()).toBe(beforeRevision + 1)
+    expect(pipeline.target.target.texture).not.toBe(beforeTexture)
+    pipeline.dispose()
+  })
+
   // Silence the act() warnings: the Canvas inner work happens on rAF, not
   // synchronously, which testing-library can't observe.
   it('does not throw when mounted inside Canvas with a live pipeline', () => {

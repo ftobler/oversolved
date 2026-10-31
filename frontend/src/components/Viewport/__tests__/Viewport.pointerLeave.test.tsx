@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 import Viewport from '@/components/Viewport'
 import { useEditorState } from '@/hooks/useEditorState'
 
@@ -97,6 +98,7 @@ beforeEach(() => {
     partStyle: {},
     activeSketchFeatureId: null,
   })
+  useSectionStore.setState({ ...DEFAULT_SECTION_STATE })
   useEditorState.setState({
     activeTool: null,
     normalSelection: new Set(),
@@ -225,6 +227,18 @@ describe('Viewport pointer capture for box drags', () => {
     fireEvent.pointerDown(el, { button: 2, isPrimary: true, clientX: 12, clientY: 34 })
     fireEvent.pointerUp(el, { button: 2, isPrimary: true, clientX: 12, clientY: 34 })
     expect(onRightClick).toHaveBeenCalledWith([12, 34])
+  })
+
+  it('an armed section pick keeps right-click for its cancel gesture', () => {
+    useSectionStore.setState({ enabled: true, picking: true })
+    const onRightClick = vi.fn()
+    const { container } = render(<Viewport onRightClick={onRightClick} />)
+    const el = container.firstChild as Element
+    captureStubs(el)
+
+    fireEvent.pointerDown(el, { button: 2, isPrimary: true, clientX: 12, clientY: 34 })
+    fireEvent.pointerUp(el, { button: 2, isPrimary: true, clientX: 12, clientY: 34 })
+    expect(onRightClick).not.toHaveBeenCalled()
   })
 
   it('a press with a dimension placement pending never opens a rubber band', () => {

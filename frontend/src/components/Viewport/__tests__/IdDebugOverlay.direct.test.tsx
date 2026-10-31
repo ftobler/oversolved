@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup, act } from '@testing-library/react'
 import type * as THREE from 'three'
 import IdDebugOverlay from '../IdDebugOverlay'
+import { IdPipeline } from '@/picking/IdPipeline'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
-import type { IdPipeline } from '@/picking/IdPipeline'
 
 /**
  * The debug overlay is mounted directly (outside a real Canvas) so its effects
@@ -29,12 +29,12 @@ vi.mock('../IdDebugOverlayMaterial', () => ({
 function fakePipeline(texture: unknown): IdPipeline {
   return {
     isDisposed: () => false,
+    getTargetRevision: () => 0,
+    subscribeTargetRevision: () => () => {},
     target: { target: { texture } },
   } as unknown as IdPipeline
 }
 
-// The pipeline store notifies mounted subscribers, so every swap is an act
-// boundary; without one React warns about an unwrapped update.
 const publish = (p: IdPipeline | null) => act(() => setLivePipeline(p))
 
 beforeEach(() => {
@@ -77,5 +77,23 @@ describe('IdDebugOverlay direct mount', () => {
     const { unmount } = render(<IdDebugOverlay />)
     unmount()
     expect(mat.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('rebinds when the real section toggle swaps the target, with no store flag change', () => {
+    const pipeline = new IdPipeline({ width: 16, height: 16 })
+    publish(pipeline)
+    render(<IdDebugOverlay />)
+    const firstTexture = pipeline.target.target.texture
+    expect(mat.update.mock.calls.at(-1)?.[1]).toBe(firstTexture)
+
+    // This is the whole section ordering: the pipeline swaps its target and
+    // notifies the revision feed, while no resolved/enabled flag moves. The
+    // overlay must follow the pipeline, not a store boolean.
+    act(() => { pipeline.setSectionActive(true) })
+
+    const secondTexture = pipeline.target.target.texture
+    expect(secondTexture).not.toBe(firstTexture)
+    expect(mat.update.mock.calls.at(-1)?.[1]).toBe(secondTexture)
+    pipeline.dispose()
   })
 })

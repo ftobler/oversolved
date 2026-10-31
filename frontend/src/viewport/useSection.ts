@@ -7,10 +7,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type * as THREE from 'three'
 import { getLivePipeline } from '@/picking/IdPipelineContext'
-import { findFaceFrame } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { SECTION_SOURCE_GONE_REASON, useSectionStore } from '@/stores/sectionStore'
-import type { SketchData } from '@/types/cad'
+import { faceFrameFromSolve } from '@/viewport/faceFrameFromSolve'
 import {
   resolveSectionFrame,
   sectionFrameKey,
@@ -23,18 +22,22 @@ import { applySectionClipping, setSectionClipPlane } from '@/viewport/sectionCli
  * The frame the section's source names right now, or null when a picked plane
  * or face no longer resolves. Recomputed when the solve result changes, which
  * is what makes a deleted plane turn the section off instead of leaving it
- * clipping against stale geometry.
+ * clipping against stale geometry. A hidden source body keeps its mesh in the
+ * solve, so hiding it no longer switches the section off.
  */
 export function useSectionFrame(): SectionFrame | null {
   const source = useSectionStore(s => s.plane)
-  const solveResults = usePartEditorStore(s => s.solveResults) as Record<string, SketchData> | undefined
+  const solveResults = usePartEditorStore(s => s.solveResults) as
+    | Record<string, { plane_transform?: { rotation: number[]; origin: number[] } }>
+    | undefined
+  const bodies = usePartEditorStore(s => s.bodies)
   return useMemo(() => resolveSectionFrame(source, {
     planeTransform: query => solveResults?.[query]?.plane_transform ?? null,
-    faceFrame: query => {
-      const frame = findFaceFrame(query, undefined)
+    faceFrame: (query, pickKey) => {
+      const frame = faceFrameFromSolve(bodies, query, pickKey)
       return frame ? { normal: frame.normal, point: frame.center } : null
     },
-  }), [source, solveResults])
+  }), [source, solveResults, bodies])
 }
 
 export interface SectionClipState {

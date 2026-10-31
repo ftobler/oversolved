@@ -6,7 +6,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { brepFaceAdapter, clearAllHover } from '@/components/Viewport/idDispatch/brepAdapters'
-import { findFaceFrame, resetBodyCallbacksForTest } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { resetBodyCallbacksForTest } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { faceFrameFromSolve } from '@/viewport/faceFrameFromSolve'
 import { bodyKeyFor } from '@/picking/pickKey'
 import { buildContextMenu } from '@/pages/buildContextMenu'
 import type { BuildContextMenuCallbacks } from '@/pages/buildContextMenu'
@@ -103,7 +104,8 @@ describe('Body3D hover feeds Normal to only for flat faces', () => {
   })
 
   it('the selection path agrees with hover on the same mounted body', () => {
-    expect(findFaceFrame('?flatQ', `${bodyKey}#face#0`)).not.toBeNull()
-    expect(findFaceFrame('?cylQ', `${bodyKey}#face#1`)).toBeNull()
+    const bodies = { body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh } }
+    expect(faceFrameFromSolve(bodies, '?flatQ', `${bodyKey}#face#0`)).not.toBeNull()
+    expect(faceFrameFromSolve(bodies, '?cylQ', `${bodyKey}#face#1`)).toBeNull()
   })
 })

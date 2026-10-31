@@ -26,7 +26,10 @@ export const SECTION_CAP_SIZE = 10000
  */
 export type SectionPlaneSource =
   | { kind: 'builtin'; id: BuiltinSectionPlaneId }
-  | { kind: 'query'; query: string }
+  // `pickKey` is the face primitive that was clicked. Keeping it with the
+  // source means a shared query still resolves to the face the user chose after
+  // a re-solve, not whichever owner registered first.
+  | { kind: 'query'; query: string; pickKey?: string }
 
 export interface SectionFrame {
   // Unit normal of the plane, before offset and flip.
@@ -52,7 +55,8 @@ export interface SectionFrameSources {
   // The solved transform of a user-defined plane, or null when it is gone.
   planeTransform: (query: string) => Pick<PlaneTransform, 'rotation' | 'origin'> | null | undefined
   // The normal and center of a planar B-rep face, or null when it is gone.
-  faceFrame: (query: string) => SectionFrame | null
+  // `pickKey` names the exact primitive when a query is shared.
+  faceFrame: (query: string, pickKey?: string) => SectionFrame | null
 }
 
 function unitNormal(normal: readonly number[]): [number, number, number] | null {
@@ -83,7 +87,7 @@ export function resolveSectionFrame(source: SectionPlaneSource, sources: Section
     }
   }
 
-  const face = sources.faceFrame(source.query)
+  const face = sources.faceFrame(source.query, source.pickKey)
   if (!face) return null
   const normal = unitNormal(face.normal)
   if (!normal) return null

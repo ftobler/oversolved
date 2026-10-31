@@ -11,7 +11,7 @@ describe('IdPipeline layering', () => {
     const layers = p.getLayers()
     expect(layers.map(l => l.name)).toEqual([
       'planeFace',
-      FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+      FACE_LAYER_NAME, EDGE_LAYER_NAME, 'referenceEdge', VERTEX_LAYER_NAME,
       'sketchSurface', 'sketchEntity', 'originMarker', 'sketchVertex', 'dimensionLabel',
       'featureHandle', 'gizmoHandle',
     ])
@@ -24,14 +24,15 @@ describe('IdPipeline layering', () => {
     expect(layers[0].zPolicy).toBe('clear-then-fresh')  // planeFace (behind)
     expect(layers[1].zPolicy).toBe('clear-then-fresh')         // face
     expect(layers[2].zPolicy).toBe('depth-test-against-prev')  // edge: reuse face depth
-    expect(layers[3].zPolicy).toBe('depth-test-against-prev')   // vertex: preserves face depth for sketch surface
-    expect(layers[4].zPolicy).toBe('depth-test-against-prev')   // sketchSurface: occluded by real B-rep depth
-    expect(layers[5].zPolicy).toBe('clear-then-fresh')          // sketchEntity
-    expect(layers[6].zPolicy).toBe('no-depth')                  // originMarker
-    expect(layers[7].zPolicy).toBe('no-depth')                  // sketchVertex
-    expect(layers[8].zPolicy).toBe('no-depth')                  // dimensionLabel
-    expect(layers[9].zPolicy).toBe('no-depth')                  // featureHandle
-    expect(layers[10].zPolicy).toBe('no-depth')                 // gizmoHandle
+    expect(layers[3].zPolicy).toBe('depth-test-against-prev')  // reference curves: reuse face depth
+    expect(layers[4].zPolicy).toBe('depth-test-against-prev')   // vertex: preserves face depth for sketch surface
+    expect(layers[5].zPolicy).toBe('depth-test-against-prev')   // sketchSurface: occluded by real B-rep depth
+    expect(layers[6].zPolicy).toBe('clear-then-fresh')          // sketchEntity
+    expect(layers[7].zPolicy).toBe('no-depth')                  // originMarker
+    expect(layers[8].zPolicy).toBe('no-depth')                  // sketchVertex
+    expect(layers[9].zPolicy).toBe('no-depth')                  // dimensionLabel
+    expect(layers[10].zPolicy).toBe('no-depth')                 // featureHandle
+    expect(layers[11].zPolicy).toBe('no-depth')                 // gizmoHandle
     p.dispose()
   })
 
@@ -40,7 +41,15 @@ describe('IdPipeline layering', () => {
     // originMarker at 45, between sketchEntity and sketchVertex: it must beat
     // the plane and the sketch curves it sits on, and lose to a sketch point
     // that shares its position. See the note at its construction.
-    expect(p.getLayers().map(l => l.priority)).toEqual([-10, 0, 10, 20, 30, 40, 45, 50, 70, 80, 90])
+    expect(p.getLayers().map(l => l.priority)).toEqual([-10, 0, 10, 10, 20, 30, 40, 45, 50, 70, 80, 90])
+    p.dispose()
+  })
+
+  it('leaves the reference-curve layer unclipped while the section cuts B-rep', () => {
+    const p = new IdPipeline({ width: 100, height: 100 })
+    p.setSectionActive(true)
+    expect(p.edgeLayer.isSectionClipped()).toBe(true)
+    expect(p.referenceEdgeLayer.isSectionClipped()).toBe(false)
     p.dispose()
   })
 
@@ -49,6 +58,7 @@ describe('IdPipeline layering', () => {
     p.dispose()
     expect(p.faceLayer.bodyCount()).toBe(0)
     expect(p.edgeLayer.bodyCount()).toBe(0)
+    expect(p.referenceEdgeLayer.bodyCount()).toBe(0)
     expect(p.vertexLayer.bodyCount()).toBe(0)
     expect(p.planeLayer.bodyCount()).toBe(0)
     expect(p.sketchSurfaceLayer.bodyCount()).toBe(0)
