@@ -244,7 +244,7 @@ const HOLE_FIELD_NOTE =
   'A single point or circle picked alone drills only that one, and a picked construction one is refused. ' +
   '`style` widens the mouth: `counterbore` reads `cb_diameter` and `cb_depth`, `countersink` reads `cb_diameter` and `cs_angle` (degrees, default 90); absent means `simple`. ' +
   'An empty value clears the `target` pick (the key is deleted, and the hole then drills the body its drill sites sit on); ' +
-  'null clears any field the same way. `sketch` is stored verbatim, so send a sketch id rather than "". ' +
+  'null clears an optional field the same way. `sketch` is stored verbatim, so send a sketch id rather than "". ' +
   'An enum or numeric field refuses an empty value instead of silently reverting to its default.'
 
 // The hole payload an `add_hole` may carry, the same field names and value
@@ -462,7 +462,8 @@ const EMPTY_CLEAR_NOTE = (type: FieldSetterType): string => {
   const empty = clears.length === 0
     ? ' An empty value is refused: it is the clear of no field of this kind.'
     : ` An empty value clears ${clears.join(' or ')} and is refused for every other field.`
-  return ' A null value clears the field (the key is deleted).' + empty
+  return ' A null value clears an optional field (the key is deleted); '
+    + 'null on a required field would delete a key the loader needs.' + empty
 }
 
 const setterValue = (kind: FeatureKind) =>
@@ -477,7 +478,8 @@ const planeDefinitionValue = () =>
     required: true,
     note: 'The new value for the named plane definition field; its type follows PLANE_DEF in persistence/partDocSchema.ts.'
       + enumFieldsNote('plane')
-      + ' A null value clears the field (the key is deleted); an empty value is refused.',
+      + ' An empty value is refused. A null value is refused too (the wire requires a scalar); '
+      + 'this mutation cannot delete a plane definition field.',
   } as const)
 
 /** The enum-valued fields of a feature kind, as `name: a|b|c`, read from the

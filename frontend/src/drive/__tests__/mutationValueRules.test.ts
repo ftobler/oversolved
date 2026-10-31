@@ -12,12 +12,14 @@
 // that message to an agent (feature/mcp-feature-status.md).
 
 import { describe, it, expect } from 'vitest'
-import { MUTATION_CATALOG, MUTATION_VALUE_RULES, validateMutation } from '../mutationCatalog'
+import { MUTATION_CATALOG, MUTATION_VALUE_RULES, validateMutation, mutationInfoOf } from '../mutationCatalog'
 import type { Mutation, PartDoc } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { seedBuiltins, runHeadless, emptyDriveDoc } from '../headlessOps'
 import { loadPartDoc } from '@/persistence/docSchema'
 import { featureParamsSchema } from '@/persistence/partDocSchema'
+import { applySetPlaneDefinitionField } from '@/utils/yamlMutations/partStyle'
+import { applySetHoleField } from '@/utils/yamlMutations/featureDefs'
 import { FIELD_SETTER_KIND } from '../mutationCatalog'
 import { EMPTY_REF_CLEARS } from '../mutationValues'
 
@@ -646,6 +648,98 @@ describe('batch B: an empty value is the clear of a pick, not of any field', () 
     if (edited?.kind !== 'hole') throw new Error('the setter step lost the hole')
     expect(edited.hole).toMatchObject({ diameter: 4 })
     expect(edited.hole).not.toHaveProperty('target')
+  })
+})
+
+// Review of the batch B notes: the first draft of the plane definition value
+// note repeated the feature-setter sentence "a null value clears the field".
+// For this mutation null is refused by the wire's scalar check for every
+// definition field, and no applier path deletes a definition key, so a null is
+// a refusal, not a clear. The fields are pinned one by one because the refusal
+// comes from the shared scalar check while the blank refusal is per field.
+describe('review: the plane definition setter cannot clear a field', () => {
+  const PLANE_DEFINITION_FIELDS = [
+    'mode', 'plane', 'offset', 'p1', 'p2', 'p3', 'point', 'line', 'edge', 'face', 'angle', 'rotation',
+  ] as const
+
+  it.each(PLANE_DEFINITION_FIELDS)('refuses null for %s with the scalar message', (field) => {
+    const error = refusal({ type: 'set_plane_definition_field', featureId: 'p1', field, value: null })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('must be scalar, got null')
+  })
+
+  it.each(PLANE_DEFINITION_FIELDS)('refuses the empty string for %s and names the field', (field) => {
+    const error = refusal({ type: 'set_plane_definition_field', featureId: 'p1', field, value: '' })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain(`field "${field}"`)
+    expect(error.message).not.toContain('clears the field')
+  })
+
+  it('accepts a real value on every field', () => {
+    for (const [field, value] of [
+      ['mode', 'offset'], ['plane', '@builtin_plane_top'], ['offset', 5],
+      ['p1', '@sk1/p1'], ['p2', '@sk1/p2'], ['p3', '@sk1/p3'], ['point', '@sk1/p1'],
+      ['line', '@sk1/l1'], ['edge', '?edge'], ['face', '?face'], ['angle', 30],
+      ['rotation', 'angle / 2'],
+    ] as const) {
+      expect(validateMutation({ type: 'set_plane_definition_field', featureId: 'p1', field, value }), field)
+        .toMatchObject({ ok: true })
+    }
+  })
+
+  // The blank-value sentence is one clause: the old tail said null clears the
+  // field, which is not true for a required numeric field or for a plane
+  // definition field, so it must not come back.
+  it('states the blank refusal in one sentence, without a null-clear claim', () => {
+    expect(refusal({ type: 'set_hole_field', featureId: 'ho1', field: 'diameter', value: '' }).message)
+      .toBe('set_hole_field field "diameter" must be a value, not an empty string')
+    expect(refusal({ type: 'set_plane_definition_field', featureId: 'p1', field: 'angle', value: '' }).message)
+      .toBe('set_plane_definition_field field "angle" must be a value, not an empty string')
+  })
+})
+
+// Review B1: a null-clear note may only sit on a row whose applier really
+// deletes the key. Every feature setter ends at setFeatureField's delete
+// branch (probed here through the hole setter); the plane definition applier
+// has no such branch and writes the value verbatim, which is exactly why the
+// boundary refuses null for it. The scan keeps a future verbatim row from
+// claiming a clear its applier cannot perform.
+describe('review B1 guard: a null-clear note needs a deleting applier', () => {
+  // Deliberate bypass of the boundary: the wire refuses this null, and the
+  // probe shows what the applier would persist if one ever reached it.
+  it('stores a plane definition null verbatim, which is why the note refuses it', () => {
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'p1', kind: 'plane', definition: { mode: 'offset', plane: '@builtin_plane_front', offset: 5 } }],
+    }
+    applySetPlaneDefinitionField(doc, 'p1', 'offset', null as unknown as string)
+    const definition = (doc.features?.[0] as { definition?: Record<string, unknown> }).definition ?? {}
+    expect('offset' in definition).toBe(true)
+    expect(definition.offset).toBeNull()
+  })
+
+  it('deletes the key on null for a feature setter, the clear its note promises', () => {
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'ho1', kind: 'hole', hole: { sketch: '@sk1', diameter: 2, depth_mode: 'blind', depth: 4 } }],
+    }
+    applySetHoleField(doc, 'ho1', 'depth', null)
+    const hole = (doc.features?.[0] as { hole?: Record<string, unknown> }).hole ?? {}
+    expect('depth' in hole).toBe(false)
+  })
+
+  // set_plane_definition_field is the only value row whose applier stores
+  // verbatim (all other setter appliers delegate to setFeatureField); a new
+  // verbatim row must join this list and pass the scan.
+  it('promises no null clear on a row whose applier stores the value verbatim', () => {
+    for (const type of ['set_plane_definition_field'] as const) {
+      const row = mutationInfoOf(type)
+      const notes = [row.note ?? '', ...Object.values(row.fields).map(info => info.note ?? '')].join(' ')
+      expect(notes).not.toMatch(/null[^.]{0,40}clear/i)
+      expect(row.fields.value.note ?? '').toContain('A null value is refused')
+    }
   })
 })
 

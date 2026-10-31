@@ -5,7 +5,7 @@
 // rest of the catalog's notes are, so these pin the sentences a client reads.
 
 import { describe, it, expect } from 'vitest'
-import { MUTATION_CATALOG, mutationInfoOf } from '../mutationCatalog'
+import { MUTATION_CATALOG, mutationInfoOf, FIELD_SETTER_KIND } from '../mutationCatalog'
 import { ASSEMBLY_MUTATION_CATALOG } from '../assemblyMutationCatalog'
 import { MATE_KINDS, mateParams } from '@/utils/mateKinds'
 import type { MateKind } from '@/types/cad'
@@ -154,6 +154,44 @@ describe('batch B: the empty clear and the profile fill rule', () => {
       expect(note, where).toContain('cross each other are filled as their union')
       expect(note, where).toContain('no warning')
     }
+  })
+})
+
+// Review of the batch B notes: the plane definition setter's value note first
+// repeated the feature-setter sentence "a null value clears the field (the key
+// is deleted)". The wire refuses null for that mutation and no applier path
+// deletes a definition key, so the note now says what happens.
+describe('batch B review: the plane definition note', () => {
+  it('says a null is refused and that the mutation cannot delete a field', () => {
+    const note = mutationInfoOf('set_plane_definition_field').fields.value.note!
+    expect(note).toContain('An empty value is refused')
+    expect(note).toContain('A null value is refused too')
+    expect(note).toContain('cannot delete a plane definition field')
+    expect(note).not.toContain('null value clears the field')
+    expect(note).not.toContain('the key is deleted')
+  })
+
+  // "null clears any field" over-promises: the boundary admits null even on a
+  // required field and the setter deletes it, so the sentence is scoped to the
+  // optional fields where the clear is also the documented contract.
+  it('scopes every null-clear sentence to optional fields', () => {
+    for (const type of ['add_hole', 'set_hole_field'] as const) {
+      expect(mutationInfoOf(type).note!, type).toContain('null clears an optional field the same way')
+    }
+    for (const type of Object.keys(FIELD_SETTER_KIND) as Mutation['type'][]) {
+      if (type === 'set_plane_definition_field') continue
+      const note = mutationInfoOf(type).fields.value.note ?? ''
+      expect(note, type).toContain('A null value clears an optional field (the key is deleted)')
+      expect(note, type).not.toContain('null value clears the field')
+    }
+  })
+
+  // 'An empty string means absent' is wording for the add_hole payload field;
+  // the setter's value note must not read as if "" names a missing field key
+  // on every field.
+  it('keeps the add-only empty-absent sentence off the setter value note', () => {
+    expect(mutationInfoOf('add_hole').fields.target.note).toContain('An empty string means absent')
+    expect(mutationInfoOf('set_hole_field').fields.value.note).not.toContain('An empty string means absent')
   })
 })
 

@@ -632,11 +632,12 @@ banner on stdout, so a client config must use the direct node invocation.
   optional in an `add_hole` payload. An empty value clears the `target` pick, on
   the inline add and on `set_hole_field` alike (the hole then drills the body its
   drill sites sit on); every other field refuses an empty value rather than
-  silently reverting to its default, and `null` clears any field. With no
-  `target` the hole drills the body
-  its drill sites sit on or in, so a face sketch whose sites lie on or in the
-  material picks that body even when it is not the first; a site outside every
-  body (a plane sketch in the air) falls back to the first body and the miss
+  silently reverting to its default, and `null` clears an optional field; null
+  on a required field would delete a key the loader needs. With no `target`
+  the hole drills the body its drill sites sit on or in, so a face sketch
+  whose sites lie on or in the material picks that body even when it is not
+  the first; a site outside every body (a plane sketch in the air) falls back
+  to the first body and the miss
   warning names it. `hole.direction` is `normal` (the sketch
   plane's normal, the default) or `reverse`; a face sketch's normal points out
   of its face, so a hole on a face usually wants `reverse`, and a blind hole

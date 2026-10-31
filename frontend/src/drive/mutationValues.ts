@@ -234,7 +234,7 @@ function blankStringProblem(value: unknown, schema: JsonSchema, label: string): 
       && (candidate.anyOf as JsonSchema[]).some(acceptsPlainString)
   }
   if (!acceptsPlainString(schema)) return null
-  return `${label} must be a value, not an empty string; null clears an optional field`
+  return `${label} must be a value, not an empty string`
 }
 
 /** The schema check one authored field's value is held to. */
