@@ -119,6 +119,44 @@ describe('up-to termination on both extrude rows', () => {
   })
 })
 
+// Batch B docs findings: the sentences a client reads when it sends an empty
+// value or draws a profile whose loops cross.
+describe('batch B: the empty clear and the profile fill rule', () => {
+  it('names the hole target as the field an empty value clears', () => {
+    for (const type of ['add_hole', 'set_hole_field'] as const) {
+      const note = mutationInfoOf(type).note!
+      expect(note, type).toContain('empty value clears the `target` pick')
+      expect(note, type).toContain('stored verbatim')
+      expect(note, type).toContain('refuses an empty value instead of silently reverting')
+    }
+    // The value note names exactly the fields the value table clears, so it
+    // cannot promise a clear the boundary refuses.
+    for (const [type, field] of [['set_hole_field', 'target'], ['set_extrude_field', 'up_to']] as const) {
+      expect(mutationInfoOf(type).fields.value.note, type)
+        .toContain(`An empty value clears \`${field}\``)
+    }
+    expect(mutationInfoOf('set_mirror_field').fields.value.note)
+      .toContain('it is the clear of no field of this kind')
+  })
+
+  it('says an all-circle hole sketch never reads diameter', () => {
+    for (const type of ['add_hole', 'set_hole_field'] as const) {
+      expect(mutationInfoOf(type).note!, type).toContain('all circles never reads `diameter`')
+    }
+    expect(mutationInfoOf('add_hole').fields.target.note).toContain('An empty string means absent')
+  })
+
+  it('states the even/odd fill rule on every profile field', () => {
+    const notes = allNotes().filter(([where]) => where.endsWith('.sketchQuery'))
+    expect(notes.length).toBeGreaterThan(3)
+    for (const [where, note] of notes) {
+      expect(note, where).toContain('nested inside another is a hole')
+      expect(note, where).toContain('cross each other are filled as their union')
+      expect(note, where).toContain('no warning')
+    }
+  })
+})
+
 describe('F7: merge_target spelling', () => {
   it('names the bare body id and the delta row field on every merge_target row', () => {
     for (const type of ['add_extrude', 'set_extrude_field', 'set_revolve_field'] as const) {

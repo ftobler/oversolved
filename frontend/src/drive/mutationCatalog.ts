@@ -19,7 +19,7 @@ import {
 } from '@/persistence/partDocSchema'
 import { entityParamLayoutsSentence } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
-import { mutationValueViolation } from '@/drive/mutationValues'
+import { mutationValueViolation, EMPTY_REF_CLEARS } from '@/drive/mutationValues'
 
 export type FieldType =
   | 'string'
@@ -121,7 +121,17 @@ const featureAddFields = () => ({
   insertAt: insertAt(),
 })
 
-const sketchQuery = () => query('$<sketchId>: the sketch feature to consume.')
+// The fill rule a whole-sketch profile gets, so a drawing that means a notch
+// does not silently become a bump (Ex007: an R0.25 hole circle moved past the
+// R2 rim added material instead of cutting, status ok, no warning). The kernel
+// cannot tell a deliberate overlap from a mistake, so the rule is stated where
+// the profile field is read.
+const PROFILE_LOOPS_NOTE =
+  'A whole-sketch profile fills even/odd: a loop nested inside another is a hole, loops that cross each '
+  + 'other are filled as their union, so a circle meant as a hole that pokes past the rim of another loop '
+  + 'adds a bump there instead of cutting, with no warning; keep a cut loop inside its boundary.'
+
+const sketchQuery = () => query('$<sketchId>: the sketch feature to consume. ' + PROFILE_LOOPS_NOTE)
 const edgeQuery = () => query('An edge query as returned by `select`.')
 const faceQuery = () => query('A face query as returned by `select`.')
 const bodyQuery = () => query('A body id such as body_ex1, or a stored body query.')
@@ -177,6 +187,13 @@ export const FIELD_SETTER_KIND = {
   set_helix_field: 'helix',
 } as const satisfies Record<FieldSetterType, FeatureKind>
 
+/** The setter mutation that names one kind's fields, read back out of
+ *  FIELD_SETTER_KIND so a value note can name that kind's empty-clear fields
+ *  without keeping a second table. */
+const SETTER_TYPE_BY_KIND = Object.fromEntries(
+  Object.entries(FIELD_SETTER_KIND).map(([type, kind]) => [kind, type as FieldSetterType]),
+) as Record<FeatureKind, FieldSetterType>
+
 /** The field names a `set_<kind>_field` mutation may name, read from that
  *  kind's part-document schema sub-definition. Null for any other mutation. */
 export function setterFieldNames(type: Mutation['type']): readonly string[] | null {
@@ -221,11 +238,14 @@ const HOLE_FIELD_NOTE =
   '@<sketchId> (or a narrower entity:/vertex:/? pick from the viewport), not the profile consumers\' ' +
   '$<sketchId> form; a $ ref is refused here. ' +
   'The sketch\'s non-construction points and circles are drilled: a circle at its own radius, a point at the feature `diameter`. ' +
+  'A circle names its own size, so a sketch whose drill sites are all circles never reads `diameter`, though the document still requires the field and a point site added later does use it. ' +
   'Construction points and circles are reference geometry, so a whole-sketch pick skips them (an n-gon\'s circumcircle, or a point or circle an author flags construction); ' +
   'line endpoints are not drill sites, while add_center_rect\'s helper centre point is an ordinary point and does drill. ' +
   'A single point or circle picked alone drills only that one, and a picked construction one is refused. ' +
   '`style` widens the mouth: `counterbore` reads `cb_diameter` and `cb_depth`, `countersink` reads `cb_diameter` and `cs_angle` (degrees, default 90); absent means `simple`. ' +
-  'An empty value clears any other field (the key is deleted), but `sketch` is stored verbatim, so send a sketch id rather than "".'
+  'An empty value clears the `target` pick (the key is deleted, and the hole then drills the body its drill sites sit on); ' +
+  'null clears any field the same way. `sketch` is stored verbatim, so send a sketch id rather than "". ' +
+  'An enum or numeric field refuses an empty value instead of silently reverting to its default.'
 
 // The hole payload an `add_hole` may carry, the same field names and value
 // contract a `set_hole_field` sets. Every one is optional: a bare add is still
@@ -241,7 +261,7 @@ const holeAddFields = () => {
     depth_mode: optStr('blind | through_all.'),
     depth: optScalar(),
     direction: optStr('normal | reverse.'),
-    target: optStr('The body to drill into; the body the drill sites sit on or in when absent.'),
+    target: optStr('The body to drill into; the body the drill sites sit on or in when absent. An empty string means absent.'),
     style: optStr('simple | counterbore | countersink (absent means simple).'),
     cb_diameter: optScalar(),
     cb_depth: optScalar(),
@@ -434,12 +454,22 @@ const fieldOf = (label: string, type: FieldSetterType) =>
   str(`The ${label} field to set. Valid fields: ${(setterFieldNames(type) ?? []).join(', ')}.`)
 // A setter value's real type is the named schema field's; name that definition
 // instead of trying to restate every feature field's union here. The enum
-// members are generated from the schema, so a renamed value cannot go stale.
+// members are generated from the schema, so a renamed value cannot go stale, and
+// the empty-clear sentence names exactly the fields EMPTY_REF_CLEARS admits, so
+// the note cannot promise a clear the boundary refuses.
+const EMPTY_CLEAR_NOTE = (type: FieldSetterType): string => {
+  const clears = [...(EMPTY_REF_CLEARS[type] ?? [])].map(name => `\`${name}\``)
+  const empty = clears.length === 0
+    ? ' An empty value is refused: it is the clear of no field of this kind.'
+    : ` An empty value clears ${clears.join(' or ')} and is refused for every other field.`
+  return ' A null value clears the field (the key is deleted).' + empty
+}
+
 const setterValue = (kind: FeatureKind) =>
   anyValue(
     `The new value for the named field; its type follows FEATURE_SCHEMA_BY_KIND.${kind} in persistence/partDocSchema.ts.`
     + enumFieldsNote(kind)
-    + ' A null, undefined or empty-string value clears the field (the key is deleted), except hole.sketch, which is stored verbatim.',
+    + EMPTY_CLEAR_NOTE(SETTER_TYPE_BY_KIND[kind]),
   )
 const planeDefinitionValue = () =>
   ({
@@ -447,7 +477,7 @@ const planeDefinitionValue = () =>
     required: true,
     note: 'The new value for the named plane definition field; its type follows PLANE_DEF in persistence/partDocSchema.ts.'
       + enumFieldsNote('plane')
-      + ' A null or empty-string value clears the field.',
+      + ' A null value clears the field (the key is deleted); an empty value is refused.',
   } as const)
 
 /** The enum-valued fields of a feature kind, as `name: a|b|c`, read from the
