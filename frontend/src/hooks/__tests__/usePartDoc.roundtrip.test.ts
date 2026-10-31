@@ -285,6 +285,7 @@ const ROUND_TRIPS: RoundTripCase[] = [
   { name: 'sketch add_center_rect', makeDoc: sketchDoc, mutation: { type: 'add_center_rect', featureId: 'sk1', center: [0, 0], corner: [5, 5] } as Mutation },
   { name: 'sketch add_ngon', makeDoc: sketchDoc, mutation: { type: 'add_ngon', featureId: 'sk1', center: [0, 0], corner: [10, 0], sides: 6 } as Mutation },
   { name: 'sketch apply_offset', makeDoc: sketchDoc, mutation: { type: 'apply_offset', featureId: 'sk1', sourceIds: ['l1'], distance: 2 } as Mutation },
+  { name: 'sketch mirror_entities', makeDoc: sketchDoc, mutation: { type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l2'], line: 'l1' } as Mutation },
   { name: 'sketch add_projected_entity', makeDoc: sketchDoc, mutation: { type: 'add_projected_entity', featureId: 'sk1', kind: 'line', source: '?edge;line', entityId: 'p1' } as Mutation },
   { name: 'sketch add_entity_with_constraint', makeDoc: sketchDoc, mutation: { type: 'add_entity_with_constraint', featureId: 'sk1', kind: 'line', params: [1, 1, 2, 2], vertexKey: 'start', snapVertexId: 'vertex:sk1:l1:end', constraintKind: 'coincident', entityId: 'l3' } as Mutation },
 
@@ -549,6 +550,63 @@ describe('round-trip side effects', () => {
     act(() => { result.current.handleUndo() })
     const restored = docRef.current!.features![0] as { initial: Record<string, number[]> }
     expect(restored.initial.l1).toEqual([0, 0, 10, 0])
+  })
+
+  it('mirror_entities records one entry whose undo drops every clone and its carried constraint', () => {
+    docRef.current = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'ax', kind: 'line', construction: true }, { id: 'l1', kind: 'line' }],
+        initial: { ax: [0, 0, 0, 10], l1: [2, 0, 2, 4] },
+        constraints: [
+          { id: 'c_v', kind: 'vertical', target: '$l1' },
+          { id: 'c_ax', kind: 'horizontal', target: '$ax' },
+        ],
+      }],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    const before = JSON.stringify(docRef.current)
+
+    act(() => {
+      result.current.handleMutation({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1'], line: 'ax' } as Mutation)
+    })
+
+    // One keystroke is one history entry: the clones are doc content inside the
+    // same mutation, not a mutation each.
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].mutation.type).toBe('mirror_entities')
+
+    const sk = docRef.current!.features![0] as {
+      entities: Array<{ id: string; kind: string; construction?: boolean }>
+      initial: Record<string, number[]>
+      constraints: Array<{ id: string; kind: string; target?: string }>
+    }
+    const originals = new Set(['ax', 'l1'])
+    const clones = sk.entities.filter(e => !originals.has(e.id))
+    expect(clones).toHaveLength(1)
+    expect(sk.initial[clones[0].id]).toEqual([-2, 0, -2, 4])
+    // The vertical carried onto the mirrored vertical line; the axis-only
+    // constraint has no mirrored operand and is not cloned.
+    expect(sk.constraints).toHaveLength(3)
+    const clonedConstraint = sk.constraints.find(c => !['c_v', 'c_ax'].includes(c.id))!
+    expect(clonedConstraint.kind).toBe('vertical')
+    expect(clonedConstraint.target).toBe(`$${clones[0].id}`)
+
+    act(() => { result.current.handleUndo() })
+    expect(JSON.stringify(docRef.current)).toBe(before)
+
+    // Redo re-mints the same ids: the journal seeds the id source per entry, so
+    // the mirrored ids are a function of the recorded mutation, not of a
+    // throwaway counter.
+    act(() => { result.current.handleRedo() })
+    expect(JSON.stringify(docRef.current)).not.toBe(before)
+    const forward = JSON.stringify(docRef.current)
+    act(() => { result.current.handleUndo() })
+    act(() => { result.current.handleRedo() })
+    expect(JSON.stringify(docRef.current)).toBe(forward)
   })
 
   it('set_rollback round-trips doc.rollback against the store-derived restore', () => {
