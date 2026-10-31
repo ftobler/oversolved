@@ -250,6 +250,59 @@ describe('set_*_field field names', () => {
   })
 })
 
+// Ex019: a countersink's widened mouth is `cb_diameter` (one field for both
+// styles), and the `cb_`/`cs_` prefix pair makes `cs_diameter` the first guess a
+// script writer makes. The boundary refuses the misspelling and names the field
+// it meant, so one call fixes it. No alias is accepted: the document keeps one
+// spelling per meaning, and the hint is what teaches it (the same rule the select
+// vocabulary follows in kernel/select/geometry.ts).
+describe('an unknown field names the field it meant (Ex019)', () => {
+  it('refuses cs_diameter on the inline add and names cb_diameter', () => {
+    const result = validateMutation({
+      type: 'add_hole', featureId: 'h1', style: 'countersink', cs_diameter: 0.25, cs_angle: 82,
+    } as never)
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    if (result.ok) throw new Error('unreachable')
+    expect(result.error.message)
+      .toBe('mutation type "add_hole" has no field "cs_diameter"; did you mean "cb_diameter"?')
+  })
+
+  it('refuses cs_depth on the inline add and names cb_depth', () => {
+    const result = validateMutation({
+      type: 'add_hole', featureId: 'h1', style: 'counterbore', cs_depth: 3,
+    } as never)
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    if (result.ok) throw new Error('unreachable')
+    expect(result.error.message)
+      .toBe('mutation type "add_hole" has no field "cs_depth"; did you mean "cb_depth"?')
+  })
+
+  it('names the same field on the setter, where the valid list also stands', () => {
+    const result = validateMutation({ type: 'set_hole_field', featureId: 'h1', field: 'cs_diameter', value: 0.25 })
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    if (result.ok) throw new Error('unreachable')
+    expect(result.error.message).toContain('has no field "cs_diameter"; did you mean "cb_diameter"?')
+    // The countersink mouth guidance the field list cannot carry still rides along.
+    expect(result.error.message).toContain('`countersink` reads `cb_diameter`')
+  })
+
+  it('invents no suggestion for a key no field is near', () => {
+    const result = validateMutation({ type: 'add_hole', featureId: 'h1', mouth: 3 } as never)
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    if (result.ok) throw new Error('unreachable')
+    expect(result.error.message).toBe('mutation type "add_hole" has no field "mouth"')
+  })
+
+  it('never suggests an internal field the boundary would refuse', () => {
+    // `insertAt` is one edit away, but it is internal plumbing: the hint must
+    // not send a script towards a key this same boundary refuses.
+    const result = validateMutation({ type: 'add_sketch', featureId: 'sk1', insertAt2: 0 } as never)
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    if (result.ok) throw new Error('unreachable')
+    expect(result.error.message).not.toContain('did you mean')
+  })
+})
+
 describe('headless drive boundary', () => {
   it('stops at an unknown mutation and leaves the seeded doc unchanged', async () => {
     const result = await runHeadless({
@@ -324,5 +377,18 @@ describe('headless drive boundary', () => {
       error: { code: 'invalid-mutation' },
     })
     if (result.outcome.steps[0].error) expect(result.outcome.steps[0].error.message).toContain('featureId')
+  })
+
+  // Ex019 as a script step sees it: the recorded refusal of a countersink mouth
+  // misspelling carries the field it meant, so the next call is a fix and not a
+  // second guess.
+  it('names the field a misspelled hole field meant through the headless step executor', async () => {
+    const result = await runHeadless({
+      doc: seededDoc(),
+      steps: [{ mutation: { type: 'add_hole', featureId: 'h1', style: 'countersink', cs_diameter: 0.25 } as never }],
+    })
+    const step = result.outcome.steps[0]
+    expect(step).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    if (step.error) expect(step.error.message).toContain('has no field "cs_diameter"; did you mean "cb_diameter"?')
   })
 })

@@ -195,6 +195,16 @@ describe('batch B review: the plane definition note', () => {
   })
 })
 
+// Ex019: the widened mouth is one field for both styles, so the note says there
+// is no `cs_diameter` rather than leaving the cb_/cs_ prefix pair to guess from.
+describe('Ex019: the hole note names the mouth field once', () => {
+  it('states that no cs_diameter exists on both hole rows', () => {
+    for (const type of ['add_hole', 'set_hole_field'] as const) {
+      expect(mutationInfoOf(type).note!, type).toContain('there is no `cs_diameter`')
+    }
+  })
+})
+
 describe('F7: merge_target spelling', () => {
   it('names the bare body id and the delta row field on every merge_target row', () => {
     for (const type of ['add_extrude', 'set_extrude_field', 'set_revolve_field'] as const) {

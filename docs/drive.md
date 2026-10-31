@@ -633,11 +633,14 @@ banner on stdout, so a client config must use the direct node invocation.
   (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,
   `cs_angle`), with `depth` required only for a blind hole because a
   `through_all` hole is sized by the target body and stores no depth; all are
-  optional in an `add_hole` payload. An empty value clears the `target` pick, on
-  the inline add and on `set_hole_field` alike (the hole then drills the body its
-  drill sites sit on); every other field refuses an empty value rather than
-  silently reverting to its default, and `null` clears an optional field; null
-  on a required field would delete a key the loader needs. With no `target`
+  optional in an `add_hole` payload. The widened mouth is one field,
+  `cb_diameter`, under both the `counterbore` and the `countersink` style, so
+  `cs_angle` is the only `cs_` field and there is no `cs_diameter`. An empty
+  value clears the `target` pick, on the inline add and on `set_hole_field`
+  alike (the hole then drills the body its drill sites sit on); every other
+  field refuses an empty value rather than silently reverting to its default,
+  and `null` clears an optional field; null on a required field would delete
+  a key the loader needs. With no `target`
   the hole drills the body its drill sites sit on or in, so a face sketch
   whose sites lie on or in the material picks that body even when it is not
   the first; a site outside every body (a plane sketch in the air) falls back
@@ -787,8 +790,12 @@ banner on stdout, so a client config must use the direct node invocation.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; unknown fields are rejected by name, so a typo never fails
-  silently. That includes an inline `doc` (or a `parts` `{doc}`): after the
-  load it is checked against the served part or assembly schema, so a
+  silently. A step's mutation goes through the catalog validator, and there the
+  refusal also names the nearest field the row declares (`cs_diameter` -> did
+  you mean `cb_diameter`?), so one call fixes the guess. No field alias is
+  accepted: one meaning keeps one spelling, the same rule the `select`
+  vocabulary follows. That includes an inline `doc` (or a `parts` `{doc}`):
+  after the load it is checked against the served part or assembly schema, so a
   misspelled key refuses with its path. The browser loader is deliberately
   tolerant of unknown keys, so a newer file still opens in an older build.
 - `initialize` instructions and the `select` description carry one generated

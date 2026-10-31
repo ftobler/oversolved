@@ -243,6 +243,7 @@ const HOLE_FIELD_NOTE =
   'line endpoints are not drill sites, while add_center_rect\'s helper centre point is an ordinary point and does drill. ' +
   'A single point or circle picked alone drills only that one, and a picked construction one is refused. ' +
   '`style` widens the mouth: `counterbore` reads `cb_diameter` and `cb_depth`, `countersink` reads `cb_diameter` and `cs_angle` (degrees, default 90); absent means `simple`. ' +
+  'The widened mouth is one field, `cb_diameter`, under both styles: there is no `cs_diameter` (`cs_angle` is the only `cs_` field). ' +
   'An empty value clears the `target` pick (the key is deleted, and the hole then drills the body its drill sites sit on); ' +
   'null clears an optional field the same way. `sketch` is stored verbatim, so send a sketch id rather than "". ' +
   'An enum or numeric field refuses an empty value instead of silently reverting to its default.'
@@ -1340,8 +1341,9 @@ function isRecord(value: unknown): value is { [key: string]: unknown } {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-// Levenshtein over the catalog keys, capped at 2 edits: enough for the typo
-// this boundary exists for (add_fillett) and far too little to guess at noise.
+// Levenshtein, capped at 2 edits by the callers: enough for the typo these
+// boundaries exist for (add_fillett, cs_diameter) and far too little to guess at
+// noise.
 function editDistance(a: string, b: string): number {
   const previous = Array.from({ length: b.length + 1 }, (_, i) => i)
   for (let i = 1; i <= a.length; i++) {
@@ -1360,17 +1362,35 @@ function editDistance(a: string, b: string): number {
   return previous[b.length]
 }
 
-export function nearestMutationType(type: string): string | null {
+// Capped edit distance over a name vocabulary: the mutation-type hint and the
+// field-name hint (Ex019) read the same rule, one for the row, one for the row's
+// fields. Internal fields are filtered out by the caller: the boundary would
+// refuse what it suggests.
+function nearestName(candidates: readonly string[], key: string): string | null {
   let best: string | null = null
   let bestDistance = 3
-  for (const candidate of Object.keys(MUTATION_CATALOG)) {
-    const distance = editDistance(type, candidate)
+  for (const candidate of candidates) {
+    const distance = editDistance(key, candidate)
     if (distance < bestDistance) {
       best = candidate
       bestDistance = distance
     }
   }
   return best
+}
+
+export function nearestMutationType(type: string): string | null {
+  return nearestName(Object.keys(MUTATION_CATALOG), type)
+}
+
+// `cs_diameter` is one edit from `cb_diameter` (Ex019: the `cb_`/`cs_` prefix
+// pair makes it the first guess for a countersink mouth), so the refusal names
+// the field the guess meant and one call fixes it. Nothing within the cap is
+// invented for a key that is simply not a field.
+function fieldHint(fields: Record<string, FieldInfo>, key: string): string {
+  const candidates = Object.keys(fields).filter(name => fields[name].internal !== true)
+  const suggestion = nearestName(candidates, key)
+  return suggestion === null ? '' : `; did you mean "${suggestion}"?`
 }
 
 function matchesType(type: FieldType, value: unknown): boolean {
@@ -1427,11 +1447,13 @@ export function validateMutation(raw: unknown, options: MutationValidationOption
   }
   // A key the row does not declare is refused even on the replay path: only
   // fields a mutation actually carries may ride on it, so insertAt cannot be
-  // smuggled onto a visible non-add row to move the rollback bar.
+  // smuggled onto a visible non-add row to move the rollback bar. The refusal
+  // names the near miss (Ex019): a spelling the boundary does not take is a
+  // hint, never a silent alias, so the document keeps one spelling per meaning.
   for (const key of Object.keys(raw)) {
     if (key === 'type') continue
     if (!Object.hasOwn(info.fields, key)) {
-      return fail('invalid-mutation', `mutation type "${type}" has no field "${key}"`)
+      return fail('invalid-mutation', `mutation type "${type}" has no field "${key}"${fieldHint(info.fields, key)}`)
     }
   }
   for (const [name, fieldInfo] of Object.entries(info.fields)) {
@@ -1475,9 +1497,11 @@ export function validateMutation(raw: unknown, options: MutationValidationOption
       // The row note carries guidance a field list cannot, so a wrong hole
       // field teaches what the sketch must name instead of only listing names.
       const note = info.note === undefined ? '' : ` ${info.note}`
+      const suggestion = nearestName(setterFields, raw.field)
+      const hint = suggestion === null ? '' : `; did you mean "${suggestion}"?`
       return fail(
         'invalid-mutation',
-        `mutation type "${type}" has no field "${raw.field}"; valid fields: ${setterFields.join(', ')}.${note}`,
+        `mutation type "${type}" has no field "${raw.field}"${hint}; valid fields: ${setterFields.join(', ')}.${note}`,
       )
     }
     // Value rules run on the same external path: the field names and JSON types

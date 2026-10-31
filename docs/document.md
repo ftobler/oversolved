@@ -360,9 +360,10 @@ by name, and so is a construction point or circle named on its own.
 `style` widens the mouth in the same one cut. A `counterbore` reads
 `cb_diameter` (wider than the bore) and `cb_depth` (the flat-bottomed step, less
 than `depth` in a blind hole); a `countersink` reads `cb_diameter` and
-`cs_angle`, and derives the cone depth from those radii. Both default the
-widened mouth to the drill site's plane, so the bore's through portion is the
-small diameter.
+`cs_angle`, and derives the cone depth from those radii. The widened mouth is
+one field, `cb_diameter`, under both styles: there is no `cs_diameter`. Both
+default the widened mouth to the drill site's plane, so the bore's through
+portion is the small diameter.
 
 A cosmetic thread adds no geometry: the bore keeps its drilled size (the authored
 `diameter` for a point, the circle's own radius for a circle) and the solve
