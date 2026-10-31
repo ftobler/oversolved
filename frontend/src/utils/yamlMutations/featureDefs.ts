@@ -10,8 +10,9 @@ function pushFeature(doc: PartDoc, feature: PartFeature): void {
 
 /** A feature's sub-definition as the generic setters write it. The schema owns
  *  which keys are real; the appliers only copy values into it, so the bag type
- *  is an index signature rather than a second copy of every field. */
-type FieldBag = { [key: string]: unknown }
+ *  is an index signature rather than a second copy of every field. Shared with
+ *  partStyle's plane-definition writer, the same copy-a-scalar job. */
+export type FieldBag = { [key: string]: unknown }
 
 /** Copy a bulk add's inline fields onto the freshly built default definition.
  *  The setters' clear rule applies: an empty or null value deletes the key, so

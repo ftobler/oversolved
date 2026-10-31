@@ -1,6 +1,7 @@
 import type { PartDoc, PartFeature } from '@/types/cad'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { findFeature, warn } from './helpers'
+import type { FieldBag } from './featureDefs'
 import { isValidVariableName } from '@/kernel/features/variable'
 import { allConsumedSketchIds } from '@/utils/query/consumedSketches'
 import { docVisibleFeatureIds, isPlaneVisibilityTarget } from '@/utils/featureVisibility'
@@ -279,7 +280,7 @@ export function applySetPlaneDefinitionField(
   // is scalar because the wire's value rule is scalar; origin_rotation's vector
   // spellings (origin, rotation_axis) exist only in the definition object an
   // add_plane authors, never through this setter.
-  const definition: Record<string, unknown> = feature.definition
+  const definition = feature.definition as FieldBag
   definition[field] = value
 }
 
