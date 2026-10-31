@@ -139,7 +139,7 @@ describe('HelixCurve start marker', () => {
 })
 
 describe('HelixCurve ID registration', () => {
-  it('registers on the edge layer under its own feature id', async () => {
+  it('registers on the reference-edge layer under its own feature id', async () => {
     await renderHelix()
     expect(MockRegister).toHaveBeenCalledWith(expect.objectContaining({
       featureId: HELIX_ID,

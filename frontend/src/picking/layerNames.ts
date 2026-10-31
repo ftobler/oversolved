@@ -8,8 +8,9 @@ export const FACE_LAYER_NAME = 'face'
 export const EDGE_LAYER_NAME = 'edge'
 // Reference curves (the helix) are sketch-class geometry, not a body edge: the
 // section must not clip them in the pick buffer because it does not clip them
-// on screen. Its own layer, one rung above the body edges it draws beside,
-// keeps that rule from leaking into the B-rep edge layer.
+// on screen. Their own layer, at the same rung as the body edges they draw
+// beside, keeps that rule out of the B-rep edge layer without letting a
+// reference curve outrank a nearer edge in the pick window.
 export const REFERENCE_EDGE_LAYER_NAME = 'referenceEdge'
 export const VERTEX_LAYER_NAME = 'vertex'
 export const PLANE_LAYER_NAME = 'planeFace'
@@ -48,7 +49,7 @@ export const PICK_LADDER: readonly PickLayerRung[] = [
   { name: PLANE_LAYER_NAME, priority: -10 },
   { name: FACE_LAYER_NAME, priority: 0 },
   { name: EDGE_LAYER_NAME, priority: 10 },
-  { name: REFERENCE_EDGE_LAYER_NAME, priority: 15 },
+  { name: REFERENCE_EDGE_LAYER_NAME, priority: 10 },
   { name: VERTEX_LAYER_NAME, priority: 20 },
   { name: SKETCH_SURFACE_LAYER_NAME, priority: 30 },
   { name: SKETCH_ENTITY_LAYER_NAME, priority: 40 },

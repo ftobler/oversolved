@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useSyncExternalStore } from 'react'
 import { useIdPipeline } from '@/picking'
-import { useSectionActive } from '@/viewport/useSection'
 import { buildOverlayMaterial, updateOverlayTexture } from './IdDebugOverlayMaterial'
 
 /**
@@ -20,11 +19,18 @@ import { buildOverlayMaterial, updateOverlayTexture } from './IdDebugOverlayMate
 export default function IdDebugOverlay() {
   const pipeline = useIdPipeline()
   // The section swaps the ID target (stencil on/off), which replaces and
-  // disposes its texture. Subscribe to the toggle so this component re-runs its
-  // bind effect with the revision below instead of sampling the dead one.
-  const sectionActive = useSectionActive()
+  // disposes its texture. Subscribe to the pipeline's target revision rather
+  // than to a store flag: the bind effect must rerun whenever the texture
+  // identity changes, even if the section's resolved state does not.
+  const subscribe = useCallback(
+    (onChange: () => void) => pipeline?.subscribeTargetRevision(onChange) ?? (() => {}),
+    [pipeline],
+  )
+  const targetRevision = useSyncExternalStore(
+    subscribe,
+    () => pipeline?.getTargetRevision() ?? 0,
+  )
   const [material] = useState(buildOverlayMaterial)
-  const targetRevision = pipeline?.getTargetRevision() ?? 0
 
   useEffect(() => {
     return () => { material.dispose() }
@@ -32,7 +38,7 @@ export default function IdDebugOverlay() {
 
   useEffect(() => {
     updateOverlayTexture(material, pipeline?.target.target.texture ?? null)
-  }, [material, pipeline, targetRevision, sectionActive])
+  }, [material, pipeline, targetRevision])
 
   if (!pipeline) return null
 

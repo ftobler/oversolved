@@ -6,8 +6,9 @@ import { buildEdgeSegmentGeometry, resolveEdgeQueries } from '@/components/Geome
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
- * Hook used by Body3D to register a body's edges with the edge ID layer.
- * No-op when the pipeline isn't mounted or the body has no edges.
+ * Hook used by Body3D (and the helix, through `layer: 'reference'`) to register
+ * edges with an edge ID layer. No-op when the pipeline isn't mounted or the
+ * body has no edges.
  *
  * Edges are flattened to line segments using the same helper that produces
  * the visible LineSegments geometry, so the ID-buffer ribbons sit exactly

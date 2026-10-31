@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import type { BodyResult, FaceData, Mesh3D } from '@/types/cad'
 import { faceFrameFromSolve } from '@/viewport/faceFrameFromSolve'
-import { findFaceFrame, resetBodyCallbacksForTest } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { findBodyForFaceQuery, resetBodyCallbacksForTest } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 
 function faceData(surface: string, normal: [number, number, number] = [0, 0, 1]): FaceData {
   return { centroid: [0, 0, 0], normal, surface_type: surface }
@@ -56,10 +56,33 @@ describe('faceFrameFromSolve', () => {
 
   it('does not depend on the hover registry, so a hidden body keeps its frame', () => {
     const bodies = { b1: body('ex1', quadMeshAt(2)) }
-    // Hiding a body unregisters it from the hover registry; findFaceFrame then
-    // answers null. The solve still has the mesh, and that is what the section
-    // and "Normal to" must read.
-    expect(findFaceFrame('face-q', undefined)).toBeNull()
+    // Hiding a body unregisters it from the hover registry; the registry lookup
+    // then answers null. The solve still has the mesh, and that is what the
+    // section and "Normal to" must read.
+    expect(findBodyForFaceQuery('face-q')).toBeNull()
     expect(faceFrameFromSolve(bodies, 'face-q')?.center[2]).toBe(2)
+  })
+
+  it('refuses the clicked curved face instead of falling back to a flat sibling', () => {
+    // Imported bodies give every face of a body one query. A pickKey that
+    // matches this body is authoritative: face 1 is cylindrical, so the answer
+    // must be "no frame", not face 0's plane.
+    const shared = {
+      vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 5], [1, 0, 5], [0, 1, 5]],
+      faces: [[0, 1, 2], [3, 4, 5]],
+      triangle_to_face: [0, 1],
+      face_queries: ['q', 'q'],
+      face_data: [faceData('flatface'), faceData('cylinderface')],
+    } satisfies Mesh3D
+    const bodies = { b1: body('ex1', shared) }
+
+    expect(faceFrameFromSolve(bodies, 'q', 'ex1/b1#face#1')).toBeNull()
+    // Without a pickKey the query still names the first face, as before.
+    expect(faceFrameFromSolve(bodies, 'q')?.center[2]).toBe(0)
+  })
+
+  it('a pickKey that names a body but an invalid face is authoritative too', () => {
+    const bodies = { b1: body('ex1', quadMeshAt(0)) }
+    expect(faceFrameFromSolve(bodies, 'face-q', 'ex1/b1#face#9')).toBeNull()
   })
 })

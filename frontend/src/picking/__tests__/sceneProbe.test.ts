@@ -55,8 +55,8 @@ describe('scene probe hitTest ordering', () => {
       'sketchEntity',
       'sketchSurface',
       'vertex',
-      'referenceEdge',
       'edge',
+      'referenceEdge',
       'face',
       'planeFace',
     ])

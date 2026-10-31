@@ -65,6 +65,12 @@ function registerBody(p: IdPipeline): void {
     edgeQueries: ['edge@b#0'],
   })
   p.vertexLayer.registerBody({ bodyKey: 'b', vertices: [[0, 0, 0]], vertexQueries: ['vtx@b#0'] })
+  p.referenceEdgeLayer.registerBody({
+    bodyKey: 'helix',
+    segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
+    segmentToEdge: new Uint32Array([0]),
+    edgeQueries: ['@helix'],
+  })
 }
 
 function faceMaterial(p: IdPipeline): THREE.Material {
@@ -84,9 +90,10 @@ describe('IdPipeline section clipping', () => {
     expect(faceMaterial(p).clippingPlanes).toBe(getSectionClipPlaneList())
     expect(p.edgeLayer.isSectionClipped()).toBe(true)
     expect(p.vertexLayer.isSectionClipped()).toBe(true)
-    // The reference layers stay unclipped: planes, sketches and handles are
-    // what the user reads the cut against.
+    // The reference layers stay unclipped: planes, sketches, handles and the
+    // helix are what the user reads the cut against.
     expect(p.planeLayer.isSectionClipped()).toBe(false)
+    expect(p.referenceEdgeLayer.isSectionClipped()).toBe(false)
     expect(p.sketchSurfaceLayer.isSectionClipped()).toBe(false)
     expect(p.featureHandleLayer.isSectionClipped()).toBe(false)
 
@@ -192,6 +199,26 @@ describe('IdPipeline section cap occluder', () => {
 
     expect(recorder.renders.filter(r => r.scene === p.faceLayer.scene)).toHaveLength(1)
     expect(recorder.stencilClears).toBe(0)
+    p.dispose()
+  })
+
+  it('draws the unclipped reference curve after the cap, so it depth-tests against the cut face', () => {
+    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 0, false))
+    const p = new IdPipeline({ width: 8, height: 8 })
+    registerBody(p)
+    p.setSectionActive(true)
+
+    const recorder = recordingRenderer()
+    p.markDirty()
+    p.render(recorder.renderer, new THREE.Camera())
+
+    const referenceAt = recorder.renders.findIndex(r => r.scene === p.referenceEdgeLayer.scene)
+    const fillAt = recorder.renders.findIndex(r =>
+      r.scene !== p.faceLayer.scene
+      && r.scene !== p.edgeLayer.scene
+      && r.scene !== p.referenceEdgeLayer.scene
+      && r.scene !== p.vertexLayer.scene)
+    expect(referenceAt).toBeGreaterThan(fillAt)
     p.dispose()
   })
 })

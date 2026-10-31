@@ -5,8 +5,8 @@ import type { PartFeature } from '@/types/cad'
 
 // Part.tsx turns the normal selection into the one thing "Normal to" can aim at
 // before it builds the context menu, so buildContextMenu never touches the
-// store or the body registry. The face lookup is injected: here a fake stands
-// in for the registry-backed findFaceFrame.
+// store or the solve map. The face lookup is injected: here a fake stands in
+// for faceFrameFromSolve.
 
 const features = [
   { id: 'Front', kind: 'plane' },

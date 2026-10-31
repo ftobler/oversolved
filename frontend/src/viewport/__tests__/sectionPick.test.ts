@@ -43,4 +43,3 @@ describe('sectionPickLayers', () => {
     expect(sectionPickLayers(new Set([EDGE_LAYER_NAME])).size).toBe(0)
   })
 })
-

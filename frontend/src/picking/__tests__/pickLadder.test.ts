@@ -23,7 +23,7 @@ describe('pick ladder as data', () => {
       { name: PLANE_LAYER_NAME, priority: -10 },
       { name: FACE_LAYER_NAME, priority: 0 },
       { name: EDGE_LAYER_NAME, priority: 10 },
-      { name: REFERENCE_EDGE_LAYER_NAME, priority: 15 },
+      { name: REFERENCE_EDGE_LAYER_NAME, priority: 10 },
       { name: VERTEX_LAYER_NAME, priority: 20 },
       { name: SKETCH_SURFACE_LAYER_NAME, priority: 30 },
       { name: SKETCH_ENTITY_LAYER_NAME, priority: 40 },

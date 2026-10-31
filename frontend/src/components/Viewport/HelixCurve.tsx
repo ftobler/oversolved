@@ -7,8 +7,9 @@ import {
 } from '@/components/Geometry3D/constants'
 
 // A helix is a reference curve, not a body: it renders from the solve result's
-// sampled polyline and registers on the edge ID layer under its own feature id
-// (the viewport maps it beside the UserDefinedPlane loop).
+// sampled polyline and registers on the reference-edge ID layer under its own
+// feature id (the viewport maps it beside the UserDefinedPlane loop). That
+// layer is not clipped by the section, matching this curve's unclipped draw.
 //
 // It looks and behaves like sketch geometry (utils/sketchClass): selection and
 // hover paint it in the sketch colours and entityRenderLayer lifts it above the
@@ -28,9 +29,9 @@ export default function HelixCurve({
   isEditing?: boolean
 }) {
   const selectionId = `@${featureId}`
-  // Hover is written by the shared ID-buffer dispatcher through the edge layer
-  // (the helix registers as an edge body), so there is one hover path, not a
-  // second R3F pointer one here.
+  // Hover is written by the shared ID-buffer dispatcher through the
+  // reference-edge layer, so there is one hover path, not a second R3F pointer
+  // one here.
   const hovered = useSketchEditorStore(s => s.hoveredSelectionId === selectionId)
   const selected = useSketchEditorStore(s => s.normalSelection.has(selectionId))
 

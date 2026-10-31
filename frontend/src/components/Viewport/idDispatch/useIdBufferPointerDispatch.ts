@@ -19,8 +19,8 @@ import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import { takeBandClickConsumed } from './bandClickGuard'
 import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSectionStore, SECTION_FACE_NOT_FLAT_REASON } from '@/stores/sectionStore'
-import { sectionPickLayers, sectionPickSource, SECTION_PICK_MISS_REASON } from '@/viewport/sectionPick'
+import { useSectionStore, SECTION_FACE_NOT_FLAT_REASON, SECTION_PICK_MISS_REASON } from '@/stores/sectionStore'
+import { sectionPickLayers, sectionPickSource } from '@/viewport/sectionPick'
 import { faceFrameFromSolve } from '@/viewport/faceFrameFromSolve'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
@@ -462,9 +462,15 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       if (sectionPicking) {
         const source = hit ? sectionPickSource(hit) : null
         if (!source) {
-          // A miss is not a cancel: keep the gesture armed and say what the
-          // pick expects, so the user can try again without reopening the card.
-          useSectionStore.getState().setPickError(SECTION_PICK_MISS_REASON)
+          // A miss over the model is not a cancel: the first one says what the
+          // pick expects and stays armed. A second miss means the user cannot
+          // find a target, so it disarms rather than leaving every later click
+          // swallowed.
+          if (useSectionStore.getState().pickError !== null) {
+            useSectionStore.getState().cancelPicking()
+          } else {
+            useSectionStore.getState().setPickError(SECTION_PICK_MISS_REASON)
+          }
           setLastClickIdHit(true)
           return
         }
@@ -583,6 +589,20 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       }
     }
 
+    // The armed section pick owns Escape and the context menu while it is on:
+    // without a cancel path a miss would keep swallowing every canvas click.
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !useSectionStore.getState().picking) return
+      e.preventDefault()
+      e.stopPropagation()
+      useSectionStore.getState().cancelPicking()
+    }
+    const onContextMenu = (e: MouseEvent) => {
+      if (!useSectionStore.getState().picking) return
+      e.preventDefault()
+      useSectionStore.getState().cancelPicking()
+    }
+
     const onPointerDown = (e: MouseEvent) => {
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
@@ -605,6 +625,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       c.addEventListener('pointerdown', onPointerDown)
       c.addEventListener('click', onClick)
       c.addEventListener('dblclick', onDoubleClick)
+      c.addEventListener('contextmenu', onContextMenu)
+      window.addEventListener('keydown', onKeyDown, true)
       // A DOM overlay inside the R3F container (constraint tile, dimension
       // label) is a sibling of the canvas, not a descendant, so moving onto one
       // fires pointerleave here. The move/click listeners never see those
@@ -638,6 +660,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         attached.removeEventListener('pointerdown', onPointerDown)
         attached.removeEventListener('click', onClick)
         attached.removeEventListener('dblclick', onDoubleClick)
+        attached.removeEventListener('contextmenu', onContextMenu)
+        window.removeEventListener('keydown', onKeyDown, true)
         attached.removeEventListener('pointerleave', clearHover)
         attached = null
       }

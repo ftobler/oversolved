@@ -9,9 +9,8 @@ import { EDGE_LAYER_NAME, FACE_LAYER_NAME, PLANE_LAYER_NAME } from '@/picking'
 import { useEditorState } from '@/hooks/useEditorState'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import {
-  DEFAULT_SECTION_STATE, SECTION_FACE_NOT_FLAT_REASON, useSectionStore,
+  DEFAULT_SECTION_STATE, SECTION_FACE_NOT_FLAT_REASON, SECTION_PICK_MISS_REASON, useSectionStore,
 } from '@/stores/sectionStore'
-import { SECTION_PICK_MISS_REASON } from '@/viewport/sectionPick'
 
 const h = vi.hoisted(() => ({ faceFrame: vi.fn() }))
 
@@ -36,7 +35,7 @@ describe('section pick dispatch', () => {
   beforeEach(() => {
     ({ canvas, pipeline, glRef } = newIdBufferDispatchFixture())
     useSectionStore.setState({ ...DEFAULT_SECTION_STATE, enabled: true, picking: true })
-    useSketchEditorStore.setState({ hoveredSelectionId: null, hoveredPickKey: null })
+    useSketchEditorStore.setState({ hoveredSelectionId: null, hoveredPickKey: null, normalSelection: new Set() })
     h.faceFrame.mockReset()
     h.faceFrame.mockReturnValue({ normal: [0, 0, 1], center: [0, 0, 0] })
     pipeline.resolveSync = vi.fn().mockReturnValue(FACE_HIT)
@@ -67,11 +66,12 @@ describe('section pick dispatch', () => {
     expect(opts.allowedLayers.has(FACE_LAYER_NAME)).toBe(true)
     expect(opts.allowedLayers.has(PLANE_LAYER_NAME)).toBe(true)
     expect(opts.allowedLayers.has(EDGE_LAYER_NAME)).toBe(false)
+    expect(h.faceFrame.mock.calls[0].slice(1)).toEqual(['?04;face', 'body#face#0'])
     expect(useSectionStore.getState().plane).toEqual({ kind: 'query', query: '?04;face', pickKey: 'body#face#0' })
     expect(useSectionStore.getState().picking).toBe(false)
   })
 
-  it('a click 3 px from a face edge still resolves the face', async () => {
+  it('resolves with only face and plane candidates 3 px from a face edge', async () => {
     // The resolver only ranks faces and planes, so the edge that shares the
     // boundary pixel cannot outrank the face. The mock returns the face the
     // real resolver would; what this pins is that the edge is never a candidate.
@@ -108,8 +108,9 @@ describe('section pick dispatch', () => {
     expect(useSectionStore.getState().picking).toBe(true)
   })
 
-  it('keeps picking armed with an error when the click misses', async () => {
+  it('keeps picking armed with an error when the click misses, leaving selection alone', async () => {
     pipeline.resolveSync = vi.fn().mockReturnValue(null)
+    useSketchEditorStore.setState({ normalSelection: new Set(['@keep']) })
     renderHook(() => useIdBufferPointerDispatch({
       glRef: glRef as { current: import('three').WebGLRenderer | null },
       consumedLayers: new Set([FACE_LAYER_NAME, PLANE_LAYER_NAME]),
@@ -122,6 +123,45 @@ describe('section pick dispatch', () => {
     expect(useSectionStore.getState().plane).toEqual({ kind: 'builtin', id: 'front' })
     expect(useSectionStore.getState().pickError).toBe(SECTION_PICK_MISS_REASON)
     expect(useSectionStore.getState().picking).toBe(true)
+    expect(useSketchEditorStore.getState().normalSelection.has('@keep')).toBe(true)
+  })
+
+  it('a second empty click disarms and clears the error', async () => {
+    pipeline.resolveSync = vi.fn().mockReturnValue(null)
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([FACE_LAYER_NAME, PLANE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+    expect(useSectionStore.getState().pickError).toBe(SECTION_PICK_MISS_REASON)
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 120, clientY: 100 }))
+    })
+    expect(useSectionStore.getState().picking).toBe(false)
+    expect(useSectionStore.getState().pickError).toBeNull()
+  })
+
+  it('Escape cancels the armed pick and clears the error', async () => {
+    pipeline.resolveSync = vi.fn().mockReturnValue(null)
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([FACE_LAYER_NAME, PLANE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+    expect(useSectionStore.getState().pickError).toBe(SECTION_PICK_MISS_REASON)
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+    expect(useSectionStore.getState().picking).toBe(false)
+    expect(useSectionStore.getState().pickError).toBeNull()
   })
 
   it('filters hover to faces and planes while the pick is armed', async () => {

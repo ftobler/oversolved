@@ -41,7 +41,7 @@ describe('IdPipeline layering', () => {
     // originMarker at 45, between sketchEntity and sketchVertex: it must beat
     // the plane and the sketch curves it sits on, and lose to a sketch point
     // that shares its position. See the note at its construction.
-    expect(p.getLayers().map(l => l.priority)).toEqual([-10, 0, 10, 15, 20, 30, 40, 45, 50, 70, 80, 90])
+    expect(p.getLayers().map(l => l.priority)).toEqual([-10, 0, 10, 10, 20, 30, 40, 45, 50, 70, 80, 90])
     p.dispose()
   })
 

@@ -18,8 +18,6 @@ export interface SectionPickCandidate {
  */
 export const SECTION_PICK_LAYER_NAMES: readonly string[] = [FACE_LAYER_NAME, PLANE_LAYER_NAME]
 
-export const SECTION_PICK_MISS_REASON = 'Click a flat face or a reference plane.'
-
 /** The consumed layers an armed section pick is allowed to see. */
 export function sectionPickLayers(consumed: ReadonlySet<string>): ReadonlySet<string> {
   const out = new Set<string>()

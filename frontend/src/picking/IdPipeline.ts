@@ -172,10 +172,11 @@ export class IdPipeline {
   // edge or interior back face behind the solid-looking cap from being picked.
   private sectionActive = false
   // Bumps when the ID target is swapped (the section adds or drops its stencil).
-  // The debug overlay binds the target's texture in an effect, so it needs a
-  // value that changes when the texture identity does, not just when the
-  // pipeline identity does.
+  // The debug overlay subscribes to it: binding the target's texture in an
+  // effect needs a value that changes when the texture identity does, not just
+  // when the pipeline identity or the section's resolved flag does.
   private targetRevision = 0
+  private readonly targetRevisionListeners = new Set<() => void>()
   private readonly capBackMaterial = new THREE.MeshBasicMaterial({
     side: THREE.BackSide,
     colorWrite: false,
@@ -253,8 +254,10 @@ export class IdPipeline {
     this.edgeLayer = new EdgeIdLayer(this.registry, {
       name: EDGE_LAYER_NAME, priority: pickPriorityOf(EDGE_LAYER_NAME),
     })
-    // Reference curves share the face depth but are never handed the section
-    // plane: the visible helix is drawn unclipped, so its pick must be too.
+    // Reference curves share the edge rung and the face depth, but are never
+    // handed the section plane: the visible helix is drawn unclipped, so its
+    // pick must be too. The equal rung leaves distance to decide between a
+    // reference curve and a body edge in the same pick window.
     this.referenceEdgeLayer = new EdgeIdLayer(this.registry, {
       name: REFERENCE_EDGE_LAYER_NAME, priority: pickPriorityOf(REFERENCE_EDGE_LAYER_NAME),
     })
@@ -353,6 +356,7 @@ export class IdPipeline {
     this.sectionActive = active
     this.target.setStencil(active)
     this.targetRevision++
+    for (const listener of this.targetRevisionListeners) listener()
     this.faceLayer.setClipping(active)
     this.edgeLayer.setClipping(active)
     this.vertexLayer.setClipping(active)
@@ -366,6 +370,13 @@ export class IdPipeline {
   // Identity counter for the current ID render target.
   getTargetRevision(): number {
     return this.targetRevision
+  }
+
+  // Change feed for getTargetRevision. IdDebugOverlay uses it through
+  // useSyncExternalStore so a target swap rebinds even when no store field moves.
+  subscribeTargetRevision(listener: () => void): () => void {
+    this.targetRevisionListeners.add(listener)
+    return () => { this.targetRevisionListeners.delete(listener) }
   }
 
   /**
@@ -858,5 +869,6 @@ export class IdPipeline {
     this.capQuadGeometry.dispose()
     this.target.dispose()
     this.registry.clear()
+    this.targetRevisionListeners.clear()
   }
 }

@@ -5,7 +5,7 @@ import {
   SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
   FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME,
 } from '../IdPipeline'
-import { FACE_LAYER_NAME, EDGE_LAYER_NAME, REFERENCE_EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '../layerNames'
+import { FACE_LAYER_NAME, EDGE_LAYER_NAME, REFERENCE_EDGE_LAYER_NAME, VERTEX_LAYER_NAME, pickPriorityOf } from '../layerNames'
 import { IdImage } from './pickCanvasHarness'
 
 /**
@@ -31,7 +31,7 @@ const LADDER = [
   PLANE_LAYER_NAME,          // -10
   FACE_LAYER_NAME,           //   0
   EDGE_LAYER_NAME,           //  10
-  REFERENCE_EDGE_LAYER_NAME, //  15
+  REFERENCE_EDGE_LAYER_NAME, //  10
   VERTEX_LAYER_NAME,         //  20
   SKETCH_SURFACE_LAYER_NAME, //  30
   SKETCH_ENTITY_LAYER_NAME,  //  40
@@ -56,12 +56,35 @@ describe('pick precedence: the mounted ladder', () => {
     expect(mounted).toEqual([...LADDER])
   })
 
+  it('lets a nearer body edge beat a reference curve at the same rung', () => {
+    // The reference curve only shares the edge rung so the section can leave it
+    // unclipped; it must not shadow a body edge within the 8 px disc.
+    const first = fresh()
+    const edge = first.p.registry.allocate(EDGE_LAYER_NAME, 'edge')
+    const reference = first.p.registry.allocate(REFERENCE_EDGE_LAYER_NAME, 'ref')
+    first.image.mark(64, 64, edge)
+    first.image.mark(64 + 7, 64 + 3, reference)
+    expect(first.p.resolveSync(first.renderer, CURSOR)!.entityKey).toBe('edge')
+    first.p.dispose()
+
+    const second = fresh()
+    const nearReference = second.p.registry.allocate(REFERENCE_EDGE_LAYER_NAME, 'ref')
+    const farEdge = second.p.registry.allocate(EDGE_LAYER_NAME, 'edge')
+    second.image.mark(64 + 7, 64 + 3, farEdge)
+    second.image.mark(64, 64, nearReference)
+    expect(second.p.resolveSync(second.renderer, CURSOR)!.entityKey).toBe('ref')
+    second.p.dispose()
+  })
+
   it('lets the higher layer win from anywhere in the disc against a lower one under the cursor', () => {
     // Every ordered pair, not just the adjacent ones: the loser is painted on
     // the cursor's own pixel (distance 0.71) and the winner is pushed out to the
     // far rim (distance ~7.8). Distance-first would flip every one of these.
+    // Equal rungs (edge and referenceEdge) are distance-ordered instead, so
+    // they are covered by the dedicated test below.
     for (let lo = 0; lo < LADDER.length; lo++) {
       for (let hi = lo + 1; hi < LADDER.length; hi++) {
+        if (pickPriorityOf(LADDER[lo]) === pickPriorityOf(LADDER[hi])) continue
         const { image, p, renderer } = fresh()
         const loId = p.registry.allocate(LADDER[lo], `lo:${lo}`)
         const hiId = p.registry.allocate(LADDER[hi], `hi:${hi}`)

@@ -71,6 +71,17 @@ describe('section store', () => {
     expect(useSectionStore.getState().pickError).toBeNull()
   })
 
+  it('cancels an armed pick without changing the section or leaving an error', () => {
+    useSectionStore.getState().setEnabled(true)
+    useSectionStore.getState().setPicking(true)
+    useSectionStore.getState().setPickError('Click a flat face or a reference plane.')
+    useSectionStore.getState().cancelPicking()
+
+    expect(useSectionStore.getState().picking).toBe(false)
+    expect(useSectionStore.getState().pickError).toBeNull()
+    expect(useSectionStore.getState().plane).toEqual({ kind: 'builtin', id: 'front' })
+  })
+
   it('publishes the resolved flag and the capture flag without touching the document', () => {
     useSectionStore.getState().setResolved(true)
     expect(useSectionStore.getState().resolved).toBe(true)
