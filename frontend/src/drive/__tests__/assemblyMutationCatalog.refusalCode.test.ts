@@ -61,6 +61,19 @@ describe('mate ref refusal codes', () => {
     expect(!result.ok && result.error.message).toContain('query not found')
   })
 
+  it('a malformed ref shape is invalid-ref, not a failed match', () => {
+    const result = validateAssemblyMutation({
+      type: 'add_mate',
+      featureId: 'm2',
+      kind: 'fixed',
+      ref_a: { part: 'plate' },
+      ref_b: { part: 'pin', query: '?q' },
+    }, ctx)
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.error.code).toBe('invalid-ref')
+    expect(!result.ok && result.error.message).toContain('exactly one of query, selector or anchor')
+  })
+
   it('set_mate_ref keeps unknown-target too', () => {
     const result = validateAssemblyMutation({
       type: 'set_mate_ref',

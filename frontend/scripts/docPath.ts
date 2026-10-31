@@ -6,7 +6,7 @@
 // come from scratch/. This module does the resolution and the format choice in
 // one place so the two surfaces cannot drift.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { stringify as stringifyYaml } from 'yaml'
@@ -37,15 +37,47 @@ function isInside(root: string, target: string): boolean {
 }
 
 /**
+ * The real path of a file that may not exist yet. Resolution starts at the
+ * deepest existing ancestor, so a fresh output directory is checked by the
+ * link-free parent it will be created under, while a symlinked parent is
+ * followed and caught by the caller's real containment check.
+ */
+function realPathOf(target: string): string {
+  let existing = target
+  const missing: string[] = []
+  for (;;) {
+    try {
+      const real = realpathSync(existing)
+      return missing.length === 0 ? real : path.resolve(real, ...missing)
+    } catch (e) {
+      // ENOTDIR is the same "not there yet" only when a parent is a regular
+      // file: the write's own mkdir must be the call that reports it, so the
+      // path check walks past it and the caller still gets the file-system
+      // error instead of a path refusal.
+      const code = (e as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw e
+      const parent = path.dirname(existing)
+      if (parent === existing) return target
+      missing.unshift(path.basename(existing))
+      existing = parent
+    }
+  }
+}
+
+/**
  * Resolve a caller-supplied path against the repo root and refuse anything
- * outside the purpose's allowed directories. The error names the directories so
- * a caller can correct the path instead of guessing.
+ * outside the purpose's allowed directories. Both the written path and its
+ * real path are checked, so a symlink inside a root cannot point out of it. The
+ * error names the directories so a caller can correct the path instead of
+ * guessing.
  */
 export function resolveProjectPath(input: string, purpose: ProjectPathPurpose): string {
   if (input.trim() === '') throw new Error('path must not be empty')
   const target = path.resolve(REPO_ROOT, input)
+  const realTarget = realPathOf(target)
   for (const name of ALLOWED_DIRS[purpose]) {
-    if (isInside(path.resolve(REPO_ROOT, name), target)) return target
+    const root = path.resolve(REPO_ROOT, name)
+    if (isInside(root, target) && isInside(realPathOf(root), realTarget)) return target
   }
   const allowed = ALLOWED_DIRS[purpose].map(name => `${name}/`).join(', ')
   throw new Error(`path "${input}" must resolve inside ${allowed} (relative paths resolve against the repo root)`)

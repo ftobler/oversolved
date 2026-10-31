@@ -16,7 +16,6 @@ vi.mock('@/kernel/solveLocally', () => ({
   solveLocally: vi.fn(),
   measureSolveFeatures: vi.fn(),
   buildAndMeasureLocally: vi.fn(),
-  exportLocally: vi.fn(),
   exportLocallyInspect: vi.fn(),
   exportAssemblyLocally: vi.fn(),
 }))

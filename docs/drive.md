@@ -340,10 +340,13 @@ npm run drive -- replay repro.json
   on divergence.
 - `--file <id>=<path>` (repeatable) supplies the bytes for an `import_step`
   feature's `file_id`, the same map the browser's file registry hands the
-  worker. A STEP file exported by `export` can therefore be re-imported and
-  measured, which the `cliSmoke` suite does end to end. The byte map does not
-  travel in the repro payload, so a journal containing an import replays only
-  with `--file` supplied.
+  worker. The path resolves through the same read rule as the MCP `files` map:
+  relative paths against the repo root and the file inside `tmp/`,
+  `bugreports/` or `scratch/`, so one spelling names one file on both surfaces.
+  A STEP file exported by `export` can therefore be re-imported and measured,
+  which the `cliSmoke` suite does end to end. The byte map does not travel in
+  the repro payload, so a journal containing an import replays only with
+  `--file` supplied.
 
 One session per process is the v1 contract: `solveLocally` keeps its
 cross-solve checkpoint cache as single-writer module state, so two sessions in

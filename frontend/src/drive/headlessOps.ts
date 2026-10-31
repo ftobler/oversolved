@@ -303,7 +303,9 @@ export async function exportHeadless(doc: PartDoc, opts: HeadlessExportOptions):
   const outcome = await exportLocallyInspect(partSolvePayload(doc, docId ?? 'headless'), exportOpts, files)
   if (outcome === null) return null
   const features = featureProblems(doc, readSolveOutcomes(outcome.response.result))
-  return { bytes: outcome.bytes, features, ok: features.length === 0 }
+  // No file is not a successful export: ok names the outcome the caller acts
+  // on, and callers keep their own bytes guard for the message.
+  return { bytes: outcome.bytes, features, ok: outcome.bytes !== null && features.length === 0 }
 }
 
 export interface HeadlessSelectOptions {
@@ -539,7 +541,10 @@ export async function exportAssemblyHeadless(
   const bytes = await exportAssemblyLocally(assemblySpecs(doc, parts, response.transforms), exportOpts, files)
   return {
     bytes,
-    ok: !solveFailed(response.status) && state.mates.length === 0 && state.parts.length === 0,
+    ok: bytes !== null
+      && !solveFailed(response.status)
+      && state.mates.length === 0
+      && state.parts.length === 0,
     ...state,
   }
 }

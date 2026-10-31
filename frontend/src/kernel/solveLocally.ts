@@ -594,27 +594,34 @@ function resolveExportShape(
   bodyIds: readonly string[] | null,
 ): OccShape | null {
   const order = state.feature_order
-  if (!order.length) return null
+  const chosen = bodyIds && bodyIds.length > 0
+    ? [...new Set(bodyIds)]
+    : bodyId ? [bodyId] : null
+  const refuseMissing = (id: string, live: readonly string[]): never => {
+    // Name the live ids in the refusal: the caller picked the id, so the
+    // answer has to be the set it can pick from.
+    throw new ExportSelectionError(
+      `export: body '${id}' not found; live bodies: ${live.join(', ') || 'none'}`,
+    )
+  }
+  if (!order.length) {
+    if (chosen) refuseMissing(chosen[0], [])
+    return null
+  }
   // Bodies accumulate across the feature stack, so the last feature's snapshot
   // is the final body set (deletions already removed). Its shape handles are
   // retained in `table` until disposeAll, so they are safe to dereference here.
   const lastCp = state.checkpoints[order[order.length - 1]]
-  if (!lastCp) return null
+  if (!lastCp) {
+    if (chosen) refuseMissing(chosen[0], [])
+    return null
+  }
   const bodies = lastCp.body_store_snapshot
-  const chosen = bodyIds && bodyIds.length > 0
-    ? [...new Set(bodyIds)]
-    : bodyId ? [bodyId] : null
   if (chosen) {
     const live = Object.keys(bodies).filter(id => bodies[id].shape != null)
     const solids = chosen.map((id) => {
       const body = bodies[id]
-      if (!body || body.shape == null) {
-        // Name the live ids in the refusal: the caller picked the id, so the
-        // answer has to be the set it can pick from.
-        throw new ExportSelectionError(
-          `export: body '${id}' not found; live bodies: ${live.join(', ') || 'none'}`,
-        )
-      }
+      if (!body || body.shape == null) return refuseMissing(id, live)
       return table.get<OccShape>(body.shape)
     })
     return compoundOf(oc, scope, solids)

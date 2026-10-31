@@ -206,6 +206,26 @@ describeReal('export honesty (real OCC + Rust solvers)', () => {
       .rejects.toMatchObject({ name: 'ExportSelectionError', message: expect.stringContaining('body_ex1') })
   }, 180_000)
 
+  it('names the requested body on an empty document instead of reporting no solid', async () => {
+    await expect(exportHeadless(emptyDriveDoc(), { format: 'step', bodyId: 'nope' }))
+      .rejects.toMatchObject({
+        name: 'ExportSelectionError',
+        message: expect.stringContaining("body 'nope' not found; live bodies: none"),
+      })
+  }, 180_000)
+
+  it('reports ok false when the build left no solid to write', async () => {
+    const doc = await build([
+      m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' }),
+      m({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] }),
+    ])
+    const exported = await exportHeadless(doc, { format: 'step' })
+    expect(exported).not.toBeNull()
+    expect(exported!.bytes).toBeNull()
+    expect(exported!.features).toEqual([])
+    expect(exported!.ok).toBe(false)
+  }, 180_000)
+
   it('exports a clean assembly with its solve verdict and ok true', async () => {
     const run = await buildAssembly(PIN_SCRIPT)
     const exported = await exportAssemblyHeadless(run.doc, PARTS, { format: 'step' })

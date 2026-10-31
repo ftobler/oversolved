@@ -538,7 +538,9 @@ function builtinProblem(doc: AssemblyDoc | null, id: string): string | null {
 
 function resolveRef(ctx: AssemblyValidationContext, ref: unknown, label: string): { ok: true; ref: MateRef } | { ok: false; message: string; code?: DriveRefFailure['code'] } {
   const shape = refShapeProblem(ref, label)
-  if (shape !== null) return { ok: false, message: shape }
+  // A malformed ref is its own class: the caller fixes the object rather than
+  // re-picking geometry.
+  if (shape !== null) return { ok: false, code: 'invalid-ref', message: shape }
   const drive = ref as DriveMateRef
   if (ctx.resolveRef) {
     const resolved = ctx.resolveRef(drive)

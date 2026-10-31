@@ -6,7 +6,7 @@
 // the read roots or one that does not exist is a tool error naming the entry.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { REPO_ROOT, readProjectFiles, resolveProjectPath } from '../../../scripts/docPath'
 import { McpToolError } from '../toolError'
@@ -36,11 +36,35 @@ describe('MCP files paths', () => {
     expect(resolveProjectPath(RELATIVE, 'input')).not.toContain(`${path.sep}frontend${path.sep}tmp`)
   })
 
+  it('accepts the absolute form of a project file', () => {
+    const absolute = path.join(CASE_DIR, 'part.step')
+    const files = readProjectFiles([{ id: 'f1', path: absolute }])
+    expect([...files!.get('f1')!]).toEqual([...BYTES])
+    expect(resolveProjectPath(absolute, 'input')).toBe(absolute)
+  })
+
   it('refuses a path outside the read roots with the allowed directories named', () => {
     expect(() => readProjectFiles([{ id: 'f1', path: '/etc/passwd' }]))
       .toThrow(McpToolError)
     expect(() => readProjectFiles([{ id: 'f1', path: '/etc/passwd' }]))
       .toThrow(/must resolve inside tmp\/, bugreports\/, scratch\//)
+  })
+
+  it('refuses a traversal that leaves the roots', () => {
+    expect(() => resolveProjectPath(path.join('tmp', '..', 'frontend', 'package.json'), 'input'))
+      .toThrow(/must resolve inside/)
+    expect(() => readProjectFiles([{ id: 'f1', path: path.join('tmp', '..', 'frontend', 'package.json') }]))
+      .toThrow(McpToolError)
+  })
+
+  it('refuses a symlink inside a root that points outside it', () => {
+    const link = path.join(CASE_DIR, 'escape')
+    symlinkSync(path.join(REPO_ROOT, 'frontend'), link, 'dir')
+    const throughLink = path.join('tmp', 'mcp-files-path', 'escape', 'package.json')
+    // The written path is inside tmp, so the string check alone would pass; the
+    // real path is frontend/package.json, which the real check refuses.
+    expect(() => resolveProjectPath(throughLink, 'input'))
+      .toThrow(/must resolve inside/)
   })
 
   it('refuses a missing file as a tool error naming the files entry', () => {

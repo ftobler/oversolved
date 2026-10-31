@@ -154,7 +154,8 @@ function printJson(value: unknown): void {
 
 // The solve file map from repeated `--file <id>=<path>` flags: the bytes for
 // an import_step feature's file_id, exactly what the browser's file registry
-// hands the worker.
+// hands the worker. The path follows the project read rule, the same one the
+// MCP `files` map uses, so one spelling names one file on both surfaces.
 function readFiles(args: Args): ReadonlyMap<string, Uint8Array> | undefined {
   const entries = args.repeated.file ?? []
   if (entries.length === 0) return undefined
@@ -164,7 +165,8 @@ function readFiles(args: Args): ReadonlyMap<string, Uint8Array> | undefined {
     if (eq <= 0 || eq === entry.length - 1) {
       throw new UsageError(`--file expects <id>=<path>, got "${entry}"`)
     }
-    files.set(entry.slice(0, eq), new Uint8Array(readFileSync(path.resolve(entry.slice(eq + 1)))))
+    const file = resolveProjectPath(entry.slice(eq + 1), 'input')
+    files.set(entry.slice(0, eq), new Uint8Array(readFileSync(file)))
   }
   return files
 }

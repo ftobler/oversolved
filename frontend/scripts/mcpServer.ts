@@ -89,11 +89,6 @@ function emptyPartDoc(): PartDoc {
   return emptyDriveDoc()
 }
 
-// The `files` paths follow the same project rule as `out`, with the read
-// roots: `tmp/x.step` names the project's tmp even though the server's cwd is
-// `frontend/`, and a path outside tmp/, bugreports/ or scratch/ is a tool
-// error naming them (drive.md).
-
 // The docHash chain: in-process, content-addressed and bounded, so a session
 // of calls never re-sends the whole document. The protocol module parses the
 // argument shape; the store lives here with the real ops.
