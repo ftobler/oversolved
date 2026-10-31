@@ -9,7 +9,7 @@ import { useEditorState } from '@/hooks/useEditorState'
 import { partContext, partRegistry } from './commandFixtures'
 
 // The structural suites pin the spec table; this one drives the store-driven
-// command bodies (cancel_draw / set_tool_mirror / apply_offset) against the
+// command bodies (cancel_draw / mirror_entities / apply_offset) against the
 // real stores with the context callbacks spied, so a renamed store action or a
 // dropped step in a multi-call body (e.g. cancel_draw forgetting to clear the
 // pick field) fails.
@@ -37,16 +37,51 @@ describe('command bodies that drive the sketch editor store', () => {
     expect(names).not.toContain('cancel_pick')
   })
 
-  it('set_tool_mirror surfaces a not-implemented notice (showMessage) and does not switch tools', () => {
-    const store = useSketchEditorStore.getState()
-    const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
+  it('mirror_entities dispatches the selection as one mutation and shows no message', () => {
+    setSketchCallback('onMutation', null)
+    useEditorState.setState({
+    normalSelection: new Set(['entity:Sketch1:AX', 'entity:Sketch1:C1']),
+    activeFeatureId: 'Sketch1',
+    entityKindMap: { 'entity:Sketch1:AX': 'line', 'entity:Sketch1:C1': 'circle' },
+  })
+    const handler = vi.fn()
+    setSketchCallback('onMutation', handler)
     const showMessage = vi.fn()
 
-    execute('set_tool_mirror', partContext({ showMessage }))
+    execute('mirror_entities', partContext({ showMessage }))
 
-    expect(showMessage).toHaveBeenCalledOnce()
-    expect(showMessage).toHaveBeenCalledWith({ title: 'Not Implemented', message: 'Mirror tool is not yet implemented.', variant: 'info' })
-    expect(setActiveTool).not.toHaveBeenCalled()
+    expect(handler).toHaveBeenCalledOnce()
+    expect(handler).toHaveBeenCalledWith({
+      type: 'mirror_entities',
+      featureId: 'Sketch1',
+      sourceIds: ['C1'],
+      line: 'AX',
+    })
+    expect(showMessage).not.toHaveBeenCalled()
+    setSketchCallback('onMutation', null)
+  })
+
+  it('mirror_entities is refused, not silently dropped, when the selection has no axis', () => {
+    setSketchCallback('onMutation', null)
+    useEditorState.setState({
+    normalSelection: new Set(['entity:Sketch1:C1']),
+    activeFeatureId: 'Sketch1',
+    entityKindMap: { 'entity:Sketch1:C1': 'circle' },
+  })
+    const handler = vi.fn()
+    setSketchCallback('onMutation', handler)
+    const showMessage = vi.fn()
+    const registry = partRegistry(partContext({ showMessage }))
+
+    expect(registry.enabled('mirror_entities')).toBe('mirror needs a selected line to mirror across')
+    expect(registry.execute('mirror_entities')).toMatchObject({ ok: true })
+    expect(handler).not.toHaveBeenCalled()
+    expect(showMessage).toHaveBeenCalledWith({
+      title: 'Cannot mirror selection',
+      message: 'mirror needs a selected line to mirror across',
+      variant: 'error',
+    })
+    setSketchCallback('onMutation', null)
   })
 
   it('set_tool_select / set_tool_drag forward the tool id', () => {

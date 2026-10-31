@@ -230,6 +230,14 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
       "undoable": true,
     },
     {
+      "enabled": "no entities selected",
+      "id": "mirror_entities",
+      "label": "Mirror selection",
+      "params": [],
+      "shortcut": "shift+m",
+      "undoable": true,
+    },
+    {
       "enabled": "nothing to redo",
       "id": "redo",
       "label": "Redo",
@@ -296,14 +304,6 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
       "label": "Line tool",
       "params": [],
       "shortcut": "l",
-      "undoable": false,
-    },
-    {
-      "enabled": "select an entity first",
-      "id": "set_tool_mirror",
-      "label": "Mirror tool",
-      "params": [],
-      "shortcut": "shift+m",
       "undoable": false,
     },
     {

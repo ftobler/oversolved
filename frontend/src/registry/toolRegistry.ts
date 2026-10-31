@@ -26,8 +26,8 @@ export type ToolId =
 
 // Every activatable id that must resolve to a registered tool. mirror and
 // offset stay in ActiveTool/ToolId as forward-compat placeholders with no tool
-// mode (mirror shows a not-implemented toast, offset is a selection action), so
-// they are deliberately absent here.
+// mode (both are selection actions run through commands), so they are
+// deliberately absent here.
 export const ACTIVATABLE_TOOL_IDS = [
   'dimension', 'line', 'rect', 'center_rect', 'circle', 'arc', 'ellipse',
   'spline', 'fit_spline', 'point', 'ngon', 'project', 'drag',

@@ -276,6 +276,10 @@ export interface SketchEditorState {
   // message; a devOnly console.warn reached nobody in a production build.
   applyConstraint: (kind: string) => string | null
   applyOffset: (distance: number) => void
+  // Mirror the selection across the one selected line (mirrorSelectionPlan).
+  // Returns a human-readable rejection when the selection cannot carry the
+  // mirror, or null when it was authored and there was nothing to reject.
+  mirrorSelection: () => string | null
   toggleConstruction: () => void
   deleteSelected: () => void
   addDimensionPick: (pick: DimensionPick) => void

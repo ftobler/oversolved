@@ -16,7 +16,7 @@ interface SketchToolbarProps {
   onResetViewport: () => void
 }
 
-const mirrorKey = CORE_KEYBINDINGS.find(b => b.command === 'set_tool_mirror')?.key.toUpperCase()
+const mirrorKey = CORE_KEYBINDINGS.find(b => b.command === 'mirror_entities')?.key.toUpperCase()
 const constructionKey = CORE_KEYBINDINGS.find(b => b.command === 'toggle_construction')?.key.toUpperCase()
 
 export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
@@ -28,16 +28,15 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
   // token is their dependency, the ids themselves are not rendered here.
   const selectionToken = useSketchEditorStore(s => Array.from(s.normalSelection).join('|'))
   const isDragActive = drag !== null
-  const isMirrorActive = activeTool === 'mirror'
   // The disabled verdicts come from the same specs the clicks run through, so
   // a button can no longer disagree with its command. The token is a
   // deliberate dependency even though the memo bodies do not read it: the
   // verdicts read the live store through the registry, and the token is what
   // re-runs them when the selection changes.
   const mirrorDisabled = useMemo(
-    () => registry.enabled('set_tool_mirror') !== true,
+    () => registry.enabled('mirror_entities') !== true,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionToken is the invalidation key for the verdict read
-    [registry, selectionToken, isMirrorActive],
+    [registry, selectionToken],
   )
   const offsetDisabled = useMemo(
     () => registry.enabled('apply_offset') !== true,
@@ -80,12 +79,11 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
       />
 
       <ToolbarButton
-        title={mirrorKey ? `Mirror (${mirrorKey})` : 'Mirror'}
+        title={mirrorKey ? `Mirror selection (${mirrorKey})` : 'Mirror selection'}
         icon={iconUrl('feature-mirror')}
-        active={isMirrorActive}
         disabled={mirrorDisabled}
-        onClick={() => registry.execute('set_tool_mirror')}
-        handle="toolbar:set_tool_mirror"
+        onClick={() => registry.execute('mirror_entities')}
+        handle="toolbar:mirror_entities"
       />
 
       <ToolbarButton

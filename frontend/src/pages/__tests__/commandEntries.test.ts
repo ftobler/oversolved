@@ -13,7 +13,6 @@ const TOOLBAR_ONLY_CONSTRAINT_COMMANDS = CONSTRAINTS
 const PROGRAMMATIC_ONLY = new Set([
   'set_tool_select',
   'set_tool_drag',
-  'set_tool_mirror',
   'set_tool_point',
   'set_tool_ellipse',  // toolbar-only (no keyboard shortcut), like point
   'set_tool_spline',  // toolbar-only: the `s` shortcut now opens the fit spline

@@ -42,7 +42,7 @@ export const CORE_KEYBINDINGS: readonly CoreKeybinding[] = [
   { key: 'backspace',    command: 'delete_selected',     label: 'Delete (alt)',         description: 'Delete selected entities or constraints' },
   { key: 'd',            command: 'set_tool_dimension',  label: 'Dimension tool',       description: 'Activate the dimension tool' },
   { key: 'q',            command: 'toggle_construction', label: 'Toggle construction',  description: 'Toggle construction mode for selected entities' },
-  { key: 'shift+m',      command: 'set_tool_mirror',     label: 'Mirror tool',          description: 'Mirror selected entities across a line' },
+  { key: 'shift+m',      command: 'mirror_entities',     label: 'Mirror selection',     description: 'Mirror selected entities across the selected line' },
   { key: 'y',            command: 'toggle_sketch_plane_visibility', label: 'Toggle reference geometry', description: 'Hide or show all sketch, plane and helix features' },
   { key: 'e',            command: 'add_extrude',          label: 'Add Extrude',         description: 'Add a new extrude feature (feature mode only)' },
   { key: 'p',            command: 'toggle_plane_visibility', label: 'Toggle planes',    description: 'Hide or show all plane features' },

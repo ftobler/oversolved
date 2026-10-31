@@ -59,6 +59,38 @@ export function sketchOwnedDeleteTargets(selection: Set<string>, activeFeatureId
   })
 }
 
+// The selection contract of mirror_entities: the selected entities are the
+// sources, and exactly one selected line entity is the axis (construction
+// lines count). Vertex and constraint selections ride along untouched; the
+// plan speaks in bare entity ids, the shape the mutation takes. Exported so
+// the command's `enabled` verdict and the store action read one definition
+// and cannot drift apart.
+export interface MirrorSelectionPlan {
+  axis: string
+  sourceIds: string[]
+}
+
+export function mirrorSelectionPlan(
+  selection: Set<string>,
+  activeFeatureId: string | null,
+  entityKindMap: Record<string, string>,
+): MirrorSelectionPlan | { reason: string } {
+  if (!activeFeatureId || selection.size === 0) return { reason: 'no entities selected' }
+  const ids = [...selection]
+    .filter(t => t.startsWith('entity:') && t.split(':')[1] === activeFeatureId)
+    .map(t => t.split(':')[2])
+  if (ids.length === 0) return { reason: 'no entities selected' }
+  const lines = ids.filter(id => entityKindMap[`entity:${activeFeatureId}:${id}`] === 'line')
+  if (lines.length === 0) return { reason: 'mirror needs a selected line to mirror across' }
+  if (lines.length > 1) return { reason: 'mirror needs exactly one selected line as the axis' }
+  const sourceIds = ids.filter(id => id !== lines[0])
+  // The axis alone is nothing to mirror; the drive boundary refuses the empty
+  // sourceIds the same way, so the gate refuses it here too instead of letting
+  // the mutation dispatch and do nothing.
+  if (sourceIds.length === 0) return { reason: 'mirror needs an entity to mirror besides the axis line' }
+  return { axis: lines[0], sourceIds }
+}
+
 // The user-facing reason for an add the redundancy gate refuses. Shared by the
 // command path (applyConstraint returns it to the caller, which raises the
 // cannot-apply message) and the dimension confirm path (which raises the
@@ -613,6 +645,21 @@ export const editorState = createStore<EditorState>((set, get) => ({
       .map(t => t.split(':')[2])
     if (sourceIds.length === 0) return
     onMutation({ type: 'apply_offset', featureId: activeFeatureId, sourceIds, distance })
+  },
+
+  // Mirror the selected sketch entities across the one selected line, as
+  // authored geometry (one mutation, sources and axis decided by
+  // mirrorSelectionPlan). Returns the human-readable reason when the selection
+  // cannot carry the mirror; null when it was authored or there was nothing
+  // to act on, exactly as applyConstraint spells it.
+  mirrorSelection: () => {
+    const { normalSelection: selection, activeFeatureId, entityKindMap } = get()
+    const plan = mirrorSelectionPlan(selection, activeFeatureId, entityKindMap)
+    if ('reason' in plan) return plan.reason
+    const onMutation = requireMutation('mirrorSelection')
+    if (!onMutation) return null
+    onMutation({ type: 'mirror_entities', featureId: activeFeatureId!, sourceIds: plan.sourceIds, line: plan.axis })
+    return null
   },
 
   toggleConstruction: () => {

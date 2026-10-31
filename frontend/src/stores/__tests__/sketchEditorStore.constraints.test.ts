@@ -74,6 +74,80 @@ describe('sketchEditorStore', () => {
     })
   })
 
+  describe('mirrorSelection', () => {
+    it('dispatches mirror_entities with the selection split into axis and sources', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useEditorState.setState({
+      entityKindMap: {
+        'entity:Sketch1:AX': 'line',
+        'entity:Sketch1:C1': 'circle',
+        'entity:Sketch1:C2': 'circle',
+      },
+    })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:AX')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C2')
+
+      expect(useSketchEditorStore.getState().mirrorSelection()).toBeNull()
+      expect(handler).toHaveBeenCalledOnce()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'mirror_entities',
+        featureId: 'Sketch1',
+        sourceIds: expect.arrayContaining(['C1', 'C2']),
+        line: 'AX',
+      })
+    })
+
+    it('refuses a selection with no line, and with two lines, naming the rule', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useEditorState.setState({
+      entityKindMap: { 'entity:Sketch1:C1': 'circle', 'entity:Sketch1:AX': 'line', 'entity:Sketch1:L2': 'line' },
+    })
+
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C1')
+      expect(useSketchEditorStore.getState().mirrorSelection()).toContain('selected line')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:AX')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L2')
+      expect(useSketchEditorStore.getState().mirrorSelection()).toContain('exactly one selected line')
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('refuses an axis-only selection: there is nothing to mirror', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useEditorState.setState({ entityKindMap: { 'entity:Sketch1:AX': 'line' } })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:AX')
+
+      expect(useSketchEditorStore.getState().mirrorSelection()).toContain('besides the axis line')
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('a vertex selection rides along: it is neither axis nor source', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useEditorState.setState({
+      entityKindMap: { 'entity:Sketch1:AX': 'line', 'entity:Sketch1:C1': 'circle' },
+    })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:AX')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C1')
+      useSketchEditorStore.getState().toggleNormalSelection('vertex:Sketch1:C1:center')
+
+      expect(useSketchEditorStore.getState().mirrorSelection()).toBeNull()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'mirror_entities',
+        featureId: 'Sketch1',
+        sourceIds: ['C1'],
+        line: 'AX',
+      })
+    })
+  })
+
   describe('applyConstraint', () => {
     it('dispatches add_constraint with selected targets', () => {
       const handler = vi.fn()

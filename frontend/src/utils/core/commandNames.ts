@@ -20,7 +20,7 @@ export const COMMAND_NAMES = [
   'add_delete_face',
   'add_split',
   'apply_offset',
-  'set_tool_mirror',
+  'mirror_entities',
 
   // Sketch tools: set_tool_<activeTool>. Entity tools come from ENTITIES, the
   // rest are the compound and selection tools hardcoded in commandEntries.

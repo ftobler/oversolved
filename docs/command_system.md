@@ -304,6 +304,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | `insert_mate_spherical` | Insert Spherical mate | - | yes | assembly |
 | `insert_mate_tangential` | Insert Tangential mate | - | yes | assembly |
 | `insert_part_instance` | Insert part | - | no | assembly |
+| `mirror_entities` | Mirror selection | `shift+m` | yes | sketch/part |
 | `redo` | Redo | `ctrl+shift+z` | no | any |
 | `rename_mate` | Rename mate | - | yes | assembly |
 | `reorder_mate` | Reorder mate | - | yes | assembly |
@@ -322,7 +323,6 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | `set_tool_ellipse` | Ellipse tool | - | no | sketch/part |
 | `set_tool_fit_spline` | Spline tool | `s` | no | sketch/part |
 | `set_tool_line` | Line tool | `l` | no | sketch/part |
-| `set_tool_mirror` | Mirror tool | `shift+m` | no | sketch/part |
 | `set_tool_ngon` | N-gon tool | - | no | sketch/part |
 | `set_tool_point` | Point tool | - | no | sketch/part |
 | `set_tool_project` | Project tool | `j` | no | sketch/part |

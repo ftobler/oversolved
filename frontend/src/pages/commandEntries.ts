@@ -5,7 +5,7 @@ import type { Result } from '@/session/result'
 import { okResult } from '@/session/result'
 import type { ActiveTool } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
-import type { EditorState } from '@/stores/editorState'
+import { mirrorSelectionPlan, type EditorState } from '@/stores/editorState'
 import { useSketchUiStore, CANNOT_APPLY_TITLE, type SketchUiState } from '@/stores/sketchEditorStore'
 import { projectSelection } from '@/tools/projectSelectionCommand'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
@@ -363,21 +363,25 @@ const cancelDrawSpec: PartCommandSpec = {
   },
 }
 
+// Mirror is a selection action like offset, not a draw mode: the selected
+// entities are the sources and exactly one selected line is the axis, so no
+// value dialog is needed. `enabled` and the store action read the same
+// mirrorSelectionPlan, so a keyboard press on a selection that cannot carry
+// the mirror is refused at the gate rather than silently dropped.
 const mirrorSpec: PartCommandSpec = {
-  id: 'set_tool_mirror',
-  label: 'Mirror tool',
-  shortcut: partShortcut('set_tool_mirror'),
+  id: 'mirror_entities',
+  label: 'Mirror selection',
+  shortcut: partShortcut('mirror_entities'),
   params: noParams(),
-  undoable: false,
-  // The button is disabled without a selection, exactly as before; the command
-  // itself still surfaces the not-implemented notice when it runs.
+  undoable: true,
   enabled: ctx => {
     const st = ctx.state()
-    const active = st.activeTool === 'mirror'
-    return hasEntitySelection(st) || active ? true : 'select an entity first'
+    const plan = mirrorSelectionPlan(st.normalSelection, st.activeFeatureId, st.entityKindMap)
+    return 'reason' in plan ? plan.reason : true
   },
   run: ctx => {
-    ctx.showMessage({ title: 'Not Implemented', message: 'Mirror tool is not yet implemented.', variant: 'info' })
+    const reason = ctx.state().mirrorSelection()
+    if (reason !== null) ctx.showMessage({ title: 'Cannot mirror selection', message: reason, variant: 'error' })
     return okResult()
   },
 }
