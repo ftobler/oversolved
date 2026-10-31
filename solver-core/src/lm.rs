@@ -37,22 +37,45 @@ pub struct LmResult {
     /// a non-finite value is reserved for a non-finite residual input, which
     /// returns the seed unchanged with `iters == 0`.
     pub residual_norm: f64,
+    /// True when `jacobian` can be handed to a decomposition. Calculated, not
+    /// assumed: a caller's Jacobian closure can return a NaN entry at a finite
+    /// residual (a singular derivative, a bad probe), and nalgebra's SVD
+    /// convergence test never fires on NaN, so decomposing that matrix wedges
+    /// the worker. A false flag also covers the non-finite-residual exit,
+    /// whose returned matrix is a placeholder.
+    pub jacobian_finite: bool,
     pub iters: u32,
 }
 
 /// Relative step for the central finite-difference Jacobian. `cbrt(eps)` is the
-/// usual optimum for a 3-point stencil (truncation vs round-off balance).
-fn fd_step(xj: f64) -> f64 {
-    f64::EPSILON.cbrt() * xj.abs().max(1.0)
+/// usual optimum for a 3-point stencil (truncation vs round-off balance), and
+/// `floor` is the smallest absolute step the problem's geometry should take:
+/// pass its characteristic length, not 1.0, or a sketch drawn at 0.01 is
+/// differenced with a step 6e-4 of its own size.
+fn fd_step(xj: f64, floor: f64) -> f64 {
+    let floor = if floor > 0.0 { floor } else { 1.0 };
+    f64::EPSILON.cbrt() * xj.abs().max(floor)
 }
 
-/// Central 3-point finite-difference Jacobian of `f` at `x`. `m` is the residual
-/// count (taken from a prior `f(x)` so we can size the matrix). Kept for the
-/// analytic-vs-FD cross-check tests; the solver itself uses an analytic
-/// Jacobian. Unconditionally compiled (not `#[cfg(test)]`) because both solver
-/// crates' test suites call it across the crate boundary, where `cfg(test)`
-/// does not reach.
+/// Central 3-point finite-difference Jacobian of `f` at `x`, with a unit step
+/// floor: the convenience form for unit-scale problems and tests. A caller
+/// whose geometry is not on the unit scale passes its own length to
+/// [`fd_jacobian_scaled`] instead.
 pub fn fd_jacobian(f: &impl Fn(&[f64]) -> Vec<f64>, x: &[f64], m: usize) -> DMatrix<f64> {
+    fd_jacobian_scaled(f, x, m, 1.0)
+}
+
+/// As [`fd_jacobian`], with the step floored at `scale`.
+///
+/// Unconditionally compiled (not `#[cfg(test)]`) because both solver crates'
+/// test suites call it across the crate boundary, where `cfg(test)` does not
+/// reach.
+pub fn fd_jacobian_scaled(
+    f: &impl Fn(&[f64]) -> Vec<f64>,
+    x: &[f64],
+    m: usize,
+    scale: f64,
+) -> DMatrix<f64> {
     let n = x.len();
     let mut j = DMatrix::<f64>::zeros(m, n);
     if m == 0 {
@@ -60,7 +83,7 @@ pub fn fd_jacobian(f: &impl Fn(&[f64]) -> Vec<f64>, x: &[f64], m: usize) -> DMat
     }
     let mut xp = x.to_vec();
     for col in 0..n {
-        let h = fd_step(x[col]);
+        let h = fd_step(x[col], scale);
         xp[col] = x[col] + h;
         let f_plus = f(&xp);
         xp[col] = x[col] - h;
@@ -175,6 +198,7 @@ pub fn solve_lm_damped_retract(
             x,
             jacobian: DMatrix::zeros(m, n),
             residual_norm: norm2(&r),
+            jacobian_finite: true,
             iters: 0,
         };
     }
@@ -182,12 +206,14 @@ pub fn solve_lm_damped_retract(
     // Non-finite contract: a NaN/Inf residual would poison every subsequent
     // cost comparison, so the driver refuses to step and returns the seed
     // unchanged. The caller sees a non-finite `residual_norm` and can report
-    // the malformed problem instead of a silent "converged" seed.
+    // the malformed problem instead of a silent "converged" seed. The returned
+    // matrix is a placeholder, so the finite flag is false whatever it holds.
     if r.iter().any(|&v| !v.is_finite()) {
         return LmResult {
             x,
             jacobian: DMatrix::zeros(m, n),
             residual_norm: norm2(&r),
+            jacobian_finite: false,
             iters: 0,
         };
     }
@@ -338,10 +364,14 @@ pub fn solve_lm_damped_retract(
         }
     }
 
+    // The gate both SVD call sites read before decomposing: a non-finite
+    // entry here would spin nalgebra's SVD forever (see the field's doc).
+    let jacobian_finite = jacm.iter().all(|v| v.is_finite()) && norm2(&r).is_finite();
     LmResult {
         x,
         jacobian: jacm,
         residual_norm: norm2(&r),
+        jacobian_finite,
         iters,
     }
 }
@@ -356,7 +386,19 @@ pub struct SpLmResult {
     /// a non-finite value is reserved for a non-finite residual input, which
     /// returns the seed unchanged with `iters == 0`.
     pub residual_norm: f64,
+    /// True when the residual and every entry of the last sparse Jacobian were
+    /// finite. The drag path reads it to refuse a frame whose Jacobian went
+    /// singular; the internal CG solve silently truncates on a bad matrix
+    /// otherwise.
+    pub jacobian_finite: bool,
     pub iters: u32,
+}
+
+/// True when every entry of every sparse row is finite. Sparse rows carry only
+/// the nonzeros, so this is the whole matrix.
+fn rows_finite(rows: &[SparseRow]) -> bool {
+    rows.iter()
+        .all(|row| row.iter().all(|&(_, v)| v.is_finite()))
 }
 
 /// LM driver that uses a sparse Jacobian + conjugate-gradient linear solve
@@ -438,6 +480,7 @@ fn sparse_lm(
         return SpLmResult {
             x,
             residual_norm: norm2(&r),
+            jacobian_finite: true,
             iters: 0,
         };
     }
@@ -448,11 +491,13 @@ fn sparse_lm(
         return SpLmResult {
             x,
             residual_norm: norm2(&r),
+            jacobian_finite: false,
             iters: 0,
         };
     }
 
     let mut jac = jac_sparse(&x);
+    let mut jacobian_finite = rows_finite(&jac);
     // Where the anchor pulls: the seed, or the iterate itself when proximal.
     let mut target = x0.to_vec();
     let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(anchor, &target, &x);
@@ -513,6 +558,7 @@ fn sparse_lm(
                 x = x_new;
                 r = r_new;
                 jac = jac_sparse(&x);
+                jacobian_finite = rows_finite(&jac);
                 // diag is recomputed inside damped_solve each iteration;
                 // only recompute here for the convergence-check heuristics.
                 lambda = (lambda * LAMBDA_DOWN).max(1e-12);
@@ -523,6 +569,7 @@ fn sparse_lm(
                     return SpLmResult {
                         x,
                         residual_norm: norm2(&r),
+                        jacobian_finite: jacobian_finite && norm2(&r).is_finite(),
                         iters,
                     };
                 }
@@ -548,6 +595,7 @@ fn sparse_lm(
     SpLmResult {
         x,
         residual_norm: norm2(&r),
+        jacobian_finite: jacobian_finite && norm2(&r).is_finite(),
         iters,
     }
 }
@@ -892,5 +940,53 @@ mod tests {
         assert_eq!(r.iters, 0);
         assert_eq!(r.x, vec![3.0]);
         assert!(!r.residual_norm.is_finite());
+    }
+
+    // A finite residual with a NaN Jacobian entry: the driver must report the
+    // matrix as undecomposable. Both solver crates gate their SVD on this flag
+    // because nalgebra's SVD never converges on NaN and would wedge the worker.
+    #[test]
+    fn solve_lm_reports_a_non_finite_jacobian() {
+        let f = |x: &[f64]| vec![x[0] - 5.0];
+        let jac = |_: &[f64]| DMatrix::from_row_slice(1, 1, &[f64::NAN]);
+        let r = solve_lm(&[0.0], &f, &jac);
+        assert!(!r.jacobian_finite, "a NaN Jacobian read as finite");
+        assert!(r.residual_norm.is_finite(), "the residual itself was fine");
+    }
+
+    #[test]
+    fn solve_lm_sparse_reports_a_non_finite_jacobian() {
+        let f = |x: &[f64]| vec![x[0] - 5.0];
+        let jac = |_: &[f64]| vec![vec![(0, f64::INFINITY)]];
+        let r = solve_lm_sparse(&[0.0], &f, &jac);
+        assert!(!r.jacobian_finite);
+    }
+
+    #[test]
+    fn a_converged_solve_reports_a_finite_jacobian() {
+        let (x0, f, jac) = two_d();
+        let r = solve_lm(&x0, &f, &jac);
+        assert!(r.jacobian_finite);
+        let r = solve_lm_sparse(&[0.0], &|x: &[f64]| vec![x[0] - 5.0], &|_: &[f64]| {
+            vec![vec![(0, 1.0)]]
+        });
+        assert!(r.jacobian_finite);
+    }
+
+    #[test]
+    fn the_scaled_finite_difference_step_tracks_the_problem_length() {
+        // x^3 at the origin has a zero derivative, so the whole finite-
+        // difference entry is the stencil's truncation error h^2: the unit
+        // floor steps 6e-6 and the 1e-3-scale floor 6e-9, a million times
+        // tighter. That is exactly the step a 0.001-wide drawing needs.
+        let f = |x: &[f64]| vec![x[0].powi(3)];
+        let unit = fd_jacobian(&f, &[0.0], 1)[(0, 0)];
+        let scaled = fd_jacobian_scaled(&f, &[0.0], 1, 1e-3)[(0, 0)];
+        assert!(unit > 0.0, "the fixture stopped reading truncation error");
+        let ratio = unit / scaled;
+        assert!(
+            (ratio / 1e6 - 1.0).abs() < 1e-3,
+            "the floor did not follow the scale: unit {unit:e}, scaled {scaled:e}"
+        );
     }
 }

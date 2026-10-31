@@ -42,6 +42,9 @@ def test_the_fixture_parses_and_covers_every_required_case() -> None:
     # points with and without scaling.
     required = {
         "ex010",
+        "closed",
+        "n64",
+        "tiny_chord",
         "n2",
         "n3",
         "n4",
@@ -85,6 +88,31 @@ def test_the_fixture_parses_and_covers_every_required_case() -> None:
             assert key in case, f"{case['name']} lacks {key}"
         assert len(case["samples"]) == len(case["points"]) - 1
         assert len(case["chain"]) == 3 * (len(case["points"]) - 1) + 1
+
+
+def test_the_split_cases_come_from_ocp_bezier_segments() -> None:
+    fixture = read_golden()
+    names = {case["name"] for case in fixture["splits"]}
+    assert names == {"mid", "head", "tail", "thin"}
+    for case in fixture["splits"]:
+        assert 0.0 <= case["t0"] < case["t1"] <= 1.0
+        assert len(case["control"]) == 4
+        assert len(case["poles"]) == 4
+
+
+def test_the_edge_cases_carry_their_purpose() -> None:
+    fixture = read_golden()
+    cases = {case["name"]: case for case in fixture["cases"]}
+    # Closed: the seam point is repeated, so the chain ends where it began.
+    closed = cases["closed"]["points"]
+    assert closed[0] == closed[-1]
+    # The document's fit-point cap.
+    assert len(cases["n64"]["points"]) == 64
+    # A span orders below its neighbours, far above the OCP tolerance.
+    points = cases["tiny_chord"]["points"]
+    us = golden_generator.chord_params([tuple(p) for p in points])
+    spans = [b - a for a, b in zip(us, us[1:])]
+    assert min(spans) < 2e-3 and max(spans) > 1.0
 
 
 def test_ex010_matches_the_plan_reference_numbers() -> None:

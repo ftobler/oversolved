@@ -51,7 +51,7 @@ fn chord_params(points: &[[f64; 2]]) -> Vec<f64> {
 fn every_golden_case_matches_ocp() {
     let fixture = golden();
     let cases = fixture["cases"].as_array().unwrap();
-    assert!(cases.len() >= 25, "the fixture lost cases");
+    assert!(cases.len() >= 28, "the fixture lost cases");
     for case in cases {
         let name = case["name"].as_str().unwrap();
         let points = point_list(&case["points"]);
@@ -135,6 +135,60 @@ fn every_golden_case_matches_ocp() {
             assert_eq!(mults.last(), Some(&4));
         }
     }
+}
+
+#[test]
+fn every_golden_split_matches_ocp() {
+    // `Geom_BezierCurve.Segment` is the oracle: the same fixture pins the Rust
+    // and the TypeScript split against OCP instead of against each other.
+    let fixture = golden();
+    let splits = fixture["splits"].as_array().unwrap();
+    assert!(splits.len() >= 4, "the fixture lost its split cases");
+    for case in splits {
+        let name = case["name"].as_str().unwrap();
+        let control: [[f64; 2]; 4] = point_list(&case["control"]).try_into().unwrap();
+        let t0 = case["t0"].as_f64().unwrap();
+        let t1 = case["t1"].as_f64().unwrap();
+        let actual = split_bezier(&control, t0, t1);
+        assert_points_close(&actual, &point_list(&case["poles"]), name);
+    }
+}
+
+#[test]
+fn a_split_at_the_far_joint_stays_finite() {
+    // The old head-first rescale divided by `1 - t0`; at t0 == 1.0 that is 0/0
+    // and every pole came back NaN. A cut one ulp below a piece joint is the
+    // case that produces it (see `a_cut_one_ulp_below_a_joint_...`).
+    let control = [[0.0, 0.0], [1.0, 2.0], [2.0, -1.0], [3.0, 1.0]];
+    let out = split_bezier(&control, 1.0, 1.0);
+    assert!(out.iter().flatten().all(|v| v.is_finite()), "{out:?}");
+    assert_points_close(&out, &[control[3]; 4], "split at the joint");
+}
+
+#[test]
+fn a_cut_one_ulp_below_a_joint_keeps_the_sub_chain_finite() {
+    // Chosen so the head fraction `(u0 - a) / (b - a)` rounds up to exactly
+    // 1.0: the joint itself. `sub_chain` still keeps the piece because `b` is
+    // strictly above `u0`, so the split goes through `split_bezier(1.0, 1.0)`.
+    let points = [
+        [0.0, 0.0],
+        [1.6733906860886536, 1.6094009701277372],
+        [3.161360788020988, -2.829537828938908],
+        [5.598324259115278, -2.6156588303029107],
+    ];
+    let curve = FitSpline::new(&points, None, None).unwrap();
+    let (a, b) = (curve.knots()[1], curve.knots()[2]);
+    let u0 = f64::from_bits(b.to_bits() - 1);
+    assert_eq!(
+        ((u0 - a) / (b - a)).clamp(0.0, 1.0),
+        1.0,
+        "the fixture no longer rounds the head fraction onto the joint"
+    );
+    let (poles, knots) = curve.sub_chain(u0, b);
+    assert_eq!(poles.len(), 3 * (knots.len() - 1) + 1);
+    assert!(poles.iter().flatten().all(|v| v.is_finite()), "{poles:?}");
+    // And the sub-chain still ends on the joint it was cut at.
+    assert_points_close(&[poles[poles.len() - 1]], &[curve.eval(b)], "end");
 }
 
 #[test]
@@ -317,8 +371,11 @@ fn the_param_layout_refuses_every_malformed_wire_shape() {
     assert!(ParamLayout::from_wire(7, 0).is_err());
     assert!(ParamLayout::from_wire(2, 0).is_err());
     assert!(ParamLayout::from_wire(2 * 65, 0).is_err());
-    // An unknown flag bit.
-    assert!(ParamLayout::from_wire(6, 0b100).is_err());
+    // An unknown flag bit is its own error, not a geometry complaint.
+    assert_eq!(
+        ParamLayout::from_wire(6, 0b100),
+        Err(FitSplineError::BadFlags(0b100))
+    );
     assert_eq!(ParamLayout::from_wire(4, 0).unwrap().points, 2);
 }
 

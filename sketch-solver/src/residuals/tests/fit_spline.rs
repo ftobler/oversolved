@@ -1,5 +1,5 @@
 use super::*;
-use crate::fit_spline::{FitSpline, ParamLayout, FLAG_HANDLE_START};
+use crate::fit_spline::{FitSpline, ParamLayout, FLAG_HANDLE_START, HANDLE_FLAGS};
 
 /// A `fit_spline` entity record with the layout its params imply.
 fn fit_entity(off: usize, points: usize, flags: u8) -> Entity {
@@ -340,6 +340,117 @@ fn a_duplicate_coincident_on_an_interior_fit_point_is_redundant() {
         out.constraint_flags[1] & crate::CONSTRAINT_FLAG_REDUNDANT,
         0
     );
+}
+
+#[test]
+fn a_normal_on_a_fit_spline_is_kept_and_solves_perpendicular() {
+    // The fit points are pinned and the line's start is fixed at the curve's
+    // start, so only the line's direction is free: the Normal must rotate it
+    // onto the curve's normal there. `Problem::new` dropped the constraint
+    // before this fix, and the sketch then read Underconstrained (the
+    // direction was free) instead of Fully.
+    let mut params = ex010();
+    params.extend_from_slice(&[3.0, 1.0, 4.0, 2.0]);
+    let fit = fit_entity(0, 8, 0);
+    let line = ent(Kind::Line, 16);
+    let mut fixed_start = c_target(ConstraintKind::Fixed, 1, PointSelector::Start);
+    fixed_start.xy = Some((3.0, 1.0));
+    let mut length = c_target(ConstraintKind::Length, 1, PointSelector::Absent);
+    length.value = Some(2.0);
+    let normal = Constraint {
+        kind_code: ConstraintKind::Normal.to_u8(),
+        refs: ab(
+            e_ref(1, PointSelector::Absent),
+            e_ref(0, PointSelector::Start),
+        ),
+        ..Default::default()
+    };
+    let mut inp = input(vec![fit, line], params, vec![fixed_start, length, normal]);
+    pin_entities(&mut inp, &[0]);
+    let problem = Problem::new(&inp);
+    assert_eq!(problem.constraints().len(), 3, "the Normal was dropped");
+
+    let out = solve_sketch(&inp);
+    assert!(
+        out.diagnostics.residual_norm < 1e-8,
+        "normal not satisfied: {}",
+        out.diagnostics.residual_norm
+    );
+    let points: Vec<[f64; 2]> = ex010().chunks_exact(2).map(|p| [p[0], p[1]]).collect();
+    let d0 = FitSpline::new(&points, None, None).unwrap().derivative(0);
+    let dir = [
+        out.params_solved[18] - out.params_solved[16],
+        out.params_solved[19] - out.params_solved[17],
+    ];
+    let dot = dir[0] * d0[0] + dir[1] * d0[1];
+    let bound = 1e-6 * (dir[0].hypot(dir[1]) * d0[0].hypot(d0[1]));
+    assert!(
+        dot.abs() < bound,
+        "the line is not along the curve normal: dot {dot} (bound {bound})"
+    );
+}
+
+/// Fit-spline refs the solver can resolve to one point, plus the unnamed
+/// selector that resolves to the chain's mid-chord point.
+fn jacobian_selectors() -> Vec<PointSelector> {
+    vec![
+        PointSelector::Start,
+        PointSelector::End,
+        PointSelector::Fit(1),
+        PointSelector::Fit(3),
+        PointSelector::C1,
+        PointSelector::C2,
+        PointSelector::Absent,
+    ]
+}
+
+#[test]
+fn the_analytic_jacobian_of_every_fit_spline_selector_matches_finite_differences() {
+    // The unnamed selector used to produce a residual row with no Jacobian
+    // entry, which LM could not reduce; this walks every selector so a missing
+    // or wrong column fails here first.
+    use solver_core::lm::fd_jacobian_scaled;
+    for selector in jacobian_selectors() {
+        let mut params = ex010();
+        params.extend_from_slice(&[4.0, 3.0, -1.0, 2.0]);
+        params.extend_from_slice(&[2.5, 3.0]);
+        let fit = fit_entity(0, 8, HANDLE_FLAGS);
+        let point = ent(Kind::Point, 20);
+        let constraint = Constraint {
+            kind_code: ConstraintKind::PointDistance.to_u8(),
+            refs: ab(e_ref(1, PointSelector::Xy), e_ref(0, selector)),
+            value: Some(1.5),
+            ..Default::default()
+        };
+        let inp = input(vec![fit, point], params, vec![constraint]);
+        let problem = Problem::new(&inp);
+        assert_eq!(
+            problem.constraints().len(),
+            1,
+            "{selector:?} was dropped before the solve"
+        );
+        let x = problem.x0.clone();
+        let m = problem.residuals(&x).len();
+        assert!(m > 0, "{selector:?}: no residual rows");
+        let analytic = problem.jacobian(&x, x.len());
+        let fd = fd_jacobian_scaled(&|xx| problem.residuals(xx), &x, m, problem.scale());
+        for r in 0..m {
+            for col in 0..x.len() {
+                let a = analytic[(r, col)];
+                let f = fd[(r, col)];
+                assert!(
+                    (a - f).abs() <= 1e-5 * f.abs().max(1.0),
+                    "{selector:?} ({r},{col}): analytic {a} != fd {f}"
+                );
+            }
+        }
+        if selector == PointSelector::Absent {
+            assert!(
+                analytic.row(0).iter().any(|v| v.abs() > 1e-9),
+                "the unnamed selector still has an empty Jacobian row"
+            );
+        }
+    }
 }
 
 #[test]

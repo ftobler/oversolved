@@ -15,6 +15,7 @@ import {
   handlesFromTangents,
   interpolateFitSpline,
   scaleTangents,
+  splitBezier,
   type Pt,
 } from '../fitSpline'
 
@@ -34,7 +35,16 @@ interface GoldenCase {
   samples: number[][][]
 }
 
+interface SplitCase {
+  name: string
+  control: number[][]
+  t0: number
+  t1: number
+  poles: number[][]
+}
+
 const cases = (golden as { cases: GoldenCase[] }).cases
+const splits = (golden as { splits: SplitCase[] }).splits
 
 function pt(v: number[]): Pt {
   return [v[0], v[1]]
@@ -133,6 +143,27 @@ describe('fit spline golden parity', () => {
       if (c.handle_start) pointsClose([handles.handleStart as Pt], [pt(c.handle_start)], `${c.name} start handle`)
       if (c.handle_end) pointsClose([handles.handleEnd as Pt], [pt(c.handle_end)], `${c.name} end handle`)
     }
+  })
+})
+
+describe('fit spline splitting', () => {
+  it('splitBezier reproduces OCP sub-curves', () => {
+    // The SAME fixture the Rust `split_bezier` reads, so the two mirrors are
+    // pinned against OCP's `Geom_BezierCurve.Segment` instead of each other.
+    expect(splits.length).toBeGreaterThanOrEqual(4)
+    for (const s of splits) {
+      const control = s.control.map(pt)
+      pointsClose(splitBezier(control, s.t0, s.t1), s.poles.map(pt), `${s.name} split`)
+    }
+  })
+
+  it('a split at the far joint stays finite', () => {
+    // t0 == t1 == 1 divides the old head-first rescale by zero; the tail-first
+    // order the mirror uses keeps every pole finite and lands on the endpoint.
+    const control: Pt[] = [[0, 0], [1, 2], [2, -1], [3, 1]]
+    const out = splitBezier(control, 1, 1)
+    expect(out.every(p => Number.isFinite(p[0]) && Number.isFinite(p[1]))).toBe(true)
+    pointsClose(out, [control[3], control[3], control[3], control[3]], 'joint split')
   })
 })
 

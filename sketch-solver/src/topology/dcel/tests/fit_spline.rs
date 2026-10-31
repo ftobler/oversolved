@@ -170,6 +170,60 @@ fn a_smooth_joint_never_produces_a_split_near_itself() {
 }
 
 #[test]
+fn a_single_piece_that_loops_bounds_its_lobe() {
+    // Two fit points with both handles let the one cubic control net be the
+    // self-crossing fixture: the curve leaves the start, loops over the top and
+    // meets its own other branch. That double point must become a vertex, or
+    // the lobe between the two branches encloses nothing.
+    let points = [[0.0, 0.0], [1.0, 0.0]];
+    let geom = vec![(
+        "sp".into(),
+        fit_spline(&points, Some([4.0, 3.0]), Some([-4.0, 3.0])),
+    )];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 1, "the loop bounds one lobe");
+    let (area, _) = loop_area_centroid(&t.surfaces[0].boundary);
+    assert!(area.abs() > 0.1, "the lobe collapsed: area {}", area.abs());
+    assert!(
+        check_topology(&geom, &t).is_empty(),
+        "{:?}",
+        check_topology(&geom, &t)
+    );
+}
+
+#[test]
+fn adjacent_pieces_that_cross_again_close_their_lobe() {
+    // A closed chain whose pieces 0 and 1 meet a second time away from their
+    // shared joint. Non-adjacent crossings were always tested; the adjacent
+    // pair used to be skipped, so the loop that second contact bounds never
+    // closed and its area was lost.
+    let points = [
+        [0.0, 0.0],
+        [2.787797683854368, 2.4281759070734203],
+        [0.4146450208459411, 1.2829021210451952],
+        [-1.7332500979464103, 1.9896475816401251],
+        [0.0, 0.0],
+    ];
+    let geom = vec![("sp".into(), fit_spline(&points, None, None))];
+    let t = detect_topology(&geom);
+    assert!(
+        !t.surfaces.is_empty(),
+        "the adjacent crossing left no closed region"
+    );
+    let total: f64 = t
+        .surfaces
+        .iter()
+        .map(|s| loop_area_centroid(&s.boundary).0.abs())
+        .sum();
+    assert!(total > 0.5, "the lobe area was lost: {total}");
+    assert!(
+        check_topology(&geom, &t).is_empty(),
+        "{:?}",
+        check_topology(&geom, &t)
+    );
+}
+
+#[test]
 fn a_degenerate_fit_spline_is_refused_by_the_codec() {
     use crate::topology::codec::{decode_input, TopologyCodecError};
     let payload = serde_json::json!([

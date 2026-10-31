@@ -577,10 +577,15 @@ pub(super) fn add_spline_self_intersections(
     lobe_vertex
 }
 
-/// Split each fit spline at its own crossings. Non-adjacent pieces are ordinary
-/// curve pairs, so a figure-eight through points slices into its lobes. The
-/// returned map is the lobe-vertex set per entity, the fit-spline counterpart of
-/// `add_spline_self_intersections`' single lobe vertex.
+/// Split each fit spline at its own crossings. Every piece pair is tested,
+/// including adjacent pieces and each piece against itself: a chain can loop
+/// inside ONE cubic (a double point, `bezier_self_crossing`) and two adjacent
+/// pieces can meet again away from their shared joint. Non-adjacent pieces are
+/// ordinary curve pairs, so a figure-eight through points slices into its lobes.
+/// The joint itself is never a crossing: it is an interior chain parameter, not
+/// a vertex, so its hit is filtered out. The returned map is the lobe-vertex set
+/// per entity, the fit-spline counterpart of `add_spline_self_intersections`'
+/// single lobe vertex.
 pub(super) fn add_fit_spline_self_intersections(
     fit_splines: &[(String, TopoEntity)],
     splits: &mut HashMap<String, Vec<Split>>,
@@ -592,23 +597,40 @@ pub(super) fn add_fit_spline_self_intersections(
             continue;
         };
         let pieces = curves_of(e);
+        // (param on the first branch, param on the second, world point).
+        let mut crossings: Vec<(f64, f64, [f64; 2])> = Vec::new();
+        for (i, curve) in &pieces {
+            let Curve::Bezier { p0, c1, c2, p3 } = *curve else {
+                continue;
+            };
+            if let Some(cross) = bezier_self_crossing(&[p0, c1, c2, p3]) {
+                crossings.push((*i as f64 + cross.t_lo, *i as f64 + cross.t_hi, cross.point));
+            }
+        }
         for i in 0..pieces.len() {
-            for j in (i + 2)..pieces.len() {
+            for j in (i + 1)..pieces.len() {
                 for h in intersect_curves(&pieces[i].1, &pieces[j].1) {
-                    let v = verts.vid(h.point);
-                    let s_i = i as f64 + h.t_a;
-                    let s_j = j as f64 + h.t_b;
-                    if let Some(spl) = splits.get_mut(eid) {
-                        if !has_param(spl, s_i) {
-                            spl.push((s_i, v.clone()));
-                        }
-                        if !has_param(spl, s_j) {
-                            spl.push((s_j, v.clone()));
-                        }
+                    // Adjacent pieces meet at their shared joint by
+                    // construction; only a second contact is a self-crossing.
+                    let at_joint = j == i + 1 && h.t_a >= 1.0 - SPLIT_EPS && h.t_b <= SPLIT_EPS;
+                    if at_joint {
+                        continue;
                     }
-                    lobes.entry(eid.clone()).or_default().insert(v);
+                    crossings.push((i as f64 + h.t_a, j as f64 + h.t_b, h.point));
                 }
             }
+        }
+        for (s_a, s_b, point) in crossings {
+            let v = verts.vid(point);
+            if let Some(spl) = splits.get_mut(eid) {
+                if !has_param(spl, s_a) {
+                    spl.push((s_a, v.clone()));
+                }
+                if !has_param(spl, s_b) {
+                    spl.push((s_b, v.clone()));
+                }
+            }
+            lobes.entry(eid.clone()).or_default().insert(v);
         }
     }
     lobes

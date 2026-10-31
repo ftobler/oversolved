@@ -13,6 +13,10 @@ diffs the result, so a hand-edited fixture cannot pass.
 Only the cases OCP and our algorithm agree on are recorded. The one documented
 deviation, N = 2 with a single handle, is left out on purpose: OCP gives that
 free end a zero derivative while we use the chord rule (see the plan D4).
+
+The `splits` section is generated from `Geom_BezierCurve.Segment`, so the Rust
+`split_bezier` and the TypeScript `splitBezier` are compared against OCP's own
+sub-curve rather than against each other.
 """
 
 from __future__ import annotations
@@ -54,6 +58,30 @@ TANGENTS = {
     4: ((1.0, 0.5), (-0.5, 1.0)),
     5: ((0.5, 1.0), (-1.0, 0.5)),
 }
+
+# A closed point list: the last point repeats the first, so the chain returns to
+# its seam (CadQuery's non-periodic interpolation, which is what the document
+# builds).
+CLOSED = [(0.0, 0.0), (1.0, 1.0), (2.0, 0.0), (1.0, -1.0), (0.0, 0.0)]
+
+# The document's fit-point cap.
+N64 = [(i * 0.1, math.sin(i * 0.25)) for i in range(64)]
+# A span orders below its neighbours: the tridiagonal system and the Lagrange
+# end rule are conditioned on the chord lengths, so this is the size where the
+# interpolation starts to feel the conditioning (at 1e-4 the poles already
+# disagree with OCP past the fixture's 1e-12 parity tolerance).
+TINY_CHORD = [(0.0, 0.0), (2.0, 0.0), (2.001, 0.001), (4.0, 3.0)]
+
+# Split parity: (name, control points, t0, t1). OCP's `Segment` is the oracle
+# for the sub-curve both mirrors must reproduce.
+SPLIT_CTRL_A = [(0.0, 0.0), (1.0, 2.0), (2.0, -1.0), (3.0, 1.0)]
+SPLIT_CTRL_B = [(0.0, 1.0), (0.5, 3.0), (-1.0, -1.0), (2.0, 1.0)]
+SPLITS = [
+    ("mid", SPLIT_CTRL_A, 0.25, 0.8),
+    ("head", SPLIT_CTRL_A, 0.0, 0.5),
+    ("tail", SPLIT_CTRL_B, 0.5, 1.0),
+    ("thin", SPLIT_CTRL_B, 0.7, 0.71),
+]
 
 
 def chord_params(points: list[tuple[float, float]]) -> list[float]:
@@ -166,6 +194,34 @@ def _end_derivative(curve: Any, u: float) -> list[float]:
     return [derivative.X(), derivative.Y()]
 
 
+def _split_cases() -> list[dict[str, Any]]:
+    """OCP's sub-curve of each Bezier, the split oracle both mirrors read."""
+    from OCP.Geom import Geom_BezierCurve
+    from OCP.gp import gp_Pnt
+    from OCP.TColgp import TColgp_Array1OfPnt
+
+    cases: list[dict[str, Any]] = []
+    for name, control, t0, t1 in SPLITS:
+        array = TColgp_Array1OfPnt(1, len(control))
+        for i, point in enumerate(control, 1):
+            array.SetValue(i, gp_Pnt(point[0], point[1], 0.0))
+        curve = Geom_BezierCurve(array)
+        curve.Segment(t0, t1)
+        cases.append(
+            {
+                "name": name,
+                "control": [list(p) for p in control],
+                "t0": t0,
+                "t1": t1,
+                "poles": [
+                    [curve.Pole(i).X(), curve.Pole(i).Y()]
+                    for i in range(1, curve.NbPoles() + 1)
+                ],
+            }
+        )
+    return cases
+
+
 def build_cases() -> dict[str, Any]:
     """The committed fixture, in a stable order."""
     cases: list[dict[str, Any]] = []
@@ -207,6 +263,9 @@ def build_cases() -> dict[str, Any]:
         )
 
     add("ex010", EX010, None, None, None, False)
+    add("closed", CLOSED, None, None, None, False)
+    add("n64", N64, None, None, None, False)
+    add("tiny_chord", TINY_CHORD, None, None, None, False)
     for n in (2, 3, 4, 5):
         add(f"n{n}", POINTS[n], None, None, None, False)
 
@@ -309,6 +368,7 @@ def build_cases() -> dict[str, Any]:
         },
         "samples_per_span": SAMPLES_PER_SPAN,
         "cases": cases,
+        "splits": _split_cases(),
     }
 
 

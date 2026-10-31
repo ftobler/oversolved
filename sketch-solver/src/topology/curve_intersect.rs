@@ -84,6 +84,19 @@ const ZERO_LENGTH_SQ: f64 = 1e-18;
 /// resolution-derived budgets decide.
 const CIRCLE_TANGENT_EPS: f64 = 1e-12;
 
+/// Bezier box flatness in world units: an AABB pair no larger than this on
+/// either branch is treated as meeting at the box midpoint, and the recursion
+/// stops. Absolute like the resolution constants' deliberate exceptions, and it
+/// is a DETECTION width rather than a measurement: the reported hit IS the box
+/// midpoint, so its error is bounded by this world distance. That error sits
+/// far below `TOL_TOPOLOGY_MERGE` (1e-5), so it can never fuse two distinct
+/// vertices, and far above the resolution at every modelled scale (1e-15 of the
+/// sketch size, i.e. 1e-17..1e-12 here), so it is never below the arithmetic's
+/// own noise. Deriving it from `bezier_scale` would make the box count explode
+/// (a unit curve would need ~1e8 boxes) without improving any decision that
+/// reads the hit.
+const FLAT: f64 = 1e-7;
+
 // ─── recover a curve's parameter from a point known to lie on it ───
 
 fn param_of(curve: &Curve, p: Vec2) -> f64 {
@@ -614,7 +627,6 @@ fn bezier_bezier(ca: BzCtrl, cb: BzCtrl) -> Vec<Hit> {
     if ctrl_polygons_coincident(&ca, &cb) {
         return vec![];
     }
-    const FLAT: f64 = 1e-7;
     let mut out: Vec<Hit> = Vec::new();
     let mut budget = BbBudget {
         visits_left: NODE_BUDGET,

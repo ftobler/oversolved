@@ -307,7 +307,10 @@ impl<'a> Problem<'a> {
                 }
                 // Mixed form: exactly one operand must be the line, read as
                 // endpoints, and the other a curve with a contact normal. Two
-                // curves would read one of them as a line's endpoints.
+                // curves would read one of them as a line's endpoints. A fit
+                // spline qualifies through `fit_spline_normal`; omitting it
+                // dropped the constraint before the solve even though
+                // `r_normal` has an arm for it.
                 let curve = if ka == Some(Kind::Line) {
                     kb
                 } else if kb == Some(Kind::Line) {
@@ -317,7 +320,7 @@ impl<'a> Problem<'a> {
                 };
                 matches!(
                     curve,
-                    Some(Kind::Circle | Kind::Arc | Kind::Ellipse | Kind::Spline)
+                    Some(Kind::Circle | Kind::Arc | Kind::Ellipse | Kind::Spline | Kind::FitSpline)
                 )
             }
             // Concentric equates the first two params of both operands, which

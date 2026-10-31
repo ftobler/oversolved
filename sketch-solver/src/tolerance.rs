@@ -23,9 +23,12 @@
 //!
 //! The deliberately absolute thresholds, and why they are not multiples (each
 //! also states its own reason where it is defined):
-//!   - `RANK_TOL`, `FREE_COMPONENT_TOL`: the Jacobian's entries are length per
-//!     length, so its spectrum is dimensionless and comparable at every scale.
-//!     These are numerical-rank floors on that spectrum, not geometry.
+//!   - `RANK_TOL`, `FREE_COMPONENT_TOL`: numerical-rank and null-basis floors
+//!     on the Jacobian. Mostly dimensionless (a residual length per parameter
+//!     length), with one exception the constant's own doc names: the
+//!     arc/ellipse angle columns are radial lengths per degree. `RANK_TOL`
+//!     states the radius range where the absolute floor is still sound, and
+//!     why the mate crate uses a relative cutoff instead.
 //!   - `REDUNDANT_ROW_REL`: already relative, but to the row's own norm rather
 //!     than to a length: a share of the row a later row may re-use before it
 //!     counts as a driver.
@@ -104,12 +107,36 @@ pub fn verdict_tol(scale: f64) -> f64 {
 }
 
 /// Singular values above this count toward the rank. Deliberately absolute and
-/// dimensionless: every Jacobian entry is a residual length per parameter
-/// length, so the spectrum is comparable across model scales, and this is the
-/// numerical-rank floor below which a singular value cannot be told from
-/// round-off (the row builders' finite-difference fallback and the Gram-Schmidt
-/// walk both measure round-off at ~1e-16, and a genuine direction stays above
-/// 1e-6 by orders of magnitude at every scale the app models).
+/// (almost) dimensionless: a distance row's unit direction, a parallel row's
+/// cross product over a seed length and an axis-alignment row are all a
+/// residual length per parameter length, so they do not move with the sketch's
+/// size. This value is the numerical-rank floor below which a singular value
+/// cannot be told from round-off (the row builders' finite-difference fallback
+/// and the Gram-Schmidt walk both measure round-off at ~1e-16, and a genuine
+/// direction stays above 1e-6 by orders of magnitude).
+///
+/// The one column family that is NOT length per length is the angle slot of an
+/// arc or an ellipse: `jacobian::point_jac` writes `r * DEG2RAD` there (a
+/// radial LENGTH per DEGREE), so its singular contribution scales with the
+/// curve's radius and reads `~0.0175 * r` against the unit rows. The absolute
+/// floor is therefore sound only while `0.0175 * r` stays well above it, i.e.
+/// for a radius above ~6e-5 world, which is 6 times the area builder's merge
+/// rung (`TOL_TOPOLOGY_MERGE`, 1e-5) and 600 times OCC's confusion (1e-7).
+/// Below that radius an arc's angle column drops under the floor and its angle
+/// direction would read as free; the app's smallest modelled sketch starts at
+/// 0.01 mm (resolution 1e-17), so that band is reachable only by a
+/// deliberately sub-millimetre arc, but it is a stated bound, not a property
+/// that holds by construction. Normalising the angle columns by the radius
+/// would make the rank exact at every size but would change the step the
+/// solver takes (the columns feed JᵀJ), which is a geometry change, not a
+/// diagnostic one, so this crate corrects the statement instead.
+///
+/// The mate crate uses a RELATIVE cutoff (`RANK_REL_TOL * smax`) for a
+/// different matrix: its rotation columns track the lever arm, so a fixed
+/// floor reads a small assembly's genuine directions as rank loss. Here the
+/// single radius caveat above is bounded and the rest of the spectrum is
+/// scale-free, so the absolute floor is the honest one. [`FREE_COMPONENT_TOL`]
+/// reads the null basis in the same mixed units and carries the same caveat.
 pub const RANK_TOL: f64 = 1e-6;
 
 /// A param is free when some null direction moves it by more than this. The

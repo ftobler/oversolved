@@ -1146,7 +1146,7 @@ fn retry_reaches_tolerance(input: &MateInput, problem: &MateProblem, solved: &[f
                 &mut retract,
             );
             let rms = res.residual_norm / (attempt.m.max(1) as f64).sqrt();
-            if res.residual_norm.is_finite() && rms <= tol {
+            if res.residual_norm.is_finite() && res.jacobian_finite && rms <= tol {
                 return true;
             }
         }
@@ -1225,11 +1225,11 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     // Rank analysis via SVD. Skipped on a live drag tick, which reads only the
     // pose and discards the verdict: the SVD is pure per-frame cost there, and
     // the full solve on pointer-up is what owns the rank/dof the editor shows.
-    // Also skipped when the residuals are poisoned: nalgebra's SVD convergence
-    // test never fires on NaN, so this call would spin forever and wedge the
-    // serialized worker. `mate_status` then reports the failure instead of a
-    // rank that cannot be trusted.
-    let poisoned = !lm_result.residual_norm.is_finite();
+    // Also skipped when the residuals or the Jacobian are poisoned: nalgebra's
+    // SVD convergence test never fires on NaN, so this call would spin forever
+    // and wedge the serialized worker. `mate_status` then reports the failure
+    // instead of a rank that cannot be trusted.
+    let poisoned = !lm_result.residual_norm.is_finite() || !lm_result.jacobian_finite;
     let (rank, dof) = if live {
         (0u32, 0u32)
     } else {
@@ -1258,12 +1258,20 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
         ((n_red - dof) as u32, dof as u32)
     };
 
-    let mut status = mate_status(
-        lm_result.residual_norm,
-        m,
-        dof as usize,
-        problem.geometry_scale(),
-    );
+    // A Jacobian that could not be decomposed is not evidence of a satisfied
+    // assembly: the rank pass above was skipped, so `dof` is a placeholder.
+    // Report the failing verdict instead of letting an under-tolerance residual
+    // with a poisoned matrix read as FullyConstrained.
+    let mut status = if lm_result.jacobian_finite {
+        mate_status(
+            lm_result.residual_norm,
+            m,
+            dof as usize,
+            problem.geometry_scale(),
+        )
+    } else {
+        MateStatus::Overconstrained
+    };
 
     // The wire layout is still 7 params per body; composing the final unit
     // quaternions here is the only place the reduced state and the seed buffer

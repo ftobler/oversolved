@@ -37,6 +37,17 @@ impl RowBuf {
     }
 }
 
+/// Central-difference step for one param: `cbrt(eps)` is the three-point
+/// stencil's truncation/round-off balance, times the param's own magnitude and
+/// floored at the sketch scale. The floor used to be a fixed 1.0, which on a
+/// 0.01 mm sketch stepped 6e-4 of the geometry: the derivative became a chord
+/// across a visible arc instead of a tangent. A zero-scale problem has no
+/// scale to read, so it keeps the unit floor.
+fn fd_step(xj: f64, scale: f64) -> f64 {
+    let floor = if scale > 0.0 { scale } else { 1.0 };
+    f64::EPSILON.cbrt() * xj.abs().max(floor)
+}
+
 impl Problem<'_> {
     // ─── Analytic Jacobian ───
     //
@@ -112,7 +123,9 @@ impl Problem<'_> {
 
     /// Central finite-difference rows for one constraint, perturbing only the
     /// params it touches. Used as the fallback for constraints without an
-    /// analytic derivative.
+    /// analytic derivative, and for any constraint that names a fit spline
+    /// through a selector with no closed-form point (see
+    /// `has_unnamed_fit_spline_operand`).
     /// `xp` is a copy of `x` the caller owns; each perturbed param is restored
     /// before the next, so it is a copy of `x` again on return.
     fn fd_constraint_rows(&self, c: &Constraint, x: &[f64], xp: &mut [f64]) -> Vec<SparseRow> {
@@ -123,7 +136,7 @@ impl Problem<'_> {
         }
         let mut rows: Vec<RowBuf> = (0..k).map(|_| RowBuf::new()).collect();
         for j in self.involved_params(c) {
-            let h = f64::EPSILON.cbrt() * x[j].abs().max(1.0);
+            let h = fd_step(x[j], self.scale());
             xp[j] = x[j] + h;
             let fp = self.residual_one_vec(c, xp);
             xp[j] = x[j] - h;
@@ -135,6 +148,32 @@ impl Problem<'_> {
             }
         }
         rows.into_iter().map(RowBuf::finish).collect()
+    }
+
+    /// True when the constraint names a fit spline through a selector
+    /// `Problem::point` resolves to the chain's mid-chord point (`Absent`, a
+    /// centre, or any other selector that is not a named fit point or handle).
+    ///
+    /// That point depends on every param of the entity through the tridiagonal
+    /// interpolation, so there is no small analytic Jacobian for it. Without
+    /// this route `point_jac` returned an empty row while the residual was
+    /// nonzero: LM could not reduce it, the verdict read Overconstrained, and
+    /// the rank pass never saw the row.
+    fn has_unnamed_fit_spline_operand(&self, c: &Constraint) -> bool {
+        c.refs.iter().any(|(_, r)| match r {
+            Ref::Entity { index, point } => {
+                self.kind_of(*index) == Kind::FitSpline
+                    && !matches!(
+                        point,
+                        PointSelector::Start
+                            | PointSelector::End
+                            | PointSelector::Fit(_)
+                            | PointSelector::C1
+                            | PointSelector::C2
+                    )
+            }
+            Ref::External { .. } => false,
+        })
     }
 
     /// Jacobian of a 2D point reference w.r.t. its entity params: a list of
@@ -230,8 +269,10 @@ impl Problem<'_> {
                     // Fit spline: every named selector is one of the entity's
                     // own param pairs, so the Jacobian is the identity there.
                     // The curve midpoint (an unnamed selector) depends on every
-                    // param; no analytic row reads it, and the finite-difference
-                    // fallback covers it if one ever does.
+                    // param through the interpolation; `jac_one` routes any
+                    // constraint that names it to the finite-difference rows
+                    // before it can reach this arm, and the empty result here
+                    // stays as the explicit marker that no analytic row exists.
                     Kind::FitSpline => {
                         let layout = self.fit_layout(index).unwrap_or(ParamLayout {
                             points: 0,
@@ -268,6 +309,15 @@ impl Problem<'_> {
 
     fn jac_one(&self, c: &Constraint, x: &[f64], xp: &mut [f64], rows: &mut Vec<SparseRow>) {
         let Some(kind) = c.kind() else { return };
+        // The fit-spline mid-chord reference is the one point `point()` can
+        // resolve without a small analytic Jacobian, so the whole constraint
+        // takes the finite-difference row. Checked before the dispatch because
+        // several analytic arms (point distance, axis alignment, fixed)
+        // resolve operands through `point_jac`.
+        if self.has_unnamed_fit_spline_operand(c) {
+            rows.extend(self.fd_constraint_rows(c, x, xp));
+            return;
+        }
         match kind {
             ConstraintKind::Horizontal => self.jac_axis_aligned(c, x, rows, true),
             ConstraintKind::Vertical => self.jac_axis_aligned(c, x, rows, false),
@@ -579,5 +629,33 @@ impl Problem<'_> {
                 rows.push(vec![(off + i, 1.0)]);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fd_step;
+
+    #[test]
+    fn the_finite_difference_step_is_floored_at_the_problem_scale() {
+        // A param at (or through) zero used to step by cbrt(eps) * 1.0 whatever
+        // the drawing's size: 6e-6 world, or 6e-4 of a 0.01 mm sketch, which
+        // differenced a curve over a visible arc. The floor now tracks the
+        // geometry, so the step is the same fraction of the sketch at any
+        // scale.
+        let small = fd_step(0.0, 0.01);
+        let large = fd_step(0.0, 100.0);
+        assert!(
+            (large / small - 1e4).abs() < 1e-9,
+            "the floor did not track the scale: {small:e} vs {large:e}"
+        );
+        assert_eq!(fd_step(0.0, 1.0), f64::EPSILON.cbrt());
+        // Above the floor the step follows the param's own magnitude, which is
+        // what keeps a coordinate far from the origin differenced relatively.
+        assert!(fd_step(50.0, 0.01) > fd_step(0.5, 0.01));
+        assert_eq!(fd_step(50.0, 0.01), fd_step(50.0, 1.0));
+        // A zero scale (no geometry to read) keeps the unit floor rather than
+        // dividing by a zero step.
+        assert_eq!(fd_step(0.0, 0.0), f64::EPSILON.cbrt());
     }
 }

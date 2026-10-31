@@ -52,6 +52,9 @@ pub enum FitSplineError {
     /// parameter span vanishes and the tridiagonal system has no answer.
     CoincidentPoints(usize, usize),
     NonFinite,
+    /// A flag byte carried a bit the entity kind does not define. Reported on
+    /// its own so a decoder bug is not blamed on the geometry.
+    BadFlags(u8),
 }
 
 /// The refusal text the area builder and the authoring sugar surface.
@@ -69,6 +72,9 @@ pub fn fit_spline_error_message(error: &FitSplineError, id: &str) -> String {
         }
         FitSplineError::NonFinite => {
             format!("fit spline '{id}' has a non-finite fit point or handle")
+        }
+        FitSplineError::BadFlags(flags) => {
+            format!("fit spline '{id}' has undefined entity flags {flags:#04x}")
         }
     }
 }
@@ -89,7 +95,7 @@ impl ParamLayout {
     /// builders never index a param block that does not exist.
     pub fn from_wire(param_count: usize, flags: u8) -> Result<Self, FitSplineError> {
         if flags & !HANDLE_FLAGS != 0 {
-            return Err(FitSplineError::NonFinite);
+            return Err(FitSplineError::BadFlags(flags));
         }
         let handles =
             (flags & FLAG_HANDLE_START != 0) as usize + (flags & FLAG_HANDLE_END != 0) as usize;
@@ -614,14 +620,20 @@ fn bezier_closest_t(ctrl: &[[f64; 2]; 4], p: [f64; 2]) -> f64 {
 
 /// The part of one cubic Bezier between parameters `t0 <= t1`, via de
 /// Casteljau. The end pieces of a cut fit spline are these.
+///
+/// The order of the two cuts is the TypeScript mirror's
+/// (`splitBezier` in `utils/geometry/fitSpline.ts`) and it is load-bearing:
+/// trimming the head first and rescaling by `(t1 - t0) / (1 - t0)` divides by
+/// zero when `t0` rounds to 1.0, which `sub_chain` produces for a cut one ulp
+/// below a piece joint. `subdivide` trims the tail at `t1` first, so the head
+/// cut rescales by `t0 / t1` and stays finite.
 pub fn split_bezier(ctrl: &[[f64; 2]; 4], t0: f64, t1: f64) -> [[f64; 2]; 4] {
     if t1 < t0 {
         let mut r = split_bezier(ctrl, t1, t0);
         r.reverse();
         return r;
     }
-    let right = subdivide(ctrl, t0, 1.0);
-    subdivide(&right, 0.0, (t1 - t0) / (1.0 - t0))
+    subdivide(ctrl, t0, t1)
 }
 
 fn subdivide(ctrl: &[[f64; 2]; 4], t0: f64, t1: f64) -> [[f64; 2]; 4] {
@@ -629,7 +641,8 @@ fn subdivide(ctrl: &[[f64; 2]; 4], t0: f64, t1: f64) -> [[f64; 2]; 4] {
         return *ctrl;
     }
     // Split at t1, keep the left part, then split that at t0/t1 and keep the
-    // right part. Two de Casteljau passes keep the arithmetic exact.
+    // right part. Two de Casteljau passes keep the arithmetic exact, and the
+    // tail-first order keeps the rescale finite at a joint (see `split_bezier`).
     let left = de_casteljau(ctrl, t1).0;
     if t0 <= 0.0 {
         return left;
