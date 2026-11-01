@@ -73,7 +73,7 @@ entries of `kernel/solverConstants.ts`).
 
 The built-ins cannot be deleted, reordered or suppressed
 (`applyDeleteFeature`, `applyReorderFeatures`, `applySetFeatureSuppression` in
-`utils/yamlMutations/partStyle.ts`). The rollback bar cannot be dragged above
+`utils/yamlMutations/featureAdmin.ts`). The rollback bar cannot be dragged above
 them (`FeatureTree.tsx` clamps the drop targets to the built-in count), but the
 stored `rollback` field is not clamped to them: a hand-authored `rollback: 0`
 passes the loader and the bar is drawn at that index.

@@ -451,13 +451,13 @@ describe('solver write-back and a session that edited nothing', () => {
   // What useEditFeature does when the editor opens on ex1: the store learns
   // which feature is open, where the rollback bar sits and how far the pick
   // boundary reaches, so useSolver's editing invariant holds.
-  const openSessionOnEx1 = (result: { current: { startEditSession: (s: boolean) => void; reSolve: (d: PartDoc) => Promise<void> | void } }) => {
+  const openSessionOnEx1 = (result: { current: { startEditSession: (s: boolean) => void; requestSolve: () => Promise<unknown> | null } }) => {
     const store = editorState.getState()
     store.setEditingFeatureId('ex1')
     store.setRollbackPosition(2)
     store.setPickBoundary(1)
     act(() => { result.current.startEditSession(true) })
-    return act(async () => { await result.current.reSolve(docRef.current!) })
+    return act(async () => { await result.current.requestSolve() })
   }
 
   // Entering an edit re-solves the whole stack (useEditFeature's tail), and that

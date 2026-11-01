@@ -4,6 +4,7 @@ import { useDocumentState } from '@/hooks/useDocumentState'
 import { useSolver } from '@/hooks/useSolver'
 import { createDocSession, type DocSession, type SessionJournalSink } from '@/session/DocSession'
 import type { Result, SessionFailure } from '@/session/result'
+import type { SolveOptions, SolveOutcome } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
 import { failLoud } from '@/stores/stateInvariants'
@@ -37,12 +38,16 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   // mode). The adapter runs it on the engine's teardown event.
   const undoTeardownRef = useRef<(() => void) | null>(null)
 
+  // The load path solves through the session, not the raw solver: the ref is
+  // filled with the session's requestSolve once the session exists.
+  const solveRef = useRef<(() => unknown) | null>(null)
+
   const {
     doc, setDoc, docRef, docName,
     loading, error, setError,
     loadFailure, setLoadFailure,
     saveDoc, renameDoc, cloneDoc,
-  } = useDocumentState(uuid, reSolveRef, { solveOnLoad, workspace })
+  } = useDocumentState(uuid, solveRef, { solveOnLoad, workspace })
 
   // The solver state the session reads through its ports. The setters land via
   // effects because useSolver is called after the session; a mutation only runs
@@ -93,6 +98,12 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     session.clearStashForSolved(featureIds)
   }, [session])
 
+  // The session-bound solve every non-mutation path uses (load, edit enter and
+  // exit, Rebuild, Clear cache). useSolver's own reSolve stays behind the
+  // scheduler, so these requests count toward pending/idle.
+  const requestSolve = useCallback((opts?: SolveOptions): Promise<SolveOutcome> | null =>
+    session.requestSolve(opts), [session])
+
   const {
     solveResults, setSolveResults, bodies, pickBodies, pickStateReady,
     solving, solveError, setSolveError,
@@ -101,6 +112,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   } = useSolver(uuid, { onFirstSolve, onSolveApplied: clearStashForSolved }, docRef, setDoc)
 
   useEffect(() => { reSolveRef.current = reSolve }, [reSolve])
+  useEffect(() => { solveRef.current = requestSolve }, [requestSolve])
   useEffect(() => { solveResultsRef.current = solveResults }, [solveResults])
   useEffect(() => { setSolveResultsRef.current = setSolveResults }, [setSolveResults])
   useEffect(() => { validationRef.current = validation }, [validation])
@@ -280,7 +292,6 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
 
   return {
     doc,
-    setDoc,
     session,
     docRef,
     docName,
@@ -290,7 +301,6 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     loadFailure,
     setLoadFailure,
     solveResults,
-    setSolveResults,
     featureTimings,
     bodies,
     pickBodies,
@@ -300,7 +310,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     setSolveError,
     undoStack,
     redoStack,
-    reSolve,
+    requestSolve,
     validation,
     handleMutation,
     commitMutationGroup,

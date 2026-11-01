@@ -6,7 +6,7 @@ import {
   applyAddSplitBody,
   applyRemoveSplitBody,
 } from '@/utils/yamlMutations'
-import { applyReorderPickField } from '@/utils/yamlMutations/partStyle'
+import { applyReorderPickField } from '@/utils/yamlMutations/featureAdmin'
 import { createDocSession } from '@/session/DocSession'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
 import { featureAt } from '@/testing/featureAccess'

@@ -21,7 +21,7 @@ import {
   type SessionFailure,
   type SessionSuccess,
 } from '@/session/result'
-import type { SolveOptions, SolveScheduler, SolveSchedulerState } from '@/session/SolveScheduler'
+import type { SolveOptions, SolveOutcome, SolveScheduler, SolveSchedulerState } from '@/session/SolveScheduler'
 import {
   PREVIEW_SCOPE,
   NO_FALLBACK_BREP_KINDS,
@@ -117,7 +117,7 @@ export interface SessionDiagnostic {
 }
 
 export type TransactionId = string
-export type TransactionKind = 'preview' | 'edit' | 'gesture' | 'brep'
+export type TransactionKind = 'preview' | 'edit' | 'brep'
 
 export interface TransactionSummary {
   id: TransactionId
@@ -311,16 +311,6 @@ interface EditTransaction extends TransactionBase {
   dirty: DirtyPin
 }
 
-// The explicit fold for gesture-shaped work (a drag that lands as one entry):
-// mutations apply live with no entries while it is open, commit banks one entry
-// keyed to the baseline, cancel rewinds it.
-interface GestureTransaction extends TransactionBase {
-  kind: 'gesture'
-  baseline: PartDoc
-  firstMutation: Mutation | null
-  dirty: DirtyPin
-}
-
 // The brep pick/commit pair. `armed` applies the next mutation without an
 // entry; a consumed arm leaves `doc` as the pre-gesture doc the dimension
 // commit restores.
@@ -330,7 +320,7 @@ interface BrepTransaction extends TransactionBase {
   doc: PartDoc | null
 }
 
-type Transaction = PreviewTransaction | EditTransaction | GestureTransaction | BrepTransaction
+type Transaction = PreviewTransaction | EditTransaction | BrepTransaction
 
 // The framework-free L1 session: it owns the history, the transaction stack,
 // the dirty policy and solve scheduling; every doc write goes through execute,
@@ -343,8 +333,7 @@ export class DocSession {
   private readonly listeners = new Set<(event: SessionEvent) => void>()
   private readonly diagnosticsLog: SessionDiagnostic[] = []
   // The stack of open transactions, oldest first. Preview and edit are
-  // mutually exclusive by begin's rules; a brep arm nests inside either; a
-  // gesture runs alone.
+  // mutually exclusive by begin's rules; a brep arm nests inside either.
   private openTransactions: Transaction[] = []
   // Retained pruned solve results, keyed by feature id, held across the undo
   // boundary. Edits hand their pruned snapshot to their own re-solve, but an
@@ -399,11 +388,20 @@ export class DocSession {
     return this.deps.solve.idle()
   }
 
+  // Every re-solve outside a mutation rides this: a document load, an edit
+  // enter/exit, Rebuild, Clear cache. Routing them all through the scheduler is
+  // what keeps pending/idle and inspect().solve honest, so a caller waiting on
+  // idle() cannot be released mid-solve. Null means no document is open.
+  requestSolve(opts?: SolveOptions): Promise<SolveOutcome> | null {
+    const doc = this.deps.doc.get()
+    if (!doc) return null
+    return this.deps.solve.request(doc, opts)
+  }
+
   // A solve of the current doc with no edit semantics: the adapter's session
   // exit paths (a cancel with no open session) use it to refresh the viewport.
   refreshSolve(): void {
-    const doc = this.deps.doc.get()
-    if (doc) void this.deps.solve.request(doc)
+    void this.requestSolve()
   }
 
   // Drops the retained pre-delete snapshot once a solve genuinely produced a
@@ -431,7 +429,6 @@ export class DocSession {
     switch (kind) {
       case 'preview': return this.beginPreview(opts)
       case 'edit': return this.beginEdit(opts)
-      case 'gesture': return this.beginGesture()
       case 'brep': return this.beginBrep()
     }
   }
@@ -444,7 +441,6 @@ export class DocSession {
     switch (txn.kind) {
       case 'preview': return this.commitPreviewTransaction(txn, opts.mutation)
       case 'edit': return this.commitEditTransaction(txn)
-      case 'gesture': return this.commitGestureTransaction(txn)
       case 'brep': return this.commitBrepTransaction(txn)
     }
   }
@@ -455,9 +451,8 @@ export class DocSession {
       return this.fault('unknown-transaction', `no open transaction with id '${id}'`)
     }
     switch (txn.kind) {
-      case 'preview': return this.cancelRestoreTransaction(txn)
+      case 'preview': return this.cancelPreviewTransaction(txn)
       case 'edit': return this.cancelEditTransaction(txn)
-      case 'gesture': return this.cancelRestoreTransaction(txn)
       case 'brep':
         // The caller already ran the compensating delete: dropping the
         // withhold is the whole cancel, no rewind and no entry.
@@ -568,15 +563,6 @@ export class DocSession {
       this.consumeBrepArm(current)
       return okResult()
     }
-    const gesture = this.findTransaction('gesture')
-    if (gesture) {
-      // A gesture frame lands live but records nothing; the commit banks one
-      // entry keyed to the baseline.
-      if (!gesture.firstMutation) gesture.firstMutation = mutations[0]
-      this.landApplied(current, mutations, applied)
-      this.reportDocChange(mutations, group, current, applied.next, unsettled)
-      return this.createdIdsFor(mutations, current, applied.next)
-    }
     const result = this.landMutations(mutations, current, applied)
     this.reportDocChange(mutations, group, current, applied.next, unsettled)
     return result
@@ -658,7 +644,7 @@ export class DocSession {
   }
 
   // The doc swap and the solve request, shared by every path that lands a
-  // mutation set (including a gesture frame).
+  // mutation set.
   private landApplied(current: PartDoc, mutations: Mutation[], applied: AppliedMutations): void {
     const { next, restorable, nextSolveResults } = applied
     // Every doc edit funnels through here, so this is the one place that flags
@@ -669,7 +655,7 @@ export class DocSession {
     }
     this.stashRestorable(current, restorable)
     this.deps.doc.set(next)
-    this.requestSolve(next, mutations, restorable)
+    this.solveAfterMutation(next, mutations, restorable)
   }
 
   private runMutations(current: PartDoc, mutations: Mutation[]): AppliedMutations {
@@ -789,7 +775,7 @@ export class DocSession {
     return okResult(ids, created.length - ids.length)
   }
 
-  private requestSolve(doc: PartDoc, mutations: Mutation[], restorable: Record<string, SketchData> | null): void {
+  private solveAfterMutation(doc: PartDoc, mutations: Mutation[], restorable: Record<string, SketchData> | null): void {
     let opts: SolveOptions
     if (mutations.length > 1) {
       opts = { _suppressFirstSolve: true }
@@ -928,25 +914,6 @@ export class DocSession {
     return openedResult(txn.id)
   }
 
-  private beginGesture(): OpenedResult {
-    if (this.openTransactions.length > 0) {
-      return this.fault('gesture-already-open', 'gesture refused: another transaction is open')
-    }
-    const current = this.deps.doc.get()
-    if (!current) {
-      return this.fault('no-document', 'gesture refused: no document')
-    }
-    const txn: GestureTransaction = {
-      id: this.freshId(),
-      kind: 'gesture',
-      baseline: this.deps.cloneDoc(current),
-      firstMutation: null,
-      dirty: this.pinDirty(),
-    }
-    this.openTransaction(txn)
-    return openedResult(txn.id)
-  }
-
   private beginBrep(): OpenedResult {
     const existing = this.findTransaction('brep')
     if (existing) {
@@ -1018,17 +985,6 @@ export class DocSession {
     return docDiffersForSession(txn.baseline, current) || txn.styleTouched
   }
 
-  private commitGestureTransaction(txn: GestureTransaction): Result {
-    const current = this.deps.doc.get()
-    const changed = current !== null && JSON.stringify(current) !== JSON.stringify(txn.baseline)
-    this.removeTransaction(txn)
-    if (changed && txn.firstMutation) {
-      this.history.pushSnapshot(describeMutation(txn.firstMutation), txn.baseline, txn.firstMutation)
-    }
-    this.emit({ type: 'changed' })
-    return okResult()
-  }
-
   private commitBrepTransaction(txn: BrepTransaction): Result {
     this.bankBrepProjection(txn)
     return okResult()
@@ -1046,9 +1002,9 @@ export class DocSession {
     return true
   }
 
-  // A cancel that rewinds to the baseline: preview and gesture. Doc rewind and
-  // the dirty reconcile are one unit; the re-solve below owns the viewport.
-  private cancelRestoreTransaction(txn: PreviewTransaction | GestureTransaction): Result {
+  // A preview cancel rewinds to its baseline. Doc rewind and the dirty
+  // reconcile are one unit; the re-solve below owns the viewport.
+  private cancelPreviewTransaction(txn: PreviewTransaction): Result {
     const current = this.deps.doc.get()
     if (current) {
       // The write-back installs a fresh doc object on every solve, so object

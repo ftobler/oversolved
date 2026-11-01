@@ -230,7 +230,7 @@ export default function Part() {
     solving,
     solveError,
     setSolveError,
-    reSolve,
+    requestSolve,
     handleMutation,
     commitMutationGroup,
     beginBrepProjection,
@@ -315,9 +315,9 @@ export default function Part() {
   }, [features.length])
 
   const handleRebuild = useCallback(() => {
-    if (docRef.current) reSolve(docRef.current)
+    requestSolve()
     setContextMenu(null)
-  }, [docRef, reSolve])
+  }, [requestSolve])
 
   // Whether the last solve flagged anything the cleanup command would remove.
   // Drives the context-menu item so an empty cleanup gesture is never offered.
@@ -364,13 +364,13 @@ export default function Part() {
       // Validation (a second, full, cache-less rebuild to diff incremental-vs-full
       // for the badge) doubles the solve, so it is opt-in via the dev-settings flag.
       const validate = useDevSettingsStore.getState().validateOnRebuild
-      await reSolve(docRef.current, { bypassCache: true, validate })
+      await requestSolve({ bypassCache: true, validate })
     } catch (e) {
       console.error('Rebuild failed:', e)
     } finally {
       setIsRebuilding(false)
     }
-  }, [uuid, reSolve, docRef])
+  }, [uuid, requestSolve, docRef])
 
   const pendingSketchOnFaceId = useRef<string | null>(null)
   const pendingEditSketchId = useRef<string | null>(null)
@@ -396,7 +396,7 @@ export default function Part() {
     commitEditSession,
     cancelEditSession,
     docRef,
-    reSolve,
+    requestSolve,
     setMode,
     clearPlaneSelection,
   })
@@ -987,12 +987,15 @@ export default function Part() {
       inspectSession: () => session.inspect(),
       editorState: getSketchState,
       idle: () => session.idle(),
-      executeMutation: mutation => session.execute(mutation),
+      // The bridge is a user edit like any other: handleMutation clears the
+      // stale solve banner and mirrors the dirty decision, which a raw
+      // session.execute leaves undone.
+      executeMutation: mutation => handleMutation(mutation),
       doc: () => session.getDoc(),
       screenshot: () => viewportRef.current?.captureScreenshotForSaving() ?? Promise.resolve(null),
       journal: { repro: () => getCommandJournal().repro() },
     })
-  }, [commandRegistry, session])
+  }, [commandRegistry, session, handleMutation])
 
   const handleSave = async () => {
     if (!uuid || !doc) return false

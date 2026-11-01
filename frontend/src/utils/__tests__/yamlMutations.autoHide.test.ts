@@ -18,7 +18,7 @@ import {
   applyReorderFeatures,
   applySetFeatureVisibility,
   applyToggleSketchPlaneVisibility,
-} from '@/utils/yamlMutations/partStyle'
+} from '@/utils/yamlMutations/featureAdmin'
 import { featureAt } from '@/testing/featureAccess'
 
 const auto_hidden0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').auto_hidden!

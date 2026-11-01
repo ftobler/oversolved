@@ -102,6 +102,9 @@ export {
   applySetPartMetalness,
   applySetPartRoughness,
   applySetPartTransmission,
+} from './partStyle'
+
+export {
   applyAddSketch,
   applyDeleteFeature,
   applyReorderFeatures,
@@ -117,4 +120,4 @@ export {
   applyAddPlane,
   applySetPlaneDefinitionField,
   applyReorderPickField,
-} from './partStyle'
+} from './featureAdmin'

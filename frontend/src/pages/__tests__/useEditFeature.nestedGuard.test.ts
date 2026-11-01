@@ -31,7 +31,7 @@ describe('useEditFeature nested-session guard (unit)', () => {
       commitEditSession,
       cancelEditSession: vi.fn(),
       docRef: { current: { features } as PartDoc },
-      reSolve: vi.fn(),
+      requestSolve: vi.fn(),
       setMode: () => true,
     }))
 

@@ -13,7 +13,7 @@
 // editor is open so the path stays pickable.
 //
 // The auto-hide is a one-shot per sketch-class feature: when the user shows a
-// consumed one the show stamps `auto_hidden` (yamlMutations/partStyle), and from
+// consumed one the show stamps `auto_hidden` (yamlMutations/featureAdmin), and from
 // then on the `visible` flag alone decides, however many features consume it.
 //
 // Pure on purpose: the viewport only reads the resulting id set, so the rule is

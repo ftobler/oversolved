@@ -16,6 +16,7 @@ const FEATURES: PartFeature[] = [
 
 function setup() {
   const setMode = vi.fn(() => true)
+  const requestSolve = vi.fn()
   const { result } = renderHook(() => useEditFeature({
     features: FEATURES,
     builtInIds: new Set(),
@@ -23,10 +24,10 @@ function setup() {
     commitEditSession: vi.fn(),
     cancelEditSession: vi.fn(),
     docRef: { current: { features: FEATURES } as PartDoc },
-    reSolve: vi.fn(),
+    requestSolve,
     setMode,
   }))
-  return { result, setMode }
+  return { result, setMode, requestSolve }
 }
 
 describe('useEditFeature sketch-mode automation', () => {
@@ -58,6 +59,17 @@ describe('useEditFeature sketch-mode automation', () => {
     setMode.mockClear()
     act(() => { result.current.cancelEditFeature() })
     expect(setMode).toHaveBeenCalledWith('feature')
+  })
+
+  // Entering and leaving pin the editor state the solve payload reads, so both
+  // owe exactly one solve, and both go through the session's scheduler.
+  it('solves once on enter and once on exit, through the session', () => {
+    const { result, requestSolve } = setup()
+    act(() => { result.current.enterEditFeature('ex1') })
+    expect(requestSolve).toHaveBeenCalledTimes(1)
+
+    act(() => { result.current.commitEditFeature() })
+    expect(requestSolve).toHaveBeenCalledTimes(2)
   })
 
   it('leaving a non-sketch edit does not touch the mode', () => {

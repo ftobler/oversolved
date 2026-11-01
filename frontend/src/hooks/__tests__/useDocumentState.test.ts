@@ -104,8 +104,12 @@ features:
       scale: 1
 `
     h.loadMock.mockResolvedValue({ content, name: 'Legacy Transform' })
-    const reSolveRef = { current: vi.fn() }
-    const { result } = renderHook(() => useDocumentState('L', reSolveRef, { solveOnLoad: true }))
+    // The port takes no doc argument: the solver reads the hook's live ref, so
+    // the test reads that same ref at call time to see which doc it would solve.
+    const solveRef: { current: (() => void) | null } = { current: null }
+    const seenAtSolve: unknown[] = []
+    const { result } = renderHook(() => useDocumentState('L', solveRef, { solveOnLoad: true }))
+    solveRef.current = () => { seenAtSolve.push(result.current.docRef.current) }
     await tick()
 
     const sub = result.current.doc!.features![0] as unknown as { transform: { bodies: string[]; body?: string } }
@@ -114,8 +118,10 @@ features:
     // The self-heal predates user intent, so the doc still starts clean.
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
     // The first solve receives the MIGRATED doc, not the raw legacy one.
-    expect(reSolveRef.current).toHaveBeenCalledTimes(1)
-    expect(reSolveRef.current).toHaveBeenCalledWith(result.current.doc)
+    expect(seenAtSolve).toHaveLength(1)
+    const solved = seenAtSolve[0] as { features: Array<{ transform: { bodies: string[]; body?: string } }> }
+    expect(solved.features[0].transform.bodies).toEqual(['@body_ex1'])
+    expect('body' in solved.features[0].transform).toBe(false)
   })
 
   it('rewrites a legacy singular delete_body body the same way', async () => {
@@ -130,8 +136,8 @@ features:
     h.loadMock.mockResolvedValue({ content, name: 'Legacy Delete' })
     // Stable ref: a fresh object per render would re-trigger the load effect and
     // the test would spin.
-    const reSolveRef = { current: null }
-    const { result } = renderHook(() => useDocumentState('L', reSolveRef, { solveOnLoad: false }))
+    const solveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('L', solveRef, { solveOnLoad: false }))
     await tick()
 
     const sub = result.current.doc!.features![0] as unknown as { delete_body: { bodies: string[]; body?: string } }
@@ -154,8 +160,8 @@ describe('useDocumentState saveDoc vs concurrent edits', () => {
 
   const loadSimpleDoc = async () => {
     h.loadMock.mockResolvedValue({ content: 'name: S', name: 'S' })
-    const reSolveRef = { current: null }
-    const { result } = renderHook(() => useDocumentState('S', reSolveRef, { solveOnLoad: false }))
+    const solveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('S', solveRef, { solveOnLoad: false }))
     await tick()
     return result
   }
@@ -282,10 +288,10 @@ features:
       name: 'Parked',
     })
     const seenAtSolve: Array<number | null> = []
-    const reSolveRef = { current: vi.fn(() => {
+    const solveRef = { current: vi.fn(() => {
       seenAtSolve.push(editorState.getState().rollbackPosition)
     }) }
-    renderHook(() => useDocumentState('P', reSolveRef, { solveOnLoad: true }))
+    renderHook(() => useDocumentState('P', solveRef, { solveOnLoad: true }))
     await tick()
 
     expect(seenAtSolve).toEqual([1])
@@ -297,10 +303,10 @@ features:
     restored.rollback = 1
     requestRecoveryRestore({ docId: 'P', doc: restored })
     const seenAtSolve: Array<number | null> = []
-    const reSolveRef = { current: vi.fn(() => {
+    const solveRef = { current: vi.fn(() => {
       seenAtSolve.push(editorState.getState().rollbackPosition)
     }) }
-    renderHook(() => useDocumentState('P', reSolveRef, { solveOnLoad: true }))
+    renderHook(() => useDocumentState('P', solveRef, { solveOnLoad: true }))
     await tick()
 
     expect(seenAtSolve).toEqual([1])
@@ -321,15 +327,18 @@ describe('useDocumentState recovery restore at load', () => {
     h.loadMock.mockResolvedValue({ content: 'version: 1\nkind: part\nfeatures: []\n', name: 'Stored' })
     const restored = makeDoc(makeSketch('restored'))
     requestRecoveryRestore({ docId: 'R', doc: restored })
-    const reSolveRef = { current: vi.fn() }
-    const { result } = renderHook(() => useDocumentState('R', reSolveRef, { solveOnLoad: true }))
+    const solveRef: { current: (() => void) | null } = { current: null }
+    const seenAtSolve: unknown[] = []
+    const { result } = renderHook(() => useDocumentState('R', solveRef, { solveOnLoad: true }))
+    solveRef.current = () => { seenAtSolve.push(result.current.docRef.current) }
     await tick()
 
     expect(result.current.doc).toEqual(restored)
     expect(result.current.docRef.current).toEqual(restored)
     expect(result.current.docName).toBe('Stored')
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
-    expect(reSolveRef.current).toHaveBeenCalledWith(restored)
+    // The parked snapshot, not the stored bytes, is what the first solve gets.
+    expect(seenAtSolve).toEqual([restored])
     // Single use: the handoff is consumed, so a remount reads stored bytes.
     expect(takeRecoveryRestore('R')).toBeNull()
   })
@@ -337,8 +346,8 @@ describe('useDocumentState recovery restore at load', () => {
   it('ignores a snapshot parked for another document', async () => {
     h.loadMock.mockResolvedValue({ content: 'version: 1\nkind: part\nfeatures: []\n', name: 'Stored' })
     requestRecoveryRestore({ docId: 'other', doc: makeDoc(makeSketch('other')) })
-    const reSolveRef = { current: null }
-    const { result } = renderHook(() => useDocumentState('R', reSolveRef, { solveOnLoad: false }))
+    const solveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('R', solveRef, { solveOnLoad: false }))
     await tick()
 
     // The stored text had no features, so the load added the built-ins: proof
@@ -356,14 +365,14 @@ describe('useDocumentState recovery restore at load', () => {
     h.loadMock.mockResolvedValue({ content, name: 'Bracket' })
     const restored = makeDoc(makeSketch('restored'))
     requestRecoveryRestore({ docId: 'V', doc: restored })
-    const reSolveRef = { current: vi.fn() }
-    const { result } = renderHook(() => useDocumentState('V', reSolveRef, { solveOnLoad: true }))
+    const solveRef = { current: vi.fn() }
+    const { result } = renderHook(() => useDocumentState('V', solveRef, { solveOnLoad: true }))
     await tick()
 
     expect(result.current.doc).toBeNull()
     expect(result.current.error).toContain('features[0].extrude.distance')
     expect(result.current.loadFailure).not.toBeNull()
-    expect(reSolveRef.current).not.toHaveBeenCalled()
+    expect(solveRef.current).not.toHaveBeenCalled()
     expect(takeRecoveryRestore('V')).toEqual(restored)
   })
 })
@@ -377,22 +386,22 @@ describe('useDocumentState load and operation failures', () => {
 
   it('surfaces a load failure and stops loading', async () => {
     h.loadMock.mockRejectedValue(new Error('corrupt document'))
-    const reSolveRef = { current: vi.fn() }
-    const { result } = renderHook(() => useDocumentState('E', reSolveRef, { solveOnLoad: true }))
+    const solveRef = { current: vi.fn() }
+    const { result } = renderHook(() => useDocumentState('E', solveRef, { solveOnLoad: true }))
     await tick()
 
     expect(result.current.error).toBe('corrupt document')
     expect(result.current.loading).toBe(false)
     expect(result.current.doc).toBeNull()
     // The failed load must not be handed to the solver.
-    expect(reSolveRef.current).not.toHaveBeenCalled()
+    expect(solveRef.current).not.toHaveBeenCalled()
   })
 
   it('reports a validation failure by field and keeps the raw text for the raw view', async () => {
     const content = 'version: 1\nkind: part\nfeatures:\n  - id: ex1\n    kind: extrude\n    extrude:\n      distance: .nan\n'
     h.loadMock.mockResolvedValue({ content, name: 'Bracket' })
-    const reSolveRef = { current: vi.fn() }
-    const { result } = renderHook(() => useDocumentState('V', reSolveRef, { solveOnLoad: true }))
+    const solveRef = { current: vi.fn() }
+    const { result } = renderHook(() => useDocumentState('V', solveRef, { solveOnLoad: true }))
     await tick()
 
     expect(result.current.doc).toBeNull()
@@ -401,14 +410,14 @@ describe('useDocumentState load and operation failures', () => {
     expect(result.current.loadFailure?.rawText).toBe(content)
     expect(result.current.loading).toBe(false)
     // A refused document is never handed to the solver.
-    expect(reSolveRef.current).not.toHaveBeenCalled()
+    expect(solveRef.current).not.toHaveBeenCalled()
   })
 
   it('clears a previous load error when a later load succeeds', async () => {
     h.loadMock.mockRejectedValueOnce(new Error('first load failed'))
-    const reSolveRef = { current: null }
+    const solveRef = { current: null }
     const { result, rerender } = renderHook(
-      ({ id }: { id: string }) => useDocumentState(id, reSolveRef, { solveOnLoad: false }),
+      ({ id }: { id: string }) => useDocumentState(id, solveRef, { solveOnLoad: false }),
       { initialProps: { id: 'A' } },
     )
     await tick()
@@ -424,9 +433,9 @@ describe('useDocumentState load and operation failures', () => {
 
   it('drops the previous document when a later load fails', async () => {
     h.loadMock.mockResolvedValueOnce({ content: 'name: A', name: 'A' })
-    const reSolveRef = { current: null }
+    const solveRef = { current: null }
     const { result, rerender } = renderHook(
-      ({ id }: { id: string }) => useDocumentState(id, reSolveRef, { solveOnLoad: false }),
+      ({ id }: { id: string }) => useDocumentState(id, solveRef, { solveOnLoad: false }),
       { initialProps: { id: 'A' } },
     )
     await tick()
@@ -447,9 +456,9 @@ describe('useDocumentState load and operation failures', () => {
     h.loadMock.mockImplementation((uuid: string) =>
       new Promise(resolve => { resolveLoad[uuid] = resolve }),
     )
-    const reSolveRef = { current: null }
+    const solveRef = { current: null }
     const { result, rerender } = renderHook(
-      ({ id }: { id: string }) => useDocumentState(id, reSolveRef, { solveOnLoad: false }),
+      ({ id }: { id: string }) => useDocumentState(id, solveRef, { solveOnLoad: false }),
       { initialProps: { id: 'A' } },
     )
     await tick()
@@ -469,8 +478,8 @@ describe('useDocumentState load and operation failures', () => {
 
   it('reports a save failure and returns false', async () => {
     h.loadMock.mockResolvedValue({ content: 'name: S', name: 'S' })
-    const reSolveRef = { current: null }
-    const { result } = renderHook(() => useDocumentState('S', reSolveRef, { solveOnLoad: false }))
+    const solveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('S', solveRef, { solveOnLoad: false }))
     await tick()
 
     h.failSave = true
@@ -483,8 +492,8 @@ describe('useDocumentState load and operation failures', () => {
 
   it('renameDoc updates the name on success and reports failure', async () => {
     h.loadMock.mockResolvedValue({ content: 'name: S', name: 'S' })
-    const reSolveRef = { current: null }
-    const { result } = renderHook(() => useDocumentState('S', reSolveRef, { solveOnLoad: false }))
+    const solveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('S', solveRef, { solveOnLoad: false }))
     await tick()
 
     h.renameMock.mockResolvedValue(undefined)

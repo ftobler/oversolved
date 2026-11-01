@@ -12,8 +12,7 @@ import { useEditorState } from '@/hooks/useEditorState'
 const mockStartPreviewMode = vi.hoisted(() => vi.fn())
 const mockCommitPreview = vi.hoisted(() => vi.fn())
 const mockCancelPreview = vi.hoisted(() => vi.fn())
-const mockSetDoc = vi.hoisted(() => vi.fn())
-const mockReSolve = vi.hoisted(() => vi.fn())
+const mockRequestSolve = vi.hoisted(() => vi.fn())
 // Holds the undo teardown the page registers, so a test can fire it without
 // needing a real undo stack behind the mocked usePartDoc.
 const undoTeardown = vi.hoisted(() => ({ current: null as (() => void) | null }))
@@ -35,8 +34,7 @@ vi.mock('../../hooks/usePartDoc', async () =>
     startPreviewMode: mockStartPreviewMode,
     commitPreview: mockCommitPreview,
     cancelPreview: mockCancelPreview,
-    setDoc: mockSetDoc,
-    reSolve: mockReSolve,
+    requestSolve: mockRequestSolve,
     registerUndoTeardown: (fn: (() => void) | null) => { undoTeardown.current = fn },
   }))
 
@@ -151,8 +149,7 @@ describe('Part Color Preview', () => {
     fireEvent.click(screen.getByText('Cancel'))
 
     expect(mockCancelPreview).toHaveBeenCalledTimes(1)
-    expect(mockSetDoc).not.toHaveBeenCalled()
-    expect(mockReSolve).not.toHaveBeenCalled()
+    expect(mockRequestSolve).not.toHaveBeenCalled()
   })
 
   // The popover once carried its own button copy, which drifted out of step with
@@ -217,8 +214,7 @@ describe('Part Color Preview', () => {
     fireEvent.click(screen.getByText('Cancel'))
 
     expect(mockCancelPreview).toHaveBeenCalledTimes(1)
-    expect(mockSetDoc).not.toHaveBeenCalled()
-    expect(mockReSolve).not.toHaveBeenCalled()
+    expect(mockRequestSolve).not.toHaveBeenCalled()
     expect(screen.queryByText('Apply')).toBeNull()
   })
 

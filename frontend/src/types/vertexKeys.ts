@@ -3,10 +3,10 @@
 // (major1/major2/minor1/minor2) sit alongside the base line/arc/circle/point
 // keys so `$<eid>major1` round-trips to { eid, sub: 'major1' }.
 //
-// A fit spline adds one positional key per INTERIOR fit point, `fit1`..`fit62`
-// (a 64-point spline's points 1..62; point 0 is `start` and the last is `end`).
-// They are a regular expression rather than 62 literal entries, so the closed
-// list stays short and the numeric bound lives in one place.
+// A fit spline adds one positional key per INTERIOR fit point, `fit1` up to
+// MAX_FIT_POINT_KEY (point 0 is `start` and the last is `end`). The key pattern
+// and the suffix list are both generated from that one bound, so raising the
+// limit cannot leave the regex rejecting the new interior keys.
 //
 // This is the single source for that suffix set. It is deliberately broader
 // than the per-entity registry VERTEX_INDICES, which (currently) omits the
@@ -17,13 +17,20 @@ export const VERTEX_POINT_KEYS = [
   'c1', 'c2',
 ] as const
 
-/** The largest interior fit-point index: a 64-point spline's `fit62`. */
+/** The largest interior fit-point index. Both the key pattern and the suffix
+ *  list below are built from it, so the limit has one home. */
 export const MAX_FIT_POINT_KEY = 62
 
-/** An interior fit-point key, `fit1`..`fit62`. `fit0`, `fit63`, `fit` and
- *  `fit01` are not points: point 0 is `start`, the last is `end`, and a
- *  positional key never carries a leading zero. */
-export const FIT_POINT_KEY = /^fit([1-9]|[1-5][0-9]|6[0-2])$/
+/** The interior indexes as strings, `1`..MAX_FIT_POINT_KEY. */
+const FIT_POINT_INDEXES: readonly string[] = Array.from(
+  { length: MAX_FIT_POINT_KEY },
+  (_, i) => String(i + 1),
+)
+
+/** An interior fit-point key, `fit1` through the bound above. `fit0`, the index
+ *  past the bound, `fit` and `fit01` are not points: point 0 is `start`, the
+ *  last is `end`, and a positional key never carries a leading zero. */
+export const FIT_POINT_KEY = new RegExp(`^fit(${FIT_POINT_INDEXES.join('|')})$`)
 
 /** The interior fit-point index named by `key`, or null when it is not one. */
 export function fitPointIndex(key: string): number | null {
@@ -36,9 +43,9 @@ export function isVertexPointKey(key: string): boolean {
   return (VERTEX_POINT_KEYS as readonly string[]).includes(key) || FIT_POINT_KEY.test(key)
 }
 
-/** Every vertex-key spelling, the fixed list plus `fit1`..`fit62`. The suffix
- *  splitters walk this, so a fit-point ref parses exactly like `start`. */
+/** Every vertex-key spelling, the fixed list plus the generated interior keys.
+ *  The suffix splitters walk this, so a fit-point ref parses like `start`. */
 export const VERTEX_POINT_KEY_SUFFIXES: readonly string[] = [
   ...VERTEX_POINT_KEYS,
-  ...Array.from({ length: MAX_FIT_POINT_KEY }, (_, i) => `fit${i + 1}`),
+  ...FIT_POINT_INDEXES.map(index => `fit${index}`),
 ]

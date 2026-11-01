@@ -33,8 +33,8 @@ describe('useDocumentState builtin scoping', () => {
   })
 
   it('prepends built-ins for kind: "part" with empty features', async () => {
-    const reSolveRef = { current: null }
-    const { result } = renderHook(() => useDocumentState('A', reSolveRef, { solveOnLoad: false }))
+    const solveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('A', solveRef, { solveOnLoad: false }))
     await tick()
     await act(async () => { h.loads.A.resolve({ content: 'kind: part\nfeatures: []', name: 'Part' }) })
     await tick()
@@ -43,8 +43,8 @@ describe('useDocumentState builtin scoping', () => {
   })
 
   it('prepends built-ins for legacy docs with no kind field', async () => {
-    const reSolveRef = { current: null }
-    const { result } = renderHook(() => useDocumentState('B', reSolveRef, { solveOnLoad: false }))
+    const solveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('B', solveRef, { solveOnLoad: false }))
     await tick()
     await act(async () => { h.loads.B.resolve({ content: 'features: []', name: 'Legacy' }) })
     await tick()
@@ -53,8 +53,8 @@ describe('useDocumentState builtin scoping', () => {
   })
 
   it('refuses an assembly payload at the part loader instead of seating it', async () => {
-    const reSolveRef = { current: null }
-    const { result } = renderHook(() => useDocumentState('C', reSolveRef, { solveOnLoad: false }))
+    const solveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('C', solveRef, { solveOnLoad: false }))
     await tick()
     await act(async () => { h.loads.C.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Assembly' }) })
     await tick()
@@ -66,9 +66,9 @@ describe('useDocumentState builtin scoping', () => {
   })
 
   it('does not alter features when already present on a part doc', async () => {
-    const reSolveRef = { current: null }
+    const solveRef = { current: null }
     const content = 'kind: part\nfeatures:\n  - id: S1\n    kind: sketch\n    plane: "@builtin_plane_top"'
-    const { result } = renderHook(() => useDocumentState('D', reSolveRef, { solveOnLoad: false }))
+    const { result } = renderHook(() => useDocumentState('D', solveRef, { solveOnLoad: false }))
     await tick()
     await act(async () => { h.loads.D.resolve({ content, name: 'HasSketch' }) })
     await tick()

@@ -37,14 +37,14 @@ const setExpression = (value: string): Mutation =>
 // Stands in for the solver write-back (applySolveResult in useSolver): every
 // solve installs a fresh doc object with the solved geometry re-baked into the
 // features, so a live doc can differ from the session snapshot with no user edit
-// in between. Without this the suite could not reach the cancelled state where
-// the rewind matters.
-const landWriteBack = (result: { current: { setDoc: (d: PartDoc) => void } }) => {
+// in between. The session's doc port reads docRef live, so writing the ref is
+// the write-back; there is no raw setter on the hook to go through.
+const landWriteBack = () => {
   const doc = docRef.current!
-  result.current.setDoc({
+  docRef.current = {
     ...doc,
     features: (doc.features ?? []).map(f => ({ ...f, initial: { l1: [0, 0, 3.141593, 0] } })),
-  } as PartDoc)
+  } as PartDoc
 }
 
 // A cancel rewinds the doc to the moment its session or preview opened, so the
@@ -133,7 +133,7 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
 
     useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
-    act(() => { result.current.setDoc(structuredClone(docRef.current)) })
+    act(() => { docRef.current = structuredClone(docRef.current) })
     useUnsavedChangesStore.getState().markSaved()  // the save landing
 
     act(() => { result.current.cancelEditSession() })
@@ -222,7 +222,7 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
     act(() => { result.current.handleMutation(setExpression('10')) })
     expect(expressionOf()).toBe('10')
     saveTheLiveDoc()
-    landWriteBack(result)
+    landWriteBack()
 
     act(() => { result.current.cancelEditSession() })
 

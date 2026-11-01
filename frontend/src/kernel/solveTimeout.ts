@@ -1,9 +1,11 @@
 /**
  * Timeout guard for synchronous solve calls (solveLocally / build).
  *
- * The browser Worker client (solverClient.ts) already has a 30 s watchdog that
- * terminates a hung Web Worker, but direct in-process solve calls (e.g.
- * fullDocRegression.test.ts) are unprotected: if OCC's
+ * The browser Worker client (solverClient.ts) has no automatic watchdog: a hung
+ * solve there runs until the user presses cancel. Its `solveTimeoutMs` is
+ * Infinity in production, and the only thing that arms the stall rule is the
+ * MCP kernel host (`SOLVE_STALL_BUDGET_MS`). Direct in-process solve calls
+ * (e.g. fullDocRegression.test.ts) are likewise unprotected: if OCC's
  * ShapeUpgrade_UnifySameDomain or any other synchronous WASM call spins
  * forever, the event loop is blocked and even vitest's testTimeout cannot fire
  * -- the whole CI job wedges.

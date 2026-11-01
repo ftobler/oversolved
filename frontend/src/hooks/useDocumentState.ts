@@ -14,7 +14,10 @@ export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 
 export function useDocumentState(
   uuid: string | undefined,
-  reSolveRef: React.MutableRefObject<((d: PartDoc) => void) | null>,
+  // The solve port, not the solver itself: the caller hands the session's
+  // requestSolve in, so a load solve is scheduled like every other one and the
+  // session's pending/idle state stays honest.
+  solveRef: React.MutableRefObject<(() => unknown) | null>,
   { solveOnLoad = true, workspace }: { solveOnLoad?: boolean; workspace?: string } = {},
 ) {
   const [doc, setDoc] = useState<PartDoc | null>(null)
@@ -78,9 +81,7 @@ export function useDocumentState(
           setDocName(data.name)
           useUnsavedChangesStore.getState().setDirty(true)
           setLoading(false)
-          if (solveOnLoad && reSolveRef.current) {
-            reSolveRef.current(restored)
-          }
+          if (solveOnLoad) solveRef.current?.()
           return
         }
         const parsed = loaded.doc
@@ -90,8 +91,8 @@ export function useDocumentState(
           parsed.features = BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f }))
         }
         docRef.current = parsed
-        // Mirror the loaded bar BEFORE the first solve: reSolve reads the store
-        // live, so waiting for the page's effect would let the load solve run
+        // Mirror the loaded bar BEFORE the first solve: the solve reads the
+        // store live, so waiting for the page's effect would let the load solve run
         // with a null (end-of-stack) store and rebuild the rolled-back tail.
         syncRollbackFromDoc(parsed)
         setDoc(parsed)
@@ -102,9 +103,7 @@ export function useDocumentState(
         // the document it replaces.
         useUnsavedChangesStore.getState().clearForNewDocument()
         setLoading(false)
-        if (solveOnLoad && reSolveRef.current) {
-          reSolveRef.current(parsed)
-        }
+        if (solveOnLoad) solveRef.current?.()
       })
       .catch(e => {
         if (cancelled) return
@@ -118,7 +117,7 @@ export function useDocumentState(
         setLoading(false)
       })
     return () => { cancelled = true }
-  }, [uuid, solveOnLoad, reSolveRef, store])
+  }, [uuid, solveOnLoad, solveRef, store])
 
   const { saveDoc, renameDoc, cloneDoc } = useDocPersistence<PartDoc>({
     docRef, setError, setDocName, workspace,

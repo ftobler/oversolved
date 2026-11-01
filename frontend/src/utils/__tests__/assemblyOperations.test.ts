@@ -7,7 +7,7 @@ import {
   type AssemblyOperationId,
   type AssemblyOperationInputs,
 } from '@/utils/assemblyOperations'
-import { findInstance, findMate } from '@/utils/assemblyMutations'
+import { findInstance, findMate, setInstancePosition } from '@/utils/assemblyMutations'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import type { AssemblyDoc } from '@/types/cad'
 
@@ -265,19 +265,25 @@ describe('planAssemblyOperation', () => {
 })
 
 describe('runAssemblyOperation effect dispatch', () => {
-  function fakeHost(): AssemblyOperationHost & {
+  // `doc` is the caller's mirror; the two mutators apply against a separate
+  // live doc, exactly as useAssemblyUndoRedo does, so the tests can make the
+  // two disagree.
+  function fakeHost(mirror: AssemblyDoc = operationDoc(), live: AssemblyDoc = mirror): AssemblyOperationHost & {
     mutateSession: ReturnType<typeof vi.fn>
     mutateOneShot: ReturnType<typeof vi.fn>
     requestSolve: ReturnType<typeof vi.fn>
     requestSolveOrDefer: ReturnType<typeof vi.fn>
+    live: () => AssemblyDoc
   } {
+    let current = live
     return {
-      doc: operationDoc(),
+      doc: mirror,
       transforms: {},
-      mutateSession: vi.fn(),
-      mutateOneShot: vi.fn(),
+      mutateSession: vi.fn((_label, fn: (d: AssemblyDoc) => AssemblyDoc) => { current = fn(current) }),
+      mutateOneShot: vi.fn((_label, fn: (d: AssemblyDoc) => AssemblyDoc) => { current = fn(current) }),
       requestSolve: vi.fn(),
       requestSolveOrDefer: vi.fn(),
+      live: () => current,
     }
   }
 
@@ -306,6 +312,20 @@ describe('runAssemblyOperation effect dispatch', () => {
     runAssemblyOperation('set_part_visible', { handle: 'p1', visible: true }, host)
     expect(host.mutateOneShot).not.toHaveBeenCalled()
     expect(host.mutateSession).not.toHaveBeenCalled()
+    expect(host.requestSolve).not.toHaveBeenCalled()
+    expect(host.requestSolveOrDefer).not.toHaveBeenCalled()
+  })
+
+  it('a no-op against the live doc requests no solve', () => {
+    // The mirror still shows p1 at the origin, so the pre-check sees a change;
+    // the live doc already sits at the requested position, so the applied plan
+    // is a value no-op and no solve is owed.
+    const mirror = docWithInstances(['p1'])
+    const live = setInstancePosition(mirror, 'p1', { tx: 3, ty: 0, tz: 0 })
+    const host = fakeHost(mirror, live)
+    runAssemblyOperation('set_part_position', { handle: 'p1', pos: { tx: 3, ty: 0, tz: 0 } }, host)
+
+    expect(host.mutateSession).toHaveBeenCalledTimes(1)
     expect(host.requestSolve).not.toHaveBeenCalled()
     expect(host.requestSolveOrDefer).not.toHaveBeenCalled()
   })

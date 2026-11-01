@@ -16,6 +16,7 @@
 
 import type { ActiveTool, EntityKind } from '@/types/cad'
 import { narrowCommandName, type CommandName } from '@/utils/core/commandNames'
+import { MAX_FIT_POINTS } from '@/utils/geometry/fitSpline'
 
 // ─── Entity definition ───
 
@@ -281,7 +282,7 @@ export function entityParamLayoutsSentence(): string {
     .map(kind => {
       const slots = ENTITY_PARAM_LAYOUT[kind].join(', ')
       if (kind !== 'fit_spline') return `${kind} [${slots}]`
-      return `${kind} [${slots}] (2..64 fit points, then the optional c1x, c1y and c2x, c2y handles)`
+      return `${kind} [${slots}] (2..${MAX_FIT_POINTS} fit points, then the optional c1x, c1y and c2x, c2y handles)`
     })
     .join('; ')
 }

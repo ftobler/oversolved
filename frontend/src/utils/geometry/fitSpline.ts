@@ -13,6 +13,8 @@
  * handle), the tridiagonal interior system, and one Hermite cubic per span.
  */
 
+import { MAX_FIT_POINT_KEY } from '@/types/vertexKeys'
+
 export type Pt = [number, number]
 
 /** Which end handles a fit spline stores. */
@@ -45,7 +47,9 @@ export interface FitSplineCurve {
   uAt(s: number): number
 }
 
-const MAX_FIT_POINTS = 64
+// The curve's own ceiling: the interior keys plus `start` and `end`, so a
+// refused point count and a refused vertex key name the same limit.
+export const MAX_FIT_POINTS = MAX_FIT_POINT_KEY + 2
 
 export class FitSplineError extends Error {}
 
