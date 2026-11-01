@@ -230,8 +230,10 @@ export function applySetPlaneDefinitionField(
   // A numeric plane field is stored through the same boundary as a feature
   // scalar: gated for finiteness (a non-finite value would seed NaN into the
   // document and survive every reload) and rounded to the stored precision.
+  // A null is not a number to gate: it is the value the wire's refusal exists
+  // to keep out, and this applier has no deleting branch, so it lands verbatim.
   const stored = typeof value === 'number' ? storedNumber(value) : value
-  if (stored === null) {
+  if (typeof value === 'number' && stored === null) {
     warn('applySetPlaneDefinitionField: refusing a non-finite number', { featureId, field, value })
     return
   }

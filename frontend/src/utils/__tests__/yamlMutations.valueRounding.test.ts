@@ -144,6 +144,16 @@ describe('feature value rounding', () => {
       expect(plane0(set).offset).toBe(MESSY_ROUNDED)
     })
 
+    // The gate is a NUMBER gate. A null on a plane definition field is the
+    // spelling the drive wire refuses (this applier has no deleting branch), and
+    // it must still land verbatim: rounding work must not swallow it into a
+    // refusal of its own.
+    it('leaves a null plane definition value to the wire refusal that covers it', () => {
+      const doc: PartDoc = { features: [{ id: 'pl1', kind: 'plane', definition: { mode: 'offset', offset: 5 } }] }
+      applySetPlaneDefinitionField(doc, 'pl1', 'offset', null as unknown as string)
+      expect(plane0(doc).offset).toBeNull()
+    })
+
     // The add copies the definition it rounds: a journaled add_plane replays its
     // payload, and rounding it in place would rewrite the journal's record.
     it('an add rounds a copy, not the payload it was given', () => {
