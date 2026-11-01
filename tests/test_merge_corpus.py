@@ -10,6 +10,8 @@ import importlib.util
 import json
 import pathlib
 
+import pytest
+
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "frontend" / "scripts" / "mergeCorpus.py"
 
@@ -164,9 +166,7 @@ def test_failure_on_the_second_write_leaves_both_goldens_old(tmp_path, monkeypat
     assert [p.name for p in tmp_path.iterdir() if p.name.endswith(".tmp")] == []
 
 
-def test_owned_case_missing_from_the_payload_is_pruned(tmp_path):
-    """A case whose kind the generator owns and that it stopped emitting is
-    removed from both files instead of being frozen forever."""
+def add_removed_owned_case(tmp_path):
     payload_path, baseline_path, manifest_path = make_fixture(tmp_path)
     manifest = read_json(manifest_path)
     manifest["cases"]["ex_removed"] = {"feature_kind": "extrude", "query_tier": "base", "ok": True}
@@ -176,8 +176,35 @@ def test_owned_case_missing_from_the_payload_is_pruned(tmp_path):
     baseline = read_json(baseline_path)
     baseline.append({"label": "ex_removed", "ok": True, "error": None})
     write_json(baseline_path, baseline)
+    return payload_path, baseline_path, manifest_path
 
-    mergeCorpus.main([str(payload_path), str(baseline_path), str(manifest_path)])
+
+def test_owned_case_missing_from_the_payload_is_refused(tmp_path):
+    """A stale payload must not silently delete the cases it omits.
+
+    The generator owns every kind now, so an owned label absent from the
+    payload is a partial or stale regen, not a removal instruction. Refusing
+    keeps the frozen pair intact instead of pruning whatever the payload
+    forgot.
+    """
+    payload_path, baseline_path, manifest_path = add_removed_owned_case(tmp_path)
+    baseline_before = baseline_path.read_text()
+    manifest_before = manifest_path.read_text()
+
+    with pytest.raises(SystemExit) as excinfo:
+        mergeCorpus.main([str(payload_path), str(baseline_path), str(manifest_path)])
+
+    assert "payload omits owned case(s): ex_removed" in str(excinfo.value)
+    assert "--prune" in str(excinfo.value)
+    assert baseline_path.read_text() == baseline_before
+    assert manifest_path.read_text() == manifest_before
+
+
+def test_prune_flag_removes_an_owned_case(tmp_path):
+    """--prune is the deliberate removal path for a case retired from the corpus."""
+    payload_path, baseline_path, manifest_path = add_removed_owned_case(tmp_path)
+
+    mergeCorpus.main(["--prune", "ex_removed", str(payload_path), str(baseline_path), str(manifest_path)])
 
     merged = read_json(baseline_path)
     assert "ex_removed" not in [entry["label"] for entry in merged]
@@ -185,6 +212,28 @@ def test_owned_case_missing_from_the_payload_is_pruned(tmp_path):
     assert "ex_removed" not in merged_manifest["cases"]
     assert merged_manifest["coverage"]["extrude/base"] == ["ex1"]
     assert merged_manifest["summary"]["total"] == 2
+
+
+def test_prune_flag_rejects_an_unknown_label(tmp_path):
+    # A typo in the removal path must fail rather than quietly prune nothing.
+    payload_path, baseline_path, manifest_path = make_fixture(tmp_path)
+    with pytest.raises(SystemExit) as excinfo:
+        mergeCorpus.main(["--prune=ex_typo", str(payload_path), str(baseline_path), str(manifest_path)])
+    assert "--prune names unknown case(s): ex_typo" in str(excinfo.value)
+
+
+def test_a_second_merge_is_byte_identical(tmp_path):
+    """A regen that changes nothing must not churn the goldens: the merge is
+    idempotent, so a rerun of the same payload diffs nothing."""
+    payload_path, baseline_path, manifest_path = make_fixture(tmp_path)
+
+    mergeCorpus.main([str(payload_path), str(baseline_path), str(manifest_path)])
+    baseline_once = baseline_path.read_bytes()
+    manifest_once = manifest_path.read_bytes()
+
+    mergeCorpus.main([str(payload_path), str(baseline_path), str(manifest_path)])
+    assert baseline_path.read_bytes() == baseline_once
+    assert manifest_path.read_bytes() == manifest_once
 
 
 def test_real_doc_case_is_dropped_not_carried(tmp_path):

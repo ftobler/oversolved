@@ -19,9 +19,9 @@
 // editor's.
 //
 // So the cost is not "the bundle path is cold", it is "the engine caches one
-// document at a time". Both halves are pinned below, plus the assembly-side
-// guard that only the part whose rev moved is rebuilt -- that is what keeps a
-// realistic assembly on the warm side of the one-slot cache.
+// document at a time". This file pins that engine behaviour through the real
+// bundle request; the assembly-side guard that only the part whose rev moved is
+// rebuilt is bundleRebuildCost.test.ts.
 //
 // That `{}` argument is pinned where it is written, in
 // `worker/solverWorker.test.ts` ("passes spec and options to the engine"),

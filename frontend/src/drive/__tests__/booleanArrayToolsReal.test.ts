@@ -1,9 +1,11 @@
 // @vitest-environment node
 //
-// A boolean `tools` entry that names an array feature expands to the array's
-// source body and every instance body at solve time, so a later count change
-// is followed. A hand list that names only some of one array's bodies warns.
-// Split from booleanArrayTools.test.ts, which keeps the pure catalog row.
+// The real-kernel half of the boolean `tools` array expansion: an entry that
+// names an array feature expands to the array's source body and every instance
+// body at solve time, so a later count change is followed (sprocket F3 typed 40
+// ids by hand; din_rail F1 raised a count and left the new slots floating
+// free), and a hand list that names only some of one array's bodies warns. The
+// pure catalog-row half is booleanArrayTools.test.ts.
 
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'

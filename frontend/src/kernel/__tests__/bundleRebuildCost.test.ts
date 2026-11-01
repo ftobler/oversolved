@@ -1,35 +1,12 @@
 // @vitest-environment node
 //
-// Guards for the bundle-rev invalidation question: when an assembly re-solves
-// after a part document's rev bumped, how much of that part's feature stack is
-// rebuilt?
-//
-// The premise this file was written to check turned out to be false, so what it
-// pins is the corrected one. `handleBundleRequest` calls the engine as
-// `solve(spec, {})`, and `{}` does NOT mean "no prevState": `solveLocally`
-// reads `options.prevState !== undefined ? options.prevState : lastBuildState`,
-// so an absent key falls back to the engine's own last build state. The bundle
-// path therefore rebuilds incrementally exactly like the part editor -- until
-// the engine sees a different `spec.id`, which trips `resetLocalSolveCache` and
-// makes the next build of either document cold.
-//
-// The bundle spec reaches the engine WITH that id: `useAssemblySolve`'s relay
-// stamps it on (`{ ...spec, id: doc_id }`) before the request crosses to the
-// worker, so the guard above is live on the bundle path and not just the
-// editor's.
-//
-// So the cost is not "the bundle path is cold", it is "the engine caches one
-// document at a time". Both halves are pinned below, plus the assembly-side
-// guard that only the part whose rev moved is rebuilt -- that is what keeps a
-// realistic assembly on the warm side of the one-slot cache.
-//
-// That `{}` argument is pinned where it is written, in
-// `worker/solverWorker.test.ts` ("passes spec and options to the engine"),
-// which asserts the whole options object; this file starts from its
-// consequences instead.
-//
-// Timings are next door in `bundleRebuildCostBenchReal.test.ts` (log-only); the
-// numbers are recorded in `feature/knowledgebase.agent.md`.
+// Guards for the assembly side of the bundle-rev invalidation question: after a
+// part document's rev bumps, only the part whose rev moved is rebuilt. That is
+// what keeps a realistic assembly on the warm side of the engine's one-slot
+// document cache. The engine half (the incremental bundle rebuild and the
+// doc-id cache reset) is in bundleRebuildCostReal.test.ts; the timing sweep is
+// bundleRebuildCostBenchReal.test.ts (log-only), and the numbers are recorded
+// in `feature/knowledgebase.agent.md`.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
@@ -65,7 +42,7 @@ function stubRelay(): RelayService {
     ),
   }
 }
-// ─── what that actually buys, at the engine ───
+// ─── the assembly-side rev guard ───
 describe('assembly bundle invalidation scope', () => {
   beforeEach(() => {
     globalThis.indexedDB = new IDBFactory()

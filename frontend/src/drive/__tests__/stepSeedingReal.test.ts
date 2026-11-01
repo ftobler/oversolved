@@ -1,11 +1,9 @@
 // @vitest-environment node
 //
-// Per-step id seeding: a script's ids come from the document before each step
-// and the step itself, so moving a step boundary (one call, 3+3, 1x6) does not
-// change what the steps mint. The real-kernel suite is the contract the MCP
-// client relies on, because it chains calls through the reply's docHash; the
-// command-id suite pins the other half of chunk independence, the feature ids
-// the command table derives instead of drawing from the seeded source.
+// The real-kernel half of per-step id seeding: a script's ids come from the
+// document before each step and the step itself, so moving a step boundary
+// (one call, 3+3, 1x6) does not change what the steps mint, and the reply's
+// docHash chains the next call. The command-id half is stepSeeding.test.ts.
 
 import { createRequire } from 'node:module'
 import { beforeAll, describe, it, expect } from 'vitest'

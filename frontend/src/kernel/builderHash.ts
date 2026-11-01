@@ -67,6 +67,13 @@ function _roundFloats(obj: unknown, ndigits: number): unknown {
 
 const RESULT_NON_GEOMETRIC_KEYS = new Set(['solve_ms'])
 
+/** Remove the non-geometric keys (wall-clock timings) from a result. Used by
+ *  the result hash and by the corpus generator before freezing a golden, so a
+ *  regen diffs only real geometry changes. */
+export function stripNonGeometricResult<T>(result: T): T {
+  return _stripNonGeometric(result) as T
+}
+
 function _stripNonGeometric(obj: unknown): unknown {
   if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
     const out: Record<string, unknown> = {}
@@ -84,7 +91,7 @@ export function hashCheckpointSpec(cp: FeatureCheckpoint): string {
 }
 
 export function hashResultDict(result: Record<string, unknown>, fpRound?: number | null): string {
-  let payload = _stripNonGeometric(result)
+  let payload: unknown = stripNonGeometricResult(result)
   if (fpRound != null) payload = _roundFloats(payload, fpRound)
   return sha256Hex(stableJson(payload))
 }

@@ -522,7 +522,6 @@
             1
           ]
         },
-        "solve_ms": 0.938984000000346,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -958,7 +957,6 @@
             1
           ]
         },
-        "solve_ms": 0.28779000000031374,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -1483,7 +1481,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 12.290369999999712,
         "status": "ok"
       },
       "sk1": {
@@ -1695,7 +1692,6 @@
             1
           ]
         },
-        "solve_ms": 0.7365429999999833,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -2718,7 +2714,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 22.6147490000003,
         "status": "ok"
       },
       "ex_cut": {
@@ -2744,7 +2739,6 @@
           "value": 5
         },
         "operation": "cut",
-        "solve_ms": 232.54635400000006,
         "status": "ok"
       },
       "sk_base": {
@@ -2956,7 +2950,6 @@
             1
           ]
         },
-        "solve_ms": 0.8303800000003321,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -3311,7 +3304,6 @@
             1
           ]
         },
-        "solve_ms": 0.6742359999998371,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -4592,7 +4584,6 @@
           "value": 3
         },
         "operation": "add",
-        "solve_ms": 11.896099999999933,
         "status": "ok"
       },
       "ex2": {
@@ -4618,7 +4609,6 @@
           "value": 2
         },
         "operation": "new",
-        "solve_ms": 19.462389000000258,
         "status": "ok"
       },
       "sk1": {
@@ -4830,7 +4820,6 @@
             1
           ]
         },
-        "solve_ms": 0.8389149999993606,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -5185,7 +5174,6 @@
             1
           ]
         },
-        "solve_ms": 0.8250689999995302,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -16022,7 +16010,6 @@
           "value": 360
         },
         "operation": "add",
-        "solve_ms": 43.00083199999972,
         "status": "ok"
       },
       "sk1": {
@@ -16234,7 +16221,6 @@
             1
           ]
         },
-        "solve_ms": 0.947189000000435,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -16416,7 +16402,6 @@
             1
           ]
         },
-        "solve_ms": 0.2072889999999461,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -22187,7 +22172,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 50.37001099999998,
         "status": "ok"
       },
       "hole1": {
@@ -22197,7 +22181,6 @@
         ],
         "direction": "normal",
         "hole_count": 1,
-        "solve_ms": 207.0563060000004,
         "status": "ok"
       },
       "pts": {
@@ -22234,7 +22217,6 @@
             1
           ]
         },
-        "solve_ms": 0.3101329999990412,
         "status": "underconstrained",
         "topology": {
           "edges": [],
@@ -22452,7 +22434,6 @@
             1
           ]
         },
-        "solve_ms": 1.3147189999999682,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -24548,7 +24529,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 11.533008000000336,
         "status": "ok"
       },
       "fillet1": {
@@ -24573,7 +24553,6 @@
           "unit_scale": 1,
           "value": 1
         },
-        "solve_ms": 56.85489899999993,
         "status": "ok"
       },
       "sk1": {
@@ -24785,7 +24764,6 @@
             1
           ]
         },
-        "solve_ms": 0.933603999999832,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -25620,7 +25598,6 @@
           "unit_scale": 1,
           "value": 1
         },
-        "solve_ms": 58.81579099999908,
         "status": "ok"
       },
       "ex1": {
@@ -25646,7 +25623,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 11.95117399999981,
         "status": "ok"
       },
       "sk1": {
@@ -25858,7 +25834,6 @@
             1
           ]
         },
-        "solve_ms": 0.8114930000010645,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -26690,7 +26665,6 @@
           "body_ex_a"
         ],
         "operation": "union",
-        "solve_ms": 130.07624399999986,
         "status": "ok"
       },
       "builtin_plane_front": {
@@ -26791,7 +26765,6 @@
           "value": 10
         },
         "operation": "new",
-        "solve_ms": 12.42794800000047,
         "status": "ok"
       },
       "ex_b": {
@@ -26817,7 +26790,6 @@
           "value": 3
         },
         "operation": "new",
-        "solve_ms": 11.49732099999892,
         "status": "ok"
       },
       "sk_a": {
@@ -27029,7 +27001,6 @@
             1
           ]
         },
-        "solve_ms": 0.7829000000001543,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -27384,7 +27355,6 @@
             1
           ]
         },
-        "solve_ms": 0.92440600000009,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -28056,7 +28026,6 @@
             1
           ]
         },
-        "solve_ms": 1.6884709999994811,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -28358,7 +28327,6 @@
             1
           ]
         },
-        "solve_ms": 0.5000190000009752,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -28533,7 +28501,6 @@
             0
           ]
         },
-        "solve_ms": 0.19574699999975564,
         "status": "ok"
       }
     },
@@ -28784,7 +28751,6 @@
           "body_ex1"
         ],
         "operation": "add",
-        "solve_ms": 747.3514689999993,
         "status": "ok"
       },
       "builtin_plane_front": {
@@ -28885,7 +28851,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 26.940813000000162,
         "status": "ok"
       },
       "sk1": {
@@ -29097,7 +29062,6 @@
             1
           ]
         },
-        "solve_ms": 0.8885090000003402,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -29288,7 +29252,6 @@
             1
           ]
         },
-        "solve_ms": 0.5041970000002038,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -30012,7 +29975,6 @@
           "value": 2
         },
         "operation": "add",
-        "solve_ms": 15.755377999999837,
         "status": "ok"
       },
       "mirror1": {
@@ -30021,7 +29983,6 @@
           "body_ex1"
         ],
         "operation": "merge",
-        "solve_ms": 171.62757299999976,
         "status": "ok"
       },
       "sk1": {
@@ -30233,7 +30194,6 @@
             1
           ]
         },
-        "solve_ms": 0.7961549999999988,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -30721,7 +30681,6 @@
             1
           ]
         },
-        "solve_ms": 0.4221529999995255,
         "status": "underconstrained",
         "topology": {
           "edges": [],
@@ -31009,7 +30968,6 @@
             1
           ]
         },
-        "solve_ms": 4.673436999999467,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -31328,7 +31286,6 @@
             1
           ]
         },
-        "solve_ms": 0.37802000000010594,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -31594,7 +31551,6 @@
             1
           ]
         },
-        "solve_ms": 0.24741499999981897,
         "status": "underconstrained",
         "topology": {
           "edges": [],
@@ -37215,7 +37171,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 11.876572999999553,
         "status": "ok"
       },
       "hole1": {
@@ -37225,7 +37180,6 @@
         ],
         "direction": "normal",
         "hole_count": 1,
-        "solve_ms": 168.5747109999993,
         "status": "ok"
       },
       "pts": {
@@ -37262,7 +37216,6 @@
             1
           ]
         },
-        "solve_ms": 0.2917379999998957,
         "status": "underconstrained",
         "topology": {
           "edges": [],
@@ -37480,7 +37433,6 @@
             1
           ]
         },
-        "solve_ms": 0.7835410000006959,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -48455,7 +48407,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 11.808726000001116,
         "status": "ok"
       },
       "hole1": {
@@ -48465,7 +48416,6 @@
         ],
         "direction": "normal",
         "hole_count": 2,
-        "solve_ms": 420.3180049999992,
         "status": "ok"
       },
       "pts": {
@@ -48509,7 +48459,6 @@
             1
           ]
         },
-        "solve_ms": 0.2840439999999944,
         "status": "underconstrained",
         "topology": {
           "edges": [],
@@ -48727,7 +48676,6 @@
             1
           ]
         },
-        "solve_ms": 0.8657960000000458,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -64792,7 +64740,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 10.65825600000062,
         "status": "ok"
       },
       "hole1": {
@@ -64802,7 +64749,6 @@
         ],
         "direction": "normal",
         "hole_count": 3,
-        "solve_ms": 762.2773779999989,
         "status": "ok"
       },
       "pts": {
@@ -64853,7 +64799,6 @@
             1
           ]
         },
-        "solve_ms": 0.24586100000124134,
         "status": "underconstrained",
         "topology": {
           "edges": [],
@@ -65071,7 +65016,6 @@
             1
           ]
         },
-        "solve_ms": 0.6062579999997979,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -67183,7 +67127,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 54.7310209999996,
         "status": "ok"
       },
       "fillet1": {
@@ -67208,7 +67151,6 @@
           "unit_scale": 1,
           "value": 1
         },
-        "solve_ms": 76.93553900000006,
         "status": "ok"
       },
       "sk1": {
@@ -67420,7 +67362,6 @@
             1
           ]
         },
-        "solve_ms": 0.8733100000008562,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -68254,7 +68195,6 @@
           "unit_scale": 1,
           "value": 1
         },
-        "solve_ms": 58.082784999998694,
         "status": "ok"
       },
       "ex1": {
@@ -68280,7 +68220,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 13.652117999999973,
         "status": "ok"
       },
       "sk1": {
@@ -68492,7 +68431,6 @@
             1
           ]
         },
-        "solve_ms": 0.9240250000002561,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -70424,7 +70362,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 21.4609619999992,
         "status": "ok"
       },
       "fillet1": {
@@ -70449,7 +70386,6 @@
           "unit_scale": 1,
           "value": 1
         },
-        "solve_ms": 60.38946699999906,
         "status": "ok"
       },
       "sk1": {
@@ -70661,7 +70597,6 @@
             1
           ]
         },
-        "solve_ms": 0.858462000000145,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -71352,7 +71287,6 @@
           "unit_scale": 1,
           "value": 1
         },
-        "solve_ms": 46.41485399999874,
         "status": "ok"
       },
       "ex1": {
@@ -71378,7 +71312,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 16.890157999998337,
         "status": "ok"
       },
       "sk1": {
@@ -71590,7 +71523,6 @@
             1
           ]
         },
-        "solve_ms": 0.7596259999991162,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -72371,7 +72303,6 @@
           "value": 3
         },
         "operation": "add",
-        "solve_ms": 8.715236999998524,
         "status": "ok"
       },
       "mirror1": {
@@ -72380,7 +72311,6 @@
           "body_ex1"
         ],
         "operation": "merge",
-        "solve_ms": 131.14075200000116,
         "status": "ok"
       },
       "sk1": {
@@ -72592,7 +72522,6 @@
             1
           ]
         },
-        "solve_ms": 0.589907999999923,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -73374,7 +73303,6 @@
           "value": 3
         },
         "operation": "add",
-        "solve_ms": 23.776369999999588,
         "status": "ok"
       },
       "mirror1": {
@@ -73383,7 +73311,6 @@
           "body_ex1"
         ],
         "operation": "merge",
-        "solve_ms": 102.94501300000047,
         "status": "ok"
       },
       "sk1": {
@@ -73595,7 +73522,6 @@
             1
           ]
         },
-        "solve_ms": 0.7569419999999809,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -74377,7 +74303,6 @@
           "value": 3
         },
         "operation": "add",
-        "solve_ms": 15.592281000001094,
         "status": "ok"
       },
       "mirror1": {
@@ -74386,7 +74311,6 @@
           "body_ex1"
         ],
         "operation": "merge",
-        "solve_ms": 149.69089799999892,
         "status": "ok"
       },
       "sk1": {
@@ -74598,7 +74522,6 @@
             1
           ]
         },
-        "solve_ms": 0.9057109999994282,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -75100,7 +75023,6 @@
             1
           ]
         },
-        "solve_ms": 2.0007079999995767,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -75391,7 +75313,6 @@
             1
           ]
         },
-        "solve_ms": 0.5953580000004877,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -75952,7 +75873,6 @@
             1
           ]
         },
-        "solve_ms": 0.7847929999988992,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -76716,7 +76636,6 @@
             1
           ]
         },
-        "solve_ms": 0.7948730000007345,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -77480,7 +77399,6 @@
             1
           ]
         },
-        "solve_ms": 0.7840630000009696,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -77997,7 +77915,6 @@
             1
           ]
         },
-        "solve_ms": 0.39188600000125007,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -78293,7 +78210,6 @@
             1
           ]
         },
-        "solve_ms": 0.33106100000077276,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -78589,7 +78505,6 @@
             1
           ]
         },
-        "solve_ms": 0.39262799999960407,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -78869,7 +78784,6 @@
             1
           ]
         },
-        "solve_ms": 0.6786839999986114,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -79172,7 +79086,6 @@
             1
           ]
         },
-        "solve_ms": 0.5578970000005938,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -79475,7 +79388,6 @@
             1
           ]
         },
-        "solve_ms": 0.4744109999992361,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -79903,7 +79815,6 @@
             1
           ]
         },
-        "solve_ms": 0.4916529999991326,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -80367,7 +80278,6 @@
             1
           ]
         },
-        "solve_ms": 0.5271899999988818,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -80831,7 +80741,6 @@
             1
           ]
         },
-        "solve_ms": 0.47416100000009465,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -82737,7 +82646,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 13.198435999998765,
         "status": "ok"
       },
       "fillet1": {
@@ -82762,7 +82670,6 @@
           "unit_scale": 1,
           "value": 1.5
         },
-        "solve_ms": 63.07042200000069,
         "status": "ok"
       },
       "sk1": {
@@ -82974,7 +82881,6 @@
             1
           ]
         },
-        "solve_ms": 0.7796639999996842,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -84005,7 +83911,6 @@
           "value": 8
         },
         "operation": "add",
-        "solve_ms": 11.788187000000107,
         "status": "ok"
       },
       "ex2": {
@@ -84031,7 +83936,6 @@
           "value": 8
         },
         "operation": "cut",
-        "solve_ms": 191.00094499999977,
         "status": "ok"
       },
       "sk1": {
@@ -84243,7 +84147,6 @@
             1
           ]
         },
-        "solve_ms": 0.8028479999993579,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -84598,7 +84501,6 @@
             1
           ]
         },
-        "solve_ms": 0.7744540000003326,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -85529,7 +85431,6 @@
             0
           ]
         },
-        "solve_ms": 0.7597569999998086,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -85736,7 +85637,6 @@
             1
           ]
         },
-        "solve_ms": 0.20877199999995355,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -85771,7 +85671,6 @@
       },
       "sw1": {
         "exception": "sweep: requires at least one profile reference",
-        "solve_ms": 0,
         "status": "exception"
       }
     },
@@ -86652,7 +86551,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 17.30159100000128,
         "status": "ok"
       },
       "sk1": {
@@ -86864,7 +86762,6 @@
             1
           ]
         },
-        "solve_ms": 0.6778229999999894,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -87016,7 +86913,6 @@
           "body_tr1"
         ],
         "operation": "new",
-        "solve_ms": 2.9614609999989625,
         "status": "ok"
       }
     },
@@ -87864,7 +87760,6 @@
           "body_ex1_2"
         ],
         "operation": "add",
-        "solve_ms": 488.30851600000005,
         "status": "ok"
       },
       "builtin_plane_front": {
@@ -87965,7 +87860,6 @@
           "value": 2
         },
         "operation": "add",
-        "solve_ms": 36.399765999999545,
         "status": "ok"
       },
       "sk1": {
@@ -88177,7 +88071,6 @@
             1
           ]
         },
-        "solve_ms": 0.9814029999997729,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -88390,7 +88283,6 @@
             1
           ]
         },
-        "solve_ms": 0.7863960000004226,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -89172,7 +89064,6 @@
     "result": {
       "bool1": {
         "exception": "boolean: 'tools' must have at least one entry",
-        "solve_ms": 0,
         "status": "exception"
       },
       "builtin_plane_front": {
@@ -89273,7 +89164,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 17.020644000000175,
         "status": "ok"
       },
       "ex2": {
@@ -89299,7 +89189,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 142.42142599999897,
         "status": "ok"
       },
       "sk1": {
@@ -89511,7 +89400,6 @@
             1
           ]
         },
-        "solve_ms": 0.8073660000009113,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -89866,7 +89754,6 @@
             1
           ]
         },
-        "solve_ms": 0.7415130000008503,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -90657,7 +90544,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 14.067988999999216,
         "status": "ok"
       },
       "sk1": {
@@ -90869,7 +90755,6 @@
             1
           ]
         },
-        "solve_ms": 1.3983559999996942,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -91051,7 +90936,6 @@
             1
           ]
         },
-        "solve_ms": 1.9004489999997531,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -91580,7 +91464,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 12.497929999999542,
         "status": "ok"
       },
       "sk1": {
@@ -91792,7 +91675,6 @@
             1
           ]
         },
-        "solve_ms": 1.250108000000182,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -92001,7 +91883,6 @@
             1
           ]
         },
-        "solve_ms": 1.0721340000000055,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -97496,7 +97377,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 5.708711000000221,
         "status": "ok"
       },
       "sk1": {
@@ -97566,7 +97446,6 @@
             1
           ]
         },
-        "solve_ms": 0.6869599999999991,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -97661,7 +97540,6 @@
             1
           ]
         },
-        "solve_ms": 1.086369999999988,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -99407,7 +99285,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 8.586985999999342,
         "status": "ok"
       },
       "fillet1": {
@@ -99432,7 +99309,6 @@
           "unit_scale": 1,
           "value": 1.5
         },
-        "solve_ms": 142.25769899999977,
         "status": "ok"
       },
       "sk1": {
@@ -99644,7 +99520,6 @@
             1
           ]
         },
-        "solve_ms": 0.7459810000000289,
         "status": "underconstrained",
         "topology": {
           "edges": [
@@ -99826,7 +99701,6 @@
             1
           ]
         },
-        "solve_ms": 0.452408999999534,
         "status": "fully_constrained",
         "topology": {
           "edges": [
@@ -105201,7 +105075,6 @@
           "value": 5
         },
         "operation": "add",
-        "solve_ms": 5.872358000000531,
         "status": "ok"
       },
       "pl_tilt": {
@@ -105227,7 +105100,6 @@
             0.8660254037844387
           ]
         },
-        "solve_ms": 0.2926399999996647,
         "status": "ok"
       },
       "sk1": {
@@ -105297,7 +105169,6 @@
             -0.49999999999999994
           ]
         },
-        "solve_ms": 0.7176069999995889,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -105397,7 +105268,6 @@
         "resolved_kinds": {
           "proj0": "ellipse"
         },
-        "solve_ms": 1.4050390000002153,
         "status": "fully_constrained",
         "topology": {
           "edges": [],
@@ -105471,7 +105341,6 @@
             1
           ]
         },
-        "solve_ms": 0.4333939999996801,
         "status": "underconstrained",
         "topology": {
           "edges": [

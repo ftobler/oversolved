@@ -1,9 +1,8 @@
 // @vitest-environment node
 //
-// The split feature over the drive surface: the Ex021 practice script in one
-// `run` (sketch, extrude, plane, split), the boundary refusals with their fixes,
-// and the catalog/schema presence an MCP caller reads. Real kernel where
-// provisioned.
+// The pure half of the split feature over the drive surface: the four catalog
+// rows, their side rule, and the boundary refusals with their fixes. The Ex021
+// practice script through a real kernel is splitDriveReal.test.ts.
 
 import { describe, it, expect } from 'vitest'
 import { emptyDriveDoc } from '../headlessOps'

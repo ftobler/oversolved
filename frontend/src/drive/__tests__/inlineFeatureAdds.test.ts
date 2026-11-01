@@ -1,12 +1,11 @@
 // @vitest-environment node
 //
-// The bulk `add_chamfer` / `add_shell` forms: one call carrying the pick list and
-// the parameter must land the same document as the old feature + pick + field
-// sequence. The practice round paid 6 and 4 calls for what `add_fillet` already
-// did in one.
+// The pure half of the bulk `add_chamfer` / `add_shell` forms: the catalog row
+// and the document shape one call produces.
 //
-// Also pins the shell sign note: thickness is a magnitude, `direction` carries
-// the side, and CadQuery's signed thickness maps positive -> outward.
+// Pins the shell sign note: thickness is a magnitude, `direction` carries the
+// side, and CadQuery's signed thickness maps positive -> outward. The
+// built-document half is inlineFeatureAddsReal.test.ts.
 
 import { describe, it, expect } from 'vitest'
 import { mutationInfoOf } from '../mutationCatalog'

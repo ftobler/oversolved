@@ -10,16 +10,18 @@ regen diffs only the real data changes. The manifest keeps its original key
 order (summary, coverage, cases) and gains the new cases in place; summary
 counts are recomputed from the cases map so they never drift.
 
-The payload's cases are the intended label set. A baseline entry or manifest
-case whose label is absent from the payload and whose kind the generator owns
-has vanished from the corpus and is pruned, so a removed case is not frozen
-forever. The generator now owns every kind in the corpus (regenCorpus re-solves
-all 55 baseline specs, not a slice), so a partial payload is an error at the
-merge, not a silent partial refresh. The `real_doc` tier is never carried: it
-moved to the folder corpus (`frontend/regressions/`). summary.ok is counted
-from the per-case ok flags, never assumed to equal total.
+The payload's cases are the intended label set, and the merge refuses a short
+one: every existing case whose kind the generator owns must appear in the
+payload, so a stale gitignored corpus-regen.json cannot silently delete the
+cases it omits. A case is removed only when its label is named with --prune
+(the deliberate path for a case retired from the corpus). The generator owns
+every kind in the corpus (regenCorpus re-solves all 55 baseline specs, not a
+slice). The `real_doc` tier is never carried: it moved to the folder corpus
+(`frontend/regressions/`). summary.ok is counted from the per-case ok flags,
+never assumed to equal total.
 
-Run from frontend/:  python3 scripts/mergeCorpus.py [payload baseline manifest]
+Run from frontend/:
+  python3 scripts/mergeCorpus.py [--prune LABEL ...] [payload baseline manifest]
 The optional positional paths point a dry run at copies without touching the
 frozen files.
 """
@@ -68,8 +70,29 @@ def case_record(case: dict) -> dict:
     }
 
 
+def parse_args(argv: list[str]) -> tuple[list[str], set[str]]:
+    """Split the repeatable --prune option from the positional paths."""
+    positional: list[str] = []
+    prune: set[str] = set()
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--prune":
+            if i + 1 >= len(argv):
+                raise SystemExit("error: --prune needs a case label")
+            prune.add(argv[i + 1])
+            i += 2
+        elif arg.startswith("--prune="):
+            prune.add(arg.split("=", 1)[1])
+            i += 1
+        else:
+            positional.append(arg)
+            i += 1
+    return positional, prune
+
+
 def main(argv: list[str] | None = None) -> None:
-    args = list(argv) if argv is not None else sys.argv[1:]
+    args, prune = parse_args(list(argv) if argv is not None else sys.argv[1:])
     payload_path = pathlib.Path(args[0]) if args else PAYLOAD
     baseline_path = pathlib.Path(args[1]) if len(args) > 1 else BASELINE
     manifest_path = pathlib.Path(args[2]) if len(args) > 2 else MANIFEST
@@ -83,6 +106,27 @@ def main(argv: list[str] | None = None) -> None:
 
     manifest = json.loads(manifest_path.read_text())
     old_cases = manifest["cases"]
+
+    # Completeness: a short payload is a stale or partial regen, not an
+    # instruction to delete the rest of the corpus. The deliberate removal path
+    # names each label in --prune.
+    unknown_prunes = sorted(label for label in prune if label not in old_cases)
+    if unknown_prunes:
+        raise SystemExit(f"error: --prune names unknown case(s): {', '.join(unknown_prunes)}")
+    missing = sorted(
+        label
+        for label, case in old_cases.items()
+        if label not in new_cases
+        and case.get("query_tier") != "real_doc"
+        and case["feature_kind"] in owned_kinds
+        and label not in prune
+    )
+    if missing:
+        raise SystemExit(
+            "error: payload omits owned case(s): "
+            + ", ".join(missing)
+            + ". A stale or partial payload must not delete them; pass --prune <label> for each intended removal."
+        )
 
     # The intended case set = the generator's fresh cases plus every existing
     # manifest case the generator does not own. An owned label missing from the

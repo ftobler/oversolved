@@ -544,6 +544,18 @@ describe('the robustness fuzz pin tables', () => {
     expect(findStalePin(pin.seed + 1, pin.step, message)).toBeNull()
   })
 
+  it('names a stale-pick pin whose key no longer matches the sweep', () => {
+    // A typo in seed or step makes the pin unreachable; the unfired check has
+    // to name it rather than let the typo excuse nothing.
+    const pin = KNOWN_STALE_PICKS[0]
+    const fired = new Set(KNOWN_STALE_PICKS.map(p => `${p.seed}:${p.step}`))
+    fired.delete(`${pin.seed}:${pin.step}`)
+    fired.add(`${pin.seed}:${pin.step + 1}`)
+    expect(unfiredPins(pin.seed + 1, new Set(), fired)).toContain(
+      `KNOWN_STALE_PICKS pin seed ${pin.seed} step ${pin.step} ("${pin.match}") did not fire; re-triage the pin table`,
+    )
+  })
+
   it('names a pin inside the swept range that did not fire', () => {
     const pin = KNOWN_HANGS.reduce((lowest, h) => (h.seed < lowest.seed ? h : lowest))
     const fired = new Set<string>()

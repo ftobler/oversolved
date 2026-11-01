@@ -1,13 +1,10 @@
 // @vitest-environment node
 //
-// A boolean `tools` entry that names an array feature expands to the array's
-// source body and every instance body at solve time, so a later count change
-// is followed (sprocket F3 typed 40 ids by hand; din_rail F1 raised a count
-// and left the new slots floating free). A hand list that names only some of
-// one array's bodies warns. The add_boolean / add_extrude inline fields carry
-// the whole feature in one call. The add-array copies (`split_from`
-// provenance) are covered by kernel/features/__tests__/boolean.arrayAddSplit.
-// The kernel-backed cases live in booleanArrayToolsReal.test.ts.
+// The pure half of the boolean `tools` array expansion: the add_boolean /
+// add_extrude catalog rows publish the inline fields, the required boolean
+// fields and the array-tool rule. The kernel-backed expansion cases are
+// booleanArrayToolsReal.test.ts; the add-array copies (`split_from` provenance)
+// are covered by kernel/features/__tests__/boolean.arrayAddSplit.
 
 import { describe, it, expect } from 'vitest'
 import { mutationInfoOf } from '../mutationCatalog'

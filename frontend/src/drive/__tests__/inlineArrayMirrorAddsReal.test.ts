@@ -1,9 +1,10 @@
 // @vitest-environment node
 //
-// The bulk `add_array` / `add_circular_array` / `add_mirror` forms: one call
-// carrying the source, counts, pitches, axis or plane must land the same
-// document as the old feature + one setter per field sequence. The practice
-// round paid seven calls for a one-line linear array (batch B F2).
+// The real-kernel half of the bulk `add_array` / `add_circular_array` /
+// `add_mirror` forms: one call carrying the source, counts, pitches, axis or
+// plane must land the same document as the old feature + one setter per field
+// sequence. The pure catalog and document-shape half is
+// inlineArrayMirrorAdds.test.ts.
 
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'

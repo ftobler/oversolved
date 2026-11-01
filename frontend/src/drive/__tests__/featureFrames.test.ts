@@ -1,9 +1,9 @@
 // @vitest-environment node
 //
-// The frames a run/measure reply reports: a sketch on a face takes the face's
-// centroid as origin and the normalToFrame axes, an add_plane feature reports
-// the frame it built, and the measure reply carries the same map the run did.
-// Real kernel for the geometry; the helper's filtering and rounding are pure.
+// The pure half of the frame report: featureFrames filters a solve result to
+// sketch and plane features, rounds the axes and drops a refused feature. The
+// real-kernel half, a sketch on a face and an add_plane feature built through
+// the drive, is featureFramesReal.test.ts.
 
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'

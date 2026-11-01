@@ -1,16 +1,12 @@
 // @vitest-environment node
 //
-// Parallel mesh determinism and lazy checkpoint meshing (bodies_snapshot). The
-// retired cross-solve cache module's contract now lives in the builder's
-// checkpoints / bodies_snapshot.
+// Parallel mesh determinism across a persistent HandleTable, through the real
+// OCC.js pipeline: the same build meshed twice is identical. The lazy
+// checkpoint meshing contract that needs no feature solvers is
+// checkpointMesh.test.ts; the broader checkpoint / bodies_snapshot replay is
+// checkpointMeshReal.test.ts.
 //
-// This suite runs the two scenarios that need no feature solvers. The OCC-backed
-// scenarios live in checkpointMeshReal.test.ts.
-//
-// pick_bodies served from a checkpoint and the stale-buildstate-without-
-// bodies_snapshot case are already covered by builder.test.ts:
-// "supports pick_boundary returning pick_bodies" and "re-tessellates
-// pick_bodies when bodies_snapshot is empty".
+// Skips when OCC.js is absent.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'

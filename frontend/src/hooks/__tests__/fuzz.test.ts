@@ -7,10 +7,11 @@
 // sequence generator and the start document live in fuzzHarness.ts; this file
 // only sizes the runs and pins the regression seeds.
 //
-// The default suite is bounded (a handful of seeds); FUZZ_SEEDS and FUZZ_STEPS
-// size the long run the `just fuzz-session` recipe carries (the main gate's
-// `just fuzz` runs it at 200 x 40). The fake scheduler covers the history
-// mechanics everywhere; fuzzReal.test.ts holds the real-kernel ratchet.
+// The fake-scheduler half: FUZZ_FAKE_SEEDS and FUZZ_FAKE_STEPS size its long
+// run, and it covers the history mechanics on an unprovisioned checkout.
+// fuzzReal.test.ts holds the real-kernel ratchet, sized by FUZZ_SEEDS and
+// FUZZ_STEPS (`just fuzz-session` carries both, and the main gate's `just fuzz`
+// runs it at 200 x 40).
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { stringify } from 'yaml'

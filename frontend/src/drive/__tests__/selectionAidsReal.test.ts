@@ -1,11 +1,11 @@
 // @vitest-environment node
 //
-// Selector picks in `add_sketch.plane` / `set_feature_plane.plane` and
-// `add_shell.faces`: the headless drive resolves the `select` selector against
-// the settled solve and stores the query string, so an agent does not paste a
-// long `?...` string per sketch (batch B friction). The unit half runs on
-// synthetic solve results; the real half proves the one-step path, the chained
-// run's first-step solve, and the refusals.
+// The real-kernel half of selector picks in `add_sketch.plane` /
+// `set_feature_plane.plane` and `add_shell.faces`: the headless drive resolves
+// the `select` selector against the settled solve and stores the query string,
+// so an agent does not paste a long `?...` string per sketch (batch B
+// friction). This half proves the one-step path, the chained run's first-step
+// solve, and the refusals; the synthetic-input half is selectionAids.test.ts.
 
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'

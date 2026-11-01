@@ -10,6 +10,8 @@
 // read back from regression-baseline.json (the projection cases are rebuilt
 // from their picked queries so the picker path is exercised too, not just the
 // stored spec). A regen therefore refreshes the whole corpus, not a slice.
+// Wall-clock timings are stripped before freezing (stripNonGeometricResult), so
+// an unchanged regen is byte-identical instead of diffing solve_ms noise.
 //
 // The Python kernel is gone, so this is NOT a cross-kernel diff: the baseline is
 // a self-consistent golden of the current TS kernel (a regression gate that
@@ -25,6 +27,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { solveWithTimeout, disposeWorker } from '../src/kernel/solveTimeout'
 import { buildBaselineBody } from '../src/wasm-kernel/baselineBody'
+import { stripNonGeometricResult } from '../src/kernel/builderHash'
 import type { EdgeData } from '../src/types/cad'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -420,7 +423,9 @@ function entryFrom(c: ProjectionCase, solved: { result: Dict; bodies: Record<str
     error: null,
     input_sketches: c.input_sketches ?? [],
     spec: c.spec,
-    result: solved.result,
+    // Wall-clock timings are not geometry: freezing them would diff every
+    // entry on an otherwise identical regen.
+    result: stripNonGeometricResult(solved.result),
     bodies,
   }
   // Only present where the frozen entry had it, so a plain corpus entry does

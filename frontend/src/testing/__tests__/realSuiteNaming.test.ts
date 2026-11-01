@@ -8,8 +8,8 @@
 // invites a reader to assume it covers an unprovisioned checkout.
 //
 // This guard is a ratchet on the convention itself: any test file importing
-// `loadOcc` must end in `Real.test.ts` (or `.real.test.ts`). Pure cases in a
-// mixed file stay in the plain file, and the kernel half moves to the Real one.
+// `loadOcc` must end in `Real.test.ts`. Pure cases in a mixed file stay in the
+// plain file, and the kernel half moves to the Real one.
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, it, expect } from 'vitest'
@@ -48,7 +48,7 @@ describe('the *Real suite naming convention', () => {
       if (!importsLoadOcc(readFileSync(path, 'utf8'))) continue
       if (!/Real\.test\.tsx?$/.test(path)) offenders.push(relative(process.cwd(), path))
     }
-    expect(offenders, 'kernel-backed suites must be named *Real.test.ts (or .real.test.ts)').toEqual([])
+    expect(offenders, 'kernel-backed suites must be named *Real.test.ts').toEqual([])
   })
 
   it('sees the loader imports it is guarding', () => {

@@ -1,11 +1,10 @@
 // @vitest-environment node
 //
-// Selector picks in `add_sketch.plane` / `set_feature_plane.plane` and
-// `add_shell.faces`: the headless drive resolves the `select` selector against
-// the settled solve and stores the query string, so an agent does not paste a
-// long `?...` string per sketch (batch B friction). The unit half runs on
-// synthetic solve results; the real half proves the one-step path, the chained
-// run's first-step solve, and the refusals.
+// The pure half of selector picks in `add_sketch.plane` /
+// `set_feature_plane.plane` and `add_shell.faces`: resolveSelectionAids and
+// usesSelectionAid against synthetic solve results. The real half proves the
+// one-step drive path, the chained run's first-step solve, and the refusals
+// (selectionAidsReal.test.ts).
 
 import { describe, it, expect } from 'vitest'
 import type { BodyResult, FaceData, EdgeData, PartDoc } from '@/types/cad'

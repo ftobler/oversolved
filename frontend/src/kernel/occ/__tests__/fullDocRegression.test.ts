@@ -392,6 +392,13 @@ describe('regression provisioning guard', () => {
     expect(topologyBytes, 'topologyBytes: topology WASM absent - run `just wasm`').toBeTruthy()
   })
 
+  it('freezes no wall-clock timings', () => {
+    // A regen would otherwise diff every entry on solve_ms noise; the generator
+    // strips them (stripNonGeometricResult) and the golden must stay free of
+    // them.
+    expect(JSON.stringify(entries)).not.toContain('"solve_ms"')
+  })
+
   it('has a non-trivial baseline corpus (not empty/corrupt)', () => {
     expect(entries.length, 'baseline corpus is empty or corrupted').toBeGreaterThanOrEqual(20)
   })

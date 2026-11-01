@@ -1,9 +1,9 @@
 // @vitest-environment node
 //
-// The bulk `add_array` / `add_circular_array` / `add_mirror` forms: one call
-// carrying the source, counts, pitches, axis or plane must land the same
-// document as the old feature + one setter per field sequence. The practice
-// round paid seven calls for a one-line linear array (batch B F2).
+// The pure half of the bulk `add_array` / `add_circular_array` / `add_mirror`
+// forms: the catalog rows and the document shape one call produces. The
+// practice round paid seven calls for a one-line linear array (batch B F2).
+// The built-document half is inlineArrayMirrorAddsReal.test.ts.
 
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'

@@ -10,10 +10,11 @@
 // `?@fid:solid` threw AmbiguousQueryError); the loop-side reconcile is a
 // contract pin guarding the evict property.
 //
-// The harness is OCC-free like the parity suite: `fakeMeta` stands in for both the
-// render tessellation and the mesh-free metadata extractor, and a `make`/`modify`
-// solve mutates the body store directly. What is NOT faked is `postRegister` and
-// `build` itself, so the wipe and the body loop run for real.
+// This is the real-OCC half of that pin: a SharedHarness build of a real sketch
+// and extrude is re-solved after a label-only edit, so the wipe and the body
+// loop run over an actual kernel checkpoint. The synthetic half, whose
+// `fakeMeta` and `make`/`modify` solve isolate the evict property without OCC,
+// is resolveSolidWipe.test.ts.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { makeAncestryQuery } from '../query'
