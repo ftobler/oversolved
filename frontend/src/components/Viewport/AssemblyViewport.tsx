@@ -480,9 +480,12 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const hoverScheduler = useMemo(() => new HoverScheduler({
     // resolveAllSync is a blocking GPU readback, so defer even the first move of
     // a frame into the frame: the assembly does at most one readback per frame,
-    // as it did before the scheduler was shared.
+    // as it did before the scheduler was shared. The stale-buffer retain is the
+    // scheduler's, the same rule the part editor uses: an empty hit through a
+    // rebuild keeps the current highlight instead of dropping it.
     leading: false,
     resolve: (q) => resolveHitsAtCursor(q.cursor, q.allowed),
+    isBufferStale: () => pipelineRef.current?.isDirty() ?? false,
     onHits: (hits) => {
       const store = useAssemblyStore.getState()
       const decision = decideAssemblyHit(hits)

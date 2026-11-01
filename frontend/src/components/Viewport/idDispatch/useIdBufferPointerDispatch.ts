@@ -298,7 +298,9 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
 
     // One coalescing and cancellation owner for the hover resolve, shared with
     // the assembly viewport. The resolve wrapper turns the pipeline's single
-    // hit into the scheduler's hit list; onHits applies it.
+    // hit into the scheduler's hit list; onHits applies it. The scheduler also
+    // owns the stale-buffer retain, so both editors keep a hover through a
+    // rebuild instead of flickering on every solver commit.
     const hoverScheduler = new HoverScheduler({
       resolve: async (q) => {
         const pipeline = getLivePipeline()
@@ -307,15 +309,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         const hit = await pipeline.resolveAsync(gl, q.cursor, { allowedLayers: q.allowed })
         return hit ? [hit] : []
       },
+      isBufferStale: () => getLivePipeline()?.isDirty() ?? false,
       onHits: (hits) => {
-        // A missing hit while the buffer is mid-rebuild is a transient
-        // transition, not empty space: retain the current highlight instead of
-        // tearing it down. This is the hover twin of the click path's
-        // lastClickWasStale, and it trades a highlight briefly outliving its
-        // geometry for no flicker on every solver commit. A clean-buffer miss
-        // still clears.
-        const pipeline = getLivePipeline()
-        if (hits.length === 0 && pipeline?.isDirty()) return
         const top = hits[0]
         applyHoverHit(top?.layer ?? null, top?.entityKey ?? null, top?.pickKey)
       },

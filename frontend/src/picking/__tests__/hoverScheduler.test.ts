@@ -175,4 +175,74 @@ describe('HoverScheduler', () => {
     expect(warn).toHaveBeenCalledWith('hover apply failed', expect.any(Error))
     warn.mockRestore()
   })
+
+  // One stale-buffer rule for both viewports: an empty resolve through a
+  // rebuilding id buffer is a transient transition, not empty space, so the
+  // current highlight is kept. clear() still reports the empty hit directly.
+  describe('stale-buffer empty hits', () => {
+    function schedulerWith(onHits: ReturnType<typeof vi.fn>, hits: () => readonly ResolvedHit[], stale: () => boolean) {
+      const frames = frameController()
+      return {
+        frames,
+        scheduler: new HoverScheduler({
+          resolve: hits,
+          onHits,
+          isBufferStale: stale,
+          requestFrame: frames.requestFrame,
+          cancelFrame: frames.cancelFrame,
+        }),
+      }
+    }
+
+    it('retains the highlight when the buffer is dirty', () => {
+      let stale = false
+      let hits: readonly ResolvedHit[] = [hit('h')]
+      const onHits = vi.fn()
+      const { scheduler, frames } = schedulerWith(onHits, () => hits, () => stale)
+
+      scheduler.schedule(query(1, 1))
+      frames.flush()
+      expect(onHits).toHaveBeenCalledWith([hit('h')])
+
+      // Mid-rebuild: the readback comes back empty but means nothing yet.
+      hits = []
+      stale = true
+      scheduler.schedule(query(2, 2))
+      frames.flush()
+      expect(onHits).toHaveBeenCalledTimes(1)
+    })
+
+    it('reports the empty hit once the buffer is clean again', () => {
+      let stale = true
+      const hits: readonly ResolvedHit[] = []
+      const onHits = vi.fn()
+      const { scheduler, frames } = schedulerWith(onHits, () => hits, () => stale)
+
+      scheduler.schedule(query(1, 1))
+      frames.flush()
+      expect(onHits).not.toHaveBeenCalled()
+
+      stale = false
+      scheduler.schedule(query(2, 2))
+      frames.flush()
+      expect(onHits).toHaveBeenCalledWith([])
+    })
+
+    it('a non-empty hit applies even while the buffer is dirty', () => {
+      const onHits = vi.fn()
+      const { scheduler, frames } = schedulerWith(onHits, () => [hit('h')], () => true)
+
+      scheduler.schedule(query(1, 1))
+      frames.flush()
+      expect(onHits).toHaveBeenCalledWith([hit('h')])
+    })
+
+    it('clear still tears the hover down through a dirty buffer', () => {
+      const onHits = vi.fn()
+      const { scheduler } = schedulerWith(onHits, () => [hit('h')], () => true)
+
+      scheduler.clear()
+      expect(onHits).toHaveBeenCalledWith([])
+    })
+  })
 })

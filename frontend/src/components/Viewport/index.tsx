@@ -71,9 +71,8 @@ import {
   type BodyRenderItem,
 } from '@/components/Viewport/bodyUtils'
 import {
-  buildBodySnapSketch,
+  bodySnapSketches,
   builtinPlaneTransform,
-  BODY_SNAP_FEAT_PREFIX,
 } from '@/components/Geometry3D/bodySnapProjection'
 import type { SketchData } from '@/types/cad'
 
@@ -496,6 +495,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // Build a combined otherSketches that includes cross-sketch entities AND projected body geometry.
   // Body geometry is projected to 2D using the active sketch's plane transform so snap detection
   // can treat it as regular sketch candidates (with a BODY_SNAP_FEAT_PREFIX sentinel featureId).
+  // Only drawn bodies contribute: bodyItems already applies the rollback bar and the visibility
+  // row, so a hidden or not-yet-built body cannot offer a snap target the user cannot see.
   const combinedOtherSketches = useMemo(() => {
     if (!activeFeatureId) return otherSketches
     const activeResult = solveResults?.[activeFeatureId]
@@ -507,19 +508,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         ? builtinPlaneTransform(activeFeature.plane)
         : null)
 
-    if (!planeTransform || !bodies) return otherSketches
+    if (!planeTransform || bodyItems.length === 0) return otherSketches
 
-    const bodySketchEntries: Record<string, Sketch> = {}
-    for (const [bodyId, body] of Object.entries(bodies)) {
-      const snapSketch = buildBodySnapSketch(body.vertices, body.edges, planeTransform)
-      if (Object.keys(snapSketch).length > 0) {
-        bodySketchEntries[`${BODY_SNAP_FEAT_PREFIX}${bodyId}`] = snapSketch
-      }
-    }
+    const bodySketchEntries = bodySnapSketches(bodyItems, planeTransform)
 
     if (Object.keys(bodySketchEntries).length === 0) return otherSketches
     return { ...otherSketches, ...bodySketchEntries }
-  }, [activeFeatureId, solveResults, features, bodies, otherSketches])
+  }, [activeFeatureId, solveResults, features, bodyItems, otherSketches])
 
   const planeSizes = useMemo(() => {
     const sizes: Record<string, number> = {}

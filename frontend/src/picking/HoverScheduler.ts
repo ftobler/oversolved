@@ -37,6 +37,15 @@ export interface HoverSchedulerOptions {
    * sync readback wants the deferred mode, where it used to do one per frame.
    */
   leading?: boolean
+  /**
+   * Whether the id buffer is mid-rebuild right now. An empty resolve against a
+   * stale buffer is a transient transition, not empty space, so the scheduler
+   * keeps the current highlight instead of reporting the empty hit. Both
+   * viewports feed this from their own pipeline, which is what makes the rule
+   * one rule rather than one implementation per editor. `clear()` still
+   * reports an empty hit directly, so an explicit teardown always wins.
+   */
+  isBufferStale?: () => boolean
 }
 
 export class HoverScheduler {
@@ -45,6 +54,7 @@ export class HoverScheduler {
   private readonly requestFrame: (cb: () => void) => number
   private readonly cancelFrame: (id: number) => void
   private readonly leading: boolean
+  private readonly isBufferStale: (() => boolean) | null
   // The claimed frame, and the query waiting for it. `frame === 0` means none.
   private frame = 0
   private queued: HoverQuery | null = null
@@ -57,6 +67,7 @@ export class HoverScheduler {
     this.requestFrame = options.requestFrame ?? (cb => requestAnimationFrame(cb))
     this.cancelFrame = options.cancelFrame ?? (id => cancelAnimationFrame(id))
     this.leading = options.leading ?? true
+    this.isBufferStale = options.isBufferStale ?? null
   }
 
   /**
@@ -130,7 +141,7 @@ export class HoverScheduler {
       // swallows the same failure. The dev warn keeps the control flow
       // identical while a prod build stays quiet.
       try {
-        this.onHits(result as readonly ResolvedHit[])
+        this.applyHits(result as readonly ResolvedHit[])
       } catch (err) {
         if (isDevBuild()) console.warn('hover apply failed', err)
       }
@@ -141,11 +152,24 @@ export class HoverScheduler {
         // A clear/invalidate since this readback launched must win: applying a
         // hit now would resurrect a hover the clear was meant to end.
         if (epoch !== this.epoch) return
-        this.onHits(hits)
+        this.applyHits(hits)
       })
       // A swallowed apply error would kill the hover state machine with no
       // trace; the dev warn keeps the control flow identical while a prod build
       // stays quiet.
       .catch(err => { if (isDevBuild()) console.warn('hover apply failed', err) })
+  }
+
+  /**
+   * The one stale-buffer rule, shared by the part and assembly viewports. An
+   * empty resolve while the id buffer is rebuilding is a transient transition,
+   * not empty space: retain the current highlight rather than tearing it down
+   * and flickering on every solve commit. This is the hover twin of the click
+   * path's stale-resolve guard. A clean-buffer miss still clears, and `clear()`
+   * does not come through here, so an explicit teardown always wins.
+   */
+  private applyHits(hits: readonly ResolvedHit[]): void {
+    if (hits.length === 0 && this.isBufferStale?.()) return
+    this.onHits(hits)
   }
 }

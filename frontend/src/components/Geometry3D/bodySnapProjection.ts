@@ -1,6 +1,7 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 import type { PlaneTransform, EdgeData, Sketch } from '@/types/cad'
+import type { BodyRenderItem } from '@/utils/bodyRender'
 import { stripRefSigil } from '@/utils/refSigil'
 
 /** Sentinel prefix for body-snap featureIds in synthetic otherSketches entries.
@@ -102,4 +103,30 @@ export function buildBodySnapSketch(
   }
 
   return sketch
+}
+
+/** The slice of a render item body snapping needs: only what is drawn. */
+export type SnapBodyItem = Pick<BodyRenderItem, 'bodyId' | 'vertices' | 'edges' | 'visible'>
+
+/**
+ * Synthetic snap sketches for every body the viewport actually draws, keyed by
+ * the sentinel feature id (`__body__<bodyId>`) that computeDragMutation reads.
+ *
+ * Driven by the render list, not by the raw body map: a body hidden by the
+ * visibility row, or one the rollback bar has not reached, is not on screen, so
+ * it must not offer a vertex or an edge to snap to. Hidden geometry that still
+ * answers the cursor is the same bug as hidden geometry that still picks.
+ */
+export function bodySnapSketches(
+  items: ReadonlyArray<SnapBodyItem>,
+  planeTransform: Pick<PlaneTransform, 'rotation' | 'origin'>,
+): Record<string, Sketch> {
+  const out: Record<string, Sketch> = {}
+  for (const item of items) {
+    if (!item.visible) continue
+    const snapSketch = buildBodySnapSketch(item.vertices, item.edges, planeTransform)
+    if (Object.keys(snapSketch).length === 0) continue
+    out[`${BODY_SNAP_FEAT_PREFIX}${item.bodyId}`] = snapSketch
+  }
+  return out
 }
