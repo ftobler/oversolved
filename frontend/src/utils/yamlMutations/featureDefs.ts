@@ -1,5 +1,5 @@
 import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
-import { warn, findFeature, normalizeRefList } from './helpers'
+import { warn, findFeature, normalizeRefList, round } from './helpers'
 import { arrayCountProblem } from '@/persistence/docSchema'
 
 /** Append a feature, lazily initializing the features array. */
@@ -23,6 +23,19 @@ function mergeInlineFields<T extends object>(target: T, inline: Partial<T>): voi
   for (const [field, value] of Object.entries(inline)) {
     if (value === undefined) continue
     setFeatureField(target, field, Array.isArray(value) ? [...value] : value)
+  }
+}
+
+/** Round the numeric fields of a freshly built def. A def is written either
+ *  through setFeatureField or, for a bulk add, straight into its literal; both
+ *  must spell an authored number the way the sketch mutators spell their seeds,
+ *  or one drag stores 0.351324 in a profile and 0.351324026 in the feature
+ *  built from it. Integers are exact under the round; expression strings are
+ *  not numbers and pass through. */
+function roundNumericFields(def: object): void {
+  const bag = def as FieldBag
+  for (const [field, value] of Object.entries(bag)) {
+    if (typeof value === 'number' && Number.isFinite(value)) bag[field] = round(value)
   }
 }
 
@@ -143,7 +156,13 @@ function setFeatureField(obj: object, field: string, value: unknown): void {
     warn(`setFeatureField: refusing non-finite value for ${field}`)
     return
   }
-  bag[field] = value
+  // Every stored feature scalar crosses this one boundary (the setters and the
+  // inline adds alike), so it carries the same precision the sketch mutators
+  // give their seeds: one authored distance spelled one way in the document.
+  // An expression string is not a number to round and reaches the evaluator
+  // untouched; a numeric ARRAY (a transform translation) is left alone, because
+  // the list fields this setter also carries are string refs.
+  bag[field] = typeof value === 'number' ? round(value) : value
 }
 
 // ─── Extrude ───
@@ -161,9 +180,10 @@ export function applyAddExtrude(
     up_to?: string | null
   } = {},
 ): void {
-  // The distance is persisted verbatim into the doc. round(NaN) is still NaN,
-  // so a non-finite distance would seed a broken extrude. Refuse before the
-  // feature is pushed.
+  // The distance crosses the same rounding boundary as every stored feature
+  // scalar (setFeatureField's rule; the required field is written straight into
+  // the def here). round(NaN) is still NaN, so a non-finite distance would seed
+  // a broken extrude. Refuse before the feature is pushed.
   if (!Number.isFinite(distance)) {
     warn('applyAddExtrude: ignoring non-finite distance', { featureId, distance })
     return
@@ -176,7 +196,7 @@ export function applyAddExtrude(
     label: label ?? 'Extrude',
     extrude: {
       sketch: sketchQuery ? [sketchQuery] : [],
-      distance,
+      distance: round(distance),
       direction: inline.direction ?? 'normal',
       // Absent keys stay absent, so a plain add writes the document it always did.
       ...(termination !== undefined && { termination }),
@@ -262,9 +282,10 @@ export function applyAddRevolve(
   angle: number,
   axis?: string,
 ): void {
-  // The angle is persisted verbatim into the doc. round(NaN) is still NaN, so a
-  // non-finite angle would seed a broken revolve. Refuse before the feature is
-  // pushed.
+  // The angle crosses the same rounding boundary as every stored feature scalar
+  // (setFeatureField's rule; the required field is written straight into the def
+  // here). round(NaN) is still NaN, so a non-finite angle would seed a broken
+  // revolve. Refuse before the feature is pushed.
   if (!Number.isFinite(angle)) {
     warn('applyAddRevolve: ignoring non-finite angle', { featureId, angle })
     return
@@ -278,7 +299,7 @@ export function applyAddRevolve(
     // reports the missing pick.
     revolve: {
       sketch: sketchQuery ? [sketchQuery] : [],
-      angle,
+      angle: round(angle),
       ...(axis ? { axis } : {}),
     },
   }
@@ -349,6 +370,7 @@ export function applyAddFillet(
     // from the same array, and a later toggle must not edit that record.
     fillet: { edges: [...(edges ?? [])], radius: radius ?? 1 },
   }
+  roundNumericFields(feature.fillet)
   pushFeature(doc, feature)
 }
 
@@ -366,6 +388,7 @@ export function applyAddChamfer(
     // The pick list is copied for the same journal reason as the fillet's.
     chamfer: { edges: [...(edges ?? [])], distance: distance ?? 1, kind: 'distance', angle: 45 },
   }
+  roundNumericFields(feature.chamfer)
   pushFeature(doc, feature)
 }
 
@@ -431,11 +454,13 @@ export function applyAddShell(
   thickness?: NumberOrExpr,
   direction?: ShellDirection,
 ): void {
+  const shell: ShellFeatureDef = { faces: [...(faces ?? [])], thickness: thickness ?? 1, direction: direction ?? 'inward' }
+  roundNumericFields(shell)
   pushFeature(doc, {
     id: featureId,
     kind: 'shell',
     label: label ?? 'Shell',
-    shell: { faces: [...(faces ?? [])], thickness: thickness ?? 1, direction: direction ?? 'inward' },
+    shell,
   })
 }
 
@@ -721,6 +746,9 @@ export function applyAddHole(
   // not part of its contract. Drop it when the caller supplied none instead of
   // persisting a depth the solve then ignores.
   if (hole.depth_mode === 'through_all' && defined.depth === undefined) delete hole.depth
+  // The inline fields land straight on the def and skip setFeatureField, so the
+  // same rounding boundary applies here.
+  roundNumericFields(hole)
   pushFeature(doc, {
     id: featureId,
     kind: 'hole',
@@ -742,18 +770,15 @@ export function applySetHoleSketch(doc: PartDoc, featureId: string, sketch: stri
 // ─── Transform ───
 
 export function applyAddTransform(doc: PartDoc, featureId: string, label?: string): void {
-  pushFeature(doc, {
-    id: featureId,
-    kind: 'transform',
-    label: label ?? 'Transform',
-    transform: {
-      bodies: [],
-      operation: 'new',
-      translation: [0, 0, 0],
-      rotation_angle: 0,
-      scale: 1,
-    },
-  })
+  const transform: TransformFeatureDef = {
+    bodies: [],
+    operation: 'new',
+    translation: [0, 0, 0],
+    rotation_angle: 0,
+    scale: 1,
+  }
+  roundNumericFields(transform)
+  pushFeature(doc, { id: featureId, kind: 'transform', label: label ?? 'Transform', transform })
 }
 
 /** Toggle a body ref in/out of the transform's pick list (re-picking removes). */
@@ -940,6 +965,7 @@ export function applyAddHelix(
     direction: 'normal',
   }
   if (reference) helix.reference = reference
+  roundNumericFields(helix)
   pushFeature(doc, { id: featureId, kind: 'helix', label: label ?? 'Helix', helix })
 }
 
