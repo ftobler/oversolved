@@ -50,8 +50,12 @@ beforeEach(() => {
   registrations.length = 0
 })
 
-async function renderBody(props: Record<string, unknown>) {
-  const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
+// Imported at module scope, not inside the first test: Body3D pulls the whole
+// geometry tree, and paying that transform inside a test counts it against the
+// test timeout.
+import Body3D from '@/components/Geometry3D/Body3D'
+
+function renderBody(props: Record<string, unknown>) {
   return render(
     <Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} edges={edges} vertices={vertices} {...props} />,
   )
@@ -60,16 +64,16 @@ async function renderBody(props: Record<string, unknown>) {
 const enabled = (hook: string) => registrations.filter(r => r.hook === hook).some(r => r.enabled)
 
 describe('Body3D shading and edges', () => {
-  it('draws and registers both layers by default', async () => {
-    const { container } = await renderBody({})
+  it('draws and registers both layers by default', () => {
+    const { container } = renderBody({})
     expect(container.querySelector('meshphysicalmaterial')).not.toBeNull()
     expect(container.querySelector('linesegments')).not.toBeNull()
     expect(enabled('face')).toBe(true)
     expect(enabled('edge')).toBe(true)
   })
 
-  it('shading off hides the face from the image and from the ID buffer', async () => {
-    const { container } = await renderBody({ showFaces: false })
+  it('shading off hides the face from the image and from the ID buffer', () => {
+    const { container } = renderBody({ showFaces: false })
     expect(container.querySelector('meshphysicalmaterial')).toBeNull()
     expect(enabled('face')).toBe(false)
     // The wireframe is what the user sees in a wireframe view, so it stays.
@@ -77,30 +81,30 @@ describe('Body3D shading and edges', () => {
     expect(enabled('edge')).toBe(true)
   })
 
-  it('edges off hides the wireframe from the image and from the ID buffer', async () => {
-    const { container } = await renderBody({ showEdges: false })
+  it('edges off hides the wireframe from the image and from the ID buffer', () => {
+    const { container } = renderBody({ showEdges: false })
     expect(container.querySelector('linesegments')).toBeNull()
     expect(enabled('edge')).toBe(false)
     expect(container.querySelector('meshphysicalmaterial')).not.toBeNull()
     expect(enabled('face')).toBe(true)
   })
 
-  it('leaves vertex picking alone: it is neither shading nor edges', async () => {
-    await renderBody({ showFaces: false })
+  it('leaves vertex picking alone: it is neither shading nor edges', () => {
+    renderBody({ showFaces: false })
     expect(enabled('vertex')).toBe(true)
   })
 
-  it('keeps the removal mark visible through the edges row', async () => {
+  it('keeps the removal mark visible through the edges row', () => {
     // The plan exempts the removal mark: a doomed body must stay identifiable
     // while the user chooses what the edit takes. It is drawn, but not made
     // pickable -- registration follows the row alone.
-    const { container } = await renderBody({ showEdges: false, doomed: true })
+    const { container } = renderBody({ showEdges: false, doomed: true })
     expect(container.querySelector('linesegments')).not.toBeNull()
     expect(enabled('edge')).toBe(false)
   })
 
-  it('honours an explicit hide as the other axis', async () => {
-    await renderBody({ visible: false })
+  it('honours an explicit hide as the other axis', () => {
+    renderBody({ visible: false })
     expect(enabled('face')).toBe(false)
     expect(enabled('edge')).toBe(false)
     expect(enabled('vertex')).toBe(false)
