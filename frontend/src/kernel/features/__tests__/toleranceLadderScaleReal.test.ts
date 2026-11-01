@@ -9,18 +9,20 @@
 // and pins that the verdict, and not just the geometry, travels with the part.
 //
 // Skips when OCC.js or the sketch solver is absent, like the other real gates.
+// The parity cases pin that verdicts travel with the part; the micro offset
+// case is where a fractional budget and the old absolute epsilon genuinely
+// disagree.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { SharedHarness } from '../../occ/sharedHarness'
 import { DisposeScope } from '../../occ/disposeScope'
-import { HandleTable } from '../../occ/handleTable'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { volumeOf } from '../../occ/booleans'
-import { offsetSolid, OffsetError } from '../../occ/offsetShape'
+import { offsetSolid } from '../../occ/offsetShape'
 import { makeBoxAt } from '../../occ/primitives'
-import { TOL_VOLUME_SUM } from '../../solverConstants'
+import { TOL_VOLUME_DEGENERATE, TOL_VOLUME_SUM } from '../../solverConstants'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
 
@@ -176,7 +178,6 @@ describe.skipIf(!oc || !solveBytes)('volume budgets judge a part at any scale (r
       const side = 10 * k
       const clearance = k
       const scope = new DisposeScope()
-      const table = new HandleTable()
       try {
         const box = makeBoxAt(occ, scope, [0, 0, 0], side, side, side)
         const grown = offsetSolid(occ, scope, box, clearance)
@@ -186,8 +187,6 @@ describe.skipIf(!oc || !solveBytes)('volume budgets judge a part at any scale (r
         const shrunk = offsetSolid(occ, scope, box, -clearance)
         const shrunkVolume = Math.abs(volumeOf(occ, scope, shrunk.shape))
         expect(ratio(shrunkVolume, (side - 2 * clearance) ** 3), `scale ${k}: shrunk`).toBeCloseTo(1, 6)
-        table.register(grown.shape, 'off_grown')
-        table.register(shrunk.shape, 'off_shrunk')
       } finally {
         scope.dispose()
       }
@@ -195,16 +194,40 @@ describe.skipIf(!oc || !solveBytes)('volume budgets judge a part at any scale (r
   })
 
   it('an offset that would annihilate the tool is refused at both scales', () => {
-    // Shrinking a box by more than half its side leaves no material. The sign
-    // law is what catches it, and the refusal must not depend on the tool's size.
+    // Shrinking a box by more than half its side leaves no material. OCCT's
+    // validity check fires on the collapsed result before the volume sign law
+    // is reached; either refusal is the point, and it must not depend on the
+    // tool's size.
     for (const k of SCALES) {
       const scope = new DisposeScope()
       try {
         const box = makeBoxAt(occ, scope, [0, 0, 0], 10 * k, 10 * k, 10 * k)
-        expect(() => offsetSolid(occ, scope, box, -6 * k), `scale ${k}`).toThrow(OffsetError)
+        expect(() => offsetSolid(occ, scope, box, -6 * k), `scale ${k}`).toThrow(/not a valid solid|did not shrink the tool/)
       } finally {
         scope.dispose()
       }
+    }
+  })
+
+  it('a micro offset the old absolute floor refused is accepted', () => {
+    // The case the fractional budgets exist for. A 10 micron box grown by 1.2:
+    // the honest growth (measured ~7.2e-10 mm3) sits under the 1e-9 the offset
+    // law used to carry as an absolute epsilon, so the old rule refused a
+    // valid offset at this size; the tool-relative budget (~1e-15) clears it
+    // with orders to spare. The distance itself stays above OCCT's own
+    // compiled-in offset confusion: smaller offsets never complete, at any
+    // scale, which is why the window here is narrow.
+    const scope = new DisposeScope()
+    try {
+      const box = makeBoxAt(occ, scope, [0, 0, 0], 1e-2, 1e-2, 1e-2)
+      const grown = offsetSolid(occ, scope, box, 1.2e-6)
+      const before = Math.abs(volumeOf(occ, scope, box))
+      const after = Math.abs(volumeOf(occ, scope, grown.shape))
+      expect(after).toBeGreaterThan(before)
+      expect(after - before).toBeLessThan(1e-9)  // the old absolute floor would have refused
+      expect(after - before).toBeGreaterThan(TOL_VOLUME_DEGENERATE * Math.max(before, after))  // this one does not
+    } finally {
+      scope.dispose()
     }
   })
 
@@ -218,10 +241,17 @@ describe.skipIf(!oc || !solveBytes)('volume budgets judge a part at any scale (r
       const r = h.run(blockSpec(k, 10 * (1 - thicknessFraction), 'above'))
       return String(h.res(r, 'sp1').status)
     }
-    for (const fraction of [0.5, 0.1, 1e-4, 1e-7, 1e-10]) {
-      const atOrigin = verdictOf(1, fraction)
-      const at1000 = verdictOf(1000, fraction)
-      expect(atOrigin, `thickness fraction ${fraction} at scale 1`).toBe(at1000)
+    // Each fraction carries its own expected verdict, not just its parity
+    // against the other scale: the slab sits ten-fold under the degenerate
+    // budget at a thickness fraction of 1e-10 and ten-fold above it at 1e-7,
+    // so a rung change that flipped BOTH scales into refusing would fail here
+    // instead of passing on agreement.
+    const cases: Array<[number, string]> = [
+      [0.5, 'ok'], [0.1, 'ok'], [1e-4, 'ok'], [1e-7, 'ok'], [1e-10, 'exception'],
+    ]
+    for (const [fraction, want] of cases) {
+      expect(verdictOf(1, fraction), `thickness fraction ${fraction} at scale 1`).toBe(want)
+      expect(verdictOf(1000, fraction), `thickness fraction ${fraction} at scale 1000`).toBe(want)
     }
   })
 

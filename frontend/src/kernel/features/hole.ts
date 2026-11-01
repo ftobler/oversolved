@@ -526,8 +526,13 @@ function intersects(oc: OccModule, shape: OccShape, tool: OccShape): boolean {
     probe.track(inter)
     // Budget relative to the tool's own volume: a real hit is a piece of the
     // tool, and OCC integrates it with error that scales with the shape, so a
-    // 1000x copy of the same probe clears the same fraction of itself.
-    return volumeOf(oc, probe, inter) >= TOL_VOLUME_DEGENERATE * Math.abs(volumeOf(oc, probe, tool))
+    // 1000x copy of the same probe clears the same fraction of itself. A tool
+    // that integrates to zero mass clears only a floored budget: the bare
+    // fraction would read 0 >= 0 as a hit for a degenerate probe, and a failed
+    // Common already reads as a hit elsewhere.
+    const toolVolume = Math.abs(volumeOf(oc, probe, tool))
+    const floor = TOL_VOLUME_DEGENERATE * TOL_VOLUME_DEGENERATE  // breaks the 0 >= 0 tie only
+    return volumeOf(oc, probe, inter) >= Math.max(TOL_VOLUME_DEGENERATE * toolVolume, floor)
   } catch (e) {
     swallowUnlessTrap(e)
     return true

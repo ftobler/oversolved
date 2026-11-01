@@ -5,6 +5,7 @@ import {
   OCC_CONFUSION,
   TOL_LENGTH_SLACK,
   TOL_LOOP_CLOSURE,
+  TOL_MOVE_FACE_TANGENT,
   TOL_NEAR_ZERO_AREA,
   TOL_PREVIEW_CELL,
   TOL_SELECT_DIRECTION,
@@ -16,6 +17,7 @@ import {
   TOL_VOLUME_DEGENERATE,
   TOL_VOLUME_SUM,
 } from '../solverConstants'
+import { DEFAULT_MEASURE_TOLERANCE } from '../occ/measureTolerance'
 
 // The topology tolerances are mirrored by value into
 // sketch-solver/src/topology/mod.rs; float parity there is load-bearing
@@ -144,7 +146,12 @@ describe('solverConstants', () => {
     expect(TOL_SURFACE_IDENTITY).toBe(TOL_LOOP_CLOSURE)  // one scale for "this point is on this geometry"
     expect(TOL_SURFACE_PARALLEL).toBeLessThan(TOL_SURFACE_IDENTITY)  // analytic axes: noise only
     expect(TOL_VOLUME_DEGENERATE).toBeLessThan(TOL_VOLUME_SUM)  // empty vs additive closure
+    expect(TOL_PREVIEW_CELL).toBe(TOL_MOVE_FACE_TANGENT)  // the two coarse rendering-side rungs stand level
     expect(TOL_PREVIEW_CELL).toBeGreaterThan(TOL_SURFACE_IDENTITY)  // a rendering coincidence, not a solver decision
+    // select's position clauses (extreme, center, within) lean on the measure
+    // floor spelled in occ/measureTolerance; if it drifts off the ladder, the
+    // selector answers on a rung this file no longer names.
+    expect(DEFAULT_MEASURE_TOLERANCE.abs).toBe(TOL_SURFACE_IDENTITY)
   })
 
   // The ladder's whole point is that a rung is declared once. These are the

@@ -609,6 +609,8 @@ function isUnbounded(
   yd: Vec3,
   L: number,
 ): boolean {
+  // Not a ladder rung: a slack relative to the slab's own half-extent, so it
+  // scales with L the way a wall test on world-distance centroids must.
   const eps = 1e-6 * L
   for (const f of canonicalFaces(oc, scope, cell) as OccShape[]) {
     const c = faceCentroid(oc, scope, f)

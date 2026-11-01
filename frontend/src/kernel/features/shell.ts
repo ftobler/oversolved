@@ -89,7 +89,7 @@ function smallestConvexRoundRadius(
         radius = torus.MinorRadius()
         const perp: V3 = [w[0] - along * d[0], w[1] - along * d[1], w[2] - along * d[2]]
         const len = Math.hypot(perp[0], perp[1], perp[2])
-        if (len < 1e-12) continue
+        if (len < 1e-12) continue  // guards the major / len below: the point sits on the torus' tube axis
         const k = torus.MajorRadius() / len
         centre = [a[0] + perp[0] * k, a[1] + perp[1] * k, a[2] + perp[2] * k]
       }

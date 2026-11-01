@@ -584,6 +584,15 @@ describe('selectByPredicate: the direction rung and the extreme floor', () => {
     }
   }
 
+  // The same edge seen from the right angle: tipped from the XY plane by
+  // `cosine`, so its dot against +Z is that cosine.
+  function tippedFlat(cosine: number): Record<string, BodyResult> {
+    return {
+      body_ex1: bodyResult('body_ex1', [line([0, 0, 0], [10 * Math.sqrt(1 - cosine * cosine), 0, 10 * cosine])],
+        [q('body_ex1', ['@u|e_tip'], 'straightedge')], [], [], []),
+    }
+  }
+
   it('parallel refuses a tilt perpendicular already refused', () => {
     // A sine of 1e-4 against Z is ~0.006 degrees, a 1 micron lean per millimetre
     // of edge: a visibly different direction, and the one the dot form let through.
@@ -604,14 +613,23 @@ describe('selectByPredicate: the direction rung and the extreme floor', () => {
     // sits 1e-3 mm off the plane (cosine 1e-4 against Z) is refused, one 1e-6 mm
     // off is accepted. Reading the rung as a sine, the refusal is the mirror of
     // the parallel clause's.
-    const tippedFlat = (cosine: number): Record<string, BodyResult> => ({
-      body_ex1: bodyResult('body_ex1', [line([0, 0, 0], [10 * Math.sqrt(1 - cosine * cosine), 0, 10 * cosine])],
-        [q('body_ex1', ['@u|e_tip'], 'straightedge')], [], [], []),
-    })
     expect(() => queriesOf({ kind: 'edge', where: { perpendicular: [0, 0, 1] } }, tippedFlat(1e-4)))
       .toThrow(/perpendicular \[0, 0, 1\] matched 0/)
     expect(queriesOf({ kind: 'edge', where: { perpendicular: [0, 0, 1] } }, tippedFlat(1e-7)))
       .toEqual([q('body_ex1', ['@u|e_tip'], 'straightedge')])
+  })
+
+  it('the rung boundary itself: accepted just under, refused just over', () => {
+    // Half and double the rung on both clauses. A rung that crept tenfold in
+    // either direction would flip one of these four.
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, tipped(5e-7)))
+      .toEqual([q('body_ex1', ['@u|e_tip'], 'straightedge')])
+    expect(() => queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, tipped(2e-6)))
+      .toThrow(/parallel \[0, 0, 1\] matched 0/)
+    expect(queriesOf({ kind: 'edge', where: { perpendicular: [0, 0, 1] } }, tippedFlat(5e-7)))
+      .toEqual([q('body_ex1', ['@u|e_tip'], 'straightedge')])
+    expect(() => queriesOf({ kind: 'edge', where: { perpendicular: [0, 0, 1] } }, tippedFlat(2e-6)))
+      .toThrow(/perpendicular \[0, 0, 1\] matched 0/)
   })
 
   // Three horizontal edges whose midpoints sit at z0, z0 + gap and z0 - 1.
@@ -633,5 +651,28 @@ describe('selectByPredicate: the direction rung and the extreme floor', () => {
     // 5e-4 step the group is supposed to separate.
     expect(queriesOf(extremeMaxZ, stepped(0))).toHaveLength(1)
     expect(queriesOf(extremeMaxZ, stepped(1000))).toHaveLength(1)
+  })
+
+  it('extreme groups a gap under the floor and separates one over it, at either end of the axis', () => {
+    // Two edges whose projections differ by a chosen gap. Under the floor (5e-7
+    // against the 1e-6 measure floor) they group, over it (5e-4) they do not,
+    // and the verdict may not depend on where the pair sits on the axis.
+    const pair = (z0: number, gap: number): Record<string, BodyResult> => ({
+      body_ex1: bodyResult('body_ex1', [
+        line([0, 0, z0], [10, 0, z0]),
+        line([0, 1, z0 + gap], [10, 1, z0 + gap]),
+      ], edgeQueriesFor('body_ex1', 2), [], [], []),
+    })
+    const extremeMaxZ: Selector = { kind: 'edge', where: { extreme: { axis: [0, 0, 1], side: 'max' } } }
+    expect(queriesOf(extremeMaxZ, pair(0, 5e-7))).toHaveLength(2)
+    expect(queriesOf(extremeMaxZ, pair(1000, 5e-7))).toHaveLength(2)
+    expect(queriesOf(extremeMaxZ, pair(0, 5e-4))).toHaveLength(1)
+    expect(queriesOf(extremeMaxZ, pair(1000, 5e-4))).toHaveLength(1)
+  })
+
+  it('the min side groups a translated copy the same way', () => {
+    const extremeMinZ: Selector = { kind: 'edge', where: { extreme: { axis: [0, 0, 1], side: 'min' } } }
+    expect(queriesOf(extremeMinZ, stepped(0))).toHaveLength(1)
+    expect(queriesOf(extremeMinZ, stepped(1000))).toHaveLength(1)
   })
 })

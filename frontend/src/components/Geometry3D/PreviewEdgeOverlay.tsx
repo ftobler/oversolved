@@ -16,17 +16,14 @@ interface PreviewEdgeOverlayProps {
 
 interface PreviewBodyEdgesProps {
   edges: EdgeData[]
-  existingGeom: EdgeCells[] | null
+  existingGeom: Map<string, EdgeCells[]> | null
 }
 
 /** The lattice cells one edge's sampled polyline occupies: `keys` to look a
- *  cell up, `cells` to walk them, and the cell bounds so a ghost a whole
- *  region away is dismissed before a single point is probed. */
+ *  cell up and `cellList` to walk them. */
 interface EdgeCells {
   keys: Set<string>
-  cells: Array<[number, number, number]>
-  min: [number, number, number]
-  max: [number, number, number]
+  cellList: Array<[number, number, number]>
 }
 
 // A position-bearing cell set for one edge, derived from its sampled polyline
@@ -51,45 +48,27 @@ function cellKey(x: number, y: number, z: number): string {
 
 function cellsFromSegments(pts: Float32Array): EdgeCells {
   const keys = new Set<string>()
-  const cells: Array<[number, number, number]> = []
-  const min: [number, number, number] = [Infinity, Infinity, Infinity]
-  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity]
+  const cellList: Array<[number, number, number]> = []
   for (let i = 0; i + 3 <= pts.length; i += 3) {
     const cell: [number, number, number] = [cellOf(pts[i]), cellOf(pts[i + 1]), cellOf(pts[i + 2])]
-    for (let a = 0; a < 3; a++) {
-      if (cell[a] < min[a]) min[a] = cell[a]
-      if (cell[a] > max[a]) max[a] = cell[a]
-    }
     const key = cellKey(cell[0], cell[1], cell[2])
     if (!keys.has(key)) {
       keys.add(key)
-      cells.push(cell)
+      cellList.push(cell)
     }
   }
-  return { keys, cells, min, max }
-}
-
-/** Whether two cell sets can be the same edge at all: their bounds overlap
- *  within the one-cell slack `covers` allows. The overlay compares every
- *  surviving preview edge against every ghost edge, and this is what keeps that
- *  comparison from probing a body's worth of points per distant ghost. */
-function boundsOverlap(a: EdgeCells, b: EdgeCells): boolean {
-  for (let i = 0; i < 3; i++) {
-    if (a.min[i] > b.max[i] + 1 || b.min[i] > a.max[i] + 1) return false
-  }
-  return true
+  return { keys, cellList }
 }
 
 /** Every cell of `a` has a partner in `b` within one lattice step on every
- *  axis, the same 27-cell probe picking's mark position index uses
- *  (picking/markPosition.ts). The own cell is tried first, so two passes over
- *  one unchanged curve -- the case that dominates -- cost one lookup per point.
+ *  axis, the same 27-cell probe picking's mark position index uses. That list
+ *  (picking/markPosition.ts) carries the own cell first, so two passes over one
+ *  unchanged curve -- the case that dominates -- settle on the first lookup.
  *  The neighbour step is what removes the boundary cliff an exact key has:
  *  samples that differ by less than the cell but straddle a boundary are the
  *  same point, and a rigidly moved edge lands hundreds of cells away. */
 function covers(a: EdgeCells, b: EdgeCells): boolean {
-  for (const [x, y, z] of a.cells) {
-    if (b.keys.has(cellKey(x, y, z))) continue
+  for (const [x, y, z] of a.cellList) {
     let hit = false
     for (const [dx, dy, dz] of MARK_CELL_NEIGHBOURS) {
       if (b.keys.has(cellKey(x + dx, y + dy, z + dz))) {
@@ -102,11 +81,30 @@ function covers(a: EdgeCells, b: EdgeCells): boolean {
   return true
 }
 
+/** The ghosts a preview edge can possibly coincide with: any coincidence needs
+ *  every cell of the edge to find a ghost cell within one lattice step, so a
+ *  ghost sharing no cell is dismissed without probing a point. The overlay
+ *  re-runs whenever preview geometry changes, and this index is what keeps a
+ *  long model from rescanning the whole pick set per edge. */
+function candidateGhosts(a: EdgeCells, index: Map<string, EdgeCells[]>): EdgeCells[] {
+  const out: EdgeCells[] = []
+  for (const [x, y, z] of a.cellList) {
+    for (const [dx, dy, dz] of MARK_CELL_NEIGHBOURS) {
+      const bucket = index.get(cellKey(x + dx, y + dy, z + dz))
+      if (bucket === undefined) continue
+      for (const g of bucket) {
+        if (!out.includes(g)) out.push(g)
+      }
+    }
+  }
+  return out
+}
+
 // Coincidence is coverage both ways. A preview edge that covers only PART of
 // its ghost, or is covered only in part by it, is a shortened or split edge:
 // geometry the feature really changed, which the overlay must show.
 function coincides(a: EdgeCells, b: EdgeCells): boolean {
-  return boundsOverlap(a, b) && covers(a, b) && covers(b, a)
+  return covers(a, b) && covers(b, a)
 }
 
 function PreviewBodyEdges({ edges, existingGeom }: PreviewBodyEdgesProps) {
@@ -125,7 +123,7 @@ function PreviewBodyEdges({ edges, existingGeom }: PreviewBodyEdgesProps) {
 
   const geo = useMemo(() => {
     const survivors = existingGeom
-      ? tessellated.filter(t => t.cells.cells.length === 0 || !existingGeom.some(g => coincides(t.cells, g)))
+      ? tessellated.filter(t => t.cells.cellList.length === 0 || !candidateGhosts(t.cells, existingGeom).some(g => coincides(t.cells, g)))
       : tessellated
     let total = 0
     for (const t of survivors) total += t.pts.length
@@ -163,14 +161,22 @@ export default function PreviewEdgeOverlay({ items, pickItems }: PreviewEdgeOver
   // suppressed so the overlay highlights only what the edit actually changed.
   const existingGeom = useMemo(() => {
     if (!pickItems) return null
-    const ghosts: EdgeCells[] = []
+    // Index the ghost cells so a preview edge only ever meets the ghosts it
+    // could possibly coincide with (see candidateGhosts).
+    const byCell = new Map<string, EdgeCells[]>()
     for (const item of pickItems) {
       for (const edge of item.edges) {
         const cells = cellsFromSegments(buildEdgeSegments([edge]))
-        if (cells.cells.length > 0) ghosts.push(cells)
+        if (cells.cellList.length === 0) continue
+        for (const [x, y, z] of cells.cellList) {
+          const key = cellKey(x, y, z)
+          const bucket = byCell.get(key)
+          if (bucket === undefined) byCell.set(key, [cells])
+          else bucket.push(cells)
+        }
       }
     }
-    return ghosts
+    return byCell
   }, [pickItems])
 
   return (

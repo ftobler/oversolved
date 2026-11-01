@@ -27,7 +27,7 @@ import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, makeBSpline
 import { buildCurveEdge } from '../occ/helixEdge'
 import { descriptorFromRepo } from './helix'
 import { stripRefSigil } from '@/utils/refSigil'
-import { TOL_LENGTH_SLACK } from '../solverConstants'
+import { TOL_LENGTH_SLACK, TOL_LOOP_CLOSURE } from '../solverConstants'
 
 type Dict = Record<string, unknown>
 
@@ -74,7 +74,7 @@ export type ChainEdge = { edge: Dict; reversed: boolean }
  * The chain always starts from a degree-1 endpoint and walks forward.
  * See [[orderEdgesIntoChain]] for the flag-less original.
  */
-export function orderEdgesIntoChain(edges: Dict[], tol = 1e-6): ChainEdge[] {
+export function orderEdgesIntoChain(edges: Dict[], tol = TOL_LOOP_CLOSURE): ChainEdge[] {
   const close = (a: number[], b: number[]): boolean => {
     const n = Math.max(a.length, b.length)
     for (let i = 0; i < n; i++) {

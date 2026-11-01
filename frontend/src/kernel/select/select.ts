@@ -134,9 +134,9 @@ function extremeGroup(spec: { axis: Vec3; side: 'min' | 'max' }, pool: Candidate
   // Group on the absolute measure floor, the same one `center` and `within`
   // use. The relative term of a measure budget scales with the projected
   // coordinate itself: the same part translated 1000 along the axis would
-  // group points 1e-3 apart while the part at the origin groups at 1e-5, so
-  // `extreme` would answer differently for the two copies. A projection has
-  // no expected value to scale; only the floor is sound.
+  // group points 1e-3 apart while the part at the origin groups at the 1e-6
+  // floor, so `extreme` would answer differently for the two copies. A
+  // projection has no expected value to scale; only the floor is sound.
   return pool.filter(c => {
     const v = projections.get(c)
     return v !== undefined && Math.abs(v - best) <= DEFAULT_MEASURE_TOLERANCE.abs

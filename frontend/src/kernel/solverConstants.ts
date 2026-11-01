@@ -57,7 +57,10 @@ export const TOL_SELECT_DIRECTION = 1e-6
 // the loop-closure rung of the ladder: OCC_CONFUSION < TOL_SURFACE_IDENTITY =
 // TOL_LOOP_CLOSURE <= TOL_TOPOLOGY_MERGE. The move-face and offset modules
 // each carried a private copy of this rung (SURFACE_TOL, PLANE_TOL, UV_TOL,
-// TOOL_FACE_TOL, SHAPE_TOL); they all read this one now.
+// TOOL_FACE_TOL, SHAPE_TOL); they all read this one now. The move-face
+// curved-region classifier also reads it as parameter-space slack, where the
+// u and v dimensions are angles: there it stands for 1e-6 of turn, not a
+// world distance.
 export const TOL_SURFACE_IDENTITY = 1e-6
 
 // The angular companion of the surface-identity rung: the unit axes of two
@@ -69,8 +72,8 @@ export const TOL_SURFACE_PARALLEL = 1e-9
 
 // Length slack: how far past exact a comparison between two authored lengths
 // reads as equal: bores just touching, a fillet exactly the shell thickness,
-// a profile exactly one helix pitch tall, a probe of exactly zero length. An
-// order of magnitude under OCC_CONFUSION, so it absorbs f64 noise on world
+// a profile exactly one helix pitch tall, a probe of exactly zero length. Two
+// orders of magnitude under OCC_CONFUSION, so it absorbs f64 noise on world
 // coordinates without ever accepting a real separation.
 export const TOL_LENGTH_SLACK = 1e-9
 
@@ -89,9 +92,11 @@ export const TOL_VOLUME_SUM = 1e-6
 // than a cell is the same point, which is what lets two passes over one curve
 // recognise each other; the overlay probes the 27 neighbour cells the way
 // picking's mark position index does (picking/markPosition.ts), so samples that
-// straddle a cell boundary are still one point. It is the coarsest rung of the
-// ladder, four orders above every solver resolution, because it judges a
-// rendering coincidence and not geometry.
+// straddle a cell boundary are still one point. Level with TOL_MOVE_FACE_TANGENT
+// it is the coarsest rung the ladder names, because it judges a rendering
+// coincidence and not geometry. The lattice is fixed in world units on purpose:
+// it quantizes float32 tessellation, whose own step outruns a fixed cell above
+// roughly 1e4 model units (feature/backlog.md).
 export const TOL_PREVIEW_CELL = 1e-3
 
 export const BUILTIN_PLANES: Record<string, Record<string, unknown>> = {
