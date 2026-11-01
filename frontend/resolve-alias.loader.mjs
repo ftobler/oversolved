@@ -28,10 +28,10 @@ async function resolveWithExt(target, original, context, nextResolve) {
     return await nextResolve(target, context)
   } catch (_err) {
     if (target !== original) {
-      try { return await nextResolve(original, context) } catch { /* fall through */ }
+      try { return await nextResolve(original, context) } catch {  /* fall through */ }
     }
     if (!path.extname(target)) {
-      try { return await nextResolve(target + '.ts', context) } catch { /* fall through */ }
+      try { return await nextResolve(target + '.ts', context) } catch {  /* fall through */ }
       const indexPath = path.join(target, 'index.ts')
       if (fs.existsSync(indexPath)) {
         return nextResolve(indexPath, context)

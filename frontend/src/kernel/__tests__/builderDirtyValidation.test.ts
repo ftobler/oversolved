@@ -8,6 +8,7 @@ import {
   repoFromSnapshot,
   type FeatureResult,
 } from '../builder'
+import { stripNonGeometricResult } from '../builderHash'
 import { canonical } from '../query'
 import type { BuildState } from '../types3d'
 import { makeDeps, checkpoint } from '../builderTestUtils'
@@ -102,6 +103,20 @@ describe('hashResultDict', () => {
     const a = { ex1: { status: 'ok', solve_ms: 1.2 } }
     const b = { ex1: { status: 'ok', solve_ms: 99.9 } }
     expect(hashResultDict(a)).toBe(hashResultDict(b))
+  })
+
+  it('strips solve_ms at every depth before a golden is frozen, keeping geometry', () => {
+    // The corpus generator freezes this same reduction, so a regen diffs only
+    // real geometry changes and not wall-clock noise.
+    const live = {
+      solve_ms: 12.5,
+      ex1: { status: 'ok', solve_ms: 3.1, geometry: { e1: [1, 2, 3] } },
+      sk1: { status: 'ok', features: { l1: { status: 'fully_constrained', solve_ms: 0.2 } } },
+    }
+    expect(stripNonGeometricResult(live)).toEqual({
+      ex1: { status: 'ok', geometry: { e1: [1, 2, 3] } },
+      sk1: { status: 'ok', features: { l1: { status: 'fully_constrained' } } },
+    })
   })
 })
 

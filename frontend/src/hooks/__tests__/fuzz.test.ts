@@ -7,35 +7,25 @@
 // sequence generator and the start document live in fuzzHarness.ts; this file
 // only sizes the runs and pins the regression seeds.
 //
-// The default suite is bounded (a handful of seeds); FUZZ_SEEDS and FUZZ_STEPS
-// size the long run the `just fuzz-session` recipe carries (the main gate's
-// `just fuzz` runs it at 200 x 40). The real kernel runs where installed, exactly like
-// the other Real suites; the fake scheduler covers the history mechanics
-// everywhere.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { stringify } from 'yaml'
+// The fake-scheduler half: FUZZ_FAKE_SEEDS and FUZZ_FAKE_STEPS size its long
+// run, and it covers the history mechanics on an unprovisioned checkout.
+// fuzzReal.test.ts holds the real-kernel ratchet, sized by FUZZ_SEEDS and
+// FUZZ_STEPS (`just fuzz-session` carries both, and the main gate's `just fuzz`
+// runs it at 200 x 40).
+import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
+import { stringify } from 'yaml'
 import { loadPartDocText } from '@/persistence/docSchema'
-import { loadOcc } from '@/kernel/occ/loadOcc'
-import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { setSolveLocalsForTest, persistentTableForTest } from '@/kernel/solveLocally'
-import { setSketchSolver, resetSketchSolver } from '@/kernel/features/sketch'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
-import { createRealSolveScheduler } from './realSolveScheduler'
 import {
   generateSequence,
   runFuzzSequence,
   type FuzzStep,
   type FuzzSolver,
-  type FuzzRunResult,
 } from './fuzzHarness'
 import { minimizeSequence } from './fuzzMinimizer'
-
-const oc = await loadOcc()
-const solveBytes = loadSolver()
+import { reportFailureDocs } from './fuzzFailureDocs'
 
 function envInt(name: string, fallback: number): number {
   const raw = Number.parseInt(process.env[name] ?? '', 10)
@@ -43,8 +33,6 @@ function envInt(name: string, fallback: number): number {
 }
 
 // The bounded defaults keep the PR gate fast; `just fuzz-session` widens them.
-const FUZZ_SEEDS = envInt('FUZZ_SEEDS', 4)
-const FUZZ_STEPS = envInt('FUZZ_STEPS', 6)
 const FAKE_SEEDS = envInt('FUZZ_FAKE_SEEDS', 24)
 const FAKE_STEPS = envInt('FUZZ_FAKE_STEPS', 16)
 
@@ -52,9 +40,6 @@ const FAKE_STEPS = envInt('FUZZ_FAKE_STEPS', 16)
 // the sweep instead of sitting at a fixed wall: 250 ms per (seed, step) over a
 // 60 s floor, capped at 30 minutes. The bounded default (4 x 6) allows 66 s
 // for a run measured in about a second; a manual sweep grows its own budget.
-const REAL_STEP_BUDGET_MS = 250
-const REAL_TIMEOUT_MS = Math.min(30 * 60_000, 60_000 + FUZZ_SEEDS * FUZZ_STEPS * REAL_STEP_BUDGET_MS)
-
 function seeds(count: number): number[] {
   return Array.from({ length: count }, (_, i) => i)
 }
@@ -66,24 +51,6 @@ function fakeSolver(): FuzzSolver {
 
 async function runFake(seed: number, steps: number, options?: Parameters<typeof runFuzzSequence>[2]) {
   return runFuzzSequence(generateSequence(seed, steps), fakeSolver(), options)
-}
-
-// A failing seed prints the document the session held at that step, not only a
-// number: the user can open the YAML in the app and reproduce the failure
-// directly. The path is under the project's gitignored `tmp/`. A write failure
-// is a warning, never a replacement for the real assertion message.
-function reportFailureDocs(seed: number, result: FuzzRunResult): void {
-  for (const { step, doc } of result.failureDocs) {
-    const dir = join(process.cwd(), 'tmp', 'fuzz-session')
-    const path = join(dir, `seed-${seed}-step-${step}.yaml`)
-    try {
-      mkdirSync(dir, { recursive: true })
-      writeFileSync(path, stringify(doc))
-      console.error(`[fuzz] seed ${seed} step ${step}: openable document at ${path}`)
-    } catch (error) {
-      console.warn(`[fuzz] seed ${seed} step ${step}: could not write the repro to ${path}: ${String(error)}`)
-    }
-  }
 }
 
 // The known failing seed: R04 is a designed refusal (dispatching set_rollback
@@ -186,58 +153,6 @@ describe('the history cap', () => {
     expect(result.maxUndoDepth).toBe(MAX_UNDO_DEPTH)
     expect(result.droppedEntries).toBe(10)
     expect(result.undoAllReachedStart).toBe(false)
-  })
-})
-
-// The real suite below skips where the kernel is not provisioned, which keeps the
-// PR gate runnable on a fresh checkout but let `just fuzz-session` pass in 3 s
-// on the fake side alone while reporting green. The recipe sets FUZZ_REQUIRE_REAL
-// so the long run refuses to count without the real kernel.
-describe.runIf(process.env.FUZZ_REQUIRE_REAL === '1')('the fuzz real-kernel requirement', () => {
-  it('has opencascade.js and the solver build loaded', () => {
-    expect(oc, 'opencascade.js missing: run `just install-occ`').not.toBeNull()
-    expect(solveBytes, 'solver pkg-node missing: run `just wasm`').not.toBeNull()
-  })
-})
-
-describe.skipIf(!oc || !solveBytes)('the seeded fuzz ratchet (real kernel)', () => {
-  beforeAll(() => {
-    resetSketchSolver()
-    setSketchSolver(solveBytes)
-  })
-
-  afterAll(() => {
-    setSolveLocalsForTest(null)
-    resetSketchSolver()
-  })
-
-  it('replays the bounded seeds through solveLocally', { timeout: REAL_TIMEOUT_MS }, async () => {
-    let previousTable: ReturnType<typeof persistentTableForTest> = null
-    for (const seed of seeds(FUZZ_SEEDS)) {
-      // solveLocally's own doc-switch reset is inert here (a fuzz doc carries
-      // no id, so every seed is the same cache key), so the fresh cache per
-      // seed has to come from this explicit reset. The two assertions are its
-      // teeth: drop the reset and the second seed starts on the first seed's
-      // live table instead of a null one, and then reuses its object.
-      setSolveLocalsForTest(async () => oc)
-      expect(persistentTableForTest(), `seed ${seed} cache not reset`).toBeNull()
-      // The solves chain through microtasks only, so a long sweep never hands
-      // the loop a macrotask turn and vitest's worker RPC replies sit unread
-      // until the RPC timer fails the run ("Timeout calling onTaskUpdate").
-      await new Promise(resolve => setImmediate(resolve))
-
-      const result = await runFuzzSequence(generateSequence(seed, FUZZ_STEPS), {
-        scheduler: createRealSolveScheduler(),
-        settle: () => undefined,
-      })
-      reportFailureDocs(seed, result)
-      expect(result.violations, `seed ${seed}`).toEqual([])
-
-      const table = persistentTableForTest()
-      expect(table, `seed ${seed} solved nothing`).not.toBeNull()
-      expect(table, `seed ${seed} reused the prior seed's solve table`).not.toBe(previousTable)
-      previousTable = table
-    }
   })
 })
 

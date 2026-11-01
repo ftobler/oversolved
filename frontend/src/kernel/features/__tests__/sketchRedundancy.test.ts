@@ -41,7 +41,7 @@ const originPin = { id: 'c_origin', kind: 'coincident', a: { entity: 'l1', point
 const horizontal = { id: 'c_h', kind: 'horizontal', target: { entity: 'l1' } }
 const length = (id: string, value: number) => ({ id, kind: 'length', target: { entity: 'l1' }, value })
 
-/** The rectangle from solveLocallySketchSolver.test.ts: four coincident
+/** The rectangle from solveLocallySketchSolverReal.test.ts: four coincident
  *  corners, horizontal on bottom/top, vertical on right/left, dimensions. */
 function rectSketch(extra: Dict[] = []): SketchFeature {
   return {

@@ -3,42 +3,17 @@
 // store reset that also drops the callback registry so a prior test's handler
 // cannot leak into the next one.
 import { beforeEach } from 'vitest'
-import { setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { clearSketchCallbacks, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { initializeTools } from '@/tools'
 import { toolRegistry } from '@/registry/toolRegistry'
 import { useEditorState } from '@/hooks/useEditorState'
 
+// The two stores own their resets and the callback registry owns its teardown;
+// listing fields here is how this helper once fell behind the store.
 export function resetSketchEditorStore(): void {
-  useEditorState.setState({
-    normalSelection: new Set(),
-    selectedPicks: new Map(),
-    chipOwnedSelection: new Set(),
-    selectionDomain: 'sketch_2d',
-    hoveredSelectionId: null,
-    hoveredPickKey: null,
-    isPointerDown: false,
-    drag: null,
-    activeTool: null,
-    activeFeatureId: null,
-    dimensionPicks: [],
-    pendingBrepProjectionIds: [],
-    activePickField: null,
-    hoveredVertexId: null,
-    hoveredVertexPosition: null,
-    hoveredSnapKind: null,
-    hoveredConstraintEntityIds: new Set(),
-    modeStack: [],
-    entityKindMap: {},
-  })
-  useSketchUiStore.setState({
-    pendingDialog: null,
-  })
-  setSketchCallback('onMutation', null)
-  setSketchCallback('onMutationBatch', null)
-  setSketchCallback('beginBrepProjection', null)
-  setSketchCallback('cancelBrepProjection', null)
-  setSketchCallback('checkRedundantAdd', null)
-  setSketchCallback('showMessage', null)
+  useEditorState.getState().resetTransientState()
+  useSketchUiStore.getState().resetTransientState()
+  clearSketchCallbacks()
 }
 
 // Register the per-test setup. Call inside a suite's describe body so the hooks

@@ -11,13 +11,13 @@
 // like any test in here (~1.2 s), but not the OCC compile, which is the part
 // that would actually hurt `just frontend`:
 //
-//   cd frontend && BUNDLE_BENCH=1 npx vitest run src/kernel/bundleRebuildCostBench.test.ts
+//   cd frontend && BUNDLE_BENCH=1 npx vitest run src/kernel/bundleRebuildCostBenchReal.test.ts
 //
 // Numbers taken with it live in `feature/knowledgebase.agent.md`.
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { readFileSync } from 'fs'
-import { join } from 'path'
 import { loadOcc } from '../occ/loadOcc'
 import { solveLocally, setSolveLocalsForTest } from '../solveLocally'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
@@ -31,7 +31,6 @@ import type { BundleRequest } from '../worker/solverProtocol'
 const enabled = !!process.env.BUNDLE_BENCH
 const oc = enabled ? await loadOcc() : null
 const solveBytes = enabled ? loadSolver() : null
-
 function rectSketch(sketchId: string, w: number, h: number, plane = '@builtin_plane_front') {
   return {
     id: sketchId, kind: 'sketch' as const, label: 'Rectangle', plane,
@@ -54,12 +53,6 @@ function rectSketch(sketchId: string, w: number, h: number, plane = '@builtin_pl
     ],
   }
 }
-
-/**
- * A native part of `n` stacked pads: one sketch + `n` extrudes, each fused onto
- * the running solid. Feature count is the axis the decision gate cares about,
- * so the fixture is parameterised by it rather than being one fixed doc.
- */
 function nativePart(id: string, n: number, lastDistance = 4): Record<string, unknown> {
   const features: Record<string, unknown>[] = [rectSketch('sk1', 40, 40)]
   for (let i = 0; i < n; i++) {
@@ -74,17 +67,10 @@ function nativePart(id: string, n: number, lastDistance = 4): Record<string, unk
   }
   return { id, features }
 }
-
 const STEP_BYTES = enabled
   ? new Uint8Array(readFileSync(join(__dirname, '../occ/__fixtures__/double_with_hole.step')))
   : new Uint8Array()
 const STEP_FILES = new Map<string, Uint8Array>([['imp1', STEP_BYTES]])
-
-/**
- * An imported part: the STEP fixture plus a small native tail to edit. Imported
- * bodies own a tessellation reuse path (`reuseCleanImportedBodyMeshes`) that a
- * purely native fixture would not exercise, which is why both are swept.
- */
 function importedPart(id: string, thickness: number): Record<string, unknown> {
   return {
     id,
@@ -95,12 +81,10 @@ function importedPart(id: string, thickness: number): Record<string, unknown> {
     ],
   }
 }
-
 let nextBundleId = 1
 function bundleReq(spec: Record<string, unknown>, content_hash: string): BundleRequest {
   return { id: nextBundleId++, kind: 'buildBundle', spec, doc_id: spec.id as string, content_hash }
 }
-
 async function timed(label: string, fn: () => Promise<unknown>): Promise<number> {
   const t0 = performance.now()
   await fn()
@@ -108,14 +92,12 @@ async function timed(label: string, fn: () => Promise<unknown>): Promise<number>
   console.log(`  ${label.padEnd(46)} ${ms.toFixed(0).padStart(7)} ms`)
   return ms
 }
-
-// The BUNDLE_BENCH opt-in is the only reason this file skips on a normal run;
+// The BUNDLE_BENCH opt-in is the only reason this suite skips on a normal run;
 // when it is set, a missing artifact is a provisioning failure, not a silent
 // skip. The timing itself stays log-only (a wall-clock threshold would flake on
 // a contended box, and the file header documents that choice).
-describe('bundle bench provisioning', () => {
+describe.runIf(enabled)('bundle bench provisioning', () => {
   it('has OCC.js and the node solver build when BUNDLE_BENCH is set', () => {
-    if (!enabled) return
     expect(oc, 'BUNDLE_BENCH=1 but OCC.js is absent - run `npm run occ:install`').toBeTruthy()
     expect(solveBytes, 'BUNDLE_BENCH=1 but the node solver build is absent - run `just wasm`').toBeTruthy()
   })

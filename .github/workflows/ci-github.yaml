@@ -106,7 +106,7 @@ jobs:
         working-directory: frontend
 
       - name: Comment lint (lint.py)
-        run: python lint.py frontend/src frontend/scripts
+        run: python lint.py frontend/src frontend/scripts frontend/eslint.config.js frontend/resolve-alias.loader.mjs frontend/vite.config.ts frontend/vitest.config.ts
 
       # ~70 test files under src/kernel self-skip when their dependencies are
       # absent: they gate on OCC.js being importable (describe.skipIf(!oc), or a
@@ -119,7 +119,7 @@ jobs:
       # reference-oracle corpus (frontend/oracle, docs/oracle.md drift) run here
       # too and fail, rather than skip, under CI when any of it is missing.
       # sketch-solver's nodejs build carries `--features fuzz` because
-      # sketchRepros.test.ts drives the fuzz-gated oracle export; the web build
+      # sketchReprosReal.test.ts drives the fuzz-gated oracle export; the web build
       # stays feature-free. The build is identical across the Node matrix.
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2

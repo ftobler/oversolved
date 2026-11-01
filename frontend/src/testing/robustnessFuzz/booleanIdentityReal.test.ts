@@ -33,6 +33,16 @@ import type { OccModule, OccShape } from '@/kernel/occ/occTypes'
 
 const oc = await loadOcc()
 
+// Set by the fuzz-geometry recipe and the CI fuzz job; a provisioned job that
+// lost its kernel must fail instead of skipping the sweep.
+const requireReal = !!process.env.KERNEL_PROVISIONED || process.env.FUZZ_REQUIRE_REAL === '1'
+
+describe('the identity fuzz provisioning guard', () => {
+  it.runIf(requireReal)('has OCC.js installed', () => {
+    expect(oc, 'oc: OCC.js absent - run `npm run occ:install` or `just install-occ`').toBeTruthy()
+  })
+})
+
 function envInt(name: string, fallback: number): number {
   const raw = Number.parseInt(process.env[name] ?? '', 10)
   return Number.isFinite(raw) && raw > 0 ? raw : fallback

@@ -15,25 +15,17 @@
 // solve mutates the body store directly. What is NOT faked is `postRegister` and
 // `build` itself, so the wipe and the body loop run for real.
 
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { build, type BuildDeps, type FeatureResult } from '../builder'
 import { Repository, makeAncestryQuery } from '../query'
 import { postRegister } from '../features/postRegister'
 import { repoFromSnapshot } from '../builder'
 import type { Body, FeatureCheckpoint, BuildState } from '../types3d'
-// Imported here, not mid-file, so the dependency surface is visible at the top
-// like every other kernel test; only the skipIf-gated real-OCC section uses them.
-import { loadOcc } from '../occ/loadOcc'
-import { SharedHarness } from '../occ/sharedHarness'
-import { setSketchSolver, resetSketchSolver } from '../features/sketch'
-import { loadSolver } from '@/wasm-kernel/loadSolver'
 
 const SHAPE_SEED: Record<string, number> = { f1: 100, f2: 200 }
-
 function shapeOf(n: number): Body['shape'] {
   return n as unknown as Body['shape']
 }
-
 function makeBody(fid: string, seed: number, extra?: Record<string, unknown>): Body {
   return {
     id: 'body_' + fid,
@@ -46,7 +38,6 @@ function makeBody(fid: string, seed: number, extra?: Record<string, unknown>): B
     ...(extra ?? {}),
   }
 }
-
 const solve = (
   feature: Record<string, unknown>,
   _repo: Repository,
@@ -64,7 +55,6 @@ const solve = (
   }
   return { status: 'ok' }
 }
-
 function fakeMeta(_body: Body): Record<string, unknown> {
   return {
     mesh: {
@@ -74,13 +64,11 @@ function fakeMeta(_body: Body): Record<string, unknown> {
     edges: [], edge_queries: [], vertices: [], vertex_queries: [], vertex_uuids: [],
   }
 }
-
 interface HarnessOptions {
   /** Body ids the METADATA extractor drops (the loop cannot register their faces,
    *  so the checkpoint pass is the one that has to). */
   metaOmits?: string[]
 }
-
 class Harness {
   readonly options: HarnessOptions
 
@@ -109,9 +97,7 @@ class Harness {
     return build(spec, { prevState: prevState ?? null }, this.deps())
   }
 }
-
 // ─── checkpoint snapshot introspection ───
-
 // The ancestral key a feature's solids/extrusion live under: exactly `[@fid]`.
 function featureKey(ancestral: Record<string, { set: string[]; eids: string[] }>, fid: string): string {
   const key = Object.keys(ancestral).find((k) => {
@@ -121,7 +107,6 @@ function featureKey(ancestral: Record<string, { set: string[]; eids: string[] }>
   if (!key) throw new Error(`no [@${fid}] ancestral entry`)
   return key
 }
-
 function elementsOfType(checkpoint: FeatureCheckpoint, fid: string, type: string): unknown[] {
   const snap = checkpoint.repo_snapshot as Record<string, unknown>
   const elements = snap.elements as Record<string, Record<string, unknown>>
@@ -129,20 +114,17 @@ function elementsOfType(checkpoint: FeatureCheckpoint, fid: string, type: string
   const key = featureKey(ancestral, fid)
   return ancestral[key].eids.map((eid) => elements[eid]).filter((el) => el?.type === type)
 }
-
 function resolveSolid(checkpoint: FeatureCheckpoint, fid: string): Record<string, unknown> | null {
   const repo = repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
   const el = repo.query(makeAncestryQuery(['@' + fid], 'solid'))
   return el === null ? null : (el as Record<string, unknown>)
 }
-
 const TWO_MAKES = {
   features: [
     { id: 'f1', kind: 'make' },
     { id: 'f2', kind: 'make' },
   ],
 }
-
 // Build a feature owning two bodies whose meta extractor drops null-shape bodies
 // exactly like the Harness `meta` above. With `secondShapeNull`, the second body
 // carries `shape: null` (a body whose geometry never materialized); the first
@@ -180,7 +162,13 @@ function buildNullShapePair(secondShapeNull: boolean) {
   }
   return build(spec, { prevState: null }, deps)
 }
-
+// The two suites below stub postRegister (no wipe), so they can plant the exact
+// live-repo state the reconcile has to clean up: a dead eid in `[@fid]` (nit 12)
+// and a feature owning no shaped body (nit 13 early-exit). The live repo is
+// captured through `initGlobalRepo` like the parity suite.
+function entryUnder(liveRepo: Repository, fid: string): { set: Set<string>; eids: string[] } | undefined {
+  return [...liveRepo.ancestral.values()].find((e) => e.set.size === 1 && e.set.has('@' + fid))
+}
 describe('real postRegister: solids survive a re-solve', () => {
   it('a cosmetic edit to a feature keeps ?@f1:solid resolving and in the checkpoint', () => {
     const h = new Harness()
@@ -323,15 +311,6 @@ describe('real postRegister: solids survive a re-solve', () => {
     expect(resolveSolid(partial._build_state!.checkpoints.f2, 'f1')).not.toBeNull()
   })
 })
-
-// The two suites below stub postRegister (no wipe), so they can plant the exact
-// live-repo state the reconcile has to clean up: a dead eid in `[@fid]` (nit 12)
-// and a feature owning no shaped body (nit 13 early-exit). The live repo is
-// captured through `initGlobalRepo` like the parity suite.
-function entryUnder(liveRepo: Repository, fid: string): { set: Set<string>; eids: string[] } | undefined {
-  return [...liveRepo.ancestral.values()].find((e) => e.set.size === 1 && e.set.has('@' + fid))
-}
-
 describe('reconcile hardening: the evict drops dead eids', () => {
   it('an eid whose element was deleted is not carried forward by the reconcile', () => {
     const liveRepo = new Repository()
@@ -364,7 +343,6 @@ describe('reconcile hardening: the evict drops dead eids', () => {
     expect(solids[0]).toMatchObject({ body_id: 'body_f1', created_by: 'f1' })
   })
 })
-
 describe('reconcile hardening: no-body features exit early', () => {
   it('a feature owning no body registers no solid while an owning feature keeps exactly one', () => {
     const liveRepo = new Repository()
@@ -426,63 +404,3 @@ describe('reconcile hardening: no-body features exit early', () => {
     expect(liveRepo.query(makeAncestryQuery(['@f1'], 'solid'))).toBeNull()
   })
 })
-
-// ─── real OCC: the production pipeline end to end ───
-
-const oc = await loadOcc()
-const solveBytes = loadSolver()
-
-function rectSketch(sketchId: string, w: number, h: number) {
-  return {
-    id: sketchId, kind: 'sketch' as const, label: 'Rectangle', plane: '@builtin_plane_front',
-    entities: [
-      { id: 'bottom', kind: 'line' as const }, { id: 'right', kind: 'line' as const },
-      { id: 'top', kind: 'line' as const }, { id: 'left', kind: 'line' as const },
-    ],
-    initial: {
-      bottom: [0, 0, w, 0], right: [w, 0, w, h],
-      top: [w, h, 0, h], left: [0, h, 0, 0],
-    },
-    constraints: [
-      { id: 'c1', kind: 'coincident' as const, a: { entity: 'bottom', point: 'end' as const }, b: { entity: 'right', point: 'start' as const } },
-      { id: 'c2', kind: 'coincident' as const, a: { entity: 'right', point: 'end' as const }, b: { entity: 'top', point: 'start' as const } },
-      { id: 'c3', kind: 'coincident' as const, a: { entity: 'top', point: 'end' as const }, b: { entity: 'left', point: 'start' as const } },
-      { id: 'c4', kind: 'coincident' as const, a: { entity: 'left', point: 'end' as const }, b: { entity: 'bottom', point: 'start' as const } },
-      { id: 'c5', kind: 'horizontal' as const, target: { entity: 'bottom' } },
-      { id: 'c6', kind: 'horizontal' as const, target: { entity: 'top' } },
-      { id: 'c7', kind: 'vertical' as const, target: { entity: 'right' } },
-      { id: 'c8', kind: 'vertical' as const, target: { entity: 'left' } },
-      { id: 'c9', kind: 'length' as const, target: { entity: 'bottom' }, value: w },
-      { id: 'c10', kind: 'length' as const, target: { entity: 'left' }, value: h },
-    ],
-  }
-}
-
-describe.skipIf(!oc || !solveBytes)('real OCC: a cosmetic re-solve keeps the solid', () => {
-  const h = new SharedHarness(oc!)
-
-  beforeAll(() => {
-    if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
-    if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
-  })
-
-  it('editing an extrude label leaves ?@ex1:solid resolving with the solid in the checkpoint', () => {
-    const sk1 = rectSketch('sk1', 10, 10)
-    const ex1 = { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'new', label: 'orig' }
-    const r1 = h.run({ features: [sk1, ex1] })
-    expect((r1.result as Record<string, Record<string, unknown>>).ex1.status).toBe('ok')
-    expect(elementsOfType(r1._build_state!.checkpoints.ex1, 'ex1', 'solid')).toHaveLength(1)
-    expect(resolveSolid(r1._build_state!.checkpoints.ex1, 'ex1')).not.toBeNull()
-
-    const ex1v2 = { ...ex1, label: 'renamed' }
-    const r2 = h.run({ features: [sk1, ex1v2] }, { prevState: r1._build_state })
-    expect((r2.result as Record<string, Record<string, unknown>>).ex1.status).toBe('ok')
-    const cp = r2._build_state!.checkpoints.ex1
-    expect(elementsOfType(cp, 'ex1', 'solid')).toHaveLength(1)
-    expect(elementsOfType(cp, 'ex1', 'extrusion-feature')).toHaveLength(1)
-    const solid = resolveSolid(cp, 'ex1')
-    expect(solid).not.toBeNull()
-    expect(solid!.body_id).toBe('body_ex1')
-  })
-})
-

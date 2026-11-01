@@ -97,3 +97,28 @@ describe('restoreHistory', () => {
     expect(editorState.getState().rollbackPosition).toBe(2)
   })
 })
+
+describe('resetTransientState', () => {
+  it('drops the document-derived entity kinds along with the transient editor state', () => {
+    // The matrix harness and the sketch store setup used to add entityKindMap
+    // to their own field lists; a canonical wipe that left it behind would let
+    // a fresh harness read the previous document's kinds.
+    const store = editorState.getState()
+    store.setEntityKindMap({ 'entity:sk1:l1': 'line' })
+    store.resetTransientState()
+    expect(editorState.getState().entityKindMap).toEqual({})
+  })
+
+  it('clears drag, selection, tool and the mode stack', () => {
+    const store = editorState.getState()
+    store.setDrag({ type: 'vertex', vertexId: 'entity:sk1:l1', featureId: 'sk1', entityId: 'l1' } as never)
+    store.setIsPointerDown(true)
+    editorState.setState({ activeTool: 'line' })
+    store.resetTransientState()
+    const after = editorState.getState()
+    expect(after.drag).toBeNull()
+    expect(after.isPointerDown).toBe(false)
+    expect(after.activeTool).toBeNull()
+    expect(after.modeStack).toEqual([])
+  })
+})

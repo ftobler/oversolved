@@ -129,11 +129,12 @@ describe.skipIf(!oc || !topology || !checkTopology)('sketch repros', () => {
     setSketchTopology(loadTopology())
   })
 
-  it('scans the repro directory', () => {
+  it('scans the repro directory, which may be empty', () => {
     // The directory ships with a README only; zero repros is a legitimate
-    // state this wave. This test exists so an empty scan is visible in the log
-    // rather than an absent suite.
-    expect(reproEntries.length).toBeGreaterThanOrEqual(0)
+    // state this wave. This test exists so the scan is visible in the log
+    // rather than an absent suite; it deliberately asserts no count, because a
+    // floor of zero (the old `toBeGreaterThanOrEqual(0)`) proves nothing.
+    console.log(`[sketch-repros] ${reproEntries.length} repro file(s)`)
     expect(checkTopology).not.toBeNull()
   })
 

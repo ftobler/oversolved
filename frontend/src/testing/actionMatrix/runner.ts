@@ -19,7 +19,7 @@ import { createMatrixHarness, installTarget, type MatrixHarness, type MatrixSolv
 // rather than making every caller reach into harness.ts.
 export type { MatrixSolver } from './harness'
 import { targetsForSweep, type CorpusDoc, type MatrixTarget } from './corpus'
-import type { MatrixRow, MatrixStatus } from './baseline'
+import type { MatrixRow, MatrixStatus, MatrixSweepInfo } from './baseline'
 import { yieldToEventLoop } from '../yieldToEventLoop'
 
 // The command set is the real part table, enumerated in its declaration order.
@@ -75,6 +75,55 @@ export function classifyEntry(
 export function fakeMatrixSolver(): MatrixSolver {
   const scheduler = createFakeSolveScheduler<PartDoc>()
   return { scheduler, settle: () => scheduler.flush() }
+}
+
+// The sweep header the baseline file records, recomputed from the live corpus
+// and command table.
+export function liveSweepInfo(sweep: MatrixSweep): MatrixSweepInfo {
+  return { docs: sweep.docs.length, maxTargetsPerDoc: sweep.maxTargetsPerDoc, commands: PART_COMMANDS.length }
+}
+
+// The full sweep's structural ratchet. `compareMatrix` only sees rows the live
+// sweep enumerates, so a document or target that left the corpus disappears
+// from both sides of the comparison and the sweep stays green. These checks
+// compare the baseline's own doc and (doc, target) sets against the live sweep,
+// plus the header, so a vanished row fails by name.
+export function checkSweepCoverage(
+  sweep: MatrixSweep,
+  baselineRows: readonly MatrixRow[],
+  stored: MatrixSweepInfo,
+): string[] {
+  const deviations: string[] = []
+  const live = liveSweepInfo(sweep)
+  for (const field of ['docs', 'maxTargetsPerDoc', 'commands'] as const) {
+    if (stored[field] !== live[field]) {
+      deviations.push(`baseline sweep.${field} is ${String(stored[field])}, the live sweep is ${String(live[field])}`)
+    }
+  }
+
+  const liveDocs = new Set(sweep.docs.map(doc => doc.label))
+  const baselineDocs = new Set(baselineRows.map(row => row.doc))
+  for (const label of liveDocs) {
+    if (!baselineDocs.has(label)) deviations.push(`doc '${label}': swept but absent from the baseline (regenerate and review)`)
+  }
+  for (const label of baselineDocs) {
+    if (!liveDocs.has(label)) deviations.push(`doc '${label}': in the baseline but no longer swept (a vanished document)`)
+  }
+
+  const liveTargets = new Set<string>()
+  for (const doc of sweep.docs) {
+    for (const target of targetsForSweep(doc.spec, sweep.maxTargetsPerDoc)) {
+      liveTargets.add(`${doc.label}\u0000${target.id}`)
+    }
+  }
+  const baselineTargets = new Set(baselineRows.map(row => `${row.doc}\u0000${row.target}`))
+  for (const key of liveTargets) {
+    if (!baselineTargets.has(key)) deviations.push(`target '${key.replace('\u0000', ' / ')}': swept but absent from the baseline`)
+  }
+  for (const key of baselineTargets) {
+    if (!liveTargets.has(key)) deviations.push(`target '${key.replace('\u0000', ' / ')}': in the baseline but no longer enumerated`)
+  }
+  return deviations
 }
 
 // The baseline rows a sweep is expected to contain, by key membership: used by

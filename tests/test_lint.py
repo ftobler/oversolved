@@ -445,3 +445,55 @@ def test_rust_double_hash_raw_string_is_not_a_comment(tmp_path):
 def test_rust_slash_in_string_is_not_a_comment(tmp_path):
     source = 'let url = "http://x";\n// bad \u2014 dash\n'
     assert_violation(run_lint_rs(tmp_path, source), "emdash")
+
+
+# ─── ESM and plain-JS sources ───
+
+
+def run_lint_named(tmp_path: pathlib.Path, name: str, source: str, *extra_args: str) -> subprocess.CompletedProcess:
+    target = tmp_path / name
+    target.write_text(source)
+    return subprocess.run(
+        [sys.executable, str(LINT_PY), str(tmp_path), *extra_args],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_mjs_inline_comment_is_scanned(tmp_path):
+    proc = run_lint_named(tmp_path, "loader.mjs", "export const a = 1 // one space\n")
+    assert_violation(proc, "inline-spacing")
+
+
+def test_js_banner_is_scanned(tmp_path):
+    proc = run_lint_named(tmp_path, "eslint.config.js", "// --------\n")
+    assert_violation(proc, "banner")
+
+
+def test_mjs_em_dash_is_scanned(tmp_path):
+    proc = run_lint_named(tmp_path, "loader.mjs", "// bad \u2014 dash\n")
+    assert_violation(proc, "emdash")
+
+
+def test_an_explicit_file_argument_is_scanned(tmp_path):
+    # The gates pass the frontend's root configs by path; only src/ and scripts/
+    # are passed as folders.
+    target = tmp_path / "vite.config.ts"
+    target.write_text("const a = 1 // one space\n")
+    proc = subprocess.run(
+        [sys.executable, str(LINT_PY), str(target)],
+        capture_output=True,
+        text=True,
+    )
+    assert_violation(proc, "inline-spacing")
+
+
+def test_an_explicit_file_with_another_dialect_suffix_is_ignored(tmp_path):
+    target = tmp_path / "notes.txt"
+    target.write_text("// --------\n")
+    proc = subprocess.run(
+        [sys.executable, str(LINT_PY), str(target)],
+        capture_output=True,
+        text=True,
+    )
+    assert_clean(proc)

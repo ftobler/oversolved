@@ -1,7 +1,7 @@
 # Sketch repros
 
 Recorded browser sessions for the sketch area builder, replayed headless by
-`src/kernel/__tests__/sketchRepros.test.ts`.
+`src/kernel/__tests__/sketchReprosReal.test.ts`.
 
 ## Building the oracle
 

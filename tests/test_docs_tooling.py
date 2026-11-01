@@ -121,3 +121,37 @@ def test_lint_py_docstring_points_at_real_convention_doc() -> None:
     text = _read("lint.py")
     assert "CLAUDE.md" not in text
     assert "AGENTS.md" in text
+
+
+def test_fuzz_geometry_recipe_requires_a_real_kernel() -> None:
+    """An unprovisioned tree must fail `just fuzz-geometry`, not skip it.
+
+    Every robustness suite is skipIf(!occAvailable); the recipe therefore has
+    to ask for the real kernel explicitly, or the main gate can report a green
+    geometry sweep that never built anything.
+    """
+    justfile = _read("justfile")
+    start = justfile.index("fuzz-geometry seeds=")
+    body = justfile[start:].split("\n\n", 1)[0]
+    assert "FUZZ_REQUIRE_REAL=1" in body, "the fuzz-geometry recipe no longer requires the real kernel"
+    assert "KERNEL_PROVISIONED=1" in body, "the fuzz-geometry recipe no longer arms the provisioning guards"
+
+
+def test_ci_fuzz_job_requires_a_real_kernel() -> None:
+    ci = _read(".github/workflows/ci-gitea.yaml")
+    start = ci.index("  fuzz:")
+    body = ci[start:].split("\n  #", 1)[0]
+    assert 'KERNEL_PROVISIONED: "1"' in body
+    assert 'FUZZ_REQUIRE_REAL: "1"' in body
+
+
+def test_frontend_lint_scans_the_root_configs() -> None:
+    """The root configs sit beside src/ and scripts/, so the folders alone miss
+    them; the recipe and CI name them explicitly."""
+    justfile = _read("justfile")
+    start = justfile.index("frontend-lint:")
+    body = justfile[start:].split("\n\n", 1)[0]
+    for name in ("eslint.config.js", "resolve-alias.loader.mjs", "vite.config.ts", "vitest.config.ts"):
+        assert name in body, f"frontend-lint no longer lints {name}"
+    for rel in (".github/workflows/ci-gitea.yaml", ".github/workflows/ci-github.yaml"):
+        assert "frontend/eslint.config.js" in _read(rel), f"{rel} no longer lints the frontend root configs"

@@ -48,6 +48,11 @@ const stripTypes = nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 6)
 // holds one kernel, not two.
 const occAvailable = occInstalled()
 
+// Set by the fuzz-geometry recipe and the CI fuzz job. A job that provisions
+// OCC.js and the WASM builds must fail, not skip, when they went missing: the
+// skip is only a convenience for a local checkout without them.
+const requireReal = !!process.env.KERNEL_PROVISIONED || process.env.FUZZ_REQUIRE_REAL === '1'
+
 function envInt(name: string, fallback: number): number {
   const raw = Number.parseInt(process.env[name] ?? '', 10)
   return Number.isFinite(raw) && raw > 0 ? raw : fallback
@@ -92,105 +97,142 @@ const MINIMIZE_TIMEOUT_MS = 10_000
 // the 2026-10-16 pins all went stale; the 2026-10-17 re-triage replayed each
 // new hang alone under a 300 s watchdog. Every fuse below still spun at 300 s
 // (mirror, circular-array and one plain union, seed 535; seed 762 joined once
-// every recipe ran on a fresh kernel). Seed 268 is not a spin: its perturbed
-// rebuild's shell spends ~22 s in MakeThickSolidByJoin before refusing
-// build_not_done (backlog.md). The liveness window re-arms at that step, so it
-// fits on the CI box; it is still pinned in both phases because a slower
-// runner can spend more than the 60 s window inside that one call, and the
-// kill has to be attributed to the step that owns it either way.
+// every recipe ran on a fresh kernel). The 2026-10-31 re-triage ran the whole
+// 1500-seed range with the fired-pin ratchet: seeds 622 and 1215 no longer spin,
+// and seed 268's ~22 s MakeThickSolidByJoin shell (backlog.md) stays inside the
+// 60 s liveness window on this host. A timing-only tolerance cannot be a fired
+// pin, so those four entries are gone: a slower runner that kills seed 268 now
+// reports an unexpected hang and must re-triage it rather than pass silently.
 const KNOWN_HANGS: readonly { seed: number; phase: ChainPhase; step: number; kind: string }[] = [
   { seed: 49, phase: 'base', step: 1, kind: 'mirror' },
-  { seed: 268, phase: 'persistence', step: 3, kind: 'shell' },
-  { seed: 268, phase: 'base', step: 3, kind: 'shell' },
   { seed: 355, phase: 'base', step: 5, kind: 'circular-array' },
   { seed: 378, phase: 'base', step: 3, kind: 'mirror' },
   { seed: 535, phase: 'base', step: 3, kind: 'boolean' },
-  { seed: 622, phase: 'base', step: 3, kind: 'circular-array' },
   { seed: 639, phase: 'base', step: 2, kind: 'mirror' },
   { seed: 762, phase: 'base', step: 2, kind: 'mirror' },
-  { seed: 1215, phase: 'base', step: 2, kind: 'circular-array' },
   { seed: 1359, phase: 'base', step: 1, kind: 'mirror' },
   { seed: 1469, phase: 'base', step: 2, kind: 'mirror' },
 ]
 
-// Known red picks, pinned by seed and step. The naming check reaches the step
-// and the recorded construction UUID is dead in the perturbed body, which
-// production's resolver would also report as a miss: the sibling elements
-// carry DIFFERENT construction UUIDs, and the foreign-uuid exclusion
+// Known red picks, pinned by seed and step, and by the kind of violation the
+// pin describes: the message must carry `match`, so a different failure at the
+// same seed and step cannot hide behind an old note. The naming check reaches
+// the step and the recorded construction UUID is dead in the perturbed body,
+// which production's resolver would also report as a miss: the sibling
+// elements carry DIFFERENT construction UUIDs, and the foreign-uuid exclusion
 // (queryRepository) forbids handing one back in place of the named element.
 // Triaged as a real naming fragility awaiting its own fix, not silenced: the
 // message stays in the log. The table was re-triaged on 2026-10-17 after the
 // shell and helix steps redrew most recipes, then baselined to exactly the
-// set that fires once every recipe runs on a fresh kernel (two 1500-seed runs
-// gave identical findings; reused children had flipped picks between runs).
+// set that fires once every recipe runs on a fresh kernel, then re-triaged on
+// 2026-10-31 with the fired-pin ratchet (seed 280 step 2 and seed 990 steps 3
+// and 4 no longer fire; seed 186 step 4 now reports the re-mint itself rather
+// than an unreached chain).
 // Three kinds share the pin: a re-mint (the reference goes dead under the
 // +2.5 mm growth), an unreached pick (the perturbed chain refused at an
 // earlier step, so the reference cannot even be tested, reported only for a
 // completed base run), and the refused fuse, chamfer or fillet variant of it.
 // The rate holds at about 1 in 50 built references, so a wider range keeps
 // surfacing new seeds: the class awaits its own naming fix (backlog.md).
-const KNOWN_STALE_PICKS: readonly { seed: number; step: number; note: string }[] = [
+type PickPin = { seed: number; step: number; match: string; note: string }
+
+const PICK_REMINT_EDGE = 'edge query'
+const PICK_REMINT_FACE = 'face query'
+const PICK_UNREACHED = 'the perturbed chain did not reach'
+
+const KNOWN_STALE_PICKS: readonly PickPin[] = [
   {
     seed: 145,
     step: 3,
+    match: PICK_REMINT_EDGE,
     note: 'revolve-start edge @u|e_9310... re-mints under a +2.5 mm growth; the built step reference goes dead while the chain later refuses',
   },
-  { seed: 145, step: 4, note: 'unreached: the perturbed chain refused at an earlier step' },
-  { seed: 156, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 145, step: 4, match: PICK_UNREACHED, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 156, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   {
     seed: 186,
     step: 4,
-    note: 'the same re-mint makes the perturbed chain refuse before step 4, so its recorded reference can never be tested',
+    match: PICK_REMINT_EDGE,
+    note: 'edge re-mints under the +2.5 mm growth; the chain reaches the pick again, so the unreached note no longer applies',
   },
   {
     seed: 187,
     step: 4,
+    match: PICK_REMINT_FACE,
     note: 'revolve-start face @u|u_9403... re-mints under a +2.5 mm growth; the built step reference goes dead while the chain later refuses',
   },
-  { seed: 227, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 227, step: 3, note: 'unreached: the perturbed chain refused at an earlier step' },
-  { seed: 263, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 280, step: 2, note: 'face re-mints under the +2.5 mm growth' },
-  { seed: 366, step: 4, note: 'face re-mints under the +2.5 mm growth' },
-  { seed: 388, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 529, step: 5, note: 'face re-mints under the +2.5 mm growth' },
-  { seed: 561, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 578, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 578, step: 5, note: 'unreached: the perturbed chain refused at an earlier step' },
-  { seed: 682, step: 3, note: 'face re-mints under the +2.5 mm growth' },
-  { seed: 709, step: 1, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 709, step: 2, note: 'unreached: the perturbed chain refused at an earlier step' },
-  { seed: 710, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 727, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 753, step: 2, note: 'face re-mints under the +2.5 mm growth' },
-  { seed: 853, step: 1, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 893, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 893, step: 4, note: 'unreached: the perturbed chain refused at an earlier step' },
-  { seed: 951, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 976, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
-  // Surfaced by the arc-join shell fallback (c3f472c2): before it the base
-  // shell refused, so the picks were never tested. The arc-join offset of this
-  // filleted, drilled box sits on a validity knife edge that follows the heap
-  // layout: the CI box refuses the perturbed shell, a local child builds it and
-  // a local in-process replay refuses even the base one.
-  { seed: 990, step: 3, note: 'unreached: the perturbed shell refused on invalid geometry' },
-  { seed: 990, step: 4, note: 'unreached: the perturbed shell refused on invalid geometry' },
-  { seed: 1065, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1100, step: 2, note: 'unreached: the perturbed fillet refused on invalid geometry' },
-  { seed: 1117, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1131, step: 3, note: 'unreached: the perturbed fuse refused as unsound' },
-  { seed: 1131, step: 4, note: 'unreached: the perturbed fuse refused as unsound' },
-  { seed: 1189, step: 1, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1190, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1323, step: 2, note: 'face re-mints under the +2.5 mm growth' },
-  { seed: 1350, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1375, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1378, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1476, step: 3, note: 'unreached: the perturbed chamfer refused on invalid geometry' },
+  { seed: 227, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 227, step: 3, match: PICK_UNREACHED, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 263, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 366, step: 4, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 388, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 529, step: 5, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 561, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 578, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 578, step: 5, match: PICK_UNREACHED, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 682, step: 3, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 709, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 709, step: 2, match: PICK_UNREACHED, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 710, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 727, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 753, step: 2, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 853, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 893, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 893, step: 4, match: PICK_UNREACHED, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 951, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 976, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1065, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1100, step: 2, match: PICK_UNREACHED, note: 'unreached: the perturbed fillet refused on invalid geometry' },
+  { seed: 1117, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1131, step: 3, match: PICK_UNREACHED, note: 'unreached: the perturbed fuse refused as unsound' },
+  { seed: 1131, step: 4, match: PICK_UNREACHED, note: 'unreached: the perturbed fuse refused as unsound' },
+  { seed: 1189, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1190, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1323, step: 2, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 1350, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1375, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1378, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1476, step: 3, match: PICK_UNREACHED, note: 'unreached: the perturbed chamfer refused on invalid geometry' },
 ]
+
+// The pin for a violation, or null. The message has to name the pinned class
+// too: seed and step alone let a different failure take the old note's place.
+function findStalePin(seed: number, step: number, message: string): PickPin | null {
+  return KNOWN_STALE_PICKS.find(p => p.seed === seed && p.step === step && message.includes(p.match)) ?? null
+}
+
+// Pins in the swept range that did not fire. A pin that stops firing means the
+// finding it records moved or was fixed, and the table must be re-triaged
+// rather than left to excuse nothing.
+function unfiredPins(seeds: number, firedHangs: ReadonlySet<string>, firedPicks: ReadonlySet<string>): string[] {
+  const problems: string[] = []
+  for (const pin of KNOWN_HANGS) {
+    if (pin.seed >= seeds) continue
+    const key = `${pin.seed}:${pin.phase}:${pin.step}`
+    if (!firedHangs.has(key)) {
+      problems.push(`KNOWN_HANGS pin seed ${pin.seed} ${pin.phase} step ${pin.step} (${pin.kind}) did not fire; re-triage the pin table`)
+    }
+  }
+  for (const pin of KNOWN_STALE_PICKS) {
+    if (pin.seed >= seeds) continue
+    if (!firedPicks.has(`${pin.seed}:${pin.step}`)) {
+      problems.push(`KNOWN_STALE_PICKS pin seed ${pin.seed} step ${pin.step} ("${pin.match}") did not fire; re-triage the pin table`)
+    }
+  }
+  return problems
+}
 
 afterAll(() => {
   disposeChainChild()
+})
+
+// Outside the skipIf suite so the failure is attributed to provisioning rather
+// than to a skipped sweep.
+describe('the geometry fuzz provisioning guard', () => {
+  it.runIf(requireReal)('has OCC.js installed and a Node that can run the watchdog', () => {
+    expect(occAvailable, 'oc: OCC.js absent - run `npm run occ:install` or `just install-occ`').toBe(true)
+    expect(stripTypes, 'Node < 22.6 cannot run the watchdog child (--experimental-strip-types)').toBe(true)
+  })
 })
 
 describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real kernel)', () => {
@@ -198,6 +240,12 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
     const problems: string[] = []
     const hangs: string[] = []
     const redPicks: string[] = []
+    // Pin keys that actually matched a finding in this sweep. A pin with a
+    // seed inside the swept range that never lands here is stale and fails
+    // below, named, so the table cannot excuse a finding that moved or went
+    // away.
+    const firedHangs = new Set<string>()
+    const firedPicks = new Set<string>()
     let completed = 0
     let refusals = 0
     let modifierBuilds = 0
@@ -228,8 +276,12 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
           ? 'before the first step'
           : `at ${guarded.hang.phase} step ${guarded.hang.step} (${guarded.hang.kind})`
         const text = `seed ${seed}: HANG ${where}`
-        if (known) hangs.push(text)
-        else problems.push(`${text}; not in KNOWN_HANGS (add it with the triage note if accepted)`)
+        if (known) {
+          hangs.push(text)
+          firedHangs.add(`${seed}:${guarded.hang.phase}:${guarded.hang.step}`)
+        } else {
+          problems.push(`${text}; not in KNOWN_HANGS (add it with the triage note if accepted)`)
+        }
         continue
       }
       const { run, stale } = guarded.replay
@@ -269,12 +321,24 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
       // reached again but no longer resolves is a finding regardless of where
       // the base chain stopped.
       for (const violation of stale) {
-        const known = KNOWN_STALE_PICKS.find((p) => p.seed === seed && p.step === violation.step)
+        const known = findStalePin(seed, violation.step, violation.message)
         const text = `seed ${seed} step ${violation.step}: ${violation.message}`
-        if (known) redPicks.push(text)
-        else problems.push(text)
+        if (known) {
+          redPicks.push(text)
+          firedPicks.add(`${seed}:${violation.step}`)
+          continue
+        }
+        // A pin at this seed and step whose class does not match is the
+        // failure mode the message match exists for: say so rather than
+        // reporting it as an unlisted finding.
+        const sameSpot = KNOWN_STALE_PICKS.find(p => p.seed === seed && p.step === violation.step)
+        problems.push(sameSpot
+          ? `${text}; the pin at this seed and step expects "${sameSpot.match}" (re-triage it)`
+          : text)
       }
     }
+
+    problems.push(...unfiredPins(SEEDS, firedHangs, firedPicks))
 
     // Known findings are not silent: a green run prints them, and the wide
     // range (the main gate) is what keeps both lists honest.
@@ -468,5 +532,47 @@ describe('the robustness fuzz pin tables', () => {
     expect(new Set(hangKeys).size).toBe(hangKeys.length)
     const pickKeys = KNOWN_STALE_PICKS.map((p) => `${p.seed}:${p.step}`)
     expect(new Set(pickKeys).size).toBe(pickKeys.length)
+  })
+
+  it('matches a pin only on its seed, step and message class', () => {
+    const pin = KNOWN_STALE_PICKS[0]
+    const message = `${pin.match} @u|dead no longer resolves`
+    expect(findStalePin(pin.seed, pin.step, message)).toBe(pin)
+    // A different violation at the same spot does not take the pin's note.
+    expect(findStalePin(pin.seed, pin.step, 'a wholly different violation')).toBeNull()
+    expect(findStalePin(pin.seed, pin.step + 1, message)).toBeNull()
+    expect(findStalePin(pin.seed + 1, pin.step, message)).toBeNull()
+  })
+
+  it('names a stale-pick pin whose key no longer matches the sweep', () => {
+    // A typo in seed or step makes the pin unreachable; the unfired check has
+    // to name it rather than let the typo excuse nothing.
+    const pin = KNOWN_STALE_PICKS[0]
+    const fired = new Set(KNOWN_STALE_PICKS.map(p => `${p.seed}:${p.step}`))
+    fired.delete(`${pin.seed}:${pin.step}`)
+    fired.add(`${pin.seed}:${pin.step + 1}`)
+    expect(unfiredPins(pin.seed + 1, new Set(), fired)).toContain(
+      `KNOWN_STALE_PICKS pin seed ${pin.seed} step ${pin.step} ("${pin.match}") did not fire; re-triage the pin table`,
+    )
+  })
+
+  it('names a pin inside the swept range that did not fire', () => {
+    const pin = KNOWN_HANGS.reduce((lowest, h) => (h.seed < lowest.seed ? h : lowest))
+    const fired = new Set<string>()
+    const problems = unfiredPins(pin.seed + 1, fired, fired)
+    expect(problems).toContain(
+      `KNOWN_HANGS pin seed ${pin.seed} ${pin.phase} step ${pin.step} (${pin.kind}) did not fire; re-triage the pin table`,
+    )
+    // The same table stays quiet outside the swept range.
+    expect(unfiredPins(pin.seed, fired, fired)).not.toContain(
+      `KNOWN_HANGS pin seed ${pin.seed} ${pin.phase} step ${pin.step} (${pin.kind}) did not fire; re-triage the pin table`,
+    )
+  })
+
+  it('accepts the full table when every pin fired', () => {
+    const hangs = new Set(KNOWN_HANGS.map(h => `${h.seed}:${h.phase}:${h.step}`))
+    const picks = new Set(KNOWN_STALE_PICKS.map(p => `${p.seed}:${p.step}`))
+    const widest = Math.max(...KNOWN_HANGS.map(h => h.seed), ...KNOWN_STALE_PICKS.map(p => p.seed)) + 1
+    expect(unfiredPins(widest, hangs, picks)).toEqual([])
   })
 })
