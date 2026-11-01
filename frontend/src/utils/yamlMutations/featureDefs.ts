@@ -27,41 +27,42 @@ function mergeInlineFields<T extends object>(target: T, inline: Partial<T>): voi
 }
 
 /** The stored spelling of one authored feature number, or null when the write is
- *  not storable: a non-finite number (NaN in YAML poisons every later solve), or
- *  a nonzero magnitude the round would collapse to zero. Zero is what every
- *  loader range rule rejects (a positive thickness or angle, a count >= 1), so
- *  storing the collapse would author a document that fails to reopen. Exported
- *  for the plane definition writer in featureAdmin, the same boundary. */
+ *  not storable: a non-finite number, because a NaN stored in YAML fails to load
+ *  and poisons every later solve. A magnitude below the precision quantizes to
+ *  zero like any other stored number (a move-face distance of 1e-7 IS a zero
+ *  move); the fields whose loader rule refuses zero have their own gate beside
+ *  this one. Exported for the plane definition writer in featureAdmin, the same
+ *  boundary. */
 export function storedNumber(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
-  const stored = round(value)
-  return stored === 0 && value !== 0 ? null : stored
+  return round(value)
 }
 
 // A numeric tuple (a transform translation, an array direction, a plane's
 // origin) is authored component by component, so its components cross the same
-// boundary. A component collapsing to zero is legal there: an axis may sit at 0.
+// boundary. A component quantizing to zero is legal there: an axis may sit at 0.
 // Mapping also detaches the stored list from the payload array a journal may
 // replay.
 function roundNumericComponents(list: unknown[]): unknown[] {
   return list.map(v => typeof v === 'number' ? round(v) : v)
 }
 
-/** Round the numbers of a freshly built def; false when a scalar is not
- *  storable, so the add is dropped rather than stored. A def is written either
- *  through setFeatureField or, for a bulk add, straight into its literal, and
- *  both must spell an authored number the way the sketch mutators spell their
- *  seeds, or one drag stores 0.351324 in a profile and 0.351324026 in the
- *  feature built from it. Integers are exact under the round; expression strings
- *  and string ref lists are not numbers and pass through. Exported for the plane
- *  definition writer in featureAdmin, the same copy-a-scalar job. */
+/** Round the numbers of a freshly built def; false when one is not a finite
+ *  number, so the add is dropped rather than authoring a document the loader
+ *  will not reopen. A def is written either through setFeatureField or, for a
+ *  bulk add, straight into its literal, and both must spell an authored number
+ *  the way the sketch mutators spell their seeds, or one drag stores 0.351324 in
+ *  a profile and 0.351324026 in the feature built from it. Integers are exact
+ *  under the round; expression strings and string ref lists are not numbers and
+ *  pass through. Exported for the plane definition writer in featureAdmin, the
+ *  same copy-a-scalar job. */
 export function roundNumericFields(def: object, fn: string): boolean {
   const bag = def as FieldBag
   for (const [field, value] of Object.entries(bag)) {
     if (typeof value === 'number') {
       const stored = storedNumber(value)
       if (stored === null) {
-        warn(`${fn}: refusing ${field}: ${value} is not a storable value`)
+        warn(`${fn}: refusing ${field}: ${value} is not a finite number`)
         return false
       }
       bag[field] = stored
@@ -176,6 +177,18 @@ function refuseHelixAngle(field: string, value: unknown, fn: string): boolean {
   return true
 }
 
+/** Refuse a shell thickness the loader would refuse: its rule is strictly
+ *  positive, so a negative value and the zero a sub-micron authored thickness
+ *  quantizes to are both a document that cannot reopen. Judged through the round
+ *  for the same reason refuseArrayCount exists. */
+function refuseShellThickness(field: string, value: unknown, fn: string): boolean {
+  if (field !== 'thickness' || typeof value !== 'number') return false
+  const thickness = round(value)
+  if (thickness > 0) return false
+  warn(`${fn}: refusing ${field}: must be positive, got ${thickness}`)
+  return true
+}
+
 export function applySetHoleField(doc: PartDoc, featureId: string, field: keyof HoleFeatureDef, value: unknown): void {
   const f = findFeature(doc, featureId)
   const sub = f?.kind === 'hole' ? f.hole : undefined
@@ -197,12 +210,11 @@ function setFeatureField(obj: object, field: string, value: unknown): void {
     return
   }
   if (typeof value === 'number') {
-    // A NaN stored in YAML poisons every later solve, and the round collapsing a
-    // nonzero magnitude to zero authors a value the loader's range rules refuse,
-    // so both are refused here rather than stored.
+    // A NaN stored in YAML fails to load, so it is refused here rather than
+    // stored; the precision round itself is applied by storedNumber.
     const stored = storedNumber(value)
     if (stored === null) {
-      warn(`setFeatureField: refusing ${field}: ${value} is not a storable value`)
+      warn(`setFeatureField: refusing ${field}: ${value} is not a finite number`)
       return
     }
     // Every stored feature scalar crosses this one boundary (the setters and the
@@ -510,6 +522,7 @@ export function applyAddShell(
 ): void {
   const shell: ShellFeatureDef = { faces: [...(faces ?? [])], thickness: thickness ?? 1, direction: direction ?? 'inward' }
   if (!roundNumericFields(shell, 'applyAddShell')) return
+  if (refuseShellThickness('thickness', shell.thickness, 'applyAddShell')) return
   pushFeature(doc, {
     id: featureId,
     kind: 'shell',
@@ -520,7 +533,9 @@ export function applyAddShell(
 
 export function applySetShellField(doc: PartDoc, featureId: string, field: keyof ShellFeatureDef, value: unknown): void {
   const feature = findFeature(doc, featureId)
-  setSubFeatureField(featureId, 'shell', feature?.kind === 'shell' ? feature.shell : undefined, field, value, 'applySetShellField')
+  const sub = feature?.kind === 'shell' ? feature.shell : undefined
+  if (sub !== undefined && refuseShellThickness(field, value, 'applySetShellField')) return
+  setSubFeatureField(featureId, 'shell', sub, field, value, 'applySetShellField')
 }
 
 export function applyAddShellFace(doc: PartDoc, featureId: string, faceQuery: string): void {
@@ -687,14 +702,16 @@ export function applySetArrayMode(
   }
 }
 
-/** Judge a bulk add's inline counts on the AUTHORED value. The merge rounds
- *  every inline field, and a fractional count judged after the round would read
- *  as the legal integer it rounded to -- the value the user did not author. The
- *  setter path judges the raw value through refuseArrayCount for the same
- *  reason; an add must not hand out a different verdict for one input. */
+/** Judge a bulk add's inline counts on the AUTHORED value, before the merge
+ *  rounds them: a float-noise 4.0000004 judged after the round reads as the
+ *  legal 4 the user did not author. A non-finite count is left to setFeatureField's
+ *  finiteness gate, which drops the key and lets the seeded default stand. The
+ *  setter path judges the raw value through refuseArrayCount; an add must not
+ *  hand out a different verdict for one input. */
 function inlineCountProblem(inline: object): { field: 'count' | 'count_x' | 'count_y'; reason: string } | null {
   const bag = inline as FieldBag
-  const num = (key: string): number | null => typeof bag[key] === 'number' ? bag[key] as number : null
+  const num = (key: string): number | null =>
+    typeof bag[key] === 'number' && Number.isFinite(bag[key]) ? bag[key] as number : null
   const count = num('count')
   const countX = num('count_x')
   const countY = num('count_y')

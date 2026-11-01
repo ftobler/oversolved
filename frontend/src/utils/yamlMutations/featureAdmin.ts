@@ -201,7 +201,6 @@ export function hidePlanesIfFirstBoundSketch(doc: PartDoc, sketchId: string): vo
 }
 
 export function applyAddPlane(doc: PartDoc, featureId: string, label?: string, definition?: Record<string, unknown>): void {
-  if (!doc.features) doc.features = []
   // The definition is copied: a journaled add_plane replays its payload, and
   // rounding it in place would rewrite the record the journal still holds.
   const feature: PartFeature = {
@@ -210,9 +209,12 @@ export function applyAddPlane(doc: PartDoc, featureId: string, label?: string, d
     definition: definition ? { ...definition } : { mode: 'offset', plane: '@builtin_plane_front' },
   }
   // A plane's offset or angle is a solver-fed authored quantity like a feature
-  // distance, so it crosses the same stored-precision boundary.
+  // distance, so it crosses the same stored-precision boundary. The features
+  // array is only opened once the add is known to apply, so a refusal leaves a
+  // key-less document untouched.
   if (!roundNumericFields(feature.definition ?? {}, 'applyAddPlane')) return
   if (label) feature.label = label
+  if (!doc.features) doc.features = []
   doc.features.push(feature)
 }
 

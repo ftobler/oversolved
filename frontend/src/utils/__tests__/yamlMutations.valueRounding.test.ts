@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { stringify } from 'yaml'
 import type { PartDoc } from '@/types/cad'
 import {
   applyAddExtrude,
@@ -10,13 +11,16 @@ import {
   applyAddCircularArray,
   applyAddHole,
   applyAddPlane,
+  applyAddEntity,
   applySetExtrudeField,
   applySetHelixField,
   applySetHoleField,
   applySetShellField,
+  applySetMoveFaceField,
   applySetTransformField,
   applySetArrayField,
   applySetPlaneDefinitionField,
+  applySetConstraintValue,
 } from '@/utils/yamlMutations'
 import { round } from '@/utils/yamlMutations/helpers'
 import { featureAt, featureById } from '@/testing/featureAccess'
@@ -25,8 +29,9 @@ import { featureAt, featureById } from '@/testing/featureAccess'
 // mutators already persisted their seeds through round (helpers.ts, 1e-6);
 // feature writes stored the authored float verbatim, so one drag could spell
 // 0.351324 in a profile and 0.351324026 in the feature built from it. The
-// feature side now crosses the same boundary. (Constraint VALUES keep their own
-// 1e-3 rule, and a mate's params are written outside yamlMutations.)
+// feature side of a part document now crosses the same boundary. Constraint
+// VALUES keep their own coarser 1e-3 rule, and an assembly mate's params are
+// written outside yamlMutations.
 const MESSY = 0.351324026
 const MESSY_ROUNDED = 0.351324
 
@@ -35,8 +40,6 @@ const revolve0 = (doc: PartDoc) => featureAt(doc, 0, 'revolve').revolve
 const fillet0 = (doc: PartDoc) => featureAt(doc, 0, 'fillet').fillet
 const chamfer0 = (doc: PartDoc) => featureAt(doc, 0, 'chamfer').chamfer
 const shell0 = (doc: PartDoc) => featureAt(doc, 0, 'shell').shell
-const hole0 = (doc: PartDoc) => featureAt(doc, 0, 'hole').hole
-const array0 = (doc: PartDoc) => featureAt(doc, 0, 'array').array
 const helix0 = (doc: PartDoc) => featureAt(doc, 0, 'helix').helix
 const plane0 = (doc: PartDoc) => featureAt(doc, 0, 'plane').definition!
 
@@ -55,12 +58,18 @@ describe('feature value rounding', () => {
     // A tiny negative reached the YAML as `-0`, the spelling this repo folds away
     // everywhere else (builderHash, the fuzz harness). A huge finite input
     // overflows `v * 1e6` to Infinity, so its vetted spelling is kept.
-    it('folds -0 and never turns a finite input non-finite', () => {
+    it('folds -0 into the spelling the document persists', () => {
       expect(Object.is(round(-3e-7), 0)).toBe(true)
-      expect(JSON.stringify({ v: round(-3e-7) })).toBe('{"v":0}')
+      expect(stringify({ v: round(-3e-7) })).toBe('v: 0\n')
+    })
+
+    it('never turns a finite input non-finite', () => {
       expect(round(1e303)).toBe(1e303)
-      expect(Number.isFinite(round(1e303))).toBe(true)
-      expect(Number.isNaN(round(NaN))).toBe(true)  // the finiteness gates stay the gate
+    })
+
+    // The finiteness gates beside every caller stay the gate.
+    it('leaves NaN for those gates to refuse', () => {
+      expect(Number.isNaN(round(NaN))).toBe(true)
     })
   })
 
@@ -101,7 +110,7 @@ describe('feature value rounding', () => {
     it('a one-call hole add rounds its depth', () => {
       const doc: PartDoc = { features: [] }
       applyAddHole(doc, 'ho1', undefined, { depth: MESSY })
-      expect(hole0(doc).depth).toBe(MESSY_ROUNDED)
+      expect(featureById(doc, 'ho1', 'hole').hole.depth).toBe(MESSY_ROUNDED)
     })
 
     it('a numeric tuple rounds per component and keeps its zero components', () => {
@@ -121,7 +130,7 @@ describe('feature value rounding', () => {
     it('an inline add field lands rounded through the setter funnel', () => {
       const doc: PartDoc = { features: [] }
       applyAddArray(doc, 'ar1', undefined, { pitch_x: MESSY })
-      expect(array0(doc).pitch_x).toBe(MESSY_ROUNDED)
+      expect(featureAt(doc, 0, 'array').array.pitch_x).toBe(MESSY_ROUNDED)
     })
 
     // A plane offset feeds the solver exactly like a feature distance, so it
@@ -145,6 +154,20 @@ describe('feature value rounding', () => {
       expect(plane0(doc).offset).toBe(MESSY_ROUNDED)
     })
 
+    // The invariant the feature is about, spelled through both writers: a circle
+    // seed and an extrude distance authored from the same drag value store the
+    // same number.
+    it('a sketch seed and a feature distance spell one authored value alike', () => {
+      const doc: PartDoc = {
+        features: [{ id: 'sk1', kind: 'sketch', entities: [], initial: {}, constraints: [] }],
+      }
+      applyAddEntity(doc, 'sk1', 'circle', [0, 0, MESSY], 'c1')
+      applyAddExtrude(doc, 'ex1', undefined, '@sk1/area1', MESSY)
+      expect(featureAt(doc, 0, 'sketch').initial!.c1[2]).toBe(
+        featureById(doc, 'ex1', 'extrude').extrude.distance,
+      )
+    })
+
     // A clean authored value must survive byte-identically: a re-spelled 25.7
     // would read as a change to every save-identity and checkpoint-hash guard.
     it('leaves a clean value byte-identical', () => {
@@ -162,35 +185,34 @@ describe('feature value rounding', () => {
       applySetHelixField(doc, 'hx1', 'pitch', 'width * 0.351324026')
       expect(helix0(doc).pitch).toBe('width * 0.351324026')
     })
-
-    it('matches the sketch seed spelling of the same authored value', () => {
-      const doc: PartDoc = {
-        features: [{ id: 'sk', kind: 'sketch', entities: [{ id: 'c1', kind: 'circle' }], initial: { c1: [0, 0, MESSY_ROUNDED] }, constraints: [] }],
-      }
-      applyAddExtrude(doc, 'ex1', undefined, '@sk/area1', MESSY)
-      expect(featureAt(doc, 0, 'sketch').initial!.c1[2]).toBe(featureById(doc, 'ex1', 'extrude').extrude.distance)
-    })
   })
 
-  describe('the round must not author a document the loader refuses', () => {
-    // A magnitude below half the stored precision would store as zero, and every
-    // loader range rule rejects zero (a positive thickness or angle, a count >= 1).
-    it('refuses a magnitude the round would collapse to zero', () => {
-      const doc: PartDoc = {
-        features: [
-          { id: 'ho1', kind: 'hole', hole: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20 } },
-          { id: 'sh1', kind: 'shell', shell: { faces: [], thickness: 1 } },
-        ],
-      }
-      applySetHoleField(doc, 'ho1', 'depth', 3e-7)
-      applySetShellField(doc, 'sh1', 'thickness', 3e-7)
-      expect(featureById(doc, 'ho1', 'hole').hole.depth).toBe(20)
-      expect(featureById(doc, 'sh1', 'shell').shell.thickness).toBe(1)
-      expect(warnSpy).toHaveBeenCalled()
+  // A magnitude below the stored precision is not a value the document can hold:
+  // it quantizes to zero, which is what every other stored number does. That is
+  // right for the fields whose loader rule admits zero (a move-face distance is
+  // signed and 0 is its identity) and wrong for the ones that do not, so those
+  // carry their own gate beside the round.
+  describe('what a sub-precision magnitude becomes', () => {
+    it('quantizes to zero where zero is a legal authored value', () => {
+      const doc: PartDoc = { features: [{ id: 'mf1', kind: 'move_face', move_face: { faces: [], distance: 5 } }] }
+      applySetMoveFaceField(doc, 'mf1', 'distance', 1e-7)
+      expect(featureAt(doc, 0, 'move_face').move_face.distance).toBe(0)
     })
 
-    // 0 and 90 are the degenerate ends of the helix parametrisation the loader
-    // holds a literal angle to; a write may not land on either.
+    // The loader holds shell.thickness strictly positive, so the zero a
+    // sub-micron thickness quantizes to is a document that cannot reopen.
+    it('refuses a shell thickness the loader would refuse', () => {
+      const doc: PartDoc = { features: [{ id: 'sh1', kind: 'shell', shell: { faces: [], thickness: 1 } }] }
+      applySetShellField(doc, 'sh1', 'thickness', 3e-7)
+      applySetShellField(doc, 'sh1', 'thickness', -2)
+      expect(shell0(doc).thickness).toBe(1)
+      applyAddShell(doc, 'sh2', undefined, ['$f1'], 3e-7)
+      expect(doc.features).toHaveLength(1)
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('must be positive'))
+    })
+
+    // A helix angle is parametrisation-bound to the open interval (0, 90); the
+    // round can land an authored 89.99999994 exactly on the degenerate end.
     it('refuses a helix angle the round lands on a degenerate end', () => {
       const doc: PartDoc = { features: [{ id: 'hx1', kind: 'helix', helix: { helix_angle: 30 } }] }
       applySetHelixField(doc, 'hx1', 'helix_angle', 89.99999994)
@@ -199,26 +221,69 @@ describe('feature value rounding', () => {
       applySetHelixField(doc, 'hx1', 'helix_angle', 45)
       expect(helix0(doc).helix_angle).toBe(45)
     })
+  })
 
-    // A fractional count is a refusal, not a value to round into the legal
-    // integer: the add and the setter must hand out one verdict for one input.
-    it('refuses a fractional inline count the setter also refuses', () => {
+  describe('an array count is judged on the authored value', () => {
+    // The round would heal a float-noise count into the legal integer the user
+    // did not author; the setter already refused it, so the add must too.
+    it('refuses a float-noise count on both paths', () => {
       const added: PartDoc = { features: [] }
-      applyAddArray(added, 'ar1', undefined, { count_x: 2.4 })
-      expect(added.features).toHaveLength(0)
-      applyAddCircularArray(added, 'ca1', undefined, { count: 3.5 })
+      applyAddArray(added, 'ar1', undefined, { count_x: 4.0000004 })
       expect(added.features).toHaveLength(0)
       const set: PartDoc = { features: [{ id: 'ar2', kind: 'array', array: { mode: 'linear', count_x: 2, pitch_x: 5 } }] }
-      applySetArrayField(set, 'ar2', 'count_x', 2.4)
-      expect(array0(set).count_x).toBe(2)
-      expect(warnSpy).toHaveBeenCalled()
+      applySetArrayField(set, 'ar2', 'count_x', 4.0000004)
+      expect(featureById(set, 'ar2', 'array').array.count_x).toBe(2)
     })
 
+    it('refuses a fractional inline count on both paths', () => {
+      const added: PartDoc = { features: [] }
+      applyAddArray(added, 'ar1', undefined, { count_x: 2.4 })
+      applyAddCircularArray(added, 'ca1', undefined, { count: 3.5 })
+      expect(added.features).toHaveLength(0)
+    })
+
+    // The pair cap is judged on the authored pair, not on rounded stand-ins.
+    it('judges a rectangular pair against the cells cap', () => {
+      const doc: PartDoc = { features: [] }
+      applyAddArray(doc, 'ar1', undefined, { mode: 'rectangular', count_x: 999, count_y: 999 })
+      expect(doc.features).toHaveLength(0)
+      applyAddArray(doc, 'ar2', undefined, { mode: 'rectangular', count_x: 1000 })
+      expect(featureAt(doc, 0, 'array').array.count_y).toBe(2)
+    })
+
+    // A non-finite count stays the finiteness gate's job: it drops the key and
+    // the seeded default stands, exactly as it did before the rounding boundary.
+    it('lets the finiteness gate handle a non-finite inline count', () => {
+      const doc: PartDoc = { features: [] }
+      applyAddArray(doc, 'ar1', undefined, { count_x: NaN })
+      expect(featureAt(doc, 0, 'array').array.count_x).toBe(2)
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('refusing count_x'))
+    })
+  })
+
+  describe('the gates beside the round keep refusing', () => {
     it('keeps refusing a non-finite value beside the round', () => {
       const doc: PartDoc = { features: [{ id: 'ho1', kind: 'hole', hole: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20 } }] }
       applySetHoleField(doc, 'ho1', 'depth', NaN)
-      expect(hole0(doc).depth).toBe(20)
-      expect(warnSpy).toHaveBeenCalled()
+      expect(featureById(doc, 'ho1', 'hole').hole.depth).toBe(20)
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('not a finite number'))
+    })
+
+    // A dimension value keeps its own 1e-3 quantum, now through the same -0
+    // folding, so no document writer stores `-0`.
+    it('folds -0 in the 1e-3 dimension spelling too', () => {
+      const doc: PartDoc = {
+        features: [{
+          id: 'sk1',
+          kind: 'sketch',
+          entities: [],
+          initial: {},
+          constraints: [{ id: 'c1', kind: 'distance', a: 'entity:sk1:e1', b: 'entity:sk1:e2', value: 5 }],
+        }],
+      }
+      applySetConstraintValue(doc, 'sk1', 'c1', -3e-4)
+      const c = featureAt(doc, 0, 'sketch').constraints![0]
+      expect(Object.is(c.value, 0)).toBe(true)
     })
   })
 })
