@@ -16,13 +16,12 @@ import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { bodyIdOf } from '../query'
 import { resolveBody } from './shared/bodyResolution'
 import { resplitBody } from './bodySplit'
 import { readBodyNames, type UuidArray } from '../occ/bodyNames'
 import { SubShapeDedup } from '../occ/primitives'
 import { applyDeleteFacesWithLineage } from '../occ/defeature'
-import { makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
+import { bodyOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
 
 type Dict = Record<string, unknown>
 
@@ -68,31 +67,14 @@ export function solveDeleteFace(
   if (Object.keys(bodyStore).length === 0) throw new Error('delete_face: no bodies in body_store')
 
   const indexFor = makeFaceIndexCache(oc, scope, table)
-  const contains = (bid: string, q: string): boolean => {
-    const body = bodyStore[bid]
-    if (body === undefined || body.shape === null) return false
-    return resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q) != null
-  }
 
-  // Group the queries by the body each names, exactly like applyEdgeFeature.
+  // Group the queries by the owning body. The stored `@body_*` token is only a
+  // hint: a keep-both split or a resplit can leave the face on a sibling, which
+  // `bodyOfQuery` recovers (the same rule shell and move face use).
   const groups = new Map<string, string[]>()
   const unresolved: string[] = []
   for (const q of faces) {
-    let namedBody = bodyIdOf(q, bodyStore)
-    const isDefault = namedBody === null && Object.keys(bodyStore).length === 1
-    if (isDefault) namedBody = Object.keys(bodyStore)[0]
-    let target: string | null = null
-    if (namedBody && namedBody in bodyStore && contains(namedBody, q)) {
-      target = namedBody
-    } else {
-      for (const bid of Object.keys(bodyStore)) {
-        if (bid !== namedBody && contains(bid, q)) {
-          target = bid
-          break
-        }
-      }
-    }
-    if (target === null && namedBody !== null && namedBody in bodyStore && !isDefault) target = namedBody
+    const target = bodyOfQuery(oc, scope, table, bodyStore, indexFor, q)
     if (target === null) {
       unresolved.push(q)
       continue

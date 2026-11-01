@@ -105,9 +105,21 @@ export function queryFaceUuid(q: string): string | null {
   }
 }
 
-/** The one body a query names, from its `@body_*` token or by resolving the
- *  face itself, or null when it names none. Shared by the shell and move-face
- *  leaves, which pick faces but act on the owning body. */
+/** The one body a query names, decided in identity order. Shared by the shell,
+ *  move-face and delete-face leaves, which pick faces but act on the owning
+ *  body.
+ *
+ *  1. A live construction UUID decides: it is the face's identity. This comes
+ *     before any ancestry tier because the stable-ancestry tokens of a split
+ *     cap name a face on BOTH halves (the pre-split profile lineage plus a
+ *     classifier the sibling's own cap also carries).
+ *  2. Otherwise the `@body_*` token, but only when that body actually carries
+ *     the face; a keep-both split or a resplit can leave the face on a sibling
+ *     while the stored query still names the pre-split body. Scanning the
+ *     store for the face recovers it, the rule delete face already had.
+ *  3. When nothing contains the face, the named body is kept so the pick is
+ *     reported against the body it names rather than silently dropped.
+ */
 export function bodyOfQuery(
   oc: OccModule,
   scope: DisposeScope,
@@ -116,12 +128,30 @@ export function bodyOfQuery(
   indexFor: (body: Body) => FaceIndex,
   q: string,
 ): string | null {
-  const named = bodyIdOf(q, bodyStore)
-  if (named !== null && named in bodyStore) return named
-  for (const bid of Object.keys(bodyStore)) {
+  const contains = (bid: string): boolean => {
     const body = bodyStore[bid]
-    if (body.shape === null) continue
-    if (resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q)) return bid
+    if (body === undefined || body.shape === null) return false
+    return resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q) != null
+  }
+  const bodies = Object.keys(bodyStore)
+  const uuid = queryFaceUuid(q)
+  if (uuid !== null) {
+    for (const bid of bodies) {
+      const body = bodyStore[bid]
+      if (body === undefined || body.shape === null) continue
+      if (indexFor(body).byUuid.has(uuid)) return bid
+    }
+  }
+  const named = bodyIdOf(q, bodyStore)
+  if (named !== null && named in bodyStore) {
+    if (contains(named)) return named
+    for (const bid of bodies) {
+      if (bid !== named && contains(bid)) return bid
+    }
+    return named
+  }
+  for (const bid of bodies) {
+    if (contains(bid)) return bid
   }
   return null
 }
