@@ -39,7 +39,7 @@ import {
   type NewNames,
 } from './edgeModifier'
 import { SubShapeDedup, SubShapeMultiIndex, SubShapeIndexMap } from './subshapeIdentity'
-import { faceSurfaceType } from './primitives'
+import { faceSurfaceType, FACE_RESTRICTION_TYPES } from './primitives'
 import { exploreSolids } from './booleans'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { swallowUnlessTrap } from '../errors'
@@ -61,12 +61,14 @@ export interface DefeatureResult {
   applied: boolean
 }
 
-// The surface types whose underlying surface can be extended to close a gap.
-// Anything else (a B-spline, Bezier, offset or extrusion surface) is refused
-// before OCC is called: extending it is either impossible or hangs.
-const ANALYTIC_SURFACE_TYPES: ReadonlySet<string> = new Set([
-  'flatface', 'cylinderface', 'coneface', 'sphereface', 'torusface',
-])
+// The surface types whose underlying surface can be extended to close a gap:
+// every face kind but the freeform catch-all. Anything else (a B-spline,
+// Bezier, offset or extrusion surface) is refused before OCC is called:
+// extending it is either impossible or hangs. The kinds come from the shared
+// vocabulary in primitives.ts, not a second hand list.
+const ANALYTIC_SURFACE_TYPES: ReadonlySet<string> = new Set(
+  FACE_RESTRICTION_TYPES.filter((t) => t !== 'face'),
+)
 
 // The two user-facing refusals. Kept as phrases (the leaf prefixes
 // `delete_face:`) so the same text reaches a red chip's tooltip.

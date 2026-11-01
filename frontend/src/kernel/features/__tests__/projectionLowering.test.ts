@@ -68,6 +68,15 @@ describe('resolve3dGeometry', () => {
       .toEqual({ kindH: 'point', data: { point: [0, 0, 0] } })
   })
 
+  it('reads every face kind, not just the flat and cylindrical ones', () => {
+    // A countersink cone (or a sphere/torus) face picked for projection used
+    // to fall past this branch and project nothing at all.
+    for (const type of ['coneface', 'sphereface', 'torusface']) {
+      expect(resolve3dGeometry({ type, centroid: [7, 8, 9] }))
+        .toEqual({ kindH: 'point', data: { point: [7, 8, 9] } })
+    }
+  })
+
   it('reads a slash-registry point (flat x/y/z, no type) as a point', () => {
     // Hole/point payloads from the slash registry carry bare x/y/z and no
     // `type`; the B-rep vertex arm does not match them, so the fallback must.

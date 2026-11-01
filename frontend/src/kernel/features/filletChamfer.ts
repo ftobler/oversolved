@@ -17,7 +17,15 @@ import { resplitBody } from './bodySplit'
 import { canonicalEdges, assertAligned, readBodyNames } from '../occ/bodyNames'
 import { namedElementCreator, newIndexSets } from '../occ/modifierAttribution'
 import { bodyFrame, compareEdgeSortKeys, edgeRepresentativePoint } from '../occ/tessellation'
-import { faceNormal, edgeToGeom, SubShapeDedup, SubShapeMultiIndex, type EdgeSortKey, type Vec3 } from '../occ/primitives'
+import {
+  faceNormal,
+  edgeToGeom,
+  isFaceRestriction,
+  SubShapeDedup,
+  SubShapeMultiIndex,
+  type EdgeSortKey,
+  type Vec3,
+} from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
 import {
   chamferWidthDiagnosis,
@@ -242,7 +250,10 @@ export function resolveEdgesByQuery(
   const isFaceQuery = (q: string): boolean => {
     try {
       const [, typeRestriction] = parseAncestry(q)
-      return typeRestriction === 'face' || typeRestriction === 'flatface' || typeRestriction === 'cylinderface'
+      // Every face kind counts, not just the three a rectangular and cylindrical
+      // pick used to emit: a countersink cone picked to fillet all its edges
+      // used to fall through to the edge repository and resolve nothing.
+      return isFaceRestriction(typeRestriction)
     } catch (e) {
       swallowUnlessTrap(e)
       return false

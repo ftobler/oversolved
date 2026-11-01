@@ -61,6 +61,25 @@ function fullRectExtrudeSpec(w = 10, h = 10, d = 5): { features: Array<Record<st
   ]}
 }
 
+/** A 20x20x10 plate with a 90 degree countersink through it: the sink is the
+ *  cone face a fillet pick has to expand to its two rims. */
+function countersinkSpec(): { features: Array<Record<string, unknown>> } {
+  return { features: [
+    rectSketch('sk1', 20, 20),
+    { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
+    {
+      id: 'skh', kind: 'sketch', label: 'Drill sites', plane: '@builtin_plane_front',
+      entities: [{ id: 'p1', kind: 'point' }], initial: { p1: [10, 10] }, constraints: [],
+    },
+    {
+      id: 'h1', kind: 'hole', hole: {
+        sketch: '@skh', diameter: 4, depth_mode: 'through_all', style: 'countersink',
+        cb_diameter: 12, cs_angle: 90, target: '@body_ex1',
+      },
+    },
+  ]}
+}
+
 function assertMeshValid(mesh: Record<string, unknown>): void {
   const verts = mesh.vertices as number[][] | undefined
   const faces = mesh.faces as number[][] | undefined
@@ -520,5 +539,28 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect(body).toBeDefined()
     expect(body.brep_diff).not.toBeNull()
     expect((body.brep_diff as { new_edges: unknown[] }).new_edges.length).toBeGreaterThan(0)
+  })
+
+  it('a countersink cone face pick expands to its rim edges', () => {
+    // The cone face of a countersink used to fall through the face-query
+    // predicate (it listed `face`, `flatface` and `cylinderface` only), so the
+    // pick went to the edge repository, resolved no edge and the fillet had
+    // nothing to round.
+    const spec = countersinkSpec()
+    const base = h.run(spec)
+    const faces = ((h.body(base, 'body_ex1').mesh as { face_queries?: string[] }).face_queries) ?? []
+    const cones = faces.filter((q) => q.includes(':coneface'))
+    expect(cones).toHaveLength(1)
+    const edgesBefore = ((h.body(base, 'body_ex1').edge_queries as string[]) ?? []).length
+
+    spec.features.push({ id: 'fi1', kind: 'fillet', fillet: { edges: cones, radius: 0.5 } })
+    const r = h.run(spec)
+    const res = h.res(r, 'fi1')
+    expect(res.unresolved_edges as string[] | undefined).toBeUndefined()
+    expect(res.failed_edges as string[] | undefined).toBeUndefined()
+    expect(res.status).toBe('ok')
+    // Both rims of the cone got a blend: two new circular edges.
+    const edgesAfter = ((h.body(r, 'body_ex1').edge_queries as string[]) ?? []).length
+    expect(edgesAfter).toBeGreaterThan(edgesBefore)
   })
 })

@@ -681,12 +681,20 @@ export function tessellateFace(
 
 export type SurfaceType = 'flatface' | 'cylinderface' | 'coneface' | 'sphereface' | 'torusface' | 'face'
 
+// Every typeRestriction that names a face, as data. This is the one copy of
+// the face vocabulary as a list: `isFaceRestriction` below is the predicate
+// every consumer calls, and a subset list (the analytic-surface set delete
+// face can extend) filters this array instead of hand-copying kinds.
+export const FACE_RESTRICTION_TYPES: readonly SurfaceType[] = [
+  'flatface', 'cylinderface', 'coneface', 'sphereface', 'torusface', 'face',
+]
+
 // The typeRestriction vocabulary of an ancestry query, classified by the
-// geometric kind it names. One shared copy so every consumer (queryLabel,
-// projectionMutations, later g2-H1) agrees on what counts as a face or an
-// edge, instead of each hand-maintaining a partial list (g2-M2).
+// geometric kind it names. One shared copy so every consumer agrees on what
+// counts as a face (g2-M2): a partial hand list made a cone, sphere or torus
+// pick resolve nothing on the fillet and projection paths.
 export function isFaceRestriction(tr: string | null): boolean {
-  return tr === 'flatface' || tr === 'cylinderface' || tr === 'coneface' || tr === 'sphereface' || tr === 'torusface' || tr === 'face'
+  return tr !== null && (FACE_RESTRICTION_TYPES as readonly string[]).includes(tr)
 }
 
 export function isEdgeRestriction(tr: string | null): boolean {

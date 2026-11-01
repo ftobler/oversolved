@@ -12,6 +12,7 @@
 
 import { fitCubicBezier } from '@/utils/geometry/bezierFit'
 import { dot as dot3, sub as sub3, cross as cross3 } from '@/utils/vec3'
+import { isFaceRestriction } from '@/kernel/occ/primitives'
 
 type Dict = Record<string, unknown>
 
@@ -128,7 +129,9 @@ function isParallelToPlane(axis: number[], plane: PlaneFrame): boolean {
 /** Extract 3D geometry from a repository payload (mirrors `_resolve_source_geometry`). */
 export function resolve3dGeometry(data: Dict): Resolved3dGeometry | null {
   const dataType = (data.type as string) ?? ''
-  if (dataType === 'face' || dataType === 'flatface' || dataType === 'cylinderface') {
+  // Every face kind projects as its own centroid point; a cone, sphere or torus
+  // payload used to miss this branch and project nothing at all.
+  if (isFaceRestriction(dataType)) {
     const pt = data.centroid || data.origin || [0, 0, 0]
     return { kindH: 'point', data: { point: pt } }
   }
