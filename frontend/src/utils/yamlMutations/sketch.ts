@@ -379,8 +379,9 @@ export function applySetConstraintValue(
 ): void {
   const feature = findSketchFeature(doc, featureId)
   if (!feature?.constraints) return
-  // A dimension value is persisted verbatim into the doc; a NaN/Inf must be
-  // rejected at the boundary rather than rounded into it.
+  // A dimension value is stored at its own 1e-3 precision, coarser than the
+  // seed precision; a NaN/Inf must be rejected at the boundary rather than
+  // rounded into it.
   if (!Number.isFinite(value)) {
     warn('applySetConstraintValue: ignoring non-finite value', { featureId, constraintId, value })
     return
@@ -437,9 +438,9 @@ export function applyAddEntity(
   }
   const feature = resolveSketch(doc, featureId, 'entities', 'initial')
   if (!feature) return
-  // The seed params are persisted verbatim into the doc. round(NaN) is still
-  // NaN, so a non-finite coordinate would survive into the YAML and every later
-  // solve seeded from it.
+  // The seed params are stored at the document's number precision. round(NaN)
+  // is still NaN, so a non-finite coordinate would survive into the YAML and
+  // every later solve seeded from it.
   if (!allFinite(params)) {
     warn('applyAddEntity: ignoring non-finite seed params', { featureId, kind, params })
     return
@@ -489,9 +490,9 @@ export function applyAddEntityWithConstraint(
   }
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
-  // Seed params are persisted verbatim (same gate as applyAddEntity); refusing
-  // here keeps the snap constraint from being authored against an entity that
-  // was never created.
+  // Seed params are stored at the document's number precision (same gate as
+  // applyAddEntity); refusing here keeps the snap constraint from being authored
+  // against an entity that was never created.
   if (!allFinite(params)) {
     warn('applyAddEntityWithConstraint: ignoring non-finite seed params', { featureId, kind, params })
     return
@@ -541,9 +542,10 @@ export function applyAddPointAtIntersection(
 ): string | null {
   const feature = resolveSketch(doc, featureId, 'entities', 'initial')
   if (!feature) return null
-  // The contact location is persisted verbatim as the point's seed. A malformed
-  // `isect:` handle parses to NaN upstream, so the gate lives here rather than
-  // at the one call seam: null tells the caller nothing was materialized.
+  // The contact location becomes the point's seed at the document's number
+  // precision. A malformed `isect:` handle parses to NaN upstream, so the gate
+  // lives here rather than at the one call seam: null tells the caller nothing
+  // was materialized.
   if (!allFinite(at)) {
     warn('applyAddPointAtIntersection: ignoring non-finite location', { featureId, at })
     return null
@@ -606,8 +608,9 @@ export function applyAddDock(
   const existingDock = feature.constraints.find(c => c.kind === 'dock' && c.host === hostConstraintId)
   if (existingDock) return _dockPointId(existingDock, new Set(feature.entities.map(e => e.id)))
 
-  // The contact seed is written verbatim. dockLocationOf can hand back a
-  // non-finite pair for a degenerate host, so gate before the point is minted.
+  // The contact seed is stored at the document's number precision.
+  // dockLocationOf can hand back a non-finite pair for a degenerate host, so
+  // gate before the point is minted.
   if (!allFinite(at)) {
     warn('applyAddDock: ignoring non-finite contact location', { featureId, hostConstraintId, at })
     return null

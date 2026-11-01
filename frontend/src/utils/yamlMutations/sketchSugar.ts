@@ -348,9 +348,9 @@ export function applyAddOffset(
 ): void {
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
-  // The distance is persisted verbatim into every clone's seed. round(NaN) is
-  // still NaN, so a non-finite distance would seed NaN clones (plus their miter
-  // reconnections) across the whole selection.
+  // Every clone's seed is stored at the document's number precision. round(NaN)
+  // is still NaN, so a non-finite distance would seed NaN clones (plus their
+  // miter reconnections) across the whole selection.
   if (!Number.isFinite(distance)) {
     warn('applyAddOffset: ignoring non-finite distance', { featureId, sourceIds, distance })
     return
