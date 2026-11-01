@@ -315,7 +315,7 @@ function lowerProjectedEntities(
  *
  * `skipStatusPass` is the caller's own request flag, not a second opinion about
  * it: the wire contract is `n_entities_status == layout.length`, or 0 when the
- * request set `skip_status_pass` (codec.rs:51 documents the 0). Every drag call
+ * request set `skip_status_pass` (the codec header documents the 0). Every drag call
  * site asks for the skip, because that path reads the params and the overall
  * status only. Deriving the expectation from the flag that was actually sent
  * means neither call site has to hand-maintain a boolean, and an empty status

@@ -235,7 +235,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
 
     it('runs the clean pass exactly once per folded tool (M18 pin)', () => {
       // M18's evidence: the probe used to run the whole booleanWithDiff
-      // pipeline (boolean.ts:107) just to read one number, so a folding
+      // pipeline just to read one number, so a folding
       // subtract constructed ShapeUpgrade_UnifySameDomain_2 TWICE per tool:
       // once for the probe's common, once for the real cut. The probe is now
       // shapesIntersect (a bare Common, history off), so this is exactly ONE

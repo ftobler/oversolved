@@ -497,3 +497,23 @@ def test_an_explicit_file_with_another_dialect_suffix_is_ignored(tmp_path):
         text=True,
     )
     assert_clean(proc)
+
+
+def test_line_ref_in_a_comment_is_flagged(tmp_path):
+    # A comment that points at a moved line sends the next reader to the wrong
+    # code, so it names a function or symbol instead. The knowledge-base test
+    # already bans the spelling there; comments are the other place it rots.
+    assert_violation(run_lint(tmp_path, "// see builder.ts:925 for the guard\n"), "line-ref")
+
+
+def test_line_ref_in_a_string_is_not_a_comment(tmp_path):
+    # Fixtures spell refs as data; only comment spans are checked.
+    assert_clean(run_lint(tmp_path, "const s = 'builder.ts:925'\n"))
+
+
+def test_line_ref_in_a_rust_comment_is_flagged(tmp_path):
+    assert_violation(run_lint_rs(tmp_path, "// see dcel.rs:1319 for the order\n"), "line-ref")
+
+
+def test_line_ref_in_a_python_comment_is_flagged(tmp_path):
+    assert_violation(run_lint_py(tmp_path, "# see lint.py:12\n"), "line-ref")

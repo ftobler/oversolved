@@ -9,8 +9,14 @@
 // Then review the git diff: every moved row is a command whose behavior on a
 // document, target or command changed.
 //
-// vite-node is the runner (not the strip-types loader regenCorpus uses) because
-// the command table reads import.meta.env, which plain Node does not define.
+// vite-node is the runner (not the strip-types drive loader the CLI and MCP
+// entries use) because the sweep imports the regression baseline and the
+// document fixtures as JSON modules, which the plain loader cannot resolve.
+// vite-node's DEV is true, but every `import.meta.env.DEV` branch on this path
+// is a console warning (the registry's duplicate-registration and missing-
+// handler notices), so the matrix's statuses do not depend on the runner;
+// `driveCli.loader.mjs` shims DEV false for the MCP surface and nothing there
+// changes a command outcome either.
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'

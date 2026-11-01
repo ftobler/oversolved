@@ -142,8 +142,8 @@ describe('multi-select holds one entry per primitive, not per query', () => {
 
   it('an off/on cycle across all three layers drops every claim', () => {
     // A face, an edge and a vertex all claim the same query 'Q'. Toggling the
-    // query off wholesale must drop every claim under it (the selectedPicks
-    // guarantee at sketchEditorStore.ts:243), so re-selecting it cannot
+    // query off wholesale must drop every claim under it (the `selectedPicks`
+    // guarantee), so re-selecting it cannot
     // resurrect a stale sibling key: the final off leaves selectedPicks empty.
     click(FACE_LAYER_NAME, 0, 'Q')
     click(EDGE_LAYER_NAME, 0, 'Q')
@@ -167,7 +167,7 @@ describe('multi-select holds one entry per primitive, not per query', () => {
 })
 
 describe('the solve seam (clearSelectedPicks)', () => {
-  // The documented contract at sketchEditorStore.ts:244-245: selectedPicks is
+  // The documented `clearSelectedPicks` contract: selectedPicks is
   // transient and empty after a re-solve, where the query-keyed fallback in
   // computeHighlight takes over. The seam action empties the claims ONLY, so
   // the durable selection the user made survives a re-solve.

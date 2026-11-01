@@ -270,7 +270,7 @@ describe('real postRegister: solids survive a re-solve', () => {
     // re-introduce it: before the guard it registered a phantom solid for the
     // null-shape body, inflating `[@f1]` to two solids and making
     // `?@f1:solid` throw AmbiguousQueryError. The two phantom solids are
-    // genuinely distinct payloads (`_dedupeRepo` at builder.ts:234 collapses only
+    // genuinely distinct payloads (`_dedupeRepo` collapses only
     // byte-identical payloads and they differ by `body_id`), so the repo holds 2
     // solids and the restore keeps both.
     const cold = buildNullShapePair(true)

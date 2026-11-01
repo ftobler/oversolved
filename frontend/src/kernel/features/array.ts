@@ -381,21 +381,20 @@ function applyArray(
     lastDiff = r.diff
     // Release ONLY here, never above. `r.faceOrigin`'s `source` entries are
     // sub-shapes OF THE OPERANDS, and transferBooleanNames downcasts and hashes
-    // them (booleanLineage.ts:81-82). Freeing an operand before that line is a
-    // use-after-free that reads plausibly and fails nowhere.
+    // them. Freeing an operand before that call is a use-after-free that reads
+    // plausibly and fails nowhere.
     //
     // instances[0] is the HandleTable-owned `sourceShape` when include_source is
-    // set (array.ts:180, :238). scope.release() deletes a foreign object it was
-    // never tracking (disposeScope.ts:60-70), so releasing it would free the
-    // table's shape out from under every later feature.
+    // set. `DisposeScope.release()` deletes a foreign object it was never
+    // tracking, so releasing it would free the table's shape out from under
+    // every later feature.
     const prevIsTableOwned = i === 1 && includeSource
     if (!prevIsTableOwned) scope.release(prev)
     scope.release(instances[i])
     // The releases do not invalidate what survives the loop: body.brep_diff is
     // lastDiff, whose sub-shape handles are independent embind wrappers holding
     // their own refcounted TShape, so deleting an operand wrapper does not free
-    // geometry the diff still references (same argument as boolean.ts:115 and
-    // extrude.ts:317-320).
+    // geometry the diff still references.
   }
   body.modified_by.push(featureId)
   body.brep_diff = lastDiff

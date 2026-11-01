@@ -29,7 +29,7 @@ Prerequisites and the full setup are in `docs/setup.md`.
 ## Gates
 
 ```bash
-just default    # every gate (python + frontend)
+just default    # every gate (python + rust + frontend)
 just python     # mypy, ruff, lint.py, pytest over the repo tooling
 just frontend   # icons, lint, vitest, licenses, build
 just rust-test  # cargo test over the solver workspace

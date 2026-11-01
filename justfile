@@ -3,7 +3,7 @@
 # `just` command runner. Targets can be run with `just <target>`.
 #
 #   everyday   dev, build, static
-#   gates      default (python + frontend), python (mypy, ruff, lint-py,
+#   gates      default (python + rust + frontend), python (mypy, ruff, lint-py,
 #              pytest), frontend (icons, frontend-lint, frontend-test,
 #              licenses, build), rust-test, rust-lint, rust-fmt
 #   fuzz       fuzz (the full main-gate suite), fuzz-session, action-matrix,
@@ -17,7 +17,7 @@
 # says what it runs and how fuzz and ratchet differ.
 #
 # Start here: `just install` once, then `just dev` to run the app. The everyday
-# gate is `just default` (Python + frontend).
+# gate is `just default` (Python + Rust + frontend).
 #
 # A bare `just` runs the first recipe, `dev`, not `default`.
 

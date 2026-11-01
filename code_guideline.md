@@ -47,23 +47,26 @@ length = distance_between(A, B)
 ## 3. Persistence
 
 The app is browser-only: there is no server and no database process. Every CAD
-computation happens in a WASM Web Worker on the same machine, and documents
-live in one of three libraries, one active at a time: IndexedDB under the
-origin serving the app (the default), a folder the user picked through the File
-System Access API, or that folder's degenerate case, a single opened file. The
-pickers are Chromium-only, so on other engines the last two are absent, not
-disabled.
+computation happens in a WASM Web Worker on the same machine. A workspace is a
+row set in IndexedDB under the origin serving the app, and that is the only
+permanent store: `WorkspaceStore` (`workspace/store.ts`) owns workspace identity
+and the library verbs, and each workspace's entries go through an `IdbCarrier`
+(`workspace/idbCarrier.ts`). `MemoryCarrier` is the test conformer written from
+the same `WorkspaceCarrier` interface, not a second production store. A folder
+is an import source only; a zip is both an import source and the export target
+(both export gestures download one). Neither is a place a workspace lives, so
+nothing binds or fingerprints one.
 
 **Rule:** Persistence is an implementation detail behind the document store.
-Feature code reads and writes documents through the store, never IndexedDB or a
-file handle directly. Take the store off `backendBundle`, which holds a
-forwarding pair: which library is live is a user choice and it changes at
-runtime.
+Feature code reads and writes documents through the store, never IndexedDB
+directly. Take the store off `backendBundle` (`adapters/backend.ts`), whose
+`documents` face is `activeDocumentStore` (`adapters/openWorkspace.ts`). That
+adapter resolves entry ids inside the one open workspace and refuses by name
+when none is open, rather than listing a whole library.
 
 **Rule:** Treat a write as fallible. IndexedDB can reject on quota, on a
-private-browsing profile, or on a blocked upgrade; a file write can fail on a
-revoked permission or a folder that moved. There is no server copy to fall back
-to. Surface the failure rather than dropping the change silently.
+private-browsing profile, or on a blocked upgrade. There is no server copy to
+fall back to, so surface the failure rather than dropping the change silently.
 
 ## 4. Frontend Conventions
 
@@ -400,7 +403,7 @@ as a fallback seam for tests only.
 | Drive a doc headlessly | `npm run drive -- run <script.json>` | `frontend/scripts/driveCli.ts` |
 | Serve the drive surface over MCP | `npm run mcp` | `frontend/scripts/mcpServer.ts` |
 | Run linter | `npm run lint` | `frontend/` |
-| Run type checker | `mypy tests/ oversolved/` | root |
+| Run type checker | `just mypy` | root |
 | Add new command | add a `CommandSpec` to the editor's table | `frontend/src/pages/commandEntries.ts` / `assemblyCommandEntries.ts` |
 | Add new feature kind | the compile-time tethers, in order: `PartFeature` (`types/cad.ts`) -> `FEATURE_SCHEMA_BY_KIND` (`persistence/partDocSchema.ts`) -> `FEATURE_DEF_SUBKEY` (`kernel/features/shared/featureParams.ts`) -> `KIND_SOLVER` (`kernel/solverRegistry.ts`); then the runtime tables: `FEATURE_DEF_CHECKS` (`persistence/docSchema.ts`), `IDEMPOTENT_MUTATION`, `FIELD_SETTER_KIND` and the `MUTATION_VALUE_RULES` row, `mutationExamples`, and the editor schema; then the ratchets: `npm run regen:action-matrix`, `featureUnionRatchet` counts and the solver-registry kind list | `frontend/src/` |
 | Add new tool | `frontend/src/registry/entityRegistry.ts` | `frontend/src/registry/` |

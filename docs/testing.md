@@ -12,10 +12,10 @@ chains against the real kernel), the volume oracle (analytic geometry against
 the real kernel), the document loader fuzz, and the Rust sketch area-builder
 fuzz. Their baselines are committed and reviewed like code.
 
-The Gitea `fuzz` job in `.github/workflows/ci-gitea.yaml` runs on main only (a
-push or a manual dispatch there): it provisions the WASM solvers and OCC.js and
-runs `just fuzz-session 200 40`, `just action-matrix` and
-`just fuzz-geometry 1500 2` as three separate steps, so the job view names the
+The Gitea `fuzz` job in `.github/workflows/ci-gitea.yaml` is gated to
+`refs/heads/main` or `refs/heads/fuzz`: it provisions the WASM solvers and
+OCC.js and runs `just fuzz-session 200 40`, `just action-matrix` and
+`just fuzz-geometry 1500 4` as three separate steps, so the job view names the
 failing suite and its duration. `just fuzz` remains the one-command local
 aggregate of the same three recipes. Every recipe tees its output to tmp/ and
 the job uploads the logs as its report artifact; the fuzz steps use
@@ -42,7 +42,7 @@ session calls the page handlers do.
 
 Each entry records `ok`, `failed` or `refused` plus its error or refusal text
 in `frontend/src/testing/actionMatrix/baseline.json` (59 documents x up to 12
-targets x 48 commands, 28,272 rows, one row per line so the diff is readable).
+targets x 50 commands, 29,450 rows, one row per line so the diff is readable).
 
 - PR gate: `actionMatrix.test.ts` replays a bounded smoke slice (5 documents,
   6 targets) with the fake scheduler, so it needs no OCC.js, and
@@ -84,7 +84,7 @@ downgrades every case to a warning.
 
 `frontend/src/hooks/__tests__/fuzz.test.ts` (fake scheduler, harness
 `fuzzHarness.ts`, minimiser `fuzzMinimizer.ts`) and its real-kernel half
-`fuzzReal.test.ts` generate seeded sequences over the 97-type
+`fuzzReal.test.ts` generate seeded sequences over the 104-type
 mutation example registry plus random undo/redo, and drives them through a
 fresh `DocSession`. After every step it checks that the document is well formed
 and JSON-serializable, the session is idle, no solve crashed and history stays
@@ -141,16 +141,19 @@ reached again, a completed one also reports references it never reached.
   sweep. The pins key on the recipe a seed draws, so a change to the recipe
   generator (a new step kind, a moved roll threshold) redraws most seeds and
   needs a fresh 1500-seed triage in the same batch.
-- PR gate: bounded 24 chain seeds and 32 identity seeds. On a Node older than
-  22.6 the watchdog child cannot start (--experimental-strip-types), so the
-  chain sweep skips there rather than fail; the CI matrix runs one such leg.
+- PR gate: bounded 24 chain seeds and 32 identity seeds. A local Node below
+  22.6 cannot start the watchdog child (`--experimental-strip-types`), so the
+  chain sweep skips there rather than fail; the package floor is still 20.19,
+  but no CI leg is that old (the matrix runs 22, 24 and 26).
 - Long run: `just fuzz-geometry <seeds> <workers>` (chain default 200, the
   plan's acceptance range; identity a quarter of it, floored at 32), 1500 in
   the main gate and 5000 for a dedicated full-scale run; the tee'd log is the
   report.
 - Failure: the violations are minimised by dropping steps and the minimal
-  recipe is written under `src/testing/robustnessFuzz/regressions/` as a triage
-  artifact for a human (nothing replays the directory yet); the oracle corpus
+  recipe is written under `src/testing/robustnessFuzz/regressions/` as a
+  committed fixture; `regressionsReal.test.ts` (in `src/testing/robustnessFuzz/`)
+  replays every `*-minimal.json` there on the PR gate, so a fixed finding stays
+  fixed even after the generator stops drawing that chain. The oracle corpus
   takes part documents with closed-form expectations, a different shape, so
   fuzz recipes do not go there.
 

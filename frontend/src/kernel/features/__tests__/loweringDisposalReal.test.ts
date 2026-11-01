@@ -227,7 +227,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
   })
 
   // H21: the array add fuse loop releases the superseded fused solid and the
-  // consumed instance at the end of every iteration (array.ts:250-274). The
+  // consumed instance at the end of every iteration (`applyArray`). The
   // loop is the ONLY release traffic on this path (booleans/transformLineage/
   // bodySplit never call scope.release), so releaseCount is exactly 2 per
   // extra instance minus one: iteration 1 skips the table-owned source and

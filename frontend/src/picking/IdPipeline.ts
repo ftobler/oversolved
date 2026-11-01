@@ -17,11 +17,6 @@ import { DEFAULT_WINDOW_SIZE, pickRadiusPx } from './screenSpaceScale'
 import { getSectionClipPlane, getSectionClipPlaneList } from '@/viewport/sectionClipping'
 import { SECTION_CAP_SIZE } from '@/viewport/sectionPlane'
 
-// Size of the cap quad in world units. The cap is the cut face of an infinite
-// plane; the quad only has to cover the model, so a generously large one keeps
-// the plane from ending inside a big imported solid. The stencil count is what
-// decides where it paints, so an oversized quad costs nothing visible.
-
 // Layer name constants now live in the pure ./layerNames module (no three.js)
 // so tool/selection policy can import them headlessly. Re-export here so the
 // @/picking barrel and existing import sites keep resolving them unchanged.

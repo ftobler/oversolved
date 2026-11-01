@@ -5,8 +5,10 @@
  * so the forked runner can import source modules without vitest's module
  * hooks.
  *
- * Paired with --experimental-strip-types (Node 20.19+, which backported it;
- * 22.6+ has it natively) so plain .ts files load without a build step.
+ * Paired with --experimental-strip-types, which Node only has from 22.6. The
+ * package floor stays 20.19 for the app and vitest, so a local checkout below
+ * 22.6 cannot start the forked watchdog children at all; those suites skip
+ * there rather than report every seed as a crash.
  */
 
 import { fileURLToPath } from 'node:url'

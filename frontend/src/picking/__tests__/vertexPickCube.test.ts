@@ -143,8 +143,8 @@ describe('vertex pick cubes', () => {
 
   it('the cube vertex shader guards the projectionMatrix[1][1] divide (never compiled in jsdom)', async () => {
     const { CUBE_VERT_SHADER } = await import('../VertexIdLayer')
-    // Mirrors screenSpaceScale.ts:24: a zero / NaN Y-scale must degrade to zero
-    // size, not Inf/NaN corner positions.
+    // Mirrors `worldUnitsPerPixel()` in screenSpaceScale.ts: a zero / NaN
+    // Y-scale must degrade to zero size, not Inf/NaN corner positions.
     expect(CUBE_VERT_SHADER).toMatch(/projYValid/)
     expect(CUBE_VERT_SHADER).toMatch(/projY > 0\.0 \|\| projY < 0\.0/)
     expect(CUBE_VERT_SHADER).toMatch(/projYValid\s*\n?\s*\?[\s\S]*:\s*0\.0/)

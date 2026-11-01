@@ -541,12 +541,13 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   // Wave 10 D2: does Handle.get() allocate a fresh embind wrapper per call?
-  // The trimmed-curve get() at primitives.ts:119/:177 and the triangulation
-  // get() at :504 are read and never deleted, on the intent that get() borrows
+  // The trimmed-curve and triangulation `get()` call sites in primitives.ts are
+  // read and never deleted, on the intent that get() borrows
   // (occTypes.ts). First run (2026-09-05) observed a FRESH wrapper per call
   // (a !== b): each call strands one small JS-side wrapper registration. It is
-  // still a borrow in the don't-delete sense (stepIo.ts:189-191) and NOT a C++
-  // leak, so .delete() stays out and the three sites are correct as written.
+  // still a borrow in the don't-delete sense (see `forEachTransferredFace`)
+  // and NOT a C++ leak, so .delete() stays out and the three sites are correct
+  // as written.
   it('Handle_Geom_TrimmedCurve.get() mints a fresh wrapper per call (D2)', () => {
     const scope = new DisposeScope()
     try {
