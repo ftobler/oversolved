@@ -81,6 +81,7 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
         </>
       )}
       <DimensionLabel
+        cid={cid} enabled={!!interaction}
         x={labelX} y={labelY} label={label} color={color}
         isDragged={isDragged}
       />
@@ -160,8 +161,9 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
         </>
       )}
       <DimensionLabel
+        cid={cid} enabled={!!interaction}
         x={labelX} y={labelY} label={label} color={color}
-        isDragged={isDragged} selectable={false}
+        isDragged={isDragged}
       />
     </group>
   )

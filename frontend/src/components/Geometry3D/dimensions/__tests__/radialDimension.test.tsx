@@ -7,7 +7,7 @@ import type { DragState } from '@/stores/sketchEditorStore'
  * RadialDimension and DiameterDimension pick between the inside-circle and
  * outside-circle arrow arrangements from where the label sits, and derive the
  * arrow tip / diameter endpoints accordingly. These tests pin those coordinates
- * plus the R / diameter label prefixes and the diameter's non-selectable label.
+ * plus the R / diameter label prefixes.
  */
 
 const spies = vi.hoisted(() => ({
@@ -149,7 +149,7 @@ describe('DiameterDimension', () => {
 
     expect(lastLinePoints()).toEqual([[-10, 0, 0], [10, 0, 0]])
     expect(spies.Arrowhead.mock.calls.map(c => c[0].tip)).toEqual([[-10, 0], [10, 0]])
-    expect(spies.Label.mock.calls.at(-1)![0]).toMatchObject({ x: -4, y: 0, label: 'Ø20', selectable: false })
+    expect(spies.Label.mock.calls.at(-1)![0]).toMatchObject({ x: -4, y: 0, label: 'Ø20' })
   })
 
   it('outside: rotates the arrows inward and leads from an endpoint to the label', () => {

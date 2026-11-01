@@ -109,8 +109,10 @@ export function buildBodySnapSketch(
 export type SnapBodyItem = Pick<BodyRenderItem, 'bodyId' | 'vertices' | 'edges' | 'visible'>
 
 /**
- * Synthetic snap sketches for every body the viewport actually draws, keyed by
+ * Synthetic snap sketches for every body the normal render list draws, keyed by
  * the sentinel feature id (`__body__<bodyId>`) that computeDragMutation reads.
+ * (Ghost mode is the edited feature's preview, not the normal render list: its
+ * pick bodies are reference geometry for the edit, not snap targets.)
  *
  * Driven by the render list, not by the raw body map: a body hidden by the
  * visibility row, or one the rollback bar has not reached, is not on screen, so

@@ -2,7 +2,7 @@ import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
-import { COLOR_SNAP, COLOR_HOVER, COLOR_SELECTED } from '@/components/Geometry3D/constants'
+import { COLOR_SNAP, COLOR_HOVER, COLOR_SELECTED, highlightState } from '@/components/Geometry3D/constants'
 import type { SnapCandidate } from '@/components/Geometry3D/snapDetection'
 
 // A hollow ring drawn at constant pixel size, billboarded to face the camera.
@@ -18,7 +18,10 @@ function DockRing({ x, y, px, id }: { x: number; y: number; px: number; id: stri
   // and click toggles the handle into normalSelection (see useSketchIdRegistration).
   const hovered = useSketchEditorStore(s => s.hoveredVertexId === id)
   const selected = useSketchEditorStore(s => s.normalSelection.has(id))
-  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_SNAP
+  const state = highlightState(selected, hovered)
+  const color = state === 'selected' ? COLOR_SELECTED
+    : state === 'hovered' ? COLOR_HOVER
+    : COLOR_SNAP
   const groupRef = useScreenScale<THREE.Group>(hovered ? px + 1 : px, { billboard: true })
   return (
     <group ref={groupRef} position={[x, y, 0]}>

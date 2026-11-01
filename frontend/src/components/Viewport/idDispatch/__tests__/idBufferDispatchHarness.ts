@@ -1,5 +1,6 @@
 import { IdPipeline } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
+import { resetDimensionLabelDomBoxesForTest } from '@/picking/dimensionLabelDom'
 
 import { act } from '@testing-library/react'
 import { resetDimCallbacksForTest } from '../dimensionLabelCallbacks'
@@ -19,6 +20,7 @@ export interface IdBufferDispatchFixture {
 
 export function newIdBufferDispatchFixture(): IdBufferDispatchFixture {
   resetDimCallbacksForTest()
+  resetDimensionLabelDomBoxesForTest()
   const canvas = makeCanvas()
   const pipeline = new IdPipeline({ width: 800, height: 600 })
   setLivePipeline(pipeline)

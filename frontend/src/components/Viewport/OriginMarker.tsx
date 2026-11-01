@@ -1,6 +1,6 @@
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, RENDER_ORDER_HIGHLIGHT, highlightState } from '@/components/Geometry3D/constants'
 import { Dot } from '@/components/Geometry3D/VertexDots'
 import { useOriginMarkerIdRegistration } from '@/picking'
 
@@ -13,7 +13,10 @@ export default function OriginMarker() {
 
   useOriginMarkerIdRegistration({ selectionId: selId })
 
-  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : COLOR_INACTIVE
+  const state = highlightState(selected, hovered)
+  const color = state === 'selected' ? COLOR_SELECTED
+    : state === 'hovered' ? COLOR_HOVER
+    : COLOR_INACTIVE
 
   return (
     <group>

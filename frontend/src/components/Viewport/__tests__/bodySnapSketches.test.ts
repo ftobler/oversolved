@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { bodySnapSketches, BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjection'
 import { getBodiesToRender } from '@/utils/bodyRender'
 import type { Feature, BodyResult } from '@/types/cad'
@@ -61,5 +63,14 @@ describe('bodySnapSketches', () => {
     const drawn = getBodiesToRender(bodies, features, 1, undefined)
     expect(drawn.map(i => i.bodyId)).toEqual(['early'])
     expect(Object.keys(bodySnapSketches(drawn, FRONT))).toEqual([`${BODY_SNAP_FEAT_PREFIX}early`])
+  })
+
+  // The helper is only half the promise; the viewport has to hand it the drawn
+  // list. Feeding it the raw body map again would pass every test above, so the
+  // wiring is pinned at the call site.
+  it('the viewport builds the snap set from bodyItems, not the raw body map', () => {
+    const src = readFileSync(join(__dirname, '..', 'index.tsx'), 'utf8')
+    expect(src).toMatch(/bodySnapSketches\(\s*bodyItems\s*,/)
+    expect(src).not.toMatch(/bodySnapSketches\(\s*Object\.values\(/)
   })
 })

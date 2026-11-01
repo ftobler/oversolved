@@ -18,6 +18,7 @@ import { dispatchSketchClick } from './dispatchSketchClick'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import { takeBandClickConsumed } from './bandClickGuard'
 import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
+import { dimensionLabelDomHit } from '@/picking/dimensionLabelDom'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSectionStore, SECTION_FACE_NOT_FLAT_REASON, SECTION_PICK_MISS_REASON } from '@/stores/sectionStore'
 import { sectionPickLayers, sectionPickSource } from '@/viewport/sectionPick'
@@ -167,6 +168,11 @@ function isBrepDimensionPick(layer: string): boolean {
  * pixel's hit -- the dual path that made edge picks flaky.) A miss while the
  * buffer is mid-rebuild flags `lastClickWasStale` so callers treat it as a
  * transient transition, not empty space.
+ *
+ * A dimension label's text is a DOM overlay, not ID-buffer geometry: when the
+ * pointer is over its rendered glyphs that box answers first, so a click on the
+ * outer characters of a wide label still reaches the label instead of the
+ * geometry behind it.
  */
 export function resolvePickAtEvent(
   e: PointerEvent | MouseEvent,
@@ -176,6 +182,10 @@ export function resolvePickAtEvent(
 ): ResolvedHit | null {
   const pipeline = getLivePipeline()
   if (!pipeline || allowed.size === 0) return null
+  if (allowed.has(DIMENSION_LABEL_LAYER_NAME)) {
+    const label = dimensionLabelDomHit(e.clientX, e.clientY)
+    if (label) return label
+  }
   const hit = pipeline.resolveSync(gl, cursorFromEvent(e, canvas), { allowedLayers: allowed })
   if (hit === null && pipeline.isDirty()) lastClickWasStale = true
   return hit
@@ -418,6 +428,19 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         // left to un-set it.
         clearHover()
         return
+      }
+      // A dimension label's glyph block is DOM, not ID-buffer geometry, and its
+      // box is already exact: apply the label hover now instead of paying a
+      // readback that could only find the ring at the label's centre. The
+      // invalidate is what stops a resolve launched before the pointer entered
+      // the text from landing on top of it.
+      if (allowed.has(DIMENSION_LABEL_LAYER_NAME)) {
+        const label = dimensionLabelDomHit(e.clientX, e.clientY)
+        if (label) {
+          hoverScheduler.invalidate()
+          applyHoverHit(label.layer, label.entityKey)
+          return
+        }
       }
       // A tool switch inside the frame cancels the queued resolve (the store
       // listener calls invalidate), so the trailing query always carries the

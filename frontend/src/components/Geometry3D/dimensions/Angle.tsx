@@ -106,6 +106,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
 
       {/* Interaction hit area and label text */}
       <DimensionLabel
+        cid={cid} enabled={!!interaction}
         x={labelX} y={labelY} label={label} color={color}
         isDragged={isDragged}
       />

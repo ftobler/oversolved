@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { highlightState, entityRenderLayer, RENDER_ORDER_EDITING, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
 
@@ -61,8 +61,10 @@ describe('every painter imports the one precedence helper', () => {
     ['Geometry3D', 'highlightOverlay.tsx'],
     ['Geometry3D', 'vertexInstancePainter.ts'],
     ['Geometry3D', 'highlightColorPainter.ts'],
+    ['Geometry3D', 'InferredContactMarkers.tsx'],
     ['Viewport', 'HelixCurve.tsx'],
     ['Viewport', 'PlaneBody.tsx'],
+    ['Viewport', 'OriginMarker.tsx'],
   ]
 
   const IMPORT = /import\s*\{[^}]*\bhighlightState\b[^}]*\}\s*from\s*'(?:@\/components\/Geometry3D\/constants|\.\/constants)'/
@@ -71,6 +73,30 @@ describe('every painter imports the one precedence helper', () => {
     it(`${dir}/${file} imports highlightState`, () => {
       const src = readFileSync(join(__dirname, '..', '..', dir, file), 'utf8')
       expect(src).toMatch(IMPORT)
+    })
+  }
+
+  // The import check above cannot see a painter that imports the helper and
+  // still writes its own order somewhere else. This scan is the backstop: it
+  // walks the painter directories for the hover-first shape
+  // `hovered ? A : selected ? B`, the exact ternary this feature removed. The
+  // correct order, `selected ? A : hovered ? B`, does not match because the
+  // hovered branch comes last.
+  const HOVER_FIRST = /\bhovered\s*\?[^:?\n]*:[^?\n]*\bselected\b\s*\?/
+
+  function sourceFiles(relativeDir: string): string[] {
+    const root = join(__dirname, '..', '..', relativeDir)
+    return readdirSync(root, { recursive: true, encoding: 'utf8' })
+      .filter(f => (f.endsWith('.ts') || f.endsWith('.tsx')) && !f.includes('__tests__'))
+      .map(f => join(root, f))
+  }
+
+  for (const dir of ['Geometry3D', 'Viewport']) {
+    it(`${dir} paints no hover-first ternary`, () => {
+      const offenders = sourceFiles(dir)
+        .filter(file => HOVER_FIRST.test(readFileSync(file, 'utf8')))
+        .map(file => file.slice(file.indexOf('components')))
+      expect(offenders).toEqual([])
     })
   }
 })

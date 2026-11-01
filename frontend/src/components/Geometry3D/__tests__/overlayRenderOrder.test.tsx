@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
+import * as THREE from 'three'
 
 import type { Mesh3D, EdgeData } from '@/types/cad'
 import { COLOR_HOVER, COLOR_SELECTED, RENDER_ORDER_HIGHLIGHT, overlayLineMaterialProps } from '@/components/Geometry3D/constants'
+import { HighlightOverlays } from '@/components/Geometry3D/highlightOverlay'
 import { useEditorState } from '@/hooks/useEditorState'
 
 /**
@@ -67,10 +69,31 @@ describe('overlay material recipe', () => {
     expect(hover.depthTest).toBe(false)
   })
 
-  it('gives both hover and selection the highlight render order', () => {
-    // The order lives on the shared component, so both states get it by
-    // construction; the recipe itself carries the blending half.
-    expect(RENDER_ORDER_HIGHLIGHT).toBe(999)
+  it('paints the hover and the selection colour through the one component', () => {
+    // One call, both flag arrays: the selected primitive takes the selection
+    // colour and the hovered one the hover colour, at the shared layer. This is
+    // the component-level half of "the colours differ, nothing else does".
+    const geometry = new THREE.BufferGeometry()
+    const geos = { get: () => geometry, dispose: () => {}, size: () => 2 }
+    const { container } = render(
+      <HighlightOverlays
+        geos={geos}
+        selected={[true, false]}
+        hovered={[false, true]}
+        selectedColor={COLOR_SELECTED}
+        hoveredColor={COLOR_HOVER}
+        clippingPlanes={null}
+        active
+      />,
+    )
+
+    const colours = [...container.querySelectorAll('linebasicmaterial')]
+      .map(el => el.getAttribute('color'))
+    expect(colours).toEqual([COLOR_SELECTED, COLOR_HOVER])
+    for (const material of container.querySelectorAll('linebasicmaterial')) {
+      expect((material.parentElement as HTMLElement).getAttribute('renderorder'))
+        .toBe(String(RENDER_ORDER_HIGHLIGHT))
+    }
   })
 })
 
@@ -78,7 +101,10 @@ describe('Body3D overlays share render order and blending', () => {
   // react-dom drops the `transparent` boolean for these host elements, so the
   // blending half of the recipe is asserted on overlayLineMaterialProps above;
   // what is pinned here is that BOTH states reach the shared component, and
-  // that the component puts them at the shared order.
+  // that the component puts them at the shared order. The first mount of Body3D
+  // pays the whole geometry import graph in jsdom, so these get the same longer
+  // budget the other Body3D suites need instead of racing the default 5 s.
+  const BODY3D_TIMEOUT = 15_000
 
   it('a hovered edge draws at the highlight order', async () => {
     resetStore({ hoveredSelectionId: EDGE_QUERY })
@@ -86,7 +112,7 @@ describe('Body3D overlays share render order and blending', () => {
 
     const { segments } = overlayFor(container, COLOR_HOVER)
     expect(segments.getAttribute('renderorder')).toBe(String(RENDER_ORDER_HIGHLIGHT))
-  })
+  }, BODY3D_TIMEOUT)
 
   it('a selected edge draws at the same order', async () => {
     resetStore({ normalSelection: new Set([EDGE_QUERY]) })
@@ -94,7 +120,7 @@ describe('Body3D overlays share render order and blending', () => {
 
     const { segments } = overlayFor(container, COLOR_SELECTED)
     expect(segments.getAttribute('renderorder')).toBe(String(RENDER_ORDER_HIGHLIGHT))
-  })
+  }, BODY3D_TIMEOUT)
 
   it('a hovered face outline carries the same layer as the edge overlays', async () => {
     resetStore({ hoveredSelectionId: 'f0' })
@@ -102,7 +128,7 @@ describe('Body3D overlays share render order and blending', () => {
 
     const { segments } = overlayFor(container, COLOR_HOVER)
     expect(segments.getAttribute('renderorder')).toBe(String(RENDER_ORDER_HIGHLIGHT))
-  })
+  }, BODY3D_TIMEOUT)
 
   it('a selected face outline carries the same layer as the edge overlays', async () => {
     resetStore({ normalSelection: new Set(['f0']) })
@@ -110,7 +136,7 @@ describe('Body3D overlays share render order and blending', () => {
 
     const { segments } = overlayFor(container, COLOR_SELECTED)
     expect(segments.getAttribute('renderorder')).toBe(String(RENDER_ORDER_HIGHLIGHT))
-  })
+  }, BODY3D_TIMEOUT)
 
   it('a face that is both selected and hovered draws the selection colour only', async () => {
     resetStore({ normalSelection: new Set(['f0']), hoveredSelectionId: 'f0' })
@@ -120,5 +146,5 @@ describe('Body3D overlays share render order and blending', () => {
     const hoverCount = [...container.querySelectorAll('linebasicmaterial')]
       .filter(el => el.getAttribute('color') === COLOR_HOVER).length
     expect(hoverCount).toBe(0)
-  })
+  }, BODY3D_TIMEOUT)
 })

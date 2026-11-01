@@ -128,6 +128,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
         </>
       )}
       <DimensionLabel
+        cid={cid} enabled={!!interaction}
         x={labelX} y={labelY} label={label} color={color}
         isDragged={isDragged}
       />
