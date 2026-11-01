@@ -857,6 +857,11 @@ export function revolveProfileWithLineage(
  * it, but the NEXT attempt clears it again before trying, so a mode that
  * fails silently (no exception, just `IsDone()`/`MakeSolid()` false) never
  * reports a stale exception message from an earlier, different mode.
+ *
+ * OWNERSHIP: the returned `solid` stays TRACKED by `scope` even on the success
+ * return, so a caller that throws in its own gates or lineage pass does not
+ * strand it. The caller detaches it on ITS successful return, which is where
+ * the untracked-shape contract every producer keeps begins.
  */
 export function attemptPipeShellSweep(
   oc: OccModule,
@@ -882,7 +887,10 @@ export function attemptPipeShellSweep(
       for (const wire of wires) builder.Add_1(wire, false, false)
       builder.Build()
       if (builder.IsDone() && builder.MakeSolid()) {
-        return { result: { solid: builder.Shape(), pipeBuilder: builder }, lastError: null }
+        // Track it at creation: the callers' plausibility gates and lineage
+        // pass can still throw, and this shape would be stranded there.
+        const solid = scope.track(builder.Shape())
+        return { result: { solid, pipeBuilder: builder }, lastError: null }
       }
     } catch (e) {
       swallowUnlessTrap(e)
@@ -953,5 +961,7 @@ export function sweepProfileWithLineage(
   scope.release(outerWire)
   prefixLineageMaps(lineage, sketchId ? `@${sketchId}/` : '@')
   scope.release(face)
-  return { solid, ...lineage }
+  // The solid rode the scope so a throw above could not strand it; ownership
+  // passes to the caller here, per the contract above.
+  return { solid: scope.detach(solid), ...lineage }
 }

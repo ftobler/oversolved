@@ -95,13 +95,17 @@ function cylinderFaceReference(
     throw new Error('helix: the picked face is not cylindrical; pick a cylinder face')
   }
   const cyl = scope.track(ad.Cylinder())
-  const axDir = cyl.Axis().Direction()
+  // Axis(), Direction(), Position() and Location() each hand back a fresh
+  // by-value gp_* proxy owning WASM memory; one per accessor, scoped here.
+  const ax = scope.track(cyl.Axis())
+  const axDir = scope.track(ax.Direction())
   const axis = normalize([axDir.X(), axDir.Y(), axDir.Z()])
   if (axis === null) throw new Error('helix: the picked cylinder has no axis')
   const radius = cyl.Radius()
   const v0 = ad.FirstVParameter()
   const v1 = ad.LastVParameter()
-  const loc = scope.track(cyl.Position()).Location()
+  const pos = scope.track(cyl.Position())
+  const loc = scope.track(pos.Location())
   const lowV = Math.min(v0, v1)
   const origin: Vec3 = [
     loc.X() + lowV * axis[0],

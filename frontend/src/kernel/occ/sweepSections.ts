@@ -236,5 +236,8 @@ export function sweepSectionsWithLineage(
     scope.release(p.wire)
     scope.release(p.face)
   }
-  return { solid, ...lineage, namingSketchId: naming.section.sketchId }
+  // The solid rode the scope through the plausibility gates and the lineage
+  // pass, so a refusal there frees it instead of stranding it; ownership passes
+  // to the caller here, per the contract above.
+  return { solid: scope.detach(solid), ...lineage, namingSketchId: naming.section.sketchId }
 }
