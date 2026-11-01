@@ -67,6 +67,10 @@ interface AppliedPick {
   uuid: string | null
   face: OccShape
   cells: MoveFaceCells
+  // The pick's position in the feature's list, the index the extension names
+  // carry. Both the sequential and the set path pass the same one, so a
+  // dimension change that flips paths does not re-mint every extend UUID.
+  pickIndex: number
 }
 
 /** UUID -> face for a shape's face names (the mapping `resolveFacesByQuery`
@@ -161,7 +165,7 @@ export function solveMoveFace(
     const groupRefusals: string[] = []
 
     if (!needsSet) {
-      for (const q of qlist) {
+      for (const [pickIndex, q] of qlist.entries()) {
         const uuid = queryFaceUuid(q)
         let face: OccShape | null = uuid !== null ? (currentMap.get(uuid) ?? null) : null
         // First pick (or one whose UUID the intermediate shape dropped): the
@@ -199,7 +203,10 @@ export function solveMoveFace(
             handle = linearHandle('distance', anchor, normal, distance, 1, MOVE_FACE_HANDLE_MIN)
           }
           const movedUuid = currentNames.faceNames.get(face as OccSubShape) ?? uuid
-          currentNames = nameMovedFaces(oc, scope, featureId, currentNames, res, [{ uuid: movedUuid, cells: res.cells }])
+          currentNames = nameMovedFaces(
+            oc, scope, featureId, currentNames, res,
+            [{ uuid: movedUuid, cells: res.cells, pickIndex }], qlist.length,
+          )
           currentShape = res.shape
           currentMap = uuidMap(currentNames.faceNames)
           diff = res.diff
@@ -234,7 +241,7 @@ export function solveMoveFace(
       const setPicks: AppliedPick[] = []
       const setFailed: string[] = []
       const setRefusals: string[] = []
-      for (const q of qlist) {
+      for (const [pickIndex, q] of qlist.entries()) {
         const face = resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q) ?? null
         if (face === null) {
           unresolved.push(q)
@@ -242,7 +249,7 @@ export function solveMoveFace(
         }
         const uuid = baseNames.faceNames.get(face as OccSubShape) ?? queryFaceUuid(q)
         try {
-          setPicks.push({ uuid, face, cells: moveFaceCells(oc, scope, oldShape, face, distance) })
+          setPicks.push({ uuid, face, cells: moveFaceCells(oc, scope, oldShape, face, distance), pickIndex })
         } catch (e) {
           if (e instanceof MoveFaceRefusal) {
             setFailed.push(q)
@@ -264,7 +271,7 @@ export function solveMoveFace(
           ]
           handle = linearHandle('distance', anchor, normal, distance, 1, MOVE_FACE_HANDLE_MIN)
         }
-        const names = nameMovedFaces(oc, scope, featureId, baseNames, set, setPicks)
+        const names = nameMovedFaces(oc, scope, featureId, baseNames, set, setPicks, qlist.length)
         const ids = resplitBody(oc, scope, table, bodyStore, body, set.shape, featureId, names)
         if (ids.length === 0) throw new Error('move_face: the move removes the whole body')
         body.brep_diff = set.diff
@@ -326,8 +333,12 @@ export function solveMoveFace(
  * moved-to surface inherits that pick's UUID (a moved face is always deleted by
  * the boolean, so exactly one live face claims it, or none when the face
  * vanished); a lateral cell face mints `<featureId>|extend|<neighbourUuid>`,
- * with a per-pick suffix when one boolean carries several picks.
- * `transferBooleanNames` orders a split cap and derives the edge names.
+ * with a per-pick suffix when the group carries several picks. `pickCount` is
+ * the group's size, NOT this call's batch size: the sequential path names one
+ * pick at a time and the set path names them together, and both must mint the
+ * same UUID so a dimension change that flips which path runs does not re-mint
+ * every extension. `transferBooleanNames` orders a split cap and derives the
+ * edge names.
  */
 function nameMovedFaces(
   oc: OccModule,
@@ -335,11 +346,12 @@ function nameMovedFaces(
   featureId: string,
   old: ShapeNames,
   res: { shape: OccShape; faceOrigin: FaceOrigin[] },
-  picks: Pick<AppliedPick, 'uuid' | 'cells'>[],
+  picks: Pick<AppliedPick, 'uuid' | 'cells' | 'pickIndex'>[],
+  pickCount: number,
 ): ShapeNames {
   const toolFaceNames = new SubShapeMap<string>()
   const toolFaceAncestry: Record<string, string[]> = {}
-  for (const [pickIndex, pick] of picks.entries()) {
+  for (const pick of picks) {
     if (pick.uuid !== null) {
       for (const cap of pick.cells.capFaces) {
         toolFaceNames.set(cap as OccSubShape, pick.uuid)
@@ -349,11 +361,11 @@ function nameMovedFaces(
     for (const [lateral, neighbour] of pick.cells.extensionOf.entries()) {
       const neighbourUuid = old.faceNames.get(neighbour as OccSubShape)
       if (neighbourUuid === undefined) continue
-      // Several picks in one boolean can extend the SAME neighbour. A per-pick
-      // suffix keeps each moved face's extend name its own; a single-pick move
+      // Several picks in one boolean can extend the SAME neighbour, so a
+      // multi-pick group always carries the pick index; a single-pick move
       // keeps the shipped name byte-identical.
-      const path = picks.length > 1
-        ? moveFaceSetExtendPath(featureId, neighbourUuid, pickIndex)
+      const path = pickCount > 1
+        ? moveFaceSetExtendPath(featureId, neighbourUuid, pick.pickIndex)
         : moveFaceExtendPath(featureId, neighbourUuid)
       const name = mintFaceUuid(path)
       toolFaceNames.set(lateral, name)

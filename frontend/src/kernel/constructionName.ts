@@ -81,11 +81,14 @@ export function moveFaceExtendPath(createdBy: string, neighbourUuid: string): st
 }
 
 /**
- * A lateral cell face in a multi-pick move set. Two picks applied in one
- * boolean can extend the same neighbour, which would otherwise mint one name
- * for both pieces and make `transferBooleanNames` read them as split siblings.
- * The pick index keeps each moved face's extension its own; single-pick moves
- * keep `moveFaceExtendPath` unchanged.
+ * A lateral cell face in a multi-pick move. Two picks applied in one boolean
+ * can extend the same neighbour, which would otherwise mint one name for both
+ * pieces and make `transferBooleanNames` read them as split siblings. The pick
+ * index keeps each moved face's extension its own. BOTH move paths use it: the
+ * sequential path names one pick per boolean and the set path names the group
+ * at once, and one scheme keeps their UUIDs equal when an upstream change
+ * flips which path runs. A single-pick move keeps `moveFaceExtendPath`
+ * unchanged.
  */
 export function moveFaceSetExtendPath(createdBy: string, neighbourUuid: string, pickIndex: number): string {
   return `${moveFaceExtendPath(createdBy, neighbourUuid)}|set|${pickIndex}`
