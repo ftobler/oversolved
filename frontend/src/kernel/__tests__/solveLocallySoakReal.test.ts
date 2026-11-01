@@ -13,6 +13,7 @@ import { loadOcc } from '../occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { solveLocally, setSolveLocalsForTest, persistentTableForTest } from '../solveLocally'
 import { resetSketchSolver, setSketchSolver } from '../features/sketch'
+import { yieldToEventLoop } from '@/testing/yieldToEventLoop'
 import type { OccModule } from '../occ/occTypes'
 
 const oc = await loadOcc()
@@ -23,6 +24,11 @@ const SOLVES = 500
 // The first solves allocate the steady-shape mesh/edge buffers; compare growth
 // after that rather than against zero.
 const WARMUP = 30
+// The long-build-loop rule (test-setup's stall watchdog): awaits on the async-
+// wrapped synchronous kernel are microtasks, so 500 of them back to back hold
+// the fork's event loop for the whole loop. On a quiet box that finishes under
+// the 30 s limit; under CPU contention it does not. Yield every 25 solves.
+const YIELD_EVERY = 25
 
 function rectSketch(sketchId: string, w: number, h: number) {
   return {
@@ -94,6 +100,7 @@ describe.skipIf(!oc || !solveBytes)('solveLocally doc-switch soak (real OCC + Ru
     let maxHeap = heapSteady
     let maxLive = liveSteady
     for (let i = 0; i < SOLVES; i++) {
+      if (i % YIELD_EVERY === 0) await yieldToEventLoop()
       const response = await solveLocally(docs[i % DOC_COUNT])
       expect(response).not.toBeNull()
       const result = response!.result as Record<string, { status?: string }>
