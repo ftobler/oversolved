@@ -162,6 +162,16 @@ export function makeEchoSolver(): (input: Uint8Array) => Uint8Array {
   }
 }
 
+/** An echo solver that reports the given wire status code (0, 1 or 2). */
+export function makeStatusSolver(status: number): (input: Uint8Array) => Uint8Array {
+  const echo = makeEchoSolver()
+  return (input: Uint8Array): Uint8Array => {
+    const out = echo(input)
+    out[8] = status  // the status byte follows the magic and n_params u32s
+    return out
+  }
+}
+
 /** Build a solver that translates body1 by (dx,0,0). */
 export function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Array {
   return (input: Uint8Array): Uint8Array => {

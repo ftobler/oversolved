@@ -108,6 +108,7 @@ fn roll_jacobian_sums_both_passes_for_a_self_mate() {
         seed_twist: vec![(0.0, 0.0)],
         roll_frames: vec![Some(([1.0, 0.0, 0.0], [1.0, 0.0, 0.0]))],
         scale: 1.0,
+        row_classes: vec![RowClass::Angle],
     };
     let x = problem.x0.clone();
     let mut j = DMatrix::zeros(1, 7);
@@ -344,6 +345,72 @@ fn fixed_offset_vector_rotates_with_body_a() {
         out.params_solved[8]
     );
     assert!(out.diagnostics.residual_norm < 1e-2);
+}
+
+/// Two Fixed mates on the same pair whose roll targets differ by
+/// `disagreement` radians. The seed spreads along x with `scale`, so the
+/// drawing's characteristic length is `5 * scale`.
+fn disagreeing_roll_pair(scale: f64, disagreement: f64) -> MateInput {
+    let fixed = |angle: f64| {
+        mate_with_angle(
+            MateKind::Fixed,
+            mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+            mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+            false,
+            0.0,
+            1.0,
+            0.0,
+            angle,
+        )
+    };
+    MateInput {
+        bodies: (0..2).map(|_| RigidBody).collect(),
+        params_initial: vec![
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0, // body 0 grounded at the origin
+            5.0 * scale,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0, // body 1, free
+        ],
+        fixed_mask: vec![0b0000_0001],
+        mates: vec![fixed(0.0), fixed(disagreement)],
+    }
+}
+
+/// A rotational conflict is an absolute angle, so it must read the same at
+/// every drawing scale. Least squares splits the 3 degree disagreement into
+/// 1.5 degrees (0.026 rad) per mate; at scale 1000 the old RMS gate compared
+/// 0.0099 against `1e-4 * 5000` and called the conflict satisfied.
+#[test]
+fn a_roll_conflict_reads_overconstrained_at_every_drawing_scale() {
+    let disagreement = 3.0_f64.to_radians();
+    for scale in [1.0_f64, 1000.0] {
+        let out = solve_mate(&disagreeing_roll_pair(scale, disagreement));
+        assert_eq!(
+            out.overall_status,
+            MateStatus::Overconstrained.to_u8(),
+            "scale {scale}: a 3 degree roll conflict must not read as status {}",
+            out.overall_status,
+        );
+    }
+}
+
+/// The matching positive case: a disagreement inside the angular verdict
+/// width is not a conflict, whatever the drawing's size.
+#[test]
+fn a_roll_agreement_within_a_microradian_at_scale_1000_is_fully_constrained() {
+    let out = solve_mate(&disagreeing_roll_pair(1000.0, 1e-6));
+    assert_eq!(out.overall_status, MateStatus::FullyConstrained.to_u8());
+    assert_eq!(out.diagnostics.dof, 0);
 }
 
 /// ParallelPlaneDistance reads only the axial component: an offset with the

@@ -6,7 +6,8 @@ import { solveAssembly } from '../solveAssembly'
 import { bundleCachePut } from '../bundleCache'
 import {
   makeRelay, makeBundle, makeAxialBundle, translationTransform, identityTransform,
-  makeEchoSolver, makeCaptureSolver, makeTranslateSolver, makeScaledQwSolver, freshDb,
+  makeEchoSolver, makeCaptureSolver, makeTranslateSolver, makeScaledQwSolver, makeStatusSolver,
+  freshDb,
 } from '../solveAssemblyTestUtils'
 
 beforeEach(() => { freshDb() })
@@ -73,6 +74,32 @@ describe('solveAssembly', () => {
     await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
     expect(captured.input!.mates[0].angle).toBeCloseTo(Math.PI / 2)
+  })
+
+  // The wire status code is the whole verdict surface and it is scale-free: a
+  // scale-1000 assembly the solver could not satisfy must still surface
+  // 'overconstrained'. The Rust side decides the code (the matching real-solver
+  // test is the scale-1000 roll conflict in solveAssemblyReal.test.ts); this
+  // pins the TS decode of it.
+  it('surfaces an overconstrained wire verdict for a scale-1000 assembly', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeAxialBundle('doc-a', '1'))
+    await bundleCachePut(makeAxialBundle('doc-b', '1'))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(0, 0, 0), fixed: true },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(1000, 0, 0) },
+    ]
+    const mates = [
+      { id: 'm1', kind: 'fixed', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' }, angle: 0 },
+      { id: 'm2', kind: 'fixed', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' }, angle: 3 },
+    ]
+
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeStatusSolver(2))
+
+    expect(result.status.verdict).toBe('overconstrained')
   })
 
   // The tolerant dual-read at the wire. A legacy document authored `offset: 7`

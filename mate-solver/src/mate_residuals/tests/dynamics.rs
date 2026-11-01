@@ -220,6 +220,65 @@ fn mate_residual_count_matches_actual_residuals_pushed() {
 }
 
 #[test]
+fn row_classes_pin_the_unit_of_every_row() {
+    // The verdict reads each row against the width of its class, so moving a
+    // row between classes silently widens or narrows it. Pinned per kind; the
+    // Rotating roll row appears only when the angle is locked.
+    use RowClass::{Angle, Length};
+    let cases: &[(MateKind, bool, &[RowClass])] = &[
+        (
+            MateKind::Fixed,
+            false,
+            &[Length, Length, Length, Angle, Angle, Angle, Angle],
+        ),
+        (MateKind::Spherical, false, &[Length; 3]),
+        (MateKind::Parallel, false, &[Angle]),
+        (
+            MateKind::Sliding,
+            false,
+            &[Length, Length, Length, Angle, Angle, Angle, Angle],
+        ),
+        (
+            MateKind::Rotating,
+            false,
+            &[Length, Length, Length, Angle, Angle, Angle],
+        ),
+        (
+            MateKind::Rotating,
+            true,
+            &[Length, Length, Length, Angle, Angle, Angle, Angle],
+        ),
+        (
+            MateKind::SlidingRotating,
+            false,
+            &[Length, Length, Length, Angle, Angle, Angle],
+        ),
+        (MateKind::Tangential, false, &[Length]),
+        (MateKind::CopyRotation, false, &[Angle]),
+        (MateKind::ParallelPlaneDistance, false, &[Length, Angle]),
+    ];
+    for &(kind, angle_set, want) in cases {
+        let mut one = mate(
+            kind,
+            mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+            mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+            false,
+            0.0,
+            1.0,
+            0.0,
+        );
+        one.angle_set = angle_set;
+        assert_eq!(
+            mate_row_classes(&one),
+            want,
+            "row classes for {:?}, angle_set={}",
+            kind,
+            angle_set
+        );
+    }
+}
+
+#[test]
 fn mate_naming_a_body_outside_the_assembly_is_dropped() {
     // Body index 5 in a two-body assembly: a stale mate the host never
     // pruned. It must contribute no rows instead of indexing off x.

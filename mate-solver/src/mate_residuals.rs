@@ -54,6 +54,7 @@ use std::cell::RefCell;
 use crate::mate::{
     AnchorKind, Mate, MateDiagnostics, MateInput, MateKind, MateOutput, MateStatus, RigidBody,
 };
+use crate::tolerance::{RESIDUAL_ANGLE_TOL, RESIDUAL_REL_TOL};
 use solver_core::lm;
 
 /// Pre-built problem: holds decodings from MateInput for fast residual/Jacobian eval.
@@ -125,6 +126,10 @@ pub struct MateProblem {
     /// translations and the mate anchors' local points, floored at 1.0. See
     /// `geometry_scale`.
     scale: f64,
+    /// One entry per residual row, in the exact order `residuals()` pushes
+    /// them. `mate_status` reads each row against the tolerance of its class,
+    /// because the vector mixes displacements with scale-free angles.
+    row_classes: Vec<RowClass>,
 }
 
 /// How much stiffer the LM step damps a free body's rotation vectors than its
@@ -197,24 +202,56 @@ fn dense_cells_over_budget(m: usize, n: usize, budget: usize) -> bool {
     }
 }
 
-/// Residual count contributed by one mate of `kind`. A standalone function (not
-/// inlined into `MateProblem::new`) so `mate_residual_count_matches_actual_residuals_pushed`
-/// can drive it directly: a future arm that bumps this without bumping the
-/// matching `residuals()` push count -- or the reverse -- fails that test
-/// loudly instead of writing a residual row into another mate's block.
-fn mate_residual_count(mate: &Mate) -> usize {
+/// Which tolerance a residual row is read against. The two classes must be
+/// read separately: a length row is a displacement in the wire's units, while
+/// an orientation row is an angle, and only the first grows with the drawing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RowClass {
+    /// Read against `RESIDUAL_REL_TOL * geometry_scale`.
+    Length,
+    /// A scale-free orientation measure, read against `RESIDUAL_ANGLE_TOL`
+    /// (radians). This covers both a radian row (the roll target, a gear
+    /// ratio) and a dimensionless trigonometric one (the unit-axis
+    /// difference, `dot - sign`).
+    Angle,
+}
+
+/// The row classes one mate pushes, in the same order as `residuals()`. This
+/// is the one list both the row count and the verdict classification derive
+/// from, so a new arm cannot gain a row that the verdict cannot classify.
+fn mate_row_classes(mate: &Mate) -> Vec<RowClass> {
+    use RowClass::{Angle, Length};
     match mate.kind {
-        MateKind::Fixed => 7,
-        MateKind::Spherical => 3,
-        MateKind::Parallel => 1,
-        MateKind::Sliding => 7,
-        // The roll row exists only when the mate locks an angle.
-        MateKind::Rotating => 6 + usize::from(mate.angle_set),
-        MateKind::SlidingRotating => 6,
-        MateKind::Tangential => 1,
-        MateKind::CopyRotation => 1,
-        MateKind::ParallelPlaneDistance => 2,
+        // Point coincidence, axis difference, absolute roll.
+        MateKind::Fixed => vec![Length, Length, Length, Angle, Angle, Angle, Angle],
+        MateKind::Spherical => vec![Length; 3],
+        MateKind::Parallel => vec![Angle],
+        // Axis difference, perp displacement, absolute roll.
+        MateKind::Sliding => vec![Length, Length, Length, Angle, Angle, Angle, Angle],
+        // Point coincidence plus axial offset, then the axis difference, then
+        // the roll row only when the angle is locked.
+        MateKind::Rotating => {
+            let mut classes = vec![Length, Length, Length, Angle, Angle, Angle];
+            if mate.angle_set {
+                classes.push(Angle);
+            }
+            classes
+        }
+        // Axis difference, perp displacement.
+        MateKind::SlidingRotating => vec![Length, Length, Length, Angle, Angle, Angle],
+        MateKind::Tangential => vec![Length],
+        MateKind::CopyRotation => vec![Angle],
+        // Plane separation, then axis parallelism.
+        MateKind::ParallelPlaneDistance => vec![Length, Angle],
     }
+}
+
+/// Residual count contributed by one mate of `kind`. Derived from
+/// `mate_row_classes` so a new arm cannot bump one without the other;
+/// `mate_residual_count_matches_actual_residuals_pushed` drives both against
+/// what `residuals()` actually pushes.
+fn mate_residual_count(mate: &Mate) -> usize {
+    mate_row_classes(mate).len()
 }
 
 /// Characteristic drawing length for the relative `mate_status` threshold.
@@ -305,6 +342,7 @@ impl MateProblem {
         }
 
         let mate_residual_total: usize = mates.iter().map(mate_residual_count).sum();
+        let row_classes: Vec<RowClass> = mates.iter().flat_map(mate_row_classes).collect();
         // The rows are the mates' rows and nothing else: grounding and unit
         // norm are state invariants now, not residuals. `mate_residual_count`
         // and the per-mate slicing in `solve_mate_impl` are therefore exact.
@@ -453,6 +491,7 @@ impl MateProblem {
             seed_twist,
             roll_frames,
             scale,
+            row_classes,
         }
     }
 
@@ -1052,34 +1091,43 @@ fn singular_value_cutoff(smax: f64) -> f64 {
     }
 }
 
-/// Relative factor for the `mate_status` residual tolerance. The RMS residual
-/// threshold is `RESIDUAL_REL_TOL * scale`, so the same assembly reads the same
-/// regardless of the drawing unit.
-const RESIDUAL_REL_TOL: f64 = 1e-4;
-
-/// `residual_norm` is an L2 norm over `m` residuals, so it grows with the
-/// number of mates even when every individual residual is converged to the
-/// same tolerance -- an absolute threshold here would flag a large,
-/// correctly-solved assembly as overconstrained. Scale to an RMS-per-residual
-/// figure so the threshold means the same thing regardless of problem size,
-/// then compare against the tolerance relative to the drawing's characteristic
-/// length `scale` so it also means the same thing regardless of unit.
-fn mate_status(residual_norm: f64, m: usize, dof: usize, scale: f64) -> MateStatus {
-    // A non-finite norm means NaN reached the residuals (the wire codec gates
-    // its floats, but a host can still seed an in-memory MateInput with one).
-    // It must classify as the failing state and never as FullyConstrained:
-    // that would tell the editor the assembly is solved and lock the UI on
-    // garbage, while Underconstrained would invite dragging a pose the solver
-    // knows nothing about. Overconstrained is the enum's only error-ish state.
-    if !residual_norm.is_finite() {
-        return MateStatus::Overconstrained;
+/// Whether every residual row sits inside its class's verdict width. The MAX,
+/// not an RMS: an RMS over a vector that mixes units lets one row grow with
+/// `sqrt(m)` while the length budget grows with the drawing, so a rotational
+/// conflict can hide on a large assembly. A single misaligned pair is a
+/// conflict whatever the problem's size.
+fn rows_within_tolerance(rows: &[f64], classes: &[RowClass], scale: f64) -> bool {
+    debug_assert_eq!(rows.len(), classes.len(), "row classification drifted");
+    // A mismatch can only mean the class list and the row builder diverged.
+    // Fail safe (the assembly reads overconstrained) rather than zip away the
+    // unclassified rows and call the solve satisfied.
+    if rows.len() != classes.len() {
+        return false;
     }
-    let rms_residual = if m > 0 {
-        residual_norm / (m as f64).sqrt()
-    } else {
-        0.0
-    };
-    if rms_residual > RESIDUAL_REL_TOL * scale {
+    let length_tol = RESIDUAL_REL_TOL * scale;
+    for (row, class) in rows.iter().zip(classes) {
+        // A non-finite row means NaN reached the residuals (the wire codec
+        // gates its floats, but a host can still seed an in-memory MateInput
+        // with one). It must classify as the failing state, never as
+        // FullyConstrained: that would tell the editor the assembly is solved
+        // and lock the UI on garbage, while Underconstrained would invite
+        // dragging a pose the solver knows nothing about.
+        if !row.is_finite() {
+            return false;
+        }
+        let tol = match class {
+            RowClass::Length => length_tol,
+            RowClass::Angle => RESIDUAL_ANGLE_TOL,
+        };
+        if row.abs() > tol {
+            return false;
+        }
+    }
+    true
+}
+
+fn mate_status(rows: &[f64], classes: &[RowClass], dof: usize, scale: f64) -> MateStatus {
+    if !rows_within_tolerance(rows, classes, scale) {
         MateStatus::Overconstrained
     } else if dof > 0 {
         MateStatus::Underconstrained
@@ -1095,13 +1143,13 @@ fn mate_status(residual_norm: f64, m: usize, dof: usize, scale: f64) -> MateStat
 /// derivative is not.
 fn solved_status(
     jacobian_finite: bool,
-    residual_norm: f64,
-    m: usize,
+    rows: &[f64],
+    classes: &[RowClass],
     dof: usize,
     scale: f64,
 ) -> MateStatus {
     if jacobian_finite {
-        mate_status(residual_norm, m, dof, scale)
+        mate_status(rows, classes, dof, scale)
     } else {
         MateStatus::Overconstrained
     }
@@ -1132,7 +1180,6 @@ fn retry_reaches_tolerance(input: &MateInput, problem: &MateProblem, solved: &[f
         return false;
     };
     let mate = &problem.mates[pos];
-    let tol = RESIDUAL_REL_TOL * problem.geometry_scale();
     for bi in [mate.b.body_index as usize, mate.a.body_index as usize] {
         if problem.body_col[bi].is_none() {
             continue;
@@ -1164,8 +1211,14 @@ fn retry_reaches_tolerance(input: &MateInput, problem: &MateProblem, solved: &[f
                 &damp,
                 &mut retract,
             );
-            let rms = res.residual_norm / (attempt.m.max(1) as f64).sqrt();
-            if res.residual_norm.is_finite() && res.jacobian_finite && rms <= tol {
+            let attempt_rows = attempt.residuals(&attempt.expand(&res.x));
+            if res.jacobian_finite
+                && rows_within_tolerance(
+                    &attempt_rows,
+                    &attempt.row_classes,
+                    attempt.geometry_scale(),
+                )
+            {
                 return true;
             }
         }
@@ -1277,22 +1330,26 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
         ((n_red - dof) as u32, dof as u32)
     };
 
+    // The wire layout is still 7 params per body; composing the final unit
+    // quaternions here is the only place the reduced state and the seed buffer
+    // meet. A grounded body comes back as its own seed bytes, bit-exact.
+    let params_solved: Vec<f64> = problem.expand(&lm_result.x);
+    // The very rows the solver minimised over, at the pose it reports. The
+    // verdict reads them per class; the per-mate norms below reuse them, so a
+    // host re-deriving a residual from the poses it shows sees the same numbers.
+    let solved_residuals = problem.residuals(&params_solved);
+
     // A Jacobian that could not be decomposed is not evidence of a satisfied
     // assembly: the rank pass above was skipped, so `dof` is a placeholder.
     // Report the failing verdict instead of letting an under-tolerance residual
     // with a poisoned matrix read as FullyConstrained.
     let mut status = solved_status(
         lm_result.jacobian_finite,
-        lm_result.residual_norm,
-        m,
+        &solved_residuals,
+        &problem.row_classes,
         dof as usize,
         problem.geometry_scale(),
     );
-
-    // The wire layout is still 7 params per body; composing the final unit
-    // quaternions here is the only place the reduced state and the seed buffer
-    // meet. A grounded body comes back as its own seed bytes, bit-exact.
-    let params_solved: Vec<f64> = problem.expand(&lm_result.x);
 
     // A residual above tolerance is not always a conflict: LM can stall in a
     // local minimum of a perfectly satisfiable system. Retry from other seeds
@@ -1312,9 +1369,7 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     // mates are sliced by the per-kind counts `residuals()` pushed them in; a
     // dropped mate keeps its slot as NaN so a later residual cannot shift under
     // the host's positional fold. The host reads a non-finite value as "no
-    // residual". `params_solved` is the very pose the solver minimised over,
-    // so this is the residual the host can re-derive from the poses it shows.
-    let solved_residuals = problem.residuals(&params_solved);
+    // residual".
     let mut block_start = 0usize;
     let mut mate_residuals = vec![f64::NAN; problem.input_mate_count];
     for (kept_pos, &input_index) in problem.kept_input_indices.iter().enumerate() {
