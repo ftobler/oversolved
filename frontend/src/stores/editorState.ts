@@ -369,7 +369,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
   // Add-only selection mutation. Puts `id` into normalSelection and touches
   // nothing else: selectedPicks is left standing, so a pick persisted earlier
   // is not evicted. Pair it with clearNormalSelection when the caller wants
-  // replace semantics (callers today: useDimInteraction, Constraints.tsx).
+  // replace semantics (callers today: Constraints.tsx).
   addToNormalSelection: (id) =>
     set(s => {
       if (s.normalSelection.has(id)) return s

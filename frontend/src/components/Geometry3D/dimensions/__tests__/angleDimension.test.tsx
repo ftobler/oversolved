@@ -16,6 +16,9 @@ const spies = vi.hoisted(() => ({
   Arrowhead: vi.fn(),
   ExtensionLine: vi.fn(),
   Label: vi.fn(),
+  // The dispatched handlers are where a click now arrives: the label text is
+  // pointer-events: none and the ID ring routes through useDimDispatchRegistration.
+  dispatch: [] as Array<Record<string, (...args: unknown[]) => void>>,
 }))
 
 vi.mock('@react-three/fiber', () => ({
@@ -35,6 +38,11 @@ vi.mock('../DimensionLabel', () => ({
 vi.mock('@/picking/useDimensionLabelIdRegistration', () => ({
   useDimensionLabelIdRegistration: vi.fn(),
 }))
+vi.mock('../useDimDispatchRegistration', () => ({
+  useDimDispatchRegistration: (_cid: string, target: Record<string, (...args: unknown[]) => void>) => {
+    spies.dispatch.push(target)
+  },
+}))
 
 import { AngleDimension } from '../Angle'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -52,11 +60,19 @@ const RIGHT_ANGLE: Dim = {
 }
 
 function lastLabel() {
-  return spies.Label.mock.calls.at(-1)![0] as { x: number; y: number; label: string; onDoubleClick: (e: unknown) => void }
+  return spies.Label.mock.calls.at(-1)![0] as { x: number; y: number; label: string }
+}
+
+// The handlers the ID ring dispatches for the most recently rendered label.
+function lastDispatch() {
+  return spies.dispatch.at(-1)! as {
+    onDoubleClick: (e: { stopPropagation: () => void; clientX: number; clientY: number }) => void
+  }
 }
 
 beforeEach(() => {
-  for (const s of Object.values(spies)) s.mockClear()
+  for (const s of [spies.Line, spies.Arrowhead, spies.ExtensionLine, spies.Label]) s.mockClear()
+  spies.dispatch.length = 0
   useEditorState.setState({
     drag: null,
     dragPending: null,
@@ -138,7 +154,7 @@ describe('AngleDimension supplement label', () => {
     setSketchCallback('onMutation', onMutation)
     render(<AngleDimension cid="c1" dim={SUPPLEMENT} interaction={INTERACTION} />)
 
-    act(() => lastLabel().onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
+    act(() => lastDispatch().onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
     const dialog = useSketchUiStore.getState().pendingDialog
     expect(dialog?.defaultValue).toBe('60')
 
@@ -155,7 +171,7 @@ describe('AngleDimension Flip side', () => {
     setSketchCallback('onMutation', onMutation)
     render(<AngleDimension cid="c1" dim={RIGHT_ANGLE} interaction={INTERACTION} />)
 
-    act(() => lastLabel().onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
+    act(() => lastDispatch().onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
     const dialog = useSketchUiStore.getState().pendingDialog
     expect(dialog?.extraAction?.label).toBe('Flip side')
 

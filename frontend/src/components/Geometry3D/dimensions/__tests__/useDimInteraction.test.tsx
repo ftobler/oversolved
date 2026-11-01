@@ -41,7 +41,7 @@ beforeEach(() => {
 })
 
 describe('useDimInteraction click / double-click', () => {
-  it('a clean click selects this constraint and replaces the old selection', () => {
+  it('a clean click toggles this constraint into the selection and keeps the rest', () => {
     useEditorState.setState({
     normalSelection: new Set(['entity:S1:L1']),
   })
@@ -49,8 +49,23 @@ describe('useDimInteraction click / double-click', () => {
 
     act(() => result.current.onClick({ stopPropagation: vi.fn() }))
 
-    expect(useSketchEditorStore.getState().normalSelection).toEqual(new Set(['constraint:S1:c1']))
+    // Additive, not a replacement: clicking a label joins a multi-selection
+    // exactly as clicking the primitive through the id buffer does.
+    expect(useSketchEditorStore.getState().normalSelection)
+      .toEqual(new Set(['entity:S1:L1', 'constraint:S1:c1']))
     expect(result.current.selected).toBe(true)
+  })
+
+  it('a second clean click toggles the constraint back out', () => {
+    useEditorState.setState({
+    normalSelection: new Set(['entity:S1:L1', 'constraint:S1:c1']),
+  })
+    const { result } = renderHook(() => useDimInteraction('c1', 10, INTERACTION))
+
+    act(() => result.current.onClick({ stopPropagation: vi.fn() }))
+
+    expect(useSketchEditorStore.getState().normalSelection).toEqual(new Set(['entity:S1:L1']))
+    expect(result.current.selected).toBe(false)
   })
 
   it('suppresses the single click that follows a moved dim_label drag', () => {
@@ -64,8 +79,8 @@ describe('useDimInteraction click / double-click', () => {
     })
     act(() => result.current.onClick({ stopPropagation: vi.fn() }))
 
-    // Suppression means the old selection survives: an unsuppressed click would
-    // have cleared it and selected `constraint:S1:c1` instead.
+    // Suppression means the old selection survives untouched: an unsuppressed
+    // click would have added `constraint:S1:c1` to it.
     expect(useSketchEditorStore.getState().normalSelection).toEqual(new Set(['entity:S1:L1']))
   })
 
@@ -91,7 +106,8 @@ describe('useDimInteraction click / double-click', () => {
     })
     act(() => result.current.onClick({ stopPropagation: vi.fn() }))
 
-    expect(useSketchEditorStore.getState().normalSelection).toEqual(new Set(['constraint:S1:c1']))
+    expect(useSketchEditorStore.getState().normalSelection)
+      .toEqual(new Set(['entity:S1:L1', 'constraint:S1:c1']))
   })
 
   it('a clean double-click opens the dialog with the label and displayed value', () => {

@@ -74,15 +74,16 @@ export function useDimInteraction(
     setHovered(false)
     if (interaction) setHoveredConstraintEntities(new Set())
   }, [interaction, setHoveredConstraintEntities])
-  // Single-click selects only. The edit dialog is gated behind double-click so a
-  // selected dim can be deleted via the Delete key without the modal eating focus.
+  // Single-click toggles this constraint in the selection. The edit dialog is
+  // gated behind double-click so a selected dim can be deleted via the Delete
+  // key without the modal eating focus. Toggling (not replacing) is what lets a
+  // click on the label join a multi-selection already in progress, the same
+  // outcome a click on the primitive through the id buffer produces.
   const onClick = useCallback((ev: { stopPropagation: () => void }) => {
     if (consumeClick()) return
     if (!interaction) return
     ev.stopPropagation()
-    const st = useSketchEditorStore.getState()
-    st.clearNormalSelection()
-    st.addToNormalSelection(`constraint:${interaction.featureId}:${cid}`)
+    useSketchEditorStore.getState().toggleNormalSelection(`constraint:${interaction.featureId}:${cid}`)
   }, [interaction, cid, consumeClick])
   const onDoubleClick = useCallback((ev: { stopPropagation: () => void; clientX: number; clientY: number }) => {
     if (consumeClick()) return
@@ -160,8 +161,9 @@ export function useDimLabelPointerDown(
 /**
  * Registers a dimension label's pickable id and its pointer-event dispatch.
  * This pair of calls is identical across every dimension component; only the
- * label position and the dispatch handlers vary. The dispatched `onClick` is
- * always a no-op (single-click selection is handled on the label mesh itself).
+ * label position and the dispatch handlers vary. The label text itself is
+ * pointer-events: none, so the ID ring under it is the ONE path that hovers,
+ * clicks (toggle), double-clicks and starts a drag for the label.
  */
 export function useDimLabelRegistration(args: {
   cid: string
@@ -170,6 +172,7 @@ export function useDimLabelRegistration(args: {
   labelX: number
   labelY: number
   planeTransform?: PlaneTransform
+  onClick: (e: { stopPropagation: () => void }) => void
   onOver: (e: { stopPropagation: () => void }) => void
   onOut: () => void
   onDoubleClick: (e: { stopPropagation: () => void; clientX: number; clientY: number }) => void
@@ -184,7 +187,7 @@ export function useDimLabelRegistration(args: {
   useDimDispatchRegistration(args.cid, {
     onOver: args.onOver,
     onOut: args.onOut,
-    onClick: () => {},
+    onClick: args.onClick,
     onDoubleClick: args.onDoubleClick,
     onPointerDown: args.onPointerDown,
   })

@@ -88,6 +88,7 @@ describe('useActiveLabelDrag', () => {
 
 describe('useDimLabelRegistration', () => {
   const handlers = {
+    onClick: vi.fn(),
     onOver: vi.fn(),
     onOut: vi.fn(),
     onDoubleClick: vi.fn(),
@@ -97,7 +98,7 @@ describe('useDimLabelRegistration', () => {
   it('registers the label at its position and enables it only with an interaction', () => {
     renderHook(() => useDimLabelRegistration({
       cid: 'c1', interaction: INTERACTION, isDragged: false, labelX: 7, labelY: 8,
-      onOver: handlers.onOver, onOut: handlers.onOut,
+      onClick: handlers.onClick, onOver: handlers.onOver, onOut: handlers.onOut,
       onDoubleClick: handlers.onDoubleClick, onPointerDown: handlers.onPointerDown,
     }))
 
@@ -112,7 +113,7 @@ describe('useDimLabelRegistration', () => {
   it('disables registration while the label is being dragged', () => {
     renderHook(() => useDimLabelRegistration({
       cid: 'c1', interaction: INTERACTION, isDragged: true, labelX: 0, labelY: 0,
-      onOver: handlers.onOver, onOut: handlers.onOut,
+      onClick: handlers.onClick, onOver: handlers.onOver, onOut: handlers.onOut,
       onDoubleClick: handlers.onDoubleClick, onPointerDown: handlers.onPointerDown,
     }))
 
@@ -122,32 +123,33 @@ describe('useDimLabelRegistration', () => {
   it('disables registration without an interaction', () => {
     renderHook(() => useDimLabelRegistration({
       cid: 'c1', interaction: undefined, isDragged: false, labelX: 0, labelY: 0,
-      onOver: handlers.onOver, onOut: handlers.onOut,
+      onClick: handlers.onClick, onOver: handlers.onOver, onOut: handlers.onOut,
       onDoubleClick: handlers.onDoubleClick, onPointerDown: handlers.onPointerDown,
     }))
 
     expect(seams.regLabel.mock.calls[0][0]).toMatchObject({ enabled: false })
   })
 
-  it('forwards the interaction handlers to the dispatcher with an inert click', () => {
+  it('forwards every interaction handler, click included, to the dispatcher', () => {
     renderHook(() => useDimLabelRegistration({
       cid: 'c1', interaction: INTERACTION, isDragged: false, labelX: 0, labelY: 0,
-      onOver: handlers.onOver, onOut: handlers.onOut,
+      onClick: handlers.onClick, onOver: handlers.onOver, onOut: handlers.onOut,
       onDoubleClick: handlers.onDoubleClick, onPointerDown: handlers.onPointerDown,
     }))
 
     expect(seams.regDispatch).toHaveBeenCalledTimes(1)
     const [cid, dispatched] = seams.regDispatch.mock.calls[0]
     expect(cid).toBe('c1')
+    // A ring click is the only click a label has now that its text is
+    // pointer-events: none, so the dispatched handler must be the real toggle
+    // and not the inert placeholder the DOM-click era used.
     expect(dispatched).toMatchObject({
+      onClick: handlers.onClick,
       onOver: handlers.onOver,
       onOut: handlers.onOut,
       onDoubleClick: handlers.onDoubleClick,
       onPointerDown: handlers.onPointerDown,
     })
-    // Single-click selection rides the label mesh itself; the dispatched click
-    // must be a no-op, not a second selection path.
-    expect(dispatched.onClick()).toBeUndefined()
   })
 })
 

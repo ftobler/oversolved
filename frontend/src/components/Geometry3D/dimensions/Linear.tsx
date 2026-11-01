@@ -91,7 +91,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
   const ext2 = dim.ext2_line ? evalExtensionLine(dim.ext2_line[0], dim.ext2_line[1], dim.ext2_line[2], dim.ext2_line[3], d2x, d2y) : { skip: false, touchX: x2, touchY: y2 }
 
   const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, anchorX, anchorY, labelX, labelY)
-  useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onOver, onOut, onDoubleClick, onPointerDown })
+  useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onClick, onOver, onOut, onDoubleClick, onPointerDown })
 
   return (
     <group key={cid}>
@@ -129,8 +129,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
       )}
       <DimensionLabel
         x={labelX} y={labelY} label={label} color={color}
-        interactive={!!interaction} isDragged={isDragged}
-        onClick={onClick} onDoubleClick={onDoubleClick} onPointerDown={onPointerDown}
+        isDragged={isDragged}
       />
     </group>
   )

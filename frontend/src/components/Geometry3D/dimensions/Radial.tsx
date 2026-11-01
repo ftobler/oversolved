@@ -61,7 +61,7 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
   const label = `R${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
 
   const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, cx, cy, labelX, labelY)
-  useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onOver, onOut, onDoubleClick, onPointerDown })
+  useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onClick, onOver, onOut, onDoubleClick, onPointerDown })
 
   return (
     <group key={cid}>
@@ -82,8 +82,7 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
       )}
       <DimensionLabel
         x={labelX} y={labelY} label={label} color={color}
-        interactive={!!interaction} isDragged={isDragged}
-        onClick={onClick} onDoubleClick={onDoubleClick} onPointerDown={onPointerDown}
+        isDragged={isDragged}
       />
     </group>
   )
@@ -137,7 +136,7 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
   const label = `Ø${dim.value % 1 === 0 ? dim.value : dim.value.toFixed(2)}`
 
   const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, anchorX, anchorY, labelX, labelY)
-  useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onOver, onOut, onDoubleClick, onPointerDown })
+  useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onClick, onOver, onOut, onDoubleClick, onPointerDown })
 
   return (
     <group key={cid}>
@@ -162,8 +161,7 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
       )}
       <DimensionLabel
         x={labelX} y={labelY} label={label} color={color}
-        interactive={!!interaction} isDragged={isDragged} selectable={false}
-        onClick={onClick} onDoubleClick={onDoubleClick} onPointerDown={onPointerDown}
+        isDragged={isDragged} selectable={false}
       />
     </group>
   )

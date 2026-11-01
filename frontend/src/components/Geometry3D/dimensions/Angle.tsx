@@ -87,7 +87,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
   const label = `${displayedValue % 1 === 0 ? displayedValue : displayedValue.toFixed(1)}°`
 
   const onPointerDown = useDimLabelPointerDown(cid, interaction, resetDragMoved, vx, vy, labelX, labelY)
-  useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onOver, onOut, onDoubleClick, onPointerDown })
+  useDimLabelRegistration({ cid, interaction, isDragged, labelX, labelY, planeTransform, onClick, onOver, onOut, onDoubleClick, onPointerDown })
 
   return (
     <group key={cid}>
@@ -107,8 +107,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
       {/* Interaction hit area and label text */}
       <DimensionLabel
         x={labelX} y={labelY} label={label} color={color}
-        interactive={!!interaction} isDragged={isDragged}
-        onClick={onClick} onDoubleClick={onDoubleClick} onPointerDown={onPointerDown}
+        isDragged={isDragged}
       />
     </group>
   )

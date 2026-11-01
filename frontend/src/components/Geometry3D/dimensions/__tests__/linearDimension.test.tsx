@@ -17,6 +17,9 @@ const spies = vi.hoisted(() => ({
   ArrowTail: vi.fn(),
   ExtensionLine: vi.fn(),
   Label: vi.fn(),
+  // The dispatched handlers are where a click now arrives: the label text is
+  // pointer-events: none and the ID ring routes through useDimDispatchRegistration.
+  dispatch: [] as Array<Record<string, (...args: unknown[]) => void>>,
 }))
 
 vi.mock('@react-three/fiber', () => ({
@@ -36,6 +39,11 @@ vi.mock('../DimensionLabel', () => ({
 }))
 vi.mock('@/picking/useDimensionLabelIdRegistration', () => ({
   useDimensionLabelIdRegistration: vi.fn(),
+}))
+vi.mock('../useDimDispatchRegistration', () => ({
+  useDimDispatchRegistration: (_cid: string, target: Record<string, (...args: unknown[]) => void>) => {
+    spies.dispatch.push(target)
+  },
 }))
 
 import { LinearDimension } from '../Linear'
@@ -67,6 +75,13 @@ function points(call: number): unknown {
   return spies.Line.mock.calls[call][0].points
 }
 
+// The handlers the ID ring dispatches for the most recently rendered label.
+function lastDispatch() {
+  return spies.dispatch.at(-1)! as {
+    onDoubleClick: (e: { stopPropagation: () => void; clientX: number; clientY: number }) => void
+  }
+}
+
 // -udirY can be -0; normalise it so a component-side signed zero does not
 // masquerade as a different direction.
 function normDir(dir: number[]): number[] {
@@ -74,7 +89,8 @@ function normDir(dir: number[]): number[] {
 }
 
 beforeEach(() => {
-  for (const s of Object.values(spies)) s.mockClear()
+  for (const s of [spies.Line, spies.Arrowhead, spies.ArrowTail, spies.ExtensionLine, spies.Label]) s.mockClear()
+  spies.dispatch.length = 0
   useEditorState.setState({
     drag: null,
     dragPending: null,
@@ -201,8 +217,7 @@ describe('LinearDimension label text', () => {
 describe('LinearDimension Flip side', () => {
   function openFlip() {
     renderDim({ dimKind: 'point_distance_x' }, { interaction: INTERACTION })
-    const labelProps = spies.Label.mock.calls[0][0] as { onDoubleClick: (e: unknown) => void }
-    act(() => labelProps.onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
+    act(() => lastDispatch().onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
     return useSketchUiStore.getState().pendingDialog
   }
 
@@ -226,8 +241,7 @@ describe('LinearDimension Flip side', () => {
     // normal +X, so the point p2 is on the positive side; lineDistanceSign = +1
     // and flipping stores -1.
     renderDim({ dimKind: 'line_distance', p1: [0, 0], p2: [0, 2], normal: [1, 0] }, { interaction: INTERACTION })
-    const labelProps = spies.Label.mock.calls[0][0] as { onDoubleClick: (e: unknown) => void }
-    act(() => labelProps.onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
+    act(() => lastDispatch().onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
 
     const dialog = useSketchUiStore.getState().pendingDialog!
     act(() => dialog.extraAction!.onClick())
@@ -239,8 +253,7 @@ describe('LinearDimension Flip side', () => {
 
   it('does not offer Flip side for a non-directional dim', () => {
     renderDim({}, { interaction: INTERACTION })
-    const labelProps = spies.Label.mock.calls[0][0] as { onDoubleClick: (e: unknown) => void }
-    act(() => labelProps.onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
+    act(() => lastDispatch().onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
 
     expect(useSketchUiStore.getState().pendingDialog?.extraAction).toBeUndefined()
   })

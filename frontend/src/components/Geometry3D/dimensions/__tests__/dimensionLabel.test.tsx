@@ -1,12 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, fireEvent } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 
 /**
  * The shared dimension label. It owns two decisions the renderers rely on: the
  * invisible hit circle is dropped while dragging (so a drag cannot re-pick
- * itself), and the Html handlers only fire when the dim is interactive. The
- * userSelect fallback is what lets the diameter label stay selectable.
+ * itself), and the text never takes the pointer. The latter is what makes the
+ * id-buffer ring the single hover/click path for a label: a pointer-events
+ * auto text block is a canvas sibling, so entering it fires the canvas
+ * pointerleave (dropping the hover) and its DOM click bypasses the dispatcher.
+ * The userSelect fallback is what lets the diameter label stay selectable where
+ * the browser has a selection to make.
  */
 
 vi.mock('@react-three/drei', () => ({
@@ -21,24 +25,13 @@ vi.mock('../useDimLabelScale', () => ({
 
 import { DimensionLabel } from '../DimensionLabel'
 
-function handlers() {
-  return {
-    onClick: vi.fn(),
-    onDoubleClick: vi.fn(),
-    onPointerDown: vi.fn(),
-  }
-}
-
 function renderLabel(props: Partial<React.ComponentProps<typeof DimensionLabel>> = {}) {
-  const h = handlers()
-  const utils = render(
+  return render(
     <DimensionLabel
-      x={3} y={4} label="R5" color="#ffd54f" interactive isDragged={false}
-      onClick={h.onClick} onDoubleClick={h.onDoubleClick} onPointerDown={h.onPointerDown}
+      x={3} y={4} label="R5" color="#ffd54f" isDragged={false}
       {...props}
     />,
   )
-  return { ...utils, ...h }
 }
 
 beforeEach(() => {
@@ -64,8 +57,8 @@ describe('DimensionLabel hit mesh', () => {
 })
 
 describe('DimensionLabel text', () => {
-  it('shows the label text and disables pointer events when not interactive', () => {
-    const { getByTestId } = renderLabel({ interactive: false })
+  it('never takes pointer events, so hover and click stay with the ID ring', () => {
+    const { getByTestId } = renderLabel()
 
     expect(getByTestId('html').getAttribute('data-pointer')).toBe('none')
   })
@@ -101,34 +94,5 @@ describe('DimensionLabel text', () => {
 
     const div = container.querySelector('[data-testid="html"] > div') as HTMLElement
     expect(div.style.textShadow).toContain('#111')
-  })
-})
-
-describe('DimensionLabel handlers', () => {
-  it('forwards click, double-click and pointer-down while interactive', () => {
-    const { container, onClick, onDoubleClick, onPointerDown } = renderLabel()
-    const div = container.querySelector('[data-testid="html"] > div') as HTMLElement
-
-    fireEvent.click(div)
-    fireEvent.doubleClick(div, { clientX: 11, clientY: 22 })
-    // jsdom's pointer events do not carry client coords, so dispatch one that does.
-    fireEvent(div, new MouseEvent('pointerdown', { bubbles: true, clientX: 33, clientY: 44 }))
-
-    expect(onClick).toHaveBeenCalledTimes(1)
-    expect(onDoubleClick).toHaveBeenCalledWith(expect.objectContaining({ clientX: 11, clientY: 22 }))
-    expect(onPointerDown).toHaveBeenCalledWith(expect.objectContaining({ clientX: 33, clientY: 44 }))
-  })
-
-  it('is inert when not interactive', () => {
-    const { container, onClick, onDoubleClick, onPointerDown } = renderLabel({ interactive: false })
-    const div = container.querySelector('[data-testid="html"] > div') as HTMLElement
-
-    fireEvent.click(div)
-    fireEvent.doubleClick(div)
-    fireEvent.pointerDown(div)
-
-    expect(onClick).not.toHaveBeenCalled()
-    expect(onDoubleClick).not.toHaveBeenCalled()
-    expect(onPointerDown).not.toHaveBeenCalled()
   })
 })
