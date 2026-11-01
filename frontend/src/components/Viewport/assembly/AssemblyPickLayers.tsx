@@ -100,8 +100,14 @@ export default function AssemblyPickLayers({ bodies, showFaces = true, showEdges
         }
         registered.set(bodyKey, body)
       } catch (err) {
-        // One malformed body must not cost the whole assembly its picking. Drop
-        // it from the bookkeeping so the next tick retries it.
+        // One malformed body must not cost the whole assembly its picking. A
+        // layer that registered before the throw has to release its ids here:
+        // the bookkeeping below drops the body, so the next cleanup -- which
+        // walks `registered` -- would never see it again and its face/vertex
+        // meshes would live until the pipeline is disposed.
+        pipeline.faceLayer.unregisterBody(bodyKey)
+        pipeline.edgeLayer.unregisterBody(bodyKey)
+        pipeline.vertexLayer.unregisterBody(bodyKey)
         registered.delete(bodyKey)
         if (isDevBuild()) console.warn('Assembly ID registration failed for a body', { bodyKey, err })
       }
