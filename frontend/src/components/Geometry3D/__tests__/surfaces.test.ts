@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { buildSurfaceShapes, surfaceFillStyle } from '@/components/Geometry3D/Surfaces'
+import { surfaceFillStyle } from '@/components/Geometry3D/Surfaces'
+import { buildSurfaceShapes } from '@/utils/geometry/surfaceShapes'
 import { COLOR_SELECTED, COLOR_HOVER, COLOR_INACTIVE, COLOR_ERROR } from '@/utils/core/partColors'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Topology } from '@/types/cad'

@@ -1,37 +1,10 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
-import type { Topology, TopologySurface } from '@/types/cad'
+import type { Topology } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { ARC_SEGMENTS, COLOR_SELECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_ERROR } from '@/components/Geometry3D/constants'
-import { tessellateBoundary } from '@/kernel/topologyBoundary'
-
-type SurfaceShape = { shape: THREE.Shape; pts: [number, number][]; query: string; buildable: boolean }
-
-// eslint-disable-next-line react-refresh/only-export-components -- module exports a pure geometry helper alongside components
-export function buildSurfaceShapes(topology: Topology): SurfaceShape[] {
-  return topology.surfaces.flatMap((surface: TopologySurface) => {
-    const pts = tessellateBoundary(surface.boundary, ARC_SEGMENTS)
-    if (pts.length < 3) return []
-    const shape = new THREE.Shape()
-    shape.moveTo(pts[0][0], pts[0][1])
-    for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1])
-    shape.closePath()
-    // Inner loops become THREE.Path holes so a donut renders with its hole.
-    for (const hole of surface.holes ?? []) {
-      const hpts = tessellateBoundary(hole, ARC_SEGMENTS)
-      if (hpts.length < 3) continue
-      const path = new THREE.Path()
-      path.moveTo(hpts[0][0], hpts[0][1])
-      for (let i = 1; i < hpts.length; i++) path.lineTo(hpts[i][0], hpts[i][1])
-      path.closePath()
-      shape.holes.push(path)
-    }
-    // Absent stamp = an older/hand-built topology that never ran the gate;
-    // treat it as buildable so nothing pre-existing suddenly reads as broken.
-    return [{ shape, pts, query: surface.query, buildable: surface.buildable !== false }]
-  })
-}
+import { COLOR_SELECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_ERROR, highlightState } from '@/components/Geometry3D/constants'
+import { buildSurfaceShapes } from '@/utils/geometry/surfaceShapes'
 
 // 'inactive' = another sketch is being edited (this one is dimmed, no events)
 // 'editing'  = this sketch is being edited (ID buffer owns entity/vertex events)
@@ -62,8 +35,11 @@ interface SurfaceMeshProps {
 export function surfaceFillStyle(
   mode: TopologyMode, isSelected: boolean, isHovered: boolean, buildable = true,
 ): { color: string; opacity: number } {
-  if (isSelected) return { color: COLOR_SELECTED, opacity: 0.30 }
-  if (isHovered && mode !== 'inactive') return { color: COLOR_HOVER, opacity: 0.20 }
+  // Hover is suppressed while another sketch is being edited ('inactive'), so
+  // the state passed to the shared rule is the one the user can act on.
+  const state = highlightState(isSelected, isHovered && mode !== 'inactive')
+  if (state === 'selected') return { color: COLOR_SELECTED, opacity: 0.30 }
+  if (state === 'hovered') return { color: COLOR_HOVER, opacity: 0.20 }
   if (mode === 'inactive') return { color: COLOR_INACTIVE, opacity: 0.10 }
   if (!buildable) return { color: COLOR_ERROR, opacity: 0.18 }
   return { color: 'white', opacity: 0.10 }

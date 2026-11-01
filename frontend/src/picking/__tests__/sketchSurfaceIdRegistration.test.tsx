@@ -4,6 +4,7 @@ import type { Topology } from '@/types/cad'
 import { IdPipeline, SKETCH_SURFACE_LAYER_NAME } from '../IdPipeline'
 import { setLivePipeline } from '../IdPipelineContext'
 import { useSketchSurfaceIdRegistration } from '../useSketchSurfaceIdRegistration'
+import { buildSurfaceShapes, SURFACE_TESSELLATION_SEGMENTS } from '@/utils/geometry/surfaceShapes'
 
 /**
  * The sketch-surface registration hook turns a topology area into a pickable
@@ -214,6 +215,43 @@ describe('useSketchSurfaceIdRegistration', () => {
 
     expect(spy).toHaveBeenCalledTimes(1)
     expect(spy.mock.calls[0][0].faceQueries).toEqual(['?5;@hole'])
+    p.dispose()
+  })
+
+  // The pick triangles and the visible fill are built by the same
+  // buildSurfaceShapes now. They used to be two copies, at 32 and 64 segments
+  // per full circle, so the pickable area drifted off the drawn one along every
+  // arc edge. This pins the registered triangle vertices to the drawn ring.
+  it('registers the same vertex ring the visible fill draws, arc samples included', () => {
+    const p = livePipeline()
+    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerBody')
+
+    const semicircle = [
+      {
+        kind: 'arc', start: [1, 0], end: [-1, 0], center: [0, 0], radius: 1,
+        angle_start_deg: 0, angle_end_deg: 180, ccw: true,
+      },
+      { kind: 'line', start: [-1, 0], end: [1, 0] },
+    ]
+    const topo = topology([{ boundary: semicircle, query: '?arc' }])
+
+    const fill = buildSurfaceShapes(topo)
+    expect(fill).toHaveLength(1)
+    // Half a circle at 64 segments per turn: start + 32 arc samples + closing
+    // line end. The old pick copy sampled 16, which is the drift this pins out.
+    expect(fill[0].pts).toHaveLength(34)
+    expect(SURFACE_TESSELLATION_SEGMENTS).toBe(64)
+
+    renderHook(() => useSketchSurfaceIdRegistration({ featureId: 'S1', topology: topo }))
+
+    const positions = spy.mock.calls[0][0].positions
+    const onRing = (x: number, y: number) =>
+      fill[0].pts.some(([px, py]) => Math.abs(px - x) < 1e-6 && Math.abs(py - y) < 1e-6)
+    for (let i = 0; i < positions.length; i += 3) {
+      expect(onRing(positions[i], positions[i + 1]),
+        `pick vertex ${positions[i]},${positions[i + 1]} is off the drawn ring`).toBe(true)
+      expect(positions[i + 2]).toBeCloseTo(0)
+    }
     p.dispose()
   })
 })

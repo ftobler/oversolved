@@ -4,7 +4,7 @@ import { useIdPipeline } from './IdPipelineContext'
 import type { Topology, PlaneTransform } from '@/types/cad'
 import { buildPlaneMatrix } from './idRegistrationUtils'
 import { planeTransformKey } from './planeTransformKey'
-import { tessellateBoundary } from '@/kernel/topologyBoundary'
+import { buildSurfaceShapes } from '@/utils/geometry/surfaceShapes'
 import { SKETCH_SURFACE_LAYER_NAME } from './layerNames'
 import { polygonPickables } from './probeMarks'
 import { clearProbeSource, probeSourceKeys, replaceProbeSource } from './sceneProbeStore'
@@ -17,6 +17,10 @@ import { isDevBuild } from '@/kernel/isDevBuild'
  * every triangle is registered with the surface's ancestral query so
  * the resolver can identify which surface was clicked.
  *
+ * The shapes come from the shared buildSurfaceShapes, the same builder the
+ * visible fill uses, so the pick triangles are the drawn polygon (same
+ * boundary tessellation, same holes) and not a coarser second opinion.
+ *
  * The plane transform is applied so surface vertices land at the same
  * world-space positions as the visible SurfaceMesh geometry.
  *
@@ -27,34 +31,6 @@ import { isDevBuild } from '@/kernel/isDevBuild'
  * muted fill in Surfaces.tsx carries the warning; the `reason` string rides on
  * the surface for whatever consumes the pick.
  */
-
-function buildSurfaceShapes(
-  topology: Topology,
-): { shape: THREE.Shape; query: string; outline: [number, number][] }[] {
-  const results: { shape: THREE.Shape; query: string; outline: [number, number][] }[] = []
-  for (const surface of topology.surfaces) {
-    const pts = tessellateBoundary(surface.boundary, 32)
-    if (pts.length < 3) continue
-    const shape = new THREE.Shape()
-    shape.moveTo(pts[0][0], pts[0][1])
-    for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1])
-    shape.closePath()
-    // Subtract inner loops so a donut's hole is not pickable as solid material.
-    for (const hole of surface.holes ?? []) {
-      const hpts = tessellateBoundary(hole, 32)
-      if (hpts.length < 3) continue
-      const path = new THREE.Path()
-      path.moveTo(hpts[0][0], hpts[0][1])
-      for (let i = 1; i < hpts.length; i++) path.lineTo(hpts[i][0], hpts[i][1])
-      path.closePath()
-      shape.holes.push(path)
-    }
-    // The probe publishes this same outer ring, so its area polygon and the
-    // drawn fill are tessellated from one boundary walk.
-    results.push({ shape, query: surface.query, outline: pts })
-  }
-  return results
-}
 
 export function useSketchSurfaceIdRegistration(params: {
   featureId: string
@@ -79,7 +55,9 @@ export function useSketchSurfaceIdRegistration(params: {
     // triangles are registered in.
     const probeKey = probeSourceKeys.surface(featureId)
     replaceProbeSource(probeKey, polygonPickables(
-      SKETCH_SURFACE_LAYER_NAME, surfaces, planeTransform ?? null))
+      SKETCH_SURFACE_LAYER_NAME,
+      surfaces.map(s => ({ query: s.query, outline: s.pts })),
+      planeTransform ?? null))
 
     // Inspection is independent of the GL pick path: without a pipeline the
     // probe stays published and only the layer registration is skipped.
