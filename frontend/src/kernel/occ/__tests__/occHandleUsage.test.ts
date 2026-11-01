@@ -63,6 +63,9 @@ function untrackedBuilderChains(text: string): number[] {
   const ctor = /new\s+oc\.\w+\s*\(/g
   let m: RegExpExecArray | null
   while ((m = ctor.exec(text)) !== null) {
+    // `scope.track(scope.track(new oc.X(...)).Face())` tracks both proxies, so
+    // it is not the leak this rule names.
+    if (/\btrack\(\s*$/.test(text.slice(Math.max(0, m.index - 40), m.index))) continue
     const open = m.index + m[0].length - 1
     const end = closingParen(text, open)
     if (SHAPE_RESULT.test(text.slice(end))) hits.push(m.index)

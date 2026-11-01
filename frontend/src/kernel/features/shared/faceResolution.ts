@@ -112,7 +112,11 @@ export function queryFaceUuid(q: string): string | null {
  *  1. A live construction UUID decides: it is the face's identity. This comes
  *     before any ancestry tier because the stable-ancestry tokens of a split
  *     cap name a face on BOTH halves (the pre-split profile lineage plus a
- *     classifier the sibling's own cap also carries).
+ *     classifier the sibling's own cap also carries). The body the query names
+ *     is asked first, so a duplicated UUID (no producer today, but cheap to
+ *     guard) cannot be reassigned by store order. The test is the body's own
+ *     `face_uuids`: no index is built, so an unrelated malformed body cannot
+ *     abort the pick.
  *  2. Otherwise the `@body_*` token, but only when that body actually carries
  *     the face; a keep-both split or a resplit can leave the face on a sibling
  *     while the stored query still names the pre-split body. Scanning the
@@ -134,15 +138,18 @@ export function bodyOfQuery(
     return resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q) != null
   }
   const bodies = Object.keys(bodyStore)
+  const named = bodyIdOf(q, bodyStore)
   const uuid = queryFaceUuid(q)
   if (uuid !== null) {
-    for (const bid of bodies) {
+    const carries = (bid: string): boolean => {
       const body = bodyStore[bid]
-      if (body === undefined || body.shape === null) continue
-      if (indexFor(body).byUuid.has(uuid)) return bid
+      return body !== undefined && body.shape !== null && (body.face_uuids ?? []).includes(uuid)
+    }
+    if (named !== null && named in bodyStore && carries(named)) return named
+    for (const bid of bodies) {
+      if (bid !== named && carries(bid)) return bid
     }
   }
-  const named = bodyIdOf(q, bodyStore)
   if (named !== null && named in bodyStore) {
     if (contains(named)) return named
     for (const bid of bodies) {

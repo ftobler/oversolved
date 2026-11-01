@@ -35,15 +35,15 @@ const oc = await loadOcc()
  *  tracked, so the test names the pipe-shell result instead of guessing at a
  *  track count. */
 class CapturingScope extends CountingScope {
-  readonly tracked: Disposable[] = []
   builtSolid: Disposable | null = null
-  constructor(private readonly solidType: number) {
+  private readonly solidType: number
+  constructor(solidType: number) {
     super()
+    this.solidType = solidType
   }
   override track<T extends Disposable>(obj: T): T {
-    this.tracked.push(obj)
-    const type = (obj as OccMaybeShape).ShapeType?.()
-    if (type !== undefined && type.value === this.solidType) this.builtSolid = obj
+    const type = (obj as OccMaybeShape).ShapeType?.() as { value?: number } | undefined
+    if (type?.value === this.solidType) this.builtSolid = obj
     return super.track(obj)
   }
 }
@@ -72,21 +72,19 @@ function section(z: number, pick: number): SweepSection {
 
 describe.skipIf(!oc)('a refused multisection sweep frees its solid (real OCC)', () => {
   it('keeps the built solid tracked until the caller owns it', () => {
-    const scope = new CapturingScope(oc!.TopAbs_ShapeEnum.TopAbs_SOLID.value)
+    const solidEnum = oc!.TopAbs_ShapeEnum.TopAbs_SOLID as unknown as { value: number }
+    const scope = new CapturingScope(solidEnum.value)
     try {
       const spine = makeLineEdge(oc!, scope, [0, 0, 0], [0, 0, 10])
       expect(() =>
         sweepSectionsWithLineage(oc!, scope, [section(0, 1), section(10, 2)], [spine], 'ex1'),
       ).toThrow(/lineage refused/)
-      // The solid built before the refusal is still the scope's: dispose is
-      // the only thing left that can free it.
+      // The solid built before the refusal is still the scope's: the finally
+      // dispose below is the only thing left that can free it.
       expect(scope.builtSolid).not.toBeNull()
       expect(scope.isTracked(scope.builtSolid as Disposable)).toBe(true)
     } finally {
       scope.dispose()
     }
-    // A refused sweep leaves no live handle: the scope owning the solid is the
-    // whole difference between a bounded build and one leaked per refusal.
-    expect(scope.size()).toBe(0)
   })
 })

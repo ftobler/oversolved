@@ -5,7 +5,8 @@
 // stopped at `cylinderface`), so a countersink cone resolved nothing.
 //
 // The scan targets exactly that shape: a same-line union of three or more face
-// subtypes, or one that also names the `face` catch-all. Subset DATA stays
+// subtypes, or one that also names the `face` catch-all. It is a same-line,
+// single-quote, src/kernel scan: a drift guard, not a proof. Subset DATA stays
 // legal: the analytic-surface set delete face can extend, the axis-carrying
 // set select reads, the editor's pick refusal list and helix's two-kind
 // refusal are not a restriction predicate, and a type-only import keeps OCC

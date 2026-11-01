@@ -67,9 +67,11 @@ interface AppliedPick {
   uuid: string | null
   face: OccShape
   cells: MoveFaceCells
-  // The pick's position in the feature's list, the index the extension names
-  // carry. Both the sequential and the set path pass the same one, so a
-  // dimension change that flips paths does not re-mint every extend UUID.
+  // The pick's position in this body group, the index the extension names
+  // carry. Both the sequential and the set path iterate the same group, so a
+  // dimension change that flips paths does not re-mint every extend UUID. A
+  // feature picking on two bodies restarts at zero per body; that is stable,
+  // which is all the naming needs.
   pickIndex: number
 }
 

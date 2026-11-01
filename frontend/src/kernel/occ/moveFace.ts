@@ -307,8 +307,8 @@ function toolFaceContaining(
 }
 
 /** The retry ladder for a refused split: each replacement tool alone, then
- *  the whole set, then refuse. A fixed budget on purpose: every subset is a
- *  full splitter, and n = 10 bores is 1023 splits that can each hang. */
+ *  the whole set, then refuse. A fixed budget on purpose: trying every subset
+ *  would be 2^n - 1 full splitters, 1023 for ten bores, each able to hang. */
 export function replacementLadders(usable: number[]): number[][] {
   const singles = usable.map((index) => [index])
   return usable.length > 1 ? [...singles, usable] : singles
@@ -334,11 +334,12 @@ export function retryReplacementSplits(
     if (last.refusal === null) return { ...last, attempts }
   }
   if (attempts === 0) return { picked: [], refusal: last.refusal, attempts }
+  const ladder = usable.length > 1 ? '(each tool alone, then the whole set)' : '(the only usable tool)'
   return {
     picked: [],
     refusal:
-      `move_face: no replacement bounded the picked face after ${attempts} split(s) ` +
-      `(each tool alone, then the whole set): ${last.refusal ?? 'no cell was selected'}`,
+      `move_face: no replacement bounded the picked face after ${attempts} split(s) ${ladder}: ` +
+      `${last.refusal ?? 'no cell was selected'}`,
     attempts,
   }
 }
@@ -452,8 +453,9 @@ export function moveFaceCells(
     // Re-split with one or more neighbour tools replaced by a solid on the same
     // surface. A single failing tool must not drag every lateral face into the
     // coincident-face merge that can spin on a pair of solid cuts, so each
-    // replacement is tried alone first, then the whole set. Every subset is
-    // 2^n - 1 full splitters (1023 for ten bores), each able to hang.
+    // replacement is tried alone first, then the whole set. Trying every
+    // subset would be 2^n - 1 full splitters (1023 for ten bores), each able
+    // to hang.
     const usable = solidTools
       .map((solid, index) => (solid === null ? -1 : index))
       .filter((index) => index >= 0)
