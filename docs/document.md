@@ -12,7 +12,16 @@ is a feature kind (`array`, `circular_array`). Dependencies between features are
 references (query strings, see Query Syntax) plus the list order; numeric params
 may be expression strings evaluated against earlier `variable` features
 (`kernel/evalExpr.ts`). Some kinds are shorthand that is lowered before the
-solver runs (`center_rect`, the `ngon` constraint).
+solver runs (`center_rect`, the `ngon` constraint`).
+
+A stored number carries the document's precision. Every feature number a mutation
+writes (a distance, a radius, an array pitch, a plane offset, a transform
+translation component) and every sketch seed crosses the same 1e-6 rounding
+boundary on the way in, so an authored `0.351324026` is stored as `0.351324`; a
+nonzero magnitude below half of that is refused at the write instead of stored as
+a zero the loader would reject. Two spellings stay outside that rule: a constraint
+dimension value keeps its own coarser 1e-3 precision, and an expression string is
+stored as written and evaluated by the solver.
 
 The same document is the target for every author: the GUI, the drive surface
 (the dev bridge and the headless operations in `frontend/src/drive`; the CLI
