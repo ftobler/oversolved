@@ -8,7 +8,7 @@ import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints
 import { DashedLine } from '@/components/Geometry3D/dimensions'
 import { fitSplinePolyline } from '@/utils/geometry/fitSpline'
 import { VertexDot, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer } from '@/components/Geometry3D/constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer, highlightState } from '@/components/Geometry3D/constants'
 
 interface EntityItemProps {
   entity: Entity
@@ -34,7 +34,10 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
 
   const e = entity
   const construction = 'construction' in e && e.construction
-  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
+  const state = highlightState(selected, hovered)
+  const color = state === 'selected' ? COLOR_SELECTED
+    : state === 'hovered' ? COLOR_HOVER
+    : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
   const lw = hovered ? lineWidth + 1 : lineWidth
   // Single z-ordering decision for this entity. Explicit values (never undefined)
   // so hover/select/deselect each fully reset the layer instead of sticking.
@@ -212,17 +215,23 @@ function projectedEntityPoints(entity: Entity): [number, number, number][] | nul
 }
 
 // One projected curve. Hover highlights it white and lifts it to the top layer,
-// exactly like a real sketch entity (EntityItem) -- projected geometry is
-// pickable (buildSketchSegments registers it), so it must answer the pointer.
+// and a click selects it exactly like a real sketch entity (EntityItem) --
+// projected geometry is pickable (buildSketchSegments registers it), so it must
+// answer the pointer and show what the click did.
 function ProjectedEntityLine({ points, featureId, entityId, isEditing }: {
   points: [number, number, number][]; featureId: string; entityId: string; isEditing: boolean
 }) {
   const entId = `entity:${featureId}:${entityId}`
-  // Hover state is driven by the ID-buffer dispatcher.
+  // Hover and click both land on the entity key through the ID-buffer
+  // dispatcher, so this reads the same two sets EntityItem does.
   const hovered = useSketchEditorStore(s => s.hoveredSelectionId === entId)
+  const selected = useSketchEditorStore(s => s.normalSelection.has(entId))
 
-  const color = hovered ? COLOR_HOVER : isEditing ? COLOR_PROJECTED : COLOR_INACTIVE
-  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, hovered })
+  const state = highlightState(selected, hovered)
+  const color = state === 'selected' ? COLOR_SELECTED
+    : state === 'hovered' ? COLOR_HOVER
+    : isEditing ? COLOR_PROJECTED : COLOR_INACTIVE
+  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
   return <Line points={points} color={color} lineWidth={hovered ? 2 : 1} depthTest={depthTest} renderOrder={renderOrder} />
 }
 

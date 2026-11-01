@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { highlightState } from './constants'
 
 /**
  * Per-frame instance writer for a body's vertex markers, with a change guard.
@@ -75,8 +76,11 @@ export class VertexInstancePainter {
     for (let i = 0; i < vertices.length; i++) {
       const [x, y, z] = vertices[i]
       this.position.set(x, y, z)
-      const color = flagged
-        ? (selected?.[i] ? paint.selectedColor : hovered?.[i] ? paint.hoveredColor : undefined)
+      // One precedence rule for the body's vertex markers too: a selected
+      // vertex keeps the selection colour under the cursor.
+      const state = flagged ? highlightState(selected?.[i] === true, hovered?.[i] === true) : null
+      const color = state === 'selected' ? paint.selectedColor
+        : state === 'hovered' ? paint.hoveredColor
         : undefined
       // A flagged pass hides everything it has no colour for, so one marker can be
       // shown without the others popping up at full size.

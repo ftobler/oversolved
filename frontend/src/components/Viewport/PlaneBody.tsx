@@ -1,6 +1,7 @@
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { PlaneLabel, PlaneSurface, type PlaneState } from '@/components/Viewport/PlaneVisual'
 import { usePlaneIdRegistration } from '@/picking'
+import { highlightState } from '@/components/Geometry3D/constants'
 
 /**
  * Shared body for plane visuals (reference planes and user-defined planes):
@@ -30,7 +31,8 @@ export default function PlaneBody({
   usePlaneIdRegistration({ selectionId: selId, size, rotation, origin })
 
   const hovered = hoveredSelectionId === selId
-  const planeState: PlaneState = hovered ? 'hovered' : selected ? 'selected' : 'default'
+  const state = highlightState(selected, hovered)
+  const planeState: PlaneState = state === 'selected' ? 'selected' : state === 'hovered' ? 'hovered' : 'default'
   const ph = size / 2
 
   return (

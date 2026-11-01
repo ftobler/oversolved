@@ -45,10 +45,17 @@ describe('entityRenderLayer policy', () => {
     expect(entityRenderLayer({ selected: true })).toEqual({ depthTest: false, renderOrder: RENDER_ORDER_EDITING })
   })
 
-  it('hovered overrides everything and rises to the highlight layer', () => {
+  it('hovered rises to the highlight layer when nothing selects it', () => {
     expect(entityRenderLayer({ hovered: true })).toEqual({ depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT })
-    expect(entityRenderLayer({ hovered: true, selected: true, isEditing: true }))
+    expect(entityRenderLayer({ hovered: true, isEditing: true }))
       .toEqual({ depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT })
+  })
+
+  it('selection outranks hover, so a selected+hovered entity stays at the edit layer', () => {
+    expect(entityRenderLayer({ hovered: true, selected: true, isEditing: true }))
+      .toEqual({ depthTest: false, renderOrder: RENDER_ORDER_EDITING })
+    expect(entityRenderLayer({ hovered: true, selected: true }))
+      .toEqual({ depthTest: false, renderOrder: RENDER_ORDER_EDITING })
   })
 
   it('never returns undefined, so any state transition fully resets the layer', () => {

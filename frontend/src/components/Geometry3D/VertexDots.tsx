@@ -2,7 +2,7 @@ import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer } from '@/components/Geometry3D/constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer, highlightState } from '@/components/Geometry3D/constants'
 
 /** 10-gon dot with constant pixel radius regardless of zoom.
  *  If billboard=true the dot always faces the camera.
@@ -55,7 +55,10 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   // Hover state is driven by the ID-buffer dispatcher (267.5).
   const hovered = vertId ? hoveredVertexId === vertId : false
 
-  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
+  const state = highlightState(selected, hovered)
+  const color = state === 'selected' ? COLOR_SELECTED
+    : state === 'hovered' ? COLOR_HOVER
+    : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
   const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
 
   // After the hooks (rules-of-hooks): a coincident partner is not drawn -- the
@@ -86,7 +89,10 @@ export function ProjectedOriginPoint({ x, y, featureId, entityId, isEditing = fa
   // Hover state is driven by the ID-buffer dispatcher.
   const hovered = hoveredVertexId === vertId
 
-  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : (isEditing ? COLOR_PROJECTED : COLOR_INACTIVE)
+  const state = highlightState(selected, hovered)
+  const color = state === 'selected' ? COLOR_SELECTED
+    : state === 'hovered' ? COLOR_HOVER
+    : constraintHovered ? COLOR_CONSTRAINT_HOVER : (isEditing ? COLOR_PROJECTED : COLOR_INACTIVE)
   const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
   return (
     <Dot x={x} y={y} px={hovered ? 7 : 5} color={color} billboard renderOrder={renderOrder} depthTest={depthTest} />

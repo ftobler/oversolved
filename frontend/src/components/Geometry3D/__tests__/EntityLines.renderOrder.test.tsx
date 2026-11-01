@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 
 import type { LineSegment, Sketch } from '@/types/cad'
-import { COLOR_PROJECTED, COLOR_INACTIVE, COLOR_HOVER, RENDER_ORDER_EDITING, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
+import { COLOR_PROJECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_SELECTED, RENDER_ORDER_EDITING, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
 import { useEditorState } from '@/hooks/useEditorState'
 
 const MockLine = vi.fn((_props: Record<string, unknown>) => null)
@@ -185,6 +185,33 @@ describe('ProjectedEntities color and render order', () => {
 
     const props = MockLine.mock.calls[0]?.[0] as Record<string, unknown>
     expect(props.color).toBe(COLOR_HOVER)
+  })
+
+  // A click toggles `entity:<fid>:<eid>` into normalSelection, exactly like a
+  // real sketch entity. The projected curve used to read only the hover field,
+  // so a selected projection stayed amber and looked unselected.
+  it('renders the selected colour when the click selected it', async () => {
+    const { ProjectedEntities } = await import('@/components/Geometry3D/EntityLines')
+    resetStore({ normalSelection: new Set(['entity:sketch1:p1']) })
+    render(<ProjectedEntities sketch={SKETCH} featureId="sketch1" isEditing={true} />)
+
+    const props = MockLine.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(props.color).toBe(COLOR_SELECTED)
+    expect(props.renderOrder).toBe(RENDER_ORDER_EDITING)
+    expect(props.depthTest).toBe(false)
+  })
+
+  it('keeps the selected colour while the selected curve is also hovered', async () => {
+    const { ProjectedEntities } = await import('@/components/Geometry3D/EntityLines')
+    resetStore({
+      normalSelection: new Set(['entity:sketch1:p1']),
+      hoveredSelectionId: 'entity:sketch1:p1',
+    })
+    render(<ProjectedEntities sketch={SKETCH} featureId="sketch1" isEditing={true} />)
+
+    const props = MockLine.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(props.color).toBe(COLOR_SELECTED)
+    expect(props.renderOrder).toBe(RENDER_ORDER_EDITING)
   })
 
   it('hovering one projected entity leaves the others amber', async () => {

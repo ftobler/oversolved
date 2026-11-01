@@ -3,7 +3,7 @@ import type { EdgeDataSpline } from '@/types/cad'
 import { useEdgeIdRegistration } from '@/picking'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import {
-  COLOR_HOVER, COLOR_INACTIVE, COLOR_PROJECTED, COLOR_SELECTED, COLOR_SOLVED, entityRenderLayer,
+  COLOR_HOVER, COLOR_INACTIVE, COLOR_PROJECTED, COLOR_SELECTED, COLOR_SOLVED, entityRenderLayer, highlightState,
 } from '@/components/Geometry3D/constants'
 
 // A helix is a reference curve, not a body: it renders from the solve result's
@@ -49,7 +49,10 @@ export default function HelixCurve({
   if (!visible || curve.points.length < 2) return null
   const start = curve.points[0]
 
-  const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : isEditing ? COLOR_SOLVED : COLOR_INACTIVE
+  const state = highlightState(selected, hovered)
+  const color = state === 'selected' ? COLOR_SELECTED
+    : state === 'hovered' ? COLOR_HOVER
+    : isEditing ? COLOR_SOLVED : COLOR_INACTIVE
   const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
 
   return (

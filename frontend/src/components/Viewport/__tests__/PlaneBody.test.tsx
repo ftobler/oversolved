@@ -65,13 +65,13 @@ describe('PlaneBody', () => {
     expect(seams.surfaceProps.mock.calls.at(-1)![0]).toMatchObject({ state: 'selected' })
   })
 
-  it('hover wins over selection', () => {
+  it('selection outranks hover, so a selected+hovered plane stays selected', () => {
     useEditorState.setState({
     normalSelection: new Set(['p']),
     hoveredSelectionId: 'p',
   })
     render(<PlaneBody selId="p" size={10} rotation={ROT} label="L" />)
-    expect(seams.surfaceProps.mock.calls.at(-1)![0]).toMatchObject({ state: 'hovered' })
+    expect(seams.surfaceProps.mock.calls.at(-1)![0]).toMatchObject({ state: 'selected' })
   })
 
   it('hides the fill mesh while any drag is live, so the plane cannot occlude the grab', () => {

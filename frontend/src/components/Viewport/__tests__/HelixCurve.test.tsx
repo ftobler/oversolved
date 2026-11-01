@@ -69,10 +69,10 @@ describe('HelixCurve colour', () => {
     expect(lineProps().color).toBe(COLOR_SELECTED)
   })
 
-  it('lets hover outrank selection, the same precedence as EntityItem', async () => {
+  it('keeps the selection colour when the selected helix is also hovered', async () => {
     resetStore({ normalSelection: new Set([SELECTION_ID]), hoveredSelectionId: SELECTION_ID })
     await renderHelix()
-    expect(lineProps().color).toBe(COLOR_HOVER)
+    expect(lineProps().color).toBe(COLOR_SELECTED)
   })
 
   it('is the editing blue while its own editor is open', async () => {

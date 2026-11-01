@@ -14,7 +14,6 @@ import {
   DEFAULT_PART_ROUGHNESS,
   RENDER_ORDER_DEFAULT,
   RENDER_ORDER_HIGHLIGHT,
-  EDGE_HIGHLIGHT_LINE_WIDTH,
 } from '@/components/Geometry3D/constants'
 import {
   buildBodySurfaceGeometry,
@@ -35,6 +34,7 @@ import { lazyGeometryCache } from '@/components/Geometry3D/lazyGeometryCache'
 import { faceRuns, triangleRuns, edgeRuns, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
 import { useHighlightColors, paletteRGB } from '@/components/Geometry3D/useHighlightColors'
 import { VertexInstancePainter } from '@/components/Geometry3D/vertexInstancePainter'
+import { HighlightOverlays } from '@/components/Geometry3D/highlightOverlay'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
 import { bodyKeyFor } from '@/picking/pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
@@ -274,6 +274,19 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   const hasVertexHover = useMemo(
     () => vertexHighlightIndex?.hasAny(vertexHoverFlags) ?? false,
     [vertexHighlightIndex, vertexHoverFlags],
+  )
+
+  // Cheap gates for the outline overlays. `hasAny` is O(1) on the shared
+  // all-false answer, so an untouched body never walks its primitive lists just
+  // to draw nothing.
+  const edgeOverlayActive = useMemo(
+    () => edgeHighlightIndex.hasAny(edgeSelectionFlags) || edgeHighlightIndex.hasAny(edgeHoverFlags),
+    [edgeHighlightIndex, edgeSelectionFlags, edgeHoverFlags],
+  )
+  const faceOverlayActive = useMemo(
+    () => faceHighlightIndex !== null
+      && (faceHighlightIndex.hasAny(faceSelectionFlags) || faceHighlightIndex.hasAny(faceHoverFlags)),
+    [faceHighlightIndex, faceSelectionFlags, faceHoverFlags],
   )
 
   const geometry = useMemo(() => {
@@ -633,56 +646,35 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
           </instancedMesh>
         </>
       )}
-      {/* The hasAny guards keep a re-render triggered by someone else's hover
-          from walking this body's primitive lists just to emit nothing. */}
-      {interactive && showEdges && edgeBoundaryGeos && edgeHighlightIndex.hasAny(edgeHoverFlags) && edgeHoverFlags.map((hovered, edgeIdx) => {
-        // Selection outranks hover: skip the hover overlay where the selection
-        // overlay already draws, so precedence is explicit and not a JSX draw-order
-        // accident (mirrors the edgeColors if/else-if).
-        if (!hovered || edgeSelectionFlags[edgeIdx]) return null
-        const geo = edgeBoundaryGeos.get(edgeIdx)
-        if (!geo) return null
-        return (
-          <lineSegments key={`edge-hover-${edgeIdx}`} geometry={geo}>
-            <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} clippingPlanes={sectionActive ? getSectionClipPlaneList() : null} />
-          </lineSegments>
-        )
-      })}
-      {interactive && showEdges && edgeBoundaryGeos && edgeHighlightIndex.hasAny(edgeSelectionFlags) && edgeSelectionFlags.map((selected, edgeIdx) => {
-        if (!selected) return null
-        const geo = edgeBoundaryGeos.get(edgeIdx)
-        if (!geo) return null
-        return (
-          <lineSegments key={edgeIdx} geometry={geo} renderOrder={RENDER_ORDER_HIGHLIGHT}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent clippingPlanes={sectionActive ? getSectionClipPlaneList() : null} />
-          </lineSegments>
-        )
-      })}
-      {interactive && showFaces && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceHoverFlags) && faceHoverFlags!.map((hovered, faceIdx) => {
-        // Selection outranks hover: skip the hover overlay where the selection
-        // overlay already draws (mirrors the faceColors if/else-if precedence).
-        if (!hovered || faceSelectionFlags?.[faceIdx]) return null
-        const geo = faceBoundaryGeos.get(faceIdx)
-        if (!geo) return null
-        return (
-          <lineSegments key={`face-hover-${faceIdx}`} geometry={geo}>
-            <lineBasicMaterial color={COLOR_HOVER} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} clippingPlanes={sectionActive ? getSectionClipPlaneList() : null} />
-          </lineSegments>
-        )
-      })}
+      {/* One overlay recipe for hover and selection, on both layer kinds: the
+          colours differ, the transparency and render order never do. The
+          section cap and any transparent body draw in lower bands, so this is
+          what keeps a hovered edge or face visible on a sectioned body. */}
+      {interactive && showEdges && (
+        <HighlightOverlays
+          geos={edgeBoundaryGeos}
+          selected={edgeSelectionFlags}
+          hovered={edgeHoverFlags}
+          selectedColor={COLOR_SELECTED}
+          hoveredColor={COLOR_HOVER}
+          clippingPlanes={sectionActive ? getSectionClipPlaneList() : null}
+          active={edgeOverlayActive}
+        />
+      )}
       {showFaces && sectionActive && (
         <SectionCap geometry={geometry} color={bodyColor} enabled={visible} band={capBand} />
       )}
-      {interactive && showFaces && faceBoundaryGeos && faceHighlightIndex?.hasAny(faceSelectionFlags) && faceSelectionFlags!.map((selected, faceIdx) => {
-        if (!selected) return null
-        const geo = faceBoundaryGeos.get(faceIdx)
-        if (!geo) return null
-        return (
-          <lineSegments key={faceIdx} geometry={geo}>
-            <lineBasicMaterial color={COLOR_SELECTED} linewidth={EDGE_HIGHLIGHT_LINE_WIDTH} depthTest={false} transparent clippingPlanes={sectionActive ? getSectionClipPlaneList() : null} />
-          </lineSegments>
-        )
-      })}
+      {interactive && showFaces && (
+        <HighlightOverlays
+          geos={faceBoundaryGeos}
+          selected={faceSelectionFlags}
+          hovered={faceHoverFlags}
+          selectedColor={COLOR_SELECTED}
+          hoveredColor={COLOR_HOVER}
+          clippingPlanes={sectionActive ? getSectionClipPlaneList() : null}
+          active={faceOverlayActive}
+        />
+      )}
     </group>
   )
 }

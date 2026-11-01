@@ -18,6 +18,8 @@
  * interface rather than the class.
  */
 
+import { highlightState } from './constants'
+
 /** Per-primitive paint state. Zero (the initial state of the tracking array)
  *  means "never painted", which is why the states below start at one. */
 const BASE = 1
@@ -232,8 +234,9 @@ function stateOf(
   selected: readonly boolean[] | null,
   hovered: readonly boolean[] | null,
 ): number {
-  if (selected?.[index]) return SELECTED
-  if (hovered?.[index]) return HOVERED
+  const state = highlightState(selected?.[index] === true, hovered?.[index] === true)
+  if (state === 'selected') return SELECTED
+  if (state === 'hovered') return HOVERED
   return BASE
 }
 

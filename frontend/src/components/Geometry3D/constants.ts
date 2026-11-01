@@ -18,6 +18,7 @@ import {
   COLOR_PREVIEW,
   COLOR_PROJECTED,
   COLOR_SNAP,
+  EDGE_HIGHLIGHT_LINE_WIDTH,
 } from '@/utils/core/partColors'
 
 export {
@@ -47,6 +48,39 @@ export {
   EDGE_HIGHLIGHT_LINE_WIDTH,
 } from '@/utils/core/partColors'
 
+// ─── highlight precedence ───
+// The one question every highlight painter asks: which of the two live states
+// claims this primitive? Selection outranks hover, because a click is the
+// durable answer to "what am I acting on" and the hover under the cursor is
+// only the next candidate. Every painter (sketch lines, dots, helix, planes,
+// sketch areas, B-rep outlines and the vertex/colour buffers) calls this, so a
+// primitive that is both selected and hovered reads the same everywhere: one
+// colour, one render layer.
+export type HighlightState = 'selected' | 'hovered' | null
+
+export function highlightState(selected: boolean, hovered: boolean): HighlightState {
+  if (selected) return 'selected'
+  if (hovered) return 'hovered'
+  return null
+}
+
+// ─── highlight overlay recipe ───
+// The material a hovered or selected B-rep primitive is outlined with. Hover
+// and selection differ ONLY in colour: `depthTest: false` keeps the marker
+// above the body it outlines, and `transparent: true` puts it in the sorted
+// pass after every opaque layer, so the body fill (order 0) and the section cap
+// (order 150+) can no longer paint over a hover. The hover overlay used to be
+// opaque and at order 0, which is exactly how a hovered edge vanished on a
+// sectioned or transparent body while the selected one beside it stayed.
+export function overlayLineMaterialProps(color: string) {
+  return {
+    color,
+    linewidth: EDGE_HIGHLIGHT_LINE_WIDTH,
+    depthTest: false,
+    transparent: true,
+  }
+}
+
 // ─── sketch entity render layering ───
 // Single source of truth for the z-ordering (Three.js renderOrder) and depth
 // behaviour of a sketch entity, given its interaction state. There are exactly
@@ -59,8 +93,9 @@ export {
 // selected stayed on-top after deselect). Returning concrete values means every
 // transition, in any direction, fully resets the layer.
 //
+//   selected           -> above the B-rep, at the edit layer (hover does not move it)
 //   hovered            -> top of everything (above other editing lines too)
-//   selected | editing -> above the B-rep, at the edit layer
+//   editing only       -> above the B-rep, at the edit layer
 //   visible only       -> depth-tested at its plane (clipped by solids in front)
 export interface EntityLayerState {
   isEditing?: boolean
@@ -71,8 +106,10 @@ export interface EntityLayerState {
 export function entityRenderLayer(
   { isEditing = false, selected = false, hovered = false }: EntityLayerState,
 ): { depthTest: boolean; renderOrder: number } {
-  if (hovered) return { depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT }
-  if (selected || isEditing) return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
+  const state = highlightState(selected, hovered)
+  if (state === 'selected') return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
+  if (state === 'hovered') return { depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT }
+  if (isEditing) return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
   return { depthTest: true, renderOrder: RENDER_ORDER_DEFAULT }
 }
 
@@ -197,7 +234,7 @@ export const DRAG_SNAP_ENTITY_RADIUS_PX = ENTITY_HIT_PIXELS  // point-on-entity 
 export { CLICK_THRESHOLD_PX } from '@/utils/pointerAbstraction'
 
 // Visualization
-export const ARC_SEGMENTS = 64
+export { ARC_SEGMENTS } from '@/utils/geometry/arcSegments'
 
 // Tiny z-offset used to lift dimension labels, constraint icons, and entity
 // markers above the sketch plane (z=0) so they render on top without z-fighting.
