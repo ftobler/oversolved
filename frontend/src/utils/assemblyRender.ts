@@ -11,10 +11,11 @@
 import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
 import type { BodyRenderItem } from '@/utils/bodyRender'
 import { getBodiesToRender } from '@/utils/bodyRender'
-import { poseOffsetFor, type ManipulationSession } from '@/utils/partManipulation'
+import { poseOffsetFor, drawnPose, type ManipulationSession } from '@/utils/partManipulation'
 import {
   composeTransforms,
   makeTransform,
+  rotateVector,
   transformQuat,
   transformTranslation,
   type Quat,
@@ -149,6 +150,58 @@ export function getAssemblyPartGroups(
     })
   }
   return groups
+}
+
+/**
+ * The drawn pose of every handle the scene draws: the pose its bodies are baked
+ * at, carried by a live drag delta or by a settling offset a committed drag
+ * still owes. The render groups and the ID pick buffer both build from this, so
+ * they cannot describe different layouts.
+ */
+export function drawnPoseTable(
+  transforms: Record<string, Transform3D>,
+  manipulation: ManipulationSession | null,
+  settling: Record<string, Transform3D>,
+): Record<string, Transform3D> {
+  const out: Record<string, Transform3D> = {}
+  for (const handle of new Set([...Object.keys(transforms), ...Object.keys(settling)])) {
+    out[handle] = drawnPose(handle, manipulation, transforms, settling)
+  }
+  return out
+}
+
+/**
+ * Section cap render-order bands, one per drawn body across every part group.
+ * They must be unique across the whole scene, not just within a group, or two
+ * bodies' stencil passes would interleave.
+ */
+export function capBandsFor(groups: ReadonlyArray<AssemblyPartGroup>): Map<string, number> {
+  const bands = new Map<string, number>()
+  let next = 0
+  for (const group of groups) {
+    for (const item of group.items) bands.set(item.key, next++)
+  }
+  return bands
+}
+
+/**
+ * Each part's world basis, so a hovered anchor's display rings turn with the
+ * part instead of staying world-locked. Anchors are hover-only and cleared on
+ * grab, so the solved transform (not the live drag pose) is the right frame.
+ */
+export function partBasesFor(
+  transforms: Record<string, Transform3D>,
+): Record<string, [Vec3, Vec3, Vec3]> {
+  const out: Record<string, [Vec3, Vec3, Vec3]> = {}
+  for (const handle of Object.keys(transforms)) {
+    const q = transformQuat(transforms[handle])
+    out[handle] = [
+      rotateVector(q, [1, 0, 0]),
+      rotateVector(q, [0, 1, 0]),
+      rotateVector(q, [0, 0, 1]),
+    ]
+  }
+  return out
 }
 
 // The part's current world pose: its solved transform carried along by any live

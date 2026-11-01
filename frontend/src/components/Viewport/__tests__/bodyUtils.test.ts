@@ -1,6 +1,89 @@
 import { describe, it, expect } from 'vitest'
-import { getBodiesToRender, getGhostBodiesToRender, computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
-import type { Feature, BodyResult, PartStyleEntry } from '@/types/cad'
+import {
+  getBodiesToRender, getGhostBodiesToRender, computeEffectiveVisibleBodies,
+  sketchForRender, snapSketchesFor,
+} from '@/components/Viewport/bodyUtils'
+import type { Feature, BodyResult, PartStyleEntry, Sketch, SketchFeature, SketchData } from '@/types/cad'
+import type { BodyRenderItem } from '@/utils/bodyRender'
+import { BODY_SNAP_FEAT_PREFIX } from '@/utils/geometry/bodySnapProjection'
+
+describe('sketchForRender', () => {
+  const feature: SketchFeature = {
+    id: 'S1',
+    kind: 'sketch',
+    entities: [{ id: 'lineA', kind: 'line' }],
+    initial: { lineA: [0, 0, 2, 0] },
+  }
+
+  it('prefers the solved sketch and its constraints', () => {
+    const solved = { lineA: { start: [0, 0], end: [3, 0] } }
+    const constraints = { c1: { render: { kind: 'unknown' }, residual: 0 } }
+    const result = sketchForRender({ solved, constraints } as unknown as SketchData, feature)
+    expect(result.sketch).toBe(solved)
+    expect(result.constraints).toBe(constraints)
+  })
+
+  it('falls back to the authored initial geometry before the first solve', () => {
+    const result = sketchForRender(undefined, feature)
+    expect(result.sketch.lineA).toMatchObject({ start: [0, 0], end: [2, 0] })
+  })
+
+  it('still yields constraints when the solve supplied none', () => {
+    const result = sketchForRender({ solved: {} } as SketchData, feature)
+    expect(result.constraints).toEqual({})
+  })
+})
+
+describe('snapSketchesFor', () => {
+  const planeTransform = { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], origin: [0, 0, 0] } as SketchData['plane_transform']
+  const sketchFeature: Feature = { id: 'S1', kind: 'sketch', plane: '@builtin_plane_front' }
+  const other: Record<string, Sketch> = {
+    S0: { lineA: { start: [0, 0], end: [1, 0] } as Sketch[string] },
+  }
+
+  function item(over: Partial<BodyRenderItem> = {}): BodyRenderItem {
+    return {
+      key: 'body_e1',
+      featureId: 'e1',
+      bodyId: 'body_e1',
+      mesh: { vertices: new Float32Array(), faces: new Uint32Array() },
+      edges: [],
+      vertices: [[1, 2, 3]],
+      visible: true,
+      ...over,
+    }
+  }
+
+  it('returns the plain other-sketch set with no active feature', () => {
+    expect(snapSketchesFor(other, undefined, undefined, undefined, [item()])).toBe(other)
+  })
+
+  it('projects the drawn bodies onto the solved plane', () => {
+    const result = snapSketchesFor(other, 'S1', { plane_transform: planeTransform } as SketchData, sketchFeature, [item()])
+    expect(result.S0).toBe(other.S0)
+    // Identity rotation, origin at 0: the body vertex lands where it is in 3D.
+    expect(result[`${BODY_SNAP_FEAT_PREFIX}body_e1`]).toMatchObject({ bv0: { x: 1, y: 2 } })
+  })
+
+  it('falls back to the builtin plane the feature names', () => {
+    const result = snapSketchesFor(other, 'S1', undefined, sketchFeature, [item()])
+    expect(Object.keys(result)).toContain(`${BODY_SNAP_FEAT_PREFIX}body_e1`)
+  })
+
+  it('does not project when the active feature names no plane', () => {
+    const noPlane: Feature = { id: 'S1', kind: 'sketch' }
+    expect(snapSketchesFor(other, 'S1', undefined, noPlane, [item()])).toBe(other)
+  })
+
+  it('skips hidden bodies, so hidden geometry offers no snap target', () => {
+    const result = snapSketchesFor(other, 'S1', { plane_transform: planeTransform } as SketchData, sketchFeature, [item({ visible: false })])
+    expect(result).toBe(other)
+  })
+
+  it('is inert with no drawn body', () => {
+    expect(snapSketchesFor(other, 'S1', { plane_transform: planeTransform } as SketchData, sketchFeature, [])).toBe(other)
+  })
+})
 
 describe('getBodiesToRender', () => {
   const features: Feature[] = [

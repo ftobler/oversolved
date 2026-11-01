@@ -97,6 +97,20 @@ export function missClearsSelection(gesture: ClickGestureState, adapterActive: b
   return isStationaryPrimaryClick(gesture)
 }
 
+/**
+ * What an empty-space click clears once `missClearsSelection` has allowed it.
+ *
+ * A miss always drops the one subject (part or mate) and disarms an armed mate
+ * field, the same "click off to deselect" the part editor gives. The B-rep
+ * entity selection is only wiped when the click was NOT a mate pick aiming at
+ * nothing: the mate picker owns the click there, and a miss simply aims at
+ * nothing. Pure so the three-field sequence is stated and tested once rather
+ * than re-derived at the call site.
+ */
+export function missClearPlan(aiming: boolean): { clearEntitySelection: boolean } {
+  return { clearEntitySelection: !aiming }
+}
+
 type Gesture =
   // A body grab: solver-driven. The move feeds the cursor's world position (the
   // hit on the grab plane) to the solver as the target for the grab point, and

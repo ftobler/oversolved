@@ -4,11 +4,14 @@ import { describe, it, expect } from 'vitest'
 import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
 import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
 import {
+  capBandsFor,
+  drawnPoseTable,
   getAssemblyBuiltins,
   getAssemblyBuiltinsToRender,
   getAssemblyPartGroups,
   gizmoOrientation,
   gizmoOrigin,
+  partBasesFor,
 } from '@/utils/assemblyRender'
 import type { ManipulationSession } from '@/utils/partManipulation'
 import { IDENTITY_TRANSFORM, quatFromAxisAngle, makeTransform } from '@/utils/transform3d'
@@ -241,5 +244,68 @@ describe('gizmoOrientation', () => {
   it('is null with no selection', () => {
     const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1')], null, new Set(['p1']))
     expect(gizmoOrientation(null, groups, {}, [instance('p1')])).toBeNull()
+  })
+})
+
+describe('drawnPoseTable', () => {
+  it('carries a live drag and a settling offset onto the baked pose', () => {
+    const solved: Record<string, Transform3D> = {
+      p1: makeTransform([10, 0, 0], [0, 0, 0, 1]),
+      p2: makeTransform([0, 10, 0], [0, 0, 0, 1]),
+    }
+    const drag = session('p1', solved.p1, { ...solved.p1, tx: 13 })
+    const settling = { p2: { ...IDENTITY_TRANSFORM, ty: 5 } }
+
+    const table = drawnPoseTable(solved, drag, settling)
+    // The dragged part is at its solved pose plus the drag delta.
+    expect([table.p1.tx, table.p1.ty]).toEqual([13, 0])
+    // The settling part is at its baked pose plus the owed offset.
+    expect([table.p2.tx, table.p2.ty]).toEqual([0, 15])
+  })
+
+  it('includes a handle that only has a settling offset', () => {
+    const table = drawnPoseTable({}, null, { p9: { ...IDENTITY_TRANSFORM, tz: 4 } })
+    expect(table.p9.tz).toBe(4)
+  })
+
+  it('is empty at rest', () => {
+    expect(drawnPoseTable({}, null, {})).toEqual({})
+  })
+})
+
+describe('capBandsFor', () => {
+  it('numbers every drawn body uniquely across part groups', () => {
+    const groups = getAssemblyPartGroups(
+      {
+        'p1:body_0': body('p1', 0),
+        'p1:body_1': body('p1', 1),
+        'p2:body_0': body('p2', 0),
+      },
+      [instance('p1'), instance('p2')],
+      null,
+      new Set(),
+    )
+    const bands = capBandsFor(groups)
+    expect([...bands.keys()]).toEqual(['p1:body_0', 'p1:body_1', 'p2:body_0'])
+    expect(new Set(bands.values()).size).toBe(3)
+    expect([...bands.values()]).toEqual([0, 1, 2])
+  })
+
+  it('is empty with no groups', () => {
+    expect(capBandsFor([]).size).toBe(0)
+  })
+})
+
+describe('partBasesFor', () => {
+  it('turns each part world basis with its own transform', () => {
+    const q = quatFromAxisAngle([0, 0, 1], Math.PI / 2)
+    const bases = partBasesFor({ p1: makeTransform([0, 0, 0], q) })
+    // +90 deg about Z maps local x onto world +y.
+    expect(bases.p1[0][0]).toBeCloseTo(0, 6)
+    expect(bases.p1[0][1]).toBeCloseTo(1, 6)
+  })
+
+  it('is empty with no solved transform', () => {
+    expect(partBasesFor({})).toEqual({})
   })
 })

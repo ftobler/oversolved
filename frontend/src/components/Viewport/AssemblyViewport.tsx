@@ -50,24 +50,26 @@ import { useSectionPipelineEffects } from '@/viewport/useSection'
 import { lookupAnchor, resolveAnchorGizmos } from '@/utils/anchorGizmos'
 import { entityKeysForMate } from '@/utils/mateHighlight'
 import {
+  capBandsFor,
+  drawnPoseTable,
   getAssemblyBuiltinsToRender,
   getAssemblyPartGroups,
   gizmoOrientation,
   gizmoOrigin,
+  partBasesFor,
 } from '@/utils/assemblyRender'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
-import { createAssemblyPointerAdapter, gestureAllowsSelect, missClearsSelection } from '@/utils/assemblyPointer'
+import { createAssemblyPointerAdapter, gestureAllowsSelect, missClearPlan, missClearsSelection } from '@/utils/assemblyPointer'
 import type { PointerRef } from '@/utils/assemblyGesture'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { GIZMO_PIXELS, parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
-import { drawnPose, isManipulable } from '@/utils/partManipulation'
+import { isManipulable } from '@/utils/partManipulation'
 import { offsetPickBodies } from '@/utils/assemblyPick'
 import { readSelection } from '@/utils/assemblySelection'
 import { decideAssemblyHit } from '@/utils/assemblyHitDecision'
 import { HoverScheduler } from '@/picking/HoverScheduler'
 import type { Ray } from '@/utils/gizmoMath'
-import { rotateVector, transformQuat, type Vec3 } from '@/utils/transform3d'
-import type { Transform3D } from '@/types/cad'
+import { rotateVector, type Vec3 } from '@/utils/transform3d'
 
 // Everything an assembly can resolve from one pixel: a part's B-rep entities,
 // the assembly's own frame, and the triad handle. One set for hover, click,
@@ -263,13 +265,10 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     [bodies, instances, manipulation, selectedParts, settlingOffsets],
   )
   // The drawn pose of every handle, the same offset the render groups carry.
-  const drawnPoses = useMemo(() => {
-    const out: Record<string, Transform3D> = {}
-    for (const handle of new Set([...Object.keys(transforms), ...Object.keys(settlingOffsets)])) {
-      out[handle] = drawnPose(handle, manipulation, transforms, settlingOffsets)
-    }
-    return out
-  }, [transforms, manipulation, settlingOffsets])
+  const drawnPoses = useMemo(
+    () => drawnPoseTable(transforms, manipulation, settlingOffsets),
+    [transforms, manipulation, settlingOffsets],
+  )
   // The ID buffer follows the drawn pose, so a click in the settle window lands
   // on the entity the user sees rather than the one the old solve baked.
   const drawnPickGeometry = useMemo(
@@ -278,16 +277,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   )
 
   // Section cap render-order bands, one per drawn body across every part group.
-  // They must be unique across the whole scene, not just within a group, or two
-  // bodies' stencil passes would interleave.
-  const capBands = useMemo(() => {
-    const bands = new Map<string, number>()
-    let next = 0
-    for (const group of groups) {
-      for (const item of group.items) bands.set(item.key, next++)
-    }
-    return bands
-  }, [groups])
+  const capBands = useMemo(() => capBandsFor(groups), [groups])
 
   // The assembly has no planar-face frames to resolve a picked section plane
   // against, so the dropdown does not offer the face/plane pick here. Clear any
@@ -310,21 +300,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
 
   const builtins = useMemo(() => getAssemblyBuiltinsToRender(doc), [doc])
 
-  // Each part's world basis, so a hovered anchor's display rings turn with the
-  // part instead of staying world-locked. Anchors are hover-only and cleared on
-  // grab, so the solved transform (not the live drag pose) is the right frame.
-  const partBases = useMemo(() => {
-    const out: Record<string, [Vec3, Vec3, Vec3]> = {}
-    for (const handle of Object.keys(transforms)) {
-      const q = transformQuat(transforms[handle])
-      out[handle] = [
-        rotateVector(q, [1, 0, 0]),
-        rotateVector(q, [0, 1, 0]),
-        rotateVector(q, [0, 0, 1]),
-      ]
-    }
-    return out
-  }, [transforms])
+  // Each part's world basis, for the anchor display rings.
+  const partBases = useMemo(() => partBasesFor(transforms), [transforms])
 
   // Nothing is drawn until the cursor rests on an entity: this is the whole of
   // the hover gate. The aimed candidate is highlighted only while it is still
@@ -744,15 +721,12 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     const store = useAssemblyStore.getState()
     // Read the aiming flag before the clears below, so the B-rep selection is
     // only wiped when the click was NOT a mate pick aiming at nothing.
-    const wasAiming = store.activeMateField !== null
+    const plan = missClearPlan(store.activeMateField !== null)
     // A miss deselects the one subject (part or mate), and disarms an armed
     // field just as the old two-field clear did.
     store.selectPart(null)
     store.setActiveMateField(null)
-    // An empty-space click clears the B-rep entity selection too, the same "click
-    // off to deselect" the part editor gives. Not while aiming: the mate picker
-    // owns the click there and a miss simply aims at nothing.
-    if (!wasAiming) store.clearSelection()
+    if (plan.clearEntitySelection) store.clearSelection()
   }, [adapter])
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault() }, [])

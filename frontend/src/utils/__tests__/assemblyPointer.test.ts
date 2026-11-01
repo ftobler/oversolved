@@ -10,7 +10,7 @@ import {
   DEFAULT_ASSEMBLY_EDITOR_DATA,
 } from '@/stores/assemblyStore'
 import { findInstance } from '@/utils/assemblyMutations'
-import { createAssemblyPointerAdapter, gestureAllowsSelect, type GizmoMode, type PointerRef } from '@/utils/assemblyPointer'
+import { createAssemblyPointerAdapter, gestureAllowsSelect, missClearPlan, type GizmoMode, type PointerRef } from '@/utils/assemblyPointer'
 import { dialCounterRotation, dialSpoke, dialTicks, nearestTickIndex } from '@/utils/angleDialGeometry'
 import { signedAngleAbout, type Ray } from '@/utils/gizmoMath'
 import { GIZMO_AXES, GIZMO_PIXELS, RING_RADIUS, type GizmoAxisDef, type GizmoAxisName } from '@/utils/gizmoPickGeometry'
@@ -950,5 +950,16 @@ describe('the angle dial as drawn through the drag pose', () => {
     const lit = dialTicks(def)[nearestTickIndex(drag.datum + drag.swing)]
     const liveEnd = dialSpoke(def, drag.datum + drag.swing)[1]
     expect(bearingOf(def, dialQuat, lit.end)).toBeCloseTo(bearingOf(def, dialQuat, liveEnd), 6)
+  })
+})
+
+describe('missClearPlan', () => {
+  it('clears the B-rep entity selection on an idle empty-space click', () => {
+    expect(missClearPlan(false)).toEqual({ clearEntitySelection: true })
+  })
+
+  it('leaves the entity selection standing while a mate field is armed', () => {
+    // The mate picker owns the click there: a miss simply aims at nothing.
+    expect(missClearPlan(true)).toEqual({ clearEntitySelection: false })
   })
 })

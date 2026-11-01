@@ -1,6 +1,8 @@
-import type { Feature, SketchFeature, BodyResult, PartStyleEntry } from '@/types/cad'
+import type { Feature, SketchFeature, BodyResult, PartStyleEntry, Constraints, Sketch, SketchData } from '@/types/cad'
 import { getBodiesToRender } from '@/utils/bodyRender'
 import type { BodyRenderItem } from '@/utils/bodyRender'
+import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
+import { bodySnapSketches, builtinPlaneTransform } from '@/utils/geometry/bodySnapProjection'
 
 // `BodyRenderItem` and `getBodiesToRender` live in the utils leaf so the
 // assembly render path can use them without importing the UI tree. They are
@@ -80,6 +82,59 @@ export function getGhostBodiesToRender(
     }
     return { ...item, visible }
   })
+}
+
+/**
+ * The geometry a sketch renders: the solve's solved sketch and constraints when
+ * a solve has landed, else the authored `initial` geometry unflattened into the
+ * UI shape with its constraints derived from the feature. A sketch that has not
+ * solved yet therefore still draws, and still shows the constraints the user
+ * authored, instead of rendering empty.
+ */
+export function sketchForRender(
+  solveResult: SketchData | undefined,
+  featureDef: SketchFeature,
+): { sketch: Sketch; constraints: Constraints } {
+  const sketch = solveResult?.solved
+    ? solveResult.solved
+    : unflattenGeometry(featureDef.initial || {}, featureDef.entities)
+  const constraints = solveResult?.constraints
+    ? solveResult.constraints
+    : deriveConstraints(featureDef, sketch)
+  return { sketch, constraints }
+}
+
+/**
+ * The cross-sketch snap set for the active sketch: other sketches plus the drawn
+ * bodies projected onto the active sketch's plane. A body is projected as a
+ * synthetic sketch under the `BODY_SNAP_FEAT_PREFIX` sentinel feature id, which
+ * is how computeDragMutation tells a body snap from a real sketch constraint.
+ *
+ * Only drawn bodies contribute: `bodyItems` already applies the rollback bar and
+ * the visibility row, so a hidden or not-yet-built body cannot offer a snap
+ * target the user cannot see. When the plane or the body list is missing there
+ * is nothing to project, and the plain other-sketch set is returned by identity
+ * so the caller's memo sees no change.
+ */
+export function snapSketchesFor(
+  otherSketches: Record<string, Sketch>,
+  activeFeatureId: string | undefined,
+  activeResult: SketchData | undefined,
+  activeFeature: Feature | undefined,
+  bodyItems: ReadonlyArray<BodyRenderItem>,
+): Record<string, Sketch> {
+  if (!activeFeatureId) return otherSketches
+  // Kernel-provided when the sketch has solved, else derived from the builtin
+  // plane string the feature names.
+  const planeTransform = activeResult?.plane_transform
+    ?? (activeFeature?.kind === 'sketch' && activeFeature.plane
+      ? builtinPlaneTransform(activeFeature.plane)
+      : null)
+  if (!planeTransform || bodyItems.length === 0) return otherSketches
+
+  const bodySketchEntries = bodySnapSketches(bodyItems, planeTransform)
+  if (Object.keys(bodySketchEntries).length === 0) return otherSketches
+  return { ...otherSketches, ...bodySketchEntries }
 }
 
 /** Returns bodies created by features at or after rollbackPosition (the "preview" bodies excluded by getBodiesToRender). */

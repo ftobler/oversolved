@@ -10,7 +10,8 @@ import { COLOR_SNAP } from '@/components/Geometry3D/constants'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
 import { computeDragMove, shouldActivateDrag, collectCoincidentVertexIds } from '@/utils/geometry/dragLogic'
 import type { PartConstraint, Topology } from '@/types/cad'
-import type { DragToolContext } from '@/tools/DragTool'
+import { buildDragToolContext } from '@/tools/DragTool'
+import { dimLabelCommitOffset } from '@/utils/geometry/dimLabelDrag'
 import { sketchToVertexCandidates, sketchToEntityCandidates, inferredContactCandidates } from '@/utils/geometry/snapDetection'
 import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlane'
 
@@ -93,30 +94,19 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
           const dragTool = toolRegistry.get('drag')
           if (dragTool) {
             const state = useSketchEditorStore.getState()
-            const ctx: DragToolContext = {
-              normalSelection: state.normalSelection,
-              hoveredSelectionId: state.hoveredSelectionId,
-              isPointerDown: state.isPointerDown,
-              activeFeatureId: state.activeFeatureId,
-              hoveredVertexId: dragPending.vertexId,
-              // A pending vertex drag carries no hovered position. startWorld is
-              // the per-drag-type placeholder (the document origin for vertex
-              // drags), not a real hover; for edge drags it is the cursor at
-              // activation instead.
-              hoveredVertexPosition: [dragPending.startWorld[0], dragPending.startWorld[1]],
-              hoveredSnapKind: state.hoveredSnapKind,
-              onMutation: getSketchCallback('onMutation'),
-              drag: null,
-              dragPending,
-              dragSnap: state.dragSnap,
-              setDrag,
-              setDragPending,
-              setDragSnap,
-              startClient: dragStartClient,
-              // Store-owned mode stack: the drag context never pushes or pops.
-              pushMode: () => {},
-              popMode: () => {},
-            }
+            const ctx = buildDragToolContext(
+              state,
+              { onMutation: getSketchCallback('onMutation'), setDrag, setDragPending, setDragSnap },
+              {
+                hoveredVertexId: dragPending.vertexId,
+                // A pending vertex drag carries no hovered position. startWorld
+                // is the per-drag-type placeholder (the document origin for
+                // vertex drags), not a real hover; for edge drags it is the
+                // cursor at activation instead.
+                hoveredVertexPosition: [dragPending.startWorld[0], dragPending.startWorld[1]],
+                drag: null,
+              },
+            )
             // Pass localPoint (math-plane projected cursor) as worldPt so DragTool
             // can resolve startWorld for edge drags from the actual cursor position.
             dragTool.handlers.onPointerMove?.(e, localPoint, null, ctx)
@@ -216,13 +206,9 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
 
     if (currentDrag.type === 'dim_label') {
       if (onMutation) {
-        const pos: [number, number] = [
-          currentDrag.currentWorld[0] - currentDrag.anchorWorld[0],
-          currentDrag.currentWorld[1] - currentDrag.anchorWorld[1],
-        ]
-        const distance = Math.hypot(pos[0], pos[1])
-        if (distance >= 0.0001) {
-          onMutation({ type: 'set_constraint_pos', featureId: currentDrag.featureId, constraintId: currentDrag.constraintId, pos })
+        const offset = dimLabelCommitOffset(currentDrag.currentWorld, currentDrag.anchorWorld)
+        if (offset) {
+          onMutation({ type: 'set_constraint_pos', featureId: currentDrag.featureId, constraintId: currentDrag.constraintId, pos: offset })
         }
       }
       setDrag(null); setDragSnap(null); setDragStartClient(null)
@@ -235,25 +221,10 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
       return
     }
     const state = useSketchEditorStore.getState()
-    const context: DragToolContext = {
-      normalSelection: state.normalSelection,
-      hoveredSelectionId: state.hoveredSelectionId,
-      isPointerDown: state.isPointerDown,
-      activeFeatureId: state.activeFeatureId,
-      hoveredVertexId: state.hoveredVertexId,
-      hoveredVertexPosition: state.hoveredVertexPosition,
-      hoveredSnapKind: state.hoveredSnapKind,
-      onMutation,
-      drag: currentDrag,
-      dragPending: state.dragPending as DragToolContext['dragPending'],
-      dragSnap: state.dragSnap,
-      setDrag,
-      setDragPending,
-      setDragSnap,
-      startClient: state.dragStartClient,
-      pushMode: () => {},
-      popMode: () => {},
-    }
+    const context = buildDragToolContext(
+      state,
+      { onMutation, setDrag, setDragPending, setDragSnap },
+    )
     dragTool.handlers.onPointerUp?.(e, currentDrag.currentWorld, null, context)
     // DragTool clears drag/dragPending/dragSnap; clear the start client here so
     // the store is fully idle after a commit (the safety net skips this path).

@@ -67,10 +67,15 @@ describe('bodySnapSketches', () => {
 
   // The helper is only half the promise; the viewport has to hand it the drawn
   // list. Feeding it the raw body map again would pass every test above, so the
-  // wiring is pinned at the call site.
+  // wiring is pinned at both hops: the viewport hands snapSketchesFor its render
+  // list, and that helper hands the same list to the projection.
   it('the viewport builds the snap set from bodyItems, not the raw body map', () => {
-    const src = readFileSync(join(__dirname, '..', 'index.tsx'), 'utf8')
-    expect(src).toMatch(/bodySnapSketches\(\s*bodyItems\s*,/)
-    expect(src).not.toMatch(/bodySnapSketches\(\s*Object\.values\(/)
+    const viewport = readFileSync(join(__dirname, '..', 'index.tsx'), 'utf8')
+    expect(viewport).toMatch(/snapSketchesFor\(/)
+    expect(viewport).toMatch(/bodyItems,\s*\n\s*\)/)
+    expect(viewport).not.toMatch(/bodySnapSketches\(\s*Object\.values\(/)
+
+    const helper = readFileSync(join(__dirname, '..', 'bodyUtils.ts'), 'utf8')
+    expect(helper).toMatch(/bodySnapSketches\(bodyItems, planeTransform\)/)
   })
 })

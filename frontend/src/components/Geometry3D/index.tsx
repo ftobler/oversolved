@@ -48,7 +48,8 @@ import { planeRotation, planeRotationFromTransform } from '@/components/Geometry
 import { resolvePlaneTransform } from '@/utils/geometry/bodySnapProjection'
 
 // Colors
-import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
+import { entityStatusColor, sketchStatusColor } from '@/utils/core/entityStatusColor'
+import { nextHeldPreview, sketchToDisplay, type HeldPreviewState } from '@/utils/geometry/heldPreview'
 
 // ID-buffer registration
 import { useSketchIdRegistration, useSketchSurfaceIdRegistration, publishProbeSketchPlane } from '@/picking'
@@ -123,23 +124,15 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // fresh `solved` arrives we keep showing the last drag preview, so the geometry
   // doesn't snap back to its pre-drag position for the solver round-trip.
   // Derived synchronously via the "adjust state during render" pattern (no effect,
-  // so no one-frame revert). A new `solved` identity supersedes the held preview.
-  const [held, setHeld] = useState<Sketch | null>(null)
-  const [tracker, setTracker] = useState<{ solved: Sketch; preview: Sketch | null }>({ solved, preview })
-  let nextHeld = held
-  if (tracker.solved !== solved || tracker.preview !== preview) {
-    if (tracker.solved !== solved) {
-      nextHeld = null  // fresh solve replaces the hold
-    } else if (tracker.preview && !preview) {
-      nextHeld = tracker.preview  // drag just ended: freeze its last preview
-    }
-    setTracker({ solved, preview })
-  }
-  if (nextHeld !== held) setHeld(nextHeld)
+  // so no one-frame revert). The rule is pure and tested in utils/geometry/heldPreview.
+  const [heldState, setHeldState] = useState<HeldPreviewState<Sketch>>({ solved, preview, held: null })
+  const heldPreview = nextHeldPreview(heldState, solved, preview)
+  if (heldPreview !== heldState) setHeldState(heldPreview)
+  const nextHeld = heldPreview.held
 
   // During drag: preview, falling back to `solved` for the engaged-but-first-
   // frame-pending window. After drag: the held preview until a fresh solve.
-  const displaySketch = isDraggingThis ? (preview ?? nextHeld ?? solved) : (nextHeld ?? solved)
+  const displaySketch = sketchToDisplay(solved, preview, nextHeld, isDraggingThis)
 
   // Topology staleness gate: the WASM drag fast-path rewrites only per-entity
   // geometry each rAF; the Rust area builder runs only on the cold solve. So
@@ -262,26 +255,10 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     enabled: (!activeFeatureId || isEditing) && !stale,
   })
 
-  const getEntityColor = (entityId: string): string => {
-    if (!isEditing) return COLOR_INACTIVE
-    if (entityStatus && entityStatus[entityId]) {
-      const status = entityStatus[entityId]
-      return status === 'fully_constrained' ? COLOR_FULLY_CONSTRAINED
-        : status === 'overconstrained' ? COLOR_ERROR
-        : COLOR_SOLVED
-    }
-    // Fallback to sketch-level status
-    return solveStatus === 'fully_constrained' ? COLOR_FULLY_CONSTRAINED
-      : (solveStatus === 'overconstrained' || solveStatus === 'exception') ? COLOR_ERROR
-      : solveStatus === 'underconstrained' ? COLOR_SOLVED
-      : COLOR_INACTIVE
-  }
+  const getEntityColor = (entityId: string): string =>
+    entityStatusColor(entityStatus?.[entityId], solveStatus, isEditing)
 
-  const baseColor = isEditing
-    ? (solveStatus === 'fully_constrained' ? COLOR_FULLY_CONSTRAINED
-      : (solveStatus === 'overconstrained' || solveStatus === 'exception') ? COLOR_ERROR
-      : COLOR_SOLVED)
-    : COLOR_INACTIVE
+  const baseColor = sketchStatusColor(solveStatus, isEditing)
 
   // R3F EVENT OWNERSHIP STACK (highest to lowest, by raycast z-depth). This is
   // event ownership only: selection and hover resolve through the ID buffer

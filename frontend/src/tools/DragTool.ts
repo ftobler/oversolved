@@ -1,5 +1,6 @@
 import type { Tool, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
 import type { Point } from '@/types/cad'
+import type { DragState, DragPendingState } from '@/stores/sketchEditorStore'
 import { shouldActivateDrag, computeDragMutation } from '@/utils/geometry/dragLogic'
 import { getLastDragSolve } from '@/utils/geometry/dragSolveRegistry'
 import type { SnapTarget } from '@/utils/geometry/snapDetection'
@@ -13,6 +14,85 @@ export interface DragToolContext extends ToolContext {
   setDragPending: (pending: DragToolContext['dragPending']) => void
   setDragSnap: (snap: SnapTarget | null) => void
   startClient: [number, number] | null
+}
+
+/**
+ * The store fields a drag context is assembled from. The sketch editor's state
+ * is structurally assignable, so this module needs no store import.
+ */
+export interface DragContextSource {
+  normalSelection: Set<string>
+  hoveredSelectionId: string | null
+  isPointerDown: boolean
+  activeFeatureId: string | null
+  hoveredVertexId: string | null
+  hoveredVertexPosition: [number, number] | null
+  hoveredSnapKind: string | null
+  drag: DragState | null
+  dragPending: DragPendingState | null
+  dragSnap: SnapTarget | null
+  dragStartClient: [number, number] | null
+}
+
+export interface DragContextHandlers {
+  onMutation: ToolContext['onMutation']
+  setDrag: DragToolContext['setDrag']
+  setDragPending: DragToolContext['setDragPending']
+  setDragSnap: DragToolContext['setDragSnap']
+}
+
+/** The fields the activation frame overrides: a pending drag carries the press
+ *  point, not a real hover, and there is no live drag yet. */
+export interface DragContextOverrides {
+  hoveredVertexId?: string | null
+  hoveredVertexPosition?: [number, number] | null
+  drag?: DragToolContext['drag']
+  dragPending?: DragToolContext['dragPending']
+}
+
+/** DragTool only ever sees a sketch vertex/edge drag: a dimension label or a
+ *  feature handle is another owner's gesture. Narrowing here rather than at each
+ *  call site keeps the tool's context type honest. */
+function asToolDrag(drag: DragState | null): DragToolContext['drag'] {
+  return drag && (drag.type === 'vertex' || drag.type === 'edge') ? drag : null
+}
+
+function asToolPending(pending: DragPendingState | null): DragToolContext['dragPending'] {
+  return pending && (pending.type === 'vertex' || pending.type === 'edge') ? pending : null
+}
+
+/**
+ * Build the context handed to DragTool's handlers. Both the activation frame and
+ * the commit frame go through this one builder: the two used to spell the same
+ * literal out twice and could drift on any field ToolContext grows.
+ */
+export function buildDragToolContext(
+  source: DragContextSource,
+  handlers: DragContextHandlers,
+  overrides: DragContextOverrides = {},
+): DragToolContext {
+  return {
+    normalSelection: source.normalSelection,
+    hoveredSelectionId: source.hoveredSelectionId,
+    isPointerDown: source.isPointerDown,
+    activeFeatureId: source.activeFeatureId,
+    hoveredVertexId: overrides.hoveredVertexId !== undefined ? overrides.hoveredVertexId : source.hoveredVertexId,
+    hoveredVertexPosition: overrides.hoveredVertexPosition !== undefined
+      ? overrides.hoveredVertexPosition
+      : source.hoveredVertexPosition,
+    hoveredSnapKind: source.hoveredSnapKind,
+    onMutation: handlers.onMutation,
+    drag: overrides.drag !== undefined ? overrides.drag : asToolDrag(source.drag),
+    dragPending: overrides.dragPending !== undefined ? overrides.dragPending : asToolPending(source.dragPending),
+    dragSnap: source.dragSnap,
+    setDrag: handlers.setDrag,
+    setDragPending: handlers.setDragPending,
+    setDragSnap: handlers.setDragSnap,
+    startClient: source.dragStartClient,
+    // Store-owned mode stack: the drag context never pushes or pops.
+    pushMode: () => {},
+    popMode: () => {},
+  }
 }
 
 export interface DragTool extends Tool {
