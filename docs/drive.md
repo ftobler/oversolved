@@ -690,7 +690,11 @@ banner on stdout, so a client config must use the direct node invocation.
   applies scale first, then rotation, then translation, always about exactly
   one axis given either as `rotation_axis` (a ref) or as `rotation_axis_origin`
   plus `rotation_axis_direction`; `add_fillet` takes all of `edges` and
-  `radius` in the same call; `add_shell` takes `faces`, `thickness` and
+  `radius` in the same call and continues along the pick's whole tangent chain
+  (one edge of a rounded loop rounds the loop), so the result carries a warning
+  with the chain and unpicked edge counts, which like every warning also makes
+  an export of that document `ok: false` with the bytes still written;
+  `add_shell` takes `faces`, `thickness` and
   `direction` in the same call, `thickness` is a positive magnitude with
   `direction` carrying the side, and its wall joins with sharp edges, so an
   outward shell of a sharp part keeps sharp outer corners where CadQuery's
