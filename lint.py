@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import pathlib
+import re
 import sys
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
@@ -639,6 +640,22 @@ def _check_emdash(path: pathlib.Path, text: str, comments: list[Comment]) -> lis
         for idx, ln in enumerate(c.lines):
             if EM_DASH in ln or EN_DASH in ln:
                 errors.append(f"{path}:{c.line + idx}:{c.col}: emdash - no em or en dashes in comments")
+    return errors
+
+
+# A source line ref such as `builder.ts:925` or `dcel.rs:1319`: it rots on the
+# next edit to the file, so the comment names the function or symbol instead.
+_LINE_REF = re.compile(r"[A-Za-z0-9_./-]+\.(?:ts|tsx|mjs|js|rs|py):\d+")
+
+
+@rule("line-ref", "no file.ts:NNN refs in comments; name the function or symbol instead", languages={"ts", "rust", "python"})
+def _check_line_ref(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
+    errors: list[str] = []
+    for c in comments:
+        for idx, ln in enumerate(c.lines):
+            match = _LINE_REF.search(ln)
+            if match:
+                errors.append(f"{path}:{c.line + idx}:{c.col}: line-ref - {match.group(0)}: name the function or symbol instead")
     return errors
 
 
