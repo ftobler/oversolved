@@ -53,9 +53,10 @@ export function useDimInteraction(
   const drag = useSketchEditorStore(s => s.drag)
   const [hovered, setHovered] = useState(false)
 
-  // Suppress the click that the browser fires on the label mesh after a drag.
-  // When the pointer moves during a dim_label drag we set this flag; the next
-  // click clears it and returns early so the edit prompt is not shown.
+  // Suppress the click that the dispatcher still delivers on pointer-up after
+  // a label drag: it would otherwise open the edit dialog the drag was not
+  // asking for. When the pointer moves during a dim_label drag we set this
+  // flag; the next click clears it and returns early.
   const { markMoved, consumeClick, reset } = useClickAfterDragSuppression()
   useEffect(() => {
     if (drag?.type === 'dim_label' && drag.constraintId === cid) {
@@ -105,11 +106,11 @@ export function useDimInteraction(
   // Called at the start of each pointer-down so a fresh drag begins with the flag clear.
   const resetDragMoved = reset
 
-  // Hide the hit mesh while this constraint is being dragged. Historically
-  // this guarded against the (now-retired) DragPlane mesh raycast being
-  // occluded by the label's hit circle (#266 migrated drag to a math-only
-  // THREE.Plane, so occlusion is no longer possible). Kept because it
-  // doubles as a UX nicety -- the hit halo stays visually quiet mid-drag.
+  // While this constraint's label is dragged, both of its pick targets are
+  // unregistered: the ID point (useDimensionLabelIdRegistration) and the DOM
+  // box (DimensionLabel). Nothing can re-pick the label mid-drag, and the
+  // hover/click path cannot mistake the label under the cursor for the thing
+  // being dragged.
   const isDragged = drag?.type === 'dim_label' && drag.constraintId === cid
 
   const selKey = interaction ? `constraint:${interaction.featureId}:${cid}` : null
@@ -161,9 +162,10 @@ export function useDimLabelPointerDown(
 /**
  * Registers a dimension label's pickable id and its pointer-event dispatch.
  * This pair of calls is identical across every dimension component; only the
- * label position and the dispatch handlers vary. The label text itself is
- * pointer-events: none, so the ID ring under it is the ONE path that hovers,
- * clicks (toggle), double-clicks and starts a drag for the label.
+ * label position and the dispatch handlers vary. The label text is
+ * pointer-events: none; the dispatcher owns hover, click (toggle),
+ * double-click and drag for the label, resolving its rendered DOM box first
+ * (see picking/dimensionLabelDom) and the ID point as the fallback.
  */
 export function useDimLabelRegistration(args: {
   cid: string

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Html } from '@react-three/drei'
 import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { registerDimensionLabelElement } from '@/picking/dimensionLabelDom'
@@ -30,17 +30,25 @@ export function DimensionLabel({
   enabled?: boolean
   isDragged: boolean
 }) {
-  const textRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!enabled || isDragged) return
-    return registerDimensionLabelElement(cid, textRef.current)
+  // A callback ref, not a passive effect reading `ref.current`: drei's `<Html>`
+  // renders its children into a separate React root (ReactDOM.createRoot in a
+  // layout effect), so that subtree commits after this component's effects. A
+  // passive effect would run once with a null ref and never again, and the box
+  // would only appear after a drag flipped one of its deps. The callback fires
+  // when the inner root actually attaches the element.
+  const unregisterRef = useRef<() => void>(() => {})
+  const attachText = useCallback((element: HTMLDivElement | null) => {
+    unregisterRef.current()
+    unregisterRef.current = element && enabled && !isDragged
+      ? registerDimensionLabelElement(cid, element)
+      : () => {}
   }, [cid, enabled, isDragged])
+  useEffect(() => () => { unregisterRef.current() }, [])
 
   return (
     <Html position={[x, y, LABEL_Z_OFFSET]} center style={{ pointerEvents: 'none' }}>
       <div
-        ref={textRef}
+        ref={attachText}
         // No background: the label sits under the cursor while dragging, and
         // an opaque box hid the vertex the user was aiming at. A thin halo in
         // the canvas color keeps the digits legible where they cross a line.

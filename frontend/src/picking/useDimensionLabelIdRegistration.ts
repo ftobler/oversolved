@@ -14,11 +14,15 @@ import { isDevBuild } from '@/kernel/isDevBuild'
  *
  * Sub-key disambiguates multiple hit circles owned by the same constraint
  * (e.g. a two-radius dimension). When omitted, the entity key is
- * `dim:<constraintId>`; otherwise `dim:<constraintId>:<sub>`.
+ * `dim:<constraintId>`; otherwise `dim:<constraintId>:<sub>`. No caller passes
+ * a sub-key today, and the DOM box is registered per constraint id only, so a
+ * future sub-keyed label would get its ID point but share the plain `dim:<cid>`
+ * box hit. See picking/dimensionLabelDom.ts.
  *
- * The layer is priority=70 with depthTest=false, so a label pixel wins
- * over every other layer where it draws -- matching the visible-pass
- * always-on-top placement of the label Html (z=0.001) + opaque hit mesh.
+ * The layer is priority=70 with depthTest=false, so the point wins over every
+ * other layer where it draws. It is the fallback hit test: the dispatcher asks
+ * the label's rendered DOM box first, because the text is wider than this one
+ * point can reach.
  *
  * `position` is in local sketch 2D coordinates. If `planeTransform` is
  * provided the position is transformed to world space before registration,

@@ -20,6 +20,11 @@ import { PART_EDITOR_CONSUMED_LAYERS } from '@/components/Viewport/idDispatch/us
  * something unexpected, and a buffer that was mid-rebuild all look different
  * here, where in the viewport they all look like nothing happening.
  *
+ * One deliberate difference: a dimension label's text hits through its rendered
+ * DOM box before the ID buffer is read (picking/dimensionLabelDom), so the
+ * readout is silent over a label even though a click there would reach it. It
+ * is a debug view of the buffer, not of the dispatch's full decision.
+ *
  * Mounted beside the Canvas (not inside it) while the collision debug view is
  * on. Dev affordance only: it neither reads nor writes any interaction state.
  */

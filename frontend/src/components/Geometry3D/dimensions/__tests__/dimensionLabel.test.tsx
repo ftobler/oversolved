@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, act } from '@testing-library/react'
 import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { dimensionLabelDomHit, resetDimensionLabelDomBoxesForTest } from '@/picking/dimensionLabelDom'
 
@@ -11,23 +11,78 @@ import { dimensionLabelDomHit, resetDimensionLabelDomBoxesForTest } from '@/pick
  * is the only truthful footprint: the text is laid out by the browser at a
  * constant screen size and its width follows the formatted value, while the ID
  * ring can only offer a point.
+ *
+ * The `<Html>` mock reproduces drei's nested React root, because that is what
+ * breaks a registration written as a passive effect: the child subtree commits
+ * AFTER this component's effects, so `ref.current` is still null when they run.
+ * The callback ref must attach when the inner root commits. This mock is the
+ * regression: a passive-effect version of DimensionLabel fails these tests.
  */
 
-vi.mock('@react-three/drei', () => ({
-  Html: ({ children, style, position }: { children: React.ReactNode; style?: React.CSSProperties; position?: number[] }) => (
-    <div data-testid="html" data-pointer={style?.pointerEvents} data-position={position?.join(',')}>{children}</div>
-  ),
-}))
+vi.mock('@react-three/drei', async () => {
+  const React = await import('react')
+  const { createRoot } = await import('react-dom/client')
+
+  // drei creates its own container, appends it, then renders its wrapper (with
+  // the caller's style and children) into a separate root. The subtree is a
+  // different React root, which is the whole point.
+  function HtmlMock({ children, style, position }: {
+    children: React.ReactNode
+    style?: React.CSSProperties
+    position?: number[]
+  }) {
+    const [container] = React.useState(() => document.createElement('div'))
+    const rootRef = React.useRef<{ render: (node: React.ReactNode) => void; unmount: () => void } | null>(null)
+
+    React.useLayoutEffect(() => {
+      document.body.appendChild(container)
+      const root = createRoot(container)
+      rootRef.current = root
+      return () => { root.unmount(); container.remove() }
+    }, [container])
+
+    // No dependency list, like drei: the inner root re-renders on every commit.
+    React.useLayoutEffect(() => {
+      rootRef.current?.render(React.createElement(
+        'div',
+        {
+          'data-testid': 'html',
+          'data-pointer': style?.pointerEvents,
+          'data-position': position?.join(','),
+          style,
+        },
+        children,
+      ))
+    })
+
+    return null
+  }
+
+  return { Html: HtmlMock }
+})
 
 import { DimensionLabel } from '../DimensionLabel'
 
-function renderLabel(props: Partial<React.ComponentProps<typeof DimensionLabel>> = {}) {
-  return render(
+async function renderLabel(props: Partial<React.ComponentProps<typeof DimensionLabel>> = {}) {
+  const utils = render(
     <DimensionLabel
       cid="c1" x={3} y={4} label="R5" color="#ffd54f" isDragged={false}
       {...props}
     />,
   )
+  // Let the nested Html root commit, as it does a task after the parent.
+  await act(async () => {})
+  return utils
+}
+
+function labelWrapper(): HTMLElement {
+  const wrapper = document.querySelector('[data-testid="html"]') as HTMLElement | null
+  expect(wrapper, 'the Html wrapper was never rendered').not.toBeNull()
+  return wrapper!
+}
+
+function textDiv(): HTMLElement {
+  return labelWrapper().querySelector('div') as HTMLElement
 }
 
 // jsdom does not lay text out, so a box has to be supplied. The size below is a
@@ -49,52 +104,48 @@ afterEach(() => {
 })
 
 describe('DimensionLabel text', () => {
-  it('never takes pointer events, so the canvas listeners keep hearing the pointer', () => {
-    const { getByTestId } = renderLabel()
+  it('never takes pointer events, so the canvas listeners keep hearing the pointer', async () => {
+    await renderLabel()
 
-    expect(getByTestId('html').getAttribute('data-pointer')).toBe('none')
+    expect(labelWrapper().getAttribute('data-pointer')).toBe('none')
   })
 
-  it('renders the label at the shared z offset', () => {
-    const { getByTestId } = renderLabel()
+  it('renders the label at the shared z offset', async () => {
+    await renderLabel()
 
     // The text is the label's only visible part; there is no hit mesh to carry
     // the position any more.
-    expect(getByTestId('html').getAttribute('data-position')).toBe(`3,4,${LABEL_Z_OFFSET}`)
-    expect(getByTestId('html').textContent).toBe('R5')
+    expect(labelWrapper().getAttribute('data-position')).toBe(`3,4,${LABEL_Z_OFFSET}`)
+    expect(labelWrapper().textContent).toBe('R5')
   })
 
-  it('keeps userSelect off, so a label drag cannot select text', () => {
-    const { container } = renderLabel()
+  it('keeps userSelect off, so a label drag cannot select text', async () => {
+    await renderLabel()
 
-    const div = container.querySelector('[data-testid="html"] > div') as HTMLElement
-    expect(div.style.userSelect).toBe('none')
+    expect(textDiv().style.userSelect).toBe('none')
   })
 
   // The label sits under the cursor while a dim is dragged, so an opaque box
   // would hide the vertex the user is aiming at.
-  it('has no background fill while dragged', () => {
-    const { container } = renderLabel({ isDragged: true })
+  it('has no background fill while dragged', async () => {
+    await renderLabel({ isDragged: true })
 
-    const div = container.querySelector('[data-testid="html"] > div') as HTMLElement
-    expect(div.style.background).toBe('transparent')
+    expect(textDiv().style.background).toBe('transparent')
   })
 
   // With no box behind it, the halo is what keeps the digits readable where
   // they cross sketch lines.
-  it('draws a text halo in place of the box', () => {
-    const { container } = renderLabel()
+  it('draws a text halo in place of the box', async () => {
+    await renderLabel()
 
-    const div = container.querySelector('[data-testid="html"] > div') as HTMLElement
-    expect(div.style.textShadow).toContain('#111')
+    expect(textDiv().style.textShadow).toContain('#111')
   })
 })
 
 describe('DimensionLabel pick footprint', () => {
-  it('publishes the rendered text box, so a click on the far glyphs reaches the label', () => {
-    const { container } = renderLabel()
-    const div = container.querySelector('[data-testid="html"] > div') as HTMLElement
-    stubBox(div, 100, 50)
+  it('publishes the rendered text box, so a click on the far glyphs reaches the label', async () => {
+    await renderLabel()
+    stubBox(textDiv(), 100, 50)
 
     // 175 is 75 px from the box centre: far beyond the ring's 8 px reach, and
     // still inside the text the user sees.
@@ -106,15 +157,15 @@ describe('DimensionLabel pick footprint', () => {
     expect(dimensionLabelDomHit(181, 60)).toBeNull()
   })
 
-  it('publishes nothing without an interaction or while the label is dragged', () => {
-    const disabled = renderLabel({ enabled: false })
-    const disabledDiv = disabled.container.querySelector('[data-testid="html"] > div') as HTMLElement
-    stubBox(disabledDiv)
+  it('publishes nothing without an interaction', async () => {
+    await renderLabel({ enabled: false })
+    stubBox(textDiv())
     expect(dimensionLabelDomHit(140, 60)).toBeNull()
+  })
 
-    const dragged = renderLabel({ isDragged: true })
-    const draggedDiv = dragged.container.querySelector('[data-testid="html"] > div') as HTMLElement
-    stubBox(draggedDiv, 200, 50)
+  it('publishes nothing while the label is dragged', async () => {
+    await renderLabel({ isDragged: true })
+    stubBox(textDiv(), 200, 50)
     expect(dimensionLabelDomHit(240, 60)).toBeNull()
   })
 })

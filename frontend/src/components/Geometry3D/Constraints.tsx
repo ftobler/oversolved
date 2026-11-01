@@ -4,7 +4,7 @@ import type { Sketch, Constraints, Entity, PlaneTransform } from '@/types/cad'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl, groupConstraintsByEntity } from '@/utils/geometry/sketchHelpers'
 import { renderDimension } from '@/components/Geometry3D/dimensions/renderDimension'
-import { COLOR_SELECTED, COLOR_ERROR_DEEP, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
+import { COLOR_SELECTED, COLOR_ERROR_DEEP, LABEL_Z_OFFSET, highlightState } from '@/components/Geometry3D/constants'
 import { findEntitiesAtPoint } from '@/components/Geometry3D/drawGeometry'
 
 function ConstraintTile({ url, id, featureId, highlightIds, superfluous, culprit }: { url: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean }) {
@@ -24,7 +24,10 @@ function ConstraintTile({ url, id, featureId, highlightIds, superfluous, culprit
 
   // Idle tiles are see-through so the geometry under them stays visible and
   // pickable by eye; only the transient hover / selected states get a fill.
-  const bgColor = selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : 'transparent'
+  const state = highlightState(selected, hovered)
+  const bgColor = state === 'selected' ? COLOR_SELECTED
+    : state === 'hovered' ? '#4e4e4e'
+    : 'transparent'
   // A culprit tile is drawn in the deeper error red: the whole sketch already
   // paints red on an unsatisfied solve, and the blamed constraints must stand
   // out inside it. A redundant tile keeps the existing non-driver treatment
