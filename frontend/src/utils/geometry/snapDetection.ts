@@ -217,6 +217,33 @@ export function sketchToEntityCandidates(
   return collectEntityCandidatesFromSketch(sketch, featureId, domain)
 }
 
+/**
+ * The whole snap set a vertex drag searches: the active sketch's vertices and
+ * curves, its inferred contacts, and every other sketch's. It depends only on
+ * the sketch data, so a caller memoizes it across pointer moves -- rebuilding it
+ * per move walked every body edge in the scene.
+ */
+export function dragSnapCandidates(
+  sketch: Sketch | undefined,
+  featureId: string,
+  constraints: PartConstraint[] | undefined,
+  topology: Topology | undefined,
+  otherSketches?: Record<string, Sketch>,
+): { vertexCandidates: SnapCandidate[]; entityCandidates: EntityCandidate[] } {
+  if (!sketch) return { vertexCandidates: [], entityCandidates: [] }
+  const vertexCandidates = sketchToVertexCandidates(sketch, featureId, 'active_sketch')
+  // Inferred contacts (tangencies + curve-curve intersections) are 0-D snap
+  // targets carrying a `dock:`/`isect:` handle; snapping to one materializes a
+  // real point (lazy inferred materialization).
+  vertexCandidates.push(...inferredContactCandidates(sketch, featureId, constraints ?? [], topology, 'active_sketch'))
+  const entityCandidates = sketchToEntityCandidates(sketch, featureId, 'active_sketch')
+  for (const [otherFeatId, otherSketch] of Object.entries(otherSketches ?? {})) {
+    vertexCandidates.push(...sketchToVertexCandidates(otherSketch, otherFeatId, 'other_sketch'))
+    entityCandidates.push(...sketchToEntityCandidates(otherSketch, otherFeatId, 'other_sketch'))
+  }
+  return { vertexCandidates, entityCandidates }
+}
+
 export function collectVertexTargetsFlat(
   candidates: SnapCandidate[],
   skipIds: ReadonlySet<string>,

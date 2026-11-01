@@ -165,6 +165,16 @@ export class IdPipeline {
   // window larger than the default. Held here and not beside the resolver's
   // decode scratch because only readWindow stitches through it.
   private subScratch = new Uint8Array(MAX_READ_WINDOW_BYTES)
+  // The rest of a per-move resolve: the options object the resolver reads, the
+  // window geometry it measures from, and the read result readWindow returns.
+  // All three are reused, so a pointer move allocates only the sub-read view.
+  private readonly resolveOptionsScratch: ResolveOptions = {}
+  private readonly windowGeometryScratch: WindowGeometry = {}
+  private readonly readScratch: { scratch: Uint8Array; windowSize: number; geometry: WindowGeometry } = {
+    scratch: new Uint8Array(0),
+    windowSize: 0,
+    geometry: this.windowGeometryScratch,
+  }
   // Section-view cap occluder. The stencil passes reuse the face layer's own
   // triangles with a stand-in material, so the cap can never disagree with the
   // silhouette the face IDs were drawn from. The fill writes the reserved
@@ -649,7 +659,7 @@ export class IdPipeline {
     const read = this.readWindow(renderer, cursorPx, opts)
     if (!read) return null
     return this.resolver.decode(read.scratch, read.windowSize,
-      { ...opts, layerPriority: this.getLayerPriority(), windowGeometry: read.geometry })
+      this.resolveOptionsFor(opts, read.geometry))
   }
 
   /**
@@ -665,7 +675,19 @@ export class IdPipeline {
     const read = this.readWindow(renderer, cursorPx, opts)
     if (!read) return []
     return this.resolver.decodeAll(read.scratch, read.windowSize,
-      { ...opts, layerPriority: this.getLayerPriority(), windowGeometry: read.geometry })
+      this.resolveOptionsFor(opts, read.geometry))
+  }
+
+  // The caller's filter plus the pipeline's own cached priority map and the
+  // window geometry, written into one reused object. The resolver only reads it
+  // for the duration of the call.
+  private resolveOptionsFor(opts: ResolveOptions | undefined, geometry: WindowGeometry): ResolveOptions {
+    const out = this.resolveOptionsScratch
+    out.windowSize = opts?.windowSize
+    out.allowedLayers = opts?.allowedLayers
+    out.layerPriority = this.getLayerPriority()
+    out.windowGeometry = geometry
+    return out
   }
 
   // Blit the pixel window under the cursor into the resolver's scratch buffer.
@@ -699,11 +721,11 @@ export class IdPipeline {
 
     // Where the cursor sits relative to that pixel's centre, which is what lets
     // the resolver measure a true distance instead of an index difference.
-    const geometry: WindowGeometry = {
-      cursorOffsetX: cursorPx.x - (cx + 0.5),
-      cursorOffsetY: cursorPx.y - (cy + 0.5),
-      radiusPx: radius,
-    }
+    // Written into the reused geometry object: readWindow runs per pointer move.
+    const geometry = this.windowGeometryScratch
+    geometry.cursorOffsetX = cursorPx.x - (cx + 0.5)
+    geometry.cursorOffsetY = cursorPx.y - (cy + 0.5)
+    geometry.radiusPx = radius
 
     // Convert canvas cursor (top-left origin) to render-target read origin
     // (bottom-left): readY = h - cy - 1. The window of size N is centered
@@ -753,7 +775,10 @@ export class IdPipeline {
       scratch.set(sub.subarray(srcBase, srcBase + clampW * 4), dstBase)
     }
 
-    return { scratch, windowSize, geometry }
+    const read = this.readScratch
+    read.scratch = scratch
+    read.windowSize = windowSize
+    return read
   }
 
   /**

@@ -179,6 +179,9 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const glRef = useRef<THREE.WebGLRenderer | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   const raycaster = useMemo(() => new THREE.Raycaster(), [])
+  // The screen-to-NDC vector is rewritten on every pointer move; one instance
+  // keeps the drag loop from allocating a Vector2 per frame.
+  const ndcScratch = useRef(new THREE.Vector2())
 
   // Orbiting must stop while a part is under the pointer, or the same drag would
   // move the part and the camera. Derived from the store's manipulation session
@@ -397,7 +400,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     if (!gl || !camera) return null
     const rect = gl.domElement.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return null
-    const ndc = new THREE.Vector2(
+    const ndc = ndcScratch.current
+    ndc.set(
       ((e.clientX - rect.left) / rect.width) * 2 - 1,
       -((e.clientY - rect.top) / rect.height) * 2 + 1,
     )

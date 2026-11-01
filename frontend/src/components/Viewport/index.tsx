@@ -37,6 +37,7 @@ import ThreadCurves from '@/components/Viewport/ThreadCurves'
 import { collectThreadCurves } from '@/components/Viewport/threadHelices'
 import { DEFAULT_PLANE_SIZE } from '@/components/Viewport/planeConstants'
 import { BUILTIN_PLANE_ROTATIONS } from '@/utils/builtinPlanes'
+import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { calculatePlaneSize, getActiveSketchPlane } from '@/components/Viewport/viewportPlaneSizing'
 import { SketchPlaneDisplay } from '@/components/Viewport/SketchPlaneDisplay'
 import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
@@ -634,7 +635,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         {showRight  && <ReferencePlane rotation={BUILTIN_PLANE_ROTATIONS.builtin_plane_right} label="Right" />}
 
         {(features ?? [])
-          .filter(f => f.kind === 'plane' && !['Origin','Top','Front','Right'].includes(f.id))
+          .filter(f => f.kind === 'plane' && !BUILTIN_FEATURE_IDS.has(f.id))
           .filter(f => isActive(f.id, features, rollbackPosition, visibleFeatures))
           .map(f => {
             const solveResult = solveResults?.[f.id]

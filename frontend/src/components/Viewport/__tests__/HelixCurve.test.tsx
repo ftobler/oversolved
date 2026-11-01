@@ -2,7 +2,7 @@
 // with the same colours and render layer as a sketch entity, and its start
 // marker only exists while its own editor is open.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, act } from '@testing-library/react'
 import type { EdgeDataSpline } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 import {
@@ -158,5 +158,33 @@ describe('HelixCurve ID registration', () => {
     await renderHelix({ visible: false })
     expect(MockRegister).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }))
     expect(MockLine).not.toHaveBeenCalled()
+  })
+
+  it('a hover flip does not re-register the edge', async () => {
+    // useEdgeIdRegistration keys its effect on the `edges` and `edgeQueries`
+    // identities. Fresh arrays per render made every hover tear the pick
+    // geometry down and rebuild it.
+    await renderHelix()
+    const first = MockRegister.mock.calls[0][0]
+    MockRegister.mockClear()
+
+    act(() => { useEditorState.setState({ hoveredSelectionId: SELECTION_ID }) })
+
+    expect(MockLine.mock.calls.at(-1)![0].color).toBe(COLOR_HOVER)  // the hover did re-render
+    const second = MockRegister.mock.calls.at(-1)?.[0]
+    expect(second?.edges).toBe(first.edges)
+    expect(second?.edgeQueries).toBe(first.edgeQueries)
+  })
+
+  it('re-registers when the curve itself changes', async () => {
+    const view = await renderHelix()
+    const first = MockRegister.mock.calls[0][0]
+    const nextCurve: EdgeDataSpline = { kind: 'spline', points: [[0, 0, 0], [2, 0, 2]] }
+    const { default: HelixCurve } = await import('@/components/Viewport/HelixCurve')
+    view.rerender(<HelixCurve featureId={HELIX_ID} curve={nextCurve} />)
+
+    const second = MockRegister.mock.calls.at(-1)?.[0]
+    expect(second?.edges).not.toBe(first.edges)
+    expect(second?.edges).toEqual([nextCurve])
   })
 })

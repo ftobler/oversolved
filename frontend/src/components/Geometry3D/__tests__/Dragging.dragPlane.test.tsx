@@ -21,6 +21,19 @@ import type { Sketch } from '@/types/cad'
  */
 
 const proj = vi.hoisted(() => ({ point: null as { x: number; y: number; z: number } | null, calls: 0 }))
+// Counts how often the component rebuilds the vertex snap set: it depends only
+// on the sketch data, so a pointer move must reuse it.
+const snapBuilds = vi.hoisted(() => ({ count: 0 }))
+vi.mock('@/utils/geometry/snapDetection', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/utils/geometry/snapDetection')>()
+  return {
+    ...actual,
+    dragSnapCandidates: (...args: Parameters<typeof actual.dragSnapCandidates>) => {
+      snapBuilds.count++
+      return actual.dragSnapCandidates(...args)
+    },
+  }
+})
 vi.mock('@/components/Geometry3D/dragMathPlane', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/components/Geometry3D/dragMathPlane')>()
   return {
@@ -93,6 +106,7 @@ beforeEach(() => {
   initializeTools()
   proj.point = null
   proj.calls = 0
+  snapBuilds.count = 0
   r3f.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, -100, 100)
   r3f.canvas = makeCanvas()
   setSketchCallback('onMutation', null)
@@ -237,6 +251,27 @@ describe('DragPlane vertex snap candidates', () => {
     const snap = useSketchEditorStore.getState().dragSnap
     expect(snap?.vertexId).toBeUndefined()
     expect(snap?.kind).toBe('entity')
+  })
+})
+
+describe('DragPlane drag-path work', () => {
+  it('builds the vertex snap set once, not per pointer move', () => {
+    const sketch: Sketch = {
+      lineA: { start: [0, 0], end: [1, 0] },
+      lineB: { start: [5, 0], end: [10, 0] },
+    }
+    useEditorState.setState({
+    drag: vertexDrag('S1'),
+  })
+    proj.point = { x: 10, y: 0, z: 0 }
+    render(<DragPlane featureId="S1" sketch={sketch} sketchGroupRef={groupRef} />)
+
+    move(500, 500)
+    move(520, 500)
+    move(540, 500)
+
+    // Rebuilding walked every vertex and body edge in the scene on every move.
+    expect(snapBuilds.count).toBe(1)
   })
 })
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import type { Sketch } from '@/types/cad'
@@ -12,7 +12,7 @@ import { computeDragMove, shouldActivateDrag, collectCoincidentVertexIds } from 
 import type { PartConstraint, Topology } from '@/types/cad'
 import { buildDragToolContext } from '@/tools/DragTool'
 import { dimLabelCommitOffset } from '@/utils/geometry/dimLabelDrag'
-import { sketchToVertexCandidates, sketchToEntityCandidates, inferredContactCandidates } from '@/utils/geometry/snapDetection'
+import { dragSnapCandidates } from '@/utils/geometry/snapDetection'
 import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlane'
 
 // Sketch dragging is the prime consumer of the camera-drag block: the
@@ -47,6 +47,16 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
   // can never block drag events. The handler ref is updated every render so the closure always
   // captures fresh props/derived values without listing them as useEffect dependencies.
   const handleMoveRef = useRef<((e: PointerEvent) => void) | null>(null)
+
+  // The snap set only changes with the sketch data, its constraints, the
+  // topology or the other sketches. Built once per change: rebuilding it per
+  // pointer move walked every vertex and body edge in the scene, and the arrays
+  // it allocates were the drag loop's largest per-frame garbage.
+  const snapCandidates = useMemo(
+    () => dragSnapCandidates(sketch, featureId, constraints, topology, otherSketches),
+    [sketch, featureId, constraints, topology, otherSketches],
+  )
+
   const moveImpl = (e: PointerEvent) => {
     const group = resolvedGroupRef.current
     if (!group) return
@@ -125,24 +135,13 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
     // where computeDragMove's snap threshold oscillation caused vertex jumps).
     if (currentDrag.type === 'vertex' && sketch) {
       const pixelsPerUnit = p2w(camera)
-      const vertexCandidates = sketchToVertexCandidates(sketch, featureId, 'active_sketch')
-      // Inferred contacts (tangencies + curve-curve intersections) are 0-D snap
-      // targets carrying a `dock:`/`isect:` handle; snapping to one materializes a
-      // real point (lazy inferred materialization).
-      vertexCandidates.push(...inferredContactCandidates(sketch, featureId, constraints ?? [], topology, 'active_sketch'))
-      const entityCandidates = sketchToEntityCandidates(sketch, featureId, 'active_sketch')
+      const { vertexCandidates, entityCandidates } = snapCandidates
       const skipIds = new Set<string>()
       // Qualify with featureId: candidate ids are `entity:${featureId}:${entityId}`
       // and `vertex:${featureId}:${entityId}:${key}`. The bare entityId matched
       // vertices (substring) but never entities (exact compare), so the dragged
       // entity itself stayed a snap target -- visible when dragging a point.
       skipIds.add(`${featureId}:${currentDrag.entityId}`)
-      if (otherSketches) {
-        for (const [otherFeatId, otherSketch] of Object.entries(otherSketches)) {
-          vertexCandidates.push(...sketchToVertexCandidates(otherSketch, otherFeatId, 'other_sketch'))
-          entityCandidates.push(...sketchToEntityCandidates(otherSketch, otherFeatId, 'other_sketch'))
-        }
-      }
       // Coincident partners of the dragged vertex move with it (WASM keeps
       // them on top of the dragged dot). Excluding them stops the snap indicator
       // from latching onto a partner sitting under the cursor.

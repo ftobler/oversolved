@@ -12,7 +12,7 @@ import type { PartFeature } from '@/types/cad'
 import { EDIT_LABELS } from '@/components/layout/featureItemKinds'
 import { EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import { featureHasEditor } from '@/components/layout/FeatureItemEditors'
-import { BUILTIN_FEATURE_IDS } from '@/components/layout/builtinFeatureIds'
+import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 
 // Kinds whose editor body is bespoke rather than schema-driven
 // (FeatureItemEditors.editorFor). `import_step` has no edit label: nothing in

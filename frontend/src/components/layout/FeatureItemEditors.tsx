@@ -5,7 +5,7 @@ import { PlaneEditor } from '@/components/editors/PlaneEditor'
 import { PlaneSelector } from '@/components/sketch/PlaneSelector'
 import { useFileMeta } from '@/stores/fileRegistry'
 import { formatBytes } from '@/utils/formatBytes'
-import { BUILTIN_FEATURE_IDS } from '@/components/layout/builtinFeatureIds'
+import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { StatusMessage } from '@/components/shared/StatusMessage'
 import { NO_MARK, type StatusMark } from '@/utils/core/statusMark'
 

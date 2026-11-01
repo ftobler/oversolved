@@ -216,7 +216,6 @@ export function bodyRemovedColorIsDistinct(): { nearest: string; distance: numbe
 }
 
 // Hit detection & collision geometry
-export const POINT_HIT_PIXELS = 20
 export const POINT_VIS_PIXELS = 4
 
 // Click-vs-drag disambiguation: pointer moves smaller than this (in screen pixels)

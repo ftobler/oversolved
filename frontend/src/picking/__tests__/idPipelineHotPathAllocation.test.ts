@@ -72,6 +72,39 @@ describe('IdPipeline hot-path allocation', () => {
     p.dispose()
   })
 
+  it('reuses one resolve-options object and one window geometry across resolves', () => {
+    // The pointer-move resolve used to rebuild both with an object spread and a
+    // fresh geometry literal on every hover read.
+    const { image, p } = pipelineWithMark()
+    const decode = vi.spyOn(p.resolver, 'decode')
+    const renderer = image.renderer()
+
+    expect(p.resolveSync(renderer, CURSOR)).not.toBeNull()
+    // A miss still runs a resolve, which is all this pins; the mark is at 32,32.
+    p.resolveSync(renderer, { x: 20.5, y: 44.5 })
+
+    const first = decode.mock.calls[0][2]!
+    const second = decode.mock.calls[1][2]!
+    expect(second).toBe(first)
+    expect(second.windowGeometry).toBe(first.windowGeometry)
+    expect(second.layerPriority).toBe(p.getLayerPriority())
+    p.dispose()
+  })
+
+  it('reuses one read result across resolves', () => {
+    const { image, p } = pipelineWithMark()
+    const spy = vi.spyOn(p.resolver, 'decode')
+    const renderer = image.renderer()
+
+    p.resolveSync(renderer, CURSOR)
+    p.resolveSync(renderer, { x: 20.5, y: 44.5 })
+
+    // The read window is the resolver's own scratch view either way; the point
+    // here is that the pipeline hands the same result and scratch buffer.
+    expect(spy.mock.calls[1][0]).toBe(spy.mock.calls[0][0])
+    p.dispose()
+  })
+
   it('resolves null when readRenderTargetPixels leaves the buffer untouched, even after a prior hit', () => {
     const { image, p } = pipelineWithMark()
     // A real read first, so the reused scratch holds a live entity's pixels.

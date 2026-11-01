@@ -14,11 +14,11 @@ const ZOOM_STEP_UP = 1.25
 const ZOOM_STEP_DOWN = 0.8
 
 export interface AxisDragTools {
-  /** Pixel-to-world factor at the last quantization step. */
+  // Pixel-to-world factor at the last quantization step.
   pxToWorld: number
-  /** The axis parameter under the cursor, or null when the pointer rays past it. */
+  // The axis parameter under the cursor, or null when the pointer rays past it.
   cursorAxisParam: (e: PointerEvent, axisPoint: [number, number, number], axisDir: [number, number, number]) => number | null
-  /** Re-quantize from the live camera; call from useFrame with the fresh factor. */
+  // Re-quantize from the live camera; call from useFrame with the fresh factor.
   trackZoom: (pixelsPerWorld: number) => void
 }
 

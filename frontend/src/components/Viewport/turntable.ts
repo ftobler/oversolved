@@ -142,13 +142,34 @@ export function rotateOrbit(
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0)
 
+// The pose is recomputed on every pointer move, so the orbit law writes into
+// module instances instead of minting vectors and a basis matrix per frame. One
+// controller drives one camera and every call is synchronous, so the scratch is
+// never live across two poses.
+const POSE_DIR = new THREE.Vector3()
+const POSE_RIGHT = new THREE.Vector3()
+const POSE_UP = new THREE.Vector3()
+const POSE_BASIS = new THREE.Matrix4()
+const TURN_RIGHT = new THREE.Vector3()
+const TURN_TARGET = new THREE.Vector3()
+
 // The two drag angles as one rigid turn: azimuth about world Y, then elevation
 // about the camera's right axis. `dir(az + dAz, el + dEl)` is exactly this
 // rotation of `dir(az, el)`, which is what lets a drag turn the whole camera
 // about a point that is not its target (see TurntableControls.rotateByPixels).
-function turnAbout(pivot: THREE.Vector3, azimuth: number, dAz: number, dEl: number): (v: THREE.Vector3) => THREE.Vector3 {
-  const right = orbitRight(azimuth)
-  return (v: THREE.Vector3) => v
+// Writes `point` turned into `out` and returns it: this runs per move, so it
+// never mints a vector of its own.
+export function turnAbout(
+  pivot: THREE.Vector3,
+  azimuth: number,
+  dAz: number,
+  dEl: number,
+  point: THREE.Vector3,
+  out: THREE.Vector3,
+): THREE.Vector3 {
+  const right = orbitRight(azimuth, TURN_RIGHT)
+  return out
+    .copy(point)
     .sub(pivot)
     .applyAxisAngle(right, -dEl)
     .applyAxisAngle(WORLD_UP, dAz)
@@ -307,11 +328,11 @@ export class TurntableControls {
   }
 
   private applyPose(writePosition: boolean, notify = true): void {
-    const direction = orbitDirection(this.azimuth, this.elevation)
+    const direction = orbitDirection(this.azimuth, this.elevation, POSE_DIR)
     if (writePosition) this.camera.position.copy(this.target).addScaledVector(direction, this.distance)
-    const right = orbitRight(this.azimuth)
-    const up = orbitUp(this.azimuth, this.elevation)
-    const basis = new THREE.Matrix4().makeBasis(right, up, direction)
+    const right = orbitRight(this.azimuth, POSE_RIGHT)
+    const up = orbitUp(this.azimuth, this.elevation, POSE_UP)
+    const basis = POSE_BASIS.makeBasis(right, up, direction)
     this.camera.quaternion.setFromRotationMatrix(basis)
     this.camera.up.copy(up)
     const camera = this.camera as THREE.Camera & { updateProjectionMatrix?: () => void }
@@ -331,8 +352,7 @@ export class TurntableControls {
     const dEl = next.elevation - this.elevation
     const pivot = this.gesture?.pivot
     if (pivot) {
-      const turn = turnAbout(pivot, this.azimuth, dAz, dEl)
-      this.target.copy(turn(this.target.clone()))
+      this.target.copy(turnAbout(pivot, this.azimuth, dAz, dEl, this.target, TURN_TARGET))
     }
     this.azimuth = next.azimuth
     this.elevation = next.elevation
@@ -354,8 +374,8 @@ export class TurntableControls {
     const zoom = this.zoom || 1
     const worldPerPixelX = frustumWidth / zoom / width
     const worldPerPixelY = frustumHeight / zoom / height
-    const right = orbitRight(this.azimuth)
-    const up = orbitUp(this.azimuth, this.elevation)
+    const right = orbitRight(this.azimuth, POSE_RIGHT)
+    const up = orbitUp(this.azimuth, this.elevation, POSE_UP)
     // The target slides opposite to the cursor so the model follows it: drag
     // right and the scene moves right under the pointer.
     this.target.addScaledVector(right, -dx * worldPerPixelX)

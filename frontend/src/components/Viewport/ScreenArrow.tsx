@@ -16,17 +16,17 @@ export const TIP = SHAFT_END + CONE_LEN
 export interface ScreenArrowProps {
   color: string
   opacity?: number
-  /** World length of the tail behind the grab point; 0 draws none. */
+  // World length of the tail behind the grab point; 0 draws none.
   tailLength?: number
-  /** The tail is world-sized, so it cannot live in the uniformly scaled head group. */
+  // The tail is world-sized, so it cannot live in the uniformly scaled head group.
   tailRef?: RefObject<THREE.Mesh | null>
-  /** Where the screen-sized shaft begins; a tailed arrow starts at the grab point. */
+  // Where the screen-sized shaft begins; a tailed arrow starts at the grab point.
   headStartPx?: number
-  /** The head group, which the owner rescales to the current pixel size. */
+  // The head group, which the owner rescales to the current pixel size.
   headRef?: RefObject<THREE.Group | null>
-  /** World-per-pixel at rest, so the tail has a size before the first frame. */
+  // World-per-pixel at rest, so the tail has a size before the first frame.
   pixelsPerWorld?: number
-  /** Content pinned to the arrow (a value label), inside the screen-sized head. */
+  // Content pinned to the arrow (a value label), inside the screen-sized head.
   children?: ReactNode
 }
 
