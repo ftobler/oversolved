@@ -68,7 +68,7 @@ from the justfile: `just fuzz`
 `just fuzz` is the top-level entry point for the main-gate suite: `fuzz-session`
 (seeded mutation and undo/redo sequences, 200 x 40), `action-matrix` (the full
 command sweep against its baseline), then `fuzz-geometry` (seeded feature chains,
-1500 seeds). It runs on a main push only and takes roughly an hour; the CI job
+1500 seeds). It runs on a push to `main` or `fuzz` and takes roughly an hour; the CI job
 calls the three recipes as separate steps so each suite has its own status and
 duration, while the aggregate tees to `tmp/just_fuzz.log` and each recipe to its
 own log.
@@ -87,6 +87,11 @@ just fuzz-geometry 5000 4    # dedicated full-scale geometry sweep
 just action-matrix           # the matrix alone
 just fuzz-sketch 0 300       # harvest a sketch range (writes fixtures)
 ```
+
+## Branch flow
+- `dev` takes every change, merged often. `fuzz` is a `dev` snapshot the user merges when CI is free, so the long suite runs on it; a green `fuzz` is later merged to `main`. Agents never merge or push to `fuzz` or `main`.
+- A red fuzz report belongs to the `fuzz` tip, which `dev` may have moved past: reproduce at that commit (a detached worktree), bisect if the cause is not obvious, and land the fix on `dev`.
+- An unfired pin is a finding, not a table edit: find out why it stopped firing before deleting it. It may be a regression that now stops the chain earlier.
 
 ## Conventions
 - The frontend goal is: If I delete the Viewport, the logic should still pass unit tests.
