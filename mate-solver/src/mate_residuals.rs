@@ -227,7 +227,7 @@ fn mate_row_classes(mate: &Mate) -> Vec<RowClass> {
         MateKind::Spherical => vec![Length; 3],
         MateKind::Parallel => vec![Angle],
         // Axis difference, perp displacement, absolute roll.
-        MateKind::Sliding => vec![Length, Length, Length, Angle, Angle, Angle, Angle],
+        MateKind::Sliding => vec![Angle, Angle, Angle, Length, Length, Length, Angle],
         // Point coincidence plus axial offset, then the axis difference, then
         // the roll row only when the angle is locked.
         MateKind::Rotating => {
@@ -238,7 +238,7 @@ fn mate_row_classes(mate: &Mate) -> Vec<RowClass> {
             classes
         }
         // Axis difference, perp displacement.
-        MateKind::SlidingRotating => vec![Length, Length, Length, Angle, Angle, Angle],
+        MateKind::SlidingRotating => vec![Angle, Angle, Angle, Length, Length, Length],
         MateKind::Tangential => vec![Length],
         MateKind::CopyRotation => vec![Angle],
         // Plane separation, then axis parallelism.
@@ -254,17 +254,19 @@ fn mate_residual_count(mate: &Mate) -> usize {
     mate_row_classes(mate).len()
 }
 
-/// Characteristic drawing length for the relative `mate_status` threshold.
+/// Characteristic drawing length behind the LENGTH-row width,
+/// `RESIDUAL_REL_TOL * scale`. Angular rows do not use this scale; they read
+/// against `tolerance::RESIDUAL_ANGLE_TOL`.
 ///
 /// Built from the AABB diagonal over the seed body translations and the mate
-/// anchors' local points. The threshold is relative on purpose: a modelling
+/// anchors' local points. The width is relative on purpose: a modelling
 /// conflict is a fraction of the drawing, so a 1e4-unit assembly with a
-/// one-unit conflict reads like a 1-unit assembly with a 1e-4 conflict, and
-/// the verdict does not flip when the same assembly is redrawn in different
-/// units. (The rev 2 f32 wire's size-proportional quantum was the original
-/// motivation; the rev 3 f64 wire removes that noise but not the design.) The
-/// floor at 1.0 preserves the historical absolute 1e-4 behaviour for models
-/// under one unit.
+/// one-unit length conflict reads like a 1-unit assembly with a 1e-4 length
+/// conflict, and the verdict does not flip when the same assembly is redrawn in
+/// different units. (The rev 2 f32 wire's size-proportional quantum was the
+/// original motivation; the rev 3 f64 wire removes that noise but not the
+/// design.) The floor at 1.0 preserves the pre-split absolute 1e-4 reading for
+/// length rows on models under one unit.
 fn geometry_scale(x0: &[f64], mates: &[Mate]) -> f64 {
     let mut min = [f64::INFINITY; 3];
     let mut max = [f64::NEG_INFINITY; 3];
@@ -1098,9 +1100,11 @@ fn singular_value_cutoff(smax: f64) -> f64 {
 /// conflict whatever the problem's size.
 fn rows_within_tolerance(rows: &[f64], classes: &[RowClass], scale: f64) -> bool {
     debug_assert_eq!(rows.len(), classes.len(), "row classification drifted");
-    // A mismatch can only mean the class list and the row builder diverged.
-    // Fail safe (the assembly reads overconstrained) rather than zip away the
-    // unclassified rows and call the solve satisfied.
+    // A mismatch means the class list and the row builder diverged. The debug
+    // build traps it in the assert above, which is why the branch below cannot
+    // be reached by a plain test: only a release build (the wasm artifact) gets
+    // here. Fail safe there (the assembly reads overconstrained) rather than
+    // zip away the unclassified rows and call the solve satisfied.
     if rows.len() != classes.len() {
         return false;
     }

@@ -162,8 +162,12 @@ export function makeEchoSolver(): (input: Uint8Array) => Uint8Array {
   }
 }
 
-/** An echo solver that reports the given wire status code (0, 1 or 2). */
-export function makeStatusSolver(status: number): (input: Uint8Array) => Uint8Array {
+/**
+ * An echo solver that rewrites only the wire status byte, leaving the geometry
+ * untouched. It exists for decode-surface tests: it proves nothing about a
+ * verdict the real solver would reach.
+ */
+export function makeWireStatusSolver(status: number): (input: Uint8Array) => Uint8Array {
   const echo = makeEchoSolver()
   return (input: Uint8Array): Uint8Array => {
     const out = echo(input)

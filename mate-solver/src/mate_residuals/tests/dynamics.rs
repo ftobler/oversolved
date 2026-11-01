@@ -219,45 +219,87 @@ fn mate_residual_count_matches_actual_residuals_pushed() {
     }
 }
 
+/// A residual row named by what it measures, so the expected class below comes
+/// from the geometry rather than from a copy of the implementation's list.
+#[derive(Clone, Copy, Debug)]
+enum Row {
+    /// A point coincidence, in wire units.
+    Coincidence,
+    /// A signed separation measured along an axis, in wire units.
+    Distance,
+    /// A unit-axis alignment: the axis difference or its `dot - sign` form.
+    Axis,
+    /// A roll angle, in radians.
+    Roll,
+    /// A perpendicular displacement (a cross product with a unit axis).
+    Perp,
+}
+
+impl Row {
+    fn class(self) -> RowClass {
+        match self {
+            Row::Coincidence | Row::Distance | Row::Perp => RowClass::Length,
+            Row::Axis | Row::Roll => RowClass::Angle,
+        }
+    }
+}
+
 #[test]
 fn row_classes_pin_the_unit_of_every_row() {
-    // The verdict reads each row against the width of its class, so moving a
-    // row between classes silently widens or narrows it. Pinned per kind; the
-    // Rotating roll row appears only when the angle is locked.
-    use RowClass::{Angle, Length};
-    let cases: &[(MateKind, bool, &[RowClass])] = &[
+    // The verdict reads each row against the width of its class, so a row
+    // swapped between classes silently widens or narrows it. Each list is the
+    // mate's rows in the order `residuals()` pushes them, named by what they
+    // measure; the Rotating roll row appears only when the angle is locked.
+    use Row::{Axis, Coincidence, Distance, Perp, Roll};
+    let cases: &[(MateKind, bool, &[Row])] = &[
         (
             MateKind::Fixed,
             false,
-            &[Length, Length, Length, Angle, Angle, Angle, Angle],
+            &[
+                Coincidence,
+                Coincidence,
+                Coincidence,
+                Axis,
+                Axis,
+                Axis,
+                Roll,
+            ],
         ),
-        (MateKind::Spherical, false, &[Length; 3]),
-        (MateKind::Parallel, false, &[Angle]),
+        (MateKind::Spherical, false, &[Coincidence; 3]),
+        (MateKind::Parallel, false, &[Axis]),
         (
             MateKind::Sliding,
             false,
-            &[Length, Length, Length, Angle, Angle, Angle, Angle],
+            &[Axis, Axis, Axis, Perp, Perp, Perp, Roll],
         ),
         (
             MateKind::Rotating,
             false,
-            &[Length, Length, Length, Angle, Angle, Angle],
+            &[Coincidence, Coincidence, Coincidence, Axis, Axis, Axis],
         ),
         (
             MateKind::Rotating,
             true,
-            &[Length, Length, Length, Angle, Angle, Angle, Angle],
+            &[
+                Coincidence,
+                Coincidence,
+                Coincidence,
+                Axis,
+                Axis,
+                Axis,
+                Roll,
+            ],
         ),
         (
             MateKind::SlidingRotating,
             false,
-            &[Length, Length, Length, Angle, Angle, Angle],
+            &[Axis, Axis, Axis, Perp, Perp, Perp],
         ),
-        (MateKind::Tangential, false, &[Length]),
-        (MateKind::CopyRotation, false, &[Angle]),
-        (MateKind::ParallelPlaneDistance, false, &[Length, Angle]),
+        (MateKind::Tangential, false, &[Distance]),
+        (MateKind::CopyRotation, false, &[Roll]),
+        (MateKind::ParallelPlaneDistance, false, &[Distance, Axis]),
     ];
-    for &(kind, angle_set, want) in cases {
+    for &(kind, angle_set, rows) in cases {
         let mut one = mate(
             kind,
             mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
@@ -268,12 +310,14 @@ fn row_classes_pin_the_unit_of_every_row() {
             0.0,
         );
         one.angle_set = angle_set;
+        let want: Vec<RowClass> = rows.iter().map(|row| row.class()).collect();
         assert_eq!(
             mate_row_classes(&one),
             want,
-            "row classes for {:?}, angle_set={}",
+            "row classes for {:?}, angle_set={}, rows {:?}",
             kind,
-            angle_set
+            angle_set,
+            rows
         );
     }
 }

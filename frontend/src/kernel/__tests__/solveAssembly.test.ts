@@ -6,7 +6,7 @@ import { solveAssembly } from '../solveAssembly'
 import { bundleCachePut } from '../bundleCache'
 import {
   makeRelay, makeBundle, makeAxialBundle, translationTransform, identityTransform,
-  makeEchoSolver, makeCaptureSolver, makeTranslateSolver, makeScaledQwSolver, makeStatusSolver,
+  makeEchoSolver, makeCaptureSolver, makeTranslateSolver, makeScaledQwSolver, makeWireStatusSolver,
   freshDb,
 } from '../solveAssemblyTestUtils'
 
@@ -76,12 +76,12 @@ describe('solveAssembly', () => {
     expect(captured.input!.mates[0].angle).toBeCloseTo(Math.PI / 2)
   })
 
-  // The wire status code is the whole verdict surface and it is scale-free: a
-  // scale-1000 assembly the solver could not satisfy must still surface
-  // 'overconstrained'. The Rust side decides the code (the matching real-solver
-  // test is the scale-1000 roll conflict in solveAssemblyReal.test.ts); this
-  // pins the TS decode of it.
-  it('surfaces an overconstrained wire verdict for a scale-1000 assembly', async () => {
+  // Decode-surface only: `makeWireStatusSolver` echoes the geometry untouched
+  // and rewrites the status byte, so this pins that a scale-1000 assembly's
+  // wire status reaches `verdict` intact. It proves nothing about the geometry;
+  // the real scale-1000 roll conflict that produces the code is in
+  // solveAssemblyReal.test.ts.
+  it('decodes an overconstrained wire status for a scale-1000 assembly', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
@@ -97,7 +97,7 @@ describe('solveAssembly', () => {
       { id: 'm2', kind: 'fixed', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' }, angle: 3 },
     ]
 
-    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeStatusSolver(2))
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeWireStatusSolver(2))
 
     expect(result.status.verdict).toBe('overconstrained')
   })
