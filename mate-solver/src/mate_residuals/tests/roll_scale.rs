@@ -316,16 +316,23 @@ fn a_non_finite_jacobian_reads_overconstrained_whatever_the_residual() {
     // matrix nobody could factor is still a failure: this is the branch the
     // solve takes when `lm_result.jacobian_finite` is false, because the rank
     // and dof are placeholders then.
+    let rows = [1e-9];
+    let classes = [RowClass::Length];
     assert_eq!(
-        solved_status(true, 0.0, 1, 0, 1.0),
+        solved_status(true, &rows, &classes, 0, 1.0),
         MateStatus::FullyConstrained
     );
     assert_eq!(
-        solved_status(false, 0.0, 1, 0, 1.0),
+        solved_status(false, &rows, &classes, 0, 1.0),
         MateStatus::Overconstrained
     );
     assert_eq!(
-        solved_status(false, f64::NAN, 1, 0, 1.0),
+        solved_status(false, &[f64::NAN], &classes, 0, 1.0),
+        MateStatus::Overconstrained
+    );
+    // Any non-finite row is a failure whatever the matrix and its neighbours.
+    assert_eq!(
+        solved_status(true, &[f64::NAN], &classes, 0, 1.0),
         MateStatus::Overconstrained
     );
 }

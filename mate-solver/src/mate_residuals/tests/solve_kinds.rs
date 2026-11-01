@@ -289,34 +289,64 @@ fn fixed_mate_solve_is_idempotent_under_reseed() {
 }
 
 #[test]
-fn overconstrained_threshold_scales_with_problem_size_not_absolute_residual() {
-    // A residual_norm of 0.005 would trip the old absolute 1e-4 threshold
-    // regardless of how many residuals it is spread across. For a "large
-    // assembly" (m = 10_000) that is actually converged fine per-residual
-    // (rms = 0.005 / sqrt(10_000) = 5e-5), the scaled threshold correctly
-    // does not flag it -- the old absolute threshold would have.
+fn verdict_reads_each_row_not_the_norm_over_the_problem_size() {
+    // A large assembly's residual norm grows with its row count even when
+    // every row is converged, so the verdict must never compare the norm to a
+    // threshold. A uniformly converged vector passes at any size (the old RMS
+    // gate said the same); one row over its width still fails beside it.
+    let many_small = vec![5e-5; 10_000];
+    let classes = vec![RowClass::Length; many_small.len()];
     assert_eq!(
-        mate_status(0.005, 10_000, 0, 1.0),
+        mate_status(&many_small, &classes, 0, 1.0),
         MateStatus::FullyConstrained
     );
-    // Same absolute residual_norm, concentrated in a single residual
-    // (m = 1): genuinely overconstrained, still flagged.
-    assert_eq!(mate_status(0.005, 1, 0, 1.0), MateStatus::Overconstrained);
+    let mut one_large = many_small.clone();
+    one_large[7_000] = 5e-3;
+    assert_eq!(
+        mate_status(&one_large, &classes, 0, 1.0),
+        MateStatus::Overconstrained
+    );
 }
 
 #[test]
 fn overconstrained_threshold_scales_with_drawing_scale_not_absolute_residual() {
-    // The threshold is relative to the drawing's characteristic length:
+    // A length row's width is relative to the drawing's characteristic length:
     // the same residual that fails at unit scale passes once the model is
     // large enough that the residual is small against the geometry.
-    assert_eq!(mate_status(9.9, 1, 0, 1.0), MateStatus::Overconstrained);
-    assert_eq!(mate_status(9.9, 1, 0, 1e6), MateStatus::FullyConstrained);
+    let huge = [9.9];
+    let length = [RowClass::Length];
+    assert_eq!(
+        mate_status(&huge, &length, 0, 1.0),
+        MateStatus::Overconstrained
+    );
+    assert_eq!(
+        mate_status(&huge, &length, 0, 1e6),
+        MateStatus::FullyConstrained
+    );
     // The wire case that motivated the relative form: a 6e-4 miss at a
     // 1e4-unit layout (the old absolute 1e-4 threshold flagged a correctly
     // solved assembly as Overconstrained). Relative to the drawing it
     // passes, whatever its source.
-    assert_eq!(mate_status(6e-4, 1, 0, 1.0), MateStatus::Overconstrained);
-    assert_eq!(mate_status(6e-4, 1, 0, 1e4), MateStatus::FullyConstrained);
+    let miss = [6e-4];
+    assert_eq!(
+        mate_status(&miss, &length, 0, 1.0),
+        MateStatus::Overconstrained
+    );
+    assert_eq!(
+        mate_status(&miss, &length, 0, 1e4),
+        MateStatus::FullyConstrained
+    );
+    // An angle row is scale-free and must not inherit that width: the same
+    // roll error reads the same however large the drawing is.
+    let roll = [0.01];
+    let angle = [RowClass::Angle];
+    for scale in [1.0, 1e6] {
+        assert_eq!(
+            mate_status(&roll, &angle, 0, scale),
+            MateStatus::Overconstrained,
+            "scale {scale}: a 0.01 rad roll error is a conflict"
+        );
+    }
 }
 
 #[test]

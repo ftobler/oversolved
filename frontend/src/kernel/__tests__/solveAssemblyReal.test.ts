@@ -154,6 +154,27 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(mark.message).toContain('m2')
   })
 
+  // The same conflict expressed as ROLL at a large drawing scale. A 3 degree
+  // disagreement is 0.052 rad per mate and 0.026 rad at the least-squares
+  // compromise; the old RMS verdict compared that to 1e-4 times the drawing's
+  // characteristic length and read it satisfied once the parts sat ~1000 apart.
+  // Angular rows must be read as angles at every scale.
+  it('reports an overconstrained verdict for a 3 degree roll conflict at scale 1000', async () => {
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(1000, 0, 0) },
+    ]
+    const mates = [
+      { id: 'm1', kind: 'fixed' as const, angle: 0, ref_a: { part: 'pa', anchor: 'face' }, ref_b: { part: 'pb', anchor: 'face' } },
+      { id: 'm2', kind: 'fixed' as const, angle: 3, ref_a: { part: 'pa', anchor: 'face' }, ref_b: { part: 'pb', anchor: 'face' } },
+    ]
+
+    const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+
+    expect(result.status.verdict).toBe('overconstrained')
+    expect(result.status.residualNorm).toBeGreaterThan(0)
+  })
+
   it('leaves the fixed part exactly where it was placed', async () => {
     const parts = [
       { handle: 'pa', doc_id: 'doc-a', transform: at(5, 5, 5), fixed: true },

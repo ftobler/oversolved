@@ -18,6 +18,7 @@ pub mod api;
 pub mod codec;
 pub mod mate;
 pub mod mate_residuals;
+pub(crate) mod tolerance;
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;

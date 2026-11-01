@@ -13,10 +13,12 @@ import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { NO_MARK, type StatusMark } from './statusMark'
 
 /**
- * The rigid-mate acceptance tolerance (mm, or dimensionless for axes), matching
- * the plan's user-set 1e-4. The Rust solver's overall `mate_status` threshold is
- * relative to the drawing's characteristic length; this per-mate mark is the
- * absolute acceptance a single mate's weighted residual norm is held to.
+ * The rigid-mate acceptance tolerance for one mate's weighted residual norm
+ * (mm, or dimensionless for axes), matching the plan's user-set 1e-4. The Rust
+ * solver's overall `mate_status` reads each row in its own units instead:
+ * length rows relative to the drawing's characteristic length and angular rows
+ * against `RESIDUAL_ANGLE_TOL` in `mate-solver/src/tolerance.rs`. This per-mate
+ * mark stays one absolute acceptance for the whole block.
  */
 export const MATE_RESIDUAL_TOL = 1e-4
 

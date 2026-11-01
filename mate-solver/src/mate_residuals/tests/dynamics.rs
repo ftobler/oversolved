@@ -219,6 +219,109 @@ fn mate_residual_count_matches_actual_residuals_pushed() {
     }
 }
 
+/// A residual row named by what it measures, so the expected class below comes
+/// from the geometry rather than from a copy of the implementation's list.
+#[derive(Clone, Copy, Debug)]
+enum Row {
+    /// A point coincidence, in wire units.
+    Coincidence,
+    /// A signed separation measured along an axis, in wire units.
+    Distance,
+    /// A unit-axis alignment: the axis difference or its `dot - sign` form.
+    Axis,
+    /// A roll angle, in radians.
+    Roll,
+    /// A perpendicular displacement (a cross product with a unit axis).
+    Perp,
+}
+
+impl Row {
+    fn class(self) -> RowClass {
+        match self {
+            Row::Coincidence | Row::Distance | Row::Perp => RowClass::Length,
+            Row::Axis | Row::Roll => RowClass::Angle,
+        }
+    }
+}
+
+#[test]
+fn row_classes_pin_the_unit_of_every_row() {
+    // The verdict reads each row against the width of its class, so a row
+    // swapped between classes silently widens or narrows it. Each list is the
+    // mate's rows in the order `residuals()` pushes them, named by what they
+    // measure; the Rotating roll row appears only when the angle is locked.
+    use Row::{Axis, Coincidence, Distance, Perp, Roll};
+    let cases: &[(MateKind, bool, &[Row])] = &[
+        (
+            MateKind::Fixed,
+            false,
+            &[
+                Coincidence,
+                Coincidence,
+                Coincidence,
+                Axis,
+                Axis,
+                Axis,
+                Roll,
+            ],
+        ),
+        (MateKind::Spherical, false, &[Coincidence; 3]),
+        (MateKind::Parallel, false, &[Axis]),
+        (
+            MateKind::Sliding,
+            false,
+            &[Axis, Axis, Axis, Perp, Perp, Perp, Roll],
+        ),
+        (
+            MateKind::Rotating,
+            false,
+            &[Coincidence, Coincidence, Coincidence, Axis, Axis, Axis],
+        ),
+        (
+            MateKind::Rotating,
+            true,
+            &[
+                Coincidence,
+                Coincidence,
+                Coincidence,
+                Axis,
+                Axis,
+                Axis,
+                Roll,
+            ],
+        ),
+        (
+            MateKind::SlidingRotating,
+            false,
+            &[Axis, Axis, Axis, Perp, Perp, Perp],
+        ),
+        (MateKind::Tangential, false, &[Distance]),
+        (MateKind::CopyRotation, false, &[Roll]),
+        (MateKind::ParallelPlaneDistance, false, &[Distance, Axis]),
+    ];
+    for &(kind, angle_set, rows) in cases {
+        let mut one = mate(
+            kind,
+            mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+            mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+            false,
+            0.0,
+            1.0,
+            0.0,
+        );
+        one.angle_set = angle_set;
+        let want: Vec<RowClass> = rows.iter().map(|row| row.class()).collect();
+        assert_eq!(
+            mate_row_classes(&one),
+            want,
+            "row classes for {:?}, angle_set={}, rows {:?}",
+            kind,
+            angle_set,
+            rows
+        );
+    }
+}
+
 #[test]
 fn mate_naming_a_body_outside_the_assembly_is_dropped() {
     // Body index 5 in a two-body assembly: a stale mate the host never

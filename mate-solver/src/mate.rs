@@ -223,8 +223,10 @@ pub struct Mate {
     /// Mate-side radius for Tangential when the geometry itself does
     /// not carry one (e.g. a tangent point on a plane to a virtual cylinder).
     pub radius: f64,
-    /// Fixed's seed-relative roll target, in radians. Read only by `Fixed`; see
-    /// the seed-relative roll residual in `mate_residuals.rs`.
+    /// Absolute roll target in radians, read by `Fixed` and `Sliding` (and by
+    /// `Rotating` when `angle_set`). The editor captures it from the on-screen
+    /// pose when the references are picked, so it is authored data rather than
+    /// seed state; `abs_roll_residual` measures it from the wire perps.
     pub angle: f64,
     /// Rotating only: the roll is locked to `angle` (one extra row). Unset, the
     /// roll about the shared axis stays free, so a hinge locked at 0 and a free
