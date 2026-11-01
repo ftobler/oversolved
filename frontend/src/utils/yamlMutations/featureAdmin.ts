@@ -231,8 +231,8 @@ export function applySetPlaneDefinitionField(
   // scalar: gated for finiteness (a non-finite value would seed NaN into the
   // document and survive every reload) and rounded to the stored precision.
   const stored = typeof value === 'number' ? storedNumber(value) : value
-  if (typeof value === 'number' && stored === null) {
-    warn('applySetPlaneDefinitionField: refusing a value that is not storable', { featureId, field, value })
+  if (stored === null) {
+    warn('applySetPlaneDefinitionField: refusing a non-finite number', { featureId, field, value })
     return
   }
   // The scalar value lands on the definition under the named field. The write

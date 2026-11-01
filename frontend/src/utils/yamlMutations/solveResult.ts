@@ -25,10 +25,10 @@ function constraintReferencesAny(c: PartConstraint, removed: Set<string>): boole
 
 // The write-back has to keep the authored geometry recognisable to every
 // consumer that compares doc content. The worker hands back the solved params
-// decoded as f64 (wasm-kernel/codec.ts decodeOutput, rev 3), while the sketch
-// mutators persist round(v, 6) (helpers.ts), so the two writers still differ in
-// digits -- and a document authored under the rev 2 f32 wire carries values in
-// the f32 band above ~4: round(f32(25.7)) is 25.700001, round(f32(63.4)) is
+// decoded as f64 (wasm-kernel/codec.ts decodeOutput, rev 3), while the mutation
+// writers persist round(v, 6) (helpers.ts, seeds and feature numbers alike), so
+// the two writers still differ in digits -- and a document authored under the
+// rev 2 f32 wire carries values in the f32 band above ~4: round(f32(25.7)) is 25.700001, round(f32(63.4)) is
 // 63.400002 and f32(100.000001) is 100 outright. A re-solve that moved nothing
 // would then read as a change everywhere content is compared: useSolver's save
 // identity guard mints a fresh doc object (so a save overlapping it stops
