@@ -11,7 +11,7 @@
 // and the runner resolves them against the solved geometry at run time. That is
 // also what makes the recipe the unit the minimiser drops steps from.
 
-import { makePrng } from '@/hooks/__tests__/fuzzHarness'
+import { makePrng } from '@/utils/core/prng'
 import { threadDesignations } from '@/kernel/threadTable'
 
 // The thread designations a fuzz hole's cosmetic thread is picked from. The

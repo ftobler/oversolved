@@ -15,7 +15,7 @@ import type { AssemblyDoc, MateKind, MateRef, MateRefField } from '@/types/cad'
 import type { AssemblyOperationId, AssemblyOperationInputs } from '@/utils/assemblyOperations'
 import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 import { findInstance, findMate } from '@/utils/assemblyMutations'
-import { MATE_KINDS, MATE_KIND_LABELS, mateParams } from '@/utils/mateKinds'
+import { MATE_KINDS, mateParams } from '@/utils/mateKinds'
 import { quatFromEulerXyz } from '@/utils/transform3d'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
 import type { DriveMateRef, DriveRefFailure, ResolvedDriveRef } from '@/drive/assemblyRefs'
@@ -906,9 +906,4 @@ function validateValues(
 /** The wire fields an example or a caller sees, for the payload and tests. */
 export function assemblyMutationInfoOf(type: AssemblyWireType): AssemblyMutationInfo {
   return ASSEMBLY_MUTATION_CATALOG[type] as AssemblyMutationInfo
-}
-
-/** A mate kind's display label, used by the catalog notes and the summary. */
-export function mateKindLabel(kind: MateKind): string {
-  return MATE_KIND_LABELS[kind] ?? kind
 }

@@ -16,14 +16,10 @@ import { setSketchSolver, resetSketchSolver } from '@/kernel/features/sketch'
 import { generateSequence, runFuzzSequence } from './fuzzHarness'
 import { createRealSolveScheduler } from './realSolveScheduler'
 import { reportFailureDocs } from './fuzzFailureDocs'
+import { envInt } from '@/testing/__tests__/envInt'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
-
-function envInt(name: string, fallback: number): number {
-  const raw = Number.parseInt(process.env[name] ?? '', 10)
-  return Number.isFinite(raw) && raw > 0 ? raw : fallback
-}
 
 const FUZZ_SEEDS = envInt('FUZZ_SEEDS', 4)
 const FUZZ_STEPS = envInt('FUZZ_STEPS', 6)

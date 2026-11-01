@@ -15,6 +15,7 @@
 
 import { stableJson } from '@/kernel/builderHash'
 import type { IdSource } from '@/utils/yamlMutations/helpers'
+import { makePrng } from '@/utils/core/prng'
 
 export const DRIVE_ID_SEED = 0x5eed_0001
 
@@ -26,17 +27,6 @@ export interface SeededIdSource extends IdSource {
   readonly seed: number
   index(): number
   seek(index: number): void
-}
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
 }
 
 /** A fresh seed for a journal generation, drawn once from crypto so different
@@ -86,7 +76,7 @@ export function stepSeedFor(docHash: string, step: unknown): number {
 
 /** A seeded id source. A fresh call restarts the sequence at index 0. */
 export function seededIdSource(seed: number = DRIVE_ID_SEED): SeededIdSource {
-  let next = mulberry32(seed)
+  let next = makePrng(seed)
   let steps = 0
   const mint = (bytes: number): string => {
     const arr = new Uint8Array(bytes)
@@ -104,7 +94,7 @@ export function seededIdSource(seed: number = DRIVE_ID_SEED): SeededIdSource {
       // A backward seek can only come from a replayed suffix whose recording
       // restarted; replay the generator from the seed to that position.
       if (to < steps) {
-        next = mulberry32(seed)
+        next = makePrng(seed)
         steps = 0
       }
       while (steps < to) {

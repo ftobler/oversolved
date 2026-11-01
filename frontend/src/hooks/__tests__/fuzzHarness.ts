@@ -16,6 +16,7 @@ import type { DirtyFacts } from '@/session/dirty'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { MUTATION_EXAMPLES } from './mutationExamples'
 import { makeDoc } from '@/utils/core/testFixture'
+import { makePrng } from '@/utils/core/prng'
 
 export type FuzzStep =
   | { kind: 'mutation'; type: Mutation['type'] }
@@ -26,20 +27,6 @@ export type FuzzStep =
 // order, so reordering the registry re-rolls every seed and a pinned regression
 // seed stops replaying its sequence: treat a reorder as a fuzz-data change.
 export const MUTATION_TYPES = Object.keys(MUTATION_EXAMPLES) as Mutation['type'][]
-
-// mulberry32: 32 bits of state, one multiply-xor round per draw, home-rolled so
-// the ratchet adds no dependency and one seed means one sequence on every
-// machine and Node version.
-export function makePrng(seed: number): () => number {
-  let state = seed >>> 0
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0
-    let t = state
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
 
 // Roughly 30% of the steps are history moves: one draw picks the step kind,
 // and a mutation step spends a second draw on the type. The generator is a

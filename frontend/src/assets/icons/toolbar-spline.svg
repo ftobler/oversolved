@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-<path d="M 3 19 C 3 7, 21 17, 21 5" fill="none" stroke="rgb(0%, 0%, 0%)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10"/>
-<circle cx="3" cy="19" r="1.8" fill="rgb(0%, 0%, 0%)"/>
-<circle cx="21" cy="5" r="1.8" fill="rgb(0%, 0%, 0%)"/>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">
+<path fill="none" stroke-width="0.0833333" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.125 0.791667 C 0.125 0.291667 0.875 0.708333 0.875 0.208333 " transform="matrix(24, 0, 0, 24, 0, 0)"/>
+<path fill-rule="nonzero" fill="rgb(0%, 0%, 0%)" fill-opacity="1" d="M 4.800781 19 C 4.800781 21.398438 1.199219 21.398438 1.199219 19 C 1.199219 16.601562 4.800781 16.601562 4.800781 19 "/>
+<path fill-rule="nonzero" fill="rgb(0%, 0%, 0%)" fill-opacity="1" d="M 22.800781 5 C 22.800781 7.398438 19.199219 7.398438 19.199219 5 C 19.199219 2.601562 22.800781 2.601562 22.800781 5 "/>
 </svg>

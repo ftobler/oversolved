@@ -2,7 +2,7 @@ import math
 
 from icon_cairo import icon, px, stroke
 
-from .helpers import _arrowhead, _draw_rect_outline, _pencil, draw_dotted_line
+from .helpers import _arrowhead, _draw_rect_outline, _pencil, _question_mark, draw_dotted_line
 
 
 # Toolbar icons
@@ -100,17 +100,7 @@ def toolbar_help(ctx):
     ctx.arc(cx, cy, r, 0, 2 * math.pi)
     stroke(ctx, 1.5)
 
-    # Question mark
-    # Dot at bottom
-    ctx.arc(cx, cy + r * 0.4, px(2), 0, 2 * math.pi)
-    ctx.fill()
-
-    # Curve for top of question mark
-    ctx.move_to(cx - r * 0.2, cy - r * 0.15)
-    ctx.line_to(cx - r * 0.2, cy - r * 0.35)
-    ctx.arc(cx, cy - r * 0.35, r * 0.2, math.pi, 0)
-    ctx.line_to(cx + r * 0.2, cy - r * 0.05)
-    stroke(ctx, 1.5)
+    _question_mark(ctx, cx, cy, r)
 
 
 @icon("frontend/src/assets/icons/feature-extrude.svg")
@@ -220,4 +210,59 @@ def toolbar_fit_spline(ctx):
     stroke(ctx, 2)
     for x, y in ((0.12, 0.78), (0.5, 0.5), (0.88, 0.22)):
         ctx.arc(px(x * 24), px(y * 24), px(3.6), 0, 2 * math.pi)
+        ctx.fill()
+
+
+@icon("frontend/src/assets/icons/toolbar-ellipse.svg")
+def toolbar_ellipse(ctx):
+    # Ellipse drawn point by point: a scaled arc would distort the stroke.
+    cx, cy = 0.5, 0.5
+    rx, ry = 0.4, 0.25
+    steps = 72
+    for i in range(steps + 1):
+        t = 2 * math.pi * i / steps
+        x, y = cx + rx * math.cos(t), cy + ry * math.sin(t)
+        if i == 0:
+            ctx.move_to(x, y)
+        else:
+            ctx.line_to(x, y)
+    ctx.close_path()
+    stroke(ctx, 2)
+
+
+@icon("frontend/src/assets/icons/toolbar-ngon.svg")
+def toolbar_ngon(ctx):
+    # Regular hexagon, flat top and bottom.
+    cx, cy, r = 0.5, 0.5, 0.333333
+    for i in range(6):
+        t = math.pi / 6 + i * math.pi / 3
+        x, y = cx + r * math.cos(t), cy + r * math.sin(t)
+        if i == 0:
+            ctx.move_to(x, y)
+        else:
+            ctx.line_to(x, y)
+    ctx.close_path()
+    stroke(ctx, 2)
+
+
+@icon("frontend/src/assets/icons/toolbar-offset.svg")
+def toolbar_offset(ctx):
+    # The source outline, and the dashed offset it will follow.
+    ctx.rectangle(0.166667, 0.166667, 0.666666, 0.666666)
+    stroke(ctx, 2)
+
+    ctx.set_dash([px(2), px(1.5)])
+    ctx.rectangle(0.333333, 0.333333, 0.333334, 0.333334)
+    stroke(ctx, 1.5)
+    ctx.set_dash([])
+
+
+@icon("frontend/src/assets/icons/toolbar-spline.svg")
+def toolbar_spline(ctx):
+    # A cubic spline between its two control points.
+    ctx.move_to(0.125, 0.791667)
+    ctx.curve_to(0.125, 0.291667, 0.875, 0.708333, 0.875, 0.208333)
+    stroke(ctx, 2)
+    for x, y in ((0.125, 0.791667), (0.875, 0.208333)):
+        ctx.arc(x, y, px(1.8), 0, 2 * math.pi)
         ctx.fill()

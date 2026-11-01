@@ -83,10 +83,6 @@ interface BaselineEntry {
   input_sketches?: unknown[]
   result: Record<string, unknown>
   bodies: Record<string, BaselineBody>
-  // Best-effort entry: warn on divergence, never hard-fail. The real-doc
-  // anchors that used this moved to `frontend/regressions/`; REGRESSION_SOFT=1
-  // still downgrades the whole replay.
-  soft?: boolean
 }
 
 interface BaselineBody {
@@ -476,17 +472,15 @@ describe.skipIf(!provisioned)('full-doc regression (TS kernel vs frozen baseline
       ]
 
       if (allIssues.length > 0) {
-        // Hard-fail by default: this is the enforced regression gate. A per-entry
-        // `soft` flag or REGRESSION_SOFT=1 downgrades to a warn-only inventory --
-        // a best-effort signal that never blocks the gate.
+        // Hard-fail by default: this is the enforced regression gate.
+        // REGRESSION_SOFT=1 downgrades to a warn-only inventory, a best-effort
+        // signal that never blocks the gate.
         const msg = `${allIssues.length} issue(s): ${allIssues.join('; ')}`
-        const soft = import.meta.env.REGRESSION_SOFT === '1' || entry.soft === true
-        if (soft) {
-          const tag = entry.soft ? 'REAL-SOFT' : 'SOFT'
+        if (import.meta.env.REGRESSION_SOFT === '1') {
           // Warn-only inventory: the console.warn below IS the artifact and the
           // issues are already in `msg`. No assertion here on purpose, so a soft
-          // anchor never blocks the gate.
-          console.warn(`[regression] ${entry.label}: ${tag} ${msg}`)
+          // run never blocks the gate.
+          console.warn(`[regression] ${entry.label}: SOFT ${msg}`)
         } else {
           expect(allIssues.length, msg).toBe(0)
         }

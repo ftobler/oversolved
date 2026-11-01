@@ -79,8 +79,6 @@ export const BUILTIN_PLANE_RESULTS: Record<string, Record<string, unknown>> = Ob
 export const PLANE_TYPES = new Set(["plane", "face", "flatface"])
 export const POINT_TYPES = new Set(["point", "vertex"])
 
-export const FRONT_PLANE = BUILTIN_PLANES["builtin_plane_front"]
-
 const BARE_ID_MAP: Record<string, string> = {
   Top: "builtin_plane_top",
   Front: "builtin_plane_front",

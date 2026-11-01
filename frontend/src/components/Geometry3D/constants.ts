@@ -198,7 +198,6 @@ export { CLICK_THRESHOLD_PX } from '@/utils/pointerAbstraction'
 
 // Visualization
 export const ARC_SEGMENTS = 64
-export const VERTEX_RADIUS = 0.04
 
 // Tiny z-offset used to lift dimension labels, constraint icons, and entity
 // markers above the sketch plane (z=0) so they render on top without z-fighting.
