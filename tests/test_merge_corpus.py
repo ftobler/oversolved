@@ -126,3 +126,86 @@ def test_crash_mid_write_leaves_previous_goldens_intact(tmp_path, monkeypatch):
     # regen leaves nothing half-written behind.
     assert json.loads(baseline_path.read_text()) == json.loads(original_before)
     assert json.loads(manifest_path.read_text()) == json.loads(manifest_before)
+
+
+def test_failure_on_the_second_write_leaves_both_goldens_old(tmp_path, monkeypatch):
+    """The baseline is not replaced until the manifest's temp file exists too.
+
+    Replacing each file as it is produced would leave a new baseline beside
+    the old manifest when the second write failed; the pair is only swapped
+    once both payloads are on disk.
+    """
+    payload_path, baseline_path, manifest_path = make_fixture(tmp_path)
+    original_before = baseline_path.read_text()
+    manifest_before = manifest_path.read_text()
+
+    real_write_text = pathlib.Path.write_text
+
+    def failing_write_text(self, data, *args, **kwargs):
+        # Only the manifest temp file fails, so the baseline temp file is on
+        # disk when the error is raised.
+        if self.name == "manifest.json.tmp":
+            raise OSError(28, "No space left on device")
+        return real_write_text(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "write_text", failing_write_text)
+
+    try:
+        mergeCorpus.main([str(payload_path), str(baseline_path), str(manifest_path)])
+    except OSError:
+        pass
+    else:
+        raise AssertionError("expected the simulated disk-full failure to raise")
+
+    monkeypatch.undo()
+    assert json.loads(baseline_path.read_text()) == json.loads(original_before)
+    assert json.loads(manifest_path.read_text()) == json.loads(manifest_before)
+    # The successful first temp write must not be stranded.
+    assert [p.name for p in tmp_path.iterdir() if p.name.endswith(".tmp")] == []
+
+
+def test_owned_case_missing_from_the_payload_is_pruned(tmp_path):
+    """A case whose kind the generator owns and that it stopped emitting is
+    removed from both files instead of being frozen forever."""
+    payload_path, baseline_path, manifest_path = make_fixture(tmp_path)
+    manifest = read_json(manifest_path)
+    manifest["cases"]["ex_removed"] = {"feature_kind": "extrude", "query_tier": "base", "ok": True}
+    manifest["coverage"]["extrude/base"] = ["ex_removed"]
+    manifest["summary"] = {"total": 2, "ok": 2, "by_tier": {"base": 2}}
+    write_json(manifest_path, manifest)
+    baseline = read_json(baseline_path)
+    baseline.append({"label": "ex_removed", "ok": True, "error": None})
+    write_json(baseline_path, baseline)
+
+    mergeCorpus.main([str(payload_path), str(baseline_path), str(manifest_path)])
+
+    merged = read_json(baseline_path)
+    assert "ex_removed" not in [entry["label"] for entry in merged]
+    merged_manifest = read_json(manifest_path)
+    assert "ex_removed" not in merged_manifest["cases"]
+    assert merged_manifest["coverage"]["extrude/base"] == ["ex1"]
+    assert merged_manifest["summary"]["total"] == 2
+
+
+def test_real_doc_case_is_dropped_not_carried(tmp_path):
+    """The real_doc tier moved to the folder corpus, so a stale baseline entry
+    and manifest case of that tier are retired even though the kind is not
+    owned by the generator."""
+    payload_path, baseline_path, manifest_path = make_fixture(tmp_path)
+    manifest = read_json(manifest_path)
+    manifest["cases"]["real_doc_old"] = {"feature_kind": "box", "query_tier": "real_doc", "ok": True}
+    manifest["coverage"]["box/real_doc"] = ["real_doc_old"]
+    manifest["summary"] = {"total": 2, "ok": 2, "by_tier": {"base": 1, "real_doc": 1}}
+    write_json(manifest_path, manifest)
+    baseline = read_json(baseline_path)
+    baseline.append({"label": "real_doc_old", "ok": True, "error": None})
+    write_json(baseline_path, baseline)
+
+    mergeCorpus.main([str(payload_path), str(baseline_path), str(manifest_path)])
+
+    merged = read_json(baseline_path)
+    assert "real_doc_old" not in [entry["label"] for entry in merged]
+    merged_manifest = read_json(manifest_path)
+    assert "real_doc_old" not in merged_manifest["cases"]
+    assert "box/real_doc" not in merged_manifest["coverage"]
+    assert merged_manifest["summary"]["by_tier"] == {"base": 2}

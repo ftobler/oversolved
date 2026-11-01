@@ -7,10 +7,13 @@
 //
 // The baseline (regression-baseline.json) is a golden snapshot of the kernel's
 // own earlier output, regenerated with `npm run regen:corpus`
-// (scripts/regenCorpus.ts + mergeCorpus.py). A failure means a whole document
-// now builds differently; if that change is intended, regenerate and review
-// the JSON diff. The corpus was first frozen from the deleted Python kernel,
-// which is where the "parity" name of the old dedicated gate came from.
+// (scripts/regenCorpus.ts + mergeCorpus.py). The generator re-solves all 55
+// specs, not a slice: every entry carries its own spec, and the projection and
+// array cases are additionally rebuilt from their picked queries so the picker
+// path is exercised too. A failure means a whole document now builds
+// differently; if that change is intended, regenerate and review the JSON
+// diff. The corpus was first frozen from the deleted Python kernel, which is
+// where the "parity" name of the old dedicated gate came from.
 //
 // Part of the default suite. Skips when OCC.js or the Rust WASM is absent,
 // like every *Real suite; under CI the provisioning guard turns that skip into

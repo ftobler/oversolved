@@ -82,8 +82,9 @@ downgrades every case to a warning.
 
 ## Session fuzz
 
-`frontend/src/hooks/__tests__/fuzz.test.ts` (harness `fuzzHarness.ts`,
-minimiser `fuzzMinimizer.ts`) generates seeded sequences over the 97-type
+`frontend/src/hooks/__tests__/fuzz.test.ts` (fake scheduler, harness
+`fuzzHarness.ts`, minimiser `fuzzMinimizer.ts`) and its real-kernel half
+`fuzzReal.test.ts` generate seeded sequences over the 97-type
 mutation example registry plus random undo/redo, and drives them through a
 fresh `DocSession`. After every step it checks that the document is well formed
 and JSON-serializable, the session is idle, no solve crashed and history stays

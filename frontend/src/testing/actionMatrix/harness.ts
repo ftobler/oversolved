@@ -24,43 +24,19 @@ import {
   type ShowMessagePayload,
 } from '@/pages/commandEntries'
 import { useEditorState } from '@/hooks/useEditorState'
-import { setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { clearSketchCallbacks, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { sketchOwnedDeleteTargets } from '@/stores/editorState'
 import { randomId } from '@/utils/yamlMutations/helpers'
 import { initializeTools } from '@/tools'
 import type { MatrixTarget } from './corpus'
 
-// The same store reset stores/__tests__/helpers/sketchEditorStoreTestSetup
-// performs, inlined because that helper imports vitest's beforeEach at module
-// top and the regeneration script runs through vite-node, which cannot load a
-// module touching vitest. Keep the two field lists in step.
+// The canonical wipes, not a hand-listed copy: the helper in
+// stores/__tests__/helpers imports vitest at module top (so vite-node cannot
+// load it), and hand-listing fields is what let the two lists drift.
 function resetMatrixStores(): void {
-  useEditorState.setState({
-    normalSelection: new Set(),
-    selectedPicks: new Map(),
-    chipOwnedSelection: new Set(),
-    selectionDomain: 'sketch_2d',
-    hoveredSelectionId: null,
-    hoveredPickKey: null,
-    isPointerDown: false,
-    drag: null,
-    activeTool: null,
-    activeFeatureId: null,
-    dimensionPicks: [],
-    pendingBrepProjectionIds: [],
-    activePickField: null,
-    hoveredVertexId: null,
-    hoveredVertexPosition: null,
-    hoveredSnapKind: null,
-    hoveredConstraintEntityIds: new Set(),
-    modeStack: [],
-    entityKindMap: {},
-  })
-  useSketchUiStore.setState({ pendingDialog: null })
-  setSketchCallback('onMutation', null)
-  setSketchCallback('onMutationBatch', null)
-  setSketchCallback('beginBrepProjection', null)
-  setSketchCallback('cancelBrepProjection', null)
+  useEditorState.getState().resetTransientState()
+  useSketchUiStore.getState().resetTransientState()
+  clearSketchCallbacks()
 }
 
 // The solver the session schedules into: the fake one from the session suites,
@@ -239,14 +215,8 @@ export function createMatrixHarness(spec: PartDoc, solver: MatrixSolver): Matrix
       return result
     },
     dispose() {
-      setSketchCallback('onMutation', null)
-      setSketchCallback('onMutationBatch', null)
-      setSketchCallback('onRebuild', null)
-      setSketchCallback('onExitSketch', null)
-      setSketchCallback('getSketch', null)
-      setSketchCallback('beginBrepProjection', null)
-      setSketchCallback('cancelBrepProjection', null)
-      useSketchUiStore.setState({ pendingDialog: null })
+      clearSketchCallbacks()
+      useSketchUiStore.getState().resetTransientState()
     },
   }
 }

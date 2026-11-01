@@ -292,6 +292,10 @@ export const editorState = createStore<EditorState>((set, get) => ({
       dimensionCursorWorld: null,
       modeStack: [],
       activePickField: null,
+      // Derived from the open document, so it belongs to the wipe for the same
+      // reason the selection does: a remount or a fresh harness must not read
+      // the previous document's entity kinds.
+      entityKindMap: {},
     })
   },
 

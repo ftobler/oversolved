@@ -66,13 +66,13 @@ One directory per case: `frontend/oracle/<NN-name>/`.
 | 36-shell-cylinder-open-top | 1 | 333.008821 | 697.433829 | faces 5, edges 6 | - | ok |
 | 37-sweep-helix-square | 1 | 251.327482 | 1007.88300 | faces 6, edges 12 | ok | ok |
 | 38-sweep-helix-left | 1 | 251.327482 | 1007.88300 | faces 6, edges 12 | - | ok |
+| 39-sweep-sections-frustum | 1 | 73.3038286 | 110.425810 | - | - | ok |
 | 40-hole-thread | 1 | 1121.46018 | 822.831853 | faces 8, edges 15 | - | ok |
 | 41-move-face-cylinder-wall | 1 | 1539.38040 | 747.699052 | faces 3, edges 3 | - | ok |
 | 42-move-face-bore | 1 | 15717.2567 | 4931.94689 | faces 7, edges 15 | - | ok |
 | 43-annulus | 1 | 2638.93783 | 5409.82255 | faces 4, edges 6 | - | ok |
 | 44-hole-counterbore | 1 | 3612.11513 | 2070.79645 | - | ok | ok |
 | 45-split-holed-block-above | 1 | 401.825230 | 408.904862 | faces 8 | ok | ok |
-| 45-sweep-sections-frustum | 1 | 73.3038286 | 110.425810 | - | - | ok |
 | 46-split-holed-block-both | 2 | 803.650459 | 817.809725 | faces 16 | - | ok |
 
 ## Cases
@@ -783,6 +783,21 @@ STEP round trip:
   - centroid [0.00000384546401, 0.00000000, 6.00000000] -> [0.00000384546768, 1.27749431e-12, 6.00000000] (max dev 3.67e-12)
   - bbox [-10.4999888, -10.4999995, -0.500000100, 10.5000001, 10.4999995, 12.5000001] -> [-10.4999888, -10.4999995, -0.500000000, 10.5000000, 10.4999995, 12.5000000] (max dev 1.00e-7)
   - counts faces 6, edges 12 -> faces 6, edges 12
+### 39-sweep-sections-frustum
+
+`Two sections are interpolated linearly along the spine: cone frustum pi*h/3*(r1^2+r1*r2+r2^2), h = 10, r1 = 1, r2 = 2; area is the lateral cone pi*(r1+r2)*sqrt(h^2+(r2-r1)^2) plus both caps; centroid h*(r1^2+2*r1*r2+3*r2^2)/(4*(r1^2+r1*r2+r2^2)) from the small end`
+
+Live build (expected -> measured):
+  - volume 73.3038286 -> 73.3038286 (rel dev -1.94e-16)
+  - area 110.425810 -> 110.425810 (rel dev 0)
+  - centroid [0.00000000, 0.00000000, 6.07142857] -> [-4.72539553e-16, 4.06938590e-17, 6.07142857] (max dev 4.73e-16)
+  - bbox [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] -> [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] (max dev 0)
+
+STEP round trip:
+  - volume 73.3038286 -> 73.3038286 (rel dev -8.53e-15)
+  - area 110.425810 -> 110.425810 (rel dev -6.20e-14)
+  - centroid [0.00000000, 0.00000000, 6.07142857] -> [1.82957622e-15, 5.03836024e-17, 6.07142857] (max dev 2.66e-15)
+  - bbox [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] -> [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] (max dev 0)
 ### 40-hole-thread
 
 `A cosmetic thread is metadata: the plate carries exactly the blind bore it would without one, so V = 1200 - pi r^2 h with r = 2.5, h = 4, 8 faces (the top face gains the bore's rim, the wall and the floor are the two new faces) and 15 edges; the solve reports M6x1 (nominal 6, pitch 1) with a display helix on the bore`
@@ -913,21 +928,6 @@ Edit STEP round trip:
   - centroid [5.00000000, 8.19526223, 5.00000000] -> [5.00000000, 8.19526223, 5.00000000] (max dev 5.15e-14)
   - bbox [0.00000000, 6.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] -> [0.00000000, 6.00000000, 0.00000000, 10.0000000, 10.0000000, 10.0000000] (max dev 0)
   - counts faces 8, edges 18 -> faces 8, edges 18
-### 45-sweep-sections-frustum
-
-`Two sections are interpolated linearly along the spine: cone frustum pi*h/3*(r1^2+r1*r2+r2^2), h = 10, r1 = 1, r2 = 2; area is the lateral cone pi*(r1+r2)*sqrt(h^2+(r2-r1)^2) plus both caps; centroid h*(r1^2+2*r1*r2+3*r2^2)/(4*(r1^2+r1*r2+r2^2)) from the small end`
-
-Live build (expected -> measured):
-  - volume 73.3038286 -> 73.3038286 (rel dev -1.94e-16)
-  - area 110.425810 -> 110.425810 (rel dev 0)
-  - centroid [0.00000000, 0.00000000, 6.07142857] -> [-4.72539553e-16, 4.06938590e-17, 6.07142857] (max dev 4.73e-16)
-  - bbox [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] -> [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] (max dev 0)
-
-STEP round trip:
-  - volume 73.3038286 -> 73.3038286 (rel dev -8.53e-15)
-  - area 110.425810 -> 110.425810 (rel dev -6.20e-14)
-  - centroid [0.00000000, 0.00000000, 6.07142857] -> [1.82957622e-15, 5.03836024e-17, 6.07142857] (max dev 2.66e-15)
-  - bbox [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] -> [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] (max dev 0)
 ### 46-split-holed-block-both
 
 `holed block 10^3, bore d5 along Z, kept both: V = 1000 - pi*r^2*L, A = (600 - 2 pi r^2 + 2 pi r L) + 2*50 (two caps of 50)`

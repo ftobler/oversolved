@@ -20,7 +20,14 @@ import { createRealSolveScheduler } from '@/hooks/__tests__/realSolveScheduler'
 import baselineFile from './baseline.json'
 import { compareMatrix, toBaselineRows, type MatrixBaselineFile } from './baseline'
 import { corpusDocs, REAL_SMOKE_DOC_LABELS, SMOKE_MAX_TARGETS, FULL_MAX_TARGETS, type CorpusDoc } from './corpus'
-import { expectedBaselineRows, fakeMatrixSolver, runMatrix, type MatrixSolver, type MatrixSweep } from './runner'
+import {
+  checkSweepCoverage,
+  expectedBaselineRows,
+  fakeMatrixSolver,
+  runMatrix,
+  type MatrixSolver,
+  type MatrixSweep,
+} from './runner'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -83,6 +90,16 @@ describe.runIf(full)('the action-matrix full sweep', () => {
   })
 
   afterAll(() => setSolveLocalsForTest(null))
+
+  // The row comparison below only sees what the live sweep enumerates, so a
+  // document or target that vanished from the corpus would leave both sides of
+  // the diff smaller and stay green. This is the structural half of the
+  // ratchet: the baseline's doc set, (doc, target) set and header must describe
+  // exactly the sweep that ran.
+  it('the baseline covers the live full sweep structurally', () => {
+    const sweep: MatrixSweep = { docs: corpusDocs(), maxTargetsPerDoc: FULL_MAX_TARGETS }
+    expect(checkSweepCoverage(sweep, baselineRows, (baselineFile as MatrixBaselineFile).sweep)).toEqual([])
+  })
 
   it.each(corpusDocs().map(doc => [doc.label, doc] as const))(
     'doc %s',

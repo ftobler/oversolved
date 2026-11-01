@@ -9,7 +9,7 @@ import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { wouldOverconstrain } from '@/kernel/features/constraintProbe'
 import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
-import { useSketchEditorStore, useSketchUiStore, setSketchCallback, sketchOwnedDeleteTargets, type PendingConstraint } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, type PendingConstraint } from '@/stores/sketchEditorStore'
 import { useEditorState, editorState } from '@/hooks/useEditorState'
 import { syncRollbackFromDoc } from '@/stores/editorState'
 import { usePartDoc } from '@/hooks/usePartDoc'
@@ -878,15 +878,7 @@ export default function Part() {
       return solveResults?.[featureId]?.solved ?? null
     })
     return () => {
-      setSketchCallback('onMutation', null)
-      setSketchCallback('onMutationBatch', null)
-      setSketchCallback('beginBrepProjection', null)
-      setSketchCallback('cancelBrepProjection', null)
-      setSketchCallback('onRebuild', null)
-      setSketchCallback('onExitSketch', null)
-      setSketchCallback('checkRedundantAdd', null)
-      setSketchCallback('showMessage', null)
-      setSketchCallback('getSketch', null)
+      clearSketchCallbacks()
     }
   }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, checkRedundantAdd, showMessage, solveResults])
 

@@ -17,8 +17,10 @@ import { compareMatrix, toBaselineRows, type MatrixBaselineFile, type MatrixRow 
 import { corpusDocs, SMOKE_DOC_LABELS, SMOKE_MAX_TARGETS, type CorpusDoc } from './corpus'
 import {
   classifyEntry,
+  checkSweepCoverage,
   expectedBaselineRows,
   fakeMatrixSolver,
+  liveSweepInfo,
   runMatrix,
   type MatrixSweep,
 } from './runner'
@@ -73,6 +75,55 @@ describe('the action-matrix comparator', () => {
 
   it('subset mode ignores baseline rows outside the replayed slice', () => {
     expect(compareMatrix(rows, rows.slice(0, 1), { subset: true })).toEqual([])
+  })
+})
+
+describe('the action-matrix sweep coverage ratchet', () => {
+  // One empty document sweeps exactly one target ('<none>') at a cap of one,
+  // so the fixture is small enough to name every deviation precisely.
+  const doc: CorpusDoc = { label: 'd', spec: { version: 1, kind: 'part', features: [] } }
+  const sweep: MatrixSweep = { docs: [doc], maxTargetsPerDoc: 1 }
+  const info = liveSweepInfo(sweep)
+  const rows: MatrixRow[] = [
+    { doc: 'd', target: '<none>', command: 'undo', status: 'refused', error: 'nothing to undo' },
+  ]
+
+  it('passes when the baseline covers exactly the live sweep', () => {
+    expect(checkSweepCoverage(sweep, rows, info)).toEqual([])
+  })
+
+  it('names a baseline row whose document the sweep no longer enumerates', () => {
+    const deviations = checkSweepCoverage(sweep, [], info)
+    expect(deviations).toContain("doc 'd': swept but absent from the baseline (regenerate and review)")
+  })
+
+  it('names a document the baseline still holds after it left the corpus', () => {
+    const extra: MatrixRow = { ...rows[0], doc: 'gone' }
+    const deviations = checkSweepCoverage(sweep, [rows[0], extra], info)
+    expect(deviations).toContain("doc 'gone': in the baseline but no longer swept (a vanished document)")
+  })
+
+  it('names a target the enumerator stopped yielding', () => {
+    const extra: MatrixRow = { ...rows[0], target: '@old_feature' }
+    const deviations = checkSweepCoverage(sweep, [rows[0], extra], info)
+    expect(deviations).toContain("target 'd / @old_feature': in the baseline but no longer enumerated")
+  })
+
+  it('flags a swept target the baseline never recorded', () => {
+    const renamed: MatrixRow = { ...rows[0], target: '@new_feature' }
+    const deviations = checkSweepCoverage(sweep, [renamed], info)
+    expect(deviations.some(d => d.includes("target 'd / <none>': swept but absent from the baseline"))).toBe(true)
+    expect(deviations.some(d => d.includes("target 'd / @new_feature': in the baseline"))).toBe(true)
+  })
+
+  it('flags every drifted header field', () => {
+    expect(checkSweepCoverage(sweep, rows, { ...info, docs: 2 })).toContain('baseline sweep.docs is 2, the live sweep is 1')
+    expect(checkSweepCoverage(sweep, rows, { ...info, commands: 1 })).toContain(
+      `baseline sweep.commands is 1, the live sweep is ${info.commands}`,
+    )
+    expect(checkSweepCoverage(sweep, rows, { ...info, maxTargetsPerDoc: null })).toContain(
+      'baseline sweep.maxTargetsPerDoc is null, the live sweep is 1',
+    )
   })
 })
 

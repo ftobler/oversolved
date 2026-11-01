@@ -1,10 +1,15 @@
-// Regenerate the full-doc regression corpus: solves the projection corpus (plus the
-// two array specs whose format drifted from the now-deleted Python kernel)
-// through the live TS/WASM kernel and writes the frozen golden entries to
+// Regenerate the full-doc regression corpus: re-solves every baseline spec
+// through the live TS/WASM kernel, rebuilds the projection and array cases from
+// their spec builders, and writes the frozen golden entries to
 // scripts/corpus-regen.json. Run scripts/mergeCorpus.py afterwards to merge that
 // payload into regression-baseline.json + corpus-manifest.json in the original
 // Python json format (so unchanged entries round-trip byte-identically and a
 // regen diffs only the real data changes).
+//
+// Every one of the 55 baseline specs is re-solved: the 48 carried entries are
+// read back from regression-baseline.json (the projection cases are rebuilt
+// from their picked queries so the picker path is exercised too, not just the
+// stored spec). A regen therefore refreshes the whole corpus, not a slice.
 //
 // The Python kernel is gone, so this is NOT a cross-kernel diff: the baseline is
 // a self-consistent golden of the current TS kernel (a regression gate that
@@ -15,7 +20,7 @@
 //   npm run regen:corpus   # node solve step, then the python merge step
 // (OCC.js + the Rust solver must be provisioned: `just install-occ`, `just wasm`.)
 
-import { renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { solveWithTimeout, disposeWorker } from '../src/kernel/solveTimeout'
@@ -24,6 +29,8 @@ import type { EdgeData } from '../src/types/cad'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PAYLOAD_PATH = path.resolve(__dirname, 'corpus-regen.json')
+const BASELINE_PATH = path.resolve(__dirname, '../src/wasm-kernel/regression-baseline.json')
+const MANIFEST_PATH = path.resolve(__dirname, '../src/wasm-kernel/corpus-manifest.json')
 
 // ─── Spec builders ───
 
@@ -141,6 +148,10 @@ interface ProjectionCase {
   query_tier: string
   spec: Dict
   solved: SolvedDoc
+  // Carried from the frozen entry: these fields describe provenance, not
+  // geometry, and the merge replaces the whole entry by label.
+  input_sketches?: unknown[]
+  soft?: boolean
 }
 
 const projectionCases: ProjectionCase[] = []
@@ -331,12 +342,61 @@ async function buildArrayCases(): Promise<ProjectionCase[]> {
   return out
 }
 
-// ─── Payload write ───
+// ─── Carried baseline specs ───
 
-// Feature kinds this generator emits. The merge uses this set to tell the
-// regenerated cases apart from the Python-era corpus it never touches; keep it
-// in sync with the spec builders above.
-const GENERATED_KINDS = new Set(['project', 'array', 'circular_array'])
+// Everything the spec builders above do not rebuild is still regenerated: the
+// frozen entries carry their own spec, so the regen re-solves that through the
+// same kernel and freezes the fresh output. Without this the command named in
+// the test header and the README refreshed only 7 of 55 entries and every other
+// golden stayed whatever the Python-era run left behind.
+interface FrozenEntry {
+  label: string
+  ok: boolean
+  error: string | null
+  input_sketches?: unknown[]
+  soft?: boolean
+  spec: Dict
+  result: Record<string, unknown>
+  bodies: Record<string, unknown>
+}
+
+interface ManifestCase {
+  feature_kind: string
+  query_tier: string
+  ok: boolean
+}
+
+interface Manifest {
+  cases: Record<string, ManifestCase>
+}
+
+async function buildCarriedCases(generated: ReadonlySet<string>): Promise<ProjectionCase[]> {
+  const frozen = JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as FrozenEntry[]
+  const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as Manifest
+  const out: ProjectionCase[] = []
+  for (const entry of frozen) {
+    if (generated.has(entry.label)) continue
+    const meta = manifest.cases[entry.label]
+    if (!meta) throw new Error(`${entry.label}: in the baseline but absent from the manifest`)
+    if (!entry.ok) throw new Error(`${entry.label}: the frozen entry is not ok, regeneration cannot type it safely`)
+    const solved = await solveWithTimeout(entry.spec, { prevState: null })
+    if (!solved) throw new Error(`${entry.label}: solve returned null`)
+    out.push({
+      label: entry.label,
+      feature_kind: meta.feature_kind,
+      query_tier: meta.query_tier,
+      spec: entry.spec,
+      solved,
+      input_sketches: entry.input_sketches,
+      soft: entry.soft,
+    })
+  }
+  const missing = Object.keys(manifest.cases).filter(label => !generated.has(label) && !out.some(c => c.label === label))
+  if (missing.length > 0) throw new Error(`manifest cases with no baseline entry to regenerate: ${missing.join(', ')}`)
+  return out
+}
+
+// ─── Payload write ───
 
 interface BaselineEntry {
   label: string
@@ -346,14 +406,27 @@ interface BaselineEntry {
   spec: Record<string, unknown>
   result: Record<string, unknown>
   bodies: Record<string, unknown>
+  soft?: boolean
 }
 
-function entryFrom(c: { label: string; spec: Dict }, solved: { result: Dict; bodies: Record<string, unknown> }): BaselineEntry {
+function entryFrom(c: ProjectionCase, solved: { result: Dict; bodies: Record<string, unknown> }): BaselineEntry {
   const bodies: Record<string, unknown> = {}
   for (const [bid, rawBody] of Object.entries(solved.bodies)) {
     bodies[bid] = buildBaselineBody(bid, rawBody as Record<string, unknown>)
   }
-  return { label: c.label, ok: true, error: null, input_sketches: [], spec: c.spec, result: solved.result, bodies }
+  const entry: BaselineEntry = {
+    label: c.label,
+    ok: true,
+    error: null,
+    input_sketches: c.input_sketches ?? [],
+    spec: c.spec,
+    result: solved.result,
+    bodies,
+  }
+  // Only present where the frozen entry had it, so a plain corpus entry does
+  // not gain a field the merge would then freeze forever.
+  if (c.soft) entry.soft = true
+  return entry
 }
 
 async function main(): Promise<void> {
@@ -372,29 +445,36 @@ async function main(): Promise<void> {
   console.log('regen: building array cases...')
   const arrayCases = await buildArrayCases()
   console.log('regen: array cases built')
+  const generated = new Set([...projectionCases, ...arrayCases].map(c => c.label))
+  console.log(`regen: re-solving ${generated.size} generated entry(s) plus the carried baseline specs...`)
+  const carriedCases = await buildCarriedCases(generated)
+  const cases = [...projectionCases, ...arrayCases, ...carriedCases]
 
   // Each case already carries the solve that was validated while building it,
   // so the golden is that exact solve, not a fresh unvalidated one.
   const entries: BaselineEntry[] = []
-  for (const c of [...projectionCases, ...arrayCases]) {
+  for (const c of cases) {
     entries.push(entryFrom(c, c.solved))
   }
 
-  const freshCases = [...projectionCases, ...arrayCases].map((c) => ({
+  const freshCases = cases.map((c) => ({
     label: c.label,
     feature_kind: c.feature_kind,
     query_tier: c.query_tier,
     ok: true,
   }))
-  // owned_kinds tells the merge which manifest cases this generator owns, so a
-  // case removed from a spec is pruned instead of carried forward forever.
-  writeFileSync(`${PAYLOAD_PATH}.tmp`, JSON.stringify({ entries, cases: freshCases, owned_kinds: [...GENERATED_KINDS] }, null, 1) + '\n')
+  // The generator now owns every case it emits the solve for, which is the
+  // whole manifest: a case dropped from the corpus is pruned by the merge
+  // instead of being carried forward forever.
+  const ownedKinds = [...new Set(cases.map(c => c.feature_kind))].sort()
+  writeFileSync(`${PAYLOAD_PATH}.tmp`, JSON.stringify({ entries, cases: freshCases, owned_kinds: ownedKinds }, null, 1) + '\n')
   // Atomic rename: a half-written payload must never be mergeable.
   renameSync(`${PAYLOAD_PATH}.tmp`, PAYLOAD_PATH)
 
   console.log(`payload written: ${PAYLOAD_PATH} (${entries.length} entries)`)
-  console.log(`added: ${projectionCases.map((c) => c.label).join(', ')}`)
-  console.log(`regenerated: ${arrayCases.map((c) => c.label).join(', ')}`)
+  console.log(`rebuilt from specs: ${[...projectionCases, ...arrayCases].map((c) => c.label).join(', ')}`)
+  console.log(`re-solved carried specs: ${carriedCases.length}`)
+  console.log(`owned kinds: ${ownedKinds.join(', ')}`)
   console.log('then run: python3 scripts/mergeCorpus.py')
 
   // The solve child stays alive waiting for messages; kill it so this script

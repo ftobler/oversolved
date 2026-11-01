@@ -11,7 +11,7 @@ the single source of truth: it drives the --no-<rule> switches, the rule list
 in --help, and the enforcement loop in check_file().
 
 Usage:
-    python lint.py [dir ...] [--filter GLOB] [--language {ts,rust,python}] [--no-<rule>]
+    python lint.py [file|dir ...] [--filter GLOB] [--language {ts,rust,python}] [--no-<rule>]
 """
 
 from __future__ import annotations
@@ -72,7 +72,14 @@ _SKIP_DIRS = frozenset(
     }
 )
 
-EXTENSIONS = {"ts": (".ts", ".tsx"), "rust": (".rs",), "python": (".py",)}
+EXTENSIONS = {
+    # `.mjs` and `.js` are TypeScript's dialect for the comment rules: the
+    # frontend's root configs and loader hooks live outside src/scripts and
+    # carried no comment gate before.
+    "ts": (".ts", ".tsx", ".mjs", ".js"),
+    "rust": (".rs",),
+    "python": (".py",),
+}
 
 
 @dataclass
@@ -697,24 +704,29 @@ def collect_files(folders: list[pathlib.Path], language: str, filters: list[str]
     seen: set[str] = set()
     for folder in folders:
         if not folder.exists():
-            raise SystemExit(f"error: {folder}: no such directory")
-        if not folder.is_dir():
-            raise SystemExit(f"error: {folder}: not a directory")
-        for root, dirs, names in folder.walk():
-            dirs[:] = sorted(d for d in dirs if d not in _SKIP_DIRS)
-            for name in sorted(names):
-                path = pathlib.Path(root) / name
-                if path.suffix not in exts:
-                    continue
-                rel = path.as_posix()
-                if includes and not any(fnmatch.fnmatch(rel, pat) for pat in includes):
-                    continue
-                if any(fnmatch.fnmatch(rel, pat) for pat in excludes):
-                    continue
-                if rel in seen:
-                    continue  # overlapping folder args would otherwise double-report
-                seen.add(rel)
-                files.append(path)
+            raise SystemExit(f"error: {folder}: no such directory or file")
+        candidates: list[pathlib.Path] = []
+        if folder.is_dir():
+            for root, dirs, names in folder.walk():
+                dirs[:] = sorted(d for d in dirs if d not in _SKIP_DIRS)
+                candidates.extend(pathlib.Path(root) / name for name in sorted(names))
+        else:
+            # An explicit file is how the gates reach the frontend's root
+            # configs, which sit beside src/ and scripts/ rather than inside
+            # either.
+            candidates.append(folder)
+        for path in candidates:
+            if path.suffix not in exts:
+                continue
+            rel = path.as_posix()
+            if includes and not any(fnmatch.fnmatch(rel, pat) for pat in includes):
+                continue
+            if any(fnmatch.fnmatch(rel, pat) for pat in excludes):
+                continue
+            if rel in seen:
+                continue  # overlapping folder args would otherwise double-report
+            seen.add(rel)
+            files.append(path)
     return files
 
 
@@ -725,7 +737,7 @@ def main(argv: list[str] | None = None) -> int:
         description=f"Oversolved comment-style linter. Enforces the comment conventions from AGENTS.md.\n\nRules:\n{rule_lines}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("folders", nargs="+", help="folders to scan")
+    parser.add_argument("folders", nargs="+", help="files or folders to scan")
     parser.add_argument("--filter", action="append", default=[], metavar="GLOB", help="only check paths matching GLOB (repeatable; prefix with ! to exclude)")
     parser.add_argument("--language", choices=sorted(EXTENSIONS), default="ts", help="comment dialect to enforce (default: ts)")
     for name in RULES:

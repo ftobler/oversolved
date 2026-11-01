@@ -26,7 +26,10 @@ npm run regen:corpus    # regenerate the full-doc regression baseline
 ```
 
 The npm scripts expect this directory as their working directory; the just
-recipes set it themselves.
+recipes set it themselves. `regen:corpus` re-solves all 55 specs in
+`regression-baseline.json` through the live kernel (the projection and array
+cases are rebuilt from their picked queries as well); run it after a kernel
+change and review the golden diff.
 
 ## Dependency pinning
 

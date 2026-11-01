@@ -128,7 +128,7 @@ licenses:
 frontend-lint:
     mkdir -p ../tmp
     npm run lint 2>&1 | tee ../tmp/npm_lint.log
-    ../.venv/bin/python ../lint.py src scripts 2>&1 | tee ../tmp/lint_ts.log
+    ../.venv/bin/python ../lint.py src scripts eslint.config.js resolve-alias.loader.mjs vite.config.ts vitest.config.ts 2>&1 | tee ../tmp/lint_ts.log
 
 # Run the frontend unit tests (vitest, real kernel where provisioned).
 [working-directory: "frontend"]
@@ -175,7 +175,7 @@ fuzz:
 [working-directory: "frontend"]
 fuzz-session seeds="200" steps="40":
     mkdir -p ../tmp
-    FUZZ_REQUIRE_REAL=1 FUZZ_SEEDS={{seeds}} FUZZ_STEPS={{steps}} FUZZ_FAKE_SEEDS={{seeds}} FUZZ_FAKE_STEPS={{steps}} npx vitest run src/hooks/__tests__/fuzz.test.ts 2>&1 | tee ../tmp/fuzz_session.log
+    FUZZ_REQUIRE_REAL=1 FUZZ_SEEDS={{seeds}} FUZZ_STEPS={{steps}} FUZZ_FAKE_SEEDS={{seeds}} FUZZ_FAKE_STEPS={{steps}} npx vitest run src/hooks/__tests__/fuzz.test.ts src/hooks/__tests__/fuzzReal.test.ts 2>&1 | tee ../tmp/fuzz_session.log
 
 # The full action-matrix sweep: every part command on every target of every
 # corpus document (the regression baseline plus the doc-shaped fixtures),
@@ -205,13 +205,15 @@ action-matrix:
 # 8 GB share); raise it further on a wide, memory-rich box. The PR suite
 # runs a bounded 24-chain-seed range and its identity sweep derives a quarter of
 # this one. The default 200 is the plan's acceptance range; the main gate runs
-# 1500; 5000 is the plan's dedicated full scale.
+# 1500; 5000 is the plan's dedicated full scale. KERNEL_PROVISIONED and
+# FUZZ_REQUIRE_REAL are set here so a missing OCC.js or WASM build fails the
+# sweep instead of skipping it and reporting green.
 
 # Seeded feature chains and primitive boolean pairs against the real kernel.
 [working-directory: "frontend"]
 fuzz-geometry seeds="200" workers="2":
     mkdir -p ../tmp
-    VITEST_MAX_FORKS=1 ROBUSTNESS_FUZZ_WORKERS={{workers}} ROBUSTNESS_FUZZ_SEEDS={{seeds}} npx vitest run src/testing/robustnessFuzz 2>&1 | tee ../tmp/fuzz_geometry.log
+    KERNEL_PROVISIONED=1 FUZZ_REQUIRE_REAL=1 VITEST_MAX_FORKS=1 ROBUSTNESS_FUZZ_WORKERS={{workers}} ROBUSTNESS_FUZZ_SEEDS={{seeds}} npx vitest run src/testing/robustnessFuzz 2>&1 | tee ../tmp/fuzz_geometry.log
 
 # The long area-builder fuzz: seeds <from>..<to> through the motif generator and
 # the invariant oracle, judged against the per-seed catalogue in fuzz/tests.rs.
@@ -278,7 +280,7 @@ rust-fmt:
 # tests). Two crates, two binaries: the sketch/OCC worker and the anchor solver
 # worker each load only their own. See the workspace root Cargo.toml.
 
-# The sketch-solver nodejs target carries `--features fuzz`: sketchRepros.test.ts
+# The sketch-solver nodejs target carries `--features fuzz`: sketchReprosReal.test.ts
 # drives the fuzz-gated oracle export and must not skip in a provisioned tree.
 # The web target and the other three builds stay feature-free (the production
 # WASM binary never pays for the oracle).

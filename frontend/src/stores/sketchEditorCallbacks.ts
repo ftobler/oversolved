@@ -91,6 +91,28 @@ export function getSketchCallback<K extends keyof typeof sketchCallbacks>(key: K
   return sketchCallbacks[key]
 }
 
+// The editor-session ports, as one list. openDialog/closeDialog are store
+// plumbing registered by sketchEditorStore at module scope, not editor
+// session state, so a teardown must leave them live.
+const SESSION_CALLBACK_KEYS = [
+  'onMutation',
+  'onMutationBatch',
+  'onRebuild',
+  'onExitSketch',
+  'getSketch',
+  'beginBrepProjection',
+  'cancelBrepProjection',
+  'checkRedundantAdd',
+  'showMessage',
+] as const satisfies readonly (keyof typeof sketchCallbacks)[]
+
+// The canonical callback teardown: editor unmount and the test harnesses drop
+// every session port in one place rather than hand-listing slots, so a port
+// added here cannot be left pointing at a dead editor.
+export function clearSketchCallbacks(): void {
+  for (const key of SESSION_CALLBACK_KEYS) sketchCallbacks[key] = null
+}
+
 export function requireMutation(name: string): ((m: Mutation) => void) | null {
   const onMutation = sketchCallbacks.onMutation
   if (!onMutation) {

@@ -12,12 +12,12 @@ counts are recomputed from the cases map so they never drift.
 
 The payload's cases are the intended label set. A baseline entry or manifest
 case whose label is absent from the payload and whose kind the generator owns
-has vanished from a spec and is pruned, so a removed case is not frozen
-forever. Cases the generator does not own (the Python-era corpus it never
-regenerates) are carried forward untouched, so a partial regen cannot silently
-drop the rest of the corpus -- except the `real_doc` tier, which moved to the
-folder corpus (`frontend/regressions/`) and is never carried. summary.ok is
-counted from the per-case ok flags, never assumed to equal total.
+has vanished from the corpus and is pruned, so a removed case is not frozen
+forever. The generator now owns every kind in the corpus (regenCorpus re-solves
+all 55 baseline specs, not a slice), so a partial payload is an error at the
+merge, not a silent partial refresh. The `real_doc` tier is never carried: it
+moved to the folder corpus (`frontend/regressions/`). summary.ok is counted
+from the per-case ok flags, never assumed to equal total.
 
 Run from frontend/:  python3 scripts/mergeCorpus.py [payload baseline manifest]
 The optional positional paths point a dry run at copies without touching the
@@ -35,19 +35,28 @@ MANIFEST = ROOT.parent / "src" / "wasm-kernel" / "corpus-manifest.json"
 PAYLOAD = ROOT / "corpus-regen.json"
 
 
-def atomic_write(path: pathlib.Path, text: str) -> None:
-    # Write to a sibling temp file and atomically rename over the target, so a
-    # crash mid-write (Ctrl-C, OOM, disk full) leaves the previous golden
-    # intact instead of a truncated JSON that breaks the regression test. Same
-    # discipline regenCorpus.ts applies to its payload writes.
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text)
-    os.replace(tmp, path)
-
-
-def dump(obj, path: pathlib.Path) -> None:
-    # No trailing newline: the original file (also produced by json.dump) has none.
-    atomic_write(path, json.dumps(obj, indent=2, sort_keys=True))
+def write_pair(files: list[tuple[pathlib.Path, str]]) -> None:
+    # Both goldens are written to temp files first and only then renamed into
+    # place: a crash while producing the second payload (Ctrl-C, OOM, disk
+    # full) must leave BOTH previous files intact. Replacing as we go would
+    # leave a new baseline beside an old manifest, a pair that describes two
+    # different corpora.
+    written: list[tuple[pathlib.Path, pathlib.Path]] = []
+    try:
+        for path, text in files:
+            tmp = path.with_name(path.name + ".tmp")
+            written.append((tmp, path))
+            tmp.write_text(text)
+        for tmp, path in written:
+            os.replace(tmp, path)
+    except BaseException:
+        # A partial write must not strand a temp file next to the goldens.
+        for tmp, _ in written:
+            try:
+                tmp.unlink()
+            except FileNotFoundError:
+                pass
+        raise
 
 
 def case_record(case: dict) -> dict:
@@ -106,7 +115,6 @@ def main(argv: list[str] | None = None) -> None:
             merged.append(kept)
     for entry in by_label.values():
         merged.append(entry)
-    dump(merged, baseline_path)
 
     old_cases.clear()
     old_cases.update(intended)
@@ -135,8 +143,12 @@ def main(argv: list[str] | None = None) -> None:
     manifest["summary"]["ok"] = ok_count
     manifest["summary"]["by_tier"] = by_tier
     # The manifest preserves its original key order (summary, coverage, cases);
-    # sort_keys would reorder the top level and churn the whole file.
-    atomic_write(manifest_path, json.dumps(manifest, indent=2))
+    # sort_keys would reorder the top level and churn the whole file. No
+    # trailing newline: the original file (also produced by json.dump) has none.
+    write_pair([
+        (baseline_path, json.dumps(merged, indent=2, sort_keys=True)),
+        (manifest_path, json.dumps(manifest, indent=2)),
+    ])
 
     print(f"baseline: {len(merged)} entries")
     print(f"manifest: {total} cases, {ok_count} ok, by_tier={json.dumps(by_tier)}")

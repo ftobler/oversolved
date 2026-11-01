@@ -54,7 +54,7 @@ jobs:
         working-directory: frontend
 
       - name: Comment lint (lint.py)
-        run: python lint.py frontend/src frontend/scripts
+        run: python lint.py frontend/src frontend/scripts frontend/eslint.config.js frontend/resolve-alias.loader.mjs frontend/vite.config.ts frontend/vitest.config.ts
 
       - name: npm build
         run: npm run build
