@@ -41,6 +41,7 @@ import { readBodyNames, type ShapeNames } from '../occ/bodyNames'
 import { threadHelices, type ThreadDisplay, type ThreadSite } from './threadDisplay'
 import type { PlaneLike } from './shared/planes'
 import { swallowUnlessTrap } from '../errors'
+import { OCC_CONFUSION, TOL_LENGTH_SLACK, TOL_VOLUME_DEGENERATE } from '../solverConstants'
 
 type Dict = Record<string, unknown>
 
@@ -440,7 +441,7 @@ function probeSide(
 function probeHits(
   oc: OccModule, scope: DisposeScope, shape: OccShape, mouth: Vec3, dir: Vec3, radius: number, length: number,
 ): boolean {
-  if (!(length > 1e-9)) return false
+  if (!(length > TOL_LENGTH_SLACK)) return false
   const probe = makeCylinder(oc, scope, mouth, dir, radius, length)
   const hit = intersects(oc, shape, probe)
   scope.release(probe)
@@ -523,7 +524,10 @@ function intersects(oc: OccModule, shape: OccShape, tool: OccShape): boolean {
     if (!algo.IsDone()) return true
     const inter = algo.Shape()
     probe.track(inter)
-    return volumeOf(oc, probe, inter) >= 1e-10
+    // Budget relative to the tool's own volume: a real hit is a piece of the
+    // tool, and OCC integrates it with error that scales with the shape, so a
+    // 1000x copy of the same probe clears the same fraction of itself.
+    return volumeOf(oc, probe, inter) >= TOL_VOLUME_DEGENERATE * Math.abs(volumeOf(oc, probe, tool))
   } catch (e) {
     swallowUnlessTrap(e)
     return true
@@ -565,7 +569,7 @@ function defaultTargetBody(
       const [x, y, z] = site.center3d
       try {
         const probe = scope.track(new oc.gp_Pnt_3(x, y, z)) as OccXYZ
-        const classifier = scope.track(new oc.BRepClass3d_SolidClassifier_3(shape, probe, 1e-7))
+        const classifier = scope.track(new oc.BRepClass3d_SolidClassifier_3(shape, probe, OCC_CONFUSION))
         const verdict = classifier.State()
         if (sameEnum(verdict, state.TopAbs_IN)) score += 2
         else if (sameEnum(verdict, state.TopAbs_ON)) score += 1
@@ -696,7 +700,7 @@ export function solveHole(
     }
     const [x2d, y2d] = site.xy
     for (const earlier of siteDiscs) {
-      if (Math.hypot(earlier.xy[0] - x2d, earlier.xy[1] - y2d) < earlier.radius + site.radius - 1e-9) {
+      if (Math.hypot(earlier.xy[0] - x2d, earlier.xy[1] - y2d) < earlier.radius + site.radius - TOL_LENGTH_SLACK) {
         overlappingSites.push(`${earlier.id}, ${eid}`)
       }
     }

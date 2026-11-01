@@ -568,3 +568,70 @@ describe('validateSelector', () => {
       .toThrow(/"and".*e\.g\. \{"and":\[\{"type":"line"\}/)
   })
 })
+
+// The direction predicates share one angular rung (TOL_SELECT_DIRECTION) and the
+// extreme clause groups on the absolute measure floor. Both were asymmetric
+// before the ladder: parallel read 1 - 1e-6 against the dot (which admits sines
+// to ~1.4e-3, ~1400x looser than the perpendicular clause beside it), and extreme
+// read a measure budget whose relative term scales with the projected coordinate,
+// so the same part answered differently depending on where it sat.
+describe('selectByPredicate: the direction rung and the extreme floor', () => {
+  // One line edge tipped from +Z by `sine`, 10 mm long.
+  function tipped(sine: number): Record<string, BodyResult> {
+    const run = 10 * Math.sqrt(1 - sine * sine)
+    return {
+      body_ex1: bodyResult('body_ex1', [line([0, 0, 0], [10 * sine, 0, run])], [q('body_ex1', ['@u|e_tip'], 'straightedge')], [], [], []),
+    }
+  }
+
+  it('parallel refuses a tilt perpendicular already refused', () => {
+    // A sine of 1e-4 against Z is ~0.006 degrees, a 1 micron lean per millimetre
+    // of edge: a visibly different direction, and the one the dot form let through.
+    const bodies = tipped(1e-4)
+    expect(() => queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies)).toThrow(/matched 0/)
+    expect(queriesOf({ kind: 'edge', where: { not: { parallel: [0, 0, 1] } } }, bodies))
+      .toEqual([q('body_ex1', ['@u|e_tip'], 'straightedge')])
+  })
+
+  it('parallel accepts a tilt under the rung, the noise an exact solve leaves', () => {
+    const bodies = tipped(1e-7)
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies))
+      .toEqual([q('body_ex1', ['@u|e_tip'], 'straightedge')])
+  })
+
+  it('perpendicular holds the same rung on its own side', () => {
+    // The same angle seen from the right angle: an edge 10 mm long whose tip
+    // sits 1e-3 mm off the plane (cosine 1e-4 against Z) is refused, one 1e-6 mm
+    // off is accepted. Reading the rung as a sine, the refusal is the mirror of
+    // the parallel clause's.
+    const tippedFlat = (cosine: number): Record<string, BodyResult> => ({
+      body_ex1: bodyResult('body_ex1', [line([0, 0, 0], [10 * Math.sqrt(1 - cosine * cosine), 0, 10 * cosine])],
+        [q('body_ex1', ['@u|e_tip'], 'straightedge')], [], [], []),
+    })
+    expect(() => queriesOf({ kind: 'edge', where: { perpendicular: [0, 0, 1] } }, tippedFlat(1e-4)))
+      .toThrow(/perpendicular \[0, 0, 1\] matched 0/)
+    expect(queriesOf({ kind: 'edge', where: { perpendicular: [0, 0, 1] } }, tippedFlat(1e-7)))
+      .toEqual([q('body_ex1', ['@u|e_tip'], 'straightedge')])
+  })
+
+  // Three horizontal edges whose midpoints sit at z0, z0 + gap and z0 - 1.
+  function stepped(z0: number): Record<string, BodyResult> {
+    const gap = 5e-4  // half a micron: a machined step, far above f64 noise
+    const edges: EdgeData[] = [
+      line([0, 0, z0], [10, 0, z0]),
+      line([0, 1, z0 + gap], [10, 1, z0 + gap]),
+      line([0, 2, z0 - 1], [10, 2, z0 - 1]),
+    ]
+    return { body_ex1: bodyResult('body_ex1', edges, edgeQueriesFor('body_ex1', 3), [], [], []) }
+  }
+
+  it('extreme groups the same way wherever the part sits on the axis', () => {
+    const extremeMaxZ: Selector = { kind: 'edge', where: { extreme: { axis: [0, 0, 1], side: 'max' } } }
+    // The two copies of one part answer the same selector with the same one edge.
+    // With the relative term of a measure budget the far copy grouped both top
+    // edges: its projections are 1000 apart from zero, and rel * 1000 dwarfs the
+    // 5e-4 step the group is supposed to separate.
+    expect(queriesOf(extremeMaxZ, stepped(0))).toHaveLength(1)
+    expect(queriesOf(extremeMaxZ, stepped(1000))).toHaveLength(1)
+  })
+})

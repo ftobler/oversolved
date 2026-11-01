@@ -44,6 +44,7 @@ import type {
 } from './occTypes'
 import { canonicalFaces } from './bodyNames'
 import { faceCentroid, faceNormal } from './primitives'
+import { TOL_LENGTH_SLACK, TOL_SURFACE_IDENTITY, TOL_SURFACE_PARALLEL } from '../solverConstants'
 import { add, cross, dot, scale, sub, type Vec3 } from '@/utils/vec3'
 
 /** A guard refusal. The message reaches the user through the feature failure
@@ -91,26 +92,20 @@ export interface MovedSurface {
   ): void
 }
 
-/** Analytic surface identity: axis distance, radius, apex and centre compare.
- *  The same 1e-6 the shipped planar on-plane test uses. */
-const SURFACE_TOL = 1e-6
-/** Unit direction parallelism (|cross| of two unit vectors). */
-const DIR_TOL = 1e-9
-/** The shipped planar on-plane distance (`onPickedPlane` before the refactor). */
-const PLANE_TOL = 1e-6
+// Surface-identity tolerances live on the ladder in solverConstants. This
+// module used to carry private copies of them: three instances of the 1e-6
+// rung (analytic surface distance, the shipped planar on-plane distance
+// `onPickedPlane` before the refactor, and the parameter-space test) and its
+// angular companion at 1e-9. The parameter-space test stays tight on purpose:
+// a projected point's own residual (up to the mesh deflection, stretched by
+// tan(semi) on a cone's slant) is far below the piece's own size, and a point
+// near a wire classifies ON either way.
 
 /** The mesh deflection [[representativePoints]] triangulates a face with. A
  *  curved triangle's centroid sits off the surface by up to this much, which is
  *  why a curved region's point test goes through the surface's own parameter
  *  space rather than a 3D distance. */
 export const MOVE_FACE_MESH_TOL = 0.05
-
-/** The parameter-space tolerance of the curved region classifier. The point
- *  arrives already projected, so this only decides "on the wire" versus
- *  "inside" and can stay tight: the projection's own residual (up to the mesh
- *  deflection, stretched by tan(semi) on a cone's slant) is far below the
- *  piece's own size, and a point near a wire classifies ON either way. */
-const UV_TOL = 1e-6
 
 const norm = (v: Vec3): number => Math.hypot(v[0], v[1], v[2])
 
@@ -336,28 +331,28 @@ const wrapU = (u: number): number => ((u % (2 * Math.PI)) + 2 * Math.PI) % (2 * 
 
 /** Two unit directions are parallel or antiparallel. */
 function parallel(a: Vec3, b: Vec3): boolean {
-  return norm(cross(a, b)) <= DIR_TOL
+  return norm(cross(a, b)) <= TOL_SURFACE_PARALLEL
 }
 
 /** The two axis lines coincide (parallel directions and no perpendicular gap). */
 function sameAxisLine(dirA: Vec3, originA: Vec3, dirB: Vec3, originB: Vec3): boolean {
   if (!parallel(dirA, dirB)) return false
-  return norm(cross(sub(originB, originA), dirA)) <= SURFACE_TOL
+  return norm(cross(sub(originB, originA), dirA)) <= TOL_SURFACE_IDENTITY
 }
 
 function sameCylinder(a: OccAnalyticCylinder, b: OccAnalyticCylinder): boolean {
-  if (Math.abs(a.Radius() - b.Radius()) > SURFACE_TOL) return false
+  if (Math.abs(a.Radius() - b.Radius()) > TOL_SURFACE_IDENTITY) return false
   return sameAxisLine(takeAxisDir(a.Axis()), takeAx3(a.Position()).origin, takeAxisDir(b.Axis()), takeAx3(b.Position()).origin)
 }
 
 function sameSphere(a: OccAnalyticSphere, b: OccAnalyticSphere): boolean {
-  if (Math.abs(a.Radius() - b.Radius()) > SURFACE_TOL) return false
-  return norm(sub(takeAx3(a.Position()).origin, takeAx3(b.Position()).origin)) <= SURFACE_TOL
+  if (Math.abs(a.Radius() - b.Radius()) > TOL_SURFACE_IDENTITY) return false
+  return norm(sub(takeAx3(a.Position()).origin, takeAx3(b.Position()).origin)) <= TOL_SURFACE_IDENTITY
 }
 
 function sameTorus(a: OccAnalyticTorus, b: OccAnalyticTorus): boolean {
-  if (Math.abs(a.MajorRadius() - b.MajorRadius()) > SURFACE_TOL) return false
-  if (Math.abs(a.MinorRadius() - b.MinorRadius()) > SURFACE_TOL) return false
+  if (Math.abs(a.MajorRadius() - b.MajorRadius()) > TOL_SURFACE_IDENTITY) return false
+  if (Math.abs(a.MinorRadius() - b.MinorRadius()) > TOL_SURFACE_IDENTITY) return false
   return sameAxisLine(takeAxisDir(a.Axis()), takeAx3(a.Position()).origin, takeAxisDir(b.Axis()), takeAx3(b.Position()).origin)
 }
 
@@ -370,8 +365,8 @@ function coneApex(cone: OccAnalyticCone): Vec3 {
 }
 
 function sameCone(a: OccAnalyticCone, b: OccAnalyticCone): boolean {
-  if (Math.abs(a.SemiAngle() - b.SemiAngle()) > SURFACE_TOL) return false
-  if (norm(sub(coneApex(a), coneApex(b))) > SURFACE_TOL) return false
+  if (Math.abs(a.SemiAngle() - b.SemiAngle()) > TOL_SURFACE_IDENTITY) return false
+  if (norm(sub(coneApex(a), coneApex(b))) > TOL_SURFACE_IDENTITY) return false
   return sameAxisLine(takeAxisDir(a.Axis()), takeAx3(a.Position()).origin, takeAxisDir(b.Axis()), takeAx3(b.Position()).origin)
 }
 
@@ -397,7 +392,7 @@ export function sameAnalyticSurface(
     const na = faceNormal(oc, scope, a)
     const nb = faceNormal(oc, scope, b)
     if (!parallel(na, nb)) return false
-    return Math.abs(dot(sub(faceCentroid(oc, scope, b), faceCentroid(oc, scope, a)), na)) <= SURFACE_TOL
+    return Math.abs(dot(sub(faceCentroid(oc, scope, b), faceCentroid(oc, scope, a)), na)) <= TOL_SURFACE_IDENTITY
   }
   if (ta === S.GeomAbs_Cylinder.value) return sameCylinder(scope.track(ad.Cylinder()), scope.track(bd.Cylinder()))
   if (ta === S.GeomAbs_Cone.value) return sameCone(scope.track(ad.Cone()), scope.track(bd.Cone()))
@@ -524,10 +519,10 @@ function coneFrustum(
   let b = vHi
   if (sinSemi > 0) a = Math.max(vLo, apexV)
   else b = Math.min(vHi, apexV)
-  if (!(b - a > 1e-9)) return null
+  if (!(b - a > TOL_LENGTH_SLACK)) return null  // a frustum of slant slack or less is no solid
   const rLo = ref + a * sinSemi
   const rHi = ref + b * sinSemi
-  if (rLo < -SURFACE_TOL || rHi < -SURFACE_TOL) return null
+  if (rLo < -TOL_SURFACE_IDENTITY || rHi < -TOL_SURFACE_IDENTITY) return null
   const base = add(loc, scale(dir, a * cosSemi))
   const builder = scope.track(
     new oc.BRepPrimAPI_MakeCone_3(baseFrame(oc, scope, base, dir), Math.max(rLo, 0), Math.max(rHi, 0), (b - a) * cosSemi),
@@ -669,11 +664,11 @@ function planeSurface(
   const onPlane = (cf: OccShape, through: Vec3): boolean => {
     const other = scope.track(new oc.BRepAdaptor_Surface_2(cf, true))
     if (other.GetType().value !== S.GeomAbs_Plane.value) return false
-    return Math.abs(dot(sub(faceCentroid(oc, scope, cf), through), n)) <= PLANE_TOL
+    return Math.abs(dot(sub(faceCentroid(oc, scope, cf), through), n)) <= TOL_SURFACE_IDENTITY
   }
   return {
     kind: 'plane',
-    inRegion: (region, p) => pointInFace(oc, scope, region, p, PLANE_TOL),
+    inRegion: (region, p) => pointInFace(oc, scope, region, p, TOL_SURFACE_IDENTITY),
     slab: (L) => makePrism(oc, scope, scope.track(new oc.BRepBuilderAPI_MakeFace_9(plane, -L, L, -L, L).Face()), n, d),
     onSource: (cf) => onPlane(cf, c0),
     onTarget: (cf) => onPlane(cf, pTarget),
@@ -709,7 +704,7 @@ function cylinderSurface(
     const other = scope.track(new oc.BRepAdaptor_Surface_2(cf, true))
     if (other.GetType().value !== S.GeomAbs_Cylinder.value) return false
     const oc2 = scope.track(other.Cylinder())
-    if (Math.abs(oc2.Radius() - want) > SURFACE_TOL) return false
+    if (Math.abs(oc2.Radius() - want) > TOL_SURFACE_IDENTITY) return false
     return sameAxisLine(takeAxisDir(oc2.Axis()), takeAx3(oc2.Position()).origin, dir, origin)
   }
   // v is the axial coordinate, u the angle about the Position frame's X axis.
@@ -717,7 +712,7 @@ function cylinderSurface(
     const l = localOf(srf, p)
     return [wrapU(Math.atan2(l[1], l[0])), l[2]]
   }
-  const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), UV_TOL, false)
+  const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), TOL_SURFACE_IDENTITY, false)
   return {
     kind: 'cylinder',
     inRegion,
@@ -727,7 +722,7 @@ function cylinderSurface(
       const outerR = Math.max(r, r2)
       const innerR = Math.min(r, r2)
       const outer = solidCylinder(oc, scope, origin, dir, lo, hi, outerR)
-      if (innerR <= SURFACE_TOL) return outer
+      if (innerR <= TOL_SURFACE_IDENTITY) return outer
       return cutShapes(oc, scope, outer, solidCylinder(oc, scope, origin, dir, lo, hi, innerR))
     },
     onSource: (cf) => matches(cf, r),
@@ -765,7 +760,7 @@ function coneSurface(
   // the parallel cone has passed its own apex, and the offset is no longer the
   // same nappe (the construction below would build the mirrored one). A move
   // that merely pushes the apex inside the face's extent is fine and clips.
-  if (ref2 <= SURFACE_TOL) {
+  if (ref2 <= TOL_SURFACE_IDENTITY) {
     throw new MoveFaceRefusal('move_face: the move takes the cone past its apex')
   }
   // The gp_Cone V parameter runs along +dir (z = V cos(semi)), so the face's
@@ -777,9 +772,9 @@ function coneSurface(
     const other = scope.track(new oc.BRepAdaptor_Surface_2(cf, true))
     if (other.GetType().value !== S.GeomAbs_Cone.value) return false
     const otherCone = scope.track(other.Cone())
-    if (Math.abs(otherCone.SemiAngle() - semi) > SURFACE_TOL) return false
+    if (Math.abs(otherCone.SemiAngle() - semi) > TOL_SURFACE_IDENTITY) return false
     const wantApex = add(loc, scale(dir, -wantRef / Math.tan(semi)))
-    if (norm(sub(coneApex(otherCone), wantApex)) > SURFACE_TOL) return false
+    if (norm(sub(coneApex(otherCone), wantApex)) > TOL_SURFACE_IDENTITY) return false
     return sameAxisLine(takeAxisDir(otherCone.Axis()), takeAx3(otherCone.Position()).origin, axisDir, loc)
   }
   // v is the slant parameter (the gp_Cone Value convention: z = v cos(semi)),
@@ -788,7 +783,7 @@ function coneSurface(
     const l = localOf(srf, p)
     return [wrapU(Math.atan2(l[1], l[0])), l[2] / Math.cos(semi)]
   }
-  const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), UV_TOL, false)
+  const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), TOL_SURFACE_IDENTITY, false)
   return {
     kind: 'cone',
     inRegion,
@@ -822,8 +817,8 @@ function sphereSurface(
     const other = scope.track(new oc.BRepAdaptor_Surface_2(cf, true))
     if (other.GetType().value !== S.GeomAbs_Sphere.value) return false
     const otherSph = scope.track(other.Sphere())
-    if (Math.abs(otherSph.Radius() - want) > SURFACE_TOL) return false
-    return norm(sub(takeAx3(otherSph.Position()).origin, centre)) <= SURFACE_TOL
+    if (Math.abs(otherSph.Radius() - want) > TOL_SURFACE_IDENTITY) return false
+    return norm(sub(takeAx3(otherSph.Position()).origin, centre)) <= TOL_SURFACE_IDENTITY
   }
   // v is the polar angle from the equator, u the angle about the frame's X.
   const uv = (p: Vec3): [number, number] => {
@@ -831,14 +826,14 @@ function sphereSurface(
     const sinV = Math.max(-1, Math.min(1, l[2] / r))
     return [wrapU(Math.atan2(l[1], l[0])), Math.asin(sinV)]
   }
-  const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), UV_TOL, false)
+  const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), TOL_SURFACE_IDENTITY, false)
   return {
     kind: 'sphere',
     inRegion,
     slab: () => {
       const outer = ball(oc, scope, centre, Math.max(r, r2))
       const innerR = Math.min(r, r2)
-      if (innerR <= SURFACE_TOL) return outer
+      if (innerR <= TOL_SURFACE_IDENTITY) return outer
       return cutShapes(oc, scope, outer, ball(oc, scope, centre, innerR))
     },
     onSource: (cf) => matches(cf, r),
@@ -872,7 +867,7 @@ function torusSurface(
   const axisDir = takeAxisDir(tor.Axis())
   // d === 0 is the anchor read (faceNormalAndCentroid): a pre-existing spindle
   // torus must not refuse there.
-  if (d !== 0 && minor2 > major + SURFACE_TOL) {
+  if (d !== 0 && minor2 > major + TOL_SURFACE_IDENTITY) {
     throw new MoveFaceRefusal(
       `move_face: the move would take the torus tube past its major radius (minor ${minor2} > major ${major})`,
     )
@@ -881,8 +876,8 @@ function torusSurface(
     const other = scope.track(new oc.BRepAdaptor_Surface_2(cf, true))
     if (other.GetType().value !== S.GeomAbs_Torus.value) return false
     const otherTor = scope.track(other.Torus())
-    if (Math.abs(otherTor.MajorRadius() - major) > SURFACE_TOL) return false
-    if (Math.abs(otherTor.MinorRadius() - want) > SURFACE_TOL) return false
+    if (Math.abs(otherTor.MajorRadius() - major) > TOL_SURFACE_IDENTITY) return false
+    if (Math.abs(otherTor.MinorRadius() - want) > TOL_SURFACE_IDENTITY) return false
     return sameAxisLine(takeAxisDir(otherTor.Axis()), takeAx3(otherTor.Position()).origin, axisDir, loc)
   }
   const frame = baseFrame(oc, scope, loc, dir)
@@ -892,14 +887,14 @@ function torusSurface(
     const l = localOf(srf, p)
     return [wrapU(Math.atan2(l[1], l[0])), Math.atan2(l[2], Math.hypot(l[0], l[1]) - major)]
   }
-  const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), UV_TOL, true)
+  const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), TOL_SURFACE_IDENTITY, true)
   return {
     kind: 'torus',
     inRegion,
     slab: () => {
       const outer = solidTorus(oc, scope, frame, major, Math.max(minor, minor2))
       const innerR = Math.min(minor, minor2)
-      if (innerR <= SURFACE_TOL) return outer
+      if (innerR <= TOL_SURFACE_IDENTITY) return outer
       return cutShapes(oc, scope, outer, solidTorus(oc, scope, frame, major, innerR))
     },
     onSource: (cf) => matches(cf, minor),

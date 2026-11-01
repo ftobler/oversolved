@@ -28,14 +28,12 @@ import { drainList, type DisposeScope } from './disposeScope'
 import { shapeIsValid, volumeOf } from './booleans'
 import { SubShapeMap } from './subshapeIdentity'
 import { sameEnum } from './enumValue'
+import { TOL_SURFACE_IDENTITY, TOL_VOLUME_DEGENERATE } from '../solverConstants'
 import type { OccModule, OccOrientableShape, OccShape, OccShapeEnumValue, OccSubShape } from './occTypes'
 
 /** The 3D offset could not be applied, or produced a shape that cannot be a
  *  boolean tool. The message is the reason; the caller adds the tool context. */
 export class OffsetError extends Error {}
-
-const SHAPE_TOL = 1e-6
-const VOLUME_EPS = 1e-9
 
 type ShapeKind = 'solid' | 'shell' | 'other'
 
@@ -91,7 +89,7 @@ export function offsetSolid(
   op.PerformByJoin(
     shape,
     d,
-    SHAPE_TOL,
+    TOL_SURFACE_IDENTITY,  // the offset's interference tolerance, on the surface-identity rung
     oc.BRepOffset_Mode.BRepOffset_Skin,
     false,
     false,
@@ -130,12 +128,15 @@ export function offsetSolid(
 
   // Sign law: d > 0 must strictly grow the tool, d < 0 must strictly shrink it
   // and leave positive material. This catches a silently degenerate offset that
-  // still validated.
+  // still validated. The budget is a fraction of the tool's own volume: the
+  // integration error of the two volume reads scales with the solid, so a 1000x
+  // tool is judged on the same footing as the same tool at scale 1.
   const before = volumeOf(oc, scope, shape)
-  if (d > 0 && after <= before + VOLUME_EPS) {
+  const volumeBudget = TOL_VOLUME_DEGENERATE * Math.max(before, after)
+  if (d > 0 && after <= before + volumeBudget) {
     throw new OffsetError(`the offset did not grow the tool (${before} -> ${after})`)
   }
-  if (d < 0 && (after >= before - VOLUME_EPS || after <= 0)) {
+  if (d < 0 && (after >= before - volumeBudget || after <= 0)) {
     throw new OffsetError(`the offset did not shrink the tool to a positive volume (${before} -> ${after})`)
   }
 

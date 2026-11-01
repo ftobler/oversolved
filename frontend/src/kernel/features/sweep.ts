@@ -27,6 +27,7 @@ import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, makeBSpline
 import { buildCurveEdge } from '../occ/helixEdge'
 import { descriptorFromRepo } from './helix'
 import { stripRefSigil } from '@/utils/refSigil'
+import { TOL_LENGTH_SLACK } from '../solverConstants'
 
 type Dict = Record<string, unknown>
 
@@ -880,7 +881,7 @@ export function solveSweep(
   // MakePipeShell otherwise passes BRepCheck_Analyzer (see profileAxialSpan).
   if (helixPath && binormal !== null && helixPitch !== null) {
     const span = profileAxialSpan(allLoops, firstPt as PlaneLike, binormal)
-    if (span >= helixPitch - 1e-9) {
+    if (span >= helixPitch - TOL_LENGTH_SLACK) {
       throw new Error('sweep: profile overlaps the next turn: pitch < profile height')
     }
   }

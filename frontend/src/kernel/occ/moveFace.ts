@@ -36,7 +36,7 @@ import { SubShapeMap } from './subshapeIdentity'
 import { faceCentroid, bboxDiagonal } from './primitives'
 import { booleanWithDiff, type FaceOrigin } from './booleans'
 import type { BrepDiff } from '../types3d'
-import { TOL_MOVE_FACE_TANGENT } from '../solverConstants'
+import { TOL_MOVE_FACE_TANGENT, TOL_SURFACE_IDENTITY } from '../solverConstants'
 import type { Vec3 } from '@/utils/vec3'
 import {
   extendedNeighbourSolid,
@@ -67,10 +67,6 @@ export interface MoveFaceCells {
   // Cell lateral face -> the body face it extends (its naming source).
   extensionOf: SubShapeMap<OccShape>
 }
-
-/** The classifier tolerance for the planar tool-window test, the shipped
- *  on-plane distance. */
-const TOOL_FACE_TOL = 1e-6
 
 // ─── small OCC readers ───
 
@@ -302,7 +298,7 @@ function toolFaceContaining(
   const p = faceCentroid(oc, scope, cf)
   for (let i = 0; i < toolFaces.length; i++) {
     if (sameAnalyticSurface(oc, scope, cf, toolFaces[i])) return i
-    if (pointInFace(oc, scope, toolFaces[i], p, TOOL_FACE_TOL)) return i
+    if (pointInFace(oc, scope, toolFaces[i], p, TOL_SURFACE_IDENTITY)) return i
   }
   return -1
 }
@@ -360,7 +356,7 @@ export function moveFaceCells(
       const nad = scope.track(new oc.BRepAdaptor_Surface_2(neighbour, true))
       if (nad.GetType().value === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value) {
         const radius = scope.track(nad.Cylinder()).Radius()
-        if (radius < sourceRadius - 1e-6) solid = extendedNeighbourSolid(oc, scope, neighbour, L)
+        if (radius < sourceRadius - TOL_SURFACE_IDENTITY) solid = extendedNeighbourSolid(oc, scope, neighbour, L)
       }
     }
     solidTools.push(solid)

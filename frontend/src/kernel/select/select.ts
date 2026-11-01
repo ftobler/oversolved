@@ -11,9 +11,11 @@
 import type { BodyResult } from '@/types/cad'
 import { parseAncestry } from '@/kernel/query'
 import { DEFAULT_MEASURE_TOLERANCE, valueWithinTolerance } from '@/kernel/occ/measureTolerance'
+import { TOL_SELECT_DIRECTION } from '@/kernel/solverConstants'
 import { SelectorError } from './errors'
 import {
   bboxOf,
+  cross,
   directionOf,
   dot,
   edgeCandidates,
@@ -30,11 +32,11 @@ import {
 } from './geometry'
 import type { CenterTest, Predicate, RadiusTest, SelectKind, SelectResult, Selector, Vec3 } from './types'
 
-// Direction tests compare normalized vectors: parallel means the axes coincide,
-// perpendicular means they cross at a right angle. The epsilon is an angle
-// threshold in disguise (1e-6 is about 0.00006 degrees), tight enough to reject
-// a nearby face while absorbing the f64 noise of an exact solve.
-const DIRECTION_EPS = 1e-6
+// Direction tests compare unit vectors against one angular rung,
+// TOL_SELECT_DIRECTION in solverConstants, stated as a sine: parallel when
+// |a x axis| is under it, perpendicular when |a . axis| is. Both clauses read
+// the same angle now; parallel used to test 1 - 1e-6 against the dot, which
+// admits sines to ~1.4e-3, ~1400x looser than the perpendicular clause.
 
 export interface EvalContext {
   bodies: Record<string, BodyResult>
@@ -45,14 +47,22 @@ function isZero(v: Vec3): boolean {
   return v[0] === 0 && v[1] === 0 && v[2] === 0
 }
 
+function crossMagnitude(a: Vec3, b: Vec3): number {
+  const c = cross(a, b)
+  return Math.hypot(c[0], c[1], c[2])
+}
+
+// A zero direction or a zero axis has a zero cross against everything, which
+// the `<` test would read as parallel to all: refuse both, as the
+// perpendicular clause does.
 function isParallel(a: Vec3 | null, axis: Vec3): boolean {
-  return a !== null && !isZero(a) && Math.abs(dot(a, axis)) > 1 - DIRECTION_EPS
+  return a !== null && !isZero(a) && !isZero(axis) && crossMagnitude(a, axis) < TOL_SELECT_DIRECTION
 }
 
 function isPerpendicular(a: Vec3 | null, axis: Vec3): boolean {
   // A zero direction or a zero axis has a zero dot against everything, which the
   // `<` test would read as perpendicular to all: refuse both.
-  return a !== null && !isZero(a) && !isZero(axis) && Math.abs(dot(a, axis)) < DIRECTION_EPS
+  return a !== null && !isZero(a) && !isZero(axis) && Math.abs(dot(a, axis)) < TOL_SELECT_DIRECTION
 }
 
 function radiusMatches(value: number | null, test: RadiusTest): boolean {
@@ -121,9 +131,15 @@ function extremeGroup(spec: { axis: Vec3; side: 'min' | 'max' }, pool: Candidate
   if (projections.size === 0) return []
   let best = spec.side === 'max' ? -Infinity : Infinity
   for (const v of projections.values()) best = spec.side === 'max' ? Math.max(best, v) : Math.min(best, v)
+  // Group on the absolute measure floor, the same one `center` and `within`
+  // use. The relative term of a measure budget scales with the projected
+  // coordinate itself: the same part translated 1000 along the axis would
+  // group points 1e-3 apart while the part at the origin groups at 1e-5, so
+  // `extreme` would answer differently for the two copies. A projection has
+  // no expected value to scale; only the floor is sound.
   return pool.filter(c => {
     const v = projections.get(c)
-    return v !== undefined && valueWithinTolerance(v, best)
+    return v !== undefined && Math.abs(v - best) <= DEFAULT_MEASURE_TOLERANCE.abs
   })
 }
 

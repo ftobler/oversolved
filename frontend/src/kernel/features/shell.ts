@@ -16,6 +16,7 @@ import { SubShapeDedup } from '../occ/primitives'
 import { applyShellWithLineage, type ShellDirection } from '../occ/thickSolid'
 import { exploreFaces } from '../occ/edgeModifier'
 import { bodyOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
+import { OCC_CONFUSION, TOL_LENGTH_SLACK } from '../solverConstants'
 
 type Dict = Record<string, unknown>
 
@@ -105,7 +106,7 @@ function smallestConvexRoundRadius(
     const probe = scope.track(new oc.gp_Pnt_3(
       (at[0] + centre[0]) / 2, (at[1] + centre[1]) / 2, (at[2] + centre[2]) / 2,
     )) as OccXYZ  // the same gp_Pnt the classifier reads, typed by its accessors
-    const classifier = scope.track(new oc.BRepClass3d_SolidClassifier_3(shape, probe, 1e-7))
+    const classifier = scope.track(new oc.BRepClass3d_SolidClassifier_3(shape, probe, OCC_CONFUSION))
     if (classifier.State().value !== oc.TopAbs_State.TopAbs_IN.value) continue
     if (smallest === null || radius < smallest) smallest = radius
   }
@@ -190,7 +191,7 @@ export function solveShell(
     // is the UNCHANGED input, so resplitting it would re-register the same
     // geometry as a fresh handle and report success for a no-op.
     const collapse = direction === 'inward' ? smallestConvexRoundRadius(oc, scope, oldShape, topoFaces) : null
-    if (collapse !== null && collapse <= thickness + 1e-9) {
+    if (collapse !== null && collapse <= thickness + TOL_LENGTH_SLACK) {
       // An inward wall offsets every round face by the thickness; a fillet of
       // radius <= thickness collapses to nothing there (Case_Seam_Lip F4), and
       // the kernel says only build_failed.

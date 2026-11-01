@@ -30,9 +30,11 @@ export function dot(a: readonly number[], b: readonly number[]): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-/** Cross product, used to rebuild a conic's in-plane y axis from its normal
- *  and x axis. */
-function cross(a: readonly number[], b: readonly number[]): Vec3 {
+/** Cross product, exported for select.ts's parallel test (|cross| of unit
+ *  vectors is the sine of the angle, the same quantity a perpendicular test
+ *  reads from the dot). Used here to rebuild a conic's in-plane y axis from
+ *  its normal and x axis. */
+export function cross(a: readonly number[], b: readonly number[]): Vec3 {
   return [
     a[1] * b[2] - a[2] * b[1],
     a[2] * b[0] - a[0] * b[2],

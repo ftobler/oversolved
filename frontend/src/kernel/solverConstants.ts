@@ -39,6 +39,61 @@ export const OCC_CONFUSION = 1e-7
 // keeps its watchdog off and leaves the call to the user's cancel button.
 export const SOLVE_STALL_BUDGET_MS = 30_000
 
+// ─── Feature tolerance rungs (lr4-tolerance-ladder) ───
+
+// The angular rung select's direction predicates test, stated as the sine
+// between the test axis and the candidate's unit direction: parallel matches
+// when |cross| is under it, perpendicular when |dot| is (the cosine of a
+// deviation from a right angle is that deviation's sine). 1e-6 rad is about
+// 5.7e-5 deg: it absorbs the f64 noise of an exact solve and still rejects a
+// visibly nearby face. The parallel clause used to test 1 - 1e-6 against the
+// dot instead, which admits sines up to ~1.4e-3, ~1400x looser than the
+// perpendicular clause beside it; both clauses now compare against this sine.
+export const TOL_SELECT_DIRECTION = 1e-6
+
+// Surface identity: a point lies on an analytic surface, or two coaxial
+// analytic surfaces are the same surface (radius, apex, centre and plane
+// offset compare as world distances), when they agree within this. It sits on
+// the loop-closure rung of the ladder: OCC_CONFUSION < TOL_SURFACE_IDENTITY =
+// TOL_LOOP_CLOSURE <= TOL_TOPOLOGY_MERGE. The move-face and offset modules
+// each carried a private copy of this rung (SURFACE_TOL, PLANE_TOL, UV_TOL,
+// TOOL_FACE_TOL, SHAPE_TOL); they all read this one now.
+export const TOL_SURFACE_IDENTITY = 1e-6
+
+// The angular companion of the surface-identity rung: the unit axes of two
+// analytic surfaces must be this parallel before the surfaces count as the
+// same one. Far tighter than select's rung because these axes come out of an
+// analytic solve exact in f64; the tolerance absorbs arithmetic noise only,
+// never authoring slack.
+export const TOL_SURFACE_PARALLEL = 1e-9
+
+// Length slack: how far past exact a comparison between two authored lengths
+// reads as equal: bores just touching, a fillet exactly the shell thickness,
+// a profile exactly one helix pitch tall, a probe of exactly zero length. An
+// order of magnitude under OCC_CONFUSION, so it absorbs f64 noise on world
+// coordinates without ever accepting a real separation.
+export const TOL_LENGTH_SLACK = 1e-9
+
+// Volume budgets, each a fraction of the volume it judges. OCC integrates a
+// solid's volume with error that scales with the solid, so an absolute
+// epsilon decides a 1000x part on a different footing than the same part at
+// scale 1; a fraction travels with it. Degenerate (at or under it a solid
+// reads as empty: a split half, a kept-everything plane miss, an offset that
+// did not move the tool) and sum (closes the split additivity check) sit one
+// rung apart, like the length rungs above them do.
+export const TOL_VOLUME_DEGENERATE = 1e-9
+export const TOL_VOLUME_SUM = 1e-6
+
+// The lattice the preview-edge overlay keys its sampled points to
+// (components/Geometry3D/PreviewEdgeOverlay.tsx): a sampled point moved by less
+// than a cell is the same point, which is what lets two passes over one curve
+// recognise each other; the overlay probes the 27 neighbour cells the way
+// picking's mark position index does (picking/markPosition.ts), so samples that
+// straddle a cell boundary are still one point. It is the coarsest rung of the
+// ladder, four orders above every solver resolution, because it judges a
+// rendering coincidence and not geometry.
+export const TOL_PREVIEW_CELL = 1e-3
+
 export const BUILTIN_PLANES: Record<string, Record<string, unknown>> = {
   builtin_plane_front: {
     origin: [0, 0, 0],

@@ -31,6 +31,7 @@ import { resolveBodyRefList } from './shared/bodyResolution'
 import { resolvePlaneRef } from './shared/planes'
 import { transferBooleanNames } from './booleanLineage'
 import { resplitBody, splitSolids } from './bodySplit'
+import { TOL_VOLUME_DEGENERATE, TOL_VOLUME_SUM } from '../solverConstants'
 
 const KEEP_VALUES: readonly SplitKeep[] = ['above', 'below', 'both']
 
@@ -157,7 +158,10 @@ export function solveSplit(
     const above = cutAbove ? cut('above') : null
     const below = cutBelow ? cut('below') : null
 
-    const epsilon = 1e-9 * sourceVolume
+    // Both budgets are fractions of the source volume, the volume ladder says
+    // why: OCC's integration error scales with the solid, so the split verdict
+    // must hold on a 1000x copy of the part, not just at scale 1.
+    const epsilon = TOL_VOLUME_DEGENERATE * sourceVolume
     const aboveVolume = above === null ? 0 : Math.abs(volumeOf(oc, scope, above.shape))
     const belowVolume = below === null ? 0 : Math.abs(volumeOf(oc, scope, below.shape))
 
@@ -166,7 +170,7 @@ export function solveSplit(
         throw new Error(`split: the plane does not cross body '${key}'`)
       }
       const sum = aboveVolume + belowVolume
-      if (Math.abs(sum - sourceVolume) > 1e-6 * sourceVolume) {
+      if (Math.abs(sum - sourceVolume) > TOL_VOLUME_SUM * sourceVolume) {
         throw new Error(
           `split: the halves of body '${key}' do not add up (${aboveVolume} + ${belowVolume} = ${sum}, ` +
           `the body is ${sourceVolume})`,

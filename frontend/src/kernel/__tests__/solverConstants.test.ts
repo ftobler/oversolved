@@ -3,11 +3,18 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   OCC_CONFUSION,
+  TOL_LENGTH_SLACK,
   TOL_LOOP_CLOSURE,
   TOL_NEAR_ZERO_AREA,
+  TOL_PREVIEW_CELL,
+  TOL_SELECT_DIRECTION,
+  TOL_SURFACE_IDENTITY,
+  TOL_SURFACE_PARALLEL,
   TOL_TOPOLOGY_EPS,
   TOL_TOPOLOGY_MERGE,
   TOL_TOPOLOGY_SPLIT,
+  TOL_VOLUME_DEGENERATE,
+  TOL_VOLUME_SUM,
 } from '../solverConstants'
 
 // The topology tolerances are mirrored by value into
@@ -33,6 +40,13 @@ describe('solverConstants', () => {
     TOL_TOPOLOGY_EPS,
     TOL_TOPOLOGY_MERGE,
     TOL_TOPOLOGY_SPLIT,
+    TOL_SELECT_DIRECTION,
+    TOL_SURFACE_IDENTITY,
+    TOL_SURFACE_PARALLEL,
+    TOL_LENGTH_SLACK,
+    TOL_VOLUME_DEGENERATE,
+    TOL_VOLUME_SUM,
+    TOL_PREVIEW_CELL,
   ]
 
   // All tolerance constants are importable, finite, and positive.
@@ -88,17 +102,74 @@ describe('solverConstants', () => {
   // Asserting `!rust.has('OCC_CONFUSION')` would test the regex, not the code:
   // the mirror parser only ever matches `TOL_*`. What actually needs pinning is
   // the TS side of that contract -- every TOL_ constant declared here is either
-  // mirrored in Rust or is the one documented exception. Renaming OCC_CONFUSION
+  // mirrored in Rust or is a declared frontend-side rung. Renaming OCC_CONFUSION
   // to TOL_OCC_CONFUSION would then fail here instead of silently breaking the
   // exact-count assertion above.
-  it('every TOL_ constant is mirrored in Rust, except the documented one', () => {
+  //
+  // The two kinds are the whole ladder: the four sketch-topology rungs mirror
+  // Rust because vertex-merge order feeds the query strings on both sides, and
+  // the rungs below judge OCC reads (surface identity, direction, volume
+  // budgets) or OCC tessellation (the preview lattice), which the sketch solver
+  // never sees. A new rung joins one of the two lists deliberately; the exact
+  // count in the mirror test is what makes an unlisted rename fail.
+  const TS_ONLY_TOLERANCES = [
+    'TOL_LOOP_CLOSURE',  // the loop chaining lives only on the TS side of the split
+    'TOL_MOVE_FACE_TANGENT',
+    'TOL_SELECT_DIRECTION',
+    'TOL_SURFACE_IDENTITY',
+    'TOL_SURFACE_PARALLEL',
+    'TOL_LENGTH_SLACK',
+    'TOL_VOLUME_DEGENERATE',
+    'TOL_VOLUME_SUM',
+    'TOL_PREVIEW_CELL',
+  ]
+
+  it('every TOL_ constant is mirrored in Rust or listed as a TS-side rung', () => {
     const src = readFileSync(join(__dirname, '../solverConstants.ts'), 'utf8')
     const declared = [...src.matchAll(/export const (TOL_[A-Z_]+)\s*=/g)].map((m) => m[1])
     expect(declared.length).toBeGreaterThan(0)
     const rust = rustTolerances()
-    // TOL_LOOP_CLOSURE is the loop-chaining tolerance; it has no Rust twin
-    // because the chaining lives only on the TS side of the split.
     const unmirrored = declared.filter((n) => !rust.has(n))
-    expect(unmirrored).toEqual(['TOL_LOOP_CLOSURE', 'TOL_MOVE_FACE_TANGENT'])
+    expect(unmirrored).toEqual(TS_ONLY_TOLERANCES)
+  })
+
+  // The order of the rungs is the claim the ladder comments make, and the one
+  // thing a value edit can break silently. Length and angle rungs are world
+  // quantities and compare with each other and with OCC's compiled-in confusion;
+  // the volume budgets are fractions of the volume they judge, so they only
+  // compare with each other.
+  it('the TS-side rungs hold their stated order', () => {
+    expect(TOL_LENGTH_SLACK).toBeLessThan(OCC_CONFUSION)  // f64 noise, under the kernel floor
+    expect(OCC_CONFUSION).toBeLessThan(TOL_SURFACE_IDENTITY)  // kernel floor, under authored identity
+    expect(TOL_SURFACE_IDENTITY).toBe(TOL_LOOP_CLOSURE)  // one scale for "this point is on this geometry"
+    expect(TOL_SURFACE_PARALLEL).toBeLessThan(TOL_SURFACE_IDENTITY)  // analytic axes: noise only
+    expect(TOL_VOLUME_DEGENERATE).toBeLessThan(TOL_VOLUME_SUM)  // empty vs additive closure
+    expect(TOL_PREVIEW_CELL).toBeGreaterThan(TOL_SURFACE_IDENTITY)  // a rendering coincidence, not a solver decision
+  })
+
+  // The ladder's whole point is that a rung is declared once. These are the
+  // modules the tolerance sweep migrated: each carried private literals
+  // (SURFACE_TOL, UV_TOL, TOOL_FACE_TOL, SHAPE_TOL, VOLUME_EPS, DIRECTION_EPS,
+  // a bare `* 1000` quantizer). A new module-level `const NAME = 1e-x` in one of
+  // them is a rung that bypassed this file, and it fails here rather than in
+  // geometry two features later.
+  const MIGRATED_MODULES = [
+    '../select/select.ts',
+    '../occ/offsetShape.ts',
+    '../occ/moveFace.ts',
+    '../occ/moveFaceSurfaces.ts',
+    '../features/splitByPlane.ts',
+    '../features/hole.ts',
+    '../features/shell.ts',
+    '../features/sweep.ts',
+    '../../components/Geometry3D/PreviewEdgeOverlay.tsx',
+  ]
+
+  it('the migrated modules declare no private tolerance literals', () => {
+    for (const rel of MIGRATED_MODULES) {
+      const src = readFileSync(join(__dirname, rel), 'utf8')
+      const literals = [...src.matchAll(/^(?:const|let) ([A-Z][A-Z0-9_]*) = 1e-/gm)].map((m) => m[1])
+      expect(literals, `${rel} declares private tolerance literal(s)`).toEqual([])
+    }
   })
 })

@@ -33,6 +33,7 @@ vi.mock('@react-three/fiber', () => ({
 }))
 
 import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
+import { TOL_PREVIEW_CELL } from '@/kernel/solverConstants'
 import { buildEdgeSegments as tessellateSpy } from '@/components/Geometry3D/bodyGeometry'
 
 function makeItem(key: string, edges: EdgeData[], edgeQueries?: string[]): BodyRenderItem {
@@ -125,6 +126,62 @@ describe('PreviewEdgeOverlay', () => {
     const moved: EdgeData = { kind: 'line', start: [100, 0, 0], end: [101, 0, 0] }
     const { container } = render(
       <PreviewEdgeOverlay items={[makeItem('b1', [moved])]} pickItems={[makeItem('b1', [here])]} />
+    )
+    expect(container.innerHTML).not.toBe('')
+  })
+
+  it('suppresses samples 1e-7 apart that straddle a lattice boundary', () => {
+    // Rounding puts the two samples in neighbouring cells: with an exact key the
+    // preview line would be drawn again, right on top of the ghost. The overlay
+    // probes the 27 neighbours, so they still read as one edge.
+    const ghost: EdgeData = { kind: 'line', start: [0.00049995, 0, 0], end: [1.00049995, 0, 0] }
+    const preview: EdgeData = { kind: 'line', start: [0.00050005, 0, 0], end: [1.00050005, 0, 0] }
+    const { container } = render(
+      <PreviewEdgeOverlay items={[makeItem('b1', [preview])]} pickItems={[makeItem('b1', [ghost])]} />
+    )
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('the lattice cell is the coincidence window: one cell apart is one edge', () => {
+    // Pins the magnitude of TOL_PREVIEW_CELL from the suppress side. A shift of
+    // a whole cell lands in neighbouring cells, which is what the neighbour
+    // probe exists to join; a shift of two cells is a different edge and is
+    // drawn (see the next test).
+    const here: EdgeData = { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] }
+    const oneCell: EdgeData = {
+      kind: 'line',
+      start: [TOL_PREVIEW_CELL, 0, 0],
+      end: [1 + TOL_PREVIEW_CELL, 0, 0],
+    }
+    const { container } = render(
+      <PreviewEdgeOverlay items={[makeItem('b1', [oneCell])]} pickItems={[makeItem('b1', [here])]} />
+    )
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('draws an edge two cells off the ghost: the window is one cell, not any distance', () => {
+    // The guard against a slack that swallows real moves. 2e-3 mm off is below
+    // what a user can author, but it must still show: the overlay suppresses
+    // redundant geometry, it does not round the part to the lattice.
+    const here: EdgeData = { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] }
+    const twoCells: EdgeData = {
+      kind: 'line',
+      start: [2 * TOL_PREVIEW_CELL, 0, 0],
+      end: [1 + 2 * TOL_PREVIEW_CELL, 0, 0],
+    }
+    const { container } = render(
+      <PreviewEdgeOverlay items={[makeItem('b1', [twoCells])]} pickItems={[makeItem('b1', [here])]} />
+    )
+    expect(container.innerHTML).not.toBe('')
+  })
+
+  it('draws a preview edge its ghost only covers in part (a shortened edge)', () => {
+    // Coverage is required both ways: the short preview edge has samples the
+    // ghost has nothing near, so it is geometry the edit really changed.
+    const long: EdgeData = { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] }
+    const short: EdgeData = { kind: 'line', start: [0, 0, 0], end: [0.5, 0, 0] }
+    const { container } = render(
+      <PreviewEdgeOverlay items={[makeItem('b1', [short])]} pickItems={[makeItem('b1', [long])]} />
     )
     expect(container.innerHTML).not.toBe('')
   })
