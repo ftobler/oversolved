@@ -98,6 +98,9 @@ pub const MAGIC_REV2: u32 = 0x3247_4B53;
 pub const MAGIC_OUT_REV2: u32 = 0x3252_4B53;
 #[cfg(test)]
 pub const MAGIC_OUT_REV3: u32 = 0x3352_4B53;
+/// The input magic the rev 3 and rev 4 builders wrote (`0x3347_4B53`, "SKG3").
+/// Rev 5 bumped it to [`MAGIC`] when the entity record became variable-size, so
+/// an old buffer is refused by the magic check instead of misdecoded.
 #[cfg(test)]
 pub const MAGIC_REV4: u32 = 0x3347_4B53;
 

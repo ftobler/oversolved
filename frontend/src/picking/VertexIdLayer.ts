@@ -113,7 +113,7 @@ export const CUBE_VERT_SHADER = `
     vColor = aColor;
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     float clipW = projectionMatrix[2][3] == 0.0 ? 1.0 : -mvPosition.z;
-    // Guard the divide like worldUnitsPerPixel() does (screenSpaceScale.ts:24):
+    // Guard the divide like worldUnitsPerPixel() does:
     // a zero or NaN projection Y-scale degrades the corner offset to zero size
     // instead of the Inf/NaN vertex positions that would blow up the draw.
     // GLSL ES 1.0 has no isnan(); NaN fails every ordered compare, so

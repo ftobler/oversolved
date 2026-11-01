@@ -478,7 +478,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         parts: PARTS_SCHEMA,
         format: { type: 'string', enum: ['step', 'stl'] },
         out: { type: 'string', description: 'The file to write; the path must resolve inside tmp/ or bugreports/ (relative paths resolve against the repo root). A missing parent directory is created.' },
-        body: { type: 'string', description: 'Export this single body id; omit for the whole assembly.' },
+        body: { type: 'string', description: 'Export this single body id; parts only. An assembly export takes no body and refuses one.' },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },

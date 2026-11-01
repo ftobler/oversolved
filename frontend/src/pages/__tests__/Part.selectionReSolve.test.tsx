@@ -29,8 +29,8 @@ features:
     extrude: { sketch: '$sk1', distance: 10, direction: 'normal' }
 `
 
-// Re-solve survival: the store comment at sketchEditorStore.ts:244-245 promises
-// selectedPicks is "empty after a re-solve". This pins the Option A contract:
+// Re-solve survival: the store contract for `clearSelectedPicks` promises
+// `selectedPicks` is "empty after a re-solve". This pins the Option A contract:
 // every applied solve clears the per-primitive pick claims at the write-back
 // seam (useSolver applySolveResult -> clearSelectedPicks) while the durable
 // query selection survives, so computeHighlight re-highlights by query

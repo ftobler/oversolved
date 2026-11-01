@@ -115,8 +115,8 @@ export class DisposeScope {
 /**
  * Run `fn` against a child scope disposed the moment it returns or throws, so a
  * per-face or per-edge geometry read leaves nothing behind on the build-lifetime
- * scope. `features/bodyOps.ts:120-144` already does this by hand for its
- * intersection probe; this names the shape of it.
+ * scope. `applyBodyOperation` (`features/bodyOps.ts`) already does this by hand
+ * around its intersection probe; this names the shape of it.
  *
  * The result must be plain data -- numbers, strings, arrays of them. A proxy
  * returned through here is freed before the caller can read it, and no type can

@@ -275,7 +275,8 @@ export function requirePartDoc(
   return { ok: true, doc: resolved.doc, docHash: resolved.docHash }
 }
 
-export interface AssemblyRunReplySource {  ok: boolean
+export interface AssemblyRunReplySource {
+  ok: boolean
   outcome: { steps: unknown[] }
   doc: AssemblyDoc
   // The binding the run used, so the composite handle can be minted.

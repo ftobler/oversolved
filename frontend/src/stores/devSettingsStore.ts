@@ -6,7 +6,8 @@ import { create } from 'zustand'
  */
 interface DevSettingsState {
   // When on, the rebuild button runs the extra `validateIncremental` fresh
-  // full rebuild (mirrors builder.ts:925) to diff incremental-vs-full and
+  // full rebuild (the `_validate` branch of `build`) to diff incremental-vs-full
+  // and
   // populate the validation badge. That doubles the solve, so it is off by
   // default: a normal rebuild is a single build.
   validateOnRebuild: boolean

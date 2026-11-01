@@ -399,7 +399,7 @@ function edgeHandleGeometry(
   // lookup -- today this explored every face and every edge of each face to
   // test one IsSame (L15). The review's TopExp.MapShapesAndAncestors is not
   // implementable in this build: TopTools_IndexedDataMapOfShapeListOfShape is
-  // not a bound class (occ/booleans.ts:9-11), so the SubShapeMultiIndex shape
+  // not a bound class, so the SubShapeMultiIndex shape
   // deriveEdgeNames already uses gives the same asymptotics with no missing
   // binding. The two-normal cap is the first two entries of the bucket, in
   // face-explorer order, so the anchor direction is unchanged.

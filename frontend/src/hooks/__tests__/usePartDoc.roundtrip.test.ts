@@ -209,8 +209,9 @@ const deleteBodyDoc = (): PartDoc => ({
 
 // A transform authored before the pick was pluralized: singular `body`, no
 // `bodies`. add_transform_body on it is the direct crash reproducer (it threw
-// at featureDefs.ts:470 pre-fix); remove needs the migrated form because
-// splicing the healed empty list is a no-op no undo entry can represent.
+// in `applyAddTransformBody` before `_ensureBodies`); remove needs the migrated
+// form because splicing the healed empty list is a no-op no undo entry can
+// represent.
 const legacyTransformDoc = (): PartDoc => ({
   version: 1,
   kind: 'part',

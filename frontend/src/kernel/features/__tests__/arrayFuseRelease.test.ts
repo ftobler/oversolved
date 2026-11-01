@@ -1,8 +1,8 @@
-// H21 fence: the array fuse loop (array.ts:250-274) must release the superseded
+// H21 fence: the array fuse loop (`applyArray`) must release the superseded
 // fused solid and the consumed instance at the END of each iteration, after
 // transferBooleanNames has run. That ordering is a memory-correctness hazard,
 // not just a leak: transferBooleanNames reads r.faceOrigin's `source` entries,
-// which are sub-shapes OF THE OPERANDS (booleanLineage.ts:81-82), so freeing an
+// which are sub-shapes OF THE OPERANDS, so freeing an
 // operand first is a use-after-free that reads plausibly and fails nowhere.
 // These assertions pin the ordering, the exactly-once counting, the
 // table-owned-source guard, and the constant live-intermediate peak.

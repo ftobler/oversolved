@@ -1,10 +1,14 @@
 // The doc-writing half of the solver write-back, extracted pure so a headless
-// host (the node CLI) applies exactly what the browser adapter applies in
-// useSolver.applySolveResult: bake solved geometry into each feature's
-// `initial` and reconcile `part_style` from the body set. This is the one doc
-// write outside the mutation path; it is derived from the authored spec, not
-// user intent, so it records no undo entry and the journal ignores it (it is
-// not a command).
+// host (the node CLI) bakes solved geometry into each feature's `initial` and
+// reconciles `part_style` from the body set, close to what the browser adapter
+// does in useSolver.applySolveResult. This is the one doc write outside the
+// mutation path; it is derived from the authored spec, not user intent, so it
+// records no undo entry and the journal ignores it (it is not a command).
+//
+// It is not identical to the browser adapter: this write-back prunes
+// `part_style` entries for bodies the solve consumed, while the browser
+// reconciles additively. The difference and its user-side cost are recorded on
+// the backlog's `part_style` decision.
 
 import type { PartDoc, BodyResult } from '@/types/cad'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'

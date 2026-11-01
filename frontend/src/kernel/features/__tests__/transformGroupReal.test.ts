@@ -421,7 +421,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
        * transformLineage, so a zero count across the whole solve proves the
        * placement-stripped SubShapeIndexMap replaced the scan. A hit also means
        * the transformed image and the shell-oriented face share a TShape, which
-       * is the docstring claim at transformLineage.ts:46-48; a miss would have
+       * is the docstring claim on `remapFaceNamesForInstance`; a miss would have
        * thrown "no shell-oriented partner" and failed the solve.
        */
       const scope = new DisposeScope()

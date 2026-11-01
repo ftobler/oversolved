@@ -303,8 +303,9 @@ export function solveExtrude(
   const upToRef = (sub.up_to as string) ?? ''
   const usingFaces = cqFaces.length > 0 && allLoops.length === 0
   // One BRepAdaptor_Surface + BRepLProp_SLProps for the whole solve. Lazy, not
-  // eager: faceNormal throws when the UV-midpoint normal is undefined
-  // (primitives.ts:601), and only the branches that reach it today may throw.
+  // eager: faceNormal throws when the UV-midpoint normal is undefined (see
+  // `faceNormal` in occ/primitives.ts), and only the branches that reach it
+  // today may throw.
   let faceNormal0: Vec3 | null = null
   const profileNormal = (): Vec3 => (faceNormal0 ??= faceNormal(oc, scope, cqFaces[0]))
   let cutPlane: CutPlane | null = null

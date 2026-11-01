@@ -6,9 +6,9 @@
 // names the row as `<case>/<check>: ours=... expected=...`.
 //
 // Same guard as every *Real suite: skips when OCC.js or the pkg-node solver is
-// absent, fails a KERNEL_PROVISIONED job instead, and skips on Node < 22.6 (the
-// leg that cannot run the kernel pipeline). A `severity: soft` case warns;
-// `REGRESSION_SOFT=1` downgrades every case the same way.
+// absent, fails a KERNEL_PROVISIONED job instead, and skips on a local Node
+// below 22.6 (which cannot run the kernel pipeline). A `severity: soft` case
+// warns; `REGRESSION_SOFT=1` downgrades every case the same way.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { loadOcc } from '@/kernel/occ/loadOcc'
