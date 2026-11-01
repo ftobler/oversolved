@@ -53,8 +53,9 @@ permanent store: `WorkspaceStore` (`workspace/store.ts`) owns workspace identity
 and the library verbs, and each workspace's entries go through an `IdbCarrier`
 (`workspace/idbCarrier.ts`). `MemoryCarrier` is the test conformer written from
 the same `WorkspaceCarrier` interface, not a second production store. A folder
-or a zip is where bytes come from (import) or go to (export), never a place a
-workspace lives, so nothing binds or fingerprints one.
+is an import source only; a zip is both an import source and the export target
+(both export gestures download one). Neither is a place a workspace lives, so
+nothing binds or fingerprints one.
 
 **Rule:** Persistence is an implementation detail behind the document store.
 Feature code reads and writes documents through the store, never IndexedDB

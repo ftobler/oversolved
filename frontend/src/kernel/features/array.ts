@@ -394,8 +394,7 @@ function applyArray(
     // The releases do not invalidate what survives the loop: body.brep_diff is
     // lastDiff, whose sub-shape handles are independent embind wrappers holding
     // their own refcounted TShape, so deleting an operand wrapper does not free
-    // geometry the diff still references (the same argument `boolean.ts` and
-    // `extrude.ts` make for their diffs).
+    // geometry the diff still references.
   }
   body.modified_by.push(featureId)
   body.brep_diff = lastDiff

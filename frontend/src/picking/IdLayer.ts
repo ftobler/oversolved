@@ -9,8 +9,8 @@ import { primitivePickKey } from './pickKey'
  * passes (see IdPipeline.render).
  *
  * - 'depth-test-against-prev': reuse the previous layer's depth values;
- *   used by the B-rep edge, vertex and sketch-surface layers so the face
- *   depth already in the buffer culls them.
+ *   used by the B-rep edge (including the reference-edge layer), vertex and
+ *   sketch-surface layers so the face depth already in the buffer culls them.
  * - 'clear-then-fresh': clearDepth() then render with normal depth test
  *   and write; used by face layer here, and by helper/plane layers later.
  * - 'no-depth': depth test off, always wins where it draws; used by

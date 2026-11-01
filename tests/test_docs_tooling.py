@@ -97,6 +97,10 @@ def test_main_gate_is_named_fuzz_not_nightly() -> None:
     assert "refs/heads/main" in body and "refs/heads/fuzz" in body, (
         "the fuzz job is no longer gated to both refs/heads/main and refs/heads/fuzz"
     )
+    comment = ci[ci.rindex("\n\n", 0, start) + 2:start]
+    assert "on main only" not in comment, (
+        "the fuzz job's leading comment still says main only; it runs on refs/heads/main or refs/heads/fuzz"
+    )
     for command in (
         "run: just fuzz-session 200 40",
         "run: just action-matrix",
@@ -224,18 +228,21 @@ def test_testing_doc_ci_fuzz_size_and_branches_match_the_workflow() -> None:
     start = ci.index("  fuzz:")
     body = ci[start:].split("\n  #", 1)[0]
     assert "refs/heads/main" in body and "refs/heads/fuzz" in body
+    assert "run: just fuzz-session 200 40" in body
     assert "run: just fuzz-geometry 1500 4" in body
     doc = _squashed(_read("docs/testing.md"))
     assert "`refs/heads/main` or `refs/heads/fuzz`" in doc, "docs/testing.md lost the fuzz branch from the CI gate"
+    assert "just fuzz-session 200 40" in doc, "docs/testing.md no longer states the main-gate session size"
     assert "just fuzz-geometry 1500 4" in doc, "docs/testing.md no longer states the main-gate geometry size"
 
 
 def test_testing_doc_node_matrix_matches_ci() -> None:
-    ci = _read(".github/workflows/ci-gitea.yaml")
-    matrix = re.search(r"node-version: \[([^\]]+)\]", ci)
-    assert matrix is not None, "the frontend job lost its Node matrix"
-    versions = [part.strip() for part in matrix.group(1).split(",")]
-    assert versions == ["22", "24", "26"], f"the Node matrix moved to {versions}"
+    for rel in (".github/workflows/ci-gitea.yaml", ".github/workflows/ci-github.yaml"):
+        ci = _read(rel)
+        matrix = re.search(r"node-version: \[([^\]]+)\]", ci)
+        assert matrix is not None, f"{rel} lost its Node matrix"
+        versions = [part.strip() for part in matrix.group(1).split(",")]
+        assert versions == ["22", "24", "26"], f"the Node matrix in {rel} moved to {versions}"
     doc = _squashed(_read("docs/testing.md"))
     assert "the matrix runs 22, 24 and 26" in doc, (
         "docs/testing.md no longer states the CI Node matrix; it must not claim a leg below 22.6"
@@ -245,7 +252,9 @@ def test_testing_doc_node_matrix_matches_ci() -> None:
 
 def test_testing_doc_regressions_replay_matches_the_suite() -> None:
     suite = _read("frontend/src/testing/robustnessFuzz/regressionsReal.test.ts")
-    assert "endsWith('-minimal.json')" in suite, "the fixture replay suite stopped reading *-minimal.json"
+    assert re.search(r"endsWith\(\s*['\"]-minimal\.json['\"]\s*\)", suite), (
+        "the fixture replay suite stopped reading *-minimal.json"
+    )
     doc = _squashed(_read("docs/testing.md"))
     assert "nothing replays the directory yet" not in doc, (
         "regressionsReal.test.ts replays every *-minimal.json fixture on the PR gate"
