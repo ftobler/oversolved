@@ -10,7 +10,6 @@ export type SessionErrorCode =
   | 'preview-already-open'
   | 'preview-over-session'
   | 'edit-already-open'
-  | 'gesture-already-open'
   | 'unknown-transaction'
 
 export interface SessionFailure {

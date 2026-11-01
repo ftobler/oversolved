@@ -5,7 +5,7 @@
 // frozen behaviour table; the full WP0 transcript rows run in
 // sessionTranscript.test.ts.
 import { describe, it, expect } from 'vitest'
-import { createDocSession, type DocSession, type DocSessionDeps, type EditorFacts } from '@/session/DocSession'
+import { createDocSession, type DocSession, type DocSessionDeps, type EditorFacts, type TransactionKind } from '@/session/DocSession'
 import type { DirtyFacts } from '@/session/dirty'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
@@ -433,39 +433,14 @@ describe('brep withhold', () => {
   })
 })
 
-describe('gesture transactions', () => {
-  it('folds frames into one entry keyed to the baseline', () => {
-    const { session } = makeSession(pointSketchDoc())
-    const before = structuredClone(session.getDoc())
-    session.begin('gesture')
-    session.execute(addPoint('pt1', [5, 5]))
-    expect(session.inspect().history.undo).toEqual([])
-
-    session.commit(session.transactions()[0].id)
-
-    expect(session.inspect().history.undo).toEqual(['add point in sk1'])
-    session.undo()
-    expect(session.getDoc()).toEqual(before)
-  })
-
-  it('a cancelled gesture rewinds to the baseline with no entry', () => {
-    const { session } = makeSession(pointSketchDoc())
-    const before = structuredClone(session.getDoc())
-    session.begin('gesture')
-    session.execute(addPoint('pt1', [5, 5]))
-    session.cancel(session.transactions()[0].id)
-
-    expect(session.getDoc()).toEqual(before)
-    expect(session.inspect().history.undo).toEqual([])
-  })
-
-  it('a gesture is refused while another transaction is open', () => {
-    const { session } = makeSession()
-    session.begin('preview')
-
-    expect(session.begin('gesture')).toEqual({
-      ok: false, code: 'gesture-already-open', message: expect.any(String),
-    })
+describe('transaction kinds', () => {
+  it('has no gesture kind: a drag-fold must reintroduce it with its fixes', () => {
+    // The latent gesture transaction (no production caller, undo mid-gesture
+    // faulted) was deleted. This is a compile-time guard: adding 'gesture' back
+    // without also handling undo mid-gesture fails here.
+    // @ts-expect-error 'gesture' is not a transaction kind
+    const kind: TransactionKind = 'gesture'
+    expect(kind).toBe('gesture')
   })
 })
 

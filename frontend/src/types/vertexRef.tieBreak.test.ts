@@ -9,6 +9,9 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('./vertexKeys', () => ({
   VERTEX_POINT_KEYS: ['c1', '1'] as const,
   VERTEX_POINT_KEY_SUFFIXES: ['c1', '1'] as const,
+  // The geometry mirror derives its own point ceiling from this key, so the
+  // stubbed vocabulary has to carry it even though the tie-break never reads it.
+  MAX_FIT_POINT_KEY: 62,
   isVertexPointKey: (key: string) => key === 'c1' || key === '1',
 }))
 

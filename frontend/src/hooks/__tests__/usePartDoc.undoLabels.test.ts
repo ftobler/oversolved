@@ -25,8 +25,6 @@ vi.mock('@/hooks/useSolver', async () => {
   return solverMock()
 })
 
-type PartDocHook = { current: { setDoc: (d: PartDoc) => void } }
-
 const colorDoc = (): PartDoc => ({
   version: 1,
   kind: 'part',
@@ -37,13 +35,14 @@ const colorDoc = (): PartDoc => ({
 // Stands in for the solver write-back: a doc write the preview did not make,
 // which is what makes previewWouldPush see something to commit at all. Only that
 // a change is there matters here -- the wording under test is the fallback
-// commitPreview uses when the diff has nothing to compose a label from.
-const installSolvedDoc = (result: PartDocHook) => {
+// commitPreview uses when the diff has nothing to compose a label from. The
+// session reads the ref directly, so the ref is the write-back seam.
+const installSolvedDoc = () => {
   act(() => {
-    result.current.setDoc({
+    docRef.current = {
       ...structuredClone(docRef.current),
       features: [{ ...docRef.current!.features![0], label: 'solved' }],
-    })
+    }
   })
 }
 
@@ -55,7 +54,7 @@ describe('undo labels for the label-only resolution entries', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
-    installSolvedDoc(result)
+    installSolvedDoc()
     act(() => { result.current.startEditSession(true) })
 
     expect(result.current.undoStack).toHaveLength(1)
@@ -72,7 +71,7 @@ describe('undo labels for the label-only resolution entries', () => {
     expect(result.current.redoStack).toHaveLength(1)
 
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
-    installSolvedDoc(result)
+    installSolvedDoc()
     // A redo arriving while the popover is open resolves the preview first, so
     // the history move would carry exactly that work; the push clears the redo
     // branch, so the entry stays on the undo stack.

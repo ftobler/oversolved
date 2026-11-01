@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import {
   applySetPartTransparency, applySetPartMetalness, applySetPartRoughness, applySetPartTransmission,
-  applySetRollback, applySetPlaneDefinitionField,
 } from '@/utils/yamlMutations/partStyle'
+import { applySetRollback, applySetPlaneDefinitionField } from '@/utils/yamlMutations/featureAdmin'
 import { applyAddExtrude, applyAddRevolve } from '@/utils/yamlMutations/featureDefs'
 import {
   applyMoveEntity, applyAddEntity, applyAddEntityWithConstraint, applyAddNgon, applyAddOffset,

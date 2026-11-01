@@ -27,9 +27,9 @@ describe('document previews are keyed by (workspace, entry)', () => {
   it('a save writes the workspace key and purge clears it', async () => {
     h.loadMock.mockResolvedValue({ content: 'kind: part\n', name: 'P' })
     h.saveMock.mockResolvedValue(undefined)
-    const reSolveRef = { current: null }
+    const solveRef = { current: null }
     const { result } = renderHook(() =>
-      useDocumentState('entry-1', reSolveRef, { solveOnLoad: false, workspace: 'ws-1' }),
+      useDocumentState('entry-1', solveRef, { solveOnLoad: false, workspace: 'ws-1' }),
     )
     await tick()
 

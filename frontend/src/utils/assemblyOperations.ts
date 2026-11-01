@@ -297,9 +297,15 @@ export function runAssemblyOperation<K extends AssemblyOperationId>(
   input: AssemblyOperationInputs[K],
   host: AssemblyOperationHost,
 ): void {
-  const plan = planAssemblyOperation(id, input, { doc: host.doc, transforms: host.transforms, knownPartIds: host.knownPartIds })
+  const ctx = { transforms: host.transforms, knownPartIds: host.knownPartIds }
+  // host.doc is the caller's mirror and only decides whether this operation is
+  // worth running. The apply is handed to the mutation funnel as a function of
+  // the LIVE doc: two operations in one handler (a pattern, a ref pick after a
+  // sibling edit) must compose instead of each starting from the mirror that
+  // the previous one has not updated yet.
+  const plan = planAssemblyOperation(id, input, { doc: host.doc, ...ctx })
   if (!plan || !plan.changed) return
-  const apply = () => plan.doc
+  const apply = (d: AssemblyDoc) => planAssemblyOperation(id, input, { doc: d, ...ctx })?.doc ?? d
   if (plan.undo === 'one-shot') host.mutateOneShot(plan.label, apply)
   else host.mutateSession(plan.label, apply)
   if (plan.solve === 'solve') host.requestSolve()

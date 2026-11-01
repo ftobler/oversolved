@@ -215,18 +215,6 @@ describe('the session seam', () => {
     expect(journal.entries()[1].payload).toHaveLength(2)
   })
 
-  it('records gesture frames and a cancelled gesture clears them', () => {
-    const journal = new CommandJournal()
-    const { session } = makeSession(sketchDoc(), journal)
-    const opened = session.begin('gesture')
-    expect(opened.ok).toBe(true)
-    session.execute({ type: 'add_entity', featureId: 'sk1', kind: 'point', params: [0, 0], entityId: 'p1' })
-    session.execute({ type: 'add_entity', featureId: 'sk1', kind: 'point', params: [1, 1], entityId: 'p2' })
-    expect(journal.size()).toBe(2)
-    if (opened.ok) session.cancel(opened.id)
-    expect(journal.size()).toBe(0)
-  })
-
   it('skips a minted id the document already holds', () => {
     // A source whose sequence restarts hands out an id another sketch already
     // carries; the session's scope makes it draw the next one, so the document

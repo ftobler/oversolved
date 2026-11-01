@@ -89,9 +89,9 @@ function makeEditor(useDoc: () => DocHook, Toolbar: typeof PartToolbar) {
   }
 }
 
-const reSolveRef = { current: null }
+const solveRef = { current: null }
 const PartEditor = makeEditor(
-  () => useDocumentState('D', reSolveRef, { solveOnLoad: false }) as unknown as DocHook,
+  () => useDocumentState('D', solveRef, { solveOnLoad: false }) as unknown as DocHook,
   PartToolbar,
 )
 const AssemblyEditor = makeEditor(() => useAssemblyDoc('D') as unknown as DocHook, AssemblyToolbar)

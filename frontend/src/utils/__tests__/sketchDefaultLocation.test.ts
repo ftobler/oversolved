@@ -2,7 +2,7 @@
  * Tests for feature 278: no silent default location fallback on missing sketch plane.
  */
 import { describe, it, expect } from 'vitest'
-import { applyAddSketch } from '@/utils/yamlMutations/partStyle'
+import { applyAddSketch } from '@/utils/yamlMutations/featureAdmin'
 import type { PartDoc } from '@/types/cad'
 import { featureById } from '@/testing/featureAccess'
 

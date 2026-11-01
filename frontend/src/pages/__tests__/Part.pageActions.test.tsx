@@ -46,7 +46,7 @@ const F = vi.hoisted(() => {
 })
 
 const h = vi.hoisted(() => ({
-  reSolve: vi.fn(),
+  requestSolve: vi.fn(),
   handleMutation: vi.fn(),
   saveDoc: vi.fn(async () => true),
   renameDoc: vi.fn(async () => true),
@@ -71,7 +71,7 @@ vi.mock('@/hooks/usePartDoc', async () =>
     docRef: { current: F.doc },
     bodies: F.bodies,
     solveResults: F.solve,
-    reSolve: h.reSolve,
+    requestSolve: h.requestSolve,
     handleMutation: h.handleMutation,
     saveDoc: h.saveDoc,
     renameDoc: h.renameDoc,
@@ -245,7 +245,7 @@ describe('Part page actions', () => {
 
     await act(async () => { fireEvent.click(screen.getByTestId('sidebar-rebuild')) })
 
-    expect(h.reSolve).toHaveBeenCalledWith(F.doc, { bypassCache: true, validate: false })
+    expect(h.requestSolve).toHaveBeenCalledWith({ bypassCache: true, validate: false })
   })
 
   it('a rollback drag writes the position through the set_rollback mutation', () => {
@@ -271,7 +271,7 @@ describe('Part page actions', () => {
     fireEvent.click(screen.getByTestId('feature-ctx-extrude1'))
     fireEvent.click(menuItem('Rebuild'))
 
-    expect(h.reSolve).toHaveBeenCalledWith(F.doc)
+    expect(h.requestSolve).toHaveBeenCalledWith()
     expect(screen.queryByTestId('context-menu')).toBeNull()
   })
 

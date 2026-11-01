@@ -13,7 +13,9 @@ interface UseEditFeatureInput {
   commitEditSession: () => void
   cancelEditSession: () => void
   docRef: React.MutableRefObject<PartDoc | null>
-  reSolve: (doc: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string } }) => void | Promise<void>
+  // The session-bound solve: entering and leaving an edit must count toward the
+  // scheduler's pending/idle state like every other solve.
+  requestSolve: () => void
   setMode: (mode: 'sketch' | 'feature') => void
   clearPlaneSelection?: () => void
 }
@@ -58,7 +60,7 @@ export function useEditFeature({
   commitEditSession,
   cancelEditSession,
   docRef,
-  reSolve,
+  requestSolve,
   setMode,
   clearPlaneSelection,
 }: UseEditFeatureInput): UseEditFeatureReturn {
@@ -133,13 +135,13 @@ export function useEditFeature({
     store.setPickBoundary(pickBoundary)
     store.setEditingFeatureId(featureId)
     setEditForcedVisible(new Set([featureId]))
-    if (docRef.current) reSolve(docRef.current)
-  }, [features, builtInIds, startEditSession, commitEditSession, resetEditState, docRef, reSolve, leaveSketchMode])
+    requestSolve()
+  }, [features, builtInIds, startEditSession, commitEditSession, resetEditState, requestSolve, leaveSketchMode])
 
   const _exitEditCleanup = useCallback(() => {
     resetEditState()
-    if (docRef.current) reSolve(docRef.current)
-  }, [resetEditState, docRef, reSolve])
+    requestSolve()
+  }, [resetEditState, requestSolve])
 
   const commitEditFeature = useCallback(() => {
     leaveSketchMode(null)

@@ -7,7 +7,7 @@ import {
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { fitPointIndex } from '@/types/vertexKeys'
-import { hidePlanesIfFirstBoundSketch } from './partStyle'
+import { hidePlanesIfFirstBoundSketch } from './featureAdmin'
 import { applyAddFitSpline, applyDeleteFitPoint, type FitSplineAddOptions } from './fitSpline'
 
 // The rect/ngon/offset sugar lives in a sibling module so this file stays a

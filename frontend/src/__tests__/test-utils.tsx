@@ -140,7 +140,6 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
     usePartDoc: () => {
       const value = useMemo(() => ({
       doc: emptyDoc(),
-      setDoc: vi.fn(),
       docRef: { current: emptyDoc() },
       loading: false,
       error: null,
@@ -165,7 +164,7 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
         getDoc: () => null,
         isDirty: () => false,
       },
-      reSolve: vi.fn(),
+      requestSolve: vi.fn(),
       handleMutation: vi.fn(),
       handleUndo: vi.fn(),
       handleRedo: vi.fn(),
