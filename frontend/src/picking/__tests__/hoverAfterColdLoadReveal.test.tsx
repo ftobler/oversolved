@@ -6,7 +6,7 @@ import { setLivePipeline, getLivePipeline } from '@/picking/IdPipelineContext'
 import { useIdPipelineLifecycle } from '@/picking/useIdPipelineLifecycle'
 import { useFaceIdRegistration } from '@/picking/useFaceIdRegistration'
 import { useIdBufferPointerDispatch } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
-import { registerBodyCallbacks, resetBodyCallbacksForTest } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { registerBodyCallbacks, resetBodyCallbacksForTest } from '@/picking/bodyDispatchCallbacks'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
 

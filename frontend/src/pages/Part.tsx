@@ -63,7 +63,7 @@ import { getFileRegistry } from '@/stores/fileRegistry'
 
 import { normalizeHexColor } from '@/utils/core/partColors'
 import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
-import { builtinPlaneTransform, planeTransformNormal } from '@/components/Geometry3D/bodySnapProjection'
+import { builtinPlaneTransform, planeTransformNormal } from '@/utils/geometry/bodySnapProjection'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
 import { hasDanglingContentInDoc } from '@/utils/yamlMutations/solveResult'

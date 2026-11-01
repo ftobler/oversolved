@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { builtinPlaneTransform, resolvePlaneTransform } from '@/components/Geometry3D/bodySnapProjection'
+import { builtinPlaneTransform, resolvePlaneTransform } from '@/utils/geometry/bodySnapProjection'
 import { planeRotationFromTransform, planeRotation } from '@/components/Geometry3D/utils'
 import type { PlaneTransform } from '@/types/cad'
 

@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
 import { COLOR_SNAP, COLOR_HOVER, COLOR_SELECTED, highlightState } from '@/components/Geometry3D/constants'
-import type { SnapCandidate } from '@/components/Geometry3D/snapDetection'
+import type { SnapCandidate } from '@/utils/geometry/snapDetection'
 
 // A hollow ring drawn at constant pixel size, billboarded to face the camera.
 // Hollow (not a filled dot) signals "inferred, not yet a real point" -- it is a

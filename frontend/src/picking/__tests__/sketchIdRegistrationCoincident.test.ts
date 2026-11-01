@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
 import { buildSketchVertices } from '@/picking/sketchIdBuilders'
-import { suppressedCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
+import { suppressedCoincidentVertexIds } from '@/utils/geometry/dragLogic'
 import type { Sketch, LineSegment } from '@/types/cad'
 
 // Two line segments meeting at a corner joined by a coincident constraint must

@@ -8,10 +8,10 @@ import { Dot } from '@/components/Geometry3D/VertexDots'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { COLOR_SNAP } from '@/components/Geometry3D/constants'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
-import { computeDragMove, shouldActivateDrag, collectCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
+import { computeDragMove, shouldActivateDrag, collectCoincidentVertexIds } from '@/utils/geometry/dragLogic'
 import type { PartConstraint, Topology } from '@/types/cad'
 import type { DragToolContext } from '@/tools/DragTool'
-import { sketchToVertexCandidates, sketchToEntityCandidates, inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
+import { sketchToVertexCandidates, sketchToEntityCandidates, inferredContactCandidates } from '@/utils/geometry/snapDetection'
 import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlane'
 
 // Sketch dragging is the prime consumer of the camera-drag block: the

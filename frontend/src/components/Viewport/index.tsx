@@ -73,7 +73,7 @@ import {
 import {
   bodySnapSketches,
   builtinPlaneTransform,
-} from '@/components/Geometry3D/bodySnapProjection'
+} from '@/utils/geometry/bodySnapProjection'
 import type { SketchData } from '@/types/cad'
 
 // Stabilized props for the R3F Canvas. Inline objects would produce new

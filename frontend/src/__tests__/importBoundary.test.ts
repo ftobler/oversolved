@@ -6,6 +6,12 @@
  * Deleting the Viewport, or refactoring the stores, must not break the solver
  * path.
  *
+ * The second half is the D-8 edge: the hook, tool and store layers are the
+ * logic the viewport mounts, so they must not reach back into the component
+ * tree for helpers either. Pure drag/draw/snap math lives in
+ * `utils/geometry/`, and a component imports it from there like any other
+ * consumer.
+ *
  * Specifiers are resolved to files, so the `@/` alias, relative paths and
  * dynamic `import()` all get caught. A source-text scan (same shape as
  * utils/__tests__/codeConventions.test.ts): fast, deterministic, needs no
@@ -38,13 +44,19 @@ const ALLOWLIST = new Set([
   // Type-only store reads: the drag-state shape, erased at runtime.
   'utils/assemblyPointer.ts',
   'utils/geometry/edgeDragPreview.ts',
+  'utils/geometry/dragLogic.ts',
+  // Runtime store read, and the invariant helper it needs to fail loud on a
+  // degenerate draw. Both are pure leaves themselves (no React, no UI tree).
+  'utils/geometry/drawLogic.ts',
   // Interaction-layer ID registration reading pure geometry / drag helpers from
   // the components tree. Picking is not a neutral leaf; the A-4 edge fixed here
   // is its use of the stores, which is what the rule still guards.
   'picking/useEdgeIdRegistration.ts',
   'picking/useFaceIdRegistration.ts',
-  'picking/useSketchIdRegistration.ts',
   'picking/useVertexIdRegistration.ts',
+  // The per-body dispatch registry clears the shared hover fields when a body
+  // unregisters, so it reads the sketch editor store directly.
+  'picking/bodyDispatchCallbacks.ts',
 ])
 
 const BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g
@@ -98,8 +110,8 @@ function resolveSpecifier(fromFile: string, specifier: string): string | null {
   return null
 }
 
-function isForbidden(target: string): boolean {
-  return FORBIDDEN.some((root) => target === root || target.startsWith(root + sep))
+function isForbidden(target: string, roots: string[] = FORBIDDEN): boolean {
+  return roots.some((root) => target === root || target.startsWith(root + sep))
 }
 
 interface ForbiddenImport {
@@ -109,14 +121,14 @@ interface ForbiddenImport {
 }
 
 // Every forbidden import in one file, regardless of the allowlist.
-function scanFile(file: string): ForbiddenImport[] {
+function scanFile(file: string, forbidden: string[]): ForbiddenImport[] {
   const rel = file.slice(SRC.length + 1)
   const text = stripComments(readFileSync(file, 'utf8'))
   const hits: ForbiddenImport[] = []
   for (const pattern of SPECIFIERS) {
     for (const match of text.matchAll(pattern)) {
       const target = resolveSpecifier(file, match[1])
-      if (!target || !isForbidden(target)) continue
+      if (!target || !isForbidden(target, forbidden)) continue
       const line = text.slice(0, match.index ?? 0).split('\n').length
       hits.push({ rel, line, specifier: match[1] })
     }
@@ -124,14 +136,14 @@ function scanFile(file: string): ForbiddenImport[] {
   return hits
 }
 
-function scanRoots(): { checked: number; hits: ForbiddenImport[] } {
+function scanRoots(roots: string[] = ROOTS, forbidden: string[] = FORBIDDEN): { checked: number; hits: ForbiddenImport[] } {
   const hits: ForbiddenImport[] = []
   let checked = 0
-  for (const root of ROOTS) {
+  for (const root of roots) {
     for (const file of collect(join(SRC, root))) {
       if (isTestFile(file)) continue
       checked++
-      hits.push(...scanFile(file))
+      hits.push(...scanFile(file, forbidden))
     }
   }
   return { checked, hits }
@@ -172,5 +184,24 @@ describe('kernel/utils/picking import boundary', () => {
       for (const match of `const m = import('@/components/foo')`.matchAll(pattern)) matches.push(match[1])
     }
     expect(matches).toContain('@/components/foo')
+  })
+})
+
+describe('hooks/tools/stores import boundary', () => {
+  const LOGIC_ROOTS = ['hooks', 'tools', 'stores']
+  const COMPONENTS = [join(SRC, 'components')]
+
+  it('does not import from the component tree', () => {
+    const { checked, hits } = scanRoots(LOGIC_ROOTS, COMPONENTS)
+    const violations = hits.map((hit) => `${hit.rel}:${hit.line}: imports ${hit.specifier}`)
+    expect(violations).toEqual([])
+    expect(checked).toBeGreaterThan(30)
+  })
+
+  it('resolves the alias onto the component tree from a tool file', () => {
+    const fromFile = join(SRC, 'tools', 'DragTool.ts')
+    const target = resolveSpecifier(fromFile, '@/components/Geometry3D/Dragging')
+    expect(target).not.toBeNull()
+    expect(isForbidden(target as string, COMPONENTS)).toBe(true)
   })
 })

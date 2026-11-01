@@ -49,7 +49,7 @@ import { selectActiveFrom, hoverActiveFrom, EMPTY_CLAIM_MAP } from '@/picking/hi
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { buildEdgeMaterial } from '@/components/Geometry3D/edgeLineMaterial'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
-import { registerBodyCallbacks } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { registerBodyCallbacks } from '@/picking/bodyDispatchCallbacks'
 
 function useDispose<T extends { dispose(): void }>(obj: T | null | undefined): void {
   useEffect(() => { return () => { obj?.dispose() } }, [obj])

@@ -2,12 +2,12 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import type { Mutation, Entity } from '@/types/cad'
-import type { DrawSnapState, InsertTarget } from '@/components/Geometry3D/drawAutoConstraints'
-import { createInsertionHelper, insertCoincidentPoint, insertAxisConstraint, carriedSnapFields, resolveSnapPoint, SNAP_EPS } from '@/components/Geometry3D/drawAutoConstraints'
+import type { DrawSnapState, InsertTarget } from '@/utils/geometry/drawAutoConstraints'
+import { createInsertionHelper, insertCoincidentPoint, insertAxisConstraint, carriedSnapFields, resolveSnapPoint, SNAP_EPS } from '@/utils/geometry/drawAutoConstraints'
 import { getEntityKind } from '@/types/cad'
 import { projectionMutationsForId } from '@/tools/projectionMutations'
-import { circumcircle, arcEndpointOrder, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
-import { isFiniteSketchPoint } from '@/components/Geometry3D/pointerAbstraction'
+import { circumcircle, arcEndpointOrder, ELLIPSE_MINOR_RATIO } from '@/utils/geometry/drawGeometry'
+import { isFiniteSketchPoint } from '@/utils/pointerAbstraction'
 import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
 import { sameSnapVertex } from '@/utils/snapRefs'
 import { failLoud } from '@/stores/stateInvariants'

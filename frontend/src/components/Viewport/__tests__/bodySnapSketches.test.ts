@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { bodySnapSketches, BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjection'
+import { bodySnapSketches, BODY_SNAP_FEAT_PREFIX } from '@/utils/geometry/bodySnapProjection'
 import { getBodiesToRender } from '@/utils/bodyRender'
 import type { Feature, BodyResult } from '@/types/cad'
 

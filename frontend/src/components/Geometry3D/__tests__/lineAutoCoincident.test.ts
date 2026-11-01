@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeDrawClick, type DrawSnapState } from '@/components/Geometry3D/drawLogic'
+import { computeDrawClick, type DrawSnapState } from '@/utils/geometry/drawLogic'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 import type { PartDoc, Mutation, PartConstraint } from '@/types/cad'
 import { sketchAt } from '@/testing/featureAccess'

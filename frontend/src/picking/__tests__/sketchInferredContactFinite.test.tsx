@@ -13,7 +13,7 @@ import { setLivePipeline } from '../IdPipelineContext'
  */
 const { candidates } = vi.hoisted(() => ({ candidates: [] as { id: string; position: number[] }[] }))
 
-vi.mock('@/components/Geometry3D/snapDetection', () => ({
+vi.mock('@/utils/geometry/snapDetection', () => ({
   inferredContactCandidates: () => candidates,
 }))
 

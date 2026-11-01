@@ -33,7 +33,7 @@ vi.mock('@/utils/geometry/sketchHelpers', async (importOriginal) => {
   return { ...actual, getIconUrl: (kind: string) => (kind.startsWith('symbol_') ? `/icons/${kind}.svg` : undefined) }
 })
 
-vi.mock('@/components/Geometry3D/drawGeometry', () => ({
+vi.mock('@/utils/geometry/drawGeometry', () => ({
   findEntitiesAtPoint: () => ['line1', 'line2'],
 }))
 

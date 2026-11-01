@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Sketch, Topology, PartConstraint } from '@/types/cad'
-import { sketchToIntersectionCandidates, inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
+import { sketchToIntersectionCandidates, inferredContactCandidates } from '@/utils/geometry/snapDetection'
 import { reconcileMaterializedContacts, type TopologyDict } from '@/kernel/topologyDecorate'
 
 const FEATURE = 'S1'

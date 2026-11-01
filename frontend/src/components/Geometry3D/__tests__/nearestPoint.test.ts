@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nearestPointOnLine, nearestPointOnCircle, nearestPointOnArc, nearestPointOnEntity } from '@/components/Geometry3D/nearestPoint'
+import { nearestPointOnLine, nearestPointOnCircle, nearestPointOnArc, nearestPointOnEntity } from '@/utils/geometry/nearestPoint'
 import type { LineSegment, Circle, Arc, PointEntity } from '@/types/cad'
 
 describe('nearestPointOnLine', () => {

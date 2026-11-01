@@ -38,7 +38,7 @@ vi.mock('@/components/Geometry3D/dimensions/Angle', () => ({
   AngleDimension: () => <div data-testid="angle-dim" />,
 }))
 
-vi.mock('@/components/Geometry3D/drawGeometry', () => ({
+vi.mock('@/utils/geometry/drawGeometry', () => ({
   findEntitiesAtPoint: () => ['entity1'],
 }))
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { registerBodyCallbacks, resetBodyCallbacksForTest } from '../bodyDispatchCallbacks'
+import { registerBodyCallbacks, resetBodyCallbacksForTest } from '@/picking/bodyDispatchCallbacks'
 import { brepFaceAdapter, brepEdgeAdapter, brepVertexAdapter, clearAllHover } from '../brepAdapters'
 
 import type { Mesh3D } from '@/types/cad'

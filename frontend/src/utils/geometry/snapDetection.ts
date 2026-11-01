@@ -3,7 +3,7 @@
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import type { Sketch, LineSegment, Circle, Arc, PointEntity, Spline, Entity, PartConstraint, PartEntityDef, Topology } from '@/types/cad'
 import { suggestConstraint, type DraggedElementType, type SnapKind } from '@/registry'
-import { nearestPointOnEntity } from '@/components/Geometry3D/nearestPoint'
+import { nearestPointOnEntity } from '@/utils/geometry/nearestPoint'
 import { dockHostsOf } from '@/utils/geometry/dockHosts'
 import { curvesThroughPoint } from '@/utils/geometry/curvesThroughPoint'
 

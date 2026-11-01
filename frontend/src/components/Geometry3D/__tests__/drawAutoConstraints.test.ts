@@ -7,10 +7,10 @@ import {
   insertCoincidentPoint,
   insertAxisConstraint,
   carriedSnapFields,
-} from '@/components/Geometry3D/drawAutoConstraints'
+} from '@/utils/geometry/drawAutoConstraints'
 import type { Entity } from '@/types/cad'
-import type { DrawSnapState } from '@/components/Geometry3D/drawAutoConstraints'
-import { computeDrawClick } from '@/components/Geometry3D/drawLogic'
+import type { DrawSnapState } from '@/utils/geometry/drawAutoConstraints'
+import { computeDrawClick } from '@/utils/geometry/drawLogic'
 
 const FEATURE = 'S1'
 let idCounter = 0

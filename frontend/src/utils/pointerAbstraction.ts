@@ -19,3 +19,9 @@ export function screenPixelDistance(a: readonly [number, number], b: readonly [n
 export function isPureClick(startClient: readonly [number, number], endClient: readonly [number, number]): boolean {
   return screenPixelDistance(startClient, endClient) < CLICK_THRESHOLD_PX
 }
+
+/** Both components finite. The gate every sketch-space coordinate passes
+ *  before it can reach a mutation. */
+export function isFiniteSketchPoint(p: readonly [number, number]): boolean {
+  return Number.isFinite(p[0]) && Number.isFinite(p[1])
+}

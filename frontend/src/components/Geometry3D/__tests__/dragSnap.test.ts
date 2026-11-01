@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Sketch } from '@/types/cad'
-import { findSnapTarget, sketchToVertexCandidates, sketchToEntityCandidates, collectVertexTargetsFlat, collectEntityCandidatesFlat } from '@/components/Geometry3D/snapDetection'
+import { findSnapTarget, sketchToVertexCandidates, sketchToEntityCandidates, collectVertexTargetsFlat, collectEntityCandidatesFlat } from '@/utils/geometry/snapDetection'
 
 const V_THRESH = 2.0
 const E_THRESH = 0.8

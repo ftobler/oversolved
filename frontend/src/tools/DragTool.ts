@@ -1,8 +1,8 @@
 import type { Tool, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
 import type { Point } from '@/types/cad'
-import { shouldActivateDrag, computeDragMutation } from '@/components/Geometry3D/dragLogic'
-import { getLastDragSolve } from '@/components/Geometry3D/dragSolveRegistry'
-import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
+import { shouldActivateDrag, computeDragMutation } from '@/utils/geometry/dragLogic'
+import { getLastDragSolve } from '@/utils/geometry/dragSolveRegistry'
+import type { SnapTarget } from '@/utils/geometry/snapDetection'
 import { toolModeHandlers } from '@/tools/toolMode'
 
 export interface DragToolContext extends ToolContext {

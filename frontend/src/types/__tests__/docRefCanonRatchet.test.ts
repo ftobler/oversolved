@@ -73,7 +73,7 @@ describe('doc-ref-canon ratchets', () => {
   const DOLLAR_EMIT_ALLOWLIST = new Set([
     'utils/yamlMutations/helpers.ts',
     'utils/yamlMutations/sketchMirror.ts',
-    'components/Geometry3D/dragLogic.ts',
+    'utils/geometry/dragLogic.ts',
     'kernel/queryWire.ts',
   ])
 

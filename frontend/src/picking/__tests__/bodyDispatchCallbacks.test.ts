@@ -8,7 +8,7 @@ import {
   clearAllBodyHover,
   resetBodyCallbacksForTest,
   type BodyDispatchCallbacks,
-} from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+} from '@/picking/bodyDispatchCallbacks'
 import { brepFaceAdapter } from '@/components/Viewport/idDispatch/brepAdapters'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Mesh3D } from '@/types/cad'

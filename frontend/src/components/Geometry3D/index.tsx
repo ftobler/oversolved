@@ -8,7 +8,7 @@ import { VertexDot, VertexHighlight, ProjectedOriginPoint } from '@/components/G
 
 // Entity geometry rendering
 import { EntityLines, ProjectedEntities } from '@/components/Geometry3D/EntityLines'
-import { sketchExtent } from '@/components/Geometry3D/drawGeometry'
+import { sketchExtent } from '@/utils/geometry/drawGeometry'
 
 // Constraint display
 import { ConstraintOverlays } from '@/components/Geometry3D/Constraints'
@@ -22,7 +22,7 @@ import { DragPlane, DragSnapIndicator } from '@/components/Geometry3D/Dragging'
 
 // Inferred contact points: tangencies + curve-curve intersections (lazy inferred materialization)
 import { InferredContactMarkers } from '@/components/Geometry3D/InferredContactMarkers'
-import { inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
+import { inferredContactCandidates } from '@/utils/geometry/snapDetection'
 
 // Edge drag preview: frontend-only translation of the dragged entity's vertices.
 // No constraint resolution -- the WASM hard solve handles that on pointer-up.
@@ -45,7 +45,7 @@ import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'
 
 // Utilities
 import { planeRotation, planeRotationFromTransform } from '@/components/Geometry3D/utils'
-import { resolvePlaneTransform } from '@/components/Geometry3D/bodySnapProjection'
+import { resolvePlaneTransform } from '@/utils/geometry/bodySnapProjection'
 
 // Colors
 import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from '@/components/Geometry3D/constants'

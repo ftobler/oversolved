@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { resolveSnapPoint, computeDrawClick } from '@/components/Geometry3D/drawLogic'
-import type { DrawSnapState } from '@/components/Geometry3D/drawLogic'
-import { computePreviewPts, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
+import { resolveSnapPoint, computeDrawClick } from '@/utils/geometry/drawLogic'
+import type { DrawSnapState } from '@/utils/geometry/drawLogic'
+import { computePreviewPts, ELLIPSE_MINOR_RATIO } from '@/utils/geometry/drawGeometry'
 import type { Entity } from '@/types/cad'
 
 const FEATURE = 'S1'

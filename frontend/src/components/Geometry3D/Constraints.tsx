@@ -5,7 +5,7 @@ import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorSto
 import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl, groupConstraintsByEntity } from '@/utils/geometry/sketchHelpers'
 import { renderDimension } from '@/components/Geometry3D/dimensions/renderDimension'
 import { COLOR_SELECTED, COLOR_ERROR_DEEP, LABEL_Z_OFFSET, highlightState } from '@/components/Geometry3D/constants'
-import { findEntitiesAtPoint } from '@/components/Geometry3D/drawGeometry'
+import { findEntitiesAtPoint } from '@/utils/geometry/drawGeometry'
 
 function ConstraintTile({ url, id, featureId, highlightIds, superfluous, culprit }: { url: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean }) {
   const [hovered, setHovered] = useState(false)

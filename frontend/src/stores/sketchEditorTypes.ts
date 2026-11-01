@@ -3,7 +3,7 @@
 // shape without reaching into the store's runtime.
 import type { ActiveTool, SelectionDomain } from '@/types/cad'
 import type { SnapKind, DimensionPick } from '@/registry'
-import type { SnapTarget } from '@/components/Geometry3D/snapDetection'
+import type { SnapTarget } from '@/utils/geometry/snapDetection'
 
 export interface DialogState {
   position: [number, number]

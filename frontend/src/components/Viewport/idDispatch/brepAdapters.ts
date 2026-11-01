@@ -4,7 +4,7 @@ import {
   findBodyFaceByPickKey,
   applyHoveredFaceGeometry,
   clearAllBodyHover,
-} from './bodyDispatchCallbacks'
+} from '@/picking/bodyDispatchCallbacks'
 
 /**
  * Hover adapters for the three B-rep ID layers.
