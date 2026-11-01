@@ -2,7 +2,7 @@
 // entity/edge/face kinds from the sketch callback and the body dispatch tables.
 import { getSketchCallback, useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { getEntityKind } from '@/types/cad'
-import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/picking/bodyDispatchCallbacks'
 import { projectionMutationsForSelection, type ProjectionResolvers } from '@/tools/projectionMutations'
 
 export const liveProjectionResolvers: ProjectionResolvers = {

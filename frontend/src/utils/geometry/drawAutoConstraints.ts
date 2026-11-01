@@ -5,7 +5,7 @@ import type { Mutation, Entity } from '@/types/cad'
 import type { SnapKind } from '@/registry'
 import { suggestConstraint } from '@/registry'
 import { getEntityKind } from '@/types/cad'
-import { nearestPointOnEntity } from '@/components/Geometry3D/nearestPoint'
+import { nearestPointOnEntity } from '@/utils/geometry/nearestPoint'
 
 /** The hover/snap signals a draw click resolves against. Owned here because
  *  this module, not the per-tool click math, decides what they mean. */

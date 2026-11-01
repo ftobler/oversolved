@@ -27,7 +27,7 @@ vi.mock('@/kernel/features/sketch', async (importOriginal) => {
 })
 
 import { useWasmDragSolve } from '@/hooks/useWasmDragSolve'
-import { getLastDragSolve, setLastDragSolve } from '@/components/Geometry3D/dragSolveRegistry'
+import { getLastDragSolve, setLastDragSolve } from '@/utils/geometry/dragSolveRegistry'
 import type { DragState } from '@/stores/sketchEditorStore'
 import type { SketchFeature, Sketch } from '@/types/cad'
 

@@ -6,7 +6,7 @@ import {
   computePreviewPts,
   sketchExtent,
   findEntitiesAtPoint,
-} from '@/components/Geometry3D/drawGeometry'
+} from '@/utils/geometry/drawGeometry'
 import type { Sketch } from '@/types/cad'
 
 // drawGeometry is pure planar geometry (no Three.js / no DOM). drawLogic.test.ts

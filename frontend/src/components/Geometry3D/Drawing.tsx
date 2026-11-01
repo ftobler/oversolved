@@ -13,11 +13,11 @@ import { useAlignmentSnapEffect, toolTakesAlignmentSnap } from '@/components/int
 import { failLoud } from '@/stores/stateInvariants'
 import type { Sketch } from '@/types/cad'
 import type { DrawingToolContext } from '@/tools/DrawingTool'
-import { computePreviewPts } from '@/components/Geometry3D/drawGeometry'
-import { resolveDrawCursor } from '@/components/Geometry3D/drawLogic'
+import { computePreviewPts } from '@/utils/geometry/drawGeometry'
+import { resolveDrawCursor } from '@/utils/geometry/drawLogic'
 import { markDrawToolClickConsumed } from '@/components/Viewport/idDispatch/drawToolClickGuard'
 import { shouldClearSelectionOnBackplaneClick, resolvePickAtEvent, PART_EDITOR_CONSUMED_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
-import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/picking/bodyDispatchCallbacks'
 import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 
 // Secondary (bit 2) or middle (bit 4) mouse button held: a camera/navigation

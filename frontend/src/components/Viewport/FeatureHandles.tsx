@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
@@ -8,23 +8,17 @@ import { useSketchEditorStore, useSketchUiStore, getSketchCallback, type Feature
 import { useFeatureHandleIdRegistration, featureHandleKey } from '@/picking'
 import { registerFeatureHandleCallbacks } from '@/components/Viewport/idDispatch/featureHandleCallbacks'
 import { handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx, handleColor } from '@/components/Geometry3D/featureHandleMath'
-import { closestParamOnAxis } from '@/utils/gizmoMath'
-import { shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
+import { shouldActivateDrag } from '@/utils/geometry/dragLogic'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { refusalText } from '@/utils/core/statusMark'
 import { expressionRefusal, positive } from '@/utils/core/valueRules'
 import type { FeatureHandleData, Mutation, PartFeature, SketchData } from '@/types/cad'
+import ScreenArrow, { SHAFT_RADIUS, SHAFT_START, TIP } from '@/components/Viewport/ScreenArrow'
+import { useAxisDrag } from '@/components/Viewport/useAxisDrag'
 
-// Arrow-head proportions in screen pixels; that part of the arrow is rescaled
-// to p2w(camera) every frame so it keeps a constant on-screen size at any
-// zoom. The tail behind the grab point is world-sized instead: it spans the
-// whole feature (extrude origin to end face), so only its radius is pixels.
-const SHAFT_START = -10  // tailless (angular) arrows reach slightly behind the grab point
-const SHAFT_END = 26
-const SHAFT_RADIUS = 1.6
-const CONE_LEN = 16
-const CONE_RADIUS = 5.5
-const TIP = SHAFT_END + CONE_LEN
+// The tail behind the grab point is world-sized (it spans the whole feature,
+// extrude origin to end face); only its radius is pixels. The screen-sized head
+// lives in ScreenArrow.
 
 // Value-label metrics (px). The label is offset from the arrow tip in screen
 // space (see labelOffsetPx), so it needs its own approximate half-extents:
@@ -108,7 +102,7 @@ function HandleArrow({ featureId, feature, handle }: {
   feature: PartFeature
   handle: FeatureHandleData
 }) {
-  const { camera, gl, size } = useThree()
+  const { camera, size } = useThree()
   const selectionKey = featureHandleKey(featureId, handle.field)
 
   const hovered = useSketchEditorStore(s => s.hoveredSelectionId === selectionKey)
@@ -140,11 +134,7 @@ function HandleArrow({ featureId, feature, handle }: {
   const tailLen = handleTailLength(handle.kind, handle.value, handle.unit_scale)
   const tailWorldLen = tailLen + travel
 
-  // Pixel->world factor, quantized: re-rendering (and re-registering the pick
-  // segment) on every zoom tick would rebuild the ID buffer continuously, so
-  // only steps of ~25% propagate; the resolver's snap window absorbs the
-  // residual error at the screen-sized arrow tip.
-  const [pxToWorld, setPxToWorld] = useState(() => p2w(camera))
+  const { pxToWorld, cursorAxisParam, trackZoom } = useAxisDrag()
 
   // The pick segment spans the visible arrow: tail start (world-sized part)
   // through the screen-sized head to the cone tip.
@@ -207,21 +197,6 @@ function HandleArrow({ featureId, feature, handle }: {
   // Axis param of the cursor at drag activation; travel is measured from here
   // so the value never jumps by the click-threshold distance.
   const startParamRef = useRef<number | null>(null)
-  const raycasterRef = useRef(new THREE.Raycaster())
-
-  const cursorAxisParam = (e: PointerEvent, axisOrigin: [number, number, number], axisDir: [number, number, number]): number | null => {
-    const rect = gl.domElement.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return null
-    const ndc = {
-      x: ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      y: -((e.clientY - rect.top) / rect.height) * 2 + 1,
-    }
-    const rc = raycasterRef.current
-    rc.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera)
-    const o = rc.ray.origin
-    const d = rc.ray.direction
-    return closestParamOnAxis({ origin: [o.x, o.y, o.z], direction: [d.x, d.y, d.z] }, axisOrigin, axisDir)
-  }
 
   const handleMoveRef = useRef<((e: PointerEvent) => void) | null>(null)
   const moveImpl = (e: PointerEvent) => {
@@ -305,7 +280,7 @@ function HandleArrow({ featureId, feature, handle }: {
     // The tail's radius is screen-constant but its length is world-sized, so
     // it cannot live in the uniformly rescaled head group.
     tailRef.current?.scale.set(SHAFT_RADIUS * f, tailWorldLen, SHAFT_RADIUS * f)
-    if (f > pxToWorld * 1.25 || f < pxToWorld * 0.8) setPxToWorld(f)
+    trackZoom(f)
   })
 
   const color = handleColor(hovered, !!activeDrag)
@@ -328,26 +303,15 @@ function HandleArrow({ featureId, feature, handle }: {
 
   return (
     <group position={position} quaternion={quaternion}>
-      {tailWorldLen > 1e-9 && (
-        <mesh
-          ref={tailRef}
-          position={[0, -tailWorldLen / 2, 0]}
-          scale={[SHAFT_RADIUS * pxToWorld, tailWorldLen, SHAFT_RADIUS * pxToWorld]}
-          renderOrder={1000}
-        >
-          <cylinderGeometry args={[1, 1, 1, 12]} />
-          <meshBasicMaterial color={color} transparent opacity={opacity} depthTest={false} depthWrite={false} />
-        </mesh>
-      )}
-      <group ref={groupRef}>
-        <mesh position={[0, (headStartPx + SHAFT_END) / 2, 0]} renderOrder={1000}>
-          <cylinderGeometry args={[SHAFT_RADIUS, SHAFT_RADIUS, SHAFT_END - headStartPx, 12]} />
-          <meshBasicMaterial color={color} transparent opacity={opacity} depthTest={false} depthWrite={false} />
-        </mesh>
-        <mesh position={[0, SHAFT_END + CONE_LEN / 2, 0]} renderOrder={1000}>
-          <coneGeometry args={[CONE_RADIUS, CONE_LEN, 16]} />
-          <meshBasicMaterial color={color} transparent opacity={opacity} depthTest={false} depthWrite={false} />
-        </mesh>
+      <ScreenArrow
+        color={color}
+        opacity={opacity}
+        tailLength={tailWorldLen}
+        tailRef={tailRef}
+        headStartPx={headStartPx}
+        headRef={groupRef}
+        pixelsPerWorld={pxToWorld}
+      >
         {showLabel && (
           <Html position={[0, TIP, 0]} center style={{ pointerEvents: 'none' }} zIndexRange={[100, 0]}>
             <div style={{
@@ -360,7 +324,7 @@ function HandleArrow({ featureId, feature, handle }: {
             </div>
           </Html>
         )}
-      </group>
+      </ScreenArrow>
     </group>
   )
 }

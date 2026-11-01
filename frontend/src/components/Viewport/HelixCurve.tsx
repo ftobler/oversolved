@@ -1,4 +1,5 @@
 import { Line } from '@react-three/drei'
+import { useMemo } from 'react'
 import type { EdgeDataSpline } from '@/types/cad'
 import { useEdgeIdRegistration } from '@/picking'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -35,11 +36,18 @@ export default function HelixCurve({
   const hovered = useSketchEditorStore(s => s.hoveredSelectionId === selectionId)
   const selected = useSketchEditorStore(s => s.normalSelection.has(selectionId))
 
+  // Identity-stable registration payloads: useEdgeIdRegistration's effect keys
+  // on `edges` and `edgeQueries`, so a fresh array every render (a hover flip
+  // re-renders this component) would unregister and rebuild the pick geometry
+  // on every hover.
+  const edges = useMemo(() => [curve], [curve])
+  const edgeQueries = useMemo(() => [`@${featureId}`], [featureId])
+
   useEdgeIdRegistration({
     featureId,
     bodyId: featureId,
-    edges: [curve],
-    edgeQueries: [`@${featureId}`],
+    edges,
+    edgeQueries,
     enabled: visible,
     // Reference curve: the section clips bodies, not this, so its pick must
     // stay on the unclipped layer the curve is drawn on.

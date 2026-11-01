@@ -3,7 +3,7 @@ import { useThree } from '@react-three/fiber'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { ALIGNMENT_TOLERANCE_DEG, ALIGNMENT_TOLERANCE_DIST } from '@/registry'
 import { p2w } from '@/utils/geometry/sketchHelpers'
-import { ALIGNMENT_BLIND_TOOLS } from '@/components/Geometry3D/drawLogic'
+import { ALIGNMENT_BLIND_TOOLS } from '@/utils/geometry/drawLogic'
 
 // A tool whose commit ignores the alignment snap gets no guide: showing it
 // would promise a snap the click never makes. The set lives with the commit

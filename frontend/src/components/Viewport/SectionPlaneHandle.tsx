@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -6,25 +6,18 @@ import { useSectionStore } from '@/stores/sectionStore'
 import { useFeatureHandleIdRegistration } from '@/picking'
 import { registerFeatureHandleCallbacks } from '@/components/Viewport/idDispatch/featureHandleCallbacks'
 import { SECTION_HANDLE_FEATURE_ID, SECTION_HANDLE_FIELD, SECTION_HANDLE_KEY } from '@/viewport/sectionHandle'
-import { closestParamOnAxis } from '@/utils/gizmoMath'
-import { shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
+import { shouldActivateDrag } from '@/utils/geometry/dragLogic'
 import { handleColor } from '@/components/Geometry3D/featureHandleMath'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { offsetFramePoint, sectionOffsetFromDrag } from '@/viewport/sectionPlane'
 import { useSectionClip } from '@/viewport/useSection'
+import ScreenArrow, { TIP } from '@/components/Viewport/ScreenArrow'
+import { useAxisDrag } from '@/components/Viewport/useAxisDrag'
 
 // The section's drag arrow. It rides the existing featureHandle pick layer
 // under its own key, exactly like an edit handle: the dispatcher routes the
 // grab to this component's callback, and hover lights it through
 // hoveredSelectionId, so the one pick path is unchanged.
-
-// Arrow proportions in screen pixels, the same convention as FeatureHandles.
-const SHAFT_START = -10
-const SHAFT_END = 26
-const SHAFT_RADIUS = 1.6
-const CONE_LEN = 16
-const CONE_RADIUS = 5.5
-const TIP = SHAFT_END + CONE_LEN
 
 // The faint plane outline is world-sized: it marks a geometric plane, so it
 // should grow and shrink with the model rather than with the camera.
@@ -52,21 +45,16 @@ function buildOutlineGeometry(size: number): THREE.BufferGeometry {
 
 /** The arrow and outline of the live section plane, plus its offset drag. */
 export default function SectionPlaneHandle() {
-  const { camera, gl } = useThree()
+  const { camera } = useThree()
   const { active, frame, offset } = useSectionClip()
   const capturing = useSectionStore(s => s.capturing)
   const hovered = useSketchEditorStore(s => s.hoveredSelectionId === SECTION_HANDLE_KEY)
+  const { pxToWorld, cursorAxisParam, trackZoom } = useAxisDrag()
 
   const [dragging, setDragging] = useState(false)
   const draggingRef = useRef(false)
   const pendingRef = useRef<PendingDrag | null>(null)
   const startParamRef = useRef<number | null>(null)
-  const raycasterRef = useRef(new THREE.Raycaster())
-
-  const [pxToWorld, setPxToWorld] = useState(() => {
-    const ortho = camera as THREE.OrthographicCamera
-    return ortho.isOrthographicCamera ? p2w(camera) : 1
-  })
   const groupRef = useRef<THREE.Group>(null)
 
   const outlineGeometry = useMemo(() => buildOutlineGeometry(OUTLINE_SIZE), [])
@@ -108,24 +96,6 @@ export default function SectionPlaneHandle() {
     end: tipPoint ?? [0, 0, 0],
     enabled: active && !capturing && !dragging && planePoint !== null && tipPoint !== null,
   })
-
-  const cursorAxisParam = useCallback((
-    e: PointerEvent,
-    axisPoint: [number, number, number],
-    axisDir: [number, number, number],
-  ): number | null => {
-    const rect = gl.domElement.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return null
-    const ndc = {
-      x: ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      y: -((e.clientY - rect.top) / rect.height) * 2 + 1,
-    }
-    const rc = raycasterRef.current
-    rc.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera)
-    const o = rc.ray.origin
-    const d = rc.ray.direction
-    return closestParamOnAxis({ origin: [o.x, o.y, o.z], direction: [d.x, d.y, d.z] }, axisPoint, axisDir)
-  }, [camera, gl])
 
   // Grab: the dispatcher has already resolved the arrow's pixels in the ID
   // buffer. This records a pending drag; the move listener activates past the
@@ -204,9 +174,7 @@ export default function SectionPlaneHandle() {
     if (!active) return
     const scale = p2w(camera)
     groupRef.current?.scale.setScalar(scale)
-    // Re-registering the pick segment on every zoom tick would rebuild the
-    // buffer continuously; only ~25% steps propagate, as FeatureHandles does.
-    if (scale > pxToWorld * 1.25 || scale < pxToWorld * 0.8) setPxToWorld(scale)
+    trackZoom(scale)
   })
 
   if (!active || !frame || !planePoint || capturing) return null
@@ -221,16 +189,7 @@ export default function SectionPlaneHandle() {
         </lineLoop>
       </group>
       <group position={planePoint} quaternion={arrowQuaternion}>
-        <group ref={groupRef}>
-          <mesh position={[0, (SHAFT_START + SHAFT_END) / 2, 0]} renderOrder={1000}>
-            <cylinderGeometry args={[SHAFT_RADIUS, SHAFT_RADIUS, SHAFT_END - SHAFT_START, 12]} />
-            <meshBasicMaterial color={color} transparent opacity={1} depthTest={false} depthWrite={false} />
-          </mesh>
-          <mesh position={[0, SHAFT_END + CONE_LEN / 2, 0]} renderOrder={1000}>
-            <coneGeometry args={[CONE_RADIUS, CONE_LEN, 16]} />
-            <meshBasicMaterial color={color} transparent opacity={1} depthTest={false} depthWrite={false} />
-          </mesh>
-        </group>
+        <ScreenArrow color={color} headRef={groupRef} pixelsPerWorld={pxToWorld} />
       </group>
     </group>
   )

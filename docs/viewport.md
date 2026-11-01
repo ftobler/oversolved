@@ -109,7 +109,7 @@ Not every interaction is a registered tool:
 
 A wall separates testable logic from the untestable R3F zone. Only plain TypeScript primitives cross it (`string`, `number`, `boolean`, plain objects, tuples). No `THREE.*`, no refs, no R3F hooks.
 
-**Pure logic files**: `coordTransform.ts`, `pointerAbstraction.ts`, `snapDetection.ts`, `nearestPoint.ts`, `dragLogic.ts`, `drawLogic.ts`, `bodySnapProjection.ts`, all registries, `stores/editorState.ts` (the L2 editor-state store: selection, active tool, draw state and the rollback/edit FSM, a vanilla zustand store with its React binding in `hooks/useEditorState.ts`), plus the picking pure (three-free, React-free) layer beside the R3F zone: `IdResolver.ts`, `markPosition.ts`, `IdRegistry.ts`, `layerNames.ts`, `pickKey.ts`, `idEncoding.ts`, `collectEntitiesFromPixels.ts`, `selectionHighlight.ts`, `HoverScheduler.ts`, `screenSpaceScale.ts`, `cameraPose.ts`, `sceneProbe.ts`, `probeMarks.ts`, `domHandles.ts`. `cameraPose.ts` imports three only as a type; `markPosition.ts`, `sceneProbe.ts` and `probeMarks.ts` carry the `PURE LOGIC` header.
+**Pure logic files**: `coordTransform.ts`, `pointerAbstraction.ts`, and the drag/draw/snap leaves in `utils/geometry/` (`dragLogic.ts`, `dragSolveRegistry.ts`, `snapDetection.ts`, `nearestPoint.ts`, `drawLogic.ts`, `drawAutoConstraints.ts`, `drawGeometry.ts`, `bodySnapProjection.ts`), all registries, `stores/editorState.ts` (the L2 editor-state store: selection, active tool, draw state and the rollback/edit FSM, a vanilla zustand store with its React binding in `hooks/useEditorState.ts`), plus the picking pure (three-free, React-free) layer beside the R3F zone: `IdResolver.ts`, `markPosition.ts`, `IdRegistry.ts`, `layerNames.ts`, `pickKey.ts`, `idEncoding.ts`, `collectEntitiesFromPixels.ts`, `selectionHighlight.ts`, `HoverScheduler.ts`, `screenSpaceScale.ts`, `cameraPose.ts`, `sceneProbe.ts`, `probeMarks.ts`, `domHandles.ts`. `cameraPose.ts` imports three only as a type; `markPosition.ts`, `sceneProbe.ts` and `probeMarks.ts` carry the `PURE LOGIC` header. The `@/__tests__/importBoundary.test.ts` guard keeps `hooks/`, `tools/` and `stores/` importing these rather than reaching into `components/`.
 
 **Viewport adapters** (~10 lines, no branching): `coordTransformAdapters.ts`, `pointerAbstractionAdapters.ts`.
 
@@ -143,8 +143,9 @@ pixel scan order, mark order** (`IdResolver.resolvePixelWindowAll`).
 The pick window is `DEFAULT_WINDOW_SIZE` = 17 CSS px, scaled by the
 device-pixel ratio at read time; the reach is the inscribed radius, 8 px in
 every direction (`pickRadiusPx`). Hit geometry constants:
-`POINT_HIT_PIXELS` 20 and `ENTITY_HIT_PIXELS` 8 are the drag/snap zones, not
-the ID reach; `VERTEX_PICK_CUBE_PIXELS` 3 is the B-rep vertex cube size.
+`DRAG_SNAP_VERTEX_RADIUS_PX` 20 and `DRAG_SNAP_ENTITY_RADIUS_PX` 8
+(`utils/geometry/dragLogic.ts`) are the drag snap zones, not the ID reach;
+`VERTEX_PICK_CUBE_PIXELS` 3 is the B-rep vertex cube size.
 
 ## Section View
 
@@ -301,15 +302,13 @@ re-registers the moved geometry and the buffer rebuilds.
 
 Snap priority during drag: vertex snap (20px) → entity snap (8px) → no snap (raw position). Dynamic selection feeds alignment snap detection (~10 degree tolerance). The `snapRegistry` defines allowed snap targets per drag type.
 
-Body snap projection (`bodySnapProjection.ts`): projects 3D body vertices/edges onto active sketch plane, injected with `__body__` prefix (no constraints generated for body-snap targets).
+Body snap projection (`utils/geometry/bodySnapProjection.ts`): projects 3D body vertices/edges onto active sketch plane, injected with `__body__` prefix (no constraints generated for body-snap targets).
 
 ## Key Constants
 
 | Constant | Value |
 |----------|-------|
-| `POINT_HIT_PIXELS` | 20 |
 | `POINT_VIS_PIXELS` | 4 |
-| `ENTITY_HIT_PIXELS` | 8 |
 | `DRAG_SNAP_VERTEX_RADIUS_PX` | 20 |
 | `DRAG_SNAP_ENTITY_RADIUS_PX` | 8 |
 | `DEFAULT_WINDOW_SIZE` (ID pick window, CSS px; reach 8) | 17 |

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { Mutation, Sketch } from '@/types/cad'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
-import { registerBodyCallbacks, resetBodyCallbacksForTest } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { registerBodyCallbacks, resetBodyCallbacksForTest } from '@/picking/bodyDispatchCallbacks'
 import { projectionMutationsForId, projectionMutationsForSelection, type ProjectionResolvers } from '@/tools/projectionMutations'
 import { projectSelection, liveProjectionResolvers } from '@/tools/projectSelectionCommand'
 import { useEditorState } from '@/hooks/useEditorState'

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { Sketch, PartConstraint } from '@/types/cad'
-import { sketchToDockCandidates, findSnapTarget, sketchToEntityCandidates, inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
-import { computeDragMutation } from '@/components/Geometry3D/dragLogic'
+import { sketchToDockCandidates, findSnapTarget, sketchToEntityCandidates, inferredContactCandidates } from '@/utils/geometry/snapDetection'
+import { computeDragMutation } from '@/utils/geometry/dragLogic'
 import { InferredContactMarkers } from '@/components/Geometry3D/InferredContactMarkers'
 import type { VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 

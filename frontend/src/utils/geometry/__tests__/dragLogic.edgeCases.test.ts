@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { computeDragMutation, collectCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
-import { BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjection'
+import { computeDragMutation, collectCoincidentVertexIds } from '@/utils/geometry/dragLogic'
+import { BODY_SNAP_FEAT_PREFIX } from '@/utils/geometry/bodySnapProjection'
 
 // Branches the main dragLogic suite leaves uncovered: body-snap targets (which
 // are position-only, no constraint), and parseLocalVertexRef's reject paths

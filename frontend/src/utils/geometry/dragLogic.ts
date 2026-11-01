@@ -3,13 +3,19 @@
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import type { Mutation } from '@/types/cad'
 import type { VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
-import type { SnapTarget, SnapCandidate, EntityCandidate } from '@/components/Geometry3D/snapDetection'
+import type { SnapTarget, SnapCandidate, EntityCandidate } from '@/utils/geometry/snapDetection'
 import type { CircleDragMode } from '@/kernel/features/circleDragMode'
-import { findSnapTarget, collectVertexTargetsFlat, collectEntityCandidatesFlat } from '@/components/Geometry3D/snapDetection'
-import { isPureClick, CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
-import { DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX } from '@/components/Geometry3D/constants'
-import { BODY_SNAP_FEAT_PREFIX } from '@/components/Geometry3D/bodySnapProjection'
+import { findSnapTarget, collectVertexTargetsFlat, collectEntityCandidatesFlat } from '@/utils/geometry/snapDetection'
+import { isPureClick, CLICK_THRESHOLD_PX } from '@/utils/pointerAbstraction'
+import { BODY_SNAP_FEAT_PREFIX } from '@/utils/geometry/bodySnapProjection'
 import { VERTEX_POINT_KEY_SUFFIXES } from '@/types/vertexKeys'
+
+// Drag snap radii in screen pixels. The vertex pull zone is deliberately larger
+// than the entity body's: dragging near an endpoint must always catch the
+// vertex, never the curve under it. Both are plain pixel sizes, computed here
+// because the snap math is the only consumer.
+export const DRAG_SNAP_VERTEX_RADIUS_PX = 20
+export const DRAG_SNAP_ENTITY_RADIUS_PX = 8
 
 export interface DragMoveResult {
   snapTarget: SnapTarget | null

@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { projectCursorToSketchPlane } from '../dragMathPlane'
 import { worldToSketchLocalPure } from '../coordTransform'
 import { makeSanitizedEvent } from '../pointerAbstraction'
-import { computeDrawClick, type DrawSnapState } from '../drawLogic'
+import { computeDrawClick, type DrawSnapState } from '@/utils/geometry/drawLogic'
 
 // End-to-end pure statement of the draw-click contract: a cursor NDC is projected
 // onto the sketch plane (math plane, no mesh), sanitized into sketch-local 2D,

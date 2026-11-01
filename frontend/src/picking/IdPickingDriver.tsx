@@ -7,25 +7,29 @@ import { cameraPoseChanged, createCameraPose, recordCameraPoseInto, type CameraP
 import { getPixelRatio } from './pickPixelRatio'
 import { isSectionClippingActive } from '@/viewport/sectionClipping'
 
-// Reused across getRenderSize calls (per-frame resize poll). getDrawingBufferSize
-// only writes into the vector it is handed, so one module-scope instance avoids a
-// fresh allocation every frame.
+// Reused across getRenderSize calls (the per-frame resize poll). The drawing
+// buffer read writes into the vector, and the result pair is written in place:
+// the poll runs every frame, so it must not mint an object per frame.
 const RENDER_SIZE_SCRATCH = new THREE.Vector2()
+const RENDER_SIZE = { width: 1, height: 1 }
+
+/** Writes into the shared RENDER_SIZE and returns it. Every caller reads the
+ *  pair immediately, so nothing retains it across a frame. */
+function getRenderSize(gl: THREE.WebGLRenderer, cssWidth: number, cssHeight: number): { width: number; height: number } {
+  if (typeof gl.getDrawingBufferSize === 'function') {
+    const db = gl.getDrawingBufferSize(RENDER_SIZE_SCRATCH)
+    RENDER_SIZE.width = Math.max(1, Math.floor(db.x))
+    RENDER_SIZE.height = Math.max(1, Math.floor(db.y))
+  } else {
+    RENDER_SIZE.width = Math.max(1, Math.floor(cssWidth || 1))
+    RENDER_SIZE.height = Math.max(1, Math.floor(cssHeight || 1))
+  }
+  return RENDER_SIZE
+}
 
 interface IdPickingDriverProps {
   // External handle so non-Canvas code (Viewport pointer dispatch) can call resolveSync.
   onReady?: (pipeline: IdPipeline) => void
-}
-
-function getRenderSize(gl: THREE.WebGLRenderer, cssWidth: number, cssHeight: number): { width: number; height: number } {
-  if (typeof gl.getDrawingBufferSize === 'function') {
-    const db = gl.getDrawingBufferSize(RENDER_SIZE_SCRATCH)
-    return { width: Math.max(1, Math.floor(db.x)), height: Math.max(1, Math.floor(db.y)) }
-  }
-  return {
-    width: Math.max(1, Math.floor(cssWidth || 1)),
-    height: Math.max(1, Math.floor(cssHeight || 1)),
-  }
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   rotateOrbit,
   snapshotTurntablePose,
   restoreTurntablePose,
+  turnAbout,
 } from '@/components/Viewport/turntable'
 import { pickPivotPoint } from '@/components/Viewport/pivotPick'
 import { alignToFace, alignToPlane, snapToDirection } from '@/components/Viewport/cameraController'
@@ -594,5 +595,39 @@ describe('touch bindings', () => {
 
     touch(document, 'pointermove', { pointerId: 21, clientX: 380, clientY: 300 })
     expect(controls.azimuth).not.toBe(azimuth)
+  })
+})
+
+describe('orbit scratch reuse', () => {
+  it('writes the orbit direction into the caller vector', () => {
+    const out = new THREE.Vector3()
+    expect(orbitDirection(0.3, 0.4, out)).toBe(out)
+    const first = out.clone()
+    expect(orbitDirection(0.3, 0.4, out)).toBe(out)
+    expect(out.equals(first)).toBe(true)
+  })
+
+  it('writes the right and up axes into the caller vectors', () => {
+    const right = new THREE.Vector3()
+    const up = new THREE.Vector3()
+    expect(orbitRight(0.7, right)).toBe(right)
+    expect(orbitUp(0.7, -0.2, up)).toBe(up)
+    // A second call must reuse the same instances, not mint new ones.
+    expect(orbitRight(0.1, right)).toBe(right)
+    expect(orbitUp(0.1, 0.3, up)).toBe(up)
+  })
+
+  it('turns a point into the caller vector, so a pivot drag allocates nothing', () => {
+    const pivot = new THREE.Vector3(1, 2, 3)
+    const target = new THREE.Vector3(4, 5, 6)
+    const out = new THREE.Vector3()
+    expect(turnAbout(pivot, 0.4, 0.1, -0.2, target, out)).toBe(out)
+    const first = out.clone()
+
+    // The same input turns to the same place into the reused vector.
+    expect(turnAbout(pivot, 0.4, 0.1, -0.2, target, out)).toBe(out)
+    expect(out.equals(first)).toBe(true)
+    // And the input vector is not mutated.
+    expect(target.equals(new THREE.Vector3(4, 5, 6))).toBe(true)
   })
 })

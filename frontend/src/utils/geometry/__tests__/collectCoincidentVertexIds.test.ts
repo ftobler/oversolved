@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { collectCoincidentVertexIds } from '../dragLogic'
+import { collectCoincidentVertexIds } from '@/utils/geometry/dragLogic'
 
 describe('collectCoincidentVertexIds', () => {
   const fid = 'feat1'

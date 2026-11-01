@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
+import { shouldActivateDrag } from '@/utils/geometry/dragLogic'
 import { makeSanitizedEvent } from '@/components/Geometry3D/pointerAbstraction'
 import { worldToSketchLocalPure } from '@/components/Geometry3D/coordTransform'
 import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'

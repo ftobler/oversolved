@@ -10,7 +10,7 @@
 // functions under two inputs: stale topology (undefined) and fresh topology.
 import { describe, it, expect } from 'vitest'
 import type { Sketch, PartConstraint, Topology } from '@/types/cad'
-import { inferredContactCandidates, sketchToIntersectionCandidates } from '@/components/Geometry3D/snapDetection'
+import { inferredContactCandidates, sketchToIntersectionCandidates } from '@/utils/geometry/snapDetection'
 import { topologyStale } from '@/components/Geometry3D/dragTopologyGate'
 
 const FEATURE = 'S1'

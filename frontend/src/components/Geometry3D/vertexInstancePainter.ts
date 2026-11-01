@@ -34,8 +34,8 @@ export interface VertexPaint {
   scale: number
   /**
    * Per-vertex highlight flags. Omit both for a plain pass that scales every
-   * vertex alike (the invisible hit spheres). With them, selection outranks
-   * hover and a vertex in neither set is scaled to zero, i.e. hidden.
+   * vertex alike. With them, selection outranks hover and a vertex in neither
+   * set is scaled to zero, i.e. hidden.
    */
   selected?: readonly boolean[] | null
   hovered?: readonly boolean[] | null

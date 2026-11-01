@@ -1,17 +1,20 @@
-// The pick pass now draws B-rep vertices as 3x3x3 px cubes (see
-// picking/VertexIdLayer). That change is confined to the offscreen ID buffer;
-// the beauty pass must keep rendering vertices exactly as before -- an
-// invisible POINT_HIT_PIXELS hit sphere plus a POINT_VIS_PIXELS dot that only
-// appears on hover or selection.
+// The beauty pass draws B-rep vertices as a single hover/selection dot. The
+// opacity-0 hit sphere that used to sit beside it was a raycast-era leftover:
+// nothing raycasts scene vertices any more, picking reads the offscreen ID
+// buffer (picking/VertexIdLayer), so the sphere only re-synced a matrix per
+// vertex per frame for geometry nobody could see or hit.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
-import { useFrame } from '@react-three/fiber'
 
-import { POINT_HIT_PIXELS, POINT_VIS_PIXELS } from '@/components/Geometry3D/constants'
+import { POINT_VIS_PIXELS } from '@/components/Geometry3D/constants'
 import type { Mesh3D } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
+// The R3F hooks are stubbed: this suite observes the DOM React commits, not a
+// live render loop. The per-frame painter is driven through a null ref under
+// that stub, so its behaviour is pinned in vertexInstancePainter's own tests
+// rather than pretended to here.
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
   // p2w requires a real orthographic camera now; the degenerate `{}` mock used
@@ -19,12 +22,9 @@ vi.mock('@react-three/fiber', () => ({
   useThree: () => ({ camera: { isOrthographicCamera: true, zoom: 1 } }),
 }))
 
-// A VertexInstancePainter whose sync is a spy shared across instances, so a test
-// can assert the per-frame vertex pass never touched it while the body is hidden.
-const { syncSpy } = vi.hoisted(() => ({ syncSpy: vi.fn(() => false) }))
 vi.mock('@/components/Geometry3D/vertexInstancePainter', () => ({
   VertexInstancePainter: class {
-    sync = syncSpy
+    sync() { return false }
     dispose() {}
   },
 }))
@@ -39,8 +39,6 @@ const vertices: [number, number, number][] = [[0, 0, 0], [1, 0, 0], [0, 1, 0]]
 const vertexQueries = ['@ex1/vertex/0', '@ex1/vertex/1', '@ex1/vertex/2']
 
 beforeEach(() => {
-  syncSpy.mockClear()
-  vi.mocked(useFrame).mockClear()
   useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
@@ -63,45 +61,30 @@ async function renderBody(visible = true) {
   )
 }
 
-/** The frame callback Body3D registered, invoked with a stub frame state. */
-function runFrame() {
-  const cb = vi.mocked(useFrame).mock.calls.at(-1)![0]
-  act(() => { cb({ camera: { isOrthographicCamera: true, zoom: 1 } } as never, 0) })
-}
-
-describe('Body3D visible vertex pass (unchanged by the pick-cube refactor)', () => {
-  it('still renders the hit sphere and the dot as two instanced meshes', async () => {
+describe('Body3D visible vertex pass', () => {
+  it('draws exactly one instanced vertex mesh: the dot', async () => {
     const { container } = await renderBody()
-    const instanced = container.querySelectorAll('instancedmesh')
-    expect(instanced.length).toBe(2)
+    expect(container.querySelectorAll('instancedmesh')).toHaveLength(1)
+    expect(container.querySelectorAll('spheregeometry')).toHaveLength(1)
   })
 
-  it('both vertex meshes are unit spheres, scaled to screen pixels at runtime', async () => {
+  it('the dot is a unit sphere, scaled to screen pixels at runtime', async () => {
     const { container } = await renderBody()
-    const geos = [...container.querySelectorAll('spheregeometry')]
-    expect(geos.length).toBe(2)
-    // Radius 1 is what lets useFrame scale by POINT_HIT_PIXELS / POINT_VIS_PIXELS.
-    for (const g of geos) expect(g.getAttribute('args')).toMatch(/^1,/)
+    // Radius 1 is what lets useFrame scale by POINT_VIS_PIXELS.
+    expect(container.querySelector('spheregeometry')?.getAttribute('args')).toMatch(/^1,/)
+  })
+
+  it('carries no invisible hit mesh left over from the raycast era', async () => {
+    const { container } = await renderBody()
+    const transparent = [...container.querySelectorAll('meshbasicmaterial')]
+      .filter(m => m.getAttribute('opacity') === '0')
+    expect(transparent).toEqual([])
   })
 
   it('the visible dot is hidden until a vertex is hovered or selected', async () => {
     const { container } = await renderBody()
-    const dot = container.querySelectorAll('instancedmesh')[1]
-    expect(dot.getAttribute('visible')).not.toBe('true')
-  })
-
-  it('the per-frame vertex pass does nothing while the body is hidden', async () => {
-    await renderBody(false)
-    runFrame()
-    expect(syncSpy).not.toHaveBeenCalled()
-  })
-
-  it('the per-frame vertex pass runs without throwing once the body is visible', async () => {
-    await renderBody(true)
-    // Refs are null under the @react-three/fiber mock, so the callback still
-    // returns early on the null mesh ref -- the point is only that the new
-    // `if (!visible) return` guard does not block the visible path.
-    expect(() => runFrame()).not.toThrow()
+    const dot = container.querySelector('instancedmesh')
+    expect(dot?.getAttribute('visible')).not.toBe('true')
   })
 
   it('clips the visible vertex dot while a section is on', async () => {
@@ -115,11 +98,14 @@ describe('Body3D visible vertex pass (unchanged by the pick-cube refactor)', () 
     }
   })
 
-  it('keeps the visible-pass pixel sizes independent of the pick cube size', async () => {
+  it('keeps the dot size independent of the pick cube size', async () => {
     const { VERTEX_PICK_CUBE_PIXELS } = await import('@/picking')
-    expect(POINT_HIT_PIXELS).toBe(20)
     expect(POINT_VIS_PIXELS).toBe(4)
-    expect(VERTEX_PICK_CUBE_PIXELS).not.toBe(POINT_HIT_PIXELS)
     expect(VERTEX_PICK_CUBE_PIXELS).not.toBe(POINT_VIS_PIXELS)
+  })
+
+  it('no longer exports the point hit pixel constant', async () => {
+    const constants = await import('@/components/Geometry3D/constants')
+    expect('POINT_HIT_PIXELS' in constants).toBe(false)
   })
 })

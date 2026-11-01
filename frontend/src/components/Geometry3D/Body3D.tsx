@@ -10,7 +10,7 @@ import {
   bodySurfaceLook,
   COLOR_SELECTED, COLOR_HOVER,
   blendWhite,
-  POINT_HIT_PIXELS, POINT_VIS_PIXELS,
+  POINT_VIS_PIXELS,
   DEFAULT_PART_ROUGHNESS,
   RENDER_ORDER_DEFAULT,
   RENDER_ORDER_HIGHLIGHT,
@@ -49,7 +49,7 @@ import { selectActiveFrom, hoverActiveFrom, EMPTY_CLAIM_MAP } from '@/picking/hi
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { buildEdgeMaterial } from '@/components/Geometry3D/edgeLineMaterial'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
-import { registerBodyCallbacks } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { registerBodyCallbacks } from '@/picking/bodyDispatchCallbacks'
 
 function useDispose<T extends { dispose(): void }>(obj: T | null | undefined): void {
   useEffect(() => { return () => { obj?.dispose() } }, [obj])
@@ -529,45 +529,36 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     palette: edgePalette,
   })
 
-  const vertexMeshRef = useRef<THREE.InstancedMesh>(null)
   const vertexDotRef = useRef<THREE.InstancedMesh>(null)
 
-  // One painter per instanced mesh: each re-writes its instances only when its
-  // inputs actually change, instead of once per frame per vertex.
-  const hitSpherePainter = useMemo(() => new VertexInstancePainter(), [])
+  // Re-writes the dot instances only when its inputs actually change, instead
+  // of once per frame per vertex.
   const dotPainter = useMemo(() => new VertexInstancePainter(), [])
 
   useFrame(({ camera }) => {
     // A hidden body (rollback bar, per-body hide) is still mounted as
     // <Body3D visible={false}>; without this every camera move recomposes and
     // re-uploads one matrix per vertex for geometry nobody can see.
-    if (!visible) return
-    const vmesh = vertexMeshRef.current
-    if (!vmesh || !vertices?.length) return
-
-    // Scale vertex spheres to POINT_HIT_PIXELS screen radius (same as 2D vertex dots).
-    hitSpherePainter.sync({ target: vmesh, vertices, scale: POINT_HIT_PIXELS * p2w(camera) })
-
+    if (!visible || !vertices?.length) return
     const dmesh = vertexDotRef.current
-    if (dmesh) {
-      // Only show visual dots when a vertex is hovered or selected. Both are
-      // resolved by pick key (via vertexSelectionFlags / vertexHoverFlags) so a
-      // shared-query sibling does not co-show, mirroring the face path. The
-      // hasAny results are memoized above so a resting frame costs nothing.
-      dmesh.visible = hasVertexHover || hasVertexSelection
-      if (dmesh.visible) {
-        dotPainter.sync({
-          target: dmesh,
-          vertices,
-          scale: POINT_VIS_PIXELS * p2w(camera),
-          // Reference-stable while a pick holds (see HighlightIndex), which is what
-          // lets the painter treat identity as the whole change test.
-          selected: vertexSelectionFlags,
-          hovered: vertexHoverFlags,
-          selectedColor: DOT_COLOR_SELECTED,
-          hoveredColor: DOT_COLOR_HOVER,
-        })
-      }
+    if (!dmesh) return
+    // Only show visual dots when a vertex is hovered or selected. Both are
+    // resolved by pick key (via vertexSelectionFlags / vertexHoverFlags) so a
+    // shared-query sibling does not co-show, mirroring the face path. The
+    // hasAny results are memoized above so a resting frame costs nothing.
+    dmesh.visible = hasVertexHover || hasVertexSelection
+    if (dmesh.visible) {
+      dotPainter.sync({
+        target: dmesh,
+        vertices,
+        scale: POINT_VIS_PIXELS * p2w(camera),
+        // Reference-stable while a pick holds (see HighlightIndex), which is what
+        // lets the painter treat identity as the whole change test.
+        selected: vertexSelectionFlags,
+        hovered: vertexHoverFlags,
+        selectedColor: DOT_COLOR_SELECTED,
+        hoveredColor: DOT_COLOR_HOVER,
+      })
     }
   })
 
@@ -615,36 +606,26 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
         />
       )}
       {vertices && vertices.length > 0 && (
-        <>
-          <instancedMesh
-            ref={vertexMeshRef}
-            args={[undefined, undefined, vertices.length]}
-            frustumCulled={false}
-          >
-            {/* Radius 1, scaled to POINT_HIT_PIXELS screen px by useFrame */}
-            <sphereGeometry args={[1, 8, 8]} />
-            <meshBasicMaterial
-              transparent
-              opacity={0}
-              depthWrite={false}
-            />
-          </instancedMesh>
-          <instancedMesh
-            ref={vertexDotRef}
-            args={[undefined, undefined, vertices.length]}
-            visible={false}
-            frustumCulled={false}
-            renderOrder={RENDER_ORDER_HIGHLIGHT}
-          >
-            <sphereGeometry args={[1, 6, 6]} />
-            <meshBasicMaterial
-              color="white"
-              depthTest={false}
-              depthWrite={false}
-              clippingPlanes={sectionActive ? getSectionClipPlaneList() : null}
-            />
-          </instancedMesh>
-        </>
+        // The beauty pass draws only the hover/selection dot: B-rep vertices are
+        // picked through the offscreen ID buffer (picking/VertexIdLayer), never
+        // by raycasting a scene mesh, so the opacity-0 hit sphere this used to
+        // carry was invisible work on every frame.
+        <instancedMesh
+          ref={vertexDotRef}
+          args={[undefined, undefined, vertices.length]}
+          visible={false}
+          frustumCulled={false}
+          renderOrder={RENDER_ORDER_HIGHLIGHT}
+        >
+          {/* Radius 1, scaled to POINT_VIS_PIXELS screen px by useFrame */}
+          <sphereGeometry args={[1, 6, 6]} />
+          <meshBasicMaterial
+            color="white"
+            depthTest={false}
+            depthWrite={false}
+            clippingPlanes={sectionActive ? getSectionClipPlaneList() : null}
+          />
+        </instancedMesh>
       )}
       {/* One overlay recipe for hover and selection, on both layer kinds: the
           colours differ, the transparency and render order never do. The

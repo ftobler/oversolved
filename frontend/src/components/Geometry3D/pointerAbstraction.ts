@@ -6,7 +6,10 @@
 // the headless gesture tracker never import across the UI boundary; they are
 // re-exported here so the component callers that already reach this module
 // keep working.
-export { CLICK_THRESHOLD_PX, screenPixelDistance, isPureClick } from '@/utils/pointerAbstraction'
+export {
+  CLICK_THRESHOLD_PX, screenPixelDistance, isPureClick, isFiniteSketchPoint,
+} from '@/utils/pointerAbstraction'
+import { isFiniteSketchPoint } from '@/utils/pointerAbstraction'
 
 /** A pointer event after coordinate sanitization by the abstraction layer.
  *  All downstream consumers (selection subsystem, tool layer) operate on
@@ -39,10 +42,3 @@ export function makeSanitizedEvent(
     clientPoint: [clientPoint[0], clientPoint[1]],
   }
 }
-
-/** Both components finite. The gate every sketch-space coordinate passes
- *  before it can reach a mutation. */
-export function isFiniteSketchPoint(p: readonly [number, number]): boolean {
-  return Number.isFinite(p[0]) && Number.isFinite(p[1])
-}
-

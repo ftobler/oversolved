@@ -4,7 +4,6 @@ import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
 import type { Feature, PartFeature, Sketch, BodyResult } from '@/types/cad'
-import { unflattenGeometry, deriveConstraints } from '@/utils/geometry/geometryMapping'
 import Geometry3D from '@/components/Geometry3D'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
 import '@/components/Viewport/ViewportHud.css'
@@ -38,6 +37,7 @@ import ThreadCurves from '@/components/Viewport/ThreadCurves'
 import { collectThreadCurves } from '@/components/Viewport/threadHelices'
 import { DEFAULT_PLANE_SIZE } from '@/components/Viewport/planeConstants'
 import { BUILTIN_PLANE_ROTATIONS } from '@/utils/builtinPlanes'
+import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { calculatePlaneSize, getActiveSketchPlane } from '@/components/Viewport/viewportPlaneSizing'
 import { SketchPlaneDisplay } from '@/components/Viewport/SketchPlaneDisplay'
 import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
@@ -68,12 +68,10 @@ import {
   getGhostBodiesToRender,
   getSketchesToRender,
   getPreviewBodies,
+  sketchForRender,
+  snapSketchesFor,
   type BodyRenderItem,
 } from '@/components/Viewport/bodyUtils'
-import {
-  bodySnapSketches,
-  builtinPlaneTransform,
-} from '@/components/Geometry3D/bodySnapProjection'
 import type { SketchData } from '@/types/cad'
 
 // Stabilized props for the R3F Canvas. Inline objects would produce new
@@ -495,26 +493,17 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // Build a combined otherSketches that includes cross-sketch entities AND projected body geometry.
   // Body geometry is projected to 2D using the active sketch's plane transform so snap detection
   // can treat it as regular sketch candidates (with a BODY_SNAP_FEAT_PREFIX sentinel featureId).
-  // Only drawn bodies contribute: bodyItems already applies the rollback bar and the visibility
-  // row, so a hidden or not-yet-built body cannot offer a snap target the user cannot see.
-  const combinedOtherSketches = useMemo(() => {
-    if (!activeFeatureId) return otherSketches
-    const activeResult = solveResults?.[activeFeatureId]
-    const activeFeature = features?.find(f => f.id === activeFeatureId)
-
-    // Resolve plane transform: kernel-provided or derived from builtin plane string.
-    const planeTransform = activeResult?.plane_transform
-      ?? (activeFeature?.kind === 'sketch' && activeFeature.plane
-        ? builtinPlaneTransform(activeFeature.plane)
-        : null)
-
-    if (!planeTransform || bodyItems.length === 0) return otherSketches
-
-    const bodySketchEntries = bodySnapSketches(bodyItems, planeTransform)
-
-    if (Object.keys(bodySketchEntries).length === 0) return otherSketches
-    return { ...otherSketches, ...bodySketchEntries }
-  }, [activeFeatureId, solveResults, features, bodyItems, otherSketches])
+  // The decision lives in bodyUtils so it is unit tested away from the Viewport.
+  const combinedOtherSketches = useMemo(
+    () => snapSketchesFor(
+      otherSketches,
+      activeFeatureId,
+      activeFeatureId ? solveResults?.[activeFeatureId] : undefined,
+      features?.find(f => f.id === activeFeatureId),
+      bodyItems,
+    ),
+    [activeFeatureId, solveResults, features, bodyItems, otherSketches],
+  )
 
   const planeSizes = useMemo(() => {
     const sizes: Record<string, number> = {}
@@ -646,7 +635,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         {showRight  && <ReferencePlane rotation={BUILTIN_PLANE_ROTATIONS.builtin_plane_right} label="Right" />}
 
         {(features ?? [])
-          .filter(f => f.kind === 'plane' && !['Origin','Top','Front','Right'].includes(f.id))
+          .filter(f => f.kind === 'plane' && !BUILTIN_FEATURE_IDS.has(f.id))
           .filter(f => isActive(f.id, features, rollbackPosition, visibleFeatures))
           .map(f => {
             const solveResult = solveResults?.[f.id]
@@ -705,8 +694,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           const solveResult = solveResults?.[f.id]
           const authored = featureDefs?.find(fd => fd.id === f.id)
           const fullFeatureDef = authored?.kind === 'sketch' ? authored : f
-          const sketch = solveResult?.solved ? solveResult.solved : unflattenGeometry(fullFeatureDef.initial || {}, fullFeatureDef.entities)
-          const constraints = solveResult?.constraints ? solveResult.constraints : deriveConstraints(fullFeatureDef, sketch)
+          // Solved geometry when the solve has landed, else the authored
+          // `initial` shape: the choice is pure and tested in bodyUtils.
+          const { sketch, constraints } = sketchForRender(solveResults?.[f.id], fullFeatureDef)
           const isActiveFeature = f.id === activeFeatureId
           return (
             <Geometry3D

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import type { BodyResult, FaceData, Mesh3D } from '@/types/cad'
 import { faceFrameFromSolve } from '@/viewport/faceFrameFromSolve'
-import { findBodyForFaceQuery, resetBodyCallbacksForTest } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { findBodyForFaceQuery, resetBodyCallbacksForTest } from '@/picking/bodyDispatchCallbacks'
 
 function faceData(surface: string, normal: [number, number, number] = [0, 0, 1]): FaceData {
   return { centroid: [0, 0, 0], normal, surface_type: surface }

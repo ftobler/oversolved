@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { computeDrawClick, resolveDrawCursor } from '@/components/Geometry3D/drawLogic'
-import type { DrawSnapState } from '@/components/Geometry3D/drawLogic'
+import { computeDrawClick, resolveDrawCursor } from '@/utils/geometry/drawLogic'
+import type { DrawSnapState } from '@/utils/geometry/drawLogic'
 import type { Entity, Mutation } from '@/types/cad'
 
 // The preview draws to resolveDrawCursor's point and the commit writes

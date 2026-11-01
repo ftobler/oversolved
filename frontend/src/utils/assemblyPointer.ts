@@ -97,6 +97,19 @@ export function missClearsSelection(gesture: ClickGestureState, adapterActive: b
   return isStationaryPrimaryClick(gesture)
 }
 
+/**
+ * The one branch of an empty-space click's clears that is a decision. The call
+ * site always drops the single subject (part or mate) and disarms an armed mate
+ * field, the same "click off to deselect" the part editor gives; this says
+ * whether the B-rep entity selection goes with them. It does not when the click
+ * was a mate pick aiming at nothing: the mate picker owns that click, and a
+ * miss there simply aims at nothing. Pure so the branch is stated and tested
+ * once instead of being re-derived at the call site.
+ */
+export function missClearPlan(aiming: boolean): { clearEntitySelection: boolean } {
+  return { clearEntitySelection: !aiming }
+}
+
 type Gesture =
   // A body grab: solver-driven. The move feeds the cursor's world position (the
   // hit on the grab plane) to the solver as the target for the grab point, and

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { suppressedCoincidentVertexIds } from '../dragLogic'
+import { suppressedCoincidentVertexIds } from '@/utils/geometry/dragLogic'
 
 describe('suppressedCoincidentVertexIds', () => {
   const fid = 'feat1'

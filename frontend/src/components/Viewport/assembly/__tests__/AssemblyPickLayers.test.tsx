@@ -35,13 +35,23 @@ function fullBody(handle: string): AssemblyPickBody {
   }
 }
 
-function stubPipeline() {
+function stubPipeline(throwOnEdgeFor?: string) {
   const registered: string[] = []
   const unregistered: string[] = []
+  // What the pipeline currently holds, so a test can assert no stale layer
+  // survives a partial registration.
+  const live = new Set<string>()
   let dirty = 0
   const layer = (kind: string) => ({
-    registerBody: vi.fn((reg: { bodyKey: string }) => { registered.push(`${kind}:${reg.bodyKey}`) }),
-    unregisterBody: vi.fn((bodyKey: string) => { unregistered.push(`${kind}:${bodyKey}`) }),
+    registerBody: vi.fn((reg: { bodyKey: string }) => {
+      if (kind === 'edge' && reg.bodyKey === throwOnEdgeFor) throw new Error('bad edge payload')
+      registered.push(`${kind}:${reg.bodyKey}`)
+      live.add(`${kind}:${reg.bodyKey}`)
+    }),
+    unregisterBody: vi.fn((bodyKey: string) => {
+      unregistered.push(`${kind}:${bodyKey}`)
+      live.delete(`${kind}:${bodyKey}`)
+    }),
   })
   const pipeline = {
     faceLayer: layer('face'),
@@ -53,6 +63,7 @@ function stubPipeline() {
     pipeline,
     registered,
     unregistered,
+    live,
     dirty: () => dirty,
     reset: () => { registered.length = 0; unregistered.length = 0; dirty = 0 },
   }
@@ -143,5 +154,41 @@ describe('AssemblyPickLayers incremental registration', () => {
       'face:p1:body_0', 'edge:p1:body_0', 'vertex:p1:body_0',
       'face:p2:body_0', 'edge:p2:body_0', 'vertex:p2:body_0',
     ]))
+  })
+
+  it('releases the layers a body registered before one of them threw', () => {
+    // The face layer lands, the edge layer throws. The catch drops the body from
+    // the bookkeeping, so without unregistering here the face (and vertex)
+    // registrations would outlive the body until the pipeline is disposed.
+    const p2Key = 'p2:body_0'
+    const { pipeline, live, reset } = stubPipeline(p2Key)
+    const a = fullBody('p1')
+    const b = fullBody('p2')
+    const view = render(tree(pipeline, [a, b]))
+
+    expect(live.has(`face:${p2Key}`)).toBe(false)
+    expect(live.has(`vertex:${p2Key}`)).toBe(false)
+    expect([...live].filter(k => k.endsWith(p2Key))).toEqual([])
+
+    // The body leaving the snapshot must not resurrect or strand anything.
+    reset()
+    view.rerender(tree(pipeline, [a]))
+    expect([...live].filter(k => k.endsWith(p2Key))).toEqual([])
+    expect([...live].every(k => k.endsWith('p1:body_0'))).toBe(true)
+  })
+
+  it('retries a body that failed on the next tick', () => {
+    // The bookkeeping must not remember the failed body as registered, or a
+    // transient failure would leave it unpickable for the scene's lifetime.
+    const p2Key = 'p2:body_0'
+    const { pipeline, registered, reset } = stubPipeline(p2Key)
+    const a = fullBody('p1')
+    const b = fullBody('p2')
+    const view = render(tree(pipeline, [a, b]))
+    reset()
+
+    view.rerender(tree(pipeline, [a, b]))
+
+    expect(registered).toContain(`face:${p2Key}`)
   })
 })
