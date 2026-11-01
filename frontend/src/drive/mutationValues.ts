@@ -44,6 +44,10 @@ export interface ValueContext {
   // The schema definition of a `set_*_field` value, resolved by the catalog
   // from FIELD_SETTER_KIND. Null for a type that is not a field setter.
   fieldSchema: (type: Mutation['type'], field: string) => JsonSchema | null
+  // Whether the named setter field is unconditionally required by its kind's
+  // schema, so a null clear would delete it. Absent means nothing is known
+  // required (a shape-only caller).
+  fieldRequired?: (type: Mutation['type'], field: string) => boolean
 }
 
 export type ValueRule = 'none' | ((raw: RawStep, ctx: ValueContext) => ValueViolation | null)
@@ -1280,12 +1284,18 @@ function isFieldSetterRule(type: string): boolean {
 // A setter's value follows the schema of the field it names. The catalog has
 // already refused an unknown field name; this refuses a value the field's own
 // definition does not accept (an enum spelling, a `$` ref, an empty ref). Null
-// stays the documented clear and skips the check.
+// stays the documented clear of an optional field and skips the check; on a
+// required field the applier would delete the key and the loader would quietly
+// fall back to a default (an extrude distance became 1), so it is refused.
 function fieldValue(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const type = raw.type as Mutation['type']
   const field = raw.field
-  if (typeof field !== 'string' || raw.value === null || raw.value === undefined) return null
+  if (typeof field !== 'string') return null
   if (!isFieldSetterRule(type)) return null
+  if (raw.value === null || raw.value === undefined) {
+    if (ctx.fieldRequired?.(type, field) !== true) return null
+    return invalid(`${type} field ${json(field)} is required, so null cannot clear it; send a value`)
+  }
   const schema = ctx.fieldSchema(type, field)
   if (schema === null) return null
   const problem = fieldValueProblem(raw.value, schema, `${type} field ${json(field)}`)

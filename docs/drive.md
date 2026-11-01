@@ -658,8 +658,9 @@ banner on stdout, so a client config must use the direct node invocation.
   value clears the `target` pick, on the inline add and on `set_hole_field`
   alike (the hole then drills the body its drill sites sit on); every other
   field refuses an empty value rather than silently reverting to its default,
-  and `null` clears an optional field; null on a required field would delete
-  a key the loader needs. With no `target`
+  and `null` clears an optional field, while null on a required field is
+  refused by name (deleting the key would let the loader quietly fall back to
+  a default). With no `target`
   the hole drills the body its drill sites sit on or in, so a face sketch
   whose sites lie on or in the material picks that body even when it is not
   the first; a site outside every body (a plane sketch in the air) falls back

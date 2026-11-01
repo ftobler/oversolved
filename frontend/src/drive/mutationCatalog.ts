@@ -213,6 +213,17 @@ export function setterFieldSchema(type: Mutation['type'], field: string): JsonSc
   return properties?.[field] ?? null
 }
 
+/** True when the kind's schema lists `field` as unconditionally required, so a
+ *  null (the setter's clear) would delete a key the loader needs. A field that
+ *  is required only under a condition (a blind hole's depth) is not listed. */
+export function setterFieldRequired(type: Mutation['type'], field: string): boolean {
+  if (!Object.hasOwn(FIELD_SETTER_KIND, type)) return false
+  const kind = FIELD_SETTER_KIND[type as FieldSetterType]
+  const params = kind === 'plane' ? planeDefinitionSchema() : featureParamsSchema(kind)
+  const required = params?.required
+  return Array.isArray(required) && required.includes(field)
+}
+
 // The value-rule table is part of the boundary's contract, so it is published
 // next to the catalog: a test (and a future docs page) reads one name for it.
 export { MUTATION_VALUE_RULES } from '@/drive/mutationValues'
@@ -493,7 +504,7 @@ const EMPTY_CLEAR_NOTE = (type: FieldSetterType): string => {
     ? ' An empty value is refused: it is the clear of no field of this kind.'
     : ` An empty value clears ${clears.join(' or ')} and is refused for every other field.`
   return ' A null value clears an optional field (the key is deleted); '
-    + 'null on a required field would delete a key the loader needs.' + empty
+    + 'null on a required field is refused by name.' + empty
 }
 
 const setterValue = (kind: FeatureKind) =>
@@ -1510,6 +1521,7 @@ export function validateMutation(raw: unknown, options: MutationValidationOption
     const violation = mutationValueViolation(type as Mutation['type'], raw, {
       doc: options.doc ?? null,
       fieldSchema: setterFieldSchema,
+      fieldRequired: setterFieldRequired,
     })
     if (violation !== null) return fail(violation.code, violation.message)
   }

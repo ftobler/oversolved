@@ -141,10 +141,14 @@ describe('validateMutation', () => {
     expect(validateMutation({
       type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: null,
     })).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
-    // A setter value is a pass-through: null is the documented clear.
+    // A setter's null is the documented clear of an optional field; a required
+    // one refuses it (the key would be deleted and the loader default it).
+    expect(validateMutation({
+      type: 'set_extrude_field', featureId: 'ex1', field: 'up_to', value: null,
+    })).toMatchObject({ ok: true })
     expect(validateMutation({
       type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: null,
-    })).toMatchObject({ ok: true })
+    })).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
     // Internal plumbing is allowed only on the replay path, where the app's
     // own set_rollback payload can legitimately carry a null position.
     expect(validateMutation({ type: 'set_rollback', position: null }, { allowInternal: true }))

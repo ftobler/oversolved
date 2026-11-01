@@ -293,6 +293,23 @@ describe('findings 3 and 4: setter values and REF fields', () => {
     expect(validateMutation({ type: 'set_transform_field', featureId: 'tr1', field: 'rotation_axis', value: null }))
       .toMatchObject({ ok: true })
   })
+
+  // Null on a required field used to pass: the applier deleted the key and the
+  // extrude quietly built 1 deep. Only optional fields take the clear.
+  it('refuses null on a required field by name', () => {
+    const error = refusal({ type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: null })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('"distance" is required')
+    expect(refusal({ type: 'set_fillet_field', featureId: 'f1', field: 'radius', value: null }).message)
+      .toContain('"radius" is required')
+  })
+
+  it('still clears an optional or only conditionally required field with null', () => {
+    expect(validateMutation({ type: 'set_extrude_field', featureId: 'ex1', field: 'up_to', value: null }))
+      .toMatchObject({ ok: true })
+    expect(validateMutation({ type: 'set_hole_field', featureId: 'h1', field: 'depth', value: null }))
+      .toMatchObject({ ok: true })
+  })
 })
 
 describe('finding 5: add_constraint target spelling', () => {
