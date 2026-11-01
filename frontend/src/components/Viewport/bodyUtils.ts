@@ -34,8 +34,8 @@ export function computeEffectiveVisibleBodies(
 }
 
 // Returns the subset of sketch features that should be rendered (visible and within rollback range).
-// A hidden sketch's EntityLines and VertexDots are not mounted at all, so its collision
-// geometry cannot interfere with raycasting against features behind it.
+// A hidden sketch's EntityLines and VertexDots are not mounted at all, so its
+// ID-buffer registration cannot occlude or intercept picks on features behind it.
 export function getSketchesToRender(
   features: Feature[] | undefined,
   rollbackPosition: number | undefined,

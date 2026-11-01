@@ -7,7 +7,8 @@
 // one meaning for the eye across the app: the feature tree's eye says what is
 // SHOWN, and so does this one, opening the rows that decide it.
 //
-// Two groups, deliberately unlike each other:
+// Two kinds of row, deliberately unlike each other (the card groups the second
+// kind under the View, Camera, Section and Debug headings):
 //   Show   - document visibility. Rows dispatch through the part page, so they
 //            record undo and agree with the keyboard toggles.
 //   Viewer - browser preferences. No undo, no document write. Shading and

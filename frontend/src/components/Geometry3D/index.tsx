@@ -229,8 +229,8 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // while the commit solve is in flight.
   // Inactive sketches stay inert: the ID buffer excludes their layers and
   // Surfaces.tsx gates its click handler on mode === 'inactive'. When no sketch
-  // is being edited, all sketches register so they can be picked from the
-  // assembly view.
+  // is being edited, all sketches register so they stay pickable in the part
+  // viewport.
   useSketchIdRegistration({
     featureId,
     sketch: nextHeld ?? solved,
