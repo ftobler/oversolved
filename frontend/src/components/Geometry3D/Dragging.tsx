@@ -49,9 +49,11 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
   const handleMoveRef = useRef<((e: PointerEvent) => void) | null>(null)
 
   // The snap set only changes with the sketch data, its constraints, the
-  // topology or the other sketches. Built once per change: rebuilding it per
-  // pointer move walked every vertex and body edge in the scene, and the arrays
-  // it allocates were the drag loop's largest per-frame garbage.
+  // topology or the other sketches. Building it inside the move handler walked
+  // every vertex and body edge in the scene on every pointer move, the drag
+  // loop's largest per-frame garbage. During a drag the parent hands DragPlane
+  // the live preview sketch, which is a new object once per solve frame, so the
+  // set is rebuilt per solve frame rather than per pointer move.
   const snapCandidates = useMemo(
     () => dragSnapCandidates(sketch, featureId, constraints, topology, otherSketches),
     [sketch, featureId, constraints, topology, otherSketches],

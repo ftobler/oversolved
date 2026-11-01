@@ -10,7 +10,7 @@ export const SHAFT_START = -10  // tailless (angular) arrows reach slightly behi
 export const SHAFT_END = 26
 export const SHAFT_RADIUS = 1.6
 export const CONE_LEN = 16
-export const CONE_RADIUS = 5.5
+const CONE_RADIUS = 5.5
 export const TIP = SHAFT_END + CONE_LEN
 
 export interface ScreenArrowProps {

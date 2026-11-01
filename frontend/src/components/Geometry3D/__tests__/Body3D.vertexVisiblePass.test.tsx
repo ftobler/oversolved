@@ -5,13 +5,16 @@
 // vertex per frame for geometry nobody could see or hit.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
-import { useFrame } from '@react-three/fiber'
 
 import { POINT_VIS_PIXELS } from '@/components/Geometry3D/constants'
 import type { Mesh3D } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
+// The R3F hooks are stubbed: this suite observes the DOM React commits, not a
+// live render loop. The per-frame painter is driven through a null ref under
+// that stub, so its behaviour is pinned in vertexInstancePainter's own tests
+// rather than pretended to here.
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
   // p2w requires a real orthographic camera now; the degenerate `{}` mock used
@@ -19,12 +22,9 @@ vi.mock('@react-three/fiber', () => ({
   useThree: () => ({ camera: { isOrthographicCamera: true, zoom: 1 } }),
 }))
 
-// A VertexInstancePainter whose sync is a spy shared across instances, so a test
-// can assert the per-frame vertex pass never touched it while the body is hidden.
-const { syncSpy } = vi.hoisted(() => ({ syncSpy: vi.fn(() => false) }))
 vi.mock('@/components/Geometry3D/vertexInstancePainter', () => ({
   VertexInstancePainter: class {
-    sync = syncSpy
+    sync() { return false }
     dispose() {}
   },
 }))
@@ -39,8 +39,6 @@ const vertices: [number, number, number][] = [[0, 0, 0], [1, 0, 0], [0, 1, 0]]
 const vertexQueries = ['@ex1/vertex/0', '@ex1/vertex/1', '@ex1/vertex/2']
 
 beforeEach(() => {
-  syncSpy.mockClear()
-  vi.mocked(useFrame).mockClear()
   useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
@@ -61,12 +59,6 @@ async function renderBody(visible = true) {
       visible={visible}
     />
   )
-}
-
-/** The frame callback Body3D registered, invoked with a stub frame state. */
-function runFrame() {
-  const cb = vi.mocked(useFrame).mock.calls.at(-1)![0]
-  act(() => { cb({ camera: { isOrthographicCamera: true, zoom: 1 } } as never, 0) })
 }
 
 describe('Body3D visible vertex pass', () => {
@@ -93,20 +85,6 @@ describe('Body3D visible vertex pass', () => {
     const { container } = await renderBody()
     const dot = container.querySelector('instancedmesh')
     expect(dot?.getAttribute('visible')).not.toBe('true')
-  })
-
-  it('the per-frame vertex pass does nothing while the body is hidden', async () => {
-    await renderBody(false)
-    runFrame()
-    expect(syncSpy).not.toHaveBeenCalled()
-  })
-
-  it('the per-frame vertex pass runs without throwing once the body is visible', async () => {
-    await renderBody(true)
-    // Refs are null under the @react-three/fiber mock, so the callback still
-    // returns early on the null mesh ref -- the point is only that the new
-    // `if (!visible) return` guard does not block the visible path.
-    expect(() => runFrame()).not.toThrow()
   })
 
   it('clips the visible vertex dot while a section is on', async () => {

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { Sketch } from '@/types/cad'
 import { shouldActivateDrag, computeDragMove, computeDragMutation } from '@/utils/geometry/dragLogic'
 import { sketchToVertexCandidates, sketchToEntityCandidates } from '@/utils/geometry/snapDetection'
-import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
+import { CLICK_THRESHOLD_PX } from '@/utils/pointerAbstraction'
 
 const FEATURE = 'S1'
 

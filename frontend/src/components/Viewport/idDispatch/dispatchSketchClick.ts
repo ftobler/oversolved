@@ -1,7 +1,7 @@
 import { useSketchEditorStore, getEffectiveTool, getSketchCallback } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import type { DimensionToolContext } from '@/tools/DimensionTool'
-import type { DragToolContext } from '@/tools/DragTool'
+import { buildDragToolContext } from '@/tools/DragTool'
 
 /**
  * Shared tool-click dispatch logic called by the id-buffer adapters.
@@ -87,25 +87,24 @@ export function dispatchDragInitiation(
   const dragTool = toolRegistry.get('drag')
   if (!dragTool) return
 
-  const ctx: DragToolContext = {
-    normalSelection: state.normalSelection,
-    hoveredSelectionId: id,
-    isPointerDown: true,
-    activeFeatureId: state.activeFeatureId,
-    hoveredVertexId: id,
-    hoveredVertexPosition: null,
-    hoveredSnapKind: state.hoveredSnapKind,
-    onMutation: getSketchCallback('onMutation'),
-    drag: null,
-    dragPending: null,
-    dragSnap: state.dragSnap,
-    setDrag: state.setDrag,
-    setDragPending: state.setDragPending,
-    setDragSnap: state.setDragSnap,
-    startClient: [clientX, clientY],
-    pushMode: () => {},
-    popMode: () => {},
-  }
+  const ctx = buildDragToolContext(
+    state,
+    {
+      onMutation: getSketchCallback('onMutation'),
+      setDrag: state.setDrag,
+      setDragPending: state.setDragPending,
+      setDragSnap: state.setDragSnap,
+    },
+    {
+      // The two store writes above are not in this state snapshot, and the
+      // resolved pick, not the store's hover, is what the tool acts on.
+      hoveredSelectionId: id,
+      isPointerDown: true,
+      hoveredVertexId: id,
+      hoveredVertexPosition: null,
+      startClient: [clientX, clientY],
+    },
+  )
 
   // Same placeholder world point as the click path: the adapters hand over the
   // id-buffer pick, which carries no screen-to-world coordinate.

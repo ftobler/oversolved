@@ -255,7 +255,7 @@ describe('DragPlane vertex snap candidates', () => {
 })
 
 describe('DragPlane drag-path work', () => {
-  it('builds the vertex snap set once, not per pointer move', () => {
+  it('builds the vertex snap set once per sketch change, not per pointer move', () => {
     const sketch: Sketch = {
       lineA: { start: [0, 0], end: [1, 0] },
       lineB: { start: [5, 0], end: [10, 0] },
@@ -264,14 +264,23 @@ describe('DragPlane drag-path work', () => {
     drag: vertexDrag('S1'),
   })
     proj.point = { x: 10, y: 0, z: 0 }
-    render(<DragPlane featureId="S1" sketch={sketch} sketchGroupRef={groupRef} />)
+    const view = render(<DragPlane featureId="S1" sketch={sketch} sketchGroupRef={groupRef} />)
 
     move(500, 500)
     move(520, 500)
     move(540, 500)
 
-    // Rebuilding walked every vertex and body edge in the scene on every move.
+    // Rebuilding inside the move handler walked every vertex and body edge in
+    // the scene on every pointer move.
     expect(snapBuilds.count).toBe(1)
+
+    // The parent hands over the live preview sketch each solve frame, which is a
+    // new object: a new sketch is a new candidate set, deliberately.
+    const preview: Sketch = { lineA: { start: [0, 1], end: [1, 1] } }
+    view.rerender(<DragPlane featureId="S1" sketch={preview} sketchGroupRef={groupRef} />)
+    expect(snapBuilds.count).toBe(2)
+    move(560, 500)
+    expect(snapBuilds.count).toBe(2)
   })
 })
 

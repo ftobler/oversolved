@@ -41,13 +41,19 @@ export interface DragContextHandlers {
   setDragSnap: DragToolContext['setDragSnap']
 }
 
-/** The fields the activation frame overrides: a pending drag carries the press
- *  point, not a real hover, and there is no live drag yet. */
+/**
+ * The fields a caller overrides. The activation and commit frames override the
+ * hover with their own grab facts; the pointer-down id dispatch overrides the
+ * store reads it has just written, which the snapshot it passes predates.
+ */
 export interface DragContextOverrides {
+  hoveredSelectionId?: string | null
+  isPointerDown?: boolean
   hoveredVertexId?: string | null
   hoveredVertexPosition?: [number, number] | null
   drag?: DragToolContext['drag']
   dragPending?: DragToolContext['dragPending']
+  startClient?: [number, number] | null
 }
 
 /** DragTool only ever sees a sketch vertex/edge drag: a dimension label or a
@@ -62,9 +68,10 @@ function asToolPending(pending: DragPendingState | null): DragToolContext['dragP
 }
 
 /**
- * Build the context handed to DragTool's handlers. Both the activation frame and
- * the commit frame go through this one builder: the two used to spell the same
- * literal out twice and could drift on any field ToolContext grows.
+ * Build the context handed to DragTool's handlers. Every producer goes through
+ * this one builder -- the activation frame, the commit frame and the id-buffer
+ * pointer-down dispatch: they used to spell the same literal out separately and
+ * could drift on any field ToolContext grows.
  */
 export function buildDragToolContext(
   source: DragContextSource,
@@ -73,8 +80,10 @@ export function buildDragToolContext(
 ): DragToolContext {
   return {
     normalSelection: source.normalSelection,
-    hoveredSelectionId: source.hoveredSelectionId,
-    isPointerDown: source.isPointerDown,
+    hoveredSelectionId: overrides.hoveredSelectionId !== undefined
+      ? overrides.hoveredSelectionId
+      : source.hoveredSelectionId,
+    isPointerDown: overrides.isPointerDown !== undefined ? overrides.isPointerDown : source.isPointerDown,
     activeFeatureId: source.activeFeatureId,
     hoveredVertexId: overrides.hoveredVertexId !== undefined ? overrides.hoveredVertexId : source.hoveredVertexId,
     hoveredVertexPosition: overrides.hoveredVertexPosition !== undefined
@@ -88,7 +97,7 @@ export function buildDragToolContext(
     setDrag: handlers.setDrag,
     setDragPending: handlers.setDragPending,
     setDragSnap: handlers.setDragSnap,
-    startClient: source.dragStartClient,
+    startClient: overrides.startClient !== undefined ? overrides.startClient : source.dragStartClient,
     // Store-owned mode stack: the drag context never pushes or pops.
     pushMode: () => {},
     popMode: () => {},

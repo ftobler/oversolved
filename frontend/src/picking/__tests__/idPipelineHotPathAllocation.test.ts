@@ -93,15 +93,24 @@ describe('IdPipeline hot-path allocation', () => {
 
   it('reuses one read result across resolves', () => {
     const { image, p } = pipelineWithMark()
-    const spy = vi.spyOn(p.resolver, 'decode')
     const renderer = image.renderer()
+    // readWindow returns the result object resolveSync decodes from, so its
+    // identity is the thing to compare. (Comparing the scratch buffer would
+    // pass even without reuse: the resolver returns one buffer per size.)
+    const readSpy = vi.spyOn(
+      IdPipeline.prototype as unknown as { readWindow: (...args: never[]) => unknown },
+      'readWindow',
+    )
 
     p.resolveSync(renderer, CURSOR)
-    p.resolveSync(renderer, { x: 20.5, y: 44.5 })
+    p.resolveSync(renderer, { x: 33.5, y: 31.5 })
 
-    // The read window is the resolver's own scratch view either way; the point
-    // here is that the pipeline hands the same result and scratch buffer.
-    expect(spy.mock.calls[1][0]).toBe(spy.mock.calls[0][0])
+    expect(readSpy).toHaveBeenCalledTimes(2)
+    const first = readSpy.mock.results[0].value
+    const second = readSpy.mock.results[1].value
+    expect(first).not.toBeNull()
+    expect(second).toBe(first)
+    readSpy.mockRestore()
     p.dispose()
   })
 

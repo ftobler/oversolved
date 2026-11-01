@@ -98,14 +98,13 @@ export function missClearsSelection(gesture: ClickGestureState, adapterActive: b
 }
 
 /**
- * What an empty-space click clears once `missClearsSelection` has allowed it.
- *
- * A miss always drops the one subject (part or mate) and disarms an armed mate
- * field, the same "click off to deselect" the part editor gives. The B-rep
- * entity selection is only wiped when the click was NOT a mate pick aiming at
- * nothing: the mate picker owns the click there, and a miss simply aims at
- * nothing. Pure so the three-field sequence is stated and tested once rather
- * than re-derived at the call site.
+ * The one branch of an empty-space click's clears that is a decision. The call
+ * site always drops the single subject (part or mate) and disarms an armed mate
+ * field, the same "click off to deselect" the part editor gives; this says
+ * whether the B-rep entity selection goes with them. It does not when the click
+ * was a mate pick aiming at nothing: the mate picker owns that click, and a
+ * miss there simply aims at nothing. Pure so the branch is stated and tested
+ * once instead of being re-derived at the call site.
  */
 export function missClearPlan(aiming: boolean): { clearEntitySelection: boolean } {
   return { clearEntitySelection: !aiming }
