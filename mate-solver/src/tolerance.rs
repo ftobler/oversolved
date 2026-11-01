@@ -21,9 +21,10 @@ pub(crate) const RESIDUAL_REL_TOL: f64 = 1e-4;
 ///
 /// Absolute because an angle is scale-free: the same 3 degree disagreement
 /// between two mates is a conflict whether the assembly spans one unit or
-/// thousands. `1e-4` is the pre-split width at unit scale, so unit drawings
-/// read exactly as they did before the classes were separated; at any larger
-/// scale the old mixed budget was looser than this and the fix tightens it.
+/// thousands. `1e-4` matches the pre-split width at unit scale (the verdict
+/// aggregates with max now, so a multi-row mate can still read differently);
+/// at any larger scale the old mixed budget was looser than this and the fix
+/// tightens it.
 /// It is also the angle whose tangential miss on a lever the size of the
 /// drawing equals the length width above (`RESIDUAL_REL_TOL * scale` at a
 /// scale-sized lever), so the two classes agree in the ordinary case where an
