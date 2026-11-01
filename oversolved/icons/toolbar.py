@@ -232,7 +232,7 @@ def toolbar_ellipse(ctx):
 
 @icon("frontend/src/assets/icons/toolbar-ngon.svg")
 def toolbar_ngon(ctx):
-    # Regular hexagon, flat top and bottom.
+    # Regular hexagon: pointy top and bottom, flat left and right.
     cx, cy, r = 0.5, 0.5, 0.333333
     for i in range(6):
         t = math.pi / 6 + i * math.pi / 3

@@ -151,10 +151,9 @@ interface ProjectionCase {
   query_tier: string
   spec: Dict
   solved: SolvedDoc
-  // Carried from the frozen entry: these fields describe provenance, not
-  // geometry, and the merge replaces the whole entry by label.
+  // Carried from the frozen entry: it describes provenance, not geometry,
+  // and the merge replaces the whole entry by label.
   input_sketches?: unknown[]
-  soft?: boolean
 }
 
 const projectionCases: ProjectionCase[] = []
@@ -357,7 +356,6 @@ interface FrozenEntry {
   ok: boolean
   error: string | null
   input_sketches?: unknown[]
-  soft?: boolean
   spec: Dict
   result: Record<string, unknown>
   bodies: Record<string, unknown>
@@ -391,7 +389,6 @@ async function buildCarriedCases(generated: ReadonlySet<string>): Promise<Projec
       spec: entry.spec,
       solved,
       input_sketches: entry.input_sketches,
-      soft: entry.soft,
     })
   }
   const missing = Object.keys(manifest.cases).filter(label => !generated.has(label) && !out.some(c => c.label === label))
@@ -409,7 +406,6 @@ interface BaselineEntry {
   spec: Record<string, unknown>
   result: Record<string, unknown>
   bodies: Record<string, unknown>
-  soft?: boolean
 }
 
 function entryFrom(c: ProjectionCase, solved: { result: Dict; bodies: Record<string, unknown> }): BaselineEntry {
@@ -428,9 +424,6 @@ function entryFrom(c: ProjectionCase, solved: { result: Dict; bodies: Record<str
     result: stripNonGeometricResult(solved.result),
     bodies,
   }
-  // Only present where the frozen entry had it, so a plain corpus entry does
-  // not gain a field the merge would then freeze forever.
-  if (c.soft) entry.soft = true
   return entry
 }
 

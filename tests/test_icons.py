@@ -47,7 +47,6 @@ def test_every_committed_svg_has_a_generator(monkeypatch):
     assert not generated - committed, f"generators with no SVG: {sorted(generated - committed)}"
 
 
-
 def test_draw_all_renders_each_registry_entry(tmp_path, monkeypatch):
     _icons, icon_cairo = _load(monkeypatch)
     monkeypatch.setattr(icon_cairo, "_registry", [])

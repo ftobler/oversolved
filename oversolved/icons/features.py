@@ -504,8 +504,8 @@ def feature_circular_array(ctx):
     ctx.line_to(0.900065, 0.5)
     stroke(ctx, 1.5)
 
-    # The arrow rides a 0.35 radius arc whose chord is x = 0.25: the centre sits
-    # sqrt(0.35^2 - 0.1^2) to the right of it.
+    # The arrow wraps the ring: the major arc of a 0.35 radius circle whose
+    # chord is x = 0.25, so its centre sits sqrt(0.35^2 - 0.1^2) to the right.
     centre_x = 0.25 + math.sqrt(0.35**2 - 0.1**2)
-    ctx.arc(centre_x, 0.5, 0.35, math.pi - 0.2897, math.pi + 0.2897)
+    ctx.arc_negative(centre_x, 0.5, 0.35, math.pi - 0.2897, math.pi + 0.2897)
     stroke(ctx, 0.9)
