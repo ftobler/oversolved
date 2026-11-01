@@ -34,6 +34,7 @@ import {
 import { uvTo3d } from './prismGeometry'
 import type { LoopEdge } from '../profileLoops'
 import { copyShape } from './transforms'
+import { swallowUnlessTrap } from '../errors'
 
 // ─── sketch loops -> OCC face ───
 
@@ -184,7 +185,8 @@ function realizedGapsLine(oc: OccModule, scope: DisposeScope, edges: OccShape[])
   try {
     const gaps = wireEndpointGaps(oc, scope, edges)
     return `\n  gaps OCC realized at each joint: ${gaps.map(formatGap).join(', ')}`
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return ''
   }
 }
@@ -279,6 +281,7 @@ function safeProfileReport(loops: LoopEdge[][], when: 'suspect' | 'always'): str
     if (when === 'suspect' && report.verdict !== 'suspect') return ''
     return formatProfileReport(report)
   } catch (e) {
+    swallowUnlessTrap(e)
     return when === 'always' ? `(profile dump unavailable: ${extractErrorMessage(e)})` : ''
   }
 }

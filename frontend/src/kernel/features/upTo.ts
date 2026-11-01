@@ -19,6 +19,7 @@ import { dot, cross } from '@/utils/vec3'
 import { booleanWithHistory, countSolids, type FaceOrigin } from '../occ/booleans'
 import { extractOccFace, computeFacePlane } from '../occ/faceLoops'
 import { resolveFaceSlashFrame } from './faceProfile'
+import { swallowUnlessTrap } from '../errors'
 
 type Dict = Record<string, unknown>
 
@@ -122,7 +123,8 @@ export function resolveUpToPlane(
     let plane
     try {
       plane = computeFacePlane(oc, scope, face)
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       throw new Error('extrude up_to: target face is not planar (v1 supports planar targets only)')
     }
     const n = normalize(plane.normal)
@@ -138,7 +140,8 @@ export function resolveUpToPlane(
   let pt: number[]
   try {
     pt = getPoint3d(entry, globalRepo)
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return null
   }
   const n = normalize(directionVec)

@@ -8,7 +8,7 @@
 // wire assembles regardless of solver-level endpoint precision.
 
 import type { DisposeScope } from '../occ/disposeScope'
-import { extractErrorMessage } from '../errors'
+import { extractErrorMessage, swallowUnlessTrap } from '../errors'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
@@ -16,7 +16,7 @@ import type { Repository } from '../query'
 import { parseAncestry, featureRefId } from '../query'
 import { collectExtrudeLoops } from './faceProfile'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
-import { extractProfileLoops, profileAreaReport } from './shared/profileLoops'
+import { extractProfileLoops, profileAreaReport, type ProfileLoopDiag } from './shared/profileLoops'
 import { parseSketchEntityRef, surfaceEntityIds } from './shared/bodyRef'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage, type LineageResult } from '../occ/prismLineage'
@@ -691,6 +691,7 @@ export function solveSweep(
     try {
       resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, bodyStore)
     } catch (exc) {
+      swallowUnlessTrap(exc)
       profileErrors.push(extractErrorMessage(exc))
       continue
     }
@@ -744,10 +745,30 @@ export function solveSweep(
     }
     const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
     const edges = ((topo.edges as Dict[]) ?? []).filter((e) => eids.has(e.entity_id as string))
-    const loops = extractProfileLoops([{ boundary: edges }])
+    const diags: ProfileLoopDiag[] = []
+    const loops = extractProfileLoops([{ boundary: edges }], diags)
     if (loops.length === 0) {
       profileErrors.push(`sweep: picked profile edges do not form a closed loop (sketch ${sketchId})`)
       continue
+    }
+    if (diags.length > 0) {
+      // Only the FIRST loop survives the assembler; every other chain it
+      // diagnosed is geometry the user picked and will not be swept. Name the
+      // entities that produced no kept loop instead of sweeping the remainder
+      // as if it were the whole pick.
+      const kept = new Set<string>()
+      for (const loop of loops) {
+        for (const edge of loop) {
+          const id = edge.entity_id
+          if (typeof id === 'string') kept.add(id)
+        }
+      }
+      const picked = [...eids]
+      const dropped = picked.filter((id) => !kept.has(id))
+      profileErrors.push(
+        `sweep: dropped ${dropped.length} of ${picked.length} picked profile entities ` +
+          `whose edges did not form a closed loop: ${dropped.join(', ')}`,
+      )
     }
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))

@@ -42,6 +42,7 @@ import { SubShapeDedup, SubShapeMultiIndex, SubShapeIndexMap } from './subshapeI
 import { faceSurfaceType } from './primitives'
 import { exploreSolids } from './booleans'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
+import { swallowUnlessTrap } from '../errors'
 
 /** One connected group of picked faces that the operator refused, with its reason. */
 export interface FailedDefeatureGroup {
@@ -191,7 +192,8 @@ function blockedNeighbourType(
 function isDeleted(maker: OccModifierHistory, face: OccShape): boolean {
   try {
     return maker.IsDeleted(face)
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return false
   }
 }
@@ -251,7 +253,8 @@ export function applyDeleteFacesWithLineage(
       maker.Build()
       if (!maker.IsDone()) return null
       return { maker, built: scope.track(maker.Shape()) }
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       return null
     }
   }
@@ -331,7 +334,8 @@ export function applyDeleteFacesWithLineage(
     }
     try {
       diff = edgeModifierDiff(oc, scope, maker, oldFaces, oldEdges, newFaces, newEdges, oldFaceIdx, oldFaceModified)
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       diff = emptyBrepDiff()
     }
   } catch (e) {

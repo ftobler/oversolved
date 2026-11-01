@@ -15,6 +15,7 @@ import type { OccModule, OccShape, OccOrientedShape, OccSubShape } from './occTy
 import type { Frame3D } from '../types3d'
 import { faceCentroid, faceSurfaceTypeAndNormal } from './primitives'
 import { faceSortKey, compareFaceSortKeys } from './shapes'
+import { swallowUnlessTrap } from '../errors'
 
 const TWO_PI = 2 * Math.PI
 
@@ -238,7 +239,8 @@ export function buildLoopFromWire(
           })
         }
       }
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       // A pcurve read failure used to drop the edge silently, which returned a
       // gapped loop that then travelled to makeWire as a WRONG profile instead
       // of a named failure. Count it and refuse below.

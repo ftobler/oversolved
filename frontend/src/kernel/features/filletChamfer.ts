@@ -31,6 +31,7 @@ import {
   type EdgeModifierResult,
   type OldNames,
 } from '../occ/edgeModifier'
+import { swallowUnlessTrap } from '../errors'
 
 type Dict = Record<string, unknown>
 
@@ -140,7 +141,8 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
     if (oc.BRep_Tool.Degenerated?.(te)) return
     try {
       indexEntries.push({ te, canon, geom: edgeToGeom(oc, scope, te) })
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       indexEntries.push({ te, canon, geom: null })
     }
   })
@@ -241,7 +243,8 @@ export function resolveEdgesByQuery(
     try {
       const [, typeRestriction] = parseAncestry(q)
       return typeRestriction === 'face' || typeRestriction === 'flatface' || typeRestriction === 'cylinderface'
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       return false
     }
   }
@@ -319,7 +322,8 @@ function resolveByStableAncestry(
       const wanted = ids.filter(isClassifierId).map((i) => i.slice(1))
       if (wanted.every((c) => payload.classifiers.includes(c))) return payload.shape
     }
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     // AmbiguousQueryError or a malformed ancestry string: leave unresolved
   }
   return undefined
@@ -466,7 +470,8 @@ function applyEdgeFeature(
         // the group key is always a real bodyStore id.
         try {
           resolvedSrc = resolveBody(sourceBody, bodyStore).id
-        } catch {
+        } catch (e) {
+          swallowUnlessTrap(e)
           throw new Error(`${featureKind}: source body '${sourceBody}' not found`)
         }
       }
@@ -506,7 +511,8 @@ function applyEdgeFeature(
     let body: Body
     try {
       body = resolveBody(bid, bodyStore)
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       unresolved.push(...qlist)
       continue
     }
@@ -520,7 +526,8 @@ function applyEdgeFeature(
         unresolved.push(...qlist)
         continue
       }
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       unresolved.push(...qlist)
       continue
     }

@@ -28,6 +28,7 @@ import {
   orderSplitChildren,
   type SplitChild,
 } from '../constructionName'
+import { swallowUnlessTrap } from '../errors'
 
 // ─── shared parent-frame normalization (the confined world-geometry) ───
 
@@ -158,7 +159,8 @@ export function edgeMidpoint(oc: OccModule, scope: DisposeScope, edge: OccShape)
       }
       return [...c]
     }
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     // fall through
   }
   return [NaN, NaN, NaN]
@@ -274,7 +276,8 @@ export class FaceEdgeTable {
     let out: { centroid: Vec3; normal: Vec3 } | null
     try {
       out = { centroid: faceCentroid(this.oc, s, row.face), normal: faceNormal(this.oc, s, row.face) }
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       out = null
     } finally {
       s.dispose()
@@ -291,7 +294,8 @@ export class FaceEdgeTable {
     let out: number | null
     try {
       out = faceArea(this.oc, s, row.face)
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       out = null
     } finally {
       s.dispose()
@@ -308,7 +312,8 @@ export class FaceEdgeTable {
     let out: SurfaceType | null
     try {
       out = faceSurfaceType(this.oc, s, row.face)
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       out = null
     } finally {
       s.dispose()

@@ -12,7 +12,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { sortedFacesOf } from '../occ/faceLoops'
-import { resolveFaceIndexViaUuid } from './faceProfile'
+import { findBodyForRef, remapFaceIndex, SLASH_FACE } from './faceProfile'
 import { resolveCircularReference } from './shared/directionQuery'
 import {
   helixFrame,
@@ -32,23 +32,10 @@ type Dict = Record<string, unknown>
 // edges beside it (the mesher's angular deflection) without bloating the doc.
 const POINTS_PER_TURN = 24
 
-const SLASH_FACE = /^@([^/]+)\/face\/(\d+)$/
-
 function normalize(v: number[]): Vec3 | null {
   const n = Math.hypot(v[0], v[1], v[2])
   if (n < 1e-12) return null
   return [v[0] / n, v[1] / n, v[2] / n]
-}
-
-function findBodyForRef(bodyStore: Record<string, Body>, id: string): Body | null {
-  const exact = bodyStore[id]
-  if (exact !== undefined && exact.shape !== null) return exact
-  const prefixed = bodyStore['body_' + id]
-  if (prefixed !== undefined && prefixed.shape !== null) return prefixed
-  for (const b of Object.values(bodyStore)) {
-    if (b.created_by === id && b.shape !== null) return b
-  }
-  return null
 }
 
 /** The OCC face a face pick names, via its body and (UUID-remapped) index. */
@@ -79,10 +66,12 @@ function occFaceForRef(
   if (body === null || body.shape === null) throw new Error(`helix: reference body not found for ${JSON.stringify(refStr)}`)
   const shape = table.get<OccShape>(body.shape)
   const faces = sortedFacesOf(oc, scope, shape)
-  const resolved = resolveFaceIndexViaUuid(oc, scope, shape, faceIndex, globalRepo, bodyStore, body.face_uuids, faces)
-  const index = resolved ?? faceIndex
-  if (index >= faces.length) throw new Error(`helix: face index ${index} out of range for ${JSON.stringify(refStr)}`)
-  return faces[index]
+  // Same remap the profile paths use: a body carrying face identity refuses a
+  // ref whose construction UUID no longer maps rather than reading the raw
+  // index into a face the user never picked.
+  faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, bodyStore, body, faces, refStr)
+  if (faceIndex >= faces.length) throw new Error(`helix: face index ${faceIndex} out of range for ${JSON.stringify(refStr)}`)
+  return faces[faceIndex]
 }
 
 /** A cylinder face's axis, low-end axis point, radius and axial extent, read

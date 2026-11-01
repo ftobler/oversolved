@@ -18,6 +18,7 @@ import { extractProfileLoops, type ProfileLoopDiag } from './shared/profileLoops
 import { parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds } from './shared/bodyRef'
 import type { PlaneLike } from './shared/planes'
 import { stripRefSigil } from '@/utils/refSigil'
+import { swallowUnlessTrap } from '../errors'
 
 type Dict = Record<string, unknown>
 type EdgeDict = Record<string, unknown>
@@ -69,7 +70,8 @@ export function resolveFaceIndexViaUuid(
     } else {
       targetFace = extractOccFace(oc, scope, shape, oldIndex)
     }
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return null
   }
   if (faceUuids === undefined) return null
@@ -89,7 +91,8 @@ export function resolveFaceIndexViaUuid(
       if (faceEntry && 'face_index' in faceEntry) {
         return faceEntry.face_index as number
       }
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       // query failure -> null; the call site decides whether that is a miss
     }
   }
@@ -116,7 +119,7 @@ export function extractLoopsFromOccFace(
  * they answer with the feature's first body, which is also the index space
  * `@<feat>/face/N` was always understood in.
  */
-function findBodyForRef(bodyStore: Record<string, Body>, id: string): Body | null {
+export function findBodyForRef(bodyStore: Record<string, Body>, id: string): Body | null {
   const exact = bodyStore[id]
   if (exact !== undefined && exact.shape !== null) return exact
   const prefixed = bodyStore['body_' + id]
@@ -127,7 +130,7 @@ function findBodyForRef(bodyStore: Record<string, Body>, id: string): Body | nul
   return null
 }
 
-const SLASH_FACE = /^@([^/]+)\/face\/(\d+)$/
+export const SLASH_FACE = /^@([^/]+)\/face\/(\d+)$/
 
 /**
  * The remap verdict for a persisted `@<body>/face/<N>` ref. Returns the face
@@ -145,7 +148,7 @@ const SLASH_FACE = /^@([^/]+)\/face\/(\d+)$/
  * detect the shift against (the identity-bearing case, where the shift is
  * detectable, fails loud above).
  */
-function remapFaceIndex(
+export function remapFaceIndex(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
@@ -244,7 +247,8 @@ export function resolveFaceProfile(
       try {
         const [ids] = parseAncestry(q)
         return ids.length === targetIds.length && ids.every((v, i) => v === targetIds[i])
-      } catch {
+      } catch (e) {
+        swallowUnlessTrap(e)
         return false
       }
     })

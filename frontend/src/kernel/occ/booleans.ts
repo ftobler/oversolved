@@ -23,6 +23,7 @@ import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex } from './primitive
 import { volumeOf } from './volume'
 import { foldCavitySolids } from './cavities'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
+import { swallowUnlessTrap } from '../errors'
 
 // Re-exported for the callers that read a body's volume.
 export { volumeOf }
@@ -140,7 +141,8 @@ export function shapesIntersect(oc: OccModule, target: OccShape, tool: OccShape)
       return countSubShapes(oc, s, inter, oc.TopAbs_ShapeEnum.TopAbs_FACE) > 0
     }
     return false
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     // A failed probe is not evidence of disjointness: report intersect so the
     // caller runs the real cut and its own failure surfaces instead.
     return true
@@ -532,7 +534,8 @@ function cleanShapeIsSound(oc: OccModule, scope: DisposeScope, before: OccShape,
     // validate; a shell is judged by the preserved volume alone.
     if (isClosedByVolume(v0) && !shapeIsValid(oc, scope, after)) return false
     return Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0))
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     // A guard that cannot run must not adopt the shape it cannot check.
     return false
   }
@@ -591,6 +594,7 @@ function booleanResultProblem(
     }
     return null
   } catch (e) {
+    swallowUnlessTrap(e)
     // The same rule as cleanShapeIsSound: a guard that cannot run must not let
     // the shape it cannot check through.
     return `the soundness check could not run: ${e instanceof Error ? e.message : String(e)}`
@@ -632,7 +636,8 @@ function composeBooleanAttempt(
       }
     }
     rejected = r.shape
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     // ShapeUpgrade_UnifySameDomain (the coplanar-face merge) can throw on a valid
     // boolean result whose coincident faces it cannot fold. The reproducer is an
     // extrude of a body face that has a hole, added back onto that same body: the

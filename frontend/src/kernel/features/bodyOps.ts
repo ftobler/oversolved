@@ -23,6 +23,7 @@ import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody } from './bodySplit'
 import { readBodyNames } from '../occ/bodyNames'
 import type { SubShapeMap } from '../occ/subshapeIdentity'
+import { swallowUnlessTrap } from '../errors'
 
 export type BodyOperation = 'add' | 'cut' | 'new'
 
@@ -156,6 +157,7 @@ export function applyBodyOperation(
     let cutAnything = false
     let cutBodyId: string | null = null
     const cutBodyIds: string[] = []
+    const consumedBodyIds: string[] = []
     for (const bid of targetIds) {
       const existingBody = bodyStore[bid]
       if (existingBody.shape === null) continue
@@ -182,7 +184,7 @@ export function applyBodyOperation(
         }
         delete bodyStore[bid]
         cutAnything = true
-        cutBodyIds.push(bid)
+        consumedBodyIds.push(bid)
         continue
       }
 
@@ -225,12 +227,22 @@ export function applyBodyOperation(
       }
       throw new Error(`${opName}: cut does not intersect any target body - nothing to remove`)
     }
-    result.body_id = cutBodyId as string
+    result.body_id = cutBodyId ?? bodyId
     result.body_ids = cutBodyIds
     result.operation = 'cut'
     const cutBody = cutBodyId !== null ? bodyStore[cutBodyId] : undefined
     if (cutBody && brepDiffIsEmpty(cutBody.brep_diff)) {
       result.solver_warning = `${opName}: operation produced no geometry change`
+    }
+    if (consumedBodyIds.length > 0) {
+      // The bodies are gone, so body_ids must not name them. This is the same
+      // deletion event hole and array report, with the same wording.
+      const deleted = consumedBodyIds
+        .map((id) => `${opName}: the cut removed all of body '${id}'; the body was deleted`)
+        .join('; ')
+      result.solver_warning = result.solver_warning === undefined
+        ? deleted
+        : `${result.solver_warning}; ${deleted}`
     }
     return result
   }
@@ -266,6 +278,7 @@ export function applyBodyOperation(
         diff = res.diff
         faceOrigin = res.faceOrigin
       } catch (exc) {
+        swallowUnlessTrap(exc)
         throw new Error(`${opName}: add operation failed: ${String(exc)}`)
       }
       scope.track(newShape)

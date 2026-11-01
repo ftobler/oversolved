@@ -39,6 +39,7 @@ import type {
 } from './occTypes'
 import { volumeOf } from './volume'
 import { faceSurfaceFrame } from './primitives'
+import { swallowUnlessTrap } from '../errors'
 
 const FIT_SAMPLES = 7  // grid per direction -> 49 samples per face
 const FIT_TOL = 1e-6  // max radial deviation for "this face IS a cylinder"
@@ -400,7 +401,8 @@ export function canonicalizeCylinderFaces(
           swap.to = scope.track(context.Apply(swap.to, E.TopAbs_SHAPE)) as OccSubShape
         }
       }
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       // Best-effort: an unmapped swap degrades lineage on that face, not geometry.
     }
     const ctx = context
@@ -410,13 +412,15 @@ export function canonicalizeCylinderFaces(
       if (!ctx) return s
       try {
         return scope.track(ctx.Apply(s, E.TopAbs_SHAPE)) as OccSubShape
-      } catch {
+      } catch (e) {
+        swallowUnlessTrap(e)
         return s
       }
     }
 
     return { shape: scope.detach(healed), changed: true, swaps, rebase }
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     // Recognition is best-effort: the un-canonicalized boolean result is a
     // sound solid, it just keeps the seam UnifySameDomain cannot fold.
     return identity

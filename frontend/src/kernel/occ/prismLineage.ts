@@ -53,6 +53,7 @@ import {
 } from '../constructionName'
 import { sketchLoopsToFace, canonicalizeFaceCircles } from './prismProfile'
 import { entityForEdges, derivePrismEdgeNames } from './prismEdgeNaming'
+import { swallowUnlessTrap } from '../errors'
 
 // Kept as the public entry points for the profile -> face step and its
 // canonicalizing core, which the real-OCC gates import from here.
@@ -79,7 +80,8 @@ function capGeneratedFaces(
     let shape: OccShape
     try {
       shape = getter.call(builder)
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       return
     }
     const trackedShape = scope.track(shape)
@@ -127,7 +129,8 @@ function geometricCapFaces(
     pc = faceCentroid(oc, scope, occFace)
     pn = faceNormal(oc, scope, occFace)
     pa = faceArea(oc, scope, occFace)
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return { caps: [], capRoles }
   }
   const candidates: { face: OccSubShape; d: number }[] = []
@@ -249,7 +252,8 @@ export function buildPrismLineageMap(
     let generated: OccShape[]
     try {
       generated = drainList(scope, prismBuilder.Generated(profEdges[i]))
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       continue
     }
     for (const g of generated) {
@@ -473,7 +477,8 @@ function tryCanonicalMergedProfile(
       scope.track(cleaned)
       scope.release(solid)  // the previous running solid is consumed by the clean
       solid = cleaned
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       // The prism-fuse-clean is the legacy path -- the only throw the
       // diagnostics pinned was the periodic-cylinder face merge (now avoided
       // here because this solid is the build target, never the add tool). Any
@@ -520,7 +525,8 @@ function tryCanonicalMergedProfile(
     scope.release(entrance)  // the returned face is the caller's copy; the original can go
     scope.release(solid)
     return out
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return null
   }
 }
@@ -609,7 +615,8 @@ function namedFuse(oc: OccModule, scope: DisposeScope) {
           )
           scope.release(out)  // the previous running solid is consumed by the clean
           out = cleaned
-        } catch {
+        } catch (e) {
+          swallowUnlessTrap(e)
           // kept raw solid -- segmentation faces survive but the volume is intact.
         }
       }
@@ -878,6 +885,7 @@ export function attemptPipeShellSweep(
         return { result: { solid: builder.Shape(), pipeBuilder: builder }, lastError: null }
       }
     } catch (e) {
+      swallowUnlessTrap(e)
       lastError = e
     }
   }

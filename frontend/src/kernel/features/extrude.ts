@@ -35,6 +35,7 @@ import { deriveEdgeNames, nameNeighboursAndDeriveEdges } from '../occ/constructi
 import {
   canonicalFaces, canonicalIndex, carryFaceNames, emptyShapeNames, mergeShapeNames,
 } from '../occ/bodyNames'
+import { swallowUnlessTrap } from '../errors'
 
 type Dict = Record<string, unknown>
 
@@ -109,7 +110,8 @@ function oppositeCutProbe(
       try {
         const back = makeTranslationTrsf(oc, scope, -sweep[0], -sweep[1], -sweep[2])
         return scope.track(transformCopy(oc, scope, tool, back))
-      } catch {
+      } catch (e) {
+        swallowUnlessTrap(e)
         return null  // a failed probe only loses the hint; the plain miss error still fires
       }
     },
@@ -184,6 +186,7 @@ export function solveExtrude(
         bodyStore,
       )
     } catch (exc) {
+      swallowUnlessTrap(exc)
       profileErrors.push(extractErrorMessage(exc))
       continue
     }
@@ -237,6 +240,7 @@ export function solveExtrude(
     try {
       cqFaces.push(scope.track(resolveEdgeProfileFace(oc, scope, table, edgeRefs, bodyStore)))
     } catch (exc) {
+      swallowUnlessTrap(exc)
       profileErrors.push(extractErrorMessage(exc))
     }
   }

@@ -19,6 +19,7 @@ import type { TessMesh } from './occ/tessellation'
 import type { BuildDeps } from './builderTypes'
 import { repoFromSnapshot, snapshotRepo } from './builderSnapshot'
 import { stableJson } from './builderHash'
+import { swallowUnlessTrap } from './errors'
 
 // Mesh-free B-rep metadata for a set of bodies: the shape of both
 // ``BuildDeps.extractBrepMetadata`` and the build-scoped memoised wrapper the
@@ -347,7 +348,8 @@ function _tryRegisterBodyBrepFromMeta(
   try {
     registerBodyBrepFromMeta(repo, body, meta)
     return true
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return false  // partial state possible (clearBodyAncestry already ran); the loop lives with the same
   }
 }
@@ -377,7 +379,8 @@ export function registerBodyFaces(
     const out = extract({ [body.id]: body }, globalRepo)[body.id]
     if (!out) return false
     return _tryRegisterBodyBrepFromMeta(globalRepo, body, out)  // shared error contract
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     // Only the extractor call can still throw to here; the registrar throw is handled
     // inside the wrapper. Non-fatal either way: the body just lacks B-rep ancestry, and
     // the build continues.
