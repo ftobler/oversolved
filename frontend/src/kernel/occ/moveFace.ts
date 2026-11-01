@@ -132,14 +132,16 @@ export function extendNeighbourFace(
   // owning WASM memory; scope owns them for the read (the faceLoops.computeFacePlane
   // rule), and the face builder copies the surface it is handed.
   if (kind === 'plane') {
-    return scope.track(
-      new oc.BRepBuilderAPI_MakeFace_9(scope.track(adaptor.Plane()), -L, L, -L, L).Face(),
+    const builder = scope.track(
+      new oc.BRepBuilderAPI_MakeFace_9(scope.track(adaptor.Plane()), -L, L, -L, L),
     )
+    return scope.track(builder.Face())
   }
   if (kind === 'cylinder') {
-    return scope.track(
-      new oc.BRepBuilderAPI_MakeFace_10(scope.track(adaptor.Cylinder()), 0, 2 * Math.PI, -L, L).Face(),
+    const builder = scope.track(
+      new oc.BRepBuilderAPI_MakeFace_10(scope.track(adaptor.Cylinder()), 0, 2 * Math.PI, -L, L),
     )
+    return scope.track(builder.Face())
   }
   const cone = scope.track(adaptor.Cone())
   const semi = cone.SemiAngle()
@@ -150,7 +152,8 @@ export function extendNeighbourFace(
   let hi = L
   if (semi < 0) hi = vApex
   else lo = vApex
-  return scope.track(new oc.BRepBuilderAPI_MakeFace_11(cone, 0, 2 * Math.PI, lo, hi).Face())
+  const coneFace = scope.track(new oc.BRepBuilderAPI_MakeFace_11(cone, 0, 2 * Math.PI, lo, hi))
+  return scope.track(coneFace.Face())
 }
 
 /**
@@ -303,6 +306,43 @@ function toolFaceContaining(
   return -1
 }
 
+/** The retry ladder for a refused split: each replacement tool alone, then
+ *  the whole set, then refuse. A fixed budget on purpose: every subset is a
+ *  full splitter, and n = 10 bores is 1023 splits that can each hang. */
+export function replacementLadders(usable: number[]): number[][] {
+  const singles = usable.map((index) => [index])
+  return usable.length > 1 ? [...singles, usable] : singles
+}
+
+export interface SplitAttempt {
+  picked: OccShape[]
+  refusal: string | null
+}
+
+/** Run the replacement ladder, stopping at the first split that selects a
+ *  cell. A refused ladder returns a named refusal carrying the budget and the
+ *  last reason, so a red chip says why instead of only "no cell". */
+export function retryReplacementSplits(
+  usable: number[],
+  trySplit: (subset: number[]) => SplitAttempt,
+): SplitAttempt & { attempts: number } {
+  let last: SplitAttempt = { picked: [], refusal: null }
+  let attempts = 0
+  for (const subset of replacementLadders(usable)) {
+    attempts++
+    last = trySplit(subset)
+    if (last.refusal === null) return { ...last, attempts }
+  }
+  if (attempts === 0) return { picked: [], refusal: last.refusal, attempts }
+  return {
+    picked: [],
+    refusal:
+      `move_face: no replacement bounded the picked face after ${attempts} split(s) ` +
+      `(each tool alone, then the whole set): ${last.refusal ?? 'no cell was selected'}`,
+    attempts,
+  }
+}
+
 /**
  * Build and select the cells for moving `face` by signed `d`. Throws
  * MoveFaceRefusal for every guard: an unsupported or tangent-bounded face, an
@@ -410,27 +450,21 @@ export function moveFaceCells(
   let result = trySplit(toolFaces)
   if (result.refusal !== null) {
     // Re-split with one or more neighbour tools replaced by a solid on the same
-    // surface. The smallest replacement set that bounds the picked region wins,
-    // so a single failing tool does not drag every lateral face into the
-    // coincident-face merge that can spin on a pair of solid cuts.
+    // surface. A single failing tool must not drag every lateral face into the
+    // coincident-face merge that can spin on a pair of solid cuts, so each
+    // replacement is tried alone first, then the whole set. Every subset is
+    // 2^n - 1 full splitters (1023 for ten bores), each able to hang.
     const usable = solidTools
       .map((solid, index) => (solid === null ? -1 : index))
       .filter((index) => index >= 0)
-    const subsets: number[][] = []
-    for (let mask = 1; mask < 1 << usable.length; mask++) {
-      subsets.push(usable.filter((_, bit) => (mask & (1 << bit)) !== 0))
-    }
-    subsets.sort((a, b) => a.length - b.length)
-    for (const subset of subsets) {
+    const retry = retryReplacementSplits(usable, (subset) => {
       const tools = toolFaces.map((f, index) =>
         subset.includes(index) ? solidTools[index] ?? f : f,
       )
-      const attempt = trySplit(tools)
-      if (attempt.refusal === null) {
-        result = attempt
-        break
-      }
-    }
+      return trySplit(tools)
+    })
+    // No usable tool (an empty ladder) leaves the original refusal in place.
+    if (retry.attempts > 0) result = { picked: retry.picked, refusal: retry.refusal }
   }
   if (result.refusal !== null) throw new MoveFaceRefusal(result.refusal)
   const picked = result.picked

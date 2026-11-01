@@ -671,7 +671,12 @@ function planeSurface(
   return {
     kind: 'plane',
     inRegion: (region, p) => pointInFace(oc, scope, region, p, TOL_SURFACE_IDENTITY),
-    slab: (L) => makePrism(oc, scope, scope.track(new oc.BRepBuilderAPI_MakeFace_9(plane, -L, L, -L, L).Face()), n, d),
+    slab: (L) => {
+      // The builder owns the face it makes; tracking the face alone stranded
+      // one builder per slab.
+      const builder = scope.track(new oc.BRepBuilderAPI_MakeFace_9(plane, -L, L, -L, L))
+      return makePrism(oc, scope, scope.track(builder.Face()), n, d)
+    },
     onSource: (cf) => onPlane(cf, c0),
     onTarget: (cf) => onPlane(cf, pTarget),
     regionFace: (wire) => planeFromWire(oc, scope, wire),
