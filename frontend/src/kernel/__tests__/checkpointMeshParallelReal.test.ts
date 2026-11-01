@@ -1,8 +1,9 @@
 // @vitest-environment node
 //
-// Parallel mesh determinism across a persistent HandleTable, through the real
-// OCC.js pipeline: the same build meshed twice is identical. The lazy
-// checkpoint meshing contract that needs no feature solvers is
+// Parallel mesh determinism through the real OCC.js pipeline: one box meshed
+// serially and a second, identical box meshed in parallel produce the same
+// volume, and the HandleTable confirms every Handle behind them is released.
+// The lazy checkpoint meshing contract that needs no feature solvers is
 // checkpointMesh.test.ts; the broader checkpoint / bodies_snapshot replay is
 // checkpointMeshReal.test.ts.
 //

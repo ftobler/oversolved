@@ -26,14 +26,19 @@ def write_json(path: pathlib.Path, obj) -> None:
 
 
 def make_fixture(tmp_path: pathlib.Path):
-    """A one-case corpus: baseline entry + manifest case + matching payload."""
+    """A tiny corpus whose payload covers every existing non-real_doc case.
+
+    The merge now refuses any omission, so the payload carries the box case as
+    well even though this fixture enters its entry only through the baseline.
+    """
     payload = {
         "owned_kinds": ["extrude"],
         "entries": [
             {"label": "ex1", "feature_kind": "extrude", "query_tier": "base", "ok": True}
         ],
         "cases": [
-            {"label": "ex1", "feature_kind": "extrude", "query_tier": "base", "ok": True}
+            {"label": "ex1", "feature_kind": "extrude", "query_tier": "base", "ok": True},
+            {"label": "py_old", "feature_kind": "box", "query_tier": "base", "ok": True},
         ],
     }
     baseline = [
@@ -194,7 +199,7 @@ def test_owned_case_missing_from_the_payload_is_refused(tmp_path):
     with pytest.raises(SystemExit) as excinfo:
         mergeCorpus.main([str(payload_path), str(baseline_path), str(manifest_path)])
 
-    assert "payload omits owned case(s): ex_removed" in str(excinfo.value)
+    assert "payload omits case(s): ex_removed" in str(excinfo.value)
     assert "--prune" in str(excinfo.value)
     assert baseline_path.read_text() == baseline_before
     assert manifest_path.read_text() == manifest_before
@@ -234,6 +239,61 @@ def test_a_second_merge_is_byte_identical(tmp_path):
     mergeCorpus.main([str(payload_path), str(baseline_path), str(manifest_path)])
     assert baseline_path.read_bytes() == baseline_once
     assert manifest_path.read_bytes() == manifest_once
+
+
+def test_a_new_kind_missing_from_the_payload_is_refused(tmp_path):
+    """A payload that predates a kind must not carry that kind forward.
+
+    Completeness no longer keys on the payload's owned_kinds: the generator owns
+    every kind, so a hole case absent from an old payload is a stale regen and
+    the merge refuses it.
+    """
+    payload_path, baseline_path, manifest_path = make_fixture(tmp_path)
+    manifest = read_json(manifest_path)
+    manifest["cases"]["hole_new"] = {"feature_kind": "hole", "query_tier": "anchor", "ok": True}
+    manifest["coverage"]["hole/anchor"] = ["hole_new"]
+    write_json(manifest_path, manifest)
+    baseline = read_json(baseline_path)
+    baseline.append({"label": "hole_new", "ok": True, "error": None})
+    write_json(baseline_path, baseline)
+
+    with pytest.raises(SystemExit) as excinfo:
+        mergeCorpus.main([str(payload_path), str(baseline_path), str(manifest_path)])
+
+    assert "payload omits case(s): hole_new" in str(excinfo.value)
+
+
+def test_real_doc_case_in_the_payload_is_dropped(tmp_path):
+    """A stale payload naming a real_doc case must not re-insert it.
+
+    The folder corpus owns that tier; the manifest branch alone is not enough,
+    because the payload's own case map would otherwise setdefault it back in.
+    """
+    payload_path, baseline_path, manifest_path = make_fixture(tmp_path)
+    payload = read_json(payload_path)
+    payload["cases"].append({
+        "label": "real_doc_payload",
+        "feature_kind": "box",
+        "query_tier": "real_doc",
+        "ok": True,
+    })
+    payload["entries"].append({
+        "label": "real_doc_payload",
+        "ok": True,
+        "error": None,
+        "input_sketches": [],
+        "spec": {"version": 1, "kind": "part", "features": []},
+        "result": {},
+        "bodies": {},
+    })
+    write_json(payload_path, payload)
+
+    mergeCorpus.main([str(payload_path), str(baseline_path), str(manifest_path)])
+
+    assert "real_doc_payload" not in [entry["label"] for entry in read_json(baseline_path)]
+    merged_manifest = read_json(manifest_path)
+    assert "real_doc_payload" not in merged_manifest["cases"]
+    assert "box/real_doc" not in merged_manifest["coverage"]
 
 
 def test_real_doc_case_is_dropped_not_carried(tmp_path):

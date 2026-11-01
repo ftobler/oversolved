@@ -469,8 +469,9 @@ async function main(): Promise<void> {
     ok: true,
   }))
   // The generator now owns every case it emits the solve for, which is the
-  // whole manifest: a case dropped from the corpus is pruned by the merge
-  // instead of being carried forward forever.
+  // whole manifest: the merge refuses a payload that omits any non-real_doc
+  // case, and only an explicit --prune removes one. owned_kinds records what
+  // this run regenerated; it no longer decides what may be dropped.
   const ownedKinds = [...new Set(cases.map(c => c.feature_kind))].sort()
   writeFileSync(`${PAYLOAD_PATH}.tmp`, JSON.stringify({ entries, cases: freshCases, owned_kinds: ownedKinds }, null, 1) + '\n')
   // Atomic rename: a half-written payload must never be mergeable.

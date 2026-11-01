@@ -1,10 +1,10 @@
 // @vitest-environment node
 //
 // The real-kernel half of the bulk `add_chamfer` / `add_shell` forms: one call
-// carrying the pick list and the parameter must land the same document as the
+// carrying the pick list and the parameter must produce the same solid as the
 // old feature + pick + field sequence. The practice round paid 6 and 4 calls
-// for what `add_fillet` already did in one. The pure catalog and document shape
-// are inlineFeatureAdds.test.ts.
+// for what `add_fillet` already did in one. The pure catalog row and shell sign
+// note are inlineFeatureAdds.test.ts.
 
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'

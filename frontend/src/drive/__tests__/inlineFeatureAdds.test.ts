@@ -1,11 +1,10 @@
 // @vitest-environment node
 //
 // The pure half of the bulk `add_chamfer` / `add_shell` forms: the catalog row
-// and the document shape one call produces.
-//
-// Pins the shell sign note: thickness is a magnitude, `direction` carries the
-// side, and CadQuery's signed thickness maps positive -> outward. The
-// built-document half is inlineFeatureAddsReal.test.ts.
+// and the shell sign note (thickness is a magnitude, `direction` carries the
+// side, and CadQuery's signed thickness maps positive -> outward). The
+// built-document half, where one call must produce the same solid as the old
+// feature + pick + field sequence, is inlineFeatureAddsReal.test.ts.
 
 import { describe, it, expect } from 'vitest'
 import { mutationInfoOf } from '../mutationCatalog'
