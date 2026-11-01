@@ -6,7 +6,7 @@
 import type { PartDoc, PartFeature } from '@/types/cad'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { findFeature, warn } from './helpers'
-import type { FieldBag } from './featureDefs'
+import { roundNumericFields, storedNumber, type FieldBag } from './featureDefs'
 import { isValidVariableName } from '@/kernel/features/variable'
 import { allConsumedSketchIds } from '@/utils/query/consumedSketches'
 import { docVisibleFeatureIds, isPlaneVisibilityTarget } from '@/utils/featureVisibility'
@@ -202,7 +202,16 @@ export function hidePlanesIfFirstBoundSketch(doc: PartDoc, sketchId: string): vo
 
 export function applyAddPlane(doc: PartDoc, featureId: string, label?: string, definition?: Record<string, unknown>): void {
   if (!doc.features) doc.features = []
-  const feature: PartFeature = { id: featureId, kind: 'plane', definition: definition ?? { mode: 'offset', plane: '@builtin_plane_front' } }
+  // The definition is copied: a journaled add_plane replays its payload, and
+  // rounding it in place would rewrite the record the journal still holds.
+  const feature: PartFeature = {
+    id: featureId,
+    kind: 'plane',
+    definition: definition ? { ...definition } : { mode: 'offset', plane: '@builtin_plane_front' },
+  }
+  // A plane's offset or angle is a solver-fed authored quantity like a feature
+  // distance, so it crosses the same stored-precision boundary.
+  if (!roundNumericFields(feature.definition ?? {}, 'applyAddPlane')) return
   if (label) feature.label = label
   doc.features.push(feature)
 }
@@ -216,10 +225,12 @@ export function applySetPlaneDefinitionField(
   const feature = findFeature(doc, featureId)
   if (feature?.kind !== 'plane') return
   if (!feature.definition) feature.definition = {}
-  // A numeric plane field is persisted verbatim; a non-finite value would seed
-  // NaN into the document and survive every reload, so reject it at the gate.
-  if (typeof value === 'number' && !Number.isFinite(value)) {
-    warn('applySetPlaneDefinitionField: ignoring non-finite value', { featureId, field, value })
+  // A numeric plane field is stored through the same boundary as a feature
+  // scalar: gated for finiteness (a non-finite value would seed NaN into the
+  // document and survive every reload) and rounded to the stored precision.
+  const stored = typeof value === 'number' ? storedNumber(value) : value
+  if (typeof value === 'number' && stored === null) {
+    warn('applySetPlaneDefinitionField: refusing a value that is not storable', { featureId, field, value })
     return
   }
   // The scalar value lands on the definition under the named field. The write
@@ -227,7 +238,7 @@ export function applySetPlaneDefinitionField(
   // spellings (origin, rotation_axis) exist only in the definition object an
   // add_plane authors, never through this setter.
   const definition = feature.definition as FieldBag
-  definition[field] = value
+  definition[field] = stored
 }
 
 // ─── Pick field reorder ───

@@ -9,7 +9,17 @@ import { failLoud } from '@/utils/invariants'
 // child and the document test fixtures, where import.meta.env is undefined.
 export const warn = import.meta.env?.DEV ? (...args: unknown[]) => console.warn(...args) : () => undefined
 
-export const round = (v: number) => Math.round(v * 1e6) / 1e6
+/** The document's stored number precision. Two edge spellings are folded here
+ *  because every caller persists what this returns: a tiny negative would reach
+ *  the YAML as `-0`, which the repo elsewhere treats as junk, and a huge finite
+ *  input overflows `v * 1e6` to Infinity, so the vetted input spelling is kept
+ *  rather than emerging non-finite. round(NaN) is still NaN: the finiteness
+ *  gates beside every caller stay the gate. */
+export const round = (v: number) => {
+  const r = Math.round(v * 1e6) / 1e6
+  if (!Number.isFinite(r)) return v
+  return r === 0 ? 0 : r  // + 0 folds the -0
+}
 
 /** Boundary gate for every coordinate tuple a mutation persists. round(NaN) is
  *  still NaN and Math.min/max propagate it, so the clamps and rounds downstream

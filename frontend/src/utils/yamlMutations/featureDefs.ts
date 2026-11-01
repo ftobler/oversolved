@@ -26,17 +26,50 @@ function mergeInlineFields<T extends object>(target: T, inline: Partial<T>): voi
   }
 }
 
-/** Round the numeric fields of a freshly built def. A def is written either
- *  through setFeatureField or, for a bulk add, straight into its literal; both
- *  must spell an authored number the way the sketch mutators spell their seeds,
- *  or one drag stores 0.351324 in a profile and 0.351324026 in the feature
- *  built from it. Integers are exact under the round; expression strings are
- *  not numbers and pass through. */
-function roundNumericFields(def: object): void {
+/** The stored spelling of one authored feature number, or null when the write is
+ *  not storable: a non-finite number (NaN in YAML poisons every later solve), or
+ *  a nonzero magnitude the round would collapse to zero. Zero is what every
+ *  loader range rule rejects (a positive thickness or angle, a count >= 1), so
+ *  storing the collapse would author a document that fails to reopen. Exported
+ *  for the plane definition writer in featureAdmin, the same boundary. */
+export function storedNumber(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  const stored = round(value)
+  return stored === 0 && value !== 0 ? null : stored
+}
+
+// A numeric tuple (a transform translation, an array direction, a plane's
+// origin) is authored component by component, so its components cross the same
+// boundary. A component collapsing to zero is legal there: an axis may sit at 0.
+// Mapping also detaches the stored list from the payload array a journal may
+// replay.
+function roundNumericComponents(list: unknown[]): unknown[] {
+  return list.map(v => typeof v === 'number' ? round(v) : v)
+}
+
+/** Round the numbers of a freshly built def; false when a scalar is not
+ *  storable, so the add is dropped rather than stored. A def is written either
+ *  through setFeatureField or, for a bulk add, straight into its literal, and
+ *  both must spell an authored number the way the sketch mutators spell their
+ *  seeds, or one drag stores 0.351324 in a profile and 0.351324026 in the
+ *  feature built from it. Integers are exact under the round; expression strings
+ *  and string ref lists are not numbers and pass through. Exported for the plane
+ *  definition writer in featureAdmin, the same copy-a-scalar job. */
+export function roundNumericFields(def: object, fn: string): boolean {
   const bag = def as FieldBag
   for (const [field, value] of Object.entries(bag)) {
-    if (typeof value === 'number' && Number.isFinite(value)) bag[field] = round(value)
+    if (typeof value === 'number') {
+      const stored = storedNumber(value)
+      if (stored === null) {
+        warn(`${fn}: refusing ${field}: ${value} is not a storable value`)
+        return false
+      }
+      bag[field] = stored
+    } else if (Array.isArray(value)) {
+      bag[field] = roundNumericComponents(value)
+    }
   }
+  return true
 }
 
 /** Materialize the plural body list a body mutator indexes. A doc that reached
@@ -130,6 +163,19 @@ function refuseArrayCount(sub: object, field: string, value: unknown, fn: string
   return true
 }
 
+/** Refuse a helix angle the loader would refuse. Its parametrisation degenerates
+ *  at 0 and 90, so docSchema holds a literal angle to the open interval; a stored
+ *  value on either end is a document that cannot reopen. The rounding boundary can
+ *  land an authored 89.99999994 exactly on 90, so the angle is judged here the way
+ *  a count is judged by refuseArrayCount. */
+function refuseHelixAngle(field: string, value: unknown, fn: string): boolean {
+  if (field !== 'helix_angle' || typeof value !== 'number') return false
+  const angle = round(value)
+  if (angle > 0 && angle < 90) return false
+  warn(`${fn}: refusing ${field}: must be between 0 and 90 degrees, got ${angle}`)
+  return true
+}
+
 export function applySetHoleField(doc: PartDoc, featureId: string, field: keyof HoleFeatureDef, value: unknown): void {
   const f = findFeature(doc, featureId)
   const sub = f?.kind === 'hole' ? f.hole : undefined
@@ -150,19 +196,27 @@ function setFeatureField(obj: object, field: string, value: unknown): void {
     delete bag[field]
     return
   }
-  // Strings, selects and ref lists pass through; only a numeric write is
-  // boundary-checked, because a NaN stored in YAML poisons every later solve.
-  if (typeof value === 'number' && !Number.isFinite(value)) {
-    warn(`setFeatureField: refusing non-finite value for ${field}`)
+  if (typeof value === 'number') {
+    // A NaN stored in YAML poisons every later solve, and the round collapsing a
+    // nonzero magnitude to zero authors a value the loader's range rules refuse,
+    // so both are refused here rather than stored.
+    const stored = storedNumber(value)
+    if (stored === null) {
+      warn(`setFeatureField: refusing ${field}: ${value} is not a storable value`)
+      return
+    }
+    // Every stored feature scalar crosses this one boundary (the setters and the
+    // inline adds alike), so it carries the same precision the sketch mutators
+    // give their seeds: one authored distance spelled one way in the document.
+    bag[field] = stored
     return
   }
-  // Every stored feature scalar crosses this one boundary (the setters and the
-  // inline adds alike), so it carries the same precision the sketch mutators
-  // give their seeds: one authored distance spelled one way in the document.
   // An expression string is not a number to round and reaches the evaluator
-  // untouched; a numeric ARRAY (a transform translation) is left alone, because
-  // the list fields this setter also carries are string refs.
-  bag[field] = typeof value === 'number' ? round(value) : value
+  // untouched; a ref list is a list of strings. A numeric tuple rounds per
+  // component.
+  bag[field] = Array.isArray(value) && value.some(v => typeof v === 'number')
+    ? roundNumericComponents(value)
+    : value
 }
 
 // ─── Extrude ───
@@ -370,7 +424,7 @@ export function applyAddFillet(
     // from the same array, and a later toggle must not edit that record.
     fillet: { edges: [...(edges ?? [])], radius: radius ?? 1 },
   }
-  roundNumericFields(feature.fillet)
+  if (!roundNumericFields(feature.fillet, 'applyAddFillet')) return
   pushFeature(doc, feature)
 }
 
@@ -388,7 +442,7 @@ export function applyAddChamfer(
     // The pick list is copied for the same journal reason as the fillet's.
     chamfer: { edges: [...(edges ?? [])], distance: distance ?? 1, kind: 'distance', angle: 45 },
   }
-  roundNumericFields(feature.chamfer)
+  if (!roundNumericFields(feature.chamfer, 'applyAddChamfer')) return
   pushFeature(doc, feature)
 }
 
@@ -455,7 +509,7 @@ export function applyAddShell(
   direction?: ShellDirection,
 ): void {
   const shell: ShellFeatureDef = { faces: [...(faces ?? [])], thickness: thickness ?? 1, direction: direction ?? 'inward' }
-  roundNumericFields(shell)
+  if (!roundNumericFields(shell, 'applyAddShell')) return
   pushFeature(doc, {
     id: featureId,
     kind: 'shell',
@@ -591,6 +645,12 @@ export function applyAddArray(
     operation: 'add',
     include_source: true,
   }
+  // The inline counts are judged before the merge rounds them.
+  const problem = inlineCountProblem(inline)
+  if (problem !== null) {
+    warn(`applyAddArray: refusing ${problem.field}: ${problem.reason}`)
+    return
+  }
   mergeInlineFields(array, inline)
   // A rectangular mode reads a second direction; the setter seeds it when it
   // switches modes, so an inline switch gets the same defaults. Only an ABSENT
@@ -598,19 +658,6 @@ export function applyAddArray(
   if (array.mode === 'rectangular') {
     if (array.count_y === undefined) array.count_y = 2
     if (array.pitch_y === undefined) array.pitch_y = 20
-  }
-  // The inline counts cross the same limits the setters and the loader hold.
-  // A pair is judged together, so each is checked against the other.
-  for (const field of ['count_x', 'count_y'] as const) {
-    const other = array[field === 'count_x' ? 'count_y' : 'count_x']
-    const value = array[field]
-    // An expression count is the solver's to resolve; only numbers are known.
-    if (typeof value !== 'number') continue
-    const problem = arrayCountProblem(field, value, typeof other === 'number' ? other : null)
-    if (problem !== null) {
-      warn(`applyAddArray: refusing ${field}: ${problem}`)
-      return
-    }
   }
   pushFeature(doc, { id: featureId, kind: 'array', label: label ?? 'Array', array })
 }
@@ -640,6 +687,32 @@ export function applySetArrayMode(
   }
 }
 
+/** Judge a bulk add's inline counts on the AUTHORED value. The merge rounds
+ *  every inline field, and a fractional count judged after the round would read
+ *  as the legal integer it rounded to -- the value the user did not author. The
+ *  setter path judges the raw value through refuseArrayCount for the same
+ *  reason; an add must not hand out a different verdict for one input. */
+function inlineCountProblem(inline: object): { field: 'count' | 'count_x' | 'count_y'; reason: string } | null {
+  const bag = inline as FieldBag
+  const num = (key: string): number | null => typeof bag[key] === 'number' ? bag[key] as number : null
+  const count = num('count')
+  const countX = num('count_x')
+  const countY = num('count_y')
+  if (countX !== null) {
+    const reason = arrayCountProblem('count_x', countX, countY)
+    if (reason !== null) return { field: 'count_x', reason }
+  }
+  if (countY !== null) {
+    const reason = arrayCountProblem('count_y', countY, countX)
+    if (reason !== null) return { field: 'count_y', reason }
+  }
+  if (count !== null) {
+    const reason = arrayCountProblem('count', count)
+    if (reason !== null) return { field: 'count', reason }
+  }
+  return null
+}
+
 // ─── Circular Array ───
 
 export function applyAddCircularArray(
@@ -653,14 +726,13 @@ export function applyAddCircularArray(
     operation: 'add',
     include_source: true,
   }
-  mergeInlineFields(circularArray, inline)
-  if (typeof circularArray.count === 'number') {
-    const problem = arrayCountProblem('count', circularArray.count)
-    if (problem !== null) {
-      warn(`applyAddCircularArray: refusing count: ${problem}`)
-      return
-    }
+  // The inline count is judged before the merge rounds it (see inlineCountProblem).
+  const problem = inlineCountProblem(inline)
+  if (problem !== null) {
+    warn(`applyAddCircularArray: refusing ${problem.field}: ${problem.reason}`)
+    return
   }
+  mergeInlineFields(circularArray, inline)
   pushFeature(doc, {
     id: featureId,
     kind: 'circular_array',
@@ -748,7 +820,7 @@ export function applyAddHole(
   if (hole.depth_mode === 'through_all' && defined.depth === undefined) delete hole.depth
   // The inline fields land straight on the def and skip setFeatureField, so the
   // same rounding boundary applies here.
-  roundNumericFields(hole)
+  if (!roundNumericFields(hole, 'applyAddHole')) return
   pushFeature(doc, {
     id: featureId,
     kind: 'hole',
@@ -770,15 +842,18 @@ export function applySetHoleSketch(doc: PartDoc, featureId: string, sketch: stri
 // ─── Transform ───
 
 export function applyAddTransform(doc: PartDoc, featureId: string, label?: string): void {
-  const transform: TransformFeatureDef = {
-    bodies: [],
-    operation: 'new',
-    translation: [0, 0, 0],
-    rotation_angle: 0,
-    scale: 1,
-  }
-  roundNumericFields(transform)
-  pushFeature(doc, { id: featureId, kind: 'transform', label: label ?? 'Transform', transform })
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'transform',
+    label: label ?? 'Transform',
+    transform: {
+      bodies: [],
+      operation: 'new',
+      translation: [0, 0, 0],
+      rotation_angle: 0,
+      scale: 1,
+    },
+  })
 }
 
 /** Toggle a body ref in/out of the transform's pick list (re-picking removes). */
@@ -965,7 +1040,6 @@ export function applyAddHelix(
     direction: 'normal',
   }
   if (reference) helix.reference = reference
-  roundNumericFields(helix)
   pushFeature(doc, { id: featureId, kind: 'helix', label: label ?? 'Helix', helix })
 }
 
@@ -973,5 +1047,7 @@ export function applySetHelixField(
   doc: PartDoc, featureId: string, field: keyof HelixFeatureDef, value: unknown,
 ): void {
   const feature = findFeature(doc, featureId)
-  setSubFeatureField(featureId, 'helix', feature?.kind === 'helix' ? feature.helix : undefined, field, value, 'applySetHelixField')
+  const sub = feature?.kind === 'helix' ? feature.helix : undefined
+  if (sub !== undefined && refuseHelixAngle(field, value, 'applySetHelixField')) return
+  setSubFeatureField(featureId, 'helix', sub, field, value, 'applySetHelixField')
 }
