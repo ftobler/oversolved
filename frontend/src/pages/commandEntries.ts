@@ -364,10 +364,11 @@ const cancelDrawSpec: PartCommandSpec = {
 }
 
 // Mirror is a selection action like offset, not a draw mode: the selected
-// entities are the sources and exactly one selected line is the axis, so no
-// value dialog is needed. `enabled` and the store action read the same
-// mirrorSelectionPlan, so a keyboard press on a selection that cannot carry
-// the mirror is refused at the gate rather than silently dropped.
+// entities are the sources and one selected line is the axis (the construction
+// one when several lines are selected), so no value dialog is needed. `enabled`
+// and the store action read the same mirrorSelectionPlan over the same store
+// state, so a keyboard press on a selection that cannot carry the mirror is
+// refused at the gate rather than silently dropped.
 const mirrorSpec: PartCommandSpec = {
   id: 'mirror_entities',
   label: 'Mirror selection',
@@ -376,7 +377,7 @@ const mirrorSpec: PartCommandSpec = {
   undoable: true,
   enabled: ctx => {
     const st = ctx.state()
-    const plan = mirrorSelectionPlan(st.normalSelection, st.activeFeatureId, st.entityKindMap)
+    const plan = mirrorSelectionPlan(st.normalSelection, st.activeFeatureId, st.entityKindMap, st.constructionEntityKeys)
     return 'reason' in plan ? plan.reason : true
   },
   run: ctx => {

@@ -95,4 +95,25 @@ describe.skipIf(!ready)('mirror_entities extrudes to the symmetric volume (real 
     expect(centroid![0]).toBeCloseTo(0, 6)  // mirrored halves balance across x=0
     expect(centroid![1]).toBeCloseTo(0, 6)
   }, 120_000)
+
+  // The everyday half profile: no seam drawn, the open half's ends sit on the
+  // centerline, and the copies close the loop there.
+  it('an open half on a centerline closes into the same 6 x 4 x 5 box', async () => {
+    const steps: ScriptStep[] = [
+      { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' } },
+      { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, -3, 0, 3], entityId: 'ax' } },
+      { mutation: { type: 'toggle_construction', targets: ['entity:sk1:ax'] } },
+      { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 2, 3, 2], entityId: 'top' } },
+      { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [3, 2, 3, -2], entityId: 'side' } },
+      { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [3, -2, 0, -2], entityId: 'bottom' } },
+      { mutation: { type: 'mirror_entities', featureId: 'sk1', sourceIds: ['top', 'side', 'bottom'], line: 'ax' } },
+      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5 } },
+    ]
+    const built = await runHeadless({ doc: emptyDriveDoc(), steps })
+    expect(built.ok).toBe(true)
+    expect(built.features).toEqual([])
+    const measured = await measureHeadless(built.doc!)
+    expect(measured!.measures.volume).toBeCloseTo(120, 6)
+    expect(measured!.measures.centroid![0]).toBeCloseTo(0, 6)
+  }, 120_000)
 })

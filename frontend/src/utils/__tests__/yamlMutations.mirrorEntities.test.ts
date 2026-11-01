@@ -168,6 +168,105 @@ describe('applyMirrorEntities entities', () => {
     expect(f.entities.filter(e => e.id === 'ring')).toHaveLength(1)
     expect(f.initial.ring).toEqual([0, 3, 2])
   })
+
+  it('an arc that mirrors to itself adds nothing however its angles are spelled', () => {
+    // Across the horizontal axis y=0, -45..45 and 315..405 name one arc; the
+    // old numeric check copied the first and skipped the second.
+    for (const spelling of [[0, 0, 2, -45, 45], [0, 0, 2, 315, 405]]) {
+      const doc = halfDoc()
+      const sketch = sketchAt(doc)
+      sketch.entities!.push({ id: 'hx', kind: 'line' }, { id: 'sym', kind: 'arc' })
+      sketch.initial!.hx = [-5, 0, 5, 0]
+      sketch.initial!.sym = spelling
+      applyMirrorEntities(doc, 'sk', ['sym'], 'hx')
+      expect(feat(doc).entities, JSON.stringify(spelling)).toHaveLength(12)
+    }
+  })
+})
+
+describe('applyMirrorEntities self images', () => {
+  /** A half profile right of the axis x=0 closed by a seam on the axis, with
+   *  the seam ends tied to the top and bottom edges. */
+  function seamDoc(): PartDoc {
+    return {
+      features: [{
+        id: 'sk', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [
+          { id: 'ax', kind: 'line', construction: true },
+          { id: 'seam', kind: 'line' },
+          { id: 'top', kind: 'line' },
+          { id: 'cross', kind: 'line' },
+        ],
+        initial: {
+          ax: [0, -5, 0, 5],
+          seam: [0, -2, 0, 2],
+          top: [0, 2, 3, 2],
+          cross: [-1, 4, 1, 4],  // perpendicular to the axis: its own mirror, ends swapped
+        },
+        constraints: [
+          { id: 'k_seam_top', kind: 'coincident', a: '$seamend', b: '$topstart' },
+          { id: 'k_seam_v', kind: 'vertical', target: '$seam' },
+          { id: 'k_cross_top', kind: 'coincident', a: '$crossend', b: '$topend' },
+        ],
+      }],
+    } as unknown as PartDoc
+  }
+
+  it('a seam source gets no copy, and its constraint to a mirrored edge carries onto the copy', () => {
+    setIdSource(() => 'm')
+    const doc = seamDoc()
+    applyMirrorEntities(doc, 'sk', ['seam', 'top'], 'ax')
+    const f = feat(doc)
+    const added = f.entities.filter(e => !['ax', 'seam', 'top', 'cross'].includes(e.id))
+    expect(added).toHaveLength(1)
+    const copy = added[0].id
+    expect(f.initial[copy]).toEqual([0, 2, -3, 2])
+    const clones = f.constraints.filter(c => !c.id.startsWith('k_'))
+    // The seam end sits on the axis, so its image is itself; the vertical on
+    // the seam alone names no copy and is not restated.
+    expect(clones).toEqual([expect.objectContaining({ kind: 'coincident', a: '$seamend', b: `$${copy}start` })])
+    setIdSource(null)
+  })
+
+  it('a line across the axis is its own image with its ends swapped', () => {
+    setIdSource(() => 'm')
+    const doc = seamDoc()
+    applyMirrorEntities(doc, 'sk', ['cross', 'top'], 'ax')
+    const f = feat(doc)
+    const copy = f.entities.find(e => !['ax', 'seam', 'top', 'cross'].includes(e.id))!.id
+    expect(f.entities).toHaveLength(5)
+    const clone = f.constraints.find(c => c.b === `$${copy}end`)
+    expect(clone).toMatchObject({ kind: 'coincident', a: '$crossstart' })
+    setIdSource(null)
+  })
+})
+
+describe('applyMirrorEntities one-coordinate fixed', () => {
+  function pinnedDoc(axis: number[]): PartDoc {
+    return {
+      features: [{
+        id: 'sk', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [{ id: 'ax', kind: 'line' }, { id: 'p', kind: 'point' }],
+        initial: { ax: axis, p: [3, 1] },
+        constraints: [{ id: 'k_fx', kind: 'fixed', target: '$p', x: 3 }],
+      }],
+    } as unknown as PartDoc
+  }
+
+  it('mirrors an x-only pin across a vertical axis', () => {
+    const doc = pinnedDoc([1, 0, 1, 5])
+    applyMirrorEntities(doc, 'sk', ['p'], 'ax')
+    const clone = feat(doc).constraints.find(c => c.id !== 'k_fx')
+    expect(clone).toMatchObject({ kind: 'fixed', x: -1 })
+    expect(clone?.y).toBeUndefined()
+  })
+
+  it('drops an x-only pin across a slanted axis: no single coordinate is its image', () => {
+    const doc = pinnedDoc([0, 0, 5, 3])
+    applyMirrorEntities(doc, 'sk', ['p'], 'ax')
+    expect(feat(doc).entities).toHaveLength(3)
+    expect(feat(doc).constraints).toHaveLength(1)
+  })
 })
 
 describe('applyMirrorEntities constraints', () => {

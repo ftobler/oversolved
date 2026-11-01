@@ -79,10 +79,12 @@ export interface MatrixHarness {
 // selected entity ids.
 export function installTarget(spec: PartDoc, target: MatrixTarget): void {
   const entityKindMap: Record<string, string> = {}
+  const constructionEntityKeys = new Set<string>()
   for (const feature of spec.features ?? []) {
     if (feature.kind !== 'sketch') continue
     for (const entity of feature.entities ?? []) {
       entityKindMap[`entity:${feature.id}:${entity.id}`] = entity.kind
+      if (entity.construction === true) constructionEntityKeys.add(`entity:${feature.id}:${entity.id}`)
     }
   }
   useEditorState.setState({
@@ -91,6 +93,7 @@ export function installTarget(spec: PartDoc, target: MatrixTarget): void {
     chipOwnedSelection: new Set(),
     activeFeatureId: target.featureId,
     entityKindMap,
+    constructionEntityKeys,
   })
 }
 

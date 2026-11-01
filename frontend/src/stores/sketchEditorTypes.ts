@@ -244,6 +244,12 @@ export interface SketchEditorState {
   // validation reads it, so it lives with the state it gates.
   entityKindMap: Record<string, string>
   setEntityKindMap: (map: Record<string, string>) => void
+  // The construction entities of the active sketch as `entity:<sketch>:<id>`
+  // keys, published next to entityKindMap. mirrorSelectionPlan reads it to find
+  // the centerline among several selected lines; being store state, a
+  // construction toggle (or its undo) re-runs the toolbar verdict too.
+  constructionEntityKeys: ReadonlySet<string>
+  setConstructionEntityKeys: (keys: ReadonlySet<string>) => void
   // Sticky-placement state: the picks the user has made inside the active
   // dimension-tool gesture. Empty until the first click, cleared on tool exit
   // or after the placement dialog closes.
@@ -276,9 +282,9 @@ export interface SketchEditorState {
   // message; a devOnly console.warn reached nobody in a production build.
   applyConstraint: (kind: string) => string | null
   applyOffset: (distance: number) => void
-  // Mirror the selection across the one selected line (mirrorSelectionPlan).
-  // Returns a human-readable rejection when the selection cannot carry the
-  // mirror, or null when it was authored and there was nothing to reject.
+  // Mirror the selection across its axis line (mirrorSelectionPlan). Returns a
+  // human-readable rejection when the selection cannot carry the mirror, or
+  // null when it was authored and there was nothing to reject.
   mirrorSelection: () => string | null
   toggleConstruction: () => void
   deleteSelected: () => void

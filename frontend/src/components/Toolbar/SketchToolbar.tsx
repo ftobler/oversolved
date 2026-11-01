@@ -27,6 +27,9 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
   // store, so the component must re-run them when the selection changes; the
   // token is their dependency, the ids themselves are not rendered here.
   const selectionToken = useSketchEditorStore(s => Array.from(s.normalSelection).join('|'))
+  // The mirror verdict also reads which lines are construction, so a toggle or
+  // its undo under an unchanged selection must re-run it as well.
+  const constructionKeys = useSketchEditorStore(s => s.constructionEntityKeys)
   const isDragActive = drag !== null
   // The disabled verdicts come from the same specs the clicks run through, so
   // a button can no longer disagree with its command. The token is a
@@ -35,8 +38,8 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
   // re-runs them when the selection changes.
   const mirrorDisabled = useMemo(
     () => registry.enabled('mirror_entities') !== true,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionToken is the invalidation key for the verdict read
-    [registry, selectionToken],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionToken and constructionKeys are the invalidation keys for the verdict read
+    [registry, selectionToken, constructionKeys],
   )
   const offsetDisabled = useMemo(
     () => registry.enabled('apply_offset') !== true,

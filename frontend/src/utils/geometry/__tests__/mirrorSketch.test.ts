@@ -9,6 +9,7 @@ import {
   mirrorEntityParams,
   canonicalVertexPositions,
   mirrorVertexKey,
+  mirrorsToItself,
   type MirrorAxis,
 } from '@/utils/geometry/mirrorSketch'
 
@@ -230,5 +231,62 @@ describe('mirrorVertexKey', () => {
   it('refuses a key the kind does not carry', () => {
     expect(mirrorVertexKey('circle', 'start', [0, 0, 3], X_AXIS)).toBeNull()
     expect(mirrorVertexKey('line', 'bogus', [1, 2, 3, 4], X_AXIS)).toBeNull()
+  })
+
+  it('looks a self image up on the given block: a perpendicular line trades its ends', () => {
+    const cross = [2, -1, 2, 1]
+    expect(mirrorVertexKey('line', 'start', cross, X_AXIS, undefined, cross)).toBe('end')
+  })
+
+  it('a symmetric arc as its own image trades start and end, and keeps its centre', () => {
+    const arc = [0, 0, 2, -45, 45]
+    expect(mirrorVertexKey('arc', 'start', arc, X_AXIS, undefined, arc)).toBe('end')
+    expect(mirrorVertexKey('arc', 'end', arc, X_AXIS, undefined, arc)).toBe('start')
+    expect(mirrorVertexKey('arc', 'center', arc, X_AXIS, undefined, arc)).toBe('center')
+  })
+})
+
+// The self-mirror test is geometric: the spelling of the numbers must not decide
+// whether a copy is a duplicate edge.
+describe('mirrorsToItself', () => {
+  it('names the same arc however its angles are spelled', () => {
+    expect(mirrorsToItself('arc', [0, 0, 2, -45, 45], X_AXIS)).toBe(true)
+    expect(mirrorsToItself('arc', [0, 0, 2, 315, 405], X_AXIS)).toBe(true)
+    expect(mirrorsToItself('arc', [0, 0, 2, 45, 135], Y_AXIS)).toBe(true)
+  })
+
+  it('holds for a large radius whose angles are not 6-digit values', () => {
+    // The image angles round to 1e-6 deg; at r = 500 that alone moves the ends
+    // by about 9e-6, past an unscaled 1e-6.
+    expect(mirrorsToItself('arc', [0, 0, 500, -12.3456789, 12.3456789], X_AXIS)).toBe(true)
+  })
+
+  it('takes a full-circle arc centred on the axis as itself wherever its seam is', () => {
+    expect(mirrorsToItself('arc', [0, 0, 2, 30, 390], X_AXIS)).toBe(true)
+    expect(mirrorsToItself('arc', [0, 1, 2, 30, 390], X_AXIS)).toBe(false)
+  })
+
+  it('tells an arc from its complement and from a turned copy', () => {
+    expect(mirrorsToItself('arc', [0, 0, 2, 0, 180], X_AXIS)).toBe(false)  // image is the lower half
+    expect(mirrorsToItself('arc', [0, 0, 2, 0, 90], X_AXIS)).toBe(false)
+  })
+
+  it('reads a line or Bezier in either direction', () => {
+    expect(mirrorsToItself('line', [1, 0, 4, 0], X_AXIS)).toBe(true)  // on the axis
+    expect(mirrorsToItself('line', [2, -1, 2, 1], X_AXIS)).toBe(true)  // across it, ends swapped
+    expect(mirrorsToItself('line', [2, 0, 2, 1], X_AXIS)).toBe(false)
+    expect(mirrorsToItself('spline', [0, -2, 1, -1, 1, 1, 0, 2], X_AXIS)).toBe(true)
+  })
+
+  it('treats a half-turned ellipse as unchanged', () => {
+    expect(mirrorsToItself('ellipse', [0, 3, 3, 1, 0], Y_AXIS)).toBe(true)
+    expect(mirrorsToItself('ellipse', [0, 3, 3, 1, 30], Y_AXIS)).toBe(false)
+    expect(mirrorsToItself('ellipse', [0, 3, 2, 2, 30], Y_AXIS)).toBe(true)  // circular: no orientation
+  })
+
+  it('keeps an off-axis point or circle a real copy', () => {
+    expect(mirrorsToItself('circle', [0, 0, 1], Y_AXIS)).toBe(true)
+    expect(mirrorsToItself('circle', [1, 0, 1], Y_AXIS)).toBe(false)
+    expect(mirrorsToItself('point', [1, 0], Y_AXIS)).toBe(false)
   })
 })

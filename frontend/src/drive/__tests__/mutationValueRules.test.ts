@@ -384,19 +384,32 @@ describe('finding: mirror_entities values', () => {
     expect(axis.message).toContain('l1b')
   })
 
-  it('refuses a source that lies on the axis: its mirror is itself', () => {
+  // A source on the axis is its own image (the seam of a half profile), so it
+  // rides along with real sources; only a step that would add nothing at all
+  // is refused.
+  function axisDoc(): PartDoc {
     const doc = sketchDoc()
     const sketch = sketchAt(doc)
     sketch.entities = [
       ...(sketch.entities ?? []),
       { id: 'ax', kind: 'line', construction: true },
       { id: 'on', kind: 'line' },
+      { id: 'arc', kind: 'arc' },
     ]
-    sketch.initial = { ...sketch.initial, ax: [0, 0, 0, 10], on: [0, 2, 0, 6] }
-    const error = refusal({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['on'], line: 'ax' }, doc)
+    // `arc` is centred on the axis x=0 and sweeps symmetrically across it.
+    sketch.initial = { ...sketch.initial, ax: [0, 0, 0, 10], on: [0, 2, 0, 6], arc: [0, 3, 1, 45, 135] }
+    return doc
+  }
+
+  it('refuses a step whose every source mirrors to itself: there is nothing to add', () => {
+    const error = refusal({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['on', 'arc'], line: 'ax' }, axisDoc())
     expect(error.code).toBe('invalid-mutation')
-    expect(error.message).toContain('on')
-    expect(error.message).toContain('itself')
+    expect(error.message).toContain('every source mirrors to itself')
+  })
+
+  it('accepts a source on the axis next to one that does mirror', () => {
+    expect(validateMutation({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1', 'on'], line: 'ax' }, { doc: axisDoc() }))
+      .toMatchObject({ ok: true })
   })
 
   it('accepts a normal line and a construction line as the axis', () => {

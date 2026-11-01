@@ -10,6 +10,10 @@
 //   axis mirrors to an entity pinned to the same axis at the same foot point.
 //   Anything naming a source-set-external entity (or another feature) is
 //   dropped, warned, and left on the sources.
+// - A source that mirrors to itself (geometrically, mirrorsToItself) is its
+//   own image: no copy, and a ref to it rewrites onto its own mirrored vertex,
+//   so a seam end coincident with a mirrored edge stays coincident with the
+//   copy. A constraint naming no fresh copy is not cloned.
 // - Refs rewrite the entity id; vertex keys remap by position
 //   (mirrorVertexKey), so arc start/end swap out of the angle formula and an
 //   ellipse axis end lands on whichever canonical end mirrors to it.
@@ -31,7 +35,7 @@ import {
 } from './helpers'
 import {
   mirrorAxisFromLineParams, mirrorAxisAngleDeg, mirrorEntityParams, mirrorVertexKey,
-  mirrorPoint, mirrorVector, type MirrorAxis,
+  mirrorPoint, mirrorVector, mirrorsToItself, type MirrorAxis,
 } from '@/utils/geometry/mirrorSketch'
 
 // Constraint kinds cloned with their value and operands intact. horizontal and
@@ -60,35 +64,50 @@ function axisAlignedKind(kind: 'horizontal' | 'vertical', axisAngleDeg: number):
   return kind === 'horizontal' ? 'vertical' : 'horizontal'
 }
 
+/** True for a horizontal or vertical axis, the two whose reflection maps each
+ *  coordinate onto itself (x' depends on x alone, y' on y alone). */
+function axisKeepsCoordinates(axisAngleDeg: number): boolean {
+  const fold = ((axisAngleDeg % 90) + 90) % 90
+  return fold < 1e-6 || 90 - fold < 1e-6
+}
+
 interface MirrorPlan {
   axis: MirrorAxis
   axisId: string
+  // Source id -> the id of its image: a fresh copy, or the source itself when
+  // it mirrors to itself (selfIds).
   idMap: Map<string, string>
+  selfIds: Set<string>
   entityById: Map<string, PartEntityDef>
   initial: Record<string, number[]>
 }
 
-/** Rewrite one stored operand ref to the mirrored entity, or null when the ref
- *  names something the mirror does not carry (another feature, a source-set
- *  external entity, or a vertex whose image has no canonical key). An axis ref
- *  is returned unchanged. */
-function rewriteRef(ref: string, plan: MirrorPlan): string | null {
+/** Rewrite one stored operand ref to the image of what it names, or null when
+ *  the ref names something the mirror does not carry (another feature, a
+ *  source-set external entity, or a vertex whose image has no canonical key).
+ *  `copy` says whether the ref now names a fresh copy; an axis ref and a ref to
+ *  a self-mirroring source keep naming an existing entity. */
+function rewriteRef(ref: string, plan: MirrorPlan): { ref: string; copy: boolean } | null {
   const wire = ref.startsWith('$') || ref.startsWith('@')
   if (ref.startsWith('@')) return null  // cross-feature (or builtin) operand: out of scope
-  if (refMatchesEntity(wire ? ref : '$' + ref, plan.axisId)) return ref  // an axis ref (bare or vertex-suffixed) addresses the axis, and the axis does not move
+  if (refMatchesEntity(wire ? ref : '$' + ref, plan.axisId)) return { ref, copy: false }  // an axis ref (bare or vertex-suffixed) addresses the axis, and the axis does not move
   const body = wire ? ref.slice(1) : ref
   const prefix = wire ? '$' : ''
   for (const [srcId, newId] of plan.idMap) {
-    if (body === srcId) return prefix + newId
+    const copy = !plan.selfIds.has(srcId)
+    if (body === srcId) return { ref: prefix + newId, copy }
     if (refMatchesEntity(wire ? ref : '$' + ref, srcId)) {
       const key = body.slice(srcId.length)
       const def = plan.entityById.get(srcId)
       if (def === undefined) return null
+      const params = plan.initial[srcId] ?? []
+      // A self image is looked up on the source's own block: its vertices
+      // trade places (a perpendicular line's ends) rather than move.
       const mapped = mirrorVertexKey(
-        def.kind, key, plan.initial[srcId] ?? [], plan.axis, def.handles,
+        def.kind, key, params, plan.axis, def.handles, copy ? undefined : params,
       )
       if (mapped === null) return null
-      return prefix + newId + mapped
+      return { ref: prefix + newId + mapped, copy }
     }
   }
   return null
@@ -113,17 +132,19 @@ function cloneMirrorConstraint(c: PartConstraint, plan: MirrorPlan, constraints:
     warn('mirror_entities: n-ary (sugar) constraint dropped', { id: c.id, kind: c.kind })
     return null
   }
-  let mappedToMirror = 0
+  let namesCopy = false
   for (const field of operandFields) {
     const rewritten = rewriteRef(c[field] as string, plan)
     if (rewritten === null) {
       warn('mirror_entities: constraint names an entity outside the mirror set, dropped', { id: c.id, kind: c.kind })
       return null
     }
-    if (rewritten !== c[field]) mappedToMirror++
-    cloned[field] = rewritten as never
+    namesCopy ||= rewritten.copy
+    cloned[field] = rewritten.ref as never
   }
-  if (mappedToMirror === 0) return null  // nothing mirrored participates (an axis-only or external pair)
+  // A constraint among the axis and self images only would restate itself on
+  // the same entities, so only one that reaches a fresh copy is cloned.
+  if (!namesCopy) return null
 
   if (c.kind === 'horizontal' || c.kind === 'vertical') {
     const remapped = axisAlignedKind(c.kind, mirrorAxisAngleDeg(plan.axis))
@@ -135,6 +156,14 @@ function cloneMirrorConstraint(c: PartConstraint, plan: MirrorPlan, constraints:
   }
   if (c.sign !== undefined && SIGN_FLIP_KINDS.has(c.kind)) cloned.sign = -c.sign
   if (c.kind === 'fixed') {
+    // A one-coordinate pin has a mirrored counterpart only when the axis keeps
+    // x and y apart (horizontal or vertical); on any other axis the image of
+    // "x = 3" is a slanted line, which no fixed override can say.
+    const partial = (c.x === undefined) !== (c.y === undefined)
+    if (partial && !axisKeepsCoordinates(mirrorAxisAngleDeg(plan.axis))) {
+      warn('mirror_entities: a one-coordinate fixed does not survive this axis angle, dropped', { id: c.id })
+      return null
+    }
     if (c.x !== undefined) cloned.x = round(mirrorPoint([c.x ?? 0, c.y ?? 0], plan.axis)[0])
     if (c.y !== undefined) cloned.y = round(mirrorPoint([c.x ?? 0, c.y ?? 0], plan.axis)[1])
   }
@@ -174,6 +203,7 @@ export function applyMirrorEntities(
   }
 
   const copies: { srcId: string; def: PartEntityDef; params: number[] }[] = []
+  const selfIds = new Set<string>()
   const seen = new Set<string>()
   for (const id of sourceIds) {
     if (id === lineId || seen.has(id)) continue  // the axis mirrors nothing; a listed twice mirrors once
@@ -192,13 +222,12 @@ export function applyMirrorEntities(
       warn('mirror_entities: entity block cannot be mirrored', { featureId, id, kind: def.kind })
       continue
     }
-    // An entity sitting on the axis mirrors to itself. Cloning it would put a
-    // second coincident edge in the sketch (a seam edge of a half profile is
-    // the everyday case), so the copy is dropped and the original edge serves
-    // both halves.
-    const original = feature.initial[id] ?? []
-    if (original.length === params.length && params.every((v, i) => Math.abs(v - original[i]) < 1e-9)) {
-      warn('mirror_entities: the entity lies on the axis and mirrors to itself, skipped', { featureId, id })
+    // An entity that mirrors to itself (a seam edge on the axis, a line across
+    // it, an arc centred on it) is its own image. Cloning it would put a second
+    // coincident edge in the sketch, so no copy is made; the original serves
+    // both halves and constraints that reach it still carry.
+    if (mirrorsToItself(def.kind, feature.initial[id] ?? [], axis, def.handles)) {
+      selfIds.add(id)
       continue
     }
     copies.push({ srcId: id, def, params })
@@ -206,7 +235,7 @@ export function applyMirrorEntities(
   if (copies.length === 0) return
 
   const newIds = freshEntityIds(feature.entities, copies.length)
-  const idMap = new Map<string, string>()
+  const idMap = new Map<string, string>([...selfIds].map(id => [id, id]))
   copies.forEach((copy, i) => {
     const newId = newIds[i]
     idMap.set(copy.srcId, newId)
@@ -221,6 +250,7 @@ export function applyMirrorEntities(
     axis,
     axisId: lineId,
     idMap,
+    selfIds,
     entityById: new Map(feature.entities.map(e => [e.id, e])),
     initial: feature.initial,
   }

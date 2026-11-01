@@ -21,7 +21,7 @@ import type { EntityKind, FeatureKind, Mutation, PartDoc } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
-import { mirrorAxisFromLineParams, mirrorEntityParams } from '@/utils/geometry/mirrorSketch'
+import { mirrorAxisFromLineParams, mirrorsToItself } from '@/utils/geometry/mirrorSketch'
 import { MAX_FIT_POINTS } from '@/utils/geometry/fitSpline'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 
@@ -770,6 +770,8 @@ function applyOffset(raw: RawStep, ctx: ValueContext): ValueViolation | null {
 // The applier skips what it cannot mirror (the axis listed as a source, a
 // projected entity, a degenerate axis); at the boundary each of those is a
 // refusal naming the id, so an authored step never silently mirrors a subset.
+// A source that mirrors to itself is not skipped but is its own image, so it
+// passes.
 function mirrorEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const sourceProblem = nonEmptyStringsProblem(raw.sourceIds, 'sourceIds')
   if (sourceProblem !== null) return invalid(sourceProblem)
@@ -809,14 +811,17 @@ function mirrorEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null 
         `mirror_entities source id ${json(id)} names a projected entity; projected geometry re-projects from its source and is not mirrored`,
       )
     }
-    const original = sketch.initial?.[id] ?? []
-    const mirrored = mirrorEntityParams(entity.kind, original, axisLine, entity.handles)
-    if (mirrored !== null && mirrored.length === original.length
-      && mirrored.every((v, i) => Math.abs(v - original[i]) < 1e-9)) {
-      return invalid(
-        `mirror_entities source id ${json(id)} lies on the axis line ${json(raw.line)}: its mirror is itself, so drop it from sourceIds`,
-      )
-    }
+  }
+  // A source that mirrors to itself is its own image and adds nothing; a step
+  // whose every source does so would apply as a silent no-op.
+  const allSelf = (raw.sourceIds as string[]).every(id => {
+    const entity = byId.get(id)!
+    return mirrorsToItself(entity.kind, sketch.initial?.[id] ?? [], axisLine, entity.handles)
+  })
+  if (allSelf) {
+    return invalid(
+      `mirror_entities: every source mirrors to itself across ${json(raw.line)}, so there is nothing to add`,
+    )
   }
   return null
 }

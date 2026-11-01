@@ -707,7 +707,9 @@ banner on stdout, so a client config must use the direct node invocation.
   refs (a bare id is refused); `mirror_entities` takes `sourceIds` as bare entity
   ids of one sketch plus `line`, the id of exactly one `line` entity of that same
   sketch (normal or construction) which is the axis and is never mirrored, and
-  the mirrored copies are plain authored geometry, not a live mirror relation;
+  the mirrored copies are plain authored geometry, not a live mirror relation
+  (a source whose mirror is itself, such as a seam on the axis, gets no copy
+  and serves both halves);
   `add_variable` must sit
   before every feature that names it, and `reorder_features` takes exactly one
   of `toIndex` (which counts the seeded plane rows), `before: <featureId>` or

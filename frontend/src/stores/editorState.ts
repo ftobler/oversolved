@@ -60,11 +60,12 @@ export function sketchOwnedDeleteTargets(selection: Set<string>, activeFeatureId
 }
 
 // The selection contract of mirror_entities: the selected entities are the
-// sources, and exactly one selected line entity is the axis (construction
-// lines count). Vertex and constraint selections ride along untouched; the
-// plan speaks in bare entity ids, the shape the mutation takes. Exported so
-// the command's `enabled` verdict and the store action read one definition
-// and cannot drift apart.
+// sources and one selected line is the axis. A lone selected line is the axis;
+// when the sources hold lines too (a half profile), the axis is the one
+// selected construction line, the centerline convention. Vertex and constraint
+// selections ride along untouched; the plan speaks in bare entity ids, the
+// shape the mutation takes. Exported so the command's `enabled` verdict and the
+// store action read one definition and cannot drift apart.
 export interface MirrorSelectionPlan {
   axis: string
   sourceIds: string[]
@@ -74,6 +75,9 @@ export function mirrorSelectionPlan(
   selection: Set<string>,
   activeFeatureId: string | null,
   entityKindMap: Record<string, string>,
+  // The construction entities as `entity:<sketch>:<id>` keys, the kind map's
+  // key shape (constructionEntityKeys in the store).
+  constructionKeys: ReadonlySet<string> = new Set(),
 ): MirrorSelectionPlan | { reason: string } {
   if (!activeFeatureId || selection.size === 0) return { reason: 'no entities selected' }
   const ids = [...selection]
@@ -82,13 +86,20 @@ export function mirrorSelectionPlan(
   if (ids.length === 0) return { reason: 'no entities selected' }
   const lines = ids.filter(id => entityKindMap[`entity:${activeFeatureId}:${id}`] === 'line')
   if (lines.length === 0) return { reason: 'mirror needs a selected line to mirror across' }
-  if (lines.length > 1) return { reason: 'mirror needs exactly one selected line as the axis' }
-  const sourceIds = ids.filter(id => id !== lines[0])
+  let axis = lines[0]
+  if (lines.length > 1) {
+    const centerlines = lines.filter(id => constructionKeys.has(`entity:${activeFeatureId}:${id}`))
+    if (centerlines.length !== 1) {
+      return { reason: 'with several lines selected, mirror needs exactly one construction line among them as the axis' }
+    }
+    axis = centerlines[0]
+  }
+  const sourceIds = ids.filter(id => id !== axis)
   // The axis alone is nothing to mirror; the drive boundary refuses the empty
   // sourceIds the same way, so the gate refuses it here too instead of letting
   // the mutation dispatch and do nothing.
   if (sourceIds.length === 0) return { reason: 'mirror needs an entity to mirror besides the axis line' }
-  return { axis: lines[0], sourceIds }
+  return { axis, sourceIds }
 }
 
 // The user-facing reason for an add the redundancy gate refuses. Shared by the
@@ -181,6 +192,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
   dragSnap: null,
   isRotating: false,
   entityKindMap: {},
+  constructionEntityKeys: new Set(),
   hoveredConstraintEntityIds: new Set(),
   hoveredVertexId: null,
   hoveredFaceNormal: null,
@@ -296,6 +308,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
       // reason the selection does: a remount or a fresh harness must not read
       // the previous document's entity kinds.
       entityKindMap: {},
+      constructionEntityKeys: new Set(),
     })
   },
 
@@ -546,6 +559,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
   },
 
   setEntityKindMap: (map) => set({ entityKindMap: map }),
+  setConstructionEntityKeys: (keys) => set({ constructionEntityKeys: keys }),
 
   // Reflects the document origin in the active sketch's local frame. Published by
   // Geometry3D while its feature is being edited, and cleared back to [0,0] when
@@ -657,8 +671,8 @@ export const editorState = createStore<EditorState>((set, get) => ({
   // cannot carry the mirror; null when it was authored or there was nothing
   // to act on, exactly as applyConstraint spells it.
   mirrorSelection: () => {
-    const { normalSelection: selection, activeFeatureId, entityKindMap } = get()
-    const plan = mirrorSelectionPlan(selection, activeFeatureId, entityKindMap)
+    const { normalSelection: selection, activeFeatureId, entityKindMap, constructionEntityKeys } = get()
+    const plan = mirrorSelectionPlan(selection, activeFeatureId, entityKindMap, constructionEntityKeys)
     if ('reason' in plan) return plan.reason
     const onMutation = requireMutation('mirrorSelection')
     if (!onMutation) return null

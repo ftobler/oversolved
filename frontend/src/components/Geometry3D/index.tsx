@@ -56,7 +56,7 @@ import { useSketchIdRegistration, useSketchSurfaceIdRegistration, publishProbeSk
 export interface Geometry3DProps {
   featureId: string
   solved: Sketch
-  entities?: Array<{ id: string; kind: string }>
+  entities?: Array<{ id: string; kind: string; construction?: boolean }>
   constraints?: Constraints
   topology?: Topology
   activeFeatureId?: string
@@ -219,6 +219,13 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     setEntityKindMap(compositeMap)
     return () => setEntityKindMap({})
   }, [isEditing, featureId, kindMap, setEntityKindMap])
+  const setConstructionEntityKeys = useSketchEditorStore(s => s.setConstructionEntityKeys)
+  useEffect(() => {
+    if (!isEditing) return
+    const keys = (entities ?? []).filter(e => e.construction === true).map(e => `entity:${featureId}:${e.id}`)
+    setConstructionEntityKeys(new Set(keys))
+    return () => setConstructionEntityKeys(new Set())
+  }, [isEditing, featureId, entities, setConstructionEntityKeys])
 
   // Register the held-or-solved sketch, NOT displaySketch: displaySketch is
   // replaced every drag tick, which would unregister/re-allocate per frame.

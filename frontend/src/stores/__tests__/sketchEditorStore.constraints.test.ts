@@ -112,8 +112,28 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().mirrorSelection()).toContain('selected line')
       useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:AX')
       useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L2')
-      expect(useSketchEditorStore.getState().mirrorSelection()).toContain('exactly one selected line')
+      // Two lines and no construction flag: nothing says which is the axis.
+      expect(useSketchEditorStore.getState().mirrorSelection()).toContain('exactly one construction line')
+      // Both flagged construction is just as ambiguous.
+      useEditorState.setState({ constructionEntityKeys: new Set(['entity:Sketch1:AX', 'entity:Sketch1:L2']) })
+      expect(useSketchEditorStore.getState().mirrorSelection()).toContain('exactly one construction line')
       expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('mirrors lines across the one selected construction line', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useEditorState.setState({
+        entityKindMap: { 'entity:Sketch1:AX': 'line', 'entity:Sketch1:L2': 'line', 'entity:Sketch1:L3': 'line' },
+        constructionEntityKeys: new Set(['entity:Sketch1:AX']),
+      })
+      for (const id of ['L2', 'AX', 'L3']) useSketchEditorStore.getState().toggleNormalSelection(`entity:Sketch1:${id}`)
+
+      expect(useSketchEditorStore.getState().mirrorSelection()).toBeNull()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'mirror_entities', featureId: 'Sketch1', sourceIds: ['L2', 'L3'], line: 'AX',
+      })
     })
 
     it('refuses an axis-only selection: there is nothing to mirror', () => {

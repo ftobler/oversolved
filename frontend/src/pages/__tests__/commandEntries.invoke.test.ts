@@ -61,6 +61,32 @@ describe('command bodies that drive the sketch editor store', () => {
     setSketchCallback('onMutation', null)
   })
 
+  it('mirror_entities takes the construction line as the axis when the sources are lines too', () => {
+    // A half profile (three lines) plus its centerline: the kind map alone
+    // cannot tell them apart, so the plan reads the published construction keys.
+    setSketchCallback('onMutation', null)
+    useEditorState.setState({
+      normalSelection: new Set(['entity:Sketch1:top', 'entity:Sketch1:CL', 'entity:Sketch1:side', 'entity:Sketch1:bot']),
+      activeFeatureId: 'Sketch1',
+      entityKindMap: {
+        'entity:Sketch1:top': 'line', 'entity:Sketch1:CL': 'line',
+        'entity:Sketch1:side': 'line', 'entity:Sketch1:bot': 'line',
+      },
+      constructionEntityKeys: new Set(['entity:Sketch1:CL']),
+    })
+    const handler = vi.fn()
+    const showMessage = vi.fn()
+    setSketchCallback('onMutation', handler)
+    const registry = partRegistry(partContext({ showMessage }))
+    expect(registry.enabled('mirror_entities')).toBe(true)
+    registry.execute('mirror_entities')
+    expect(handler).toHaveBeenCalledWith({
+      type: 'mirror_entities', featureId: 'Sketch1', sourceIds: ['top', 'side', 'bot'], line: 'CL',
+    })
+    expect(showMessage).not.toHaveBeenCalled()
+    setSketchCallback('onMutation', null)
+  })
+
   it('mirror_entities is refused, not silently dropped, when the selection has no axis', () => {
     setSketchCallback('onMutation', null)
     useEditorState.setState({

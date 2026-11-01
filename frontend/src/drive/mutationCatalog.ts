@@ -379,8 +379,10 @@ const MIRROR_ENTITIES_NOTE =
   '(`point_distance_x`, `point_distance_y`, `line_distance`, `angle`) flip their side. `horizontal`/`vertical` ' +
   'survive only on a horizontal, vertical, or 45-deg axis (on a 45-deg axis they swap); any other operand ' +
   'outside the mirror set drops that constraint. Projected entities are refused: their geometry re-projects. ' +
-  'A source that lies on the axis mirrors to itself and is refused too; the original edge then serves both ' +
-  'halves of a mirrored profile.'
+  'A source whose mirror is itself (a seam edge on the axis, a line across it, an arc centred on it) gets no ' +
+  'copy: the original serves both halves, and its constraints to the other sources carry onto the copies. ' +
+  'A one-coordinate `fixed` carries only on a horizontal or vertical axis. A step whose every source mirrors ' +
+  'to itself is refused.'
 
 // The side is relative to the loop, not to each line's drawn direction, so a
 // CW, CCW or projected loop all read the same (birdhouse F3, Case_Seam_Lip F6).

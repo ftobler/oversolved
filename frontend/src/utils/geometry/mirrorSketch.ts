@@ -11,6 +11,7 @@ import type { EntityKind } from '@/types/cad'
 import { round, allFinite } from '@/utils/yamlMutations/helpers'
 import { ellipseAxisPoints } from './ellipseAxis'
 import { fitSplineVertices } from '@/registry/entityRegistry'
+import { TOL_LOOP_CLOSURE } from '@/kernel/solverConstants'
 
 /**
  * The mirror axis as a line segment (any two points on it; the line is infinite).
@@ -103,11 +104,17 @@ export function mirrorArcAngles(
   a1: number,
   axisAngleDeg: number,
 ): [number, number] {
-  const raw = a1 - a0
-  let span = normDeg(raw)
-  if (span === 0 && raw !== 0) span = 360  // a full-circle arc stays closed
+  const span = arcSpanDeg(a0, a1)
   const start = normDeg(mirrorAngleDeg(a1, axisAngleDeg))
   return [start, start + span]
+}
+
+/** The CCW sweep of an authored (a0, a1) pair in (0, 360]; a full-circle arc
+ *  keeps its 360 instead of collapsing to a zero arc. */
+function arcSpanDeg(a0: number, a1: number): number {
+  const raw = a1 - a0
+  const span = normDeg(raw)
+  return span === 0 && raw !== 0 ? 360 : span
 }
 
 /** Fit-spline blocks are `2 N + 2 h` scalars (N fit points, h end handles); null
@@ -273,10 +280,14 @@ export function mirrorVertexKey(
   params: readonly number[],
   axis: MirrorAxis,
   handles?: 'start' | 'end' | 'both',
+  // The block the image vertex is looked up on. Defaults to the mirrored params;
+  // a source that mirrors to itself passes its own block, so a perpendicular
+  // line's start lands on its own end rather than on a copy that is never made.
+  imageParams?: readonly number[],
 ): string | null {
   const source = canonicalVertexPositions(kind, params, handles)?.[key]
   if (source === undefined) return null
-  const mirrored = mirrorEntityParams(kind, params, axis, handles)
+  const mirrored = imageParams ?? mirrorEntityParams(kind, params, axis, handles)
   if (mirrored === null) return null
   const targets = canonicalVertexPositions(kind, mirrored, handles)
   if (targets === null) return null
@@ -285,4 +296,103 @@ export function mirrorVertexKey(
     if (near(pos, wanted)) return candidate
   }
   return null
+}
+
+// The match is relative to the coordinates' size, like `near` above: the image
+// block is rounded to 1e-6 in each slot, and an arc angle rounded to 1e-6 deg
+// moves its end r * 1.7e-8 away, so a fixed 1e-6 would call a large radius's own
+// image a new arc.
+const sameScale = (...values: number[]): number =>
+  TOL_LOOP_CLOSURE * Math.max(1, ...values.map(Math.abs))
+
+const samePoint = (a: readonly [number, number], b: readonly [number, number]): boolean =>
+  Math.hypot(a[0] - b[0], a[1] - b[1]) <= sameScale(a[0], a[1])
+
+/** The coordinate pairs of a flat block, in slot order. */
+function pointsOf(params: readonly number[]): [number, number][] {
+  const out: [number, number][] = []
+  for (let i = 0; i + 1 < params.length; i += 2) out.push([params[i], params[i + 1]])
+  return out
+}
+
+function sameSequence(a: readonly [number, number][], b: readonly [number, number][]): boolean {
+  return a.length === b.length && a.every((p, i) => samePoint(p, b[i]))
+}
+
+/** {p, q} equals {r, s} as an unordered pair. */
+function samePair(
+  p: readonly [number, number], q: readonly [number, number],
+  r: readonly [number, number], s: readonly [number, number],
+): boolean {
+  return (samePoint(p, r) && samePoint(q, s)) || (samePoint(p, s) && samePoint(q, r))
+}
+
+function arcPointAt(params: readonly number[], deg: number): [number, number] {
+  const [cx, cy, r] = params
+  return [cx + r * Math.cos(deg * DEG), cy + r * Math.sin(deg * DEG)]
+}
+
+/**
+ * True when the entity's mirror image is the entity itself: the same curve, not
+ * merely the same numbers. An arc spelled -45..45 and one spelled 315..405 are
+ * one arc, a line perpendicular to the axis comes back with its ends swapped,
+ * and an ellipse turned by 180 deg is unchanged. Points are compared at
+ * TOL_LOOP_CLOSURE (scaled with the coordinates' size) because the loop builder
+ * already merges anything closer, so a copy that near would be a second
+ * coincident edge, not new geometry.
+ */
+export function mirrorsToItself(
+  kind: EntityKind | string,
+  params: readonly number[],
+  axis: MirrorAxis,
+  handles?: 'start' | 'end' | 'both',
+): boolean {
+  const image = mirrorEntityParams(kind, params, axis, handles)
+  if (image === null) return false
+  switch (kind) {
+    case 'point':
+    case 'circle':
+      return sameSequence(pointsOf(params), pointsOf(image))
+        && (kind === 'point' || Math.abs(params[2] - image[2]) <= sameScale(params[2]))
+    case 'line':
+    case 'spline': {
+      // Either drawing direction traces the same segment or Bezier curve.
+      const pts = pointsOf(params)
+      const img = pointsOf(image)
+      return sameSequence(pts, img) || sameSequence(pts, [...img].reverse())
+    }
+    case 'fit_spline': {
+      // Reversing a handled spline would also swap and negate its handles, so
+      // only a handle-free one is compared against its reversed fit points.
+      const pts = pointsOf(params)
+      const img = pointsOf(image)
+      return sameSequence(pts, img) || (handles === undefined && sameSequence(pts, [...img].reverse()))
+    }
+    case 'arc': {
+      // Centre, radius and sweep fix the arc up to a turn; the start and the
+      // mid-sweep point then tell it from a turned copy and from its complement.
+      const span = arcSpanDeg(params[3], params[4])
+      const imageSpan = arcSpanDeg(image[3], image[4])
+      const sameCircle = samePoint([params[0], params[1]], [image[0], image[1]])
+        && Math.abs(params[2] - image[2]) <= sameScale(params[2])
+      // A closed arc is the whole circle wherever its seam point sits.
+      if (sameCircle && span === 360 && imageSpan === 360) return true
+      return sameCircle
+        && Math.abs(span - imageSpan) * DEG * params[2] <= sameScale(params[2])
+        && samePoint(arcPointAt(params, params[3]), arcPointAt(image, image[3]))
+        && samePoint(arcPointAt(params, params[3] + span / 2), arcPointAt(image, image[3] + imageSpan / 2))
+    }
+    case 'ellipse': {
+      const own = canonicalVertexPositions(kind, params, handles)
+      const img = canonicalVertexPositions(kind, image, handles)
+      if (own === null || img === null || !samePoint(own.center, img.center)) return false
+      // A circular ellipse has no orientation to compare: its centre and size
+      // are the whole curve.
+      if (Math.abs(params[2] - params[3]) <= sameScale(params[2])) return true
+      return samePair(own.major1, own.major2, img.major1, img.major2)
+        && samePair(own.minor1, own.minor2, img.minor1, img.minor2)
+    }
+    default:
+      return false
+  }
 }
