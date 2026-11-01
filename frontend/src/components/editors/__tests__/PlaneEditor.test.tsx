@@ -165,6 +165,19 @@ describe('PlaneEditor origin_rotation', () => {
     })
   })
 
+  it('an unset axis shows the placeholder, so choosing Z writes it', () => {
+    // The select used to show Z for an unset axis: choosing Z fired no change,
+    // and the plane failed with "rotation_angle needs rotation_axis".
+    const onMutation = vi.fn()
+    renderEditor(onMutation, { mode: 'origin_rotation', origin: '@builtin_origin', rotation_angle: 30 })
+    const axis = [...document.querySelectorAll<HTMLSelectElement>('.plane-editor select.feature-field-select')][1]
+    expect(axis.value).toBe('')
+    fireEvent.change(axis, { target: { value: 'z' } })
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_plane_definition_field', featureId: 'pl1', field: 'rotation_axis', value: 'z',
+    })
+  })
+
   it('picking the origin chip dispatches the origin field', () => {
     const onMutation = vi.fn()
     renderEditor(onMutation, { mode: 'origin_rotation' })

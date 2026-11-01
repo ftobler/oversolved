@@ -149,15 +149,18 @@ export function PlaneEditor({
             {pickChip('origin', 'point', typeof def.origin === 'string' ? def.origin : undefined)}
           </div>
           {/* The setter is scalar-only, so the UI offers the three axis letters;
-              a vector axis authored through drive stays untouched. */}
+              a vector axis authored through drive stays untouched. An unset (or
+              vector) axis shows the empty placeholder rather than a letter the
+              document does not hold, so picking any letter is a real change. */}
           <div className="feature-field-row">
             <span className="feature-field-label">Axis</span>
             <select
               className="feature-field-select"
-              value={['x', 'y', 'z'].includes(String(def.rotation_axis ?? '')) ? String(def.rotation_axis) : 'z'}
+              value={['x', 'y', 'z'].includes(String(def.rotation_axis ?? '')) ? String(def.rotation_axis) : ''}
               onChange={(e) => { e.stopPropagation(); onMutation({ type: 'set_plane_definition_field', featureId: fid, field: 'rotation_axis', value: e.target.value }) }}
               onClick={(e) => e.stopPropagation()}
             >
+              <option value="" disabled>{Array.isArray(def.rotation_axis) ? 'vector' : 'axis'}</option>
               <option value="x">X</option>
               <option value="y">Y</option>
               <option value="z">Z</option>
