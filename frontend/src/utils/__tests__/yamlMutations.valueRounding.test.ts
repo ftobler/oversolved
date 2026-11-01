@@ -19,6 +19,7 @@ import {
   applySetMoveFaceField,
   applySetTransformField,
   applySetArrayField,
+  applySetCircularArrayField,
   applySetPlaneDefinitionField,
   applySetConstraintValue,
 } from '@/utils/yamlMutations'
@@ -164,6 +165,20 @@ describe('feature value rounding', () => {
       expect(plane0(doc).offset).toBe(MESSY_ROUNDED)
     })
 
+    // The origin_rotation origin and angle cross the same boundary from the add
+    // side (the setter has no spelling for them), and a component that is not a
+    // number, the world axis letter, is left exactly as authored.
+    it('rounds a plane origin vector and its angle on the add path', () => {
+      const definition = { mode: 'origin_rotation', origin: [MESSY, 0, 1], rotation_axis: 'z', rotation_angle: MESSY }
+      const doc: PartDoc = { features: [] }
+      applyAddPlane(doc, 'pl1', undefined, definition)
+      const plane = plane0(doc)
+      expect(plane.origin).toEqual([MESSY_ROUNDED, 0, 1])
+      expect(plane.rotation_angle).toBe(MESSY_ROUNDED)
+      expect(plane.rotation_axis).toBe('z')
+      expect(definition.origin).toEqual([MESSY, 0, 1])
+    })
+
     // The invariant the feature is about, spelled through both writers: a circle
     // seed and an extrude distance authored from the same drag value store the
     // same number.
@@ -230,6 +245,10 @@ describe('feature value rounding', () => {
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('between 0 and 90'))
       applySetHelixField(doc, 'hx1', 'helix_angle', 45)
       expect(helix0(doc).helix_angle).toBe(45)
+      // The other end of the interval: a magnitude below the stored precision
+      // rounds to 0, and 0 is the end the loader also holds out.
+      applySetHelixField(doc, 'hx1', 'helix_angle', 1e-7)
+      expect(helix0(doc).helix_angle).toBe(45)
     })
   })
 
@@ -250,6 +269,13 @@ describe('feature value rounding', () => {
       applyAddArray(added, 'ar1', undefined, { count_x: 2.4 })
       applyAddCircularArray(added, 'ca1', undefined, { count: 3.5 })
       expect(added.features).toHaveLength(0)
+    })
+
+    // The circular array's own setter, the path an edit of an existing array uses.
+    it('refuses a fractional count on the circular setter too', () => {
+      const set: PartDoc = { features: [{ id: 'ca1', kind: 'circular_array', circular_array: { count: 6 } }] }
+      applySetCircularArrayField(set, 'ca1', 'count', 3.5)
+      expect(featureById(set, 'ca1', 'circular_array').circular_array.count).toBe(6)
     })
 
     // The pair cap is judged on the authored pair, not on rounded stand-ins.
@@ -294,6 +320,27 @@ describe('feature value rounding', () => {
       applySetConstraintValue(doc, 'sk1', 'c1', -3e-4)
       const c = featureAt(doc, 0, 'sketch').constraints![0]
       expect(Object.is(c.value, 0)).toBe(true)
+    })
+  })
+
+  describe('a refusal leaves the document as it was', () => {
+    // Each add checks the numbers of the def it just built before pushing it, so
+    // a refused add stores no half-built feature.
+    it('drops a refused fillet, hole and shell add', () => {
+      const doc: PartDoc = { features: [] }
+      applyAddFillet(doc, 'fl1', undefined, ['$e1'], NaN)
+      applyAddHole(doc, 'ho1', undefined, { diameter: Infinity })
+      applyAddShell(doc, 'sh1', undefined, ['$f1'], -2)
+      expect(doc.features).toHaveLength(0)
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('refusing radius'))
+    })
+
+    // applyAddPlane opens the features array only once its definition is known to
+    // apply, so a refusal on a document that has none leaves it key-less.
+    it('leaves a document without a features array untouched', () => {
+      const doc: PartDoc = {}
+      applyAddPlane(doc, 'pl1', undefined, { mode: 'offset', plane: '@builtin_plane_front', offset: NaN })
+      expect(doc.features).toBeUndefined()
     })
   })
 })

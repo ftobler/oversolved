@@ -179,8 +179,9 @@ function refuseHelixAngle(field: string, value: unknown, fn: string): boolean {
 
 /** Refuse a shell thickness the loader would refuse: its rule is strictly
  *  positive, so a negative value and the zero a sub-micron authored thickness
- *  quantizes to are both a document that cannot reopen. Judged through the round
- *  for the same reason refuseArrayCount exists. */
+ *  quantizes to are both a document that cannot reopen. Judged on the rounded
+ *  value, unlike a count: the round cannot heal a thickness, it only exposes the
+ *  zero the write lands on. */
 function refuseShellThickness(field: string, value: unknown, fn: string): boolean {
   if (field !== 'thickness' || typeof value !== 'number') return false
   const thickness = round(value)
@@ -707,7 +708,10 @@ export function applySetArrayMode(
  *  legal 4 the user did not author. A non-finite count is left to setFeatureField's
  *  finiteness gate, which drops the key and lets the seeded default stand. The
  *  setter path judges the raw value through refuseArrayCount; an add must not
- *  hand out a different verdict for one input. */
+ *  hand out a different verdict for one input. A count key the kind does not
+ *  carry is judged too: the drive refuses an unknown field by name and the def
+ *  type has no such key, so this is the backstop that keeps a replayed payload
+ *  from landing a count no rule reads. */
 function inlineCountProblem(inline: object): { field: 'count' | 'count_x' | 'count_y'; reason: string } | null {
   const bag = inline as FieldBag
   const num = (key: string): number | null =>
