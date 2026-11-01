@@ -184,3 +184,15 @@ def _rotation_arc(ctx, cx, cy, r, start_deg=-60, end_deg=170, arr=None):
     ey = cy + r * math.sin(a1)
     # Arrowhead along the arc tangent (cairo sweeps clockwise on screen).
     _arrowhead(ctx, ex, ey, math.degrees(a1) + 90, arr)
+
+
+def _question_mark(ctx, cx, cy, r):
+    """The hook and dot of a question mark inside a circle of radius r."""
+    ctx.arc(cx, cy + r * 0.4, px(2), 0, 2 * math.pi)
+    ctx.fill()
+
+    ctx.move_to(cx - r * 0.2, cy - r * 0.15)
+    ctx.line_to(cx - r * 0.2, cy - r * 0.35)
+    ctx.arc(cx, cy - r * 0.35, r * 0.2, math.pi, 0)
+    ctx.line_to(cx + r * 0.2, cy - r * 0.05)
+    stroke(ctx, 1.5)

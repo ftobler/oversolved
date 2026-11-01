@@ -25,7 +25,6 @@ dist-ssr
 
 
 .mypy_cache/
-# wasm-pack shadow build artifacts (populated by `npm run shadow:wasm`)
 public/wasm/
 # OCC.js browser artifacts (populated by `npm run occ:provision`)
 public/occ/

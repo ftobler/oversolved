@@ -90,12 +90,6 @@ export function installPartRegistry(context: PartCommandContext = partContext())
   return { registry, uninstall: () => clearEditorCommandRegistry('part', registry) }
 }
 
-export function installAssemblyRegistry(context: AssemblyCommandContext = assemblyContext()): { registry: CommandRegistry<AssemblyCommandContext>; uninstall: () => void } {
-  const registry = assemblyRegistry(context)
-  setEditorCommandRegistry('assembly', registry)
-  return { registry, uninstall: () => clearEditorCommandRegistry('assembly', registry) }
-}
-
 // The minimal well-formed payload per command. Commands with no params are
 // absent: execute passes undefined and noParams accepts it.
 const PART_PARAMS: Readonly<Record<string, unknown>> = {

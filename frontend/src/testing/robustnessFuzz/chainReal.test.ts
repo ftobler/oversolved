@@ -34,6 +34,7 @@ import { runChain } from './chain'
 import { chainWorkerCount, configureChainWorkers, disposeChainChild, runChainWithTimeout, type ChainPhase } from './chainTimeout'
 import { runSeedsBounded } from './sweep'
 import { writeMinimalRecipe, defaultRegressionsDir } from './regressions'
+import { envInt } from '@/testing/__tests__/envInt'
 
 // The watchdog child runs the sources through --experimental-strip-types,
 // which Node only has from 22.6. package.json still allows 20.19 and the CI
@@ -52,11 +53,6 @@ const occAvailable = occInstalled()
 // OCC.js and the WASM builds must fail, not skip, when they went missing: the
 // skip is only a convenience for a local checkout without them.
 const requireReal = !!process.env.KERNEL_PROVISIONED || process.env.FUZZ_REQUIRE_REAL === '1'
-
-function envInt(name: string, fallback: number): number {
-  const raw = Number.parseInt(process.env[name] ?? '', 10)
-  return Number.isFinite(raw) && raw > 0 ? raw : fallback
-}
 
 // The bounded default keeps the PR gate fast; the recipe and the main gate widen
 // it (200 is the plan's acceptance range, 1500 the main gate's). The budget per

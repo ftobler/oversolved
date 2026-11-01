@@ -103,7 +103,8 @@ document, by deep equality.
 ## Geometry fuzz
 
 `frontend/src/testing/robustnessFuzz/` is the geometry side of the fuzz, built
-on the same seeded PRNG (`makePrng` from `hooks/__tests__/fuzzHarness.ts`) and
+on the same seeded PRNG (`makePrng` from `utils/core/prng.ts`, the one
+generator every fuzz and the drive id source share) and
 the same minimiser (`fuzzMinimizer.ts`). `recipe.ts` draws a recipe per seed: a
 start body (box, rounded-arc extrusion or revolve) plus up to eight edits (fuse
 and cut of boxes, cylinders and spheres, fillet, chamfer, hole, linear and

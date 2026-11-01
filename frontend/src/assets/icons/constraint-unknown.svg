@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-<circle cx="12" cy="12" r="9" fill="none" stroke="rgb(0%, 0%, 0%)" stroke-width="1.5"/>
-<text x="12" y="17" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="rgb(0%, 0%, 0%)">?</text>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">
+<path fill="none" stroke-width="0.0625" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.875 0.5 C 0.875 0.707031 0.707031 0.875 0.5 0.875 C 0.292969 0.875 0.125 0.707031 0.125 0.5 C 0.125 0.292969 0.292969 0.125 0.5 0.125 C 0.707031 0.125 0.875 0.292969 0.875 0.5 " transform="matrix(24, 0, 0, 24, 0, 0)"/>
+<path fill-rule="nonzero" fill="rgb(0%, 0%, 0%)" fill-opacity="1" d="M 14 15.601562 C 14 18.265625 10 18.265625 10 15.601562 C 10 12.933594 14 12.933594 14 15.601562 "/>
+<path fill="none" stroke-width="0.0625" stroke-linecap="butt" stroke-linejoin="round" stroke="rgb(0%, 0%, 0%)" stroke-opacity="1" stroke-miterlimit="10" d="M 0.424967 0.443685 L 0.424967 0.368815 C 0.424967 0.268717 0.575033 0.268717 0.575033 0.368815 L 0.575033 0.481283 " transform="matrix(24, 0, 0, 24, 0, 0)"/>
 </svg>

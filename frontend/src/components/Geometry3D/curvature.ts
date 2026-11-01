@@ -283,14 +283,6 @@ export function curvatureForMesh(mesh: Mesh3D): CurvatureField {
   return field
 }
 
-/** A scalar view of one curvature kind, for range and legend use. */
-export function curvatureSamples(values: Float32Array, kind: CurvatureKind): Float32Array {
-  const offset = kind === 'mean' ? 0 : 1
-  const out = new Float32Array(values.length / 2)
-  for (let i = 0; i < out.length; i++) out[i] = values[i * 2 + offset]
-  return out
-}
-
 /** Percentile of |values|, so the two curvature sides share one symmetric
  *  range and zero lands on the neutral middle of the ramp. */
 function percentileMagnitude(samples: ArrayLike<number>, percentile: number): number {

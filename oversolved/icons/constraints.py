@@ -2,7 +2,7 @@ import math
 
 from icon_cairo import icon, px, stroke
 
-from .helpers import _draw_arrow, draw_dotted_line
+from .helpers import _draw_arrow, _question_mark, draw_dotted_line
 
 
 @icon("frontend/src/assets/icons/constraint-angle.svg", angle=-20)
@@ -285,3 +285,11 @@ def constraint_line_swap(ctx):
 
     arrow_height = line_1_height + 0.03
     _draw_arrow(ctx, 0.5, arrow_height, 0.5, 1 - arrow_height, px(6))
+
+
+@icon("frontend/src/assets/icons/constraint-unknown.svg")
+def constraint_unknown(ctx):
+    # An unknown constraint keeps the family's circle and asks its question.
+    ctx.arc(0.5, 0.5, 0.375, 0, 2 * math.pi)
+    stroke(ctx, 1.5)
+    _question_mark(ctx, 0.5, 0.5, 0.375)

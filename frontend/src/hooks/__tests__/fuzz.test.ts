@@ -26,11 +26,7 @@ import {
 } from './fuzzHarness'
 import { minimizeSequence } from './fuzzMinimizer'
 import { reportFailureDocs } from './fuzzFailureDocs'
-
-function envInt(name: string, fallback: number): number {
-  const raw = Number.parseInt(process.env[name] ?? '', 10)
-  return Number.isFinite(raw) && raw > 0 ? raw : fallback
-}
+import { envInt } from '@/testing/__tests__/envInt'
 
 // The bounded defaults keep the PR gate fast; `just fuzz-session` widens them.
 const FAKE_SEEDS = envInt('FUZZ_FAKE_SEEDS', 24)

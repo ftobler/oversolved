@@ -25,10 +25,11 @@ import { loadOcc } from '@/kernel/occ/loadOcc'
 import { DisposeScope } from '@/kernel/occ/disposeScope'
 import { makeBoxAt, makeCylinder, type Vec3 } from '@/kernel/occ/primitives'
 import { booleanWithDiff, volumeOf, BooleanSoundnessError } from '@/kernel/occ/booleans'
-import { makePrng } from '@/hooks/__tests__/fuzzHarness'
+import { makePrng } from '@/utils/core/prng'
 import { makeSphereAt } from './chain'
 import { FUZZ_GRID_MM } from './recipe'
 import { yieldToEventLoop } from '../yieldToEventLoop'
+import { envInt } from '@/testing/__tests__/envInt'
 import type { OccModule, OccShape } from '@/kernel/occ/occTypes'
 
 const oc = await loadOcc()
@@ -42,11 +43,6 @@ describe('the identity fuzz provisioning guard', () => {
     expect(oc, 'oc: OCC.js absent - run `npm run occ:install` or `just install-occ`').toBeTruthy()
   })
 })
-
-function envInt(name: string, fallback: number): number {
-  const raw = Number.parseInt(process.env[name] ?? '', 10)
-  return Number.isFinite(raw) && raw > 0 ? raw : fallback
-}
 
 const CHAIN_SEEDS = envInt('ROBUSTNESS_FUZZ_SEEDS', 24)
 // The floor is 32, not a quarter of the chain range: the first 32 seeds are the

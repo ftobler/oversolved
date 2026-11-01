@@ -32,6 +32,21 @@ def test_icon_registry_output_paths_are_unique(monkeypatch):
     assert not duplicates, f"duplicate icon output paths: {duplicates}"
 
 
+def test_every_committed_svg_has_a_generator(monkeypatch):
+    """The generator owns the set: a hand-drawn SVG in assets/icons is drift.
+
+    `iconModules` resolves icons by name, so an unused-looking file can still
+    be a computed consumer. The set comparison is the honest check: every file
+    is generated, and every generator writes a file that exists.
+    """
+    _icons, icon_cairo = _load(monkeypatch)
+    generated = {pathlib.Path(entry[0]).name for entry in icon_cairo._registry}
+    committed = {path.name for path in (ROOT / "frontend/src/assets/icons").glob("*.svg")}
+
+    assert not committed - generated, f"SVGs with no generator: {sorted(committed - generated)}"
+    assert not generated - committed, f"generators with no SVG: {sorted(generated - committed)}"
+
+
 def test_draw_all_renders_each_registry_entry(tmp_path, monkeypatch):
     _icons, icon_cairo = _load(monkeypatch)
     monkeypatch.setattr(icon_cairo, "_registry", [])

@@ -469,3 +469,43 @@ def feature_helix(ctx):
         else:
             ctx.line_to(x, y)
     stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/context-camera.svg")
+def context_camera(ctx):
+    """Camera body, lens and hot shoe; the lens keeps a white bezel."""
+    ctx.rectangle(0.125, 0.25, 0.75, 0.583333)
+    ctx.fill()
+
+    ctx.set_source_rgb(1, 1, 1)
+    ctx.arc(0.5, 0.625, 0.208333, 0, 2 * math.pi)
+    ctx.fill()
+
+    ctx.set_source_rgb(0, 0, 0)
+    ctx.arc(0.5, 0.625, 0.125, 0, 2 * math.pi)
+    ctx.fill()
+
+    ctx.move_to(0.416667, 0.125)
+    ctx.line_to(0.583333, 0.125)
+    ctx.line_to(0.666667, 0.25)
+    ctx.line_to(0.333333, 0.25)
+    ctx.close_path()
+    ctx.fill()
+
+
+@icon("frontend/src/assets/icons/feature-circular-array.svg")
+def feature_circular_array(ctx):
+    """A boss circled by an arrow: the radial handle and the sweep it follows."""
+    ctx.arc(0.5, 0.5, 0.400065, 0, 2 * math.pi)
+    stroke(ctx, 1.5)
+
+    ctx.move_to(0.5, 0.099935)
+    ctx.line_to(0.5, 0.5)
+    ctx.line_to(0.900065, 0.5)
+    stroke(ctx, 1.5)
+
+    # The arrow wraps the ring: the major arc of a 0.35 radius circle whose
+    # chord is x = 0.25, so its centre sits sqrt(0.35^2 - 0.1^2) to the right.
+    centre_x = 0.25 + math.sqrt(0.35**2 - 0.1**2)
+    ctx.arc_negative(centre_x, 0.5, 0.35, math.pi - 0.2897, math.pi + 0.2897)
+    stroke(ctx, 0.9)

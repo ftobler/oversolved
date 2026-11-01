@@ -5,19 +5,7 @@
 // edit with the new seed committed.
 import { describe, it, expect } from 'vitest'
 import { loadAssemblyDoc, loadPartDoc } from '@/persistence/docSchema'
-
-// A tiny deterministic PRNG, so the suite has no new dependency and the
-// mutation order is exactly the committed seeds.
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
+import { makePrng } from '@/utils/core/prng'
 
 const FUZZ_SEEDS = [0xc0ffee, 42, 20261015]
 const MUTATIONS_PER_SEED = 200
@@ -128,7 +116,7 @@ function exercise(
   load: FuzzedLoad,
   seed: number,
 ): void {
-  const rng = mulberry32(seed)
+  const rng = makePrng(seed)
   for (let i = 0; i < MUTATIONS_PER_SEED; i++) {
     const doc = clone(base)
     const mutations = 1 + Math.floor(rng() * 4)
@@ -157,7 +145,7 @@ describe('loader fuzz (fixed seeds)', () => {
   }
 
   it('a wholly random payload is refused, never thrown out of the loader', () => {
-    const rng = mulberry32(7)
+    const rng = makePrng(7)
     for (let i = 0; i < 500; i++) {
       const shape = rng()
       const raw = shape < 0.25 ? null
