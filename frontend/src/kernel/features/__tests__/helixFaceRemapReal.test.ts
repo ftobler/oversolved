@@ -74,6 +74,46 @@ describe.skipIf(!oc)('helix face remap (real OCC)', () => {
     }
   })
 
+  // The geometry fuzz's seed 976 regression: the remap is for a persisted slash
+  // index only. A repo query resolves to the current face index already, so a
+  // UUID-less face on a partly named body is still a live pick, not a refusal.
+  it('resolves a repo query to a face without a UUID on a partly named body', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    const repo = new Repository()
+    try {
+      const { shape, faces } = makeCylinderWithFaces(oc!, scope, [0, 0, 0], [0, 0, 1], 5, 10)
+      const body: Body = {
+        id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: table.register(shape, 'ex1'),
+        sketch_id: 'sk1', brep_diff: null, profile_queries: [],
+      }
+      const lateral = indexOfFace(oc!, scope, shape, faces.lateral)
+      repo.register('pick/helix/s1', {
+        type: 'cylinderface', body_id: 'body_ex1', face_index: lateral,
+        axis: [0, 0, 1], centroid: [0, 0, 5], normal: [1, 0, 0],
+      })
+      const canon = canonicalFaces(oc!, scope, shape)
+      const at = canonicalIndex(canon).get(faces.top as OccSubShape)
+      const uuids: (string | null)[] = canon.map(() => null)
+      if (at >= 0) uuids[at] = 'u_surviving_face'
+      body.face_uuids = uuids
+
+      const result = solveHelix(oc!, scope, table, {
+        id: 'hx1', kind: 'helix',
+        helix: {
+          reference: '@pick/helix/s1', radius_mode: 'derived',
+          mode: 'pitch_height', pitch: 2, height_from_reference: true,
+          hand: 'right', direction: 'normal', start_angle: 0, offset: 0,
+        },
+      }, repo, { body_ex1: body })
+      expect(result.status).toBe('ok')
+      expect(result.helix.radius).toBeCloseTo(5)
+    } finally {
+      table.disposeAll()
+      scope.dispose()
+    }
+  })
+
   it('keeps the raw index for a body with no face identity', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()

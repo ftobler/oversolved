@@ -50,6 +50,11 @@ function occFaceForRef(
   const slash = SLASH_FACE.exec(refStr)
   let body: Body | null
   let faceIndex: number
+  // Only a persisted slash index needs the UUID remap. A repo query already
+  // resolved to the CURRENT face index, which stays valid even when that face
+  // carries no construction UUID (a partly named body); remapping it would
+  // refuse a live pick, as the profile path's repo branch also does not.
+  const persisted = slash !== null
   if (slash) {
     body = findBodyForRef(bodyStore, slash[1])
     faceIndex = parseInt(slash[2], 10)
@@ -67,9 +72,9 @@ function occFaceForRef(
   const shape = table.get<OccShape>(body.shape)
   const faces = sortedFacesOf(oc, scope, shape)
   // Same remap the profile paths use: a body carrying face identity refuses a
-  // ref whose construction UUID no longer maps rather than reading the raw
-  // index into a face the user never picked.
-  faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, bodyStore, body, faces, refStr)
+  // persisted ref whose construction UUID no longer maps rather than reading
+  // the raw index into a face the user never picked.
+  if (persisted) faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, bodyStore, body, faces, refStr)
   if (faceIndex >= faces.length) throw new Error(`helix: face index ${faceIndex} out of range for ${JSON.stringify(refStr)}`)
   return faces[faceIndex]
 }
