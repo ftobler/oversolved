@@ -22,6 +22,7 @@ import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
 import { mirrorAxisFromLineParams, mirrorEntityParams } from '@/utils/geometry/mirrorSketch'
+import { MAX_FIT_POINTS } from '@/utils/geometry/fitSpline'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 
 export type ValueViolationCode = 'invalid-mutation' | 'unknown-target'
@@ -111,14 +112,14 @@ function entityParamsProblem(kind: string, params: unknown[], where: string): st
   if (kindProblem !== null) return kindProblem
   const names = ENTITY_PARAM_NAMES[kind as EntityKind]
   if (kind === 'fit_spline') {
-    // Variable: `2N` fit points, `2 <= N <= 64`, no zero span. The handles are
-    // not in `params`; the authoring `tangents` field carries them.
+    // Variable: `2N` fit points up to MAX_FIT_POINTS, no zero span. The handles
+    // are not in `params`; the authoring `tangents` field carries them.
     if (params.length % 2 !== 0) {
       return `${where} fit_spline params are flat x/y fit points, so the count must be even, got ${params.length}`
     }
     const n = params.length / 2
-    if (n < 2 || n > 64) {
-      return `${where} fit_spline takes 2..64 fit points (2N params), got ${n} points`
+    if (n < 2 || n > MAX_FIT_POINTS) {
+      return `${where} fit_spline takes 2..${MAX_FIT_POINTS} fit points (2N params), got ${n} points`
     }
     for (let i = 0; i < params.length; i++) {
       if (!isFiniteNumber(params[i])) return `${where} fit_spline param ${i} must be a finite number, got ${json(params[i])}`

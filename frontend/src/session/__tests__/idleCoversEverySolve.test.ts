@@ -1,11 +1,10 @@
 // @vitest-environment node
 // The scheduler's pending count is the session's only honest answer to "is a
 // solve still running?" idle() resolves when that count hits zero and
-// inspect().solve reads it. Every re-solve outside a mutation (a document load,
-// an edit enter or exit, Rebuild, Clear cache) must ride the same scheduler, or
-// idle() can resolve mid-solve and the journal can settle an entry whose
-// write-back has not landed yet. The fake scheduler holds every request until
-// the test flushes it, which is the "held worker" the worker adapter presents.
+// inspect().solve reads it. This suite pins the routes the SESSION owns (its
+// own transaction boundaries and undo) and the requestSolve port contract; the
+// application wiring that calls into them (load, edit enter/exit, Rebuild,
+// Clear cache) is pinned by the page suite Part.solveRoutes.test.tsx.
 import { describe, it, expect } from 'vitest'
 import { createDocSession, type DocSession } from '@/session/DocSession'
 import type { DirtyFacts } from '@/session/dirty'
@@ -14,7 +13,7 @@ import type { PartDoc, SketchData } from '@/types/cad'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
 import { createFakeSolveScheduler } from './fakeSolveScheduler'
 
-function heldSession(doc: PartDoc = makeDoc(makeSketch('sk1'))) {
+function heldSession(doc: PartDoc | null = makeDoc(makeSketch('sk1'))) {
   const cell: { current: PartDoc | null } = { current: doc }
   const solve = createFakeSolveScheduler<PartDoc>()
   const facts: EditorFacts = { editingFeatureId: null, rollbackPosition: null }
@@ -46,21 +45,34 @@ async function expectHeldUntilSettled(session: DocSession, flush: () => void): P
   expect(session.inspect().solve.pending).toBe(false)
 }
 
-describe('idle covers every solve the session starts', () => {
-  it('covers a document load solve', async () => {
+describe('the session requestSolve port', () => {
+  it('keeps the caller options and reports the request as pending until it settles', async () => {
     const h = heldSession()
-    h.session.requestSolve()
+    h.session.requestSolve({ bypassCache: true, validate: true })
     await expectHeldUntilSettled(h.session, h.solve.flush)
+
+    expect(h.solve.calls.map(call => call.opts)).toEqual([{ bypassCache: true, validate: true }])
   })
 
-  it('covers an edit-enter solve', async () => {
-    const h = heldSession()
-    // useEditFeature's tail: the editor state is set, then the session solves.
-    h.session.begin('edit', { suppressed: true })
-    h.session.requestSolve()
-    await expectHeldUntilSettled(h.session, h.solve.flush)
+  it('is null and schedules nothing with no document open', async () => {
+    const h = heldSession(null)
+    expect(h.session.requestSolve()).toBeNull()
+    expect(h.session.inspect().solve.pending).toBe(false)
+    expect(h.solve.calls).toEqual([])
+    await expect(h.session.idle()).resolves.toBeUndefined()
   })
 
+  it('refreshSolve is the same port with no options', async () => {
+    const h = heldSession()
+    h.session.refreshSolve()
+    await expectHeldUntilSettled(h.session, h.solve.flush)
+    expect(h.solve.calls.map(call => call.opts)).toEqual([{}])
+  })
+})
+
+// The session owns these solves: they are its own transaction and history
+// boundaries, so they cannot be moved into a caller and must stay counted.
+describe('idle covers the solves the session starts', () => {
   it('covers an edit-exit solve', async () => {
     const h = heldSession()
     const opened = h.session.begin('edit', { suppressed: true })
@@ -75,20 +87,6 @@ describe('idle covers every solve the session starts', () => {
     if (!opened.ok) throw new Error('preview refused')
     h.session.cancel(opened.id)
     await expectHeldUntilSettled(h.session, h.solve.flush)
-  })
-
-  it('covers Rebuild and Clear cache and keeps their options', async () => {
-    const h = heldSession()
-    h.session.requestSolve({ bypassCache: true, validate: false })
-    await expectHeldUntilSettled(h.session, h.solve.flush)
-
-    h.session.requestSolve({ bypassCache: true, validate: true })
-    await expectHeldUntilSettled(h.session, h.solve.flush)
-
-    expect(h.solve.calls.map(call => call.opts)).toEqual([
-      { bypassCache: true, validate: false },
-      { bypassCache: true, validate: true },
-    ])
   })
 
   it('covers the undo re-solve', async () => {

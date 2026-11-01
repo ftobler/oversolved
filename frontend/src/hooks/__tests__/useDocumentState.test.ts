@@ -104,8 +104,12 @@ features:
       scale: 1
 `
     h.loadMock.mockResolvedValue({ content, name: 'Legacy Transform' })
-    const solveRef = { current: vi.fn() }
+    // The port takes no doc argument: the solver reads the hook's live ref, so
+    // the test reads that same ref at call time to see which doc it would solve.
+    const solveRef: { current: (() => void) | null } = { current: null }
+    const seenAtSolve: unknown[] = []
     const { result } = renderHook(() => useDocumentState('L', solveRef, { solveOnLoad: true }))
+    solveRef.current = () => { seenAtSolve.push(result.current.docRef.current) }
     await tick()
 
     const sub = result.current.doc!.features![0] as unknown as { transform: { bodies: string[]; body?: string } }
@@ -114,8 +118,10 @@ features:
     // The self-heal predates user intent, so the doc still starts clean.
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
     // The first solve receives the MIGRATED doc, not the raw legacy one.
-    expect(solveRef.current).toHaveBeenCalledTimes(1)
-    expect(solveRef.current).toHaveBeenCalled()
+    expect(seenAtSolve).toHaveLength(1)
+    const solved = seenAtSolve[0] as { features: Array<{ transform: { bodies: string[]; body?: string } }> }
+    expect(solved.features[0].transform.bodies).toEqual(['@body_ex1'])
+    expect('body' in solved.features[0].transform).toBe(false)
   })
 
   it('rewrites a legacy singular delete_body body the same way', async () => {
@@ -321,15 +327,18 @@ describe('useDocumentState recovery restore at load', () => {
     h.loadMock.mockResolvedValue({ content: 'version: 1\nkind: part\nfeatures: []\n', name: 'Stored' })
     const restored = makeDoc(makeSketch('restored'))
     requestRecoveryRestore({ docId: 'R', doc: restored })
-    const solveRef = { current: vi.fn() }
+    const solveRef: { current: (() => void) | null } = { current: null }
+    const seenAtSolve: unknown[] = []
     const { result } = renderHook(() => useDocumentState('R', solveRef, { solveOnLoad: true }))
+    solveRef.current = () => { seenAtSolve.push(result.current.docRef.current) }
     await tick()
 
     expect(result.current.doc).toEqual(restored)
     expect(result.current.docRef.current).toEqual(restored)
     expect(result.current.docName).toBe('Stored')
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
-    expect(solveRef.current).toHaveBeenCalled()
+    // The parked snapshot, not the stored bytes, is what the first solve gets.
+    expect(seenAtSolve).toEqual([restored])
     // Single use: the handoff is consumed, so a remount reads stored bytes.
     expect(takeRecoveryRestore('R')).toBeNull()
   })

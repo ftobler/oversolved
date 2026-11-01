@@ -305,9 +305,19 @@ export function runAssemblyOperation<K extends AssemblyOperationId>(
   // the previous one has not updated yet.
   const plan = planAssemblyOperation(id, input, { doc: host.doc, ...ctx })
   if (!plan || !plan.changed) return
-  const apply = (d: AssemblyDoc) => planAssemblyOperation(id, input, { doc: d, ...ctx })?.doc ?? d
+  // The funnel applies its function synchronously against the live doc, so the
+  // live re-plan settles the changed decision before the mutate call returns.
+  // A live no-op (the mirror was stale) must not spend a solve.
+  let liveChanged = false
+  const apply = (d: AssemblyDoc) => {
+    const live = planAssemblyOperation(id, input, { doc: d, ...ctx })
+    if (!live || !live.changed) return d
+    liveChanged = true
+    return live.doc
+  }
   if (plan.undo === 'one-shot') host.mutateOneShot(plan.label, apply)
   else host.mutateSession(plan.label, apply)
+  if (!liveChanged) return
   if (plan.solve === 'solve') host.requestSolve()
   else if (plan.solve === 'defer') host.requestSolveOrDefer()
 }

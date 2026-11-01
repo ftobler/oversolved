@@ -34,11 +34,12 @@ export const CURRENT_DOC_VERSION = 4
 // can build in any reasonable time.
 export const MAX_FEATURES = 10_000
 export const MAX_FEATURE_LIST = 10_000
-// 2 * 64 fit points + 2 handles: a fit_spline's block is the largest kind.
-export const MAX_INITIAL_PARAMS = 132
-// A fit spline interpolates through at most 64 points: the interior vertex keys
-// (`fit1`..`fit62`) plus the `start` and `end` keys at either side.
+// A fit spline interpolates through the interior vertex keys plus the `start`
+// and `end` points at either side.
 export const MAX_FIT_POINTS = MAX_FIT_POINT_KEY + 2
+// Two params per fit point plus the two end handles (four params): a
+// fit_spline's block is the largest kind.
+export const MAX_INITIAL_PARAMS = 2 * MAX_FIT_POINTS + 4
 export const MAX_ARRAY_COUNT = 1_000
 export const MAX_ARRAY_CELLS = 100_000
 export const MAX_EXPRESSION_LENGTH = 10_000

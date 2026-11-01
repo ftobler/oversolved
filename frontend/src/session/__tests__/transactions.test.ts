@@ -436,11 +436,12 @@ describe('brep withhold', () => {
 describe('transaction kinds', () => {
   it('has no gesture kind: a drag-fold must reintroduce it with its fixes', () => {
     // The latent gesture transaction (no production caller, undo mid-gesture
-    // faulted) was deleted. This is a compile-time guard: adding 'gesture' back
-    // without also handling undo mid-gesture fails here.
+    // faulted) was deleted. The assignment below is the whole guard: it only
+    // compiles once 'gesture' is a transaction kind again, so reintroducing it
+    // without the three fixes fails typecheck, not this assertion.
     // @ts-expect-error 'gesture' is not a transaction kind
-    const kind: TransactionKind = 'gesture'
-    expect(kind).toBe('gesture')
+    const gestureKind: TransactionKind = 'gesture'
+    void gestureKind
   })
 })
 

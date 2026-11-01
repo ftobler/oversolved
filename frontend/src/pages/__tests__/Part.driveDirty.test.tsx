@@ -67,15 +67,23 @@ describe('a drive-surface mutation goes through the session funnel', () => {
       releaseSolve = () => resolve(OK_RESPONSE)
     }))
 
-    renderPage()
+    // The load resolves inside act, so the page's own state updates land in a
+    // test scope instead of warning after the fact.
+    await act(async () => { renderPage() })
     await screen.findByText('Solver error: Error: boom')
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
 
     const surface = window.__oversolved
     expect(surface).toBeDefined()
-    const running = surface!.script([
-      { mutation: { type: 'rename_feature', featureId: 'sk1', label: 'Renamed' } as never },
-    ])
+    // The step runs synchronously up to the solve it starts; flush that inside
+    // act so handleMutation's state update is not a warning after the fact.
+    let running!: Promise<{ ok: boolean }>
+    await act(async () => {
+      running = surface!.script([
+        { mutation: { type: 'rename_feature', featureId: 'sk1', label: 'Renamed' } as never },
+      ])
+      await Promise.resolve()
+    })
 
     await waitFor(() => { expect(screen.queryByText(/Solver error/)).toBeNull() })
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
@@ -86,5 +94,9 @@ describe('a drive-surface mutation goes through the session funnel', () => {
       outcome = await running
     })
     expect(outcome?.ok).toBe(true)
+
+    // The first-solve callback is deferred one macrotask; flush it in act so its
+    // fit and preview updates do not land after the test scope.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
   })
 })
