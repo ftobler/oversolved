@@ -38,6 +38,7 @@ import {
   type NewNames,
 } from './edgeModifier'
 import { nameNeighboursAndDeriveEdges, shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
+import { swallowUnlessTrap } from '../errors'
 
 type Lineage = Record<string, string[]>
 
@@ -91,7 +92,8 @@ function mintRoleFaces(
     let images: OccShape[]
     try {
       images = drainList(scope, maker[which](src)).flatMap((g) => facesOf(oc, scope, g))
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       continue
     }
     if (images.length === 0) continue
@@ -183,7 +185,8 @@ function applySealedShell(
       off = scope.track(maker.Shape())
       offMaker = maker
       break
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       lastReason = 'build_failed'
     }
   }
@@ -200,7 +203,8 @@ function applySealedShell(
     let images: OccShape[]
     try {
       images = drainList(scope, offMaker.Generated(src)).flatMap((g) => facesOf(oc, scope, g))
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       continue
     }
     for (const img of images) offsetUuid.set(img as OccSubShape, srcUuid)
@@ -223,7 +227,8 @@ function applySealedShell(
     built = scope.track(res.shape)
     diff = res.diff
     origin = res.faceOrigin
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return fail(shape, 'build_failed')
   }
 
@@ -318,7 +323,8 @@ export function applyShellWithLineage(
       built = scope.track(mk.Shape())
       maker = mk
       break
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       lastReason = 'build_failed'
     }
   }

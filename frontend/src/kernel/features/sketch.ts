@@ -34,7 +34,7 @@ import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, ty
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadSolverWasm, loadTopologyWasm, resetSolverWasm } from '@/wasm-kernel/solverWasm'
-import { isKernelTrap } from '../errors'
+import { isKernelTrap, swallowUnlessTrap } from '../errors'
 import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
 import { resolve3dGeometry, projectTo2d, type PlaneFrame } from './projectionLowering'
@@ -87,7 +87,8 @@ const solverCell = memoizedLoad(async (): Promise<SolveBytes | null> => {
   let topoLoad: Promise<TopologyBytes | null>
   try {
     topoLoad = loadTopologyWasm?.() ?? Promise.resolve(null)
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     topoLoad = Promise.resolve(null)
   }
   const [bytes, topo] = await Promise.all([loadSolverWasm(), topoLoad.catch(() => null)])
@@ -258,7 +259,8 @@ function lowerProjectedEntities(
           }
         }
       }
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       // fall through to the unresolved path below
     }
     if (lowered) {
@@ -591,7 +593,8 @@ export function probeRedundantConstraint(feature: SketchFeature, draftId: string
       if ((out.constraintFlags[i] & CONSTRAINT_FLAG.redundant) === 0) return false
     }
     return sawDraft ? true : null
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return null
   }
 }
@@ -786,7 +789,8 @@ export function prepareDragContext(
       // size param, so sizeIndex stays undefined and the edge drag is translate.
       sizeIndex: ent.kind === 'circle' ? ent.offset + 2 : undefined,
     }
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return null
   }
 }
@@ -967,7 +971,8 @@ export function solveSketchDrag(
     // worse. Same check, same detection, the response the path already chose.
     assertSolverOutputMatchesLayout(out, layout, 'drag', input.options.skipStatusPass)
     assertConstraintVerdictsMatchInput(out, input.constraints.length, input.options.dragMode, 'drag')
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return null
   }
 

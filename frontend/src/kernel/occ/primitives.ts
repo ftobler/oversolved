@@ -29,6 +29,7 @@ import {
   unplacer,
 } from './subshapeIdentity'
 import type { EdgeData } from '@/types/cad'
+import { swallowUnlessTrap } from '../errors'
 
 // Re-exported so the topological-identity indexes keep their primitives.ts home
 // for every existing caller.
@@ -263,7 +264,8 @@ export function makeBSplineChainEdge(
     // (index 1) and the last (index knots.length).
     try {
       curve.RemoveKnot(i, 1, 1e-7)
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       // A removal that cannot meet the tolerance leaves multiplicity 3: the
       // same curve, only a C0 representation. Never fail the edge for it.
     }
@@ -432,7 +434,8 @@ export function makeWire(
   let wire: OccShape | null = null
   try {
     wire = builder.Wire()
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     wire = healWireFromEdges(oc, scope, edges)
   }
   // The wire is returned UNTRACKED (the caller owns it), so a guard that throws

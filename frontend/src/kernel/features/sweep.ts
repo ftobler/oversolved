@@ -8,7 +8,7 @@
 // wire assembles regardless of solver-level endpoint precision.
 
 import type { DisposeScope } from '../occ/disposeScope'
-import { extractErrorMessage } from '../errors'
+import { extractErrorMessage, swallowUnlessTrap } from '../errors'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
@@ -16,7 +16,7 @@ import type { Repository } from '../query'
 import { parseAncestry, featureRefId } from '../query'
 import { collectExtrudeLoops } from './faceProfile'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
-import { extractProfileLoops, profileAreaReport } from './shared/profileLoops'
+import { extractProfileLoops, profileAreaReport, loopDiagReasons, type ProfileLoopDiag } from './shared/profileLoops'
 import { parseSketchEntityRef, surfaceEntityIds } from './shared/bodyRef'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage, type LineageResult } from '../occ/prismLineage'
@@ -619,6 +619,38 @@ function stationTangent(sampler: SpineSampler, station: Station, fallback: Vec3)
   return len < 1e-12 ? fallback : [d[0] / len, d[1] / len, d[2] / len]
 }
 
+/**
+ * The partial-profile sentence for entity-picked loops. Every closed loop the
+ * assembler completed is swept, but a boundary it also diagnosed as unclosed or
+ * leftover was only partly swept. Name the entities whose edges did not all
+ * make it into a kept loop; an arc split can share one entity id with a kept
+ * edge, so fall back to the chain reasons rather than claim "dropped 0 of N".
+ *
+ * Exported so the sentence can be pinned without OCC; returns null when the
+ * assembler diagnosed nothing.
+ */
+export function entityLoopDropMessage(
+  eids: Iterable<string>,
+  loops: Dict[][],
+  diags: ProfileLoopDiag[],
+): string | null {
+  if (diags.length === 0) return null
+  const kept = new Set<string>()
+  for (const loop of loops) {
+    for (const edge of loop) {
+      const id = edge.entity_id
+      if (typeof id === 'string') kept.add(id)
+    }
+  }
+  const picked = [...eids]
+  const dropped = picked.filter((id) => !kept.has(id))
+  if (dropped.length === 0) {
+    return `the picked profile edges did not all form a closed loop: ${loopDiagReasons(diags).join('; ')}`
+  }
+  return `dropped ${dropped.length} of ${picked.length} picked profile entities ` +
+    `whose edges did not form a closed loop: ${dropped.join(', ')}`
+}
+
 /** Solve a sweep feature into the body store (mirrors `_solve_sweep`). */
 export function solveSweep(
   oc: OccModule,
@@ -691,6 +723,7 @@ export function solveSweep(
     try {
       resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, bodyStore)
     } catch (exc) {
+      swallowUnlessTrap(exc)
       profileErrors.push(extractErrorMessage(exc))
       continue
     }
@@ -744,11 +777,14 @@ export function solveSweep(
     }
     const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
     const edges = ((topo.edges as Dict[]) ?? []).filter((e) => eids.has(e.entity_id as string))
-    const loops = extractProfileLoops([{ boundary: edges }])
+    const diags: ProfileLoopDiag[] = []
+    const loops = extractProfileLoops([{ boundary: edges }], diags)
     if (loops.length === 0) {
       profileErrors.push(`sweep: picked profile edges do not form a closed loop (sketch ${sketchId})`)
       continue
     }
+    const message = entityLoopDropMessage(eids, loops, diags)
+    if (message !== null) profileErrors.push(`sweep: ${message}`)
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
     }

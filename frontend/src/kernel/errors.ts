@@ -83,6 +83,28 @@ export function isHeapCorruptionTrap(e: unknown): boolean {
   return /^abort\(/.test(e.message) || e.message.includes('Aborted(')
 }
 
+/**
+ * Let a heap-corruption trap escape a best-effort catch that would otherwise
+ * swallow it.
+ *
+ * A builder that treats every throw as "that step did not work" can carry on
+ * after a trap, but the linear memory is already undefined: the next OCC call
+ * faults again far from the site that broke, and `solveLocally` never gets to
+ * reload the module. A catch that degrades the FEATURE (a missing name, a
+ * fallback shape) is not allowed to degrade the HEAP, so it calls this first.
+ *
+ * The narrower `isHeapCorruptionTrap` (not `isKernelTrap`) is deliberate: an
+ * embind class-registry RuntimeError ("table index is out of bounds", "null
+ * function or function signature mismatch") is how a builder call reports a
+ * refused edge set, and edgeModifier's bisection recovers from exactly that by
+ * rebuilding the admissible subset. Those calls do not leave linear memory
+ * undefined, while an out-of-bounds access, `unreachable`, `abort()` or an
+ * ExitStatus do and must reach the module reloader.
+ */
+export function swallowUnlessTrap(e: unknown): void {
+  if (isHeapCorruptionTrap(e)) throw e
+}
+
 function describeThrownPointer(e: number): string {
   return `wasm exception pointer ${e} (a C++ throw with no JS message)`
 }

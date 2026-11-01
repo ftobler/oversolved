@@ -40,6 +40,7 @@ import { transferBooleanNames } from './booleanLineage'
 import { readBodyNames, type ShapeNames } from '../occ/bodyNames'
 import { threadHelices, type ThreadDisplay, type ThreadSite } from './threadDisplay'
 import type { PlaneLike } from './shared/planes'
+import { swallowUnlessTrap } from '../errors'
 
 type Dict = Record<string, unknown>
 
@@ -523,7 +524,8 @@ function intersects(oc: OccModule, shape: OccShape, tool: OccShape): boolean {
     const inter = algo.Shape()
     probe.track(inter)
     return volumeOf(oc, probe, inter) >= 1e-10
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return true
   } finally {
     probe.dispose()
@@ -567,7 +569,8 @@ function defaultTargetBody(
         const verdict = classifier.State()
         if (sameEnum(verdict, state.TopAbs_IN)) score += 2
         else if (sameEnum(verdict, state.TopAbs_ON)) score += 1
-      } catch {
+      } catch (e) {
+        swallowUnlessTrap(e)
         // A body whose shape is not a classifiable solid cannot claim a site;
         // the first-body fallback still answers and the cut names its own
         // failure, as it did before the default followed the sites.
@@ -961,15 +964,24 @@ export function solveHole(
       helices: threadHelices(threadSites, thread.pitch),
     }
   }
+  // Both messages are facts about this solve: the skipped sites were never
+  // placed and the missed ones were placed but removed nothing. Reporting one
+  // of them must not hide the other. The `partial_skip` prefix stays first
+  // because its wording is pinned by the frozen parity snapshot.
+  const partialReasons: string[] = []
   if (skippedCount > 0) {
-    // Wording pinned by the frozen parity snapshot (occ/__fixtures__/hole.json,
-    // case `partial_skip`): reword it and the golden result stops matching.
-    result.exception = `hole: ${skippedCount}/${total} point(s) skipped, no XY data for: ${skippedEntityIds.join(', ')}`
-  } else if (missedSites.length > 0 && missedSites.length < placed) {
+    partialReasons.push(
+      `hole: ${skippedCount}/${total} point(s) skipped, no XY data for: ${skippedEntityIds.join(', ')}`,
+    )
+  }
+  if (missedSites.length > 0 && missedSites.length < placed) {
     // Some sites cut, some removed nothing: name the misses so the user knows
     // which picks to move.
-    result.exception = `hole: ${missedSites.length}/${placed} drill site(s) did not intersect body '${targetBody.id}': ${missedSites.join(', ')}`
+    partialReasons.push(
+      `hole: ${missedSites.length}/${placed} drill site(s) did not intersect body '${targetBody.id}': ${missedSites.join(', ')}`,
+    )
   }
+  if (partialReasons.length > 0) result.exception = partialReasons.join('; ')
   if (placed > 0 && missedSites.length === placed) {
     // Every site had geometry but none removed material. The body is unchanged;
     // ok with this warning beats the old silent ok with hole_count: N.

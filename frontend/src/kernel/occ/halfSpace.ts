@@ -26,6 +26,7 @@ import {
   type Vec3,
 } from './primitives'
 import { normalToFrame } from '../types3d'
+import { swallowUnlessTrap } from '../errors'
 
 export interface HalfSpaceBox {
   // The prism solid: the material the caller cuts away.
@@ -82,7 +83,8 @@ function prismBaseFace(
       const E = oc.TopAbs_ShapeEnum
       const exp = scope.track(new oc.TopExp_Explorer_2(first, E.TopAbs_FACE, E.TopAbs_SHAPE))
       if (exp.More()) return scope.track(oc.TopoDS.Face_1(scope.track(exp.Current())))
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       // Fall through to the Generated() image below.
     }
   }

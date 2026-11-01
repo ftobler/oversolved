@@ -30,6 +30,7 @@ import { transferBooleanNames } from './booleanLineage'
 import { readBodyNames } from '../occ/bodyNames'
 import { stripRefSigil } from '@/utils/refSigil'
 import { nestedFeatureParams } from './shared/featureParams'
+import { swallowUnlessTrap } from '../errors'
 
 type Dict = Record<string, unknown>
 
@@ -110,7 +111,8 @@ function arrayMemberIds(arrayId: string, def: Dict, bodyStore: Record<string, Bo
   if (typeof source === 'string' && source !== '') {
     try {
       ids.push(resolveBody(source, bodyStore).id)
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       // A source that no longer resolves leaves only the minted copies.
     }
   }
@@ -242,7 +244,8 @@ export function solveBoolean(
   for (const ref of toolRefs) {
     try {
       explicitToolIds.add(resolveBody(ref, bodyStore).id)
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       // The tool loop below reports a bad ref by name.
     }
   }
@@ -353,7 +356,8 @@ export function solveBoolean(
       if (volumeOf(oc, probe, resultShape) < 1e-10) {
         warn(`${operation}: operation produced no overlapping geometry (empty result)`)
       }
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       // Volume probe failed; leave without the warning.
     } finally {
       probe.dispose()

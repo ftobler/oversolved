@@ -34,6 +34,7 @@ import {
 import { uvTo3d } from './prismGeometry'
 import type { LoopEdge } from '../profileLoops'
 import { copyShape } from './transforms'
+import { swallowUnlessTrap } from '../errors'
 
 // ─── sketch loops -> OCC face ───
 
@@ -184,7 +185,8 @@ function realizedGapsLine(oc: OccModule, scope: DisposeScope, edges: OccShape[])
   try {
     const gaps = wireEndpointGaps(oc, scope, edges)
     return `\n  gaps OCC realized at each joint: ${gaps.map(formatGap).join(', ')}`
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return ''
   }
 }
@@ -207,6 +209,7 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: L
     try {
       wire = scope.track(makeWire(oc, scope, [tracked], { requireClosed: true }))
     } catch (e) {
+      swallowUnlessTrap(e)
       throw new Error(`${extractOccErrorMessage(oc, e)}${realizedGapsLine(oc, scope, [tracked])}`)
     }
     scope.release(tracked)
@@ -260,6 +263,7 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: L
   try {
     wire = scope.track(makeWire(oc, scope, edges, { requireClosed: true }))
   } catch (e) {
+    swallowUnlessTrap(e)
     throw new Error(`${extractOccErrorMessage(oc, e)}${realizedGapsLine(oc, scope, edges)}`)
   }
   for (const e of edges) scope.release(e)
@@ -279,6 +283,7 @@ function safeProfileReport(loops: LoopEdge[][], when: 'suspect' | 'always'): str
     if (when === 'suspect' && report.verdict !== 'suspect') return ''
     return formatProfileReport(report)
   } catch (e) {
+    swallowUnlessTrap(e)
     return when === 'always' ? `(profile dump unavailable: ${extractErrorMessage(e)})` : ''
   }
 }
@@ -325,6 +330,7 @@ export function sketchLoopsToFace(
     // edges connected", with nothing to say WHICH joint or how wide. The dump is
     // the reproduction: it is what turns "OCCT is not recognizing the shape"
     // into a paste-able bug report.
+    swallowUnlessTrap(e)
     throw new Error(`${extractOccErrorMessage(oc, e)}\n${safeProfileReport(snapped, 'always')}`)
   }
 }

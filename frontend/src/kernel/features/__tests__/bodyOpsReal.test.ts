@@ -152,12 +152,14 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
       }
     })
 
-    it('cut that consumes the whole body deletes it and names it in body_ids', () => {
+    it('cut that consumes the whole body deletes it without naming it live', () => {
       /**
        * A tool that swallows the target leaves no solid: the cut must remove the
-       * body from the store rather than register an empty compound, and report
-       * the consumed id. The auto-delete convention here deliberately keeps the
-       * consumed id in `body_ids` (features/bodySplit.ts:246-253).
+       * body from the store rather than register an empty compound. The consumed
+       * id is gone, so `body_ids` must be empty (a consumer reading
+       * `body_ids ?? [body_id]` would otherwise chase a deleted body);
+       * `body_id` keeps the id the feature would have minted, and the deletion
+       * is reported with hole/array's warning.
        */
       const scope = new DisposeScope()
       const table = new HandleTable()
@@ -180,7 +182,11 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         })
         expect(result.status).toBe('ok')
         expect(result.operation).toBe('cut')
-        expect(result.body_ids).toEqual(['body_t'])
+        expect(result.body_id).toBe('body_f')
+        expect(result.body_ids).toEqual([])
+        expect(result.solver_warning).toBe(
+          "extrude: the cut removed all of body 'body_t'; the body was deleted",
+        )
         expect(bodyStore).toEqual({})
       } finally {
         scope.dispose()

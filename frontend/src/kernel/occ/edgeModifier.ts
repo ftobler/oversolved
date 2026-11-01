@@ -23,6 +23,7 @@ import {
   normalizedWorldKey,
   type NormalFrame,
 } from './constructionLineage'
+import { swallowUnlessTrap } from '../errors'
 
 type Lineage = Record<string, string[]>
 type Names = SubShapeMap<string>
@@ -187,7 +188,8 @@ export function inheritOldFaceNames(
     let deleted = false
     try {
       deleted = maker.IsDeleted(oldF)
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       deleted = false
     }
     if (deleted) continue
@@ -248,7 +250,8 @@ function mintGeneratedFilletFaces(
     let generated: OccShape[]
     try {
       generated = drainList(scope, maker.Generated(edge))
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       continue
     }
     const genFaces: OccShape[] = []
@@ -299,7 +302,8 @@ function generatedFaces(
     let generated: OccShape[]
     try {
       generated = drainList(scope, maker.Generated(s))
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       continue  // a source the maker cannot narrate made nothing we can claim
     }
     for (const g of generated) for (const f of exploreFaces(oc, scope, g)) made.add(f as OccSubShape)
@@ -341,7 +345,8 @@ export function edgeModifierDiff(
       let isDel = false
       try {
         isDel = maker.IsDeleted(s)
-      } catch {
+      } catch (e) {
+        swallowUnlessTrap(e)
         isDel = false
       }
       if (isDel) {
@@ -428,7 +433,8 @@ export function isValidShape(oc: OccModule, scope: DisposeScope, shape: OccShape
     } finally {
       scope.release(analyzer)
     }
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return false
   }
 }
@@ -463,7 +469,8 @@ export function healShape(
     fixer = scope.track(new oc.ShapeFix_Shape_2(shape))
     fixer.Perform(scope.track(new oc.Handle_Message_ProgressIndicator_1()))
     healed = scope.track(fixer.Shape())
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return null
   }
   const reject = (): null => {
@@ -573,7 +580,8 @@ function applyEdgeModifier(
   let maker: OccEdgeModifierMaker
   try {
     maker = scope.track(spec.makeMaker(shape))
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return fail('maker_failed')
   }
 
@@ -591,7 +599,8 @@ function applyEdgeModifier(
       spec.addEdge(maker, edge, { scope, faces: oldFaces })
       appliedEdges.push(edge)
       appliedIdx.push(i)
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       // failed edge -- mirror Python's failed_count (no throw)
       skippedIdx.push(i)
     }
@@ -606,7 +615,8 @@ function applyEdgeModifier(
     let fresh: OccEdgeModifierMaker
     try {
       fresh = scope.track(spec.makeMaker(shape))
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       return { ok: false, reason: 'maker_failed' }
     }
     try {
@@ -614,7 +624,8 @@ function applyEdgeModifier(
       fresh.Build()
       if (!fresh.IsDone()) return { ok: false, reason: 'build_not_done' }
       return { ok: true, maker: fresh, shape: scope.track(fresh.Shape()) }
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       return { ok: false, reason: 'build_failed' }
     }
   }
@@ -685,7 +696,8 @@ function applyEdgeModifier(
   try {
     maker.Build()
     if (maker.IsDone()) built = maker.Shape()
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     buildReason = 'build_failed'
   }
   if (built === null) {
@@ -765,7 +777,8 @@ function applyEdgeModifier(
     }
     try {
       diff = edgeModifierDiff(oc, scope, maker, oldFaces, oldEdges, newFaces, newEdges, oldFaceIdx, oldFaceModified)
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       diff = emptyBrepDiff()
     }
   } catch (e) {

@@ -26,6 +26,7 @@ import { copyShape } from '../occ/transforms'
 import { assertOneSolidPerBody } from '../features/bodySplit'
 import type { OccShape } from '../occ/occTypes'
 import { indexModifierDiffs, newIndexSets } from './modifierAttribution'
+import { swallowUnlessTrap } from '../errors'
 
 export class SharedHarness {
   readonly oc: OccModule
@@ -138,7 +139,9 @@ export class SharedHarness {
               created_by: body.created_by ?? '',
               modified_by: body.modified_by ?? [],
             }
-          } catch {  /* non-fatal */ }
+          } catch (e) {
+            swallowUnlessTrap(e)  // a trap here means the render copy is not the only loss
+          }
         }
         return out
       },
