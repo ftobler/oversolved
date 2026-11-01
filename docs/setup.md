@@ -186,7 +186,7 @@ just icons      # regenerate frontend/src/assets/icons from oversolved/icons.py
 ```bash
 pytest tests/ -v                            # Python tooling tests
 cd frontend && npx vitest run                # frontend
-mypy tests/ oversolved/ && ruff check tests/ oversolved/   # Python lint (CI still runs flake8)
+just mypy && just ruff                      # Python checks (CI still runs flake8)
 cd frontend && npm run lint                  # frontend lint
 ```
 

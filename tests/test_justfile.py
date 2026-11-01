@@ -83,10 +83,11 @@ def test_rust_recipe_runs_every_ci_rust_gate() -> None:
 
 
 def test_fuzz_recipe_is_the_full_main_gate_suite() -> None:
-    """`just fuzz` is the one entry point the main gate calls.
+    """`just fuzz` is the local aggregate of the main-gate suite.
 
-    Its body pins the three long sweeps and their main-gate sizes, so renaming
-    or resizing a sub-recipe cannot silently drop one from the suite.
+    CI does not call it: the `fuzz` job runs the three sub-recipes as separate
+    steps, so each suite reports its own status and duration. This pins that
+    the aggregate still runs each of them at its main-gate size.
     """
     lines = (ROOT / "justfile").read_text().splitlines()
     start = lines.index("fuzz:")

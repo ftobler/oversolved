@@ -41,19 +41,17 @@ seam they are not interchangeable versions.
 
 - `suspend-react` and `troika-three-text`: `src/components/Viewport/labelFont.ts`
   writes process-global state in each -- `configureTextBuilder({ defaultFontURL })`
-  at module scope (`:54`), and `preload` into suspend-react's cache from
-  `preloadViewportLabelFont()` (`:75-81`) -- that drei's `<Text>` reads back by
-  module identity. The self-hosted font (no CDN fetch behind our CSP) and the
-  label pre-warm only hold if our import and drei's import resolve to the same
-  module instance and the same version those APIs were written against. A
-  floating range would let an unreviewed patch change the default the guard
-  depends on.
-- `three-stdlib`: imported type-only for `OrbitControls`
-  (`Viewport/cameraController.ts`, `Viewport/SceneController.tsx`,
-  `Viewport/index.tsx`, `Viewport/AssemblyViewport.tsx`) and `Line2`
-  (`Geometry3D/dimensions/primitives.tsx`). It is pinned to the version drei
-  resolves so the imported type matches the object drei actually instantiates
-  at runtime.
+  at module scope, and `preload` into suspend-react's cache from
+  `preloadViewportLabelFont()` -- that drei's `<Text>` reads back by module
+  identity. The self-hosted font (no CDN fetch behind our CSP) and the label
+  pre-warm only hold if our import and drei's import resolve to the same module
+  instance and the same version those APIs were written against. A floating
+  range would let an unreviewed patch change the default the guard depends on.
+- `three-stdlib`: imported type-only for `Line2`
+  (`Geometry3D/dimensions/primitives.tsx`, the ref drei's `<Line>` draws with).
+  The viewport's own turntable controller replaced drei's `OrbitControls`, so
+  that type no longer appears. It is pinned to the version drei resolves so the
+  imported type matches the object drei actually instantiates at runtime.
 
 Bumping any of the three is therefore deliberate: change the pin, run
 `npm run licenses:generate`, and re-run the viewport guards

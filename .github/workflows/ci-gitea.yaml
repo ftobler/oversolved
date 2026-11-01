@@ -50,12 +50,13 @@ jobs:
 
       # flake8 stays the CI lint (the local gate is `just ruff`); it is the
       # stable safety net for the same E/F/W rule set. Targets mirror the
-      # justfile mypy/ruff recipes: package, tests, lint.py, mergeCorpus.py.
+      # justfile mypy/ruff recipes: package, tests, lint.py, mergeCorpus.py,
+      # cadqueryReference.py.
       - name: flake8
-        run: flake8 oversolved tests lint.py frontend/scripts/mergeCorpus.py
+        run: flake8 oversolved tests lint.py frontend/scripts/mergeCorpus.py frontend/scripts/cadqueryReference.py
 
       - name: mypy
-        run: mypy tests/ oversolved/ lint.py frontend/scripts/mergeCorpus.py
+        run: mypy tests/ oversolved/ lint.py frontend/scripts/mergeCorpus.py frontend/scripts/cadqueryReference.py
 
       # The comment-style linter's Python dialect (dashes, banners) is local to
       # `just lint-py` otherwise; run it here so the same files are enforced.

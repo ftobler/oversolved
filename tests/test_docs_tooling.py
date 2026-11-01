@@ -7,12 +7,35 @@ misleading a developer.
 
 import json
 import pathlib
+import re
+
+import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _read(rel: str) -> str:
     return (ROOT / rel).read_text()
+
+
+def _squashed(text: str) -> str:
+    """Prose wrapped at 80 columns, so compare after collapsing whitespace."""
+    return " ".join(text.split())
+
+
+def _mutation_example_count() -> int:
+    text = _read("frontend/src/hooks/__tests__/mutationExamples.ts")
+    start = text.index("export const MUTATION_EXAMPLES")
+    end = text.index("\n}", start)
+    return len(re.findall(r"^  [a-z][a-z0-9_]*: \{", text[start:end], re.M))
+
+
+def _action_matrix() -> dict:
+    return json.loads(_read("frontend/src/testing/actionMatrix/baseline.json"))
+
+
+def _oracle_case_count() -> int:
+    return sum(1 for path in (ROOT / "frontend" / "oracle").iterdir() if path.is_dir() and re.match(r"\d\d-", path.name))
 
 
 # AR-M1 originally guarded one dead variable (OVERSOLVED_DB_PATH) in
@@ -56,7 +79,7 @@ def test_no_dead_server_env_vars_are_documented() -> None:
 
 
 def test_main_gate_is_named_fuzz_not_nightly() -> None:
-    """The long suite is the `fuzz` job on `refs/heads/main`.
+    """The long suite is the `fuzz` job on `refs/heads/main` and `refs/heads/fuzz`.
 
     It was called nightly before 83c82d2e; the schedule is gone. Prose that
     still says nightly sends the next reader looking for a job that does not
@@ -66,15 +89,20 @@ def test_main_gate_is_named_fuzz_not_nightly() -> None:
     for rel in ("AGENTS.md", "docs/testing.md", ".github/workflows/ci-gitea.yaml"):
         assert "nightly" not in _read(rel).lower(), (
             f"{rel} calls the main-gate suite nightly; it is the `fuzz` job, "
-            "gated to refs/heads/main and workflow_dispatch."
+            "gated to refs/heads/main and refs/heads/fuzz."
         )
     ci = _read(".github/workflows/ci-gitea.yaml")
+    start = ci.index("  fuzz:")
+    body = ci[start:].split("\n  #", 1)[0]
+    assert "refs/heads/main" in body and "refs/heads/fuzz" in body, (
+        "the fuzz job is no longer gated to both refs/heads/main and refs/heads/fuzz"
+    )
     for command in (
         "run: just fuzz-session 200 40",
         "run: just action-matrix",
         "run: just fuzz-geometry 1500 4",
     ):
-        assert command in ci, f"the fuzz job no longer runs `{command}` as its own step"
+        assert command in body, f"the fuzz job no longer runs `{command}` as its own step"
 
 
 def test_env_example_is_gone() -> None:
@@ -109,10 +137,14 @@ def test_setup_doc_states_node_floor() -> None:
     assert "Node.js >= 20.19" in text
 
 
-def test_setup_doc_mypy_command_matches_canonical_order() -> None:
-    # AR-N: the canonical mypy invocation is `tests/ oversolved/`.
+def test_setup_doc_quotes_the_mypy_recipe() -> None:
+    # AR-N: the canonical type-check is `just mypy`. A quoted bare command
+    # drifted once already (it missed frontend/scripts/cadqueryReference.py),
+    # so the doc points at the recipe and the target list lives in the justfile.
     text = _read("docs/setup.md")
-    assert "mypy tests/ oversolved/" in text
+    assert "just mypy" in text
+    assert "just python" in text
+    assert "mypy tests/ oversolved/" not in text
 
 
 def test_lint_py_docstring_points_at_real_convention_doc() -> None:
@@ -155,3 +187,86 @@ def test_frontend_lint_scans_the_root_configs() -> None:
         assert name in body, f"frontend-lint no longer lints {name}"
     for rel in (".github/workflows/ci-gitea.yaml", ".github/workflows/ci-github.yaml"):
         assert "frontend/eslint.config.js" in _read(rel), f"{rel} no longer lints the frontend root configs"
+
+
+def test_testing_doc_action_matrix_counts_match_the_baseline() -> None:
+    """Hand-written counts are what drifted; derive them from the baseline."""
+    baseline = _action_matrix()
+    sweep = baseline["sweep"]
+    phrase = (
+        f"{sweep['docs']} documents x up to {sweep['maxTargetsPerDoc']} targets "
+        f"x {sweep['commands']} commands, {len(baseline['rows']):,} rows"
+    )
+    assert phrase in _squashed(_read("docs/testing.md")), (
+        f"docs/testing.md no longer states the live matrix sweep ({phrase}); "
+        "regenerate the baseline and update the prose together"
+    )
+
+
+def test_testing_doc_part_spec_count_matches_the_matrix() -> None:
+    commands = _action_matrix()["sweep"]["commands"]
+    phrase = f"(the sketch/part editor, {commands} specs)"
+    assert phrase in _squashed(_read("docs/command_system.md")), (
+        f"docs/command_system.md no longer states `{phrase}`; the sweep enumerates PART_COMMAND_SPECS"
+    )
+
+
+def test_testing_doc_session_fuzz_count_matches_the_registry() -> None:
+    count = _mutation_example_count()
+    phrase = f"over the {count}-type mutation example registry"
+    assert phrase in _squashed(_read("docs/testing.md")), (
+        f"docs/testing.md no longer states `{phrase}`; update it with MUTATION_EXAMPLES"
+    )
+
+
+def test_testing_doc_ci_fuzz_size_and_branches_match_the_workflow() -> None:
+    ci = _read(".github/workflows/ci-gitea.yaml")
+    start = ci.index("  fuzz:")
+    body = ci[start:].split("\n  #", 1)[0]
+    assert "refs/heads/main" in body and "refs/heads/fuzz" in body
+    assert "run: just fuzz-geometry 1500 4" in body
+    doc = _squashed(_read("docs/testing.md"))
+    assert "`refs/heads/main` or `refs/heads/fuzz`" in doc, "docs/testing.md lost the fuzz branch from the CI gate"
+    assert "just fuzz-geometry 1500 4" in doc, "docs/testing.md no longer states the main-gate geometry size"
+
+
+def test_testing_doc_node_matrix_matches_ci() -> None:
+    ci = _read(".github/workflows/ci-gitea.yaml")
+    matrix = re.search(r"node-version: \[([^\]]+)\]", ci)
+    assert matrix is not None, "the frontend job lost its Node matrix"
+    versions = [part.strip() for part in matrix.group(1).split(",")]
+    assert versions == ["22", "24", "26"], f"the Node matrix moved to {versions}"
+    doc = _squashed(_read("docs/testing.md"))
+    assert "the matrix runs 22, 24 and 26" in doc, (
+        "docs/testing.md no longer states the CI Node matrix; it must not claim a leg below 22.6"
+    )
+    assert "no CI leg is that old" in doc
+
+
+def test_testing_doc_regressions_replay_matches_the_suite() -> None:
+    suite = _read("frontend/src/testing/robustnessFuzz/regressionsReal.test.ts")
+    assert "endsWith('-minimal.json')" in suite, "the fixture replay suite stopped reading *-minimal.json"
+    doc = _squashed(_read("docs/testing.md"))
+    assert "nothing replays the directory yet" not in doc, (
+        "regressionsReal.test.ts replays every *-minimal.json fixture on the PR gate"
+    )
+    assert "regressionsReal.test.ts" in doc and "replays every `*-minimal.json`" in doc
+
+
+def test_kb_counts_match_the_live_files() -> None:
+    """The knowledge base lives in the separate feature/ repo; skip without it."""
+    path = ROOT / "feature" / "knowledgebase.agent.md"
+    if not path.is_file():
+        pytest.skip("feature/knowledgebase.agent.md is absent (feature/ is a separate, gitignored repo)")
+    text = _squashed(path.read_text())
+    count = _mutation_example_count()
+    assert f"the {count}-type mutation example registry" in text, (
+        f"the knowledge base no longer states the live MUTATION_EXAMPLES count ({count})"
+    )
+    cases = _oracle_case_count()
+    assert f"({cases} recipe parts" in text, (
+        f"the knowledge base no longer states the live oracle case count ({cases})"
+    )
+    assert "refs/heads/main` or `refs/heads/fuzz" in text, (
+        "the knowledge base lost the fuzz branch from the main-gate job gate"
+    )

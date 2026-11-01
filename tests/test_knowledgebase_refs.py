@@ -166,7 +166,7 @@ def test_knowledgebase_names_the_current_fuzz_gate() -> None:
     text = _kb_text()
     assert "nightly" not in text.lower(), (
         "feature/knowledgebase.agent.md calls the main-gate suite nightly; it is "
-        "the `fuzz` job, gated to refs/heads/main."
+        "the `fuzz` job, gated to refs/heads/main and refs/heads/fuzz."
     )
     for name in ("`just fuzz`", "fuzz-session", "action-matrix", "fuzz-geometry", "fuzz-sketch"):
         assert name in text, f"feature/knowledgebase.agent.md lost the current fuzz name {name}"

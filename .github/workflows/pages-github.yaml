@@ -1,7 +1,11 @@
-# GitHub side: a sanity check plus the Pages deploy, on main only. Gitea runs
-# the full matrix from ci-gitea.yaml on every push and PR, so main arrives here
-# pre-checked and this need not repeat that gate. The kernel tests self-skip
-# without OCC.js and the pkg-node solver builds, which is accepted here.
+# GitHub site publish, main only. GitHub's full gate is ci-github.yaml, which
+# runs on every push and PR; this file is the deploy, not a second matrix. Its
+# `check` job repeats only the cheap, kernel-free subset (Python tooling, lint,
+# build, vitest without OCC.js) so a manual dispatch or a re-run of this
+# workflow still refuses a broken tree. It does not gate on a `workflow_run` of
+# ci-github.yaml: Gitea also parses this file, and a trigger it does not
+# implement would break the no-op there. The kernel suites therefore self-skip
+# on this leg; ci-github.yaml is where they run provisioned.
 name: Pages (GitHub)
 
 on:
@@ -34,7 +38,7 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: flake8
-        run: flake8 oversolved tests lint.py frontend/scripts/mergeCorpus.py
+        run: flake8 oversolved tests lint.py frontend/scripts/mergeCorpus.py frontend/scripts/cadqueryReference.py
 
       - name: pytest
         run: pytest tests

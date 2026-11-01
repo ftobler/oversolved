@@ -83,11 +83,11 @@ Defines entity types with `activeTool`, `shortcut`, `toolbarIcon`, `paramCount`,
 
 ### Tool Registry (`toolRegistry.ts`)
 
-Singleton `ToolRegistry` class: `register(tool)`, `get(id)`, `byCategory(category)`, `getToolbarTools()`, `validate()`.
+Singleton `ToolRegistry` class: `register(tool)`, `get(id)`, `reset()`, `registeredIds()`, `drawingIds()`, `validate()`.
 
 Tools implement `ToolHandlers`: `onPointerDown`, `onPointerMove`, `onPointerUp`, `onPointerOver`, `onPointerOut`, `onClick`.
 
-Tool IDs: `dimension`, `drag`, the entity tools `line`, `circle`, `arc`, `ellipse`, `point`, `project`, `spline`, and the compound drawing tools `rect`, `center_rect`, `ngon`.
+Tool IDs: `dimension`, `drag`, the entity tools `line`, `circle`, `arc`, `ellipse`, `point`, `project`, `spline`, `fit_spline`, and the compound drawing tools `rect`, `center_rect`, `ngon`.
 
 Not every interaction is a registered tool:
 - **Select** has no registered tool. Idle select is the dispatchSketchClick fallback (`state.toggleNormalSelection(id)` for the clicked entity/vertex) plus the DrawPlane backplane clear on empty-space clicks. The toolbar select button dispatches `set_tool_drag`, and `getEffectiveTool(null)` resolves to `'drag'`.
@@ -99,7 +99,7 @@ Snap rules for drag; measurement rules for on-canvas display.
 
 ### Command Tables (`commandEntries.ts`, `assemblyCommandEntries.ts`)
 
-`PART_COMMAND_SPECS` (the sketch/part editor, 48 specs) and
+`PART_COMMAND_SPECS` (the sketch/part editor, 50 specs) and
 `ASSEMBLY_COMMAND_SPECS` (the assembly editor, 29 specs) are the single source
 of truth for which commands each editor registers. Both are static data: every
 body reads its inputs from the `CommandContext` it is handed, so the table is

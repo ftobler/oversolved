@@ -24,10 +24,11 @@ stdout, and keeps the gate's own exit code (pipefail). One run is slow, so the
 log lets you re-grep the result afterwards without re-running the gate.
 
 ```bash
-.venv/bin/python -m pytest tests/ 2>&1 | tee tmp/pytest.log
-.venv/bin/python -m mypy tests/ oversolved/ 2>&1 | tee tmp/mypy.log
-.venv/bin/python -m ruff check tests/ oversolved/ 2>&1 | tee tmp/ruff.log   # CI still runs flake8 as the safety net
-.venv/bin/python lint.py oversolved tests frontend/scripts --language python 2>&1 | tee tmp/lint_python.log
+just python    # every Python gate, aggregate log in tmp/just_python.log
+just mypy      # type-check the tooling; the target list lives in the recipe
+just ruff      # lint the tooling (CI still runs flake8 as the safety net)
+just lint-py   # comment style over oversolved, tests and frontend/scripts
+just pytest    # the tooling and docs/config tests
 ```
 
 ## Frontend Commands
