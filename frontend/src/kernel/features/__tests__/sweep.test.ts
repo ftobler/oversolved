@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { Repository } from '../../query'
-import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, orderedPathWorldEdges, collectPathEdges, type ChainEdge } from '../sweep'
+import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, orderedPathWorldEdges, collectPathEdges, entityLoopDropMessage, type ChainEdge } from '../sweep'
 import { collectExtrudeLoops } from '../faceProfile'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule, OccShape } from '../../occ/occTypes'
@@ -545,5 +545,37 @@ describe('collectPathEdges unsupported path edge', () => {
     })
     expect(() => collectPathEdges(oc, scope, ['$sk'], repo))
       .toThrow(/path edge kind 'circle' is not supported/)
+  })
+})
+
+describe('entityLoopDropMessage', () => {
+  it('falls back to the chain reason when every picked entity kept a loop', () => {
+    // A split arc contributes two topo edges with the same entity id: one closed
+    // a kept loop, the other was leftover. No entity was dropped, so the message
+    // must name the chain defect rather than claim "dropped 0 of 1".
+    const message = entityLoopDropMessage(
+      ['arc0'],
+      [[{ entity_id: 'arc0', start: [0, 0], end: [1, 0] }]],
+      [{ kind: 'leftover', leftover: 1, total: 2, surface: 0 }],
+    )
+    expect(message).not.toBeNull()
+    expect(message).not.toMatch(/dropped 0/)
+    expect(message).toMatch(/did not all form a closed loop/)
+    expect(message).toMatch(/left 1 of 2 edge\(s\) unused/)
+  })
+
+  it('names the picked entities that produced no kept loop', () => {
+    const message = entityLoopDropMessage(
+      ['rect1', 'rect2'],
+      [[{ entity_id: 'rect1', start: [0, 0], end: [1, 0] }]],
+      [{ kind: 'leftover', leftover: 4, total: 8, surface: 0 }],
+    )
+    expect(message).toBe(
+      'dropped 1 of 2 picked profile entities whose edges did not form a closed loop: rect2',
+    )
+  })
+
+  it('returns null when the assembler diagnosed nothing', () => {
+    expect(entityLoopDropMessage(['rect1'], [[{ entity_id: 'rect1' }]], [])).toBeNull()
   })
 })

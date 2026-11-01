@@ -72,6 +72,7 @@ export function resolveUpToPlane(
   try {
     entry = globalRepo.query(upToRef, null, bodyStore) as Dict | null
   } catch (e) {
+    swallowUnlessTrap(e)
     if (e instanceof AmbiguousQueryError) throw e
     // A dangling pick falls back to the blind distance, but ambiguity must not
     // pose as "did not resolve": the resolver DID match elements, several of
@@ -88,6 +89,7 @@ export function resolveUpToPlane(
     try {
       frame = resolveFaceSlashFrame(oc, scope, table, upToRef, globalRepo, bodyStore)
     } catch (e) {
+      swallowUnlessTrap(e)
       // The slash ref names a face explicitly, so a body/remap failure stays
       // loud. Only the non-planar refusal is reworded into the up-to contract.
       if (e instanceof Error && /flat faces/.test(e.message)) {

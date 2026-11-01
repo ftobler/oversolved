@@ -4,7 +4,9 @@
 // trap: the linear memory is undefined after one, and carrying on defers the
 // failure to the next OCC call, where solvedLocally can no longer tell which
 // feature broke the heap. Every non-teardown catch in the converted helper set
-// calls swallowUnlessTrap first.
+// calls swallowUnlessTrap first, unless it is a bare `throw e` that hands the
+// caught value to the caller unchanged. A rethrow that replaces the value needs
+// the guard; the source sweep enforces both halves.
 //
 // The source sweep pins the whole converted set so a new bare catch in one of
 // these files fails here; the real-OCC cases inject a trap into the entry
@@ -225,6 +227,8 @@ describe.skipIf(!oc)('operational catches rethrow traps (real OCC)', () => {
 })
 
 describe('converted catch audit', () => {
+  // Hand-maintained: the files that import swallowUnlessTrap today. A new
+  // conversion must be added here so its catches are audited too.
   const files = [
     'builderAncestry.ts',
     'occ/canonicalSurfaces.ts',
@@ -253,6 +257,11 @@ describe('converted catch audit', () => {
 
   function catchLines(src: string, rel: string): Array<{ line: number; body: string; caught: string | null }> {
     const source = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true)
+    // createSourceFile never throws: after a syntax error it records diagnostics
+    // and drops the nodes it could not attach, which would silently hide every
+    // catch in the file from this audit.
+    expect((source as ts.SourceFile & { parseDiagnostics: readonly ts.Diagnostic[] }).parseDiagnostics,
+      `${rel} parse diagnostics`).toEqual([])
     const out: Array<{ line: number; body: string; caught: string | null }> = []
     const visit = (node: ts.Node): void => {
       if (ts.isCatchClause(node)) {
