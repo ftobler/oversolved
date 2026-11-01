@@ -16,7 +16,7 @@ import type { Repository } from '../query'
 import { parseAncestry, featureRefId } from '../query'
 import { collectExtrudeLoops } from './faceProfile'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
-import { extractProfileLoops, profileAreaReport, type ProfileLoopDiag } from './shared/profileLoops'
+import { extractProfileLoops, profileAreaReport, loopDiagReasons, type ProfileLoopDiag } from './shared/profileLoops'
 import { parseSketchEntityRef, surfaceEntityIds } from './shared/bodyRef'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage, type LineageResult } from '../occ/prismLineage'
@@ -752,10 +752,11 @@ export function solveSweep(
       continue
     }
     if (diags.length > 0) {
-      // Only the FIRST loop survives the assembler; every other chain it
-      // diagnosed is geometry the user picked and will not be swept. Name the
-      // entities that produced no kept loop instead of sweeping the remainder
-      // as if it were the whole pick.
+      // The assembler returns every closed loop it completed, but a boundary it
+      // also diagnosed as unclosed or leftover was only partly swept. Name the
+      // entities whose edges did not all make it into a kept loop; an arc split
+      // can share one entity id with a kept edge, so fall back to the chain
+      // reasons rather than claiming "dropped 0 of N".
       const kept = new Set<string>()
       for (const loop of loops) {
         for (const edge of loop) {
@@ -765,10 +766,11 @@ export function solveSweep(
       }
       const picked = [...eids]
       const dropped = picked.filter((id) => !kept.has(id))
-      profileErrors.push(
-        `sweep: dropped ${dropped.length} of ${picked.length} picked profile entities ` +
-          `whose edges did not form a closed loop: ${dropped.join(', ')}`,
-      )
+      const reason = dropped.length > 0
+        ? `dropped ${dropped.length} of ${picked.length} picked profile entities ` +
+          `whose edges did not form a closed loop: ${dropped.join(', ')}`
+        : `the picked profile edges did not all form a closed loop: ${loopDiagReasons(diags).join('; ')}`
+      profileErrors.push(`sweep: ${reason}`)
     }
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))

@@ -267,12 +267,14 @@ export function registerSplitBodies(
  *
  * An EMPTY result (the new shape holds no solid) deletes the body from the
  * store and returns `[]`, so a caller that re-resolves the old id later fails
- * with "body not found" instead of reading a `shape: null`. `body_ids: []`
- * deliberately means "nothing survives", the opposite of the auto-delete
- * convention in bodyOps.ts (which keeps the consumed id in `body_ids`); do not
- * reconcile the two. The deletion is complete here (store entry gone, handle
- * released); the build loop's eviction pass (builder.ts) clears the body's
- * repo registrations, the same path a consumed boolean tool takes.
+ * with "body not found" instead of reading a `shape: null`. The one invariant
+ * every caller keeps is that a consumed id never appears in `body_ids`: this
+ * returns `[]` for "nothing survives", and a leaf that deletes a body reports
+ * the same empty list. `body_id` still names the id the feature row points at
+ * (hole and array keep the consumed body's real id; a merge-target cut keeps
+ * the would-be id it never minted). The deletion is complete here (store entry
+ * gone, handle released); the build loop's eviction pass (builder.ts) clears
+ * the body's repo registrations, the same path a consumed boolean tool takes.
  */
 export function resplitBody(
   oc: OccModule,

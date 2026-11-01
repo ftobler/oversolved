@@ -209,6 +209,7 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: L
     try {
       wire = scope.track(makeWire(oc, scope, [tracked], { requireClosed: true }))
     } catch (e) {
+      swallowUnlessTrap(e)
       throw new Error(`${extractOccErrorMessage(oc, e)}${realizedGapsLine(oc, scope, [tracked])}`)
     }
     scope.release(tracked)
@@ -262,6 +263,7 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: L
   try {
     wire = scope.track(makeWire(oc, scope, edges, { requireClosed: true }))
   } catch (e) {
+    swallowUnlessTrap(e)
     throw new Error(`${extractOccErrorMessage(oc, e)}${realizedGapsLine(oc, scope, edges)}`)
   }
   for (const e of edges) scope.release(e)
@@ -328,6 +330,7 @@ export function sketchLoopsToFace(
     // edges connected", with nothing to say WHICH joint or how wide. The dump is
     // the reproduction: it is what turns "OCCT is not recognizing the shape"
     // into a paste-able bug report.
+    swallowUnlessTrap(e)
     throw new Error(`${extractOccErrorMessage(oc, e)}\n${safeProfileReport(snapped, 'always')}`)
   }
 }

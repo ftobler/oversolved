@@ -227,6 +227,9 @@ export function applyBodyOperation(
       }
       throw new Error(`${opName}: cut does not intersect any target body - nothing to remove`)
     }
+    // A merge-target cut that consumes the target never mints `bodyId`, so
+    // body_id keeps that would-be id; hole and array instead keep the consumed
+    // body's real id. body_ids is empty either way.
     result.body_id = cutBodyId ?? bodyId
     result.body_ids = cutBodyIds
     result.operation = 'cut'

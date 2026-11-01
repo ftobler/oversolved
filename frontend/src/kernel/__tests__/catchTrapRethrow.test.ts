@@ -13,6 +13,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
+import * as ts from 'typescript'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
@@ -141,6 +142,86 @@ describe.skipIf(!oc)('operational catches rethrow traps (real OCC)', () => {
       scope.dispose()
     }
   })
+
+  it('keeps the recoverable fallback for plain errors at each entry point', () => {
+    // Open shell: the two join attempts fail as ordinary build errors.
+    {
+      const scope = new DisposeScope()
+      try {
+        const box = makeBox(oc!, scope, 10, 10, 10)
+        const closing = canonicalFaces(oc!, scope, box)[0]
+        const plainOc = ocWithThrowingClass('BRepOffsetAPI_MakeThickSolid_1', () => new Error('join failed'))
+        expect(applyShellWithLineage(plainOc, scope, box, [closing], 1, 'inward').success).toBe(false)
+      } finally {
+        scope.dispose()
+      }
+    }
+    // Sealed shell: the offset attempt fails as an ordinary build error.
+    {
+      const scope = new DisposeScope()
+      try {
+        const box = makeBox(oc!, scope, 10, 10, 10)
+        const oldNames = { ...emptyShapeNames(), createdBy: 'ex1' }
+        const plainOc = ocWithThrowingClass('BRepOffsetAPI_MakeOffsetShape_1', () => new Error('offset failed'))
+        expect(applyShellWithLineage(plainOc, scope, box, [], 1, 'inward', oldNames).success).toBe(false)
+      } finally {
+        scope.dispose()
+      }
+    }
+    // Sealed shell: the closing boolean fails as an ordinary build error.
+    {
+      const scope = new DisposeScope()
+      try {
+        const box = makeBox(oc!, scope, 10, 10, 10)
+        const oldNames = { ...emptyShapeNames(), createdBy: 'ex1' }
+        const plainOc = ocWithThrowingClass('BRepAlgoAPI_Cut_1', () => new Error('cut failed'))
+        expect(applyShellWithLineage(plainOc, scope, box, [], 1, 'inward', oldNames).success).toBe(false)
+      } finally {
+        scope.dispose()
+      }
+    }
+    // Delete-face: the defeature build fails as an ordinary refusal.
+    {
+      const scope = new DisposeScope()
+      try {
+        const box = makeBox(oc!, scope, 10, 10, 10)
+        const faces = canonicalFaces(oc!, scope, box) as OccShape[]
+        const plainOc = ocWithThrowingClass('BRepAlgoAPI_Defeaturing', () => new Error('build failed'))
+        const result = applyDeleteFacesWithLineage(plainOc, scope, box, [faces[0]])
+        expect(result.applied).toBe(false)
+        expect(result.failedGroups.length).toBeGreaterThan(0)
+      } finally {
+        scope.dispose()
+      }
+    }
+    // Hole: a failed intersection probe still lets the real cut run.
+    {
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      const repo = new Repository()
+      try {
+        const box = makeBox(oc!, scope, 20, 20, 20)
+        const body: Body = {
+          id: 'body_t', created_by: 'ex', modified_by: [], shape: table.register(box, 'ex'),
+          sketch_id: 'sk', brep_diff: null, profile_queries: [],
+        }
+        repo.register('_pt_sk', {
+          origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1],
+        })
+        repo.register('sk/p1/xy', { external_xy: [5, 5] })
+        const plainOc = ocWithThrowingClass('BRepAlgoAPI_Common_1', () => new Error('probe failed'))
+        const result = solveHole(plainOc, scope, table, {
+          id: 'h1', kind: 'hole',
+          hole: { sketch: '@sk', target: 'body_t', diameter: 2, depth: 5 },
+        }, repo, { body_t: body }, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        expect(result.status).toBe('ok')
+        expect(result.hole_count).toBe(1)
+      } finally {
+        table.disposeAll()
+        scope.dispose()
+      }
+    }
+  })
 })
 
 describe('converted catch audit', () => {
@@ -166,34 +247,41 @@ describe('converted catch audit', () => {
     'features/boolean.ts',
     'features/filletChamfer.ts',
     'features/faceProfile.ts',
+    'features/sketch.ts',
     'features/upTo.ts',
   ]
 
-  function braceEnd(src: string, open: number): number {
-    let depth = 0
-    for (let i = open; i < src.length; i++) {
-      if (src[i] === '{') depth++
-      else if (src[i] === '}') {
-        depth--
-        if (depth === 0) return i
+  function catchLines(src: string, rel: string): Array<{ line: number; body: string; caught: string | null }> {
+    const source = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true)
+    const out: Array<{ line: number; body: string; caught: string | null }> = []
+    const visit = (node: ts.Node): void => {
+      if (ts.isCatchClause(node)) {
+        out.push({
+          line: source.getLineAndCharacterOfPosition(node.block.getStart(source)).line + 1,
+          body: node.block.getText(source),
+          caught: node.variableDeclaration?.name.getText(source) ?? null,
+        })
       }
+      ts.forEachChild(node, visit)
     }
-    return src.length
+    visit(source)
+    return out
   }
 
-  it('every catch in the converted files guards or rethrows', () => {
-    const catchRe = /\}\s*catch\s*(?:\([^)]*\))?\s*\{/g
+  it('every catch in the converted files guards or rethrows the caught value', () => {
     for (const rel of files) {
       const src = readFileSync(new URL('../' + rel, import.meta.url), 'utf8')
       const unguarded: number[] = []
-      for (const m of src.matchAll(catchRe)) {
-        const open = src.indexOf('{', m.index)
-        const body = src.slice(open, braceEnd(src, open))
-        if (!/swallowUnlessTrap\(|throw\b/.test(body)) {
-          unguarded.push(src.slice(0, m.index).split('\n').length)
-        }
+      for (const { line, body, caught } of catchLines(src, rel)) {
+        const guarded = /swallowUnlessTrap\(/.test(body)
+        // A bare `throw e` hands the caught value (trap included) to the caller,
+        // so it needs no guard. A rethrow that REPLACES the value (`throw new
+        // Error(...)`) does, or the trap stops being recognizable.
+        const bareRethrow = caught !== null &&
+          new RegExp(`throw\\s+${caught.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(body)
+        if (!guarded && !bareRethrow) unguarded.push(line)
       }
-      expect(unguarded, `${rel} catch lines without swallowUnlessTrap`).toEqual([])
+      expect(unguarded, `${rel} catch lines without swallowUnlessTrap or a bare rethrow`).toEqual([])
     }
   })
 })

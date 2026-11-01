@@ -87,7 +87,8 @@ const solverCell = memoizedLoad(async (): Promise<SolveBytes | null> => {
   let topoLoad: Promise<TopologyBytes | null>
   try {
     topoLoad = loadTopologyWasm?.() ?? Promise.resolve(null)
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     topoLoad = Promise.resolve(null)
   }
   const [bytes, topo] = await Promise.all([loadSolverWasm(), topoLoad.catch(() => null)])
@@ -258,7 +259,8 @@ function lowerProjectedEntities(
           }
         }
       }
-    } catch {
+    } catch (e) {
+      swallowUnlessTrap(e)
       // fall through to the unresolved path below
     }
     if (lowered) {
@@ -787,7 +789,8 @@ export function prepareDragContext(
       // size param, so sizeIndex stays undefined and the edge drag is translate.
       sizeIndex: ent.kind === 'circle' ? ent.offset + 2 : undefined,
     }
-  } catch {
+  } catch (e) {
+    swallowUnlessTrap(e)
     return null
   }
 }
