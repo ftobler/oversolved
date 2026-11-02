@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { useEditorState } from '@/hooks/useEditorState'
 import { CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
 import { useCommandRegistry } from '@/contexts/CommandRegistryContext'
 import { openOffsetDialog } from '@/pages/commandEntries'
@@ -18,18 +17,18 @@ interface SketchToolbarProps {
   // The page owns the file picker and the mutation; the toolbar only arms the
   // gesture, exactly like the header's Import STEP button.
   onImportDxf: () => void
+  // True only while the open edit is a sketch: the page derives this from the
+  // editing feature, so a feature edit keeps the import greyed out.
+  canImportDxf: boolean
 }
 
 const mirrorKey = CORE_KEYBINDINGS.find(b => b.command === 'mirror_entities')?.key.toUpperCase()
 const constructionKey = CORE_KEYBINDINGS.find(b => b.command === 'toggle_construction')?.key.toUpperCase()
 
-export default function SketchToolbar({ onResetViewport, onImportDxf }: SketchToolbarProps) {
+export default function SketchToolbar({ onResetViewport, onImportDxf, canImportDxf }: SketchToolbarProps) {
   const registry = useCommandRegistry()
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const drag = useSketchEditorStore(s => s.drag)
-  // The import writes into the open sketch, so it is disabled when the sketch
-  // toolbar is showing without an edit (the page's default mode is sketch).
-  const sketchOpen = useEditorState(s => s.editingFeatureId !== null)
   // A render token for the selection. The registry's verdicts read the live
   // store, so the component must re-run them when the selection changes; the
   // token is their dependency, the ids themselves are not rendered here.
@@ -107,9 +106,9 @@ export default function SketchToolbar({ onResetViewport, onImportDxf }: SketchTo
       <ToolItem def={TOOL_DEFS.project} />
 
       <ToolbarButton
-        title={sketchOpen ? 'Import DXF into this sketch' : 'Open a sketch to import a DXF'}
+        title={canImportDxf ? 'Import DXF into this sketch' : 'Open a sketch to import a DXF'}
         icon={iconUrl('icon-upload')}
-        disabled={!sketchOpen}
+        disabled={!canImportDxf}
         onClick={onImportDxf}
         handle="toolbar:import_dxf"
       />

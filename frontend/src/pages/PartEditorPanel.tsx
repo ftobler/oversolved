@@ -55,6 +55,9 @@ interface PartEditorPanelProps {
   handleAddPlane: () => void
   // The sketch toolbar's DXF import; the page owns the picker and the write.
   handleImportDxf: () => void
+  // True only while the open edit is a sketch, so a feature edit keeps the
+  // import greyed out even when the page's mode still reads sketch.
+  canImportDxf: boolean
   viewportRef: React.RefObject<ViewportHandle | null>
   handleRightClick: (pos: [number, number], targetId?: string) => void
   // Bottom-right in-viewport overlay (the measurement readout).
@@ -77,6 +80,7 @@ export default function PartEditorPanel({
   handleAddSketch,
   handleAddPlane,
   handleImportDxf,
+  canImportDxf,
   viewportRef,
   handleRightClick,
   viewportHud,
@@ -100,7 +104,7 @@ export default function PartEditorPanel({
             </button>
           </div>
           <div className="toolbar-separator" />
-          {mode === 'sketch' && <SketchToolbar onResetViewport={() => viewportRef.current?.autoZoomToFit(true)} onImportDxf={handleImportDxf} />}
+          {mode === 'sketch' && <SketchToolbar onResetViewport={() => viewportRef.current?.autoZoomToFit(true)} onImportDxf={handleImportDxf} canImportDxf={canImportDxf} />}
           {mode === 'feature' && (
             <>
               <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>

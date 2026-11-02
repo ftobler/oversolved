@@ -1416,6 +1416,7 @@ export default function Part() {
           handleAddSketch={handleAddSketch}
           handleAddPlane={handleAddPlane}
           handleImportDxf={handleImportDxf}
+          canImportDxf={activeSketchFeatureId !== undefined}
           viewportRef={viewportRef}
           handleRightClick={handleRightClick}
           viewportHud={

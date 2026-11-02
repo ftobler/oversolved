@@ -27,6 +27,7 @@ function renderPanel() {
       handleAddSketch={vi.fn()}
       handleAddPlane={vi.fn()}
       handleImportDxf={vi.fn()}
+      canImportDxf={false}
       viewportRef={{ current: null }}
       handleRightClick={vi.fn()}
     />,
