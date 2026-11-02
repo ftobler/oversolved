@@ -6,6 +6,7 @@ import Viewport from '@/components/Viewport'
 import { clearStaleBandClickConsumed } from '@/components/Viewport/idDispatch/bandClickGuard'
 import { getLivePipeline } from '@/picking/IdPipelineContext'
 import { useEditorState } from '@/hooks/useEditorState'
+import { installPointerEventStub } from '@/testing/pointerEventStub'
 
 // A real (jsdom) canvas so the id-buffer dispatcher attaches its click listener
 // to a live element. The Canvas mock hands this to the Viewport via onCreated.
@@ -48,16 +49,7 @@ vi.mock('@/components/Viewport/SceneController', () => ({ default: () => <div da
 vi.mock('@/components/Viewport/EnvLight', () => ({ default: () => null, ENV_INTENSITY: 1.0, ENV_MAP_INTENSITY: 1.0, __esModule: true }))
 vi.mock('@/components/Viewport/UserDefinedPlane', () => ({ default: () => <div data-testid="user-defined-plane" />, __esModule: true }))
 
-if (typeof window.PointerEvent !== 'function') {
-  window.PointerEvent = class PointerEventStub extends MouseEvent {
-    constructor(type: string, init: PointerEventInit = {}) {
-      super(type, init)
-      Object.defineProperty(this, 'isPrimary', { value: init.isPrimary ?? false, enumerable: true })
-      Object.defineProperty(this, 'pointerId', { value: init.pointerId ?? 0, enumerable: true })
-      Object.defineProperty(this, 'pointerType', { value: init.pointerType ?? '', enumerable: true })
-    }
-  } as unknown as typeof PointerEvent
-}
+installPointerEventStub('')
 
 const htmlProto = HTMLElement.prototype as unknown as Record<string, (pointerId: number) => unknown>
 htmlProto.setPointerCapture = () => {}

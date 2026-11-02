@@ -60,17 +60,10 @@ vi.mock('@/components/Viewport/assembly/TriadGizmo', () => ({ default: () => nul
 
 import AssemblyViewport from '../AssemblyViewport'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
+import { installPointerEventStub } from '@/testing/pointerEventStub'
 
-// jsdom has no PointerEvent constructor, so fireEvent.pointer* would degrade to
-// a plain Event and drop `buttons`.
-if (typeof window.PointerEvent !== 'function') {
-  window.PointerEvent = class PointerEventStub extends MouseEvent {
-    constructor(type: string, init: PointerEventInit = {}) {
-      super(type, init)
-      Object.defineProperty(this, 'pointerId', { value: init.pointerId ?? 0, enumerable: true })
-    }
-  } as unknown as typeof PointerEvent
-}
+// The MouseEvent-based stub keeps `buttons` on the fired event.
+installPointerEventStub('')
 
 // The scheduler defers the assembly's blocking readback into a frame. Flushing
 // the queued frames by hand lets a test take two moves through the same

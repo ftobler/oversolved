@@ -69,17 +69,9 @@ vi.mock('@/components/Viewport/assembly/TriadGizmo', () => ({ default: () => nul
 import AssemblyViewport from '../AssemblyViewport'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, setAssemblyCallbacks } from '@/stores/assemblyStore'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
+import { installPointerEventStub } from '@/testing/pointerEventStub'
 
-if (typeof window.PointerEvent !== 'function') {
-  window.PointerEvent = class PointerEventStub extends MouseEvent {
-    constructor(type: string, init: PointerEventInit = {}) {
-      super(type, init)
-      Object.defineProperty(this, 'isPrimary', { value: init.isPrimary ?? false, enumerable: true })
-      Object.defineProperty(this, 'pointerId', { value: init.pointerId ?? 0, enumerable: true })
-      Object.defineProperty(this, 'pointerType', { value: init.pointerType ?? 'mouse', enumerable: true })
-    }
-  } as unknown as typeof PointerEvent
-}
+installPointerEventStub('mouse')
 
 const htmlProto = HTMLElement.prototype as unknown as Record<string, (pointerId: number) => unknown>
 htmlProto.setPointerCapture = () => {}

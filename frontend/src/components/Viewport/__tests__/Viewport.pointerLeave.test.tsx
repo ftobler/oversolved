@@ -5,6 +5,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 import Viewport from '@/components/Viewport'
 import { useEditorState } from '@/hooks/useEditorState'
+import { installPointerEventStub } from '@/testing/pointerEventStub'
 
 // Spy the rubber-band hook so the test can observe whether the hasHover gate
 // lets a pointer-down reach the box-drag start. The real hook needs a live
@@ -54,20 +55,10 @@ vi.mock('@/components/Viewport/SceneController', () => ({ default: () => <div da
 vi.mock('@/components/Viewport/EnvLight', () => ({ default: () => null, ENV_INTENSITY: 1.0, ENV_MAP_INTENSITY: 1.0, __esModule: true }))
 vi.mock('@/components/Viewport/UserDefinedPlane', () => ({ default: () => <div data-testid="user-defined-plane" />, __esModule: true }))
 
-// jsdom has no PointerEvent constructor, so fireEvent.pointer* would degrade to
-// a plain Event and drop button/isPrimary. Install a minimal PointerEvent so the
-// Viewport's isPrimary gate behaves like the browser. Scoped to this file only
-// (vitest isolates modules per file).
-if (typeof window.PointerEvent !== 'function') {
-  window.PointerEvent = class PointerEventStub extends MouseEvent {
-    constructor(type: string, init: PointerEventInit = {}) {
-      super(type, init)
-      Object.defineProperty(this, 'isPrimary', { value: init.isPrimary ?? false, enumerable: true })
-      Object.defineProperty(this, 'pointerId', { value: init.pointerId ?? 0, enumerable: true })
-      Object.defineProperty(this, 'pointerType', { value: init.pointerType ?? '', enumerable: true })
-    }
-  } as unknown as typeof PointerEvent
-}
+// The stub makes the Viewport's isPrimary gate behave like the browser's. The
+// '' default leaves bare dispatches out of the mouse-only paths, which pass
+// pointerType explicitly.
+installPointerEventStub('')
 
 // jsdom has no notion of an active pointer, so its setPointerCapture throws
 // InvalidStateError from inside the listener. The Viewport only needs the

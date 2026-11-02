@@ -8,6 +8,7 @@ import { shouldClearSelectionOnBackplaneClick } from '@/components/Viewport/idDi
 import { getLivePipeline, setLivePipeline } from '@/picking/IdPipelineContext'
 import { IdPipeline, FACE_LAYER_NAME } from '@/picking'
 import { useEditorState } from '@/hooks/useEditorState'
+import { installPointerEventStub } from '@/testing/pointerEventStub'
 
 // Capture the miss handler the way R3F would call it after a click that hit no
 // geometry, so the test can drive the real deselect path.
@@ -59,16 +60,7 @@ vi.mock('@/components/Viewport/SceneController', () => ({ default: () => <div da
 vi.mock('@/components/Viewport/EnvLight', () => ({ default: () => null, ENV_INTENSITY: 1.0, ENV_MAP_INTENSITY: 1.0, __esModule: true }))
 vi.mock('@/components/Viewport/UserDefinedPlane', () => ({ default: () => <div data-testid="user-defined-plane" />, __esModule: true }))
 
-if (typeof window.PointerEvent !== 'function') {
-  window.PointerEvent = class PointerEventStub extends MouseEvent {
-    constructor(type: string, init: PointerEventInit = {}) {
-      super(type, init)
-      Object.defineProperty(this, 'isPrimary', { value: init.isPrimary ?? false, enumerable: true })
-      Object.defineProperty(this, 'pointerId', { value: init.pointerId ?? 0, enumerable: true })
-      Object.defineProperty(this, 'pointerType', { value: init.pointerType ?? '', enumerable: true })
-    }
-  } as unknown as typeof PointerEvent
-}
+installPointerEventStub('')
 
 function captureStubs(el: Element): { set: ReturnType<typeof vi.fn> } {
   const set = vi.fn()

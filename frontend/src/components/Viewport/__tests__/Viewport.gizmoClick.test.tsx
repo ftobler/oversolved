@@ -4,6 +4,7 @@ import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorSto
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Viewport from '@/components/Viewport'
 import { useEditorState } from '@/hooks/useEditorState'
+import { installPointerEventStub } from '@/testing/pointerEventStub'
 
 // The direct regression pin for "gizmo click broken / viewport no longer turns".
 // Same harness as Viewport.pointerLeave.test.tsx but with the real CubeGizmo in
@@ -57,16 +58,7 @@ vi.mock('@/components/Viewport/SceneController', () => ({ default: () => <div da
 vi.mock('@/components/Viewport/EnvLight', () => ({ default: () => null, ENV_INTENSITY: 1.0, ENV_MAP_INTENSITY: 1.0, __esModule: true }))
 vi.mock('@/components/Viewport/UserDefinedPlane', () => ({ default: () => <div data-testid="user-defined-plane" />, __esModule: true }))
 
-if (typeof window.PointerEvent !== 'function') {
-  window.PointerEvent = class PointerEventStub extends MouseEvent {
-    constructor(type: string, init: PointerEventInit = {}) {
-      super(type, init)
-      Object.defineProperty(this, 'isPrimary', { value: init.isPrimary ?? false, enumerable: true })
-      Object.defineProperty(this, 'pointerId', { value: init.pointerId ?? 0, enumerable: true })
-      Object.defineProperty(this, 'pointerType', { value: init.pointerType ?? '', enumerable: true })
-    }
-  } as unknown as typeof PointerEvent
-}
+installPointerEventStub('')
 
 const htmlProto = HTMLElement.prototype as unknown as Record<string, (pointerId: number) => unknown>
 htmlProto.setPointerCapture = () => {}
