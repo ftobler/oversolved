@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { AssemblyDoc, PartInstance, Transform3D } from '@/types/cad'
 import {
   useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, createDefaultAssemblyEditorData, sameInstances,
@@ -327,6 +327,18 @@ describe('assemblyStore', () => {
       getState().setHoveredEntity('a')
       expect(getState().hoveredEntity).toBe('a')
       expect(getState().entitySelection).toBe(first)
+    })
+
+    // A hover that lands on the same entity is the resting case, and the store
+    // must stay silent: the pointer moves fire this on every frame.
+    it('setHoveredEntity does not notify subscribers when the key is unchanged', () => {
+      const { getState } = useAssemblyStore
+      getState().setHoveredEntity('a')
+      const listener = vi.fn()
+      const unsubscribe = useAssemblyStore.subscribe(listener)
+      getState().setHoveredEntity('a')
+      unsubscribe()
+      expect(listener).not.toHaveBeenCalled()
     })
 
     it('a re-solve clears selection and hover (positional keys renumber)', () => {

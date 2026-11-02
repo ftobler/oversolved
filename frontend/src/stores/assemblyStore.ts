@@ -571,10 +571,12 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   //
   // A pointer resting on one face re-resolves the same hits every frame. Writing
   // them back would hand the viewport a fresh array each time, and every visible
-  // triad would rebuild its geometry for a hover that never changed.
+  // triad would rebuild its geometry for a hover that never changed. Returning
+  // the current state (not an empty patch) is what makes zustand skip the
+  // notification entirely.
   setHoverHits: (hits, ctrlKey) => set((prev) => {
     const scope = hoverScopeEntity(hits, ctrlKey)
-    if (scope === prev.pickScopeEntity && sameEntityHits(hits, prev.hoverHits)) return {}
+    if (scope === prev.pickScopeEntity && sameEntityHits(hits, prev.hoverHits)) return prev
     return { hoverHits: [...hits], pickScopeEntity: scope }
   }),
 
@@ -587,12 +589,12 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     return { entitySelection: next }
   }),
 
-  clearSelection: () => set((prev) => (prev.entitySelection.size === 0 ? {} : { entitySelection: new Set() })),
+  clearSelection: () => set((prev) => (prev.entitySelection.size === 0 ? prev : { entitySelection: new Set() })),
 
-  // A hover that lands on the same entity re-sets an equal string, which Zustand
-  // treats as a no-op; only a real change re-renders the highlight.
+  // A hover that lands on the same entity returns the current state, so Zustand
+  // skips the notification; only a real change re-renders the highlight.
   setHoveredEntity: (entityKey) => set((prev) => (
-    prev.hoveredEntity === entityKey ? {} : { hoveredEntity: entityKey }
+    prev.hoveredEntity === entityKey ? prev : { hoveredEntity: entityKey }
   )),
 
   activePickCandidate: () => {

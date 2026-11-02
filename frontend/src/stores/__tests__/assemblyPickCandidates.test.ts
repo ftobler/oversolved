@@ -2,7 +2,7 @@
 // them. Ctrl+click cycles the aim; Ctrl+hover narrows the set to one entity.
 // No viewport, no ID buffer: the hits are synthetic.
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
 import type { AssemblySolveResult } from '@/stores/assemblyStore'
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'
@@ -136,6 +136,18 @@ describe('assemblyStore hover', () => {
     const first = getState().hoverHits
     getState().setHoverHits([...CORNER_HITS], false)
     expect(getState().hoverHits).toBe(first)
+  })
+
+  // The pointer sits on one face and re-resolves the same hits every frame.
+  // Keeping the array identity is not enough: a merge state object still wakes
+  // every subscriber, and those are what rebuild the gizmos.
+  it('a resting pointer does not notify subscribers at all', () => {
+    getState().setHoverHits(CORNER_HITS, false)
+    const listener = vi.fn()
+    const unsubscribe = useAssemblyStore.subscribe(listener)
+    getState().setHoverHits([...CORNER_HITS], false)
+    unsubscribe()
+    expect(listener).not.toHaveBeenCalled()
   })
 
   it('the same hits under a changed Ctrl state do update the scope', () => {

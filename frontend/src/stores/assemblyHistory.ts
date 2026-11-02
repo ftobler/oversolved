@@ -1,4 +1,4 @@
-import { History, type HistoryEntry } from '@/session/History'
+import { History, type HistoryEntry, type HistoryMark } from '@/session/History'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import type { AssemblyDoc } from '@/types/cad'
 import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
@@ -57,6 +57,14 @@ class MirroredAssemblyHistory extends History<AssemblyDoc> {
     const entry = super.redo(current)
     if (entry) publish()
     return entry
+  }
+
+  // A compound step (the part pattern) marks the stacks, pushes its copies,
+  // then rolls back to the mark when one copy is refused. The entries it pushed
+  // are gone from the engine, so the toolbar's mirror must drop them too.
+  override rollbackTo(mark: HistoryMark<AssemblyDoc>): void {
+    super.rollbackTo(mark)
+    publish()
   }
 
   override clear(): void {

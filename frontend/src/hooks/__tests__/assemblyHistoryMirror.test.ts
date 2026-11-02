@@ -108,6 +108,21 @@ describe('assembly history mirror', () => {
     expectMirrorMatchesHistory()
   })
 
+  // A compound step (a pattern) marks the stacks, pushes its parts one by one,
+  // then rolls back to the mark when a copy is refused. The engine drops those
+  // entries; the toolbar's mirror must drop them with it or it offers an undo
+  // that the engine can no longer perform.
+  it('rolls the mirror back with the engine when a compound step is abandoned', () => {
+    const docA = docWith(['a'])
+    const mark = assemblyHistory.mark()
+    assemblyHistory.push('Add part', docA)
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(1)
+
+    assemblyHistory.rollbackTo(mark)
+    expect(assemblyHistory.undoEntries()).toHaveLength(0)
+    expectMirrorMatchesHistory()
+  })
+
   // The module lifetime is the whole point of the singleton: a drag's pointer-up
   // commit can outlive the page's mount, so the stacks must survive a remount
   // and the new engine must be able to pop an entry the old one pushed.
