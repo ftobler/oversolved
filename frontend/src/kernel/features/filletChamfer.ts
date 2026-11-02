@@ -712,8 +712,7 @@ export function solveFillet(
   bodyStore: Record<string, Body>,
 ): EdgeFeatureResult {
   const sub = (feature.fillet as Dict) ?? {}
-  const radiusRaw = sub.radius
-  const radius = Number(radiusRaw !== undefined && radiusRaw !== null ? radiusRaw : 1.0)
+  const radius = Number(sub.radius ?? 1.0)
   if (!Number.isFinite(radius) || radius <= 0) throw new Error('fillet: radius must be positive')
   return applyEdgeFeature(oc, scope, table, sub, (feature.id as string) ?? '', bodyStore, 'fillet', (o, s, shape, edges, nm) =>
     applyFilletWithLineage(o, s, shape, radius, edges, nm),

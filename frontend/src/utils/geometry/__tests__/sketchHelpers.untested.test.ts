@@ -10,8 +10,8 @@ import {
 } from '@/utils/geometry/sketchHelpers'
 import type { Entity } from '@/types/cad'
 
-// sketch_helpers is pure (THREE math + asset lookup, no DOM). The existing
-// sketch_helpers.test.ts pins sampleEllipse / sampleBezier / ellipseAxisPoints
+// sketchHelpers is pure (THREE math + asset lookup, no DOM). The existing
+// sketchHelpers.test.ts pins sampleEllipse / sampleBezier / ellipseAxisPoints
 // and the spline/ellipse getEntityBounds arms. This file fills the rest:
 // pointTo3D, getIconUrl, p2w, the two arc samplers, and the remaining
 // getEntityBounds arms (line / circle / arc / point).

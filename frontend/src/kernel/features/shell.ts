@@ -131,8 +131,7 @@ export function solveShell(
 ): ShellResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.shell as Dict) ?? {}
-  const thicknessRaw = sub.thickness
-  const thickness = Number(thicknessRaw !== undefined && thicknessRaw !== null ? thicknessRaw : 1)
+  const thickness = Number(sub.thickness ?? 1)
   if (!Number.isFinite(thickness) || thickness <= 0) throw new Error('shell: thickness must be positive')
   const direction: ShellDirection = sub.direction === 'outward' ? 'outward' : 'inward'
   const faces = (sub.faces as string[]) ?? []
