@@ -5,28 +5,19 @@
 // parallel one-history work owns; a new call from anything part-side is a
 // regression to the two-sources-of-truth seam this change removed.
 import { describe, it, expect } from 'vitest'
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { collectSourceFiles } from '@/testing/sourceScan'
 
 const SRC_DIR = fileURLToPath(new URL('../..', import.meta.url))
-
-function collectFiles(dir: string): string[] {
-  const files: string[] = []
-  for (const entry of readdirSync(dir)) {
-    const path = join(dir, entry)
-    if (statSync(path).isDirectory()) files.push(...collectFiles(path))
-    else if (path.endsWith('.ts') || path.endsWith('.tsx')) files.push(path)
-  }
-  return files
-}
 
 const CALL_RE = /\.setSnapshot\s*\(/
 
 describe('the part path never merges a snapshot', () => {
   it('every setSnapshot call site belongs to the assembly editor', () => {
     const violations: string[] = []
-    for (const file of collectFiles(SRC_DIR)) {
+    for (const file of collectSourceFiles(SRC_DIR)) {
       const rel = file.slice(SRC_DIR.length)
       if (rel.toLowerCase().includes('assembly')) continue
       const lines = readFileSync(file, 'utf8').split('\n')

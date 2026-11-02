@@ -15,33 +15,16 @@
 // occ/moveFaceSurfaces.ts's take* readers carries the rest.
 
 import { describe, it, expect } from 'vitest'
-import { readdirSync, readFileSync, statSync } from 'fs'
-import { extname, join } from 'path'
+import { join } from 'path'
+import { productionFiles, liveText } from '@/testing/sourceScan'
 
 const SRC = join(__dirname, '../../')
 
-const COMMENTS = [/\/\*[\s\S]*?\*\//g, /(?:^|\s)\/\/[^\n]*/g]
 // The builders whose result is a shape the caller may chain off the constructor.
 const SHAPE_RESULT = /^\s*\.\s*(Face|Shape|Wire|Solid|Edge|Vertex)\s*\(\s*\)/
 // The by-value gp_* accessors: each call returns a fresh disposable proxy.
 const ACCESSOR =
   /\.(Axis|Position|Location|Direction|XDirection|YDirection|XAxis|YAxis)\(\)\s*\.\s*(Axis|Position|Location|Direction|XDirection|YDirection|XAxis|YAxis)\(\)/g
-
-function collectFiles(dir: string): string[] {
-  const results: string[] = []
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry)
-    if (statSync(full).isDirectory()) results.push(...collectFiles(full))
-    else if (['.ts', '.tsx'].includes(extname(entry))) results.push(full)
-  }
-  return results
-}
-
-function liveText(file: string): string {
-  let text = readFileSync(file, 'utf8')
-  for (const pattern of COMMENTS) text = text.replace(pattern, '')
-  return text
-}
 
 /** End index (exclusive) of the parenthesised argument list starting at `open`. */
 function closingParen(text: string, open: number): number {
@@ -71,8 +54,7 @@ function untrackedBuilderChains(text: string): number[] {
 }
 
 describe('temporary OCC handles are tracked at creation', () => {
-  const sources = collectFiles(SRC)
-    .filter((f) => !f.includes('__tests__') && !/\.test\.tsx?$/.test(f))
+  const sources = productionFiles(SRC)
 
   it('scans a non-empty source tree', () => {
     expect(sources.length).toBeGreaterThan(100)

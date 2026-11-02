@@ -21,20 +21,10 @@
 // suspending leaf added somewhere else should not be invisible for that reason.
 
 import { describe, it, expect } from 'vitest'
-import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, extname } from 'node:path'
+import { join } from 'node:path'
+import { productionFiles, liveText } from '@/testing/sourceScan'
 
 const SRC = join(__dirname, '..', '..')
-
-function collectFiles(dir: string, exts: string[]): string[] {
-  const results: string[] = []
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry)
-    if (statSync(full).isDirectory()) results.push(...collectFiles(full, exts))
-    else if (exts.includes(extname(entry))) results.push(full)
-  }
-  return results
-}
 
 // Each entry is a source pattern plus what it is, so a violation report names
 // the hazard rather than a regex. `suspend`/`preload` are suspend-react's own
@@ -77,21 +67,12 @@ const ALLOWED: Readonly<Record<string, string>> = {
     'Same <Environment files="/env.hdr"> as AssemblyViewport, same open call.',
 }
 
-// Comments are stripped before the scan, and that is load-bearing twice over: a
-// prose mention of `useLoader(` is a false positive, and -- worse -- it would
-// keep an ALLOWED entry looking like it still applies long after the real usage
-// was deleted, since the staleness check reads the same text. Same patterns as
-// Viewport/__tests__/noCdnAssets.test.ts.
-const COMMENTS = [/\/\*[\s\S]*?\*\//g, /(?:^|\s)\/\/[^\n]*/g]
-
-function liveText(file: string): string {
-  let text = readFileSync(file, 'utf8')
-  for (const pattern of COMMENTS) text = text.replace(pattern, '')
-  return text
-}
-
-const sources = collectFiles(SRC, ['.ts', '.tsx'])
-  .filter(f => !f.includes('__tests__') && !/\.test\.tsx?$/.test(f))
+// Comments are blanked before the scan (shared src/testing/sourceScan), and
+// that is load-bearing twice over: a prose mention of `useLoader(` is a false
+// positive, and -- worse -- it would keep an ALLOWED entry looking like it
+// still applies long after the real usage was deleted, since the staleness
+// check reads the same text.
+const sources = productionFiles(SRC)
   .map(f => ({ path: f.slice(SRC.length + 1), text: liveText(f) }))
 
 /** The suspending APIs a file names, empty when it names none. */

@@ -5,9 +5,9 @@
 // Scans the folder's imports against the same banned list; the eslint rule is
 // the fast path, this is the backstop.
 import { describe, it, expect } from 'vitest'
-import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { collectSourceFiles } from '@/testing/sourceScan'
 
 const SESSION_DIR = fileURLToPath(new URL('..', import.meta.url))
 
@@ -46,18 +46,8 @@ export function bannedImportsIn(source: string): string[] {
   return violations
 }
 
-function collectFiles(dir: string): string[] {
-  const files: string[] = []
-  for (const entry of readdirSync(dir)) {
-    const path = join(dir, entry)
-    if (statSync(path).isDirectory()) files.push(...collectFiles(path))
-    else if (path.endsWith('.ts') || path.endsWith('.tsx')) files.push(path)
-  }
-  return files
-}
-
 describe('the session import wall', () => {
-  const files = collectFiles(SESSION_DIR)
+  const files = collectSourceFiles(SESSION_DIR)
 
   it('scans every file in the folder', () => {
     expect(files.length).toBeGreaterThan(5)
