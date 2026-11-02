@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import JSZip from 'jszip'
 import { IdbWorkspaceStore } from '../store'
 import { IdbCarrier } from '../idbCarrier'
@@ -42,6 +42,18 @@ const ASSEMBLY = [
 
 describe('adoption: manifest absent', () => {
   beforeEach(resetWorkspaceIdb)
+
+  // Creating the workspace and landing its tree are two writes, and the second
+  // can fail (quota, a closed database). A failed import must not leave the
+  // empty workspace it created behind as a ghost tile.
+  it('purges the workspace it created when landing the tree fails', async () => {
+    const store = new IdbWorkspaceStore()
+    vi.spyOn(store, 'land').mockRejectedValueOnce(new Error('quota exceeded'))
+
+    await expect(importBag(bag('Box.yaml', 'kind: part\n'), { origin: 'drop' }, store))
+      .rejects.toThrow('quota exceeded')
+    expect(await store.list()).toEqual([])
+  })
 
   it('a bare .yaml adopts into a new workspace and its entry id survives reopen', async () => {
     const store = new IdbWorkspaceStore()

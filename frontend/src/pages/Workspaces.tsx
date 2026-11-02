@@ -76,19 +76,27 @@ export default function Workspaces() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
+  // Every refresh is a fresh read, and a view change (the trash tab, a search,
+  // a workspace event) starts a new one while the previous may still be open.
+  // Only the newest request may publish; an older answer describes a view the
+  // user has already left.
+  const refreshSeq = useRef(0)
   const refresh = useCallback(async (includeTrashed: boolean, search: string) => {
+    const seq = ++refreshSeq.current
     try {
       const list = await store.list({ includeTrashed, sort: 'modified', search })
+      if (seq !== refreshSeq.current) return
       setSummaries(list)
       setError(null)
       setLoadFailed(false)
     } catch (e) {
+      if (seq !== refreshSeq.current) return
       // A failed list is not an empty library. The flag survives the banner's
       // dismissal so the page never claims "No workspaces yet." over a failure.
       setError(errorMessage(e, 'Failed to load workspaces'))
       setLoadFailed(true)
     } finally {
-      setLoading(false)
+      if (seq === refreshSeq.current) setLoading(false)
     }
   }, [store])
 

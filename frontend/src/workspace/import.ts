@@ -683,15 +683,22 @@ async function createWorkspace(
   store: WorkspaceStore,
 ): Promise<ImportResult> {
   const { workspace } = await store.create(opts.name ?? defaultWorkspaceName(imported.tree))
-  const remapped = remapTree(imported.tree, {
-    workspace,
-    mintIds: false,
-    origin: descriptor.locator,
-  })
-  stampProvenance(remapped.tree, descriptor, imported, remapped.idMap)
-  await store.land(workspace, remapped.tree)
-  await seedPreviews(workspace, imported, remapped.idMap)
-  return importResult(imported, workspace, 'new')
+  try {
+    const remapped = remapTree(imported.tree, {
+      workspace,
+      mintIds: false,
+      origin: descriptor.locator,
+    })
+    stampProvenance(remapped.tree, descriptor, imported, remapped.idMap)
+    await store.land(workspace, remapped.tree)
+    await seedPreviews(workspace, imported, remapped.idMap)
+    return importResult(imported, workspace, 'new')
+  } catch (e) {
+    // The workspace row was the first write; a failed landing must not leave it
+    // as an empty tile. Cleanup is best effort and never hides the real error.
+    await store.purge(workspace).catch(() => {})
+    throw e
+  }
 }
 
 // The adoption half of D6: a legacy bundle's `<doc>.png` sidecars become the
