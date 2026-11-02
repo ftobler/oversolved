@@ -294,6 +294,14 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     expect(featureById(doc, 'IM', 'import_step').kind).toBe('import_step')
   })
 
+  it('add_import_step carries an authored scale onto the feature', () => {
+    // The inch-document import path stores 1/25.4 here so the millimetre STEP
+    // lands at inch numbers; the leaf solver reads it off the feature.
+    const doc = sketchDoc()
+    mutationHandlers.add_import_step(doc, { type: 'add_import_step', featureId: 'IM', fileId: 'f1', scale: 1 / 25.4 })
+    expect(featureById(doc, 'IM', 'import_step').scale).toBeCloseTo(1 / 25.4, 12)
+  })
+
   it('delete_body handlers do not crash on a legacy singular-body doc', () => {
     // A pre-pluralization delete_body carries `body` and no `bodies`; the
     // handlers seed the list from that pick (so it survives) instead of throwing

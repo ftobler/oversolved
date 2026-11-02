@@ -60,6 +60,7 @@ const GUARDED = [
   'set_constraint_pos',
   'set_constraint_sign',
   'set_rollback',
+  'set_length_unit',
   'remove_dangling_content',
   'remove_extrude_profile',
   'remove_revolve_profile',
@@ -77,8 +78,8 @@ const GUARDED = [
 ]
 
 describe('mutationIdempotence classification', () => {
-  it('classifies exactly the 104 Mutation variants, no more and no fewer', () => {
-    expect(Object.keys(IDEMPOTENT_MUTATION)).toHaveLength(104)
+  it('classifies exactly the 105 Mutation variants, no more and no fewer', () => {
+    expect(Object.keys(IDEMPOTENT_MUTATION)).toHaveLength(105)
     // Sorting ignores key order, so regrouping the table stays free while adding
     // or dropping a name does not.
     expect([...Object.keys(IDEMPOTENT_MUTATION)].sort()).toEqual(Object.keys(mutationHandlers).sort())

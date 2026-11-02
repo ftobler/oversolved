@@ -456,6 +456,11 @@ const treeNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id:
 // list whose out-of-range index is the no-op.
 const renameNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'sk1', kind: 'sketch', label: 'base' }] }) as unknown as PartDoc
 const flagNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'sk1', kind: 'sketch' }] }) as unknown as PartDoc
+// The unit is a top-level field, so its no-op slice reads the document itself.
+const inchNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', length_unit: 'inch', features: [] }) as unknown as PartDoc
+// The canonical millimetre spelling is the absence of the field: re-picking mm
+// on such a document must stay a byte-identical no-op.
+const metricNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [] }) as unknown as PartDoc
 const pickListNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'b1', kind: 'boolean', boolean: { operation: 'union', target: '', tools: ['@t1', '@t2'] } }] }) as unknown as PartDoc
 
 interface NoOpPinCase {
@@ -493,6 +498,8 @@ const NO_OP_PINS: NoOpPinCase[] = [
   { name: 'rename_feature', makeDoc: renameNoopDoc, same: { type: 'rename_feature', featureId: 'sk1', label: 'base' }, changed: { type: 'rename_feature', featureId: 'sk1', label: 'renamed' } },
   { name: 'set_feature_visibility', makeDoc: flagNoopDoc, same: { type: 'set_feature_visibility', featureId: 'sk1', visible: true }, changed: { type: 'set_feature_visibility', featureId: 'sk1', visible: false } },
   { name: 'set_feature_suppression', makeDoc: flagNoopDoc, same: { type: 'set_feature_suppression', featureId: 'sk1', suppressed: false }, changed: { type: 'set_feature_suppression', featureId: 'sk1', suppressed: true } },
+  { name: 'set_length_unit', makeDoc: inchNoopDoc, same: { type: 'set_length_unit', unit: 'inch' }, changed: { type: 'set_length_unit', unit: 'mm' } },
+  { name: 'set_length_unit (mm is the absent field)', makeDoc: metricNoopDoc, same: { type: 'set_length_unit', unit: 'mm' }, changed: { type: 'set_length_unit', unit: 'inch' } },
   { name: 'reorder_pick_field', makeDoc: pickListNoopDoc, same: { type: 'reorder_pick_field', featureId: 'b1', field: 'tools', fromIndex: 9, toIndex: 0 }, changed: { type: 'reorder_pick_field', featureId: 'b1', field: 'tools', fromIndex: 0, toIndex: 1 } },
 ]
 

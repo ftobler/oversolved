@@ -1,4 +1,4 @@
-import type { PartFeature, Mutation } from '@/types/cad'
+import type { LengthUnit, PartFeature, Mutation } from '@/types/cad'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import { PlaneEditor } from '@/components/editors/PlaneEditor'
@@ -6,13 +6,14 @@ import { PlaneSelector } from '@/components/sketch/PlaneSelector'
 import { useFileMeta } from '@/stores/fileRegistry'
 import { formatBytes } from '@/utils/formatBytes'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
+import { lengthUnitOf } from '@/utils/lengthUnit'
 import { StatusMessage } from '@/components/shared/StatusMessage'
 import { NO_MARK, type StatusMark } from '@/utils/core/statusMark'
 
 interface FeatureItemEditorsProps {
   feature: PartFeature
   editingFeatureId: string | null
-  doc: { features?: PartFeature[] } | null
+  doc: { features?: PartFeature[]; length_unit?: LengthUnit } | null
   onMutation: (m: Mutation) => void
   features: PartFeature[]
   partLabels: Record<string, string>
@@ -120,6 +121,7 @@ function editorFor({
       features={features}
       partLabels={partLabels}
       schema={schema}
+      lengthUnit={lengthUnitOf(doc?.length_unit)}
     />
   )
 }

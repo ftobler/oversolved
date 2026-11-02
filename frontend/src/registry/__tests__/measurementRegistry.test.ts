@@ -41,6 +41,14 @@ describe('measureSingleEntity', () => {
     expect(measureSingleEntity(line(0, 0, 3, 4))).toEqual(['[LINE] 5.000 mm'])
   })
 
+  it('labels an inch document in inches, leaving the number alone', () => {
+    // The stored number is already in document units: 0.5 is half an inch, not
+    // a converted 12.7.
+    expect(measureSingleEntity(circle(0, 0, 0.25), 'inch')).toEqual(['[CIRCLE] d=0.500 in'])
+    expect(measureSingleEntity(line(0, 0, 3, 4), 'inch')).toEqual(['[LINE] 5.000 in'])
+    expect(measurePair({ point1: point(0, 0), point2: point(3, 4) }, 'inch')).toEqual(['dist: 5.000 in'])
+  })
+
   it('returns no measurement for a bare point', () => {
     expect(measureSingleEntity(point(1, 2))).toEqual([])
   })
@@ -150,6 +158,10 @@ describe('measurePlanes', () => {
 
   it('measures distance between parallel planes', () => {
     expect(measurePlanes(xy(0), xy(7))).toEqual(['plane distance: 7.000 mm'])
+  })
+
+  it('labels the distance in the document unit', () => {
+    expect(measurePlanes(xy(0), xy(7), 'inch')).toEqual(['plane distance: 7.000 in'])
   })
 
   it('treats anti-parallel normals as parallel', () => {

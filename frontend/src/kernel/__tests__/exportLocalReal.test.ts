@@ -75,6 +75,23 @@ function stlTriangleCount(bytes: Uint8Array): number {
   return count
 }
 
+/** The largest absolute vertex coordinate in a binary STL: a scale probe that
+ *  needs no triangle bookkeeping. */
+function stlMaxCoordinate(bytes: Uint8Array): number {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const count = view.getUint32(80, true)
+  let max = 0
+  for (let i = 0; i < count; i++) {
+    let at = 84 + i * 50 + 12
+    for (let v = 0; v < 3; v++) {
+      for (let axis = 0; axis < 3; axis++, at += 4) {
+        max = Math.max(max, Math.abs(view.getFloat32(at, true)))
+      }
+    }
+  }
+  return max
+}
+
 describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', () => {
   let occ: OccModule
   beforeAll(() => {
@@ -157,6 +174,41 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
     // strictly more triangles than a single body.
     expect(singleTris).toBeGreaterThanOrEqual(12)
     expect(wholeTris).toBeGreaterThan(singleTris)
+  })
+
+  it('scales an inch document into millimetres on STEP export', async () => {
+    const scope = new DisposeScope()
+    try {
+      const bytes = await exportLocally({ ...twoBodyDoc(), length_unit: 'inch' }, { format: 'step' })
+      expect(bytes).not.toBeNull()
+      const shape = scope.track(stepBytesToShape(occ, scope, bytes!))
+      // A 10-unit side in an inch document is 254 mm in the file; volume scales
+      // by the cube of the linear factor.
+      expect(volumeOf(occ, scope, shape)).toBeCloseTo((VOL_A + VOL_B) * 25.4 ** 3, 1)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('leaves the same numbers at their authored size in a millimetre document', async () => {
+    const scope = new DisposeScope()
+    try {
+      const bytes = await exportLocally(twoBodyDoc(), { format: 'step' })
+      const shape = scope.track(stepBytesToShape(occ, scope, bytes!))
+      // The regression guard for the absent field: no scaling at all.
+      expect(volumeOf(occ, scope, shape)).toBeCloseTo(VOL_A + VOL_B, 1)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('scales an inch document into millimetres on STL export', async () => {
+    const mm = await exportLocally(twoBodyDoc(), { format: 'stl', tessellation: 'normal' })
+    const inch = await exportLocally({ ...twoBodyDoc(), length_unit: 'inch' }, { format: 'stl', tessellation: 'normal' })
+    expect(mm).not.toBeNull()
+    expect(inch).not.toBeNull()
+    // Same tessellation, so the ratio is purely the unit scale.
+    expect(stlMaxCoordinate(inch!) / stlMaxCoordinate(mm!)).toBeCloseTo(25.4, 3)
   })
 
   it('throws for an unknown body id', async () => {

@@ -1,4 +1,5 @@
-import type { PartFeature, Mutation } from '@/types/cad'
+import type { LengthUnit, PartFeature, Mutation } from '@/types/cad'
+import { LENGTH_UNIT_LABEL } from '@/utils/lengthUnit'
 import type {
   SchemaData,
   EditorFieldDef,
@@ -32,12 +33,15 @@ interface FeatureEditorProps {
   features?: PartFeature[]
   partLabels?: Record<string, string>
   schema: FeatureEditorSchema
+  // The document's unit. A schema field marked `unit: 'mm'` is a length in that
+  // unit, so its label follows the document without touching the authored value.
+  lengthUnit?: LengthUnit
 }
 
 // ─── main component ───
 
 export function FeatureEditor({
-  feature, onMutation, features, partLabels, schema,
+  feature, onMutation, features, partLabels, schema, lengthUnit = 'mm',
 }: FeatureEditorProps) {
   const fid = feature.id
   const raw = (feature as unknown as SchemaData)[schema.subKey] ?? schema.defaults
@@ -70,12 +74,14 @@ export function FeatureEditor({
         switch (field.type) {
           case 'number': {
             const nf = field as NumberFieldDef
+            // `mm` in a schema marks a length; the label is the document's.
+            const labeled = nf.unit === 'mm' ? { ...nf, unit: LENGTH_UNIT_LABEL[lengthUnit] } : nf
             const rawVal = nf.arrayField != null && nf.arrayIndex != null
               ? data[nf.arrayField]?.[nf.arrayIndex]
               : data[field.key]
             return <NumberFieldWidget
               key={`${field.key}:${i}`}
-              field={nf}
+              field={labeled}
               value={rawVal as string | number | undefined}
               data={data}
               arrayData={nf.arrayField != null ? arrayFieldData[nf.arrayField] : undefined}

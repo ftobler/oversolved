@@ -860,7 +860,11 @@ export const MUTATION_CATALOG = {
   },
   add_import_step: {
     summary: 'Import a STEP file as a feature.',
-    fields: { ...featureAddFields(), fileId: str('The files entry id carrying the bytes.') },
+    fields: {
+      ...featureAddFields(),
+      fileId: str('The files entry id carrying the bytes.'),
+      scale: optScalar('A uniform scale, number or expression, applied to the imported shape. An inch document stores 1/25.4 here so the file keeps its physical size.'),
+    },
   },
   add_fillet: {
     summary: 'Add a fillet feature, optionally with its edges and radius in the same call.',
@@ -1191,6 +1195,11 @@ export const MUTATION_CATALOG = {
     hidden: true,
     fields: { position: { type: 'number', required: true, nullable: true } },
   },
+  set_length_unit: {
+    summary: 'Set the unit the document\'s stored numbers are written in.',
+    note: 'Reinterprets the stored numbers; it does not convert them. The STEP/STL export scales an inch document into millimetres. mm is the default and is stored as the absence of the field.',
+    fields: { unit: str('"mm" or "inch".') },
+  },
   edit_session: {
     summary: 'Undo-only marker naming an edit session.',
     hidden: true,
@@ -1328,6 +1337,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   reorder_pick_field: 'picks',
   set_feature_suppression: 'document',
   set_rollback: 'document',
+  set_length_unit: 'document',
   edit_session: 'document',
   preview_commit: 'document',
   remove_dangling_content: 'document',

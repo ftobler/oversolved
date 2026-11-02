@@ -79,6 +79,40 @@ describe('FeatureEditor number field', () => {
     expect(screen.getByText('mm')).toBeInTheDocument()
   })
 
+  it('follows the document unit on a length field without touching the value', () => {
+    const unitSchema: FeatureEditorSchema = {
+      ...schema,
+      fields: [{ type: 'number', key: 'diam', label: 'Diameter', default: 10, unit: 'mm' }],
+    }
+    render(
+      <FeatureEditor
+        feature={makeFeature('test', 'test', { diam: 0.5 })}
+        onMutation={vi.fn()}
+        schema={unitSchema}
+        lengthUnit="inch"
+      />,
+    )
+    expect(screen.getByDisplayValue('0.5')).toBeInTheDocument()
+    expect(screen.getByText('in')).toBeInTheDocument()
+    expect(screen.queryByText('mm')).not.toBeInTheDocument()
+  })
+
+  it('keeps a degree label independent of the document length unit', () => {
+    const angleSchema: FeatureEditorSchema = {
+      ...schema,
+      fields: [{ type: 'number', key: 'angle', label: 'Angle', default: 45, unit: 'deg' }],
+    }
+    render(
+      <FeatureEditor
+        feature={makeFeature('test', 'test', { angle: 45 })}
+        onMutation={vi.fn()}
+        schema={angleSchema}
+        lengthUnit="inch"
+      />,
+    )
+    expect(screen.getByText('deg')).toBeInTheDocument()
+  })
+
   it('dispatches Enter key blur', () => {
     const onMutation = vi.fn()
     render(<FeatureEditor feature={makeFeature('test', 'test', { count: 10 })} onMutation={onMutation} schema={schema} />)

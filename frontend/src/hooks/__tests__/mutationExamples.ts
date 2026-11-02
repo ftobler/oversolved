@@ -655,6 +655,12 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
     mutation: { type: 'set_rollback', position: 2 },
   },
 
+  // document: the unit is a top-level field, and mm is its canonical absence
+  set_length_unit: {
+    makeDoc: () => ({ ...makeDoc(), length_unit: 'inch' }),
+    mutation: { type: 'set_length_unit', unit: 'mm' },
+  },
+
   // cleanup: removes the projected entity and its superfluous constraint
   remove_dangling_content: {
     makeDoc: danglingDoc,

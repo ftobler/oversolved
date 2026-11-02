@@ -81,6 +81,10 @@ export const IDEMPOTENT_MUTATION = {
   // when the key is absent.
   set_rollback: true,
 
+  // The unit select re-dispatches on every change event; a same-unit pick writes
+  // the same canonical spelling (inch set, mm deleted).
+  set_length_unit: true,
+
   // Removals by index or key, which can name something already gone: a splice
   // past the end and a filter that matches nothing both leave the feature
   // identical, and noOpSliceFor already slices the whole touched feature, so the
@@ -218,6 +222,9 @@ type SliceReadableMutation =
   // names no target of its own: the rollback mirror writes doc.rollback, which
   // every slice carries
   | { type: 'set_rollback' }
+  // reads the document's own top-level unit, which noOpSliceFor adds to the
+  // slice
+  | { type: 'set_length_unit' }
 
 type SliceReadableMutationType = Extract<Mutation, SliceReadableMutation>['type']
 

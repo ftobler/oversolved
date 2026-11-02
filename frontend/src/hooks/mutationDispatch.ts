@@ -101,6 +101,7 @@ import {
   applySetHelixField,
   applySetBodyVisibility,
   applySetFeatureSuppression,
+  applySetLengthUnit,
 } from '@/utils/yamlMutations'
 import { applyRemoveDanglingContent } from '@/utils/yamlMutations/solveResult'
 
@@ -237,7 +238,7 @@ export const mutationHandlers: MutationHandlers = {
   remove_sweep_path: (next, m) =>
     applyRemoveSweepPath(next, m.featureId, m.index),
   add_import_step: (next, m) =>
-    applyAddImportStep(next, m.featureId, m.fileId, m.label),
+    applyAddImportStep(next, m.featureId, m.fileId, m.label, m.scale),
   add_fillet: (next, m) =>
     applyAddFillet(next, m.featureId, m.label, m.edges, m.radius),
   add_chamfer: (next, m) =>
@@ -371,6 +372,7 @@ export const mutationHandlers: MutationHandlers = {
     applyReorderPickField(next, m.featureId, m.field, m.fromIndex, m.toIndex),
   set_feature_suppression: (next, m) =>
     applySetFeatureSuppression(next, m.featureId, m.suppressed),
+  set_length_unit: (next, m) => applySetLengthUnit(next, m.unit),
   remove_dangling_content: (next, m) =>
     applyRemoveDanglingContent(next, m.features),
   // doc.rollback is written by the rollback mirror in handleMutation, which is

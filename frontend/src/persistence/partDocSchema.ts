@@ -376,6 +376,12 @@ export const PART_DOC_SCHEMA: JsonSchema = {
     version: { type: 'integer' },
     kind: { const: 'part' },
     rollback: { type: 'integer' },
+    length_unit: {
+      enum: ['mm', 'inch'],
+      description: 'The unit the stored numbers are written in; absent means mm. '
+        + 'Changing it reinterprets the numbers rather than converting them, and '
+        + 'the STEP/STL export scales an inch document into millimetres.',
+    },
     features: { type: 'array', items: { oneOf: FEATURE_SCHEMA_LIST } },
     part_style: {
       type: 'object',

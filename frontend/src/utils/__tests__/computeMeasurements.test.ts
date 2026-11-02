@@ -22,6 +22,28 @@ const entity = (id: string) => `entity:S1:${id}`
 const vertex = (id: string, ref: string) => `vertex:S1:${id}:${ref}`
 
 describe('Measurement Selection and Evaluation', () => {
+  describe('the document length unit', () => {
+    it('labels a sketch measurement in inches without converting the number', () => {
+      // The stored 5 is five document units; an inch document renders 5 in.
+      expect(computeMeasurements(sel(entity('L1')), sketch, undefined, undefined, 'inch'))
+        .toEqual(['[LINE] 5.000 in'])
+    })
+
+    it('forwards the unit to the 3D body measurements', () => {
+      const bodies: Record<string, BodyResult> = {
+        body_ex: {
+          id: 'body_ex',
+          created_by: 'ex',
+          modified_by: [],
+          edges: [{ kind: 'line', start: [0, 0, 0], end: [3, 4, 0] }],
+          edge_queries: ['?body_ex:edge:0'],
+        },
+      }
+      expect(computeMeasurements(sel('?body_ex:edge:0'), sketch, undefined, bodies, 'inch'))
+        .toEqual(['[EDGE] 5.000 in'])
+    })
+  })
+
   describe('1. single vertex', () => {
     it('selects no measurement', () => {
       const result = computeMeasurements(sel(vertex('L1', 'start')), sketch)

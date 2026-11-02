@@ -8,6 +8,9 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { loadOcc } from '@/kernel/occ/loadOcc'
+import { DisposeScope } from '@/kernel/occ/disposeScope'
+import { stepBytesToShape } from '@/kernel/occ/stepIo'
+import { volumeOf } from '@/kernel/occ/booleans'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
@@ -212,6 +215,23 @@ describeReal('export honesty (real OCC + Rust solvers)', () => {
         name: 'ExportSelectionError',
         message: expect.stringContaining("body 'nope' not found; live bodies: none"),
       })
+  }, 180_000)
+
+  it('carries an inch document unit through the headless export hop', async () => {
+    // The kernel scale is pinned in exportLocalReal; this pins the drive seam
+    // (partSolvePayload spreading the doc into the export spec) so a future
+    // spec filter cannot drop the unit and export a 25.4x small part.
+    const doc = await build(BOX)
+    const inch = await exportHeadless({ ...doc, length_unit: 'inch' }, { format: 'step' })
+    expect(inch).not.toBeNull()
+    const scope = new DisposeScope()
+    try {
+      // BOX is 10 x 10 x 5 model units; in an inch document that is 254 x 254 x 127 mm.
+      const shape = scope.track(stepBytesToShape(oc!, scope, inch!.bytes!))
+      expect(volumeOf(oc!, scope, shape)).toBeCloseTo(500 * 25.4 ** 3, 1)
+    } finally {
+      scope.dispose()
+    }
   }, 180_000)
 
   it('reports ok false when the build left no solid to write', async () => {

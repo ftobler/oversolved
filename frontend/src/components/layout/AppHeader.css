@@ -58,6 +58,33 @@
   font-size: 20px;
 }
 
+/* The document length unit. A plain select, so the platform picker works on a
+   phone as well as the desktop header, sized like the icon buttons beside it. */
+.toolbar-unit {
+  /* Keep the control at its intrinsic width: the breadcrumb's flex: 1 1 auto
+     absorbs a narrow header instead, and a squashed select would clip "inch". */
+  flex: none;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid #333;
+  background: #111;
+  color: #ccc;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.toolbar-unit:hover {
+  border-color: #555;
+  color: #fff;
+}
+
+.toolbar-unit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* The generated icon SVGs are black; the header is dark, so they take the same
    inverted tint the editor toolbars give them. */
 .app-header .toolbar-btn img {
