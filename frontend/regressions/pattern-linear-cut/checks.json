@@ -1,0 +1,43 @@
+{
+  "origin": {
+    "kind": "exploration",
+    "ref": "feature/feature-pattern (no plan)",
+    "date": "2026-11-02"
+  },
+  "license": "own",
+  "severity": "hard",
+  "what": "a 40 x 20 x 5 plate with a 4 x 4 slot cut at (6, 6), repeated by a linear pattern: 4 instances at pitch 8 along X, four slots in one body",
+  "features": {
+    "default": "ok",
+    "except": {
+      "sk_plate": "underconstrained",
+      "sk_slot": "underconstrained"
+    }
+  },
+  "tolerance": {
+    "rel": 1e-06,
+    "abs": 1e-06
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 3679.999999999999,
+    "area": 2391.9999999999995,
+    "centroid": [
+      20,
+      10.173913043478262,
+      2.5
+    ],
+    "bbox": [
+      0,
+      0,
+      0,
+      40,
+      20,
+      5
+    ],
+    "faces": 22,
+    "edges": 60
+  },
+  "snapshot": true
+}

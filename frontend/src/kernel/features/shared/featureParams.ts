@@ -32,6 +32,7 @@ export const FEATURE_DEF_SUBKEY = {
   boolean: 'boolean',
   array: 'array',
   circular_array: 'circular_array',
+  pattern: 'pattern',
   delete_body: 'delete_body',
   hole: 'hole',
   transform: 'transform',

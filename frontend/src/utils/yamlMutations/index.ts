@@ -73,6 +73,8 @@ export {
   applySetArrayField,
   applyAddCircularArray,
   applySetCircularArrayField,
+  applyAddPattern,
+  applySetPatternField,
   applyAddDeleteBody,
   applyAddDeleteBodyRef,
   applyRemoveDeleteBodyRef,

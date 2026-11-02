@@ -70,6 +70,16 @@ export interface PickFieldDef extends BaseFieldDef {
   normalize?: (value: unknown) => unknown
 }
 
+// A feature-to-feature reference chosen from the document's own rows, not from
+// a viewport pick. The options are the live features (filtered by `kinds`), so
+// a pattern can name the extrude it repeats without a second pick surface.
+export interface FeatureSelectFieldDef extends BaseFieldDef {
+  type: 'featureSelect'
+  kinds?: readonly string[]
+  default?: string
+  emptyText?: string
+}
+
 export interface TextFieldDef extends BaseFieldDef {
   type: 'text'
   default?: string
@@ -84,6 +94,7 @@ export type EditorFieldDef =
   | SelectFieldDef
   | CheckboxFieldDef
   | PickFieldDef
+  | FeatureSelectFieldDef
   | TextFieldDef
 
 // ─── shared prop fragments ───

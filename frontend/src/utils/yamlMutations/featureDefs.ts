@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, PatternFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList, round } from './helpers'
 import { arrayCountProblem } from '@/persistence/docSchema'
 
@@ -771,6 +771,51 @@ export function applySetCircularArrayField(doc: PartDoc, featureId: string, fiel
   const sub = feature?.kind === 'circular_array' ? feature.circular_array : undefined
   if (sub !== undefined && refuseArrayCount(sub, field, value, 'applySetCircularArrayField')) return
   setSubFeatureField(featureId, 'circular_array', sub, field, value, 'applySetCircularArrayField')
+}
+
+// ─── Pattern ───
+
+const PATTERN_FIELDS: readonly string[] = [
+  'source_feature', 'mode', 'count', 'pitch', 'direction', 'direction_query', 'invert',
+  'step_angle', 'axis', 'axis_origin', 'axis_direction', 'invert_axis', 'target_body',
+]
+
+export function applyAddPattern(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  inline: Partial<PatternFeatureDef> = {},
+): void {
+  const pattern: PatternFeatureDef = {
+    mode: 'linear',
+    count: 2,
+    pitch: 20,
+  }
+  // The inline count is judged before the merge rounds it, the same rule the
+  // array adds follow (see inlineCountProblem).
+  const problem = inlineCountProblem(inline)
+  if (problem !== null) {
+    warn(`applyAddPattern: refusing ${problem.field}: ${problem.reason}`)
+    return
+  }
+  mergeInlineFields(pattern, inline)
+  pushFeature(doc, { id: featureId, kind: 'pattern', label: label ?? 'Pattern', pattern })
+}
+
+export function applySetPatternField(
+  doc: PartDoc,
+  featureId: string,
+  field: keyof PatternFeatureDef,
+  value: unknown,
+): void {
+  const feature = findFeature(doc, featureId)
+  const sub = feature?.kind === 'pattern' ? feature.pattern : undefined
+  if (!sub) {
+    warn(`applySetPatternField: feature ${featureId} has no pattern`)
+    return
+  }
+  if (refuseArrayCount(sub, field, value, 'applySetPatternField')) return
+  setSubFeatureField(featureId, 'pattern', sub, field, value, 'applySetPatternField', PATTERN_FIELDS)
 }
 
 // ─── Delete Body ───

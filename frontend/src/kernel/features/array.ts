@@ -31,41 +31,41 @@ interface ArrayResult {
 }
 
 /**
- * Resolve a required array direction, applying the per-axis invert toggle. An
- * explicit pick query wins. Without one, a stored `direction_<axis>` vector is
- * honoured as a unit world vector: the schema accepted it but the leaf used to
- * ignore it and report the direction as missing. With neither, the solve fails
- * rather than falling back to a world axis, so the user cannot accidentally
- * array a body along an arbitrary direction.
+ * Resolve a required linear direction, applying an invert toggle. An explicit
+ * pick query wins. Without one, a stored vector is honoured as a unit world
+ * vector: the schema accepted it but the array leaf used to ignore it and report
+ * the direction as missing. With neither, the solve fails rather than falling
+ * back to a world axis, so a user cannot accidentally repeat geometry along an
+ * arbitrary direction. Shared by the array and pattern leaves, which differ only
+ * in their field names.
  */
-function resolveArrayDirection(
-  feature: Dict,
-  axis: 'x' | 'y',
+export function resolvePatternDirection(
+  query: string,
+  stored: unknown,
+  invert: boolean,
+  op: string,
+  field: string,
   globalRepo: Repository,
   bodyStore: Record<string, unknown> | null,
 ): number[] {
-  const label = axis.toUpperCase()
-  const query = (feature[`direction_${axis}_query`] as string) ?? ''
   let dir: number[]
   if (query) {
     const resolved = resolveDirectionQueryStrict(query, globalRepo, bodyStore)
     if (!resolved) {
-      throw new Error(`array: direction ${label} query '${query}' did not resolve to a straight edge or planar face`)
+      throw new Error(`${op}: ${field} query '${query}' did not resolve to a straight edge or planar face`)
     }
     dir = resolved
   } else {
-    const stored = feature[`direction_${axis}`]
     if (stored === undefined || stored === null) {
-      throw new Error(`array: direction ${label} is required; pick a straight edge or planar face`)
+      throw new Error(`${op}: ${field} is required; pick a straight edge or planar face`)
     }
     if (!Array.isArray(stored) || stored.length !== 3 || !stored.every((c) => typeof c === 'number' && Number.isFinite(c))) {
-      throw new Error(`array: direction ${label} must be three finite numbers, got ${JSON.stringify(stored)}`)
+      throw new Error(`${op}: ${field} must be three finite numbers, got ${JSON.stringify(stored)}`)
     }
     const len = Math.hypot(stored[0], stored[1], stored[2])
-    if (len < 1e-12) throw new Error(`array: direction ${label} must be a non-zero vector`)
+    if (len < 1e-12) throw new Error(`${op}: ${field} must be a non-zero vector`)
     dir = (stored as number[]).map((c) => c / len)
   }
-  const invert = (feature[`invert_${axis}`] as boolean) ?? false
   // `c === 0 ? 0 : -c` keeps the negated zero components as +0, not -0.
   return invert ? dir.map((c) => (c === 0 ? 0 : -c)) : dir
 }
@@ -92,7 +92,10 @@ export function buildArrayTransforms(
     }
     const pitchX = Number(feature.pitch_x ?? 10.0)
     if (!Number.isFinite(pitchX)) throw new Error(`array: pitch_x must be a finite number, got ${feature.pitch_x}`)
-    const dirX = resolveArrayDirection(feature, 'x', globalRepo, bodyStore)
+    const dirX = resolvePatternDirection(
+      (feature.direction_x_query as string) ?? '', feature.direction_x, (feature.invert_x as boolean) ?? false,
+      'array', 'direction X', globalRepo, bodyStore,
+    )
     const num = includeSource ? countX - 1 : countX
     for (let i = 1; i <= num; i++) {
       trsfs.push(makeTranslationTrsf(oc, scope, dirX[0] * pitchX * i, dirX[1] * pitchX * i, dirX[2] * pitchX * i))
@@ -110,8 +113,14 @@ export function buildArrayTransforms(
     if (!Number.isFinite(pitchX)) throw new Error(`array: pitch_x must be a finite number, got ${feature.pitch_x}`)
     const pitchY = Number(feature.pitch_y ?? 10.0)
     if (!Number.isFinite(pitchY)) throw new Error(`array: pitch_y must be a finite number, got ${feature.pitch_y}`)
-    const dirX = resolveArrayDirection(feature, 'x', globalRepo, bodyStore)
-    const dirY = resolveArrayDirection(feature, 'y', globalRepo, bodyStore)
+    const dirX = resolvePatternDirection(
+      (feature.direction_x_query as string) ?? '', feature.direction_x, (feature.invert_x as boolean) ?? false,
+      'array', 'direction X', globalRepo, bodyStore,
+    )
+    const dirY = resolvePatternDirection(
+      (feature.direction_y_query as string) ?? '', feature.direction_y, (feature.invert_y as boolean) ?? false,
+      'array', 'direction Y', globalRepo, bodyStore,
+    )
     for (let j = 0; j < countY; j++) {
       for (let i = 0; i < countX; i++) {
         // The seed cell (0,0) is the source position, never a copy, whether or
@@ -135,48 +144,65 @@ export function buildArrayTransforms(
 }
 
 /** A stored VEC3 field, or null when absent; a malformed value is a solve error. */
-function storedVec3(feature: Dict, key: string): number[] | null {
-  const v = feature[key]
-  if (v === undefined || v === null) return null
-  if (!Array.isArray(v) || v.length !== 3 || !v.every((c) => typeof c === 'number' && Number.isFinite(c))) {
-    throw new Error(`circular_array: ${key} must be three finite numbers, got ${JSON.stringify(v)}`)
+function storedVec3(value: unknown, op: string, key: string): number[] | null {
+  if (value === undefined || value === null) return null
+  if (!Array.isArray(value) || value.length !== 3 || !value.every((c) => typeof c === 'number' && Number.isFinite(c))) {
+    throw new Error(`${op}: ${key} must be three finite numbers, got ${JSON.stringify(value)}`)
   }
-  return v as number[]
+  return value as number[]
 }
 
 /**
- * The circular array's rotation axis, with the same precedence transform uses
- * for its rotation: an `axis` pick wins; else the stored `axis_origin` /
- * `axis_direction` pair, where a direction alone rotates about the world
- * origin and an origin alone uses +Z (transform's rule, so one default holds
- * for both features). Neither is a solve error rather than a silent rotation
- * about a world axis. The schema accepted the pair long before the leaf read it.
+ * A rotation axis, with the same precedence transform uses for its rotation: an
+ * `axis` pick wins; else the stored `axis_origin` / `axis_direction` pair, where
+ * a direction alone rotates about the world origin and an origin alone uses +Z
+ * (transform's rule, so one default holds for both features). Neither is a
+ * solve error rather than a silent rotation about a world axis. The schema
+ * accepted the pair long before the leaf read it. Shared by the circular array
+ * and pattern leaves.
  */
-function resolveCircularAxis(
-  feature: Dict,
+export function resolvePatternAxis(
+  axisQuery: string,
+  originValue: unknown,
+  directionValue: unknown,
+  op: string,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
 ): [number[], number[]] {
   // The pick can be a straight edge, circular edge, sketch line, sketch
   // circle, cylindrical face, or planar face.
-  const axisQuery = (feature.axis as string) ?? ''
   if (axisQuery) {
     const axis = resolveAxisQueryStrict(axisQuery, globalRepo, bodyStore)
-    if (!axis) throw new Error(`circular_array: axis query '${axisQuery}' did not resolve to a usable axis`)
+    if (!axis) throw new Error(`${op}: axis query '${axisQuery}' did not resolve to a usable axis`)
     return axis
   }
-  const origin = storedVec3(feature, 'axis_origin')
-  const direction = storedVec3(feature, 'axis_direction')
+  const origin = storedVec3(originValue, op, 'axis_origin')
+  const direction = storedVec3(directionValue, op, 'axis_direction')
   if (origin === null && direction === null) {
     throw new Error(
-      'circular_array: axis is required; pick an edge, sketch entity, or face as `axis`, ' +
+      `${op}: axis is required; pick an edge, sketch entity, or face as \`axis\`, ` +
         'or store the pair `axis_origin` + `axis_direction`',
     )
   }
   const dir = direction ?? [0, 0, 1]
   const len = Math.hypot(dir[0], dir[1], dir[2])
-  if (len < 1e-12) throw new Error('circular_array: axis_direction must be a non-zero vector')
+  if (len < 1e-12) throw new Error(`${op}: axis_direction must be a non-zero vector`)
   return [origin ?? [0, 0, 0], dir.map((c) => c / len)]
+}
+
+function resolveCircularAxis(
+  feature: Dict,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+): [number[], number[]] {
+  return resolvePatternAxis(
+    (feature.axis as string) ?? '',
+    feature.axis_origin,
+    feature.axis_direction,
+    'circular_array',
+    globalRepo,
+    bodyStore,
+  )
 }
 
 /** Build circular array instance transforms (mirrors `_build_circular_transforms`). */

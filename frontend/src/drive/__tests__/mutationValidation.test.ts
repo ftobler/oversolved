@@ -190,6 +190,7 @@ describe('set_*_field field names', () => {
     set_boolean_field: 'keep_tools',
     set_array_field: 'count_x',
     set_circular_array_field: 'step_angle',
+    set_pattern_field: 'count',
     set_hole_field: 'diameter',
     set_transform_field: 'rotation_axis',
     set_mirror_field: 'keep_original',

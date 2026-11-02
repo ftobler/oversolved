@@ -424,6 +424,38 @@ export const CIRCULAR_ARRAY_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+export const PATTERN_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_pattern',
+  subKey: 'pattern',
+  defaults: { source_feature: '', mode: 'linear', count: 2, pitch: 20 },
+  fields: [
+    // The source is a FEATURE row, not a viewport pick: the options are the
+    // document's own extrude/revolve/sweep rows, which are exactly the leaves
+    // whose tool the pattern can repeat.
+    { type: 'featureSelect', key: 'source_feature', label: 'Source Feature',
+      kinds: ['extrude', 'revolve', 'sweep'], emptyText: '(pick the feature to repeat)' },
+    { type: 'select', key: 'mode', label: 'Mode', default: 'linear',
+      options: [{ value: 'linear', label: 'Linear' }, { value: 'circular', label: 'Circular' }] },
+    // Count is the total: the source's own application is instance 1.
+    { type: 'number', key: 'count', label: 'Count', default: 2, parse: 'int', validate: positive, min: 1,
+      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v) },
+    { type: 'pick', key: 'direction_query', label: 'Direction', transform: resolveAxisQuery,
+      showWhen: (d) => d.mode !== 'circular', emptyText: '(pick edge or face, required)' },
+    { type: 'checkbox', key: 'invert', label: 'Invert', default: false,
+      showWhen: (d) => d.mode !== 'circular' },
+    { type: 'number', key: 'pitch', label: 'Pitch', default: 20, validate: nonNegative, min: 0,
+      showWhen: (d) => d.mode !== 'circular' },
+    { type: 'number', key: 'step_angle', label: 'Step angle',
+      showWhen: (d) => d.mode === 'circular' },
+    { type: 'pick', key: 'axis', label: 'Axis', transform: resolveAxisQuery,
+      showWhen: (d) => d.mode === 'circular', emptyText: '(pick edge or face, required)' },
+    { type: 'checkbox', key: 'invert_axis', label: 'Invert axis', default: false,
+      showWhen: (d) => d.mode === 'circular' },
+    { type: 'pick', key: 'target_body', label: 'Body', transform: resolveBodyPickRef,
+      emptyText: '(the body the source shaped)' },
+  ],
+}
+
 export const DELETE_BODY_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_delete_body',
   subKey: 'delete_body',
@@ -536,6 +568,7 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   split: SPLIT_SCHEMA,
   array: ARRAY_SCHEMA,
   circular_array: CIRCULAR_ARRAY_SCHEMA,
+  pattern: PATTERN_SCHEMA,
   delete_body: DELETE_BODY_SCHEMA,
   variable: VARIABLE_SCHEMA,
   helix: HELIX_SCHEMA,

@@ -12,6 +12,7 @@ import featureDeleteFaceIcon from '@/assets/icons/feature-delete-face.svg'
 import featureBooleanIcon from '@/assets/icons/feature-boolean.svg'
 import featureArrayIcon from '@/assets/icons/feature-array.svg'
 import featureCircularArrayIcon from '@/assets/icons/feature-circular-array.svg'
+import featurePatternIcon from '@/assets/icons/feature-pattern.svg'
 import featureDeleteBodyIcon from '@/assets/icons/feature-delete-body.svg'
 import featureHoleIcon from '@/assets/icons/feature-hole.svg'
 import featureTransformIcon from '@/assets/icons/feature-transform.svg'
@@ -39,6 +40,7 @@ export function getFeatureIcon(kind: string | undefined): string {
     case 'boolean':         return featureBooleanIcon
     case 'array':           return featureArrayIcon
     case 'circular_array':  return featureCircularArrayIcon
+    case 'pattern':         return featurePatternIcon
     case 'delete_body':     return featureDeleteBodyIcon
     case 'hole':            return featureHoleIcon
     case 'transform':       return featureTransformIcon

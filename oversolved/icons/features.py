@@ -493,6 +493,28 @@ def context_camera(ctx):
     ctx.fill()
 
 
+@icon("frontend/src/assets/icons/feature-pattern.svg")
+def feature_pattern(ctx):
+    """A filled source block repeated to the right: one feature patterned in place."""
+    size = 0.24
+    gap = 0.1
+    left = 0.05
+    top = 0.45
+    for i in range(3):
+        x0 = left + i * (size + gap)
+        ctx.rectangle(x0, top, size, size)
+        if i == 0:
+            ctx.fill()
+        else:
+            stroke(ctx, 1.5)
+
+    # The repeat direction travels over the copies, not over the source.
+    ctx.move_to(left, 0.2)
+    ctx.line_to(left + 2 * (size + gap) + size - 0.06, 0.2)
+    stroke(ctx, 1.2)
+    _arrowhead(ctx, left + 2 * (size + gap) + size - 0.02, 0.2, 0, 0.1)
+
+
 @icon("frontend/src/assets/icons/feature-circular-array.svg")
 def feature_circular_array(ctx):
     """A boss circled by an arrow: the radial handle and the sweep it follows."""

@@ -26,6 +26,7 @@ const PROGRAMMATIC_ONLY = new Set([
   'add_move_face',  // toolbar-only (no keyboard shortcut)
   'add_delete_face',  // toolbar-only (no keyboard shortcut)
   'add_split',  // toolbar-only (no keyboard shortcut)
+  'add_pattern',  // toolbar-only (no keyboard shortcut)
   ...TOOLBAR_ONLY_CONSTRAINT_COMMANDS,
 ])
 
