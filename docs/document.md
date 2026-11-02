@@ -172,9 +172,8 @@ The sketch entity has no layer field, so every layer is imported and the layer
 names are not stored (the parser reports their counts). Repeated entities are
 kept as authored; the import does not de-duplicate them, and a polyline width
 is ignored (the centreline imports). `$INSUNITS` is converted to the document's
-unit
-(0 unitless means the numbers are already document units; 1 inch, 2 foot, 4
-mm, 5 cm and 6 m convert), and an unsupported code refuses by name. DXF is a
+unit (0 unitless means the numbers are already document units; 1 inch, 2 foot,
+4 mm, 5 cm and 6 m convert), and an unsupported code refuses by name. DXF is a
 planar format: the import reads X and Y only, matching CadQuery's DXF import
 onto a workplane, and the drawing's local coordinates are the sketch's own.
 

@@ -638,7 +638,8 @@ banner on stdout, so a client config must use the direct node invocation.
   toolbar's file picker uses, and appends the supported entities to one sketch
   as one undo entry; its row note lists the supported entity kinds, the
   annotation entities that are skipped, and the `$INSUNITS` rule. The
-  `set_*_field` value note emits the enum members of every enum field in that kind's schema
+  `set_*_field` value note emits the enum members of every enum field in that
+  kind's schema
   (`operation: add|cut|new`, `direction: normal|reverse|symmetric`,
   `termination: blind|up_to`, `operation: new|replace`), and `add_plane`'s
   `definition` carries the same shape the part-document schema serves (its
