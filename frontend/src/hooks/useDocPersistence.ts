@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { stringify as stringifyYaml } from 'yaml'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { backendBundle } from '@/adapters/backend'
@@ -39,6 +39,14 @@ export function useDocPersistence<D>({
   // Chaining makes arrival order the landing order, so the latest bytes always
   // win, independent of the identity guard below.
   const saveChain = useRef<Promise<void>>(Promise.resolve())
+  // The dirty flag is document-wide state, and a save can outlive the editor
+  // that started it. Once this editor is gone its bytes may still land, but it
+  // no longer speaks for whatever document is on screen now.
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   const saveDoc = useCallback(async (uuid: string, document: D, screenshot?: () => Promise<string | null>) => {
     const prior = saveChain.current
@@ -81,8 +89,15 @@ export function useDocPersistence<D>({
         // the dirty flag and the save count are gated on identity: an edit that
         // landed during the save window postdates these bytes, so its flag must
         // survive, or a reload would silently drop those edits.
+        //
+        // A save that lands after its editor unmounted must publish neither: the
+        // flag and count now belong to the document that replaced it, and
+        // clearing them here would mark that document saved. Its bytes still
+        // reached the store, so the journal cleanup below still applies.
         const clean = docRef.current === savedRef
-        useUnsavedChangesStore.getState().markSaved(hashSavedText(text), clean)
+        if (mountedRef.current) {
+          useUnsavedChangesStore.getState().markSaved(hashSavedText(text), clean)
+        }
         // The shadow copy has done its job: the stored bytes now match it, so
         // it goes. Deliberately not cleared when an edit landed during the
         // save: that newer shadow copy is ahead of the stored bytes and must

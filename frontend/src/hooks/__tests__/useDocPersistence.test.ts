@@ -121,6 +121,25 @@ describe('useDocPersistence', () => {
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 
+  // The dirty flag belongs to the document now on screen, not to the save that
+  // happened to finish while the editor was leaving. Clearing it from a closing
+  // editor would let the next document navigate away without a warning.
+  it('does not clear a newer document dirty flag when its own save lands after unmount', async () => {
+    const first = renderPersist()
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    let savePromise!: Promise<boolean>
+    await act(async () => { savePromise = first.result.current.saveDoc('A', first.docRef.current!) })
+    await act(async () => { first.unmount() })
+
+    // Another document mounted and made an edit while A's save was still open.
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    expect(await savePromise).toBe(true)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
   // The fingerprint of the exact bytes written is what lets a cancel decide
   // whether the doc it rewinds to is the doc that is stored: the save count says
   // a save landed, never what it landed.
