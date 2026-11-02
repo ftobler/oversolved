@@ -11,7 +11,8 @@
  */
 
 import { fitCubicBezier } from '@/utils/geometry/bezierFit'
-import { dot as dot3, sub as sub3, cross as cross3 } from '@/utils/vec3'
+import { dot as dot3, cross as cross3 } from '@/utils/vec3'
+import { worldToSketch2d } from './shared/planes'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 
 type Dict = Record<string, unknown>
@@ -44,12 +45,6 @@ function len3(a: number[]): number {
 function normalize3(a: number[]): number[] {
   const l = len3(a)
   return l > 1e-12 ? [a[0] / l, a[1] / l, a[2] / l] : [0, 0, 0]
-}
-
-/** Project a 3D point onto a plane frame, returning [u, v] 2D coordinates. */
-export function project3dTo2d(xyz: number[], plane: PlaneFrame): number[] {
-  const v = sub3(xyz, plane.origin)
-  return [dot3(v, plane.x_axis), dot3(v, plane.y_axis)]
 }
 
 function len2d(v: number[]): number {
@@ -95,11 +90,11 @@ function conicToEllipseParams(
   radB: number,
   plane: PlaneFrame,
 ): number[] {
-  const c2d = project3dTo2d(center, plane)
+  const c2d = worldToSketch2d(center, plane)
   const uA = normalize3(dirA)
   const uB = normalize3(dirB)
-  const pA = project3dTo2d([center[0] + uA[0] * radA, center[1] + uA[1] * radA, center[2] + uA[2] * radA], plane)
-  const pB = project3dTo2d([center[0] + uB[0] * radB, center[1] + uB[1] * radB, center[2] + uB[2] * radB], plane)
+  const pA = worldToSketch2d([center[0] + uA[0] * radA, center[1] + uA[1] * radA, center[2] + uA[2] * radA], plane)
+  const pB = worldToSketch2d([center[0] + uB[0] * radB, center[1] + uB[1] * radB, center[2] + uB[2] * radB], plane)
   const d1 = [pA[0] - c2d[0], pA[1] - c2d[1]]
   const d2 = [pB[0] - c2d[0], pB[1] - c2d[1]]
   const [a, b, thetaDeg] = conjugateToAxes(d1, d2)
@@ -223,11 +218,11 @@ export function projectTo2d(
   const { kindH, data } = g3d
   if (kindH === 'point') {
     const pt = data.point as number[]
-    return { kind: 'point', params: project3dTo2d(pt, plane) }
+    return { kind: 'point', params: worldToSketch2d(pt, plane) }
   }
   if (kindH === 'line') {
-    const s2d = project3dTo2d(data.start as number[], plane)
-    const e2d = project3dTo2d(data.end as number[], plane)
+    const s2d = worldToSketch2d(data.start as number[], plane)
+    const e2d = worldToSketch2d(data.end as number[], plane)
     return { kind: 'line', params: [...s2d, ...e2d] }
   }
   if (kindH === 'circle') {
@@ -240,7 +235,7 @@ export function projectTo2d(
     if (axis && x_axis && !isParallelToPlane(axis, plane)) {
       return { kind: 'ellipse', params: circleToEllipseParams(center, radius, axis, x_axis, plane) }
     }
-    const c2d = project3dTo2d(center, plane)
+    const c2d = worldToSketch2d(center, plane)
     return { kind: 'circle', params: [...c2d, radius] }
   }
   if (kindH === 'ellipse') {
@@ -271,7 +266,7 @@ export function projectTo2d(
         center[1] + ca * u[1] + sb * vn[1],
         center[2] + ca * u[2] + sb * vn[2],
       ]
-      pts2d.push(project3dTo2d(p3, plane) as [number, number])
+      pts2d.push(worldToSketch2d(p3, plane) as [number, number])
     }
     const params = fitCubicBezier(pts2d)
     return params ? { kind: 'spline', params } : null
@@ -279,7 +274,7 @@ export function projectTo2d(
   if (kindH === 'arc') {
     const center = data.center as number[]
     const radius = data.radius as number
-    const c2d = project3dTo2d(center, plane)
+    const c2d = worldToSketch2d(center, plane)
 
     if (typeof data.angle_start === 'number' && typeof data.angle_end === 'number' && !data.axis) {
       // Sketch-to-sketch arc projection (source arc has 2D angles already).
@@ -315,14 +310,14 @@ export function projectTo2d(
       const N = 32
       const pts2d: [number, number][] = []
       for (let i = 0; i <= N; i++) {
-        pts2d.push(project3dTo2d(pointAt(a0 + (a1 - a0) * (i / N)), plane) as [number, number])
+        pts2d.push(worldToSketch2d(pointAt(a0 + (a1 - a0) * (i / N)), plane) as [number, number])
       }
       const params = fitCubicBezier(pts2d)
       return params ? { kind: 'spline', params } : null
     }
 
-    const s2d = project3dTo2d(pointAt(a0), plane)
-    const e2d = project3dTo2d(pointAt(a1), plane)
+    const s2d = worldToSketch2d(pointAt(a0), plane)
+    const e2d = worldToSketch2d(pointAt(a1), plane)
     // Degree slots: the sketch arc convention is degrees everywhere (solver
     // residuals apply to_radians, previews multiply by pi/180), so the atan2
     // results must be converted -- raw radians pinned every projected arc at
@@ -343,7 +338,7 @@ export function projectTo2d(
     // Bezier is least-squares fit to them -> the 8-param spline entity.
     const pts3d = data.points as number[][] | undefined
     if (!pts3d || pts3d.length < 2) return null
-    const pts2d = pts3d.map((p) => project3dTo2d(p, plane) as [number, number])
+    const pts2d = pts3d.map((p) => worldToSketch2d(p, plane) as [number, number])
     const params = fitCubicBezier(pts2d)
     return params ? { kind: 'spline', params } : null
   }

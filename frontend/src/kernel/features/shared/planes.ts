@@ -6,7 +6,7 @@
 import type { Body } from '../../types3d'
 import type { Repository } from '../../query'
 import { resolveBarePlaneId } from '../../solverConstants'
-import type { Vec3 } from '@/utils/vec3'
+import { dot, sub, type Vec3 } from '@/utils/vec3'
 
 /** A plane as either a Frame3D or a plain `{origin, x_axis, y_axis, normal}` dict. */
 export interface PlaneLike {
@@ -85,6 +85,14 @@ export function sketchToWorld2d(xy: number[], plane: PlaneLike): number[] {
     plane.origin[1] + u * plane.x_axis[1] + v * plane.y_axis[1],
     plane.origin[2] + u * plane.x_axis[2] + v * plane.y_axis[2],
   ]
+}
+
+/** The inverse of [[sketchToWorld2d]]: project a 3D world point onto the plane
+ *  frame as [u, v] sketch coords. Only the in-plane basis is needed, so a frame
+ *  without a normal is accepted too. */
+export function worldToSketch2d(xyz: number[], plane: Pick<PlaneLike, 'origin' | 'x_axis' | 'y_axis'>): number[] {
+  const rel = sub(xyz, plane.origin)
+  return [dot(rel, plane.x_axis), dot(rel, plane.y_axis)]
 }
 
 /**

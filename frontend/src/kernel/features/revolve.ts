@@ -12,7 +12,8 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
-import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
+import { samePlane, sketchToWorld2d, worldToSketch2d, type PlaneLike } from './shared/planes'
+import { dot, sub as sub3 } from '@/utils/vec3'
 import { surfaceEntityIds } from './shared/bodyRef'
 import { profileAreaReport } from './shared/profileLoops'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
@@ -161,11 +162,6 @@ export function refuseAxisThroughProfile(
   axisDirection: number[],
   areaId: string,
 ): void {
-  const dot = (a: number[], b: number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-  const to2d = (p: number[]): number[] => {
-    const rel = [p[0] - plane.origin[0], p[1] - plane.origin[1], p[2] - plane.origin[2]]
-    return [dot(rel, plane.x_axis), dot(rel, plane.y_axis)]
-  }
   const normalComponent = dot(axisDirection, plane.normal)
   // Below this the direction counts as lying in the plane; a normalised vector
   // has an in-plane component near 1 when its normal component is this small.
@@ -181,7 +177,7 @@ export function refuseAxisThroughProfile(
     const pts = loopPts(loop, 16)
     if (pts.length < 3) continue
     if (Math.abs(normalComponent) <= PARALLEL_EPS) {
-      const origin2 = to2d(axisOrigin)
+      const origin2 = worldToSketch2d(axisOrigin, plane)
       const dir2 = [
         dot(axisDirection, plane.x_axis),
         dot(axisDirection, plane.y_axis),
@@ -206,18 +202,13 @@ export function refuseAxisThroughProfile(
     } else {
       // The axis meets the plane at exactly one point. That point is the only
       // place a line outside the profile plane can pass through the area.
-      const rel = [
-        axisOrigin[0] - plane.origin[0],
-        axisOrigin[1] - plane.origin[1],
-        axisOrigin[2] - plane.origin[2],
-      ]
-      const t = -dot(rel, plane.normal) / normalComponent
+      const t = -dot(sub3(axisOrigin, plane.origin), plane.normal) / normalComponent
       const hit = [
         axisOrigin[0] + t * axisDirection[0],
         axisOrigin[1] + t * axisDirection[1],
         axisOrigin[2] + t * axisDirection[2],
       ]
-      if (pointInLoop(to2d(hit), loop, 16)) fail()
+      if (pointInLoop(worldToSketch2d(hit, plane), loop, 16)) fail()
     }
   }
 }
