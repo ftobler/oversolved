@@ -141,7 +141,8 @@
 }
 
 .mate-param-angle,
-.mate-param-offset {
+.mate-param-offset,
+.mate-param-limit {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -152,6 +153,14 @@
    a footnote to the box above it, not a warning. */
 .mate-param-hint {
   color: #777;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+/* An inverted joint range never reaches the document: the loader would refuse
+   it on the next open, so the editor says why it is not being written. */
+.mate-param-error {
+  color: #b3261e;
   font-size: 11px;
   line-height: 1.3;
 }

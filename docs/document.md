@@ -58,12 +58,16 @@ The assembly document (parts, instances, mates) is a separate format. Its
 contract is the JSON Schema in `persistence/assemblyDocSchema.ts`, served over
 MCP as `oversolved://schema/assembly-document`: a `part_instance` names a
 workspace `doc_id`, and a `mate` carries two `{ part, anchor,
-anchor_descriptor }` refs plus the parameters its kind reads.
+anchor_descriptor }` refs plus the parameters its kind reads. `limit_min` and
+`limit_max` are one-sided joint ranges: degrees about the canonical roll zero on
+`rotating` (signed, inside (-180, 180]), millimetres of axial separation on
+`sliding`. Inside the range the bound adds no constraint; a missing key is an
+open end.
 
 ## Document Structure
 
 ```yaml
-version: 4
+version: 5
 kind: part
 
 features:
@@ -72,7 +76,7 @@ features:
 ```
 
 Top-level fields: `version` (int, the migration-ladder stamp; the ladder target
-is `CURRENT_DOC_VERSION = 4` in `persistence/docSchema.ts`, and a missing or
+is `CURRENT_DOC_VERSION = 5` in `persistence/docSchema.ts`, and a missing or
 older stamp runs the steps that bring it up), `kind` (string, `"part"`),
 `rollback` (int, an index into `features`; absent means the end of the stack,
 and a rolled-back document reopens where the user left it), `length_unit`

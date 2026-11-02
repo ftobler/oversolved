@@ -217,6 +217,44 @@ fn mate_residual_count_matches_actual_residuals_pushed() {
             kind
         );
     }
+
+    // An authored bound adds exactly one row, and the presence FLAG (not the
+    // value) decides: a stored bound of 0 is still a stop at 0.
+    let limit_cases: &[(MateKind, bool, bool, usize)] = &[
+        (MateKind::Sliding, true, false, 8),
+        (MateKind::Sliding, false, true, 8),
+        (MateKind::Sliding, true, true, 9),
+        (MateKind::Rotating, true, false, 7),
+        (MateKind::Rotating, false, true, 7),
+        (MateKind::Rotating, true, true, 8),
+    ];
+    for &(kind, min_set, max_set, want) in limit_cases {
+        let mut one = mate(
+            kind,
+            mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+            mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+            false,
+            0.0,
+            1.0,
+            0.0,
+        );
+        one.limit_min = 0.0;
+        one.limit_max = 0.0;
+        one.limit_min_set = min_set;
+        one.limit_max_set = max_set;
+        assert_eq!(mate_residual_count(&one), want);
+        let input = MateInput {
+            bodies: vec![RigidBody, RigidBody],
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0],
+            mates: vec![one],
+        };
+        let p = MateProblem::new(&input);
+        assert_eq!(p.residuals(&input.params_initial).len(), want);
+        assert_eq!(p.m, want);
+    }
 }
 
 /// A residual row named by what it measures, so the expected class below comes
@@ -318,6 +356,96 @@ fn row_classes_pin_the_unit_of_every_row() {
             kind,
             angle_set,
             rows
+        );
+    }
+
+    // A slide bound is a length row; a hinge bound is an angle row. Both sit
+    // after the kind's fixed rows, min before max.
+    let limit_cases: &[(MateKind, bool, bool, &[Row])] = &[
+        (
+            MateKind::Sliding,
+            true,
+            false,
+            &[Axis, Axis, Axis, Perp, Perp, Perp, Roll, Distance],
+        ),
+        (
+            MateKind::Sliding,
+            false,
+            true,
+            &[Axis, Axis, Axis, Perp, Perp, Perp, Roll, Distance],
+        ),
+        (
+            MateKind::Sliding,
+            true,
+            true,
+            &[Axis, Axis, Axis, Perp, Perp, Perp, Roll, Distance, Distance],
+        ),
+        (
+            MateKind::Rotating,
+            true,
+            false,
+            &[
+                Coincidence,
+                Coincidence,
+                Coincidence,
+                Axis,
+                Axis,
+                Axis,
+                Roll,
+            ],
+        ),
+        (
+            MateKind::Rotating,
+            false,
+            true,
+            &[
+                Coincidence,
+                Coincidence,
+                Coincidence,
+                Axis,
+                Axis,
+                Axis,
+                Roll,
+            ],
+        ),
+        (
+            MateKind::Rotating,
+            true,
+            true,
+            &[
+                Coincidence,
+                Coincidence,
+                Coincidence,
+                Axis,
+                Axis,
+                Axis,
+                Roll,
+                Roll,
+            ],
+        ),
+    ];
+    for &(kind, min_set, max_set, rows) in limit_cases {
+        let mut one = mate(
+            kind,
+            mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+            mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+            false,
+            0.0,
+            1.0,
+            0.0,
+        );
+        one.limit_min = 0.0;
+        one.limit_max = 0.0;
+        one.limit_min_set = min_set;
+        one.limit_max_set = max_set;
+        let want: Vec<RowClass> = rows.iter().map(|row| row.class()).collect();
+        assert_eq!(
+            mate_row_classes(&one),
+            want,
+            "row classes for {:?}, min={}, max={}",
+            kind,
+            min_set,
+            max_set
         );
     }
 }

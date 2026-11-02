@@ -276,7 +276,7 @@ describe('solveAssembly', () => {
     // A solver that returns an output for only one body when two were sent.
     const shortSolver = (): Uint8Array => {
       const w = new DataView(new ArrayBuffer(20 + 7 * 8 + 24))
-      w.setUint32(0, 0x3352_544D, true)  // MATE_MAGIC_OUT
+      w.setUint32(0, 0x3452_544D, true)  // MATE_MAGIC_OUT
       w.setUint32(4, 7, true)  // nParams = 7, but the caller expects 14
       w.setUint8(8, 0)
       return new Uint8Array(w.buffer)
@@ -336,6 +336,83 @@ describe('solveAssembly', () => {
     })
   })
 
+  it('refuses an inverted limit range before the wire', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeAxialBundle('doc-a', '1'))
+    await bundleCachePut(makeAxialBundle('doc-b', '1'))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(0, 0, 20) },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'sliding' as const,
+      ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' },
+      limit_min: 30, limit_max: 10,
+    }]
+
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeEchoSolver())
+
+    expect(result.status.mates['m1'].stale).toBe(true)
+    expect(result.status.mates['m1'].error).toContain('limit_min must not exceed limit_max')
+  })
+
+  it('writes a signed rotating bound to the wire in radians', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeAxialBundle('doc-a', '1'))
+    await bundleCachePut(makeAxialBundle('doc-b', '1'))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(0, 0, 0) },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'rotating' as const,
+      ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' },
+      limit_min: -90, limit_max: -10,
+    }]
+    const { solver, captured } = makeCaptureSolver()
+
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
+
+    expect(result.status.mates['m1'].error).toBeUndefined()
+    const record = captured.input!.mates[0]
+    expect(record.limitMin).toBeCloseTo((-90 * Math.PI) / 180, 12)
+    expect(record.limitMax).toBeCloseTo((-10 * Math.PI) / 180, 12)
+  })
+
+  it('refuses an out-of-range rotating bound before the wire', async () => {
+    // 270 is not "about -90" for a one-sided bound: as a maximum it allows
+    // everything, so folding it would invent a constraint. The solve boundary
+    // refuses it the way the loader and the drive do.
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeAxialBundle('doc-a', '1'))
+    await bundleCachePut(makeAxialBundle('doc-b', '1'))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(0, 0, 0) },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'rotating' as const,
+      ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' },
+      limit_min: 270,
+    }]
+    const { solver, captured } = makeCaptureSolver()
+
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
+
+    expect(result.status.mates['m1'].stale).toBe(true)
+    expect(result.status.mates['m1'].error).toContain('(-180, 180]')
+    expect(captured.input?.mates ?? []).toHaveLength(0)
+  })
+
   it('marks a mate whose solver trapped even without a stale flag, and sets stale too', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
@@ -385,7 +462,7 @@ describe('solveAssembly', () => {
       const outSize = 4 + 4 + 1 + nParams * 8 + 4 + 28  // +4 for the n_mates header
       const out = new DataView(new ArrayBuffer(outSize))
       let pos = 0
-      out.setUint32(pos, 0x3352544D, true); pos += 4
+      out.setUint32(pos, 0x3452544D, true); pos += 4
       out.setUint32(pos, nParams, true); pos += 4
       out.setUint8(pos, 2); pos += 1
       for (let i = 0; i < nParams; i++) { out.setFloat64(pos, view.getFloat64(paramsOffset + i * 8, true), true); pos += 8 }

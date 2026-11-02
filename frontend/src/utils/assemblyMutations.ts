@@ -570,7 +570,9 @@ export function setMateRef(
  * The tunable half of a mate: `kind` and the two refs have their own setters.
  * Bounded by what `encodeMateInput` puts on the wire (see utils/mateKinds.ts).
  */
-export type MateParamPatch = Partial<Pick<MateFeatureDef, 'flip' | 'ratio' | 'offset' | 'radius' | 'angle'>>
+export type MateParamPatch = Partial<
+  Pick<MateFeatureDef, 'flip' | 'ratio' | 'offset' | 'radius' | 'angle' | 'limit_min' | 'limit_max'>
+>
 
 /**
  * Apply a parameter patch to a mate definition. An `undefined` value deletes the

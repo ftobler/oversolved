@@ -50,4 +50,27 @@ describe('assemblySolveInput', () => {
     expect(mate.ref_b).toEqual({ part: '__assembly', anchor: 'AssemblyTop' })
     expect(mate).toMatchObject({ flip: true, offset: { z: 5 } })
   })
+
+  it('passes the one-sided joint bounds through to the solve', () => {
+    // The editor, the drive and the loader all agree a bound exists; if this
+    // adapter drops it the solve silently runs the joint unbounded.
+    const bounded: AssemblyDoc = {
+      kind: 'assembly',
+      features: [{
+        id: 'm1', kind: 'mate', mate: {
+          kind: 'sliding',
+          ref_a: { part: 'left', anchor: 'a' },
+          ref_b: { part: 'left', anchor: 'b' },
+          limit_min: 0,
+          limit_max: 50,
+        },
+      }],
+    }
+    expect(mateSpecs(bounded)[0]).toMatchObject({ limit_min: 0, limit_max: 50 })
+  })
+
+  it('leaves an absent bound absent, never a stop at zero', () => {
+    expect(mateSpecs(DOC)[0].limit_min).toBeUndefined()
+    expect(mateSpecs(DOC)[0].limit_max).toBeUndefined()
+  })
 })

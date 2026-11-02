@@ -9,7 +9,7 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MATE_MAGIC ("MTS5")
+//!   u32  magic = MATE_MAGIC ("MTS6")
 //!   u32  n_bodies
 //!   u32  n_params            // n_bodies * 7
 //!   u32  n_mates
@@ -20,7 +20,7 @@
 //! mates:          n_mates x mate-record (see below)
 //! ```
 //!
-//! ## Mate record (fixed length, 212 bytes)
+//! ## Mate record (fixed length, 228 bytes)
 //!
 //! ```text
 //!   u8   kind_code
@@ -32,11 +32,14 @@
 //!   f64  axis_a_x, axis_a_y, axis_a_z     // anchor axis in body A local frame
 //!   f64  point_b_x, point_b_y, point_b_z  // anchor point in body B local frame
 //!   f64  axis_b_x, axis_b_y, axis_b_z     // anchor axis in body B local frame
-//!   u8   flags               // bit 0 = flip, bit 1 = angle_set (Rotating: lock the roll to `angle`)
+//!   u8   flags               // bit 0 = flip, bit 1 = angle_set (Rotating: lock the roll to `angle`),
+//!                            // bit 2 = limit_min_set, bit 3 = limit_max_set
 //!   f64  offset_x, offset_y, offset_z  // offset vector in body A's LOCAL frame
 //!   f64  ratio               // for CopyRotation (gear-like ratio)
 //!   f64  radius              // for Tangential (mate-side radius fallback)
 //!   f64  angle               // radians, absolute roll target of Fixed/Sliding, and of Rotating when angle_set (TS encodes degrees -> radians)
+//!   f64  limit_min           // radians for Rotating, millimetres for Sliding; read only when its flag bit is set
+//!   f64  limit_max
 //!   f64  perp_a_x, perp_a_y, perp_a_z  // canonical in-plane frame of A's LOCAL axis
 //!   f64  perp_b_x, perp_b_y, perp_b_z  // canonical in-plane frame of B's LOCAL axis
 //!   f64  weight              // row scale on this mate's residuals/Jacobian (1 for real mates, small for the drag objective)
@@ -55,12 +58,14 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MATE_MAGIC_OUT ("MTR3")
+//!   u32  magic = MATE_MAGIC_OUT ("MTR4")
 //!   u32  n_params
 //!   u8   overall_status
 //! params_solved: n_params x f64
 //! mate_residuals: u32 n_mates, then n_mates x f64 (L2 norm of each mate's
 //!                 weighted residual block, in input mate order)
+//! limit_flags:    n_mates x u8 (LIMIT_MIN_HIT / LIMIT_MAX_HIT per input mate;
+//!                 0 for a mate with no limits or a dropped mate)
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
 //! ```
 
@@ -70,8 +75,15 @@ use crate::codec::{finite, CodecError, Reader, Writer};
 // plain `MAGIC` in sketch-solver/src/codec.rs): the two crates version their
 // buffers separately and never read each other's bytes, so the naming
 // asymmetry is deliberate and not a rename target.
-pub const MATE_MAGIC: u32 = 0x3553_544D; // "MTS5" in LE
-pub const MATE_MAGIC_OUT: u32 = 0x3352_544D; // "MTR3" in LE
+pub const MATE_MAGIC: u32 = 0x3653_544D; // "MTS6" in LE
+pub const MATE_MAGIC_OUT: u32 = 0x3452_544D; // "MTR4" in LE
+
+/// Output limit report, one byte per input mate: the joint's coordinate sits at
+/// (or past) the authored minimum / maximum. A solved pose resting on a stop
+/// reads as a hit even though its residual is zero, which is what lets the host
+/// name the bound the user can see.
+pub const LIMIT_MIN_HIT: u8 = 0b01;
+pub const LIMIT_MAX_HIT: u8 = 0b10;
 
 /// All mate kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -233,6 +245,16 @@ pub struct Mate {
     /// hinge differ, which `angle` alone cannot say. Fixed and Sliding always
     /// read `angle` and ignore this.
     pub angle_set: bool,
+    /// Optional one-sided joint limits. `Rotating` reads them as a roll range in
+    /// radians about the same zero as `angle`; `Sliding` reads them as the axial
+    /// separation of B's anchor from A's along A's world axis, in wire units.
+    /// The value is ignored unless its `*_set` flag is true, so a document with
+    /// no limits carries no row and the joint stays free. Inclusive: inside
+    /// `[limit_min, limit_max]` the row is zero.
+    pub limit_min: f64,
+    pub limit_max: f64,
+    pub limit_min_set: bool,
+    pub limit_max_set: bool,
     /// Row scale `s` on this mate's residual block and Jacobian rows, so its
     /// least-squares contribution is `s^2 * r^2`. Real mates author 1; the live
     /// drag objective authors a small value so it follows the cursor where the
@@ -347,6 +369,10 @@ pub struct MateOutput {
     /// order. Carried on the wire so the host can mark a mate whose rigid
     /// constraint did not hold without re-deriving the Rust residual formula.
     pub mate_residuals: Vec<f64>,
+    /// One byte per INPUT mate in input order: `LIMIT_MIN_HIT` / `LIMIT_MAX_HIT`
+    /// when the joint coordinate sits at or past that bound at the reported
+    /// pose. A dropped mate keeps a 0 slot so the positional fold stays aligned.
+    pub limit_flags: Vec<u8>,
     pub diagnostics: MateDiagnostics,
 }
 
@@ -400,9 +426,9 @@ fn read_vec3(r: &mut Reader<'_>) -> Result<[f64; 3], CodecError> {
     Ok([read_f64(r)?, read_f64(r)?, read_f64(r)?])
 }
 
-/// Read one fixed-length (212-byte) mate record in wire order: kind byte, body
+/// Read one fixed-length (228-byte) mate record in wire order: kind byte, body
 /// indices, anchor kinds, point/axis triplets, flags/flip, offset/ratio/radius/
-/// angle, perp triplets, weight.
+/// angle, limits, perp triplets, weight.
 fn read_mate_record(r: &mut Reader<'_>) -> Result<Mate, CodecError> {
     let kind_byte = r.u8()?;
     let kind = MateKind::from_u8(kind_byte).ok_or(CodecError::BadKind(kind_byte))?;
@@ -420,13 +446,17 @@ fn read_mate_record(r: &mut Reader<'_>) -> Result<Mate, CodecError> {
     let axis_b = read_vec3(r)?;
 
     let flags = r.u8()?;
-    let flip = (flags & 0b001) != 0;
-    let angle_set = (flags & 0b010) != 0;
+    let flip = (flags & 0b0001) != 0;
+    let angle_set = (flags & 0b0010) != 0;
+    let limit_min_set = (flags & 0b0100) != 0;
+    let limit_max_set = (flags & 0b1000) != 0;
 
     let offset = read_vec3(r)?;
     let ratio = read_f64(r)?;
     let radius = read_f64(r)?;
     let angle = read_f64(r)?;
+    let limit_min = read_f64(r)?;
+    let limit_max = read_f64(r)?;
 
     let perp_a = read_vec3(r)?;
     let perp_b = read_vec3(r)?;
@@ -459,6 +489,10 @@ fn read_mate_record(r: &mut Reader<'_>) -> Result<Mate, CodecError> {
         radius,
         angle,
         angle_set,
+        limit_min,
+        limit_max,
+        limit_min_set,
+        limit_max_set,
         weight,
     })
 }
@@ -469,7 +503,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     let (n_bodies, n_params, n_mates) = read_header(&mut r)?;
 
     // Header counts are untrusted; see `Reader::capacity_for`. A mate record is
-    // a fixed 212 bytes, a param a single f64.
+    // a fixed 228 bytes, a param a single f64.
     let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 8));
     for _ in 0..n_params {
         params_initial.push(finite(r.f64()?)?);
@@ -478,7 +512,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     let mask_len = pinned_mask_bytes(n_bodies);
     let fixed_mask = r.take(mask_len)?.to_vec();
 
-    let mut mates = Vec::with_capacity(r.capacity_for(n_mates, 212));
+    let mut mates = Vec::with_capacity(r.capacity_for(n_mates, 228));
     for _ in 0..n_mates {
         mates.push(read_mate_record(&mut r)?);
     }
@@ -542,10 +576,16 @@ pub(crate) fn encode_mate_input(input: &MateInput) -> Vec<u8> {
 
         let mut flags = 0u8;
         if m.flip {
-            flags |= 0b001;
+            flags |= 0b0001;
         }
         if m.angle_set {
-            flags |= 0b010;
+            flags |= 0b0010;
+        }
+        if m.limit_min_set {
+            flags |= 0b0100;
+        }
+        if m.limit_max_set {
+            flags |= 0b1000;
         }
         w.u8(flags);
 
@@ -555,6 +595,8 @@ pub(crate) fn encode_mate_input(input: &MateInput) -> Vec<u8> {
         w.f64(m.ratio);
         w.f64(m.radius);
         w.f64(m.angle);
+        w.f64(m.limit_min);
+        w.f64(m.limit_max);
 
         w.f64(m.a.geometry.perp[0]);
         w.f64(m.a.geometry.perp[1]);
@@ -580,6 +622,10 @@ pub fn encode_mate_output(out: &MateOutput) -> Vec<u8> {
     w.u32(out.mate_residuals.len() as u32);
     for &r in &out.mate_residuals {
         w.f64(r);
+    }
+    debug_assert_eq!(out.limit_flags.len(), out.mate_residuals.len());
+    for &f in &out.limit_flags {
+        w.u8(f);
     }
     w.f64(out.diagnostics.residual_norm);
     w.u32(out.diagnostics.rank);
@@ -609,6 +655,7 @@ pub(crate) fn decode_mate_output(buf: &[u8]) -> Result<MateOutput, CodecError> {
     for _ in 0..n_mates {
         mate_residuals.push(r.f64()?);
     }
+    let limit_flags = r.take(n_mates)?.to_vec();
     let residual_norm = r.f64()?;
     let rank = r.u32()?;
     let dof = r.u32()?;
@@ -618,6 +665,7 @@ pub(crate) fn decode_mate_output(buf: &[u8]) -> Result<MateOutput, CodecError> {
         params_solved,
         overall_status,
         mate_residuals,
+        limit_flags,
         diagnostics: MateDiagnostics {
             residual_norm,
             rank,

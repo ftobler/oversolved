@@ -20,8 +20,9 @@ import { loadPkgNodeExport, PKG_MATE } from '../../wasm-kernel/loadPkgNode'
 import { BUNDLE_SCHEMA, type PartBundle } from '../partBundle'
 import { assemblyVerdict } from '../../utils/core/assemblyStatus'
 import { rotateVector } from '../../utils/transform3d'
-import type { MateKind, Transform3D } from '../../types/cad'
+import type { AssemblyDoc, MateKind, Transform3D } from '../../types/cad'
 import type { RelayService } from '../worker/solverProtocol'
+import { mateSpecs } from '../../utils/assemblySolveInput'
 
 const solveMate = loadPkgNodeExport<(input: Uint8Array) => Uint8Array>('solve_mate_bytes', PKG_MATE)
 const describeReal = solveMate ? describe : describe.skip
@@ -833,10 +834,110 @@ describeReal('every mate kind solves as itself against the real mate solver', ()
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [0, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
+      limitMin: 0,
+      limitMax: 0,
+      limitMinSet: false,
+      limitMaxSet: false,
       perpA: [0, 1, 0], perpB: [0, 1, 0], angleSet: false, weight: 1,
     }])
 
     const output = solveMate!(bytes)
     expect(output.length).toBeGreaterThan(0)
+  })
+})
+
+describeReal('solveAssembly joint limits with the real mate solver', () => {
+  it('stops a sliding joint at its authored maximum', async () => {
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(0, 0, 20) },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'sliding' as const,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+      limit_max: 10,
+    }]
+
+    const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+
+    expect(result.transforms['pb'].tz).toBeCloseTo(10, 2)
+    expect(result.status.mates['m1'].residual).toBeLessThan(1e-2)
+    expect(result.status.mates['m1'].limit).toBe('max')
+    expect(result.status.verdict).not.toBe('overconstrained')
+  })
+
+  it('carries a document-authored bound through the doc-to-solve adapter', async () => {
+    // The regression lock for the adapter: every other test here builds the
+    // MateSpec inline, so a field the adapter dropped would still pass them and
+    // silently run the real app's joints unbounded.
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(0, 0, 20) },
+    ]
+    const doc: AssemblyDoc = {
+      kind: 'assembly',
+      features: [{
+        id: 'm1',
+        kind: 'mate',
+        mate: {
+          kind: 'sliding',
+          ref_a: { part: 'pa', anchor: 'face' },
+          ref_b: { part: 'pb', anchor: 'face' },
+          limit_max: 10,
+        },
+      }],
+    }
+
+    const result = await solveAssembly(parts, revs, mateSpecs(doc), relay, solveMate!)
+
+    expect(result.transforms['pb'].tz).toBeCloseTo(10, 2)
+    expect(result.status.mates['m1'].limit).toBe('max')
+  })
+
+  it('holds a rotating joint inside its authored angular range', async () => {
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: rollZ(45) },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'rotating' as const,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+      limit_max: 30,
+    }]
+
+    const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+
+    const b = result.transforms['pb']
+    const rollDeg = (2 * Math.atan2(b.qz, b.qw)) * 180 / Math.PI
+    expect(rollDeg).toBeCloseTo(30, 1)
+    expect(result.status.mates['m1'].limit).toBe('max')
+    expect(result.status.verdict).not.toBe('overconstrained')
+  })
+
+  it('reports overconstrained only when no pose satisfies every limit', async () => {
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(0, 0, 25) },
+    ]
+    const mates = [
+      {
+        id: 'm1', kind: 'sliding' as const,
+        ref_a: { part: 'pa', anchor: 'face' },
+        ref_b: { part: 'pb', anchor: 'face' },
+        limit_max: 20,
+      },
+      {
+        id: 'm2', kind: 'parallel_plane_distance' as const, offset: 30,
+        ref_a: { part: 'pa', anchor: 'face' },
+        ref_b: { part: 'pb', anchor: 'face' },
+      },
+    ]
+
+    const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+
+    expect(result.status.verdict).toBe('overconstrained')
+    expect(result.status.residualNorm).toBeGreaterThan(1e-2)
   })
 })

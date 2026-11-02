@@ -6,8 +6,8 @@
 // The parameter table is the single source of truth for "which inputs does this
 // mate show". It is bounded by the wire, not by the schema: `encodeMateInput`
 // (kernel/solveAssembly.ts) writes exactly `flip`, `offset` (a 3D vector in
-// body A's local frame), `ratio`, `radius` and `angle` per mate. `angle`
-// belongs to `fixed` and `sliding`: the absolute
+// body A's local frame), `ratio`, `radius`, `angle` and the two joint bounds per
+// mate. `angle` belongs to `fixed` and `sliding`: the absolute
 // roll between the two anchors' canonical frames (mate_residuals.rs
 // abs_roll_residual), a control no other mate kind reads.
 
@@ -73,7 +73,7 @@ export const MATE_KIND_LABELS: Record<MateKind, string> = {
 }
 
 /** The scalar/boolean parameters a mate kind actually consumes in the solve. */
-export type MateParam = 'offset' | 'flip' | 'ratio' | 'radius' | 'angle'
+export type MateParam = 'offset' | 'flip' | 'ratio' | 'radius' | 'angle' | 'limit_min' | 'limit_max'
 
 // Which kind reads which parameter, per mate_residuals.rs's residual formulas:
 // offset serves Fixed / Rotating / ParallelPlaneDistance / Tangential; ratio is
@@ -86,11 +86,16 @@ export type MateParam = 'offset' | 'flip' | 'ratio' | 'radius' | 'angle'
 // document data, never as solver seed memory.
 // `sliding` does NOT read offset: an offset along a prismatic joint's axis
 // would pin its only translational DOF, which is a driven joint (a motor),
-// not a mate -- mates constrain, they do not command.
+// not a mate -- mates constrain, they do not command. Its limits are the one
+// way to bound that DOF, because a bound still leaves the joint free inside the
+// range.
+// `limit_min`/`limit_max` are the one-sided joint ranges: degrees on a rotating
+// hinge, millimetres of axial separation on a sliding joint. One bound or both
+// may be authored; a missing key is an open end, never a stop at zero.
 const MATE_PARAMS: Record<MateKind, readonly MateParam[]> = {
   fixed: ['offset', 'flip', 'angle'],
-  sliding: ['flip', 'angle'],
-  rotating: ['offset', 'flip', 'angle'],
+  sliding: ['flip', 'angle', 'limit_min', 'limit_max'],
+  rotating: ['offset', 'flip', 'angle', 'limit_min', 'limit_max'],
   sliding_rotating: ['flip'],
   spherical: [],
   parallel: ['flip'],
@@ -167,6 +172,8 @@ export function unresolvedMateParams(mate: {
   angle?: NumberOrExpr
   radius?: NumberOrExpr
   ratio?: NumberOrExpr
+  limit_min?: NumberOrExpr
+  limit_max?: NumberOrExpr
 }): string[] {
   const kind = mate.kind
   if (!isMateKind(kind)) return []
@@ -174,7 +181,8 @@ export function unresolvedMateParams(mate: {
   for (const param of mateParams(kind)) {
     if (param === 'offset') {
       if (offsetUnresolved(mate.offset)) out.push('offset')
-    } else if (param === 'angle' || param === 'radius' || param === 'ratio') {
+    } else if (param === 'angle' || param === 'radius' || param === 'ratio' ||
+      param === 'limit_min' || param === 'limit_max') {
       const v = mate[param]
       if (v !== undefined && !isFiniteNumber(v)) out.push(param)
     }
@@ -211,6 +219,50 @@ export const MATE_PARAM_LABELS: Record<MateParam, string> = {
   ratio: 'Ratio',
   radius: 'Radius',
   angle: 'Angle',
+  limit_min: 'Min',
+  limit_max: 'Max',
+}
+
+/**
+ * The label a kind's parameter box shows. Limits carry their units in the name
+ * because the same two keys mean degrees on a hinge and millimetres on a slide.
+ */
+export function mateParamLabel(kind: MateKind, param: MateParam): string {
+  if (param === 'limit_min' || param === 'limit_max') {
+    const what = kind === 'rotating' ? 'angle' : 'distance'
+    return `${param === 'limit_min' ? 'Min' : 'Max'} ${what}`
+  }
+  return MATE_PARAM_LABELS[param]
+}
+
+/**
+ * A rotating limit endpoint in the solver's signed roll coordinate: degrees in
+ * (-180, 180]. This is the migration's fold, not an authoring convenience:
+ * folding a LONE endpoint changes the constraint (a max of 181 allows every
+ * reachable roll, while -179 pins a one-degree arc), so the editor, the schema,
+ * the drive and the solve boundary all refuse an out-of-range endpoint. The v5
+ * migration folds a complete pre-v5 pair only, and only when the folded pair
+ * stays ordered. The cut is half-open: -180 and +180 are the same point and
+ * only +180 is spelled. A range crossing the +/-180 cut folds to `min > max`,
+ * which is not representable and is refused rather than silently read as its
+ * complement.
+ *
+ * A non-finite input yields 0 so a malformed value never lands in the document
+ * as NaN.
+ */
+export function normalizeMateLimitDeg(deg: number): number {
+  if (!Number.isFinite(deg)) return 0
+  const wrapped = ((deg % 360) + 360) % 360
+  // 180 stays +180 (the closed end of the solver's coordinate); 0 stays plain 0.
+  return wrapped > 180 ? wrapped - 360 : wrapped
+}
+
+/**
+ * Whether a mate's bound is an angle. Rotating limits are degrees; every other
+ * bounded kind reads a distance in the document unit's wire millimetres.
+ */
+export function mateLimitIsAngle(kind: MateKind): boolean {
+  return kind === 'rotating'
 }
 
 /**

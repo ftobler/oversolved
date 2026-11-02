@@ -745,6 +745,16 @@ export interface MateFeatureDef {
   offset?: MateOffset
   angle?: NumberOrExpr
   radius?: NumberOrExpr
+  /**
+   * One-sided joint ranges. `rotating` reads them as a roll range in degrees
+   * about the same zero as `angle` (the canonical perp frames, normalized to
+   * (-180, 180]); `sliding` reads them as the axial separation of B's anchor
+   * from A's along A's world axis, in millimetres. Both bounds are inclusive:
+   * inside the range the solver has no row for it. Absent means no bound, so a
+   * mate authored before ranges existed keeps its free joint.
+   */
+  limit_min?: NumberOrExpr
+  limit_max?: NumberOrExpr
 }
 
 /**

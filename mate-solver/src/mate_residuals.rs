@@ -26,9 +26,10 @@
 //! - Fixed:              point coincidence plus the offset vector in A's frame (3) + signed axis difference w/ flip (3) + absolute roll to authored angle (1)
 //! - Spherical:          point coincidence (3)
 //! - Parallel:           dot product of axes minus sign (1)
-//! - Sliding:            signed axis difference w/ flip (3) + perp displacement cross (3) + absolute roll to authored angle (1)
+//! - Sliding:            signed axis difference w/ flip (3) + perp displacement cross (3) + absolute roll to authored angle (1) + one row per authored distance bound
 //!   -- prismatic: slide is the only free DOF
-//! - Rotating:           point coincidence plus the axial offset along A's axis (3) + signed axis difference w/ flip (3) + absolute roll to authored angle (1, only when `angle_set`)
+//! - Rotating:           point coincidence plus the axial offset along A's axis (3) + signed axis difference w/ flip (3) + absolute roll to authored angle (1, only when `angle_set`) + one row per authored angle bound
+//!   -- revolute: roll about the shared axis is the only free DOF
 //! - SlidingRotating:    signed axis difference w/ flip (3) + perp displacement cross (3)
 //!   -- cylindrical: slide + roll are free DOF
 //! - Tangential:         signed-distance formula (1), surface-pair dependent
@@ -226,13 +227,30 @@ fn mate_row_classes(mate: &Mate) -> Vec<RowClass> {
         MateKind::Fixed => vec![Length, Length, Length, Angle, Angle, Angle, Angle],
         MateKind::Spherical => vec![Length; 3],
         MateKind::Parallel => vec![Angle],
-        // Axis difference, perp displacement, absolute roll.
-        MateKind::Sliding => vec![Angle, Angle, Angle, Length, Length, Length, Angle],
+        // Axis difference, perp displacement, absolute roll, then one row per
+        // authored slide bound.
+        MateKind::Sliding => {
+            let mut classes = vec![Angle, Angle, Angle, Length, Length, Length, Angle];
+            if mate.limit_min_set {
+                classes.push(Length);
+            }
+            if mate.limit_max_set {
+                classes.push(Length);
+            }
+            classes
+        }
         // Point coincidence plus axial offset, then the axis difference, then
-        // the roll row only when the angle is locked.
+        // the roll row only when the angle is locked, then one row per authored
+        // angle bound.
         MateKind::Rotating => {
             let mut classes = vec![Length, Length, Length, Angle, Angle, Angle];
             if mate.angle_set {
+                classes.push(Angle);
+            }
+            if mate.limit_min_set {
+                classes.push(Angle);
+            }
+            if mate.limit_max_set {
                 classes.push(Angle);
             }
             classes
@@ -252,6 +270,60 @@ fn mate_row_classes(mate: &Mate) -> Vec<RowClass> {
 /// what `residuals()` actually pushes.
 fn mate_residual_count(mate: &Mate) -> usize {
     mate_row_classes(mate).len()
+}
+
+/// One-sided overshoot of a joint coordinate past a bound: zero inside the
+/// allowed side, the distance past it outside. The row is a residual, so the
+/// least-squares sum only starts pushing once the joint has left its range; a
+/// joint resting exactly on the bound is a zero row and a reported hit (see
+/// `limit_hit_flags`), not a conflict.
+fn limit_excess(value: f64, bound: f64, upper: bool) -> f64 {
+    if upper {
+        (value - bound).max(0.0)
+    } else {
+        (bound - value).max(0.0)
+    }
+}
+
+/// One-sided overshoots for a rotating joint, in min-then-max order. A complete
+/// pair is an arc on the circle: a pose in the complement is pushed back to the
+/// NEARER stop, measured across the +/-pi cut. The signed difference alone would
+/// send a pose one degree past a 180 degree ceiling to 0 the long way (181 reads
+/// as -179). One-sided bounds keep the signed reading: a max alone cannot catch
+/// a pose that wrapped past the cut, because every signed value is still at or
+/// below it. Bounds outside the signed coordinate are not representable and
+/// fall back to the signed form rather than wrapping an arbitrary distance.
+fn rotating_limit_excesses(value: f64, min: Option<f64>, max: Option<f64>) -> (f64, f64) {
+    let signed = (
+        min.map_or(0.0, |bound| limit_excess(value, bound, false)),
+        max.map_or(0.0, |bound| limit_excess(value, bound, true)),
+    );
+    let (Some(lo), Some(hi)) = (min, max) else {
+        return signed;
+    };
+    let representable = lo > -std::f64::consts::PI && hi <= std::f64::consts::PI && lo <= hi;
+    if !representable {
+        return signed;
+    }
+    if value >= lo && value <= hi {
+        return (0.0, 0.0);
+    }
+    let past_max = wrap_to_pi(value - hi);
+    let past_min = wrap_to_pi(lo - value);
+    // Outside the signed interval puts the pose in the complement arc. Both
+    // distances are positive when that arc is at least a half turn; the smaller
+    // one is the nearer stop. A negative distance means the other side owns it.
+    let use_max = match (past_max > 0.0, past_min > 0.0) {
+        (true, true) => past_max <= past_min,
+        (true, false) => true,
+        (false, true) => false,
+        (false, false) => return signed,
+    };
+    if use_max {
+        (0.0, past_max.max(0.0))
+    } else {
+        (past_min.max(0.0), 0.0)
+    }
 }
 
 /// Characteristic drawing length behind the LENGTH-row width,
@@ -582,6 +654,143 @@ impl MateProblem {
         (sin_r, cos_r)
     }
 
+    /// The rotating joint's coordinate: the same wrapped roll `abs_roll_residual`
+    /// measures, with a target of zero. A limit is therefore expressed in the
+    /// authored `angle`'s own frame (the canonical perps' dihedral), not against
+    /// the seed pose. `None` inside `ROLL_FRAME_TRUST`, where B's reference has
+    /// leaned onto A's axis and the angle is undefined; the axis rows already
+    /// drive that pose, so a bound there has no honest value to report.
+    fn roll_coordinate(&self, x: &[f64], mi: usize, off_a: usize, off_b: usize) -> Option<f64> {
+        let (sin_r, cos_r) = self.roll_dihedral(x, mi, off_a, off_b);
+        let frame_len = (sin_r * sin_r + cos_r * cos_r).sqrt();
+        if frame_len < Self::ROLL_FRAME_TRUST {
+            return None;
+        }
+        Some(wrap_to_pi(sin_r.atan2(cos_r)))
+    }
+
+    /// The sliding joint's coordinate: B's anchor measured along A's CURRENT
+    /// world axis from A's anchor. Zero at anchor coincidence, positive toward
+    /// A's axis - the same signed separation `ParallelPlaneDistance` compares
+    /// with its offset, so the two kinds' numbers read alike. The authored
+    /// `offset` plays no part: a sliding mate has never read one (it would pin
+    /// the joint's only translation), and keeping that rule is what makes a
+    /// range mean travel from the anchors' shared station.
+    fn sliding_coordinate(&self, x: &[f64], mate: &Mate, off_a: usize, off_b: usize) -> f64 {
+        let pa = world_point(x, off_a, &mate.a.geometry.point);
+        let pb = world_point(x, off_b, &mate.b.geometry.point);
+        let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
+        (pb[0] - pa[0]) * a_w[0] + (pb[1] - pa[1]) * a_w[1] + (pb[2] - pa[2]) * a_w[2]
+    }
+
+    /// The limited joint's coordinate, or `None` for a kind with no limits.
+    fn limit_coordinate(&self, x: &[f64], mi: usize) -> Option<f64> {
+        let mate = &self.mates[mi];
+        let off_a = mate.a.body_index as usize * 7;
+        let off_b = mate.b.body_index as usize * 7;
+        match mate.kind {
+            MateKind::Sliding => Some(self.sliding_coordinate(x, mate, off_a, off_b)),
+            MateKind::Rotating => self.roll_coordinate(x, mi, off_a, off_b),
+            _ => None,
+        }
+    }
+
+    /// The authored bounds, in min-then-max order: each is `Some` only when its
+    /// presence flag is set, so a stored zero from an absent bound never reads
+    /// as a stop at zero.
+    fn limit_bounds(&self, mi: usize) -> (Option<f64>, Option<f64>) {
+        let mate = &self.mates[mi];
+        (
+            mate.limit_min_set.then_some(mate.limit_min),
+            mate.limit_max_set.then_some(mate.limit_max),
+        )
+    }
+
+    /// The two overshoots at a pose, in min-then-max order. Rotating pairs use
+    /// the circular form (see `rotating_limit_excesses`); everything else is the
+    /// signed per-bound excess.
+    fn limit_excesses(&self, x: &[f64], mi: usize) -> (f64, f64) {
+        let (min, max) = self.limit_bounds(mi);
+        match (self.limit_coordinate(x, mi), self.mates[mi].kind) {
+            (Some(value), MateKind::Rotating) => rotating_limit_excesses(value, min, max),
+            (Some(value), _) => (
+                min.map_or(0.0, |bound| limit_excess(value, bound, false)),
+                max.map_or(0.0, |bound| limit_excess(value, bound, true)),
+            ),
+            // An undefined rotating roll pushes zero rows; the axis rows already
+            // own that pose.
+            (None, _) => (0.0, 0.0),
+        }
+    }
+
+    /// Push the one-sided rows for the authored bounds: zero while the joint is
+    /// inside `[min, max]`, the overshoot past the bound otherwise. Two rows at
+    /// most, in min-then-max order, which is the order `mate_row_classes` lists.
+    /// An inverted pair (`min > max`) leaves no reachable pose with both rows
+    /// zero, so it reads as overconstrained rather than as a silent complement.
+    fn push_limit_rows(&self, rows: &mut Vec<f64>, x: &[f64], mi: usize) {
+        // The row COUNT must not depend on the pose: `mate_row_classes` already
+        // promised one row per authored bound. An undefined rotating roll (see
+        // `roll_coordinate`) therefore pushes a zero row rather than shrinking
+        // the block and shifting every later mate's residuals.
+        let (min, max) = self.limit_bounds(mi);
+        let (min_excess, max_excess) = self.limit_excesses(x, mi);
+        if min.is_some() {
+            rows.push(min_excess);
+        }
+        if max.is_some() {
+            rows.push(max_excess);
+        }
+    }
+
+    /// Whether the authored bound's row is on its linear branch at x. Mirrors
+    /// `limit_excesses`'s choice, so the Jacobian cannot push a row the residual
+    /// left zero. A stop reached exactly has a zero row and a zero slope; the
+    /// row re-engages on the step that leaves the range.
+    fn limit_row_active(&self, x: &[f64], mi: usize, upper: bool) -> bool {
+        let (min_excess, max_excess) = self.limit_excesses(x, mi);
+        if upper {
+            max_excess > 0.0
+        } else {
+            min_excess > 0.0
+        }
+    }
+
+    /// The output wire's per-mate limit report: which authored bound the joint
+    /// sits at or past at the reported pose, within the verdict width of its row
+    /// class. A converged solve resting on a stop has a zero residual, so the
+    /// rows alone could not name it.
+    fn limit_hit_flags(&self, x: &[f64], mi: usize) -> u8 {
+        let mate = &self.mates[mi];
+        let (min, max) = self.limit_bounds(mi);
+        let Some(value) = self.limit_coordinate(x, mi) else {
+            return 0;
+        };
+        let (min_excess, max_excess) = self.limit_excesses(x, mi);
+        let tol = match mate.kind {
+            MateKind::Rotating => RESIDUAL_ANGLE_TOL,
+            _ => RESIDUAL_REL_TOL * self.scale,
+        };
+        let inside = match (min, max) {
+            (Some(lo), Some(hi)) => value >= lo && value <= hi,
+            (Some(lo), None) => value >= lo,
+            (None, Some(hi)) => value <= hi,
+            (None, None) => true,
+        };
+        let mut flags = 0u8;
+        if let Some(lo) = min {
+            if min_excess > 0.0 || (inside && value <= lo + tol) {
+                flags |= crate::mate::LIMIT_MIN_HIT;
+            }
+        }
+        if let Some(hi) = max {
+            if max_excess > 0.0 || (inside && value >= hi - tol) {
+                flags |= crate::mate::LIMIT_MAX_HIT;
+            }
+        }
+        flags
+    }
+
     /// Half-width of the cone (measured as the length of `(sin_r, cos_r)`,
     /// the sine of the angle between B's reference and A's axis) inside which
     /// the dihedral is treated as undefined. Measured, not guessed: at 0.1 the
@@ -855,6 +1064,8 @@ impl MateProblem {
                     r.push(d0 * a_w[1] - d1 * a_w[0]);
                     // Absolute roll pin to the authored angle, same as Fixed's.
                     r.push(self.abs_roll_residual(x, mi, off_a, off_b, mate.angle));
+                    // Slide bounds last, so the row order matches the class list.
+                    self.push_limit_rows(&mut r, x, mi);
                 }
                 MateKind::Rotating => {
                     // Point coincidence, shifted along A's axis by the axial
@@ -879,6 +1090,8 @@ impl MateProblem {
                     if mate.angle_set {
                         r.push(self.abs_roll_residual(x, mi, off_a, off_b, mate.angle));
                     }
+                    // Angle bounds last; each is one one-sided angle row.
+                    self.push_limit_rows(&mut r, x, mi);
                 }
                 MateKind::SlidingRotating => {
                     // Cylindrical: signed axis difference + perp displacement
@@ -1263,6 +1476,7 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
             params_solved: input.params_initial.clone(),
             overall_status: MateStatus::Overconstrained.to_u8(),
             mate_residuals: Vec::new(),
+            limit_flags: Vec::new(),
             diagnostics: MateDiagnostics {
                 // Infinity reads as "no convergence measurement exists", which
                 // is exactly the truth for a solve that never ran.
@@ -1376,6 +1590,7 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     // residual".
     let mut block_start = 0usize;
     let mut mate_residuals = vec![f64::NAN; problem.input_mate_count];
+    let mut limit_flags = vec![0u8; problem.input_mate_count];
     for (kept_pos, &input_index) in problem.kept_input_indices.iter().enumerate() {
         let m = &problem.mates[kept_pos];
         let count = mate_residual_count(m);
@@ -1384,6 +1599,7 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
             .map(|v| v * v)
             .sum::<f64>()
             .sqrt();
+        limit_flags[input_index] = problem.limit_hit_flags(&params_solved, kept_pos);
         block_start += count;
     }
 
@@ -1391,6 +1607,7 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
         params_solved,
         overall_status: status.to_u8(),
         mate_residuals,
+        limit_flags,
         diagnostics: MateDiagnostics {
             residual_norm: lm_result.residual_norm,
             rank,

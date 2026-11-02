@@ -21,8 +21,8 @@ import type { MateResult } from '@/kernel/solveAssembly'
 import type { MateFieldTarget } from '@/stores/assemblyStore'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
 import {
-  MATE_PARAM_LABELS, isMateRefEmpty, mateOffsetIsAxial, mateParams, mateRefLabel,
-  normalizeMateAngleDeg, type MateParam,
+  MATE_PARAM_LABELS, isMateRefEmpty, mateLimitIsAngle, mateOffsetIsAxial, mateParamLabel, mateParams,
+  mateRefLabel, normalizeMateAngleDeg, type MateParam,
 } from '@/utils/mateKinds'
 import { WheelNumberInput } from '@/components/editors/widgets/WheelNumberInput'
 
@@ -144,6 +144,70 @@ export function MateEditor({
     onUpdate({ offset: offsetFromText(next) })
   }
 
+  // The two bound boxes hold keystrokes for the same reason the angle box does:
+  // a limit is often negative, and committing '-' before the digits would snap
+  // the controlled value back and make the sign untypeable.
+  const limitValues = [numericValue(mate.limit_min), numericValue(mate.limit_max)]
+  const limitKey = `${featureId}|${limitValues[0]}|${limitValues[1]}`
+  const [limitText, setLimitText] = useState<string[]>(limitValues)
+  const [limitSyncedFor, setLimitSyncedFor] = useState(limitKey)
+  if (limitSyncedFor !== limitKey) {
+    setLimitSyncedFor(limitKey)
+    setLimitText(limitValues)
+  }
+
+  // A bound's authored form on the solver's coordinate: a slide distance is
+  // already in the wire frame; a rotating degree value must be the signed
+  // (-180, 180] spelling, because folding an endpoint on its own changes the
+  // constraint (a max of 181 allows everything, a max of -179 pins a tiny arc).
+  // The empty string is an open end, and a half-typed box is not a number.
+  const limitCanonical = (text: string): number | undefined => {
+    if (text.trim() === '') return undefined
+    const n = Number(text)
+    return Number.isFinite(n) ? n : undefined
+  }
+  const limitEndpointError = (values: (number | undefined)[]): string | null => {
+    if (!mateLimitIsAngle(mate.kind)) return null
+    for (const value of values) {
+      if (value !== undefined && (value <= -180 || value > 180)) {
+        return 'A rotating bound must be inside (-180, 180] degrees.'
+      }
+    }
+    return null
+  }
+  // The loader and the drive refuse a pair whose minimum exceeds its maximum;
+  // the editor must not author one, or the next open rejects the whole document.
+  const limitPairError = (minText: string, maxText: string): string | null => {
+    const min = limitCanonical(minText)
+    const max = limitCanonical(maxText)
+    if (min === undefined || max === undefined || min <= max) return null
+    return 'Min must not exceed max.'
+  }
+  const limitRangeError = (minText: string, maxText: string): string | null =>
+    limitEndpointError([limitCanonical(minText), limitCanonical(maxText)]) ??
+    limitPairError(minText, maxText)
+  const limitRangeMessage = limitRangeError(limitText[0], limitText[1])
+
+  const commitLimit = (index: number, raw: string) => {
+    const next = index === 0 ? [raw, limitText[1]] : [limitText[0], raw]
+    setLimitText(next)
+    const key = index === 0 ? 'limit_min' : 'limit_max'
+    if (raw.trim() === '') { onUpdate({ [key]: undefined } as MateParamPatch); return }
+    const canonical = limitCanonical(raw)
+    // A half-typed box commits nothing and keeps its text, like the angle box;
+    // an unrepresentable or inverted pair also stays on screen for the user to
+    // fix rather than reaching a document the loader will refuse.
+    if (canonical === undefined || limitRangeError(next[0], next[1]) !== null) return
+    onUpdate({ [key]: canonical } as MateParamPatch)
+  }
+
+  const stepLimit = (index: number, n: number) => {
+    const next = index === 0 ? [String(n), limitText[1]] : [limitText[0], String(n)]
+    setLimitText(next)
+    if (limitRangeError(next[0], next[1]) !== null) return
+    onUpdate({ [index === 0 ? 'limit_min' : 'limit_max']: n } as MateParamPatch)
+  }
+
   // Overflow cleans itself up: the +90 button steps forever and lands back in
   // [0, 360), so three presses reach what a -90 button would have. Not used by
   // the free-text box's per-keystroke commit, which would
@@ -263,6 +327,54 @@ export function MateEditor({
               +90&deg;
             </button>
           </div>
+        </div>
+      )
+    }
+    if (param === 'limit_min' || param === 'limit_max') {
+      const index = param === 'limit_min' ? 0 : 1
+      const label = mateParamLabel(mate.kind, param)
+      return (
+        <div key={param} className="mate-param-limit">
+          <label className="feature-field-row">
+            <span className="feature-field-label">{label}</span>
+            <WheelNumberInput
+              ariaLabel={label}
+              value={limitText[index]}
+              placeholder="open"
+              onChange={raw => commitLimit(index, raw)}
+              onStep={n => stepLimit(index, n)}
+              // Entry is finished: commit the canonical text even if the value
+              // arrived without a change event (a hand-edited document). A
+              // bound outside the representable range stays on screen with the
+              // reason and is not written.
+              onBlur={() => {
+                const typed = limitCanonical(limitText[index])
+                if (typed === undefined) return
+                const next = index === 0
+                  ? [String(typed), limitText[1]]
+                  : [limitText[0], String(typed)]
+                // A refused entry was never written; show the pair the document
+                // really holds instead of leaving the rejected text on screen.
+                if (limitRangeError(next[0], next[1]) !== null) {
+                  setLimitText([numericValue(mate.limit_min), numericValue(mate.limit_max)])
+                  return
+                }
+                setLimitText(next)
+                const current = index === 0 ? mate.limit_min : mate.limit_max
+                if (current !== typed) onUpdate({ [param]: typed } as MateParamPatch)
+              }}
+            />
+          </label>
+          {param === 'limit_max' && (
+            <span className="mate-param-hint">
+              {mateLimitIsAngle(mate.kind)
+                ? 'Signed degrees about the canonical roll zero, inside (-180, 180]. Leave a bound empty for an open end.'
+                : 'Millimetres along A\'s axis. Leave a bound empty for an open end.'}
+            </span>
+          )}
+          {param === 'limit_max' && limitRangeMessage !== null && (
+            <span className="mate-param-error">{limitRangeMessage}</span>
+          )}
         </div>
       )
     }

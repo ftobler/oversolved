@@ -13,7 +13,7 @@ import type { Transform3D, MateKind, MateOffset, NumberOrExpr, MateAnchorDescrip
 import type { RelayService } from './worker/solverProtocol'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/assemblyBuiltins'
 import { canonicalPerp } from '../utils/mateOrientation'
-import { mateKindCode, mateOffsetVector, mateReadsAxis, unresolvedMateParams } from '../utils/mateKinds'
+import { mateKindCode, mateOffsetVector, mateParams, mateReadsAxis, unresolvedMateParams } from '../utils/mateKinds'
 import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
 import { isDevOrTestBuild } from './isDevBuild'
 import { STATUS_NAME } from '@/wasm-kernel/codec'
@@ -63,6 +63,10 @@ export interface MateSpec {
   ratio?: NumberOrExpr
   radius?: NumberOrExpr
   angle?: NumberOrExpr
+  // One-sided joint ranges; `mateKinds` owns their units and which kinds read
+  // them. Authored values, kept in their authored form like the rest.
+  limit_min?: NumberOrExpr
+  limit_max?: NumberOrExpr
   /** Row scale on this mate's solver rows. Authored mates leave it undefined
    *  (the wire writes 1); the live drag objective writes the small drag weight
    *  so it yields to the real mates. */
@@ -77,6 +81,10 @@ export interface MateResult {
    *  straight off the output wire. Absent when no solve ran or the solver
    *  trapped before producing residuals. */
   residual?: number
+  /** The bound the joint sits at or past at the solved pose, when it carries
+   *  limits. A converged solve resting on a stop has no residual to show, so
+   *  this is what names it for the tree, the editor and the drive reply. */
+  limit?: 'min' | 'max' | 'both'
 }
 
 /** The Rust solver's overall verdict, straight off the wire code. */
@@ -166,10 +174,11 @@ const ANCHOR_KIND_TO_U8: Record<string, number> = {
 // Input wire magic. The header magic is the version handshake: any change to the
 // mate record's shape, field meaning or stride MUST bump this (or MATE_MAGIC_OUT
 // for the output layout) in the same commit as the mirror on the Rust side.
-// Spelled in little-endian bytes (`MATE_MAGIC.to_le_bytes()` reads "MTS5"); the
-// record widened every scalar to f64 (stride 212) and the magic bumped with it.
-const MATE_MAGIC = 0x3553_544D  // "MTS5" in LE
-const MATE_MAGIC_OUT = 0x3352_544D  // "MTR3" in LE
+// Spelled in little-endian bytes (`MATE_MAGIC.to_le_bytes()` reads "MTS6"); the
+// record gained the two limit fields and the output gained the per-mate limit
+// flags, and both magics bumped with them.
+const MATE_MAGIC = 0x3653_544D  // "MTS6" in LE
+const MATE_MAGIC_OUT = 0x3452_544D  // "MTR4" in LE
 const BPB = 7  // params per body (tx,ty,tz,qx,qy,qz,qw) = 7 f64s = 56 bytes
 
 // ─── Quaternion math for transform application ───
@@ -263,6 +272,12 @@ export interface MateWireRecord {
   /** Radians. Fixed/Sliding's absolute roll target between the anchors'
    *  canonical frames; see mate_residuals.rs abs_roll_residual. */
   angle: number
+  /** One-sided joint limits. Radians on a rotating hinge, wire millimetres on a
+   *  sliding joint; a bound is read only when its `*Set` flag is true. */
+  limitMin: number
+  limitMax: number
+  limitMinSet: boolean
+  limitMaxSet: boolean
   /** Rotating only: lock the roll to `angle` (flags bit 1). Unset, the hinge
    *  roll stays free; `angle` 0 alone cannot say which. */
   angleSet: boolean
@@ -291,16 +306,15 @@ export function encodeMateInput(
   // bodies: n_bodies * 4
   // params: bodyCount * 7 * 8
   // fixedMask: maskLen
-  // mates: n_mates * 212
+  // mates: n_mates * 228
   const headerSize = 20
   const bodiesSize = bodyCount * 4
   const paramsSize = params.length * 8
   const maskSize = maskLen
-  // 212, not 112: every scalar in the record widened from f32 to f64. This
-  // stride and mate.rs's decode move together or the solver reads the wrong
-  // field -- see the shared tests/fixtures/mate_wire.txt that both sides pin
-  // against.
-  const matesSize = mates.length * 212
+  // 228, not 212: the record gained the two limit f64s. This stride and
+  // mate.rs's decode move together or the solver reads the wrong field -- see
+  // the shared tests/fixtures/mate_wire.txt that both sides pin against.
+  const matesSize = mates.length * 228
   const total = headerSize + bodiesSize + paramsSize + maskSize + matesSize
 
   const buf = new ArrayBuffer(total)
@@ -343,7 +357,8 @@ export function encodeMateInput(
     w.setFloat64(pos, m.axisB[0], true); pos += 8
     w.setFloat64(pos, m.axisB[1], true); pos += 8
     w.setFloat64(pos, m.axisB[2], true); pos += 8
-    const flags = (m.flip ? 1 : 0) | (m.angleSet ? 2 : 0)
+    const flags = (m.flip ? 1 : 0) | (m.angleSet ? 2 : 0) |
+      (m.limitMinSet ? 4 : 0) | (m.limitMaxSet ? 8 : 0)
     w.setUint8(pos, flags); pos += 1
     w.setFloat64(pos, m.offset[0], true); pos += 8
     w.setFloat64(pos, m.offset[1], true); pos += 8
@@ -351,6 +366,8 @@ export function encodeMateInput(
     w.setFloat64(pos, m.ratio, true); pos += 8
     w.setFloat64(pos, m.radius, true); pos += 8
     w.setFloat64(pos, m.angle, true); pos += 8
+    w.setFloat64(pos, m.limitMin, true); pos += 8
+    w.setFloat64(pos, m.limitMax, true); pos += 8
     w.setFloat64(pos, m.perpA[0], true); pos += 8
     w.setFloat64(pos, m.perpA[1], true); pos += 8
     w.setFloat64(pos, m.perpA[2], true); pos += 8
@@ -367,6 +384,7 @@ interface DecodedMateOutput {
   paramsSolved: Float64Array
   overallStatus: number
   mateResiduals: Float64Array
+  limitFlags: Uint8Array
   residualNorm: number
   rank: number
   dof: number
@@ -402,12 +420,18 @@ export function decodeMateOutput(buf: Uint8Array, expectedParams: number): Decod
   for (let i = 0; i < nMates; i++) {
     mateResiduals[i] = r.getFloat64(pos, true); pos += 8
   }
+  // One byte per input mate: which bound the joint sits at or past (mate.rs
+  // LIMIT_MIN_HIT / LIMIT_MAX_HIT). Present even when no mate carries limits.
+  const limitFlags = new Uint8Array(nMates)
+  for (let i = 0; i < nMates; i++) {
+    limitFlags[i] = r.getUint8(pos); pos += 1
+  }
   const residualNorm = r.getFloat64(pos, true); pos += 8
   const rank = r.getUint32(pos, true); pos += 4
   const dof = r.getUint32(pos, true); pos += 4
   const iters = r.getUint32(pos, true); pos += 4
   const ms = r.getFloat64(pos, true); pos += 8
-  return { paramsSolved, overallStatus, mateResiduals, residualNorm, rank, dof, iters, ms }
+  return { paramsSolved, overallStatus, mateResiduals, limitFlags, residualNorm, rank, dof, iters, ms }
 }
 
 // Codes are indices into MATE_STATUS_NAME. Throwing on an out-of-range code keeps a
@@ -416,6 +440,18 @@ function mateVerdict(code: number): MateVerdict {
   const name = MATE_STATUS_NAME[code]
   if (!name) throw new Error(`mate solver returned unknown status code ${code}`)
   return name
+}
+
+/** The bound a limit flag byte names, or undefined when the joint is inside its
+ *  range. Both bits set is a genuine `both` (only possible with a narrowed or
+ *  inverted range), never a codec accident. */
+function mateLimit(flags: number): MateResult['limit'] | undefined {
+  const min = (flags & 0b01) !== 0
+  const max = (flags & 0b10) !== 0
+  if (min && max) return 'both'
+  if (min) return 'min'
+  if (max) return 'max'
+  return undefined
 }
 
 // ─── Main orchestration ───
@@ -661,6 +697,42 @@ export async function solveAssembly(
     const angleDeg = typeof mate.angle === 'number' ? mate.angle : 0
     const angle = angleDeg * (Math.PI / 180)
 
+    // Limits: signed degrees on a hinge (the same frame as `angle`), wire
+    // millimetres on a slide. An absent key is an open end, so only an authored
+    // number sets its flag; the wire carries 0 for the unused bound. Authored
+    // rotating values must already be inside (-180, 180]: folding a lone
+    // endpoint changes the constraint (a max of 181 allows every reachable
+    // roll, a max of -179 pins a one-degree arc), so an out-of-range value is
+    // refused like the loader and the drive refuse it. The v5 migration is the
+    // only place that folds, and only a complete pre-v5 pair.
+    const readsLimits = mateParams(mate.kind as MateKind).includes('limit_min')
+    const limitMinAuthored = readsLimits && typeof mate.limit_min === 'number' ? mate.limit_min : undefined
+    const limitMaxAuthored = readsLimits && typeof mate.limit_max === 'number' ? mate.limit_max : undefined
+    const angleLimit = mate.kind === 'rotating'
+    const signedDegrees = (deg: number | undefined) => !angleLimit || deg === undefined ||
+      (deg > -180 && deg <= 180)
+    const limitMin = limitMinAuthored === undefined
+      ? 0
+      : (angleLimit ? limitMinAuthored * (Math.PI / 180) : limitMinAuthored)
+    const limitMax = limitMaxAuthored === undefined
+      ? 0
+      : (angleLimit ? limitMaxAuthored * (Math.PI / 180) : limitMaxAuthored)
+    if (!signedDegrees(limitMinAuthored) || !signedDegrees(limitMaxAuthored)) {
+      mateResults[mate.id] = {
+        stale: true,
+        error: 'a rotating joint bound must be inside (-180, 180] degrees',
+      }
+      continue
+    }
+    if (limitMinAuthored !== undefined && limitMaxAuthored !== undefined && limitMin > limitMax) {
+      const hint = angleLimit ? ' (a rotating range must fit inside (-180, 180] degrees)' : ''
+      mateResults[mate.id] = {
+        stale: true,
+        error: `limit_min must not exceed limit_max${hint}`,
+      }
+      continue
+    }
+
     mateRecords.push({
       kindCode,
       bodyA: rA.bodyIndex,
@@ -676,6 +748,10 @@ export async function solveAssembly(
       ratio,
       radius,
       angle,
+      limitMin,
+      limitMax,
+      limitMinSet: limitMinAuthored !== undefined,
+      limitMaxSet: limitMaxAuthored !== undefined,
       angleSet: mate.kind === 'rotating' && typeof mate.angle === 'number',
       perpA: canonicalPerp(rA.anchor!.axis),
       perpB: canonicalPerp(rB.anchor!.axis),
@@ -737,12 +813,16 @@ export async function solveAssembly(
       // Fold the solver's per-mate residual norms onto the mate marks, one per
       // encoded record. A non-finite value is the solver's sentinel for a mate
       // it dropped (a body that left the assembly), so it leaves `residual`
-      // unset rather than marking the mate as failed.
+      // unset rather than marking the mate as failed. The limit flags ride the
+      // same slots in the same order, so they fold in the same pass.
       for (let i = 0; i < mateRecordIds.length && i < decoded.mateResiduals.length; i++) {
         const residual = decoded.mateResiduals[i]
-        if (Number.isFinite(residual)) {
-          const id = mateRecordIds[i]
-          mateResults[id] = { ...mateResults[id], residual }
+        const id = mateRecordIds[i]
+        const limit = mateLimit(decoded.limitFlags[i] ?? 0)
+        mateResults[id] = {
+          ...mateResults[id],
+          ...(Number.isFinite(residual) && { residual }),
+          ...(limit !== undefined && { limit }),
         }
       }
 

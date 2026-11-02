@@ -15,7 +15,7 @@ import type { AssemblyDoc, MateKind, MateRef, MateRefField } from '@/types/cad'
 import type { AssemblyOperationId, AssemblyOperationInputs } from '@/utils/assemblyOperations'
 import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 import { findInstance, findMate } from '@/utils/assemblyMutations'
-import { MATE_KINDS, mateParams } from '@/utils/mateKinds'
+import { MATE_KINDS, mateParams, normalizeMateLimitDeg } from '@/utils/mateKinds'
 import { quatFromEulerXyz } from '@/utils/transform3d'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
 import type { DriveMateRef, DriveRefFailure, ResolvedDriveRef } from '@/drive/assemblyRefs'
@@ -42,6 +42,8 @@ export type AssemblyWireMutation =
     flip?: boolean
     offset?: DriveMateOffset
     angle?: number
+    limit_min?: number
+    limit_max?: number
     radius?: number
     ratio?: number
     capture?: boolean
@@ -63,6 +65,8 @@ export type AssemblyWireMutation =
     flip?: boolean
     offset?: DriveMateOffset
     angle?: number
+    limit_min?: number
+    limit_max?: number
     radius?: number
     ratio?: number
     capture?: boolean
@@ -74,6 +78,8 @@ export type AssemblyWireMutation =
     flip?: boolean | null
     offset?: DriveMateOffset | null
     angle?: number | null
+    limit_min?: number | null
+    limit_max?: number | null
     radius?: number | null
     ratio?: number | null
   }
@@ -173,9 +179,13 @@ const CAPTURE_RECIPE_NOTE =
 
 const MATE_PARAM_NOTE =
   'Only the parameters the kind reads are accepted (see mateParams): fixed reads offset, flip, angle; '
-  + 'sliding reads flip, angle; rotating reads offset, flip, angle; sliding_rotating reads flip; spherical reads none; parallel reads flip; '
+  + 'sliding reads flip, angle, limit_min, limit_max; rotating reads offset, flip, angle, limit_min, limit_max; sliding_rotating reads flip; spherical reads none; parallel reads flip; '
   + 'parallel_plane_distance reads offset, flip; tangential reads offset, radius; copy_rotation reads ratio. '
   + 'A rotating offset is the distance along A\'s axis, and its angle is optional: absent leaves the hinge free, a number (even 0) locks the roll. '
+  + 'A limit_min/limit_max pair bounds the joint one-sidedly: signed degrees about the same zero as angle on a rotating hinge '
+  + '(inside (-180, 180]; an out-of-range endpoint is refused, not folded), millimetres along A\'s axis '
+  + '(B\'s anchor from A\'s) on a sliding joint. Inside the range the bound has no row; a missing key is an open end. '
+  + 'The reply names a reached bound as `limit: "min" | "max" | "both"` on the mate. '
   + FLIP_NOTE
 
 // What capture does and when it lands, shared by the two rows that take the
@@ -235,6 +245,8 @@ export const ASSEMBLY_MUTATION_CATALOG = {
       flip: optBool(),
       offset: offsetOptional(),
       angle: optNum('Degrees in [0, 360); the absolute roll between the anchors\' canonical frames.'),
+      limit_min: optNum('One-sided joint bound: signed degrees in (-180, 180] on a rotating hinge, millimetres on a sliding joint.'),
+      limit_max: optNum('The other end of the joint range; absent means open.'),
       radius: optNum('Tangential clearance radius.'),
       ratio: optNum('Copy-rotation ratio.'),
       capture: optBool(CAPTURE_NOTE),
@@ -284,6 +296,8 @@ export const ASSEMBLY_MUTATION_CATALOG = {
       flip: optBool(),
       offset: offsetOptional(),
       angle: optNum('Degrees in [0, 360); the absolute roll between the anchors\' canonical frames.'),
+      limit_min: optNum('One-sided joint bound: signed degrees in (-180, 180] on a rotating hinge, millimetres on a sliding joint.'),
+      limit_max: optNum('The other end of the joint range; absent means open.'),
       radius: optNum('Tangential clearance radius.'),
       ratio: optNum('Copy-rotation ratio.'),
       capture: optBool(CAPTURE_NOTE),
@@ -307,6 +321,8 @@ export const ASSEMBLY_MUTATION_CATALOG = {
       flip: nullableBool(),
       offset: offsetNullable(),
       angle: nullableNum(),
+      limit_min: nullableNum(),
+      limit_max: nullableNum(),
       radius: nullableNum(),
       ratio: nullableNum(),
     },
@@ -583,6 +599,24 @@ function mateParamProblem(kind: string, param: string, value: unknown): string |
   if (!isFiniteNumber(value)) {
     return `${param} must be a finite number, got ${json(value)}; mate expressions are not supported`
   }
+  if ((param === 'limit_min' || param === 'limit_max') && kind === 'rotating' &&
+    (value <= -180 || value > 180)) {
+    return `${param} must be inside (-180, 180] degrees on a rotating mate, got ${json(value)}; `
+      + 'a range crossing the +/-180 cut has no single signed spelling'
+  }
+  return null
+}
+
+/** The pair rule for the two bounds, after each value passed its own check. The
+ *  rotating comparison normalizes first, because 270 and -90 name one bound and
+ *  a range crossing the +/-180 cut is the case this refuses. */
+function mateLimitPairProblem(kind: string, min: unknown, max: unknown): string | null {
+  if (!isFiniteNumber(min) || !isFiniteNumber(max)) return null
+  const fold = (v: number) => kind === 'rotating' ? normalizeMateLimitDeg(v) : v
+  if (fold(min) > fold(max)) {
+    const hint = kind === 'rotating' ? ' (a rotating range must fit inside (-180, 180] degrees)' : ''
+    return `limit_min ${json(min)} must not exceed limit_max ${json(max)}${hint}`
+  }
   return null
 }
 
@@ -595,7 +629,7 @@ function transformFrom(position: Vec3Tuple, rotation: Vec3Tuple) {
 
 function matePatch(raw: Record<string, unknown>): MateParamPatch {
   const patch: MateParamPatch = {}
-  for (const key of ['flip', 'offset', 'angle', 'radius', 'ratio'] as const) {
+  for (const key of ['flip', 'offset', 'angle', 'limit_min', 'limit_max', 'radius', 'ratio'] as const) {
     if (!(key in raw)) continue
     const value = raw[key]
     patch[key] = value === null ? undefined : value as never
@@ -604,7 +638,7 @@ function matePatch(raw: Record<string, unknown>): MateParamPatch {
 }
 
 function paramFieldsPresent(raw: Record<string, unknown>): string[] {
-  return ['flip', 'offset', 'angle', 'radius', 'ratio'].filter(key => raw[key] !== undefined)
+  return ['flip', 'offset', 'angle', 'limit_min', 'limit_max', 'radius', 'ratio'].filter(key => raw[key] !== undefined)
 }
 
 /**
@@ -636,7 +670,7 @@ export function validateAssemblyMutation(
   // A value whose shape the value rules can explain better is deferred to them:
   // a rotation of length 2 and an expression angle get a message that names the
   // accepted spelling instead of the generic JSON type.
-  const deferred = new Set(['angle', 'radius', 'ratio', 'offset', 'flip', 'position', 'rotation'])
+  const deferred = new Set(['angle', 'radius', 'ratio', 'limit_min', 'limit_max', 'offset', 'flip', 'position', 'rotation'])
   for (const [name, field] of Object.entries(info.fields)) {
     const value = raw[name]
     if (value === undefined) {
@@ -707,6 +741,8 @@ function validateValues(
         const problem = mateParamProblem(kind, param, raw[param])
         if (problem !== null) return fail('invalid-mutation', problem)
       }
+      const limitPair = mateLimitPairProblem(kind, raw.limit_min, raw.limit_max)
+      if (limitPair !== null) return fail('invalid-mutation', limitPair)
       const refAShape = refShapeProblem(raw.ref_a, 'ref_a')
       if (refAShape !== null) return fail('invalid-mutation', refAShape)
       const refA = raw.ref_a as { part: string }
@@ -809,6 +845,8 @@ function validateValues(
         const problem = mateParamProblem(kind, param, raw[param])
         if (problem !== null) return fail('invalid-mutation', problem)
       }
+      const limitPair = mateLimitPairProblem(kind, raw.limit_min, raw.limit_max)
+      if (limitPair !== null) return fail('invalid-mutation', limitPair)
       const refA = resolveRef(ctx, raw.ref_a, 'ref_a')
       if (!refA.ok) return failRef(refA)
       const refB = resolveRef(ctx, raw.ref_b, 'ref_b')
@@ -861,7 +899,7 @@ function validateValues(
       const kind = mate?.kind
       const present = paramFieldsPresent(raw)
       if (present.length === 0) {
-        return fail('invalid-mutation', 'update_mate needs at least one of flip, offset, angle, radius or ratio')
+        return fail('invalid-mutation', 'update_mate needs at least one of flip, offset, angle, limit_min, limit_max, radius or ratio')
       }
       if (kind !== undefined) {
         for (const param of present) {
@@ -869,6 +907,14 @@ function validateValues(
           const problem = mateParamProblem(kind, param, raw[param])
           if (problem !== null) return fail('invalid-mutation', problem)
         }
+        // The pair rule reads across the patch: setting one bound is checked
+        // against the other bound already in the document.
+        const nextBound = (key: 'limit_min' | 'limit_max') => {
+          if (raw[key] === null) return undefined
+          return raw[key] !== undefined ? raw[key] : mate?.[key]
+        }
+        const limitPair = mateLimitPairProblem(kind, nextBound('limit_min'), nextBound('limit_max'))
+        if (limitPair !== null) return fail('invalid-mutation', limitPair)
       }
       return { ok: true, operation: 'update_mate', input: { id: featureId, patch: matePatch(raw) } }
     }

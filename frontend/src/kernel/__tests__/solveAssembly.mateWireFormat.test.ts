@@ -44,9 +44,9 @@ describe('mate wire format', () => {
     const fixture = readMateWireFixture()
     // The rev and both magics are pinned here as literals as well as through the
     // fixture, so a stale fixture cannot hide a constant that moved on one side.
-    expect(fixture.rev).toBe(5)
-    expect(fixture.magic).toBe(0x3553544D)
-    expect(fixture.magic_out).toBe(0x3352544D)
+    expect(fixture.rev).toBe(6)
+    expect(fixture.magic).toBe(0x3653544D)
+    expect(fixture.magic_out).toBe(0x3452544D)
     // One empty body, no mates: header 20 + bodies 4 + params 56 + mask 1 = 81 bytes
     const params = new Float64Array(7)
     const fixedMask = new Uint8Array([0])
@@ -56,7 +56,7 @@ describe('mate wire format', () => {
     const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
     expect(view.getUint32(0, true)).toBe(fixture.magic)
 
-    // One mate record adds exactly the fixture stride (212 bytes).
+    // One mate record adds exactly the fixture stride (228 bytes).
     const encodedWithMate = encodeMateInput(1, params, fixedMask, [{
       kindCode: 1,
       bodyA: 0, bodyB: 0,
@@ -64,6 +64,10 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [1, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
+      limitMin: 0,
+      limitMax: 0,
+      limitMinSet: false,
+      limitMaxSet: false,
       perpA: [0, 1, 0], perpB: [0, 1, 0], angleSet: false, weight: 1,
     }])
     expect(encodedWithMate.length - encoded.length).toBe(fixture.record_bytes)
@@ -91,6 +95,10 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [0, 0, 0], axisB: [0, 0, 1],
       flip: false, offset, ratio: 1, radius: 0, angle: 0,
+      limitMin: 0,
+      limitMax: 0,
+      limitMinSet: false,
+      limitMaxSet: false,
       perpA: [0, 1, 0], perpB: [0, 1, 0], angleSet: false, weight: 1,
     }])
     // The offset is the 24-byte run at record bytes 108..132 (after the two
@@ -106,8 +114,8 @@ describe('mate wire format', () => {
     // Record layout after the 81-byte header+body+params+mask prefix (1 body):
     // kind(1) + bodyA(4) + bodyB(4) + anchorKinds(2) + pointA(24) + axisA(24)
     // + pointB(24) + axisB(24) + flags(1) + offset(24) + ratio(8) + radius(8) = 148,
-    // then angle is the f64 at byte 148, followed by the two perp triples and
-    // the weight.
+    // then angle is the f64 at byte 148, followed by the two limit f64s, the two
+    // perp triples and the weight.
     const params = new Float64Array(7)
     const fixedMask = new Uint8Array([0])
     const encoded = encodeMateInput(1, params, fixedMask, [{
@@ -117,6 +125,10 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [0, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: Math.PI / 4,
+      limitMin: 0,
+      limitMax: 0,
+      limitMinSet: false,
+      limitMaxSet: false,
       perpA: [0, 1, 0], perpB: [0, 1, 0], angleSet: false, weight: 1,
     }])
     const recordStart = 81
@@ -124,10 +136,11 @@ describe('mate wire format', () => {
     expect(view.getFloat64(recordStart + 148, true)).toBe(Math.PI / 4)
   })
 
-  it('writes perp_a, perp_b then weight after angle, in that order', () => {
-    // Distinct perps and a non-default weight, read back by their exact record
-    // offsets: a swapped or mis-sized tail write is invisible when both sides
-    // share the +Z default and weight 1 every real-WASM row uses.
+  it('writes limits, then perp_a, perp_b and weight after angle, in that order', () => {
+    // Distinct perps, a non-default weight and both bounds set, read back by
+    // their exact record offsets: a swapped or mis-sized tail write is
+    // invisible when both sides share the +Z default, weight 1 and no limits,
+    // which is what every unbounded real-WASM row uses.
     const params = new Float64Array(7)
     const fixedMask = new Uint8Array([0])
     const encoded = encodeMateInput(1, params, fixedMask, [{
@@ -137,18 +150,27 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [0, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
+      limitMin: -1.5,
+      limitMax: 2.5,
+      limitMinSet: true,
+      limitMaxSet: true,
       perpA: [1, 0, 0], perpB: [0, 0, 1], angleSet: false, weight: 0.25,
     }])
-    // angle ends at record byte 156; perp_a is 156..180, perp_b is 180..204,
-    // and the weight f64 is the last field at 204..212.
+    // angle ends at record byte 156; the two limit f64s are 156..172, perp_a is
+    // 172..196, perp_b is 196..220, and the weight f64 is the last field at
+    // 220..228. The flags byte is at 107 (after the two anchor kinds and four
+    // point/axis triples), with bits 2 and 3 naming the two authored bounds.
     const recordStart = 81
     const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
-    expect(view.getFloat64(recordStart + 156, true)).toBe(1)
-    expect(view.getFloat64(recordStart + 164, true)).toBe(0)
-    expect(view.getFloat64(recordStart + 172, true)).toBe(0)
+    expect(view.getUint8(recordStart + 107)).toBe(0b1100)
+    expect(view.getFloat64(recordStart + 156, true)).toBe(-1.5)
+    expect(view.getFloat64(recordStart + 164, true)).toBe(2.5)
+    expect(view.getFloat64(recordStart + 172, true)).toBe(1)
     expect(view.getFloat64(recordStart + 180, true)).toBe(0)
     expect(view.getFloat64(recordStart + 188, true)).toBe(0)
-    expect(view.getFloat64(recordStart + 196, true)).toBe(1)
-    expect(view.getFloat64(recordStart + 204, true)).toBe(0.25)
+    expect(view.getFloat64(recordStart + 196, true)).toBe(0)
+    expect(view.getFloat64(recordStart + 204, true)).toBe(0)
+    expect(view.getFloat64(recordStart + 212, true)).toBe(1)
+    expect(view.getFloat64(recordStart + 220, true)).toBe(0.25)
   })
 })
