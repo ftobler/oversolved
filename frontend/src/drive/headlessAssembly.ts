@@ -520,8 +520,12 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
   // part entry outlives the instance.
   async function runStepPart(request: StepPartRequest): Promise<ScriptFailure | AnnotatedSuccess> {
     const fileId = request.file
-    if (!opts.files?.has(fileId)) {
+    const bytes = opts.files?.get(fileId)
+    if (bytes === undefined) {
       return failure('unknown-target', `file "${fileId}" has no bytes in this call; pass it in the files map`)
+    }
+    if (bytes.byteLength === 0) {
+      return failure('invalid-mutation', `file "${fileId}" is empty; a STEP import needs file bytes`)
     }
     const docId = stepPartDocId(fileId)
     const existing = binding.get(docId)

@@ -108,6 +108,24 @@ describe('add_step_part', () => {
     expect((outcome.steps[1] as ScriptStepOutcome).part).toEqual({ docId: 'step_f1', name: 'Double', fileId: 'f1' })
   })
 
+  it('leaves the bound part behind when the instance is undone', async () => {
+    const run = session()
+    const outcome = await run.run([
+      { mutation: { type: 'add_step_part', handle: 'a', file: 'f1', name: 'Double' } },
+      { command: 'undo' },
+    ])
+
+    expect(outcome.ok).toBe(true)
+    expect(partInstances(run.getDoc())).toEqual([])
+    // The part is session state outside the document, so redo can place it
+    // again without importing the file a second time.
+    expect(Object.keys(run.boundParts())).toEqual(['step_f1'])
+
+    const redo = await run.run([{ command: 'redo' }])
+    expect(redo.ok).toBe(true)
+    expect(partInstances(run.getDoc()).map(instance => instance.handle)).toEqual(['a'])
+  })
+
   it('refuses a file id the run did not supply, naming what it has', async () => {
     const run = session()
     const outcome = await run.run([{ mutation: { type: 'add_step_part', handle: 'a', file: 'ghost' } }])
@@ -115,6 +133,20 @@ describe('add_step_part', () => {
     expect(outcome.ok).toBe(false)
     expect(outcome.steps[0].error?.code).toBe('unknown-target')
     expect(outcome.steps[0].error?.message).toContain('available: f1')
+  })
+
+  it('refuses an empty file before synthesizing a part', async () => {
+    const run = createHeadlessAssembly({
+      doc: emptyDriveAssemblyDoc(),
+      parts: new Map(),
+      files: new Map([['f1', new Uint8Array(0)]]),
+      bundleSource: async docId => bundle(docId),
+    })
+    const outcome = await run.run([{ mutation: { type: 'add_step_part', handle: 'a', file: 'f1' } }])
+
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps[0].error?.message).toContain('is empty')
+    expect(run.boundParts()).toEqual({})
   })
 
   it('refuses to replace a part bound under the same id with a different document', async () => {

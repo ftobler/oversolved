@@ -3,10 +3,11 @@
 // a STEP plus a part for a whole bag, while this adds the same pair to an open
 // workspace and hands back the ids the caller instances.
 //
-// The bytes live once. A file entry is keyed by its content hash, so a second
-// import of the same STEP reuses the stored bytes; a part document is keyed by
-// (that file, the requested name), so importing the same file under the same
-// name is idempotent and a different name is a second view of the same body.
+// The bytes live once. A file entry is looked up by its content hash, so a
+// second import of the same STEP reuses the stored bytes; a part document is
+// looked up by (that file, the requested name), so importing the same file
+// under the same name is idempotent and a different name is a second view of
+// the same body.
 
 import type { WorkspaceEntry, WorkspaceTree } from './types'
 import { addEntry } from './tree'
