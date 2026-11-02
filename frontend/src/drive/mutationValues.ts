@@ -1040,6 +1040,10 @@ function addMirror(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return inlineFeatureFieldsProblem(raw, ctx, 'mirror', 'set_mirror_field')
 }
 
+function addPattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  return inlineFeatureFieldsProblem(raw, ctx, 'pattern', 'set_pattern_field')
+}
+
 function addRevolve(raw: RawStep): ValueViolation | null {
   const problem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
   if (problem !== null) return invalid(problem)
@@ -1419,6 +1423,8 @@ export const MUTATION_VALUE_RULES = {
   set_array_field: fieldValue,
   add_circular_array: addCircularArray,
   set_circular_array_field: fieldValue,
+  add_pattern: addPattern,
+  set_pattern_field: fieldValue,
   add_delete_body: addDeleteBody,
   add_delete_body_ref: queryField('bodyQuery'),
   remove_delete_body_ref: indexField('index'),

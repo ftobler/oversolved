@@ -18,6 +18,7 @@ export const EDIT_LABELS: Record<string, string> = {
   boolean: 'boolean',
   array: 'array',
   circular_array: 'circular array',
+  pattern: 'pattern',
   delete_body: 'delete body',
   hole: 'hole',
   transform: 'transform',

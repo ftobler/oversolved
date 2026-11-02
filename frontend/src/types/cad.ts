@@ -110,6 +110,28 @@ export type CircularArrayFeatureDef = {
   invert_axis?: boolean
 }
 
+// Repeat one earlier solid-producing feature's own add/cut inside the body it
+// already shaped. `count` is the total instance count, the source's own
+// application included; the copies are rigid repeats of the source's tool.
+export type PatternFeatureDef = {
+  source_feature?: string
+  mode?: 'linear' | 'circular'
+  count?: NumberOrExpr
+  // Linear mode: spacing along `direction` in the document's unit.
+  pitch?: NumberOrExpr
+  direction?: [number, number, number]
+  direction_query?: string
+  invert?: boolean
+  // Circular mode: degrees between copies, absent means 360 / count.
+  step_angle?: NumberOrExpr
+  axis?: string
+  axis_origin?: [number, number, number]
+  axis_direction?: [number, number, number]
+  invert_axis?: boolean
+  // The body to apply to when the source feature touched more than one.
+  target_body?: string
+}
+
 export type RevolveDirection = 'normal' | 'reverse' | 'symmetric'
 
 export type RevolveFeatureDef = {
@@ -555,6 +577,11 @@ export type CircularArrayFeature = FeatureBase & {
   circular_array: CircularArrayFeatureDef
 }
 
+export type PatternFeature = FeatureBase & {
+  kind: 'pattern'
+  pattern: PatternFeatureDef
+}
+
 export type DeleteBodyFeature = FeatureBase & {
   kind: 'delete_body'
   delete_body: DeleteBodyFeatureDef
@@ -615,6 +642,7 @@ export type PartFeature =
   | BooleanFeature
   | ArrayFeature
   | CircularArrayFeature
+  | PatternFeature
   | DeleteBodyFeature
   | HoleFeature
   | TransformFeature
@@ -1290,6 +1318,8 @@ export type Mutation =
   | { type: 'set_array_field'; featureId: string; field: keyof ArrayFeatureDef; value: unknown }
   | ({ type: 'add_circular_array'; featureId: string; label?: string } & Partial<CircularArrayFeatureDef> & FeatureInsertion)
   | { type: 'set_circular_array_field'; featureId: string; field: keyof CircularArrayFeatureDef; value: unknown }
+  | ({ type: 'add_pattern'; featureId: string; label?: string } & Partial<PatternFeatureDef> & FeatureInsertion)
+  | { type: 'set_pattern_field'; featureId: string; field: keyof PatternFeatureDef; value: unknown }
   | ({ type: 'add_delete_body'; featureId: string; bodies?: string[]; label?: string } & FeatureInsertion)
   | { type: 'add_delete_body_ref'; featureId: string; bodyQuery: string }
   | { type: 'remove_delete_body_ref'; featureId: string; index: number }

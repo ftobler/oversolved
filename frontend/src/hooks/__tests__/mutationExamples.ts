@@ -99,6 +99,11 @@ const circularArrayDoc = (): PartDoc => makeDoc({
   circular_array: { count: 4, operation: 'add', include_source: true },
 })
 
+const patternDoc = (): PartDoc => makeDoc({
+  id: 'pt1', kind: 'pattern', label: 'Pattern',
+  pattern: { source_feature: '@ex1', mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0] },
+})
+
 const holeDoc = (): PartDoc => makeDoc({
   id: 'h1', kind: 'hole', label: 'Hole',
   hole: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' },
@@ -465,6 +470,16 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   set_circular_array_field: {
     makeDoc: circularArrayDoc,
     mutation: { type: 'set_circular_array_field', featureId: 'ca1', field: 'count', value: 8 },
+  },
+
+  // pattern
+  add_pattern: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_pattern', featureId: 'pt1', label: 'Pattern' },
+  },
+  set_pattern_field: {
+    makeDoc: patternDoc,
+    mutation: { type: 'set_pattern_field', featureId: 'pt1', field: 'count', value: 5 },
   },
 
   // hole

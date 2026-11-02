@@ -179,6 +179,7 @@ export const FIELD_SETTER_KIND = {
   set_boolean_field: 'boolean',
   set_array_field: 'array',
   set_circular_array_field: 'circular_array',
+  set_pattern_field: 'pattern',
   set_hole_field: 'hole',
   set_transform_field: 'transform',
   set_mirror_field: 'mirror',
@@ -356,6 +357,25 @@ const ARRAY_OPERATION_NOTE =
 const arrayInlineNote = (kind: FeatureKind, setter: string): string =>
   `One call may carry the whole array: ${featureFieldNames(kind).join(', ')} are accepted inline and store the ` +
   `same keys ${setter} sets.`
+
+// A pattern repeats a FEATURE, so it is not an array of a body: the source's own
+// add/cut is applied again inside the body it already shaped, and its faces keep
+// construction names. The note states the total-count convention and the two
+// modes' axis fields, the three things an author gets wrong first.
+const PATTERN_NOTE =
+  'A pattern repeats one earlier feature\'s own add or cut inside the body that feature shaped, so it needs no ' +
+  'separate body, array or boolean. `source_feature` names an earlier extrude, revolve or sweep whose operation is ' +
+  'add or cut. `count` is the TOTAL instance count, the source\'s own application included, so count 2 adds one ' +
+  'copy and count 1 is a no-op. Linear mode reads `pitch` and `direction` (or `direction_query`); circular mode ' +
+  'reads `step_angle` (absent means 360/count) and `axis` (or `axis_origin` + `axis_direction`). `target_body` ' +
+  'chooses the body when the source touched more than one; without it, a source that created or modified one body ' +
+  'uses that body. A copy that cannot apply is named: some applied and some not is a partial result, and none ' +
+  'applied is an error.'
+
+const PATTERN_INLINE_NOTE =
+  'One call may carry the whole pattern: ' +
+  `${featureFieldNames('pattern').join(', ')} are accepted inline and store the same keys ` +
+  '`set_pattern_field` sets.'
 
 const MIRROR_INLINE_NOTE =
   'One call may carry the whole mirror: ' +
@@ -1035,6 +1055,31 @@ export const MUTATION_CATALOG = {
     note: ARRAY_OPERATION_NOTE + ' ' + CIRCULAR_AXIS_NOTE,
     fields: { featureId: str(), field: fieldOf('circular array', 'set_circular_array_field'), value: setterValue('circular_array') },
   },
+  add_pattern: {
+    summary: 'Add a pattern of one earlier feature, optionally with its count, spacing and axis.',
+    note: PATTERN_NOTE + ' ' + PATTERN_INLINE_NOTE,
+    fields: {
+      ...featureAddFields(),
+      source_feature: optStr('The feature to repeat, e.g. @ex1: an extrude, revolve or sweep with operation add or cut.'),
+      mode: optStr('linear | circular; defaults to linear.'),
+      count: optScalar(),
+      pitch: optScalar(),
+      direction: optPoint(),
+      direction_query: optStr('A straight edge or planar face; overrides direction.'),
+      invert: optBool(),
+      step_angle: optScalar(),
+      axis: optStr('An edge, sketch entity or face ref; overrides the stored origin/direction pair.'),
+      axis_origin: optPoint(),
+      axis_direction: optPoint(),
+      invert_axis: optBool(),
+      target_body: optStr('The body to apply to when the source feature touched more than one.'),
+    },
+  },
+  set_pattern_field: {
+    summary: 'Set one pattern field, e.g. count, pitch or axis.',
+    note: PATTERN_NOTE,
+    fields: { featureId: str(), field: fieldOf('pattern', 'set_pattern_field'), value: setterValue('pattern') },
+  },
   add_delete_body: {
     summary: 'Add a delete-body feature, optionally naming bodies.',
     fields: { ...featureAddFields(), bodies: optArr() },
@@ -1307,6 +1352,8 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   set_array_field: 'features',
   add_circular_array: 'features',
   set_circular_array_field: 'features',
+  add_pattern: 'features',
+  set_pattern_field: 'features',
   add_delete_body: 'features',
   add_delete_body_ref: 'picks',
   remove_delete_body_ref: 'picks',

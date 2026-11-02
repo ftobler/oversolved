@@ -72,6 +72,8 @@ const ALL_MUTATION_TYPES = [
   'set_array_field',
   'add_circular_array',
   'set_circular_array_field',
+  'add_pattern',
+  'set_pattern_field',
   'set_body_visibility',
   'add_delete_body',
   'add_delete_body_ref',

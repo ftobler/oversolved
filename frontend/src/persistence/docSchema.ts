@@ -838,6 +838,18 @@ function checkSplit(sub: DocRecord, field: string): void {
   checkOptional(sub, 'keep', field, (v, f) => checkEnum(v, f, SPLIT_KEEP))
 }
 
+function checkPattern(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'source_feature', field, checkRef)
+  checkOptional(sub, 'mode', field, (v, f) => checkEnum(v, f, ['linear', 'circular']))
+  // count is the total instance count, so 1 is a legal no-op; the array's
+  // cells cap does not apply because a pattern has one axis.
+  if (sub.count !== undefined) checkCount(sub.count, `${field}.count`)
+  for (const key of ['pitch', 'step_angle']) checkOptional(sub, key, field, checkExpr)
+  for (const key of ['direction', 'axis_origin', 'axis_direction']) checkOptional(sub, key, field, checkVec3)
+  for (const key of ['direction_query', 'axis', 'target_body']) checkOptional(sub, key, field, checkRef)
+  for (const key of ['invert', 'invert_axis']) checkOptional(sub, key, field, checkBoolean)
+}
+
 function checkVariable(sub: DocRecord, field: string): void {
   checkOptional(sub, 'expression', field, checkExpr)
   checkOptional(sub, 'value', field, checkFiniteNumber)
@@ -889,6 +901,7 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['boolean', checkBooleanDef],
   ['array', checkArray],
   ['circular_array', checkCircularArray],
+  ['pattern', checkPattern],
   ['delete_body', checkDeleteBody],
   ['hole', checkHole],
   ['transform', checkTransform],

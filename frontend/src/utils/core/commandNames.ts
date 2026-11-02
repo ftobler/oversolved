@@ -19,6 +19,7 @@ export const COMMAND_NAMES = [
   'add_move_face',
   'add_delete_face',
   'add_split',
+  'add_pattern',
   'apply_offset',
   'mirror_entities',
 

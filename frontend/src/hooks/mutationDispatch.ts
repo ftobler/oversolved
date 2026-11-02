@@ -70,6 +70,8 @@ import {
   applySetArrayField,
   applyAddCircularArray,
   applySetCircularArrayField,
+  applyAddPattern,
+  applySetPatternField,
   applyAddDeleteBody,
   applyAddDeleteBodyRef,
   applyRemoveDeleteBodyRef,
@@ -297,6 +299,12 @@ export const mutationHandlers: MutationHandlers = {
   },
   set_circular_array_field: (next, m) =>
     applySetCircularArrayField(next, m.featureId, m.field, m.value),
+  add_pattern: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
+    applyAddPattern(next, featureId, label, inline)
+  },
+  set_pattern_field: (next, m) =>
+    applySetPatternField(next, m.featureId, m.field, m.value),
   set_body_visibility: (next, m) =>
     applySetBodyVisibility(next, m.bodyId, m.visible),
   add_delete_body: (next, m) =>

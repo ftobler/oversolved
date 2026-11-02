@@ -140,6 +140,10 @@ export function describeMutation(m: Mutation): string {
       return `add circular array ${m.label ?? m.featureId}`
     case 'set_circular_array_field':
       return `set circular array ${m.field} to ${m.value}`
+    case 'add_pattern':
+      return `add pattern ${m.label ?? m.featureId}`
+    case 'set_pattern_field':
+      return `set pattern ${m.field} to ${m.value}`
     case 'add_delete_body':
       return `add delete body ${m.label ?? m.featureId}`
     case 'add_delete_body_ref':

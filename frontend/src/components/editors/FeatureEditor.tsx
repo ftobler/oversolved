@@ -7,6 +7,7 @@ import type {
   SelectFieldDef,
   CheckboxFieldDef,
   PickFieldDef,
+  FeatureSelectFieldDef,
   TextFieldDef,
 } from './widgets/fieldTypes'
 import { NumberFieldWidget } from './widgets/NumberField'
@@ -120,6 +121,38 @@ export function FeatureEditor({
               features={features}
               partLabels={partLabels}
             />
+          case 'featureSelect': {
+            const fs = field as FeatureSelectFieldDef
+            const shown = (data[field.key] as string | undefined) ?? fs.default ?? ''
+            // A source must come earlier in the log: showing a later row only
+            // promises a feature the kernel will refuse by name.
+            const currentAt = (features ?? []).findIndex((f) => f.id === feature.id)
+            const options = (features ?? []).filter(
+              (f, index) => f.id !== feature.id
+                && (currentAt < 0 || index < currentAt)
+                && (fs.kinds === undefined || fs.kinds.includes(f.kind)),
+            )
+            return (
+              <div className="feature-field-row" key={`${field.key}:${i}`}>
+                <span className="feature-field-label">{fs.label}</span>
+                <select
+                  className="feature-field-select"
+                  aria-label={fs.label}
+                  value={shown}
+                  onChange={(e) => {
+                    e.stopPropagation()
+                    onMutation({ type: mutationType, featureId: fid, field: field.key, value: e.target.value } as Mutation)
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <option value="">{fs.emptyText ?? '(pick a feature)'}</option>
+                  {options.map((f) => (
+                    <option key={f.id} value={`@${f.id}`}>{f.label ?? f.id}</option>
+                  ))}
+                </select>
+              </div>
+            )
+          }
           case 'text':
             return <TextFieldWidget
               key={`${field.key}:${i}`}

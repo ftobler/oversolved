@@ -1,0 +1,72 @@
+features:
+  - id: sk_plate
+    kind: sketch
+    label: plate
+    plane: "@builtin_plane_front"
+    entities:
+      - { id: l0, kind: line }
+      - { id: l1, kind: line }
+      - { id: l2, kind: line }
+      - { id: l3, kind: line }
+    initial:
+      l0: [0, 0, 40, 0]
+      l1: [40, 0, 40, 20]
+      l2: [40, 20, 0, 20]
+      l3: [0, 20, 0, 0]
+    constraints:
+      - { id: c0, kind: coincident, a: { entity: l0, point: end }, b: { entity: l1, point: start } }
+      - { id: c1, kind: coincident, a: { entity: l1, point: end }, b: { entity: l2, point: start } }
+      - { id: c2, kind: coincident, a: { entity: l2, point: end }, b: { entity: l3, point: start } }
+      - { id: c3, kind: coincident, a: { entity: l3, point: end }, b: { entity: l0, point: start } }
+      - { id: h0, kind: horizontal, target: { entity: l0 } }
+      - { id: v1, kind: vertical, target: { entity: l1 } }
+      - { id: h2, kind: horizontal, target: { entity: l2 } }
+      - { id: v3, kind: vertical, target: { entity: l3 } }
+  - id: ex_plate
+    kind: extrude
+    label: plate
+    extrude:
+      sketch: "@sk_plate"
+      distance: 5
+      direction: normal
+      operation: new
+  - id: sk_slot
+    kind: sketch
+    label: slot
+    plane: "@builtin_plane_front"
+    entities:
+      - { id: l0, kind: line }
+      - { id: l1, kind: line }
+      - { id: l2, kind: line }
+      - { id: l3, kind: line }
+    initial:
+      l0: [6, 6, 10, 6]
+      l1: [10, 6, 10, 10]
+      l2: [10, 10, 6, 10]
+      l3: [6, 10, 6, 6]
+    constraints:
+      - { id: c0, kind: coincident, a: { entity: l0, point: end }, b: { entity: l1, point: start } }
+      - { id: c1, kind: coincident, a: { entity: l1, point: end }, b: { entity: l2, point: start } }
+      - { id: c2, kind: coincident, a: { entity: l2, point: end }, b: { entity: l3, point: start } }
+      - { id: c3, kind: coincident, a: { entity: l3, point: end }, b: { entity: l0, point: start } }
+      - { id: h0, kind: horizontal, target: { entity: l0 } }
+      - { id: v1, kind: vertical, target: { entity: l1 } }
+      - { id: h2, kind: horizontal, target: { entity: l2 } }
+      - { id: v3, kind: vertical, target: { entity: l3 } }
+  - id: ex_slot
+    kind: extrude
+    label: slot cut
+    extrude:
+      sketch: "@sk_slot"
+      distance: 10
+      direction: normal
+      operation: cut
+  - id: pt1
+    kind: pattern
+    label: slot pattern
+    pattern:
+      source_feature: "@ex_slot"
+      mode: linear
+      count: 4
+      pitch: 8
+      direction: [1, 0, 0]

@@ -124,6 +124,15 @@ const arrayDoc = (): PartDoc => ({
   }],
 } as unknown as PartDoc)
 
+const patternDoc = (): PartDoc => ({
+  version: 1,
+  kind: 'part',
+  features: [{
+    id: 'pt1', kind: 'pattern', label: 'Pattern',
+    pattern: { source_feature: '@ex1', mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0] },
+  }],
+})
+
 const circularArrayDoc = (): PartDoc => ({
   version: 1,
   kind: 'part',
@@ -335,6 +344,10 @@ const ROUND_TRIPS: RoundTripCase[] = [
   { name: 'array set_array_field', makeDoc: arrayDoc, mutation: { type: 'set_array_field', featureId: 'a1', field: 'count_x', value: 5 } as Mutation },
   { name: 'array add_circular_array', makeDoc: emptyDoc, mutation: { type: 'add_circular_array', featureId: 'ca1', label: 'Circular Array' } as Mutation },
   { name: 'array set_circular_array_field', makeDoc: circularArrayDoc, mutation: { type: 'set_circular_array_field', featureId: 'ca1', field: 'count', value: 8 } as Mutation },
+
+  // pattern
+  { name: 'pattern add_pattern', makeDoc: emptyDoc, mutation: { type: 'add_pattern', featureId: 'pt1', label: 'Pattern' } as Mutation },
+  { name: 'pattern set_pattern_field', makeDoc: patternDoc, mutation: { type: 'set_pattern_field', featureId: 'pt1', field: 'count', value: 5 } as Mutation },
 
   // hole
   { name: 'hole add_hole', makeDoc: emptyDoc, mutation: { type: 'add_hole', featureId: 'h1', label: 'Hole' } as Mutation },

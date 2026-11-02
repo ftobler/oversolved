@@ -16,7 +16,8 @@ import type { FunctionNode, MathNode, SymbolNode } from 'mathjs'
 import type {
   ArrayFeatureDef, BooleanFeatureDef, ChamferFeatureDef, CircularArrayFeatureDef,
   ExtrudeFeatureDef, FilletFeatureDef, HelixFeatureDef, HoleFeatureDef,
-  ImportStepFeature, PlaneDef, RevolveFeatureDef, ShellFeatureDef, TransformFeatureDef, MoveFaceFeatureDef,
+  ImportStepFeature, PatternFeatureDef, PlaneDef, RevolveFeatureDef, ShellFeatureDef,
+  TransformFeatureDef, MoveFaceFeatureDef,
 } from '@/types/cad'
 
 const math = create(all, {})
@@ -59,6 +60,7 @@ interface ExprPayloads {
   hole: HoleFeatureDef
   array: ArrayFeatureDef
   circular_array: CircularArrayFeatureDef
+  pattern: PatternFeatureDef
   transform: TransformFeatureDef
   plane: PlaneDef
   helix: HelixFeatureDef
@@ -85,6 +87,7 @@ export const EXPR_FIELDS_BY_KIND: { [K in ExprFieldKind]: readonly (keyof ExprPa
   hole: ['diameter', 'depth', 'cb_diameter', 'cb_depth', 'cs_angle'],
   array: ['pitch_x', 'pitch_y', 'count_x', 'count_y'],
   circular_array: ['step_angle', 'count'],
+  pattern: ['count', 'pitch', 'step_angle'],
   transform: ['rotation_angle', 'scale'],
   plane: ['offset', 'angle', 'rotation', 'rotation_angle'],
   helix: ['radius', 'pitch', 'turns', 'height', 'helix_angle', 'offset', 'start_angle'],

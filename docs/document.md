@@ -501,6 +501,51 @@ intersect. Disjoint copies stay separate bodies, taking the source id plus
 `operation: new` to keep the source as instance 0 and give every copy its own
 body.
 
+### pattern
+
+A pattern repeats an earlier FEATURE's own operation inside the body that
+feature already shaped. It is not a body array plus a boolean: the source's
+tool is applied again at each copy position, so one mutation makes one feature
+row and one undo entry, and every copied face gets its own construction names
+under the pattern feature.
+
+```yaml
+- id: pt1
+  kind: pattern
+  pattern:
+    source_feature: "@ex1"       # required: an earlier extrude, revolve or sweep
+    mode: linear                 # linear | circular
+    count: 3                     # total instances, the source's own included
+    pitch: 20.0                  # linear: spacing along direction, document unit
+    direction: [1, 0, 0]         # linear: or direction_query, a straight edge or planar face
+    invert: false                # reverse the direction
+    step_angle: 90.0             # circular: absent means 360 / count
+    axis: "@sk1/axisLine"        # circular: query; or axis_origin + axis_direction
+    invert_axis: false           # reverse the sweep sense
+    target_body: "@body_ex1"     # optional: the body to apply to when the source touched several
+```
+
+`source_feature` must name a feature earlier in the log whose operation is
+`add` or `cut`; a `new` source is refused (it does not add into the body), and
+an `up_to` extrude is refused because its trim would travel with each rigid
+copy. The allowed source kinds are `extrude`, `revolve` and `sweep`; a hole
+pattern is the sketch's own multiple drill sites, and a fillet or shell has no
+standalone tool to repeat.
+
+`count` is the total instance count: the source feature already applied once,
+so `count: 3` adds two copies. `count: 1` is a no-op. The body is the one the
+source feature created or modified; when it touched more than one (a cut with
+no merge target reaches every body), the solver refuses with the list and
+`target_body` picks one.
+
+Copies apply through the same body operation the source used, one at a time. A
+copy that cannot apply is a failure for that copy: a cut that shares no volume
+with the body, or an add whose copy would be a separate island rather than
+fused material. If some copies applied the feature reports `partial` with the
+applied count and the failing copies, and if none applied it is a feature
+error. The body keeps its id and its `created_by`, so the pattern changes the
+part's material without renaming it.
+
 ### mirror
 
 ```yaml

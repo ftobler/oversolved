@@ -42,7 +42,7 @@ session calls the page handlers do.
 
 Each entry records `ok`, `failed` or `refused` plus its error or refusal text
 in `frontend/src/testing/actionMatrix/baseline.json` (59 documents x up to 12
-targets x 50 commands, 29,450 rows, one row per line so the diff is readable).
+targets x 51 commands, 30,039 rows, one row per line so the diff is readable).
 
 - PR gate: `actionMatrix.test.ts` replays a bounded smoke slice (5 documents,
   6 targets) with the fake scheduler, so it needs no OCC.js, and
@@ -84,7 +84,7 @@ downgrades every case to a warning.
 
 `frontend/src/hooks/__tests__/fuzz.test.ts` (fake scheduler, harness
 `fuzzHarness.ts`, minimiser `fuzzMinimizer.ts`) and its real-kernel half
-`fuzzReal.test.ts` generate seeded sequences over the 105-type
+`fuzzReal.test.ts` generate seeded sequences over the 107-type
 mutation example registry plus random undo/redo, and drives them through a
 fresh `DocSession`. After every step it checks that the document is well formed
 and JSON-serializable, the session is idle, no solve crashed and history stays

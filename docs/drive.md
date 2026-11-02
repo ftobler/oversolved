@@ -736,6 +736,21 @@ banner on stdout, so a client config must use the direct node invocation.
   `count`, `step_angle`, `axis`/`axis_origin`/`axis_direction` and
   `invert_axis`, and `add_mirror` takes `body`, `plane`, `keep_original` and
   `merge`, so one call replaces the add plus one setter per field.
+- `add_pattern` repeats one earlier FEATURE's own add or cut inside the body it
+  already shaped, so a repeated slot or boss needs no separate body, array and
+  boolean. `source_feature` names an earlier `extrude`, `revolve` or `sweep`
+  whose operation is `add` or `cut`; `count` is the TOTAL instance count,
+  including the source's own application (count 2 adds one copy, count 1 is a
+  no-op). Linear mode reads `pitch` plus `direction` or `direction_query`;
+  circular mode reads `step_angle` (absent means `360/count`) plus `axis` or
+  `axis_origin` + `axis_direction`. `target_body` names the body when the
+  source feature touched more than one; otherwise the one body the source
+  created or modified is used, and zero or several candidates are refused with
+  the list. A copy that cannot apply is named: some applied is a `partial`
+  feature listing how many copies landed and which copy failed, none applied is
+  an error. A source with `operation: new` or an `up_to` extrude is refused by
+  name, because a new body is not "inside the existing body" and an up_to trim
+  would travel with every rigid copy.
 - A sketch is one profile, and a profile fills even/odd: a loop nested inside
   another is a hole (a disc plus a circle becomes a washer), while loops that
   CROSS each other are filled as their union. A circle meant as a hole that
