@@ -8,7 +8,8 @@
 // R0.1, which measured the whole 8-edge loop's volume with no warning.
 //
 // The warning is checked against the geometry it describes: the one-pick
-// result must equal the all-8-picks result, so the count is not a guess.
+// result must equal the all-8-picks result, so the count is not a guess. A
+// refused pick is named separately and keeps its chain out of the count.
 //
 // Real kernel, gated like the other drive suites.
 
@@ -16,14 +17,13 @@ import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { runHeadless, measureHeadless, selectHeadless, emptyDriveDoc } from '../headlessOps'
 import { partSolvePayload } from '../solveWriteBack'
-import { solveLocally } from '@/kernel/solveLocally'
+import { solveLocally, setOccLoader } from '@/kernel/solveLocally'
 import type { ScriptStep } from '../scriptRunner'
 import type { Selector } from '@/kernel/select'
 import type { PartDoc } from '@/types/cad'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
-import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 
 function occInstalled(): boolean {
@@ -139,12 +139,12 @@ describe.skipIf(!ready)('fillet/chamfer tangent-chain warning (real OCC + Rust s
     expect(fillet.problem).toBeUndefined()
   }, 120_000)
 
-  it('a group whose own pick the kernel refused claims no chain count', async () => {
+  it('a refused pick is named, while the applied pick still reports its chain', async () => {
     // A stadium plate with a 2 x 2 x 0.5 boss on top. At R0.5 a boss top edge
     // refuses (its side face is 0.5 tall) while the plate's top straight edge
-    // applies and would run the 4-edge outer loop, so the group builds partly.
-    // The result must name the refused edge and NOT claim the chain was
-    // blended: this group did not take every pick.
+    // applies and runs the 4-edge outer loop. The refusal is the problem row;
+    // the chain note must describe the pick that applied (4 edges, 3 not
+    // picked) and never count the refused edge as blended.
     const doc = await build([
       m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' }),
       m({ type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 0, 20, 0] }),
@@ -178,6 +178,8 @@ describe.skipIf(!ready)('fillet/chamfer tangent-chain warning (real OCC + Rust s
     const response = await solveLocally(partSolvePayload(fillet.result.doc as PartDoc, 'tangent-chain-partial'))
     const row = response?.result.fi2 as { status?: string; solver_warning?: string } | undefined
     expect(row?.status).toBe('partial')
-    expect(row?.solver_warning).toBeUndefined()
+    expect(row?.solver_warning).toBe(
+      'fillet: the picked edges continue along the tangent chain, so 4 edges were filleted (3 of them not picked)',
+    )
   }, 120_000)
 })

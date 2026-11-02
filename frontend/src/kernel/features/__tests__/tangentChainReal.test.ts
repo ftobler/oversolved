@@ -106,9 +106,10 @@ describe.skipIf(!oc)('tangentChain (real OCC)', () => {
   it('a shallow kink joins the chain, a visible one does not', () => {
     const scope = new DisposeScope()
     try {
-      // 0.03 degrees is under TOL_MOVE_FACE_TANGENT (1e-3 rad); 1 degree is not.
+      // 0.03 degrees is under TOL_MOVE_FACE_TANGENT (1e-3 rad); 0.086 degrees
+      // (1.5e-3 rad) is the smallest visible kink that must break the chain.
       const shallow = kinkedPlate(oc!, scope, 5e-4)
-      const kinked = kinkedPlate(oc!, scope, 1.7e-2)
+      const kinked = kinkedPlate(oc!, scope, 1.5e-3)
       expect(tangentChain(oc!, shallow, [firstTopLine(oc!, scope, shallow, 2)])).toEqual({ chain: 2, picked: 1 })
       expect(tangentChain(oc!, kinked, [firstTopLine(oc!, scope, kinked, 2)])).toEqual({ chain: 1, picked: 1 })
     } finally {

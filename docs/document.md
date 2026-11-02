@@ -259,9 +259,9 @@ with R0.125 vertical fillets, one top edge at R0.1 removed 0.0249905 of
 material, the whole 8-edge loop's cut, against 0.0059015 for that edge alone.
 Both features accept the pick and report what they took: an `ok` (or `partial`)
 result carrying a `solver_warning` with the chain size and how many of those
-edges nobody picked. A pick the kernel itself refused has no chain count, only
-the refusal. A chain the picks already cover reports nothing, and a sharp
-corner is not a joint.
+edges nobody picked. A pick the kernel itself refused is named in the refusal
+and left out of that count. A chain the picks already cover reports nothing,
+and a sharp corner is not a joint.
 
 ### shell
 

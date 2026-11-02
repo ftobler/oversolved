@@ -59,7 +59,7 @@ interface EdgeFeatureResult {
   // partial result.
   failed_edges?: string[]
   // The blend ran past the picks along a tangent chain (OCC continues over a
-  // G1 joint). The result is good; the note says how much of the body moved.
+  // G1 joint). The feature built; the note says how much of the body moved.
   solver_warning?: string
 }
 
@@ -522,7 +522,7 @@ function applyEdgeFeature(
   // One line per edge the modifier refused while the rest of its group built.
   const refusedEdges: string[] = []
   // The edges a blend ran along a tangent chain past the picks, summed over the
-  // bodies that applied. OCC continues a blend across a G1 joint, so a pick on a
+  // groups that built. OCC continues a blend across a G1 joint, so a pick on a
   // rounded loop blends the loop: intended (every CAD tool's default) and
   // invisible in the document, which holds only the picks.
   let chainSize = 0
@@ -631,16 +631,12 @@ function applyEdgeFeature(
     }
     // OCC continues a blend across a G1 joint, so a pick on a rounded loop
     // blends the loop. Count what the build took beyond the picks on the
-    // PRE-modifier shape, before the resplit retires it, and only when every
-    // pick in this group applied: a refused pick would make the count claim a
-    // blend the kernel did not perform.
-    if (res.skippedEdgeIndices.length === 0) {
-      const chain = tangentChain(oc, oldShape, topoEdges)
-      if (chain.chain > chain.picked) {
-        chainSize += chain.chain
-        unpickedSize += chain.chain - chain.picked
-      }
-    }
+    // PRE-modifier shape, before the resplit retires it. A pick the kernel
+    // refused is left out: it is named in the refusal above, and counting its
+    // chain would claim a blend the kernel did not perform.
+    const skipped = new Set(res.skippedEdgeIndices)
+    const appliedPicks = topoEdges.filter((_, i) => !skipped.has(i))
+    const chain = tangentChain(oc, oldShape, appliedPicks)
     // A chamfer removes material and can sever a thin web, so even this leaf
     // can turn one body into two.
     // A body that carried no names gets none: the modifier only transfers names it was given.
@@ -653,6 +649,10 @@ function applyEdgeFeature(
       modifierFailures.push(`${bid}: the modifier removed the whole body`)
       failed.push(...qlist.filter((q) => resolvedQueries.has(q)))
       continue
+    }
+    if (chain.chain > chain.picked) {
+      chainSize += chain.chain
+      unpickedSize += chain.chain - chain.picked
     }
     applied.push(...ids)
     body.brep_diff = res.diff
