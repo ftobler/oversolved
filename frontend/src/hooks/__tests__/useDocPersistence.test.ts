@@ -140,6 +140,21 @@ describe('useDocPersistence', () => {
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 
+  // The journal row is keyed by document, not by editor: the same document can
+  // be reopened and edited while the previous editor's save is still in flight.
+  // Deleting that newer shadow copy would throw away the only durable record of
+  // those edits. A stale row is safe, because the offer compares hashes.
+  it('leaves the recovery journal for a save whose editor already closed', async () => {
+    const first = renderPersist()
+    let savePromise!: Promise<boolean>
+    await act(async () => { savePromise = first.result.current.saveDoc('A', first.docRef.current!) })
+    await act(async () => { first.unmount() })
+
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    expect(await savePromise).toBe(true)
+    expect(h.clearJournal).not.toHaveBeenCalled()
+  })
+
   // The fingerprint of the exact bytes written is what lets a cancel decide
   // whether the doc it rewinds to is the doc that is stored: the save count says
   // a save landed, never what it landed.

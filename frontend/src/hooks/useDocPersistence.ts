@@ -102,8 +102,11 @@ export function useDocPersistence<D>({
         // it goes. Deliberately not cleared when an edit landed during the
         // save: that newer shadow copy is ahead of the stored bytes and must
         // survive to be offered. A failed clear is not fatal either, the open
-        // path also compares hashes, so a surviving twin is never offered.
-        if (clean) {
+        // path also compares hashes, so a surviving twin is never offered. The
+        // same hash comparison makes leaving it safe when this editor is gone:
+        // the row is keyed by document, and reopening the document may have
+        // written a newer shadow copy this save knows nothing about.
+        if (clean && mountedRef.current) {
           void clearRecoveryJournal(uuid).catch(e => {
             console.error('[recovery] failed to clear the journal after save:', e)
           })
