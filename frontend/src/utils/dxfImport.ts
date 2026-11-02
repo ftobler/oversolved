@@ -432,9 +432,10 @@ function parseArc(entity: RawEntity): DxfEntity | null {
   const cy = numOf(entity, 20, 'center y')
   const radius = numOf(entity, 40, 'radius')
   if (radius <= EPSILON) return null
-  const start = normalizeDegrees(numOf(entity, 50, 'start angle'))
-  const end = numOf(entity, 51, 'end angle')
-  const raw = end - start
+  const rawStart = numOf(entity, 50, 'start angle')
+  const rawEnd = numOf(entity, 51, 'end angle')
+  const raw = rawEnd - rawStart
+  const start = normalizeDegrees(rawStart)
   const sweep = ((raw % 360) + 360) % 360
   if (sweep < EPSILON) {
     // A full turn can be spelled as equal endpoints a whole number of turns

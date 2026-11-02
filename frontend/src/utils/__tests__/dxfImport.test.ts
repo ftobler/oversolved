@@ -65,6 +65,12 @@ describe('parseDxfProfile entities', () => {
       'mm',
     )
     expect(full.entities).toEqual([{ kind: 'circle', params: [0, 0, 2] }])
+    // The same full turn spelled past a revolution still closes.
+    const wrapped = parseDxfProfile(
+      dxf([entity('ARC', [10, 0], [20, 0], [40, 2], [50, 370], [51, 10])]),
+      'mm',
+    )
+    expect(wrapped.entities).toEqual([{ kind: 'circle', params: [0, 0, 2] }])
     expect(() => parseDxfProfile(
       dxf([entity('ARC', [10, 0], [20, 0], [40, 2], [50, 30], [51, 30])]),
       'mm',
