@@ -9,8 +9,9 @@
 // prove reachability directly instead.
 
 import { describe, it, expect, vi } from 'vitest'
-import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { collectSourceFiles, stripComments } from '@/testing/sourceScan'
 
 const SRC = join(__dirname, '..', '..', '..')
 const FRONTEND = join(SRC, '..')
@@ -18,36 +19,22 @@ const FRONTEND = join(SRC, '..')
 // Hosts that would mean a runtime asset is being fetched from someone else.
 const CDN_HOSTS = /\b(?:cdn\.|jsdelivr|unpkg|cdnjs|fonts\.googleapis|fonts\.gstatic|esm\.sh|skypack)\b/i
 
-// Namespaces and prose are inert: an XML namespace URI is never dereferenced,
-// and a URL inside a comment or an error message is not a load. Excluding them
-// keeps the guard from crying wolf, which is what gets a guard deleted.
-const INERT = [
-  /https?:\/\/(?:www\.)?w3\.org\/[^\s'"`)]*/gi,  // SVG/XML namespaces
-  /\/\*[\s\S]*?\*\//g,  // block comments
-  /(?:^|\s)\/\/[^\n]*/g,  // line comments
-]
+const W3_NAMESPACE = /https?:\/\/(?:www\.)?w3\.org\/[^\s'"`)]*/gi  // SVG/XML namespaces
 
-function filesUnder(dir: string, extensions: RegExp): string[] {
-  const out: string[] = []
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name)
-    if (entry.isDirectory()) out.push(...filesUnder(full, extensions))
-    else if (extensions.test(entry.name)) out.push(full)
-  }
-  return out
-}
-
-function liveText(file: string): string {
-  let text = readFileSync(file, 'utf8')
-  for (const pattern of INERT) text = text.replace(pattern, '')
-  return text
+// cdnLiveText, not the shared liveText: the shared blank-out plus this
+// file's namespace carve-out. A URL in a comment is inert, and so is a
+// w3.org namespace URI (never dereferenced); blanking comments keeps
+// reported context honest, removing the namespace keeps the guard from
+// crying wolf, which is what gets a guard deleted.
+function cdnLiveText(file: string): string {
+  return stripComments(readFileSync(file, 'utf8')).replace(W3_NAMESPACE, '')
 }
 
 describe('no external-origin runtime assets', () => {
   it('references no CDN host on a live path in src/', () => {
-    const offenders = filesUnder(SRC, /\.(ts|tsx|css|html)$/)
+    const offenders = collectSourceFiles(SRC, ['.ts', '.tsx', '.css', '.html'])
       .filter(f => !f.includes('__tests__'))
-      .filter(f => CDN_HOSTS.test(liveText(f)))
+      .filter(f => CDN_HOSTS.test(cdnLiveText(f)))
       .map(f => f.slice(SRC.length + 1))
 
     expect(offenders).toEqual([])
@@ -107,7 +94,7 @@ describe('no external-origin runtime assets', () => {
     // even a correct same-origin one, is therefore still a bug.
     const drei = /import\s*\{[^}]*\bText\b[^}]*\}\s*from\s*'@react-three\/drei'/
 
-    const textSites = filesUnder(SRC, /\.tsx$/)
+    const textSites = collectSourceFiles(SRC, ['.tsx'])
       .filter(f => !f.includes('__tests__'))
       .filter(f => drei.test(readFileSync(f, 'utf8')))
 

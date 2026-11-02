@@ -13,29 +13,12 @@
 // out of those leaves.
 
 import { describe, it, expect } from 'vitest'
-import { readdirSync, readFileSync, statSync } from 'fs'
-import { extname, join } from 'path'
+import { join } from 'path'
+import { productionFiles, liveText } from '@/testing/sourceScan'
 
 const SRC = join(__dirname, '../../')
 
 const FACE_SUBTYPE = /'(flatface|cylinderface|coneface|sphereface|torusface)'/g
-const COMMENTS = [/\/\*[\s\S]*?\*\//g, /(?:^|\s)\/\/[^\n]*/g]
-
-function collectFiles(dir: string): string[] {
-  const results: string[] = []
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry)
-    if (statSync(full).isDirectory()) results.push(...collectFiles(full))
-    else if (['.ts', '.tsx'].includes(extname(entry))) results.push(full)
-  }
-  return results
-}
-
-function liveText(file: string): string {
-  let text = readFileSync(file, 'utf8')
-  for (const pattern of COMMENTS) text = text.replace(pattern, '')
-  return text
-}
 
 /** The distinct face subtypes a line names, for a line that reads as a
  *  restriction predicate; null for any other line. A drifted restriction list
@@ -51,8 +34,7 @@ function predicateKinds(line: string): string[] | null {
 }
 
 describe('face restriction kinds have one home', () => {
-  const sources = collectFiles(SRC)
-    .filter((f) => !f.includes('__tests__') && !/\.test\.tsx?$/.test(f))
+  const sources = productionFiles(SRC)
 
   it('scans a non-empty source tree', () => {
     expect(sources.length).toBeGreaterThan(150)

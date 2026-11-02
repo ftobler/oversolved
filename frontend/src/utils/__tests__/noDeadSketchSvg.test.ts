@@ -10,31 +10,13 @@
 // files themselves on disk so a bare identifier rename is still caught.
 
 import { describe, it, expect } from 'vitest'
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
-import { extname, join } from 'path'
+import { existsSync } from 'fs'
+import { join } from 'path'
+import { productionFiles, liveText } from '@/testing/sourceScan'
 
 const SRC = join(__dirname, '../../')
 
-const COMMENTS = [/\/\*[\s\S]*?\*\//g, /(?:^|\s)\/\/[^\n]*/g]
-
-function collectFiles(dir: string, exts: string[]): string[] {
-  const results: string[] = []
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry)
-    if (statSync(full).isDirectory()) results.push(...collectFiles(full, exts))
-    else if (exts.includes(extname(entry))) results.push(full)
-  }
-  return results
-}
-
-const srcOnlyFiles = collectFiles(SRC, ['.ts', '.tsx'])
-  .filter(f => !f.includes('__tests__') && !/\.test\.tsx?$/.test(f))
-
-function liveText(file: string): string {
-  let text = readFileSync(file, 'utf8')
-  for (const pattern of COMMENTS) text = text.replace(pattern, '')
-  return text
-}
+const srcOnlyFiles = productionFiles(SRC)
 
 describe('dead sketch SVG surface stays deleted', () => {
   it('scans a non-empty source tree', () => {

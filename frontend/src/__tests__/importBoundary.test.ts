@@ -13,15 +13,19 @@
  * consumer.
  *
  * Specifiers are resolved to files, so the `@/` alias, relative paths and
- * dynamic `import()` all get caught. A source-text scan (same shape as
+ * dynamic `import()` all get caught. A source-text scan on the shared
+ * src/testing/sourceScan scaffolding (same as
  * utils/__tests__/codeConventions.test.ts): fast, deterministic, needs no
  * module graph, and catches type-only imports too, which vanish from the
  * bundle but still couple the layers at compile time. Test files are skipped:
  * the rule is about what ships.
  */
 import { describe, it, expect } from 'vitest'
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
-import { dirname, extname, join, sep } from 'path'
+import { readFileSync } from 'fs'
+import { join, sep } from 'path'
+import {
+  productionFiles, stripComments, IMPORT_SPECIFIERS, resolveSpecifier,
+} from '@/testing/sourceScan'
 
 const SRC = join(__dirname, '..')
 const ROOTS = ['kernel', 'utils', 'picking']
@@ -59,57 +63,6 @@ const ALLOWLIST = new Set([
   'picking/bodyDispatchCallbacks.ts',
 ])
 
-const BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g
-const LINE_COMMENT = /(?:^|\s)\/\/[^\n]*/g
-
-// Blank out comments while preserving line count, so a doc comment naming the
-// UI tree cannot fail the scan and line numbers in a failure stay accurate.
-function stripComments(text: string): string {
-  return text
-    .replace(BLOCK_COMMENT, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(LINE_COMMENT, (m) => m.replace(/[^\n]/g, ' '))
-}
-
-// Static `from` clauses (import and re-export, type-only included),
-// side-effect imports, and dynamic `import()`. The negated classes span
-// newlines on purpose: a multi-line named-import list is one statement.
-const SPECIFIERS = [
-  /(?:^|\n)\s*(?:import|export)\s[^;'"]*?\sfrom\s*['"]([^'"]+)['"]/g,
-  /(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g,
-  /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-]
-
-function collect(dir: string): string[] {
-  const out: string[] = []
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry)
-    if (statSync(full).isDirectory()) out.push(...collect(full))
-    else if (['.ts', '.tsx'].includes(extname(entry))) out.push(full)
-  }
-  return out
-}
-
-function isTestFile(path: string): boolean {
-  return path.includes('__tests__') || /\.test\.tsx?$/.test(path)
-}
-
-// Resolve an `@/` alias or relative specifier to an on-disk source file.
-// Returns null for bare packages, Vite loader hints (`?url`) and misses.
-function resolveSpecifier(fromFile: string, specifier: string): string | null {
-  const clean = specifier.split('?')[0]
-  const base = clean.startsWith('@/')
-    ? join(SRC, clean.slice(2))
-    : clean.startsWith('.')
-      ? join(dirname(fromFile), clean)
-      : null
-  if (!base) return null
-  const candidates = [base, base + '.ts', base + '.tsx', join(base, 'index.ts'), join(base, 'index.tsx')]
-  for (const candidate of candidates) {
-    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate
-  }
-  return null
-}
-
 function isForbidden(target: string, roots: string[] = FORBIDDEN): boolean {
   return roots.some((root) => target === root || target.startsWith(root + sep))
 }
@@ -125,9 +78,9 @@ function scanFile(file: string, forbidden: string[]): ForbiddenImport[] {
   const rel = file.slice(SRC.length + 1)
   const text = stripComments(readFileSync(file, 'utf8'))
   const hits: ForbiddenImport[] = []
-  for (const pattern of SPECIFIERS) {
+  for (const pattern of IMPORT_SPECIFIERS) {
     for (const match of text.matchAll(pattern)) {
-      const target = resolveSpecifier(file, match[1])
+      const target = resolveSpecifier(SRC, file, match[1])
       if (!target || !isForbidden(target, forbidden)) continue
       const line = text.slice(0, match.index ?? 0).split('\n').length
       hits.push({ rel, line, specifier: match[1] })
@@ -140,8 +93,7 @@ function scanRoots(roots: string[] = ROOTS, forbidden: string[] = FORBIDDEN): { 
   const hits: ForbiddenImport[] = []
   let checked = 0
   for (const root of roots) {
-    for (const file of collect(join(SRC, root))) {
-      if (isTestFile(file)) continue
+    for (const file of productionFiles(join(SRC, root))) {
       checked++
       hits.push(...scanFile(file, forbidden))
     }
@@ -172,7 +124,7 @@ describe('kernel/utils/picking import boundary', () => {
     // written relatively from a kernel file.
     const fromFile = join(SRC, 'kernel', 'query.ts')
     for (const specifier of ['@/components/Viewport/bodyUtils', '../../src/components/Viewport/bodyUtils']) {
-      const target = resolveSpecifier(fromFile, specifier)
+      const target = resolveSpecifier(SRC, fromFile, specifier)
       expect(target, specifier).not.toBeNull()
       expect(isForbidden(target as string), specifier).toBe(true)
     }
@@ -180,7 +132,7 @@ describe('kernel/utils/picking import boundary', () => {
 
   it('recognises dynamic import() specifiers', () => {
     const matches: string[] = []
-    for (const pattern of SPECIFIERS) {
+    for (const pattern of IMPORT_SPECIFIERS) {
       for (const match of `const m = import('@/components/foo')`.matchAll(pattern)) matches.push(match[1])
     }
     expect(matches).toContain('@/components/foo')
@@ -200,7 +152,7 @@ describe('hooks/tools/stores import boundary', () => {
 
   it('resolves the alias onto the component tree from a tool file', () => {
     const fromFile = join(SRC, 'tools', 'DragTool.ts')
-    const target = resolveSpecifier(fromFile, '@/components/Geometry3D/Dragging')
+    const target = resolveSpecifier(SRC, fromFile, '@/components/Geometry3D/Dragging')
     expect(target).not.toBeNull()
     expect(isForbidden(target as string, COMPONENTS)).toBe(true)
   })

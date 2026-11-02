@@ -3,41 +3,28 @@
  * These tests catch regressions in naming and environment-access patterns.
  */
 import { describe, it, expect } from 'vitest'
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
+import { readFileSync } from 'fs'
 import { builtinModules } from 'node:module'
-import { dirname, extname, join } from 'path'
+import { join } from 'path'
+import {
+  collectSourceFiles, productionFiles, stripComments, IMPORT_SPECIFIERS, resolveSpecifier,
+} from '@/testing/sourceScan'
 
 const SRC = join(__dirname, '../../')
 
-function collectFiles(dir: string, exts: string[]): string[] {
-  const results: string[] = []
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry)
-    if (statSync(full).isDirectory()) {
-      results.push(...collectFiles(full, exts))
-    } else if (exts.includes(extname(entry))) {
-      results.push(full)
-    }
-  }
-  return results
-}
-
-const tsFiles = collectFiles(SRC, ['.ts', '.tsx'])
+const tsFiles = collectSourceFiles(SRC)
 // "Source" means what Vite bundles, and the two rules below (no `process.env`,
 // no underscore-prefixed exports) are both about that: one breaks at runtime in
 // a browser, the other is an API-surface rule. Most tests live in a `__tests__`
 // directory, but the kernel's real-OCC harnesses sit beside the module they
 // drive, so the directory alone is not the test predicate -- a `*.test.ts`
 // anywhere is a test and ships in nothing.
-const srcOnlyFiles = tsFiles.filter(
-  f => !f.includes('__tests__') && !/\.test\.tsx?$/.test(f),
-)
+const srcOnlyFiles = productionFiles(SRC)
 
 describe('circular dependency guards', () => {
   it('registry/ does not import from stores/', () => {
     const registryDir = join(SRC, 'registry')
-    const registryFiles = collectFiles(registryDir, ['.ts', '.tsx'])
-      .filter(f => !f.includes('__tests__'))
+    const registryFiles = productionFiles(registryDir)
     const violations: string[] = []
     for (const file of registryFiles) {
       const src = readFileSync(file, 'utf8')
@@ -114,17 +101,15 @@ describe('loaded documents enter through the loader', () => {
   const ALLOWLIST = new Set(['persistence/docSchema.ts'])
   // Both spellings: the bare cast and the checked one the loader writes.
   const CAST = /\bas\s+(?:unknown\s+as\s+)?(PartDoc|AssemblyDoc)\b/
-  const COMMENTS = [/\/\*[\s\S]*?\*\//g, /(?:^|\s)\/\/[^\n]*/g]
   const SCRIPTS = join(SRC, '..', 'scripts')
-  const castScanFiles = [...srcOnlyFiles, ...collectFiles(SCRIPTS, ['.ts', '.tsx'])]
+  const castScanFiles = [...srcOnlyFiles, ...collectSourceFiles(SCRIPTS)]
 
   it('no PartDoc/AssemblyDoc cast outside the loader module', () => {
     const violations: string[] = []
     let loaderHits = 0
     for (const file of castScanFiles) {
       const rel = file.startsWith(SRC) ? file.replace(SRC, 'src/') : file.replace(join(SRC, '..') + '/', '')
-      let text = readFileSync(file, 'utf8')
-      for (const pattern of COMMENTS) text = text.replace(pattern, '')
+      const text = stripComments(readFileSync(file, 'utf8'))
       text.split('\n').forEach((line, i) => {
         if (!CAST.test(line)) return
         if (ALLOWLIST.has(rel.slice('src/'.length))) loaderHits++
@@ -183,17 +168,15 @@ describe('assembly pose reads are confined to the pose plumbing', () => {
     /\bstate\.settlingOffsets\b/,
   ]
 
-  // Comments are stripped so a doc comment naming a raw field (this file's own
-  // rationale included) cannot fail the scan.
-  const COMMENTS = [/\/\*[\s\S]*?\*\//g, /(?:^|\s)\/\/[^\n]*/g]
-
   it('reports the file and line of any raw pose read outside the allowlist', () => {
+    // Comments are blanked (not deleted) so a doc comment naming a raw
+    // field (this file's own rationale included) cannot fail the scan, and
+    // the reported line numbers stay the lines in the real file.
     const violations: string[] = []
     let allowlistHits = 0
     for (const file of srcOnlyFiles) {
       const rel = file.replace(SRC, 'src/')
-      let text = readFileSync(file, 'utf8')
-      for (const pattern of COMMENTS) text = text.replace(pattern, '')
+      const text = stripComments(readFileSync(file, 'utf8'))
       text.split('\n').forEach((line, i) => {
         if (!FORBIDDEN.some(re => re.test(line))) return
         if (ALLOWLIST.has(rel.slice('src/'.length))) allowlistHits++
@@ -229,21 +212,12 @@ describe('declared dependencies', () => {
   ])
   const builtins = new Set(builtinModules)
 
-  // Comments are stripped first so a specifier quoted in prose (or an import
-  // left commented out) cannot be mistaken for a live one. Same shape as
-  // noCdnAssets.test.ts's INERT list, and safe for `'https://...'` because the
-  // line-comment pattern requires a line start or whitespace before the slashes.
-  const COMMENTS = [/\/\*[\s\S]*?\*\//g, /(?:^|\s)\/\/[^\n]*/g]
-  // Static `from` clauses (import and re-export, type-only included),
-  // side-effect imports, and dynamic `import()`. The negated classes span
-  // newlines on purpose: a multi-line named-import list is one statement.
-  const SPECIFIERS = [
-    /(?:^|\n)\s*(?:import|export)\s[^;'"]*?\sfrom\s*['"]([^'"]+)['"]/g,
-    /(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g,
-    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  ]
+  // Comments are blanked first so a specifier quoted in prose (or an import
+  // left commented out) cannot be mistaken for a live one, and safe for
+  // `'https://...'` because the line-comment pattern requires a line start or
+  // whitespace before the slashes.
 
-  /** The package a specifier names, i.e. what has to appear in package.json. */
+  // The package a specifier names, i.e. what has to appear in package.json.
   function packageOf(specifier: string): string {
     const path = specifier.split('?')[0].split('/')  // drop Vite's ?url / ?worker suffix
     return specifier.startsWith('@') ? path.slice(0, 2).join('/') : path[0]
@@ -258,9 +232,8 @@ describe('declared dependencies', () => {
 
   const imports = new Map<string, string[]>()  // package -> files importing it
   for (const file of tsFiles) {
-    let text = readFileSync(file, 'utf8')
-    for (const pattern of COMMENTS) text = text.replace(pattern, '')
-    for (const pattern of SPECIFIERS) {
+    const text = stripComments(readFileSync(file, 'utf8'))
+    for (const pattern of IMPORT_SPECIFIERS) {
       for (const match of text.matchAll(pattern)) {
         if (!isBarePackage(match[1])) continue
         const name = packageOf(match[1])
@@ -303,32 +276,6 @@ describe('headless module purity', () => {
     'picking/pickKey.ts',
   ]
 
-  const COMMENTS = [/\/\*[\s\S]*?\*\//g, /(?:^|\s)\/\/[^\n]*/g]
-  const SPECIFIERS = [
-    /(?:^|\n)\s*(?:import|export)\s[^;'"]*?\sfrom\s*['"]([^'"]+)['"]/g,
-    /(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g,
-    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  ]
-
-  // Resolve an `@/` alias or relative specifier to an on-disk source file.
-  // Returns null for bare packages and anything that does not exist. The `?`
-  // suffix drops Vite's loader hints (?url / ?worker), same as the package
-  // scan above.
-  function resolveSpecifier(fromFile: string, specifier: string): string | null {
-    const clean = specifier.split('?')[0]
-    const base = clean.startsWith('@/')
-      ? join(SRC, clean.slice(2))
-      : clean.startsWith('.')
-        ? join(dirname(fromFile), clean)
-        : null
-    if (!base) return null
-    const candidates = [base, base + '.ts', base + '.tsx', join(base, 'index.ts'), join(base, 'index.tsx')]
-    for (const candidate of candidates) {
-      if (existsSync(candidate) && statSync(candidate).isFile()) return candidate
-    }
-    return null
-  }
-
   function closureImports(): { threeSpecifiers: string[]; files: string[] } {
     const seen = new Set<string>()
     const threeSpecifiers: string[] = []
@@ -337,15 +284,17 @@ describe('headless module purity', () => {
       const file = queue.pop() as string
       if (seen.has(file)) continue
       seen.add(file)
-      let text = readFileSync(file, 'utf8')
-      for (const pattern of COMMENTS) text = text.replace(pattern, '')
-      for (const pattern of SPECIFIERS) {
+      const text = stripComments(readFileSync(file, 'utf8'))
+      for (const pattern of IMPORT_SPECIFIERS) {
         for (const match of text.matchAll(pattern)) {
           const specifier = match[1]
           if (specifier === 'three' || specifier.startsWith('@react-three/')) {
             threeSpecifiers.push(`${file.replace(SRC, 'src/')} -> ${specifier}`)
           }
-          const target = resolveSpecifier(file, specifier)
+          // The shared resolver lands `@/` and relative hops on the same
+          // on-disk file; null (bare package, loader hint, miss) ends the
+          // walk at that edge.
+          const target = resolveSpecifier(SRC, file, specifier)
           if (target) queue.push(target)
         }
       }

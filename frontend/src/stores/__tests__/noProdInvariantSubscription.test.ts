@@ -31,6 +31,12 @@ vi.mock('../stateInvariants', async (importOriginal) => {
   }
 })
 
+// Deleting comments here (instead of the blank-out src/testing/sourceScan
+// does) is load-bearing: the gate scan below reads "the call line or the
+// line before it", and deleting removes a comment that sits between gate
+// and call entirely, keeping the two adjacent. Blank-out would keep the
+// comment as its own line and break that adjacency. Do not unify this with
+// the helper.
 function liveText(): string {
   const text = readFileSync(STORE, 'utf8')
   const noBlock = text.replace(/\/\*[\s\S]*?\*\//g, '')
