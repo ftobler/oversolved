@@ -95,11 +95,15 @@ export async function currentHashes(doc: AssemblyDoc): Promise<Record<string, st
       for (const fileId of edges[part.doc_id] ?? []) {
         const file = byId.get(fileId)
         if (file?.contentHash) fileHashes.push(file.contentHash)
-        else if (file?.kind === 'file') missing = true
+        // A target with no live content hash (a deleted, trashed or not yet
+        // adopted entry) is unknown input, so the whole part bypasses the
+        // cache. Keying it as an empty dependency list would serve a bundle
+        // built from bytes the worker still holds.
+        else missing = true
       }
       // A referenced file whose hash is unknown is a cache bypass, never a
-      // stale hit. A non-file edge (an assembly to part edge) is not a bundle
-      // dependency and does not affect the part key.
+      // stale hit. A part's outgoing edges name file entries only; anything
+      // else in that list is an unknown input for the same reason.
       if (missing) continue
       hashes[part.doc_id] = partBundleKey(entry.contentHash, fileHashes)
     }

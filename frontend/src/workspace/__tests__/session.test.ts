@@ -53,6 +53,24 @@ describe('workspace session', () => {
     expect(await session.resolveFile('missing')).toBeUndefined()
   })
 
+  // A trashed file is the workspace's answer: it was adopted, so the staging
+  // registry must not quietly resurrect the bytes the user removed. The solve
+  // reports the missing reference instead of rebuilding from a stale copy.
+  it('resolveFile refuses a trashed workspace file instead of using the registry copy', async () => {
+    const store = new IdbWorkspaceStore()
+    const file = await getFileRegistry().create({
+      name: 'f.step', kind: 'step', mime: 'application/step', bytes: bytesOf([7, 8, 9]),
+    })
+    const { workspace } = await store.create('Ws', { docKind: 'part' })
+    await store.addEntry(workspace, {
+      id: file.id, kind: 'file', name: 'f.step', mime: 'application/step', fileKind: 'step', bytes: bytesOf([1, 2, 3]),
+    })
+    await store.removeEntry(workspace, file.id)
+
+    const session = createWorkspaceSession(workspace, store)
+    expect(await session.resolveFile(file.id)).toBeUndefined()
+  })
+
   // The dirty dot compares the working rev against the checkpoint rev, so
   // savedRevs has to answer the checkpoint, never the working copy.
   it('savedRevs reads the checkpoint map off the workspace meta', async () => {

@@ -58,11 +58,23 @@ export function createWorkspaceSession(
       return (meta?.provenance ?? []).map(record => ({ ...record }))
     },
     async resolveFile(fileId: string): Promise<Uint8Array | undefined> {
+      let entry: WorkspaceEntry | undefined
       try {
-        const entry = await store.readEntry(workspace, fileId)
-        if (entry.bytes !== undefined) return new Uint8Array(entry.bytes)
+        entry = await store.readEntry(workspace, fileId)
       } catch {
-        // Not a live workspace file entry: fall through to the staging registry.
+        // Not a live entry. It may still be staged in the flat registry, or
+        // owned by this workspace under the trash; the next read tells them
+        // apart.
+      }
+      if (entry) return entry.bytes !== undefined ? new Uint8Array(entry.bytes) : undefined
+      try {
+        const known = await store.listEntries(workspace, { includeTrashed: true })
+        // A trashed entry was adopted and then removed: the registry's copy is
+        // the stale staging original, not what the workspace holds. Refuse it
+        // so the solve reports the missing reference.
+        if (known.some(meta => meta.id === fileId)) return undefined
+      } catch {
+        // No workspace record to consult: the registry is the only source left.
       }
       return getFileRegistry().getBytes(fileId)
     },

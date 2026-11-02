@@ -204,6 +204,16 @@ describe('currentHashes', () => {
     expect(second['doc-p1']).not.toBe(first['doc-p1'])
   })
 
+  // A referenced STEP whose entry is gone (deleted, trashed or never adopted)
+  // is an unknown input, not an empty file list: keying the part without it
+  // would serve a bundle built from the old bytes the worker still holds.
+  it('bypasses the cache when a referenced file entry is missing', async () => {
+    installSession()
+    h.listEntries.mockResolvedValue([{ id: 'doc-p1', kind: 'document', name: 'P1', contentHash: 'ch1' }])
+    h.referenceEdges.mockResolvedValue({ 'doc-p1': ['f1'] })
+    expect(await currentHashes(docWith(instance('p1')))).toEqual({})
+  })
+
   it('omits a part whose content hash is unknown, so the cache is bypassed', async () => {
     installSession()
     h.listEntries.mockResolvedValue([{ id: 'doc-p1', kind: 'document', name: 'P1' }])
