@@ -158,6 +158,48 @@ describe('validateAssemblyMutation refusals', () => {
     expect(!result.ok && result.error.message).toContain('expressions are not supported')
   })
 
+  it('refuses a rotating bound at the open end of the roll coordinate', () => {
+    const result = validate({
+      type: 'add_mate', featureId: 'm2', kind: 'rotating',
+      ref_a: { part: 'left', anchor: 'a' }, ref_b: { part: 'right', anchor: 'b' }, limit_min: -180,
+    })
+    expect(!result.ok && result.error.message).toContain('(-180, 180]')
+  })
+
+  it('refuses an inverted limit pair before it reaches the document', () => {
+    const result = validate({
+      type: 'add_mate', featureId: 'm2', kind: 'sliding',
+      ref_a: { part: 'left', anchor: 'a' }, ref_b: { part: 'right', anchor: 'b' },
+      limit_min: 30, limit_max: 10,
+    })
+    expect(!result.ok && result.error.message).toContain('must not exceed limit_max')
+  })
+
+  it('checks an updated bound against the one already stored', () => {
+    const doc = docWithLeft()
+    doc.features![2].mate = {
+      kind: 'sliding',
+      ref_a: { part: 'left', anchor: 'a' },
+      ref_b: { part: 'right', anchor: 'b' },
+      limit_min: 10,
+    }
+    const result = validate({ type: 'update_mate', featureId: 'm1', limit_max: 5 }, doc)
+    expect(!result.ok && result.error.message).toContain('must not exceed limit_max')
+  })
+
+  it('accepts an ordered limit pair and a null bound as the documented delete', () => {
+    const ordered = validate({
+      type: 'add_mate', featureId: 'm2', kind: 'sliding',
+      ref_a: { part: 'left', anchor: 'a' }, ref_b: { part: 'right', anchor: 'b' },
+      limit_min: 0, limit_max: 20,
+    })
+    expect(ordered.ok).toBe(true)
+    const cleared = validate({ type: 'update_mate', featureId: 'm1', limit_max: null })
+    expect(cleared.ok).toBe(true)
+    if (!cleared.ok || 'macro' in cleared) throw new Error('unreachable')
+    expect(cleared.input).toEqual({ id: 'm1', patch: { limit_max: undefined } })
+  })
+
   it('refuses both refs naming the same instance', () => {
     const result = validate({
       type: 'add_mate', featureId: 'm2', kind: 'fixed',

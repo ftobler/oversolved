@@ -47,6 +47,11 @@ export function mateSpecs(doc: AssemblyDoc): MateSpec[] {
       // Authored values, including an expression string: the solve boundary
       // refuses an unresolved one rather than reading it as 0.
       angle: f.mate!.angle,
+      // The one-sided joint ranges. They are authored values like the rest and
+      // must ride the same adapter, or the solve never sees a bound the editor
+      // and the drive both believe they have written.
+      limit_min: f.mate!.limit_min,
+      limit_max: f.mate!.limit_max,
       radius: f.mate!.radius,
       ratio: f.mate!.ratio,
     }))

@@ -80,6 +80,16 @@ const MATE_DEF: JsonSchema = {
     ratio: { type: 'number' },
     offset: MATE_OFFSET,
     angle: NUMBER_OR_EXPR,
+    limit_min: {
+      ...NUMBER_OR_EXPR,
+      description: 'One-sided joint bound: degrees on a rotating hinge (about the same zero as angle, inside '
+        + '(-180, 180]), millimetres of axial separation on a sliding joint. Absent means an open end.',
+    },
+    limit_max: {
+      ...NUMBER_OR_EXPR,
+      description: 'The other end of the joint range; absent means open. Both bounds are inclusive and '
+        + 'contribute no constraint while the joint is inside them.',
+    },
     radius: NUMBER_OR_EXPR,
   },
   additionalProperties: false,

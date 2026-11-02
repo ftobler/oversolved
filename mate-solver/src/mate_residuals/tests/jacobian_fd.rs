@@ -740,3 +740,148 @@ fn copy_rotation_ratio_two_links_future_rotation_not_absolute_value() {
         r_absolute[0]
     );
 }
+
+#[test]
+fn jacobian_vs_fd_sliding_with_limits() {
+    // The lower bound sits above the seed's station and the upper one above
+    // both, so the minimum row is on its linear branch while the maximum row is
+    // exactly zero across the stencil.
+    let mut m = mate(
+        MateKind::Sliding,
+        mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+        mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+        false,
+        0.0,
+        1.0,
+        0.0,
+    );
+    m.limit_min = 10.0;
+    m.limit_min_set = true;
+    m.limit_max = 20.0;
+    m.limit_max_set = true;
+    let input = MateInput {
+        bodies: (0..2).map(|_| RigidBody).collect(),
+        params_initial: vec![
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            3.0,
+            2.0,
+            1.0,
+            0.0,
+            0.0,
+            0.3,
+            f64::sqrt(1.0 - 0.09),
+        ],
+        fixed_mask: vec![0b0000_0001],
+        mates: vec![m],
+    };
+    let p = MateProblem::new(&input);
+    assert_eq!(p.m, 9);
+    let x: Vec<f64> = input.params_initial.clone();
+    let rows = p.residuals(&x);
+    assert!(rows[7] > 0.0, "the minimum is past its bound");
+    assert_eq!(rows[8], 0.0, "the maximum is inactive");
+    let j_analytic = p.jacobian(&x);
+    let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
+    compare_jacobians(&j_analytic, &j_fd, 1e-3);
+}
+
+#[test]
+fn jacobian_vs_fd_rotating_with_limits() {
+    // A 45 degree seed with a 10 degree ceiling: the upper row is past its
+    // bound, on the smooth side of the kink, while the lower row is inside and
+    // reads exactly zero.
+    let (qz, qw) = quat_roll_z(45.0);
+    let mut m = mate(
+        MateKind::Rotating,
+        mate_ref(0, 1.0, 2.0, 3.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+        mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+        false,
+        0.0,
+        1.0,
+        0.0,
+    );
+    m.limit_min = (-30.0_f64).to_radians();
+    m.limit_min_set = true;
+    m.limit_max = 10.0_f64.to_radians();
+    m.limit_max_set = true;
+    let input = MateInput {
+        bodies: (0..2).map(|_| RigidBody).collect(),
+        params_initial: vec![
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 0.0, 0.0, qz, qw,
+        ],
+        fixed_mask: vec![0b0000_0001],
+        mates: vec![m],
+    };
+    let p = MateProblem::new(&input);
+    assert_eq!(p.m, 8);
+    let x: Vec<f64> = input.params_initial.clone();
+    let rows = p.residuals(&x);
+    assert!(rows[6].abs() < 1e-12, "the minimum is inside the range");
+    assert!(rows[7] > 0.1, "the maximum is past its bound");
+    let j_analytic = p.jacobian(&x);
+    let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
+    compare_jacobians(&j_analytic, &j_fd, 1e-3);
+}
+
+#[test]
+fn rotating_limit_jacobian_stays_bounded_at_the_roll_branch_cut() {
+    // A 170 degree ceiling with the hinge an ulp short of the cut: the row is
+    // still ~10 degrees, but its +eps sample wraps to -180 and a raw central
+    // difference of the clamped row would read a ~1e6 phantom slope. The
+    // coordinate difference is wrapped like fill_roll_fd, so the slope stays
+    // the physical 1 instead of swamping the normal equations.
+    let (qz, qw) = quat_roll_z(179.999999);
+    let mut m = mate(
+        MateKind::Rotating,
+        mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+        mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Cylinder),
+        false,
+        0.0,
+        1.0,
+        0.0,
+    );
+    m.limit_max = 170.0_f64.to_radians();
+    m.limit_max_set = true;
+    let input = MateInput {
+        bodies: (0..2).map(|_| RigidBody).collect(),
+        params_initial: vec![
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, qz, qw,
+        ],
+        fixed_mask: vec![0b0000_0001],
+        mates: vec![m],
+    };
+    let p = MateProblem::new(&input);
+    let x: Vec<f64> = input.params_initial.clone();
+    let rows = p.residuals(&x);
+    assert!(rows[6] > 0.1, "the maximum is past its bound");
+    let j = p.jacobian(&x);
+    for col in 0..x.len() {
+        assert!(
+            j[(6, col)].abs() < 10.0,
+            "column {col} of the limit row read a phantom slope {}",
+            j[(6, col)]
+        );
+    }
+}
+
+#[test]
+fn manifold_jacobian_vs_fd_with_limits_at_a_wide_bound() {
+    // The bounds are far outside the joints' reachable coordinates, so both
+    // limit rows are permanently violated and the one-sided branch is linear;
+    // this exercises the new rows through the state chain (t, w) as well.
+    for kind in [MateKind::Sliding, MateKind::Rotating] {
+        let mut input = manifold_fd_input(kind);
+        let m = &mut input.mates[0];
+        m.limit_min = -1.0e6 - 10.0;
+        m.limit_min_set = true;
+        m.limit_max = -1.0e6;
+        m.limit_max_set = true;
+        compare_manifold_jacobian(&input);
+    }
+}

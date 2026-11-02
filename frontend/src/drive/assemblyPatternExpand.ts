@@ -123,6 +123,8 @@ export function expandPartPattern(request: PartPatternRequest, env: PatternEnv):
         ...(request.flip !== undefined && { flip: request.flip }),
         ...(request.offset !== undefined && { offset: request.offset }),
         ...(request.angle !== undefined && { angle: request.angle }),
+        ...(request.limit_min !== undefined && { limit_min: request.limit_min }),
+        ...(request.limit_max !== undefined && { limit_max: request.limit_max }),
         ...(request.radius !== undefined && { radius: request.radius }),
         ...(request.ratio !== undefined && { ratio: request.ratio }),
         ...(request.capture !== undefined && { capture: request.capture }),

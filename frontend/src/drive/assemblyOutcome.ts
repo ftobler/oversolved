@@ -55,6 +55,9 @@ export interface MateFrame {
   ref_a?: MateFrameSide
   ref_b?: MateFrameSide
   residual?: number
+  /** The bound the joint rests at or past, when it carries one. A reached stop
+   *  can have a zero residual, so this is what names it in the reply. */
+  limit?: 'min' | 'max' | 'both'
 }
 
 function kindLabel(kind: string): string {
@@ -162,13 +165,16 @@ function sideOf(ref: MateRef, response: AssemblyBuildResponse): MateFrameSide | 
 export function mateFrames(doc: AssemblyDoc, response: AssemblyBuildResponse): Record<string, MateFrame> {
   const frames: Record<string, MateFrame> = {}
   for (const { id, mate } of mateFeatures(doc)) {
-    const residual = response.status.mates[id]?.residual
+    const result = response.status.mates[id]
+    const residual = result?.residual
+    const limit = result?.limit
     const a = sideOf(mate.ref_a, response)
     const b = sideOf(mate.ref_b, response)
     frames[id] = {
       ...(a !== undefined && { ref_a: a }),
       ...(b !== undefined && { ref_b: b }),
       ...(residual !== undefined && { residual }),
+      ...(limit !== undefined && { limit }),
     }
   }
   return frames
@@ -186,6 +192,12 @@ export function summarizeAssembly(
     return `${instance.handle} (${instance.doc_id}${flags})`
   })
   const mateList = mateFeatures(doc).map(({ id, mate }) => `${id} (${kindLabel(mate.kind)})`)
+  // A reached bound is not a problem, so it rides its own index segment rather
+  // than the problems list: the joint is valid, just against its stop.
+  const limits = mateFeatures(doc).flatMap(({ id }) => {
+    const limit = status.mates[id]?.limit
+    return limit === undefined ? [] : [`${id} (${limit})`]
+  })
   const verdict = assemblyVerdict(status)
   const verdictText = verdict.verdict === 'none'
     ? 'none'
@@ -197,6 +209,7 @@ export function summarizeAssembly(
   return `instances: ${instances.join(', ') || 'none'}; `
     + `mates: ${mateList.join(', ') || 'none'}; `
     + `verdict: ${verdictText}`
+    + (limits.length > 0 ? `; limits: ${limits.join(', ')}` : '')
     + (problems.length > 0 ? `; problems: ${problems.join('; ')}` : '')
 }
 

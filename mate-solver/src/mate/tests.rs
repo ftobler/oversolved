@@ -61,6 +61,10 @@ fn sample_input() -> MateInput {
         radius: 0.0,
         angle: 0.0,
         angle_set: false,
+        limit_min: 0.0,
+        limit_max: 0.0,
+        limit_min_set: false,
+        limit_max_set: false,
         weight: 1.0,
     };
     MateInput {
@@ -136,7 +140,7 @@ fn mate_record_f64_fields_round_trip_bit_exact() {
 #[test]
 fn body_index_past_the_body_table_decodes_verbatim() {
     // Referential validity is not a wire property: a mate naming body 9 in a
-    // two-body assembly is a well-formed 212-byte record, so decode keeps it
+    // two-body assembly is a well-formed 228-byte record, so decode keeps it
     // and `MateProblem::new` is what drops it.
     let mut input = sample_input();
     input.mates[0].b.body_index = 9;
@@ -151,6 +155,7 @@ fn mate_output_round_trips() {
         params_solved: vec![0.0; 14],
         overall_status: MateStatus::FullyConstrained.to_u8(),
         mate_residuals: vec![1.5e-7, 2.0e-6],
+        limit_flags: vec![0, 0],
         diagnostics: MateDiagnostics {
             residual_norm: 1e-9,
             rank: 13,
@@ -163,6 +168,7 @@ fn mate_output_round_trips() {
     assert_eq!(decoded.diagnostics.rank, 13);
     assert_eq!(decoded.diagnostics.iters, 5);
     assert_eq!(decoded.mate_residuals, vec![1.5e-7, 2.0e-6]);
+    assert_eq!(decoded.limit_flags, vec![0, 0]);
 }
 
 #[test]
@@ -181,6 +187,7 @@ fn mate_output_bad_magic_rejected() {
         params_solved: vec![0.0; 7],
         overall_status: 0,
         mate_residuals: vec![],
+        limit_flags: vec![],
         diagnostics: MateDiagnostics::default(),
     };
     let mut bytes = encode_mate_output(&out);
@@ -194,7 +201,7 @@ fn mate_output_bad_magic_rejected() {
 #[test]
 fn mate_input_bad_kind_rejected() {
     let mut bytes = encode_mate_input(&sample_input());
-    // In the 212-byte record, kind_code is at offset:
+    // In the 228-byte record, kind_code is at offset:
     // header(20) + bodies(8) + params_initial(14 * 8 = 112) + fixed_mask(1) = 141
     // + kind_code is first byte of mate record
     bytes[141] = 0xff; // kind_code in first mate record
@@ -311,6 +318,10 @@ fn parallel_mate_with_flip_round_trips() {
             radius: 0.0,
             angle: 0.0,
             angle_set: false,
+            limit_min: 0.0,
+            limit_max: 0.0,
+            limit_min_set: false,
+            limit_max_set: false,
             weight: 1.0,
         }],
     };
@@ -359,6 +370,10 @@ fn offset_ratio_radius_round_trip() {
             radius: 3.0,
             angle: 0.7,
             angle_set: false,
+            limit_min: 0.0,
+            limit_max: 0.0,
+            limit_min_set: false,
+            limit_max_set: false,
             weight: 1.0,
         }],
     };
@@ -389,7 +404,7 @@ fn mate_record_stride_matches_the_fixture() {
     two_mates.mates.push(extra);
     let stride = encode_mate_input(&two_mates).len() - one;
     assert_eq!(stride as u64, fixture_u64("record_bytes"));
-    assert_eq!(stride, 212);
+    assert_eq!(stride, 228);
 }
 
 // A record built to the pre-weight 108-byte stride must fail loudly instead
@@ -418,7 +433,7 @@ fn mate_weight_round_trips() {
 /// reads too. The fixture puts the magic-bump rule in front of the editor.
 #[test]
 fn mate_wire_fixture_matches_the_constants() {
-    assert_eq!(fixture_u64("rev"), 5);
+    assert_eq!(fixture_u64("rev"), 6);
     assert_eq!(MATE_MAGIC as u64, fixture_u64("magic"));
     assert_eq!(MATE_MAGIC_OUT as u64, fixture_u64("magic_out"));
 }
@@ -558,12 +573,13 @@ fn nonfinite_ratio_radius_angle_rejected() {
     assert_nonfinite_rejected("angle", |input, v| input.mates[0].angle = v);
 }
 
-// MTS4 records had no angle_set bit; a stale encoder's rotating mate would
-// decode as a free hinge, so the old magic must fail loud instead.
+// MTS5 records had no limit fields; a stale encoder's limit would decode as
+// no limit and the joint would run past its stop, so the old magic must fail
+// loud instead.
 #[test]
 fn previous_rev_magic_is_rejected() {
     let mut bytes = encode_mate_input(&sample_input());
-    bytes[0..4].copy_from_slice(&0x3453_544Du32.to_le_bytes());
+    bytes[0..4].copy_from_slice(&0x3553_544Du32.to_le_bytes());
     assert!(matches!(
         decode_mate_input(&bytes),
         Err(CodecError::BadMagic)
@@ -577,4 +593,32 @@ fn angle_set_flag_round_trips() {
     let decoded = decode_mate_input(&encode_mate_input(&input)).expect("decode");
     assert!(decoded.mates[0].angle_set);
     assert!(!decoded.mates[0].flip);
+}
+
+#[test]
+fn limit_fields_and_flags_round_trip() {
+    // Each bound carries its own presence bit: an absent bound must not read as
+    // a zero-degree/zero-mm stop, which would pin every joint at its seed.
+    let mut input = sample_input();
+    input.mates[0].limit_min = -1.25;
+    input.mates[0].limit_max = 0.5;
+    input.mates[0].limit_min_set = true;
+    let decoded = decode_mate_input(&encode_mate_input(&input)).expect("decode");
+    let m = &decoded.mates[0];
+    assert_eq!(m.limit_min.to_bits(), (-1.25f64).to_bits());
+    assert_eq!(m.limit_max.to_bits(), 0.5f64.to_bits());
+    assert!(m.limit_min_set);
+    assert!(!m.limit_max_set);
+}
+
+#[test]
+fn nonfinite_limit_rejected() {
+    assert_nonfinite_rejected("limit_min", |input, v| {
+        input.mates[0].limit_min = v;
+        input.mates[0].limit_min_set = true;
+    });
+    assert_nonfinite_rejected("limit_max", |input, v| {
+        input.mates[0].limit_max = v;
+        input.mates[0].limit_max_set = true;
+    });
 }

@@ -158,6 +158,34 @@ describe('mateFailure', () => {
     // The solver's NaN sentinel for a dropped mate is not a constraint failure.
     expect(mateFailure('m1', stub({ mates: { m1: { stale: false, residual: NaN } } })).failed).toBe(false)
   })
+
+  it('names the bound a joint rests at, as a warning that has not failed', () => {
+    // A reached stop is a valid solve with a zero residual, so it must still
+    // name the bound rather than reading as healthy or as a conflict.
+    expect(mateFailure('m1', stub({ mates: { m1: { stale: false, limit: 'min' } } }))).toMatchObject({
+      failed: false, level: 'warning', message: 'The joint is at the minimum of its range.',
+    })
+    expect(mateFailure('m1', stub({ mates: { m1: { stale: false, limit: 'max' } } })).message)
+      .toContain('maximum')
+    expect(mateFailure('m1', stub({ mates: { m1: { stale: false, limit: 'both' } } })).message)
+      .toContain('both ends')
+  })
+
+  it('lets a model cause, a stale reference and a missed residual outrank the limit mark', () => {
+    const error = stub({ mates: { m1: { stale: false, limit: 'max', error: 'bad wire' } } })
+    expect(mateFailure('m1', error).message).toBe('bad wire')
+    const stale = stub({ mates: { m1: { stale: true, limit: 'max' } } })
+    expect(mateFailure('m1', stale).message).toContain('re-pick')
+    // A joint past its stop that did not hold is a conflict, not a resting
+    // stop: the bound must not mask the residual failure from the problem list.
+    const missed = stub({
+      verdict: 'overconstrained',
+      mates: { m1: { stale: false, limit: 'max', residual: 1e-2 } },
+    })
+    expect(mateFailure('m1', missed)).toMatchObject({
+      failed: true, level: 'error', message: 'The mate is not holding to tolerance.',
+    })
+  })
 })
 
 describe('partFailure', () => {

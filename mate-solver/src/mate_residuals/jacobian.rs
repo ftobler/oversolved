@@ -113,6 +113,15 @@ impl MateProblem {
                     // (see fill_roll_fd).
                     self.fill_roll_fd(&mut j, row, mi, off_a, off_b, x, &mut scratch);
                     row += 1;
+                    // Slide bounds, in the residual's min-then-max order.
+                    if mate.limit_min_set {
+                        self.fill_limit_fd(&mut j, row, mi, off_a, off_b, x, &mut scratch, false);
+                        row += 1;
+                    }
+                    if mate.limit_max_set {
+                        self.fill_limit_fd(&mut j, row, mi, off_a, off_b, x, &mut scratch, true);
+                        row += 1;
+                    }
                 }
                 MateKind::Rotating => {
                     self.fill_point_coincidence_offset(
@@ -139,6 +148,15 @@ impl MateProblem {
                     row += 3;
                     if mate.angle_set {
                         self.fill_roll_fd(&mut j, row, mi, off_a, off_b, x, &mut scratch);
+                        row += 1;
+                    }
+                    // Angle bounds, in the residual's min-then-max order.
+                    if mate.limit_min_set {
+                        self.fill_limit_fd(&mut j, row, mi, off_a, off_b, x, &mut scratch, false);
+                        row += 1;
+                    }
+                    if mate.limit_max_set {
+                        self.fill_limit_fd(&mut j, row, mi, off_a, off_b, x, &mut scratch, true);
                         row += 1;
                     }
                 }
@@ -551,6 +569,61 @@ impl MateProblem {
                 // first; the cells start at zero, so summing is identical for
                 // distinct bodies.
                 j[(row, col)] += wrap_to_pi(fp - fm) / (2.0 * eps);
+            }
+        }
+    }
+
+    /// Finite-difference Jacobian for a one-sided limit row. The row is
+    /// `max(0, coordinate - bound)` (or the mirrored minimum form); its slope is
+    /// the coordinate's on the active side and zero inside the range. The
+    /// coordinate, not the clamped row, is differenced for that reason: past a
+    /// bound the clamped row jumps to zero the moment the wrapped roll crosses
+    /// +/-pi, and a raw central difference of it reads a ~1e6 phantom slope
+    /// there. Wrapping the coordinate's difference recovers the true local
+    /// slope across the cut, exactly as `fill_roll_fd` does for the roll
+    /// residual. `limit_row_active` is the residual's own choice of side, so a
+    /// circular pair's nearer stop is the row that gets a slope. A reduced or
+    /// inverted range is admitted here (the validator owns refusal) and simply
+    /// leaves both rows active.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fill_limit_fd(
+        &self,
+        j: &mut DMatrix<f64>,
+        row: usize,
+        mi: usize,
+        off_a: usize,
+        off_b: usize,
+        x: &[f64],
+        scratch: &mut [f64],
+        upper: bool,
+    ) {
+        let mate = &self.mates[mi];
+        let Some(value) = self.limit_coordinate(x, mi) else {
+            return;
+        };
+        if !self.limit_row_active(x, mi, upper) {
+            return;
+        }
+        let wraps = mate.kind == MateKind::Rotating;
+        let eps = 1e-6;
+        let xp = scratch;
+        xp.clone_from_slice(x);
+        for &base in &[off_a, off_b] {
+            for col in base..base + 7 {
+                let orig = xp[col];
+                xp[col] = orig + eps;
+                let fp = self.limit_coordinate(xp, mi).unwrap_or(value);
+                xp[col] = orig - eps;
+                let fm = self.limit_coordinate(xp, mi).unwrap_or(value);
+                xp[col] = orig;
+                let delta = fp - fm;
+                let slope = if wraps { wrap_to_pi(delta) } else { delta } / (2.0 * eps);
+                // The row is `coordinate - bound` at the maximum and
+                // `bound - coordinate` at the minimum, so the lower bound's
+                // slope is the negated coordinate slope.
+                let sign = if upper { 1.0 } else { -1.0 };
+                // `+=` for the same self-mate reason as fill_roll_fd.
+                j[(row, col)] += sign * slope;
             }
         }
     }

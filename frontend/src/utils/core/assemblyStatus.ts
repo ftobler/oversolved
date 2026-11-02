@@ -66,7 +66,10 @@ export function mateFailure(
   // The solver's per-mate residual norm rides the output wire; a real mate that
   // did not converge inside the acceptance tolerance is marked here rather than
   // only in the overall verdict. A non-finite value is the solver's "dropped
-  // mate" sentinel and is not a failure.
+  // mate" sentinel and is not a failure. This branch outranks the limit mark: a
+  // joint that is past a bound AND not holding is a conflict, not a resting
+  // stop, and it must join the problem list. A stop reached exactly has a zero
+  // residual and falls through to the limit branch below.
   if (
     typeof result.residual === 'number' &&
     Number.isFinite(result.residual) &&
@@ -87,6 +90,20 @@ export function mateFailure(
       level: 'error',
       message: 'The mate is not holding to tolerance.',
       cause: 'error',
+    }
+  }
+
+  // A joint resting on an authored bound is a valid solve, so this is a warning
+  // that has not failed. What the user needs to know is which bound the joint
+  // is against, which the residual cannot say at a stop reached exactly.
+  if (result.limit !== undefined) {
+    const min = result.limit === 'min' || result.limit === 'both'
+    const max = result.limit === 'max' || result.limit === 'both'
+    const where = min && max ? 'at a bound on both ends' : min ? 'at the minimum' : 'at the maximum'
+    return {
+      failed: false,
+      level: 'warning',
+      message: `The joint is ${where} of its range.`,
     }
   }
   return OK

@@ -1020,6 +1020,24 @@ authors `flip: true` by hand is equally valid.
   `parallel_plane_distance` reads the same value as the plane separation along
   A's normal, `tangential` as a surface clearance, and `sliding` refuses an
   offset (it would pin the joint's only translational DOF).
+- `limit_min`/`limit_max` bound a single-DOF joint one-sidedly. On `sliding`
+  they are millimetres of axial separation of B's anchor from A's, along A's
+  world axis; on `rotating` they are degrees about the same canonical roll zero
+  as `angle`, signed and inside (-180, 180]. Both bounds are inclusive and add no
+  constraint while the joint is inside the range, so a bounded joint is still
+  free between its stops; a missing key is an open end, and an inverted pair is
+  refused with the reason (a rotating range crossing the +/-180 cut folds to an
+  inverted pair and has no single signed spelling). A lone out-of-range rotating
+  endpoint is refused rather than folded: a max above 180 allows every reachable
+  roll, while the folded value would name a real one-degree stop. The v5
+  migration only folds a complete pair whose folded form stays ordered. A solve
+  reports a reached bound as
+  `solve.mates.<id>.limit: "min" | "max" | "both"`, `mateFrames.<id>.limit`,
+  and a `limits:` segment in the summary; reaching a stop is not a problem, so
+  `ok` stays true and the mate does not join the `mates` problem list.
+  `overconstrained` is reserved for a mate set with no pose that satisfies every
+  mate and limit (for example a slide bounded at 20 next to a plane separation
+  of 30).
 - Solved poses are never written back: each `instances[]` row carries
   `{ handle, part, fixed, position, rotation, quaternion }`, and the document
   keeps its authored seeds. A bake-flagged operation still bakes the last

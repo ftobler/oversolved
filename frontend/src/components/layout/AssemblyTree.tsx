@@ -408,7 +408,7 @@ export function AssemblyTree({
                 role="option"
                 tabIndex={0}
                 aria-selected={selected}
-                title={mateMark.failed ? mateMark.message : undefined}
+                title={mateMark.level ? mateMark.message : undefined}
                 onClick={() => onSelectMate?.(id)}
                 onKeyDown={(e) => rowKeyDown(e, () => onSelectMate?.(id))}
                 draggable={!editing}

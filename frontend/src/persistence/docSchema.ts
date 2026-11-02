@@ -17,17 +17,20 @@ import { errorMessage } from '@/utils/core/errorMessage'
 import { evalExpr } from '@/kernel/evalExpr'
 import { threadEntry } from '@/kernel/threadTable'
 import { isLengthUnit } from '@/utils/lengthUnit'
+import { normalizeMateLimitDeg } from '@/utils/mateKinds'
 import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams } from '@/utils/yamlMigrations'
 
-// The version the ladder migrates to. A document carrying `version` 4 or newer
+// The version the ladder migrates to. A document carrying `version` 5 or newer
 // skips every step; anything older (including an unstamped document, reads as 0)
 // runs the steps whose target version it is behind. The step at 3 canonicalizes
 // the two spellings the format used to tolerate (feature refs `$id` -> `@id`,
 // flat params -> nested); the step at 4 flips stored fixed-mate offsets to the
-// plus convention and stamps the document it changed (see the step's own note).
+// plus convention and stamps the document it changed (see the step's own note);
+// the step at 5 folds authored rotating joint limits into the solver's signed
+// (-180, 180] roll coordinate.
 // The historic heals target 2 deliberately: the version stamps predate them, so
 // a document stamped 1 can still carry the stale shapes they fix.
-export const CURRENT_DOC_VERSION = 4
+export const CURRENT_DOC_VERSION = 5
 
 // Caps. Chosen far above what a real document holds while well below what would
 // hang a solve: an entity list of 10k is already far past a hand-authored
@@ -103,6 +106,10 @@ interface MigrationStep {
 // touches and skips anything that does not have the shape it heals: a garbage
 // document just reaches the validator untouched and is rejected there.
 const MIGRATION_STEPS: MigrationStep[] = [
+  // The rotating-limit normalization. It is idempotent, so unlike the offset
+  // flip it does not stamp: an unstamped document simply finds nothing to
+  // rewrite on its next load.
+  { id: 'mate-limit-degrees', to: 5, apply: stepMateLimitDegrees },
   // The fixed-mate offset sign flip. The loop below keys every step off the
   // version captured before any step ran, so this one's stamp of the documents
   // it flips cannot skip a sibling step in the same pass.
@@ -200,6 +207,48 @@ function stepDropRedundantInlineStepPayload(doc: DocRecord): number {
     }
   }
   return dropped
+}
+
+// A rotating joint's limits are authored in degrees on the solver's signed roll
+// coordinate, so an endpoint beyond the half turn is folded once here rather
+// than being read as a different bound. Only a COMPLETE pair is folded, and only
+// when the folded pair stays ordered: a lone out-of-range endpoint is either
+// vacuous or unsatisfiable on the signed coordinate (a max of 181 allows every
+// reachable value; a max of 270 is not "about -90"), so folding it would invent
+// a constraint. That case is left for the validator to refuse with the reason.
+// Sliding limits are millimetres and need no folding. Idempotent, so it does not
+// stamp the document the way the non-idempotent offset flip does.
+function stepMateLimitDegrees(doc: DocRecord): number {
+  const features = doc.features
+  if (!isRecordList(features, MAX_FEATURES)) return 0
+  let rewritten = 0
+  for (const feature of features) {
+    const row = feature as DocRecord
+    if (row.kind !== 'mate' || !isRecord(row.mate)) continue
+    const mate = row.mate
+    if (mate.kind !== 'rotating') continue
+    const min = mate.limit_min
+    const max = mate.limit_max
+    if (typeof min !== 'number' || !Number.isFinite(min) ||
+      typeof max !== 'number' || !Number.isFinite(max)) continue
+    // A span of a full turn or more is the whole circle (or a malformed pair),
+    // not a range a signed interval can name; leave it to the validator.
+    if (max - min >= 360) continue
+    const foldedMin = normalizeMateLimitDeg(min)
+    const foldedMax = normalizeMateLimitDeg(max)
+    // The folded pair crossing the cut has no single signed interval; the
+    // validator refuses it rather than letting the migration pick a side.
+    if (foldedMin > foldedMax) continue
+    if (foldedMin !== min) {
+      mate.limit_min = foldedMin
+      rewritten++
+    }
+    if (foldedMax !== max) {
+      mate.limit_max = foldedMax
+      rewritten++
+    }
+  }
+  return rewritten
 }
 
 // A fixed mate's `offset` used to mean B's anchor at A's anchor MINUS the
@@ -1039,7 +1088,33 @@ function checkMateDef(value: unknown, field: string): void {
   checkOptional(mate, 'flip', field, checkBoolean)
   checkOptional(mate, 'ratio', field, checkFiniteNumber)
   checkOptional(mate, 'offset', field, checkMateOffset)
-  for (const key of ['angle', 'radius']) checkOptional(mate, key, field, checkExpr)
+  for (const key of ['angle', 'radius', 'limit_min', 'limit_max']) checkOptional(mate, key, field, checkExpr)
+  checkMateLimits(mate, field)
+}
+
+function checkMateLimits(mate: DocRecord, field: string): void {
+  const min = mate.limit_min
+  const max = mate.limit_max
+  if (mate.kind === 'rotating') {
+    for (const [key, value] of [['limit_min', min], ['limit_max', max]] as const) {
+      // The solver's roll coordinate is (-180, 180]: -180 and +180 are the same
+      // point, and only the closed upper end is spelled. An out-of-range
+      // endpoint is refused rather than folded on its own: a max of 181 allows
+      // every reachable roll, while its folded value would pin a real stop. The
+      // v5 migration folds a complete pre-v5 pair instead.
+      if (typeof value === 'number' && (value <= -180 || value > 180)) {
+        fail(`${field}.${key}`, `must be inside (-180, 180] degrees, got ${value}`)
+      }
+    }
+  }
+  if (typeof min === 'number' && typeof max === 'number' && min > max) {
+    // A range crossing the roll's +/-180 cut normalizes into this shape; saying
+    // so keeps a legal-looking 170..190 from reading as a typo.
+    const hint = mate.kind === 'rotating'
+      ? ' (a rotating range must fit inside (-180, 180] degrees)'
+      : ''
+    fail(`${field}.limit_max`, `must be at least limit_min ${min}, got ${max}${hint}`)
+  }
 }
 
 export const ASSEMBLY_FEATURE_KINDS = ['part_instance', 'mate', 'origin', 'plane'] as const

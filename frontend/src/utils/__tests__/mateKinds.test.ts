@@ -12,13 +12,16 @@ import {
   isMateRefEmpty,
   mateCapturesAngle,
   mateKindCode,
+  mateLimitIsAngle,
   mateOffsetIsAxial,
+  mateParamLabel,
   mateParams,
   mateOffsetVector,
   mateReadsAxis,
   mateRefLabel,
   mateSummary,
   normalizeMateAngleDeg,
+  normalizeMateLimitDeg,
   unresolvedMateParams,
 } from '@/utils/mateKinds'
 import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
@@ -86,7 +89,7 @@ describe('mateParams', () => {
   // parameter offered outside this set would be authored into the document and
   // then dropped at the wire, which is worse than not offering it: the user sees
   // a number that does nothing.
-  const WIRE_PARAMS = ['flip', 'offset', 'ratio', 'radius', 'angle']
+  const WIRE_PARAMS = ['flip', 'offset', 'ratio', 'radius', 'angle', 'limit_min', 'limit_max']
 
   it('never offers a parameter the wire format cannot carry', () => {
     for (const kind of MATE_KINDS) {
@@ -105,8 +108,8 @@ describe('mateParams', () => {
       fixed: ['offset', 'flip', 'angle'],
       spherical: [],
       parallel: ['flip'],
-      sliding: ['flip', 'angle'],
-      rotating: ['offset', 'flip', 'angle'],
+      sliding: ['flip', 'angle', 'limit_min', 'limit_max'],
+      rotating: ['offset', 'flip', 'angle', 'limit_min', 'limit_max'],
       sliding_rotating: ['flip'],
       tangential: ['offset', 'radius'],
       copy_rotation: ['ratio'],
@@ -123,6 +126,17 @@ describe('mateParams', () => {
 
   it('gives fixed its offset, flip and angle', () => {
     expect(mateParams('fixed')).toEqual(['offset', 'flip', 'angle'])
+  })
+
+  it('bounds only the two single-DOF joints', () => {
+    // A limit constrains the joint's one free coordinate. A fixed mate has no
+    // free coordinate, and a cylindrical mate has two, so a single min/max pair
+    // would be ambiguous there.
+    const withLimits = MATE_KINDS.filter(k => mateParams(k).includes('limit_min'))
+    expect(withLimits).toEqual(['sliding', 'rotating'])
+    for (const kind of withLimits) expect(mateParams(kind)).toContain('limit_max')
+    expect(mateLimitIsAngle('rotating')).toBe(true)
+    expect(mateLimitIsAngle('sliding')).toBe(false)
   })
 
   it('offers angle only where the solver reads a roll target (fixed, sliding, rotating)', () => {
@@ -207,6 +221,12 @@ describe('unresolvedMateParams', () => {
   it('names a non-finite value', () => {
     expect(unresolvedMateParams({ kind: 'copy_rotation', ratio: NaN })).toEqual(['ratio'])
     expect(unresolvedMateParams({ kind: 'fixed', offset: Infinity })).toEqual(['offset'])
+  })
+
+  it('names an expression-valued or non-finite bound', () => {
+    expect(unresolvedMateParams({ kind: 'sliding', limit_min: 'w / 2' })).toEqual(['limit_min'])
+    expect(unresolvedMateParams({ kind: 'rotating', limit_max: NaN })).toEqual(['limit_max'])
+    expect(unresolvedMateParams({ kind: 'rotating', limit_min: -45, limit_max: 45 })).toEqual([])
   })
 
   // The unknown-kind guard in solveAssembly owns the not-a-kind case; this
@@ -378,5 +398,50 @@ describe('normalizeMateAngleDeg', () => {
   it('authors zero rather than NaN for a non-finite input', () => {
     expect(normalizeMateAngleDeg(NaN)).toBe(0)
     expect(normalizeMateAngleDeg(Infinity)).toBe(0)
+  })
+})
+
+describe('normalizeMateLimitDeg', () => {
+  it('folds a limit onto the solver\'s signed roll coordinate', () => {
+    // The solver's roll coordinate is wrap_to_pi(atan2(sin, cos)), so the
+    // authoring form is degrees in (-180, 180]. A limit and that limit plus a
+    // full turn are the same physical bound.
+    expect(normalizeMateLimitDeg(0)).toBe(0)
+    expect(normalizeMateLimitDeg(90)).toBe(90)
+    expect(normalizeMateLimitDeg(180)).toBe(180)
+    expect(normalizeMateLimitDeg(270)).toBe(-90)
+    expect(normalizeMateLimitDeg(359)).toBe(-1)
+    expect(normalizeMateLimitDeg(-90)).toBe(-90)
+    expect(normalizeMateLimitDeg(-270)).toBe(90)
+    expect(normalizeMateLimitDeg(360 + 45)).toBe(45)
+    expect(normalizeMateLimitDeg(-360 - 45)).toBe(-45)
+    // The solver's coordinate is half-open at the cut, so the lower end folds
+    // onto the upper one. A min authored as -180 therefore normalizes to 180,
+    // which the range validator refuses as inverted rather than reading as an
+    // unreachable open end.
+    expect(normalizeMateLimitDeg(-180)).toBe(180)
+  })
+
+  it('authors zero rather than NaN for a non-finite input', () => {
+    expect(normalizeMateLimitDeg(NaN)).toBe(0)
+    expect(normalizeMateLimitDeg(Infinity)).toBe(0)
+  })
+
+  it('keeps a crossing range inverted so the validator can refuse it', () => {
+    // 170..190 is 20 degrees wide but crosses the +/-180 cut, which one signed
+    // pair cannot name. Folding each endpoint independently is lossless per
+    // bound; the resulting min > max is the honest shape for "not representable"
+    // and is what the loader and the solve boundary refuse.
+    expect(normalizeMateLimitDeg(170)).toBeGreaterThan(normalizeMateLimitDeg(190))
+  })
+})
+
+describe('mateParamLabel', () => {
+  it('names a bound with the unit its kind reads', () => {
+    expect(mateParamLabel('rotating', 'limit_min')).toBe('Min angle')
+    expect(mateParamLabel('rotating', 'limit_max')).toBe('Max angle')
+    expect(mateParamLabel('sliding', 'limit_min')).toBe('Min distance')
+    expect(mateParamLabel('sliding', 'limit_max')).toBe('Max distance')
+    expect(mateParamLabel('fixed', 'offset')).toBe('Offset')
   })
 })

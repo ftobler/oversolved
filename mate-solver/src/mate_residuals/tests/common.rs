@@ -67,6 +67,10 @@ pub(super) fn mate_with_angle(
         radius,
         angle,
         angle_set: false,
+        limit_min: 0.0,
+        limit_max: 0.0,
+        limit_min_set: false,
+        limit_max_set: false,
         weight: 1.0,
     }
 }
@@ -109,6 +113,10 @@ pub(super) fn mate_with_offset_vec(
         radius,
         angle: 0.0,
         angle_set: false,
+        limit_min: 0.0,
+        limit_max: 0.0,
+        limit_min_set: false,
+        limit_max_set: false,
         weight: 1.0,
     }
 }

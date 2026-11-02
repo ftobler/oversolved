@@ -146,7 +146,7 @@ export function makeEchoSolver(): (input: Uint8Array) => Uint8Array {
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
-    out.setUint32(pos, 0x3352544D, true); pos += 4  // MATE_MAGIC_OUT
+    out.setUint32(pos, 0x3452544D, true); pos += 4  // MATE_MAGIC_OUT
     out.setUint32(pos, nParams, true); pos += 4
     out.setUint8(pos, 0); pos += 1  // fully constrained
     for (let i = 0; i < nParams; i++) {
@@ -196,7 +196,7 @@ export function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Arr
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
-    out.setUint32(pos, 0x3352544D, true); pos += 4
+    out.setUint32(pos, 0x3452544D, true); pos += 4
     out.setUint32(pos, nParams, true); pos += 4
     out.setUint8(pos, 0); pos += 1
     for (let i = 0; i < nParams; i++) {
@@ -235,7 +235,7 @@ export function makeScaledQwSolver(bodyIndex: number, scale: number): (input: Ui
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
-    out.setUint32(pos, 0x3352544D, true); pos += 4
+    out.setUint32(pos, 0x3452544D, true); pos += 4
     out.setUint32(pos, nParams, true); pos += 4
     out.setUint8(pos, 0); pos += 1
     for (let i = 0; i < nParams; i++) {
@@ -263,6 +263,8 @@ export interface DecodedMateRecord {
   axisB: [number, number, number]
   offset: [number, number, number]
   angle: number
+  limitMin: number
+  limitMax: number
   weight: number
 }
 
@@ -305,9 +307,11 @@ export function decodeInput(input: Uint8Array): DecodedInput {
     const offset = readVec()
     pos += 8 + 8  // ratio + radius
     const angle = v.getFloat64(pos, true); pos += 8
+    const limitMin = v.getFloat64(pos, true); pos += 8
+    const limitMax = v.getFloat64(pos, true); pos += 8
     pos += 48  // perp_a (3 f64) + perp_b (3 f64)
     const weight = v.getFloat64(pos, true); pos += 8
-    mates.push({ kindCode, bodyA, bodyB, anchorKindA, anchorKindB, pointA, axisA, pointB, axisB, offset, angle, weight })
+    mates.push({ kindCode, bodyA, bodyB, anchorKindA, anchorKindB, pointA, axisA, pointB, axisB, offset, angle, limitMin, limitMax, weight })
   }
   return { nBodies, fixedMask, mates }
 }
