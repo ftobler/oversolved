@@ -178,7 +178,8 @@ const DETAIL_SCHEMA = {
 // so the assembly handle names the content it was built against.
 const PARTS_SCHEMA = {
   type: 'object',
-  description: 'Assembly binding: doc_id -> a part docHash from an earlier reply, or {doc} with the part document inline.',
+  description: 'Assembly binding: doc_id -> a part docHash from an earlier reply, or {doc} with the part document inline. '
+    + 'An add_step_part step also grows this binding: its part document is bound under `step_<file id>` with the files map.',
   additionalProperties: {
     anyOf: [
       { type: 'string' },
@@ -386,7 +387,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'once and the same fields are returned, which is how to inspect a document. A reply\'s docHash is stable: '
       + 'run with steps: [] on it (by docHash, or its exported YAML/JSON as doc) returns the same hash. The summary lists only the '
       + 'bodies the final solve left live; a refused step says the document was not solved. '
-      + 'For an assembly, pass kind: "assembly" and parts to bind each instance doc_id; the reply carries solve, mates, parts, instances and mateFrames instead of features. The full document is not returned by default (returnDoc: false); pass returnDoc: true, or read the '
+      + 'For an assembly, pass kind: "assembly" and parts to bind each instance doc_id; the reply carries solve, mates, parts, instances and mateFrames instead of features. An add_step_part step imports a STEP from the files map as the part document that owns it and instances it, so no hand-made part document is needed; importing the same file id again reuses that part. The full document is not returned by default (returnDoc: false); pass returnDoc: true, or read the '
       + 'resource ' + MCP_DOC_RESOURCE_TEMPLATE + ' with that docHash, when you need the bytes. Pass out to write '
       + 'the final document (YAML or JSON by extension) inside tmp/ or bugreports/. ',
     inputSchema: {
@@ -868,7 +869,8 @@ export function createMcpServer(ops: McpCadOps): McpServer {
               + 'served as the resource ' + PART_DOC_SCHEMA_URI + ' and the mutation catalog as '
               + MUTATION_CATALOG_URI + '. The full document behind any reply docHash is the resource '
               + MCP_DOC_RESOURCE_TEMPLATE + ', so run replies stay small. Assemblies: pass kind: "assembly" '
-              + 'with parts binding each instance doc_id to a part docHash (or {doc}), author mates from '
+              + 'with parts binding each instance doc_id to a part docHash (or {doc}), or use an add_step_part '
+              + 'step to import a STEP from files and instance it without a part document; author mates from '
               + 'part-local picks (run select on the part\'s docHash), place the parts roughly and pass '
               + 'capture: true to freeze the seeds\' flip/angle (or set flip: true by hand for face-to-face '
               + 'contact). Mate kinds: ' + MATE_KINDS.join(', ') + '. The assembly JSON Schema is the resource '

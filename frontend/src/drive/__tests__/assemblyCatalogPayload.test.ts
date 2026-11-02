@@ -16,9 +16,10 @@ describe('mutationCatalogPayload', () => {
   it('lists every assembly mutation exactly once', () => {
     const payload = mutationCatalogPayload()
     const types = Object.values(payload.assembly.families).flat().map(row => row.type)
-    expect(types).toHaveLength(16)
+    expect(types).toHaveLength(17)
     expect(new Set(types).size).toBe(types.length)
     expect(types).toContain('add_part')
+    expect(types).toContain('add_step_part')
     expect(types).toContain('add_mate')
     expect(types).toContain('set_mate_ref')
     expect(types).not.toContain('set_part_fixed_oneshot')

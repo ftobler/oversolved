@@ -60,6 +60,16 @@ MCP as `oversolved://schema/assembly-document`: a `part_instance` names a
 workspace `doc_id`, and a `mate` carries two `{ part, anchor,
 anchor_descriptor }` refs plus the parameters its kind reads.
 
+That `doc_id` need not come from a document the user authored first. The
+assembly header's Import STEP writes the STEP file entry and the part document
+that imports it as one workspace save, then places the instance through the
+ordinary add_part path; undo covers the instance and leaves the part in the
+workspace. The file entry is found by its content hash, so importing the same
+bytes again reuses it, and the part document is reused when the requested name
+matches; a taken name gets the usual `_1` collision suffix. The headless
+`add_step_part` step is the same synthesis without a workspace, binding the part
+under the derived id `step_<file id>`.
+
 ## Document Structure
 
 ```yaml

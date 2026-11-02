@@ -20,7 +20,7 @@ function renderToolbar(Toolbar: typeof PartToolbar, handleSave: () => Promise<bo
       <MemoryRouter initialEntries={['/workspaces/w/doc']}>
         {Toolbar === PartToolbar
           ? <PartToolbar {...common} {...partUnit} onImport={vi.fn()} onExport={vi.fn()} />
-          : <AssemblyToolbar {...common} onExport={vi.fn()} />}
+          : <AssemblyToolbar {...common} onImport={vi.fn()} onExport={vi.fn()} />}
       </MemoryRouter>
     </CommandRegistryProvider>,
   )

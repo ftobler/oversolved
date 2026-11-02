@@ -6,7 +6,7 @@
 // P2 pins the stall budget naming the part.
 
 import { describe, it, expect } from 'vitest'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
@@ -270,6 +270,69 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
         arguments: { docHash: a1, steps: [], featureDeltas: 'all' },
       }))
       expect(String(refusedDeltas.error)).toContain('featureDeltas')
+    } finally {
+      await client.close()
+    }
+  }, 240_000)
+
+  it('imports a STEP from the files map and instances, measures and exports it', async () => {
+    mkdirSync(OUT_DIR, { recursive: true })
+    // The checked-in STEP fixture, copied where the files-path rule allows a
+    // read (tmp/); the test never touches the network.
+    const stepCase = path.join(OUT_DIR, 'double_with_hole.step')
+    writeFileSync(stepCase, readFileSync(new URL('../../kernel/occ/__fixtures__/double_with_hole.step', import.meta.url)))
+    const exportedStep = path.join(OUT_DIR, 'step_instance.step')
+    const zipFile = path.join(OUT_DIR, 'step_instance.zip')
+    const files = [{ id: 'f1', path: stepCase }]
+    const client = spawnMcp()
+    try {
+      await initialize(client)
+
+      const assembly = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: {
+          kind: 'assembly',
+          files,
+          out: zipFile,
+          steps: [
+            { mutation: { type: 'add_step_part', handle: 'housing', file: 'f1', name: 'Housing' } },
+          ],
+        },
+      }))
+      expect(assembly.ok).toBe(true)
+      expect(assembly.steps).toEqual([
+        expect.objectContaining({
+          id: 'add_step_part',
+          ok: true,
+          part: { docId: 'step_f1', name: 'Housing', fileId: 'f1' },
+        }),
+      ])
+      expect(assembly.instances).toEqual([expect.objectContaining({ handle: 'housing', part: 'step_f1' })])
+      expect(assembly.parts).toEqual([])
+      // The workspace zip carries the part the run synthesized, not only the
+      // binding the call started from.
+      const zipped = await readZipTree(new Uint8Array(readFileSync(zipFile)))
+      expect(Object.values(zipped.manifest.entries).filter(row => row.kind === 'document')).toHaveLength(2)
+
+      // The composite handle carries the part the step bound, so measure and
+      // export need only the same files map.
+      const handle = assembly.docHash as string
+      const measured = toolPayload(await client.request('tools/call', {
+        name: 'measure',
+        arguments: { docHash: handle, files },
+      }))
+      expect(measured.ok).toBe(true)
+      expect(measured.kind).toBe('assembly')
+      expect(measured.bodies).toBe(1)
+      expect(measured.volume as number).toBeGreaterThan(0)
+
+      const exported = toolPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: handle, format: 'step', out: exportedStep, files },
+      }))
+      expect(exported).toMatchObject({ ok: true, kind: 'assembly', format: 'step', docHash: handle })
+      expect(exported.bytes as number).toBeGreaterThan(0)
+      expect(readFileSync(exportedStep).byteLength).toBe(exported.bytes as number)
     } finally {
       await client.close()
     }

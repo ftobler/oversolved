@@ -27,6 +27,8 @@ import {
 import { runAssemblyOperation, type AssemblyOperationId, type AssemblyOperationInputs } from '@/utils/assemblyOperations'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { interpretEntry } from '@/workspace/kinds'
+import { addStepPart } from '@/workspace/stepPart'
+import { stepImportLimitError } from '@/stores/documentStore/stepImport'
 import type { AssemblySubject } from '@/utils/assemblySelection'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
@@ -358,6 +360,50 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     executeCommand('add_part', { docId, docRev })
   }, [])
 
+  // Import STEP drops a file into the open workspace as its own part document,
+  // then instances it through the ordinary add_part command. The store write is
+  // one save (the file entry, the part and their edge), so the pair cannot
+  // half-exist; undo covers the instance and leaves the part in the workspace,
+  // the same way delete_part never deletes the document it placed.
+  const handleImportStep = useCallback(() => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.step,.stp'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      const tooBig = stepImportLimitError(file.size)
+      if (tooBig) {
+        setError(tooBig)
+        return
+      }
+      let bytes: Uint8Array
+      try {
+        bytes = new Uint8Array(await file.arrayBuffer())
+      } catch {
+        setError('Failed to read STEP file')
+        return
+      }
+      if (bytes.byteLength === 0) {
+        setError('STEP file is empty')
+        return
+      }
+      const workspace = workspaceId ?? session?.workspace ?? uuid
+      try {
+        const imported = await addStepPart(workspace, bytes, { fileName: file.name })
+        // The add_part guard reads this set, so the new part must be in it
+        // before the command runs.
+        if (knownPartIds.current) knownPartIds.current = new Set([...knownPartIds.current, imported.partId])
+        setDocNames(names => ({ ...names, [imported.partId]: imported.name }))
+        const added = executeCommand('add_part', { docId: imported.partId, docRev: 0 })
+        if (!added.ok) setError(added.message)
+      } catch (e) {
+        setError(errorMessage(e, 'Failed to import STEP'))
+      }
+    }
+    input.click()
+  }, [uuid, workspaceId, session, setError])
+
   const openEntryInNewTab = useOpenEntryInNewTab(workspaceId ?? uuid)
   const handleOpenPartNewTab = useCallback((handle: string) => {
     const inst = instances.find(i => i.handle === handle)
@@ -629,6 +675,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         onRename={handleRename}
         handleSave={handleSave}
         handleClone={handleClone}
+        onImport={handleImportStep}
         onExport={() => executeCommand('export_assembly')}
       />
       <div className={`doc-container${panelsOpen ? ' panels-open' : ''}`}>

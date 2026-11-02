@@ -49,6 +49,14 @@ export interface MateCapture {
  *  solve's transforms (the default bake) or the authored seed (`bake: false`). */
 export type KeptPose = 'solved' | 'seed'
 
+/** The part document an `add_step_part` step bound and instanced, so a caller
+ *  can name it without guessing the derived doc_id. */
+export interface StepPartBinding {
+  docId: string
+  name: string
+  fileId: string
+}
+
 export interface ScriptStepOutcome {
   index: number
   kind: 'command' | 'mutation'
@@ -63,6 +71,8 @@ export interface ScriptStepOutcome {
   captured?: MateCapture
   // Present only on a fixed toggle, which always reports the pose it kept.
   poseKept?: KeptPose
+  // Present only on an add_step_part step: the part it bound and instanced.
+  part?: StepPartBinding
 }
 
 export interface ScriptRunOutcome {
@@ -87,6 +97,7 @@ export interface AnnotatedSuccess {
   createdIds: string[]
   captured?: MateCapture
   poseKept?: KeptPose
+  part?: StepPartBinding
 }
 
 export type ScriptStepRunner<S extends AnyScriptStep = ScriptStep> = (step: S) => ScriptStepResult | Promise<ScriptStepResult>
@@ -155,12 +166,14 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
     const createdIds = 'createdIds' in result ? result.createdIds : []
     const captured = 'captured' in result ? result.captured : undefined
     const poseKept = 'poseKept' in result ? result.poseKept : undefined
+    const part = 'part' in result ? result.part : undefined
     const constraints = 'constraints' in result ? result.constraints : undefined
     return {
       index, kind, id, ok: true, createdIds,
       ...(constraints !== undefined && { constraints }),
       ...(captured !== undefined && { captured }),
       ...(poseKept !== undefined && { poseKept }),
+      ...(part !== undefined && { part }),
     }
   }
   return { index, kind, id, ok: false, createdIds: [], error: { code: result.code, message: result.message } }
