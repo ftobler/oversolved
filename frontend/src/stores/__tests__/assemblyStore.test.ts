@@ -341,6 +341,16 @@ describe('assemblyStore', () => {
       expect(listener).not.toHaveBeenCalled()
     })
 
+    it('clearSelection does not notify subscribers when nothing is selected', () => {
+      const { getState } = useAssemblyStore
+      getState().clearSelection()
+      const listener = vi.fn()
+      const unsubscribe = useAssemblyStore.subscribe(listener)
+      getState().clearSelection()
+      unsubscribe()
+      expect(listener).not.toHaveBeenCalled()
+    })
+
     it('a re-solve clears selection and hover (positional keys renumber)', () => {
       const { getState } = useAssemblyStore
       getState().toggleSelection('P|0|face|2')
