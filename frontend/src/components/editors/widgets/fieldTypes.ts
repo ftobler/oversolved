@@ -22,6 +22,8 @@ export interface NumberFieldDef extends BaseFieldDef {
   // The same contract for a rule that reads the sibling fields (an array's
   // cells cap needs the other count); runs after `validate`.
   validateWith?: (v: number, data: SchemaData) => string | null
+  // `'mm'` marks a LENGTH field: the editor renders it with the document's
+  // length unit (`in` for an inch document), never as a fixed millimetre label.
   unit?: string
   arrayField?: string
   arrayIndex?: number

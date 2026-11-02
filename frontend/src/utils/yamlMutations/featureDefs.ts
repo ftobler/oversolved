@@ -414,9 +414,13 @@ export function applyAddImportStep(
   featureId: string,
   fileId: string,
   label?: string,
+  scale?: NumberOrExpr,
 ): void {
   const feature: PartFeature = { id: featureId, kind: 'import_step', file_id: fileId }
   if (label) feature.label = label
+  // The import UI stores the document-unit conversion here for an inch document;
+  // a script may author any scale it wants.
+  if (scale !== undefined) feature.scale = scale
   pushFeature(doc, feature)
 }
 

@@ -122,8 +122,8 @@ export function filletWidthDiagnosis(
   }
   if (worst === null) return null
   return worst.between
-    ? `radius ${radius} consumes the ${shown(worst.width)} mm face between the picked edges; use < ${shown(worst.limit)} or a sketch arc`
-    : `radius ${radius} consumes the ${shown(worst.width)} mm adjacent face; use < ${shown(worst.limit)}`
+    ? `radius ${radius} consumes the ${shown(worst.width)} face between the picked edges; use < ${shown(worst.limit)} or a sketch arc`
+    : `radius ${radius} consumes the ${shown(worst.width)} adjacent face; use < ${shown(worst.limit)}`
 }
 
 /** The point and unit tangent at each end of an edge, sampled along the curve

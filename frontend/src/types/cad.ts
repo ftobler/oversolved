@@ -639,6 +639,11 @@ export interface PartStyleEntry {
   created_by?: string
 }
 
+/** The length unit a part document's numbers are written in. Stored numbers
+ *  never change with it: the unit says what they mean, and the STEP/STL export
+ *  scales an inch document into the millimetres those formats carry. */
+export type LengthUnit = 'mm' | 'inch'
+
 export interface PartDoc {
   oversolved?: number
   version?: number
@@ -646,6 +651,9 @@ export interface PartDoc {
   // Feature-tree rollback bar position, as an index into `features`. Absent
   // means "end of stack"; a rolled-back doc reopens where the user left it.
   rollback?: number
+  // Millimeters is the default and is written as the absence of the key, so a
+  // document that never opted into inches is byte-identical to the old format.
+  length_unit?: LengthUnit
   features?: PartFeature[]
   part_style?: Record<string, PartStyleEntry>
 }
@@ -1254,7 +1262,7 @@ export type Mutation =
   | { type: 'remove_sweep_profile'; featureId: string; index: number }
   | { type: 'add_sweep_path'; featureId: string; pathQuery: string }
   | { type: 'remove_sweep_path'; featureId: string; index: number }
-  | ({ type: 'add_import_step'; featureId: string; fileId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_import_step'; featureId: string; fileId: string; scale?: NumberOrExpr; label?: string } & FeatureInsertion)
   | ({ type: 'add_fillet'; featureId: string; label?: string; edges?: string[]; radius?: NumberOrExpr } & FeatureInsertion)
   | ({ type: 'add_chamfer'; featureId: string; label?: string; edges?: string[]; distance?: NumberOrExpr } & FeatureInsertion)
   | { type: 'set_fillet_field'; featureId: string; field: keyof FilletFeatureDef; value: unknown }
@@ -1314,6 +1322,8 @@ export type Mutation =
   | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }
   | { type: 'set_feature_suppression'; featureId: string; suppressed: boolean }
   | { type: 'set_rollback'; position: number | null }
+  // Reinterprets the stored numbers in the named unit; it does not convert them.
+  | { type: 'set_length_unit'; unit: LengthUnit }
   | { type: 'edit_session'; featureId: string; description?: string }
   // Undo-only label carrier: the preview apply's entry doc is what undo
   // restores, and this type only names the composite change the label shows.

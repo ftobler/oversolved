@@ -1,4 +1,4 @@
-import type { Sketch, LineSegment, Arc, Circle, PointEntity, BodyResult } from '@/types/cad'
+import type { Sketch, LineSegment, Arc, Circle, PointEntity, BodyResult, LengthUnit } from '@/types/cad'
 import { measureSingleEntity, measurePair, measurePointToPlane, measurePlanes, measure3dSelection, type Plane3D } from '@/registry/measurementRegistry'
 import { getEntityKind } from '@/types/cad'
 import { isWholeBodySelectionId, parseTopoFallbackQuery, parseSelectionId } from '@/utils/query/selectionId'
@@ -25,7 +25,10 @@ export function computeMeasurements(
   selection: Set<string>,
   sketch: Sketch,
   solveResults?: Record<string, unknown>,
-  bodies?: Record<string, BodyResult>
+  bodies?: Record<string, BodyResult>,
+  // The document's length unit; every number is already in it, only the suffix
+  // changes. Defaults to millimetres so existing callers keep their readout.
+  unit: LengthUnit = 'mm',
 ): string[] {
   // Group selections by entity type
   const lines: LineSegment[] = []
@@ -108,7 +111,7 @@ export function computeMeasurements(
 
   // 3D body element measurements (single edge or face)
   if (body3dIds.size > 0 && bodies) {
-    const result = measure3dSelection(body3dIds, bodies)
+    const result = measure3dSelection(body3dIds, bodies, unit)
     if (result.length > 0) return result
   }
 
@@ -146,14 +149,14 @@ export function computeMeasurements(
   const totalEntities = arcs.length + circles.length + lines.length + points.length
   if (totalEntities === 1) {
     for (const entity of [...arcs, ...circles, ...lines, ...points]) {
-      const result = measureSingleEntity(entity)
+      const result = measureSingleEntity(entity, unit)
       if (result.length > 0) return result
     }
   }
 
   // Plane-only measurements (2+ planes)
   if (planes.length >= 2 && lines.length === 0 && arcs.length === 0 && circles.length === 0 && points.length === 0) {
-    const result = measurePlanes(planes[0], planes[1])
+    const result = measurePlanes(planes[0], planes[1], unit)
     if (result.length > 0) return result
   }
 
@@ -161,7 +164,7 @@ export function computeMeasurements(
   if (points.length > 0 && planes.length > 0 && lines.length === 0 && arcs.length === 0 && circles.length === 0) {
     for (const point of points) {
       for (const plane of planes) {
-        const result = measurePointToPlane(point, plane)
+        const result = measurePointToPlane(point, plane, unit)
         if (result.length > 0) return result
       }
     }
@@ -196,7 +199,7 @@ export function computeMeasurements(
         }
       }
 
-      const result = measurePair(pair)
+      const result = measurePair(pair, unit)
       if (result.length > 0) return result
     }
   }

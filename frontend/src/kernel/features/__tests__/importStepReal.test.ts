@@ -133,6 +133,37 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
    * is one of our parts, so the import must land as one body per solid -- the
    * user sees N entries in the Parts list, not one welded blob.
    */
+  /**
+   * An inch document has to bring a millimetre STEP in at inch numbers. The
+   * reader normalises the file to millimetres, so the authored `import_step.scale`
+   * of 1/25.4 is what turns a 100 mm file into 100/25.4 document units. This
+   * pins the documented workaround, not an automatic conversion: the unit lives
+   * on the part document, which the leaf solver does not read.
+   */
+  it('reads a millimetre STEP into inch numbers at scale 1/25.4', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore: Record<string, Body> = {}
+      const base = fx.cases.find((c) => c.scale === 1) ?? fx.cases[0]
+      const result = solveImportStep(
+        occ,
+        scope,
+        table,
+        { id: 'imp_inch', file_id: 'imp_inch', scale: 1 / 25.4 },
+        new Repository(),
+        bodyStore,
+        filesFor('imp_inch', fixtureBytes),
+      )
+      const body = bodyStore[result.body_id as string]
+      const volume = volumeOf(occ, scope, table.get<OccShape>(body.shape!))
+      expect(volume).toBeCloseTo(base.volume / 25.4 ** 3, 6)
+    } finally {
+      scope.dispose()
+      table.disposeAll()
+    }
+  })
+
   it('splits a multi-solid STEP into one body per solid', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()

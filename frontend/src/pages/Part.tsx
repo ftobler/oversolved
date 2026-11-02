@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { ViewportHandle } from '@/components/Viewport'
-import type { PartDoc, PartFeature, Mutation, Sketch } from '@/types/cad'
+import type { PartDoc, PartFeature, Mutation, Sketch, LengthUnit } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations'
 import { isWholeBodySelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { stripRefSigil } from '@/utils/refSigil'
@@ -22,6 +22,7 @@ import BugReportPanel from '@/components/bugReport/BugReportPanel'
 import { planeSelectionFeatureId as derivePlaneSelectionFeatureId } from '@/pages/planePickSelection'
 import MeasurementDisplay from '@/components/layout/MeasurementDisplay'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
+import { importScaleFor, lengthUnitOf } from '@/utils/lengthUnit'
 
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
@@ -832,7 +833,12 @@ export default function Part() {
         const liveFeatures = docRef.current?.features ?? features
         const insertAt = newFeatureInsertIndex(liveFeatures, editorState.getState().rollbackPosition)
         setRollbackAfterInsertions(insertAt)
-        handleMutation({ type: 'add_import_step', featureId, fileId: entry.id, label, insertAt })
+        // STEP is a millimetre format; an inch document brings the file in at
+        // inch numbers so the part keeps its physical size (the reader has
+        // already normalised the file to mm). The scale is stored like any
+        // authored import scale, so a later unit switch reinterprets it too.
+        const scale = importScaleFor(lengthUnitOf(docRef.current?.length_unit))
+        handleMutation({ type: 'add_import_step', featureId, fileId: entry.id, label, insertAt, scale })
       } catch (e) {
         setError(errorMessage(e, 'Failed to import STEP'))
       }
@@ -843,6 +849,10 @@ export default function Part() {
   const handleExportStep = useCallback(() => {
     exportImportRef.current?.openExport(null, docName || 'export')
   }, [docName])
+
+  const handleSetLengthUnit = useCallback((unit: LengthUnit) => {
+    handleMutation({ type: 'set_length_unit', unit })
+  }, [handleMutation])
 
   const handleToggleSketchPlaneVisibility = useCallback(() => {
     handleMutation({ type: 'toggle_sketch_plane_visibility' })
@@ -1294,6 +1304,8 @@ export default function Part() {
         handleClone={handleClone}
         onImport={handleImportStep}
         onExport={handleExportStep}
+        lengthUnit={lengthUnitOf(doc?.length_unit)}
+        onSetLengthUnit={handleSetLengthUnit}
         rightContent={
           <>
             <button
@@ -1328,7 +1340,7 @@ export default function Part() {
           viewportRef={viewportRef}
           handleRightClick={handleRightClick}
           viewportHud={
-            <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
+            <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} lengthUnit={lengthUnitOf(doc?.length_unit)} />
           }
           viewportViewOptions={
             <ViewOptionsButton show={viewShowStates} onToggleShow={handleToggleShowGroup} />

@@ -102,6 +102,7 @@ const ALL_MUTATION_TYPES = [
   'reorder_pick_field',
   'set_feature_suppression',
   'set_rollback',
+  'set_length_unit',
   'edit_session',
   'preview_commit',
   'remove_dangling_content',

@@ -319,7 +319,10 @@ npm run drive -- replay repro.json
   the ids `run` and `select` use. The same `features`
   problem list `run` returns rides along (measuring builds every feature, so the
   kernel's verdicts are already known), and so does the `frames` map; a feature
-  with no verdict makes `ok` false, exactly as it does for `run`.
+  with no verdict makes `ok` false, exactly as it does for `run`. Every length in
+  a measure reply is in the document's `length_unit` (absent means millimetres),
+  the same number the document stores; only the export scales it into
+  millimetres.
 - `compare` measures the document and compares it against a `reference.json`
   (the translation format: `source`, a required `tolerance`, an optional
   `topology` mode and the measure fields) with `compareMeasures`. It prints
@@ -334,7 +337,11 @@ npm run drive -- replay repro.json
   creating a missing parent directory. The reply carries the same `features`
   problem list a run or measure reply does; a failed, partial or warned feature
   makes `ok` false and exits 1 while the file is still written, so a file that
-  differs from the document is never reported as a clean export.
+  differs from the document is never reported as a clean export. STEP and STL
+  are written in millimetres: a part document whose `length_unit` is `inch`
+  being exported is scaled by 25.4, so the file's geometry is the physical size
+  the authored numbers mean (see `docs/document.md`). An assembly export keeps
+  its millimetre frame and does not scale an inch part.
 - `replay` applies the recorded mutations to a fresh session under the
   payload's seed, verifies each step's before and after hash and exits nonzero
   on divergence.

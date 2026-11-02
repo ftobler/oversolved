@@ -21,12 +21,13 @@ import { HandleTable } from './occ/handleTable'
 import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, readShapeFaceMetadata } from './occ/tessellation'
 import type { TessMesh } from './occ/tessellation'
 import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
-import { copyShape, makeRigidTrsf, transformCopy } from './occ/transforms'
+import { copyShape, makeScaleTrsf, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
 import { resolveTessellation, type TessellationPreset } from './tessellationPresets'
 import { measureBodies, type Bbox6, type MeasureRecord } from './occ/measure'
 import { volumeOf } from './occ/volume'
 import { shapeBbox } from './occ/faceBounds'
+import { MM_PER_LENGTH_UNIT, lengthUnitOf } from '@/utils/lengthUnit'
 import type { OccHandle } from './occ/handleTable'
 import type { OccModule, OccShape } from './occ/occTypes'
 import type { Body, BuildState } from './types3d'
@@ -681,7 +682,8 @@ export async function exportLocallyInspect(
   try {
     const response = build(spec, { prevState: null }, buildDeps(oc, scope, table, files))
     const shape = resolveExportShape(oc, scope, table, response._build_state, opts.bodyId ?? null, opts.bodyIds ?? null)
-    return { bytes: shape ? serialiseShape(oc, scope, shape, opts) : null, response }
+    const unitScale = MM_PER_LENGTH_UNIT[lengthUnitOf(spec.length_unit)]
+    return { bytes: shape ? serialiseShape(oc, scope, shape, opts, unitScale) : null, response }
   } catch (e) {
     if (isKernelTrap(e)) {
       faulted = true
@@ -996,12 +998,18 @@ function serialiseShape(
   scope: DisposeScope,
   shape: OccShape,
   opts: Pick<LocalExportOptions, 'format' | 'tessellation'>,
+  // Millimetres per stored unit. STEP and STL are written in millimetres, so an
+  // inch document's 0.5 leaves the file as 12.7 rather than as a 0.5 mm feature.
+  unitScale = 1,
 ): Uint8Array {
-  if (opts.format === 'step') return stepShapeToBytes(oc, scope, shape)
+  const out = unitScale === 1
+    ? shape
+    : scope.track(transformCopy(oc, scope, shape, makeScaleTrsf(oc, scope, [0, 0, 0], unitScale)))
+  if (opts.format === 'step') return stepShapeToBytes(oc, scope, out)
   // STL deflection params come from the shared preset table; `normal` resolves
   // to the pair the old slider default produced, so a default export is stable.
   const { linearDeflection, angularDeflection } = resolveTessellation(opts.tessellation)
-  return shapeToStlBytes(oc, scope, shape, linearDeflection, angularDeflection)
+  return shapeToStlBytes(oc, scope, out, linearDeflection, angularDeflection)
 }
 
 /**

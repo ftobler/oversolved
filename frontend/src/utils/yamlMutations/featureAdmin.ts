@@ -3,7 +3,7 @@
 // reordering). Kept apart from the part_style setters in partStyle.ts so a
 // reader can tell a body's appearance from the document's structure.
 
-import type { PartDoc, PartFeature } from '@/types/cad'
+import type { LengthUnit, PartDoc, PartFeature } from '@/types/cad'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { findFeature, warn } from './helpers'
 import { roundNumericFields, storedNumber, type FieldBag } from './featureDefs'
@@ -87,6 +87,16 @@ export function applySetRollback(doc: PartDoc, position: number | null): void {
     return
   }
   doc.rollback = Math.max(0, position)
+}
+
+/**
+ * Reinterprets the document's stored numbers in `unit`; it never converts them.
+ * Millimetres is the default and is stored as the absence of the key, so
+ * switching back leaves a document byte-identical to one that never left mm.
+ */
+export function applySetLengthUnit(doc: PartDoc, unit: LengthUnit): void {
+  if (unit === 'mm') delete doc.length_unit
+  else doc.length_unit = unit
 }
 
 export function applySetFeatureSuppression(doc: PartDoc, featureId: string, suppressed: boolean): void {

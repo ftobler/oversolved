@@ -95,7 +95,7 @@ describe.skipIf(!ready)('edge modifier and shell failure messages (real OCC + Ru
     const edges = await pick(doc, { kind: 'edge', where: { parallel: [0, 1, 0] } })
     expect(edges).toHaveLength(4)
     const full = await apply(doc, { type: 'add_fillet', featureId: 'fi1', edges, radius: 10 })
-    expect(full.problem?.message).toContain('radius 10 consumes the 20 mm face between the picked edges; use < 10')
+    expect(full.problem?.message).toContain('radius 10 consumes the 20 face between the picked edges; use < 10')
     const fits = await apply(doc, { type: 'add_fillet', featureId: 'fi1', edges, radius: 9.99 })
     expect(fits.problem).toBeUndefined()
     expect(await volume(fits.result.doc as PartDoc)).toBeCloseTo(20 * 30 * 40 - (4 - Math.PI) * 9.99 ** 2 * 40, 3)
@@ -147,7 +147,7 @@ describe.skipIf(!ready)('edge modifier and shell failure messages (real OCC + Ru
     })
     const { problem } = await apply(doc, { type: 'add_fillet', featureId: 'fi1', edges: [...block, ...rim], radius: 3 })
     expect(problem?.status).toBe('partial')
-    expect(problem?.message).toContain(`edges[${block.length}] (line at [0, 2, 20]): radius 3 consumes the 2 mm adjacent face`)
+    expect(problem?.message).toContain(`edges[${block.length}] (line at [0, 2, 20]): radius 3 consumes the 2 adjacent face`)
   }, 120_000)
 
   it('an inward shell as thick as the fillets names the fillet radius; outward builds', async () => {

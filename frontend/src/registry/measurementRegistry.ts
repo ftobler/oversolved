@@ -1,7 +1,8 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-import type { LineSegment, Arc, Circle, PointEntity, BodyResult, EdgeDataCircleArc } from '@/types/cad'
+import type { LineSegment, Arc, Circle, PointEntity, BodyResult, EdgeDataCircleArc, LengthUnit } from '@/types/cad'
+import { LENGTH_UNIT_LABEL } from '@/utils/lengthUnit'
 import { parseTopoFallbackQuery } from '@/utils/query/selectionId'
 
 /**
@@ -36,14 +37,19 @@ const LENGTH_DECIMALS = 3
 const LINE_PAIR_PARALLEL_CROSS_EPS = 1e-6
 const EDGE_PAIR_PARALLEL_ANGLE_EPS_RAD = 1e-4
 
-/** Single place that renders a length, so the precision stays consistent. */
-function mm(value: number): string {
-  return `${value.toFixed(LENGTH_DECIMALS)} mm`
+/** One place that renders a length, so the precision stays consistent. The
+ *  unit is the document's (`mm` unless the doc says otherwise); the number is
+ *  already in that unit, so nothing is converted here. */
+export type LengthFormatter = (value: number) => string
+
+export function lengthFormatter(unit: LengthUnit = 'mm'): LengthFormatter {
+  const suffix = LENGTH_UNIT_LABEL[unit]
+  return (value) => `${value.toFixed(LENGTH_DECIMALS)} ${suffix}`
 }
 
 export interface SingleEntityRule {
   label: string
-  evaluate: (entity: Arc | Circle | LineSegment | PointEntity) => string[]
+  evaluate: (entity: Arc | Circle | LineSegment | PointEntity, fmt: LengthFormatter) => string[]
 }
 
 export interface MultiEntityRule {
@@ -61,7 +67,7 @@ export interface MultiEntityRule {
     point?: PointEntity
     point1?: PointEntity
     point2?: PointEntity
-  }) => string[]
+  }, fmt: LengthFormatter) => string[]
 }
 
 /**
@@ -77,36 +83,36 @@ export const SINGLE_ENTITY_RULES: readonly SingleEntityRule[] = [
   // Circle: diameter measurement
   {
     label: 'Circle diameter',
-    evaluate: (entity) => {
+    evaluate: (entity, fmt) => {
       const e = entity as unknown as Record<string, unknown>
       if (!('center' in e && 'radius' in e && !('angle_start' in e))) return []
       const circle = entity as Circle
       const d = (circle.radius || 0) * 2
-      return [`[CIRCLE] d=${mm(d)}`]
+      return [`[CIRCLE] d=${fmt(d)}`]
     },
   },
   // Arc: specific sweep and radius
   {
     label: 'Arc sweep',
-    evaluate: (entity) => {
+    evaluate: (entity, fmt) => {
       const e = entity as unknown as Record<string, unknown>
       if (!('center' in e && 'radius' in e && 'angle_start' in e)) return []
       const arc = entity as Arc
       const r = arc.radius || 0
       const sweep = arc.angle_end - arc.angle_start
       const sweepDeg = Math.abs(sweep) * 180 / Math.PI
-      return [`[ARC] r=${mm(r)}, θ=${sweepDeg.toFixed(0)}°`]
+      return [`[ARC] r=${fmt(r)}, θ=${sweepDeg.toFixed(0)}°`]
     },
   },
   // Line: length
   {
     label: 'Line length',
-    evaluate: (entity) => {
+    evaluate: (entity, fmt) => {
       const e = entity as unknown as Record<string, unknown>
       if (!('start' in e && 'end' in e && !('radius' in e))) return []
       const line = entity as LineSegment
       const length = Math.hypot(line.end[0] - line.start[0], line.end[1] - line.start[1])
-      return [`[LINE] ${mm(length)}`]
+      return [`[LINE] ${fmt(length)}`]
     },
   },
   // Point: no measurement (vertices are not shown)
@@ -134,7 +140,7 @@ export const MULTI_ENTITY_RULES: readonly MultiEntityRule[] = [
   // Line-point normal distance
   {
     label: 'Point to line distance',
-    evaluate: (entities) => {
+    evaluate: (entities, fmt) => {
       const line = entities.line || entities.line1
       const point = entities.point || entities.point1
       if (!line || !point) return []
@@ -150,13 +156,13 @@ export const MULTI_ENTITY_RULES: readonly MultiEntityRule[] = [
       const closestX = lx0 + t * lX
       const closestY = ly0 + t * lY
       const dist = Math.hypot(px - closestX, py - closestY)
-      return [`point-line distance: ${mm(dist)}`]
+      return [`point-line distance: ${fmt(dist)}`]
     },
   },
   // Line-line angle (including parallel distance)
   {
     label: 'Line angle',
-    evaluate: (entities) => {
+    evaluate: (entities, fmt) => {
       const line1 = entities.line1 as LineSegment | undefined
       const line2 = entities.line2 as LineSegment | undefined
       if (!line1 || !line2) return []
@@ -176,7 +182,7 @@ export const MULTI_ENTITY_RULES: readonly MultiEntityRule[] = [
       const parallel = Math.abs(cross) < LINE_PAIR_PARALLEL_CROSS_EPS
       if (parallel) {
         const dist = Math.abs((bx0 - ax0) * (-lY) + (by0 - ay0) * lX) / lLen
-        return [`parallel lines, distance: ${mm(dist)}`]
+        return [`parallel lines, distance: ${fmt(dist)}`]
       }
       let angle = Math.acos(Math.max(-1, Math.min(1, dot / (lLen * bLen))))
       // Always show acute angle (< 90°)
@@ -190,70 +196,70 @@ export const MULTI_ENTITY_RULES: readonly MultiEntityRule[] = [
   // Arc-arc center distance
   {
     label: 'Arc center distance',
-    evaluate: (entities) => {
+    evaluate: (entities, fmt) => {
       const arc1 = entities.arc1 as Arc | undefined
       const arc2 = entities.arc2 as Arc | undefined
       if (!arc1 || !arc2) return []
       const centerA = arc1.center
       const centerB = arc2.center
       const dist = Math.hypot(centerB[0] - centerA[0], centerB[1] - centerA[1])
-      return [`arc-center dist: ${mm(dist)}`]
+      return [`arc-center dist: ${fmt(dist)}`]
     },
   },
   // Arc + circle center distance
   {
     label: 'Arc/circle center distance',
-    evaluate: (entities) => {
+    evaluate: (entities, fmt) => {
       const arc = entities.arc as Arc | undefined
       const circle = entities.circle as Circle | undefined
       if (!arc || !circle) return []
       const dist = Math.hypot(circle.center[0] - arc.center[0], circle.center[1] - arc.center[1])
-      return [`center dist: ${mm(dist)}`]
+      return [`center dist: ${fmt(dist)}`]
     },
   },
   // Circle-circle center distance
   {
     label: 'Circle center distance',
-    evaluate: (entities) => {
+    evaluate: (entities, fmt) => {
       const circle1 = entities.circle1 as Circle | undefined
       const circle2 = entities.circle2 as Circle | undefined
       if (!circle1 || !circle2) return []
       const dist = Math.hypot(circle2.center[0] - circle1.center[0], circle2.center[1] - circle1.center[1])
-      return [`center dist: ${mm(dist)}`]
+      return [`center dist: ${fmt(dist)}`]
     },
   },
   // Point to arc center distance
   {
     label: 'Point/arc center distance',
-    evaluate: (entities) => {
+    evaluate: (entities, fmt) => {
       const point = entities.point as PointEntity | undefined
       const arc = entities.arc as Arc | undefined
       if (!point || !arc) return []
       const dist = Math.hypot(arc.center[0] - point.x, arc.center[1] - point.y)
-      return [`center dist: ${mm(dist)}`]
+      return [`center dist: ${fmt(dist)}`]
     },
   },
   // Point to circle center distance
   {
     label: 'Point/circle center distance',
-    evaluate: (entities) => {
+    evaluate: (entities, fmt) => {
       const point = entities.point as PointEntity | undefined
       const circle = entities.circle as Circle | undefined
       if (!point || !circle) return []
       const dist = Math.hypot(circle.center[0] - point.x, circle.center[1] - point.y)
-      return [`center dist: ${mm(dist)}`]
+      return [`center dist: ${fmt(dist)}`]
     },
   },
   // Point-point distance
   {
     label: 'Point distance',
-    evaluate: (entities) => {
+    evaluate: (entities, fmt) => {
       const p1 = entities.point1 as PointEntity | undefined
       const p2 = entities.point2 as PointEntity | undefined
       if (!p1 || !p2) return []
       const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y)
       if (dist <= 0.01) return []
-      return [`dist: ${mm(dist)}`]
+      return [`dist: ${fmt(dist)}`]
     },
   },
 ]
@@ -263,11 +269,13 @@ export const MULTI_ENTITY_RULES: readonly MultiEntityRule[] = [
  * First matching rule wins.
  */
 export function measureSingleEntity(
-  entity: Arc | Circle | LineSegment | PointEntity
+  entity: Arc | Circle | LineSegment | PointEntity,
+  unit: LengthUnit = 'mm',
 ): string[] {
+  const fmt = lengthFormatter(unit)
   for (const rule of SINGLE_ENTITY_RULES) {
-    if (rule.evaluate(entity).length > 0) {
-      return rule.evaluate(entity)
+    if (rule.evaluate(entity, fmt).length > 0) {
+      return rule.evaluate(entity, fmt)
     }
   }
   return []
@@ -287,11 +295,13 @@ export function measurePair(
     circle2?: Circle
     point1?: PointEntity
     point2?: PointEntity
-  }
+  },
+  unit: LengthUnit = 'mm',
 ): string[] {
+  const fmt = lengthFormatter(unit)
   for (const rule of MULTI_ENTITY_RULES) {
-    if (rule.evaluate(entities).length > 0) {
-      return rule.evaluate(entities)
+    if (rule.evaluate(entities, fmt).length > 0) {
+      return rule.evaluate(entities, fmt)
     }
   }
   return []
@@ -307,7 +317,8 @@ export interface Plane3D {
 /**
  * Measure distance between point and plane: perpendicular distance from point to plane.
  */
-export function measurePointToPlane(point: PointEntity, plane: Plane3D): string[] {
+export function measurePointToPlane(point: PointEntity, plane: Plane3D, unit: LengthUnit = 'mm'): string[] {
+  const fmt = lengthFormatter(unit)
   // Convert 2D point to 3D (assume z=0 in sketch plane)
   const p = [point.x, point.y, 0]
   const n = plane.normal
@@ -317,7 +328,7 @@ export function measurePointToPlane(point: PointEntity, plane: Plane3D): string[
   const toPlane = [p[0] - o[0], p[1] - o[1], p[2] - o[2]]
   const dist = Math.abs(toPlane[0] * n[0] + toPlane[1] * n[1] + toPlane[2] * n[2])
 
-  return [`plane distance: ${mm(dist)}`]
+  return [`plane distance: ${fmt(dist)}`]
 }
 
 /**
@@ -381,8 +392,10 @@ function findBodyElement(
  */
 export function measure3dSelection(
   ids: Set<string>,
-  bodies: Record<string, BodyResult>
+  bodies: Record<string, BodyResult>,
+  unit: LengthUnit = 'mm',
 ): string[] {
+  const fmt = lengthFormatter(unit)
   if (ids.size === 1) {
     const id = [...ids][0]
     const found = findBodyElement(id, bodies)
@@ -396,13 +409,13 @@ export function measure3dSelection(
         const [ax, ay, az] = edge.start
         const [bx, by, bz] = edge.end
         const len = Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2 + (bz - az) ** 2)
-        return [`[EDGE] ${mm(len)}`]
+        return [`[EDGE] ${fmt(len)}`]
       }
       if (edge.kind === 'arc' || edge.kind === 'circle') {
         const arcEdge = edge as EdgeDataCircleArc
         const sweep = Math.abs(arcEdge.angle_end - arcEdge.angle_start)
         const deg = (sweep * 180 / Math.PI).toFixed(1)
-        return [`[EDGE] r=${mm(arcEdge.radius)}, \u03b8=${deg}\u00b0`]
+        return [`[EDGE] r=${fmt(arcEdge.radius)}, \u03b8=${deg}\u00b0`]
       }
       return []
     }
@@ -419,7 +432,7 @@ export function measure3dSelection(
       // actually asked.
       if (faceData?.surface_type === 'cylinderface') {
         const radius = faceData.surface_frame?.radius
-        if (radius != null) return [`[FACE] d=${mm(radius * 2)}`]
+        if (radius != null) return [`[FACE] d=${fmt(radius * 2)}`]
       }
       return []
     }
@@ -442,7 +455,7 @@ export function measure3dSelection(
       if (Math.abs(dot - 1) > 1e-6) return []
       const dx = fB.centroid[0] - fA.centroid[0], dy = fB.centroid[1] - fA.centroid[1], dz = fB.centroid[2] - fA.centroid[2]
       const dist = Math.abs(dx * fA.normal[0] + dy * fA.normal[1] + dz * fA.normal[2])
-      return [`${facePairDistanceLabel(fA.surface_type, fB.surface_type)}: ${mm(dist)}`]
+      return [`${facePairDistanceLabel(fA.surface_type, fB.surface_type)}: ${fmt(dist)}`]
     }
 
     // ─── Face + Vertex: perpendicular distance ───
@@ -454,7 +467,7 @@ export function measure3dSelection(
       if (!fd || !v) return []
       const dx = v[0] - fd.centroid[0], dy = v[1] - fd.centroid[1], dz = v[2] - fd.centroid[2]
       const dist = Math.abs(dx * fd.normal[0] + dy * fd.normal[1] + dz * fd.normal[2])
-      return [`plane distance: ${mm(dist)}`]
+      return [`plane distance: ${fmt(dist)}`]
     }
 
     // ─── Face + Edge: perpendicular distance from edge midpoint ───
@@ -469,7 +482,7 @@ export function measure3dSelection(
       const mz = (edge.start[2] + edge.end[2]) / 2
       const dx = mx - fd.centroid[0], dy = my - fd.centroid[1], dz = mz - fd.centroid[2]
       const dist = Math.abs(dx * fd.normal[0] + dy * fd.normal[1] + dz * fd.normal[2])
-      return [`plane distance: ${mm(dist)}`]
+      return [`plane distance: ${fmt(dist)}`]
     }
 
     // ─── Face + anything else: no match ───
@@ -502,7 +515,7 @@ export function measure3dSelection(
         const [cx, cy, cz] = [bx0 - ax0, by0 - ay0, bz0 - az0]
         const crossX = cy * daz - cz * day, crossY = cz * dax - cx * daz, crossZ = cx * day - cy * dax
         const dist = Math.sqrt(crossX * crossX + crossY * crossY + crossZ * crossZ) / lenA
-        return [`parallel edges, distance: ${mm(dist)}`]
+        return [`parallel edges, distance: ${fmt(dist)}`]
       }
       return [`edge angle: ${(angle * 180 / Math.PI).toFixed(1)}\u00b0`]
     }
@@ -512,7 +525,7 @@ export function measure3dSelection(
       const b = edgeB as EdgeDataCircleArc
       const [cx, cy, cz] = [b.center[0] - a.center[0], b.center[1] - a.center[1], b.center[2] - a.center[2]]
       const dist = Math.sqrt(cx * cx + cy * cy + cz * cz)
-      return [`center dist: ${mm(dist)}`]
+      return [`center dist: ${fmt(dist)}`]
     }
 
     return []
@@ -526,7 +539,8 @@ export function measure3dSelection(
  * Parallel planes: distance between them.
  * Non-parallel planes: no measurement (would need angle, but spec says none).
  */
-export function measurePlanes(plane1: Plane3D, plane2: Plane3D): string[] {
+export function measurePlanes(plane1: Plane3D, plane2: Plane3D, unit: LengthUnit = 'mm'): string[] {
+  const fmt = lengthFormatter(unit)
   const n1 = plane1.normal
   const n2 = plane2.normal
 
@@ -545,5 +559,5 @@ export function measurePlanes(plane1: Plane3D, plane2: Plane3D): string[] {
   const toPlane = [o2[0] - o1[0], o2[1] - o1[1], o2[2] - o1[2]]
   const dist = Math.abs(toPlane[0] * n1[0] + toPlane[1] * n1[1] + toPlane[2] * n1[2])
 
-  return [`plane distance: ${mm(dist)}`]
+  return [`plane distance: ${fmt(dist)}`]
 }

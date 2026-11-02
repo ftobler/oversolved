@@ -16,6 +16,7 @@ import { isVertexPointKey, MAX_FIT_POINT_KEY } from '@/types/vertexKeys'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { evalExpr } from '@/kernel/evalExpr'
 import { threadEntry } from '@/kernel/threadTable'
+import { isLengthUnit } from '@/utils/lengthUnit'
 import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams } from '@/utils/yamlMigrations'
 
 // The version the ladder migrates to. A document carrying `version` 4 or newer
@@ -966,6 +967,9 @@ function validatePart(doc: DocRecord): void {
     if (doc.kind !== 'part') fail('kind', `must be "part", got ${JSON.stringify(doc.kind)}`)
   }
   if (doc.rollback !== undefined) checkInteger(doc.rollback, 'rollback')
+  if (doc.length_unit !== undefined && !isLengthUnit(doc.length_unit)) {
+    fail('length_unit', `must be "mm" or "inch", got ${JSON.stringify(doc.length_unit)}`)
+  }
   checkFeatures(doc, 'features', checkFeature)
   if (doc.part_style !== undefined) checkPartStyle(doc.part_style, 'part_style')
 }

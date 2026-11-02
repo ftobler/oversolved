@@ -156,6 +156,7 @@ describe('value rules cover the catalog', () => {
     ['set_helix_field', { type: 'set_helix_field', featureId: 'he1', field: 'hand', value: 'up' }],
     ['reorder_features', { type: 'reorder_features', featureId: 'ex1', toIndex: -1 }],
     ['reorder_pick_field', { type: 'reorder_pick_field', featureId: 'ex1', field: 'sketch', fromIndex: -1, toIndex: 0 }],
+    ['set_length_unit', { type: 'set_length_unit', unit: 'in' }],
   ]
 
   it('refuses the wrong value for every rule that owns one', () => {

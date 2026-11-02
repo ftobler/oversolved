@@ -274,6 +274,8 @@ interface RoundTripCase {
 // change: an idempotent mutation with a same-value payload would be skipped by
 // the no-op guard and the undo would pop nothing.
 const ROUND_TRIPS: RoundTripCase[] = [
+  // document: the unit is a top-level field, so the slice path is set_length_unit
+  { name: 'document set_length_unit', makeDoc: () => ({ ...emptyDoc(), length_unit: 'inch' }), mutation: { type: 'set_length_unit', unit: 'mm' } as Mutation },
   // sketch
   { name: 'sketch add_entity', makeDoc: sketchDoc, mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [1, 1, 2, 2], entityId: 'l3' } as Mutation },
   { name: 'sketch add_constraint', makeDoc: sketchDoc, mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:l1:end', 'vertex:sk1:l2:start'] } as Mutation },

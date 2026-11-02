@@ -1256,6 +1256,14 @@ function unitInterval(field: string) {
   }
 }
 
+// The document length unit is a closed vocabulary: a caller that writes 'in'
+// or 'millimetre' is refused by name instead of silently reading as mm.
+function documentLengthUnit(raw: RawStep): ValueViolation | null {
+  const value = raw.unit
+  if (value === 'mm' || value === 'inch') return null
+  return invalid(`unit must be "mm" or "inch", got ${json(value)}`)
+}
+
 function queryField(field: string) {
   return (raw: RawStep): ValueViolation | null => {
     const problem = pickQueryProblem(raw[field], field)
@@ -1441,6 +1449,7 @@ export const MUTATION_VALUE_RULES = {
   reorder_pick_field: reorderPickField,
   set_feature_suppression: 'none',
   set_rollback: 'none',
+  set_length_unit: documentLengthUnit,
   edit_session: 'none',
   preview_commit: 'none',
   remove_dangling_content: 'none',

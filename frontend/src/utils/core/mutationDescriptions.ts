@@ -204,6 +204,8 @@ export function describeMutation(m: Mutation): string {
       return 'remove dangling projections / superfluous constraints'
     case 'set_rollback':
       return m.position === null ? 'move rollback to end' : `move rollback to ${m.position}`
+    case 'set_length_unit':
+      return `set length unit to ${m.unit}`
     case 'edit_session':
       // One entry collapses a whole edit session, so it names the feature that
       // was edited rather than reading as an on/off toggle.

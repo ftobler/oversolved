@@ -49,6 +49,9 @@ export function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
   if (doc.rollback !== undefined) slice.rollback = doc.rollback
   if (m.type === 'reorder_features') {
     slice.features = (doc.features ?? []).map(f => f.id)
+  } else if (m.type === 'set_length_unit') {
+    // The unit is a top-level document field, not a feature or a style entry.
+    slice.length_unit = doc.length_unit
   } else if (m.type === 'remove_dangling_content') {
     // The cleanup names the features it might touch in its payload; slice those
     // whole, or the compare would be blind to the content it removes. Required

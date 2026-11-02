@@ -46,6 +46,13 @@ describe('measure3dSelection single edge', () => {
   it('returns [] for an edge kind that is neither line nor arc/circle (spline)', () => {
     expect(measure3dSelection(new Set(['q2']), bodies())).toEqual([])
   })
+
+  it('labels a pick in the document unit', () => {
+    // Edge 0 is 10 units long; an inch document reads 10 in, not a converted
+    // 254.
+    expect(measure3dSelection(new Set(['q0']), bodies(), 'inch')).toEqual(['[EDGE] 10.000 in'])
+    expect(measure3dSelection(new Set(['q1']), bodies(), 'inch')).toEqual(['[EDGE] r=2.000 in, \u03b8=180.0\u00b0'])
+  })
 })
 
 describe('measure3dSelection two edges', () => {

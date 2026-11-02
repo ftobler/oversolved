@@ -111,6 +111,7 @@ export {
   applyMoveFeatureBefore,
   reorderAnchorIndex,
   applySetRollback,
+  applySetLengthUnit,
   applySetFeatureSuppression,
   applySetFeatureVisibility,
   applyRenameFeature,

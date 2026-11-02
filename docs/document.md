@@ -35,6 +35,25 @@ The same document is the target for every author: the GUI, the drive surface
 and MCP entry points in `frontend/scripts`), and the import/export paths. The
 JSON Schema in `persistence/partDocSchema.ts` is the contract.
 
+A stored number is a number **in the document's length unit**. `length_unit` is
+`mm` or `inch`; absent means `mm`, which is the canonical spelling and keeps
+every document written before the field byte-identical. The unit never rewrites
+a value: changing it *reinterprets* the numbers (the same `0.5` becomes half an
+inch instead of half a millimetre, and the part is 25.4x bigger physically), the
+one `set_length_unit` mutation does that as one undo entry, and the header's
+unit select dispatches it. The scale lives at the file boundary: STEP and STL
+are written in millimetres, so an inch document's shape is scaled by 25.4 on
+export (`kernel/solveLocally.ts` `serialiseShape`) and the file carries the
+millimetres every consumer expects. Measure readouts and the feature editor's
+length labels follow the unit; the numbers they show are the stored ones. An
+imported STEP is read at its own mm size, so importing into an inch document
+stores `import_step.scale: 1 / 25.4` on the feature (the import button does it;
+a script authors the same field), because the leaf solver never sees the
+document unit. Assembly documents keep the millimetre frame, so an inch part
+placed in an assembly is placed by its authored numbers in that frame, and an
+assembly export does not scale it. The cosmetic thread table stays metric
+(`nominal` and `pitch` are mm lookups) whatever the document unit says.
+
 The assembly document (parts, instances, mates) is a separate format. Its
 contract is the JSON Schema in `persistence/assemblyDocSchema.ts`, served over
 MCP as `oversolved://schema/assembly-document`: a `part_instance` names a
@@ -56,7 +75,8 @@ Top-level fields: `version` (int, the migration-ladder stamp; the ladder target
 is `CURRENT_DOC_VERSION = 4` in `persistence/docSchema.ts`, and a missing or
 older stamp runs the steps that bring it up), `kind` (string, `"part"`),
 `rollback` (int, an index into `features`; absent means the end of the stack,
-and a rolled-back document reopens where the user left it), `features` (list),
+and a rolled-back document reopens where the user left it), `length_unit`
+(`"mm"` or `"inch"`; absent means `mm`), `features` (list),
 `part_style` (map from body id to display style, reconciled by the solve),
 `oversolved` (int, a stamp the loader checks is an integer and nothing else
 reads).
@@ -328,7 +348,7 @@ the body untouched; the other groups still apply (status `partial`).
     target: "@extrude1"
     tools: ["@extrude2"]
     keep_tools: false
-    clearance: 0.1               # subtract only; signed mm, grows (+) or shrinks (-) every tool on all sides
+    clearance: 0.1               # subtract only; signed length in the document unit, grows (+) or shrinks (-) every tool on all sides
 ```
 
 A `tools` entry naming an `array` or `circular_array` feature (`"@carr1"`)
@@ -356,7 +376,7 @@ warning naming both counts.
     cs_angle: 90.0               # the countersink's included angle, degrees (default 90)
     thread:                      # optional, cosmetic only (no geometry change)
       designation: M6x1          # a thread-table entry
-      nominal: 6.0               # the thread's major diameter, mm
+      nominal: 6.0               # the thread's major diameter, mm (the table is metric whatever the document unit)
       pitch: 1.0                 # mm per turn
 ```
 
