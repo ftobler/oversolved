@@ -10,6 +10,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import { canonicalEdges, canonicalVertices } from '../occ/bodyNames'
 import { exploreEdges, exploreFaces } from '../occ/edgeModifier'
+import { endTangents } from './tangentChain'
 
 type Vec3 = [number, number, number]
 
@@ -124,30 +125,6 @@ export function filletWidthDiagnosis(
   return worst.between
     ? `radius ${radius} consumes the ${shown(worst.width)} face between the picked edges; use < ${shown(worst.limit)} or a sketch arc`
     : `radius ${radius} consumes the ${shown(worst.width)} adjacent face; use < ${shown(worst.limit)}`
-}
-
-/** The point and unit tangent at each end of an edge, sampled along the curve
- *  (the adaptor's D1 is not bound in this build). */
-function endTangents(oc: OccModule, scope: DisposeScope, edge: OccShape): Array<{ at: Vec3; tangent: Vec3 }> {
-  const curve = scope.track(new oc.BRepAdaptor_Curve_2(edge))
-  const u0 = curve.FirstParameter()
-  const u1 = curve.LastParameter()
-  const h = (u1 - u0) * 1e-4
-  const point = (u: number): Vec3 => {
-    const p = curve.Value(u)
-    const out: Vec3 = [p.X(), p.Y(), p.Z()]
-    p.delete()
-    return out
-  }
-  const ends: Array<{ at: Vec3; tangent: Vec3 }> = []
-  for (const [u, step] of [[u0, h], [u1, -h]] as const) {
-    const at = point(u)
-    const next = point(u + step)
-    const d: Vec3 = [next[0] - at[0], next[1] - at[1], next[2] - at[2]]
-    const len = Math.hypot(d[0], d[1], d[2])
-    if (len > 1e-15) ends.push({ at, tangent: [d[0] / len, d[1] / len, d[2] / len] })
-  }
-  return ends
 }
 
 /**
