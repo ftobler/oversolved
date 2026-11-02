@@ -469,15 +469,16 @@ export const CONSTRAINT_SHORTCUTS: ReadonlyMap<string, CommandName> =
 
 // ─── Unified dimension resolver ───
 // One entry point drives every Dimension-tool click outcome. `DIMENSION_RULES`
-// is the data; `resolveDimension` is the only resolver. The tool calls it with
-// 1 pick to detect single-element dims (length / radius / diameter) and with
-// 2 picks to detect pair dims (point_distance, angle, line_distance, or the
+// is the data; `resolveDimension` is the only resolver. The dimension preview
+// and the store's `finalizeDimensionPlacement` call it with the accumulated
+// picks: 1 pick detects single-element dims (length / radius / diameter), 2
+// picks detect pair dims (point_distance, angle, line_distance, or the
 // same-line-twice path to length).
 //
 // A vertex alone returns null -- a single point is undimensionable. Every other
-// single-entity pick resolves; the *sticky placement* FSM in DimensionTool then
-// decides when to commit (an empty-space click finalises whatever the resolver
-// currently says).
+// single-entity pick resolves; DimensionTool only appends picks, and the empty
+// click routed to `finalizeDimensionPlacement` commits whatever the resolver
+// currently says.
 //
 // When `sketch`+`featureId` are provided the resolver disambiguates two-line
 // picks that are parallel into a `line_distance` (an angle constraint between
