@@ -155,6 +155,28 @@ Projection is not a kind: any base-kind entity (`line`/`circle`/`arc`/`point`) t
 
 Mirroring a selection (`mirror_entities`) writes plain authored entities: the copies are ordinary rows with their own ids, and there is no stored mirror relation, so moving the originals later does not move them. A constraint is carried over only when every one of its operands is a mirrored source or the axis line; a constraint that reaches anything else stays with the originals alone. A source whose mirror is itself (a seam edge on the axis, a line across it) gets no copy; it serves both halves, and its constraints to the other sources carry onto the copies. In the sketch editor the selection holds the sources and the axis: a lone selected line is the axis, and when the sources include lines the axis is the one selected construction line.
 
+#### DXF import
+
+`import_dxf` turns the entities of an ASCII DXF file into authored entities of
+an existing sketch, as one undo entry. The file is parsed in TypeScript
+(`utils/dxfImport.ts`) and the writer appends ordinary entity rows with fresh
+ids, so every imported entity is editable by the existing tools. The supported
+set is LINE, ARC, CIRCLE, LWPOLYLINE and a 2D POLYLINE (a bulge becomes an
+arc), a single clamped cubic Bezier SPLINE (four control points, weights all
+1), a full ELLIPSE and POINT. TEXT, MTEXT, DIMENSION, LEADER and the other
+annotation entities are skipped and counted, and so is paper space; any other
+curve entity (INSERT, HATCH, a multi-span or rational SPLINE, a 3D POLYLINE)
+refuses the whole file by name, so a profile is never half imported.
+
+The sketch entity has no layer field, so every layer is imported and the layer
+names are only reported. Repeated entities are kept as authored; the import
+does not de-duplicate them, and a polyline width is ignored (the centreline
+imports). `$INSUNITS` is converted to the document's unit
+(0 unitless means the numbers are already document units; 1 inch, 2 foot, 4
+mm, 5 cm and 6 m convert), and an unsupported code refuses by name. DXF is a
+planar format: the import reads X and Y only, matching CadQuery's DXF import
+onto a workplane, and the drawing's local coordinates are the sketch's own.
+
 ### plane
 
 ```yaml

@@ -53,6 +53,8 @@ interface PartEditorPanelProps {
   handleAddFeature: (kind: string, extra?: Record<string, unknown>) => void
   handleAddSketch: () => void
   handleAddPlane: () => void
+  // The sketch toolbar's DXF import; the page owns the picker and the write.
+  handleImportDxf: () => void
   viewportRef: React.RefObject<ViewportHandle | null>
   handleRightClick: (pos: [number, number], targetId?: string) => void
   // Bottom-right in-viewport overlay (the measurement readout).
@@ -74,6 +76,7 @@ export default function PartEditorPanel({
   handleAddFeature,
   handleAddSketch,
   handleAddPlane,
+  handleImportDxf,
   viewportRef,
   handleRightClick,
   viewportHud,
@@ -97,7 +100,7 @@ export default function PartEditorPanel({
             </button>
           </div>
           <div className="toolbar-separator" />
-          {mode === 'sketch' && <SketchToolbar onResetViewport={() => viewportRef.current?.autoZoomToFit(true)} />}
+          {mode === 'sketch' && <SketchToolbar onResetViewport={() => viewportRef.current?.autoZoomToFit(true)} onImportDxf={handleImportDxf} />}
           {mode === 'feature' && (
             <>
               <button className={`editor-btn ${planeSelectionFeatureId ? 'active' : ''}`} title="Sketch" onClick={handleAddSketch}><img src={featureSketchIcon} alt="Sketch" /></button>

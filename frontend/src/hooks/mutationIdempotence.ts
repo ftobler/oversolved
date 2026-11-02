@@ -33,6 +33,10 @@ export const IDEMPOTENT_MUTATION = {
   // Positional fit-point edits are never a repeat of the same state.
   insert_fit_point: false,
   set_fit_spline_handle: true,
+  // A DXF import refuses a file it cannot read without touching the sketch, so
+  // the dispatch can leave the doc byte-identical. A successful import appends
+  // entities to one sketch, which the whole-feature slice already covers.
+  import_dxf: true,
   rename_part: true,
   set_feature_visibility: true,
   set_body_visibility: true,

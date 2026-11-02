@@ -23,6 +23,8 @@ import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
 import { mirrorAxisFromLineParams, mirrorsToItself } from '@/utils/geometry/mirrorSketch'
 import { MAX_FIT_POINTS } from '@/utils/geometry/fitSpline'
+import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
+import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 
 export type ValueViolationCode = 'invalid-mutation' | 'unknown-target'
@@ -1073,6 +1075,29 @@ function addImportStep(raw: RawStep): ValueViolation | null {
   return null
 }
 
+// The DXF parser is the file contract, so the drive boundary runs it here as
+// well: an unsupported or malformed file is a named step failure before the
+// session sees it, not a silently empty import.
+function importDxf(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const featureId = raw.featureId
+  if (typeof featureId !== 'string' || featureId.length === 0) {
+    return invalid(`featureId must name the sketch the imported entities land in, got ${json(featureId)}`)
+  }
+  if (typeof raw.content !== 'string' || raw.content.trim().length === 0) {
+    return invalid(`content must be the DXF file text, got ${json(raw.content ?? null)}`)
+  }
+  if (ctx.doc !== null && sketchOf(ctx.doc, featureId) === undefined) {
+    return unknownTarget(`import_dxf names no sketch feature ${json(featureId)}`)
+  }
+  try {
+    parseDxfProfile(raw.content, lengthUnitOf(ctx.doc?.length_unit))
+  } catch (e) {
+    if (e instanceof DxfImportError) return invalid(e.message)
+    throw e
+  }
+  return null
+}
+
 function addFillet(raw: RawStep): ValueViolation | null {
   if (raw.edges !== undefined) {
     const edgesProblem = stringListProblem(raw.edges, 'edges')
@@ -1359,6 +1384,7 @@ export const MUTATION_VALUE_RULES = {
   delete: deleteRule,
   add_entity: addEntity,
   add_entity_with_constraint: addEntityWithConstraint,
+  import_dxf: importDxf,
   insert_fit_point: insertFitPoint,
   set_fit_spline_handle: setFitSplineHandle,
   add_projected_entity: addProjectedEntity,

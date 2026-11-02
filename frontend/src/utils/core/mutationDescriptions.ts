@@ -22,6 +22,8 @@ export function describeMutation(m: Mutation): string {
       return `delete ${m.targets.length} element(s)`
     case 'add_entity':
       return `add ${m.kind} in ${m.featureId}`
+    case 'import_dxf':
+      return `import DXF into ${m.featureId}`
     case 'add_entity_with_constraint':
       return `add ${m.kind} with ${m.constraintKind} constraint in ${m.featureId}`
     case 'add_projected_entity':
