@@ -169,4 +169,19 @@ describe('Part DXF import', () => {
     expect(h.setError).toHaveBeenCalledWith('Failed to read DXF file')
     expect(h.handleMutation).not.toHaveBeenCalled()
   })
+
+  it('refuses when the open sketch changed while the picker was open', async () => {
+    renderPart()
+    await pickDxf({
+      name: 'bracket.dxf',
+      size: DXF.length,
+      text: async () => {
+        useEditorState.setState({ editingFeatureId: null })
+        return DXF
+      },
+    })
+
+    expect(h.setError).toHaveBeenCalledWith('The open sketch changed; import the DXF again')
+    expect(h.handleMutation).not.toHaveBeenCalled()
+  })
 })

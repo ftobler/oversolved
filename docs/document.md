@@ -169,9 +169,10 @@ curve entity (INSERT, HATCH, a multi-span or rational SPLINE, a 3D POLYLINE)
 refuses the whole file by name, so a profile is never half imported.
 
 The sketch entity has no layer field, so every layer is imported and the layer
-names are only reported. Repeated entities are kept as authored; the import
-does not de-duplicate them, and a polyline width is ignored (the centreline
-imports). `$INSUNITS` is converted to the document's unit
+names are not stored (the parser reports their counts). Repeated entities are
+kept as authored; the import does not de-duplicate them, and a polyline width
+is ignored (the centreline imports). `$INSUNITS` is converted to the document's
+unit
 (0 unitless means the numbers are already document units; 1 inch, 2 foot, 4
 mm, 5 cm and 6 m convert), and an unsupported code refuses by name. DXF is a
 planar format: the import reads X and Y only, matching CadQuery's DXF import

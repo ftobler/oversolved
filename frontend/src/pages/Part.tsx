@@ -907,9 +907,14 @@ export default function Part() {
         setError(errorMessage(e, 'Failed to import DXF'))
         return
       }
-      // The picker is an async window: the sketch can be gone by the time the
-      // file is read. Dispatching then would no-op while the toast claimed it
-      // landed, so the target is re-read from the live document.
+      // The picker is an async window: the open sketch can change or vanish by
+      // the time the file is read. Dispatching then would land in the wrong
+      // sketch (or no-op) while the toast claimed it landed, so the target is
+      // re-read from the live editor and document.
+      if (editorState.getState().editingFeatureId !== featureId) {
+        setError('The open sketch changed; import the DXF again')
+        return
+      }
       const target = docRef.current?.features?.some(f => f.id === featureId && f.kind === 'sketch')
       if (!target) {
         setError('The sketch is no longer open')
