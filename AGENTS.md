@@ -10,7 +10,7 @@ There is no server and no database process.
 - `sketch-solver/`, `mate-solver/`, `solver-core/` - Rust solver workspace, built to WASM
 - `oversolved/` - build-time icon generation only (`icons/` package, `icon_cairo.py`; `icons.py` is the launcher)
 - `tests/` - pytest suite for the Python tooling and the docs/config invariants
-- `lint.py` - the project's own comment-style linter
+- `lint.py` - the project's own comment-style and file-hygiene linter
 
 ## Python Commands
 from the justfile: `just python`
@@ -27,7 +27,7 @@ log lets you re-grep the result afterwards without re-running the gate.
 just python    # every Python gate, aggregate log in tmp/just_python.log
 just mypy      # type-check the tooling; the target list lives in the recipe
 just ruff      # lint the tooling (CI still runs flake8 as the safety net)
-just lint-py   # comment style over oversolved, tests and frontend/scripts
+just lint-py   # comment style and file hygiene over oversolved, tests and frontend/scripts
 just pytest    # the tooling and docs/config tests
 ```
 

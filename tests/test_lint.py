@@ -517,3 +517,46 @@ def test_line_ref_in_a_rust_comment_is_flagged(tmp_path):
 
 def test_line_ref_in_a_python_comment_is_flagged(tmp_path):
     assert_violation(run_lint_py(tmp_path, "# see lint.py:12\n"), "line-ref")
+
+
+# ─── final-newline rule ───
+
+
+def test_missing_final_newline_is_flagged_at_the_last_line(tmp_path):
+    proc = run_lint(tmp_path, "const a = 1\nconst b = 2")
+    assert_violation(proc, "final-newline")
+    assert "sample.ts:2:12" in proc.stdout, proc.stdout
+
+
+def test_final_newline_present_is_clean(tmp_path):
+    assert_clean(run_lint(tmp_path, "const a = 1\nconst b = 2\n"))
+
+
+def test_final_newline_rule_can_be_disabled(tmp_path):
+    assert_clean(run_lint(tmp_path, "const a = 1", "--no-final-newline"))
+
+
+def test_trailing_blank_line_is_clean(tmp_path):
+    # The rule guards the file's end, not blank-tail style; a blank tail still
+    # terminates its last line.
+    assert_clean(run_lint(tmp_path, "const a = 1\n\n"))
+
+
+def test_crlf_final_newline_is_clean(tmp_path):
+    # main() reads with Path.read_text(), which folds CRLF to LF, so a CRLF
+    # file ends its last line like an LF one and must not be flagged.
+    (tmp_path / "sample.ts").write_bytes(b"const a = 1\r\n")
+    proc = subprocess.run(
+        [sys.executable, str(LINT_PY), str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+    assert_clean(proc)
+
+
+def test_rust_missing_final_newline_is_flagged(tmp_path):
+    assert_violation(run_lint_rs(tmp_path, "fn main() {}"), "final-newline")
+
+
+def test_python_missing_final_newline_is_flagged(tmp_path):
+    assert_violation(run_lint_py(tmp_path, "x = 1"), "final-newline")

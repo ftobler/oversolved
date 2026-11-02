@@ -4,7 +4,8 @@
 Enforces the comment conventions documented in AGENTS.md against a set of
 folders. It understands TypeScript (comments plus string literals), Rust
 (comments only) and Python (comments plus string literals). The rule set is
-meant to grow.
+meant to grow. Most rules check comment shape; final-newline checks the
+file itself.
 
 Each rule is a function registered with the @rule decorator. The registry is
 the single source of truth: it drives the --no-<rule> switches, the rule list
@@ -691,6 +692,20 @@ def _check_flagpole(path: pathlib.Path, text: str, comments: list[Comment]) -> l
     return errors
 
 
+@rule("final-newline", "a file must end with a newline; without one the next edit rewrites the last line", languages={"ts", "rust", "python"})
+def _check_final_newline(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
+    # The one rule that reads the raw file text instead of a scanner result:
+    # a missing newline is a fact about the file's end, not about its
+    # comments. An empty file has no last line to terminate and stays clean;
+    # text arrives newline-normalized from read_text, so CRLF files take the
+    # same branch as LF ones.
+    if not text or text.endswith("\n"):
+        return []
+    line = text.count("\n") + 1
+    col = len(text.rsplit("\n", 1)[-1]) + 1  # 1-based: the column where the newline belongs
+    return [f"{path}:{line}:{col}: final-newline - the file must end with a newline"]
+
+
 def check_file(path: pathlib.Path, text: str, config: Config) -> list[str]:
     errors: list[str] = []
     if config.language == "ts":
@@ -751,7 +766,7 @@ def main(argv: list[str] | None = None) -> int:
     rule_lines = "\n".join(f"  {name}: {r.description}" for name, r in RULES.items())
     parser = argparse.ArgumentParser(
         prog="lint.py",
-        description=f"Oversolved comment-style linter. Enforces the comment conventions from AGENTS.md.\n\nRules:\n{rule_lines}",
+        description=f"Oversolved comment-style linter. Enforces the comment and file-hygiene conventions from AGENTS.md.\n\nRules:\n{rule_lines}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("folders", nargs="+", help="files or folders to scan")

@@ -1,0 +1,7 @@
+# Keeps editors from writing files that lint.py's final-newline rule would
+# reject. Scoped to the languages lint.py scans; generated JSON fixtures keep
+# their exact generator bytes.
+root = true
+
+[*.{ts,tsx,js,mjs,rs,py}]
+insert_final_newline = true
