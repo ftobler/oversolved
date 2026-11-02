@@ -46,6 +46,15 @@ export type AssemblyWireMutation =
     ratio?: number
     capture?: boolean
   }
+  | {
+    type: 'add_step_part'
+    handle: string
+    file: string
+    name?: string
+    position?: Vec3Tuple
+    rotation?: Vec3Tuple
+    fixed?: boolean
+  }
   | { type: 'duplicate_part'; handle: string; newHandle: string }
   | { type: 'delete_part'; handle: string }
   | { type: 'set_part_position'; handle: string; position: Vec3Tuple }
@@ -84,9 +93,11 @@ export type AssemblyWireMutation =
 
 export type AssemblyWireType = AssemblyWireMutation['type']
 
-/** The wire types that expand into several operations in the drive session
- *  instead of mapping onto one. */
-export type AssemblyMacroType = 'add_part_pattern'
+/** The wire types the drive session expands itself instead of mapping onto one
+ *  operation. `add_part_pattern` becomes add_part plus add_mate steps;
+ *  `add_step_part` binds a synthesized part document and then adds an instance
+ *  against it. */
+export type AssemblyMacroType = 'add_part_pattern' | 'add_step_part'
 
 /** The new part's side of a pattern mate: its part is filled per copy, so the
  *  ref names only the pick. */
@@ -205,6 +216,25 @@ export const ASSEMBLY_MUTATION_CATALOG = {
     fields: {
       handle: str('The instance handle, unique in this assembly and never "__assembly".'),
       part: str('The bound part doc_id, for example rail_400.'),
+      position: optVec3(POSITION_NOTE),
+      rotation: optVec3(ROTATION_NOTE),
+      fixed: optBool(),
+    },
+  },
+  add_step_part: {
+    summary: 'Import a STEP file as a part document and place an instance of it, as one undo step.',
+    note: '`file` names an id in the run call\'s `files` map. The session synthesizes the part document that '
+      + 'owns the imported body (the built-in references plus one import_step feature), binds it under the derived id `step_<file id>` '
+      + 'and places the instance; the step result\'s `part` carries {docId, name, fileId}. Importing the same file '
+      + 'again under another handle reuses that one part document (and the name the first import gave it), which '
+      + 'is how two copies of one imported body share a bundle. A derived binding that already names a part which does '
+      + 'not import this file is refused rather than replaced. '
+      + 'The undo entry covers the instance, not the binding: the part document lives outside the assembly. '
+      + '`name` labels the import feature and the reply and defaults to the file id. ' + POSITION_NOTE + ' ' + ROTATION_NOTE,
+    fields: {
+      handle: str('The instance handle, unique in this assembly and never "__assembly".'),
+      file: str('A file id from the run call\'s `files` map; the synthesized part is bound under `step_<file id>`.'),
+      name: optStr('The imported part\'s display name and import label; defaults to the file id.'),
       position: optVec3(POSITION_NOTE),
       rotation: optVec3(ROTATION_NOTE),
       fixed: optBool(),
@@ -333,6 +363,7 @@ export type AssemblyMutationCatalog = typeof ASSEMBLY_MUTATION_CATALOG
 
 export const ASSEMBLY_MUTATION_FAMILY: Record<AssemblyWireType, AssemblyMutationFamily> = {
   add_part: 'parts',
+  add_step_part: 'parts',
   add_part_pattern: 'parts',
   duplicate_part: 'parts',
   delete_part: 'parts',
@@ -363,15 +394,24 @@ export type AssemblyValidationErrorCode =
  *  count needs the part builds, which only the drive session has). */
 export type PartPatternRequest = Extract<AssemblyWireMutation, { type: 'add_part_pattern' }>
 
+/** A validated STEP import: shape-checked, expanded by the session because the
+ *  binding and the part synthesis live there. */
+export type StepPartRequest = Extract<AssemblyWireMutation, { type: 'add_step_part' }>
+
 export type AssemblyValidation =
   | { ok: true; operation: AssemblyOperationId; input: AssemblyOperationInputs[AssemblyOperationId] }
-  | { ok: true; macro: AssemblyMacroType; pattern: PartPatternRequest }
+  | { ok: true; macro: 'add_part_pattern'; pattern: PartPatternRequest }
+  | { ok: true; macro: 'add_step_part'; part: StepPartRequest }
   | { ok: false; error: { code: AssemblyValidationErrorCode; message: string } }
 
 export interface AssemblyValidationContext {
   doc: AssemblyDoc | null
   // The doc_ids the run bound. Null skips the binding rule (a shape-only check).
   boundPartIds: ReadonlySet<string> | null
+  // The file ids the run's `files` map carries, so an add_step_part naming a
+  // file nobody supplied can be refused before the step runs. Null or absent
+  // skips the check (a shape-only validation).
+  fileIds?: ReadonlySet<string> | null
   // Resolves a drive ref against the part build. Absent means only the anchor
   // form can resolve; a query or selector is refused with the reason.
   resolveRef?: (ref: DriveMateRef) => ResolvedDriveRef
@@ -586,6 +626,33 @@ function mateParamProblem(kind: string, param: string, value: unknown): string |
   return null
 }
 
+// The placement fields an add_part payload carries, before the validator has
+// proven them. Kept structural so both a validated wire step and the STEP macro
+// feed one builder without a loose record.
+export interface PartPlacementFields {
+  handle: string
+  position?: unknown
+  rotation?: unknown
+  fixed?: unknown
+}
+
+// The add_part payload both the plain step and the STEP macro build. `part` is
+// the bound doc_id; the handle and feature id are derived the same way, so a
+// macro copy cannot disagree with an authored one.
+export function addPartInput(raw: PartPlacementFields, part: string): AssemblyOperationInputs['add_part'] {
+  const position = (raw.position as Vec3Tuple | undefined) ?? [0, 0, 0]
+  const rotation = (raw.rotation as Vec3Tuple | undefined) ?? [0, 0, 0]
+  const handle = raw.handle as string
+  return {
+    docId: part,
+    docRev: 0,
+    handle,
+    featureId: `inst_${handle}`,
+    transform: transformFrom(position, rotation),
+    ...(raw.fixed !== undefined && { fixed: raw.fixed as boolean }),
+  }
+}
+
 function transformFrom(position: Vec3Tuple, rotation: Vec3Tuple) {
   const [rx, ry, rz] = rotation.map(deg => (deg * Math.PI) / 180) as Vec3Tuple
   const [qx, qy, qz, qw] = quatFromEulerXyz([rx, ry, rz])
@@ -669,6 +736,33 @@ function validateValues(
       if (idProblem !== null) return fail('invalid-mutation', idProblem)
       const partProblem = boundProblem(ctx, raw.part as string)
       if (partProblem !== null) return fail('unknown-target', partProblem)
+      return {
+        ok: true,
+        operation: 'add_part',
+        input: addPartInput({
+          handle,
+          position: raw.position,
+          rotation: raw.rotation,
+          fixed: raw.fixed,
+        }, raw.part as string),
+      }
+    }
+    case 'add_step_part': {
+      const handle = raw.handle as string
+      const handleProblem = uniqueHandleProblem(doc, handle, 'handle')
+      if (handleProblem !== null) return fail('invalid-mutation', handleProblem)
+      const idProblem = uniqueFeatureIdProblem(doc, `inst_${handle}`)
+      if (idProblem !== null) return fail('invalid-mutation', idProblem)
+      const file = raw.file as string
+      if (file === '') return fail('invalid-mutation', 'file must be a non-empty file id from the run call\'s files map')
+      if (ctx.fileIds && !ctx.fileIds.has(file)) {
+        const available = [...ctx.fileIds].sort()
+        return fail('unknown-target', `file "${file}" is not in this call's files map; available: ${available.join(', ') || 'none'}. `
+          + 'Pass its bytes with the run call\'s `files` argument.')
+      }
+      if (raw.name !== undefined && (raw.name as string).trim() === '') {
+        return fail('invalid-mutation', 'name must be a non-empty string when given')
+      }
       if (raw.position !== undefined) {
         const problem = vec3Problem(raw.position, 'position')
         if (problem !== null) return fail('invalid-mutation', problem)
@@ -677,20 +771,7 @@ function validateValues(
         const problem = vec3Problem(raw.rotation, 'rotation')
         if (problem !== null) return fail('invalid-mutation', problem)
       }
-      const position = (raw.position as Vec3Tuple | undefined) ?? [0, 0, 0]
-      const rotation = (raw.rotation as Vec3Tuple | undefined) ?? [0, 0, 0]
-      return {
-        ok: true,
-        operation: 'add_part',
-        input: {
-          docId: raw.part as string,
-          docRev: 0,
-          handle,
-          featureId: `inst_${handle}`,
-          transform: transformFrom(position, rotation),
-          ...(raw.fixed !== undefined && { fixed: raw.fixed as boolean }),
-        },
-      }
+      return { ok: true, macro: 'add_step_part', part: raw as StepPartRequest }
     }
     case 'add_part_pattern': {
       const prefix = raw.handlePrefix as string

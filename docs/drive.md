@@ -928,6 +928,19 @@ orientation and authors `offset: 5`, floating the pin's anchor 5 above the
 plate's top face (the plus convention, below). A script that skips capture and
 authors `flip: true` by hand is equally valid.
 
+- `add_step_part` imports a STEP file straight into the assembly, without a
+  hand-made part document: `{ "handle": "housing", "file": "f1", "name":
+  "Housing" }` with the bytes supplied as `files: [{ "id": "f1", "path": ... }]`.
+  The session synthesizes the part document that owns the imported body (the
+  built-in references plus one `import_step` feature), binds it under the
+  derived id `step_<file id>` and places the instance, all as one undo step.
+  The step result's `part` names `{ docId, name, fileId }`, and the composite
+  handle carries the binding, so a chained `measure` or `export` needs only the
+  same `files` map. Importing the same file id again under another handle reuses
+  that one part document (and its first name, and one bundle); a derived binding
+  that already names a part which does not import the file is refused rather
+  than replaced. The undo entry covers the instance, not the binding: `undo`
+  removes the instance and leaves the part available.
 - `detail` trims an assembly `run` or `measure` reply to what changed (default
   `full`, today's reply). `summary` keeps `ok`, `docHash`, the solve verdict,
   dof and iterations, the mate and part problems and the one-line `summary`.

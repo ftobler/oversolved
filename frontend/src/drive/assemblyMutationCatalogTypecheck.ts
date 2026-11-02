@@ -35,7 +35,7 @@ export type AssemblyMutationCatalogFieldsCheck = Expect<Equal<AllRowsMatch, true
 
 export type DebugRow<K extends AssemblyWireType> = RowMatch<K>
 
-// The macro row expands in the drive session and has no operation of its own.
+// The macro rows expand in the drive session and have no operation of their own.
 export type AssemblyWireTypeCheck = Expect<
-  Equal<Exclude<AssemblyWireType, 'add_part_pattern'>, Exclude<AssemblyOperationId, 'set_part_fixed_oneshot'>>
+  Equal<Exclude<AssemblyWireType, 'add_part_pattern' | 'add_step_part'>, Exclude<AssemblyOperationId, 'set_part_fixed_oneshot'>>
 >

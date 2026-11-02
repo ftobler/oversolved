@@ -193,7 +193,9 @@ const ops: McpCadOps = {
       ok: result.ok,
       outcome: result.outcome,
       doc: result.doc,
-      binding: resolved.parts,
+      // The session may have grown the binding (add_step_part), so the
+      // composite handle names every part the run actually used.
+      binding: result.binding,
       solve: result.solve,
       mates: result.mates,
       partProblems: result.parts,
@@ -209,7 +211,9 @@ const ops: McpCadOps = {
       if (out.endsWith('.zip')) {
         const bytes = await buildAssemblyWorkspaceZip({
           doc: result.doc,
-          parts: resolved.parts,
+          // The run may have imported a STEP, so the archive must carry the
+          // binding it ended with, not the one the call started from.
+          parts: result.binding,
           ...(files !== undefined && { files }),
         })
         mkdirSync(path.dirname(out), { recursive: true })

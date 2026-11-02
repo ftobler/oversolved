@@ -33,7 +33,12 @@ const h = vi.hoisted(() => ({
   buildBundleViaWorker: vi.fn(),
   exportAssemblyViaWorker: vi.fn(),
   downloadBlob: vi.fn(),
+  addStepPart: vi.fn(),
 }))
+
+// The import gesture's workspace write is the store's, covered by its own
+// suite; here it only has to hand back a registered part id.
+vi.mock('@/workspace/stepPart', () => ({ addStepPart: h.addStepPart }))
 
 vi.mock('@/adapters/backend', () => ({
   backendBundle: {
@@ -85,6 +90,7 @@ import type { AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { backendBundle } from '@/adapters/backend'
+import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
 import { tick, renderEditor, installSessionFromList, insertPart } from './AssemblyEditor.harness'
 
 describe('AssemblyEditor (Stage 6b)', () => {
@@ -449,6 +455,52 @@ describe('AssemblyEditor (Stage 6b)', () => {
     const exportButton = screen.getByLabelText('Export assembly')
     expect(document.querySelector('.editor-toolbar')?.contains(exportButton)).toBe(false)
     expect(exportButton.closest('.app-header')).not.toBeNull()
+  })
+
+  async function importStepFile(file: { name: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> }) {
+    const created: HTMLInputElement[] = []
+    const make = document.createElement.bind(document)
+    const createSpy = vi.spyOn(document, 'createElement').mockImplementation(((tag: string, opts?: ElementCreationOptions) => {
+      const element = make(tag as never, opts)
+      if (tag === 'input') created.push(element as HTMLInputElement)
+      return element
+    }) as typeof document.createElement)
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {})
+
+    fireEvent.click(screen.getByLabelText('Import STEP'))
+
+    const input = created[0]
+    Object.defineProperty(input, 'files', { value: [file], configurable: true })
+    await act(async () => { await input.onchange?.(new Event('change')) })
+
+    createSpy.mockRestore()
+    clickSpy.mockRestore()
+  }
+
+  it('imports a STEP into the workspace and instances the new part', async () => {
+    h.addStepPart.mockResolvedValue({ partId: 'step-part', fileId: 'step-file', name: 'Bracket', reused: false })
+    await renderLoaded()
+
+    const bytes = new Uint8Array([1, 2, 3])
+    await importStepFile({ name: 'bracket.step', size: 3, arrayBuffer: async () => bytes.buffer })
+    await tick()
+
+    // The open workspace, not the document id, is where the pair lands.
+    expect(h.addStepPart).toHaveBeenCalledWith('asm-1', expect.any(Uint8Array), { fileName: 'bracket.step' })
+    const instances = useAssemblyStore.getState().instances
+    expect(instances).toHaveLength(1)
+    expect(instances[0]).toMatchObject({ doc_id: 'step-part' })
+  })
+
+  it('rejects an oversize STEP before reading it', async () => {
+    await renderLoaded()
+    const arrayBuffer = vi.fn(async () => new ArrayBuffer(8))
+
+    await importStepFile({ name: 'huge.step', size: MAX_STEP_IMPORT_BYTES + 1, arrayBuffer })
+
+    expect(arrayBuffer).not.toHaveBeenCalled()
+    expect(h.addStepPart).not.toHaveBeenCalled()
+    expect(screen.getByText(/too large/)).toBeTruthy()
   })
 
   // Every toolbar button routes through the command registry, so a test can

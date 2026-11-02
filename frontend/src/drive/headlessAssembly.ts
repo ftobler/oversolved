@@ -40,13 +40,14 @@ import { docHashOf } from '@/drive/docHash'
 import { partBundleKey } from '@/workspace/contentHash'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import { stepSeedFor, seededIdSource } from '@/drive/seededIds'
-import { setIdSource } from '@/utils/yamlMutations'
+import { randomId, setIdSource } from '@/utils/yamlMutations'
+import { buildStepDoc } from '@/stores/documentStore/stepImport'
 import { runScript, type AnnotatedSuccess, type KeptPose, type MateCapture, type ScriptRunOutcome, type ScriptFailure } from '@/drive/scriptRunner'
-import type { AssemblyWireMutation, PartPatternRequest } from '@/drive/assemblyMutationCatalog'
+import type { AssemblyWireMutation, PartPatternRequest, StepPartRequest } from '@/drive/assemblyMutationCatalog'
 import { expandPartPattern } from '@/drive/assemblyPatternExpand'
 import { captureMateAtSeeds, seedAnchorTable } from '@/drive/assemblyCapture'
 import { featureProblems, readSolveOutcomes, type FeatureProblem } from '@/drive/featureOutcome'
-import { validateAssemblyMutation } from '@/drive/assemblyMutationCatalog'
+import { addPartInput, validateAssemblyMutation } from '@/drive/assemblyMutationCatalog'
 import { buildPartAnchorIndex, resolveDriveRef, type DriveMateRef, type PartAnchorIndex, type ResolvedDriveRef } from '@/drive/assemblyRefs'
 
 /** The Rust mate solver entry point; null when the mate package is absent. */
@@ -112,6 +113,9 @@ export interface HeadlessAssembly {
   // The problems each bound part's build reported, keyed by doc_id. A part with
   // no entry was never built.
   partOutcomes(): Record<string, PartOutcome>
+  // The binding after the run: a STEP import grows it, so a caller minting a
+  // composite handle must read this rather than the input map.
+  boundParts(): Record<string, PartDoc>
   solve(): Promise<AssemblyBuildResponse>
   run(steps: readonly AssemblyScriptStep[]): Promise<ScriptRunOutcome>
 }
@@ -160,6 +164,32 @@ function failure(code: string, message: string): ScriptFailure {
   return { ok: false, code, message }
 }
 
+// The doc_id a drive STEP import binds under. It is derived from the file id so
+// two steps importing one file share one document, and prefixed so it can never
+// collide with the file entry when the assembly is written to a workspace zip
+// (a workspace entry id is unique across documents and files).
+export function stepPartDocId(fileId: string): string {
+  return `step_${fileId}`
+}
+
+// Whether a bound part is the synthesized import of this file, the shape a
+// reuse of the binding requires. A real authored part bound under the same id
+// cannot stand in for a STEP import.
+function importsFile(doc: PartDoc, fileId: string): boolean {
+  const imports = (doc.features ?? []).filter(feature => feature.kind === 'import_step')
+  const feature = imports.length === 1 ? imports[0] : undefined
+  return feature?.kind === 'import_step' && feature.file_id === fileId
+}
+
+// The reply's name for the imported part: the label the binding carries, else
+// the file id (headless has no workspace entry name). A second import of the
+// same file reports the name the first one gave it, not its own request.
+function stepPartName(doc: PartDoc, fileId: string): string {
+  const feature = (doc.features ?? []).find(candidate => candidate.kind === 'import_step')
+  if (feature?.kind === 'import_step' && feature.label) return feature.label
+  return fileId
+}
+
 function uiOnlyRefusal(command: string): ScriptFailure | null {
   if (command.startsWith('insert_mate_')) {
     return failure('unsupported', 'insert_mate_* opens an editor; use an add_mate mutation step instead')
@@ -170,6 +200,10 @@ function uiOnlyRefusal(command: string): ScriptFailure | null {
 
 export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessAssembly {
   const docBox: { current: AssemblyDoc } = { current: opts.doc }
+  // A STEP import binds a part mid-run, so the binding is this session's own
+  // map rather than the caller's read-only input.
+  const binding = new Map<string, PartDoc>(opts.parts)
+  const fileIds = opts.files === undefined ? null : new Set(opts.files.keys())
   const history = new History<AssemblyDoc>({ cloneDoc: doc => structuredClone(doc), cap: 200 })
   const partOutcomes: Record<string, PartOutcome> = {}
   let last: AssemblyBuildResponse | null = null
@@ -254,9 +288,9 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
   }
 
   function boundPart(docId: string): PartDoc {
-    const part = opts.parts.get(docId)
+    const part = binding.get(docId)
     if (!part) {
-      throw new Error(`part "${docId}" is not bound; bound parts: ${[...opts.parts.keys()].sort().join(', ') || 'none'}`)
+      throw new Error(`part "${docId}" is not bound; bound parts: ${[...binding.keys()].sort().join(', ') || 'none'}`)
     }
     return part
   }
@@ -266,7 +300,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
   // pays.
   async function ensureBundles(): Promise<void> {
     for (const instance of partInstances(docBox.current)) {
-      const part = opts.parts.get(instance.doc_id)
+      const part = binding.get(instance.doc_id)
       if (!part) continue
       await bundleFor(instance.doc_id, part)
     }
@@ -275,7 +309,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
   function indexFor(handle: string): PartAnchorIndex | Error {
     const instance = partInstances(docBox.current).find(candidate => candidate.handle === handle)
     if (!instance) return new Error(`no instance "${handle}"`)
-    const part = opts.parts.get(instance.doc_id)
+    const part = binding.get(instance.doc_id)
     if (!part) return new Error(`part "${instance.doc_id}" is not bound`)
     const entry = bundleMemo.get(memoKey(part))
     if (!entry) return new Error(`part "${instance.doc_id}" has not been built`)
@@ -378,7 +412,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
     return {
       doc: docBox.current,
       transforms: last?.transforms ?? {},
-      knownPartIds: new Set(opts.parts.keys()),
+      knownPartIds: new Set(binding.keys()),
       mutateSession: applyEdit,
       mutateOneShot: applyEdit,
       requestSolve: () => { needsSolve = true },
@@ -435,11 +469,16 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
   ): Promise<ScriptFailure | AnnotatedSuccess> {
     const validated = validateAssemblyMutation(mutation, {
       doc: docBox.current,
-      boundPartIds: new Set(opts.parts.keys()),
+      boundPartIds: new Set(binding.keys()),
+      ...(fileIds !== null && { fileIds }),
       resolveRef,
     })
     if (!validated.ok) return failure(validated.error.code, validated.error.message)
-    if ('macro' in validated) return runPartPattern(validated.pattern)
+    if ('macro' in validated) {
+      return validated.macro === 'add_step_part'
+        ? runStepPart(validated.part)
+        : runPartPattern(validated.pattern)
+    }
     needsSolve = false
     // Capture runs before the step writes anything: the seeds it measures
     // are the ones the solve below starts from. Its patch already lets an
@@ -471,6 +510,33 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
       ...okResult(),
       ...(capture !== null && { captured: capture.captured }),
       ...(poseKept !== undefined && { poseKept }),
+    }
+  }
+
+  // A STEP file becomes the part document that owns it, bound under a derived
+  // id so a second instance of the same bytes reuses one document (and one bundle).
+  // The binding is session state, not document state: undo removes the instance
+  // and leaves the part available, exactly like the workspace gesture where the
+  // part entry outlives the instance.
+  async function runStepPart(request: StepPartRequest): Promise<ScriptFailure | AnnotatedSuccess> {
+    const fileId = request.file
+    if (!opts.files?.has(fileId)) {
+      return failure('unknown-target', `file "${fileId}" has no bytes in this call; pass it in the files map`)
+    }
+    const docId = stepPartDocId(fileId)
+    const existing = binding.get(docId)
+    if (existing !== undefined && !importsFile(existing, fileId)) {
+      return failure('unknown-target', `the STEP binding "${docId}" already names a part document that does not import `
+        + `file "${fileId}"; bind the STEP under a fresh file id`)
+    }
+    const part = existing ?? buildStepDoc(fileId, randomId(18), request.name?.trim() || undefined)
+    binding.set(docId, part)
+    needsSolve = false
+    runAssemblyOperation('add_part', addPartInput(request, docId), host())
+    if (needsSolve) await solve()
+    return {
+      ...okResult([`inst_${request.handle}`]),
+      part: { docId, name: stepPartName(part, fileId), fileId },
     }
   }
 
@@ -561,6 +627,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
     registry,
     lastSolve: () => last,
     partOutcomes: () => ({ ...partOutcomes }),
+    boundParts: () => Object.fromEntries(binding),
     solve,
     run,
   }

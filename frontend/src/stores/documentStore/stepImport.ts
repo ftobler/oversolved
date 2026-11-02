@@ -10,6 +10,7 @@ import type { PartDoc } from '@/types/cad'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { applyAddImportStep, randomId } from '@/utils/yamlMutations'
 import { formatBytes } from '@/utils/formatBytes'
+import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 
 // The cap bounds kernel memory: the ArrayBuffer read plus the OCC parse, the
 // two largest transient allocations an import creates. No base64 string is ever
@@ -23,17 +24,32 @@ export function stepImportLimitError(sizeBytes: number): string | null {
 }
 
 /**
- * Build the YAML document content for a fresh STEP import: the builtin
- * reference features (Origin + three planes, matching what a blank document
- * gets on first open) plus a single `import_step` feature carrying only the
- * registry file id. Pure so it is testable without a File or store.
+ * Build a fresh STEP-import part document: the builtin reference features
+ * (Origin + three planes, matching what a blank document gets on first open)
+ * plus a single `import_step` feature carrying only the registry file id.
+ * Stamped like any current document, so the loader does not migrate it back
+ * through the ladder on first open. Pure so it is testable without a File or
+ * store, and shared by workspace adoption and the assembly's import gesture.
  */
+export function buildStepDoc(
+  fileId: string,
+  featureId: string = randomId(18),
+  label?: string,
+): PartDoc {
+  const doc: PartDoc = {
+    version: CURRENT_DOC_VERSION,
+    kind: 'part',
+    features: BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f })),
+  }
+  applyAddImportStep(doc, featureId, fileId, label)
+  return doc
+}
+
+/** The YAML text of `buildStepDoc`, the form a workspace entry stores. */
 export function buildStepContent(
   fileId: string,
   featureId: string = randomId(18),
   label?: string,
 ): string {
-  const doc: PartDoc = { features: BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f })) }
-  applyAddImportStep(doc, featureId, fileId, label)
-  return stringifyYaml(doc)
+  return stringifyYaml(buildStepDoc(fileId, featureId, label))
 }

@@ -34,7 +34,7 @@ describe('undo/redo button spacing', () => {
       <CommandRegistryProvider value={registry}>
         {name === 'PartToolbar'
           ? <PartToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} lengthUnit="mm" onSetLengthUnit={vi.fn()} />
-          : <AssemblyToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} onExport={vi.fn()} />}
+          : <AssemblyToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} />}
       </CommandRegistryProvider>,
     )
     const undo = screen.getByRole('button', { name: 'Undo' })

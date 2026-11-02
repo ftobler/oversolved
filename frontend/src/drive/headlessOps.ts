@@ -28,7 +28,7 @@ import { partSolvePayload } from '@/drive/solveWriteBack'
 import { docHashOf } from '@/drive/docHash'
 import type { CommandJournal } from '@/drive/journal'
 import type { ScriptRunOutcome, ScriptStep } from '@/drive/scriptRunner'
-import { createHeadlessAssembly, type AssemblyScriptStep } from '@/drive/headlessAssembly'
+import { createHeadlessAssembly, type AssemblyScriptStep, type InjectedBundle } from '@/drive/headlessAssembly'
 import type { AssemblyBuildResponse, AssemblySolveStatus } from '@/kernel/solveAssembly'
 import {
   instancePoses,
@@ -398,6 +398,9 @@ export interface HeadlessAssemblyRunOptions {
   // only the poses the script moved. A separate session, because a pre-solve on
   // the run's own session would change what a later fixed toggle bakes.
   baseline?: boolean
+  // Test seam, never set across the kernel worker boundary: build a part bundle
+  // without OCC.
+  bundleSource?: (docId: string, partDoc: PartDoc) => Promise<InjectedBundle | null>
 }
 
 export interface HeadlessAssemblyRunResult extends AssemblyState {
@@ -406,6 +409,9 @@ export interface HeadlessAssemblyRunResult extends AssemblyState {
   baselineInstances: InstancePose[] | null
   outcome: ScriptRunOutcome
   doc: AssemblyDoc
+  // The binding after the run. A STEP import grows it, so the reply's composite
+  // handle and the part problem hashes must read this, not the input map.
+  binding: Record<string, PartDoc>
   session: ReturnType<typeof createHeadlessAssembly>
 }
 
@@ -421,22 +427,34 @@ export async function runAssemblyHeadless(opts: HeadlessAssemblyRunOptions): Pro
     // A starting document that does not solve (a stale mate the script repairs)
     // has no baseline; the run itself still reports its own solve.
     try {
-      const start = createHeadlessAssembly({ doc: opts.doc, parts: opts.parts, ...(opts.files && { files: opts.files }) })
+      const start = createHeadlessAssembly({
+        doc: opts.doc,
+        parts: opts.parts,
+        ...(opts.files && { files: opts.files }),
+        ...(opts.bundleSource && { bundleSource: opts.bundleSource }),
+      })
       baselineInstances = instancePoses(opts.doc, (await start.solve()).transforms)
     } catch {
       baselineInstances = null
     }
   }
-  const session = createHeadlessAssembly({ doc: opts.doc, parts: opts.parts, ...(opts.files && { files: opts.files }) })
+  const session = createHeadlessAssembly({
+    doc: opts.doc,
+    parts: opts.parts,
+    ...(opts.files && { files: opts.files }),
+    ...(opts.bundleSource && { bundleSource: opts.bundleSource }),
+  })
   const outcome = await session.run(opts.steps)
   const doc = session.getDoc()
   const response = session.lastSolve()
   if (response === null) throw new Error('the assembly run did not solve')
-  const state = assemblyState(doc, response, session.partOutcomes(), docHashesOf(opts.parts))
+  const binding = session.boundParts()
+  const state = assemblyState(doc, response, session.partOutcomes(), docHashesOf(new Map(Object.entries(binding))))
   return {
     ok: outcome.ok && !solveFailed(response.status),
     outcome,
     doc,
+    binding,
     session,
     baselineInstances,
     ...state,

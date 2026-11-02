@@ -7,6 +7,7 @@ import { isSessionOpen } from '@/utils/assemblyEditingSubject'
 import AppHeader from '@/components/layout/AppHeader'
 import Breadcrumb from '@/components/layout/Breadcrumb'
 import SaveButton from '@/components/layout/SaveButton'
+import importIcon from '@/assets/icons/icon-upload.svg'
 import exportIcon from '@/assets/icons/icon-download.svg'
 
 interface AssemblyToolbarProps {
@@ -16,6 +17,7 @@ interface AssemblyToolbarProps {
   // told apart from a successful one.
   handleSave: () => boolean | Promise<boolean>
   handleClone: () => void
+  onImport: () => void
   onExport: () => void
   // Header-right slot (the page's debug toggles). Mirrors PartToolbar.
   rightContent?: ReactNode
@@ -39,6 +41,7 @@ export default function AssemblyToolbar({
   onRename,
   handleSave,
   handleClone,
+  onImport,
   onExport,
   rightContent,
 }: AssemblyToolbarProps) {
@@ -105,6 +108,15 @@ export default function AssemblyToolbar({
         <span className="material-icons-outlined">file_copy</span>
       </button>
       <div className="app-header-separator" />
+      <button
+        className="toolbar-btn"
+        aria-label="Import STEP"
+        title={editInProgress ? 'Finish the edit to import' : 'Import STEP'}
+        onClick={onImport}
+        disabled={editInProgress}
+      >
+        <img src={importIcon} alt="" />
+      </button>
       <button
         className="toolbar-btn"
         aria-label="Export assembly"

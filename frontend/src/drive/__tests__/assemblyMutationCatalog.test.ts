@@ -60,9 +60,10 @@ describe('ASSEMBLY_MUTATION_CATALOG', () => {
   it('covers every operation except the hidden fold twin', () => {
     const expected = (Object.keys(ASSEMBLY_OPERATIONS) as AssemblyOperationId[])
       .filter(id => id !== 'set_part_fixed_oneshot')
-    // add_part_pattern is the one macro: it expands in the drive session into
-    // add_part and add_mate operations and has no operation of its own.
-    expect(Object.keys(ASSEMBLY_MUTATION_CATALOG).sort()).toEqual([...expected, 'add_part_pattern'].sort())
+    // The two macros expand in the drive session: add_part_pattern into
+    // add_part and add_mate operations, add_step_part into a bound part plus
+    // an add_part. Neither has an operation of its own.
+    expect(Object.keys(ASSEMBLY_MUTATION_CATALOG).sort()).toEqual([...expected, 'add_part_pattern', 'add_step_part'].sort())
     // Every row maps onto a real operation, and the one wire spelling that
     // differs is the structural fixed toggle.
     for (const [type, operation] of Object.entries(ASSEMBLY_OPERATION_BY_MUTATION)) {
@@ -122,6 +123,20 @@ describe('validateAssemblyMutation refusals', () => {
     const result = validate({ type: 'add_part', handle: 'new', part: 'ghost' })
     expect(result).toMatchObject({ ok: false, error: { code: 'unknown-target' } })
     expect(!result.ok && result.error.message).toContain('bound parts: panel, rail_400')
+  })
+
+  it('validates a STEP import as a macro against the call\'s file map', () => {
+    const ctx = { doc: docWithLeft(), boundPartIds: null, fileIds: new Set(['f1']) }
+    const accepted = validateAssemblyMutation({ type: 'add_step_part', handle: 'new', file: 'f1' }, ctx)
+    expect(accepted).toMatchObject({ ok: true, macro: 'add_step_part' })
+
+    const missing = validateAssemblyMutation({ type: 'add_step_part', handle: 'new', file: 'ghost' }, ctx)
+    expect(missing).toMatchObject({ ok: false, error: { code: 'unknown-target' } })
+    expect(!missing.ok && missing.error.message).toContain('available: f1')
+
+    const unnamed = validateAssemblyMutation({ type: 'add_step_part', handle: 'new', file: 'f1', name: '  ' }, ctx)
+    expect(unnamed).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    expect(!unnamed.ok && unnamed.error.message).toContain('name must be a non-empty string')
   })
 
   it('refuses an offset on a sliding mate, listing the params it reads', () => {
