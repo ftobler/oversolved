@@ -530,11 +530,11 @@ no merge target reaches every body), the solver refuses with the list and
 
 Copies apply through the same body operation the source used, one at a time. A
 copy that cannot apply is a failure for that copy: a cut that shares no volume
-with the body, or an add whose copy would be a separate island rather than fused
-material. If some copies applied the feature reports `partial` with the applied
-count and the failing copy, and if none applied it is a feature error. The body keeps its id
-and its `created_by`, so the pattern changes the part's material without
-renaming it.
+with the body, or an add whose copy would be a separate island rather than
+fused material. If some copies applied the feature reports `partial` with the
+applied count and the failing copies, and if none applied it is a feature
+error. The body keeps its id and its `created_by`, so the pattern changes the
+part's material without renaming it.
 
 ### mirror
 
