@@ -21,10 +21,10 @@ import { describe, it, expect } from 'vitest'
 import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 
-// Every name here has been guarded in every commit since the guard was
-// introduced, so flipping one to false changes undo behaviour and has to be
-// argued for, not just done.
+// Every name here is guarded as of this merge, so flipping one to false changes
+// undo behaviour and has to be argued for, not just done.
 const GUARDED = [
+  'import_dxf',
   'rename_feature',
   'rename_part',
   'reorder_features',
@@ -79,8 +79,8 @@ const GUARDED = [
 ]
 
 describe('mutationIdempotence classification', () => {
-  it('classifies exactly the 107 Mutation variants, no more and no fewer', () => {
-    expect(Object.keys(IDEMPOTENT_MUTATION)).toHaveLength(107)
+  it('classifies exactly the 108 Mutation variants, no more and no fewer', () => {
+    expect(Object.keys(IDEMPOTENT_MUTATION)).toHaveLength(108)
     // Sorting ignores key order, so regrouping the table stays free while adding
     // or dropping a name does not.
     expect([...Object.keys(IDEMPOTENT_MUTATION)].sort()).toEqual(Object.keys(mutationHandlers).sort())

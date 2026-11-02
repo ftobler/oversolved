@@ -6,6 +6,7 @@ import {
   applyAddConstraint,
   applyDeleteElements,
   applyAddEntity,
+  applyImportDxf,
   applyInsertFitPoint,
   applySetFitSplineHandle,
   applyAddEntityWithConstraint,
@@ -158,6 +159,8 @@ export const mutationHandlers: MutationHandlers = {
     applyAddEntity(next, m.featureId, m.kind, m.params, m.entityId, {
       tangents: m.tangents, tangentScale: m.tangentScale,
     }),
+  import_dxf: (next, m) =>
+    applyImportDxf(next, m.featureId, m.content),
   add_entity_with_constraint: (next, m) =>
     applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId, {
       tangents: m.tangents, tangentScale: m.tangentScale,

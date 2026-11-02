@@ -104,6 +104,12 @@ describe('value rules cover the catalog', () => {
     ['add_sweep_path', { type: 'add_sweep_path', featureId: 'sw1', pathQuery: '' }],
     ['remove_sweep_path', { type: 'remove_sweep_path', featureId: 'sw1', index: -1 }],
     ['add_import_step', { type: 'add_import_step', featureId: 'im1', fileId: '' }],
+    ['import_dxf', { type: 'import_dxf', featureId: 'sk1', content: '' }],
+    ['import_dxf', {
+      type: 'import_dxf',
+      featureId: 'sk1',
+      content: '0\nSECTION\n2\nENTITIES\n0\nINSERT\n2\nBLOCK\n0\nENDSEC\n0\nEOF\n',
+    }],
     ['add_split', { type: 'add_split', featureId: 'sp1', keep: 'top' }],
     ['set_split_field', { type: 'set_split_field', featureId: 'sp1', field: 'keep', value: 'top' }],
     ['add_split_body', { type: 'add_split_body', featureId: 'sp1', bodyQuery: '' }],

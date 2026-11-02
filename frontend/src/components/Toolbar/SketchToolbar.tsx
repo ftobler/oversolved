@@ -14,12 +14,18 @@ import viewportResetIcon from '@/assets/icons/viewport-reset.svg'
 
 interface SketchToolbarProps {
   onResetViewport: () => void
+  // The page owns the file picker and the mutation; the toolbar only arms the
+  // gesture, exactly like the header's Import STEP button.
+  onImportDxf: () => void
+  // True only while the open edit is a sketch: the page derives this from the
+  // editing feature, so a feature edit keeps the import greyed out.
+  canImportDxf: boolean
 }
 
 const mirrorKey = CORE_KEYBINDINGS.find(b => b.command === 'mirror_entities')?.key.toUpperCase()
 const constructionKey = CORE_KEYBINDINGS.find(b => b.command === 'toggle_construction')?.key.toUpperCase()
 
-export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
+export default function SketchToolbar({ onResetViewport, onImportDxf, canImportDxf }: SketchToolbarProps) {
   const registry = useCommandRegistry()
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const drag = useSketchEditorStore(s => s.drag)
@@ -98,6 +104,14 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
       />
 
       <ToolItem def={TOOL_DEFS.project} />
+
+      <ToolbarButton
+        title={canImportDxf ? 'Import DXF into this sketch' : 'Open a sketch to import a DXF'}
+        icon={iconUrl('icon-upload')}
+        disabled={!canImportDxf}
+        onClick={onImportDxf}
+        handle="toolbar:import_dxf"
+      />
 
       <div className="toolbar-separator" />
 

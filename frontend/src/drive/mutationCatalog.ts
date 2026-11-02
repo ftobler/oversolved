@@ -152,6 +152,17 @@ const ENTITY_PARAMS_NOTE =
   `Params per kind, in order: ${entityParamLayoutsSentence()}. ` +
   'Arc and ellipse angles are degrees; an arc sweeps counter-clockwise from a0_deg to a1_deg.'
 
+// The DXF import contract. The parser enforces it (utils/dxfImport.ts); this
+// note is what an author reads before writing an import step.
+const DXF_IMPORT_NOTE =
+  '`content` is the ASCII DXF file text, not a path. LINE, ARC, CIRCLE, LWPOLYLINE and a 2D POLYLINE '
+  + '(bulges become arcs), a single-span cubic Bezier SPLINE, a full ELLIPSE and POINT import as authored '
+  + 'sketch entities with fresh ids, all in one undo entry. TEXT, MTEXT, DIMENSION and the other annotation '
+  + 'entities are skipped and counted, as is paper space; any other curve entity (INSERT, HATCH, a multi-span or rational '
+  + 'SPLINE, a 3D POLYLINE) refuses the whole file by name so no profile is half imported. $INSUNITS '
+  + 'converts to the document unit (0 unitless, 1 inch, 2 foot, 4 mm, 5 cm, 6 m; unitless means document '
+  + 'units). Every layer is imported and layer names are not stored; repeated entities are kept.'
+
 // The constraint operand grammar an author writes by hand. A sketch-local
 // `$<entityId>` is accepted and is what the app stores; the explicit forms name
 // the sketch too, so a script can be written without knowing the local ids.
@@ -655,6 +666,14 @@ export const MUTATION_CATALOG = {
       entityId: optStr(),
       tangents: optArr('fit_spline only: [start, end] end tangents, each [tx, ty] or null.'),
       tangentScale: optBool(),
+    },
+  },
+  import_dxf: {
+    summary: 'Import the entities of an ASCII DXF profile into a sketch.',
+    note: DXF_IMPORT_NOTE,
+    fields: {
+      featureId: str('The sketch feature the imported entities land in.'),
+      content: str('The ASCII DXF file text; see the note for the supported entities and the unit rule.'),
     },
   },
   insert_fit_point: {
@@ -1292,6 +1311,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   delete: 'sketch',
   add_entity: 'sketch',
   add_entity_with_constraint: 'sketch',
+  import_dxf: 'sketch',
   insert_fit_point: 'sketch',
   set_fit_spline_handle: 'sketch',
   add_projected_entity: 'sketch',

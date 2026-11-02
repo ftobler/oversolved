@@ -38,6 +38,8 @@ import PartDebugPanel from '@/pages/PartDebugPanel'
 import PartColorPopover from '@/pages/PartColorPopover'
 import PartExportImport, { type PartExportImportHandle } from '@/pages/PartExportImport'
 import { usePartCommands } from '@/pages/PartKeyboardShortcuts'
+import { useNotifySafe } from '@/contexts/ToastContext'
+import { dxfImportLimitError, parseDxfProfile, type DxfProfile } from '@/utils/dxfImport'
 import { getSketchState, PART_COMMAND_SPECS, type PartCommandContext, type ShowMessagePayload } from '@/pages/commandEntries'
 import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
 import { installDriveSurface } from '@/drive/driveSurface'
@@ -101,6 +103,21 @@ function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
 }
 
+// The one-line success toast: what landed, what was left out, and whether the
+// numbers were converted. The skipped and unit facts are the import's contract
+// (utils/dxfImport.ts), so the user learns them at the moment of import.
+function dxfImportMessage(profile: DxfProfile, fileName: string): string {
+  const count = profile.entities.length
+  const parts = [`Imported ${count} ${count === 1 ? 'entity' : 'entities'} from ${fileName}`]
+  const skipped = Object.entries(profile.skipped)
+  if (skipped.length > 0) {
+    parts.push(`skipped ${skipped.map(([kind, n]) => `${n} ${kind}`).join(', ')}`)
+  }
+  if (profile.unit.code === 0) parts.push('unitless DXF read in document units')
+  else if (profile.scale !== 1) parts.push(`converted from ${profile.unit.name} to the document unit`)
+  return parts.join('; ')
+}
+
 const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
   plane: { field: 'plane' },
   extrude: { field: 'sketch', multi: true },
@@ -154,6 +171,7 @@ export default function Part() {
   const uuid = params.entryId ?? params.uuid
   const workspaceId = params.workspaceId
   const navigate = useNavigate()
+  const notify = useNotifySafe()
   const [mode, setMode] = useState<'sketch' | 'feature'>('sketch')
   // rollbackPosition is owned by the L2 editor-state store (single source of
   // truth). Read here for memos / props; mutate via its setters.
@@ -850,6 +868,66 @@ export default function Part() {
     exportImportRef.current?.openExport(null, docName || 'export')
   }, [docName])
 
+  // The sketch toolbar's import. The file is parsed before dispatch so the
+  // banner names the exact refusal (an unsupported entity, a bad unit) instead
+  // of the session swallowing a no-op; the mutation itself parses again at the
+  // document boundary, so a direct caller cannot skip the contract.
+  const handleImportDxf = useCallback(() => {
+    const featureId = editorState.getState().editingFeatureId
+    if (!featureId) {
+      setError('Open a sketch before importing a DXF')
+      return
+    }
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.dxf'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      const tooBig = dxfImportLimitError(file.size)
+      if (tooBig) {
+        setError(tooBig)
+        return
+      }
+      let content: string
+      try {
+        content = await file.text()
+      } catch {
+        setError('Failed to read DXF file')
+        return
+      }
+      if (content.trim() === '') {
+        setError('DXF file is empty')
+        return
+      }
+      let profile: DxfProfile
+      try {
+        profile = parseDxfProfile(content, lengthUnitOf(docRef.current?.length_unit))
+      } catch (e) {
+        setError(errorMessage(e, 'Failed to import DXF'))
+        return
+      }
+      // The picker is an async window: the open sketch can change or vanish by
+      // the time the file is read. Dispatching then would land in the wrong
+      // sketch (or no-op) while the toast claimed it landed, so the target is
+      // re-read from the live editor and document.
+      if (editorState.getState().editingFeatureId !== featureId) {
+        setError('The open sketch changed; import the DXF again')
+        return
+      }
+      const target = docRef.current?.features?.some(f => f.id === featureId && f.kind === 'sketch')
+      if (!target) {
+        setError('The sketch is no longer open')
+        return
+      }
+      const result = handleMutation({ type: 'import_dxf', featureId, content })
+      if (result?.ok === false) return
+      setError(null)
+      notify(dxfImportMessage(profile, file.name), 'success')
+    }
+    input.click()
+  }, [handleMutation, setError, notify, docRef])
+
   const handleSetLengthUnit = useCallback((unit: LengthUnit) => {
     handleMutation({ type: 'set_length_unit', unit })
   }, [handleMutation])
@@ -1337,6 +1415,8 @@ export default function Part() {
           handleAddFeature={handleAddFeature}
           handleAddSketch={handleAddSketch}
           handleAddPlane={handleAddPlane}
+          handleImportDxf={handleImportDxf}
+          canImportDxf={activeSketchFeatureId !== undefined}
           viewportRef={viewportRef}
           handleRightClick={handleRightClick}
           viewportHud={

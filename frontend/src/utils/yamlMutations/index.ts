@@ -28,6 +28,8 @@ export {
 
 export { applyInsertFitPoint, applySetFitSplineHandle, applyDeleteFitPoint, type FitSplineAddOptions } from './fitSpline'
 
+export { applyImportDxf } from './sketchDxf'
+
 export { applyMirrorEntities } from './sketchMirror'
 
 export {
