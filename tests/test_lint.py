@@ -1,10 +1,24 @@
 """Tests for the comment-style linter in lint.py."""
 
+import importlib.util
 import pathlib
+import re
 import subprocess
 import sys
 
 LINT_PY = pathlib.Path(__file__).resolve().parent.parent / "lint.py"
+
+
+def load_lint_module():
+    """The scanner-level pins inspect lint.py directly; the CLI pins keep
+    using subprocesses. Loaded from the file path so the pin does not care
+    how pytest was invoked."""
+    spec = importlib.util.spec_from_file_location("lint_under_test", LINT_PY)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def run_lint(tmp_path: pathlib.Path, source: str, *extra_args: str) -> subprocess.CompletedProcess:
@@ -560,3 +574,132 @@ def test_rust_missing_final_newline_is_flagged(tmp_path):
 
 def test_python_missing_final_newline_is_flagged(tmp_path):
     assert_violation(run_lint_py(tmp_path, "x = 1"), "final-newline")
+
+
+# ─── ts regex literals laid out on their own line ───
+
+
+def test_own_line_array_regex_does_not_hide_later_comments(tmp_path):
+    # An array lays its regex literals out one per line; the `/` then has a
+    # newline in front of it. The scanner used to read that `/` as division,
+    # the quote in the character class opened a phantom string, and every
+    # span until the next quote, this block comment included, never reached
+    # the rules. The single block-comment error is the proof the scan sees it.
+    source = (
+        "function pkg(spec: string): string {\n"
+        "  const NEEDS = [\n"
+        "    /a['\"]b/g,\n"
+        "  ]\n"
+        "  /** package name */\n"
+        "  return spec\n"
+        "}\n"
+    )
+    proc = run_lint(tmp_path, source)
+    assert_violation(proc, "block-comment")
+    assert len(proc.stdout.splitlines()) == 1, proc.stdout
+    lint = load_lint_module()
+    comments = lint.scan_comments(source)
+    assert any(c.kind == "block" and "package name" in c.text for c in comments), comments
+
+
+def test_own_line_regex_body_is_not_scanned_as_a_string(tmp_path):
+    # The mirror of the blind spot: the phantom string was not only hiding
+    # code, it was fed to the emdash rule as a Comment-shaped span. A regex
+    # body is neither comment nor string, so a dash written inside one stays
+    # clean instead of reporting a violation that is not in the file.
+    source = "const NEEDS = [\n  /a['\"\u2014]b/g,\n]\n"
+    assert_clean(run_lint(tmp_path, source))
+    lint = load_lint_module()
+    strings = lint.scan_ts_strings(source)
+    assert all("\u2014" not in c.text for c in strings), strings
+
+
+def test_same_line_array_regex_keeps_its_comment_visible(tmp_path):
+    # The same-line form already reached its opener across spaces only; the
+    # newline-crossing fix must leave this parse untouched.
+    source = (
+        "function pkg(spec: string): string {\n"
+        "  const NEEDS = [/a['\"]b/g]\n"
+        "  /** package name */\n"
+        "  return spec\n"
+        "}\n"
+    )
+    proc = run_lint(tmp_path, source)
+    assert_violation(proc, "block-comment")
+    assert len(proc.stdout.splitlines()) == 1, proc.stdout
+
+
+def test_division_after_a_newline_preceded_identifier_stays_division(tmp_path):
+    # Anti-overcorrection pin: walking back over whitespace must still land on
+    # `total`, and an identifier is not a regex opener, so `/ 2` stays
+    # division and the block comment written after it is still found.
+    source = (
+        "function half(total: number): number {\n"
+        "  const h = total\n"
+        "    / 2\n"
+        "  /** half of it */\n"
+        "  return h\n"
+        "}\n"
+    )
+    proc = run_lint(tmp_path, source)
+    assert_violation(proc, "block-comment")
+    assert len(proc.stdout.splitlines()) == 1, proc.stdout
+
+
+# ─── whole-tree coverage ───
+
+
+def test_own_line_regex_after_a_keyword_stays_a_regex(tmp_path):
+    # Pin the keyword half of the walk-back: `return` at a line end still
+    # opens the regex written below it (automatic semicolon insertion ends
+    # the return there, so the next line genuinely starts an expression
+    # statement with a regex), and the comment behind that regex must reach
+    # the rules instead of being swallowed as division debris.
+    source = (
+        "function hit(x: string): boolean {\n"
+        "  return\n"
+        "    /a['\"]b/.test(x)\n"
+        "  /** fine */\n"
+        "}\n"
+    )
+    proc = run_lint(tmp_path, source)
+    assert_violation(proc, "block-comment")
+    assert len(proc.stdout.splitlines()) == 1, proc.stdout
+
+
+def test_the_frontend_scan_covers_the_whole_tree(tmp_path):
+    # Scanner blindness silently skipped rule coverage inside files while
+    # still reporting a clean run, and a file-count line is only printed on
+    # violations. A deliberately dirty fixture forces that summary line over
+    # the real frontend tree: the count pins the scan against quietly
+    # shrinking, and any violation the fixed scanner newly surfaces in the
+    # sources fails here too, not just in the frontend gate.
+    root = LINT_PY.parent
+    dirty = tmp_path / "dirty.ts"
+    dirty.write_text("const a = 1 // one space\n")
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(LINT_PY),
+            str(root / "frontend" / "src"),
+            str(root / "frontend" / "scripts"),
+            str(dirty),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    summary = proc.stderr.splitlines()[-1]
+    match = re.match(r"(\d+) violation\(s\) in (\d+) file\(s\)", summary)
+    assert match, proc.stdout + proc.stderr
+    assert match.group(1) == "1", proc.stdout  # the tree itself is clean
+    assert int(match.group(2)) >= 2000, summary  # 2066-class coverage, never shrinking
+
+    # Count and exit code alone would still pass with a blind scanner, so
+    # pin two spans behind real own-line regex arrays: these comments were
+    # hidden by phantom strings on dev before the fix, and if the blindness
+    # ever returns they disappear from the scan and this test fails.
+    lint = load_lint_module()
+    source_scan = lint.scan_comments((root / "frontend" / "src" / "testing" / "sourceScan.ts").read_text())
+    assert any("Resolve an `@/` alias" in c.text for c in source_scan), "sourceScan.ts hid or reworded its alias doc comment"
+    conventions = lint.scan_comments((root / "frontend" / "src" / "utils" / "__tests__" / "codeConventions.test.ts").read_text())
+    assert any("Comments are blanked (not deleted)" in c.text for c in conventions), "codeConventions.test.ts hid or reworded its blanking rationale"

@@ -39,7 +39,10 @@ SEPARATORS = frozenset("-=*_#~+")
 LANGUAGES = ("ts", "rust", "python")
 
 # A `/` starts a regex literal (not a division) when the previous significant
-# token is one of these, so `//` inside such a regex is not a comment.
+# token is one of these, so `//` inside such a regex is not a comment. The
+# token is sought across newlines too: arrays lay their regex literals out
+# one per line, while Prettier keeps division on a single line in this
+# codebase, so a `/` after a newline takes its verdict from the line above.
 _REGEX_OPENERS = frozenset("(=,[{:;!&|?+-*%^~<>")
 _REGEX_KEYWORDS = frozenset(
     {
@@ -156,17 +159,26 @@ def _line_of(line_starts: list[int], offset: int) -> int:
     return lo + 1
 
 
+def _prev_code_index(text: str, i: int) -> int:
+    """Index of the last code character at or before `i`, walking over every
+    kind of whitespace, newlines included; -1 when only file start precedes."""
+    while i >= 0 and text[i].isspace():
+        i -= 1
+    return i
+
+
 def _is_regex_start(text: str, i: int) -> bool:
-    j = i - 1
-    while j >= 0 and text[j] in " \t":
-        j -= 1
+    """Classify the `/` at `i` as a regex literal or a division by its
+    preceding code token. The token is looked up across newlines, because a
+    regex written on its own line (the way arrays lay their literals out)
+    takes its opener from the line above; a newline-preceded identifier or
+    `++` stays division."""
+    j = _prev_code_index(text, i - 1)
     if j < 0:
         return True
     last = text[j]
     if last in "+-":
-        k = j - 1
-        while k >= 0 and text[k] in " \t":
-            k -= 1
+        k = _prev_code_index(text, j - 1)
         if k >= 0 and text[k] == last:
             return False  # `++`/`--` are postfix, so `/` after them is division
     if last in _REGEX_OPENERS:
