@@ -497,16 +497,16 @@ banner on stdout, so a client config must use the direct node invocation.
   for saving or hand-editing. The summary's body ids are the live bodies of the
   final solve, not the accumulated `part_style` keys: a boolean or join consumes
   a body while its colour entry stays behind, and the reply must not name what
-  the measure tool no longer counts. A refused script has two states: when
-  nothing settled (every step refused before a mutation landed), the summary says
-  `bodies: not solved (step N refused)` and `solved` is false, because the
-  document was never solved and there are no verdicts to list; when an accepted
-  prefix settled and the next step was refused, the summary names that live set
-  plus `solved through step N-1; step N refused, not applied`, and `solved` is
-  true. A step whose solve hit the stall budget says `step N timed out` instead
-  of refused. `solved` is the one state flag: it means a settle was attempted
-  for the document the reply describes, so a faulted settle still lists its
-  missing verdicts. Chaining by hash is the intended flow: a
+  the measure tool no longer counts. A refused script has two states: when no
+  settle was attempted (every step refused before a mutation landed), the
+  summary says `bodies: not solved (step N refused)` and `solved` is false,
+  because the document was never solved and there are no verdicts to list; when
+  an accepted prefix settled and the next step was refused, the summary names
+  that live set plus `solved through step N-1; step N refused, not applied`, and
+  `solved` is true. A step whose solve hit the stall budget says `step N timed
+  out` instead of refused. `solved` is the one state flag: it means a settle was
+  attempted for the document the reply describes, so a faulted settle still
+  lists its missing verdicts. Chaining by hash is the intended flow: a
   modelling session does not re-send the part on every call.
 - The full document behind any reply's `docHash` is also a resource:
   `resources/templates/list` advertises `oversolved://doc/{docHash}`, and

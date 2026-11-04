@@ -257,7 +257,9 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           doc,
           bodies: bodiesBox.current,
           solve: solve.state(),
-          steps: outcomes,
+          // A snapshot: the runner keeps pushing onto its own array, and a
+          // consumer that holds this checkpoint must not see later steps.
+          steps: [...outcomes],
         })
       },
     )

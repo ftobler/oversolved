@@ -151,6 +151,8 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     const run = await drive('run', boxScript, '--out', boxDoc)
     expect(run.status).toBe(0)
     expect(run.payload.ok).toBe(true)
+    // The CLI prints the same state flag the MCP reply carries.
+    expect(run.payload.solved).toBe(true)
     expect(run.payload.steps).toHaveLength(3)
     expect((run.payload.solve as { lastError: string | null }).lastError).toBeNull()
     // The problem list rides every run reply, empty for a clean build.
@@ -579,6 +581,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
         },
       }))
       expect(built.ok).toBe(true)
+      expect(built.solved).toBe(true)
       expect((built.solve as { lastError: string | null }).lastError).toBeNull()
       expect(built.features).toEqual([])
       expect(built.format).toBe('json')
