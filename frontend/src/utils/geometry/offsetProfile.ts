@@ -3,10 +3,13 @@
 // the corners disjointed; this module finds the joints of the selection (an
 // explicit `coincident`, or endpoints the area builder welds by coordinate) and
 // tells the caller how to reconnect the clones (miter the meeting point of two
-// offset lines, carry tangency over to arcs). Node-unit-testable.
+// offset curves, carry a genuinely tangent joint over as a tangent). Whether a
+// joint is tangent is decided from the SOURCE tangents, never from the kind
+// alone: a sharp arc corner joined with a `tangent` drags the source geometry.
+// Node-unit-testable.
 
 import { resolveVertexRef } from '@/types/vertexRef'
-import { TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
+import { TOL_MOVE_FACE_TANGENT, TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
 
 export interface VertexRef {
   entityId: string
@@ -169,4 +172,163 @@ export function lineVertexIndices(vertexKey: string): [number, number] | null {
   if (vertexKey === 'start') return [0, 1]
   if (vertexKey === 'end') return [2, 3]
   return null
+}
+
+/** The `[x, y]` of one named entity vertex, or null when the kind has no such
+ *  endpoint. Used to pick the offset-curve root nearest the authored joint. */
+export function vertexPoint(
+  kind: string,
+  params: readonly number[],
+  vertexKey: string,
+): [number, number] | null {
+  return endpointVertices(kind, params).find(v => v.vertexKey === vertexKey)?.point ?? null
+}
+
+/** Unit tangent LINE direction of an entity at one of its endpoint vertices.
+ *  A line's tangent is its own direction; an arc's stored sweep is CCW, so its
+ *  tangent at angle theta is `(-sin theta, cos theta)` (the sign of travel does
+ *  not matter to the tangent test, which compares lines modulo pi). Returns null
+ *  for a kind without an analytic endpoint tangent (circle, spline, ellipse). */
+export function endpointTangent(
+  kind: string,
+  params: readonly number[],
+  vertexKey: string,
+): [number, number] | null {
+  if (vertexKey !== 'start' && vertexKey !== 'end') return null
+  if (kind === 'line') {
+    const dx = params[2] - params[0], dy = params[3] - params[1]
+    const len = Math.hypot(dx, dy)
+    if (len < 1e-9) return null
+    return [dx / len, dy / len]
+  }
+  if (kind === 'arc') {
+    const deg = vertexKey === 'start' ? params[3] : params[4]
+    if (!Number.isFinite(deg)) return null
+    const theta = (deg * Math.PI) / 180
+    return [-Math.sin(theta), Math.cos(theta)]
+  }
+  return null
+}
+
+export interface TangentSource {
+  kind: string
+  params: readonly number[]
+  vertexKey: string
+}
+
+/** Whether two source entities meet tangentially at a corner. The unit tangents
+ *  are compared as LINES: `|cross(uA, uB)|` is the sine of the angle between
+ *  them, so a line tangent to an arc or two arcs touching are tangent whichever
+ *  way each operand travels. `TOL_MOVE_FACE_TANGENT` is the same G1 notion the
+ *  3D tangent chain uses. A kind without an endpoint tangent never classifies as
+ *  tangent, which keeps spline/ellipse corners ungrafted. */
+export function tangentCorner(
+  a: TangentSource,
+  b: TangentSource,
+  tol = TOL_MOVE_FACE_TANGENT,
+): boolean {
+  const ua = endpointTangent(a.kind, a.params, a.vertexKey)
+  const ub = endpointTangent(b.kind, b.params, b.vertexKey)
+  if (!ua || !ub) return false
+  return Math.abs(ua[0] * ub[1] - ua[1] * ub[0]) <= tol
+}
+
+/** Intersections of the infinite line through `[x0, y0, x1, y1]` with a circle.
+ *  Empty when the line misses the circle; one point when it is tangent. */
+export function lineCircleIntersect(
+  line: readonly number[],
+  cx: number,
+  cy: number,
+  r: number,
+): Array<[number, number]> {
+  const dx = line[2] - line[0], dy = line[3] - line[1]
+  const len = Math.hypot(dx, dy)
+  if (len < 1e-9 || !(r > 0)) return []
+  const ux = dx / len, uy = dy / len
+  const fx = line[0] - cx, fy = line[1] - cy
+  const b = fx * ux + fy * uy
+  const c = fx * fx + fy * fy - r * r
+  const disc = b * b - c
+  if (disc < 0) return []
+  const root = Math.sqrt(Math.max(0, disc))
+  const ts = root < 1e-12 ? [-b] : [-b - root, -b + root]
+  return ts.map(t => [line[0] + t * ux, line[1] + t * uy])
+}
+
+/** Intersections of two circles. Empty when they are concentric, disjoint or
+ *  nested without touching; one point when they touch. */
+export function circleCircleIntersect(
+  ax: number, ay: number, ar: number,
+  bx: number, by: number, br: number,
+): Array<[number, number]> {
+  const dx = bx - ax, dy = by - ay
+  const d = Math.hypot(dx, dy)
+  if (d < 1e-9 || !(ar > 0) || !(br > 0)) return []
+  if (d > ar + br + 1e-9 || d < Math.abs(ar - br) - 1e-9) return []
+  const a = (ar * ar - br * br + d * d) / (2 * d)
+  const h = Math.sqrt(Math.max(0, ar * ar - a * a))
+  const ux = dx / d, uy = dy / d
+  const mx = ax + a * ux, my = ay + a * uy
+  if (h < 1e-12) return [[mx, my]]
+  return [
+    [mx - h * uy, my + h * ux],
+    [mx + h * uy, my - h * ux],
+  ]
+}
+
+/** The root closest to a reference point, or null when there is none. At a
+ *  sharp joint the near intersection is the miter; the far one belongs to the
+ *  other side of the circle. */
+export function nearestPoint(
+  points: ReadonlyArray<[number, number]>,
+  near: readonly [number, number],
+): [number, number] | null {
+  let best: [number, number] | null = null
+  let bestD = Infinity
+  for (const p of points) {
+    const d = Math.hypot(p[0] - near[0], p[1] - near[1])
+    if (d < bestD) {
+      bestD = d
+      best = p
+    }
+  }
+  return best
+}
+
+/** The CCW span from `from` to `to` in degrees, in [0, 360). */
+export function ccwSpanDeg(from: number, to: number): number {
+  return (((to - from) % 360) + 360) % 360
+}
+
+/** A miter may extend an arc past an authored endpoint, but not by more than a
+ *  quarter turn: past that the intersection belongs to the far side of the
+ *  circle rather than this joint, and writing it would swing the arc around its
+ *  other end. */
+export const MAX_ARC_MITER_EXTENSION_DEG = 90
+
+/** Whether writing `deg` into an arc's start (index 3) or end (index 4) keeps
+ *  the stored CCW sweep on the same side of the other endpoint. A joint whose
+ *  miter would cross the other end is left ungrafted rather than silently
+ *  reversing or degenerating the arc. */
+export function arcAngleKeepsSweep(
+  a0: number,
+  a1: number,
+  deg: number,
+  vertexKey: 'start' | 'end',
+): boolean {
+  if (!Number.isFinite(deg)) return false
+  const sweep = ccwSpanDeg(a0, a1)
+  if (sweep === 0) return false  // a full-circle arc has no distinct other end
+  if (vertexKey === 'start') {
+    const newSweep = ccwSpanDeg(deg, a1)
+    if (newSweep === 0) return false  // the new start landed on the end: full circle
+    const inside = ccwSpanDeg(a0, deg) <= sweep  // moved toward the authored end
+    const justBefore = ccwSpanDeg(deg, a0) <= MAX_ARC_MITER_EXTENSION_DEG
+    return inside || justBefore
+  }
+  const newSweep = ccwSpanDeg(a0, deg)
+  if (newSweep === 0) return false  // the new end landed on the start: full circle
+  const inside = ccwSpanDeg(deg, a1) <= sweep  // moved back toward the authored start
+  const justPast = ccwSpanDeg(a1, deg) <= MAX_ARC_MITER_EXTENSION_DEG
+  return inside || justPast
 }

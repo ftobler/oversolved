@@ -5,7 +5,12 @@ import {
 } from './helpers'
 import type { SketchLists } from './helpers'
 import { applyAddConstraint } from './sketch'
-import { offsetCorners, coordinateCorners, uniqueCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
+import {
+  offsetCorners, coordinateCorners, uniqueCorners, lineIntersect, lineVertexIndices,
+  vertexPoint, tangentCorner, lineCircleIntersect, circleCircleIntersect, nearestPoint,
+  arcAngleKeepsSweep,
+} from '@/utils/geometry/offsetProfile'
+import type { OffsetCorner } from '@/utils/geometry/offsetProfile'
 import { offsetSideFactors } from '@/utils/geometry/offsetSide'
 import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
 import { sameSnapVertex } from '@/utils/snapRefs'
@@ -258,15 +263,99 @@ function offsetSeed(kind: string, p: number[], distance: number): number[] | nul
   }
 }
 
-/** Reconnect the corners among offset clones: miter line/line corners to the
- *  intersection of the two *seeded* (untrimmed) offset lines (NOT the offset of
- *  the shared vertex), and carry line/arc and arc/arc tangency over so the
- *  solver settles the fillet join. A corner is either an explicit `coincident`
- *  or two selected endpoints the area builder welds by coordinate (a hand-drawn
- *  chain), so both authoring styles rebuild the same joint. Snapshot the seeds
- *  before trimming endpoints -- otherwise the second corner of a shared line
- *  would intersect an already-moved line and drift. Spline/ellipse corners stay
- *  ungrafted (matches the copy-at-source clone policy). */
+/** Miter a sharp line/arc or arc/arc corner on the offset CURVES themselves.
+ *  The clone's OWN seeded params are the truth: `offsetSeed` already applied the
+ *  per-entity side factor, so a closed loop can shrink a convex arc (the heart's
+ *  r40 clone is r38) while a concave arc grows; recomputing `r + distance` would
+ *  miter against a circle the clone does not sit on. The clone line is its seeded
+ *  line and the clone arc is its seeded circle, exactly the same untrimmed seed
+ *  the line/line arm uses. */
+function miterCurvedCorner(
+  doc: PartDoc,
+  featureId: string,
+  initial: Record<string, number[]>,
+  sourceA: string,
+  sourceB: string,
+  cloneA: string,
+  cloneB: string,
+  kindA: string,
+  kindB: string,
+  corner: OffsetCorner,
+  seedSnapshot: ReadonlyMap<string, number[]>,
+): void {
+  const seedA = seedSnapshot.get(cloneA)
+  const seedB = seedSnapshot.get(cloneB)
+  if (!seedA || !seedB) return
+
+  // The miter is chosen nearest the authored joint, so the far root of a pair of
+  // intersecting circles cannot become the corner.
+  const jointA = vertexPoint(kindA, initial[sourceA] ?? [], corner.a.vertexKey)
+  const jointB = vertexPoint(kindB, initial[sourceB] ?? [], corner.b.vertexKey)
+  if (!jointA && !jointB) return
+  const joint: [number, number] = jointA && jointB
+    ? [(jointA[0] + jointB[0]) / 2, (jointA[1] + jointB[1]) / 2]
+    : (jointA ?? jointB)!
+
+  let roots: Array<[number, number]>
+  if (kindA === 'arc' && kindB === 'arc') {
+    roots = circleCircleIntersect(seedA[0], seedA[1], seedA[2], seedB[0], seedB[1], seedB[2])
+  } else if (kindA === 'line' && kindB === 'line') {
+    return  // the line/line arm owns this corner; not reachable from the dispatcher
+  } else if (kindA === 'line') {
+    roots = lineCircleIntersect(seedA, seedB[0], seedB[1], seedB[2])
+  } else {
+    roots = lineCircleIntersect(seedB, seedA[0], seedA[1], seedA[2])
+  }
+  const miter = nearestPoint(roots, joint)
+  if (!miter) return  // offset curves miss: leave the gap, never fall back to tangent
+
+  const point: [number, number] = [round(miter[0]), round(miter[1])]
+  const sides = [
+    { kind: kindA, seed: seedA, cloneId: cloneA, vertexKey: corner.a.vertexKey },
+    { kind: kindB, seed: seedB, cloneId: cloneB, vertexKey: corner.b.vertexKey },
+  ]
+  // Validate every write before touching either clone: a joint whose miter would
+  // cross an arc's other end has to stay entirely ungrafted, not half trimmed.
+  const lineWrites: Array<{ cloneId: string; ix: number; iy: number }> = []
+  const arcWrites: Array<{ cloneId: string; index: number; deg: number }> = []
+  for (const side of sides) {
+    if (side.kind === 'line') {
+      const indices = lineVertexIndices(side.vertexKey)
+      if (!indices) return
+      lineWrites.push({ cloneId: side.cloneId, ix: indices[0], iy: indices[1] })
+      continue
+    }
+    if (side.vertexKey !== 'start' && side.vertexKey !== 'end') return
+    // The arc's other endpoint may already have been mitred for its own corner,
+    // so the sweep check reads the CURRENT angles while the circle geometry
+    // (centre, radius) comes from the untrimmed seed.
+    const current = initial[side.cloneId]
+    const deg = (Math.atan2(point[1] - side.seed[1], point[0] - side.seed[0]) * 180) / Math.PI
+    if (!arcAngleKeepsSweep(current[3], current[4], deg, side.vertexKey)) return
+    arcWrites.push({ cloneId: side.cloneId, index: side.vertexKey === 'start' ? 3 : 4, deg })
+  }
+
+  for (const write of lineWrites) {
+    const params = initial[write.cloneId]
+    params[write.ix] = point[0]
+    params[write.iy] = point[1]
+  }
+  for (const write of arcWrites) initial[write.cloneId][write.index] = round(write.deg)
+  applyAddConstraint(doc, featureId, 'coincident', [
+    `vertex:${featureId}:${cloneA}:${corner.a.vertexKey}`,
+    `vertex:${featureId}:${cloneB}:${corner.b.vertexKey}`,
+  ])
+}
+
+/** Reconnect the corners among offset clones: miter sharp corners on the two
+ *  *seeded* (untrimmed) offset curves (NOT the offset of the shared vertex), and
+ *  carry a genuinely tangent joint over as a `tangent`. A corner is either an
+ *  explicit `coincident` or two selected endpoints the area builder welds by
+ *  coordinate (a hand-drawn chain), so both authoring styles rebuild the same
+ *  joint. Snapshot the seeds before trimming endpoints -- otherwise the second
+ *  corner of a shared line would intersect an already-moved line and drift.
+ *  Spline/ellipse corners stay ungrafted (matches the copy-at-source clone
+ *  policy). */
 function reconnectOffsetCorners(
   doc: PartDoc,
   feature: PartFeature & Pick<SketchLists, 'entities' | 'initial' | 'constraints'>,
@@ -278,7 +367,6 @@ function reconnectOffsetCorners(
   const seedSnapshot = new Map<string, number[]>()
   for (const cloneId of cloneOf.values()) seedSnapshot.set(cloneId, [...initial[cloneId]])
 
-  const curved = (k: string | undefined) => k === 'arc' || k === 'circle'
   const sourceIds = [...cloneOf.keys()]
   // A rectangle has both forms of join (coincidents and equal coordinates), so
   // the merge keeps the explicit-corner ordering while dropping the duplicate.
@@ -306,18 +394,32 @@ function reconnectOffsetCorners(
         `vertex:${featureId}:${cloneA}:${corner.a.vertexKey}`,
         `vertex:${featureId}:${cloneB}:${corner.b.vertexKey}`,
       ])
-    } else if ((kindA === 'line' && curved(kindB)) || (curved(kindA) && kindB === 'line') ||
-               (curved(kindA) && curved(kindB))) {
-      // line/arc or arc/arc: a fillet corner. Endpoints of an arc clone cannot be
-      // mitered into place (the geometry is center+radius+angles), so carry the
-      // tangency over and let the solver settle the join.
-      applyAddConstraint(doc, featureId, 'tangent', [
-        `entity:${featureId}:${cloneA}`,
-        `entity:${featureId}:${cloneB}`,
-      ])
+    } else if ((kindA === 'line' || kindA === 'arc') && (kindB === 'line' || kindB === 'arc')) {
+      // LINE/ARC or ARC/ARC. The SOURCE joint's tangents decide the join, never
+      // the kind alone: a `tangent` at a sharp joint is false, and because the
+      // clones are tied to their sources the solver satisfies it by moving
+      // them. A tangent joint needs nothing from the solver (the seeds already
+      // satisfy it); a sharp one is sealed at the offset-curve intersection.
+      const paramsA = initial[corner.a.entityId]
+      const paramsB = initial[corner.b.entityId]
+      const tangent = paramsA && paramsB && tangentCorner(
+        { kind: kindA!, params: paramsA, vertexKey: corner.a.vertexKey },
+        { kind: kindB!, params: paramsB, vertexKey: corner.b.vertexKey },
+      )
+      if (tangent) {
+        applyAddConstraint(doc, featureId, 'tangent', [
+          `entity:${featureId}:${cloneA}`,
+          `entity:${featureId}:${cloneB}`,
+        ])
+      } else {
+        miterCurvedCorner(doc, featureId, initial, corner.a.entityId, corner.b.entityId,
+          cloneA, cloneB, kindA!, kindB!, corner, seedSnapshot)
+      }
     }
-    // spline/ellipse corners: no clean offset relationship, leave them ungrafted
-    // (matches the copy-at-source clone policy above).
+    // A circle has no endpoint vertex: its corner is only reachable through an
+    // explicit `coincident` on its centre, which a miter cannot rebuild, so it
+    // is skipped outright (no tangent, no coincident). Spline/ellipse corners
+    // also stay ungrafted (matches the copy-at-source clone policy above).
   }
 }
 
@@ -336,10 +438,11 @@ function reconnectOffsetCorners(
  *  chain, or a hand-drawn chain whose endpoints merely meet by coordinate) is
  *  held together at its corners. Offsetting each entity in isolation would tear
  *  those corners apart, so after cloning we rebuild every corner among the
- *  selected sources on the clones -- mitering line/line corners to the
- *  intersection of the two offset lines (NOT the offset of the shared vertex)
- *  and carrying line/arc tangency over with a `tangent`. Still no dimensions;
- *  the reconnection is the only added structure. */
+ *  selected sources on the clones. A joint whose SOURCE tangents are already
+ *  aligned keeps a `tangent`; every other line/arc and arc/arc joint is sealed
+ *  at the intersection of the two offset curves (never the offset of the shared
+ *  vertex), and line/line stays the plain miter. Still no dimensions; the
+ *  reconnection is the only added structure. */
 export function applyAddOffset(
   doc: PartDoc,
   featureId: string,
