@@ -76,6 +76,13 @@ async function helixRun(turns = 2): Promise<Awaited<ReturnType<typeof runHeadles
 }
 
 describe.skipIf(!ready)('helix placement in the drive reply (real OCC + Rust solver)', () => {
+  it('reports no curves key for a document with no helix', async () => {
+    const empty = await runHeadless({ doc: emptyDriveDoc(), steps: [] })
+    expect(empty.curves).toEqual({})
+    expect(runReply(empty, false, new DocHandleStore())).not.toHaveProperty('curves')
+    expect((await measureHeadless(emptyDriveDoc()))!.curves).toEqual({})
+  }, 120_000)
+
   it('reports the rounded start, end and climb axis on the run reply', async () => {
     const run = await helixRun()
     expect(run.ok).toBe(true)
@@ -152,7 +159,8 @@ describe.skipIf(!ready)('helix placement in the drive reply (real OCC + Rust sol
     expect(chained.bodies).toEqual(['body_ex1'])
     await yieldToEventLoop()
     const volume = (await measureHeadless(chained.doc as PartDoc))!.measures.volume
-    expect(volume).toBeGreaterThan(786)
+    // The plain cylinder is 785.398; the swept half turn adds material on top.
+    expect(volume).toBeGreaterThan(785.5)
     // Still whole on the call that consumed the start.
     expect(chained.curves!.hx1).toEqual(run.curves!.hx1)
   }, 180_000)
