@@ -290,7 +290,7 @@ describe('mutation catalog', () => {
     expect(fillet.note).toContain('radius')
     expect(fillet.note).toContain('same step')
 
-    for (const type of ['add_array', 'add_circular_array', 'set_array_field', 'set_circular_array_field'] as const) {
+    for (const type of ['add_pattern', 'set_pattern_field'] as const) {
       const note = mutationInfoOf(type).note
       expect(note, type).toBeDefined()
       expect(note, type).toContain('disjoint')

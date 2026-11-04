@@ -74,7 +74,7 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     const run = await runHeadless({
       doc: slottedPlate(),
       steps: [step({
-        type: 'add_pattern', featureId: 'pt1', label: 'Pattern',
+        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
         source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0],
       })],
     })
@@ -82,7 +82,9 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     const feature = run.doc?.features?.find((entry) => entry.id === 'pt1')
     expect(feature).toMatchObject({
       kind: 'pattern',
-      pattern: { source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0] },
+      pattern: {
+        subject: 'feature', source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0],
+      },
     })
     // The reply's own feature list: the pattern reported clean, and it changed
     // the body the slot cut had already shaped.
@@ -103,7 +105,7 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     const run = await runHeadless({
       doc,
       steps: [step({
-        type: 'add_pattern', featureId: 'pt1', source_feature: '@ex_slot',
+        type: 'add_pattern', featureId: 'pt1', subject: 'feature', source_feature: '@ex_slot',
         count: 4, pitch: 13, direction: [1, 0, 0],
       })],
     })

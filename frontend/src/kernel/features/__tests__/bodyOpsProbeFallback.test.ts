@@ -31,6 +31,7 @@ vi.mock('../../occ/bodyNames', async (importOriginal) => {
 vi.mock('../bodySplit', () => ({
   registerSplitBodies: () => ['body_t'],
   resplitBody: () => ['body_t'],
+  solidHoldingFaces: () => null,
 }))
 
 import { HandleTable } from '../../occ/handleTable'

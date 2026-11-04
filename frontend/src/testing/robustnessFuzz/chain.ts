@@ -1,6 +1,6 @@
 // The real-kernel chain runner for robustness-fuzz. It replays a generated
 // recipe step by step through the same leaf solvers the builder dispatches to
-// (features/boolean.ts, filletChamfer.ts, hole.ts, array.ts, transformMirror.ts)
+// (features/boolean.ts, filletChamfer.ts, hole.ts, pattern.ts, transformMirror.ts)
 // against a real OccModule, and after every built step asserts the feature
 // contract: the step built or refused with a message (a throw is classified the
 // way builder.ts classifies it, never allowed to abort the run), the handle
@@ -26,7 +26,7 @@ import { registerSplitBodies } from '@/kernel/features/bodySplit'
 import { solveBoolean } from '@/kernel/features/boolean'
 import { solveFillet, solveChamfer, resolveFilletEdges } from '@/kernel/features/filletChamfer'
 import { solveHole } from '@/kernel/features/hole'
-import { solveArray, solveCircularArray } from '@/kernel/features/array'
+import { solvePattern } from '@/kernel/features/pattern'
 import { solveMirror } from '@/kernel/features/transformMirror'
 import { solveShell } from '@/kernel/features/shell'
 import { solveHelix } from '@/kernel/features/helix'
@@ -781,11 +781,11 @@ function applyStep(
   if (step.kind === 'linear-array') {
     const query = `@fuzz/axis/${step.id}`
     repo.registerQuery(query, () => ({ start: [0, 0, 0], end: axisVec(step.axis) }))
-    const result = solveArray(oc, scope, table, {
+    const result = solvePattern(oc, scope, table, {
       id: step.id,
-      array: {
-        source_body: step.target, mode: 'linear', count_x: step.count, pitch_x: step.pitch,
-        include_source: true, operation: 'add', direction_x_query: query,
+      pattern: {
+        subject: 'body', source_body: step.target, mode: 'linear', count: step.count, pitch: step.pitch,
+        include_source: true, operation: 'add', direction_query: query,
       },
     }, repoForLeaves, bodyStore)
     return { editedIds: result.body_ids }
@@ -796,10 +796,10 @@ function applyStep(
     const dir = axisVec(step.axis)
     const query = `@fuzz/axis/${step.id}`
     repo.registerQuery(query, () => ({ start: center, end: add(center, dir) }))
-    const result = solveCircularArray(oc, scope, table, {
+    const result = solvePattern(oc, scope, table, {
       id: step.id,
-      circular_array: {
-        source_body: step.target, count: step.count, step_angle: step.stepDeg,
+      pattern: {
+        subject: 'body', source_body: step.target, mode: 'circular', count: step.count, step_angle: step.stepDeg,
         include_source: true, operation: 'add', axis: query,
       },
     }, repoForLeaves, bodyStore)

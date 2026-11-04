@@ -20,7 +20,7 @@ import { booleanWithDiff, volumeOf } from '../../occ/booleans'
 import { makeBoxAt, makeCylinder } from '../../occ/primitives'
 import { Repository } from '../../query'
 import { bareBody } from '../shared/bodyResolution'
-import { solveArray, solveCircularArray } from '../array'
+import { solveArray, solveCircularArray } from './patternBodyTestAdapters'
 import { solveBoolean } from '../boolean'
 import type { Body } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
@@ -80,10 +80,18 @@ const CA1 = {
   axis_origin: [0, 0, 0], axis_direction: [0, 1, 0],
 }
 
-/** The feature definitions a build hands the leaf, keyed by id: an array ref
- *  only expands when its own definition is in this map. */
+/** The feature definitions a build hands the leaf, keyed by id: a pattern ref
+ *  only expands when its own definition is in this map. The legacy array /
+ *  circular_array shape is folded into the unified body-subject definition. */
 function solvedArrays(...defs: [string, string, Record<string, unknown>][]): Record<string, Record<string, unknown>> {
-  return Object.fromEntries(defs.map(([id, kind, sub]) => [id, { id, kind, [kind]: sub }]))
+  return Object.fromEntries(defs.map(([id, kind, sub]) => [
+    id,
+    {
+      id,
+      kind: 'pattern',
+      pattern: { subject: 'body', mode: kind === 'circular_array' ? 'circular' : 'linear', ...sub },
+    },
+  ]))
 }
 
 /** The repro's six-spoke wheel, optionally with the rim step that modifies the
@@ -256,7 +264,7 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
     // instances, one used. Before the split siblings were counted the array had
     // one member and the hand list used zero of it, so nothing warned and the
     // din_rail trap (a count raised after the hand list) stayed silent.
-    expect(res.solver_warning).toContain('array ca1 has 6 instances, the boolean uses 1')
+    expect(res.solver_warning).toContain('pattern ca1 has 6 instances, the boolean uses 1')
     expect(res.solver_warning).toContain("name '@ca1' in tools")
     r.scope.dispose()
   })

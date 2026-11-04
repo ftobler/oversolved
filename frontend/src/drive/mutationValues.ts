@@ -1007,7 +1007,7 @@ function addBoolean(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return inlineFieldsProblem(raw, ctx, 'set_boolean_field', ['operation', 'target'])
 }
 
-// The array and mirror adds carry the same fields their setters set, so each
+// The pattern and mirror adds carry the same fields their setters set, so each
 // present one is held to that field's schema definition, exactly like add_hole:
 // an unknown enum spelling or a bad vector is refused at the boundary instead
 // of stored and read back as a default.
@@ -1028,14 +1028,6 @@ function inlineFeatureFieldsProblem(
     if (problem !== null) return invalid(problem)
   }
   return null
-}
-
-function addArray(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  return inlineFeatureFieldsProblem(raw, ctx, 'array', 'set_array_field')
-}
-
-function addCircularArray(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  return inlineFeatureFieldsProblem(raw, ctx, 'circular_array', 'set_circular_array_field')
 }
 
 function addMirror(raw: RawStep, ctx: ValueContext): ValueViolation | null {
@@ -1445,10 +1437,6 @@ export const MUTATION_VALUE_RULES = {
   set_boolean_field: fieldValue,
   add_boolean_tool: queryField('tool'),
   remove_boolean_tool: queryField('tool'),
-  add_array: addArray,
-  set_array_field: fieldValue,
-  add_circular_array: addCircularArray,
-  set_circular_array_field: fieldValue,
   add_pattern: addPattern,
   set_pattern_field: fieldValue,
   add_delete_body: addDeleteBody,

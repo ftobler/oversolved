@@ -29,6 +29,7 @@ import { resplitBody } from './bodySplit'
 import { transferBooleanNames } from './booleanLineage'
 import { readBodyNames } from '../occ/bodyNames'
 import { stripRefSigil } from '@/utils/refSigil'
+import { patternSubject } from '@/utils/core/patternSubject'
 import { nestedFeatureParams } from './shared/featureParams'
 import { swallowUnlessTrap } from '../errors'
 
@@ -84,27 +85,34 @@ function growTool(
   }
 }
 
-const ARRAY_KINDS = new Set(['array', 'circular_array'])
+/** A body-subject pattern owns the bodies its copies minted. A feature-subject
+ *  pattern reshapes one existing body, so a boolean ref to it is ordinary
+ *  feature behavior, not a body-list expansion. */
+function isBodyPattern(def: Dict): boolean {
+  if (def.kind !== 'pattern') return false
+  const sub = (nestedFeatureParams(def).feature[def.kind as string] as Dict | undefined) ?? {}
+  return patternSubject(sub) === 'body'
+}
 
 /**
- * Every live body one array feature stands for: its source body (instance 0
- * under `operation: new`, the fused body under `add`), every body the array
- * minted, and every body the array's OWN disjoint split produced, in store
- * order. Resolved against the store at boolean time, so a later count change is
- * followed without editing the boolean.
+ * Every live body one body-pattern feature stands for: its source body
+ * (instance 0 under `operation: new`, the fused body under `add`), every body
+ * the pattern minted, and every body the pattern's OWN disjoint split produced,
+ * in store order. Resolved against the store at boolean time, so a later count
+ * change is followed without editing the boolean.
  *
  * The split siblings are the `add` case: `resplitBody` hands them the SOURCE
- * body's `created_by` (the spoke's extrude, not the array), so `created_by`
+ * body's `created_by` (the spoke's extrude, not the pattern), so `created_by`
  * alone missed them and the boolean fused only the source instance (car-wheel
  * F4). `split_from` records the feature whose split minted the sibling, and it
- * is not inherited: a body a LATER feature split off (a nested array, a union
+ * is not inherited: a body a LATER feature split off (a nested pattern, a union
  * of disjoint material folded into a copy) belongs to that feature, not this
- * array. `modified_by` is deliberately NOT consulted either: it would catch
+ * pattern. `modified_by` is deliberately NOT consulted either: it would catch
  * both of those over-attributions.
  */
-function arrayMemberIds(arrayId: string, def: Dict, bodyStore: Record<string, Body>): string[] {
+function patternMemberIds(patternId: string, def: Dict, bodyStore: Record<string, Body>): string[] {
   // The builder folds legacy flat params only into the feature being solved, so
-  // an upstream array's source is read through the same canonicalizer.
+  // an upstream pattern's source is read through the same canonicalizer.
   const sub = (nestedFeatureParams(def).feature[def.kind as string] as Dict | undefined) ?? {}
   const ids: string[] = []
   const source = sub.source_body
@@ -117,7 +125,7 @@ function arrayMemberIds(arrayId: string, def: Dict, bodyStore: Record<string, Bo
     }
   }
   for (const [bid, body] of Object.entries(bodyStore)) {
-    if (body.created_by === arrayId || body.split_from?.feature === arrayId) {
+    if (body.created_by === patternId || body.split_from?.feature === patternId) {
       if (!ids.includes(bid)) ids.push(bid)
     }
   }
@@ -125,60 +133,60 @@ function arrayMemberIds(arrayId: string, def: Dict, bodyStore: Record<string, Bo
 }
 
 /**
- * The tool list with every array-feature ref (`@<arrayId>` or the bare id)
- * expanded to that array's member bodies. Typing forty instance ids by hand
+ * The tool list with every body-pattern ref (`@<patternId>` or the bare id)
+ * expanded to that pattern's member bodies. Typing forty instance ids by hand
  * was error-prone (sprocket F3), and a hand list froze at the count it was
  * typed for (din_rail F1: raising the count left the new slots floating free).
  * The target is dropped from an expansion, so `target: <source>, tools:
  * [@ar1]` unions or subtracts the copies without naming the source as its own
- * tool. Returns the expanded refs and the array ids that were named.
+ * tool. Returns the expanded refs and the pattern ids that were named.
  */
-function expandArrayTools(
+function expandPatternTools(
   toolRefs: string[],
   targetId: string,
   featuresById: Record<string, Dict>,
   bodyStore: Record<string, Body>,
-): { refs: string[]; namedArrays: Set<string> } {
+): { refs: string[]; namedPatterns: Set<string> } {
   const refs: string[] = []
-  const namedArrays = new Set<string>()
+  const namedPatterns = new Set<string>()
   for (const ref of toolRefs) {
     const key = stripRefSigil(ref, '@')
     const def = featuresById[key]
     // A body id wins over a feature id of the same spelling.
-    if (def !== undefined && ARRAY_KINDS.has(def.kind as string) && !(key in bodyStore)) {
-      // featuresById holds only the features solved so far, so an array defined
+    if (def !== undefined && isBodyPattern(def) && !(key in bodyStore)) {
+      // featuresById holds only the features solved so far, so a pattern defined
       // after this boolean never reaches here: its ref stays unresolved below
       // and the tool loop refuses it by name instead of consuming its source.
-      namedArrays.add(key)
-      refs.push(...arrayMemberIds(key, def, bodyStore).filter((id) => id !== targetId))
+      namedPatterns.add(key)
+      refs.push(...patternMemberIds(key, def, bodyStore).filter((id) => id !== targetId))
     } else {
       refs.push(ref)
     }
   }
-  // An array listed twice, or beside its own instance ids, folds each body once.
-  return { refs: [...new Set(refs)], namedArrays }
+  // A pattern listed twice, or beside its own instance ids, folds each body once.
+  return { refs: [...new Set(refs)], namedPatterns }
 }
 
 /**
- * A hand-typed tool list that names some but not all of one array's bodies,
- * the din_rail F1 trap: the warning names the counts and the array ref that
+ * A hand-typed tool list that names some but not all of one pattern's bodies,
+ * the din_rail F1 trap: the warning names the counts and the pattern ref that
  * follows the count instead.
  */
-function partialArrayWarnings(
+function partialPatternWarnings(
   toolIds: Set<string>,
   targetId: string,
-  namedArrays: Set<string>,
+  namedPatterns: Set<string>,
   featuresById: Record<string, Dict>,
   bodyStore: Record<string, Body>,
 ): string[] {
   const warnings: string[] = []
   for (const [fid, def] of Object.entries(featuresById)) {
-    if (!ARRAY_KINDS.has(def.kind as string) || namedArrays.has(fid)) continue
-    const members = arrayMemberIds(fid, def, bodyStore).filter((id) => id !== targetId)
+    if (!isBodyPattern(def) || namedPatterns.has(fid)) continue
+    const members = patternMemberIds(fid, def, bodyStore).filter((id) => id !== targetId)
     const used = members.filter((id) => toolIds.has(id)).length
     if (used > 0 && used < members.length) {
       warnings.push(
-        `array ${fid} has ${members.length} instances, the boolean uses ${used}; ` +
+        `pattern ${fid} has ${members.length} instances, the boolean uses ${used}; ` +
           `name '@${fid}' in tools to take every instance`,
       )
     }
@@ -222,9 +230,9 @@ export function solveBoolean(
 
   const targetBody = resolveBody(targetRef, bodyStore)
   if (targetBody.shape === null) throw new Error(`boolean: target '${targetRef}' has no shape`)
-  const { refs: toolRefs, namedArrays } = expandArrayTools(authoredTools, targetBody.id, featuresById, bodyStore)
+  const { refs: toolRefs, namedPatterns } = expandPatternTools(authoredTools, targetBody.id, featuresById, bodyStore)
   if (toolRefs.length === 0) {
-    throw new Error(`boolean: the array tool(s) ${[...namedArrays].join(', ')} have no body besides the target`)
+    throw new Error(`boolean: the pattern tool(s) ${[...namedPatterns].join(', ')} have no body besides the target`)
   }
 
   let resultShape: OccShape = table.get<OccShape>(targetBody.shape)
@@ -249,7 +257,7 @@ export function solveBoolean(
       // The tool loop below reports a bad ref by name.
     }
   }
-  for (const w of partialArrayWarnings(explicitToolIds, targetBody.id, namedArrays, featuresById, bodyStore)) warn(w)
+  for (const w of partialPatternWarnings(explicitToolIds, targetBody.id, namedPatterns, featuresById, bodyStore)) warn(w)
 
   for (const toolRef of toolRefs) {
     const toolBody = resolveBody(toolRef, bodyStore)

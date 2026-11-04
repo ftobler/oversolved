@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, PatternFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, MoveFaceFeatureDef, PatternFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList, round } from './helpers'
 import { arrayCountProblem } from '@/persistence/docSchema'
 
@@ -16,7 +16,7 @@ export type FieldBag = { [key: string]: unknown }
 
 /** Copy a bulk add's inline fields onto the freshly built default definition.
  *  The setters' clear rule applies: an empty or null value deletes the key, so
- *  `add_array {count_x: ""}` lands the same document as add + setter. An absent
+ *  `add_pattern {count: ""}` lands the same document as add + setter. An absent
  *  key writes nothing. Arrays are copied so a journaled step and its replay
  *  cannot share one list. */
 function mergeInlineFields<T extends object>(target: T, inline: Partial<T>): void {
@@ -131,28 +131,10 @@ export function applySetBooleanField(doc: PartDoc, featureId: string, field: key
   setSubFeatureField(featureId, 'boolean', feature?.kind === 'boolean' ? feature.boolean : undefined, field, value, 'applySetBooleanField')
 }
 
-export function applySetArrayField(doc: PartDoc, featureId: string, field: keyof ArrayFeatureDef, value: unknown): void {
-  const feature = findFeature(doc, featureId)
-  // `sub` doubles as the kind and the payload check: a hand-edited record can
-  // name a kind without carrying its def, and that must warn like a wrong kind
-  // rather than throw into the undo path.
-  const sub = feature?.kind === 'array' ? feature.array : undefined
-  if (!sub) {
-    warn(`applySetArrayField: feature ${featureId} has no array`)
-    return
-  }
-  if (field === 'mode' && typeof value === 'string') {
-    applySetArrayMode(doc, featureId, value as 'linear' | 'rectangular')
-    return
-  }
-  if (refuseArrayCount(sub, field, value, 'applySetArrayField')) return
-  setFeatureField(sub, field, value)
-}
-
 /** Refuse a count the loader would refuse (the cap, the cells cap), so the
  *  document cannot be saved into a state that fails to reopen. A clear (null or
  *  empty) is not a count and passes to the setter. */
-function refuseArrayCount(sub: object, field: string, value: unknown, fn: string): boolean {
+function refusePatternCount(sub: object, field: string, value: unknown, fn: string): boolean {
   if (field !== 'count' && field !== 'count_x' && field !== 'count_y') return false
   if (typeof value !== 'number') return false
   const bag = sub as FieldBag
@@ -168,7 +150,7 @@ function refuseArrayCount(sub: object, field: string, value: unknown, fn: string
  *  at 0 and 90, so docSchema holds a literal angle to the open interval; a stored
  *  value on either end is a document that cannot reopen. The rounding boundary can
  *  land an authored 89.99999994 exactly on 90, so the angle is judged here the way
- *  a count is judged by refuseArrayCount. */
+ *  a count is judged by refusePatternCount. */
 function refuseHelixAngle(field: string, value: unknown, fn: string): boolean {
   if (field !== 'helix_angle' || typeof value !== 'number') return false
   const angle = round(value)
@@ -650,68 +632,13 @@ export function applyRemoveBooleanTool(doc: PartDoc, featureId: string, tool: st
   sub.tools = sub.tools.filter(t => t !== tool)
 }
 
-// ─── Array ───
-
-export function applyAddArray(
-  doc: PartDoc,
-  featureId: string,
-  label?: string,
-  inline: Partial<ArrayFeatureDef> = {},
-): void {
-  const array: ArrayFeatureDef = {
-    mode: 'linear',
-    count_x: 2,
-    pitch_x: 20,
-    operation: 'add',
-    include_source: true,
-  }
-  // The inline counts are judged before the merge rounds them.
-  const problem = inlineCountProblem(inline)
-  if (problem !== null) {
-    warn(`applyAddArray: refusing ${problem.field}: ${problem.reason}`)
-    return
-  }
-  mergeInlineFields(array, inline)
-  // A rectangular mode reads a second direction; the setter seeds it when it
-  // switches modes, so an inline switch gets the same defaults. Only an ABSENT
-  // value is seeded: a count_y or pitch_y expression is a real authored value.
-  if (array.mode === 'rectangular') {
-    if (array.count_y === undefined) array.count_y = 2
-    if (array.pitch_y === undefined) array.pitch_y = 20
-  }
-  pushFeature(doc, { id: featureId, kind: 'array', label: label ?? 'Array', array })
-}
-
-export function applySetArrayMode(
-  doc: PartDoc,
-  featureId: string,
-  mode: 'linear' | 'rectangular',
-): void {
-  const feature = findFeature(doc, featureId)
-  const sub = feature?.kind === 'array' ? feature.array : undefined
-  if (!sub) {
-    warn(`applySetArrayMode: feature ${featureId} has no array`)
-    return
-  }
-  sub.mode = mode
-  if (mode === 'linear') {
-    if (sub.count_x === undefined) sub.count_x = 2
-    if (sub.pitch_x === undefined) sub.pitch_x = 20
-    delete sub.count_y
-    delete sub.pitch_y
-  } else if (mode === 'rectangular') {
-    if (sub.count_x === undefined) sub.count_x = 2
-    if (sub.pitch_x === undefined) sub.pitch_x = 20
-    if (sub.count_y === undefined) sub.count_y = 2
-    if (sub.pitch_y === undefined) sub.pitch_y = 20
-  }
-}
+// ─── Pattern ───
 
 /** Judge a bulk add's inline counts on the AUTHORED value, before the merge
  *  rounds them: a float-noise 4.0000004 judged after the round reads as the
  *  legal 4 the user did not author. A non-finite count is left to setFeatureField's
  *  finiteness gate, which drops the key and lets the seeded default stand. The
- *  setter path judges the raw value through refuseArrayCount; an add must not
+ *  setter path judges the raw value through refusePatternCount; an add must not
  *  hand out a different verdict for one input. A count key the kind does not
  *  carry is judged too: the drive refuses an unknown field by name and the def
  *  type has no such key, so this is the backstop that keeps a replayed payload
@@ -738,47 +665,44 @@ function inlineCountProblem(inline: object): { field: 'count' | 'count_x' | 'cou
   return null
 }
 
-// ─── Circular Array ───
-
-export function applyAddCircularArray(
-  doc: PartDoc,
-  featureId: string,
-  label?: string,
-  inline: Partial<CircularArrayFeatureDef> = {},
-): void {
-  const circularArray: CircularArrayFeatureDef = {
-    count: 4,
-    operation: 'add',
-    include_source: true,
-  }
-  // The inline count is judged before the merge rounds it (see inlineCountProblem).
-  const problem = inlineCountProblem(inline)
-  if (problem !== null) {
-    warn(`applyAddCircularArray: refusing ${problem.field}: ${problem.reason}`)
-    return
-  }
-  mergeInlineFields(circularArray, inline)
-  pushFeature(doc, {
-    id: featureId,
-    kind: 'circular_array',
-    label: label ?? 'Circular Array',
-    circular_array: circularArray,
-  })
-}
-
-export function applySetCircularArrayField(doc: PartDoc, featureId: string, field: keyof CircularArrayFeatureDef, value: unknown): void {
-  const feature = findFeature(doc, featureId)
-  const sub = feature?.kind === 'circular_array' ? feature.circular_array : undefined
-  if (sub !== undefined && refuseArrayCount(sub, field, value, 'applySetCircularArrayField')) return
-  setSubFeatureField(featureId, 'circular_array', sub, field, value, 'applySetCircularArrayField')
-}
-
-// ─── Pattern ───
-
 const PATTERN_FIELDS: readonly string[] = [
-  'source_feature', 'mode', 'count', 'pitch', 'direction', 'direction_query', 'invert',
-  'step_angle', 'axis', 'axis_origin', 'axis_direction', 'invert_axis', 'target_body',
+  'subject', 'source_body', 'operation', 'include_source', 'source_feature', 'target_body',
+  'mode', 'count', 'pitch', 'direction', 'direction_query', 'invert',
+  'count_x', 'count_y', 'pitch_x', 'pitch_y',
+  'direction_x', 'direction_x_query', 'invert_x', 'direction_y', 'direction_y_query', 'invert_y',
+  'step_angle', 'axis', 'axis_origin', 'axis_direction', 'invert_axis',
 ]
+
+/** Seed the defaults a mode reads so switching to it never leaves the solver a
+ *  required value it cannot find. Only an ABSENT value is seeded: an authored
+ *  expression or a count the user already set is a real value. */
+function seedPatternMode(sub: PatternFeatureDef, cleared: ReadonlySet<string> = new Set()): void {
+  const seed = (key: 'count' | 'count_x' | 'count_y' | 'pitch' | 'pitch_x' | 'pitch_y', value: number): void => {
+    if (!cleared.has(key) && sub[key] === undefined) sub[key] = value
+  }
+  if (sub.mode === 'rectangular') {
+    // The rectangular grid reads its own axes; the one-axis fields must not
+    // linger as values the solver would ignore.
+    delete sub.pitch
+    delete sub.step_angle
+    seed('count_x', 2)
+    seed('pitch_x', 20)
+    seed('count_y', 2)
+    seed('pitch_y', 20)
+  } else {
+    // One-axis modes never read the second rectangular axis.
+    delete sub.count_y
+    delete sub.pitch_y
+    if (sub.mode === 'circular') {
+      delete sub.pitch
+      seed('count', 4)
+    } else {
+      delete sub.step_angle
+      seed('count', 2)
+      seed('pitch', 20)
+    }
+  }
+}
 
 export function applyAddPattern(
   doc: PartDoc,
@@ -787,18 +711,35 @@ export function applyAddPattern(
   inline: Partial<PatternFeatureDef> = {},
 ): void {
   const pattern: PatternFeatureDef = {
+    subject: 'body',
     mode: 'linear',
-    count: 2,
-    pitch: 20,
+    operation: 'add',
+    include_source: true,
   }
-  // The inline count is judged before the merge rounds it, the same rule the
-  // array adds follow (see inlineCountProblem).
+  // The inline counts are judged before the merge rounds them.
   const problem = inlineCountProblem(inline)
   if (problem !== null) {
     warn(`applyAddPattern: refusing ${problem.field}: ${problem.reason}`)
     return
   }
   mergeInlineFields(pattern, inline)
+  // A feature subject inherits the source's own operation; keeping a body
+  // operation on it would advertise a field the kernel ignores.
+  if (pattern.subject === 'feature') {
+    delete pattern.operation
+    delete pattern.include_source
+  } else if (pattern.operation === undefined) {
+    pattern.operation = 'add'
+    if (pattern.include_source === undefined) pattern.include_source = true
+  }
+  // An explicit empty value cleared the key on purpose; seeding it back would
+  // silently override the author's clear with the mode's default.
+  const cleared = new Set(
+    Object.entries(inline)
+      .filter(([, value]) => value === undefined || value === null || value === '')
+      .map(([key]) => key),
+  )
+  seedPatternMode(pattern, cleared)
   pushFeature(doc, { id: featureId, kind: 'pattern', label: label ?? 'Pattern', pattern })
 }
 
@@ -814,8 +755,13 @@ export function applySetPatternField(
     warn(`applySetPatternField: feature ${featureId} has no pattern`)
     return
   }
-  if (refuseArrayCount(sub, field, value, 'applySetPatternField')) return
-  setSubFeatureField(featureId, 'pattern', sub, field, value, 'applySetPatternField', PATTERN_FIELDS)
+  if (refusePatternCount(sub, field, value, 'applySetPatternField')) return
+  if (!setSubFeatureField(featureId, 'pattern', sub, field, value, 'applySetPatternField', PATTERN_FIELDS)) return
+  if (field === 'mode') seedPatternMode(sub)
+  if (field === 'subject' && value === 'feature') {
+    delete sub.operation
+    delete sub.include_source
+  }
 }
 
 // ─── Delete Body ───

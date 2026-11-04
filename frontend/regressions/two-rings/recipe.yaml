@@ -61,17 +61,18 @@ features:
       distance: 10
       direction: normal
   - id: TFB3j1moAeG81lG_TV9ORJ0D
-    kind: array
-    label: array 2
-    array:
+    kind: pattern
+    label: pattern 2
+    pattern:
+      subject: body
       mode: linear
-      count_x: 2
-      pitch_x: 20
+      count: 2
+      pitch: 20
       operation: new
       include_source: true
       source_body: ?15,19,1e,2a;@u|u_c1dea7bb6244c5c3@SY-uXCL_uS188WwBa7Hwywkv@body_SY-uXCL_uS188WwBa7Hwywkv@UgoC6zEmpmK7z5yqVQHdagP8/Wb0Rxrzw10E_-ag_:cylinderface
-      direction_x_query: "@builtin_plane_right"
-      invert_x: false
+      direction_query: "@builtin_plane_right"
+      invert: false
   - id: 6koLbUCSiP21l-0idDJaIi3v
     kind: transform
     label: transform 3

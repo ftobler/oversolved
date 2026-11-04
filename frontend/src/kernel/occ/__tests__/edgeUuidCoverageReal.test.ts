@@ -324,9 +324,11 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
       rectSketch('sk1', 4, 4, { offsetX: 10, offsetY: -2 }),
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
       {
-        id: 'ca1', kind: 'circular_array', source_body: '@body_ex1',
-        count: 6, axis: '@builtin_plane_front',
-        include_source: true, operation: 'add',
+        id: 'ca1', kind: 'pattern', pattern: {
+          subject: 'body', mode: 'circular', source_body: '@body_ex1',
+          count: 6, axis: '@builtin_plane_front',
+          include_source: true, operation: 'add',
+        },
       },
     ] }, 'body_ex1')
   })
@@ -383,9 +385,11 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
       rectSketch('sk1', 4, 4, { offsetX: 10, offsetY: -2 }),
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
       {
-        id: 'ca1', kind: 'circular_array', source_body: '@body_ex1',
-        count: 4, axis: '@builtin_plane_front',
-        include_source: true, operation: 'new',
+        id: 'ca1', kind: 'pattern', pattern: {
+          subject: 'body', mode: 'circular', source_body: '@body_ex1',
+          count: 4, axis: '@builtin_plane_front',
+          include_source: true, operation: 'new',
+        },
       },
     ] })
     for (const bodyId of ['body_ca1', 'body_ca1_1']) {

@@ -10,7 +10,7 @@ type Dict = Record<string, unknown>
 /**
  * A ref that names several bodies where the caller can only use one. Its own
  * type because "ambiguous" and "not found" are opposite diagnoses -- leaves
- * that wrap a resolve failure in a friendlier message (array.ts) must let this
+ * that wrap a resolve failure in a friendlier message (pattern.ts) must let this
  * one through rather than tell the user the body does not exist while listing
  * the very ids that matched.
  */

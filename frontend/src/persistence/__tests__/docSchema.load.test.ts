@@ -297,11 +297,11 @@ describe('hostile sizes are capped before the builder', () => {
     const result = loadPartDoc({
       version: 1,
       kind: 'part',
-      features: [{ id: 'a1', kind: 'array', array: { source_body: '@b1', count_x: 1e9 } }],
+      features: [{ id: 'a1', kind: 'pattern', pattern: { source_body: '@b1', count_x: 1e9 } }],
     }, { name: 'Hostile' })
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.error.field).toBe('features[0].array.count_x')
+    expect(result.error.field).toBe('features[0].pattern.count_x')
     expect(result.error.message).toContain(String(MAX_ARRAY_COUNT))
   })
 
@@ -309,17 +309,17 @@ describe('hostile sizes are capped before the builder', () => {
     const result = loadPartDoc({
       version: 1,
       kind: 'part',
-      features: [{ id: 'a1', kind: 'array', array: { count_x: '10 * 1e8' } }],
+      features: [{ id: 'a1', kind: 'pattern', pattern: { count_x: '10 * 1e8' } }],
     })
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.field).toBe('features[0].array.count_x')
+    if (!result.ok) expect(result.error.field).toBe('features[0].pattern.count_x')
   })
 
   it('rejects a count pair whose product would hang the worker', () => {
     const result = loadPartDoc({
       version: 1,
       kind: 'part',
-      features: [{ id: 'a1', kind: 'array', array: { count_x: 900, count_y: 900 } }],
+      features: [{ id: 'a1', kind: 'pattern', pattern: { count_x: 900, count_y: 900 } }],
     })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.message).toContain(String(MAX_ARRAY_CELLS))
@@ -369,7 +369,7 @@ describe('hostile sizes are capped before the builder', () => {
     const result = loadPartDoc({
       version: 1,
       kind: 'part',
-      features: [{ id: 'a1', kind: 'array', array: { source_body: '@b1', count_x: 10, count_y: 5 } }],
+      features: [{ id: 'a1', kind: 'pattern', pattern: { source_body: '@b1', count_x: 10, count_y: 5 } }],
     })
     expect(result.ok).toBe(true)
   })

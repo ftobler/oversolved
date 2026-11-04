@@ -117,23 +117,24 @@
       "label": "extrude 1"
     },
     {
-      "array": {
-        "count_x": 2,
-        "direction_x": [
+      "id": "hJObESEbHbHJlpZ85sqcIiMg",
+      "kind": "pattern",
+      "label": "pattern 2",
+      "pattern": {
+        "count": 2,
+        "direction": [
           1,
           0,
           0
         ],
-        "direction_x_query": "@lWImF_YFjIL5NhMmBe0IZhXq/A6J60WY8dO4j8xOW",
+        "direction_query": "@lWImF_YFjIL5NhMmBe0IZhXq/A6J60WY8dO4j8xOW",
         "include_source": true,
         "mode": "linear",
         "operation": "add",
-        "pitch_x": 4,
-        "source_body": "?15,19,1e,2a;@u|u_92927b2a3f38f3bd@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@lWImF_YFjIL5NhMmBe0IZhXq/pwfYD59xKWiSyQhm:cylinderface"
-      },
-      "id": "hJObESEbHbHJlpZ85sqcIiMg",
-      "kind": "array",
-      "label": "array 2"
+        "pitch": 4,
+        "source_body": "?15,19,1e,2a;@u|u_92927b2a3f38f3bd@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@lWImF_YFjIL5NhMmBe0IZhXq/pwfYD59xKWiSyQhm:cylinderface",
+        "subject": "body"
+      }
     },
     {
       "fillet": {
@@ -217,7 +218,10 @@
       "visible": false
     },
     {
-      "circular_array": {
+      "id": "duA-45um74zsKKrINmVjYt67",
+      "kind": "pattern",
+      "label": "pattern 2",
+      "pattern": {
         "axis": "@xUpvjfbko7XzZl7ZUWDJVlyo/V2gNAHm-TJ0VOTJ9",
         "axis_direction": [
           0,
@@ -232,11 +236,10 @@
         "count": 4,
         "include_source": true,
         "operation": "add",
-        "source_body": "?15,19,1e,2a,7;@u|u_92927b2a3f38f3bd@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@lWImF_YFjIL5NhMmBe0IZhXq/pwfYD59xKWiSyQhm@cls_xn:cylinderface"
-      },
-      "id": "duA-45um74zsKKrINmVjYt67",
-      "kind": "circular_array",
-      "label": "circular_array 2"
+        "source_body": "?15,19,1e,2a,7;@u|u_92927b2a3f38f3bd@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@lWImF_YFjIL5NhMmBe0IZhXq/pwfYD59xKWiSyQhm@cls_xn:cylinderface",
+        "subject": "body",
+        "mode": "circular"
+      }
     },
     {
       "constraints": [

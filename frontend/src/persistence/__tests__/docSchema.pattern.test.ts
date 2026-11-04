@@ -12,34 +12,35 @@ function doc(pattern: unknown): Record<string, unknown> {
 describe('pattern document validation', () => {
   it('accepts a valid linear pattern and keeps its payload', () => {
     const result = loadPartDoc(doc({
-      source_feature: '@ex1', mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0],
+      subject: 'feature', source_feature: '@ex1', mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0],
     }))
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect((result.doc.features as Record<string, unknown>[])[0].pattern).toEqual({
-      source_feature: '@ex1', mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0],
+      subject: 'feature', source_feature: '@ex1', mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0],
     })
   })
 
   it('accepts a circular pattern with the stored axis pair', () => {
     expect(loadPartDoc(doc({
-      source_feature: '@ex1', mode: 'circular', count: 4, step_angle: 90,
+      subject: 'feature', source_feature: '@ex1', mode: 'circular', count: 4, step_angle: 90,
       axis_origin: [0, 0, 0], axis_direction: [0, 0, 1], invert_axis: true,
     })).ok).toBe(true)
   })
 
-  it('refuses an unknown mode, naming the two', () => {
-    const result = loadPartDoc(doc({ source_feature: '@ex1', mode: 'polar' }))
+  it('refuses an unknown mode, naming all three', () => {
+    const result = loadPartDoc(doc({ subject: 'feature', source_feature: '@ex1', mode: 'polar' }))
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error.field).toBe('features[0].pattern.mode')
     expect(result.error.message).toContain('"linear"')
+    expect(result.error.message).toContain('"rectangular"')
     expect(result.error.message).toContain('"circular"')
   })
 
   it('refuses a count the loader would refuse', () => {
     for (const count of [0, -2, 2.5]) {
-      const result = loadPartDoc(doc({ source_feature: '@ex1', count }))
+      const result = loadPartDoc(doc({ subject: 'feature', source_feature: '@ex1', count }))
       expect(result.ok, String(count)).toBe(false)
       if (result.ok) continue
       expect(result.error.field).toBe('features[0].pattern.count')
@@ -47,11 +48,11 @@ describe('pattern document validation', () => {
   })
 
   it('refuses a non-string source and a malformed direction', () => {
-    const source = loadPartDoc(doc({ source_feature: 5 }))
+    const source = loadPartDoc(doc({ subject: 'feature', source_feature: 5 }))
     expect(source.ok).toBe(false)
     if (!source.ok) expect(source.error.field).toBe('features[0].pattern.source_feature')
 
-    const direction = loadPartDoc(doc({ source_feature: '@ex1', direction: [1, 0] }))
+    const direction = loadPartDoc(doc({ subject: 'feature', source_feature: '@ex1', direction: [1, 0] }))
     expect(direction.ok).toBe(false)
     if (!direction.ok) expect(direction.error.field).toBe('features[0].pattern.direction')
   })

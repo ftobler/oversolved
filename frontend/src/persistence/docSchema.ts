@@ -782,29 +782,6 @@ export function arrayCountProblem(
   return arrayCellsProblem(value, other ?? null)
 }
 
-function checkArray(sub: DocRecord, field: string): void {
-  checkOptional(sub, 'source_body', field, checkRef)
-  checkOptional(sub, 'mode', field, (v, f) => checkEnum(v, f, ['linear', 'rectangular']))
-  checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, ['add', 'new']))
-  checkOptional(sub, 'include_source', field, checkBoolean)
-  checkCountPair(sub, field)
-  for (const key of ['pitch_x', 'pitch_y']) checkOptional(sub, key, field, checkExpr)
-  for (const key of ['direction_x', 'direction_y']) checkOptional(sub, key, field, checkVec3)
-  for (const key of ['direction_x_query', 'direction_y_query']) checkOptional(sub, key, field, checkRef)
-  for (const key of ['invert_x', 'invert_y']) checkOptional(sub, key, field, checkBoolean)
-}
-
-function checkCircularArray(sub: DocRecord, field: string): void {
-  checkOptional(sub, 'source_body', field, checkRef)
-  checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, ['add', 'new']))
-  checkOptional(sub, 'include_source', field, checkBoolean)
-  if (sub.count !== undefined) checkCount(sub.count, `${field}.count`)
-  if (sub.step_angle !== undefined && sub.step_angle !== null) checkExpr(sub.step_angle, `${field}.step_angle`)
-  checkOptional(sub, 'axis', field, checkRef)
-  for (const key of ['axis_origin', 'axis_direction']) checkOptional(sub, key, field, checkVec3)
-  checkOptional(sub, 'invert_axis', field, checkBoolean)
-}
-
 function checkDeleteBody(sub: DocRecord, field: string): void {
   checkOptional(sub, 'bodies', field, checkRefList)
 }
@@ -888,15 +865,29 @@ function checkSplit(sub: DocRecord, field: string): void {
 }
 
 function checkPattern(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'subject', field, (v, f) => checkEnum(v, f, ['body', 'feature']))
+  checkOptional(sub, 'source_body', field, checkRef)
   checkOptional(sub, 'source_feature', field, checkRef)
-  checkOptional(sub, 'mode', field, (v, f) => checkEnum(v, f, ['linear', 'circular']))
-  // count is the total instance count, so 1 is a legal no-op; the array's
-  // cells cap does not apply because a pattern has one axis.
+  checkOptional(sub, 'target_body', field, checkRef)
+  checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, ['add', 'new']))
+  checkOptional(sub, 'include_source', field, checkBoolean)
+  checkOptional(sub, 'mode', field, (v, f) => checkEnum(v, f, ['linear', 'rectangular', 'circular']))
+  // count is the total instance count for one axis, so 1 is a legal no-op.
+  // The rectangular pair carries the same cells cap the old array had.
   if (sub.count !== undefined) checkCount(sub.count, `${field}.count`)
-  for (const key of ['pitch', 'step_angle']) checkOptional(sub, key, field, checkExpr)
-  for (const key of ['direction', 'axis_origin', 'axis_direction']) checkOptional(sub, key, field, checkVec3)
-  for (const key of ['direction_query', 'axis', 'target_body']) checkOptional(sub, key, field, checkRef)
-  for (const key of ['invert', 'invert_axis']) checkOptional(sub, key, field, checkBoolean)
+  checkCountPair(sub, field)
+  for (const key of ['pitch', 'pitch_x', 'pitch_y', 'step_angle']) {
+    if (sub[key] !== undefined && sub[key] !== null) checkExpr(sub[key], `${field}.${key}`)
+  }
+  for (const key of ['direction', 'direction_x', 'direction_y', 'axis_origin', 'axis_direction']) {
+    checkOptional(sub, key, field, checkVec3)
+  }
+  for (const key of ['direction_query', 'direction_x_query', 'direction_y_query', 'axis']) {
+    checkOptional(sub, key, field, checkRef)
+  }
+  for (const key of ['invert', 'invert_x', 'invert_y', 'invert_axis']) {
+    checkOptional(sub, key, field, checkBoolean)
+  }
 }
 
 function checkVariable(sub: DocRecord, field: string): void {
@@ -948,8 +939,6 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['move_face', checkMoveFace],
   ['delete_face', checkDeleteFace],
   ['boolean', checkBooleanDef],
-  ['array', checkArray],
-  ['circular_array', checkCircularArray],
   ['pattern', checkPattern],
   ['delete_body', checkDeleteBody],
   ['hole', checkHole],

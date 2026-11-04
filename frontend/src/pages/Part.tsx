@@ -134,7 +134,6 @@ const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
   mirror: { field: 'body' },
   split: { field: 'bodies', multi: true },
   delete_body: { field: 'bodies', multi: true },
-  circular_array: { field: 'axis' },
   helix: { field: 'reference' },
 }
 

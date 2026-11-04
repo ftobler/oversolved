@@ -12,10 +12,10 @@ import {
   applyAddBooleanTool,
   applyRemoveBooleanTool,
   applyReorderPickField,
-  applySetArrayField,
+  applySetPatternField,
   applySetHoleField,
 } from '@/utils/yamlMutations'
-import { applySetArrayMode, applySetHoleSketch } from '@/utils/yamlMutations/featureDefs'
+import { applySetHoleSketch } from '@/utils/yamlMutations/featureDefs'
 
 // A record that names a kind but carries no def; only the loader can reject it,
 // and it does not, so this cast mirrors what a loaded document can contain.
@@ -39,9 +39,9 @@ describe('mutations tolerate a kind without its payload', () => {
     expectWarnNoThrow(() => applyRemoveBooleanTool(docWith(kindOnly('boolean')), 'x1', '@b1'))
   })
 
-  it('array field and mode setters warn', () => {
-    expectWarnNoThrow(() => applySetArrayField(docWith(kindOnly('array')), 'x1', 'count_x', 3))
-    expectWarnNoThrow(() => applySetArrayMode(docWith(kindOnly('array')), 'x1', 'rectangular'))
+  it('pattern field and mode setters warn', () => {
+    expectWarnNoThrow(() => applySetPatternField(docWith(kindOnly('pattern')), 'x1', 'count', 3))
+    expectWarnNoThrow(() => applySetPatternField(docWith(kindOnly('pattern')), 'x1', 'mode', 'rectangular'))
   })
 
   it('hole field and sketch setters warn', () => {
