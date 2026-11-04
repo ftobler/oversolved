@@ -36,11 +36,17 @@ export interface FeatureDelta {
   bboxDelta: number[] | null
   // A hole's drill side as the kernel resolved it (FeatureOutcome.direction).
   direction?: 'normal' | 'reverse'
-  // The body this feature built or changed (a merge_target cut's receiving
-  // body, say) and that body's own volume after it; absent when the feature
-  // names no live body.
+  // A body this feature changed and that body's own volume after it. The name
+  // is the feature's own reported body when that one changed, otherwise the
+  // one body whose volume moved; a rigid transform or mirror still names its
+  // body though the volume comparison cannot see it. Several changed bodies
+  // leave this off and set `changedBodyCount` instead, so a disjoint array does
+  // not single out its untouched source.
   body?: string
   bodyVolume?: number
+  // How many live bodies changed, set only when more than one did. Not the
+  // model's live-body count, which `run` reports as the summary's `bodies`.
+  changedBodyCount?: number
 }
 
 export interface FeatureDeltaOptions {
@@ -82,6 +88,53 @@ function sameMeasure(after: FeatureMeasure, before: FeatureMeasure): boolean {
   return after.bbox.every((value, index) => closeNumber(value, before.bbox![index]))
 }
 
+// Live bodies whose own volume moved, a new id counting as changed. A body the
+// feature removed is not live and is not counted: the row describes what the
+// checkpoint still holds.
+function changedBodyIds(
+  bodies: Record<string, number>,
+  previousBodies: Record<string, number>,
+): string[] {
+  const changed: string[] = []
+  for (const [id, volume] of Object.entries(bodies)) {
+    const before = previousBodies[id]
+    if (before === undefined || !closeNumber(volume, before)) changed.push(id)
+  }
+  return changed
+}
+
+// The body fields a row can carry, chosen from the measured change rather than
+// from the kernel's identity anchor. `body_id` stays a feature's stable anchor
+// (a disjoint array deliberately keeps the source's id), so it only names the
+// row when that body itself changed.
+function bodyFields(
+  kind: string,
+  bodyId: string | undefined,
+  bodies: Record<string, number> | undefined,
+  changed: readonly string[],
+): Pick<FeatureDelta, 'body' | 'bodyVolume' | 'changedBodyCount'> {
+  if (bodies === undefined) return {}
+  const count = changed.length > 1 ? { changedBodyCount: changed.length } : {}
+  if (bodyId !== undefined && changed.includes(bodyId)) {
+    const volume = bodies[bodyId]
+    if (volume !== undefined) return { body: bodyId, bodyVolume: volume, ...count }
+  }
+  if (changed.length === 1) {
+    const only = changed[0]
+    const volume = bodies[only]
+    if (volume !== undefined) return { body: only, bodyVolume: volume }
+  }
+  if (changed.length > 1) return count
+  // A rigid move replaces a body's shape or placement without necessarily
+  // changing its volume, so the comparison above cannot see it. This exception
+  // is what keeps a transform or mirror described.
+  if ((kind === 'transform' || kind === 'mirror') && bodyId !== undefined) {
+    const volume = bodies[bodyId]
+    if (volume !== undefined) return { body: bodyId, bodyVolume: volume }
+  }
+  return {}
+}
+
 /**
  * Zip the checkpoint measures with the document's feature order and the solve
  * verdicts. Only a feature the kernel built gets a row; a problem feature's
@@ -104,6 +157,10 @@ export function featureDeltaRows(
   const rows: FeatureDelta[] = []
   let previousVolume = 0
   let previousBbox: number[] | null = null
+  // The previous checkpoint's body map moves with the volume and bbox above,
+  // including past a failed feature: its half-applied bodies are the baseline
+  // the next clean row is measured from.
+  let previousBodies: Record<string, number> = {}
   for (const feature of doc.features ?? []) {
     const id = typeof feature.id === 'string' ? feature.id : ''
     if (id === '') continue
@@ -117,7 +174,7 @@ export function featureDeltaRows(
       const bboxDelta = subtractBbox(measure.bbox, previousBbox)
       if (mode === 'all' || includeRow(id, kind, measure, volumeDelta, bboxDelta)) {
         const bodyId = isSolidProducingKind(kind) ? outcome.bodyId : undefined
-        const bodyVolume = bodyId === undefined ? undefined : measure.bodies?.[bodyId]
+        const changed = measure.bodies === undefined ? [] : changedBodyIds(measure.bodies, previousBodies)
         rows.push({
           id,
           kind,
@@ -128,12 +185,13 @@ export function featureDeltaRows(
           bboxDelta,
           ...(outcome.warning !== undefined && { warning: outcome.warning }),
           ...(outcome.direction !== undefined && { direction: outcome.direction }),
-          ...(bodyId !== undefined && bodyVolume !== undefined && { body: bodyId, bodyVolume }),
+          ...bodyFields(kind, bodyId, measure.bodies, changed),
         })
       }
     }
     previousVolume = measure.volume
     previousBbox = measure.bbox
+    previousBodies = measure.bodies ?? {}
   }
   return rows
 

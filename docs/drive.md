@@ -585,9 +585,16 @@ banner on stdout, so a client config must use the direct node invocation.
   `featureDeltas` answers "what did this step contribute": one row per feature
   this call changed, in log order, with `id`, `kind`, `status`, the cumulative
   `volume` and `bbox` after it (the total over every live body, not one body's),
-  and `volumeDelta`/`bboxDelta` from the previous checkpoint. A feature that
-  built or changed one body also carries `body` (its id, e.g. the merge_target a
-  cut went into) and `bodyVolume` (that body's own volume after it). A row
+  and `volumeDelta`/`bboxDelta` from the previous checkpoint. `body` names a
+  body the feature changed (the feature's own reported body when that one
+  changed, e.g. the merge_target a cut went into), and `bodyVolume` is that
+  body's own volume. `changedBodyCount` is set when more than one body changed:
+  the row then names the feature's own body only when that body is one of them,
+  so a disjoint array reports its copy count instead of its untouched source.
+  `body`, `bodyVolume` and the count are absent when no body changed, except
+  that a rigid transform or mirror still names its body (a move changes shape or
+  placement without necessarily changing volume). `volume` is still the total
+  over every live body. A row
   appears when the feature's checkpoint differs from the input document's solve,
   when the feature is new, or when the steps touched a solid-producing feature
   (so an edit that leaves the same volume still shows its zero contribution);
