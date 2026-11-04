@@ -338,6 +338,47 @@ describe('cancel_draw staged disarm', () => {
   })
 })
 
+describe('finish_draw (the stamp-down twin of cancel_draw)', () => {
+  beforeAll(() => { initializeTools() })
+
+  beforeEach(() => {
+    useSketchEditorStore.getState().setActiveTool(null)
+    useEditorState.setState({ activeFeatureId: 'S1', drawPoints: [], drawSnapRefs: [] })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    useSketchEditorStore.getState().setActiveTool(null)
+    setSketchCallback('onMutation', null)
+  })
+
+  it('runs the store action, which commits the staged spline', () => {
+    useSketchEditorStore.getState().setActiveTool('fit_spline')
+    useEditorState.setState({ drawPoints: [[0, 0], [1, 1], [2, 0]] })
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+
+    execute('finish_draw')
+
+    expect(onMutation).toHaveBeenCalledOnce()
+    expect(onMutation.mock.calls[0][0]).toMatchObject({ type: 'add_entity', kind: 'fit_spline' })
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+    expect(useSketchEditorStore.getState().activeTool).toBe('fit_spline')
+  })
+
+  it('is disabled with a reason when no gesture can be stamped down', () => {
+    const registry = partRegistry(partContext())
+    expect(registry.enabled('finish_draw')).toBe('nothing to finish')
+
+    useSketchEditorStore.getState().setActiveTool('fit_spline')
+    useEditorState.setState({ drawPoints: [[0, 0]], drawSnapRefs: [] })
+    expect(registry.enabled('finish_draw')).toBe('nothing to finish')
+
+    useEditorState.setState({ drawPoints: [[0, 0], [1, 1]], drawSnapRefs: [] })
+    expect(registry.enabled('finish_draw')).toBe(true)
+  })
+})
+
 // Undo must not destroy an in-progress draw AND pop a real history entry from
 // one keystroke. Its first stage mirrors Escape's cancel_gesture arm: with a
 // half-placed entity (draw points) or a half-built dimension in the store it

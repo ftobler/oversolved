@@ -219,6 +219,10 @@ export interface SketchEditorState {
   setDrawHover: (pt: [number, number] | null) => void
   setDrawSnap: (refs: (string | null)[]) => void
   clearDraw: () => void
+  // Stamp the in-progress drawing gesture down as its entity, the action Enter,
+  // a right click and a double click perform. Returns false when the armed tool
+  // has nothing left to finish, so the caller can leave the buffer untouched.
+  finishDraw: () => boolean
 
   // NAVIGATION SUBSYSTEM
   isRotating: boolean

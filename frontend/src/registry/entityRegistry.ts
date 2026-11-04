@@ -163,7 +163,7 @@ export const ENTITIES: readonly EntityDef[] = [
   {
     kind: 'fit_spline',
     label: 'Spline',
-    description: 'An interpolating spline through N fit points, with optional end handles.',
+    description: 'An interpolating spline through N fit points, with optional end handles. Click fit points, then press Enter, right-click or double-click to finish, or click the first point to close.',
     // Minimum block: two fit points, no handles. The real count is
     // `2 N + 2 h`; see `fitSplineVertices`.
     paramCount: 4,

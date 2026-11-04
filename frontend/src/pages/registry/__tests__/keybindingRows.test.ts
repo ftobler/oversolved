@@ -41,6 +41,14 @@ describe('buildKeybindingRows', () => {
     expect(resolveMode('p', 'apply_parallel')).toBe('none')
   })
 
+  it('advertises Enter as a sketch-only finish', () => {
+    const row = rows.find(r => r.key === 'enter')!
+    expect(row.command).toBe('finish_draw')
+    expect(row.mode).toBe('sketch')
+    expect(row.label.length).toBeGreaterThan(0)
+    expect(row.description.length).toBeGreaterThan(0)
+  })
+
   it('does not advertise parallel on p', () => {
     expect(rows.map(r => r.command)).not.toContain('apply_parallel')
     expect(rows.filter(r => r.key === 'p').map(r => r.command)).toEqual(['toggle_plane_visibility'])

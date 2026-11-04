@@ -8,6 +8,7 @@ export const COMMAND_NAMES = [
   'redo',
   'delete_selected',
   'cancel_draw',
+  'finish_draw',
   'cancel_edit',
   'toggle_construction',
   'toggle_sketch_plane_visibility',

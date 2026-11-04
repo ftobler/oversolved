@@ -5,9 +5,10 @@ import type { SnapKind } from '@/registry'
 import { computeDrawClick } from '@/utils/geometry/drawLogic'
 import type { DrawSnapState } from '@/utils/geometry/drawLogic'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
+import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { randomId } from '@/utils/yamlMutations'
 import { toolModeHandlers } from '@/tools/toolMode'
-import { devOnly, failLoud } from '@/stores/stateInvariants'
+import { failLoud } from '@/stores/stateInvariants'
 
 export interface DrawingToolContext extends ToolContext {
   drawPoints: Point[]
@@ -80,19 +81,15 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
         context.otherSketches as Record<string, Record<string, Entity>> | undefined,
       )
 
-      // A gesture that emits several mutations (an end-snapped line adds the
-      // entity and the constraint; a face project adds one per boundary edge)
-      // must undo as a single step, so it goes through the batch seam. A
-      // future context that forgets the seam would silently drop the whole
-      // gesture (the optional call is a no-op), so warn in dev.
-      if (result.mutations.length > 1) {
-        if (!context.onMutationBatch) {
-          if (devOnly) console.warn(`[DrawingTool] ${config.entityKind}: gesture emitted ${result.mutations.length} mutations but the context has no onMutationBatch - dropping the batch.`)
-        }
-        context.onMutationBatch?.(result.mutations)
-      } else if (result.mutations.length === 1) {
-        context.onMutation?.(result.mutations[0])
-      }
+      // One commit path for both a click-built and a stamped gesture: the
+      // batch seam, the buffer reset and the arming policy live in the helper.
+      commitDrawGesture(result, {
+        onMutation: context.onMutation,
+        onMutationBatch: context.onMutationBatch,
+        clearDraw: context.clearDraw,
+        disarm: () => context.setActiveTool(null),
+        staysArmedAfterCommit: getToolPickConfig(config.entityKind).staysArmedAfterCommit,
+      }, `[DrawingTool] ${config.entityKind}`)
 
       if (result.nextDrawSnap !== null) {
         context.setDrawSnap(result.nextDrawSnap.refs)
@@ -100,16 +97,6 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
 
       if (result.nextDrawPoints !== null) {
         context.setDrawPoints(result.nextDrawPoints)
-      }
-
-      if (result.gestureComplete) {
-        context.clearDraw()
-        // The tool's arming policy owns the disarm decision, not this adapter:
-        // a sticky tool (e.g. line) stays armed so the next click starts a fresh
-        // entity of the same kind; only one-shot tools reset to select.
-        if (!getToolPickConfig(config.entityKind).staysArmedAfterCommit) {
-          context.setActiveTool(null)
-        }
       }
 
       return null

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import * as THREE from 'three'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import type { Tool } from '@/registry/toolRegistry'
 import { takeDrawToolClickConsumed } from '@/components/Viewport/idDispatch/drawToolClickGuard'
@@ -61,6 +61,7 @@ vi.mock('@/components/interaction/useAlignmentSnapEffect', async (importOriginal
 })
 
 import { DrawPlane } from '@/components/Geometry3D/Drawing'
+import { createDrawingTool } from '@/tools/DrawingTool'
 import { useEditorState } from '@/hooks/useEditorState'
 
 function makeCanvas(): HTMLCanvasElement {
@@ -80,8 +81,12 @@ function move(clientX: number, clientY: number, buttons = 0): void {
 
 // A real pointerdown carrying clientX: testing-library's synthetic pointer event
 // does not populate clientX under jsdom, and the commit handler reads it.
-function clickDrawMesh(el: Element, clientX = 100, clientY = 100): void {
-  act(() => { el.dispatchEvent(new MouseEvent('pointerdown', { clientX, clientY, bubbles: true, button: 0 })) })
+function clickDrawMesh(el: Element, clientX = 100, clientY = 100, button = 0): void {
+  act(() => { el.dispatchEvent(new MouseEvent('pointerdown', { clientX, clientY, bubbles: true, button })) })
+}
+
+function doubleClickDrawMesh(el: Element, clientX = 100, clientY = 100): void {
+  act(() => { el.dispatchEvent(new MouseEvent('dblclick', { clientX, clientY, bubbles: true, button: 0 })) })
 }
 
 function stubTool(id: string, onPointerDown?: Tool['handlers']['onPointerDown']): Tool {
@@ -95,6 +100,8 @@ function stubTool(id: string, onPointerDown?: Tool['handlers']['onPointerDown'])
 beforeEach(() => {
   toolRegistry.reset()
   takeDrawToolClickConsumed()
+  setSketchCallback('onMutation', null)
+  setSketchCallback('onMutationBatch', null)
   proj.point = null
   proj.calls = 0
   pick.hit = null
@@ -116,6 +123,7 @@ beforeEach(() => {
     hoveredSnapKind: null,
     normalSelection: new Set(),
     isPointerDown: false,
+    modeStack: [],
   })
 })
 
@@ -352,6 +360,128 @@ describe('DrawPlane commit click', () => {
       <DrawPlane featureId="S1" activeFeatureId="S2" sketchGroupRef={groupRef} />,
     )
     expect(container.querySelector('mesh')).toBeNull()
+  })
+})
+
+describe('DrawPlane stamp-down', () => {
+  // A right click is the camera's button and is resolved on pointer-up by the
+  // Viewport (so a right-drag orbit never commits). The draw plane itself only
+  // owns the rule that no non-primary press ever places a point; the
+  // double click is the explicit finish the click path cannot cover when the
+  // pointer drifted between the two presses.
+  it('never places a point on a non-primary press', () => {
+    const onPointerDown = vi.fn()
+    toolRegistry.register(stubTool('fit_spline', onPointerDown))
+    useEditorState.setState({
+      activeTool: 'fit_spline',
+      modeStack: ['tool:fit_spline'],
+      drawPoints: [[0, 0]],
+    })
+    const { container } = render(
+      <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />,
+    )
+    const mesh = container.querySelector('mesh')!
+
+    clickDrawMesh(mesh, 100, 100, 2)
+    clickDrawMesh(mesh, 100, 100, 1)
+
+    expect(onPointerDown).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([[0, 0]])
+  })
+
+  it('a double click commits the points staged by its two presses exactly once', () => {
+    // The real tool, not a stub: the first press stages a point, the second
+    // stages the next, and the double click stamps the two of them down. The
+    // click path cannot finish here because the second press did not land on
+    // the last point.
+    toolRegistry.register(createDrawingTool({ entityKind: 'fit_spline', paramCount: 4 }))
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    useEditorState.setState({
+      activeTool: 'fit_spline',
+      modeStack: ['tool:fit_spline'],
+      drawPoints: [],
+      drawSnapRefs: [],
+    })
+    const { container } = render(
+      <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />,
+    )
+    const mesh = container.querySelector('mesh')!
+
+    act(() => {
+      proj.point = { x: 0, y: 0, z: 0 }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true, button: 0 }))
+    })
+    act(() => {
+      proj.point = { x: 2, y: 1, z: 0 }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 101, clientY: 101, bubbles: true, button: 0 }))
+    })
+    expect(onMutation).not.toHaveBeenCalled()
+
+    doubleClickDrawMesh(mesh)
+
+    expect(onMutation).toHaveBeenCalledOnce()
+    expect(onMutation.mock.calls[0][0]).toMatchObject({
+      type: 'add_entity', kind: 'fit_spline', params: [0, 0, 2, 1],
+    })
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+  })
+
+  it('a clean double-click finish leaves no stray point behind', () => {
+    // Press 1 lands on the last fit point and finishes through the click path;
+    // press 2 is the second half of the double click and would open a fresh
+    // one-point gesture. The dblclick must drop that point, not leave a preview
+    // dot that Enter cannot finish.
+    toolRegistry.register(createDrawingTool({ entityKind: 'fit_spline', paramCount: 4 }))
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    useEditorState.setState({
+      activeTool: 'fit_spline',
+      modeStack: ['tool:fit_spline'],
+      drawPoints: [[0, 0], [1, 1], [2, 0]],
+      drawSnapRefs: [],
+    })
+    const { container } = render(
+      <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />,
+    )
+    const mesh = container.querySelector('mesh')!
+
+    act(() => {
+      proj.point = { x: 2, y: 0, z: 0 }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true, button: 0 }))
+    })
+    expect(onMutation).toHaveBeenCalledOnce()
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+
+    act(() => {
+      proj.point = { x: 5, y: 5, z: 0 }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true, button: 0 }))
+    })
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([[5, 5]])
+
+    doubleClickDrawMesh(mesh)
+
+    expect(onMutation).toHaveBeenCalledOnce()
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+  })
+
+  it('a double click on a tool that cannot be stamped commits nothing', () => {
+    toolRegistry.register(stubTool('line', vi.fn()))
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    useEditorState.setState({
+      activeTool: 'line',
+      modeStack: ['tool:line'],
+      drawPoints: [[0, 0], [1, 1]],
+    })
+    const { container } = render(
+      <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />,
+    )
+
+    doubleClickDrawMesh(container.querySelector('mesh')!)
+
+    expect(onMutation).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([[0, 0], [1, 1]])
   })
 })
 
