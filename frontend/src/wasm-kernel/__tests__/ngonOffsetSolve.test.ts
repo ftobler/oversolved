@@ -15,6 +15,7 @@ import { lowerSketch } from '../lowerSketch'
 import { encodeInput, decodeOutput } from '../codec'
 import { partDocToSketches } from '../partDocToSketches'
 import { applyAddNgon, applyAddOffset, applyAddEntity, applyAddRect, applyDeleteElements } from '@/utils/yamlMutations'
+import { endpointVertices } from '@/utils/geometry/offsetProfile'
 import { featureAt, sketchAt } from '@/testing/featureAccess'
 
 const entities0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').entities!
@@ -232,6 +233,50 @@ describe.skipIf(!bytes)('connected-profile offset stays a closed profile after s
     for (const e of ends) {
       const nearest = Math.min(...starts.map((s) => Math.hypot(s[0] - e[0], s[1] - e[1])))
       expect(nearest).toBeLessThan(1e-2)
+    }
+  })
+
+  // The reported heart failure: four arcs and two lines joined by coordinates
+  // only, every joint SHARP. Authoring a tangent at each curved joint moved the
+  // sources (r40 -> r34.69, r4.5 -> r8.59) and opened the loop. A correct miter
+  // leaves the seed at zero residual, so the least-change solver cannot move a
+  // source at all.
+  it('heart-like six-entity loop: sources stay put and the clone loop closes', () => {
+    const doc = emptySketch()
+    const sourceIds = ['a1', 'l1', 'a2', 'a3', 'l2', 'a4']
+    // A lens with two lobes: 180 degree arcs and two vertical sides, all six
+    // joints sharp (no tangent at any of them). Each arc bulges away from the
+    // interior, so the loop is simple and every joint offsets out of it.
+    applyAddEntity(doc, 'sk', 'arc', [-10, -10, Math.sqrt(200), 135, 315], 'a1')
+    applyAddEntity(doc, 'sk', 'line', [-20, 0, -20, 20], 'l1')
+    applyAddEntity(doc, 'sk', 'arc', [-10, 25, Math.sqrt(125), 26.56505117707799, 206.56505117707798], 'a2')
+    applyAddEntity(doc, 'sk', 'arc', [10, 25, Math.sqrt(125), -26.56505117707799, 153.43494882292202], 'a3')
+    applyAddEntity(doc, 'sk', 'line', [20, 20, 20, 0], 'l2')
+    applyAddEntity(doc, 'sk', 'arc', [10, -10, Math.sqrt(200), -135, 45], 'a4')
+    const f = sketchAt(doc)
+    const authored = Object.fromEntries(sourceIds.map((id) => [id, [...f.initial![id]]]))
+
+    applyAddOffset(doc, 'sk', sourceIds, 2)
+    const cloneIds = entities0(doc).map((e) => e.id).filter((id) => !sourceIds.includes(id))
+    expect(cloneIds).toHaveLength(6)
+
+    const solved = solveFeature(doc)
+    for (const id of sourceIds) {
+      const a = authored[id], s = solved[id]
+      expect(s).toHaveLength(a.length)
+      for (let i = 0; i < a.length; i++) expect(Math.abs(s[i] - a[i])).toBeLessThan(1e-6)
+    }
+
+    const endpoints = cloneIds.flatMap((id) => {
+      const kind = entities0(doc).find((e) => e.id === id)!.kind
+      return endpointVertices(kind, solved[id]).map((v) => v.point)
+    })
+    expect(endpoints).toHaveLength(12)
+    for (const p of endpoints) {
+      const nearest = Math.min(...endpoints
+        .filter((q) => q !== p)
+        .map((q) => Math.hypot(q[0] - p[0], q[1] - p[1])))
+      expect(nearest).toBeLessThan(1e-3)
     }
   })
 })

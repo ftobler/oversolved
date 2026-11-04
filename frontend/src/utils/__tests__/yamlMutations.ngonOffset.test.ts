@@ -141,6 +141,15 @@ describe('applyAddOffset', () => {
     expect(feat.constraints ?? []).toHaveLength(0)
   })
 
+  it('empty selection is a no-op', () => {
+    const doc = sketchDoc()
+    applyAddEntity(doc, 'sk', 'line', [0, 0, 10, 0], 'src')
+    expect(() => applyAddOffset(doc, 'sk', [], 5)).not.toThrow()
+    const feat = featureAt(doc, 0, 'sketch')
+    expect(feat.entities).toHaveLength(1)
+    expect(feat.constraints ?? []).toHaveLength(0)
+  })
+
   it('deleting the copy garbage-collects its offset relationship', () => {
     const doc = sketchDoc()
     applyAddEntity(doc, 'sk', 'line', [0, 0, 10, 0], 'src')

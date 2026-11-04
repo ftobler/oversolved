@@ -752,7 +752,8 @@ export const MUTATION_CATALOG = {
   },
   apply_offset: {
     summary: 'Offset sketch entities by a distance. Each sourceId must name an entity in the featureId sketch; '
-      + 'a connected chain (coincident or coordinate-joined) is refitted corner to corner.',
+      + 'a connected chain (coincident or coordinate-joined) is refitted corner to corner: a sharp joint is '
+      + 'mitred on the offset curves, and only a joint the sources already meet tangentially keeps a `tangent`.',
     note: OFFSET_SIDE_NOTE,
     fields: { featureId: str(), sourceIds: arr(), distance: num('Signed; see the row note for the side.') },
   },
