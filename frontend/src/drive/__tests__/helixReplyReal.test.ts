@@ -102,6 +102,8 @@ describe.skipIf(!ready)('helix placement in the drive reply (real OCC + Rust sol
     expect(curve.turns).toBe(2)
     expect(curve.height).toBe(5)
     expect(curve.hand).toBe('right')
+    // helixReal.test.ts owns the agreement with the registered @hx1/start,
+    // @hx1/end and bare-id axis; this reply is the same values after rounding.
 
     const reply = runReply(run, false, new DocHandleStore())
     expect(reply.curves).toEqual(run.curves)
@@ -132,6 +134,9 @@ describe.skipIf(!ready)('helix placement in the drive reply (real OCC + Rust sol
 
   it('a sweep whose profile sits at the reported start builds', async () => {
     const run = await helixRun(0.5)
+    // Take the point from the reply, not from the @hx1/start ref: this is the
+    // number a caller has, and the sweep must build on it after rounding.
+    const start = run.curves!.hx1.start
     await yieldToEventLoop()
     const chained = await runHeadless({
       doc: run.doc as PartDoc,
@@ -141,7 +146,7 @@ describe.skipIf(!ready)('helix placement in the drive reply (real OCC + Rust sol
           featureId: 'pl1',
           definition: {
             mode: 'origin_rotation',
-            origin: '@hx1/start',
+            origin: start,
             plane: '@builtin_plane_front',
             rotation_axis: 'z',
             rotation_angle: 0,

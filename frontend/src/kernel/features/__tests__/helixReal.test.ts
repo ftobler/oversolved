@@ -74,6 +74,7 @@ describe.skipIf(!oc)('helix leaf (real OCC)', () => {
       // axis the bare id resolves, so a caller reads them without a probe plane.
       const startRef = repo.elements.get('hx1/start') as { origin: number[] }
       const endRef = repo.elements.get('hx1/end') as { origin: number[] }
+      const axisRef = repo.elements.get('hx1') as { axis: number[] }
       const first = result.curve.points[0]
       const last = result.curve.points[result.curve.points.length - 1]
       for (let i = 0; i < 3; i++) {
@@ -81,6 +82,7 @@ describe.skipIf(!oc)('helix leaf (real OCC)', () => {
         expect(result.placement.end[i]).toBeCloseTo(endRef.origin[i], 9)
         expect(result.placement.start[i]).toBeCloseTo(first[i], 9)
         expect(result.placement.end[i]).toBeCloseTo(last[i], 9)
+        expect(result.placement.axis[i]).toBeCloseTo(axisRef.axis[i], 9)
       }
       expect(result.placement.axis[0]).toBeCloseTo(0, 9)
       expect(result.placement.axis[1]).toBeCloseTo(0, 9)
