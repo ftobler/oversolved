@@ -13,6 +13,211 @@ mod helpers;
 mod primitives;
 mod tangent_hole;
 
+/// The crossed-slot report: a r5.9 circle and a stadium slot whose left end
+/// arc is concentric with it. The lines meet the circle at x = 5.344...
+fn circle_with_closed_slot(circle_center: [f64; 2], left_arc: bool) -> Vec<(String, InputEntity)> {
+    let mut geom = vec![
+        ("c".into(), circle(circle_center, 5.9)),
+        ("l1".into(), line([0.0, -2.5], [6.3, -2.5])),
+        (
+            "a1".into(),
+            InputEntity {
+                center: Some([6.3, 0.0]),
+                radius: Some(2.5),
+                start: Some([6.3, -2.5]),
+                end: Some([6.3, 2.5]),
+                angle_start: Some(-90.0),
+                angle_end: Some(90.0),
+                ..Default::default()
+            },
+        ),
+        ("l2".into(), line([6.3, 2.5], [0.0, 2.5])),
+    ];
+    if left_arc {
+        geom.push((
+            "a2".into(),
+            InputEntity {
+                center: Some([0.0, 0.0]),
+                radius: Some(2.5),
+                start: Some([0.0, 2.5]),
+                end: Some([0.0, -2.5]),
+                angle_start: Some(90.0),
+                angle_end: Some(270.0),
+                ..Default::default()
+            },
+        ));
+    } else {
+        geom.push(("a2".into(), line([0.0, 2.5], [0.0, -2.5])));
+    }
+    geom
+}
+
+#[test]
+fn circle_crossed_by_a_closed_slot_keeps_the_circle() {
+    // Bug B: the circle complement was traced as a cycle but its 310 degree
+    // major arc was sampled at one midpoint, so `face_area` read the cycle as
+    // -4.86 and the existence gate dropped it. Three areas: the slot inside the
+    // circle, the slot outside it, and the circle minus the slot.
+    let geom = circle_with_closed_slot([0.0, 0.0], true);
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 3, "the circle complement is an area");
+    let area: f64 = t
+        .surfaces
+        .iter()
+        .map(|s| crate::topology::oracle::loop_area_centroid(&s.boundary).0)
+        .sum();
+    assert!(
+        (area - 122.0845).abs() < 1e-3,
+        "the three areas cover the union: {area}"
+    );
+    // The circle is split into its short right arc and its left major arc, so
+    // both line contacts are in the split list; both slot lines are split too.
+    let circle_edges = t.edges.iter().filter(|e| e.entity_id == "c").count();
+    assert_eq!(circle_edges, 2, "the circle carries both line contacts");
+    for id in ["l1", "l2"] {
+        assert_eq!(
+            t.edges.iter().filter(|e| e.entity_id == id).count(),
+            2,
+            "{id} is split at its circle contact"
+        );
+    }
+    // The left major arc (span over pi) appears in a published surface.
+    let major = t.surfaces.iter().flat_map(|s| s.boundary.iter()).any(|b| {
+        b.id.as_deref() == Some("c")
+            && matches!(
+                b.geom,
+                EdgeGeom::Arc {
+                    angle_start_deg,
+                    angle_end_deg,
+                    ccw: true,
+                    ..
+                } if (angle_end_deg - angle_start_deg).abs() > 180.0
+            )
+    });
+    assert!(major, "the circle's left major arc bounds an area");
+}
+
+#[test]
+fn a_line_closed_slot_and_an_offset_circle_keep_the_same_union() {
+    // Controls: substituting the concentric arc with a line, or moving the
+    // circle so no slot arc is concentric, gives the same union. The concentric
+    // arc was never the trigger; the dropped major arc was.
+    let controls = [
+        circle_with_closed_slot([0.0, 0.0], false),
+        circle_with_closed_slot([-1.0, 0.0], true),
+    ];
+    for (k, geom) in controls.into_iter().enumerate() {
+        let t = detect_topology(&geom);
+        let area: f64 = t
+            .surfaces
+            .iter()
+            .map(|s| crate::topology::oracle::loop_area_centroid(&s.boundary).0)
+            .sum();
+        let want = if k == 0 { 122.0845 } else { 127.0845 };
+        assert!(
+            (area - want).abs() < 1e-3,
+            "control {k}: the union area {area} vs {want}"
+        );
+    }
+}
+
+#[test]
+fn frame_of_four_rects_publishes_the_void() {
+    // Bug A: four rectangles sharing partial edges fence off a 2 x 2 void.
+    // The void's boundary is pieces of four different input loops, so no single
+    // loop contains it; the material probe asks the drawn loops and drops it.
+    let mut geom = rect_lines("A", 0.0, 0.0, 6.0, 2.0);
+    geom.extend(rect_lines("B", 0.0, 4.0, 6.0, 6.0));
+    geom.extend(rect_lines("C", 0.0, 2.0, 2.0, 4.0));
+    geom.extend(rect_lines("D", 4.0, 2.0, 6.0, 4.0));
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 4, "the four rectangle areas, no void");
+    let area: f64 = t
+        .surfaces
+        .iter()
+        .map(|s| crate::topology::oracle::loop_area_centroid(&s.boundary).0)
+        .sum();
+    assert!((area - 32.0).abs() < 1e-9, "the frame area is 32: {area}");
+    assert!(t.hole_regions.is_empty());
+    // Pin the four loops by the rectangle each face covers, not by entity id
+    // order: shared collinear sides are emitted once, so an id may appear on
+    // either neighbour's side.
+    let mut centres: Vec<[f64; 2]> = t
+        .surfaces
+        .iter()
+        .map(|s| {
+            let (_, c) = crate::topology::oracle::loop_area_centroid(&s.boundary);
+            c
+        })
+        .collect();
+    centres.sort_by(|a, b| a[0].total_cmp(&b[0]).then(a[1].total_cmp(&b[1])));
+    let want = [[1.0, 3.0], [3.0, 1.0], [3.0, 5.0], [5.0, 3.0]];
+    for (got, w) in centres.iter().zip(want.iter()) {
+        assert!(
+            (got[0] - w[0]).abs() < 1e-6 && (got[1] - w[1]).abs() < 1e-6,
+            "face centre {got:?} is not {w:?}"
+        );
+    }
+}
+
+#[test]
+fn nested_rect_keeps_its_hole() {
+    // The 10 x 10 / 3 x 3 case: the ring carries the inner loop as a hole and
+    // the inner rectangle remains its own selectable surface.
+    let mut geom = rect_lines("out", 0.0, 0.0, 10.0, 10.0);
+    geom.extend(rect_lines("in", 3.0, 3.0, 6.0, 6.0));
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 2, "the ring and the inner rectangle");
+    let ring = t
+        .surfaces
+        .iter()
+        .find(|s| !s.holes.is_empty())
+        .expect("the ring carries the inner loop");
+    assert_eq!(ring.holes.len(), 1);
+    let inner = t
+        .surfaces
+        .iter()
+        .find(|s| s.face_entity_ids.iter().all(|id| id.starts_with("in")))
+        .expect("the inner rectangle stays its own area");
+    assert!(inner.holes.is_empty());
+    let net = |s: &crate::topology::dcel::SurfaceOut| {
+        let out = crate::topology::oracle::loop_area_centroid(&s.boundary)
+            .0
+            .abs();
+        out - s
+            .holes
+            .iter()
+            .map(|h| crate::topology::oracle::loop_area_centroid(h).0.abs())
+            .sum::<f64>()
+    };
+    assert!(
+        (net(ring) - 91.0).abs() < 1e-9,
+        "the ring is the 10 x 10 minus the 3 x 3: {}",
+        net(ring)
+    );
+    assert!(
+        (crate::topology::oracle::loop_area_centroid(&inner.boundary).0 - 9.0).abs() < 1e-9,
+        "the inner rectangle stays its own 9 area"
+    );
+}
+
+#[test]
+fn an_l_shaped_union_of_touching_rects_stays_material() {
+    // Two touching rectangles make an L. Every point of the L is inside at
+    // least one rectangle, so the material probe keeps both areas; a boundary
+    // sample would not tell this from the frame's void.
+    let mut geom = rect_lines("a", 0.0, 0.0, 2.0, 2.0);
+    geom.extend(rect_lines("b", 0.0, 2.0, 1.0, 4.0));
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 2, "both rectangles stay material");
+    let area: f64 = t
+        .surfaces
+        .iter()
+        .map(|s| crate::topology::oracle::loop_area_centroid(&s.boundary).0)
+        .sum();
+    assert!((area - 6.0).abs() < 1e-9, "the L area is 6: {area}");
+}
+
 #[test]
 fn a_point_between_two_vertices_merges_into_the_first_registered() {
     // Two vertices 1.5 MERGE apart and a point within MERGE of both. Every
@@ -448,12 +653,13 @@ fn two_crossing_lines_enclose_nothing() {
 }
 
 #[test]
-fn three_mutually_tangent_circles_make_four_areas() {
+fn three_mutually_tangent_circles_make_three_areas() {
     // Bug report tangential_sketch_area_building: three equal circles, each
-    // pair externally tangent, must yield 4 areas (3 disks + 1 central
-    // curvilinear triangle). The tangent vertices are cusps where two arcs
+    // pair externally tangent. The tangent vertices are cusps where two arcs
     // share a departure direction, so the face tracer must break the angular
-    // tie by curvature or it merges/loses faces.
+    // tie by curvature or it merges/loses faces. The central curvilinear
+    // triangle lies inside no drawn loop, so the material rule reads it as a
+    // void: the areas are the three disks.
     let r = 2.61391544342041;
     let geom = vec![
         ("A".into(), circle([0.0, 0.0], r)),
@@ -467,7 +673,17 @@ fn three_mutually_tangent_circles_make_four_areas() {
         ),
     ];
     let t = detect_topology(&geom);
-    assert_eq!(t.surfaces.len(), 4, "expected 3 disks + 1 central triangle");
+    assert_eq!(t.surfaces.len(), 3, "the three disks; the gap is a void");
+    let area: f64 = t
+        .surfaces
+        .iter()
+        .map(|s| crate::topology::oracle::loop_area_centroid(&s.boundary).0)
+        .sum();
+    let discs = 3.0 * std::f64::consts::PI * r * r;
+    assert!(
+        (area - discs).abs() < 1e-6,
+        "the three disks cover the areas: {area} vs {discs}"
+    );
 }
 
 #[test]
@@ -494,11 +710,12 @@ fn near_tangent_circle_pair_miss_side_stays_two_standalone_faces() {
 }
 
 #[test]
-fn three_circles_a_hair_apart_still_make_four_areas() {
+fn three_circles_a_hair_apart_make_three_areas() {
     // The three_mutually_tangent_circles geometry pushed a hair apart: the
     // reported "4 -> 3 surfaces" cliff was the collapse never firing on the
     // miss side. An equilateral centre spacing of 2r + gap keeps every pair
-    // a miss within tolerance, so the central triangle must still build.
+    // a miss within tolerance. The gap between the three disks is a void under
+    // the material rule, exactly as at exact tangency.
     let r: f64 = 2.61391544342041;
     let tol = tangent_gap_tol(r, MERGE);
     for gap in [1e-7, 0.5 * tol] {
@@ -509,11 +726,7 @@ fn three_circles_a_hair_apart_still_make_four_areas() {
             ("C".into(), circle([s / 2.0, 3.0f64.sqrt() * s / 2.0], r)),
         ];
         let t = detect_topology(&geom);
-        assert_eq!(
-            t.surfaces.len(),
-            4,
-            "gap {gap:e}: 3 disks + 1 central triangle"
-        );
+        assert_eq!(t.surfaces.len(), 3, "gap {gap:e}: the three disks");
     }
 }
 

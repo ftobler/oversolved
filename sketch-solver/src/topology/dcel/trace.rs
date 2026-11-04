@@ -7,9 +7,19 @@ use super::super::profile_loops::{
 };
 use super::super::{TOL_FACE_EXISTENCE_MIN_AREA, TOL_TOPOLOGY_MERGE as MERGE, TWO_PI};
 use super::build::{bend, depart, HalfEdge};
+use super::chains::FaceMeta;
 use super::holes::HoleShell;
 use super::{dedup, EdgeOut, Split, SurfaceOut, TopoEntity, Verts};
 use crate::radians;
+
+/// Interior samples for a swept arc, one per 22.5 degrees. `face_area` only
+/// decides whether a traced cycle encloses anything, but a cycle's area must
+/// keep its sign however far the arc sweeps: a 310 degree side sampled at one
+/// midpoint reads as two chords and can come out negative.
+fn arc_sample_count(sweep: f64) -> usize {
+    let steps = (sweep.abs() / (std::f64::consts::PI / 8.0)).ceil();
+    (steps as usize).clamp(1, 64)
+}
 
 pub(super) fn face_area(cycle: &[usize], hes: &[HalfEdge], verts: &Verts) -> f64 {
     let mut pts: Vec<Vec2> = Vec::new();
@@ -48,16 +58,35 @@ pub(super) fn face_area(cycle: &[usize], hes: &[HalfEdge], verts: &Verts) -> f64
                 ccw,
                 ..
             } => {
-                let mut a0 = radians(angle_start_deg);
-                let mut a1 = radians(angle_end_deg);
-                if !ccw {
-                    std::mem::swap(&mut a0, &mut a1);
+                let a0 = radians(angle_start_deg);
+                let a1 = radians(angle_end_deg);
+                // Follow the stored traversal direction, not the numeric order
+                // of the two angles: a CW side sweeps negative, and sampling it
+                // as if it went the other way reverses its contribution to the
+                // face's signed area.
+                let full_turn = (a1 - a0).abs() >= TWO_PI - 1e-9;
+                let sweep = if full_turn {
+                    if ccw {
+                        TWO_PI
+                    } else {
+                        -TWO_PI
+                    }
+                } else if ccw {
+                    (a1 - a0).rem_euclid(TWO_PI)
+                } else {
+                    -(a0 - a1).rem_euclid(TWO_PI)
+                };
+                // An arc can sweep most of a turn on one side of a face (the
+                // circle complement in the crossed-slot report is a 310 degree
+                // side). One midpoint then under-samples the sweep into two
+                // chords and can even flip the sign of the face's area, which
+                // is the existence gate's only input. Sample by sweep so the
+                // polygon follows the arc it stands for.
+                let n = arc_sample_count(sweep);
+                for k in 1..=n {
+                    let am = a0 + sweep * k as f64 / (n as f64 + 1.0);
+                    pts.push([center[0] + radius * am.cos(), center[1] + radius * am.sin()]);
                 }
-                if a1 < a0 {
-                    a1 += TWO_PI;
-                }
-                let am = (a0 + a1) / 2.0;
-                pts.push([center[0] + radius * am.cos(), center[1] + radius * am.sin()]);
             }
             EdgeGeom::EllipseArc {
                 center,
@@ -80,14 +109,15 @@ pub(super) fn face_area(cycle: &[usize], hes: &[HalfEdge], verts: &Verts) -> f64
                 }
                 let cr = (theta * std::f64::consts::PI / 180.0).cos();
                 let sr = (theta * std::f64::consts::PI / 180.0).sin();
-                for k in 1..8 {
+                let n = arc_sample_count(p1 - p0);
+                for k in 1..=n {
                     pts.push(ellipse_point_at(
                         [center[0], center[1]],
                         a,
                         b,
                         cr,
                         sr,
-                        p0 + (p1 - p0) * k as f64 / 8.0,
+                        p0 + (p1 - p0) * k as f64 / (n as f64 + 1.0),
                     ));
                 }
             }
@@ -176,14 +206,17 @@ fn collapse_spikes(cycle: &[usize]) -> Vec<usize> {
     stack
 }
 
-pub(super) fn trace_face_cycles(
+/// The traced faces plus the per-face metadata the material rule reads. Kept as
+/// one walk so a face and its piece index list cannot drift apart.
+pub(super) fn trace_face_cycles_detailed(
     hes: &[HalfEdge],
     he_eid: &[String],
     verts: &Verts,
-) -> Vec<SurfaceOut> {
+) -> (Vec<SurfaceOut>, Vec<FaceMeta>) {
     let mut surfaces: Vec<SurfaceOut> = Vec::new();
+    let mut metas: Vec<FaceMeta> = Vec::new();
     if hes.is_empty() {
-        return surfaces;
+        return (surfaces, metas);
     }
 
     let mut out_map: HashMap<String, Vec<(f64, f64, usize)>> = HashMap::new();
@@ -227,6 +260,34 @@ pub(super) fn trace_face_cycles(
         }
     }
 
+    // Exterior cycles first: a face borders the open plane when a twin of one
+    // of its sides belongs to a negative (clockwise) cycle. Those faces are the
+    // drawing's silhouette, never a void, and the material rule needs the flag
+    // before it can decide anything.
+    let mut exterior_hes: HashSet<usize> = HashSet::new();
+    let mut exterior_visited: HashSet<usize> = HashSet::new();
+    for start in 0..hes.len() {
+        if exterior_visited.contains(&start) || !next_he.contains_key(&start) {
+            continue;
+        }
+        let mut cycle: Vec<usize> = Vec::new();
+        let mut cur = start;
+        while !exterior_visited.contains(&cur) && next_he.contains_key(&cur) {
+            exterior_visited.insert(cur);
+            cycle.push(cur);
+            cur = next_he[&cur];
+            if cur == start {
+                break;
+            }
+        }
+        if !cycle.is_empty() && cur == start {
+            let cycle = collapse_spikes(&cycle);
+            if face_area(&cycle, hes, verts) < 0.0 {
+                exterior_hes.extend(cycle);
+            }
+        }
+    }
+
     let mut visited: HashSet<usize> = HashSet::new();
     for start in 0..hes.len() {
         if visited.contains(&start) || !next_he.contains_key(&start) {
@@ -255,6 +316,14 @@ pub(super) fn trace_face_cycles(
                     .collect();
                 let face_entity_ids: Vec<String> =
                     cycle.iter().map(|&i| he_eid[i].clone()).collect();
+                let mut pieces: Vec<usize> = cycle.iter().map(|&i| i & !1).collect();
+                pieces.sort_unstable();
+                pieces.dedup();
+                metas.push(FaceMeta {
+                    pieces,
+                    exterior: cycle.iter().any(|&i| exterior_hes.contains(&(i ^ 1))),
+                    traced: true,
+                });
                 surfaces.push(SurfaceOut {
                     boundary,
                     face_entity_ids,
@@ -264,7 +333,16 @@ pub(super) fn trace_face_cycles(
         }
     }
 
-    surfaces
+    (surfaces, metas)
+}
+
+/// The traced faces alone, for callers that do not apply the material rule.
+pub(super) fn trace_face_cycles(
+    hes: &[HalfEdge],
+    he_eid: &[String],
+    verts: &Verts,
+) -> Vec<SurfaceOut> {
+    trace_face_cycles_detailed(hes, he_eid, verts).0
 }
 
 pub(super) fn circle_arcs(cx: f64, cy: f64, r: f64, eid: &str) -> Vec<BoundaryEdge> {

@@ -38,6 +38,16 @@
 //! exemption above is what keeps an unsliced washer's bore its own island
 //! (its shell was never cut); slicing that washer changes how the bore is
 //! reported, from its own area to a non-fillable hole region.
+//!
+//! A face with no hole owner is not automatically material. The material test
+//! asks whether a point strictly inside it lies inside any CLOSED INPUT CHAIN:
+//! a carrier from above, or a line/arc loop the sketch actually draws
+//! (`chains`). A face inside none of them is a void the arrangement fenced off
+//! between input loops (the centre of a frame of four rectangles, the gap
+//! between three tangent circles), and is published as a void region instead
+//! of a surface. A face that borders the open plane is never a void: it is
+//! part of the drawing's silhouette, which is what keeps a frame's rectangles
+//! and a slot corner from disappearing with the holes they enclose.
 
 use std::collections::{HashMap, HashSet};
 
@@ -45,6 +55,7 @@ use super::super::profile_loops::{
     loop_pts, point_in_polygon, point_polygon_dist, polygon_sagitta, BoundaryEdge, EdgeGeom, Vec2,
 };
 use super::super::TOL_TOPOLOGY_MERGE as MERGE;
+use super::chains::{face_interior_probe, ClosedChain, FaceMeta};
 use super::{Split, SurfaceOut, TopoEntity};
 use crate::fit_spline::FitSpline;
 use crate::radians;
@@ -157,6 +168,14 @@ impl Carrier {
             }
             Carrier::Polygon(ref pts) => pts.clone(),
         }
+    }
+
+    /// True when the whole shell lies inside `face`: a nested loop, not a loop
+    /// the face belongs to. Used by the material probe so a nested circle's
+    /// interior cannot be mistaken for the chain that fills its container.
+    fn nested_in(&self, face: &[Vec2]) -> bool {
+        let samples = self.samples();
+        !samples.is_empty() && samples.iter().all(|&p| point_in_polygon(p, face))
     }
 
     /// World distance from `p` to the carrier's boundary. Zero on the curve,
@@ -554,17 +573,21 @@ pub(super) struct HoleShell {
 /// from whatever material face surrounds its region, and so the oracle can
 /// count the pieces in the planar subdivision's Euler identity and check that
 /// their cells stay empty.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn split_hole_faces(
     faces: Vec<SurfaceOut>,
+    metas: &[FaceMeta],
     he_eid: &[String],
     circles: &[(String, TopoEntity)],
     ellipses: &[(String, TopoEntity)],
     splines: &[(String, TopoEntity)],
     splits: &HashMap<String, Vec<Split>>,
-) -> (Vec<SurfaceOut>, Vec<HoleShell>) {
+    drawn: &[ClosedChain],
+) -> (Vec<SurfaceOut>, Vec<HoleShell>, Vec<SurfaceOut>) {
     let subdivided_ids: HashSet<&str> = he_eid.iter().map(|s| s.as_str()).collect();
     let chains = chains_of(circles, ellipses, splines, splits, &subdivided_ids);
     let mut material: Vec<SurfaceOut> = Vec::with_capacity(faces.len());
+    let mut voids: Vec<SurfaceOut> = Vec::new();
     // Indexed by chain, so the pieces of one shell come back together.
     let mut shells: Vec<HoleShell> = chains
         .iter()
@@ -572,14 +595,59 @@ pub(super) fn split_hole_faces(
             regions: Vec::new(),
         })
         .collect();
-    for face in faces {
-        match hole_owner(&face.boundary, &chains) {
-            Some(owner) => shells[owner].regions.push(face),
-            None => material.push(face),
+    for (fi, face) in faces.into_iter().enumerate() {
+        if let Some(owner) = hole_owner(&face.boundary, &chains) {
+            shells[owner].regions.push(face);
+            continue;
         }
+        let Some(meta) = metas.get(fi) else {
+            material.push(face);
+            continue;
+        };
+        // A standalone loop's own shell already decided its fill.
+        if !meta.traced {
+            material.push(face);
+            continue;
+        }
+        // A face on the open plane is part of the drawing's silhouette; a void
+        // is enclosed by material on every side by definition.
+        if meta.exterior {
+            material.push(face);
+            continue;
+        }
+        let Some(probe) = face_interior_probe(&face.boundary) else {
+            // No verified interior point: keep the face rather than guess it
+            // is empty.
+            material.push(face);
+            continue;
+        };
+        let face_poly = loop_pts(&face.boundary, FACE_CHAIN_SAMPLES);
+        // Inside a closed carrier (a circle, ellipse or closed spline) is
+        // material even when no hole alternation applies. A carrier wholly
+        // nested inside the face is a loop the face contains (a drawn circle
+        // in its void), not a chain that fills it.
+        if chains
+            .iter()
+            .any(|c| c.carrier.holds(probe) && !c.carrier.nested_in(&face_poly))
+        {
+            material.push(face);
+            continue;
+        }
+        // Inside a drawn line/arc loop is material, unless that loop IS this
+        // face's own boundary (the frame's central face is a loop too, and only
+        // a loop around it can fill it) or is nested inside it.
+        if drawn.iter().any(|c| {
+            c.holds(probe) && c.pieces() != meta.pieces.as_slice() && !c.nested_in(&face_poly)
+        }) {
+            material.push(face);
+            continue;
+        }
+        // No chain holds the face and nothing opens it to the outside: it is a
+        // void the arrangement fenced off between input loops.
+        voids.push(face);
     }
     shells.retain(|s| !s.regions.is_empty());
-    (material, shells)
+    (material, shells, voids)
 }
 
 #[cfg(test)]
@@ -619,6 +687,18 @@ mod tests {
             face_entity_ids: vec!["l".into()],
             holes: vec![],
         }
+    }
+
+    /// Synthetic faces stand in for traced ones: no exterior side and no drawn
+    /// loop of their own, so the material rule sees them as enclosed regions.
+    fn traced_metas(n: usize) -> Vec<FaceMeta> {
+        (0..n)
+            .map(|i| FaceMeta {
+                pieces: vec![2 * i, 2 * i + 1],
+                exterior: false,
+                traced: true,
+            })
+            .collect()
     }
 
     fn chain_at(depth: usize, r: f64) -> Chain {
@@ -667,15 +747,27 @@ mod tests {
     }
 
     #[test]
-    fn a_face_no_shell_encloses_is_material() {
+    fn a_face_no_chain_encloses_is_void() {
         // The curvilinear triangle between three tangent circles: no shell
-        // encloses it, so the even/odd rule has no opinion.
+        // encloses it, so the even/odd rule has no opinion. The material test
+        // now asks the drawn loops, and none holds its interior: it is a void.
         let chains = [chain_at(0, 2.0)];
         assert_eq!(
             face_state(&face_at([3.0, 3.0]).boundary, &chains),
             (0, false)
         );
         assert!(hole_owner(&face_at([3.0, 3.0]).boundary, &chains).is_none());
+
+        let circles = vec![("c".into(), circle_entity(2.0))];
+        let faces = vec![square_face(3.0, 3.0, 0.5)];
+        let metas = traced_metas(faces.len());
+        let cut = vec!["c".to_string()];
+        let splits: HashMap<String, Vec<Split>> = HashMap::new();
+        let (material, shells, voids) =
+            split_hole_faces(faces, &metas, &cut, &circles, &[], &[], &splits, &[]);
+        assert!(material.is_empty(), "no chain holds it: a void");
+        assert!(shells.is_empty());
+        assert_eq!(voids.len(), 1, "the dropped face is published as a void");
     }
 
     #[test]
@@ -834,7 +926,10 @@ mod tests {
             .iter()
             .map(|(id, _): &(String, TopoEntity)| id.clone())
             .collect();
-        let (material, shells) = split_hole_faces(faces, &cut, &circles, &[], &[], &splits);
+        let metas = traced_metas(faces.len());
+        let (material, shells, voids) =
+            split_hole_faces(faces, &metas, &cut, &circles, &[], &[], &splits, &[]);
+        assert!(voids.is_empty());
         assert_eq!(material.len(), 2, "the two ring halves are material");
         let regions: usize = shells.iter().map(|s| s.regions.len()).sum();
         assert_eq!(regions, 2, "the two bore halves are holes");
@@ -842,10 +937,10 @@ mod tests {
     }
 
     #[test]
-    fn a_face_outside_every_shell_stays_material() {
+    fn a_face_outside_every_shell_with_no_drawn_loop_is_void() {
         // The curvilinear triangle between three tangent circles: no shell
-        // encloses it, so the even/odd rule has no opinion and the face stays
-        // material, exactly as it did under "every bounded face is fillable".
+        // encloses it and no drawn line/arc loop does either, so the material
+        // test drops the face instead of filling the gap.
         let circles = vec![("c".into(), circle_entity(2.0))];
         let splits: HashMap<String, Vec<Split>> = HashMap::new();
         let faces = vec![square_face(3.0, 3.0, 0.5)];
@@ -853,9 +948,12 @@ mod tests {
             .iter()
             .map(|(id, _): &(String, TopoEntity)| id.clone())
             .collect();
-        let (material, shells) = split_hole_faces(faces, &cut, &circles, &[], &[], &splits);
-        assert_eq!(material.len(), 1);
+        let metas = traced_metas(faces.len());
+        let (material, shells, voids) =
+            split_hole_faces(faces, &metas, &cut, &circles, &[], &[], &splits, &[]);
+        assert!(material.is_empty(), "no chain holds it: a void, not a face");
         assert!(shells.is_empty());
+        assert_eq!(voids.len(), 1);
     }
 
     #[test]
@@ -878,7 +976,10 @@ mod tests {
             .iter()
             .map(|(id, _): &(String, TopoEntity)| id.clone())
             .collect();
-        let (material, shells) = split_hole_faces(faces, &cut, &circles, &[], &[], &splits);
+        let metas = traced_metas(faces.len());
+        let (material, shells, voids) =
+            split_hole_faces(faces, &metas, &cut, &circles, &[], &[], &splits, &[]);
+        assert!(voids.is_empty());
         assert_eq!(material.len(), 2, "ring + boss");
         let regions: usize = shells.iter().map(|s| s.regions.len()).sum();
         assert_eq!(regions, 1, "the bore region is the hole");

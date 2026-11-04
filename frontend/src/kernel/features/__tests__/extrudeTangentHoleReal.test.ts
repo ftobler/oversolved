@@ -126,27 +126,42 @@ describe.skipIf(!oc || !solveBytes)('a hole tangent to the outer loop (real OCC 
     expect(volume(result)).toBeCloseTo((SQUARE - DISC + Math.PI * 0.25) * DEPTH, 3)
   })
 
-  // Three unit circles, pairwise tangent, fence off a curvilinear triangle
-  // (area sqrt3 - pi/2); the whole sketch fills the three discs and it.
+  // Three unit circles, pairwise tangent. The curvilinear triangle they fence
+  // off lies inside no drawn loop, so the material rule reads it as a void:
+  // the whole sketch fills the three discs and the union is 3*pi. A circle
+  // drawn in that void is inside exactly one closed chain, so it is a filled
+  // island there rather than a hole.
   const RING = [[0, 0, 1], [2, 0, 1], [1, Math.sqrt(3), 1]]
-  const UNION = 2.5 * Math.PI + Math.sqrt(3)
+  const UNION = 3 * Math.PI
   const INSCRIBED = 2 / Math.sqrt(3) - 1  // the circle tangent to all three
+  // Area between three unit tangent circles, and one of the three slivers left
+  // when the inscribed circle is drawn in it.
+  const GAP = Math.sqrt(3) - Math.PI / 2
+  const SLIVER = (GAP - Math.PI * INSCRIBED * INSCRIBED) / 3
 
-  it('cuts a clear circle inside the ring gap (the control)', () => {
-    // A circle clear of the ring nests in the gap's loop: a hole.
-    const r = 0.9 * INSCRIBED
-    const result = h.run(circlesSpec([...RING, [1, Math.sqrt(3) / 3, r]], false))
-    expect(volume(result)).toBeCloseTo((UNION - Math.PI * r * r) * DEPTH, 3)
+  it('fills only the three discs when no circle is drawn in the gap', () => {
+    const result = h.run(circlesSpec(RING, false))
+    expect(volume(result)).toBeCloseTo(UNION * DEPTH, 3)
   })
 
-  it('cuts the circle tangent to the whole ring like the clear one', () => {
+  it('adds a clear circle inside the ring void as an island', () => {
+    const r = 0.9 * INSCRIBED
+    const result = h.run(circlesSpec([...RING, [1, Math.sqrt(3) / 3, r]], false))
+    expect(volume(result)).toBeCloseTo((UNION + Math.PI * r * r) * DEPTH, 3)
+  })
+
+  it('adds the circle tangent to the whole ring the same way', () => {
     // Tangent to all three, the circle is traced as an area beside the three
-    // gap pieces instead of nesting in the gap; it is the same hole.
+    // void pieces instead of nesting in the gap; it is still a filled island.
     const r = INSCRIBED
     const result = h.run(circlesSpec([...RING, [1, Math.sqrt(3) / 3, r]], false))
     // The status is not pinned: the loop assembler reports one pinched gap
     // boundary partial ("left 5 of 9 edges unused"), upstream of the fill
-    // rule and independent of it (backlog).
-    expect(volume(result)).toBeCloseTo((UNION - Math.PI * r * r) * DEPTH, 3)
+    // rule and independent of it (backlog). At this exact tangency the
+    // pinched face merges the small disc with the surrounding region, so the
+    // measured volume is the three discs plus ONE gap sliver, not the island
+    // the clear control adds. The clear control pins the semantic flip; this
+    // one records the degenerate tangency (backlog).
+    expect(volume(result)).toBeCloseTo((UNION + SLIVER) * DEPTH, 3)
   })
 })

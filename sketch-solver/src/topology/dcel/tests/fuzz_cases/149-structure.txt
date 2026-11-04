@@ -1,0 +1,2 @@
+structure: surface 0 self-intersects between segments 0 and 185 near (13.500000, 0.000000)
+structure: surface 1 hole 0 self-intersects between segments 0 and 185 near (13.500000, 0.000000)

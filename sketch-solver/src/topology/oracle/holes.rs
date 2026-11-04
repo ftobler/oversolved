@@ -33,6 +33,7 @@ use super::Curve;
 use crate::radians;
 use crate::tolerance::on_carrier_tol;
 use crate::topology::profile_loops::{point_polygon_dist, Vec2};
+use crate::topology::TOL_FACE_EXISTENCE_MIN_AREA;
 use crate::topology::TOL_TOPOLOGY_MERGE as MERGE;
 use crate::MIN_SEMI_AXIS_SQ;
 
@@ -368,6 +369,325 @@ pub(crate) fn is_hole_level(level: usize) -> bool {
     level >= 2 && level % 2 == 0
 }
 
+/// One drawn line/arc loop, sampled as a polygon: the material rule's second
+/// list. Built from the raw curves, independent of the builder's split graph.
+pub(crate) struct ClosedChain {
+    poly: Vec<Vec2>,
+    bbox: [f64; 4],
+}
+
+impl ClosedChain {
+    fn holds(&self, p: Vec2) -> bool {
+        p[0] >= self.bbox[0]
+            && p[0] <= self.bbox[2]
+            && p[1] >= self.bbox[1]
+            && p[1] <= self.bbox[3]
+            && point_in_polygon(p, &self.poly)
+    }
+}
+
+/// The same material question the builder asks, read for a cell: is the point
+/// inside any closed carrier or any drawn line/arc loop? A cell in none of
+/// them is expected to be void, so a missing face there is not a lost area.
+pub(crate) fn holds_any(p: Vec2, chains: &[Chain], closed: &[ClosedChain]) -> bool {
+    chains.iter().any(|c| c.carrier.holds(p)) || holds_closed(p, closed)
+}
+
+pub(crate) fn holds_closed(p: Vec2, closed: &[ClosedChain]) -> bool {
+    closed.iter().any(|c| c.holds(p))
+}
+
+/// The split halves of the builder's graph, read back from `out.edges`: a loop
+/// closed at a mid-entity contact (a T junction, a slot corner) is a drawn loop
+/// too, and the authored graph cannot see it. This mirrors the builder's
+/// `split_chains`, so a lost area behind such a loop still reports.
+pub(crate) fn split_chains(
+    edges: &[crate::topology::dcel::EdgeOut],
+    chord_tol: f64,
+) -> Vec<ClosedChain> {
+    struct Edge {
+        u: usize,
+        v: usize,
+        geom: crate::topology::profile_loops::EdgeGeom,
+    }
+    let mut pts: Vec<Vec2> = Vec::new();
+    let node = |p: Vec2, pts: &mut Vec<Vec2>| -> usize {
+        for (i, q) in pts.iter().enumerate() {
+            if (p[0] - q[0]).hypot(p[1] - q[1]) <= MERGE {
+                return i;
+            }
+        }
+        pts.push(p);
+        pts.len() - 1
+    };
+    let mut pieces: Vec<Edge> = Vec::new();
+    for e in edges {
+        let (Some(s), Some(t)) = (e.geom.start(), super::structure::edge_end(&e.geom)) else {
+            continue;
+        };
+        if !matches!(
+            e.geom,
+            crate::topology::profile_loops::EdgeGeom::Line { .. }
+                | crate::topology::profile_loops::EdgeGeom::Arc { .. }
+        ) {
+            continue;
+        }
+        let u = node(s, &mut pts);
+        let v = node(t, &mut pts);
+        if u != v {
+            pieces.push(Edge {
+                u,
+                v,
+                geom: e.geom.clone(),
+            });
+        }
+    }
+
+    let mut adj: Vec<Vec<(usize, usize, bool)>> = vec![Vec::new(); pts.len()];
+    for (i, e) in pieces.iter().enumerate() {
+        adj[e.u].push((i, e.v, true));
+        adj[e.v].push((i, e.u, false));
+    }
+    let mut chains: Vec<ClosedChain> = Vec::new();
+    let mut seen: std::collections::HashSet<Vec<usize>> = std::collections::HashSet::new();
+    for i in 0..pieces.len() {
+        let Some(path) = undirected_path(&adj, pieces[i].u, pieces[i].v, i) else {
+            continue;
+        };
+        let mut key: Vec<usize> = path.iter().map(|&(e, _)| e).collect();
+        key.push(i);
+        key.sort_unstable();
+        key.dedup();
+        if key.len() < 2 || !seen.insert(key) {
+            continue;
+        }
+        let mut poly: Vec<Vec2> = Vec::new();
+        let mut walk: Vec<(usize, bool)> = path;
+        walk.push((i, false));
+        for (e, forward) in walk {
+            let sampled = super::geometry::edge_polyline(&pieces[e].geom, chord_tol);
+            let mut piece = sampled.pts;
+            if !forward {
+                piece.reverse();
+            }
+            if let (Some(last), Some(first)) = (poly.last(), piece.first()) {
+                if (last[0] - first[0]).hypot(last[1] - first[1]) <= MERGE {
+                    piece.remove(0);
+                }
+            }
+            poly.extend(piece);
+        }
+        if poly.len() < 3 || signed_area(&poly).abs() < TOL_FACE_EXISTENCE_MIN_AREA {
+            continue;
+        }
+        let mut bbox = [poly[0][0], poly[0][1], poly[0][0], poly[0][1]];
+        for p in &poly {
+            bbox[0] = bbox[0].min(p[0]);
+            bbox[1] = bbox[1].min(p[1]);
+            bbox[2] = bbox[2].max(p[0]);
+            bbox[3] = bbox[3].max(p[1]);
+        }
+        chains.push(ClosedChain { poly, bbox });
+    }
+    chains
+}
+
+fn undirected_path(
+    adj: &[Vec<(usize, usize, bool)>],
+    u: usize,
+    v: usize,
+    skip: usize,
+) -> Option<Vec<(usize, bool)>> {
+    if u == v {
+        return None;
+    }
+    let mut parent: Vec<Option<(usize, usize, bool)>> = vec![None; adj.len()];
+    let mut seen = vec![false; adj.len()];
+    let mut queue = std::collections::VecDeque::new();
+    seen[u] = true;
+    queue.push_back(u);
+    let mut found = false;
+    while let Some(cur) = queue.pop_front() {
+        if cur == v {
+            found = true;
+            break;
+        }
+        for &(edge, next, forward) in &adj[cur] {
+            if edge == skip || seen[next] {
+                continue;
+            }
+            seen[next] = true;
+            parent[next] = Some((cur, edge, forward));
+            queue.push_back(next);
+        }
+    }
+    if !found {
+        return None;
+    }
+    let mut path = Vec::new();
+    let mut cur = v;
+    while cur != u {
+        let (prev, edge, forward) = parent[cur]?;
+        path.push((edge, forward));
+        cur = prev;
+    }
+    path.reverse();
+    Some(path)
+}
+
+/// The closed line/arc loops of the raw curves. Whole entities are joined at
+/// their authored endpoints and a loop is a consistently directed cycle, the
+/// same rule the builder's authored chains use: a loop the user drew is walked
+/// one way around, while the outer silhouette of touching loops mixes edge
+/// directions at the shared corners. Both directions are searched so a
+/// consistently clockwise loop is found too.
+pub(crate) fn authored_chains(curves: &[(String, Curve)], chord_tol: f64) -> Vec<ClosedChain> {
+    struct Edge {
+        u: usize,
+        v: usize,
+        curve: usize,
+    }
+    let mut pts: Vec<Vec2> = Vec::new();
+    let node = |p: Vec2, pts: &mut Vec<Vec2>| -> usize {
+        for (i, q) in pts.iter().enumerate() {
+            if (p[0] - q[0]).hypot(p[1] - q[1]) <= MERGE {
+                return i;
+            }
+        }
+        pts.push(p);
+        pts.len() - 1
+    };
+    let endpoints = |c: &Curve| -> Option<(Vec2, Vec2)> {
+        match *c {
+            Curve::Line { p0, p1 } => Some((p0, p1)),
+            Curve::Arc { c, r, a0, a1 } => {
+                let start = radians(a0);
+                let sweep =
+                    crate::topology::dcel::pymod(radians(a1) - start, std::f64::consts::TAU);
+                if !(crate::topology::TOL_TOPOLOGY_EPS
+                    ..=std::f64::consts::TAU - crate::topology::TOL_TOPOLOGY_EPS)
+                    .contains(&sweep)
+                {
+                    return None; // a full-turn arc is a closed carrier in its own right
+                }
+                let end = start + sweep;
+                Some((
+                    [c[0] + r * start.cos(), c[1] + r * start.sin()],
+                    [c[0] + r * end.cos(), c[1] + r * end.sin()],
+                ))
+            }
+            Curve::Circle { .. } | Curve::Ellipse { .. } | Curve::Spline { .. } => None,
+        }
+    };
+    let mut edges: Vec<Edge> = Vec::new();
+    for (i, (_, c)) in curves.iter().enumerate() {
+        if let Some((u, v)) = endpoints(c) {
+            let u = node(u, &mut pts);
+            let v = node(v, &mut pts);
+            if u != v {
+                edges.push(Edge { u, v, curve: i });
+            }
+        }
+    }
+
+    let mut chains: Vec<ClosedChain> = Vec::new();
+    let mut seen: std::collections::HashSet<Vec<usize>> = std::collections::HashSet::new();
+    for reversed in [false, true] {
+        let mut adj: Vec<Vec<(usize, usize)>> = vec![Vec::new(); pts.len()];
+        for (i, e) in edges.iter().enumerate() {
+            if reversed {
+                adj[e.v].push((i, e.u));
+            } else {
+                adj[e.u].push((i, e.v));
+            }
+        }
+        for (i, e) in edges.iter().enumerate() {
+            let (from, to) = if reversed { (e.v, e.u) } else { (e.u, e.v) };
+            let Some(path) = directed_path(&adj, to, from, i) else {
+                continue;
+            };
+            let mut key: Vec<usize> = path.clone();
+            key.push(i);
+            key.sort_unstable();
+            key.dedup();
+            if key.len() < 2 || !seen.insert(key) {
+                continue;
+            }
+            let mut poly: Vec<Vec2> = Vec::new();
+            for &ei in std::iter::once(&i).chain(path.iter()) {
+                let sampled = sample_curve(&curves[edges[ei].curve].1, chord_tol);
+                let mut piece = sampled.pts;
+                if reversed {
+                    piece.reverse();
+                }
+                if let (Some(last), Some(first)) = (poly.last(), piece.first()) {
+                    if (last[0] - first[0]).hypot(last[1] - first[1]) <= MERGE {
+                        piece.remove(0);
+                    }
+                }
+                poly.extend(piece);
+            }
+            if poly.len() < 3 || signed_area(&poly).abs() < TOL_FACE_EXISTENCE_MIN_AREA {
+                continue;
+            }
+            let mut bbox = [poly[0][0], poly[0][1], poly[0][0], poly[0][1]];
+            for p in &poly {
+                bbox[0] = bbox[0].min(p[0]);
+                bbox[1] = bbox[1].min(p[1]);
+                bbox[2] = bbox[2].max(p[0]);
+                bbox[3] = bbox[3].max(p[1]);
+            }
+            chains.push(ClosedChain { poly, bbox });
+        }
+    }
+    chains
+}
+
+fn directed_path(
+    adj: &[Vec<(usize, usize)>],
+    u: usize,
+    v: usize,
+    skip: usize,
+) -> Option<Vec<usize>> {
+    let mut parent: Vec<Option<(usize, usize)>> = vec![None; adj.len()];
+    let mut seen = vec![false; adj.len()];
+    let mut queue = std::collections::VecDeque::new();
+    seen[u] = true;
+    queue.push_back(u);
+    while let Some(cur) = queue.pop_front() {
+        if cur == v {
+            let mut path = Vec::new();
+            let mut cur = v;
+            while cur != u {
+                let (prev, edge) = parent[cur]?;
+                path.push(edge);
+                cur = prev;
+            }
+            path.reverse();
+            return Some(path);
+        }
+        for &(edge, next) in &adj[cur] {
+            if edge == skip || seen[next] {
+                continue;
+            }
+            seen[next] = true;
+            parent[next] = Some((cur, edge));
+            queue.push_back(next);
+        }
+    }
+    None
+}
+
+fn signed_area(pts: &[Vec2]) -> f64 {
+    let n = pts.len();
+    let mut acc = 0.0;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        acc += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
+    }
+    acc / 2.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -399,6 +719,44 @@ mod tests {
             })
             .collect();
         chains_of(&list, 1e-6, &edges)
+    }
+
+    #[test]
+    fn a_square_line_loop_is_a_closed_chain() {
+        let curves: Vec<(String, Curve)> = vec![
+            (
+                "a".into(),
+                Curve::Line {
+                    p0: [0.0, 0.0],
+                    p1: [2.0, 0.0],
+                },
+            ),
+            (
+                "b".into(),
+                Curve::Line {
+                    p0: [2.0, 0.0],
+                    p1: [2.0, 2.0],
+                },
+            ),
+            (
+                "c".into(),
+                Curve::Line {
+                    p0: [2.0, 2.0],
+                    p1: [0.0, 2.0],
+                },
+            ),
+            (
+                "d".into(),
+                Curve::Line {
+                    p0: [0.0, 2.0],
+                    p1: [0.0, 0.0],
+                },
+            ),
+        ];
+        let closed = authored_chains(&curves, 1e-6);
+        assert!(!closed.is_empty(), "the square is a drawn loop");
+        assert!(closed.iter().any(|c| c.holds([1.0, 1.0])));
+        assert!(closed.iter().all(|c| !c.holds([3.0, 3.0])));
     }
 
     #[test]

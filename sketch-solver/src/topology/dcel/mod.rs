@@ -8,7 +8,8 @@
 //! hole, so a washer sliced across yields its two ring halves rather than four
 //! regions, and the bore's halves are published as `hole_regions` instead of
 //! surfaces (an untouched shell keeps the standalone model, where its bore is
-//! its own selectable area).
+//! its own selectable area). A face no chain holds is a void (`void_regions`),
+//! and an exterior-facing face is always material.
 //!
 //! This port stops at GEOMETRY. It emits a structural `TopologyOut` tagging each
 //! edge/surface with its source entity id(s) and a deterministic index; it does
@@ -36,6 +37,7 @@ use crate::fit_spline::FitSpline;
 use crate::radians;
 
 mod build;
+mod chains;
 mod holes;
 mod intersect;
 mod trace;
@@ -48,11 +50,12 @@ use build::{
     build_half_edge_graph, find_all_intersections, init_arc_splits, seed_construction_crossings,
     tag_entities,
 };
+use chains::{authored_chains, split_chains, FaceMeta};
 use holes::split_hole_faces;
 use intersect::classify;
 use trace::{
     build_edge_queries, build_standalone_ellipses, build_standalone_fit_splines,
-    build_standalone_splines, build_standalone_surfaces, nest_surfaces, trace_face_cycles,
+    build_standalone_splines, build_standalone_surfaces, nest_surfaces, trace_face_cycles_detailed,
 };
 
 // The two near-tangency rules the area builder applies -- the gap budget for a
@@ -294,6 +297,13 @@ pub struct TopologyOut {
     /// surfaces; they are published for the oracle, which counts them in the
     /// Euler identity and checks their cells stay empty.
     pub hole_regions: Vec<SurfaceOut>,
+    /// The traced faces the material rule reads as void: regions fenced off by
+    /// material on every side and inside no drawn loop (the centre of a frame
+    /// of four rectangles, the gap between three tangent circles). They are
+    /// part of the planar subdivision for the same reason as `hole_regions`,
+    /// but never fillable. Deliberately not serialized: the TS side sees only
+    /// `surfaces`, so a void is simply absent from the profile.
+    pub void_regions: Vec<SurfaceOut>,
 }
 
 // ─── small helpers ───
@@ -377,6 +387,16 @@ impl Verts {
     /// area, and the worker must survive that rather than trap.
     fn get(&self, k: &str) -> Option<Vec2> {
         self.index.get(k).map(|&i| self.pts[i].1)
+    }
+    /// The id of the vertex at `pt` under the merge identity, without minting
+    /// one. The drawn-loop builder reads authored endpoints after the graph is
+    /// built and must not extend the pool (that would change the published
+    /// vertex order).
+    fn find(&self, pt: Vec2) -> Option<&str> {
+        self.pts
+            .iter()
+            .find(|(_, v)| (v[0] - pt[0]).powi(2) + (v[1] - pt[1]).powi(2) < MERGE * MERGE)
+            .map(|(k, _)| k.as_str())
     }
     fn keys(&self) -> HashSet<String> {
         self.index.keys().cloned().collect()
@@ -582,7 +602,7 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     // The even/odd rule classifies every face, traced or standalone: an
     // UNcut shell whose interior is inside a cut shell's bore is a hole too
     // (the standalone island survives only where no cut shell surrounds it).
-    let mut faces = trace_face_cycles(&hes, &he_eid, &verts);
+    let (mut faces, mut metas) = trace_face_cycles_detailed(&hes, &he_eid, &verts);
     faces.extend(build_standalone_surfaces(&cls.circles, &splits));
     faces.extend(build_standalone_ellipses(&cls.ellipses, &splits));
     faces.extend(build_standalone_splines(&cls.splines, &splits, &mut verts));
@@ -591,13 +611,34 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         &splits,
         &mut verts,
     ));
-    let (mut surfaces, hole_shells) = split_hole_faces(
+    // Standalone loops are drawn areas in their own right; their shells decide
+    // the fill, so they need no material probe.
+    metas.resize(faces.len(), FaceMeta::default());
+
+    // The loops the lines and arcs draw. Only they can say whether a face the
+    // carriers do not cover is a drawn region or a void the arrangement fenced
+    // off between loops.
+    let line_arc_ids: HashSet<&str> = cls
+        .lines
+        .iter()
+        .chain(arcs.iter())
+        .map(|(id, _)| id.as_str())
+        .collect();
+    // Two views of the drawn loops: whole entities joined at their authored
+    // endpoints (a crossing does not cut them) and split pieces joined at
+    // merged vertices (a loop that closes at a mid-entity contact).
+    let mut drawn = authored_chains(&cls.lines, &arcs, &verts);
+    drawn.extend(split_chains(&hes, &he_eid, &line_arc_ids));
+
+    let (mut surfaces, hole_shells, void_regions) = split_hole_faces(
         faces,
+        &metas,
         &he_eid,
         &cls.circles,
         &cls.ellipses,
         &cls.splines,
         &splits,
+        &drawn,
     );
     let hole_regions: Vec<SurfaceOut> = hole_shells
         .iter()
@@ -622,5 +663,6 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         edges,
         surfaces,
         hole_regions,
+        void_regions,
     }
 }
