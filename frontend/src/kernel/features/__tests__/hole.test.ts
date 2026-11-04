@@ -70,9 +70,9 @@ describe('solveHole guard paths', () => {
   })
 
   it('names construction when every point and circle in the sketch is construction', () => {
-    // A construction-flagged point or circle exists only in a hand-authored or
-    // imported document: the UI's toggle_construction skips points. Either one
-    // is reference geometry, so a sketch with nothing else to drill must be
+    // A construction-flagged point or circle exists in a hand-authored or
+    // imported document as well as one the toggle flagged. Either one is
+    // reference geometry, so a sketch with nothing else to drill must be
     // refused for construction, not "has no point or circle entities".
     const repo = new Repository()
     repo.register('_pt_sk', PLANE)
@@ -186,11 +186,11 @@ describe('solveHole sketch picks', () => {
 
   it('refuses a construction point or circle picked as a drill site, by name', () => {
     // Construction geometry is never a drill site: an explicit pick of one is
-    // refused with construction named as the reason, not silently skipped, and
-    // the remedy differs because the UI can only clear a circle's flag.
+    // refused with construction named as the reason, not silently skipped. The
+    // toggle clears either kind's flag, so both remedies say so.
     expect(() => drill('entity:sk:pc', {
       sk: { entities: [{ id: 'pc', kind: 'point', construction: true }] },
-    })).toThrow(/'pc' of sketch sk is a construction point, which names no drill site.*the UI cannot clear a construction point's flag, so add a plain point/)
+    })).toThrow(/'pc' of sketch sk is a construction point, which names no drill site.*toggle its construction off to drill it/)
     expect(() => drill('entity:sk:cc', {
       sk: { entities: [{ id: 'cc', kind: 'circle', construction: true }] },
     })).toThrow(/'cc' of sketch sk is a construction circle, which names no drill site.*toggle its construction off to drill it/)
@@ -236,5 +236,23 @@ describe('solveHole sketch picks', () => {
     expect(() => drill('@sk', {
       sk: { entities: [{ id: 'c1', kind: 'circle' }, { id: 'p1', kind: 'point' }, { id: 'c2', kind: 'circle' }] },
     })).toThrow(/all 3 drill site\(s\)/)
+  })
+
+  it('leaves a construction point out of a whole-sketch pick', () => {
+    // The point carries the flag toggle_construction now sets, so it is
+    // reference geometry and only the plain circle is a site. The count is the
+    // whole drill set because neither site has solved geometry here.
+    expect(() => drill('@sk', {
+      sk: { entities: [{ id: 'pc', kind: 'point', construction: true }, { id: 'cc', kind: 'circle' }] },
+    })).toThrow(/all 1 drill site\(s\)/)
+  })
+
+  it('refuses a sketch whose only point is construction, naming the flag it can clear', () => {
+    // Flagging the last drill site must fail by name rather than drill nothing
+    // or drill the reference point. The remedy covers both kinds because the
+    // toggle now clears either.
+    expect(() => drill('@sk', {
+      sk: { entities: [{ id: 'pc', kind: 'point', construction: true }] },
+    })).toThrow(/has only construction points and circles.*clear a point's or circle's construction flag/)
   })
 })

@@ -170,7 +170,7 @@ function drilledEntities(
         throw new Error(
           `hole: sketch '${sketchId}' has only construction points and circles; ` +
           'construction geometry is reference only, so add a non-construction point or circle, ' +
-          'or clear a circle\'s construction flag to drill it',
+          'or clear a point\'s or circle\'s construction flag to drill it',
         )
       }
       throw new Error(
@@ -183,15 +183,12 @@ function drilledEntities(
   if (picked === undefined) throw new Error(`hole: sketch '${sketchId}' has no entity '${entityId}'`)
   const isSiteKind = picked.kind === 'point' || picked.kind === 'circle'
   if (picked.construction === true && isSiteKind) {
-    // toggle_construction only toggles non-point entities, so a construction
-    // point's remedy is a plain point rather than a toggle.
-    const remedy = picked.kind === 'point'
-      ? 'the UI cannot clear a construction point\'s flag, so add a plain point at that spot'
-      : 'toggle its construction off to drill it'
+    // Both kinds carry the same remedy: toggle_construction clears a point's
+    // flag exactly as it clears a circle's.
     throw new Error(
       `hole: '${entityId}' of sketch ${sketchId} is a construction ${picked.kind}, which names no drill site; ` +
-      `construction geometry is reference only; ${remedy}, or pick a non-construction point or circle, ` +
-      'or the sketch itself',
+      'construction geometry is reference only; toggle its construction off to drill it, ' +
+      'or pick a non-construction point or circle, or the sketch itself',
     )
   }
   if (!isSiteKind) {
