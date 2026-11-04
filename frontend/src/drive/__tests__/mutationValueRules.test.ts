@@ -477,6 +477,104 @@ describe('finding: plane refs are exact, not silently replaced by XY', () => {
   })
 })
 
+describe('add_plane: the parent ref crosses the same plane vocabulary', () => {
+  function planeDoc(): PartDoc {
+    const doc = seededDoc()
+    doc.features = [
+      ...(doc.features ?? []),
+      { id: 'pl1', kind: 'plane', definition: { mode: 'offset', plane: '@builtin_plane_top', offset: 5 } },
+    ] as PartDoc['features']
+    return doc
+  }
+
+  // A plane id in the document passes this boundary check even when the log
+  // defines it after the plane that references it: features solve in order, so
+  // that is a solve-later exception, not a working forward reference.
+  it('accepts a bare name, a builtin ref, a plane id and a face query on a parent mode', () => {
+    for (const plane of ['Top', '@builtin_plane_top', 'pl1', '@pl1', '?15,4,9;@cls_yp:flatface']) {
+      expect(validateMutation(
+        { type: 'add_plane', featureId: 'pl2', definition: { mode: 'offset', plane, offset: 1 } },
+        { doc: planeDoc() },
+      ), plane).toMatchObject({ ok: true })
+    }
+  })
+
+  it('refuses an unknown name and a lowercase spelling at the step, naming the valid planes', () => {
+    for (const plane of ['Nope', 'top']) {
+      const error = refusal(
+        { type: 'add_plane', featureId: 'pl2', definition: { mode: 'offset', plane } },
+        planeDoc(),
+      )
+      expect(error.code).toBe('invalid-mutation')
+      expect(error.message).toContain(`"${plane}"`)
+      expect(error.message).toContain('@builtin_plane_top')
+      expect(error.message).toContain('case-sensitive')
+    }
+  })
+
+  it('refuses an empty parent on a parent mode', () => {
+    const error = refusal(
+      { type: 'add_plane', featureId: 'pl2', definition: { mode: 'offset', plane: '' } },
+      planeDoc(),
+    )
+    expect(error.message).toContain('non-empty reference')
+  })
+
+  it('leaves a stray plane on a mode that ignores it alone', () => {
+    // The solver never reads `plane` on on_face, so a value refused on offset
+    // must not start failing a write that solves.
+    expect(validateMutation(
+      { type: 'add_plane', featureId: 'pl2', definition: { mode: 'on_face', face: '?face', plane: 'Nope' } },
+      { doc: planeDoc() },
+    )).toMatchObject({ ok: true })
+  })
+
+  it('accepts an unknown plane when no document is supplied, because only the shape is knowable', () => {
+    expect(validateMutation(
+      { type: 'add_plane', featureId: 'pl1', definition: { mode: 'offset', plane: 'Nope' } },
+    )).toMatchObject({ ok: true })
+  })
+
+  it('checks a parent the definition carries before any mode is chosen', () => {
+    const error = refusal({ type: 'add_plane', featureId: 'pl2', definition: { plane: 'Nope' } }, planeDoc())
+    expect(error.message).toContain('@builtin_plane_front')
+  })
+
+  it('refuses the setter value the same way and accepts the legal spellings', () => {
+    const bad = refusal(
+      { type: 'set_plane_definition_field', featureId: 'pl1', field: 'plane', value: 'Nope' },
+      planeDoc(),
+    )
+    expect(bad.message).toContain('@builtin_plane_front')
+    expect(validateMutation(
+      { type: 'set_plane_definition_field', featureId: 'pl1', field: 'plane', value: 'Top' },
+      { doc: planeDoc() },
+    )).toMatchObject({ ok: true })
+  })
+
+  it('skips the parent vocabulary when the stored definition uses a mode that ignores plane', () => {
+    const doc = seededDoc()
+    doc.features = [
+      ...(doc.features ?? []),
+      { id: 'plF', kind: 'plane', definition: { mode: 'on_face', face: '?face' } },
+    ] as PartDoc['features']
+    expect(validateMutation(
+      { type: 'set_plane_definition_field', featureId: 'plF', field: 'plane', value: 'Nope' },
+      { doc },
+    )).toMatchObject({ ok: true })
+  })
+
+  it('checks a setter value when the stored definition has no mode yet', () => {
+    const doc = seededDoc()
+    doc.features = [...(doc.features ?? []), { id: 'plE', kind: 'plane' }] as PartDoc['features']
+    const error = refusal(
+      { type: 'set_plane_definition_field', featureId: 'plE', field: 'plane', value: 'Nope' },
+      doc,
+    )
+    expect(error.message).toContain('@builtin_plane_front')
+  })
+})
+
 describe('finding: resize_circle names its target', () => {
   const circleDoc = (): PartDoc => seedBuiltins({
     version: 1,

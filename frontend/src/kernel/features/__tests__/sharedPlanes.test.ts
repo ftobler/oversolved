@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { Repository, initGlobalRepo } from '../../query'
-import { resolvePlaneRef, sketchToWorld2d, worldToSketch2d } from '../shared/planes'
+import { resolvePlaneRecord, resolvePlaneRef, sketchToWorld2d, worldToSketch2d } from '../shared/planes'
 
 function repoWith(entries: Record<string, Record<string, unknown>> = {}): Repository {
   const repo = initGlobalRepo()
@@ -59,6 +59,39 @@ describe('resolvePlaneRef', () => {
     const repo = repoWith({ f1: { type: 'flatface', origin: [0, 0, 0], normal: [0, 0, 0] } })
     expect(() => resolvePlaneRef(repo, '@f1', {}, 'split')).toThrow(
       'split: plane normal must be a non-zero vector',
+    )
+  })
+})
+
+describe('resolvePlaneRecord', () => {
+  it('returns the full builtin record for a bare name', () => {
+    const record = resolvePlaneRecord(repoWith(), 'Top', null, 'plane')
+    expect(record.type).toBe('plane')
+    expect(record.origin).toEqual([0, 0, 0])
+    expect(record.x_axis).toEqual([1, 0, 0])
+    expect(record.y_axis).toEqual([0, 0, -1])
+    expect(record.normal).toEqual([0, 1, 0])
+  })
+
+  it('keeps a lowercase name exact and names the ref in the refusal', () => {
+    expect(() => resolvePlaneRecord(repoWith(), 'right', null, 'plane')).toThrow(
+      'plane: plane not found: "right"',
+    )
+  })
+
+  it('resolves a user plane whose id is that lowercase name through the elements', () => {
+    const repo = repoWith({
+      right: { origin: [0, 5, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0] },
+    })
+    const record = resolvePlaneRecord(repo, 'right', null, 'plane')
+    expect(record.origin).toEqual([0, 5, 0])
+    expect(record.normal).toEqual([0, 1, 0])
+  })
+
+  it('refuses a record that is not plane-shaped, so the leaf cannot default it to XY', () => {
+    const repo = repoWith({ p1: { type: 'point', origin: [0, 0, 0] } })
+    expect(() => resolvePlaneRecord(repo, '@p1', null, 'plane')).toThrow(
+      'plane: plane query did not resolve to a plane: "@p1"',
     )
   })
 })

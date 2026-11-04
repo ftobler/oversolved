@@ -103,7 +103,7 @@ const ADD_PLANE_FRAME_BY_MODE: Record<string, string> = {
   edge_point: 'origin the point, x along the edge, y from the point to the edge line',
   on_face: 'origin the face centroid, the face normal, normalToFrame axes (a slash face pick keeps its own frame)',
   on_face_edge_angle: 'origin the face centroid, the face normal, x from the edge rotated by angle',
-  origin_rotation: 'origin the origin field (a point ref or world coordinates), the parent axes (world XY when no plane is named) swung about rotation_axis by rotation_angle degrees',
+  origin_rotation: 'origin the origin field (a point ref or world coordinates), the parent axes (world XY when no plane is named) swung about the WORLD axis rotation_axis by rotation_angle degrees',
 }
 
 /** The `add_plane` mode names the frame sentence covers, for the drift test. */

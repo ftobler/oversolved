@@ -11,7 +11,8 @@ import { getPoint3d } from '../query'
 import { BUILTIN_PLANES } from '../solverConstants'
 import type { Body, Frame3D } from '../types3d'
 import { normalToFrame } from '../types3d'
-import type { PlaneLike } from './shared/planes'
+import type { PlaneLike, PlaneRecord } from './shared/planes'
+import { resolvePlaneRecord } from './shared/planes'
 import { add, cross, dot, scale, sub, type Vec3 } from '@/utils/vec3'
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule } from '../occ/occTypes'
@@ -85,7 +86,7 @@ function getEdge3d(ref: Dict, globalRepo: Repository): [Vec3, Vec3] {
   throw new Error('edge reference has no line coordinates')
 }
 
-function planeAxes(plane: Dict): { normal: Vec3; origin: Vec3; xAxis: Vec3; yAxis: Vec3 } {
+function planeAxes(plane: PlaneRecord | Dict): { normal: Vec3; origin: Vec3; xAxis: Vec3; yAxis: Vec3 } {
   return {
     normal: (plane.normal as Vec3) ?? [0, 0, 1],
     origin: (plane.origin as Vec3) ?? [0, 0, 0],
@@ -232,8 +233,10 @@ function planeEdgePoint(def: Dict, repo: Repository, bodyStore: Dict | null): Fr
 function planeThroughPoint(def: Dict, repo: Repository): Frame3D {
   const planeQuery = (def.plane as string) ?? ''
   const pointQuery = (def.point as string) ?? ''
-  const refPlane = repo.query(planeQuery) as Dict | null
-  if (refPlane === null) throw new Error(`plane not found: ${JSON.stringify(planeQuery)}`)
+  // The parent goes through the shared spelling path: the leaf has no body
+  // store (solvePlane holds it), and a stored `?...:flatface` ancestry query
+  // resolves from the registered element without one.
+  const refPlane = resolvePlaneRecord(repo, planeQuery, null, 'plane')
   const pointRef = repo.query(pointQuery) as Dict | null
   if (pointRef === null) throw new Error(`point not found: ${JSON.stringify(pointQuery)}`)
 
@@ -271,8 +274,9 @@ function planeOffset(def: Dict, repo: Repository): Frame3D {
   const planeQuery = typeof planeVal === 'string' ? planeVal : ((def.reference as string) ?? '')
   const rawOffset = def.offset ?? def.distance
   const offset = Number(rawOffset ?? 0.0)
-  const plane = repo.query(planeQuery) as Dict | null
-  if (plane === null) throw new Error(`plane not found: ${JSON.stringify(planeQuery)}`)
+  // `reference` is the legacy alias for `plane`; both spellings take the same
+  // parent ref vocabulary, including a bare builtin name.
+  const plane = resolvePlaneRecord(repo, planeQuery, null, 'plane')
 
   const { normal, xAxis, yAxis, origin: refOrigin } = planeAxes(plane)
   const origin = add(refOrigin, scale(normal, offset))
@@ -350,15 +354,14 @@ function originPointOf(def: Dict, repo: Repository): Vec3 {
 function planeOriginRotation(def: Dict, repo: Repository): Frame3D {
   const origin = originPointOf(def, repo)
   const parentQuery = def.plane
-  let parent: Dict | null
+  let parent: PlaneRecord | Dict
   if (parentQuery === undefined) {
     parent = BUILTIN_PLANES.builtin_plane_front
   } else {
     // An empty parent is refused the way the other modes refuse it: the caller
     // must either name a plane or leave the field out to get world XY.
     if (typeof parentQuery !== 'string') throw new Error('plane must be a ref string')
-    parent = repo.query(parentQuery) as Dict | null
-    if (parent === null) throw new Error(`plane not found: ${JSON.stringify(parentQuery)}`)
+    parent = resolvePlaneRecord(repo, parentQuery, null, 'plane')
   }
   const { normal, xAxis, yAxis } = planeAxes(parent)
 

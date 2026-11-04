@@ -24,11 +24,80 @@ export interface ResolvedPlane {
 
 /** The plane-shaped subset a repo record may carry; every field is optional
  *  because a non-plane record (a point, a body) reaches the same lookup. */
-interface PlaneRecord {
+export interface PlaneRecord {
   origin?: number[]
   normal?: number[]
   x_axis?: number[]
+  y_axis?: number[]
   type?: string
+}
+
+// The accepted spellings, printed in a leaf refusal so one message names the
+// fix. The drive boundary prints its own document-aware list
+// (`planeTargetProblem` in mutationValues), because it can also list the
+// document's plane ids.
+const PLANE_REF_SPELLINGS =
+  '@builtin_plane_front, @builtin_plane_top, @builtin_plane_right, '
+  + 'the bare names Front/Top/Right (case-sensitive), @<planeId>, '
+  + 'or a "?" flat-face query from select'
+
+// A repo record is either a bare frame (`{origin, x_axis, y_axis, normal}`, no
+// tag) or a tagged plane/flatface entry. Sharing this predicate keeps the
+// record check and resolvePlaneRef's branch from drifting apart.
+function isFrameRecord(record: PlaneRecord): boolean {
+  return 'x_axis' in record && 'normal' in record && 'origin' in record && !('type' in record)
+}
+
+/**
+ * Resolve a plane-pick ref to the repository record behind it.
+ *
+ * This is the one spelling path: a caller that needs the full frame (the
+ * datum-plane leaf, which must take the parent's axes) and one that needs
+ * origin plus normal (mirror, split) read the ref the same way. A bare builtin
+ * name is translated first, so `Top` resolves where the repo holds
+ * `builtin_plane_top`; a bare document plane id then reads from the elements,
+ * as the sketch rows do, so a user plane id cannot be shadowed by the builtin
+ * capitalisation rule. `leaf` names the calling feature in every failure.
+ *
+ * A record that is not plane-shaped is refused here rather than defaulted by
+ * the caller: the plane leaf's `planeAxes` would otherwise read a point or body
+ * record as the world XY frame, the silent fallback this path exists to remove.
+ */
+export function resolvePlaneRecord(
+  globalRepo: Repository,
+  query: string,
+  bodyStore: Record<string, Body> | null,
+  leaf: string,
+): PlaneRecord {
+  const planeData = lookupPlaneRecord(globalRepo, query, bodyStore)
+  if (planeData === null) {
+    throw new Error(
+      `${leaf}: plane not found: ${JSON.stringify(query)}; use one of ${PLANE_REF_SPELLINGS}`,
+    )
+  }
+  if (!isFrameRecord(planeData) && planeData.type !== 'flatface' && planeData.type !== 'plane') {
+    throw new Error(`${leaf}: plane query did not resolve to a plane: ${JSON.stringify(query)}`)
+  }
+  return planeData
+}
+
+function lookupPlaneRecord(
+  globalRepo: Repository,
+  query: string,
+  bodyStore: Record<string, Body> | null,
+): PlaneRecord | null {
+  // A bare builtin name is a UI spelling, not a repo key: the repo holds
+  // `builtin_plane_top`, so translate before asking it anything.
+  const bareId = resolveBarePlaneId(query) ?? resolveBarePlaneId(query.replace(/^@/, ''))
+  if (bareId !== null) return globalRepo.query('@' + bareId, null, bodyStore) as PlaneRecord | null
+  const direct = globalRepo.query(query, null, bodyStore) as PlaneRecord | null
+  if (direct !== null) return direct
+  // A bare document plane id is an element key, not a query. The sketch rows
+  // read it this way (`resolveSketchPlane`), so a user plane whose id is a plain
+  // word resolves here too; a builtin name was already translated above.
+  if (/^[@$?]/.test(query)) return null
+  const element = globalRepo.elements.get(query) as PlaneRecord | undefined
+  return element ?? null
 }
 
 /**
@@ -48,23 +117,16 @@ export function resolvePlaneRef(
   bodyStore: Record<string, Body>,
   leaf: string,
 ): ResolvedPlane {
-  // A bare builtin name is a UI spelling, not a repo key: the repo holds
-  // `builtin_plane_top`, so translate before asking it anything.
-  const bareId = resolveBarePlaneId(query) ?? resolveBarePlaneId(query.replace(/^@/, ''))
-  const lookup = bareId !== null ? '@' + bareId : query
-  const planeData = globalRepo.query(lookup, null, bodyStore) as PlaneRecord | null
-  if (planeData === null) throw new Error(`${leaf}: plane not found: ${JSON.stringify(query)}`)
+  const planeData = resolvePlaneRecord(globalRepo, query, bodyStore, leaf)
 
   let origin: number[]
   let normal: number[]
-  if ('x_axis' in planeData && 'normal' in planeData && 'origin' in planeData && !('type' in planeData)) {
+  if (isFrameRecord(planeData)) {
     origin = planeData.origin as number[]
     normal = planeData.normal as number[]
-  } else if (planeData.type === 'flatface' || planeData.type === 'plane') {
-    origin = planeData.origin ?? [0, 0, 0]
-    normal = planeData.normal ?? [0, 0, 1]
   } else {
-    throw new Error(`${leaf}: plane query did not resolve to a plane: ${JSON.stringify(query)}`)
+    origin = (planeData.origin as number[] | undefined) ?? [0, 0, 0]
+    normal = (planeData.normal as number[] | undefined) ?? [0, 0, 1]
   }
 
   const length = Math.hypot(normal[0], normal[1], normal[2])

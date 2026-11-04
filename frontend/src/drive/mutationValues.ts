@@ -916,6 +916,24 @@ function reorderFeatures(raw: RawStep, ctx: ValueContext): ValueViolation | null
   return problem === null ? null : invalid(problem)
 }
 
+// The plane definition modes whose `plane` is a parent ref the solve consumes.
+// PLANE_DEF allows `plane` on every mode, but three_point, line_angle, the face
+// modes and edge_point ignore it, so a stray value there must keep solving
+// rather than start being refused.
+const PLANE_PARENT_MODES: ReadonlySet<string> = new Set(['offset', 'plane_point', 'origin_rotation'])
+
+// The definition half of the plane ref rule. It reuses `planeRefProblem` so the
+// accepted spellings and the non-empty/selector wording stay in one place; the
+// definition schema has normally refused a non-string value before this runs.
+// A missing mode checks the value anyway: it is consumed the moment a parent
+// mode is chosen.
+function planeDefinitionParentProblem(definition: RawStep, ctx: ValueContext): string | null {
+  const mode = definition.mode
+  if (typeof mode === 'string' && !PLANE_PARENT_MODES.has(mode)) return null
+  if (definition.plane === undefined) return null
+  return planeRefProblem(definition.plane, ctx)
+}
+
 function addPlane(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   if (raw.before !== undefined) {
     const problem = anchorProblem(raw, 'before', ctx)
@@ -927,7 +945,12 @@ function addPlane(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   // PLANE_DEF is the same schema the saved document is held to, so a mode or
   // ref typo is refused here under the same names.
   const problem = schemaValueProblem(definition, planeDefinitionSchema(), 'definition')
-  return problem === null ? null : invalid(problem)
+  if (problem !== null) return invalid(problem)
+  // The definition schema only knows `plane` is a ref string. Run the plane ref
+  // vocabulary on top, so an unknown parent is refused at the step with the
+  // valid names instead of surviving to a solve that every offset cascades from.
+  const parentProblem = planeDefinitionParentProblem(definition, ctx)
+  return parentProblem === null ? null : invalid(parentProblem)
 }
 
 function addSketch(raw: RawStep, ctx: ValueContext): ValueViolation | null {
@@ -1351,6 +1374,31 @@ function setHoleField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return fieldValue(raw, ctx)
 }
 
+/** The plane feature's stored definition, or null when the caller has no
+ *  document (or feature) whose mode could be read. */
+function storedPlaneDefinition(raw: RawStep, ctx: ValueContext): RawStep | null {
+  if (ctx.doc === null) return null
+  const feature = (ctx.doc.features ?? []).find(entry => entry.id === raw.featureId)
+  if (feature === undefined || feature.kind !== 'plane') return null
+  const definition = (feature as { definition?: unknown }).definition
+  return isRecord(definition) ? definition : null
+}
+
+// The plane definition setter carries no mode, so the parent-ref rule reads
+// the feature's stored definition and applies the same mode test as `add_plane`.
+// With no document (a shape-only caller) or no definition yet, the value is
+// checked anyway: it will be consumed the moment a parent mode is chosen.
+function setPlaneDefinitionField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const generic = fieldValue(raw, ctx)
+  if (generic !== null) return generic
+  if (raw.field !== 'plane' || raw.value === null || raw.value === undefined) return null
+  const definition = storedPlaneDefinition(raw, ctx)
+  const mode = definition === null ? undefined : definition.mode
+  if (typeof mode === 'string' && !PLANE_PARENT_MODES.has(mode)) return null
+  const problem = planeRefProblem(raw.value, ctx)
+  return problem === null ? null : invalid(problem)
+}
+
 // The revolve angle is the one numeric field whose semantic range the schema
 // cannot express with the shared number-or-expression union: a non-positive
 // angle builds no solid. Applied on top of the generic field check.
@@ -1396,7 +1444,7 @@ export const MUTATION_VALUE_RULES = {
   delete_feature: 'none',
   set_feature_visibility: 'none',
   add_plane: addPlane,
-  set_plane_definition_field: fieldValue,
+  set_plane_definition_field: setPlaneDefinitionField,
   rename_feature: 'none',
   toggle_sketch_plane_visibility: 'none',
   toggle_plane_visibility: 'none',
