@@ -487,13 +487,13 @@ const FILLET_BULK_NOTE =
   'One call may carry the whole pick: `edges` appends the query strings `select` returned, and `radius` sets the ' +
   'radius in the same step. `add_fillet_edge` and `set_fillet_field` remain for later single-edge and field edits. ' +
   'The blend continues along the pick\'s whole tangent chain (OCC joins edges that meet tangentially), so one ' +
-  'edge of a rounded loop rounds all of it and the reply warns with the edge count.'
+  'edge of a rounded loop rounds all of it and the reply notes the edge count.'
 
 const CHAMFER_BULK_NOTE =
   'One call may carry the whole pick: `edges` appends the query strings `select` returned, and `distance` sets the ' +
   'distance in the same step. `add_chamfer_edge` and `set_chamfer_field` remain for later single-edge and field edits. ' +
   'The chamfer continues along the pick\'s whole tangent chain (OCC joins edges that meet tangentially), so one ' +
-  'edge of a rounded loop bevels all of it and the reply warns with the edge count.'
+  'edge of a rounded loop bevels all of it and the reply notes the edge count.'
 
 // The shell has no signed thickness: `thickness` is a magnitude and the
 // direction field carries the side. CadQuery's `.shell()` takes a signed

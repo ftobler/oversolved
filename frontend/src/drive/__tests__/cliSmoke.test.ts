@@ -110,6 +110,28 @@ const COMMAND_SCRIPT = {
   ],
 }
 
+// Three separate posts and a bar that fuses into the first one: the bar's
+// "also touches" warning names the other two until a union fuses them, which is
+// the kernel's `resolved_warning`. A run that adds the union carries it as an
+// informational note, the one text the CLI printers must pass through.
+const RESOLVED_WARNING_SCRIPT = {
+  steps: [
+    ...[
+      { n: 1, x0: 0 },
+      { n: 2, x0: 5 },
+      { n: 3, x0: 10 },
+    ].flatMap(({ n, x0 }) => [
+      { mutation: { type: 'add_sketch', featureId: `sk${n}`, plane: '@builtin_plane_front' } },
+      { mutation: { type: 'add_rect', featureId: `sk${n}`, p0: [x0, 0], p1: [x0 + 2, 2] } },
+      { mutation: { type: 'add_extrude', featureId: `ex${n}`, sketchQuery: `$sk${n}`, distance: 3, operation: 'new' } },
+    ]),
+    { mutation: { type: 'add_sketch', featureId: 'sk4', plane: '@builtin_plane_front' } },
+    { mutation: { type: 'add_rect', featureId: 'sk4', p0: [1, 0], p1: [11, 2] } },
+    { mutation: { type: 'add_extrude', featureId: 'ex4', sketchQuery: '$sk4', distance: 3 } },
+    { mutation: { type: 'add_boolean', featureId: 'bo1', operation: 'union', target: 'body_ex1', tools: ['body_ex2', 'body_ex3'] } },
+  ],
+}
+
 // The 10 x 10 x 5 box with one edge filleted (radius 1). The edge alias
 // `?body_ex1:edge:0` is the deterministic index the builder registers, so the
 // script selects the same edge on every run.
@@ -287,6 +309,28 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(measure.payload.volume as number).toBeCloseTo(800, 6)
     expectBbox(measure.payload.bbox, [0, 0, 0, 10, 10, 8])
     expect(measure.payload.centroid as number[]).toHaveLength(3)
+  }, 180_000)
+
+  it('prints the informational notes a run and a measure carry', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const script = path.join(TMP_DIR, 'resolved-warning-script.json')
+    const doc = path.join(TMP_DIR, 'resolved-warning.yaml')
+    writeFileSync(script, JSON.stringify(RESOLVED_WARNING_SCRIPT, null, 1))
+
+    const run = await drive('run', script, '--out', doc)
+    expect(run.status).toBe(0)
+    expect(run.payload.ok).toBe(true)
+    expect(run.payload.features).toEqual([])
+    expect(run.payload.notes).toEqual([{
+      ids: ['ex4'],
+      text: 'extrude: the new solid also touches body_ex2, body_ex3; add a boolean union to fuse it',
+    }])
+
+    // The measure printer builds its own reply record, so it carries the note
+    // too: the resolved warning is visible without re-running the script.
+    const measure = await drive('measure', doc)
+    expect(measure.status).toBe(0)
+    expect(measure.payload.notes).toEqual(run.payload.notes)
   }, 180_000)
 
   it('lists the command registry with its params', async () => {

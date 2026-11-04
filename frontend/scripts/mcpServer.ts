@@ -340,7 +340,15 @@ const ops: McpCadOps = {
       if (!measure) {
         return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
       }
-      return { ok: measure.ok, docHash: resolved.docHash, ...measure.measures, features: measure.features, frames: measure.frames, ...replyUnits(resolved.doc) }
+      return {
+        ok: measure.ok,
+        docHash: resolved.docHash,
+        ...measure.measures,
+        features: measure.features,
+        ...(measure.notes.length > 0 && { notes: measure.notes }),
+        frames: measure.frames,
+        ...replyUnits(resolved.doc),
+      }
     }
     const answer = await callKernel<HeadlessAssemblyMeasure | null>('assemblyMeasure', {
       doc: resolved.doc,
@@ -468,7 +476,10 @@ const ops: McpCadOps = {
       verdict = {
         ...replyUnits(resolved.doc),
         file_unit: 'mm',
-        ...(exported === null ? {} : { features: exported.features }),
+        ...(exported === null ? {} : {
+          features: exported.features,
+          ...(exported.notes.length > 0 && { notes: exported.notes }),
+        }),
       }
     } else {
       if (req.body !== undefined) {

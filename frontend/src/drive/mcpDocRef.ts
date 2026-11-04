@@ -13,7 +13,7 @@ import { CURRENT_DOC_VERSION, docLoadErrorMessage, loadAssemblyDoc, loadPartDoc 
 import { DocHandleStore, DOC_HANDLE_CAPACITY, assemblyHandleOf } from '@/drive/docHandleStore'
 import { docHashOf } from '@/drive/docHash'
 import { assemblyDocStrictProblem, partDocStrictProblem } from '@/drive/strictDoc'
-import { formatFeatureProblem, type FeatureProblem } from '@/drive/featureOutcome'
+import { formatFeatureProblem, type FeatureNote, type FeatureProblem } from '@/drive/featureOutcome'
 import type { FeatureDelta } from '@/drive/featureDeltas'
 import type { FeatureFrameMap } from '@/drive/featureFrames'
 import type { McpDocArguments, SelectDetail } from '@/drive/mcpServer'
@@ -255,6 +255,9 @@ export interface RunReplySource {
   // The problems the solve reported (featureOutcome.featureProblems): a
   // feature can fail or warn while `ok` stays true, so this rides every reply.
   features: FeatureProblem[]
+  // The solve's informational notes (featureOutcome.featureNotes): neither a
+  // problem nor a delta exclusion, omitted from the reply when empty.
+  notes?: FeatureNote[]
   // Per-feature volume/bbox for the features this run changed or touched; null
   // when no checkpoints were measurable (no kernel).
   featureDeltas?: FeatureDelta[] | null
@@ -299,6 +302,7 @@ export function runReply(
     docHash,
     solve: result.solve,
     features,
+    ...(result.notes !== undefined && result.notes.length > 0 && { notes: result.notes }),
     ...replyUnits(finalDoc),
     ...(result.featureDeltas !== undefined && { featureDeltas: result.featureDeltas }),
     // An empty map says nothing this call did: omit it rather than print a

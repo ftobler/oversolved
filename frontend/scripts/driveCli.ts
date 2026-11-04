@@ -218,6 +218,7 @@ async function runCommand(args: Args): Promise<number> {
     docHash: result.docHash,
     solve: result.solve,
     features: result.features,
+    ...(result.notes.length > 0 && { notes: result.notes }),
     featureDeltas: result.featureDeltas,
     // The same rule the MCP run reply uses: an empty or absent map is omitted.
     ...(result.frames !== null && Object.keys(result.frames).length > 0 && { frames: result.frames }),
@@ -253,7 +254,14 @@ async function measureCommand(args: Args): Promise<number> {
     printJson({ ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' })
     return 1
   }
-  printJson({ ok: measure.ok, ...measure.measures, features: measure.features, frames: measure.frames, ...replyUnits(doc) })
+  printJson({
+    ok: measure.ok,
+    ...measure.measures,
+    features: measure.features,
+    ...(measure.notes.length > 0 && { notes: measure.notes }),
+    frames: measure.frames,
+    ...replyUnits(doc),
+  })
   return measure.ok ? 0 : 1
 }
 
@@ -295,7 +303,14 @@ async function exportCommand(args: Args): Promise<number> {
     return 1
   }
   if (!exported.bytes) {
-    printJson({ ok: false, features: exported.features, ...replyUnits(doc), file_unit: 'mm', error: 'export produced no solid' })
+    printJson({
+      ok: false,
+      features: exported.features,
+      ...(exported.notes.length > 0 && { notes: exported.notes }),
+      ...replyUnits(doc),
+      file_unit: 'mm',
+      error: 'export produced no solid',
+    })
     return 1
   }
   // A fresh run directory may not exist yet, so make the parent at write time.
@@ -307,6 +322,7 @@ async function exportCommand(args: Args): Promise<number> {
     format,
     bytes: exported.bytes.byteLength,
     features: exported.features,
+    ...(exported.notes.length > 0 && { notes: exported.notes }),
     ...replyUnits(doc),
     file_unit: 'mm',
   })
