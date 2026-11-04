@@ -39,9 +39,9 @@ export interface FeatureDelta {
   // A body this feature changed and that body's own volume after it. The name
   // is the feature's own reported body when that one changed, otherwise the
   // one body whose volume moved; a rigid transform or mirror still names its
-  // body though the volume comparison cannot see it. Several changed bodies
-  // leave this off and set `changedBodyCount` instead, so a disjoint array does
-  // not single out its untouched source.
+  // body though the volume comparison cannot see it. When several changed and
+  // the reported body is not one of them, this stays off and the row carries
+  // changedBodyCount, so a disjoint array does not single out its source.
   body?: string
   bodyVolume?: number
   // How many live bodies changed, set only when more than one did. Not the
@@ -173,8 +173,11 @@ export function featureDeltaRows(
       const volumeDelta = measure.volume - previousVolume
       const bboxDelta = subtractBbox(measure.bbox, previousBbox)
       if (mode === 'all' || includeRow(id, kind, measure, volumeDelta, bboxDelta)) {
-        const bodyId = isSolidProducingKind(kind) ? outcome.bodyId : undefined
-        const changed = measure.bodies === undefined ? [] : changedBodyIds(measure.bodies, previousBodies)
+        const solid = isSolidProducingKind(kind)
+        const bodyId = solid ? outcome.bodyId : undefined
+        const changed = solid && measure.bodies !== undefined
+          ? changedBodyIds(measure.bodies, previousBodies)
+          : []
         rows.push({
           id,
           kind,
@@ -185,13 +188,15 @@ export function featureDeltaRows(
           bboxDelta,
           ...(outcome.warning !== undefined && { warning: outcome.warning }),
           ...(outcome.direction !== undefined && { direction: outcome.direction }),
-          ...bodyFields(kind, bodyId, measure.bodies, changed),
+          ...(solid ? bodyFields(kind, bodyId, measure.bodies, changed) : {}),
         })
       }
     }
     previousVolume = measure.volume
     previousBbox = measure.bbox
-    previousBodies = measure.bodies ?? {}
+    // A checkpoint that carries no body map leaves the last known one in place
+    // rather than making the next row treat every live body as new.
+    previousBodies = measure.bodies ?? previousBodies
   }
   return rows
 

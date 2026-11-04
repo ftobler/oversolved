@@ -224,8 +224,7 @@ describe('featureDeltaRows', () => {
     expect(rows[2]).toMatchObject({ changedBodyCount: 15, volume: 960, volumeDelta: 900 })
   })
 
-  it('names the one body a cut changed, with that body\'s own volume', () => {
-    const doc = {
+  it('names the one body a cut changed, with that body\'s own volume', () => {    const doc = {
       version: 1,
       kind: 'part',
       features: [{ id: 'ex1', kind: 'extrude' }, { id: 'cut1', kind: 'extrude' }],
@@ -259,6 +258,30 @@ describe('featureDeltaRows', () => {
     }
     const rows = featureDeltaRows(doc, measures, outcomes)
     expect(rows[1]).toMatchObject({ body: 'body_ex2', bodyVolume: 120 })
+    expect(rows[1]).not.toHaveProperty('changedBodyCount')
+  })
+
+  // Bullet 2: the reported body is untouched, so the one body that did move is
+  // the honest name (a one-copy disjoint array, say).
+  it('names the one other body when the feature\'s own body did not change', () => {
+    const doc = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'ex2', kind: 'extrude' }, { id: 'ar1', kind: 'pattern' }],
+    } as unknown as PartDoc
+    const measures: FeatureMeasure[] = [
+      { id: 'ex2', volume: 60, bbox: [0, 0, 0, 2, 3, 10], bodies: { body_ex2: 60 } },
+      {
+        id: 'ar1', volume: 120, bbox: [0, 0, 0, 20, 3, 10],
+        bodies: { body_ex2: 60, body_ex2_1: 60 },
+      },
+    ]
+    const outcomes: Record<string, FeatureOutcome> = {
+      ex2: { status: 'ok', bodyId: 'body_ex2' },
+      ar1: { status: 'ok', bodyId: 'body_ex2' },
+    }
+    const rows = featureDeltaRows(doc, measures, outcomes)
+    expect(rows[1]).toMatchObject({ body: 'body_ex2_1', bodyVolume: 60 })
     expect(rows[1]).not.toHaveProperty('changedBodyCount')
   })
 
@@ -387,6 +410,52 @@ describe('featureDeltaRows', () => {
     expect(rows[0].body).toBeUndefined()
     expect(rows[0].bodyVolume).toBeUndefined()
     expect(rows[0]).not.toHaveProperty('changedBodyCount')
+  })
+
+  it('keeps the last body map when a later checkpoint carries none', () => {
+    const doc = {
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'ex1', kind: 'extrude' },
+        { id: 'fi1', kind: 'fillet' },
+        { id: 'ex2', kind: 'extrude' },
+      ],
+    } as unknown as PartDoc
+    const measures: FeatureMeasure[] = [
+      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 8000 } },
+      { id: 'fi1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20] },
+      { id: 'ex2', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 8000 } },
+    ]
+    const outcomes: Record<string, FeatureOutcome> = {
+      ex1: { status: 'ok' },
+      fi1: { status: 'ok' },
+      ex2: { status: 'ok', bodyId: 'body_ex1' },
+    }
+    const rows = featureDeltaRows(doc, measures, outcomes)
+    // Resetting the baseline to {} at fi1 would make ex2 look like it created
+    // the body anew and name it for a no-op extrude.
+    expect(rows[2].body).toBeUndefined()
+  })
+
+  it('leaves a reference feature row out of the body rule', () => {
+    const doc = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'ex1', kind: 'extrude' }, { id: 'sk2', kind: 'sketch' }],
+    } as unknown as PartDoc
+    const measures: FeatureMeasure[] = [
+      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 8000 } },
+      { id: 'sk2', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 9000 } },
+    ]
+    const outcomes: Record<string, FeatureOutcome> = {
+      ex1: { status: 'ok', bodyId: 'body_ex1' },
+      sk2: { status: 'ok', bodyId: 'body_ex1' },
+    }
+    const rows = featureDeltaRows(doc, measures, outcomes)
+    expect(rows[1].body).toBeUndefined()
+    expect(rows[1].bodyVolume).toBeUndefined()
+    expect(rows[1]).not.toHaveProperty('changedBodyCount')
   })
 
   // A warned array still built its copies: the warning must not change which

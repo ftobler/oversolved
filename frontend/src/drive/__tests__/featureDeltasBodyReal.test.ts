@@ -88,9 +88,6 @@ describe.skipIf(!ready)('featureDeltas body selection (real OCC + Rust solver)',
     expect(arrayRow.bodyVolume).toBeUndefined()
     expect(arrayRow.changedBodyCount).toBe(3)
     expect(arrayRow.volumeDelta).toBeCloseTo(3 * FIN, 3)
-    // The defect this pins: the row claimed the source's own 3000 mm3 while its
-    // delta was every copy's volume.
-    expect(arrayRow.volumeDelta).toBeGreaterThanOrEqual(FIN * 3)
   }, 240_000)
 
   it('names the receiving body of a boolean union and its own volume', async () => {
