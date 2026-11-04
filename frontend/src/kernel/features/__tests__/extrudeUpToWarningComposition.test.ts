@@ -58,5 +58,7 @@ describe('extrude up_to warning composition', () => {
 
     expect(result.solver_warning).toContain('up_to has no target; used blind distance')
     expect(result.solver_warning).toContain('operation produced no geometry change')
+    // The fallback path does not write the informational note.
+    expect(result.solver_note).toBeUndefined()
   })
 })

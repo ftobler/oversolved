@@ -294,6 +294,8 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       )
       expect(result.status).toBe('ok')
       expect(result.solver_warning).toContain('up_to has no target; used blind distance')
+      // A fallback stays a warning; only the tangent chain moved to solver_note.
+      expect(result.solver_note).toBeUndefined()
       const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
       expect(vol).toBeCloseTo(300, 2)
     } finally {

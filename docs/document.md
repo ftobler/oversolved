@@ -329,8 +329,11 @@ tool, so one edge of a rounded top loop rounds the loop: on a 3 x 3 x 0.5 plate
 with R0.125 vertical fillets, one top edge at R0.1 removed 0.0249905 of
 material, the whole 8-edge loop's cut, against 0.0059015 for that edge alone.
 Both features accept the pick and report what they took: an `ok` (or `partial`)
-result carrying a `solver_warning` with the chain size and how many of those
-edges nobody picked. A pick the kernel itself refused is named in the refusal
+result carrying a `solver_note` with the chain size and how many of those
+edges nobody picked. The note is informational, not a warning: it does not
+change a run's `ok`, does not make an export `ok: false`, and does not keep the
+feature out of the reply's `featureDeltas`. A pick the kernel itself refused is
+named in the refusal
 and left out of that count. A chain the picks already cover reports nothing,
 and a sharp corner is not a joint.
 

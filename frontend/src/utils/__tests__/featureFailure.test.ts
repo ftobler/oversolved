@@ -102,6 +102,15 @@ describe('featureFailure', () => {
       .toEqual({ failed: true, level: 'warning', message: 'used blind distance' })
   })
 
+  it('does not mark a solver note: it describes geometry the solve did build', () => {
+    // The tangent chain a blend ran along is informational, so the tree row and
+    // the open editor stay unmarked.
+    expect(featureFailure('fi1', {
+      fi1: { status: 'ok', body_id: 'body_ex1', solver_note: 'fillet: 8 edges were filleted (7 not picked)' },
+    }, {}))
+      .toEqual({ failed: false, level: null, message: '' })
+  })
+
   it('joins a partial result exception with its solver warning', () => {
     expect(featureFailure('h1', { h1: { status: 'partial', exception: '1/4 sites missed', solver_warning: 'body deleted' } }, {}))
       .toEqual({ failed: true, level: 'warning', message: '1/4 sites missed; body deleted' })

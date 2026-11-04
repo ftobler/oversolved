@@ -59,8 +59,10 @@ interface EdgeFeatureResult {
   // partial result.
   failed_edges?: string[]
   // The blend ran past the picks along a tangent chain (OCC continues over a
-  // G1 joint). The feature built; the note says how much of the body moved.
-  solver_warning?: string
+  // G1 joint). The feature built exactly what the pick produces; the note says
+  // how much of the body moved. Informational, so it is not a solver_warning:
+  // that word is kept for a fallback or a no-op.
+  solver_note?: string
 }
 
 export interface EdgeIndex {
@@ -668,7 +670,9 @@ function applyEdgeFeature(
 
   if (applied.length === 0) throw new Error(`${featureKind}: no edges resolved`)
 
-  const solverWarning = unpickedSize > 0
+  // The chain note is the file's only informational text writer: a fallback or
+  // a no-op stays a `solver_warning` in the leaves that take one.
+  const solverNote = unpickedSize > 0
     ? `${featureKind}: the picked edges continue along the tangent chain, so ${chainSize} ` +
       `edges were ${featureKind === 'fillet' ? 'filleted' : 'chamfered'} (${unpickedSize} of them not picked)`
     : undefined
@@ -689,7 +693,7 @@ function applyEdgeFeature(
       unresolved_edges: [...new Set(unresolved)],
       failed_edges: [...new Set(failed)],
       exception: `${featureKind}: ${parts.join('; ')}`,
-      ...(solverWarning !== undefined && { solver_warning: solverWarning }),
+      ...(solverNote !== undefined && { solver_note: solverNote }),
       ...(handle !== null && { handle }),
     }
   }
@@ -697,7 +701,7 @@ function applyEdgeFeature(
     status: 'ok',
     body_id: applied[0],
     body_ids: applied,
-    ...(solverWarning !== undefined && { solver_warning: solverWarning }),
+    ...(solverNote !== undefined && { solver_note: solverNote }),
     ...(handle !== null && { handle }),
   }
 }
