@@ -202,7 +202,7 @@ const SELECT_DETAIL_SCHEMA = {
   type: 'string',
   enum: [...SELECT_DETAILS],
   description: 'Reply-size control for this tool (default full). full returns count, the queries and the per-item geometry '
-    + 'summary; queries returns only count and the queries, for a match too large to carry the summary.',
+    + 'summary; queries returns only ok, docHash, count and the queries, for a match too large to carry the summary.',
 }
 
 // The assembly binding. A bound {doc} is loaded and stored under its own hash,
@@ -548,8 +548,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     description: 'Find faces, edges or vertices by predicate over the solved document and return the query strings a click '
       + 'would store, plus `count` (the number of matches) and, in full detail, a geometry summary per item. '
       + '`detail` is the reply-size control on this tool: "full" (default) returns count, the queries and every item; '
-      + '"queries" returns only count and the queries, so pass detail: "queries" for a large match rather than spend the '
-      + 'client\'s token limit on geometry. Run it after `run`, then feed the queries to a feature '
+      + '"queries" returns the usual ok and docHash with only count and the queries, so pass detail: "queries" for a large '
+      + 'match rather than spend the client\'s token limit on geometry. Run it after `run`, then feed the queries to a feature '
       + '(fillet, chamfer, hole, ...). Omit `where` to take every candidate: {from:"body_ex1",kind:"edge"} is '
       + 'all edges of that body. An edge direction test reads the edge\'s own tangent, so a fillet arc\'s underlying '
       + 'circle axis is not a direction; a full circle has no single tangent. A seam edge is the face meeting '

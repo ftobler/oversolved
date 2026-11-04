@@ -487,11 +487,11 @@ banner on stdout, so a client config must use the direct node invocation.
   as if each element had been clicked. `count` is the number of matches, the
   same number in both detail modes. `detail` is the reply-size control on this
   tool: `full` (the default) returns `count`, the queries and the per-item
-  geometry summary; `queries` returns only `count` and the queries with no
-  `items` key, so a large match should pass `detail: "queries"` rather than
-  spend the caller's token limit on geometry. The values are select's own
-  (`full`, `queries`); the assembly tools' `detail` (`summary`, `changed`,
-  `full`) is a separate per-tool enum. The engine is pure TS in
+  geometry summary; `queries` returns only `ok`, `docHash`, `count` and the
+  queries with no `items` key, so a large match should pass `detail: "queries"`
+  rather than spend the caller's token limit on geometry. The values are
+  select's own (`full`, `queries`); the assembly tools' `detail` (`summary`,
+  `changed`, `full`) is a separate per-tool enum. The engine is pure TS in
   `frontend/src/kernel/select/`.
 
   To name one outer vertical corner edge of a plate, chain the direction and

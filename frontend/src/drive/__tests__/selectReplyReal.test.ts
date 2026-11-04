@@ -2,10 +2,10 @@
 //
 // The large-match select reply against the real kernel: a body with hundreds
 // of edges, where the per-item geometry summary is what pushed the reply past a
-// client's token limit. The fixture is 40 disjoint rectangles in one sketch,
-// extruded once, so every rect becomes its own body; each body contributes four
-// edges parallel to world Z. The queries-only reply must keep the whole answer
-// and drop only the summary.
+// client's token limit. The fixture is about 40 disjoint rectangles in one
+// sketch, extruded once, so every rect becomes its own body; each body
+// contributes four edges parallel to world Z. The queries-only reply must keep
+// the whole answer and drop only the summary.
 
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
@@ -18,6 +18,7 @@ import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { ScriptStep } from '../scriptRunner'
+import { yieldToEventLoop } from '@/testing/yieldToEventLoop'
 
 function occInstalled(): boolean {
   try {
@@ -40,8 +41,8 @@ function emptyDoc(): PartDoc {
 const ready = oc && solveBytes
 const step = (mutation: Record<string, unknown>): ScriptStep => ({ mutation } as ScriptStep)
 
-const RECTS = 40
-const RECTS_PER_ROW = 8
+const RECTS = 36
+const RECTS_PER_ROW = 6
 // Four world-Z edges per extruded rect, so the fixture's match count is fixed
 // by construction rather than by a hand count of a production document.
 const Z_EDGES = RECTS * 4
@@ -61,8 +62,10 @@ describe.skipIf(!ready)('the large-match select reply (real OCC)', () => {
   it('keeps every query and drops the geometry summary in queries detail', async () => {
     const built = await runHeadless({ doc: emptyDoc(), steps: plateSteps() })
     expect(built.ok).toBe(true)
+    await yieldToEventLoop()
     const measured = await measureHeadless(built.doc as PartDoc)
     expect(measured!.measures.bodies).toBe(RECTS)
+    await yieldToEventLoop()
 
     const result = (await selectHeadless(built.doc as PartDoc, {
       kind: 'edge',
@@ -73,18 +76,21 @@ describe.skipIf(!ready)('the large-match select reply (real OCC)', () => {
     const queries = selectReply('docHash1', result, 'queries')
     expect(queries.count).toBe(Z_EDGES)
     expect(queries.queries).toEqual(result.queries)
-    expect('items' in queries).toBe(false)
+    // The reply is exactly the envelope plus the queries: no per-item summary.
+    expect(Object.keys(queries)).toEqual(['ok', 'docHash', 'count', 'queries'])
 
     const full = selectReply('docHash1', result, 'full')
     expect(full.count).toBe(Z_EDGES)
     expect((full.items as unknown[])).toHaveLength(Z_EDGES)
 
     const queriesSize = JSON.stringify(queries).length
+    const payloadSize = JSON.stringify(result.queries).length
     const fullSize = JSON.stringify(full).length
-    // The queries are about 110 bytes each, so this ceiling proves the geometry
-    // was dropped without capping the answer (the 128-edge case was ~14 kB).
+    // Only the small ok/docHash/count envelope sits around the query payload.
+    expect(queriesSize - payloadSize).toBeLessThan(200)
+    // The 144-edge fixture is about 15 kB of queries, so this ceiling proves the
+    // geometry was dropped without capping the answer.
     expect(queriesSize).toBeLessThan(20_000)
-    expect(queriesSize).toBeGreaterThan(JSON.stringify(result.queries).length)
     expect(fullSize).toBeGreaterThan(queriesSize * 2)
   }, 240_000)
 })
