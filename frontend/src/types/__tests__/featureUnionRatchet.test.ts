@@ -42,14 +42,15 @@ const RATCHETS: Ratchet[] = [
     baseline: 48,
   },
   {
-    // 362 after the batch B inline adds: featureDefs' generic mergeInlineFields
+    // 363 after the batch B inline adds: featureDefs' generic mergeInlineFields
     // and setFeatureField take the definition object and name the write bag
     // (FieldBag) once instead of spelling a loose record per call. Same
-    // boundary looseness, one token fewer. 362 after the array and circular
-    // array leaves folded into the one pattern leaf: the body-subject half and
-    // the feature-subject half share the kind's single raw record allowance.
+    // boundary looseness, one token fewer. The array and circular array leaves
+    // folded into one pattern leaf: its dispatch record, the body subject and
+    // the shared patternSubject accessor keep the three removed array records'
+    // total, so the baseline stays 363.
     token: 'Record<string, unknown>',
-    baseline: 362,
+    baseline: 363,
   },
 ]
 
