@@ -119,6 +119,17 @@ describe('up-to termination on both extrude rows', () => {
   })
 })
 
+describe('helix reply placement', () => {
+  it('names the curves map and the start/end refs on add_helix', () => {
+    const note = mutationInfoOf('add_helix').note!
+    expect(note).toContain('`curves.<id>`')
+    expect(note).toContain('`@<id>/start`')
+    expect(note).toContain('`@<id>/end`')
+    expect(note).toContain('climb direction')
+    expect(note).toContain('`direction: reverse`')
+  })
+})
+
 // Batch B docs findings: the sentences a client reads when it sends an empty
 // value or draws a profile whose loops cross.
 describe('batch B: the empty clear and the profile fill rule', () => {

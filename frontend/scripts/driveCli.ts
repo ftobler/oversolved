@@ -222,6 +222,7 @@ async function runCommand(args: Args): Promise<number> {
     featureDeltas: result.featureDeltas,
     // The same rule the MCP run reply uses: an empty or absent map is omitted.
     ...(result.frames !== null && Object.keys(result.frames).length > 0 && { frames: result.frames }),
+    ...(result.curves !== null && Object.keys(result.curves).length > 0 && { curves: result.curves }),
     ...replyUnits(result.doc),
     ...(saved !== null && { file: saved.file, format: saved.format }),
   })
@@ -260,6 +261,7 @@ async function measureCommand(args: Args): Promise<number> {
     features: measure.features,
     ...(measure.notes.length > 0 && { notes: measure.notes }),
     frames: measure.frames,
+    ...(Object.keys(measure.curves).length > 0 && { curves: measure.curves }),
     ...replyUnits(doc),
   })
   return measure.ok ? 0 : 1

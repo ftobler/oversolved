@@ -25,6 +25,7 @@ import { createHeadlessPart, type HeadlessCheckpoint, type HeadlessPart } from '
 import { featureProblems, featureNotes, readSolveOutcomes, MISSING_VERDICT_STATUS, type FeatureNote, type FeatureProblem } from '@/drive/featureOutcome'
 import { featureDeltaRows, touchedFeatureIds, type FeatureDelta } from '@/drive/featureDeltas'
 import { featureFrames, frameConflicts, type FeatureFrameMap } from '@/drive/featureFrames'
+import { featureCurves, type FeatureCurveMap } from '@/drive/featureCurves'
 import { partSolvePayload } from '@/drive/solveWriteBack'
 import { docHashOf } from '@/drive/docHash'
 import type { CommandJournal } from '@/drive/journal'
@@ -119,6 +120,10 @@ export interface HeadlessRunResult {
   // one under `frames: 'all'`. Null when no solve ran; a feature whose solve
   // threw or that was suppressed has no frame.
   frames: FeatureFrameMap | null
+  // The placement of every helix the final solve resolved, keyed by feature id;
+  // the whole map, not filtered to what this call touched, because the sweep
+  // that reads it is a later call. Null when no solve ran.
+  curves: FeatureCurveMap | null
   // The live part, for a caller that wants the session (the CLI records a
   // repro from its journal; most callers only read the fields above).
   part: HeadlessPart
@@ -200,6 +205,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       touched: touchedFeatureIds(opts.steps, outcome.steps),
       mode: opts.frames === 'all' ? 'all' : 'changed',
     }),
+    curves: part.featureCurves(),
     part,
   }
 }
@@ -254,6 +260,9 @@ export interface HeadlessMeasure {
   // The resolved frames of every sketch and add_plane feature, the same map a
   // `frames: "all"` run reply carries.
   frames: FeatureFrameMap
+  // The placement of every resolved helix, the same whole map a run reply
+  // carries (it is never filtered).
+  curves: FeatureCurveMap
 }
 
 /** Measure a document through the local kernel; null when OCC is unavailable. */
@@ -269,6 +278,7 @@ export async function measureHeadless(doc: PartDoc, opts: HeadlessMeasureOptions
     features,
     notes: featureNotes(doc, outcomes, frameConflicts(doc, frames)),
     frames,
+    curves: featureCurves(doc, built.response.result),
   }
 }
 

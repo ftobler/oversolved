@@ -22,6 +22,7 @@ import { runScript, type ScriptRunOutcome, type ScriptStep, type ScriptStepOutco
 import { validateMutation } from '@/drive/mutationCatalog'
 import { readSolveOutcomes, type FeatureOutcome } from '@/drive/featureOutcome'
 import { featureFrames, type FeatureFrameMap, type FeatureFrameOptions } from '@/drive/featureFrames'
+import { featureCurves, type FeatureCurveMap } from '@/drive/featureCurves'
 import { docHashOf } from '@/drive/docHash'
 import { seededIdSource, stepSeedFor } from '@/drive/seededIds'
 import { resolveSelectionAids, usesSelectionAid } from '@/drive/selectionAids'
@@ -82,6 +83,9 @@ export interface HeadlessPart {
   // keyed by feature id. Null when no solve has run yet. The options filter the
   // map the way a run reply does; without them every resolved frame is listed.
   featureFrames(opts?: FeatureFrameOptions): FeatureFrameMap | null
+  // The resolved start, end and climb axis of every helix, keyed by feature id.
+  // Null when the last settle produced no response (no kernel).
+  featureCurves(): FeatureCurveMap | null
   // The status-only view of solveOutcomes, for the repro test's sidecar
   // expectations.
   solveStatuses(): Record<string, string>
@@ -285,6 +289,9 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     featureFrames: opts => responseBox.current === null
       ? null
       : featureFrames(docBox.current, responseBox.current.result, opts),
+    featureCurves: () => responseBox.current === null
+      ? null
+      : featureCurves(docBox.current, responseBox.current.result),
     // Derived rather than stored: the status view and the outcome view cannot
     // disagree about which features the last settle reached.
     solveStatuses: () => Object.fromEntries(

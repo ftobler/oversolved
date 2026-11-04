@@ -340,6 +340,7 @@ const ops: McpCadOps = {
       if (!measure) {
         return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
       }
+      const curves = measure.curves
       return {
         ok: measure.ok,
         docHash: resolved.docHash,
@@ -347,6 +348,7 @@ const ops: McpCadOps = {
         features: measure.features,
         ...(measure.notes.length > 0 && { notes: measure.notes }),
         frames: measure.frames,
+        ...(Object.keys(curves).length > 0 && { curves }),
         ...replyUnits(resolved.doc),
       }
     }
