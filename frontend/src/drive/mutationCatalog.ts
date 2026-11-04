@@ -339,7 +339,9 @@ const PLANE_REF_NOTE =
 
 // The plane modes' frames, per the same tables docs/drive.md serves. Kept short:
 // the catalog names where the detail lives so the two cannot disagree on a mode
-// the schema adds later without the docs.
+// the schema adds later without the docs. The parent-ref sentence is the drive
+// boundary's vocabulary (mutationValues `planeTargetProblem`); the world-axis
+// clause is the Ex015 reading an author brings from CadQuery's local rotate.
 const PLANE_MODE_NOTE =
   'Each mode builds a frame: offset keeps the parent axes and moves the origin along the normal; ' +
   'three_point takes p1 as origin and p1->p2 as x; plane_point keeps the parent axes with the origin ' +
@@ -348,7 +350,11 @@ const PLANE_MODE_NOTE =
   '(on_face_edge_angle/edge_point take x from the edge); origin_rotation takes its own origin ' +
   '(a point or vertex ref, or three world coordinates, the one plane field that may carry coordinates) ' +
   'and swings the parent axes about rotation_axis ("x", "y", "z" or a direction vector) by rotation_angle ' +
-  'degrees, world XY when no plane is named. docs/drive.md (MCP Server, add_plane frames) ' +
+  'degrees, world XY when no plane is named. The parent `plane` is @builtin_plane_front, ' +
+  '@builtin_plane_top, @builtin_plane_right, a bare builtin name (Front, Top, Right; case-sensitive), ' +
+  '@<planeId>, or a "?" face query from `select`; only offset, plane_point and origin_rotation read it, ' +
+  'and a face query parent supplies the face axes and normal. rotation_axis is a WORLD axis in both ' +
+  'spellings, not the parent frame\'s own x/y/z. docs/drive.md (MCP Server, add_plane frames) ' +
   'has the exact conventions, and the run/measure reply `frames` map reports the frame each plane resolved.'
 
 // One operation, two subjects: a body pattern copies a whole body, a feature

@@ -771,19 +771,23 @@ banner on stdout, so a client config must use the direct node invocation.
   the 1.4726 of the same sketch with that hole inside the rim. Keep a cut loop
   inside its boundary, or cut with a separate sketch.
 - Plane refs are exact. `add_sketch.plane`, `set_feature_plane.plane`,
-  `add_split.plane` and `set_split_field` with `field: "plane"` accept
-  `@builtin_plane_front`, `@builtin_plane_top`, `@builtin_plane_right`, the bare
-  names `Front`/`Top`/`Right` (case-sensitive), `@<planeId>` for a plane
-  feature, or a `?` face query from `select` (the stored `?...:flatface`
-  string), so a face pick can place the sketch in one step (`add_split` and
-  `set_split_field` take the flat-face form only; a curved face is refused). An
-  unmatched NAME
-  is refused with the valid list; a name never falls back to the XY plane. A
-  face query is resolved after the solve, and a plane or face query that does
-  not resolve fails the sketch with the cause named: a plane feature defined
-  later in the log (the message names the one-step fix,
-  `reorder_features {featureId: <planeId>, before: <sketchId>}`) or a face query
-  nothing registers any more. Only an absent or empty query keeps Front.
+  `add_split.plane`, `set_split_field` with `field: "plane"`,
+  `add_plane.definition.plane` and `set_plane_definition_field` with
+  `field: "plane"` accept `@builtin_plane_front`, `@builtin_plane_top`,
+  `@builtin_plane_right`, the bare names `Front`/`Top`/`Right` (case-sensitive),
+  `@<planeId>` for a plane feature, or a `?` face query from `select` (the
+  stored `?...:flatface` string), so a face pick can place the sketch in one
+  step (`add_split` and `set_split_field` take the flat-face form only; a curved
+  face is refused). In an `add_plane` definition the ref is the parent plane,
+  and only the modes that consume a parent (`offset`, `plane_point`,
+  `origin_rotation`) read it; a `?` flat-face query parent supplies that face's
+  axes and normal. An unmatched NAME is refused with the valid list; a name never
+  falls back to the XY plane. A face query is resolved after the solve, and a
+  plane or face query that does not resolve fails the sketch or `add_plane`
+  feature with the cause named: a plane feature defined later in the log (a
+  sketch's message names the one-step fix,
+  `reorder_features {featureId: <planeId>, before: <sketchId>}`) or a face
+  query nothing registers any more. Only an absent or empty query keeps Front.
   `add_sketch.plane` and `set_feature_plane.plane` also take the selector
   itself, `{selector: <a select selector naming exactly one face>}`: the
   headless drive resolves it against the settled solve and stores the query
@@ -809,7 +813,12 @@ banner on stdout, so a client config must use the direct node invocation.
   builtin plane, so write sketch-local x along the world axis the table names,
   not the one the builtin plane's name suggests.
 - Each `add_plane` mode builds its frame as follows, then an optional
-  `rotation` turns x and y about the normal by that many degrees:
+  `rotation` turns x and y about the normal by that many degrees. The parent
+  `plane` is `@builtin_plane_front`, `@builtin_plane_top`,
+  `@builtin_plane_right`, a bare builtin name (`Front`, `Top`, `Right`;
+  case-sensitive), `@<planeId>`, or a `?` flat-face query from `select`; only
+  the modes that consume a parent (`offset`, `plane_point`, `origin_rotation`)
+  read it, and the other modes ignore it.
   - `offset`: the parent plane's axes and normal; origin is the parent origin
     plus `offset` times the normal.
   - `three_point`: origin p1; x from p1 to p2; y in the p1-p2-p3 plane
@@ -837,6 +846,9 @@ banner on stdout, so a client config must use the direct node invocation.
     parent plane's axes (world XY when no `plane` is named) swung about
     `rotation_axis` (`x`, `y`, `z` or a `[x, y, z]` direction) by
     `rotation_angle` degrees, Rodrigues, with the normal rebuilt as x cross y.
+    `rotation_axis` is a WORLD axis in both spellings, not the parent frame's
+    own x/y/z, so a 60 degree turn about `x` over a non-XY parent keeps the
+    world +X direction fixed rather than the parent's own x.
     `rotation_axis` and `rotation_angle` are required together; the common
     in-plane `rotation` still applies last.
 - Read the frame from the reply. Every `run` and `measure` reply carries

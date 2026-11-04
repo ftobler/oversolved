@@ -322,6 +322,18 @@ describe('mutation catalog', () => {
     }
   })
 
+  it('states the add_plane parent ref spellings and the world axis of origin_rotation', () => {
+    const note = mutationInfoOf('add_plane').note
+    expect(note).toBeDefined()
+    expect(note).toContain('case-sensitive')
+    expect(note).toContain('@builtin_plane_front')
+    expect(note).toContain('@<planeId>')
+    expect(note).toContain('?" face query')
+    expect(note).toContain('offset, plane_point and origin_rotation')
+    expect(note).toContain('WORLD axis')
+    expect(note).toContain('face axes and normal')
+  })
+
   it('documents the add_rect id order and the sketch target forms', () => {
     expect(mutationInfoOf('add_rect').summary).toContain('bottom, right, top, left')
 

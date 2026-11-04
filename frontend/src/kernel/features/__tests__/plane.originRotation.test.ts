@@ -26,6 +26,22 @@ function close(a: number[], b: number[]) {
 const SIN60 = Math.sin(Math.PI / 3)
 const COS60 = Math.cos(Math.PI / 3)
 
+// A repo whose `?...:flatface` query resolves to one face record and whose
+// `@<id>` queries read the given elements; the leaf only needs query and
+// register, and the face record carries the axes a real flatface entry does.
+function faceQueryRepo(face: Dict, extra: Record<string, Dict> = {}): Repository {
+  const elements = new Map<string, unknown>(Object.entries(extra))
+  return {
+    elements,
+    query: (query: string) => {
+      if (query.startsWith('?')) return face
+      if (query.startsWith('@')) return elements.get(query.slice(1)) ?? null
+      return null
+    },
+    register: (id: string, payload: unknown) => { elements.set(id, payload) },
+  } as unknown as Repository
+}
+
 describe('solvePlane origin_rotation', () => {
   it('places the world XY frame at a stored origin', () => {
     const res = run(initGlobalRepo(), planeFeature('pl1', { mode: 'origin_rotation', origin: [3, -2, 5] }))
@@ -126,6 +142,42 @@ describe('solvePlane origin_rotation', () => {
     expect(() => run(initGlobalRepo(), planeFeature('pl1', {
       mode: 'origin_rotation', origin: [0, 0, 0], plane: '@nope',
     }))).toThrow(/plane not found: "@nope"/)
+  })
+
+  it('accepts a bare builtin parent name and pins the same frame as the ref', () => {
+    const definition = {
+      mode: 'origin_rotation', origin: [1, 2, 3], rotation_axis: 'x', rotation_angle: 60,
+    }
+    const bare = run(initGlobalRepo(), planeFeature('pl1', { ...definition, plane: 'Top' }))
+    const ref = run(initGlobalRepo(), planeFeature('pl1', { ...definition, plane: '@builtin_plane_top' }))
+    close(bare.plane.origin, ref.plane.origin)
+    close(bare.plane.x_axis, ref.plane.x_axis)
+    close(bare.plane.y_axis, ref.plane.y_axis)
+    close(bare.plane.normal, ref.plane.normal)
+  })
+
+  it('rotates about a WORLD axis even when the parent frame is not world-aligned', () => {
+    // Right's x is -Z and its normal is +X. A world +X turn leaves the normal
+    // fixed and swings x and y; a parent-local x turn would leave x at -Z. The
+    // two readings differ, so this pins the one the mode documents.
+    const res = run(initGlobalRepo(), planeFeature('pl1', {
+      mode: 'origin_rotation', origin: [0, 0, 0], plane: '@builtin_plane_right',
+      rotation_axis: 'x', rotation_angle: 60,
+    }))
+    close(res.plane.x_axis, [0, SIN60, -COS60])
+    close(res.plane.y_axis, [0, COS60, SIN60])
+    close(res.plane.normal, [1, 0, 0])
+  })
+
+  it('accepts a ? face query parent and takes the face axes', () => {
+    const face = { type: 'flatface', origin: [2, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0] }
+    const res = run(faceQueryRepo(face), planeFeature('pl1', {
+      mode: 'origin_rotation', origin: [2, 0, 0], plane: '?15,4,9;@cls_yp:flatface',
+    }))
+    close(res.plane.origin, [2, 0, 0])
+    close(res.plane.x_axis, [1, 0, 0])
+    close(res.plane.y_axis, [0, 0, -1])
+    close(res.plane.normal, [0, 1, 0])
   })
 
   it('refuses an empty parent plane like the other modes do', () => {
