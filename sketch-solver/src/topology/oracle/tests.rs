@@ -714,21 +714,29 @@ fn a_spline_end_on_a_line_interior_does_not_fuse() {
 }
 
 #[test]
-fn the_verified_lost_areas_still_report() {
-    // Seeds 141 and 303: lost areas the reviewer verified with an independent
-    // point-in-face test. Their boundaries are closed at MERGE resolution, so
-    // there is no end-to-barrier opening to tunnel through and the coverage
-    // check must keep reporting them.
-    for name in ["141", "303"] {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join(format!("src/topology/dcel/tests/fuzz_cases/{name}.json"));
-        let bytes = std::fs::read(&path)
-            .unwrap_or_else(|e| panic!("{}: {e} (run the fuzz harvester?)", path.display()));
-        let geom = codec::decode_input(&bytes).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+fn the_verified_lost_areas_are_now_covered() {
+    // Seeds 141 and 303 were lost areas the reviewer verified with an
+    // independent point-in-face test: a bounded region the tracer did not
+    // publish. Both regions are now covered by a published face (the long-arc
+    // area sampling fix closed them). Other catalogued classes on these
+    // fixtures (141's overlap, for one) are separate known failures.
+    // The two minimised inputs, kept here because the fuzz harvester now
+    // re-mints their seed fixtures for other catalogued classes.
+    const CASES: &[&str] = &[
+        r#"[["m0_1",{"center":[0.0,0.0],"radius":6750.0}],
+            ["m1_0",{"center":[3000.0,0.0],"radius":6750.0}],
+            ["m0_0_dup",{"center":[0.0,0.0],"radius":9000.0}]]"#,
+        r#"[["m0_3",{"start":[0.0,6750.0],"end":[-4.6889404288908845e-6,-0.000019442577958036137]}],
+            ["m0_4",{"center":[4500.0,3375.0],"radius":4500.0}],
+            ["m1_0",{"center":[5250.0,3000.0],"radius":6750.0}],
+            ["m3_0",{"center":[12000.0,0.0],"radius":4500.0}]]"#,
+    ];
+    for (i, raw) in CASES.iter().enumerate() {
+        let geom = codec::decode_input(raw.as_bytes()).expect("case decodes");
         let v = texts(&check_input(&geom));
         assert!(
-            v.iter().any(|x| x.contains("coverage (lost area)")),
-            "{name}: the verified lost area is gone: {v:?}"
+            !v.iter().any(|x| x.contains("lost area")),
+            "verified lost area {i}: a lost area is back: {v:?}"
         );
     }
 }

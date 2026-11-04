@@ -330,6 +330,7 @@ pub(crate) fn half_edge_usage_violations(out: &TopologyOut) -> Vec<Violation> {
         .surfaces
         .iter()
         .chain(out.hole_regions.iter())
+        .chain(out.void_regions.iter())
         .enumerate()
     {
         for be in &s.boundary {
@@ -444,7 +445,12 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
     };
 
     let mut used: BTreeSet<String> = BTreeSet::new();
-    for s in out.surfaces.iter().chain(out.hole_regions.iter()) {
+    for s in out
+        .surfaces
+        .iter()
+        .chain(out.hole_regions.iter())
+        .chain(out.void_regions.iter())
+    {
         for be in &s.boundary {
             if let Some(v) = &be.start_vertex {
                 used.insert(v.clone());
@@ -511,7 +517,7 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
     // Every traced face, hole regions included, plus the outer face: the
     // Euler identity is over the planar subdivision, not over the fillable
     // subset.
-    let face_count = out.surfaces.len() + out.hole_regions.len() + 1;
+    let face_count = out.surfaces.len() + out.hole_regions.len() + out.void_regions.len() + 1;
 
     // Connected components over the used vertices plus one for every
     // vertex-free standalone loop (a circle or full ellipse: it bounds area
@@ -545,6 +551,7 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
         .surfaces
         .iter()
         .chain(out.hole_regions.iter())
+        .chain(out.void_regions.iter())
         .filter(|s| {
             s.boundary
                 .iter()

@@ -1,1 +1,1 @@
-euler: V - E + F = 4 - 8 + 5 = 1, expected 1 + 1 = 2
+euler: V - E + F = 2 - 6 + 2 = -2, expected 1 + 1 = 2

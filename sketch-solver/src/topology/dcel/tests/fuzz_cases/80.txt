@@ -1,1 +1,1 @@
-coverage: coverage (lost area): 3825 cells read as bounded but sit in no face and 0 sit in more than one, first at (24364.082964, -2085.445927) with 0
+coverage: coverage (overlap): 0 cells read as bounded but sit in no face and 15411 sit in more than one, first at (-356.504272, -2202.193439) with 2

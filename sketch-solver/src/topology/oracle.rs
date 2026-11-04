@@ -66,7 +66,7 @@ mod geometry;
 mod holes;
 mod structure;
 
-use coverage::{coverage_violations, face_polys};
+use coverage::{coverage_violations, face_polys, region_polys};
 use geometry::bbox_of;
 use structure::{check_loop, euler_violations, half_edge_usage_violations, hole_wiring_violations};
 
@@ -283,10 +283,15 @@ pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut)
     let mut violations = Vec::new();
 
     let faces = face_polys(out, chord_tol);
+    let voids = region_polys(&out.void_regions, chord_tol);
 
     if !curves.is_empty() {
         let shells = holes::chains_of(&curves, chord_tol, &out.edges);
-        violations.extend(coverage_violations(&curves, &faces, chord_tol, &shells));
+        let authored = holes::authored_chains(&curves, chord_tol);
+        let split = holes::split_chains(&out.edges, chord_tol);
+        violations.extend(coverage_violations(
+            &curves, &faces, &voids, chord_tol, &shells, &authored, &split,
+        ));
     }
 
     let verts: BTreeMap<String, Vec2> = out.vertices.iter().map(|(k, v)| (k.clone(), *v)).collect();
@@ -297,6 +302,19 @@ pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut)
         check_loop(
             &format!("hole region {hi}"),
             &hole.boundary,
+            &verts,
+            &input_ids,
+            &construction_ids,
+            chord_tol,
+            &mut violations,
+        );
+    }
+    for (vi, void) in out.void_regions.iter().enumerate() {
+        // A void is a traced face the material rule refused to fill; it is
+        // still a face of the subdivision and must be as well formed.
+        check_loop(
+            &format!("void region {vi}"),
+            &void.boundary,
             &verts,
             &input_ids,
             &construction_ids,

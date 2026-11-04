@@ -12,7 +12,7 @@ use super::geometry::{
     bbox_of, loop_polygon, point_in_polygon, sample_curve, seg_rect_dist, seg_seg_intersect,
     Sampled,
 };
-use super::holes::hole_expected;
+use super::holes::{holds_any, holds_closed, hole_expected, Chain, ClosedChain};
 use super::{Curve, Violation};
 
 /// Cells along the bbox diagonal: the plan's `scale/200`.
@@ -210,7 +210,15 @@ impl FacePoly {
 /// The built faces as the coverage check judges them: the boundary loop with
 /// its holes subtracted, plus a bbox for the cheap reject.
 pub(crate) fn face_polys(out: &TopologyOut, chord_tol: f64) -> Vec<FacePoly> {
-    out.surfaces
+    region_polys(&out.surfaces, chord_tol)
+}
+
+/// The same polygon view over any region list (the void regions).
+pub(crate) fn region_polys(
+    regions: &[crate::topology::dcel::SurfaceOut],
+    chord_tol: f64,
+) -> Vec<FacePoly> {
+    regions
         .iter()
         .map(|s| {
             let outer = loop_polygon(&s.boundary, chord_tol, FACE_POLY_MAX_PTS);
@@ -227,11 +235,15 @@ pub(crate) fn face_polys(out: &TopologyOut, chord_tol: f64) -> Vec<FacePoly> {
 
 /// The coverage oracle. Judges cells far enough from every curve to be
 /// decidable, against the faces the builder returned.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn coverage_violations(
     curves: &[(String, Curve)],
     faces: &[FacePoly],
+    voids: &[FacePoly],
     chord_tol: f64,
-    shells: &[super::holes::Chain],
+    shells: &[Chain],
+    authored: &[ClosedChain],
+    split: &[ClosedChain],
 ) -> Vec<Violation> {
     let mut all: Vec<Vec2> = Vec::new();
     let sampled: Vec<Sampled> = curves
@@ -390,8 +402,20 @@ pub(crate) fn coverage_violations(
                     hole_example.get_or_insert(p);
                 }
             } else if inside == 0 {
-                unreached_missing += 1;
-                unreached_example.get_or_insert((p, inside));
+                // A cell inside an authored loop (or a shell) and in no face
+                // is a lost area, even if the builder published a void there:
+                // a real loop must be material. A published void excuses a
+                // cell only when no authored loop holds it; a contact-closed
+                // loop can still report through the split graph.
+                if holds_any(p, shells, authored) {
+                    unreached_missing += 1;
+                    unreached_example.get_or_insert((p, inside));
+                } else if voids.iter().any(|v| v.contains(p)) {
+                    // the builder's own void, no authored loop around it
+                } else if holds_closed(p, split) {
+                    unreached_missing += 1;
+                    unreached_example.get_or_insert((p, inside));
+                }
             } else if inside > 1 {
                 unreached_multi += 1;
                 unreached_example.get_or_insert((p, inside));
