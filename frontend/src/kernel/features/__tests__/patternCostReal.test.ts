@@ -19,6 +19,7 @@ import { setOccLoader } from '../../solveLocally'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { SOLVE_STALL_BUDGET_MS } from '../../solverConstants'
+import { yieldToEventLoop } from '@/testing/yieldToEventLoop'
 import { emptyDriveDoc, exportHeadless, measureHeadless, runHeadless } from '@/drive/headlessOps'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
@@ -219,7 +220,11 @@ describe.skipIf(!oc || !solveBytes)('many-instance pattern and array solve cost 
     }
 
     // The production path, from a document with no checkpoint cache: a cold
-    // full build plus the export that used to fail after the pattern.
+    // full build plus the export that used to fail after the pattern. The real
+    // kernel is synchronous WASM, so hand the event loop a turn between the
+    // three builds; under parallel CI load this case runs past the 30 s stall
+    // guard otherwise.
+    await yieldToEventLoop()
     const m = (mutation: Record<string, unknown>): ScriptStep => ({ mutation } as ScriptStep)
     const setField = (field: string, value: unknown) =>
       m({ type: 'set_pattern_field', featureId: 'pt1', field, value })
@@ -240,9 +245,11 @@ describe.skipIf(!oc || !solveBytes)('many-instance pattern and array solve cost 
       ],
     })
     expect(built.features).toEqual([])
+    await yieldToEventLoop()
     const doc = built.doc as PartDoc
     const measured = await measureHeadless(doc)
     expect(measured?.measures.volume).toBeCloseTo(50000 - 39 * 2 * 6 * 5, 3)
+    await yieldToEventLoop()
     const exported = await exportHeadless(doc, { format: 'step' })
     expect(exported?.ok).toBe(true)
     expect(exported?.bytes?.length ?? 0).toBeGreaterThan(0)
