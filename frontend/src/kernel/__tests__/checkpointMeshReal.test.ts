@@ -45,7 +45,7 @@ function extrudeSpec(sketchId: string, extrudeId: string, opts?: { distance?: nu
   return {
     id: extrudeId, kind: 'extrude', sketch: '$' + sketchId,
     distance: opts?.distance ?? 5, direction: 'normal',
-    operation: opts?.operation ?? 'add',
+    operation: opts?.operation ?? 'new',
   }
 }
 
@@ -67,12 +67,14 @@ describe.skipIf(!oc || !solveBytes)('checkpoint meshing across builds (real OCC 
       rectSketch('sk1', 10, 10),
       extrudeSpec('sk1', 'ex1', { distance: 5 }),
       rectSketch('sk2', 5, 5, { plane: '@builtin_plane_right' }),
-      extrudeSpec('sk2', 'ex2', { distance: 3 }),
+      extrudeSpec('sk2', 'ex2', { distance: 3, operation: 'add' }),
       { id: 'ex3', kind: 'extrude', sketch: '$sk1', distance: 2, direction: 'normal', operation: 'new' },
     ]}
 
     const r1 = h.run(spec)
     expect(h.res(r1, 'ex3').status).toBe('ok')
+    // ex2 is an add on ex1's face: it fuses rather than minting body_ex2.
+    expect(r1.bodies).not.toHaveProperty('body_ex2')
 
     spec.features[4] = extrudeSpec('sk1', 'ex3', { distance: 4 })
     const r2 = h.run(spec, { prevState: r1._build_state })
@@ -110,9 +112,10 @@ describe.skipIf(!oc || !solveBytes)('checkpoint meshing across builds (real OCC 
       rectSketch('sk1', 10, 10),
       extrudeSpec('sk1', 'ex1', { distance: 5 }),
       rectSketch('sk2', 5, 5, { plane: '@builtin_plane_right' }),
-      extrudeSpec('sk2', 'ex2', { distance: 3 }),
+      extrudeSpec('sk2', 'ex2', { distance: 3, operation: 'add' }),
     ]}
     const r1 = h.run(spec)
+    expect(Object.keys(r1.bodies)).toEqual(['body_ex1'])
 
     const lastFid = r1._build_state!.feature_order[r1._build_state!.feature_order.length - 1]
     const lastCp = r1._build_state!.checkpoints[lastFid]
@@ -132,9 +135,10 @@ describe.skipIf(!oc || !solveBytes)('checkpoint meshing across builds (real OCC 
       rectSketch('sk1', 10, 10),
       extrudeSpec('sk1', 'ex1', { distance: 5 }),
       rectSketch('sk2', 5, 5, { plane: '@builtin_plane_right' }),
-      extrudeSpec('sk2', 'ex2', { distance: 3 }),
+      extrudeSpec('sk2', 'ex2', { distance: 3, operation: 'add' }),
     ]}
     const r1 = h.run(spec)
+    expect(Object.keys(r1.bodies)).toEqual(['body_ex1'])
 
     spec.features[0] = rectSketch('sk1', 15, 10, {
       initial: { bottom: [0, 0, 15, 0], right: [15, 0, 15, 10], top: [15, 10, 0, 10], left: [0, 10, 0, 0] },

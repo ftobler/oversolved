@@ -25,7 +25,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
-        extrudeSpec('sk1', 'ex1', { distance: 10 }),
+        extrudeSpec('sk1', 'ex1', { distance: 10, operation: 'new' }),
         extrudeSpec('sk1', 'ex2', { distance: 5, operation: 'cut' }),
       ],
     })
@@ -43,7 +43,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     const result = h.run({
       features: [
         rectSketchSk('sk1', 6, 6, '@builtin_plane_front'),
-        extrudeSpec('sk1', 'ex1', { distance: 8 }),
+        extrudeSpec('sk1', 'ex1', { distance: 8, operation: 'new' }),
         extrudeSpec('sk1', 'ex2', { distance: 4, operation: 'cut' }),
       ],
     })
@@ -57,7 +57,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
         { id: 'ex1', kind: 'extrude', label: 'Base',
-          extrude: { sketch: '$sk1', distance: 10, direction: 'normal' } },
+          extrude: { sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' } },
         { id: 'ex2', kind: 'extrude', label: 'Cut',
           extrude: { sketch: '$sk1', distance: 5, direction: 'normal', operation: 'cut' } },
       ],
@@ -98,12 +98,15 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     expect(m2).toBeDefined(); if (m2) assertMeshValid(m2)
   })
 
-  it('disjoint rects add no base creates two bodies', () => {
-    // Two profiles with operation=add and no existing body produce two bodies.
+  it('disjoint rects add no base is refused', () => {
+    // An add extends an existing body; with none it cannot solve, and the
+    // error names `operation: new`, which is how a body is started.
     const result = h.run(disjointTwoRectSpec('add'))
-    expect(h.res(result, 'ex1').status).toBe('ok')
-    expect(result.bodies).toHaveProperty('body_ex1')
-    expect(result.bodies).toHaveProperty('body_ex1_1')
+    const ex1 = h.res(result, 'ex1')
+    expect(ex1.status).toBe('exception')
+    expect(String(ex1.exception)).toContain('add has no existing body to extend')
+    expect(String(ex1.exception)).toContain('use operation: new to create one')
+    expect(result.bodies).toEqual({})
   })
 
   it('disjoint rects add with base fuses into base body', () => {
@@ -143,7 +146,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
-        extrudeSpec('sk1', 'ex1', { distance: 5 }),
+        extrudeSpec('sk1', 'ex1', { distance: 5, operation: 'new' }),
         rectSketchSk('sk2', 5, 5, '@builtin_plane_front'),
         extrudeSpec('sk2', 'ex2', { distance: 3, operation: 'new' }),
       ],

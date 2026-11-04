@@ -83,9 +83,9 @@ describe('up-to termination on both extrude rows', () => {
     }
   })
 
-  it('keeps the add-time solve warning on the add row only', () => {
-    expect(mutationInfoOf('add_extrude').note).toContain('add joined nothing')
-    expect(mutationInfoOf('set_extrude_field').note).not.toContain('add joined nothing')
+  it('keeps the add-time solve failure on the add row only', () => {
+    expect(mutationInfoOf('add_extrude').note).toContain('add does not merge with any existing body')
+    expect(mutationInfoOf('set_extrude_field').note).not.toContain('add does not merge with any existing body')
   })
 
   it('offers both fields inline on add_extrude', () => {

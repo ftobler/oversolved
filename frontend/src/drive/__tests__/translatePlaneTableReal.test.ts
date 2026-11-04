@@ -51,7 +51,7 @@ describe.skipIf(!ready)('docs/translate.md named-plane table (real OCC + Rust so
         steps: [
           { mutation: { type: 'add_sketch', featureId: 'sk1', plane } },
           { mutation: { type: 'add_rect', featureId: 'sk1', p0: swap(0, 0), p1: swap(10, 4) } },
-          { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 3, direction } },
+          { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 3, direction, operation: 'new' } },
         ],
       })
       expect(result.features).toEqual([])

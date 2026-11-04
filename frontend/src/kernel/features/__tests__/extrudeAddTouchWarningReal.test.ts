@@ -4,7 +4,8 @@
 // the warning, the second stayed separate with no hint: the caller saw two
 // bodies and had to guess why. The decision is to warn (naming the untouched
 // body and the one-step fix) rather than widen the fuse, which is a document
-// change.
+// change. An add that reaches NO body is a different matter: it is a misplaced
+// profile, so it fails the feature and names `operation: new` as the fix.
 //
 // Skips when OCC.js or the Rust solver is absent.
 
@@ -50,13 +51,13 @@ describe.skipIf(!oc || !solveBytes)('extrude add bridging two bodies (real OCC +
       features: [
         // Two separate 2 x 2 posts, 3 mm tall, with a 3 mm gap between them.
         rectAt('skA', 0, 0, 2, 2),
-        extrudeSpec('skA', 'exA', { distance: 3 }),
+        extrudeSpec('skA', 'exA', { distance: 3, operation: 'new' }),
         rectAt('skB', 5, 0, 7, 2),
         extrudeSpec('skB', 'exB', { distance: 3, operation: 'new' }),
         // A bridge spanning x 1..6: it overlaps both posts, so an unfused add
         // would reach both. Default add fuses only the first target.
         rectAt('skBridge', 1, 0.5, 6, 1.5),
-        extrudeSpec('skBridge', 'exBridge', { distance: 4 }),
+        extrudeSpec('skBridge', 'exBridge', { distance: 4, operation: 'add' }),
       ],
     })
     expect(h.res(result, 'exA').status).toBe('ok')
@@ -76,45 +77,57 @@ describe.skipIf(!oc || !solveBytes)('extrude add bridging two bodies (real OCC +
     const result = h.run({
       features: [
         rectAt('skA', 0, 0, 2, 2),
-        extrudeSpec('skA', 'exA', { distance: 3 }),
+        extrudeSpec('skA', 'exA', { distance: 3, operation: 'new' }),
         rectAt('skB', 30, 0, 32, 2),
         extrudeSpec('skB', 'exB', { distance: 3, operation: 'new' }),
         // Standing on the first post, far from the second.
         rectAt('skCap', 0.5, 0.5, 1.5, 1.5),
-        extrudeSpec('skCap', 'exCap', { distance: 4 }),
+        extrudeSpec('skCap', 'exCap', { distance: 4, operation: 'add' }),
       ],
     })
     expect(h.res(result, 'exCap').status).toBe('ok')
     expect(h.res(result, 'exCap').solver_warning).toBeUndefined()
   })
 
-  it('warns when an additive extrude joins nothing and still mints one body', () => {
+  it('fails an additive extrude that reaches no existing body', () => {
     const result = h.run({
       features: [
         rectAt('skA', 0, 0, 2, 2),
-        extrudeSpec('skA', 'exA', { distance: 3 }),
+        extrudeSpec('skA', 'exA', { distance: 3, operation: 'new' }),
         // Beside the first post, sharing no volume with it: add has nothing to
-        // fuse with, so the profile becomes a body of its own.
+        // fuse with, so the feature fails instead of minting a second body.
         rectAt('skB', 5, 0, 7, 2),
-        extrudeSpec('skB', 'exB', { distance: 3 }),
+        extrudeSpec('skB', 'exB', { distance: 3, operation: 'add' }),
       ],
     })
     expect(h.res(result, 'exA').status).toBe('ok')
     expect(h.res(result, 'exA').solver_warning).toBeUndefined()
     const disjoint = h.res(result, 'exB')
-    expect(disjoint.status).toBe('ok')
-    expect(String(disjoint.solver_warning)).toContain('add joined nothing')
-    expect(String(disjoint.solver_warning)).toContain("'body_exB'")
-    // Reporting only: the body count is the one the silent add already made.
-    expect(Object.keys(result.bodies).sort()).toEqual(['body_exA', 'body_exB'])
-    expect(disjoint.body_id).toBe('body_exB')
+    expect(disjoint.status).toBe('exception')
+    expect(String(disjoint.exception)).toContain('add does not merge with any existing body')
+    expect(String(disjoint.exception)).toContain('move it onto the part')
+    expect(Object.keys(result.bodies)).toEqual(['body_exA'])
+  })
+
+  it('fails an additive extrude on a document with no body at all', () => {
+    const result = h.run({
+      features: [
+        rectAt('skA', 0, 0, 2, 2),
+        extrudeSpec('skA', 'exA', { distance: 3, operation: 'add' }),
+      ],
+    })
+    const first = h.res(result, 'exA')
+    expect(first.status).toBe('exception')
+    expect(String(first.exception)).toContain('add has no existing body to extend')
+    expect(String(first.exception)).toContain('use operation: new to create one')
+    expect(result.bodies).toEqual({})
   })
 
   it('does not warn for operation new or cut beside an existing body', () => {
     const asNew = h.run({
       features: [
         rectAt('skA', 0, 0, 2, 2),
-        extrudeSpec('skA', 'exA', { distance: 3 }),
+        extrudeSpec('skA', 'exA', { distance: 3, operation: 'new' }),
         rectAt('skB', 5, 0, 7, 2),
         extrudeSpec('skB', 'exB', { distance: 3, operation: 'new' }),
       ],
@@ -125,7 +138,7 @@ describe.skipIf(!oc || !solveBytes)('extrude add bridging two bodies (real OCC +
     const asCut = h.run({
       features: [
         rectAt('skA', 0, 0, 2, 2),
-        extrudeSpec('skA', 'exA', { distance: 3 }),
+        extrudeSpec('skA', 'exA', { distance: 3, operation: 'new' }),
         rectAt('skB', 1, 0.5, 3, 1.5),
         extrudeSpec('skB', 'exB', { distance: 3, operation: 'cut' }),
       ],
@@ -135,27 +148,29 @@ describe.skipIf(!oc || !solveBytes)('extrude add bridging two bodies (real OCC +
     expect(Object.keys(asCut.bodies)).toEqual(['body_exA'])
   })
 
-  it('treats an empty merge_target as no target when warning about a join', () => {
-    const specB = extrudeSpec('skB', 'exB', { distance: 3 })
+  it('treats an empty merge_target as no target', () => {
+    const specB = extrudeSpec('skB', 'exB', { distance: 3, operation: 'add' })
     const result = h.run({
       features: [
         rectAt('skA', 0, 0, 2, 2),
-        extrudeSpec('skA', 'exA', { distance: 3 }),
+        extrudeSpec('skA', 'exA', { distance: 3, operation: 'new' }),
         rectAt('skB', 5, 0, 7, 2),
         { ...specB, extrude: { ...specB.extrude, merge_target: '' } },
       ],
     })
-    expect(String(h.res(result, 'exB').solver_warning)).toContain('add joined nothing')
+    // An empty merge target is "automatic", so it takes the same disjoint road
+    // as an absent one.
+    expect(String(h.res(result, 'exB').exception)).toContain('add does not merge with any existing body')
   })
 
   it('does not warn when the additive extrude fuses into the existing body', () => {
     const result = h.run({
       features: [
         rectAt('skA', 0, 0, 2, 2),
-        extrudeSpec('skA', 'exA', { distance: 3 }),
+        extrudeSpec('skA', 'exA', { distance: 3, operation: 'new' }),
         // Overlapping the first post, so the add fuses into it.
         rectAt('skB', 1, 0.5, 3, 1.5),
-        extrudeSpec('skB', 'exB', { distance: 3 }),
+        extrudeSpec('skB', 'exB', { distance: 3, operation: 'add' }),
       ],
     })
     const fused = h.res(result, 'exB')
@@ -165,7 +180,7 @@ describe.skipIf(!oc || !solveBytes)('extrude add bridging two bodies (real OCC +
     expect(Object.keys(result.bodies)).toEqual(['body_exA'])
   })
 
-  it('does not warn for the first body in the document', () => {
+  it('makes the first body with operation new, not add', () => {
     const result = h.run(fullRectExtrudeSpec(2, 2, 3))
     const first = h.res(result, 'ex1')
     expect(first.status).toBe('ok')

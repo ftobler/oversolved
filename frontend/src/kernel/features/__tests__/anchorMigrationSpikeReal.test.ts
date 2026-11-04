@@ -113,7 +113,7 @@ function rectSketchSpec(sketchId: string, w: number, h: number) {
 function extrudeSpec(sketchId: string, extrudeId: string, distance: number) {
   return {
     id: extrudeId, kind: 'extrude' as const, label: 'Extrude',
-    sketch: '$' + sketchId, distance, direction: 'normal', operation: 'add' as const,
+    sketch: '$' + sketchId, distance, direction: 'normal', operation: 'new' as const,
   }
 }
 

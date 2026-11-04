@@ -45,7 +45,7 @@ const addRect = (): Mutation =>
   ({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] })
 
 const addExtrude = (featureId: string): Mutation =>
-  ({ type: 'add_extrude', featureId, label: featureId, sketchQuery: '$sk1', distance: 5 })
+  ({ type: 'add_extrude', featureId, label: featureId, sketchQuery: '$sk1', distance: 5, operation: 'new' })
 
 describe.skipIf(!oc || !solveBytes)('unsettled replay (real OCC + Rust solver)', () => {
   beforeAll(() => {

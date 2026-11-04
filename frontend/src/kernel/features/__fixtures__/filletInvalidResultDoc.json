@@ -128,7 +128,8 @@
         "?2a,2a,2a,9,19,1a,1a;@ekISVf71mWteTf7QD6J02cDH/MKn327ovt_SB3N3A@ekISVf71mWteTf7QD6J02cDH/O3t5KfPmOkyb45yu@ekISVf71mWteTf7QD6J02cDH/wvbsXsxOCIb6FYgPsurface:0@ekISVf71mWteTf7QD6J02cDH@cls_ld_MKn327ovt_SB3N3A_p@cls_ld_O3t5KfPmOkyb45yu_p:flatface"
       ],
       "distance": 1,
-      "direction": "normal"
+      "direction": "normal",
+      "operation": "new"
     }
   },
   {

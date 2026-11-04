@@ -105,7 +105,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
           ],
         },
         { id: 'ex1', kind: 'extrude', label: 'extrude 1',
-          extrude: { sketch: '$sk1', distance: 2, direction: 'normal' } },
+          extrude: { sketch: '$sk1', distance: 2, direction: 'normal', operation: 'new' } },
       ],
     })
     expect(h.res(result, 'sk1').status).not.toBe('exception')
@@ -129,7 +129,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
             { id: 'd1', kind: 'diameter', target: '$sk1c1', value: 1 },
           ],
         },
-        { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 2, direction: 'normal' },
+        { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 2, direction: 'normal', operation: 'new' },
       ],
     })
     expect(h.res(result, 'sk1').status).not.toBe('exception')
@@ -157,7 +157,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
           ],
         },
         { id: 'ex1', kind: 'extrude', label: 'extrude 1',
-          extrude: { sketch: '$sk1', distance: 1, direction: 'normal' } },
+          extrude: { sketch: '$sk1', distance: 1, direction: 'normal', operation: 'new' } },
       ],
     })
     expect(h.res(result, 'sk1').status).not.toBe('exception')
@@ -249,7 +249,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
             { id: 'd1', kind: 'diameter', target: '$sk1c1', value: 1 },
           ],
         },
-        { id: 'ex1', kind: 'extrude', sketch: surfaceQuery, distance: 2, direction: 'normal' },
+        { id: 'ex1', kind: 'extrude', sketch: surfaceQuery, distance: 2, direction: 'normal', operation: 'new' },
       ],
     })
     expect(h.res(result, 'sk1').status).not.toBe('exception')
@@ -276,7 +276,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
             { id: 'd2', kind: 'diameter', target: `$${sk}c2`, value: 1 },
           ],
         },
-        { id: 'ex1', kind: 'extrude', sketch: surfaceQuery, distance: 1, direction: 'normal' },
+        { id: 'ex1', kind: 'extrude', sketch: surfaceQuery, distance: 1, direction: 'normal', operation: 'new' },
       ],
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
@@ -302,7 +302,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     return {
       features: [
         sk,
-        { id: 'ex1', kind: 'extrude', extrude: { sketch: [profileRef], distance: 3, direction: 'normal' } },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: [profileRef], distance: 3, direction: 'normal', operation: 'new' } },
       ],
     }
   }
@@ -332,7 +332,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10),
-        { id: 'ex1', kind: 'extrude', extrude: { sketch: ['$sk1'], distance: 3, direction: 'normal' } },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: ['$sk1'], distance: 3, direction: 'normal', operation: 'new' } },
         {
           id: 'sk2', kind: 'sketch', label: 'Circle', plane: '@builtin_plane_front',
           entities: [{ id: 'ci', kind: 'circle' as const }],
@@ -393,7 +393,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
       features: [
         rectSketchSk('sk1', 2, 2, '@builtin_plane_front'),
         rectSketchSk('sk2', 2, 2, '@builtin_plane_front'),
-        { id: 'ex1', kind: 'extrude', sketch: ['$sk1', '$sk2'], distance: 3, direction: 'normal' },
+        { id: 'ex1', kind: 'extrude', sketch: ['$sk1', '$sk2'], distance: 3, direction: 'normal', operation: 'new' },
       ],
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
@@ -411,7 +411,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     const result = h.run({
       features: [
         rectSketchSk('sk1', 4, 4, '@builtin_plane_front'),
-        { id: 'ex1', kind: 'extrude', sketch: ['$sk1'], distance: 2, direction: 'normal' },
+        { id: 'ex1', kind: 'extrude', sketch: ['$sk1'], distance: 2, direction: 'normal', operation: 'new' },
       ],
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
@@ -501,7 +501,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): n
           id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
           entities, initial, constraints: [],
         },
-        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 40, direction: 'normal' } },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 40, direction: 'normal', operation: 'new' } },
       ],
     }
   }
@@ -536,7 +536,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): n
             { id: 'd2', kind: 'diameter', target: '$cIn', value: 20 },
           ],
         },
-        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 40, direction: 'normal' } },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 40, direction: 'normal', operation: 'new' } },
       ],
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
@@ -603,7 +603,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): n
     const result = h.run({
       features: [
         sk,
-        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 4, direction: 'normal' } },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 4, direction: 'normal', operation: 'new' } },
       ],
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
@@ -623,7 +623,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): n
     const result = h.run({
       features: [
         sk,
-        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 5, direction: 'normal' } },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 5, direction: 'normal', operation: 'new' } },
       ],
     })
     expect(h.res(result, 'ex1').status).toBe('ok')

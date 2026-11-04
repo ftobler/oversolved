@@ -85,6 +85,55 @@ describe('applyBodyOperation OCC-free branches', () => {
     ).toThrow(/cut does not intersect any target body/)
   })
 
+  it('an add that must extend existing material refuses an empty store', () => {
+    // Extrude's flag: there is no body to add to, so the feature is a named
+    // rebuild error rather than a silent first body. Neither handle is touched.
+    expect(() =>
+      applyBodyOperation(oc, new DisposeScope(), new HandleTable(), {
+        toolShape,
+        bodyStore: {},
+        operation: 'add',
+        mergeTarget: null,
+        bodyId: 'body_f',
+        featureId: 'featF',
+        sketchId: 'skF',
+        opName: 'extrude',
+        addRequiresExisting: true,
+      }),
+    ).toThrow(/extrude: add has no existing body to extend; use operation: new to create one/)
+  })
+
+  it('an add that must extend existing material refuses a store it reaches none of', () => {
+    // A body entry with no shape is still a store key, so this takes the
+    // "reaches no body" road rather than the empty-store one, and again before
+    // any material is minted.
+    const store = {
+      body_t: {
+        id: 'body_t',
+        created_by: 'featT',
+        modified_by: [],
+        shape: null,
+        sketch_id: '',
+        brep_diff: null,
+        profile_queries: [],
+      },
+    }
+    expect(() =>
+      applyBodyOperation(oc, new DisposeScope(), new HandleTable(), {
+        toolShape,
+        bodyStore: store,
+        operation: 'add',
+        mergeTarget: null,
+        bodyId: 'body_f',
+        featureId: 'featF',
+        sketchId: 'skF',
+        opName: 'extrude',
+        addRequiresExisting: true,
+      }),
+    ).toThrow(/extrude: add does not merge with any existing body/)
+    expect(Object.keys(store)).toEqual(['body_t'])
+  })
+
   it('add with a shape-less merge target fails loud instead of dropping the tool', () => {
     // The explicit merge target resolved but has no shape, so nothing can fuse.
     // The tool must not silently become its own body against an explicit target.

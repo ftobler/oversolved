@@ -42,7 +42,7 @@ const ex010Steps: ScriptStep[] = [
   { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [3, 0, 3, 1], entityId: 'right' } },
   { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'fit_spline', params: EX010, entityId: 'sp' } },
   { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 1, 0, 0], entityId: 'left' } },
-  { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 0.5 } },
+  { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 0.5, operation: 'new' } },
 ]
 
 describe.skipIf(!ready)('fit_spline drive round trip (real kernel)', () => {
@@ -76,7 +76,7 @@ describe.skipIf(!ready)('fit_spline drive round trip (real kernel)', () => {
       },
       { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [3, 2, 0, 2], entityId: 'top' } },
       { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 2, 0, 0], entityId: 'left' } },
-      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 1 } },
+      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 1, operation: 'new' } },
     ]
     const built = await runHeadless({ doc: emptyDriveDoc(), steps })
     expect(built.features).toEqual([])

@@ -65,7 +65,7 @@ function rectSketch(sketchId: string, w: number, h: number, plane = '@builtin_pl
 function extrudeSpec(sketchId: string, extrudeId: string, distance: number) {
   return {
     id: extrudeId, kind: 'extrude', sketch: '$' + sketchId,
-    distance, direction: 'normal', operation: 'add',
+    distance, direction: 'normal', operation: 'new',
   }
 }
 

@@ -61,7 +61,7 @@ returns the query strings a click would store:
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run","arguments":{"steps":[
   {"mutation":{"type":"add_sketch","featureId":"sk1","plane":"@builtin_plane_front"}},
   {"mutation":{"type":"add_rect","featureId":"sk1","p0":[0,0],"p1":[20,14]}},
-  {"mutation":{"type":"add_extrude","featureId":"ex1","sketchQuery":"$sk1","distance":10}}
+  {"mutation":{"type":"add_extrude","featureId":"ex1","sketchQuery":"$sk1","distance":10,"operation":"new"}}
 ]}}}
 // result.docHash is the handle for call 2.
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"select","arguments":{

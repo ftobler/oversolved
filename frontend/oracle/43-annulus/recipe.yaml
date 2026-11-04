@@ -25,4 +25,4 @@ features:
       sketch: "@sk1"
       direction: normal
       distance: 40
-      operation: add
+      operation: new

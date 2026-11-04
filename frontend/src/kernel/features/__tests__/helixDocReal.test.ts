@@ -54,7 +54,7 @@ function squareSketch(id: string, cx: number, cy: number, plane = '@builtin_plan
   }
 }
 
-function extrude(id: string, sketch: string, distance: number, operation = 'add'): Dict {
+function extrude(id: string, sketch: string, distance: number, operation = 'new'): Dict {
   return { id, kind: 'extrude', sketch: `$${sketch}`, distance, direction: 'normal', operation }
 }
 

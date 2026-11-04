@@ -71,7 +71,7 @@ const sketch = {
 const extrude = {
   id: EX, kind: 'extrude', label: 'extrude 1',
   extrude: {
-    direction: 'normal', distance: 2,
+    direction: 'normal', distance: 2, operation: 'new',
     // The annular profile: outer circle bounding, inner circle as the hole.
     sketch: [makeAncestryQuery([ref(`${SK}/${OUTER}`), 'surface:0', ref(SK)], 'flatface')],
   },

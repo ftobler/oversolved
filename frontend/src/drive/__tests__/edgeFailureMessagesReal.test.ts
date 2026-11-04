@@ -73,7 +73,7 @@ const PPP0103: ScriptStep[] = [
     ['line', [0, 29.5, 11, 29.5]], ['arc', [11, 22.5, 7, 0, 90]], ['line', [18, 22.5, 18, -26.5]],
     ['arc', [11, -26.5, 7, -90, 0]], ['line', [11, -33.5, 0, -33.5]], ['line', [0, -33.5, 0, -47.5]],
   ] as const).map(([kind, params]) => m({ type: 'add_entity', featureId: 'sk1', kind, params: [...params] })),
-  m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 16 }),
+  m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 16, operation: 'new' }),
   m({ type: 'add_plane', featureId: 'pl1', definition: { mode: 'offset', plane: '@builtin_plane_top', offset: 47.5 } }),
   m({ type: 'add_sketch', featureId: 'sk2', plane: '@pl1' }),
   m({ type: 'add_entity', featureId: 'sk2', kind: 'circle', params: [0, -8, 8] }),
@@ -90,7 +90,7 @@ describe.skipIf(!ready)('edge modifier and shell failure messages (real OCC + Ru
     const doc = await build([
       m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' }),
       m({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [20, 30] }),
-      m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 40 }),
+      m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 40, operation: 'new' }),
     ])
     const edges = await pick(doc, { kind: 'edge', where: { parallel: [0, 1, 0] } })
     expect(edges).toHaveLength(4)
@@ -134,7 +134,7 @@ describe.skipIf(!ready)('edge modifier and shell failure messages (real OCC + Ru
     const doc = await build([
       m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' }),
       m({ type: 'add_rect', featureId: 'sk1', p0: [-20, -20], p1: [20, 20] }),
-      m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 2 }),
+      m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 2, operation: 'new' }),
       m({ type: 'add_plane', featureId: 'pl1', definition: { mode: 'offset', plane: '@builtin_plane_top', offset: 2 } }),
       m({ type: 'add_sketch', featureId: 'sk2', plane: '@pl1' }),
       m({ type: 'add_rect', featureId: 'sk2', p0: [-5, -5], p1: [5, 5] }),
@@ -154,7 +154,7 @@ describe.skipIf(!ready)('edge modifier and shell failure messages (real OCC + Ru
     const doc = await build([
       m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' }),
       m({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [30, 20] }),
-      m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10 }),
+      m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, operation: 'new' }),
     ])
     const vertical = await pick(doc, { kind: 'edge', where: { parallel: [0, 1, 0] } })
     const rounded = (await apply(doc, { type: 'add_fillet', featureId: 'fi1', edges: vertical, radius: 2 })).result.doc as PartDoc

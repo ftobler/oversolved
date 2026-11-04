@@ -115,7 +115,7 @@ describe.skipIf(!oc || !solveBytes)('revolve axis from query (real OCC + Rust so
     // degrees (360 would rotate refPoint back to itself, hiding a wrong axis).
     const boxSpec = (d: number) => ({
       features: [rectSketch('sk1', 10, 10, 0, 0), {
-        id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: d, direction: 'normal',
+        id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: d, direction: 'normal', operation: 'new',
       }],
     })
     const r5 = h.run(boxSpec(5))

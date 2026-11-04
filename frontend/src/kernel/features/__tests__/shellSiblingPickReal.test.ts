@@ -77,6 +77,7 @@ const EXTRUDE = {
   kind: 'extrude',
   label: 'extrude 1',
   extrude: {
+    operation: 'new',
     sketch: ['?2a,2a,2a,2a,9,19;@ej5yKuzkrjyx1bIum42EJLki/0IPnfibogdJZCeul@ej5yKuzkrjyx1bIum42EJLki/0IPnfibogdJZCeul@ej5yKuzkrjyx1bIum42EJLki/43NO99KuPeLF1spx@ej5yKuzkrjyx1bIum42EJLki/_yxEcYDVIUOLVgBHsurface:2@ej5yKuzkrjyx1bIum42EJLki:flatface'],
     distance: 10,
     direction: 'normal',

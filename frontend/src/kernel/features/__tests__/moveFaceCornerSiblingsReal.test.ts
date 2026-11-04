@@ -65,7 +65,7 @@ const BASE_FEATURES: Array<Record<string, unknown>> = [
   },
   {
     id: EX, kind: 'extrude', label: 'extrude 1',
-    extrude: { sketch: [PROFILE], distance: 10, direction: 'normal' },
+    extrude: { sketch: [PROFILE], distance: 10, direction: 'normal', operation: 'new' },
   },
 ]
 

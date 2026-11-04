@@ -131,7 +131,7 @@ describe.skipIf(!oc || !solveBytes)('checkpoint registration: metadata vs render
     const h = new Harness()
     const r = h.run({ features: [
       rectSketch('sk1', 20, 20),
-      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'add' },
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
     ] })
     expect((r.result as Record<string, Record<string, unknown>>).ex1.status).toBe('ok')
     const fp = h.fingerprints(h.finalBody(r, 'body_ex1'))

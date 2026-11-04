@@ -45,7 +45,7 @@ function rectSketch(sketchId: string, w: number, h: number, plane = '@builtin_pl
   }
 }
 
-function extrude(sketchId: string, id: string, distance: number, operation = 'add'): Record<string, unknown> {
+function extrude(sketchId: string, id: string, distance: number, operation = 'new'): Record<string, unknown> {
   return { id, kind: 'extrude', sketch: '$' + sketchId, distance, direction: 'normal', operation }
 }
 

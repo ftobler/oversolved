@@ -20,6 +20,7 @@ features:
     label: sketch 1
     plane: "@builtin_plane_top"
   - extrude:
+      operation: new
       direction: normal
       distance: 10
       sketch:

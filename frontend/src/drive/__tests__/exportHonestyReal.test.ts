@@ -42,7 +42,7 @@ async function pick(doc: PartDoc, selector: Selector): Promise<string[]> {
 const BOX: ScriptStep[] = [
   m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' }),
   m({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] }),
-  m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5 }),
+  m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, operation: 'new' }),
 ]
 
 // A 2 mm plate under a 10 mm block: a radius-3 fillet fits the block's top
@@ -52,7 +52,7 @@ async function partialFilletDoc(): Promise<PartDoc> {
   const doc = await build([
     m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' }),
     m({ type: 'add_rect', featureId: 'sk1', p0: [-20, -20], p1: [20, 20] }),
-    m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 2 }),
+    m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 2, operation: 'new' }),
     m({ type: 'add_plane', featureId: 'pl1', definition: { mode: 'offset', plane: '@builtin_plane_top', offset: 2 } }),
     m({ type: 'add_sketch', featureId: 'sk2', plane: '@pl1' }),
     m({ type: 'add_rect', featureId: 'sk2', p0: [-5, -5], p1: [5, 5] }),
@@ -190,6 +190,29 @@ describeReal('export honesty (real OCC + Rust solvers)', () => {
       id: 'h1',
       kind: 'hole',
       status: 'exception',
+    }))
+    expect(exported!.bytes!.byteLength).toBeGreaterThan(0)
+  }, 180_000)
+
+  it('reports an add extruder that reaches no body as ok false', async () => {
+    // The base solid still builds and is written; the misplaced add is a
+    // feature error, so the export must not present the document as clean.
+    const doc = await build([
+      m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' }),
+      m({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] }),
+      m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, operation: 'new' }),
+      m({ type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_top' }),
+      m({ type: 'add_rect', featureId: 'sk2', p0: [50, 50], p1: [60, 60] }),
+      m({ type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 5 }),
+    ])
+    const exported = await exportHeadless(doc, { format: 'step' })
+    expect(exported).not.toBeNull()
+    expect(exported!.ok).toBe(false)
+    expect(exported!.features).toContainEqual(expect.objectContaining({
+      id: 'ex2',
+      kind: 'extrude',
+      status: 'exception',
+      message: expect.stringContaining('add does not merge with any existing body'),
     }))
     expect(exported!.bytes!.byteLength).toBeGreaterThan(0)
   }, 180_000)

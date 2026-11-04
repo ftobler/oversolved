@@ -128,7 +128,7 @@ describe.skipIf(!oc || !solveBytes)('extrude with overlapping sketch loops (real
         ]),
         {
           id: 'oex', kind: 'extrude',
-          extrude: { sketch: ['$osk'], distance: 5, direction: 'normal' },
+          extrude: { sketch: ['$osk'], distance: 5, direction: 'normal', operation: 'new' },
         },
       ],
     })
@@ -152,7 +152,7 @@ describe.skipIf(!oc || !solveBytes)('extrude with overlapping sketch loops (real
         ]),
         {
           id: 'ex2', kind: 'extrude',
-          extrude: { sketch: ['$sk2'], distance: 3.6, direction: 'normal', operation: 'add' },
+          extrude: { sketch: ['$sk2'], distance: 3.6, direction: 'normal', operation: 'new' },
         },
       ],
     })
@@ -169,7 +169,7 @@ describe.skipIf(!oc || !solveBytes)('extrude with overlapping sketch loops (real
         { id: 'Origin', kind: 'origin' },
         { id: 'Top', kind: 'plane', visible: false },
         sketchOf('sk1', '@builtin_plane_top', [rect('box', -10, -10, 10, 10)]),
-        { id: 'ex1', kind: 'extrude', extrude: { sketch: ['$sk1'], distance: 10, direction: 'normal' } },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: ['$sk1'], distance: 10, direction: 'normal', operation: 'new' } },
         keyCapPocketSketch(),
         {
           id: 'ex2', kind: 'extrude',
@@ -285,7 +285,7 @@ describe.skipIf(!oc || !solveBytes)('extrude with overlapping sketch loops (real
         { id: 'Origin', kind: 'origin' },
         { id: 'Top', kind: 'plane', visible: false },
         sketchOf('sk1', '@builtin_plane_top', [rect('box', -10, -10, 10, 10)]),
-        { id: 'ex1', kind: 'extrude', extrude: { sketch: ['$sk1'], distance: 10, direction: 'normal' } },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: ['$sk1'], distance: 10, direction: 'normal', operation: 'new' } },
         sketchOf('sk3', '@builtin_plane_top', [], [{ id: 'circ', at: [0, 0, 4] }]),
         {
           id: 'ex3', kind: 'extrude',

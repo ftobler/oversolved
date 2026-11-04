@@ -60,7 +60,7 @@ function soakyDocs(): Array<{ id: string; features: Array<Record<string, unknown
       id: `soak-doc-${i}`,
       features: [
         rectSketch(`sk${i}`, size, size + 1),
-        { id: `ex${i}`, kind: 'extrude', sketch: `$sk${i}`, distance: 3 + i, direction: 'normal', operation: 'add' },
+        { id: `ex${i}`, kind: 'extrude', sketch: `$sk${i}`, distance: 3 + i, direction: 'normal', operation: 'new' },
       ],
     }
   })

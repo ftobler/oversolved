@@ -284,7 +284,7 @@ const ROUND_TRIPS: RoundTripCase[] = [
   { name: 'sketch add_entity_with_constraint', makeDoc: sketchDoc, mutation: { type: 'add_entity_with_constraint', featureId: 'sk1', kind: 'line', params: [1, 1, 2, 2], vertexKey: 'start', snapVertexId: 'vertex:sk1:l1:end', constraintKind: 'coincident', entityId: 'l3' } as Mutation },
 
   // extrude
-  { name: 'extrude add_extrude', makeDoc: emptyDoc, mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Ext', sketchQuery: '@sk1', distance: 10 } as Mutation },
+  { name: 'extrude add_extrude', makeDoc: emptyDoc, mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Ext', sketchQuery: '@sk1', distance: 10, operation: 'new' } as Mutation },
   { name: 'extrude set_extrude_field', makeDoc: extrudeDoc, mutation: { type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: 30 } as Mutation },
   { name: 'extrude add_extrude_profile', makeDoc: extrudeDoc, mutation: { type: 'add_extrude_profile', featureId: 'ex1', sketchQuery: '@sk3' } as Mutation },
   { name: 'extrude remove_extrude_profile', makeDoc: extrudeDoc, mutation: { type: 'remove_extrude_profile', featureId: 'ex1', index: 0 } as Mutation },

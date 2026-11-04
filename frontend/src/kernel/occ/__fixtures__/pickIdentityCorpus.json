@@ -110,7 +110,8 @@
         "distance": 2,
         "sketch": [
           "?2a,9,19;@lWImF_YFjIL5NhMmBe0IZhXq/pwfYD59xKWiSyQhmsurface:0@lWImF_YFjIL5NhMmBe0IZhXq:flatface"
-        ]
+        ],
+        "operation": "new"
       },
       "id": "e1tMr2u-m4rxTxhoZSw2z05E",
       "kind": "extrude",

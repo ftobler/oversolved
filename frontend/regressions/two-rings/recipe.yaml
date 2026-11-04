@@ -56,6 +56,7 @@ features:
     kind: extrude
     label: extrude 1
     extrude:
+      operation: new
       sketch:
         - ?2a,9,19;@UgoC6zEmpmK7z5yqVQHdagP8/UY8-3zKbHOQ7X4Wxsurface:1@UgoC6zEmpmK7z5yqVQHdagP8:flatface
       distance: 10

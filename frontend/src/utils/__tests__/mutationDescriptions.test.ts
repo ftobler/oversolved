@@ -42,7 +42,7 @@ const SAMPLES: { [K in Mutation['type']]: Extract<Mutation, { type: K }> } = {
   rename_feature: { type: 'rename_feature', featureId: 'sk1', label: 'Sketch 1' },
   toggle_sketch_plane_visibility: { type: 'toggle_sketch_plane_visibility' },
   toggle_plane_visibility: { type: 'toggle_plane_visibility' },
-  add_extrude: { type: 'add_extrude', featureId: 'ex1', label: 'Extrude 1', sketchQuery: 'q', distance: 5 },
+  add_extrude: { type: 'add_extrude', featureId: 'ex1', label: 'Extrude 1', sketchQuery: 'q', distance: 5, operation: 'new' },
   set_extrude_field: { type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: 3 },
   add_extrude_profile: { type: 'add_extrude_profile', featureId: 'ex1', sketchQuery: 'q' },
   remove_extrude_profile: { type: 'remove_extrude_profile', featureId: 'ex1', index: 2 },

@@ -490,12 +490,6 @@ export function solveExtrude(
     }
   }
 
-  // The bodies that already held material when this feature ran. A first body
-  // has none; an add that could not join an existing one is the case the
-  // disjoint warning below names.
-  const bodiesBefore = new Set(
-    Object.keys(bodyStore).filter((otherId) => bodyStore[otherId].shape !== null),
-  )
   const opResult = applyBodyOperation(oc, scope, table, {
     toolShape,
     bodyStore,
@@ -511,6 +505,10 @@ export function solveExtrude(
     faceAncestry: names.faceAncestry,
     edgeAncestry: names.edgeAncestry,
     capAncestry: names.capAncestry,
+    // An add extends the part; a profile that reaches no existing body is a
+    // misplaced sketch, not a second part. `operation: new` is the way to start
+    // one, and it is the only way (an add mints nothing).
+    addRequiresExisting: operation === 'add',
     ...(operation === 'cut' && sweep !== null && { oppositeProbe: oppositeCutProbe(oc, scope, toolShape, sweep, direction) }),
   })
   Object.assign(result, opResult)
@@ -521,27 +519,6 @@ export function solveExtrude(
     result.solver_warning = result.solver_warning === undefined
       ? upToWarning
       : `${upToWarning}; ${result.solver_warning}`
-  }
-
-  // An add with no merge target fuses the first body it reaches and mints a new
-  // body when it reaches none. Minting is the correct geometry, but a profile
-  // placed beside the part by mistake looked like a silent success before this
-  // warning. Report the state and the two fixes; do not change what was built
-  // (the Ex014 disjoint-body note: warn about it, keep the body).
-  if (
-    operation === 'add' && !mergeTarget && opResult.body_id === bodyId &&
-    bodiesBefore.size > 0 && !bodiesBefore.has(opResult.body_id)
-  ) {
-    const minted = opResult.body_ids ?? [opResult.body_id]
-    const resultText = minted.length === 1
-      ? `the result is the new body '${minted[0]}'`
-      : `the result is the new bodies ${minted.map((id) => `'${id}'`).join(', ')}`
-    const warning =
-      'extrude: add joined nothing (the profile shares no volume with an existing body); ' +
-      `${resultText}; a merge_target or an overlapping profile fuses it`
-    result.solver_warning = result.solver_warning === undefined
-      ? warning
-      : `${result.solver_warning}; ${warning}`
   }
 
   // An add with no explicit merge target fuses into the FIRST body it connects
