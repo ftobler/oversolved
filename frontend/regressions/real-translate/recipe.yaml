@@ -51,7 +51,9 @@ features:
     id: SzKzWjfYdrBa30PkDkrt28jV
     kind: boolean
     label: boolean 3
-  - circular_array:
+  - pattern:
+      subject: body
+      mode: circular
       axis: ?17,19,1e,2a;@gedge_9e494e83d4732994@SzKzWjfYdrBa30PkDkrt28jV@body_ibq8DPuht3CcI706vgQX98WJ@27Ap4YadUnqTFwLOfDuqnopO/ORnj6qWeNNdEUfGw:straightedge
       axis_direction:
         - 0
@@ -65,8 +67,8 @@ features:
       include_source: true
       operation: add
     id: t17tStkj9R0rdcCPrNYmCBBn
-    kind: circular_array
-    label: circular_array 2
+    kind: pattern
+    label: pattern 2
   - fillet:
       edges:
         - ?17,19,1e,2a;@gedge_0f6a3d9b66045cdf@ibq8DPuht3CcI706vgQX98WJ@body_ibq8DPuht3CcI706vgQX98WJ@27Ap4YadUnqTFwLOfDuqnopO/ORnj6qWeNNdEUfGw:edge

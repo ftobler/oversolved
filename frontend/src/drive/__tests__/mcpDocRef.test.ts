@@ -81,15 +81,15 @@ describe('summarizeDoc', () => {
     expect(summarizeDoc(doc('sk1'), [])).toBe('features: sk1 (sketch); bodies: none')
   })
 
-  it('names every split sibling a disjoint array leaves behind', () => {
-    const arrayed = {
+  it('names every split sibling a disjoint pattern leaves behind', () => {
+    const patterned = {
       version: 1,
       kind: 'part',
-      features: [{ id: 'ca1', kind: 'circular_array' }],
+      features: [{ id: 'ca1', kind: 'pattern', pattern: { subject: 'body', mode: 'circular' } }],
       part_style: { body_ca1: {} },
     } as unknown as PartDoc
-    expect(summarizeDoc(arrayed, ['body_ca1', 'body_ca1_1', 'body_ca1_2', 'body_ca1_3']))
-      .toBe('features: ca1 (circular_array); bodies: body_ca1, body_ca1_1, body_ca1_2, body_ca1_3')
+    expect(summarizeDoc(patterned, ['body_ca1', 'body_ca1_1', 'body_ca1_2', 'body_ca1_3']))
+      .toBe('features: ca1 (pattern); bodies: body_ca1, body_ca1_1, body_ca1_2, body_ca1_3')
   })
 })
 

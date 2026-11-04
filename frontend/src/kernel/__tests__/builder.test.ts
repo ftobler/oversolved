@@ -231,7 +231,7 @@ describe('build with mock solvers', () => {
     // Regression: the builder must register a body's B-rep face/edge/vertex
     // ancestry into the *live* repo as each feature solves (Python's
     // _register_body_faces), not only after the loop. Otherwise a later feature
-    // resolving against an earlier body's edge -- e.g. a circular_array axis
+    // resolving against an earlier body's edge -- e.g. a pattern axis
     // edge-query -- sees an empty repo and falls back to a default axis, which in
     // the OCC path produced degenerate overlapping copies that hung the kernel
     // (translate.yaml real-doc anchor). The edge must be queryable WHEN f2 solves.
@@ -257,7 +257,7 @@ describe('build with mock solvers', () => {
         return { status: 'ok' }
       },
     })
-    build({ features: [{ id: 'f1', kind: 'extrude' }, { id: 'f2', kind: 'circular_array' }] }, {}, deps)
+    build({ features: [{ id: 'f1', kind: 'extrude' }, { id: 'f2', kind: 'pattern' }] }, {}, deps)
     expect(resolvedDuringF2).not.toBeNull()
     expect((resolvedDuringF2 as Record<string, unknown>).start).toEqual([0, 0, 0])
     expect((resolvedDuringF2 as Record<string, unknown>).type).toBe('straightedge')

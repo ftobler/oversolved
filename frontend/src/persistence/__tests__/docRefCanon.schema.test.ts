@@ -126,7 +126,7 @@ describe('part-document schema', () => {
     const branches = properties.features.items.oneOf
     const kinds = branches.map(b => (b as { properties: { kind: { const: FeatureKind } } }).properties.kind.const)
     expect(new Set(kinds).size).toBe(branches.length)
-    for (const kind of ['extrude', 'revolve', 'sweep', 'hole', 'fillet', 'chamfer', 'shell', 'boolean', 'array', 'plane', 'sketch', 'import_step'] as FeatureKind[]) {
+    for (const kind of ['extrude', 'revolve', 'sweep', 'hole', 'fillet', 'chamfer', 'shell', 'boolean', 'pattern', 'plane', 'sketch', 'import_step'] as FeatureKind[]) {
       expect(kinds).toContain(kind)
     }
   })

@@ -20,7 +20,7 @@ import { resolveMergeTargets } from './shared/bodyResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
 import { booleanWithDiff, countSolids, shapesIntersect, volumeOf } from '../occ/booleans'
 import { transferBooleanNames } from './booleanLineage'
-import { registerSplitBodies, resplitBody } from './bodySplit'
+import { registerSplitBodies, resplitBody, solidHoldingFaces } from './bodySplit'
 import { readBodyNames } from '../occ/bodyNames'
 import type { SubShapeMap } from '../occ/subshapeIdentity'
 import { swallowUnlessTrap } from '../errors'
@@ -309,10 +309,16 @@ export function applyBodyOperation(
       }
       scope.track(newShape)
       assertPositiveVolume(oc, scope, newShape, 'the fused result', opName)
+      // An explicit target asks for a fuse, but a copy that does not touch it is
+      // a separate part, a regular outcome. Let resplitBody mint the island as
+      // its own body and keep the target id on the target material, identified
+      // by the faces the boolean carried over from the target.
+      let preferredFirst: OccShape | null = null
       if (mergeTarget) {
-        if (countSolids(oc, scope, newShape) > 1) {
-          throw new Error(`${opName}: add would create island shape not touching target body`)
-        }
+        const targetFaces = faceOrigin
+          .filter((origin) => !origin.fromTool)
+          .map((origin) => origin.output as OccShape)
+        preferredFirst = solidHoldingFaces(oc, scope, newShape, targetFaces)
       } else {
         // Default add (no explicit target): only fuse with a body the new solid
         // actually connects to. If the union stays disjoint (solid count does
@@ -334,10 +340,11 @@ export function applyBodyOperation(
         // tool shape is transient, so nothing else claims these names.
         toolUuidScope: null,
       })
-      // The connectivity guards above make a disjoint fuse unreachable here, so
-      // this normally re-seats the body on one solid. It still goes through
-      // resplitBody so the guards are the only thing that has to stay right.
-      fusedIds = resplitBody(oc, scope, table, bodyStore, existingBody, newShape, featureId, names)
+      // A default add reaches here only when the fuse connected, while an
+      // explicit merge target may leave an island. resplitBody hands the target
+      // material the existing id through preferredFirst and mints the island as
+      // a sibling.
+      fusedIds = resplitBody(oc, scope, table, bodyStore, existingBody, newShape, featureId, names, preferredFirst)
       existingBody.modified_by.push(featureId)
       existingBody.brep_diff = diff
       fused = true

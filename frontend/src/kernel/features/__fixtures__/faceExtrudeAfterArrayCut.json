@@ -167,14 +167,16 @@
     },
     {
       "id": "WlujpF0qBTE8m31DjT3ftNfT",
-      "kind": "circular_array",
-      "label": "circular_array 2",
-      "circular_array": {
+      "kind": "pattern",
+      "label": "pattern 2",
+      "pattern": {
         "count": 3,
         "operation": "add",
         "include_source": true,
         "source_body": "?15,19,1e,2a,7;@u|u_56b010c25bbf6e1b@8HH1e9K5F2WuPZLG7zIgGa3y@body_8HH1e9K5F2WuPZLG7zIgGa3y@jPq1Fy6PD7V6lXdJcWuHK7X0/43SdKHQzF101-A4t@cls_yp:flatface",
-        "axis": "?15,19,1e,2a;@u|u_bfe0638d05c0383f@n5fZFV21_P-zHwbXGC-I_BKG@body_n5fZFV21_P-zHwbXGC-I_BKG@yrXI_fDy_XDjU0ubwuhJEQD8/oSlqWC8gt4zRkQfF:cylinderface"
+        "axis": "?15,19,1e,2a;@u|u_bfe0638d05c0383f@n5fZFV21_P-zHwbXGC-I_BKG@body_n5fZFV21_P-zHwbXGC-I_BKG@yrXI_fDy_XDjU0ubwuhJEQD8/oSlqWC8gt4zRkQfF:cylinderface",
+        "subject": "body",
+        "mode": "circular"
       }
     },
     {

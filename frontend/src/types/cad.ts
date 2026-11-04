@@ -81,55 +81,52 @@ export type BooleanFeatureDef = {
   clearance?: NumberOrExpr
 }
 
-export type ArrayFeatureDef = {
-  source_body?: string
-  mode?: 'linear' | 'rectangular'
-  operation?: 'add' | 'new'
-  include_source?: boolean
-  count_x?: NumberOrExpr
-  pitch_x?: NumberOrExpr
-  direction_x?: [number, number, number]
-  direction_x_query?: string
-  invert_x?: boolean
-  count_y?: NumberOrExpr
-  pitch_y?: NumberOrExpr
-  direction_y?: [number, number, number]
-  direction_y_query?: string
-  invert_y?: boolean
-}
+// A pattern repeats either a whole body or one earlier solid-producing
+// feature's own add/cut. The subject selects which, and the mode selects the
+// instance grid. A body pattern copies the source body with `operation` add or
+// new; a feature pattern reapplies the source feature's tool inside the body it
+// already shaped, inheriting that feature's own operation.
+//
+// `count` is the total instance count for linear and circular modes, the
+// source's own slot included. The rectangular mode counts its two axes in
+// `count_x` and `count_y`.
+export type PatternSubject = 'body' | 'feature'
 
-export type CircularArrayFeatureDef = {
-  source_body?: string
-  operation?: 'add' | 'new'
-  include_source?: boolean
-  count?: NumberOrExpr
-  step_angle?: NumberOrExpr | null
-  axis?: string
-  axis_origin?: [number, number, number]
-  axis_direction?: [number, number, number]
-  invert_axis?: boolean
-}
-
-// Repeat one earlier solid-producing feature's own add/cut inside the body it
-// already shaped. `count` is the total instance count, the source's own
-// application included; the copies are rigid repeats of the source's tool.
 export type PatternFeatureDef = {
+  subject?: PatternSubject
+  // Body subject.
+  source_body?: string
+  operation?: 'add' | 'new'
+  include_source?: boolean
+  // Feature subject.
   source_feature?: string
-  mode?: 'linear' | 'circular'
+  // The body to apply to when the source feature touched more than one.
+  target_body?: string
+  // Instance grid.
+  mode?: 'linear' | 'rectangular' | 'circular'
   count?: NumberOrExpr
   // Linear mode: spacing along `direction` in the document's unit.
   pitch?: NumberOrExpr
   direction?: [number, number, number]
   direction_query?: string
   invert?: boolean
+  // Rectangular mode.
+  count_x?: NumberOrExpr
+  count_y?: NumberOrExpr
+  pitch_x?: NumberOrExpr
+  pitch_y?: NumberOrExpr
+  direction_x?: [number, number, number]
+  direction_x_query?: string
+  invert_x?: boolean
+  direction_y?: [number, number, number]
+  direction_y_query?: string
+  invert_y?: boolean
   // Circular mode: degrees between copies, absent means 360 / count.
-  step_angle?: NumberOrExpr
+  step_angle?: NumberOrExpr | null
   axis?: string
   axis_origin?: [number, number, number]
   axis_direction?: [number, number, number]
   invert_axis?: boolean
-  // The body to apply to when the source feature touched more than one.
-  target_body?: string
 }
 
 export type RevolveDirection = 'normal' | 'reverse' | 'symmetric'
@@ -567,16 +564,6 @@ export type BooleanFeature = FeatureBase & {
   boolean: BooleanFeatureDef
 }
 
-export type ArrayFeature = FeatureBase & {
-  kind: 'array'
-  array: ArrayFeatureDef
-}
-
-export type CircularArrayFeature = FeatureBase & {
-  kind: 'circular_array'
-  circular_array: CircularArrayFeatureDef
-}
-
 export type PatternFeature = FeatureBase & {
   kind: 'pattern'
   pattern: PatternFeatureDef
@@ -640,8 +627,6 @@ export type PartFeature =
   | MoveFaceFeature
   | DeleteFaceFeature
   | BooleanFeature
-  | ArrayFeature
-  | CircularArrayFeature
   | PatternFeature
   | DeleteBodyFeature
   | HoleFeature
@@ -1325,10 +1310,6 @@ export type Mutation =
   | { type: 'set_boolean_field'; featureId: string; field: keyof BooleanFeatureDef; value: unknown }
   | { type: 'add_boolean_tool'; featureId: string; tool: string }
   | { type: 'remove_boolean_tool'; featureId: string; tool: string }
-  | ({ type: 'add_array'; featureId: string; label?: string } & Partial<ArrayFeatureDef> & FeatureInsertion)
-  | { type: 'set_array_field'; featureId: string; field: keyof ArrayFeatureDef; value: unknown }
-  | ({ type: 'add_circular_array'; featureId: string; label?: string } & Partial<CircularArrayFeatureDef> & FeatureInsertion)
-  | { type: 'set_circular_array_field'; featureId: string; field: keyof CircularArrayFeatureDef; value: unknown }
   | ({ type: 'add_pattern'; featureId: string; label?: string } & Partial<PatternFeatureDef> & FeatureInsertion)
   | { type: 'set_pattern_field'; featureId: string; field: keyof PatternFeatureDef; value: unknown }
   | ({ type: 'add_delete_body'; featureId: string; bodies?: string[]; label?: string } & FeatureInsertion)

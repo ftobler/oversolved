@@ -65,7 +65,7 @@ describe('one inline add lands the whole pattern', () => {
   it('stores the source, mode, count, pitch and direction in one call', () => {
     const doc: PartDoc = emptyDriveDoc()
     mutationHandlers.add_pattern(doc, {
-      type: 'add_pattern', featureId: 'pt1', label: 'Pattern',
+      type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
       source_feature: '@ex1', mode: 'linear', count: 4, pitch: 8,
       direction: [1, 0, 0], invert: true, target_body: '@body_ex1',
     })
@@ -73,7 +73,7 @@ describe('one inline add lands the whole pattern', () => {
     expect(feature).toMatchObject({
       kind: 'pattern',
       pattern: {
-        source_feature: '@ex1', mode: 'linear', count: 4, pitch: 8,
+        subject: 'feature', source_feature: '@ex1', mode: 'linear', count: 4, pitch: 8,
         direction: [1, 0, 0], invert: true, target_body: '@body_ex1',
       },
     })

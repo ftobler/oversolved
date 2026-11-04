@@ -89,19 +89,12 @@ const booleanDoc = (): PartDoc => makeDoc({
   boolean: { operation: 'union', target: '', tools: ['@t1'] },
 })
 
-const arrayDoc = (): PartDoc => makeDoc({
-  id: 'a1', kind: 'array', label: 'Array',
-  array: { mode: 'linear', count_x: 2, pitch_x: 20, operation: 'add', include_source: true },
-})
-
-const circularArrayDoc = (): PartDoc => makeDoc({
-  id: 'ca1', kind: 'circular_array', label: 'Circular Array',
-  circular_array: { count: 4, operation: 'add', include_source: true },
-})
-
 const patternDoc = (): PartDoc => makeDoc({
   id: 'pt1', kind: 'pattern', label: 'Pattern',
-  pattern: { source_feature: '@ex1', mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0] },
+  pattern: {
+    subject: 'feature', source_feature: '@ex1', mode: 'linear',
+    count: 3, pitch: 20, direction: [1, 0, 0],
+  },
 })
 
 const holeDoc = (): PartDoc => makeDoc({
@@ -460,24 +453,6 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   remove_boolean_tool: {
     makeDoc: booleanDoc,
     mutation: { type: 'remove_boolean_tool', featureId: 'b1', tool: '@t1' },
-  },
-
-  // array
-  add_array: {
-    makeDoc: emptyDoc,
-    mutation: { type: 'add_array', featureId: 'a1', label: 'Array' },
-  },
-  set_array_field: {
-    makeDoc: arrayDoc,
-    mutation: { type: 'set_array_field', featureId: 'a1', field: 'count_x', value: 5 },
-  },
-  add_circular_array: {
-    makeDoc: emptyDoc,
-    mutation: { type: 'add_circular_array', featureId: 'ca1', label: 'Circular Array' },
-  },
-  set_circular_array_field: {
-    makeDoc: circularArrayDoc,
-    mutation: { type: 'set_circular_array_field', featureId: 'ca1', field: 'count', value: 8 },
   },
 
   // pattern

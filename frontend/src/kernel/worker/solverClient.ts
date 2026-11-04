@@ -22,7 +22,7 @@
  * once.
  *
  * Hang handling: some OCC operations (notably ShapeUpgrade_UnifySameDomain's
- * face merge on self-overlapping geometry, e.g. a circular_array whose axis runs
+ * face merge on self-overlapping geometry, e.g. a circular pattern whose axis runs
  * through the source body) can spin forever inside the WASM engine rather than
  * throw. That loop is synchronous and un-interruptible from JS, so the only way
  * to recover is to kill the Worker -- and the ONLY thing that kills it is the

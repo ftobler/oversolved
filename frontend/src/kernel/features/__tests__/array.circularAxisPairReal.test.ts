@@ -14,7 +14,7 @@ import { HandleTable } from '../../occ/handleTable'
 import { makeBoxAt, solidCentroid } from '../../occ/primitives'
 import { Repository } from '../../query'
 import { bareBody } from '../shared/bodyResolution'
-import { solveCircularArray } from '../array'
+import { solveCircularArray } from './patternBodyTestAdapters'
 import type { Body } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 

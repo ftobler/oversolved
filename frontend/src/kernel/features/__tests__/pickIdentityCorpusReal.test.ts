@@ -44,10 +44,10 @@ const BOOLEAN = '4g6penAMAb__68YySKl9knDI'
 // The last feature of the corpus that must produce geometry, in document order.
 const SOLID_FEATURES = [
   'e1tMr2u-m4rxTxhoZSw2z05E',  // extrude 1 (the annular tube)
-  'hJObESEbHbHJlpZ85sqcIiMg',  // array 2 (linear, fused)
+  'hJObESEbHbHJlpZ85sqcIiMg',  // pattern 2 (body, linear, fused)
   '2TRh0KUD0ppl01_k4juB-jLF',  // fillet 2 (r=2 on six edges)
   'mK4MMFH6t71ShoRjdd-Hyfkr',  // transform 2
-  'duA-45um74zsKKrINmVjYt67',  // circular_array 2 (4 instances)
+  'duA-45um74zsKKrINmVjYt67',  // pattern 2 (body, circular, 4 instances)
   'lYuuhb-HO3FIEl_8kHN8a-Hg',  // extrude 2 (up_to, from a sketch on a body face)
   BOOLEAN,                     // boolean 5 (union, three tools)
 ]

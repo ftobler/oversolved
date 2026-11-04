@@ -1,28 +1,28 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import {
-  applyAddCircularArray,
-  applySetCircularArrayField,
+  applyAddPattern,
+  applySetPatternField,
 } from '@/utils/yamlMutations'
 import { featureAt } from '@/testing/featureAccess'
 
-const circular_array0 = (doc: PartDoc) => featureAt(doc, 0, 'circular_array').circular_array
+const pattern0 = (doc: PartDoc) => featureAt(doc, 0, 'pattern').pattern
 
-const baseDoc: PartDoc = { features: [] }
+const makeDoc = (): PartDoc => ({ features: [] })
 
-const makeDoc = (): PartDoc => structuredClone(baseDoc)
-
-describe('Circular Array mutations', () => {
-  describe('applyAddCircularArray', () => {
-    it('inserts a feature with correct defaults', () => {
+describe('Pattern mutations (circular mode)', () => {
+  describe('applyAddPattern', () => {
+    it('inserts a circular pattern with correct defaults', () => {
       const doc = makeDoc()
-      applyAddCircularArray(doc, 'ca1')
+      applyAddPattern(doc, 'ca1', undefined, { mode: 'circular' })
       expect(doc.features).toHaveLength(1)
       expect(doc.features![0]).toMatchObject({
         id: 'ca1',
-        kind: 'circular_array',
-        label: 'Circular Array',
-        circular_array: {
+        kind: 'pattern',
+        label: 'Pattern',
+        pattern: {
+          subject: 'body',
+          mode: 'circular',
           count: 4,
           operation: 'add',
           include_source: true,
@@ -32,69 +32,68 @@ describe('Circular Array mutations', () => {
 
     it('uses custom label when provided', () => {
       const doc = makeDoc()
-      applyAddCircularArray(doc, 'ca1', 'My Circular')
+      applyAddPattern(doc, 'ca1', 'My Circular', { mode: 'circular' })
       expect(doc.features![0].label).toBe('My Circular')
     })
   })
 
-  describe('applySetCircularArrayField', () => {
-    it('updates count field', () => {
+  describe('applySetPatternField', () => {
+    const added = (): PartDoc => {
       const doc = makeDoc()
-      applyAddCircularArray(doc, 'ca1')
-      applySetCircularArrayField(doc, 'ca1', 'count', 8)
-      expect(circular_array0(doc).count).toBe(8)
+      applyAddPattern(doc, 'ca1', undefined, { mode: 'circular' })
+      return doc
+    }
+
+    it('updates count field', () => {
+      const doc = added()
+      applySetPatternField(doc, 'ca1', 'count', 8)
+      expect(pattern0(doc).count).toBe(8)
     })
 
     it('updates step_angle field to a value', () => {
-      const doc = makeDoc()
-      applyAddCircularArray(doc, 'ca1')
-      applySetCircularArrayField(doc, 'ca1', 'step_angle', 45.0)
-      expect(circular_array0(doc).step_angle).toBe(45.0)
+      const doc = added()
+      applySetPatternField(doc, 'ca1', 'step_angle', 45.0)
+      expect(pattern0(doc).step_angle).toBe(45.0)
     })
 
     it('updates step_angle field to null for evenly spaced', () => {
-      const doc = makeDoc()
-      applyAddCircularArray(doc, 'ca1')
-      applySetCircularArrayField(doc, 'ca1', 'step_angle', null)
-      expect(circular_array0(doc)).not.toHaveProperty('step_angle')
+      const doc = added()
+      applySetPatternField(doc, 'ca1', 'step_angle', null)
+      expect(pattern0(doc)).not.toHaveProperty('step_angle')
     })
 
     it('updates axis query field', () => {
-      const doc = makeDoc()
-      applyAddCircularArray(doc, 'ca1')
-      applySetCircularArrayField(doc, 'ca1', 'axis', '@sk1/axisLine')
-      expect(circular_array0(doc).axis).toBe('@sk1/axisLine')
+      const doc = added()
+      applySetPatternField(doc, 'ca1', 'axis', '@sk1/axisLine')
+      expect(pattern0(doc).axis).toBe('@sk1/axisLine')
     })
 
     it('updates operation field', () => {
-      const doc = makeDoc()
-      applyAddCircularArray(doc, 'ca1')
-      applySetCircularArrayField(doc, 'ca1', 'operation', 'new')
-      expect(circular_array0(doc).operation).toBe('new')
+      const doc = added()
+      applySetPatternField(doc, 'ca1', 'operation', 'new')
+      expect(pattern0(doc).operation).toBe('new')
     })
 
     it('updates include_source field', () => {
-      const doc = makeDoc()
-      applyAddCircularArray(doc, 'ca1')
-      applySetCircularArrayField(doc, 'ca1', 'include_source', false)
-      expect(circular_array0(doc).include_source).toBe(false)
+      const doc = added()
+      applySetPatternField(doc, 'ca1', 'include_source', false)
+      expect(pattern0(doc).include_source).toBe(false)
     })
 
     it('updates source_body field', () => {
-      const doc = makeDoc()
-      applyAddCircularArray(doc, 'ca1')
-      applySetCircularArrayField(doc, 'ca1', 'source_body', 'extrude1')
-      expect(circular_array0(doc).source_body).toBe('extrude1')
+      const doc = added()
+      applySetPatternField(doc, 'ca1', 'source_body', 'extrude1')
+      expect(pattern0(doc).source_body).toBe('extrude1')
     })
 
-    it('warns when feature has no circular_array', () => {
+    it('warns when feature has no pattern', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
       const doc = makeDoc()
       doc.features!.push({ id: 'other', kind: 'extrude', extrude: { sketch: [], distance: 10 } })
-      applySetCircularArrayField(doc, 'other', 'count', 5)
-      expect(warnSpy).toHaveBeenCalledWith('applySetCircularArrayField: feature other has no circular_array')
-      // The wrong-kind feature keeps its own payload and gains no circular_array.
-      expect(doc.features![0]).not.toHaveProperty('circular_array')
+      applySetPatternField(doc, 'other', 'count', 5)
+      expect(warnSpy).toHaveBeenCalledWith('applySetPatternField: feature other has no pattern')
+      // The wrong-kind feature keeps its own payload and gains no pattern.
+      expect(doc.features![0]).not.toHaveProperty('pattern')
       warnSpy.mockRestore()
     })
   })

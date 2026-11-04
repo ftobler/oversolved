@@ -65,6 +65,7 @@ features:
     kind: pattern
     label: slot pattern
     pattern:
+      subject: feature
       source_feature: "@ex_slot"
       mode: linear
       count: 4

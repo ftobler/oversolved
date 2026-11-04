@@ -1,33 +1,33 @@
 /**
- * The circular array's source body is pickable. The solver has always honoured
- * `source_body` (kernel/features/array.ts resolveSourceBody), but the editor
- * exposed no chip, so a document with more than one body could only be arrayed
- * on whichever body happened to come first in the store.
+ * The circular mode's source body and axis are pickable. The solver honours
+ * `pattern.source_body` and `pattern.axis`; the editor exposes chips for both so
+ * a document with more than one body can be patterned on the intended body,
+ * about the intended edge or face.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent, act } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
-import { CIRCULAR_ARRAY_SCHEMA } from '@/components/editors/featureEditorSchemas'
+import { PATTERN_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
 const FEATURES: PartFeature[] = [
   { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
-  { id: 'ca1', kind: 'circular_array', circular_array: {} },
+  { id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'circular' } },
 ]
 
 function makeFeature(source_body = ''): PartFeature {
   return {
-    id: 'ca1',
-    kind: 'circular_array',
-    label: 'Circular Array',
-    circular_array: { source_body, count: 4, operation: 'add', include_source: true },
+    id: 'pt1',
+    kind: 'pattern',
+    label: 'Pattern',
+    pattern: { subject: 'body', mode: 'circular', source_body, count: 4, operation: 'add', include_source: true },
   } as unknown as PartFeature
 }
 
 function renderEditor(feature: PartFeature, onMutation: () => void) {
-  render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={CIRCULAR_ARRAY_SCHEMA} />)
+  render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={PATTERN_SCHEMA} />)
 }
 
 /** Pick chips in field order: [0] Body, [1] Axis. */
@@ -55,12 +55,12 @@ beforeEach(() => {
   })
 })
 
-describe('CircularArrayEditor body pick (via FeatureEditor)', () => {
-  it('renders an empty chip hinting at the implicit first-body fallback', () => {
+describe('circular pattern body pick (via FeatureEditor)', () => {
+  it('renders an empty chip asking for the body to copy', () => {
     renderEditor(makeFeature(), vi.fn())
     const chip = bodyChip()
     expect(chip.classList.contains('empty')).toBe(true)
-    expect(chip.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(first body)')
+    expect(chip.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick the body to copy)')
   })
 
   it('renders the source_body ref when set', () => {
@@ -75,7 +75,7 @@ describe('CircularArrayEditor body pick (via FeatureEditor)', () => {
     fireEvent.click(bodyChip())
     pick('body:body_ex1')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_circular_array_field', featureId: 'ca1', field: 'source_body', value: '@body_ex1',
+      type: 'set_pattern_field', featureId: 'pt1', field: 'source_body', value: '@body_ex1',
     })
   })
 
@@ -85,29 +85,29 @@ describe('CircularArrayEditor body pick (via FeatureEditor)', () => {
     fireEvent.click(bodyChip())
     pick('face:ex1:?4;@ex1:face')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_circular_array_field', featureId: 'ca1', field: 'source_body', value: '?4;@ex1:face',
+      type: 'set_pattern_field', featureId: 'pt1', field: 'source_body', value: '?4;@ex1:face',
     })
   })
 
-  it('rejects picking the array\'s own body', () => {
+  it('rejects picking the pattern\'s own body', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature(), onMutation)
     fireEvent.click(bodyChip())
-    pick('@body_ca1')
+    pick('@body_pt1')
     expect(onMutation).not.toHaveBeenCalled()
   })
 
-  it('remove button clears source_body back to the fallback', () => {
+  it('remove button clears source_body back to the empty pick', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature('@body_ex1'), onMutation)
     fireEvent.click(bodyChip().querySelector('.feature-pick-chip-item-remove')!)
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_circular_array_field', featureId: 'ca1', field: 'source_body', value: '',
+      type: 'set_pattern_field', featureId: 'pt1', field: 'source_body', value: '',
     })
   })
 })
 
-describe('CircularArrayEditor axis pick (via FeatureEditor)', () => {
+describe('circular pattern axis pick (via FeatureEditor)', () => {
   it('renders an empty axis chip flagged as a required pick', () => {
     renderEditor(makeFeature(), vi.fn())
     const chip = axisChip()
@@ -121,7 +121,7 @@ describe('CircularArrayEditor axis pick (via FeatureEditor)', () => {
     fireEvent.click(axisChip())
     pick('edge:ex1:?4;@ex1:edge')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_circular_array_field', featureId: 'ca1', field: 'axis', value: '?4;@ex1:edge',
+      type: 'set_pattern_field', featureId: 'pt1', field: 'axis', value: '?4;@ex1:edge',
     })
   })
 
@@ -132,7 +132,7 @@ describe('CircularArrayEditor axis pick (via FeatureEditor)', () => {
     const invertRow = rows.find((r) => r.querySelector('.feature-field-label')?.textContent === 'Invert axis')!
     fireEvent.click(invertRow.querySelector('input[type="checkbox"]')!)
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_circular_array_field', featureId: 'ca1', field: 'invert_axis', value: true,
+      type: 'set_pattern_field', featureId: 'pt1', field: 'invert_axis', value: true,
     })
   })
 })

@@ -23,7 +23,9 @@ function makeFeature(over: Record<string, unknown> = {}): PartFeature {
     id: 'pt1',
     kind: 'pattern',
     label: 'Pattern',
-    pattern: { source_feature: '', mode: 'linear', count: 2, pitch: 20, ...over },
+    pattern: {
+      subject: 'feature', source_feature: '', mode: 'linear', count: 2, pitch: 20, ...over,
+    },
   } as unknown as PartFeature
 }
 
@@ -42,26 +44,48 @@ describe('PATTERN_SCHEMA', () => {
   it('is registered with its sub-key, defaults and field order', () => {
     expect(EDITOR_SCHEMAS.pattern).toBe(PATTERN_SCHEMA)
     expect(PATTERN_SCHEMA.subKey).toBe('pattern')
-    expect(PATTERN_SCHEMA.defaults).toEqual({ source_feature: '', mode: 'linear', count: 2, pitch: 20 })
+    expect(PATTERN_SCHEMA.defaults).toEqual({
+      subject: 'body', mode: 'linear', operation: 'add', include_source: true, count: 2, pitch: 20,
+    })
     expect(PATTERN_SCHEMA.fields.map((f) => f.key)).toEqual([
-      'source_feature', 'mode', 'count', 'direction_query', 'invert', 'pitch',
-      'step_angle', 'axis', 'invert_axis', 'target_body',
+      'subject', 'source_body', 'source_feature', 'target_body', 'operation', 'include_source',
+      'mode', 'count', 'direction_query', 'invert', 'pitch',
+      'direction_x_query', 'invert_x', 'count_x', 'pitch_x',
+      'direction_y_query', 'invert_y', 'count_y', 'pitch_y',
+      '_evenly_spaced', 'step_angle', 'axis', 'invert_axis',
     ])
   })
 
   it('offers only the repeatable feature kinds as the source, excluding itself', () => {
-    renderEditor(makeFeature())
+    renderEditor(makeFeature({ subject: 'feature' }))
     const select = screen.getByLabelText('Source Feature') as HTMLSelectElement
     expect([...select.options].map((o) => o.value)).toEqual(['', '@ex1', '@rv1'])
   })
 
   it('writes the source feature id with the sigil', () => {
-    const onMutation = renderEditor(makeFeature())
+    const onMutation = renderEditor(makeFeature({ subject: 'feature' }))
     const select = screen.getByLabelText('Source Feature') as HTMLSelectElement
     fireEvent.change(select, { target: { value: '@ex1' } })
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_pattern_field', featureId: 'pt1', field: 'source_feature', value: '@ex1',
     })
+  })
+
+  it('hides the body source when the subject is a feature', () => {
+    renderEditor(makeFeature({ subject: 'feature' }))
+    const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
+    expect(labels).not.toContain('Body')
+    expect(labels).not.toContain('Operation')
+    expect(labels).toContain('Source Feature')
+  })
+
+  it('shows a legacy feature pattern with its inferred feature subject', () => {
+    // A row written before the subject field names source_feature and no
+    // source_body; it must not render as a body pattern asking for a body.
+    renderEditor(makeFeature({ subject: undefined, source_feature: '@ex1' }))
+    const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
+    expect(labels).toContain('Source Feature')
+    expect(labels).not.toContain('Body')
   })
 
   it('shows the linear fields in linear mode and the circular fields in circular mode', () => {

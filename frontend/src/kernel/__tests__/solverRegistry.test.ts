@@ -16,14 +16,14 @@ import { Repository } from '../query'
 // ─── Ported-kind set completeness ───
 
 describe('PORTED_FEATURE_KINDS', () => {
-  it('contains all 22 ported feature kinds', () => {
+  it('contains all 20 ported feature kinds', () => {
     const expected = [
       'sketch',
       'plane',
       'extrude', 'revolve', 'sweep',
       'fillet', 'chamfer',
       'boolean', 'hole',
-      'array', 'circular_array', 'pattern',
+      'pattern',
       'transform', 'mirror', 'split',
       'delete_body', 'import_step',
       'variable',
@@ -52,7 +52,7 @@ describe('isDocFullyPorted', () => {
     const features = [
       { id: 'ex1', kind: 'extrude' },
       { id: 'bo1', kind: 'boolean' },
-      { id: 'ar1', kind: 'array' },
+      { id: 'pt1', kind: 'pattern' },
     ]
     expect(isDocFullyPorted(features)).toBe(true)
   })
@@ -92,7 +92,7 @@ describe('isDocFullyPorted', () => {
     const allPorted = [
       'sketch', 'plane',
       'extrude', 'revolve', 'sweep', 'fillet', 'chamfer',
-      'boolean', 'hole', 'array', 'circular_array',
+      'boolean', 'hole', 'pattern',
       'transform', 'mirror', 'delete_body', 'import_step',
     ]
     const withOrigin = [

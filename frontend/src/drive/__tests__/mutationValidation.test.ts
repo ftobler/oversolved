@@ -122,7 +122,7 @@ describe('validateMutation', () => {
       type: 'set_hole_field', featureId: 'h1', field: 'thread', value: null,
     }, { allowInternal: true })).toMatchObject({ ok: true })
     expect(validateMutation({
-      type: 'set_circular_array_field', featureId: 'ca1', field: 'step_angle', value: null,
+      type: 'set_pattern_field', featureId: 'ca1', field: 'step_angle', value: null,
     }, { allowInternal: true })).toMatchObject({ ok: true })
   })
 
@@ -188,8 +188,6 @@ describe('set_*_field field names', () => {
     set_shell_field: 'thickness',
     set_move_face_field: 'faces',
     set_boolean_field: 'keep_tools',
-    set_array_field: 'count_x',
-    set_circular_array_field: 'step_angle',
     set_pattern_field: 'count',
     set_hole_field: 'diameter',
     set_transform_field: 'rotation_axis',

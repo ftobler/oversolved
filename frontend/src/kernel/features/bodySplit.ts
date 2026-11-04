@@ -7,7 +7,7 @@
  *
  * Before this module the rule was hand-copied into five feature leaves, each
  * with its own id scheme, collision handling and 0/1-solid behaviour, and it
- * was missing outright from boolean union/intersect, array add, mirror merge,
+ * was missing outright from boolean union/intersect, pattern add, mirror merge,
  * hole and fillet/chamfer -- so those silently produced one Body holding
  * several solids, i.e. one Parts-list row that was really N parts. Every leaf
  * now routes through `registerSplitBodies` (a shape becomes new bodies) or
@@ -147,7 +147,7 @@ function namesForSolid(
  *
  * The collision walk covers index 0 as well, which is what lets a caller invoke
  * `registerSplitBodies` repeatedly with the SAME base id and get one flat,
- * gap-free sibling run: the array leaf registers one instance after another,
+ * gap-free sibling run: the body-pattern leaf registers one instance after another,
  * and an instance that itself splits must not silently overwrite the next
  * instance's id. Split ids derived from an existing body id (a cut re-splitting
  * `body_x_1`) can collide for the same reason.
@@ -160,28 +160,56 @@ function mintSiblingId(base: string, index: number, bodyStore: Record<string, Bo
 }
 
 /**
- * Move the sibling the caller identifies by construction to the front.
+ * Split `parent` into its solids with the caller-preferred solid first.
  *
  * The geometric ordering above is a relative key for naming new siblings, but
- * it must not decide which existing identity survives: after a disjoint array
+ * it must not decide which existing identity survives: after a disjoint pattern
  * the source body keeps its id, so the source solid has to stay first even when
  * a copy sits at a smaller centroid. `preferred` is a solid of the very shape
  * being split (topological identity, no coordinates), found by the caller
- * through its own construction lineage; when the union changed it so no sibling
+ * through its own construction lineage. It is removed BEFORE ordering, so a
+ * preferred solid and one identical island do not have to be told apart by a
+ * relative centroid key that can tie. When the union changed it so no sibling
  * is that exact solid, the relative order stays.
  */
-function keepPreferredFirst(solids: OccShape[], preferred: OccShape | null): OccShape[] {
-  if (preferred === null || solids.length < 2) return solids
+function orderedSolidsWithPreferred(
+  oc: OccModule,
+  scope: DisposeScope,
+  parent: OccShape,
+  preferred: OccShape | null,
+): OccShape[] {
+  const solids = exploreSolids(oc, scope, parent)
+  if (preferred === null || solids.length < 2) return orderSolids(oc, scope, parent, solids)
   const at = solids.findIndex((s) => (s as OccSubShape).IsSame(preferred as OccSubShape))
-  if (at <= 0) return solids
+  if (at < 0) return orderSolids(oc, scope, parent, solids)
   const [kept] = solids.splice(at, 1)
-  solids.unshift(kept)
-  return solids
+  return [kept, ...orderSolids(oc, scope, parent, solids)]
 }
 
 /** The solids `shape` decomposes into, in stable sibling order. Empty for a shell-only shape. */
 export function splitSolids(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
   return orderSolids(oc, scope, shape, exploreSolids(oc, scope, shape))
+}
+
+/**
+ * The solid of `shape` that owns one of `faces`, by face identity. The caller
+ * tracks the source material's faces through a boolean's face origin, so this
+ * names the solid that must keep the existing body id when the boolean also
+ * minted disjoint islands. Null when the tracked set no longer identifies one
+ * solid; the caller then keeps the geometric sibling order.
+ */
+export function solidHoldingFaces(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  faces: OccShape[],
+): OccShape | null {
+  if (faces.length === 0) return null
+  for (const solid of exploreSolids(oc, scope, shape)) {
+    const own = canonicalFaces(oc, scope, solid) as OccShape[]
+    if (own.some((face) => faces.some((sf) => (face as OccSubShape).IsSame(sf as OccSubShape)))) return solid
+  }
+  return null
 }
 
 // The handle-table owner tag of a body shape is its PRODUCING feature -- the
@@ -261,9 +289,10 @@ export function registerSplitBodies(
  * after this call.
  *
  * `preferredFirst` is a sub-shape of `newShape` the caller knows by construction
- * (the array leaf's source solid). It takes the first sibling slot, so `body.id`
+ * (a body pattern's source solid, or a merge-target add's target material). It
+ * takes the first sibling slot, so `body.id`
  * stays on that material instead of on whichever sibling the relative centroid
- * order ranks first. Null keeps the geometric order; see `keepPreferredFirst`.
+ * order ranks first. Null keeps the geometric order; see `orderedSolidsWithPreferred`.
  *
  * An EMPTY result (the new shape holds no solid) deletes the body from the
  * store and returns `[]`, so a caller that re-resolves the old id later fails
@@ -271,7 +300,7 @@ export function registerSplitBodies(
  * every caller keeps is that a consumed id never appears in `body_ids`: this
  * returns `[]` for "nothing survives", and a leaf that deletes a body reports
  * the same empty list. `body_id` still names the id the feature row points at
- * (hole and array keep the consumed body's real id; a merge-target cut keeps
+ * (hole and pattern keep the consumed body's real id; a merge-target cut keeps
  * the would-be id it never minted). The deletion is complete here (store entry
  * gone, handle released); the build loop's eviction pass (builder.ts) clears
  * the body's repo registrations, the same path a consumed boolean tool takes.
@@ -287,7 +316,7 @@ export function resplitBody(
   produced: ProducedNames,
   preferredFirst: OccShape | null = null,
 ): string[] {
-  const solids = keepPreferredFirst(splitSolids(oc, scope, newShape), preferredFirst)
+  const solids = orderedSolidsWithPreferred(oc, scope, newShape, preferredFirst)
   const oldHandle = body.shape
   const ids = [body.id]
 
@@ -332,9 +361,9 @@ export function resplitBody(
 
   // The split this sibling line began in. Deliberately NOT inherited by a
   // later split of the sibling: membership means "minted by THIS feature's
-  // split", so a nested add array's copies belong to the inner array, and a
+  // split", so a nested pattern's copies belong to the inner pattern, and a
   // disjoint union folded into a copy does not hand the merged material to the
-  // outer array (features/boolean.ts arrayMemberIds).
+  // outer pattern (features/boolean.ts patternMemberIds).
   const splitFrom = { feature: featureId, body: body.id }
   for (let i = 1; i < solids.length; i++) {
     const id = mintSiblingId(body.id, i, bodyStore)

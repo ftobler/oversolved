@@ -1,7 +1,8 @@
 // @vitest-environment node
 //
-// Gated real-OCC parity gate for the transform-group leaves (array.ts +
-// transformMirror.ts): array / circular_array / transform / mirror. Rebuilds the
+// Gated real-OCC parity gate for the transform-group leaves (patternBody.ts +
+// transformMirror.ts): body-subject pattern (linear and circular) / transform /
+// mirror. Rebuilds the
 // same source box body (+ registered mirror plane) as
 // the now-removed gen_transform_fixture.py, runs the matching solver, and
 // asserts the result dict + the post-op body store (per body: volume,
@@ -38,7 +39,7 @@ import { canonicalFaces } from '../../occ/bodyNames'
 import { bodyFrame, edgeRepresentativePoint, solidToEdges } from '../../occ/tessellation'
 import { geometryClassifiers } from '../../geomHash'
 import { Repository, ref, makeAncestryQuery } from '../../query'
-import { solveArray, solveCircularArray } from '../array'
+import { solveArray, solveCircularArray } from './patternBodyTestAdapters'
 import { solveTransform, solveMirror } from '../transformMirror'
 import { resolveFilletEdges } from '../filletChamfer'
 import type { Body } from '../../types3d'

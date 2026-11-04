@@ -208,7 +208,7 @@ export function resolveAxisQuery(
 /**
  * Resolve a direction query to a unit vector, or `null` when the query is empty
  * or does not resolve to a usable edge/face. Unlike `resolveDirectionQuery`
- * there is no silent world-axis fallback: the array leaf treats `null` as a
+ * there is no silent world-axis fallback: the pattern leaf treats `null` as a
  * solve error so an unpicked direction never arrays along an arbitrary axis.
  */
 export function resolveDirectionQueryStrict(
@@ -223,7 +223,7 @@ export function resolveDirectionQueryStrict(
 /**
  * Resolve an axis query to (origin, unit direction), or `null` when the query is
  * empty or does not resolve to a usable edge/face. The strict counterpart to
- * `resolveAxisQuery`; the circular-array leaf treats `null` as a solve error so
+ * `resolveAxisQuery`; the circular pattern leaf treats `null` as a solve error so
  * an unpicked axis never rotates about an arbitrary line.
  */
 export function resolveAxisQueryStrict(

@@ -1,10 +1,10 @@
 // @vitest-environment node
 //
 // The real-kernel half of the boolean `tools` array expansion: an entry that
-// names an array feature expands to the array's source body and every instance
+// names a body-pattern feature expands to the pattern's source body and every instance
 // body at solve time, so a later count change is followed (sprocket F3 typed 40
 // ids by hand; din_rail F1 raised a count and left the new slots floating
-// free), and a hand list that names only some of one array's bodies warns. The
+// free), and a hand list that names only some of one pattern's bodies warns. The
 // pure catalog-row half is booleanArrayTools.test.ts.
 
 import { createRequire } from 'node:module'
@@ -37,13 +37,13 @@ if (oc && solveBytes) {
 const ready = oc && solveBytes
 
 const m = (mutation: Record<string, unknown>): ScriptStep => ({ mutation } as ScriptStep)
-const ca = (field: string, value: unknown) => m({ type: 'set_circular_array_field', featureId: 'ca1', field, value })
+const ca = (field: string, value: unknown) => m({ type: 'set_pattern_field', featureId: 'ca1', field, value })
 
 const PLATE = 100 * 100 * 10
 const SLOT = 6 * 6 * 10
 
 // A 100 x 100 x 10 plate, a 6 x 6 slot tool fully inside it off the Y axis,
-// and a `new` circular array of the tool about +Y, each step one inline call.
+// and a `new` circular pattern of the tool about +Y, each step one call.
 function arraySteps(count: number): ScriptStep[] {
   return [
     m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' }),
@@ -52,7 +52,7 @@ function arraySteps(count: number): ScriptStep[] {
     m({ type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_top' }),
     m({ type: 'add_rect', featureId: 'sk2', p0: [20, -3], p1: [26, 3] }),
     m({ type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 10, operation: 'new' }),
-    m({ type: 'add_circular_array', featureId: 'ca1' }),
+    m({ type: 'add_pattern', featureId: 'ca1', subject: 'body', mode: 'circular' }),
     ca('source_body', 'body_ex2'),
     ca('operation', 'new'),
     ca('count', count),
@@ -61,7 +61,7 @@ function arraySteps(count: number): ScriptStep[] {
   ]
 }
 
-describe.skipIf(!ready)('boolean tools naming an array feature (real OCC + Rust solver)', () => {
+describe.skipIf(!ready)('boolean tools naming a body pattern (real OCC + Rust solver)', () => {
   it('subtracts every instance and follows a later count change', async () => {
     const built = await runHeadless({
       doc: emptyDriveDoc(),
@@ -82,16 +82,16 @@ describe.skipIf(!ready)('boolean tools naming an array feature (real OCC + Rust 
     expect(eight!.measures.volume).toBeCloseTo(PLATE - 8 * SLOT, 3)
   }, 120_000)
 
-  it('refuses by name an array defined after the boolean instead of consuming its bare source', async () => {
+  it('refuses by name a pattern defined after the boolean instead of consuming its bare source', async () => {
     const steps = arraySteps(6)
     const boolean = m({ type: 'add_boolean', featureId: 'bo1', operation: 'subtract', target: 'body_ex1', tools: ['@ca1'] })
-    // Same features, the boolean inserted above the array.
+    // Same features, the boolean inserted above the pattern.
     const built = await runHeadless({ doc: emptyDriveDoc(), steps: [...steps.slice(0, 6), boolean, ...steps.slice(6)] })
     const problem = built.features.find(feature => feature.id === 'bo1')
     expect(problem?.message).toContain("body not found for ref '@ca1'")
   }, 120_000)
 
-  it('warns when a hand list names only some of one array\'s bodies', async () => {
+  it('warns when a hand list names only some of one pattern\'s bodies', async () => {
     const built = await runHeadless({
       doc: emptyDriveDoc(),
       steps: [
@@ -100,6 +100,6 @@ describe.skipIf(!ready)('boolean tools naming an array feature (real OCC + Rust 
       ],
     })
     const problem = built.features.find(feature => feature.id === 'bo1')
-    expect(problem?.message).toContain('array ca1 has 6 instances, the boolean uses 2')
+    expect(problem?.message).toContain('pattern ca1 has 6 instances, the boolean uses 2')
   }, 120_000)
 })

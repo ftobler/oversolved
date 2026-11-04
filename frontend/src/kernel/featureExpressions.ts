@@ -26,8 +26,6 @@ const EXPR_SUBKEY_BY_KIND: { [K in ExprFieldKind]: ExprSubKey<K> } = {
   shell: 'shell',
   move_face: 'move_face',
   hole: 'hole',
-  array: 'array',
-  circular_array: 'circular_array',
   pattern: 'pattern',
   transform: 'transform',
   plane: 'definition',

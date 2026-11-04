@@ -12,7 +12,7 @@ const revolve = (doc: PartDoc) => featureById(doc, 'RV', 'revolve').revolve
 const fillet = (doc: PartDoc) => featureById(doc, 'FL', 'fillet').fillet
 const chamfer = (doc: PartDoc) => featureById(doc, 'CH', 'chamfer').chamfer
 const boolean = (doc: PartDoc) => featureById(doc, 'BL', 'boolean').boolean
-const array = (doc: PartDoc) => featureById(doc, 'AR', 'array').array
+const pattern = (doc: PartDoc) => featureById(doc, 'PT', 'pattern').pattern
 const delBody = (doc: PartDoc) => featureById(doc, 'DB', 'delete_body').delete_body
 const transform = (doc: PartDoc) => featureById(doc, 'TR', 'transform').transform
 
@@ -248,14 +248,13 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     expect(boolean(doc)!.tools).toHaveLength(0)
   })
 
-  it('array (linear + circular): add and set field', () => {
+  it('pattern (linear + circular): add and set field', () => {
     const doc = sketchDoc()
-    mutationHandlers.add_array(doc, { type: 'add_array', featureId: 'AR' })
-    mutationHandlers.set_array_field(doc, { type: 'set_array_field', featureId: 'AR', field: 'count_x', value: 4 })
-    expect(array(doc)!.count_x).toBe(4)
-    mutationHandlers.add_circular_array(doc, { type: 'add_circular_array', featureId: 'CA' })
-    mutationHandlers.set_circular_array_field(doc, { type: 'set_circular_array_field', featureId: 'CA', field: 'count', value: 6 })
-    expect(featureById(doc, 'CA', 'circular_array').kind).toBe('circular_array')
+    mutationHandlers.add_pattern(doc, { type: 'add_pattern', featureId: 'PT' })
+    mutationHandlers.set_pattern_field(doc, { type: 'set_pattern_field', featureId: 'PT', field: 'count', value: 4 })
+    expect(pattern(doc)!.count).toBe(4)
+    mutationHandlers.set_pattern_field(doc, { type: 'set_pattern_field', featureId: 'PT', field: 'mode', value: 'circular' })
+    expect(pattern(doc)!.mode).toBe('circular')
   })
 
   it('hole / transform / mirror / variable / delete_body: add and set field', () => {

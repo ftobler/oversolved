@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import type { LengthUnit, Mutation } from '@/types/cad'
+import type { Mutation } from '@/types/cad'
 import { useCommandRegistry } from '@/contexts/CommandRegistryContext'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
-import { LENGTH_UNIT_LABEL, lengthUnitOf } from '@/utils/lengthUnit'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -33,10 +32,6 @@ interface PartToolbarProps {
   handleClone: () => void
   onImport: () => void
   onExport: () => void
-  // The document's length unit. Stored numbers keep their values; the unit says
-  // what they mean and the STEP/STL export scales an inch document to mm.
-  lengthUnit: LengthUnit
-  onSetLengthUnit: (unit: LengthUnit) => void
   // Header-right slot (the page's debug toggles). The header owns the layout;
   // the page owns the state behind the buttons.
   rightContent?: ReactNode
@@ -49,8 +44,6 @@ export default function PartToolbar({
   handleClone,
   onImport,
   onExport,
-  lengthUnit,
-  onSetLengthUnit,
   rightContent,
 }: PartToolbarProps) {
   const undoStack = usePartEditorStore(s => s.undoStack) as StackEntry[]
@@ -149,23 +142,6 @@ export default function PartToolbar({
       >
         <img src={featureExportIcon} alt="" />
       </button>
-      {/* A document property, not an export option: it decides what every
-          stored number means and how the file leaves. Changing it reinterprets
-          the numbers (the part resizes by the unit ratio), which the title says
-          in words; undo restores it in one step. */}
-      <select
-        className="toolbar-unit"
-        aria-label="Document length unit"
-        title={editInProgress
-          ? 'Finish the edit to change the unit'
-          : "Document length unit. Existing numbers keep their values and are reinterpreted in the new unit, so the part's physical size changes."}
-        value={lengthUnit}
-        onChange={(e) => onSetLengthUnit(lengthUnitOf(e.target.value))}
-        disabled={editInProgress}
-      >
-        <option value="mm">{LENGTH_UNIT_LABEL.mm}</option>
-        <option value="inch">{LENGTH_UNIT_LABEL.inch}</option>
-      </select>
     </AppHeader>
   )
 }

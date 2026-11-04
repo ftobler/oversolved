@@ -67,10 +67,6 @@ import {
   applySetBooleanField,
   applyAddBooleanTool,
   applyRemoveBooleanTool,
-  applyAddArray,
-  applySetArrayField,
-  applyAddCircularArray,
-  applySetCircularArrayField,
   applyAddPattern,
   applySetPatternField,
   applyAddDeleteBody,
@@ -290,18 +286,6 @@ export const mutationHandlers: MutationHandlers = {
     applyAddBooleanTool(next, m.featureId, m.tool),
   remove_boolean_tool: (next, m) =>
     applyRemoveBooleanTool(next, m.featureId, m.tool),
-  add_array: (next, m) => {
-    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
-    applyAddArray(next, featureId, label, inline)
-  },
-  set_array_field: (next, m) =>
-    applySetArrayField(next, m.featureId, m.field, m.value),
-  add_circular_array: (next, m) => {
-    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
-    applyAddCircularArray(next, featureId, label, inline)
-  },
-  set_circular_array_field: (next, m) =>
-    applySetCircularArrayField(next, m.featureId, m.field, m.value),
   add_pattern: (next, m) => {
     const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
     applyAddPattern(next, featureId, label, inline)

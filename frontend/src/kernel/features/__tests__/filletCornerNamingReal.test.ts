@@ -80,10 +80,10 @@ const extrude = {
 // Pitch 4 against outer diameter 5.8: the copy overlaps the source, so the
 // fuse is one solid and the two outer cylinders genuinely intersect.
 const array = {
-  id: ARR, kind: 'array', label: 'array 1',
-  array: {
-    mode: 'linear', count_x: 2, pitch_x: 4, include_source: true, operation: 'add',
-    direction_x: [1, 0, 0], direction_x_query: `@${SK}/${DIR}`,
+  id: ARR, kind: 'pattern', label: 'pattern 1',
+  pattern: {
+    subject: 'body', mode: 'linear', count: 2, pitch: 4, include_source: true, operation: 'add',
+    direction: [1, 0, 0], direction_query: `@${SK}/${DIR}`,
     source_body: `@${BODY}`,
   },
 }

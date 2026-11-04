@@ -3,6 +3,8 @@ import type { KeyboardEvent } from 'react'
 import Dialog from '@/components/dialogs/Dialog'
 import { Spinner } from '@/components/shared/Spinner'
 import { defaultExportFileName, ensureExtension, swapExtension } from '@/utils/core/exportFileName'
+import { LENGTH_UNIT_LABEL, lengthUnitOf } from '@/utils/lengthUnit'
+import type { LengthUnit } from '@/types/cad'
 import { isDevBuild } from '@/kernel/isDevBuild'
 import {
   DEFAULT_TESSELLATION_PRESET,
@@ -29,6 +31,10 @@ export interface ExportRequest {
   fileName: string
   // Which parts to cover and how to bundle them. The full document for YAML.
   selection: ExportSelection
+  // The document unit to leave the document in, when the caller shows the
+  // control. The caller applies it after a successful download; absent means
+  // the caller has no live document to write (an assembly, a workspace row).
+  documentUnit?: LengthUnit
 }
 
 export interface ExportDialogProps {
@@ -69,6 +75,14 @@ export interface ExportDialogProps {
    * broken option.
    */
   formats?: readonly ExportFormat[]
+  /**
+   * The part document's length unit. Providing it shows the unit control, which
+   * is a document property rather than a file option: the numbers keep their
+   * values and are read in the picked unit, so the part's real size changes.
+   * Omitted by callers with no live document to write (an assembly, a workspace
+   * row).
+   */
+  documentUnit?: LengthUnit
 }
 
 const ALL_FORMATS: readonly ExportFormat[] = ['step', 'stl', 'yaml']
@@ -86,6 +100,7 @@ export default function ExportDialog({
   selectedPartIds = [],
   defaultScope = 'all',
   formats = ALL_FORMATS,
+  documentUnit,
 }: ExportDialogProps) {
   const [picked, setFormat] = useState<ExportFormat>(formats[0])
   // Derived rather than reset in an effect: one mounted dialog serves callers
@@ -94,6 +109,7 @@ export default function ExportDialog({
   const format = formats.includes(picked) ? picked : formats[0]
   const [tessellation, setTessellation] = useState<TessellationPreset>(DEFAULT_TESSELLATION_PRESET)
   const [selection, setSelection] = useState<ExportSelection>(DEFAULT_EXPORT_SELECTION)
+  const [unit, setUnit] = useState<LengthUnit>(lengthUnitOf(documentUnit))
   const [fileName, setFileName] = useState(() => defaultExportFileName(defaultName, format))
   const [isExporting, setIsExporting] = useState(false)
   // Starts false, not `isOpen`: a caller that mounts the dialog already open
@@ -116,9 +132,10 @@ export default function ExportDialog({
         scope: defaultScope === 'selected' && ids.length > 0 ? 'selected' : 'all',
         selectedIds: ids,
       })
+      setUnit(lengthUnitOf(documentUnit))
     }
     wasOpen.current = isOpen
-  }, [isOpen, defaultName, format, defaultScope, selectedPartIds])
+  }, [isOpen, defaultName, format, defaultScope, selectedPartIds, documentUnit])
 
   // Read the captured ids, never the live prop: once the modal is up, the
   // document selection behind it is no longer the user's answer to this
@@ -174,6 +191,9 @@ export default function ExportDialog({
         bundle,
         selectedIds: scope === 'selected' ? validSelectedIds : [],
       }
+  // YAML carries the whole document, unit included, so a unit pick has no place
+  // in that request; callers without a document offer nothing to apply.
+  const requestUnit = documentUnit === undefined || format === 'yaml' ? undefined : unit
 
   // The worker rebuild + tessellation + STEP/STL serialisation can take seconds on
   // a heavy body. Freeze the whole dialog for the duration: there is no way to
@@ -184,7 +204,16 @@ export default function ExportDialog({
     setFileName(name)
     setIsExporting(true)
     try {
-      await onDownload({ format, tessellation, fileName: name, selection: requestSelection })
+      const request: ExportRequest = {
+        format,
+        tessellation,
+        fileName: name,
+        selection: requestSelection,
+        // Only the callers that showed the control have a unit to apply; an
+        // absent property is not the same as one picked as millimetres.
+        ...(requestUnit !== undefined ? { documentUnit: requestUnit } : {}),
+      }
+      await onDownload(request)
     } catch (e) {
       // The parent surfaces the failure; log it only under a dev build so the
       // dialog can still reset its busy state without prod console chatter.
@@ -251,9 +280,37 @@ export default function ExportDialog({
         aria-labelledby={`${tabPanelId}-tab-${format}`}
       >
         {format === 'yaml' ? (
-          <p className="export-dialog-note">YAML exports the complete document. Part options do not apply.</p>
+          <p className="export-dialog-note">
+            YAML exports the complete document, unit included. Part options do not apply.
+          </p>
         ) : (
           <>
+            {documentUnit !== undefined && (
+              <div className="export-dialog-section">
+                <span className="export-dialog-label">Length unit</span>
+                <div className="export-dialog-choices">
+                  {(['mm', 'inch'] as const).map(option => (
+                    <label className="export-dialog-choice" key={option}>
+                      <input
+                        type="radio"
+                        name="export-length-unit"
+                        value={option}
+                        checked={unit === option}
+                        disabled={isExporting}
+                        onChange={() => setUnit(option)}
+                      />
+                      <span>{LENGTH_UNIT_LABEL[option]}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="export-dialog-hint">
+                  A document property: the stored numbers keep their values and are read in this
+                  unit. Downloading exports the file and switches the document to this unit; undo
+                  restores it.
+                </p>
+              </div>
+            )}
+
             {format === 'stl' && showTessellation && (
               <div className="export-dialog-section">
                 <span className="export-dialog-label">Tessellation</span>

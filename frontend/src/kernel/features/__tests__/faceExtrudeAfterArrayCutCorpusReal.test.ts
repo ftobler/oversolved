@@ -59,7 +59,7 @@ function specWithCount(count: number): Record<string, unknown> {
   const spec = JSON.parse(JSON.stringify(corpus)) as Record<string, unknown>
   const features = spec.features as Array<Record<string, unknown>>
   const array = features.find(f => f.id === ARRAY)!
-  ;(array.circular_array as Record<string, unknown>).count = count
+  ;(array.pattern as Record<string, unknown>).count = count
   return spec
 }
 

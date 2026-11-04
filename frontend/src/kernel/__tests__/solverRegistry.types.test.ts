@@ -14,10 +14,8 @@
  */
 import { describe, it, expectTypeOf } from 'vitest'
 import type {
-  ArrayFeature,
   BooleanFeature,
   ChamferFeature,
-  CircularArrayFeature,
   DeleteBodyFeature,
   DeleteFaceFeature,
   ExtrudeFeature,
@@ -57,8 +55,6 @@ describe('the part feature union is closed', () => {
       | 'move_face'
       | 'delete_face'
       | 'boolean'
-      | 'array'
-      | 'circular_array'
       | 'pattern'
       | 'delete_body'
       | 'hole'
@@ -85,8 +81,6 @@ describe('solver dispatch maps each kind to its variant', () => {
     expectTypeOf<FeatureParam<'move_face'>>().toEqualTypeOf<MoveFaceFeature>()
     expectTypeOf<FeatureParam<'delete_face'>>().toEqualTypeOf<DeleteFaceFeature>()
     expectTypeOf<FeatureParam<'boolean'>>().toEqualTypeOf<BooleanFeature>()
-    expectTypeOf<FeatureParam<'array'>>().toEqualTypeOf<ArrayFeature>()
-    expectTypeOf<FeatureParam<'circular_array'>>().toEqualTypeOf<CircularArrayFeature>()
     expectTypeOf<FeatureParam<'pattern'>>().toEqualTypeOf<PatternFeature>()
     expectTypeOf<FeatureParam<'delete_body'>>().toEqualTypeOf<DeleteBodyFeature>()
     expectTypeOf<FeatureParam<'hole'>>().toEqualTypeOf<HoleFeature>()

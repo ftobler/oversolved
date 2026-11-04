@@ -1,15 +1,21 @@
-// The pattern leaf: repeat an earlier solid-producing feature's own add or cut
-// inside the body that feature already shaped. A body array plus a boolean can
-// produce the same geometry, but it needs the material as its own body first and
-// a merge afterwards; this feature asks the kernel for the source feature's tool
-// once and applies that tool at each copy position through the same
-// `applyBodyOperation` every producer uses.
+// The pattern leaf. It repeats one subject through a grid of rigid instance
+// transforms. The subject is the authored choice:
 //
-// The source's tool is obtained by re-solving the source feature with its
-// operation forced to `new` into a throwaway body store: the same leaf, the same
-// profile resolution and the same names, with no second geometry builder. Those
-// scratch bodies are released at the end of this solve; they never enter the
-// real store, so no part row or checkpoint sees them.
+// - `body` copies a whole body. `operation: add` fuses the copies into the
+//   source body and `operation: new` mints one body per copy; that half lives in
+//   patternBody.ts.
+// - `feature` repeats an earlier solid-producing feature's own add or cut
+//   inside the body that feature already shaped. A body array plus a boolean
+//   can produce the same geometry, but it needs the material as its own body
+//   first and a merge afterwards; this subject asks the kernel for the source
+//   feature's tool once and applies that tool at each copy position through the
+//   same `applyBodyOperation` every producer uses.
+//
+// The source feature's tool is obtained by re-solving the source feature with
+// its operation forced to `new` into a throwaway body store: the same leaf, the
+// same profile resolution and the same names, with no second geometry builder.
+// Those scratch bodies are released at the end of this solve; they never enter
+// the real store, so no part row or checkpoint sees them.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccTrsf } from '../occ/occTypes'
@@ -18,7 +24,8 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { AmbiguousBodyRefError, resolveBody } from './shared/bodyResolution'
 import { applyBodyOperation } from './bodyOps'
-import { resolvePatternDirection, resolvePatternAxis } from './array'
+import { applyBodyPattern, resolvePatternSourceBody, type BodyPatternResult } from './patternBody'
+import { resolveDirectionQueryStrict, resolveAxisQueryStrict } from './shared/directionQuery'
 import { makeTranslationTrsf, makeRotationTrsf } from '../occ/transforms'
 import {
   readSourceFaceRows, rebuildNamesForTransformedCopy, transformCopyWithMapping,
@@ -30,6 +37,7 @@ import { solveRevolve } from './revolve'
 import { solveSweep } from './sweep'
 import { extractErrorMessage, swallowUnlessTrap } from '../errors'
 import { stripRefSigil } from '@/utils/refSigil'
+import { patternSubject } from '@/utils/core/patternSubject'
 
 type Dict = Record<string, unknown>
 
@@ -58,10 +66,223 @@ function isToolKind(kind: string): kind is ToolKind {
 }
 
 /**
- * The earlier feature this pattern repeats, with its expressions resolved the
- * way its own solve resolved them. A feature that is suppressed, later in the
- * log than this pattern, or not a solid producer is refused by name: each has a
- * one-step fix, and none may silently pattern nothing.
+ * Resolve a required linear direction, applying an invert toggle. An explicit
+ * pick query wins. Without one, a stored vector is honoured as a unit world
+ * vector: the schema accepted it but the leaf used to ignore it and report the
+ * direction as missing. With neither, the solve fails rather than falling back
+ * to a world axis, so a user cannot accidentally repeat geometry along an
+ * arbitrary direction.
+ */
+export function resolvePatternDirection(
+  query: string,
+  stored: unknown,
+  invert: boolean,
+  field: string,
+  globalRepo: Repository,
+  bodyStore: Record<string, unknown> | null,
+): number[] {
+  let dir: number[]
+  if (query) {
+    const resolved = resolveDirectionQueryStrict(query, globalRepo, bodyStore)
+    if (!resolved) {
+      throw new Error(`pattern: ${field} query '${query}' did not resolve to a straight edge or planar face`)
+    }
+    dir = resolved
+  } else {
+    if (stored === undefined || stored === null) {
+      throw new Error(`pattern: ${field} is required; pick a straight edge or planar face`)
+    }
+    if (!Array.isArray(stored) || stored.length !== 3 || !stored.every((c) => typeof c === 'number' && Number.isFinite(c))) {
+      throw new Error(`pattern: ${field} must be three finite numbers, got ${JSON.stringify(stored)}`)
+    }
+    const len = Math.hypot(stored[0], stored[1], stored[2])
+    if (len < 1e-12) throw new Error(`pattern: ${field} must be a non-zero vector`)
+    dir = (stored as number[]).map((c) => c / len)
+  }
+  // `c === 0 ? 0 : -c` keeps the negated zero components as +0, not -0.
+  return invert ? dir.map((c) => (c === 0 ? 0 : -c)) : dir
+}
+
+/** A stored VEC3 field, or null when absent; a malformed value is a solve error. */
+function storedVec3(value: unknown, key: string): number[] | null {
+  if (value === undefined || value === null) return null
+  if (!Array.isArray(value) || value.length !== 3 || !value.every((c) => typeof c === 'number' && Number.isFinite(c))) {
+    throw new Error(`pattern: ${key} must be three finite numbers, got ${JSON.stringify(value)}`)
+  }
+  return value as number[]
+}
+
+/**
+ * A rotation axis, with the same precedence transform uses for its rotation: an
+ * `axis` pick wins; else the stored `axis_origin` / `axis_direction` pair, where
+ * a direction alone rotates about the world origin and an origin alone uses +Z
+ * (transform's rule, so one default holds for both). Neither is a solve error
+ * rather than a silent rotation about a world axis.
+ */
+export function resolvePatternAxis(
+  axisQuery: string,
+  originValue: unknown,
+  directionValue: unknown,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+): [number[], number[]] {
+  // The pick can be a straight edge, circular edge, sketch line, sketch
+  // circle, cylindrical face, or planar face.
+  if (axisQuery) {
+    const axis = resolveAxisQueryStrict(axisQuery, globalRepo, bodyStore)
+    if (!axis) throw new Error(`pattern: axis query '${axisQuery}' did not resolve to a usable axis`)
+    return axis
+  }
+  const origin = storedVec3(originValue, 'axis_origin')
+  const direction = storedVec3(directionValue, 'axis_direction')
+  if (origin === null && direction === null) {
+    throw new Error(
+      'pattern: axis is required; pick an edge, sketch entity, or face as `axis`, ' +
+        'or store the pair `axis_origin` + `axis_direction`',
+    )
+  }
+  const dir = direction ?? [0, 0, 1]
+  const len = Math.hypot(dir[0], dir[1], dir[2])
+  if (len < 1e-12) throw new Error('pattern: axis_direction must be a non-zero vector')
+  return [origin ?? [0, 0, 0], dir.map((c) => c / len)]
+}
+
+function countOf(sub: Dict, fallback: number): number {
+  const count = Number(sub.count ?? fallback)
+  // Number.isInteger rejects NaN, Infinity and fractional values in one check,
+  // so a hand-edited 2.7 throws instead of silently truncating to 2.
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error(`pattern: count must be a positive integer, got ${sub.count}`)
+  }
+  return count
+}
+
+function positiveInteger(value: unknown, key: string, fallback: number): number {
+  const count = Number(value ?? fallback)
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error(`pattern: ${key} must be a positive integer, got ${value}`)
+  }
+  return count
+}
+
+function finite(value: unknown, key: string, fallback: number): number {
+  const n = Number(value ?? fallback)
+  if (!Number.isFinite(n)) throw new Error(`pattern: ${key} must be a finite number, got ${value}`)
+  return n
+}
+
+/**
+ * One transform per copy. The subject's own slot is instance 0, so `includeSource`
+ * decides whether the count includes it. A feature subject always includes the
+ * source (its own application already happened), so it passes true; a body
+ * subject passes its `include_source`.
+ */
+export function buildPatternTransforms(
+  oc: OccModule,
+  scope: DisposeScope,
+  sub: Dict,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+  includeSource = true,
+): OccTrsf[] {
+  const mode = (sub.mode as string) ?? 'linear'
+
+  if (mode === 'linear') {
+    const count = countOf(sub, 2)
+    const pitch = finite(sub.pitch, 'pitch', 20)
+    const dir = resolvePatternDirection(
+      (sub.direction_query as string) ?? '',
+      sub.direction,
+      (sub.invert as boolean) ?? false,
+      'direction',
+      globalRepo,
+      bodyStore,
+    )
+    const copies = includeSource ? count - 1 : count
+    const trsfs: OccTrsf[] = []
+    for (let i = 1; i <= copies; i++) {
+      trsfs.push(makeTranslationTrsf(oc, scope, dir[0] * pitch * i, dir[1] * pitch * i, dir[2] * pitch * i))
+    }
+    return trsfs
+  }
+
+  if (mode === 'rectangular') {
+    const countX = positiveInteger(sub.count_x, 'count_x', 2)
+    const countY = positiveInteger(sub.count_y, 'count_y', 2)
+    const pitchX = finite(sub.pitch_x, 'pitch_x', 20)
+    const pitchY = finite(sub.pitch_y, 'pitch_y', 20)
+    const dirX = resolvePatternDirection(
+      (sub.direction_x_query as string) ?? '', sub.direction_x, (sub.invert_x as boolean) ?? false,
+      'direction X', globalRepo, bodyStore,
+    )
+    const dirY = resolvePatternDirection(
+      (sub.direction_y_query as string) ?? '', sub.direction_y, (sub.invert_y as boolean) ?? false,
+      'direction Y', globalRepo, bodyStore,
+    )
+    const trsfs: OccTrsf[] = []
+    for (let j = 0; j < countY; j++) {
+      for (let i = 0; i < countX; i++) {
+        // The seed cell (0,0) is the source slot, never a copy, whether or not
+        // the source is included. Linear and circular already exclude it.
+        if (i === 0 && j === 0) continue
+        trsfs.push(
+          makeTranslationTrsf(
+            oc,
+            scope,
+            dirX[0] * pitchX * i + dirY[0] * pitchY * j,
+            dirX[1] * pitchX * i + dirY[1] * pitchY * j,
+            dirX[2] * pitchX * i + dirY[2] * pitchY * j,
+          ),
+        )
+      }
+    }
+    return trsfs
+  }
+
+  if (mode === 'circular') {
+    const count = countOf(sub, 4)
+    const stepRaw = sub.step_angle
+    const step = stepRaw === undefined || stepRaw === null ? 360.0 / count : Number(stepRaw)
+    if (!Number.isFinite(step)) {
+      throw new Error(`pattern: step_angle must be a finite number, got ${sub.step_angle}`)
+    }
+    const [origin, resolvedDirection] = resolvePatternAxis(
+      (sub.axis as string) ?? '',
+      sub.axis_origin,
+      sub.axis_direction,
+      globalRepo,
+      bodyStore,
+    )
+    // Invert flips the axis direction, which reverses the sweep sense.
+    const invert = (sub.invert_axis as boolean) ?? false
+    const axisDirection = invert ? resolvedDirection.map((c) => (c === 0 ? 0 : -c)) : resolvedDirection
+    const trsfs: OccTrsf[] = []
+    if (includeSource) {
+      // Source occupies the seed (0-degree) slot; sweep from step.
+      for (let i = 1; i < count; i++) {
+        trsfs.push(makeRotationTrsf(oc, scope, origin, axisDirection, ((step * i) * Math.PI) / 180))
+      }
+    } else {
+      // No source slot; sweep from the first step, never the seed. A sweep that
+      // lands back on the seed (a full 360 wrap) drops that last copy, matching
+      // the linear exclude behaviour of no copy at the source position.
+      const wraps = step !== 0 && Math.abs((step * count) % 360) < 1e-9
+      const n = wraps ? count - 1 : count
+      for (let i = 1; i <= n; i++) {
+        trsfs.push(makeRotationTrsf(oc, scope, origin, axisDirection, ((step * i) * Math.PI) / 180))
+      }
+    }
+    return trsfs
+  }
+
+  throw new Error(`pattern: unknown mode '${mode}'`)
+}
+
+/**
+ * The earlier feature a feature-subject pattern repeats, with its expressions
+ * resolved the way its own solve resolved them. A feature that is suppressed,
+ * later in the log than this pattern, or not a solid producer is refused by
+ * name: each has a one-step fix, and none may silently pattern nothing.
  */
 function resolveSource(
   patternFeatureId: string,
@@ -93,7 +314,7 @@ function resolveSource(
   if (!isToolKind(kind)) {
     throw new Error(
       `pattern: '${sourceId}' is a ${kind || 'feature without a kind'}; ` +
-        'a pattern repeats an extrude, revolve or sweep',
+        'a feature pattern repeats an extrude, revolve or sweep',
     )
   }
   const resolved = resolveFeatureExpressions(source, variables, laterVariables)
@@ -119,10 +340,10 @@ function resolveSource(
 }
 
 /**
- * The body the source feature already shaped. An authored target wins. Without
- * one, the candidates are the bodies the source created or modified; one is the
- * answer, none and several are refusals that name the fix rather than picking a
- * body by store order.
+ * The body a feature-subject pattern already shaped. An authored target wins.
+ * Without one, the candidates are the bodies the source created or modified;
+ * one is the answer, none and several are refusals that name the fix rather than
+ * picking a body by store order.
  */
 function resolvePatternTarget(
   sourceId: string,
@@ -158,71 +379,6 @@ function resolvePatternTarget(
   return candidates[0]
 }
 
-function countOf(sub: Dict): number {
-  const count = Number(sub.count ?? 2)
-  // Number.isInteger rejects NaN, Infinity and fractional values in one check,
-  // so a hand-edited 2.7 throws instead of silently truncating to 2.
-  if (!Number.isInteger(count) || count < 1) {
-    throw new Error(`pattern: count must be a positive integer, got ${sub.count}`)
-  }
-  return count
-}
-
-/** One transform per copy. The source's own application is instance 0, so a
- *  count of 1 has nothing to copy and is an honest no-op. */
-export function buildPatternTransforms(
-  oc: OccModule,
-  scope: DisposeScope,
-  sub: Dict,
-  globalRepo: Repository,
-  bodyStore: Record<string, Body>,
-): OccTrsf[] {
-  const count = countOf(sub)
-  if (count === 1) return []
-  const mode = (sub.mode as string) ?? 'linear'
-  if (mode === 'linear') {
-    const pitch = Number(sub.pitch ?? 20)
-    if (!Number.isFinite(pitch)) throw new Error(`pattern: pitch must be a finite number, got ${sub.pitch}`)
-    const dir = resolvePatternDirection(
-      (sub.direction_query as string) ?? '',
-      sub.direction,
-      (sub.invert as boolean) ?? false,
-      'pattern',
-      'direction',
-      globalRepo,
-      bodyStore,
-    )
-    const trsfs: OccTrsf[] = []
-    for (let i = 1; i < count; i++) {
-      trsfs.push(makeTranslationTrsf(oc, scope, dir[0] * pitch * i, dir[1] * pitch * i, dir[2] * pitch * i))
-    }
-    return trsfs
-  }
-  if (mode === 'circular') {
-    const stepRaw = sub.step_angle
-    const step = stepRaw === undefined || stepRaw === null ? 360.0 / count : Number(stepRaw)
-    if (!Number.isFinite(step)) {
-      throw new Error(`pattern: step_angle must be a finite number, got ${sub.step_angle}`)
-    }
-    const [origin, axis] = resolvePatternAxis(
-      (sub.axis as string) ?? '',
-      sub.axis_origin,
-      sub.axis_direction,
-      'pattern',
-      globalRepo,
-      bodyStore,
-    )
-    const invert = (sub.invert_axis as boolean) ?? false
-    const direction = invert ? axis.map((c) => (c === 0 ? 0 : -c)) : axis
-    const trsfs: OccTrsf[] = []
-    for (let i = 1; i < count; i++) {
-      trsfs.push(makeRotationTrsf(oc, scope, origin, direction, ((step * i) * Math.PI) / 180))
-    }
-    return trsfs
-  }
-  throw new Error(`pattern: unknown mode '${mode}'`)
-}
-
 /** Release the scratch bodies a forced `new` solve registered, and their shapes. */
 function releaseScratch(table: HandleTable, tools: Body[]): void {
   for (const body of tools) {
@@ -231,22 +387,21 @@ function releaseScratch(table: HandleTable, tools: Body[]): void {
 }
 
 /**
- * Solve the pattern. The source feature's operation is applied `count - 1` more
- * times, each with the source's tool rigidly transformed. Copies that refuse are
- * named: some applied and some not is a `partial` result, none applied is an
- * error, so a half-applied pattern never reads as complete.
+ * Solve a feature-subject pattern. The source feature's operation is applied
+ * `count - 1` more times, each with the source's tool rigidly transformed.
+ * Copies that refuse are named: some applied and some not is a `partial`
+ * result, none applied is an error, so a half-applied pattern never reads as
+ * complete.
  */
-export function solvePattern(
+function solveFeaturePattern(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
-  featuresById: Record<string, Dict> = {},
-  solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> } = {
-    variables: {}, laterVariables: {},
-  },
+  featuresById: Record<string, Dict>,
+  solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> },
 ): PatternResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.pattern as Dict) ?? {}
@@ -259,7 +414,7 @@ export function solvePattern(
   )
   const sourceSub = (source.feature[source.kind] as Dict) ?? {}
   const operation = ((sourceSub.operation as string) ?? 'add') as 'add' | 'cut'
-  const transforms = buildPatternTransforms(oc, scope, sub, globalRepo, bodyStore)
+  const transforms = buildPatternTransforms(oc, scope, sub, globalRepo, bodyStore, true)
   const target = resolvePatternTarget(source.id, (sub.target_body as string) ?? '', bodyStore)
   const targetId = target.id
 
@@ -291,7 +446,7 @@ export function solvePattern(
     }
 
     // Read once per tool, not per instance: the tool shape does not change
-    // between copies (the same hoist the array leaf makes).
+    // between copies.
     const toolShapes: Array<{ shape: OccShape; rows: ReturnType<typeof readSourceFaceRows> }> = []
     for (const body of tools) {
       const shape = table.get<OccShape>(body.shape!)
@@ -361,11 +516,11 @@ export function solvePattern(
     if (appliedCopies === 0) {
       throw new Error(`pattern: no copy was applied; ${failures[0] ?? 'nothing to apply'}`)
     }
-    const soldIds = [...live]
+    const liveIds = [...live]
     const result: PatternResult = {
       status: failures.length > 0 ? 'partial' : 'ok',
-      body_id: soldIds[0] ?? targetId,
-      body_ids: soldIds,
+      body_id: liveIds[0] ?? targetId,
+      body_ids: liveIds,
       operation,
     }
     if (failures.length > 0) {
@@ -378,4 +533,42 @@ export function solvePattern(
     // before a throw: they are this leaf's transient tool, never part rows.
     releaseScratch(table, Object.values(scratch))
   }
+}
+
+/**
+ * Solve a pattern of either subject. A body pattern copies a body through the
+ * grid; a feature pattern reapplies an earlier feature's own add or cut.
+ */
+export function solvePattern(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  feature: Dict,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+  featuresById: Record<string, Dict> = {},
+  solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> } = {
+    variables: {}, laterVariables: {},
+  },
+): PatternResult | BodyPatternResult {
+  const featureId = (feature.id as string) ?? ''
+  const sub = (feature.pattern as Dict) ?? {}
+  // A document authored before the subject field is read from the source it
+  // actually names. The editor and the boolean leaf share this one rule, so an
+  // old feature pattern is not silently edited or expanded as a body pattern.
+  const subject = patternSubject(sub)
+
+  if (subject === 'body') {
+    const body = resolvePatternSourceBody(sub, bodyStore)
+    const includeSource = (sub.include_source as boolean) ?? true
+    const operation = (sub.operation as string) ?? 'add'
+    const transforms = buildPatternTransforms(oc, scope, sub, globalRepo, bodyStore, includeSource)
+    return applyBodyPattern(oc, scope, table, body, transforms, includeSource, operation, featureId, bodyStore)
+  }
+
+  if (subject === 'feature') {
+    return solveFeaturePattern(oc, scope, table, feature, globalRepo, bodyStore, featuresById, solveContext)
+  }
+
+  throw new Error(`pattern: unknown subject '${subject}'; choose body or feature`)
 }

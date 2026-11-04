@@ -731,31 +731,38 @@ banner on stdout, so a client config must use the direct node invocation.
   of `toIndex` (which counts the seeded plane rows), `before: <featureId>` or
   `after: <featureId>`, while `add_plane` takes `before` to insert in place;
   `delete_feature` removes only the named row, so a
-  dependent stays in the log and reports its missing input; and an array's
-  `operation: add` only fuses copies that touch, so disjoint copies split into
-  bodies named with `_1`, `_2`... suffixes. The three array/mirror adds take
-  their whole payload inline: `add_array` takes every linear-array field
-  (`source_body`, `mode`, `operation`, `include_source`, `count_x`/`pitch_x`,
-  `direction_x_query`, `invert_x`, and the rectangular `_y` siblings),
-  `add_circular_array` takes `source_body`, `operation`, `include_source`,
-  `count`, `step_angle`, `axis`/`axis_origin`/`axis_direction` and
-  `invert_axis`, and `add_mirror` takes `body`, `plane`, `keep_original` and
-  `merge`, so one call replaces the add plus one setter per field.
-- `add_pattern` repeats one earlier FEATURE's own add or cut inside the body it
-  already shaped, so a repeated slot or boss needs no separate body, array and
-  boolean. `source_feature` names an earlier `extrude`, `revolve` or `sweep`
-  whose operation is `add` or `cut`; `count` is the TOTAL instance count,
-  including the source's own application (count 2 adds one copy, count 1 is a
-  no-op). Linear mode reads `pitch` plus `direction` or `direction_query`;
+  dependent stays in the log and reports its missing input; and a body-subject
+  pattern's `operation: add` only fuses copies that touch, so disjoint copies
+  split into bodies named with `_1`, `_2`... suffixes. `add_pattern` and
+  `add_mirror` take their whole payload inline: `add_pattern` takes every
+  pattern field (`subject`, `source_body`, `source_feature`, `mode`,
+  `operation`, `include_source`, the one-axis `count`/`pitch`/`direction`
+  family, the rectangular `count_x`/`count_y`/`pitch_x`/`pitch_y`/`direction_x_query`/`direction_y_query`
+  family, `step_angle`, `axis`/`axis_origin`/`axis_direction` and the invert
+  flags), and `add_mirror` takes `body`, `plane`, `keep_original` and `merge`,
+  so one call replaces the add plus one setter per field.
+- `add_pattern` with `subject: body` (the default) copies `source_body` through
+  a linear, rectangular or circular grid. `operation: add` unions each copy
+  into the source body when they touch; a copy that does not touch is a new
+  part, so a disjoint copy takes a `_1`, `_2`... sibling id. `operation: new`
+  keeps the source as instance 0 and mints one body per copy.
+- `add_pattern` with `subject: feature` repeats one earlier FEATURE's own add
+  or cut inside the body it already shaped, so a repeated slot or boss needs no
+  separate body and boolean. `source_feature` names an earlier `extrude`,
+  `revolve` or `sweep` whose operation is `add` or `cut`. `count` is the TOTAL
+  instance count, including the source's own application (count 2 adds one
+  copy, count 1 is a no-op). Linear mode reads `pitch` plus `direction` or
+  `direction_query`; rectangular mode reads the two `count_x`/`count_y` axes;
   circular mode reads `step_angle` (absent means `360/count`) plus `axis` or
   `axis_origin` + `axis_direction`. `target_body` names the body when the
   source feature touched more than one; otherwise the one body the source
   created or modified is used, and zero or several candidates are refused with
   the list. A copy that cannot apply is named: some applied is a `partial`
   feature listing how many copies landed and which copy failed, none applied is
-  an error. A source with `operation: new` or an `up_to` extrude is refused by
-  name, because a new body is not "inside the existing body" and an up_to trim
-  would travel with every rigid copy.
+  an error. An add copy that does not touch the target becomes its own body; a
+  cut copy that misses is still named. A source with `operation: new` or an
+  `up_to` extrude is refused by name, because a new body is not "inside the
+  existing body" and an up_to trim would travel with every rigid copy.
 - A sketch is one profile, and a profile fills even/odd: a loop nested inside
   another is a hole (a disc plus a circle becomes a washer), while loops that
   CROSS each other are filled as their union. A circle meant as a hole that

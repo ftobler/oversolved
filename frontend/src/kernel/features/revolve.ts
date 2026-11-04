@@ -76,7 +76,7 @@ function fuseConsuming(
  * no stored `axis_origin` / `axis_direction` alternative: a revolve about world
  * Z (or any other stored vector) silently produced a plausible-looking wrong
  * solid for a user who never picked an axis. Same contract as the
- * circular-array leaf (`circular_array: axis is required`).
+ * circular-pattern leaf (`pattern: axis is required`).
  *
  * Fail-loud guards: when the pick is set but the registry returns null (stale
  * pick -- the body rebuild minted new ancestry tokens, the edge was deleted, or

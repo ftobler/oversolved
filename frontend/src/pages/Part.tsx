@@ -144,7 +144,6 @@ const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
   mirror: { field: 'body' },
   split: { field: 'bodies', multi: true },
   delete_body: { field: 'bodies', multi: true },
-  circular_array: { field: 'axis' },
   helix: { field: 'reference' },
 }
 
@@ -1401,8 +1400,6 @@ export default function Part() {
         handleClone={handleClone}
         onImport={handleImportStep}
         onExport={handleExportStep}
-        lengthUnit={lengthUnitOf(doc?.length_unit)}
-        onSetLengthUnit={handleSetLengthUnit}
         rightContent={
           <>
             <button
@@ -1492,7 +1489,7 @@ export default function Part() {
         onCancel={handleColorCancel}
         onApply={handleColorApply}
       />
-      <PartExportImport ref={exportImportRef} uuid={uuid!} />
+      <PartExportImport ref={exportImportRef} uuid={uuid!} onSetLengthUnit={handleSetLengthUnit} />
       <MessageDialog
         isOpen={messageDialog !== null}
         title={messageDialog?.title ?? ''}
