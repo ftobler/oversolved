@@ -293,7 +293,9 @@ npm run drive -- replay repro.json
   feature problems (`features`, see the MCP section), the informational
   `notes`, the document's `length_unit` and the sketch and plane `frames` (also
   described there), which by default are only the ones this call touched or
-  moved; `--frames all` restores every resolved frame. The `--out` format is
+  moved; `--frames all` restores every resolved frame. The same reply carries
+  `curves`, the resolved placement of every helix the solve built, and that map
+  is never filtered. The `--out` format is
   chosen by the extension: `.json` writes JSON, anything else writes YAML. The
   `--out` path must resolve inside the project's `tmp/` or `bugreports/`
   (relative paths resolve against the repo root, not `frontend/`). `--repro`
@@ -421,8 +423,8 @@ banner on stdout, so a client config must use the direct node invocation.
 |---|---|---|
 | `commands` | optional `kind` (`part` default, or `assembly`) | the command catalog for that editor |
 | `mutations` | optional `kind` (`part` or `assembly`), optional `family` (`sketch`, `features`, `picks`, `part style`, `document`, `parts`, `mates`) | the mutation vocabularies grouped by family plus ready-to-run example scripts; no argument returns both whole (about 90 kB), a filter returns only that slice and an unknown family is refused with the valid list |
-| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `frames: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, notes, featureDeltas, frames, length_unit, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
-| `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`notes`/`frames`/`length_unit`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }`; under `detail: "summary"` or `"changed"` the aggregate measures, the solve verdict, and the mates and parts problem rows survive, and `perBody` and `instances` are dropped |
+| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `frames: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, notes, featureDeltas, frames, curves, length_unit, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
+| `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`notes`/`frames`/`curves`/`length_unit`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }`; under `detail: "summary"` or `"changed"` the aggregate measures, the solve verdict, and the mates and parts problem rows survive, and `perBody` and `instances` are dropped |
 | `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures, length_unit, compared_in }`; a failing row is data, not an MCP error |
 | `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `detail` (assembly), `docId`, `files` | writes the file, returns `{ ok, docHash, features, notes, length_unit, file_unit, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }`; an assembly `detail: "summary"` (or `"changed"`) keeps the file fields, solve, problem rows and summary and drops `instances` |
 | `select` | `doc` or `docHash`, `selector`, optional `detail` (`full` default, or `queries`), `docId`, `files` | `{ ok, docHash, count, queries, items? }`: the query strings a click would store, plus `count` and, in `full` detail, a geometry summary per item (`queries` omits `items`); part documents only |
@@ -624,6 +626,16 @@ banner on stdout, so a client config must use the direct node invocation.
   frames, `frames: "all"` still reports only the changed delta rows, and the
   baseline solve is skipped only when both are `"all"`. `measure` is not
   filtered: it reports every resolved frame.
+  `curves` is the other map beside `frames`: the resolved placement of every
+  helix, keyed by feature id, as
+  `{origin, axis, start, end, radius, pitch, turns, height, hand}`. `axis` is
+  the climb direction, so a `direction: reverse` helix reports the negated
+  reference axis, and `origin` is the point on the axis the offset already
+  moved. It is reported whole and is not filtered by touched or moved: the
+  sweep that needs the start is the next call, where the helix itself is not
+  touched. The key is omitted when the solve resolved no helix, and a
+  suppressed or `exception` helix has no entry because it produced no
+  placement. A `--frames all`/`frames: "all"` opt-in does not change it.
 - Informational notes ride beside the problem list as `notes`, a list of
   `{ ids, text }` in feature log order. The key is omitted when there is no note
   (unlike `features`, which is always present). A note is not a problem: it adds
@@ -640,7 +652,9 @@ banner on stdout, so a client config must use the direct node invocation.
   a real `generation` and `features` is the document's problem list. Its
   `frames` key is absent unless something moved (or `frames: "all"` was
   passed), and null on a stalled call's prefix, which has no settled final
-  solve; read an old frame with `measure` or the opt-in. A reply's
+  solve; read an old frame with `measure` or the opt-in. `curves` is still the
+  whole map on such a call, because it is never filtered by the changed set.
+  A reply's
   `docHash` is stable: `run` with `steps: []` on it, by `docHash` or with its
   exported YAML or JSON as `doc`, returns the same hash. A loaded `doc` is
   stamped with the loader's current version, so a document an older stamp
@@ -972,6 +986,13 @@ banner on stdout, so a client config must use the direct node invocation.
   reply's `notes` names both sketches and the origin distance (or the axes, when
   only those moved). That check reads every resolved sketch before the
   changed-only filter, so it also fires on a call that touched neither sketch.
+- Read a helix's placement from the reply too. `curves.<id>` carries
+  `{origin, axis, start, end, radius, pitch, turns, height, hand}` for every
+  helix the solve resolved, so a sweep profile can sit on `start` without a
+  throwaway probe plane. `axis` is the climb direction, not the reference axis:
+  `direction: reverse` negates it. `@<id>/start` and `@<id>/end` remain valid
+  point refs (for example a plane's `origin`), and the two agree with the
+  reported points. The display polyline is not part of the reply.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; a user error a valid request reaches (an unknown export `body`, a

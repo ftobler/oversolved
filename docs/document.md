@@ -752,8 +752,13 @@ controls. `hand` is the curve's chirality about `a0`, so a right-hand thread
 stays right-hand when `direction` flips.
 
 The solve registers `_curve_<id>` (plain descriptor data), `<id>` (its axis),
-`<id>/start` and `<id>/end`, and reports the derived values. A helix is never a
-`bodyStore` body.
+`<id>/start` and `<id>/end`, and reports the derived values. A run or measure
+reply also carries the placement under `curves.<id>` as
+`{origin, axis, start, end, radius, pitch, turns, height, hand}`, where `axis`
+is the climb direction (`direction: reverse` negates it). `@<id>/start` and
+`@<id>/end` stay valid point refs, for example as a sweep profile plane's
+`origin`, so a profile can be placed on the curve without a throwaway plane. A
+helix is never a `bodyStore` body.
 
 ## Constraints
 
