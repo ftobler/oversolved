@@ -70,6 +70,23 @@ describe.skipIf(!oc)('helix leaf (real OCC)', () => {
       expect(zs[1]).toBeCloseTo(10, 4)
       for (const p of result.curve.points) expect(distanceToZAxis(p)).toBeCloseTo(5, 4)
 
+      // The placement repeats the points the /start and /end refs carry and the
+      // axis the bare id resolves, so a caller reads them without a probe plane.
+      const startRef = repo.elements.get('hx1/start') as { origin: number[] }
+      const endRef = repo.elements.get('hx1/end') as { origin: number[] }
+      const first = result.curve.points[0]
+      const last = result.curve.points[result.curve.points.length - 1]
+      for (let i = 0; i < 3; i++) {
+        expect(result.placement.start[i]).toBeCloseTo(startRef.origin[i], 9)
+        expect(result.placement.end[i]).toBeCloseTo(endRef.origin[i], 9)
+        expect(result.placement.start[i]).toBeCloseTo(first[i], 9)
+        expect(result.placement.end[i]).toBeCloseTo(last[i], 9)
+      }
+      expect(result.placement.axis[0]).toBeCloseTo(0, 9)
+      expect(result.placement.axis[1]).toBeCloseTo(0, 9)
+      expect(result.placement.axis[2]).toBeCloseTo(1, 9)
+      expect(result.placement.origin[2]).toBeCloseTo(0, 9)
+
       // The repo descriptor is plain data under _curve_<id>.
       const desc = repo.elements.get('_curve_hx1') as Record<string, unknown>
       expect(desc.kind).toBe('helix')
