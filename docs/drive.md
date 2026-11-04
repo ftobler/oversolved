@@ -595,8 +595,8 @@ banner on stdout, so a client config must use the direct node invocation.
   that a rigid transform or mirror still names its body (a move changes shape or
   placement without necessarily changing volume). `volume` is still the total
   over every live body. A row appears when the feature's checkpoint differs from
-  the input document's solve,
-  when the feature is new, or when the steps touched a solid-producing feature
+  the input document's solve, when the feature is new, or when the steps touched
+  a solid-producing feature
   (so an edit that leaves the same volume still shows its zero contribution);
   untouched planes and sketches from an earlier call do not repeat, and neither
   does an existing sketch or plane whose own delta is zero (an upstream edit
