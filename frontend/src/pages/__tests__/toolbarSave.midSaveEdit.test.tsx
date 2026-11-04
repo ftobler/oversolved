@@ -82,7 +82,7 @@ function makeEditor(useDoc: () => DocHook, Toolbar: typeof PartToolbar) {
     return (
       <CommandRegistryProvider value={registry}>
         {Toolbar === PartToolbar
-          ? <PartToolbar docName="Doc" onRename={async () => true} handleSave={handleSave} handleClone={() => {}} onImport={() => {}} onExport={() => {}} lengthUnit="mm" onSetLengthUnit={() => {}} />
+          ? <PartToolbar docName="Doc" onRename={async () => true} handleSave={handleSave} handleClone={() => {}} onImport={() => {}} onExport={() => {}} />
           : <AssemblyToolbar docName="Doc" onRename={async () => true} handleSave={handleSave} handleClone={() => {}} onImport={() => {}} onExport={() => {}} />}
       </CommandRegistryProvider>
     )
