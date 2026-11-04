@@ -139,6 +139,10 @@ describe.skipIf(!ready)('fillet/chamfer tangent-chain note (real OCC + Rust solv
     const whole = await apply(all, { type: 'add_chamfer', featureId: 'ch2', edges: await topLoop(all), distance: 0.1 })
     expect(whole.problem).toBeUndefined()
     expect(await volume(single.result.doc as PartDoc)).toBeCloseTo(await volume(whole.result.doc as PartDoc), 5)
+
+    const exported = await exportHeadless(single.result.doc as PartDoc, { format: 'step' })
+    expect(exported!.ok).toBe(true)
+    expect(exported!.notes).toEqual([{ ids: ['ch2'], text: chainNote }])
   }, 120_000)
 
   it('a sharp corner is not a chain: one box edge reports no note', async () => {
