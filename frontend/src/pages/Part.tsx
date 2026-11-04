@@ -1381,8 +1381,6 @@ export default function Part() {
         handleClone={handleClone}
         onImport={handleImportStep}
         onExport={handleExportStep}
-        lengthUnit={lengthUnitOf(doc?.length_unit)}
-        onSetLengthUnit={handleSetLengthUnit}
         rightContent={
           <>
             <button
@@ -1472,7 +1470,7 @@ export default function Part() {
         onCancel={handleColorCancel}
         onApply={handleColorApply}
       />
-      <PartExportImport ref={exportImportRef} uuid={uuid!} />
+      <PartExportImport ref={exportImportRef} uuid={uuid!} onSetLengthUnit={handleSetLengthUnit} />
       <MessageDialog
         isOpen={messageDialog !== null}
         title={messageDialog?.title ?? ''}

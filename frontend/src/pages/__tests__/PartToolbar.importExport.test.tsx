@@ -29,8 +29,6 @@ function renderToolbar() {
         handleClone={vi.fn()}
         onImport={onImport}
         onExport={onExport}
-        lengthUnit="mm"
-        onSetLengthUnit={vi.fn()}
       />
     </CommandRegistryProvider>,
   )

@@ -26,8 +26,6 @@ function renderToolbar(context = sessionBackedPartContext()) {
         handleClone={vi.fn()}
         onImport={vi.fn()}
         onExport={vi.fn()}
-        lengthUnit="mm"
-        onSetLengthUnit={vi.fn()}
       />
     </CommandRegistryProvider>,
   )
