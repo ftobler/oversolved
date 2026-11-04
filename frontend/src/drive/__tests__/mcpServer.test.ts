@@ -646,5 +646,10 @@ describe('createMcpServer', () => {
     expect(properties.parts).toBeDefined()
     const measure = MCP_TOOLS.find(tool => tool.name === 'measure')!
     expect((measure.inputSchema.properties as Record<string, unknown>).parts).toBeDefined()
+    // The published export schema advertises the same detail levels the parser
+    // accepts, so tools/list cannot promise a call the server refuses.
+    const exportTool = MCP_TOOLS.find(tool => tool.name === 'export')!
+    expect((exportTool.inputSchema.properties as Record<string, { enum?: unknown[] }>).detail?.enum)
+      .toEqual(['summary', 'changed', 'full'])
   })
 })

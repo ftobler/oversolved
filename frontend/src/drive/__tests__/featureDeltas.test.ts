@@ -80,13 +80,18 @@ describe('featureDeltaRows', () => {
     expect(featureDeltaRows(DOC, MEASURES, suppressed).map(row => row.id)).toEqual(['sk1', 'ex1', 'fi1', 'ex2'])
   })
 
-  it('changed mode leaves out a warned feature that did not move and was not touched', () => {
+  it('changed mode keeps a warned feature that moved or was touched', () => {
     const outcomes: Record<string, FeatureOutcome> = {
       ...CLEAN,
       fi1: { status: 'ok', warning: 'one edge was skipped' },
     }
-    const rows = featureDeltaRows(DOC, MEASURES, outcomes, { baseline: MEASURES, mode: 'changed' })
-    expect(rows).toEqual([])
+    // fi1's own checkpoint moved; the warning must not hide a row the plain
+    // coverage rule admits.
+    const moved: FeatureMeasure[] = MEASURES.map(measure =>
+      measure.id === 'fi1' ? { ...measure, volume: 11900 } : measure)
+    const rows = featureDeltaRows(DOC, moved, outcomes, { baseline: MEASURES, mode: 'changed' })
+    expect(rows.map(row => row.id)).toEqual(['fi1'])
+    expect(rows[0]).toMatchObject({ id: 'fi1', warning: 'one edge was skipped' })
   })
 
   it('carries a hole\'s resolved drill side on its row, and no side elsewhere', () => {

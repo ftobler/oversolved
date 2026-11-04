@@ -139,6 +139,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
       expect((measured.perBody as Array<{ id: string }>).map(body => body.id).sort()).toEqual([
         'pin/body_ex1', 'plate/body_ex1',
       ])
+      expect(measured.perBody as Array<{ id: string }>).toHaveLength(2)
 
       // Offset the mate by 5 along the plate normal (plus convention: B at A
       // plus the offset): the pin rises from z 10 to 15, and an undo in the
@@ -186,7 +187,6 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
       }))
       expect(brief.instances).toBeUndefined()
       expect((brief.solve as { verdict: string }).verdict).toBe('fully_constrained')
-      expect(measured.perBody as Array<{ id: string }>).toHaveLength(2)
       const briefMeasure = toolPayload(await client.request('tools/call', { name: 'measure', arguments: { docHash: a1, detail: 'summary' } }))
       expect(briefMeasure.instances).toBeUndefined()
       // summary trims the per-body table, not the aggregate numbers.
