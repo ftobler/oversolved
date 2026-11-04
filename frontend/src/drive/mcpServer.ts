@@ -404,9 +404,10 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'a face sketch\'s axes are read from the reply rather than guessed (a feature whose solve threw has no '
       + 'frame), and the key is omitted when nothing qualified; pass frames: "all" for every resolved frame. '
       + 'A part reply also names the document\'s length_unit (mm unless the document set inch): every length it '
-      + 'returns is in that unit, while STEP and STL leave in millimetres. With steps: [] the given document is solved '
-      + 'once and the same fields are returned, which is how to inspect a document; read a frame an earlier call '
-      + 'authored with measure or frames: "all". A reply\'s docHash is stable: '
+      + 'returns is in that unit, while STEP and STL leave in millimetres; the compare rows are the exception, '
+      + 'stated in millimetres and labelled compared_in. With steps: [] the given document is solved '
+      + 'once and the same fields are returned, which is how to inspect a document, but its frames map still '
+      + 'keeps only what this call moved; read an old frame with measure or frames: "all". A reply\'s docHash is stable: '
       + 'run with steps: [] on it (by docHash, or its exported YAML/JSON as doc) returns the same hash. '
       + 'solved says whether a settle was attempted for this document: a script whose every step was refused before '
       + 'any mutation landed leaves it false and returns no per-feature rows, because nothing was solved; pass '
@@ -928,8 +929,9 @@ export function createMcpServer(ops: McpCadOps): McpServer {
               + 'Right) or @<planeId>; an unmatched plane is an error naming the valid planes. '
               + worldFrameSentence() + ' ' + faceFrameSentence() + ' ' + addPlaneFrameSentence() + ' '
               + 'Part replies name the document\'s length_unit (mm unless the document family\'s '
-              + 'set_length_unit mutation made it inch): every length they carry is in that unit, while STEP and STL '
-              + 'exports are written in millimetres.',
+              + 'set_length_unit mutation made it inch): their lengths follow it, while STEP and STL exports are '
+              + 'written in millimetres. The compare reply is the exception: its rows are millimetres, stated as '
+              + 'compared_in.',
           })
         case 'notifications/initialized':
           return null

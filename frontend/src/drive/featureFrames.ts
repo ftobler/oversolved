@@ -1,8 +1,8 @@
-// The resolved frames a run or measure reply reports, one per sketch and
-// add_plane feature. A sketch on a face takes its origin at the face centroid
-// and its axes from the normal rule, which is not something an author can read
-// off the query; reporting the frame answers "where does my sketch x go"
-// without a probe hole or a source read.
+// The resolved frames a measure reply (or a `frames: "all"` run) reports, one
+// per sketch and add_plane feature. A sketch on a face takes its origin at the
+// face centroid and its axes from the normal rule, which is not something an
+// author can read off the query; reporting the frame answers "where does my
+// sketch x go" without a probe hole or a source read.
 //
 // The frame comes from the kernel's own result: `plane_transform` for a sketch
 // (`frameFromPlaneTransform`) and `plane` for a plane feature. A suppressed
@@ -14,7 +14,8 @@
 // frame did not move did not change because a later call added a fillet. The
 // run reply keeps a frame only when the call touched the feature or the frame
 // differs from the input document's solve; `mode: 'all'` (the `frames: "all"`
-// opt-in) restores every resolved frame, and `measure` reads in that mode.
+// opt-in) restores every resolved frame, which is also what a measure reply
+// reports.
 
 import type { PartDoc } from '@/types/cad'
 import type { BuildResponse } from '@/kernel/builderTypes'

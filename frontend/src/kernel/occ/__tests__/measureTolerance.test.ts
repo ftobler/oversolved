@@ -5,11 +5,12 @@ import { describe, it, expect } from 'vitest'
 import {
   DEFAULT_MEASURE_TOLERANCE,
   compareMeasures,
+  scaledMeasures,
   valueWithinTolerance,
   vectorWithinTolerance,
   type MeasureRow,
 } from '../measureTolerance'
-import type { MeasureRecord } from '../measure'
+import type { BodyMeasure, MeasureRecord } from '../measure'
 import type { OracleMeasures } from '@/oracle/corpus'
 
 function record(overrides: Partial<MeasureRecord> = {}): MeasureRecord {
@@ -64,6 +65,51 @@ describe('valueWithinTolerance', () => {
   it('is false for a non-finite value', () => {
     expect(valueWithinTolerance(Number.NaN, 100)).toBe(false)
     expect(valueWithinTolerance(100, Number.POSITIVE_INFINITY)).toBe(false)
+  })
+})
+
+describe('scaledMeasures', () => {
+  const body: BodyMeasure = {
+    id: 'body_ex1',
+    volume: 100,
+    area: 60,
+    centroid: [5, 5, 5],
+    bbox: [0, 0, 0, 10, 10, 10],
+    faces: 6,
+    edges: 12,
+    vertices: 8,
+  }
+
+  it('scales every length in the record and the per-body rows, keeping counts and ids', () => {
+    const scaled = scaledMeasures(record({ perBody: [body] }), 25.4)
+    expect(scaled.volume).toBeCloseTo(100 * 25.4 ** 3, 6)
+    expect(scaled.area).toBeCloseTo(60 * 25.4 ** 2, 6)
+    scaled.centroid!.forEach((value, index) => expect(value).toBeCloseTo([127, 127, 127][index], 9))
+    scaled.bbox!.forEach((value, index) => expect(value).toBeCloseTo([0, 0, 0, 254, 254, 254][index], 9))
+    expect(scaled.bodies).toBe(1)
+    expect(scaled.faces).toBe(6)
+    expect(scaled.edges).toBe(12)
+    expect(scaled.vertices).toBe(8)
+    const scaledBody = scaled.perBody[0]
+    expect(scaledBody.id).toBe('body_ex1')
+    expect(scaledBody.volume).toBeCloseTo(100 * 25.4 ** 3, 6)
+    expect(scaledBody.area).toBeCloseTo(60 * 25.4 ** 2, 6)
+    scaledBody.centroid!.forEach((value, index) => expect(value).toBeCloseTo([127, 127, 127][index], 9))
+    scaledBody.bbox!.forEach((value, index) => expect(value).toBeCloseTo([0, 0, 0, 254, 254, 254][index], 9))
+    expect(scaledBody.faces).toBe(6)
+    expect(scaledBody.edges).toBe(12)
+    expect(scaledBody.vertices).toBe(8)
+  })
+
+  it('keeps a null centroid and bbox null', () => {
+    const scaled = scaledMeasures(
+      record({ centroid: null, bbox: null, bodies: 0, perBody: [{ ...body, centroid: null, bbox: null }] }),
+      25.4,
+    )
+    expect(scaled.centroid).toBeNull()
+    expect(scaled.bbox).toBeNull()
+    expect(scaled.perBody[0].centroid).toBeNull()
+    expect(scaled.perBody[0].bbox).toBeNull()
   })
 })
 

@@ -576,6 +576,26 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(exported.payload).toMatchObject({ ok: true, length_unit: 'inch', file_unit: 'mm' })
     expect(readFileSync(stepFile).byteLength).toBe(exported.payload.bytes as number)
   }, 180_000)
+
+  it('filters the CLI frames map and restores it with --frames all', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const script = path.join(TMP_DIR, 'frames-script.json')
+    const doc = path.join(TMP_DIR, 'frames.yaml')
+    const inspectScript = path.join(TMP_DIR, 'frames-inspect.json')
+    writeFileSync(script, JSON.stringify(BOX_SCRIPT, null, 1))
+    writeFileSync(inspectScript, JSON.stringify({ steps: [] }, null, 1))
+    expect((await drive('run', script, '--out', doc)).payload.ok).toBe(true)
+
+    // A save-only call on an unchanged document reports no frames key at all.
+    const inspect = await drive('run', inspectScript, '--doc', doc)
+    expect(inspect.status).toBe(0)
+    expect(inspect.payload).not.toHaveProperty('frames')
+
+    // The explicit opt-in restores every resolved frame.
+    const all = await drive('run', inspectScript, '--doc', doc, '--frames', 'all')
+    expect(all.status).toBe(0)
+    expect(Object.keys(all.payload.frames as Record<string, unknown>)).toEqual(['sk1'])
+  }, 180_000)
 })
 
 // ─── MCP server ───

@@ -87,8 +87,9 @@ export function faceFrameSentence(): string {
     .join('; ')
   return 'A sketch on a face takes the face centroid as its origin and its in-plane axes from the face '
     + 'normal (x = normal x world +Z, or normal x world +X when |n_z| >= 0.9; y = normal x x). '
-    + `The six axis normals give: ${rows}. A run or measure reply reports each `
-    + 'sketch and add_plane feature\'s resolved frame in its `frames` map, so read the frame there '
+    + `The six axis normals give: ${rows}. A measure reply reports each `
+    + 'sketch and add_plane feature\'s resolved frame in its `frames` map, and a run reply reports '
+    + 'the ones it touched or moved (`frames: "all"` restores every one), so read the frame there '
     + 'instead of deriving it from the query.'
 }
 

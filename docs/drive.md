@@ -596,17 +596,22 @@ banner on stdout, so a client config must use the direct node invocation.
   no measurable checkpoints (the kernel was unavailable or faulted, which is
   also `ok: false` with `solve.lastError`). The checkpoint
   measurement reads each unique OCC shape once, not once per feature.
-  Every part reply that carries lengths names the document's `length_unit`
-  (`mm` unless the document set `inch`); the numbers themselves are never
-  converted. `frames` is filtered the same way as `featureDeltas`: it keeps the
-  sketch and `add_plane` frames this call touched or moved, is omitted when none
-  qualified, and `frames: "all"` restores the whole map. `measure` is not
+  The `run`, `measure`, `compare` and `export` part replies name the document's
+  `length_unit` (`mm` unless the document set `inch`); the numbers themselves are
+  never converted. `frames` is filtered the same way as `featureDeltas`: it keeps
+  the sketch and `add_plane` frames this call touched or moved, is omitted when
+  nothing qualified, and `frames: "all"` restores the whole map. The two opt-ins
+  are independent: `featureDeltas: "all"` still reports only the touched or moved
+  frames, `frames: "all"` still reports only the changed delta rows, and the
+  baseline solve is skipped only when both are `"all"`. `measure` is not
   filtered: it reports every resolved frame.
 - `run` with `steps: []` solves the given `doc` or `docHash` once and returns
-  the same fields. It is the "inspect this document" call: the solve state has
+  the same reply shape (the frame filter below still applies). It is the
+  "inspect this document" call: the solve state has
   a real `generation` and `features` is the document's problem list. Its
-  `frames` map is empty unless something moved (or `frames: "all"` was passed),
-  so read an old frame with `measure` or the opt-in. A reply's
+  `frames` key is absent unless something moved (or `frames: "all"` was
+  passed), and null on a stalled call's prefix, which has no settled final
+  solve; read an old frame with `measure` or the opt-in. A reply's
   `docHash` is stable: `run` with `steps: []` on it, by `docHash` or with its
   exported YAML or JSON as `doc`, returns the same hash. A loaded `doc` is
   stamped with the loader's current version, so a document an older stamp
@@ -956,7 +961,8 @@ banner on stdout, so a client config must use the direct node invocation.
   feature's frame from the `frames` map. A hand-typed sentence beside them names
   the document's `length_unit`, the `set_length_unit` mutation and the fact that
   reply numbers follow the document's unit while STEP and STL leave in
-  millimetres.
+  millimetres; it excepts the compare reply, whose rows are millimetres and are
+  labelled `compared_in`.
 - stdout carries protocol messages only: the entry redirects every other
   stdout write (the OCC STEP writer prints a transfer banner) to stderr.
 - The readline loop processes one call at a time, and every `run` is a fresh

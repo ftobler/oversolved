@@ -54,8 +54,9 @@ function scaled(value: number): number {
 
 describe.skipIf(!oc || !solveBytes || !stripTypes)('part reply units (real OCC + Rust solver)', () => {
   it('names length_unit on run and measure, and both units on export', async () => {
-    mkdirSync(TMP_DIR, { recursive: true })
-    const stepFile = path.join(TMP_DIR, 'mcp-inch-unit.step')
+    const outDir = path.join(TMP_DIR, 'reply-context')
+    mkdirSync(outDir, { recursive: true })
+    const stepFile = path.join(outDir, 'mcp-inch-unit.step')
     const client = spawnMcp()
     try {
       await client.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'replyContext', version: '0' } })

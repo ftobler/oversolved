@@ -10,8 +10,8 @@ import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { featureFrames, type FeatureFrame } from '../featureFrames'
 
-function frame(origin: number[], xAxis = [1, 0, 0], normal = [0, 0, 1]): FeatureFrame {
-  return { origin, x_axis: xAxis, y_axis: [0, 1, 0], normal }
+function frame(origin: number[]): FeatureFrame {
+  return { origin, x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
 }
 
 const doc = {
@@ -25,8 +25,8 @@ const doc = {
   ],
 } as PartDoc
 
-function planeResult(origin: number[], extra: Record<string, unknown> = {}) {
-  return { status: 'ok', plane: { origin, x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }, ...extra }
+function planeResult(origin: number[]) {
+  return { status: 'ok', plane: { origin, x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] } }
 }
 
 describe('featureFrames', () => {
