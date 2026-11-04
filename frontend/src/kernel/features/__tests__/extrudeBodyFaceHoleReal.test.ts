@@ -84,7 +84,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     const first = h.run({
       features: [
         peanutWithHoleSketch,
-        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
+        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
       ],
     })
     expect(h.res(first, 'ex1').status).toBe('ok')
@@ -94,7 +94,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     const result = h.run({
       features: [
         peanutWithHoleSketch,
-        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
+        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
         { id: 'ex2', kind: 'extrude', sketch: topQuery, distance: 10, direction: 'normal' },  // default add
       ],
     })
@@ -123,7 +123,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     const first = h.run({
       features: [
         peanutWithHoleSketch,
-        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
+        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
       ],
     })
     expect(h.res(first, 'ex1').status).toBe('ok')
@@ -133,7 +133,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     const result = h.run({
       features: [
         peanutWithHoleSketch,
-        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
+        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
         { id: 'ex2', kind: 'extrude', sketch: topQuery, distance: 10, direction: 'normal' },
       ],
     })
@@ -183,7 +183,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     const r1 = h.run({
       features: [
         peanutWithHoleSketch,
-        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
+        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
       ],
     })
     expect(h.res(r1, 'ex1').status).toBe('ok')
@@ -232,7 +232,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     const spec2 = {
       features: [
         peanutWithHoleSketch,
-        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
+        { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
         { id: 'fil1', kind: 'fillet', edges: filletEdges, radius: 0.5 },
         { id: 'ex2', kind: 'extrude', sketch: topQuery, distance: 10, direction: 'normal' },
       ],

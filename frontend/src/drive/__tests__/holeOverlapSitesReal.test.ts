@@ -36,7 +36,7 @@ function steps(second: [number, number]): ScriptStep[] {
   return [
     { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' } },
     { mutation: { type: 'add_rect', featureId: 'sk1', p0: [-20, -20], p1: [20, 20] } },
-    { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5 } },
+    { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, operation: 'new' } },
     { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_top' } },
     { mutation: { type: 'add_entity', featureId: 'sk2', kind: 'point', params: [0, 0] } },
     { mutation: { type: 'add_entity', featureId: 'sk2', kind: 'point', params: second } },

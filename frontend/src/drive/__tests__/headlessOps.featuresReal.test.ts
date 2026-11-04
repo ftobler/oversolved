@@ -88,7 +88,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
       steps: [
         { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' } },
         { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] } },
-        { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10 } },
+        { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, operation: 'new' } },
         { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_front' } },
         { mutation: { type: 'add_entity', featureId: 'sk2', kind: 'circle', params: [5, 5, 2], entityId: 'c1' } },
         { mutation: { type: 'add_hole', featureId: 'h1', sketch: '@sk2', diameter: 4, depth_mode: 'through_all' } },

@@ -79,7 +79,7 @@ function circleSketch(sketchId: string, radius: number, plane = '@builtin_plane_
 }
 
 function extrude(fid: string, sketchId: string, distance: number): Dict {
-  return { id: fid, kind: 'extrude', sketch: `$${sketchId}`, distance, direction: 'normal', operation: 'add' }
+  return { id: fid, kind: 'extrude', sketch: `$${sketchId}`, distance, direction: 'normal', operation: 'new' }
 }
 
 function lineDirectionSketch(): Dict {

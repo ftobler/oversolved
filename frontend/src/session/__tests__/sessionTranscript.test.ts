@@ -790,9 +790,9 @@ describe('teardown, guard and solve-option rows', () => {
     // Pinned as the current behaviour; the behaviour table records the caller
     // obligation as ambiguous.
     const harness = runSessionTranscript(makeDoc(), [
-      { kind: 'mutation', mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Ext', sketchQuery: '@sk1', distance: 10 } },
+      { kind: 'mutation', mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Ext', sketchQuery: '@sk1', distance: 10, operation: 'new' } },
       { kind: 'undo' },
-      { kind: 'mutation', mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Ext', sketchQuery: '@sk1', distance: 10 } },
+      { kind: 'mutation', mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Ext', sketchQuery: '@sk1', distance: 10, operation: 'new' } },
     ])
 
     expect(harness.doc?.features).toHaveLength(1)

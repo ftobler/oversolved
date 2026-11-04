@@ -1043,7 +1043,7 @@ describe('the positive twin of a seeded script still validates', () => {
     const steps: Array<{ mutation: Mutation }> = [
       { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' } },
       { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [40, 30] } },
-      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10 } },
+      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, operation: 'new' } },
       { mutation: { type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: 12 } },
     ]
     const result = await runHeadless({ doc: seededDoc(), steps })

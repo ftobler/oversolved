@@ -48,6 +48,12 @@ export interface ApplyBodyOperationInput {
   // one-field fix (`message`) instead of only "nothing to remove". A face
   // sketch's normal points out of the body, so this is the common miss.
   oppositeProbe?: { tool: () => OccShape | null; message: string }
+  // An add is material added to an existing body, so a leaf that sets this
+  // refuses to mint a body when its tool reaches none. Without it an add is the
+  // general "make material" operation (revolve, sweep) and mints its own
+  // body, which extrude no longer wants: an extrude that joins nothing is a
+  // silently misplaced profile, not a new part.
+  addRequiresExisting?: boolean
 }
 
 export interface ApplyBodyOperationResult {
@@ -86,6 +92,20 @@ function assertPositiveVolume(
 const NEGATIVE_VOLUME_EPS = 1e-9
 
 /**
+ * The error an `add` that must extend existing material raises. The two texts
+ * separate the two causes a user can see: no body at all in the document, and a
+ * profile placed beside the part. Both name the one-field fix, because the
+ * geometry the caller would otherwise get -- a new body nobody asked for -- is
+ * exactly what the warning used to paper over.
+ */
+function addWithNothingMessage(opName: string, hadBodies: boolean): string {
+  return hadBodies
+    ? `${opName}: add does not merge with any existing body (the profile shares no volume with one); ` +
+        'move it onto the part, or use operation: new to create a body'
+    : `${opName}: add has no existing body to extend; use operation: new to create one`
+}
+
+/**
  * Apply a boolean body operation (add / cut / new) using `toolShape`.
  * Mirrors `_apply_body_operation`; raises (throws) for user-facing errors which
  * the caller catches and records as status. Guaranteed result keys: status,
@@ -113,6 +133,7 @@ export function applyBodyOperation(
     edgeAncestry = null,
     capAncestry = null,
     oppositeProbe,
+    addRequiresExisting = false,
   } = input
 
   // The tool body's construction-name maps, carried onto a body the tool becomes
@@ -138,6 +159,7 @@ export function applyBodyOperation(
   if (operation === 'add' || operation === 'cut') {
     targetIds = resolveMergeTargets(mergeTarget, bodyStore, opName)
     if (!targetIds.length && !mergeTarget && operation === 'add') {
+      if (addRequiresExisting) throw new Error(addWithNothingMessage(opName, false))
       needNewBody = true
     } else {
       if (!targetIds.length && !mergeTarget && operation === 'cut') {
@@ -337,6 +359,7 @@ export function applyBodyOperation(
   if (mergeTarget) {
     throw new Error(`${opName}: add could not fuse with any target body`)
   }
+  if (addRequiresExisting) throw new Error(addWithNothingMessage(opName, true))
   // No target body: the tool becomes its own body (one per solid).
   requireToolVolume()
   const bodyIds = registerSplitBodies(oc, scope, table, bodyStore, toolShape, {

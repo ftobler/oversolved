@@ -57,7 +57,7 @@ describe.skipIf(!oc || !solveBytes)('edit exit rebuild (real OCC + Rust solver)'
     // a legacy index query.
     const probe = h.run({ features: [
       rectSketch('sk1', 10, 10),
-      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal' },
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'new' },
     ]})
     const edges = (h.body(probe, 'body_ex1').edge_queries as string[]) ?? []
     const filletEdge = edges.find((q) => q.includes('@u|')) ?? edges[0]
@@ -65,7 +65,7 @@ describe.skipIf(!oc || !solveBytes)('edit exit rebuild (real OCC + Rust solver)'
 
     const spec = { features: [
       rectSketch('sk1', 10, 10),
-      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal' },
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'new' },
       { id: 'fil1', kind: 'fillet', edges: [filletEdge], radius: 0.5 },
     ]}
     const r1 = h.run(spec)
@@ -73,7 +73,7 @@ describe.skipIf(!oc || !solveBytes)('edit exit rebuild (real OCC + Rust solver)'
 
     const spec2 = { features: [
       rectSketch('sk1', 10, 10),
-      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 8, direction: 'normal' },
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 8, direction: 'normal', operation: 'new' },
       { id: 'fil1', kind: 'fillet', edges: [filletEdge], radius: 0.5 },
     ]}
     const r2 = h.run(spec2, { prevState: r1._build_state })

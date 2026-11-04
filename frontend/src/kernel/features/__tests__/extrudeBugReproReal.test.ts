@@ -66,7 +66,7 @@ function bugSpec(selection: string) {
       },
       {
         id: 'b9WPcaHhXLtCABRq9yR_GR84', kind: 'extrude', label: 'extrude 1',
-        extrude: { sketch: [selection], direction: 'normal', distance: 10 },
+        extrude: { sketch: [selection], direction: 'normal', distance: 10, operation: 'new' },
       },
     ],
   }

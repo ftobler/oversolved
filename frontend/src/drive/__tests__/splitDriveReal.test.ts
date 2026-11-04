@@ -37,7 +37,7 @@ function ex021Steps(): ScriptStep[] {
     m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' }),
     m({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] }),
     m({ type: 'add_entity', featureId: 'sk1', kind: 'circle', params: [5, 5, 2.5] }),
-    m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10 }),
+    m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, operation: 'new' }),
     m({ type: 'add_plane', featureId: 'pl1', definition: { mode: 'offset', plane: '@builtin_plane_top', offset: 5 } }),
     m({ type: 'add_split', featureId: 'sp1', bodies: ['@ex1'], plane: '@pl1', keep: 'above' }),
   ]

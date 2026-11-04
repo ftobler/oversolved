@@ -390,7 +390,7 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
   it('boolean cut', () => {
     const modifierOwned = expectSelfResolution({ features: [
       rectSketch('sk1', 10, 10),
-      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'add' },
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
       rectSketch('sk2', 4, 4, { offsetX: 3, offsetY: 3 }),
       { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 12, direction: 'normal', operation: 'cut' },
     ] }, 'body_ex1')

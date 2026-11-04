@@ -71,7 +71,7 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     const steps: ScriptStep[] = [
       { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' } },
       { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] } },
-      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10 } },
+      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, operation: 'new' } },
       { mutation: { type: 'set_extrude_field', featureId: 'ex1', field: 'operation', value: 'new' } },
       { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_front' } },
       { mutation: { type: 'add_rect', featureId: 'sk2', p0: [5, 0], p1: [15, 10] } },

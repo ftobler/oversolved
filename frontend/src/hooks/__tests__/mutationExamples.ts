@@ -300,7 +300,7 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   // extrude
   add_extrude: {
     makeDoc: emptyDoc,
-    mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Ext', sketchQuery: '@sk1', distance: 10 },
+    mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Ext', sketchQuery: '@sk1', distance: 10, operation: 'new' },
   },
   set_extrude_field: {
     makeDoc: extrudeDoc,

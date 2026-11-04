@@ -430,7 +430,8 @@ const VARIABLE_NAME_NOTE =
 
 // merge_target is a body id, not a ref: the practice runs guessed `@body_ex5`.
 const MERGE_TARGET_NOTE =
-  'The bare body id the cut or add goes into, e.g. `body_ex5` (no @ sigil); absent means every body the tool reaches. ' +
+  'The bare body id the cut or add goes into, e.g. `body_ex5` (no @ sigil). Absent means automatic: a cut ' +
+  'reaches every body, and an add fuses the first body it reaches. ' +
   'The feature\'s featureDeltas row names the receiving body as `body`, with its own `bodyVolume`.'
 
 // Up-to was documented in the document schema and the document guide but not in
@@ -448,9 +449,11 @@ const EXTRUDE_UP_TO_NOTE =
   'A non-planar face is refused, and so is `up_to` with `direction: symmetric`. `up_to` is read only when ' +
   '`termination` is `up_to`; otherwise it is ignored.'
 
-const EXTRUDE_ADD_WARNING_NOTE =
-  'With bodies already in the document, an `add` whose profile shares no volume with any of them mints a ' +
-  'separate body and reports `add joined nothing`.'
+const EXTRUDE_ADD_NOTE =
+  'An `add` extends an existing body: with no `merge_target` it fuses the first body its profile reaches, and ' +
+  'a profile that reaches none fails the feature (`add does not merge with any existing body`). Start a new ' +
+  'body with `operation: new`. An add that fuses one body and also reaches another reports the untouched ' +
+  'body in `solver_warning`.'
 
 // The symmetric split is the one direction whose distance reads two ways
 // (sprocket, ppp0103 F2, ppp0105 F3).
@@ -461,7 +464,7 @@ const EXTRUDE_FIELDS_NOTE =
 
 const EXTRUDE_INLINE_NOTE =
   'One call may carry the whole extrude: `direction`, `termination`, `up_to`, `operation` and `merge_target` set ' +
-  'the same keys `set_extrude_field` does. ' + EXTRUDE_FIELDS_NOTE + ' ' + EXTRUDE_ADD_WARNING_NOTE
+  'the same keys `set_extrude_field` does. ' + EXTRUDE_FIELDS_NOTE + ' ' + EXTRUDE_ADD_NOTE
 
 // The boolean refuses to solve without a target and a tool, so the catalog
 // names them up front (Case_Seam_Lip F5).

@@ -51,7 +51,7 @@ async function mirroredHalf(): Promise<HeadlessRunResult> {
     { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [3, 2, 3, -2], entityId: 'side' } },
     { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [3, -2, 0, -2], entityId: 'bottom' } },
     { mutation: { type: 'mirror_entities', featureId: 'sk1', sourceIds: ['top', 'side', 'bottom'], line: 'ax' } },
-    { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5 } },
+    { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, operation: 'new' } },
   ]
   return runHeadless({ doc: emptyDriveDoc(), steps })
 }
@@ -107,7 +107,7 @@ describe.skipIf(!ready)('mirror_entities extrudes to the symmetric volume (real 
       { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [3, 2, 3, -2], entityId: 'side' } },
       { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [3, -2, 0, -2], entityId: 'bottom' } },
       { mutation: { type: 'mirror_entities', featureId: 'sk1', sourceIds: ['top', 'side', 'bottom'], line: 'ax' } },
-      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5 } },
+      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, operation: 'new' } },
     ]
     const built = await runHeadless({ doc: emptyDriveDoc(), steps })
     expect(built.ok).toBe(true)

@@ -141,7 +141,7 @@ function bugReportSpec(opts?: { noFillet?: boolean; axisQuery?: string }) {
     bugSketchSpec(),
     {
       id: EX, kind: 'extrude', label: 'extrude 1',
-      extrude: { direction: 'normal', distance: 10, sketch: ['$' + SK] },
+      extrude: { direction: 'normal', distance: 10, sketch: ['$' + SK], operation: 'new' },
     },
   ]
   if (!opts?.noFillet) {

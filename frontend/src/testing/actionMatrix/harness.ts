@@ -178,7 +178,10 @@ export function createMatrixHarness(spec: PartDoc, solver: MatrixSolver): Matrix
 
   // Part.tsx's handleAddFeature minus the React lifecycle (edit-session open,
   // rollback and pick-field staging): the document effect is the same mutation
-  // with a freshly minted id and the same label shape.
+  // with a freshly minted id and the same label shape. One deliberate
+  // difference: the page seeds `operation: new` for the first extrude of an
+  // empty part, while this harness has no solved body store to decide that
+  // from; Part.commandIntegration.test.tsx covers the seed.
   const addFeature = (kind: string, extra?: Record<string, unknown>): Result => {
     const featureId = randomId(18)
     const label = `${kind} ${(features()?.length ?? 0) + 1}`

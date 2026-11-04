@@ -180,7 +180,7 @@ const CASES: Array<{ name: string; body: string; spec: (h: SharedHarness) => Spe
   } },
   { name: 'boolean cut (through pocket)', body: 'body_ex1', spec: () => ({ features: [
     rectSketch('sk1', 10, 10),
-    { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'add' },
+    { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
     rectSketch('sk2', 4, 4, 3, 3),
     { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 12, direction: 'normal', operation: 'cut' },
   ] }) },

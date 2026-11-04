@@ -93,7 +93,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('project asymmetric box ed
   beforeAll(() => {
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
     if (topologyBytes) setSketchTopology(topologyBytes)
-    const ex1 = { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: D, direction: 'normal', operation: 'add' }
+    const ex1 = { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: D, direction: 'normal', operation: 'new' }
     r1 = h.run({ features: [rectSketch(), ex1] })
     expect(h.res(r1, 'ex1').status).toBe('ok')
     edgeQueries = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
@@ -117,7 +117,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('project asymmetric box ed
           entities: [{ id: 'proj0', kind: 'line' as const, source: edgeQueries[i] }],
           initial: {}, constraints: [],
         }
-        const r2 = h.run({ features: [rectSketch(), { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: D, direction: 'normal', operation: 'add' }, sk2] }, { prevState: r1._build_state })
+        const r2 = h.run({ features: [rectSketch(), { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: D, direction: 'normal', operation: 'new' }, sk2] }, { prevState: r1._build_state })
         const sk2res = h.res(r2, 'sk2')
 
         const projErrors = (sk2res.projection_errors as string[]) ?? []
@@ -156,7 +156,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('project asymmetric box ed
     }
     expect(faceQuery, 'expected a +X side face on the box').toBeTruthy()
 
-    const ex1 = { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: D, direction: 'normal', operation: 'add' }
+    const ex1 = { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: D, direction: 'normal', operation: 'new' }
     const mismatches: string[] = []
     edges.forEach((ed, i) => {
       if (ed.kind !== 'line') return

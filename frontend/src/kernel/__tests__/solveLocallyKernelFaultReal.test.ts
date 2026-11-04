@@ -50,7 +50,7 @@ function rectSketch(sketchId: string, w: number, h: number) {
 }
 
 function extrude(id: string, distance: number): Record<string, unknown> {
-  return { id, kind: 'extrude', sketch: '$sk1', distance, direction: 'normal', operation: 'add' }
+  return { id, kind: 'extrude', sketch: '$sk1', distance, direction: 'normal', operation: 'new' }
 }
 
 /** A module stand-in that traps on the first property the build reads. */

@@ -71,7 +71,7 @@ async function volume(doc: PartDoc): Promise<number> {
 const PLATE: ScriptStep[] = [
   m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' }),
   m({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [3, 3] }),
-  m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 0.5 }),
+  m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 0.5, operation: 'new' }),
 ]
 
 /** The plate with its four vertical edges filleted: the state every case starts
@@ -131,7 +131,7 @@ describe.skipIf(!ready)('fillet/chamfer tangent-chain warning (real OCC + Rust s
     const doc = await build([
       m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' }),
       m({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] }),
-      m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5 }),
+      m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, operation: 'new' }),
     ])
     const edges = await pick(doc, { kind: 'edge', where: { parallel: [0, 0, 1] } })
     expect(edges).toHaveLength(4)
@@ -151,7 +151,7 @@ describe.skipIf(!ready)('fillet/chamfer tangent-chain warning (real OCC + Rust s
       m({ type: 'add_entity', featureId: 'sk1', kind: 'arc', params: [20, 5, 5, -90, 90] }),
       m({ type: 'add_entity', featureId: 'sk1', kind: 'line', params: [20, 10, 0, 10] }),
       m({ type: 'add_entity', featureId: 'sk1', kind: 'arc', params: [0, 5, 5, 90, 270] }),
-      m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5 }),
+      m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, operation: 'new' }),
       m({ type: 'add_plane', featureId: 'pl1', definition: { mode: 'offset', plane: '@builtin_plane_front', offset: 5 } }),
       m({ type: 'add_sketch', featureId: 'sk2', plane: '@pl1' }),
       m({ type: 'add_rect', featureId: 'sk2', p0: [9, 4], p1: [11, 6] }),

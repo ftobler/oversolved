@@ -179,7 +179,7 @@ describe('chained drive runs', () => {
       // An unknown mutation type is refused at the drive boundary, so step 1
       // (the second of three) stops the script before the extrude.
       { mutation: { type: 'add_nonsense', featureId: 'broken' } as unknown as Mutation },
-      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk2', distance: 5 } },
+      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk2', distance: 5, operation: 'new' } },
     ]
     const result = await runHeadless({ doc: consumed, steps })
     expect(result.outcome.steps.map(step => step.ok)).toEqual([true, false])

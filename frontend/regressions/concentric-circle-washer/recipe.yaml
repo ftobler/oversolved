@@ -15,7 +15,7 @@ features:
   - extrude:
       direction: normal
       distance: 40
-      operation: add
+      operation: new
       sketch: "@sk_washer"
     id: ex_washer
     kind: extrude

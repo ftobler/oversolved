@@ -93,6 +93,7 @@ features:
     plane: "@builtin_plane_top"
     visible: false
   - extrude:
+      operation: new
       direction: normal
       distance: 10
       sketch:

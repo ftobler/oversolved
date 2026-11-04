@@ -91,6 +91,16 @@ function nonBuiltInCountBefore(features: PartFeature[], index: number): number {
   return features.slice(0, index).filter(f => !BUILT_IN_IDS.has(f.id)).length
 }
 
+// The feature kinds that can leave material behind. One of these before the
+// insert point means the part has (or should have) a body, so a new extrude is
+// an add; only a part with none starts its first body with `new`. Read from the
+// document, not the last solve, so a pending or failed solve does not seed the
+// wrong operation.
+const BODY_PRODUCING_KINDS: ReadonlySet<string> = new Set(['extrude', 'revolve', 'sweep', 'import_step'])
+function hasBodyProducerBefore(features: PartFeature[], index: number): boolean {
+  return features.slice(0, index).some(f => !f.suppressed && BODY_PRODUCING_KINDS.has(f.kind))
+}
+
 // Pin the bar just after the inserted features so the add's solve includes them
 // and the downstream stack stays rolled back. At the end of the stack this is
 // the end again: applySetRollback drops the key once the position reaches the
@@ -720,8 +730,17 @@ export default function Part() {
     const seedFaces = kind === 'delete_face'
       ? [...selection].map(faceSelectionQuery).filter((q): q is string => q !== null)
       : []
+    // An add extrude extends an existing body, so on an empty part the editor
+    // would seed a feature that cannot solve. Start the part with `new`; once a
+    // body exists the add default is the one the user expects. The document
+    // check keeps that honest before the first solve lands (and across
+    // rollback), where `bodies` is still empty.
+    const addExtra = kind === 'extrude' && extra?.operation === undefined &&
+      Object.keys(bodies).length === 0 && !hasBodyProducerBefore(features, insertAt)
+      ? { ...extra, operation: 'new' }
+      : extra
     const result = handleMutation({
-      type: `add_${kind}`, featureId: fid, label, ...extra,
+      type: `add_${kind}`, featureId: fid, label, ...addExtra,
       ...(seedFaces.length > 0 ? { faces: seedFaces } : {}),
       insertAt,
     } as Mutation)

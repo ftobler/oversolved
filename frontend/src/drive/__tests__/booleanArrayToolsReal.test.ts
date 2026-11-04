@@ -48,7 +48,7 @@ function arraySteps(count: number): ScriptStep[] {
   return [
     m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' }),
     m({ type: 'add_rect', featureId: 'sk1', p0: [-50, -50], p1: [50, 50] }),
-    m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10 }),
+    m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, operation: 'new' }),
     m({ type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_top' }),
     m({ type: 'add_rect', featureId: 'sk2', p0: [20, -3], p1: [26, 3] }),
     m({ type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 10, operation: 'new' }),

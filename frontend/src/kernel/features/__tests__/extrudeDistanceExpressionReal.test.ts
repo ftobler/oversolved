@@ -33,7 +33,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): d
   it('adjacent subdivided regions fuse into one body', () => {
     /** Regression: segmented_surface_after_extrude. Four connected sketch regions
      *  extruded together must fuse into a single solid, not split into bodies. */
-    const result = h.run(vennBisectSpec('add'))
+    const result = h.run(vennBisectSpec('new'))
     expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
     expect(result.bodies).not.toHaveProperty('body_ex1_1')
@@ -58,7 +58,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): d
       '?7,7,9,4;@sk1/cL@sk1/cRsurface:2@sk1:flatface',
     ]
     const result = h.run({
-      features: [sketch, { id: 'ex1', kind: 'extrude', sketch: refs, distance: 10, direction: 'normal', operation: 'add' }],
+      features: [sketch, { id: 'ex1', kind: 'extrude', sketch: refs, distance: 10, direction: 'normal', operation: 'new' }],
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')

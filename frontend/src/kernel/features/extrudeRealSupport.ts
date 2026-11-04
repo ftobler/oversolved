@@ -56,7 +56,10 @@ export function extrudeSpec(sketchId: string, extrudeId: string, opts: {
 } = {}) {
   const distance = opts.distance ?? 5
   const direction = opts.direction ?? 'normal'
-  const operation = opts.operation ?? 'add'
+  // Default `new`: the first body is started with new, and an add that reaches
+  // none is a rebuild error. A test that fuses into an earlier body passes
+  // `operation: 'add'` explicitly.
+  const operation = opts.operation ?? 'new'
   // Params live nested under the kind key and the profile ref is the canonical
   // absolute `@<sketchId>`; both are the one spelling the document format has.
   return {
@@ -145,7 +148,7 @@ export function disjointTwoRectSpec(operation = 'new') {
  * sketch subdivides into four adjacent regions (two crescents + two lens halves)
  * that are all connected, so extruding the whole sketch must fuse into ONE body.
  */
-export function vennBisectSpec(operation = 'add') {
+export function vennBisectSpec(operation = 'new') {
   return {
     features: [
       {

@@ -55,7 +55,8 @@
           "?2a,9,19;@yrXI_fDy_XDjU0ubwuhJEQD8/FAO1iDfUD_7ibTrQsurface:1@yrXI_fDy_XDjU0ubwuhJEQD8:flatface"
         ],
         "distance": 21,
-        "direction": "normal"
+        "direction": "normal",
+        "operation": "new"
       }
     },
     {

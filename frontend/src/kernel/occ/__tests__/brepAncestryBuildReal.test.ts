@@ -45,7 +45,7 @@ function extrudeSpec(sketchId: string, exId: string, opts?: { distance?: number;
   return {
     id: exId, kind: 'extrude', sketch: '$' + sketchId,
     distance: opts?.distance ?? 5, direction: 'normal',
-    operation: opts?.operation ?? 'add',
+    operation: opts?.operation ?? 'new',
   }
 }
 

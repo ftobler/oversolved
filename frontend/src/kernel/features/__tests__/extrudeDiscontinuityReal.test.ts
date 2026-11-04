@@ -101,7 +101,7 @@ describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fi
     const r1 = h.run({
       features: [
         peanutWithHoleSketch,
-        { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal' },
+        { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
       ],
     })
     expect(h.res(r1, BODY1).status).toBe('ok')
@@ -130,7 +130,7 @@ describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fi
     return {
       features: [
         peanutWithHoleSketch,
-        { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal' },
+        { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
         { id: 'fil1', kind: 'fillet', edges: filletEdges, radius: filletRadius },
         { id: 'ex2', kind: 'extrude', label: 'extrude 2', sketch: topQuery, distance: 10, direction: 'normal' },
       ],
@@ -155,14 +155,14 @@ describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fi
     const r1 = h.run({
       features: [
         peanutWithHoleSketch,
-        { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal' },
+        { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
       ],
     })
     const topQuery = topFaceQuery(r1, `body_${BODY1}`)
     const result = h.run({
       features: [
         peanutWithHoleSketch,
-        { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal' },
+        { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
         { id: 'ex2', kind: 'extrude', label: 'extrude 2', sketch: topQuery, distance: 10, direction: 'normal' },
       ],
     })

@@ -50,7 +50,7 @@ function extrudeSpec(sketchId: string, extrudeId: string, opts?: { distance?: nu
   return {
     id: extrudeId, kind: 'extrude', sketch: '$' + sketchId,
     distance: opts?.distance ?? 5, direction: opts?.direction ?? 'normal',
-    operation: opts?.operation ?? 'add',
+    operation: opts?.operation ?? 'new',
   }
 }
 
@@ -130,10 +130,12 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
       initial: { l1: [0, 0, 4, 0], l2: [4, 0, 4, 4], l3: [4, 4, 0, 4], l4: [0, 4, 0, 0] },
       constraints: [],
     }
-    const ex2 = extrudeSpec('sk2', 'ex2', { distance: 2 })
+    const ex2 = extrudeSpec('sk2', 'ex2', { distance: 2, operation: 'add' })
     const specFull = { features: [sk1, ex1, sk2, ex2] }
     const rFull = h.run(specFull)
     expect(h.res(rFull, 'sk2').status).not.toBe('exception')
+    // The point of the case is the fuse: ex2 must land on ex1's body.
+    expect(Object.keys(rFull.bodies)).toEqual(['body_ex1'])
 
     const sk2v2 = { ...sk2, label: 'modified' }
     const specPartial = { features: [sk1, ex1, sk2v2, ex2] }
@@ -160,9 +162,10 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     expect(topQuery).toBeDefined()
 
     const sk2 = rectSketch('sk2', 8, 8, { plane: topQuery })
-    const ex2 = extrudeSpec('sk2', 'ex2', { distance: 2 })
+    const ex2 = extrudeSpec('sk2', 'ex2', { distance: 2, operation: 'add' })
     const rFull = h.run({ features: [sk1, ex1, sk2, ex2] })
     expect(h.res(rFull, 'ex2').status).toBe('ok')
+    expect(Object.keys(rFull.bodies)).toEqual(['body_ex1'])
 
     const sk3 = { id: 'sk3', kind: 'sketch', plane: topQuery!, entities: [], constraints: [] }
     const rUndo = h.run({ features: [sk1, ex1, sk3] }, { prevState: rFull._build_state })
@@ -221,13 +224,14 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     expect(planeQuery).toContain('@u|')  // partial-rebuild resolution rides the UUID tier
 
     const sk2 = { ...rectSketch('sk2', 4, 4, { plane: planeQuery }), constraints: [] }
-    const ex2 = extrudeSpec('sk2', 'ex2', { distance: 2 })
+    const ex2 = extrudeSpec('sk2', 'ex2', { distance: 2, operation: 'add' })
     const r2 = h.run({ features: [sk1, ex1, sk2, ex2] }, { prevState: r1._build_state })
 
     expect(h.res(r2, 'sk1').status).not.toBe('exception')
     expect(h.res(r2, 'ex1').status).toBe('ok')
     expect(h.res(r2, 'sk2').status).not.toBe('exception')
     expect(h.res(r2, 'ex2').status).toBe('ok')
+    expect(Object.keys(r2.bodies)).toEqual(['body_ex1'])
   })
 
   it('partial rebuild resolves a @u| face query to the SAME face as a full rebuild', () => {

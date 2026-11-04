@@ -51,7 +51,7 @@ function fullScript(lineId: string): ScriptStep[] {
         targets: [`entity:sk1:${lineId}`], value: 10,
       },
     },
-    { mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Extrude', sketchQuery: '$sk1', distance: 5 } },
+    { mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Extrude', sketchQuery: '$sk1', distance: 5, operation: 'new' } },
   ]
 }
 function sketchOf(doc: PartDoc, id: string) {

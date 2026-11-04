@@ -71,7 +71,7 @@ function part(lastDistance: number): Record<string, unknown> {
   return {
     features: [
       rectSketch('sk1', 20, 20),
-      { id: 'ex0', kind: 'extrude', sketch: '$sk1', distance: 3, direction: 'normal', operation: 'add' },
+      { id: 'ex0', kind: 'extrude', sketch: '$sk1', distance: 3, direction: 'normal', operation: 'new' },
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'add' },
       { id: 'ex2', kind: 'extrude', sketch: '$sk1', distance: lastDistance, direction: 'normal', operation: 'add' },
     ],

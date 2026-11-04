@@ -1480,7 +1480,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "sk1": {
@@ -1990,7 +1990,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         }
       ],
@@ -2713,7 +2713,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "ex_cut": {
@@ -3602,7 +3602,7 @@
           "id": "ex_base",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk_base"
         },
         {
@@ -4583,7 +4583,7 @@
           "unit_scale": 1,
           "value": 3
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "ex2": {
@@ -5472,7 +5472,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -22171,7 +22171,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "hole1": {
@@ -22732,7 +22732,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -24528,7 +24528,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "fillet1": {
@@ -25062,7 +25062,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -25622,7 +25622,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "sk1": {
@@ -26132,7 +26132,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -28850,7 +28850,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "sk1": {
@@ -29454,7 +29454,7 @@
           "distance": 5,
           "id": "ex1",
           "kind": "extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -29974,7 +29974,7 @@
           "unit_scale": 1,
           "value": 2
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "mirror1": {
@@ -30492,7 +30492,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -37170,7 +37170,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "hole1": {
@@ -37731,7 +37731,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -48406,7 +48406,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "hole1": {
@@ -48974,7 +48974,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -64739,7 +64739,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "hole1": {
@@ -65314,7 +65314,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -67126,7 +67126,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "fillet1": {
@@ -67660,7 +67660,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -68219,7 +68219,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "sk1": {
@@ -68729,7 +68729,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -70361,7 +70361,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "fillet1": {
@@ -70895,7 +70895,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -71311,7 +71311,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "sk1": {
@@ -71821,7 +71821,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -72302,7 +72302,7 @@
           "unit_scale": 1,
           "value": 3
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "mirror1": {
@@ -72820,7 +72820,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -73302,7 +73302,7 @@
           "unit_scale": 1,
           "value": 3
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "mirror1": {
@@ -73820,7 +73820,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -74302,7 +74302,7 @@
           "unit_scale": 1,
           "value": 3
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "mirror1": {
@@ -74820,7 +74820,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -82645,7 +82645,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "fillet1": {
@@ -83179,7 +83179,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -83910,7 +83910,7 @@
           "unit_scale": 1,
           "value": 8
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "ex2": {
@@ -84799,7 +84799,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -86550,7 +86550,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "sk1": {
@@ -87068,7 +87068,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -87859,7 +87859,7 @@
           "unit_scale": 1,
           "value": 2
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "sk1": {
@@ -88494,7 +88494,7 @@
           "distance": 2,
           "id": "ex1",
           "kind": "extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -89163,7 +89163,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "ex2": {
@@ -90052,7 +90052,7 @@
           "id": "ex1",
           "kind": "extrude",
           "label": "Extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -90543,7 +90543,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "sk1": {
@@ -91120,7 +91120,7 @@
           "distance": 5,
           "id": "ex1",
           "kind": "extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -91463,7 +91463,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "sk1": {
@@ -92180,7 +92180,7 @@
           "distance": 5,
           "id": "ex1",
           "kind": "extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -97376,7 +97376,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "sk1": {
@@ -97645,7 +97645,7 @@
           "distance": 5,
           "id": "ex1",
           "kind": "extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -99284,7 +99284,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "fillet1": {
@@ -99885,7 +99885,7 @@
           "distance": 5,
           "id": "ex1",
           "kind": "extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {
@@ -105074,7 +105074,7 @@
           "unit_scale": 1,
           "value": 5
         },
-        "operation": "add",
+        "operation": "new",
         "status": "ok"
       },
       "pl_tilt": {
@@ -105477,7 +105477,7 @@
           "distance": 5,
           "id": "ex1",
           "kind": "extrude",
-          "operation": "add",
+          "operation": "new",
           "sketch": "$sk1"
         },
         {

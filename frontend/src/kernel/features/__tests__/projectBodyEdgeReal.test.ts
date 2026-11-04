@@ -54,7 +54,7 @@ describe.skipIf(!oc || !solveBytes)('project a body edge into a sketch (real OCC
 
   it('a projected body edge resolves to geometry and is not dropped', () => {
     const sk1 = rectSketch('sk1', 10, 10)
-    const ex1 = { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'add' }
+    const ex1 = { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'new' }
     const r1 = h.run({ features: [sk1, ex1] })
     expect(h.res(r1, 'ex1').status).toBe('ok')
 

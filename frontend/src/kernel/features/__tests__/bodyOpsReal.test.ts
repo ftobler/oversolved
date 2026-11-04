@@ -193,11 +193,11 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
       }
     })
 
-    it('add with disjoint body creates a separate body (not a compound)', () => {
+    it('add with disjoint body mints a separate body for the leaves that keep that default', () => {
       /**
-       * Two disjoint boxes: adding a new tool when a target exists should create a SEPARATE
-       * body (not a compound). The tool doesn't touch the target, so it becomes an independent
-       * part.
+       * Two disjoint boxes: adding a new tool when a target exists mints a SEPARATE body
+       * (not a compound). Extrude opts out through `addRequiresExisting`; revolve and sweep
+       * keep this default, which is why the shared dispatch still mints here.
        */
       const scope = new DisposeScope()
       const table = new HandleTable()
@@ -215,7 +215,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
           bodyStore,
           operation: 'add',
           mergeTarget: null,
-          bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+          bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'revolve',
           profileQueries: [],
         })
         // Both bodies should exist independently.
@@ -225,6 +225,36 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         expect(bodyStore.body_f.created_by).toBe('featF')
         expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_f.shape!))).toBeCloseTo(125, 0)
         expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(1000, 0)
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('addRequiresExisting refuses a disjoint add and leaves the store untouched', () => {
+      // Extrude's contract: an add that reaches no existing body is a rebuild
+      // error, so the tool must not become a body of its own.
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      const bodyStore: Record<string, Body> = {}
+      try {
+        const target = makeBox(occ, scope, 10, 10, 10)
+        bodyStore.body_t = {
+          id: 'body_t', created_by: 'featT', modified_by: [], shape: table.register(target, 'featT'),
+          sketch_id: 'skT', brep_diff: null, profile_queries: [],
+        }
+        const tool = makeBoxAt(occ, scope, [20, 20, 20], 5, 5, 5)
+        expect(() =>
+          applyBodyOperation(occ, scope, table, {
+            toolShape: scope.track(tool),
+            bodyStore,
+            operation: 'add',
+            mergeTarget: null,
+            bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+            profileQueries: [],
+            addRequiresExisting: true,
+          }),
+        ).toThrow(/extrude: add does not merge with any existing body/)
+        expect(Object.keys(bodyStore)).toEqual(['body_t'])
       } finally {
         scope.dispose()
       }

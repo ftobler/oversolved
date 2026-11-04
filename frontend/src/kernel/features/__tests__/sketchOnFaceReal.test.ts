@@ -71,7 +71,7 @@ function extrudeSpec(
   extrudeId: string,
   distance: number,
   direction = 'normal',
-  operation: string = 'add',
+  operation: string = 'new',
 ): Dict {
   return {
     id: extrudeId,
@@ -254,7 +254,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
     // Build just sk1+ex1+ex2 to get the post-fuse body, then pick the top face.
     // (sk2 uses default plane for this intermediate build)
     const sk2Dummy = rectSketchSpec(8, 8, 'sk2')
-    const ex2 = extrudeSpec('sk2', 'ex2', 2.0)
+    const ex2 = extrudeSpec('sk2', 'ex2', 2.0, 'normal', 'add')
     const rPost = h.run({ features: [sk1, ex1, sk2Dummy, ex2] })
 
     const bodies = (rPost.bodies as Record<string, BodyOutput>) ?? {}
