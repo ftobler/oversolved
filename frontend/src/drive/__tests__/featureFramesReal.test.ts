@@ -163,9 +163,16 @@ describe.skipIf(!ready)('feature frames (real OCC + Rust solver)', () => {
     // The explicit inspection path restores every resolved frame.
     const all = await runHeadless({ doc: filleted.doc!, steps: [], frames: 'all' })
     expect(Object.keys(all.frames!).sort()).toEqual(['sk1', 'sk2'])
+    // The two opt-ins are independent: asking for every frame still filters the
+    // delta rows, and asking for every delta row still filters the frames.
+    expect(all.featureDeltas).toEqual([])
+    const allDeltas = await runHeadless({ doc: filleted.doc!, steps: [], featureDeltas: 'all' })
+    expect(allDeltas.frames).toEqual({})
+    expect(allDeltas.featureDeltas!.map(row => row.id).sort()).toEqual(['ex1', 'f1', 'sk1', 'sk2'])
 
     // measure is the measurement call: it keeps every resolved frame.
     const measured = await measureHeadless(filleted.doc!)
     expect(measured).not.toBeNull()
     expect(Object.keys(measured!.frames).sort()).toEqual(['sk1', 'sk2'])
-  }, 240_000)})
+  }, 240_000)
+})

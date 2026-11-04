@@ -129,9 +129,10 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   // the run started on. Measuring it through the same kernel keeps the
   // comparison real (a raw, un-baked doc measures its authored features, not its
   // stale `initial`); the solve is the one the first step's build restores from,
-  // so a chain by docHash is not a second full build. Either 'all' does not
-  // filter, so it skips this entirely.
-  const baseline = opts.featureDeltas === 'all' || opts.frames === 'all'
+  // so a chain by docHash is not a second full build. Only when both opt-ins ask
+  // for everything is there nothing to compare against: one 'all' must not
+  // silently switch the other filter off.
+  const baseline = opts.featureDeltas === 'all' && opts.frames === 'all'
     ? null
     : await measureBaselineFeatures(opts)
   const part = createHeadlessPart({
@@ -234,7 +235,7 @@ export interface HeadlessMeasure {
   // feature, so a bore that cut nothing is already known here.
   features: FeatureProblem[]
   // The resolved frames of every sketch and add_plane feature, the same map a
-  // run reply carries.
+  // `frames: "all"` run reply carries.
   frames: FeatureFrameMap
 }
 
