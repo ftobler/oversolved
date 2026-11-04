@@ -270,6 +270,9 @@ const ops: McpCadOps = {
     if (req.featureDeltas !== undefined) {
       return { ok: false, error: 'featureDeltas applies only to part documents' }
     }
+    if (req.frames !== undefined) {
+      return { ok: false, error: 'frames applies only to part documents' }
+    }
     const detail = req.detail ?? DEFAULT_ASSEMBLY_DETAIL
     const answer = await callKernel<AssemblyKernelResult>('assemblyRun', {
       doc: resolved.doc,

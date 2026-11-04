@@ -327,6 +327,13 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
         arguments: { docHash: a1, steps: [], featureDeltas: 'all' },
       }))
       expect(String(refusedDeltas.error)).toContain('featureDeltas')
+
+      // frames is part-only too, refused rather than silently ignored.
+      const refusedFrames = errorPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { docHash: a1, steps: [], frames: 'all' },
+      }))
+      expect(String(refusedFrames.error)).toContain('frames applies only to part documents')
     } finally {
       await client.close()
     }
