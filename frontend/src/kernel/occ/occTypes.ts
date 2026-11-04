@@ -243,6 +243,14 @@ export interface OccHistoryHandle extends OccDisposable {
   get(): OccHistory
 }
 
+/** BRepExtrema_DistShapeShape: the minimum distance between two shapes'
+ *  boundaries. `Value()` is that distance once `IsDone()`; a shared face reads
+ *  0 while a Common over the same pair produces no solid at all. */
+export interface OccExtrema extends OccDisposable {
+  IsDone(): boolean
+  Value(): number
+}
+
 /** BRepAlgoAPI_Cut/Fuse/Common: the history-aware boolean operation. */
 export interface OccBooleanOp extends OccDisposable {
   SetArguments(args: OccListOfShape): void
@@ -789,6 +797,21 @@ export interface OccModule extends OccBaseModule {
   BRepAlgoAPI_Fuse_1: new () => OccBooleanOp
   BRepAlgoAPI_Common_1: new () => OccBooleanOp
   TopTools_ListOfShape_1: new () => OccListOfShape
+  // ─── boundary-distance probe (booleans.shapesTouch) ───
+  // BRepExtrema_DistShapeShape in this build binds three ctors: `_1` is the
+  // empty one (0 args), `_2` takes (shape1, shape2, deflection, flag), `_3`
+  // adds the algorithm (5 args). There is NO 2-arg form, so the deflection is
+  // not optional here; the suffix is pinned against opencascade.js 1.1.1 by
+  // bodyOpsTouchProbeReal.test.ts, which fails at solve time if it is wrong.
+  BRepExtrema_DistShapeShape_2: new (
+    shape1: OccShape,
+    shape2: OccShape,
+    deflection: number,
+    flag: OccEnumValue,
+  ) => OccExtrema
+  Extrema_ExtFlag: {
+    Extrema_ExtFlag_MIN: OccEnumValue
+  }
   ShapeUpgrade_UnifySameDomain_2: new (
     shape: OccShape,
     unifyEdges: boolean,

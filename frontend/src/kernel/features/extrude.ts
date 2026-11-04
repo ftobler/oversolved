@@ -17,7 +17,7 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { AmbiguousQueryError } from '../query'
 import { faceNormal, faceCentroid, type Vec3 } from '../occ/primitives'
-import { booleanWithHistory, shapesIntersect } from '../occ/booleans'
+import { booleanWithHistory, shapesIntersect, shapesTouch } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
 import { resolveDirection } from './shared/directionQuery'
 import { registerTopFace } from './shared/topFace'
@@ -526,13 +526,18 @@ export function solveExtrude(
   // stays separate: silently, before this check, the caller saw one fused body
   // and a second one it did not ask for. Name it and the one-step fix rather
   // than widening the operation here (user decision: warn now, fuse-all later).
+  // "Reaches" needs both probes: the Common sees an overlap or a fully enclosed
+  // body, the distance probe sees a body only a shared face connects.
   if (operation === 'add' && !mergeTarget && opResult.body_id !== bodyId) {
     const touched: string[] = []
     for (const otherId of Object.keys(bodyStore).sort()) {
       if (otherId === opResult.body_id || (opResult.body_ids ?? []).includes(otherId)) continue
       const other = bodyStore[otherId]
       if (other.shape === null) continue
-      if (shapesIntersect(oc, table.get<OccShape>(other.shape), toolShape)) touched.push(otherId)
+      const otherShape = table.get<OccShape>(other.shape)
+      if (shapesIntersect(oc, otherShape, toolShape) || shapesTouch(oc, otherShape, toolShape)) {
+        touched.push(otherId)
+      }
     }
     if (touched.length > 0) {
       const warning = `extrude: the new solid also touches ${touched.join(', ')}; add a boolean union to fuse it`
