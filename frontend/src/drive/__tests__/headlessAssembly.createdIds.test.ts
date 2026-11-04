@@ -3,8 +3,8 @@
 // The ids ordinary assembly steps report: one diff of the feature ids the step
 // added, so a chained author can name the instance or mate a step just made. A
 // step that only edits, toggles or deletes adds nothing and reports []. The
-// macros keep their documented order, and the compact reply still collapses
-// accepted steps instead of carrying the ids.
+// macros keep their explicit lists, pinned in their own suites, and the compact
+// reply still collapses accepted steps instead of carrying the ids.
 
 import { describe, it, expect, afterEach } from 'vitest'
 import type { AssemblyDoc, BodyResult, PartDoc } from '@/types/cad'
@@ -153,7 +153,7 @@ describe('assembly step createdIds', () => {
     setMateSolver(makeEchoSolver())
     const s = session()
     const outcome = await s.run(BASE)
-    const reply = assemblyRunReply({
+    const source = {
       ok: outcome.ok,
       outcome,
       doc: s.getDoc(),
@@ -164,7 +164,8 @@ describe('assembly step createdIds', () => {
       instances: [],
       mateFrames: {},
       summary: 'instances: plate, drawer; mates: m_slide',
-    }, false, new DocHandleStore())
+    }
+    const reply = assemblyRunReply(source, false, new DocHandleStore())
 
     expect((reply.steps as Array<{ createdIds: string[] }>).map(step => step.createdIds)).toEqual([
       ['inst_plate'],
@@ -172,18 +173,9 @@ describe('assembly step createdIds', () => {
       ['m_slide'],
     ])
 
-    const summary = assemblyRunReply({
-      ok: outcome.ok,
-      outcome,
-      doc: s.getDoc(),
-      binding: s.boundParts(),
-      solve: s.lastSolve()!.status,
-      mates: [],
-      partProblems: [],
-      instances: [],
-      mateFrames: {},
-      summary: 'instances: plate, drawer; mates: m_slide',
-    }, false, new DocHandleStore(), { detail: 'summary', context: { inputDoc: null, baseline: null } })
+    const summary = assemblyRunReply(source, false, new DocHandleStore(), {
+      detail: 'summary', context: { inputDoc: null, baseline: null },
+    })
 
     expect(summary.stepsAccepted).toBe(3)
     expect(summary.steps).toBeUndefined()
