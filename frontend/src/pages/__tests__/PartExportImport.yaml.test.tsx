@@ -40,7 +40,7 @@ function openExportDialog() {
   const ref = createRef<PartExportImportHandle>()
   render(
     <ToastProvider>
-      <PartExportImport ref={ref} uuid="u1" />
+      <PartExportImport ref={ref} uuid="u1" onSetLengthUnit={vi.fn()} />
     </ToastProvider>
   )
   act(() => ref.current!.openExport(null, 'bracket'))

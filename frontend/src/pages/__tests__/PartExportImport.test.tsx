@@ -16,8 +16,9 @@ import PartExportImport from '@/pages/PartExportImport'
 import type { PartExportImportHandle } from '@/pages/PartExportImport'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 import { ToastProvider } from '@/contexts/ToastContext'
-import type { BodyResult, PartDoc } from '@/types/cad'
+import type { BodyResult, LengthUnit, PartDoc } from '@/types/cad'
 
 const DOC: PartDoc = {
   features: [
@@ -31,11 +32,11 @@ const TWO_BODIES: Record<string, BodyResult> = {
   body_b: { id: 'body_b', created_by: 'extrude2', modified_by: [] },
 }
 
-function renderDialog() {
+function renderDialog(onSetLengthUnit: (unit: LengthUnit) => void = vi.fn()) {
   const ref = createRef<PartExportImportHandle>()
   render(
     <ToastProvider>
-      <PartExportImport ref={ref} uuid="u1" />
+      <PartExportImport ref={ref} uuid="u1" onSetLengthUnit={onSetLengthUnit} />
     </ToastProvider>
   )
   return ref
@@ -52,6 +53,7 @@ describe('PartExportImport worker export', () => {
     vi.clearAllMocks()
     usePartEditorStore.setState({ ...DEFAULT_PART_EDITOR_DATA, doc: DOC })
     useSketchEditorStore.getState().clearNormalSelection()
+    useEditorState.setState({ editingFeatureId: null })
   })
 
   it('cancelling closes the dialog without asking the kernel for bytes', () => {
@@ -273,5 +275,155 @@ describe('PartExportImport worker export', () => {
 
     expect(await screen.findByText(/Export error: bad doc/)).toBeInTheDocument()
     expect(downloadBlob).not.toHaveBeenCalled()
+  })
+})
+
+// The export dialog's length-unit pick is a document write, so it must land
+// with the bytes and only with them: a cancel or a failed export leaves the
+// stored numbers meaning what they meant before.
+describe('PartExportImport length unit', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    usePartEditorStore.setState({ ...DEFAULT_PART_EDITOR_DATA, doc: DOC })
+    useSketchEditorStore.getState().clearNormalSelection()
+    useEditorState.setState({ editingFeatureId: null })
+  })
+
+  it('exports in the picked unit and records it after the download', async () => {
+    exportViaWorker.mockResolvedValue(new Uint8Array([1]))
+    const onSetLengthUnit = vi.fn()
+    const ref = renderDialog(onSetLengthUnit)
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    fireEvent.click(screen.getByLabelText('in'))
+    expect(onSetLengthUnit).not.toHaveBeenCalled()
+
+    await clickDownload()
+
+    expect(exportViaWorker.mock.calls[0][0]).toMatchObject({ length_unit: 'inch' })
+    expect(onSetLengthUnit).toHaveBeenCalledWith('inch')
+    expect(await screen.findByText('Document unit set to inches')).toBeInTheDocument()
+  })
+
+  it('records nothing when the pick already matches the document unit', async () => {
+    exportViaWorker.mockResolvedValue(new Uint8Array([1]))
+    const onSetLengthUnit = vi.fn()
+    const ref = renderDialog(onSetLengthUnit)
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    await clickDownload()
+
+    expect(onSetLengthUnit).not.toHaveBeenCalled()
+    expect(screen.queryByText(/Document unit set/)).toBeNull()
+  })
+
+  it('leaves the document unit alone when the export is cancelled', () => {
+    const onSetLengthUnit = vi.fn()
+    const ref = renderDialog(onSetLengthUnit)
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    fireEvent.click(screen.getByLabelText('in'))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(onSetLengthUnit).not.toHaveBeenCalled()
+  })
+
+  it('does not reinterpret the document when the export fails', async () => {
+    exportViaWorker.mockRejectedValue(new Error('kernel boom'))
+    const onSetLengthUnit = vi.fn()
+    const ref = renderDialog(onSetLengthUnit)
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    fireEvent.click(screen.getByLabelText('in'))
+    await clickDownload()
+
+    expect(await screen.findByText(/Export error: kernel boom/)).toBeInTheDocument()
+    expect(onSetLengthUnit).not.toHaveBeenCalled()
+  })
+
+  // Switching to YAML after picking inch drops the unit from the request, so
+  // the document is not reinterpreted by a file that carries it as saved.
+  it('does not apply a pick left over from the STEP tab to a YAML export', async () => {
+    const onSetLengthUnit = vi.fn()
+    const ref = renderDialog(onSetLengthUnit)
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    fireEvent.click(screen.getByLabelText('in'))
+    fireEvent.click(screen.getByLabelText('YAML'))
+    await clickDownload()
+
+    expect(onSetLengthUnit).not.toHaveBeenCalled()
+  })
+
+  it('records the unit once when the export bundles several parts as a zip', async () => {
+    usePartEditorStore.setState({
+      ...DEFAULT_PART_EDITOR_DATA,
+      doc: DOC,
+      bodies: TWO_BODIES,
+      partLabels: { body_a: 'Bracket', body_b: 'Plate' },
+    })
+    useSketchEditorStore.getState().setNormalSelection(new Set(['@body_a', '@body_b']))
+    exportViaWorker.mockResolvedValue(new Uint8Array([1]))
+    const onSetLengthUnit = vi.fn()
+    const ref = renderDialog(onSetLengthUnit)
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    fireEvent.click(screen.getByLabelText('Selected Parts'))
+    fireEvent.click(screen.getByLabelText('ZIP archive'))
+    fireEvent.click(screen.getByLabelText('in'))
+    await clickDownload()
+
+    await waitFor(() => expect(onSetLengthUnit).toHaveBeenCalledTimes(1))
+    expect(onSetLengthUnit).toHaveBeenCalledWith('inch')
+  })
+
+  it('refuses to open the export dialog while a feature edit is in progress', async () => {
+    useEditorState.setState({ editingFeatureId: 'extrude1' })
+    const ref = renderDialog()
+    act(() => ref.current!.openExport('body_a', 'Body'))
+
+    expect(screen.queryByText('Export Model')).toBeNull()
+    expect(await screen.findByText('Finish the edit to export')).toBeInTheDocument()
+  })
+
+  it('does not overwrite a unit change made while the export ran', async () => {
+    let release!: (bytes: Uint8Array) => void
+    exportViaWorker.mockImplementation(() => new Promise(resolve => { release = resolve }))
+    const onSetLengthUnit = vi.fn()
+    const ref = renderDialog(onSetLengthUnit)
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    fireEvent.click(screen.getByLabelText('in'))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Download' })) })
+
+    // The download is still in flight; an undo (or a document swap) moves the
+    // live unit to inch before the bytes land.
+    await act(async () => {
+      usePartEditorStore.setState({ ...DEFAULT_PART_EDITOR_DATA, doc: { ...DOC, length_unit: 'inch' } })
+    })
+    await act(async () => {
+      release(new Uint8Array([1]))
+      await Promise.resolve()
+    })
+
+    expect(onSetLengthUnit).not.toHaveBeenCalled()
+    expect(await screen.findByText(/Document unit unchanged/)).toBeInTheDocument()
+  })
+
+  it('writes millimetres as the absent field for an inch document', async () => {
+    usePartEditorStore.setState({
+      ...DEFAULT_PART_EDITOR_DATA,
+      doc: { ...DOC, length_unit: 'inch' },
+    })
+    exportViaWorker.mockResolvedValue(new Uint8Array([1]))
+    const onSetLengthUnit = vi.fn()
+    const ref = renderDialog(onSetLengthUnit)
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    fireEvent.click(screen.getByLabelText('mm'))
+    await clickDownload()
+
+    expect(exportViaWorker.mock.calls[0][0]).not.toHaveProperty('length_unit')
+    expect(onSetLengthUnit).toHaveBeenCalledWith('mm')
   })
 })

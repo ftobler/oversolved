@@ -410,3 +410,52 @@ describe('ExportDialog parts selection', () => {
     expect(screen.getByLabelText('Selected Parts')).toBeDisabled()
   })
 })
+
+// The document length unit lives here rather than the header: it is a document
+// property, but export is the first place its meaning shows (an inch document
+// leaves 25.4x larger). The request names the pick; the caller records it only
+// once the bytes have landed.
+describe('ExportDialog length unit', () => {
+  const unitRadio = (name: 'mm' | 'in') => screen.getByLabelText(name) as HTMLInputElement
+
+  it('offers no unit control when the caller has no live document', () => {
+    render(<ExportDialog isOpen defaultName="asm" onDownload={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.queryByText('Length unit')).toBeNull()
+    expect(screen.queryByLabelText('in')).toBeNull()
+  })
+
+  it('seeds the pick from the document and reports it', async () => {
+    const onDownload = vi.fn()
+    render(<ExportDialog isOpen defaultName="part" documentUnit="inch" onDownload={onDownload} onCancel={vi.fn()} />)
+
+    expect(unitRadio('in').checked).toBe(true)
+    fireEvent.click(unitRadio('mm'))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+    })
+    expect(onDownload.mock.calls[0][0].documentUnit).toBe('mm')
+  })
+
+  it('hides the unit control from a YAML export, which carries the document as saved', async () => {
+    const onDownload = vi.fn()
+    render(<ExportDialog isOpen defaultName="part" documentUnit="inch" onDownload={onDownload} onCancel={vi.fn()} />)
+
+    fireEvent.click(screen.getByLabelText('YAML'))
+    expect(screen.queryByText('Length unit')).toBeNull()
+    expect(screen.getByText(/unit included/)).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+    })
+    expect(onDownload.mock.calls[0][0].documentUnit).toBeUndefined()
+  })
+
+  it('takes the document unit again when reopened', () => {
+    const props = { onDownload: vi.fn(), onCancel: vi.fn(), defaultName: 'part' }
+    const { rerender } = render(<ExportDialog isOpen documentUnit="inch" {...props} />)
+
+    fireEvent.click(unitRadio('mm'))
+    rerender(<ExportDialog isOpen={false} documentUnit="inch" {...props} />)
+    rerender(<ExportDialog isOpen documentUnit="inch" {...props} />)
+    expect(unitRadio('in').checked).toBe(true)
+  })
+})

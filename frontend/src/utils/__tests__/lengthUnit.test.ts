@@ -1,18 +1,23 @@
 import { describe, it, expect } from 'vitest'
 import {
   LENGTH_UNIT_LABEL,
+  LENGTH_UNIT_NAME,
   MM_PER_LENGTH_UNIT,
   importScaleFor,
   isLengthUnit,
   lengthUnitOf,
 } from '@/utils/lengthUnit'
 
-// The unit table the kernel, the measurement readout and the header all share.
-// The important half is the tolerant read: absent means millimetres, which is
-// what every document written before the field means.
+// The unit table the kernel, the measurement readout and the export dialog all
+// share. The important half is the tolerant read: absent means millimetres,
+// which is what every document written before the field means.
 describe('document length unit', () => {
   it('labels millimetres as mm and inches as in', () => {
     expect(LENGTH_UNIT_LABEL).toEqual({ mm: 'mm', inch: 'in' })
+  })
+
+  it('spells the units out for prose', () => {
+    expect(LENGTH_UNIT_NAME).toEqual({ mm: 'millimetres', inch: 'inches' })
   })
 
   it('carries the scale a file export needs', () => {

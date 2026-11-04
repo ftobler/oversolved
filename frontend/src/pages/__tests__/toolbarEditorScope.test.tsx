@@ -25,7 +25,7 @@ vi.mock('@/components/layout/AppHeader', () => ({
 function renderPart(context = sessionBackedPartContext()) {
   return render(
     <CommandRegistryProvider value={partRegistry(context)}>
-      <PartToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} lengthUnit="mm" onSetLengthUnit={vi.fn()} />
+      <PartToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} />
     </CommandRegistryProvider>,
   )
 }

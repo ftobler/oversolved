@@ -1,12 +1,17 @@
 // One place that knows what a document's length unit means. Stored numbers are
 // numbers in the document's own unit; only the millimetre-based file formats
 // (STEP, STL, an imported STEP) need the factor. Pure, so the kernel, the
-// measurement registry and the header all read the same table.
+// measurement registry and the export dialog all read the same table.
 
 import type { LengthUnit } from '@/types/cad'
 
-/** The suffix shown beside a length readout: SI millimetres, or the inch symbol. */
+/** The suffix beside a length readout and the choice label in the export
+ *  dialog: SI millimetres, or the inch symbol. */
 export const LENGTH_UNIT_LABEL: Record<LengthUnit, string> = { mm: 'mm', inch: 'in' }
+
+/** The spelled-out unit, for prose such as the export dialog's confirmation
+ *  toast; a readout keeps the short label. */
+export const LENGTH_UNIT_NAME: Record<LengthUnit, string> = { mm: 'millimetres', inch: 'inches' }
 
 /** Millimetres in one document unit. STEP and STL are written in millimetres. */
 export const MM_PER_LENGTH_UNIT: Record<LengthUnit, number> = { mm: 1, inch: 25.4 }
