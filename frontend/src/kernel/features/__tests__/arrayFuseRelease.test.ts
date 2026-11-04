@@ -1,14 +1,13 @@
-// H21 fence: the array fuse loop (`applyArray`) must release the superseded
-// fused solid and the consumed instance at the END of each iteration, after
-// transferBooleanNames has run. That ordering is a memory-correctness hazard,
-// not just a leak: transferBooleanNames reads r.faceOrigin's `source` entries,
-// which are sub-shapes OF THE OPERANDS, so freeing an
-// operand first is a use-after-free that reads plausibly and fails nowhere.
-// These assertions pin the ordering, the exactly-once counting, the
-// table-owned-source guard, and the constant live-intermediate peak.
+// H21 fence: the array add fuse loop must release the superseded fused solid
+// and the consumed chunk of instances AFTER transferBooleanNames has run. That
+// ordering is a memory-correctness hazard, not just a leak: transferBooleanNames
+// reads r.faceOrigin's `source` entries, which are sub-shapes OF THE OPERANDS,
+// so freeing an operand first is a use-after-free that reads plausibly and
+// fails nowhere. These assertions pin the ordering, the exactly-once counting,
+// the table-owned-source guard, and the chunk-bounded live-instance peak.
 //
 // Mocks stand in for OCC so every double records delete(): `../occ/booleans`
-// provides booleanWithDiff, `./booleanLineage` transferBooleanNames,
+// provides booleanWithDiffMany, `./booleanLineage` transferBooleanNames,
 // `../occ/transformLineage` the per-instance copy + name remap, and
 // `./bodySplit` resplitBody. Drive solveArray (the exported entry; applyArray
 // is module-private) with operation 'add'.
@@ -16,7 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  booleanWithDiff: vi.fn(),
+  booleanWithDiffMany: vi.fn(),
   transferBooleanNames: vi.fn(),
   transformCopyWithMapping: vi.fn(),
   rebuildNamesForTransformedCopy: vi.fn(),
@@ -25,7 +24,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../../occ/booleans', () => ({
-  booleanWithDiff: mocks.booleanWithDiff,
+  booleanWithDiffMany: mocks.booleanWithDiffMany,
 }))
 vi.mock('../booleanLineage', () => ({
   transferBooleanNames: mocks.transferBooleanNames,
@@ -51,8 +50,10 @@ vi.mock('../../occ/bodyNames', async (importOriginal) => {
 })
 
 import { HandleTable } from '../../occ/handleTable'
+import { SubShapeMap } from '../../occ/subshapeIdentity'
 import { DisposeScope } from '../../occ/disposeScope'
 import { solveArray } from './patternBodyTestAdapters'
+import { INSTANCE_FUSE_CHUNK } from '../patternBody'
 import { bareBody } from '../shared/bodyResolution'
 import { emptyBrepDiff } from '../../types3d'
 import type { OccModule } from '../../occ/occTypes'
@@ -79,18 +80,21 @@ function makeDouble(tag: string, onDelete?: () => void): ShapeDouble {
 }
 
 const order: string[] = []
-const live = { n: 0 }  // live fused intermediates only; instance/source doubles do not participate
+// Live instance shapes only: the batch holds at most one chunk at a time.
+const liveInstances = { n: 0 }
+const chunkSizes: number[] = []
+const peakSamples: number[] = []
 const fused: ShapeDouble[] = []
 const instances: ShapeDouble[] = []
-const peakSamples: number[] = []
 let transferCount = 0
 
 function reset(): void {
   order.length = 0
-  live.n = 0
+  liveInstances.n = 0
+  chunkSizes.length = 0
+  peakSamples.length = 0
   fused.length = 0
   instances.length = 0
-  peakSamples.length = 0
   transferCount = 0
 }
 
@@ -99,26 +103,27 @@ function run(countX: number, includeSource: boolean): {
   scope: DisposeScope
   source: ShapeDouble
 } {
-  mocks.booleanWithDiff.mockImplementation(() => {
-    peakSamples.push(live.n)  // live fused count at the iteration boundary
-    const d = makeDouble(`fused:${fused.length}`, () => { live.n-- })
-    live.n++
+  mocks.booleanWithDiffMany.mockImplementation((_oc, _scope, _target, tools: ShapeDouble[]) => {
+    chunkSizes.push(tools.length)
+    peakSamples.push(liveInstances.n)  // live instances at the chunk boundary
+    const d = makeDouble(`fused:${fused.length}`)
     fused.push(d)
     return { shape: d, faceOrigin: [], diff: emptyBrepDiff() }
   })
   mocks.transformCopyWithMapping.mockImplementation(() => {
-    const d = makeDouble(`inst:${instances.length}`)
+    const d = makeDouble(`inst:${instances.length}`, () => { liveInstances.n-- })
+    liveInstances.n++
     instances.push(d)
     return { shape: d, builder: {} }
   })
   mocks.rebuildNamesForTransformedCopy.mockImplementation(() => ({
-    faceNames: {}, faceAncestry: {}, edgeNames: {}, edgeAncestry: {},
+    faceNames: new SubShapeMap(), faceAncestry: {}, edgeNames: new SubShapeMap(), edgeAncestry: {},
   }))
   mocks.readSourceFaceRows.mockReturnValue([])
   mocks.transferBooleanNames.mockImplementation(() => {
     transferCount++
     order.push(`transfer:${transferCount}`)
-    return { faceNames: {}, edgeNames: {}, faceAncestry: {}, edgeAncestry: {} }
+    return { faceNames: new SubShapeMap(), edgeNames: new SubShapeMap(), faceAncestry: {}, edgeAncestry: {} }
   })
   mocks.resplitBody.mockImplementation(() => ['body_ex1'])
 
@@ -148,15 +153,12 @@ function run(countX: number, includeSource: boolean): {
     repo,
     bodyStore,
   )
-  // The state after the loop: pre-fix every intermediate is still alive here
-  // (peak N-1); post-fix only the final fused survives (peak 1).
-  peakSamples.push(live.n)
   return { table, scope, source }
 }
 
 beforeEach(() => {
   reset()
-  mocks.booleanWithDiff.mockReset()
+  mocks.booleanWithDiffMany.mockReset()
   mocks.transferBooleanNames.mockReset()
   mocks.transformCopyWithMapping.mockReset()
   mocks.rebuildNamesForTransformedCopy.mockReset()
@@ -164,28 +166,24 @@ beforeEach(() => {
 })
 
 describe('array add fuse releases (H21)', () => {
-  it('releases every superseded fused solid and every consumed instance exactly once, after the names transfer', () => {
-    const { table, scope, source } = run(4, true)
+  it('releases every chunk of instances after its names transfer, and every superseded fused solid', () => {
+    // 20 instances: one full chunk of 16 and a last chunk of 3.
+    const { table, scope, source } = run(20, true)
     try {
-      // With include_source, instances are [source, inst1, inst2, inst3]; the
-      // final fused becomes the body, the other three fused intermediates are
-      // superseded and must each be freed exactly once.
-      for (const d of fused.slice(0, -1)) expect(d.deletes).toBe(1)
+      // instances[0] is the table-owned source; the other 19 are chunk copies.
       for (const d of instances) expect(d.deletes).toBe(1)
-      // The HandleTable-owned sourceShape must survive the whole solve: the
-      // scope never tracked it, and release() deletes foreign objects.
       expect(source.deletes).toBe(0)
-      // Every iteration's releases sit AFTER that iteration's names transfer:
+      // Two chunks means two transfers and one superseded fused solid.
+      expect(transferCount).toBe(2)
+      expect(fused[0].deletes).toBe(1)
+      expect(fused.at(-1)!.deletes).toBe(0)
+      for (const d of fused.slice(0, -1)) expect(d.deletes).toBe(1)
+      // Every chunk's releases sit AFTER that chunk's names transfer:
       // transferBooleanNames hashes the operands' source sub-shapes first.
-      // With include_source, array.ts instances[i] is the i-th transformed copy
-      // (tagged inst:i-1) because instances[0] is the source.
-      for (let i = 1; i <= 3; i++) {
+      for (let i = 1; i <= transferCount; i++) {
         const transferAt = order.indexOf(`transfer:${i}`)
         expect(transferAt, `transfer:${i} present`).toBeGreaterThanOrEqual(0)
-        expect(order.indexOf(`delete:inst:${i - 1}`), `inst:${i - 1} after transfer:${i}`).toBeGreaterThan(transferAt)
-        if (i >= 2) {
-          expect(order.indexOf(`delete:fused:${i - 2}`), `fused:${i - 2} after transfer:${i}`).toBeGreaterThan(transferAt)
-        }
+        expect(order.indexOf(`delete:inst:${i === 1 ? 0 : INSTANCE_FUSE_CHUNK + i - 2}`)).toBeGreaterThan(transferAt)
       }
     } finally {
       scope.dispose()
@@ -197,10 +195,8 @@ describe('array add fuse releases (H21)', () => {
     const { table, scope } = run(4, false)
     try {
       // instances = [inst0, inst1, inst2, inst3]: inst0 is the fuse seed and
-      // is NOT table-owned, so it is released after iteration 1 like any other
-      // consumed operand.
+      // is NOT table-owned, so it is released after the chunk like any operand.
       for (const d of instances) expect(d.deletes).toBe(1)
-      for (const d of fused.slice(0, -1)) expect(d.deletes).toBe(1)
       const transferAt = order.indexOf('transfer:1')
       expect(order.indexOf('delete:inst:0')).toBeGreaterThan(transferAt)
     } finally {
@@ -214,11 +210,11 @@ describe('array add fuse releases (H21)', () => {
     // failed boolean), at which point it has already deleted the body. The
     // fallback must not hand back the live source id for a body that is gone:
     // body_ids is explicitly empty and the warning names the deletion.
-    mocks.booleanWithDiff.mockImplementation(() => ({
+    mocks.booleanWithDiffMany.mockImplementation(() => ({
       shape: makeDouble('fused'), faceOrigin: [], diff: emptyBrepDiff(),
     }))
     mocks.transformCopyWithMapping.mockImplementation(() => ({ shape: makeDouble('inst'), builder: {} }))
-    mocks.rebuildNamesForTransformedCopy.mockReturnValue({ faceNames: {}, faceAncestry: {}, edgeNames: {}, edgeAncestry: {} })
+    mocks.rebuildNamesForTransformedCopy.mockReturnValue({ faceNames: new SubShapeMap(), faceAncestry: {}, edgeNames: new SubShapeMap(), edgeAncestry: {} })
     mocks.readSourceFaceRows.mockReturnValue([])
     mocks.transferBooleanNames.mockReturnValue({ faceNames: {}, edgeNames: {}, faceAncestry: {}, edgeAncestry: {} })
     mocks.resplitBody.mockReturnValue([])
@@ -262,25 +258,25 @@ describe('array add fuse releases (H21)', () => {
     }
   })
 
-  it('keeps the live fused-intermediate peak at 1 for 4 and 12 instances', () => {
+  it('caps the live instance peak at the chunk size', () => {
     const { table: t4, scope: s4 } = run(4, true)
     try {
-      const peak4 = Math.max(...peakSamples)
-      expect(peak4).toBe(1)
+      // 3 copies and the source: one chunk, all three instances live at once.
+      expect(chunkSizes).toEqual([3])
+      expect(Math.max(...peakSamples)).toBe(3)
     } finally {
       s4.dispose()
       t4.disposeAll()
     }
     reset()
-    const { table: t12, scope: s12 } = run(12, true)
+    const { table: t20, scope: s20 } = run(20, true)
     try {
-      const peak12 = Math.max(...peakSamples)
-      // Pre-fix the peak is N-1 (11): every intermediate rides the build scope
-      // to solve end. Post-fix only the current fused is alive.
-      expect(peak12).toBe(1)
+      // 19 copies split into 16 and 3; the peak is the chunk size, not N-1.
+      expect(chunkSizes).toEqual([INSTANCE_FUSE_CHUNK, 3])
+      expect(Math.max(...peakSamples)).toBe(INSTANCE_FUSE_CHUNK)
     } finally {
-      s12.dispose()
-      t12.disposeAll()
+      s20.dispose()
+      t20.disposeAll()
     }
   })
 })

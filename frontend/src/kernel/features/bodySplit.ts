@@ -43,6 +43,8 @@ export interface ProducedNames {
   faceAncestry?: Record<string, string[]> | null
   edgeAncestry?: Record<string, string[]> | null
   capAncestry?: Record<string, string[]> | null
+  faceOwner?: Record<string, string> | null
+  edgeOwner?: Record<string, string> | null
 }
 
 /** The per-body identity fields a split has to hand down to every sibling. */
@@ -62,6 +64,8 @@ interface SiblingNames {
   face_ancestry: Record<string, string[]>
   edge_ancestry: Record<string, string[]>
   face_cap_ancestry: Record<string, string[]>
+  face_owner?: Record<string, string>
+  edge_owner?: Record<string, string>
 }
 
 /**
@@ -124,10 +128,22 @@ function namesForSolid(
   const srcFaceAnc = names.faceAncestry ?? {}
   const srcEdgeAnc = names.edgeAncestry ?? {}
   const srcCapAnc = names.capAncestry ?? {}
+  // Owners are pruned to the UUIDs that landed on this solid the same way the
+  // ancestry maps are: a sibling must not carry its neighbour's ownership.
+  const owners = (uuids: UuidArray, src: Record<string, string> | null | undefined): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const uuid of uuids) {
+      if (uuid !== null && src?.[uuid] !== undefined) out[uuid] = src[uuid]
+    }
+    return out
+  }
+  const faceOwner = owners(face_uuids, names.faceOwner)
+  const edgeOwner = owners(edge_uuids, names.edgeOwner)
   if (!narrow) {
     return {
       face_uuids, edge_uuids,
       face_ancestry: { ...srcFaceAnc }, edge_ancestry: { ...srcEdgeAnc }, face_cap_ancestry: { ...srcCapAnc },
+      face_owner: faceOwner, edge_owner: edgeOwner,
     }
   }
   const pick = (uuids: UuidArray, src: Record<string, string[]>): Record<string, string[]> => {
@@ -139,6 +155,7 @@ function namesForSolid(
     face_uuids, edge_uuids,
     face_ancestry: pick(face_uuids, srcFaceAnc), edge_ancestry: pick(edge_uuids, srcEdgeAnc),
     face_cap_ancestry: pick(face_uuids, srcCapAnc),
+    face_owner: faceOwner, edge_owner: edgeOwner,
   }
 }
 

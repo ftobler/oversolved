@@ -19,6 +19,10 @@ export interface FaceNameMaps {
   faceAncestry: Record<string, string[]>
   // Cap identification nets keyed by the mapped face uuid (Body.face_cap_ancestry).
   capAncestry: Record<string, string[]>
+  // The minting feature, per face uuid (Body.face_owner). A transformed copy's
+  // identity belongs to the leaf that copied it, not to the source feature.
+  faceOwner: Record<string, string>
+  edgeOwner: Record<string, string>
 }
 
 export type NameMaps = ShapeNames
@@ -98,6 +102,8 @@ export function remapFaceNamesForInstance(
   const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
   const capAncestry: Record<string, string[]> = {}
+  const faceOwner: Record<string, string> = {}
+  const edgeOwner: Record<string, string> = {}
 
   // Cache shell-oriented instance faces so each source face's image can be
   // matched to the outward-facing explorer order used by downstream code.
@@ -127,10 +133,11 @@ export function remapFaceNamesForInstance(
       const newUuid = mintFaceUuid(arrayInstancePath(row.uuid, featureId, index))
       faceNames.set(match, newUuid)
       faceAncestry[newUuid] = [...row.ancestry]
+      faceOwner[newUuid] = featureId
       if (row.capAncestry) capAncestry[newUuid] = [...row.capAncestry]
     }
   }
-  return { faceNames, faceAncestry, capAncestry }
+  return { faceNames, faceAncestry, capAncestry, faceOwner, edgeOwner }
 }
 
 /**
@@ -148,11 +155,14 @@ export function rekeyFaceNamesForTransform(
   sourceFaceAncestry: Record<string, string[]>,
   builder: OccTransformBuilder,
   sourceCapAncestry: Record<string, string[]> = {},
+  sourceFaceOwner: Record<string, string> = {},
 ): FaceNameMaps {
   const E = oc.TopAbs_ShapeEnum
   const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
   const capAncestry: Record<string, string[]> = {}
+  const faceOwner: Record<string, string> = {}
+  const edgeOwner: Record<string, string> = {}
 
   const transformedFaces: OccSubShape[] = []
   const texp = scope.track(new oc.TopExp_Explorer_2(transformedShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
@@ -184,10 +194,11 @@ export function rekeyFaceNamesForTransform(
       const match = transformedFaces[j]
       faceNames.set(match, sourceUuid)
       faceAncestry[sourceUuid] = [...(sourceFaceAncestry[sourceUuid] ?? [])]
+      if (sourceFaceOwner[sourceUuid]) faceOwner[sourceUuid] = sourceFaceOwner[sourceUuid]
       if (sourceCapAncestry[sourceUuid]) capAncestry[sourceUuid] = [...sourceCapAncestry[sourceUuid]]
     }
   }
-  return { faceNames, faceAncestry, capAncestry }
+  return { faceNames, faceAncestry, capAncestry, faceOwner, edgeOwner }
 }
 
 /**
@@ -211,12 +222,16 @@ export function rekeyNamesForTransformedBody(
     sourceNames.faceAncestry,
     builder,
     sourceNames.capAncestry,
+    sourceNames.faceOwner ?? {},
   )
   // Edge derivation only (no neighbour pass on a rigid transform: every face is
   // already named by the rekey); the table is read once and handed in.
   const t = FaceEdgeTable.read(oc, scope, transformedShape)
-  const { edgeNames, edgeAncestry } = deriveEdgeNames(oc, scope, t, face.faceNames, face.faceAncestry)
-  return { ...face, edgeNames, edgeAncestry }
+  const { edgeNames, edgeAncestry, edgeOwner } = deriveEdgeNames(
+    oc, scope, t, face.faceNames, face.faceAncestry,
+    { faceOwner: face.faceOwner, prefer: new Set() },
+  )
+  return { ...face, edgeNames, edgeAncestry, edgeOwner }
 }
 
 /**
@@ -238,6 +253,9 @@ export function rebuildNamesForTransformedCopy(
   // Edge derivation only (no neighbour pass on a rigid transform: every face is
   // already named by the remap); the table is read once and handed in.
   const t = FaceEdgeTable.read(oc, scope, instanceShape)
-  const { edgeNames, edgeAncestry } = deriveEdgeNames(oc, scope, t, face.faceNames, face.faceAncestry)
-  return { ...face, edgeNames, edgeAncestry }
+  const { edgeNames, edgeAncestry, edgeOwner } = deriveEdgeNames(
+    oc, scope, t, face.faceNames, face.faceAncestry,
+    { faceOwner: face.faceOwner, prefer: new Set() },
+  )
+  return { ...face, edgeNames, edgeAncestry, edgeOwner }
 }

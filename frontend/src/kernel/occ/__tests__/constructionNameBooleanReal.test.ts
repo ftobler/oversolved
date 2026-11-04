@@ -329,11 +329,11 @@ describe.skipIf(!oc || !solveBytes)('clearance naming through the builder (real 
     const r0 = h.run(baseDoc)
     expect(h.res(r0, 'bool1').status).toBe('ok')
 
-    // The boolean created the hole-rim edges; pick one by the persistent query it
-    // emitted, exactly as a user pick would.
+    // The hole-rim edges between the tool wall and the target top answer to the
+    // tool body ex2 under per-application ownership, not to the boolean.
     const body = (r0.bodies as Record<string, { edge_queries?: string[]; edge_created_by?: string[] }>).body_ex1
-    const idx = (body.edge_created_by ?? []).findIndex((cb) => cb === 'bool1')
-    expect(idx, 'the boolean should create hole-rim edges').toBeGreaterThanOrEqual(0)
+    const idx = (body.edge_created_by ?? []).findIndex((cb) => cb === 'ex2')
+    expect(idx, 'the tool body should own the hole-rim edges').toBeGreaterThanOrEqual(0)
     const edgeQuery = body.edge_queries![idx]
 
     const withClearance = (clearance: number) => ({

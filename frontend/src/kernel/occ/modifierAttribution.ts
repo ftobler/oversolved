@@ -126,7 +126,9 @@ function recordElementOwners(body: Body): void {
 }
 
 /** The owner map with the `newIndices` UUIDs stamped with `modifier`, keeping the
- *  recorded owner of every UUID the current `uuids` array still carries. */
+ *  recorded owner of every UUID the current `uuids` array still carries. A UUID
+ *  a name transfer already gave an owner keeps it: the modifier stamp is the
+ *  fallback for elements no producer could attribute, not a rewrite. */
 function nextOwners(
   previous: Record<string, string> | undefined,
   uuids: readonly (string | null)[] | undefined,
@@ -141,7 +143,11 @@ function nextOwners(
   }
   for (const idx of newIndices) {
     const uuid = uuids?.[idx]
-    if (uuid) next[uuid] = modifier
+    // A transfer may already have recorded the UUID's real creator (a pattern
+    // copy, a boolean tool body). Never rewrite it to the modifier: the last
+    // folded tool must not swallow the owner the per-application transfer
+    // wrote.
+    if (uuid && next[uuid] === undefined) next[uuid] = modifier
   }
   return next
 }

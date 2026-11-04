@@ -262,7 +262,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
     }
   }
 
-  it('array add releases exactly two objects per extra instance, flat across rebuilds', () => {
+  it('array add releases one consumed instance per extra copy, flat across rebuilds', () => {
     // Fresh identical geometry per run, so any flatness violation is release
     // traffic that scales with something other than the instance count.
     const c4: number[] = []
@@ -271,9 +271,11 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
     const c12: number[] = []
     for (let i = 0; i < 3; i++) c12.push(arrayRun(12).released)
     expectFlat(c12)
-    // Eight extra instances (4 -> 12) each add two releases: the superseded
-    // fused and the consumed instance. Pre-fix the loop released nothing.
-    expect(c12[0] - c4[0]).toBe(16)
+    // Both counts fit in one chunk, so the only per-copy release is the
+    // consumed transformed instance: eight extra copies, eight releases. A
+    // superseded fused solid appears only when a chunk boundary is crossed
+    // (INSTANCE_FUSE_CHUNK), which arrayFuseRelease.test.ts pins.
+    expect(c12[0] - c4[0]).toBe(8)
     // Six full array solves (three at count 4, three at count 12) can run long
     // under the suite's parallel load; the default 5s timeout has flaked this
     // case, so it gets its own generous budget.

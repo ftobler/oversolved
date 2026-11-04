@@ -29,6 +29,14 @@ interface TransferNamesInput {
   // Target body's pre-boolean face names (its faces -> uuid) + ancestry (uuid -> tokens).
   targetFaceNames: SubShapeMap<string>
   targetFaceAncestry: Record<string, string[]>
+  // Per-uuid creators carried in from both sides. `toolCreatedBy` is the tool
+  // body's own `created_by`, used when a carried tool UUID has no recorded
+  // owner (an older document, or a producer that never recorded one).
+  targetFaceOwner?: Record<string, string> | null
+  targetEdgeOwner?: Record<string, string> | null
+  toolFaceOwner?: Record<string, string> | null
+  toolEdgeOwner?: Record<string, string> | null
+  toolCreatedBy?: string | null
   // Tool body's face names + ancestry (or null for ops without a named tool).
   toolFaceNames: SubShapeMap<string> | null
   toolFaceAncestry: Record<string, string[]> | null
@@ -65,6 +73,7 @@ export function transferBooleanNames(
   const {
     bodyShape, faceOrigin, targetFaceNames, targetFaceAncestry,
     toolFaceNames, toolFaceAncestry, targetCapAncestry, toolCapAncestry, toolUuidScope,
+    targetFaceOwner, toolFaceOwner, toolCreatedBy,
   } = input
 
   // One Face_1 proxy per distinct sub-shape identity, not per origin entry: a
@@ -88,6 +97,8 @@ export function transferBooleanNames(
   const bySource = new Map<string, { output: OccSubShape; source: OccSubShape }[]>()
   const ancestryOf: Record<string, string[]> = {}  // source uuid -> ancestral tokens
   const capAncestryOf: Record<string, string[]> = {}  // source uuid -> a cap's profile net
+  const ownerOfUuid: Record<string, string> = {}  // source uuid -> the feature that minted it
+  const toolUuids = new Set<string>()  // uuids whose face is tool-side this transfer
   const seenOutput = new SubShapeMap<true>()  // dedupe merged faces by output identity
   for (const o of faceOrigin) {
     const names = o.fromTool ? toolFaceNames : targetFaceNames
@@ -102,6 +113,11 @@ export function transferBooleanNames(
     const uuid = o.fromTool && toolUuidScope !== null
       ? mintFaceUuid(toolCopyFacePath(sourceUuid, toolUuidScope))
       : sourceUuid
+    const owner = o.fromTool
+      ? toolFaceOwner?.[sourceUuid] ?? toolCreatedBy ?? null
+      : targetFaceOwner?.[sourceUuid] ?? null
+    if (owner) ownerOfUuid[uuid] = owner
+    if (o.fromTool) toolUuids.add(uuid)
     const output = faceOf(o.output)
     if (seenOutput.has(output)) continue
     seenOutput.set(output, true)
@@ -118,11 +134,13 @@ export function transferBooleanNames(
   const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
   const capAncestry: Record<string, string[]> = {}
+  const faceOwner: Record<string, string> = {}
   for (const [uuid, children] of bySource) {
     if (children.length === 1) {
       faceNames.set(children[0].output, uuid)
       faceAncestry[uuid] = ancestryOf[uuid]
       if (capAncestryOf[uuid]) capAncestry[uuid] = capAncestryOf[uuid]
+      if (ownerOfUuid[uuid]) faceOwner[uuid] = ownerOfUuid[uuid]
       continue
     }
     // Genuine split: order the children in the parent frame; refuse on near-tie.
@@ -139,12 +157,27 @@ export function transferBooleanNames(
       faceNames.set(out, childUuid)
       faceAncestry[childUuid] = ancestryOf[uuid]
       if (capAncestryOf[uuid]) capAncestry[childUuid] = capAncestryOf[uuid]
+      if (ownerOfUuid[uuid]) faceOwner[childUuid] = ownerOfUuid[uuid]
     })
   }
 
   // A face with no named source (a tool that carried no names, or a near-tie
   // split refusal above) is named off its named neighbours, so the edges around
   // it do not all collapse onto the body-wide ancestral fallback.
-  const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, bodyShape, faceNames, faceAncestry)
-  return { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry }
+  const { edgeNames, edgeAncestry, edgeOwner: derivedEdgeOwner } = nameNeighboursAndDeriveEdges(
+    oc, scope, bodyShape, faceNames, faceAncestry,
+    undefined,
+    { faceOwner, prefer: toolUuids },
+  )
+  // A carried target or tool edge UUID keeps the owner it had; an edge this
+  // operation created (or one whose faces the transfer renamed) takes the
+  // face-side owner, with the tool winning a target-versus-tool boundary.
+  // Recorded entries are applied last: a carried UUID's owner is authoritative,
+  // and a new edge uuid cannot collide with a carried one.
+  const edgeOwner: Record<string, string> = { ...derivedEdgeOwner }
+  for (const uuid of edgeNames.entries()) {
+    const recorded = input.targetEdgeOwner?.[uuid[1]] ?? input.toolEdgeOwner?.[uuid[1]]
+    if (recorded) edgeOwner[uuid[1]] = recorded
+  }
+  return { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry, faceOwner, edgeOwner }
 }
