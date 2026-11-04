@@ -217,39 +217,39 @@ export const FEATURE_SCHEMA_BY_KIND = {
       keep_tools: { type: 'boolean' }, clearance: NUMBER_OR_EXPR,
     },
   }),
-  array: feature('array', {
-    key: 'array',
-    properties: {
-      source_body: REF, mode: { enum: ['linear', 'rectangular'] }, operation: { enum: ['add', 'new'] },
-      include_source: { type: 'boolean' }, count_x: NUMBER_OR_EXPR, count_y: NUMBER_OR_EXPR,
-      pitch_x: NUMBER_OR_EXPR, pitch_y: NUMBER_OR_EXPR, direction_x: VEC3, direction_y: VEC3,
-      direction_x_query: REF, direction_y_query: REF, invert_x: { type: 'boolean' }, invert_y: { type: 'boolean' },
-    },
-  }),
-  circular_array: feature('circular_array', {
-    key: 'circular_array',
-    properties: {
-      source_body: REF, operation: { enum: ['add', 'new'] }, include_source: { type: 'boolean' },
-      count: NUMBER_OR_EXPR, step_angle: NUMBER_OR_EXPR, axis: REF, axis_origin: VEC3, axis_direction: VEC3,
-      invert_axis: { type: 'boolean' },
-    },
-  }),
   pattern: feature('pattern', {
     key: 'pattern',
     properties: {
+      subject: { enum: ['body', 'feature'] },
+      // Body subject.
+      source_body: REF,
+      operation: { enum: ['add', 'new'] },
+      include_source: { type: 'boolean' },
+      // Feature subject.
       source_feature: REF,
-      mode: { enum: ['linear', 'circular'] },
+      target_body: REF,
+      // Instance grid.
+      mode: { enum: ['linear', 'rectangular', 'circular'] },
       count: NUMBER_OR_EXPR,
       pitch: NUMBER_OR_EXPR,
       direction: VEC3,
       direction_query: REF,
       invert: { type: 'boolean' },
+      count_x: NUMBER_OR_EXPR,
+      count_y: NUMBER_OR_EXPR,
+      pitch_x: NUMBER_OR_EXPR,
+      pitch_y: NUMBER_OR_EXPR,
+      direction_x: VEC3,
+      direction_x_query: REF,
+      invert_x: { type: 'boolean' },
+      direction_y: VEC3,
+      direction_y_query: REF,
+      invert_y: { type: 'boolean' },
       step_angle: NUMBER_OR_EXPR,
       axis: REF,
       axis_origin: VEC3,
       axis_direction: VEC3,
       invert_axis: { type: 'boolean' },
-      target_body: REF,
     },
   }),
   delete_body: feature('delete_body', {

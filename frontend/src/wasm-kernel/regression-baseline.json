@@ -29489,7 +29489,9 @@
           "plane": "@builtin_plane_front"
         },
         {
-          "array": {
+          "id": "arr1",
+          "kind": "pattern",
+          "pattern": {
             "count_x": 3,
             "count_y": 2,
             "direction_x_query": "@sk_dir/lx",
@@ -29499,10 +29501,9 @@
             "operation": "add",
             "pitch_x": 5,
             "pitch_y": 5,
-            "source_body": "@ex1"
-          },
-          "id": "arr1",
-          "kind": "array"
+            "source_body": "@ex1",
+            "subject": "body"
+          }
         }
       ],
       "kind": "part",
@@ -88536,16 +88537,18 @@
           "plane": "@builtin_plane_front"
         },
         {
-          "circular_array": {
+          "id": "arr1",
+          "kind": "pattern",
+          "pattern": {
             "axis": "@sk_axis/c1",
             "count": 3,
             "include_source": true,
             "invert_axis": false,
             "operation": "add",
-            "source_body": "@ex1"
-          },
-          "id": "arr1",
-          "kind": "circular_array"
+            "source_body": "@ex1",
+            "subject": "body",
+            "mode": "circular"
+          }
         }
       ],
       "kind": "part",

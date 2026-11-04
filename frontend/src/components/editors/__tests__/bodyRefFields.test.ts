@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest'
 import { EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import type { FeatureEditorSchema } from '@/components/editors/FeatureEditor'
 
-const BODY_FIELD_KEYS = new Set(['merge_target', 'source_body'])
+const BODY_FIELD_KEYS = new Set(['merge_target', 'source_body', 'target_body'])
 
 function bodyFields(): { kind: string; key: string; transform?: (id: string) => string }[] {
   const out: { kind: string; key: string; transform?: (id: string) => string }[] = []
@@ -25,11 +25,12 @@ function bodyFields(): { kind: string; key: string; transform?: (id: string) => 
 
 describe('body-naming pick fields', () => {
   it('covers every schema that has one', () => {
-    // extrude, revolve, sweep (merge_target) + array, circular_array, shell (source_body)
+    // extrude, revolve, sweep (merge_target) + shell (source_body) + pattern
+    // (source_body and the feature subject's target_body).
     expect(bodyFields().map(f => `${f.kind}.${f.key}`).sort()).toEqual([
-      'array.source_body',
-      'circular_array.source_body',
       'extrude.merge_target',
+      'pattern.source_body',
+      'pattern.target_body',
       'revolve.merge_target',
       'shell.source_body',
       'sweep.merge_target',

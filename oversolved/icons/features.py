@@ -210,29 +210,6 @@ def feature_fillet(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/feature-array.svg")
-def feature_array(ctx):
-    """Icon for Array: 3x2 grid of small rectangles."""
-    border = 0.1
-    cols, rows = 2, 2
-    gap = 0.0
-    cw = (1 - 2 * border - (cols - 1) * gap) / cols
-    ch = (1 - 2 * border - (rows - 1) * gap) / rows
-
-    for row in range(rows):
-        for col in range(cols):
-            if row == 0 and col == 1:
-                continue  # skip one rectangle to avoid looking like a filled block
-            x0 = border + col * (cw + gap)
-            y0 = border + row * (ch + gap)
-            ctx.move_to(x0, y0)
-            ctx.line_to(x0 + cw, y0)
-            ctx.line_to(x0 + cw, y0 + ch)
-            ctx.line_to(x0, y0 + ch)
-            ctx.close_path()
-            stroke(ctx, 1.5)
-
-
 @icon("frontend/src/assets/icons/feature-chamfer.svg")
 def feature_chamfer(ctx):
     """Icon for Chamfer: an L-shape with a beveled corner."""
@@ -513,21 +490,3 @@ def feature_pattern(ctx):
     ctx.line_to(left + 2 * (size + gap) + size - 0.06, 0.2)
     stroke(ctx, 1.2)
     _arrowhead(ctx, left + 2 * (size + gap) + size - 0.02, 0.2, 0, 0.1)
-
-
-@icon("frontend/src/assets/icons/feature-circular-array.svg")
-def feature_circular_array(ctx):
-    """A boss circled by an arrow: the radial handle and the sweep it follows."""
-    ctx.arc(0.5, 0.5, 0.400065, 0, 2 * math.pi)
-    stroke(ctx, 1.5)
-
-    ctx.move_to(0.5, 0.099935)
-    ctx.line_to(0.5, 0.5)
-    ctx.line_to(0.900065, 0.5)
-    stroke(ctx, 1.5)
-
-    # The arrow wraps the ring: the major arc of a 0.35 radius circle whose
-    # chord is x = 0.25, so its centre sits sqrt(0.35^2 - 0.1^2) to the right.
-    centre_x = 0.25 + math.sqrt(0.35**2 - 0.1**2)
-    ctx.arc_negative(centre_x, 0.5, 0.35, math.pi - 0.2897, math.pi + 0.2897)
-    stroke(ctx, 0.9)

@@ -307,9 +307,9 @@ async function buildArrayCases(): Promise<ProjectionCase[]> {
     extrude('ex1', 'sk1', 5),
     lineDirectionSketch(),
     {
-      id: 'arr1', kind: 'array',
-      array: {
-        source_body: '@ex1', mode: 'rectangular', count_x: 3, count_y: 2,
+      id: 'arr1', kind: 'pattern',
+      pattern: {
+        subject: 'body', mode: 'rectangular', source_body: '@ex1', count_x: 3, count_y: 2,
         pitch_x: 5, pitch_y: 5, include_source: true, operation: 'add',
         direction_x_query: '@sk_dir/lx', direction_y_query: '@sk_dir/ly',
       },
@@ -320,7 +320,7 @@ async function buildArrayCases(): Promise<ProjectionCase[]> {
   const arr1 = (rectSolved.result as Record<string, Dict>).arr1
   if (arr1.status !== 'ok') throw new Error(`array_rectangular_3x2: arr1 ${arr1.status} ${JSON.stringify(arr1)}`)
   // Reuse this status-checked solve as the golden instead of re-solving below.
-  out.push({ label: 'array_rectangular_3x2', feature_kind: 'array', query_tier: 'anchor', spec: rect, solved: rectSolved })
+  out.push({ label: 'array_rectangular_3x2', feature_kind: 'pattern', query_tier: 'anchor', spec: rect, solved: rectSolved })
 
   // Circular array of a 2x2x2 box: 3 copies around Z, axis via a sketch circle.
   const circ = partSpec([
@@ -328,9 +328,9 @@ async function buildArrayCases(): Promise<ProjectionCase[]> {
     extrude('ex1', 'sk1', 2),
     circleSketch('sk_axis', 5),
     {
-      id: 'arr1', kind: 'circular_array',
-      circular_array: {
-        source_body: '@ex1', count: 3, include_source: true, operation: 'add',
+      id: 'arr1', kind: 'pattern',
+      pattern: {
+        subject: 'body', mode: 'circular', source_body: '@ex1', count: 3, include_source: true, operation: 'add',
         axis: '@sk_axis/c1', invert_axis: false,
       },
     },
@@ -339,7 +339,7 @@ async function buildArrayCases(): Promise<ProjectionCase[]> {
   if (!circSolved) throw new Error('circular_array_3copies: solve returned null')
   const circArr1 = (circSolved.result as Record<string, Dict>).arr1
   if (circArr1.status !== 'ok') throw new Error(`circular_array_3copies: arr1 ${circArr1.status} ${JSON.stringify(circArr1)}`)
-  out.push({ label: 'circular_array_3copies', feature_kind: 'circular_array', query_tier: 'ancestral', spec: circ, solved: circSolved })
+  out.push({ label: 'circular_array_3copies', feature_kind: 'pattern', query_tier: 'ancestral', spec: circ, solved: circSolved })
 
   return out
 }

@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { Repository } from '../../query'
-import { solveArray, solveCircularArray } from '../array'
+import { solveArray, solveCircularArray } from './patternBodyTestAdapters'
 import { solveTransform, solveMirror } from '../transformMirror'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule } from '../../occ/occTypes'
@@ -59,7 +59,7 @@ describe('array / circular_array guard paths', () => {
       solveArray(oc, scope, table, {
         id: 'a', array: { source_body: 'body_s', mode: 'linear', count_x: 0, include_source: false },
       }, repo, store),
-    ).toThrow(/count_x must be a positive integer/)
+    ).toThrow(/count must be a positive integer/)
   })
 
   it('circular_array: count=0 raises', () => {

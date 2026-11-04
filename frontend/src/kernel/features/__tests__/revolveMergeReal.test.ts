@@ -100,14 +100,21 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
     expect(r.bodies).toHaveProperty('body_rev1')
   })
 
-  it('add fail with island shape when merge_target set', () => {
-    // Non-overlapping revolve with merge_target fails with island error.
+  it('add with merge_target leaves a non-touching island as its own part', () => {
+    // The tool does not touch the named target, so the fuse is a two-solid
+    // compound: the target keeps its id and the island becomes a new body.
+    // That is a regular outcome, not an error.
     const doc = bodyA()
-    doc.features.push(rectSketchAt('sk2', 2, 1, 20))
+    // The island sits on the NEGATIVE side, so geometric centroid order would
+    // rank it before the target. The target id must still stay on the target.
+    doc.features.push(rectSketchAt('sk2', 2, 1, -20))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'add', mergeTarget: '@body_rev0' }))
     const r = h.run(doc)
-    expect(h.res(r, 'rev2').status).toBe('exception')
-    expect(String(h.res(r, 'rev2').exception ?? '')).toContain('island')
+    const res = h.res(r, 'rev2')
+    expect(res.status).toBe('ok')
+    expect(res.body_id).toBe('body_rev0')
+    expect(res.body_ids).toEqual(['body_rev0', 'body_rev0_1'])
+    expect(Object.keys(r.bodies).sort()).toEqual(['body_rev0', 'body_rev0_1'])
   })
 
   it('add with nonexistent merge_target fails', () => {

@@ -188,8 +188,6 @@ export const FIELD_SETTER_KIND = {
   set_shell_field: 'shell',
   set_move_face_field: 'move_face',
   set_boolean_field: 'boolean',
-  set_array_field: 'array',
-  set_circular_array_field: 'circular_array',
   set_pattern_field: 'pattern',
   set_hole_field: 'hole',
   set_transform_field: 'transform',
@@ -353,35 +351,24 @@ const PLANE_MODE_NOTE =
   'degrees, world XY when no plane is named. docs/drive.md (MCP Server, add_plane frames) ' +
   'has the exact conventions, and the run/measure reply `frames` map reports the frame each plane resolved.'
 
-// The array's "add" is a union only where the copies touch. Disjoint instances
-// stay separate B-reps and therefore separate bodies, with the source id plus
-// sibling suffixes. Name that here so the operation word does not read as a fuse
-// of the instances into one body when the geometry does not connect them.
-const ARRAY_OPERATION_NOTE =
-  '`operation: add` unions each instance into the source body when they intersect; disjoint copies split into ' +
-  'separate bodies, taking the source id and `_1`, `_2`... siblings (the `run` reply summary names the live ids). ' +
-  '`operation: new` keeps the source as instance 0 and mints one body per copy.'
-
-// One call may carry a whole array: the add row takes the same names its
-// setter does, so a six-copy linear array is not seven steps (batch B F2). The
-// list is generated from the schema so a new field cannot drift.
-const arrayInlineNote = (kind: FeatureKind, setter: string): string =>
-  `One call may carry the whole array: ${featureFieldNames(kind).join(', ')} are accepted inline and store the ` +
-  `same keys ${setter} sets.`
-
-// A pattern repeats a FEATURE, so it is not an array of a body: the source's own
-// add/cut is applied again inside the body it already shaped, and its faces keep
-// construction names. The note states the total-count convention and the two
-// modes' axis fields, the three things an author gets wrong first.
+// One operation, two subjects: a body pattern copies a whole body, a feature
+// pattern reapplies one earlier feature's own add or cut inside the body it
+// already shaped. The note states the subject fields, the total-count
+// convention and the three modes' axis fields, the things an author gets wrong
+// first.
 const PATTERN_NOTE =
-  'A pattern repeats one earlier feature\'s own add or cut inside the body that feature shaped, so it needs no ' +
-  'separate body, array or boolean. `source_feature` names an earlier extrude, revolve or sweep whose operation is ' +
-  'add or cut. `count` is the TOTAL instance count, the source\'s own application included, so count 2 adds one ' +
-  'copy and count 1 is a no-op. Linear mode reads `pitch` and `direction` (or `direction_query`); circular mode ' +
-  'reads `step_angle` (absent means 360/count) and `axis` (or `axis_origin` + `axis_direction`). `target_body` ' +
-  'chooses the body when the source touched more than one; without it, a source that created or modified one body ' +
-  'uses that body. A copy that cannot apply is named: some applied and some not is a partial result, and none ' +
-  'applied is an error.'
+  '`subject` selects what is repeated. `body` (the default) copies `source_body`; `operation: add` unions each ' +
+  'copy into the source body when they intersect, while disjoint copies become separate bodies with `_1`, `_2`... ' +
+  'siblings and `operation: new` mints one body per copy. `feature` reapplies one earlier extrude, revolve or ' +
+  'sweep whose operation is add or cut, inside the body that feature shaped (`source_feature`; `target_body` ' +
+  'chooses the body when the source touched more than one). For a feature subject `count` is the TOTAL instance ' +
+  'count on one axis, the source\'s own slot included (count 2 adds one copy, count 1 is a no-op). A body subject ' +
+  'counts the same way when `include_source` is true; with `include_source: false` every counted slot is a copy. ' +
+  'Rectangular mode leaves the seed cell to the source. Linear mode reads `pitch` and ' +
+  '`direction` (or `direction_query`); rectangular mode reads `count_x`/`count_y`, `pitch_x`/`pitch_y` and one ' +
+  'direction pair per axis; circular mode reads `step_angle` (absent means 360/count) and `axis` (or ' +
+  '`axis_origin` + `axis_direction`). A copy that cannot apply is named: some applied and some not is a partial ' +
+  'result, and none applied is an error.'
 
 const PATTERN_INLINE_NOTE =
   'One call may carry the whole pattern: ' +
@@ -470,11 +457,11 @@ const BOOLEAN_INLINE_NOTE =
   'One call may carry all three; `set_boolean_field` and `add_boolean_tool` remain for later edits.'
 
 const BOOLEAN_ARRAY_TOOL_NOTE =
-  'A `tools` entry naming an array or circular_array feature (`@<arrayId>`) expands at solve time to that ' +
-  'array\'s source body and every instance body, including the `<source>_N` copies an `operation: add` array ' +
+  'A `tools` entry naming a body-subject pattern feature (`@<patternId>`) expands at solve time to that ' +
+  'pattern\'s source body and every instance body, including the `<source>_N` copies an `operation: add` pattern ' +
   'splits into, so it follows a later count change; the target is left out of ' +
-  'the expansion; the array must come before the boolean in the log (a later one is refused as unresolved). A hand-typed list that names only some of ' +
-  'one array\'s bodies solves with a warning (also when the split is deliberate).'
+  'the expansion; the pattern must come before the boolean in the log (a later one is refused as unresolved). A hand-typed list that names only some of ' +
+  'one pattern\'s bodies solves with a warning (also when the split is deliberate). A feature-subject pattern is not an array of bodies and is not expanded.'
 
 // Same precedence as transform's rotation axis, so one rule covers both.
 const CIRCULAR_AXIS_NOTE =
@@ -1026,72 +1013,38 @@ export const MUTATION_CATALOG = {
     summary: 'Remove a boolean tool body.',
     fields: { featureId: str(), tool: bodyQuery() },
   },
-  add_array: {
-    summary: 'Add a linear array feature, optionally with its source, counts, pitches and operation.',
-    note: ARRAY_OPERATION_NOTE + ' ' + arrayInlineNote('array', 'set_array_field'),
-    fields: {
-      ...featureAddFields(),
-      source_body: optStr('The body to copy, e.g. body_ex2.'),
-      mode: optStr('linear | rectangular; defaults to linear.'),
-      operation: optStr('add | new; defaults to add.'),
-      include_source: optBool(),
-      count_x: optScalar(),
-      pitch_x: optScalar(),
-      direction_x: optPoint(),
-      direction_x_query: optStr(),
-      invert_x: optBool(),
-      count_y: optScalar(),
-      pitch_y: optScalar(),
-      direction_y: optPoint(),
-      direction_y_query: optStr(),
-      invert_y: optBool(),
-    },
-  },
-  set_array_field: {
-    summary: 'Set one linear-array field.',
-    note: ARRAY_OPERATION_NOTE,
-    fields: { featureId: str(), field: fieldOf('array', 'set_array_field'), value: setterValue('array') },
-  },
-  add_circular_array: {
-    summary: 'Add a circular array feature, optionally with its source, count, angle and axis.',
-    note: ARRAY_OPERATION_NOTE + ' ' + CIRCULAR_AXIS_NOTE + ' '
-      + arrayInlineNote('circular_array', 'set_circular_array_field'),
-    fields: {
-      ...featureAddFields(),
-      source_body: optStr('The body to copy, e.g. body_ex2.'),
-      operation: optStr('add | new; defaults to add.'),
-      include_source: optBool(),
-      count: optScalar(),
-      step_angle: optNullableScalar(),
-      axis: optStr('An edge, sketch entity or face ref; overrides the stored origin/direction pair.'),
-      axis_origin: optPoint(),
-      axis_direction: optPoint(),
-      invert_axis: optBool(),
-    },
-  },
-  set_circular_array_field: {
-    summary: 'Set one circular-array field.',
-    note: ARRAY_OPERATION_NOTE + ' ' + CIRCULAR_AXIS_NOTE,
-    fields: { featureId: str(), field: fieldOf('circular array', 'set_circular_array_field'), value: setterValue('circular_array') },
-  },
   add_pattern: {
-    summary: 'Add a pattern of one earlier feature, optionally with its count, spacing and axis.',
-    note: PATTERN_NOTE + ' ' + PATTERN_INLINE_NOTE,
+    summary: 'Add a pattern of a body or one earlier feature, optionally with its count, spacing and axis.',
+    note: PATTERN_NOTE + ' ' + CIRCULAR_AXIS_NOTE + ' ' + PATTERN_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
-      source_feature: optStr('The feature to repeat, e.g. @ex1: an extrude, revolve or sweep with operation add or cut.'),
-      mode: optStr('linear | circular; defaults to linear.'),
+      subject: optStr('body | feature; defaults to body.'),
+      source_body: optStr('Body subject: the body to copy, e.g. body_ex2.'),
+      operation: optStr('Body subject: add | new; defaults to add.'),
+      include_source: optBool(),
+      source_feature: optStr('Feature subject: the feature to repeat, e.g. @ex1: an extrude, revolve or sweep with operation add or cut.'),
+      target_body: optStr('Feature subject: the body to apply to when the source feature touched more than one.'),
+      mode: optStr('linear | rectangular | circular; defaults to linear.'),
       count: optScalar(),
       pitch: optScalar(),
       direction: optPoint(),
       direction_query: optStr('A straight edge or planar face; overrides direction.'),
       invert: optBool(),
-      step_angle: optScalar(),
+      count_x: optScalar(),
+      count_y: optScalar(),
+      pitch_x: optScalar(),
+      pitch_y: optScalar(),
+      direction_x: optPoint(),
+      direction_x_query: optStr(),
+      invert_x: optBool(),
+      direction_y: optPoint(),
+      direction_y_query: optStr(),
+      invert_y: optBool(),
+      step_angle: optNullableScalar(),
       axis: optStr('An edge, sketch entity or face ref; overrides the stored origin/direction pair.'),
       axis_origin: optPoint(),
       axis_direction: optPoint(),
       invert_axis: optBool(),
-      target_body: optStr('The body to apply to when the source feature touched more than one.'),
     },
   },
   set_pattern_field: {
@@ -1368,10 +1321,6 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   set_boolean_field: 'features',
   add_boolean_tool: 'picks',
   remove_boolean_tool: 'picks',
-  add_array: 'features',
-  set_array_field: 'features',
-  add_circular_array: 'features',
-  set_circular_array_field: 'features',
   add_pattern: 'features',
   set_pattern_field: 'features',
   add_delete_body: 'features',

@@ -118,7 +118,9 @@ features:
     kind: sketch
     label: sketch 2
     plane: ?17,19,1e,2a,2a,2a,2a;@gface_7e0c0a834ce0f549@6EbMgXvI6h-cG2SylOF4pRWq@body_6EbMgXvI6h-cG2SylOF4pRWq@opsT9cxmUvsfths6Xoi4MZNU/2Ulv_0KAG-KOXp0_@opsT9cxmUvsfths6Xoi4MZNU/UgHdCGiTrthhYn0P@opsT9cxmUvsfths6Xoi4MZNU/Wb5Ad8pQcZqXCsfD@opsT9cxmUvsfths6Xoi4MZNU/jwRVDCyVZWD7KloQ:flatface
-  - circular_array:
+  - pattern:
+      subject: body
+      mode: circular
       axis: "@EOMJCK6CjXsMkYqtXDwkyXCZ/9z4wK0exhW0ANN1-"
       axis_direction:
         - 0
@@ -133,7 +135,7 @@ features:
       operation: new
       step_angle: 72
     id: UAM7nPd8Trb1gGJ7Wefu6uUc
-    kind: circular_array
-    label: circular_array 2
+    kind: pattern
+    label: pattern 2
 kind: part
 version: 1

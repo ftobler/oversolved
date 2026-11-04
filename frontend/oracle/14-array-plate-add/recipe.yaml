@@ -119,12 +119,13 @@ features:
       target: "@body_ex1"
       direction: normal
   - id: ar1
-    kind: array
-    array:
+    kind: pattern
+    pattern:
+      subject: body
       source_body: "@body_ex1"
       mode: linear
       operation: add
       include_source: true
-      count_x: 3
-      pitch_x: 30
-      direction_x_query: "@sk1/bottom"
+      count: 3
+      pitch: 30
+      direction_query: "@sk1/bottom"

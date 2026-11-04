@@ -14,7 +14,7 @@
 import { create, all } from 'mathjs'
 import type { FunctionNode, MathNode, SymbolNode } from 'mathjs'
 import type {
-  ArrayFeatureDef, BooleanFeatureDef, ChamferFeatureDef, CircularArrayFeatureDef,
+  BooleanFeatureDef, ChamferFeatureDef,
   ExtrudeFeatureDef, FilletFeatureDef, HelixFeatureDef, HoleFeatureDef,
   ImportStepFeature, PatternFeatureDef, PlaneDef, RevolveFeatureDef, ShellFeatureDef,
   TransformFeatureDef, MoveFaceFeatureDef,
@@ -58,8 +58,6 @@ interface ExprPayloads {
   shell: ShellFeatureDef
   move_face: MoveFaceFeatureDef
   hole: HoleFeatureDef
-  array: ArrayFeatureDef
-  circular_array: CircularArrayFeatureDef
   pattern: PatternFeatureDef
   transform: TransformFeatureDef
   plane: PlaneDef
@@ -85,9 +83,7 @@ export const EXPR_FIELDS_BY_KIND: { [K in ExprFieldKind]: readonly (keyof ExprPa
   shell: ['thickness'],
   move_face: ['distance'],
   hole: ['diameter', 'depth', 'cb_diameter', 'cb_depth', 'cs_angle'],
-  array: ['pitch_x', 'pitch_y', 'count_x', 'count_y'],
-  circular_array: ['step_angle', 'count'],
-  pattern: ['count', 'pitch', 'step_angle'],
+  pattern: ['count', 'pitch', 'step_angle', 'count_x', 'count_y', 'pitch_x', 'pitch_y'],
   transform: ['rotation_angle', 'scale'],
   plane: ['offset', 'angle', 'rotation', 'rotation_angle'],
   helix: ['radius', 'pitch', 'turns', 'height', 'helix_angle', 'offset', 'start_angle'],

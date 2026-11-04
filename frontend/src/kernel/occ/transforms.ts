@@ -1,6 +1,6 @@
 // Gp_Trsf construction (translation / rotation / mirror / scale), `apply_transform_shape`
-// (compose scale -> rotation -> translation), and `transform_copy`. These back the array /
-// circular_array / transform / mirror leaves. Every trsf is built fresh in the caller's scope;
+// (compose scale -> rotation -> translation), and `transform_copy`. These back the pattern /
+// transform / mirror leaves. Every trsf is built fresh in the caller's scope;
 // transformCopy returns a raw shape the caller owns.
 
 import type { DisposeScope } from './disposeScope'

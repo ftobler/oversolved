@@ -1,10 +1,9 @@
 // @vitest-environment node
 //
-// The real-kernel half of the bulk `add_array` / `add_circular_array` /
-// `add_mirror` forms: one call carrying the source, counts, pitches, axis or
-// plane must land the same document as the old feature + one setter per field
-// sequence. The pure catalog and document-shape half is
-// inlineArrayMirrorAdds.test.ts.
+// The real-kernel half of the bulk `add_pattern` / `add_mirror` forms: one call
+// carrying the source, counts, pitches, axis or plane must land the same
+// document as the old feature + one setter per field sequence. The pure catalog
+// and document-shape half is inlineArrayMirrorAdds.test.ts.
 
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
@@ -38,7 +37,7 @@ function emptyDoc(): PartDoc {
 }
 const ready = oc && solveBytes
 const step = (mutation: Record<string, unknown>): ScriptStep => ({ mutation } as ScriptStep)
-describe.skipIf(!ready)('inline array and mirror adds (real OCC + Rust solver)', () => {
+describe.skipIf(!ready)('inline pattern and mirror adds (real OCC + Rust solver)', () => {
   async function boxBase(): Promise<PartDoc> {
     const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
     const built = await runHeadless({ doc: emptyDoc(), steps: box.steps })
@@ -46,7 +45,7 @@ describe.skipIf(!ready)('inline array and mirror adds (real OCC + Rust solver)',
     return built.doc!
   }
 
-  it('one-call linear array matches the feature + six setters by document and volume', async () => {
+  it('one-call linear pattern matches the feature + six setters by document and volume', async () => {
     const base = await boxBase()
     const direction = (await selectHeadless(base, { kind: 'edge', where: { parallel: [1, 0, 0] } }))!.queries[0]
     expect(direction).toBeDefined()
@@ -54,21 +53,21 @@ describe.skipIf(!ready)('inline array and mirror adds (real OCC + Rust solver)',
     const oneCall = await runHeadless({
       doc: structuredClone(base),
       steps: [step({
-        type: 'add_array', featureId: 'ar1', label: 'Array',
-        source_body: 'body_ex1', operation: 'new', count_x: 3, pitch_x: 60,
-        direction_x_query: direction, invert_x: true,
+        type: 'add_pattern', featureId: 'ar1', label: 'Pattern', subject: 'body',
+        source_body: 'body_ex1', operation: 'new', mode: 'linear', count: 3, pitch: 60,
+        direction_query: direction, invert: true,
       })],
     })
     const multi = await runHeadless({
       doc: structuredClone(base),
       steps: [
-        step({ type: 'add_array', featureId: 'ar1', label: 'Array' }),
-        step({ type: 'set_array_field', featureId: 'ar1', field: 'source_body', value: 'body_ex1' }),
-        step({ type: 'set_array_field', featureId: 'ar1', field: 'operation', value: 'new' }),
-        step({ type: 'set_array_field', featureId: 'ar1', field: 'count_x', value: 3 }),
-        step({ type: 'set_array_field', featureId: 'ar1', field: 'pitch_x', value: 60 }),
-        step({ type: 'set_array_field', featureId: 'ar1', field: 'direction_x_query', value: direction }),
-        step({ type: 'set_array_field', featureId: 'ar1', field: 'invert_x', value: true }),
+        step({ type: 'add_pattern', featureId: 'ar1', label: 'Pattern' }),
+        step({ type: 'set_pattern_field', featureId: 'ar1', field: 'source_body', value: 'body_ex1' }),
+        step({ type: 'set_pattern_field', featureId: 'ar1', field: 'operation', value: 'new' }),
+        step({ type: 'set_pattern_field', featureId: 'ar1', field: 'count', value: 3 }),
+        step({ type: 'set_pattern_field', featureId: 'ar1', field: 'pitch', value: 60 }),
+        step({ type: 'set_pattern_field', featureId: 'ar1', field: 'direction_query', value: direction }),
+        step({ type: 'set_pattern_field', featureId: 'ar1', field: 'invert', value: true }),
       ],
     })
     expect(oneCall.ok).toBe(true)
@@ -78,10 +77,10 @@ describe.skipIf(!ready)('inline array and mirror adds (real OCC + Rust solver)',
     const multiFeature = multi.doc?.features?.find(feature => feature.id === 'ar1')
     expect(oneFeature).toEqual(multiFeature)
     expect(oneFeature).toMatchObject({
-      kind: 'array',
-      array: {
-        source_body: 'body_ex1', operation: 'new', count_x: 3, pitch_x: 60,
-        direction_x_query: direction, invert_x: true,
+      kind: 'pattern',
+      pattern: {
+        subject: 'body', source_body: 'body_ex1', operation: 'new', mode: 'linear',
+        count: 3, pitch: 60, direction_query: direction, invert: true,
       },
     })
     const one = await measureHeadless(oneCall.doc!)
@@ -91,12 +90,12 @@ describe.skipIf(!ready)('inline array and mirror adds (real OCC + Rust solver)',
     expect(one!.measures.volume).toBeCloseTo(36000, 6)
   }, 240_000)
 
-  it('one-call circular array matches the feature + setters by document and volume', async () => {
+  it('one-call circular pattern matches the feature + setters by document and volume', async () => {
     const base = await boxBase()
     const oneCall = await runHeadless({
       doc: structuredClone(base),
       steps: [step({
-        type: 'add_circular_array', featureId: 'ca1', label: 'Circular',
+        type: 'add_pattern', featureId: 'ca1', label: 'Circular', subject: 'body', mode: 'circular',
         source_body: 'body_ex1', operation: 'new', count: 6, step_angle: 60,
         axis_origin: [0, 0, 0], axis_direction: [0, 1, 0],
       })],
@@ -104,13 +103,14 @@ describe.skipIf(!ready)('inline array and mirror adds (real OCC + Rust solver)',
     const multi = await runHeadless({
       doc: structuredClone(base),
       steps: [
-        step({ type: 'add_circular_array', featureId: 'ca1', label: 'Circular' }),
-        step({ type: 'set_circular_array_field', featureId: 'ca1', field: 'source_body', value: 'body_ex1' }),
-        step({ type: 'set_circular_array_field', featureId: 'ca1', field: 'operation', value: 'new' }),
-        step({ type: 'set_circular_array_field', featureId: 'ca1', field: 'count', value: 6 }),
-        step({ type: 'set_circular_array_field', featureId: 'ca1', field: 'step_angle', value: 60 }),
-        step({ type: 'set_circular_array_field', featureId: 'ca1', field: 'axis_origin', value: [0, 0, 0] }),
-        step({ type: 'set_circular_array_field', featureId: 'ca1', field: 'axis_direction', value: [0, 1, 0] }),
+        step({ type: 'add_pattern', featureId: 'ca1', label: 'Circular' }),
+        step({ type: 'set_pattern_field', featureId: 'ca1', field: 'mode', value: 'circular' }),
+        step({ type: 'set_pattern_field', featureId: 'ca1', field: 'source_body', value: 'body_ex1' }),
+        step({ type: 'set_pattern_field', featureId: 'ca1', field: 'operation', value: 'new' }),
+        step({ type: 'set_pattern_field', featureId: 'ca1', field: 'count', value: 6 }),
+        step({ type: 'set_pattern_field', featureId: 'ca1', field: 'step_angle', value: 60 }),
+        step({ type: 'set_pattern_field', featureId: 'ca1', field: 'axis_origin', value: [0, 0, 0] }),
+        step({ type: 'set_pattern_field', featureId: 'ca1', field: 'axis_direction', value: [0, 1, 0] }),
       ],
     })
     expect(oneCall.ok).toBe(true)
@@ -120,8 +120,11 @@ describe.skipIf(!ready)('inline array and mirror adds (real OCC + Rust solver)',
     const multiFeature = multi.doc?.features?.find(feature => feature.id === 'ca1')
     expect(oneFeature).toEqual(multiFeature)
     expect(oneFeature).toMatchObject({
-      kind: 'circular_array',
-      circular_array: { source_body: 'body_ex1', operation: 'new', count: 6, step_angle: 60 },
+      kind: 'pattern',
+      pattern: {
+        subject: 'body', mode: 'circular', source_body: 'body_ex1',
+        operation: 'new', count: 6, step_angle: 60,
+      },
     })
     const one = await measureHeadless(oneCall.doc!)
     const many = await measureHeadless(multi.doc!)

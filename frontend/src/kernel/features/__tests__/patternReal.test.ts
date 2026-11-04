@@ -77,7 +77,7 @@ function extrude(id: string, sketch: string, distance: number, operation = 'new'
 }
 
 function pattern(id: string, sourceFeature: string, fields: Dict): Dict {
-  return { id, kind: 'pattern', pattern: { source_feature: `@${sourceFeature}`, ...fields } }
+  return { id, kind: 'pattern', pattern: { subject: 'feature', source_feature: `@${sourceFeature}`, ...fields } }
 }
 
 function linear(fields: Dict): Dict {
@@ -159,6 +159,50 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     expect(new Set(after).size).toBe(after.length)
     expect(after.filter((uuid) => !before.has(uuid)).length).toBeGreaterThanOrEqual(12)
     expectUniqueFaceUuids(r, 'pt1')
+  })
+
+  it('infers the feature subject on a pattern authored before the subject field', () => {
+    // Old rows carry source_feature and no subject. Reading the source they
+    // actually name keeps them solving without rewriting the document.
+    const r = h.run({
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 5),
+        rectSketch('sk_slot', 4, 4, 2, 2),
+        extrude('ex_slot', '$sk_slot', 10, 'cut'),
+        {
+          id: 'pt1', kind: 'pattern',
+          pattern: { source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0] },
+        },
+      ],
+    })
+    expect(h.res(r, 'pt1').status).toBe('ok')
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 320, 6)
+  })
+
+  it('leaves an add copy that misses the target as its own part', () => {
+    // The source boss is fused into the plate; its pattern copy sits a pitch
+    // away and does not touch the plate. That used to fail with "add would
+    // create island shape"; an island is a regular new part, so the pattern
+    // succeeds and the copy is its own body.
+    const r = h.run({
+      features: [
+        rectSketch('sk_plate', 10, 10, -5, -5),
+        extrude('ex_plate', '$sk_plate', 5),
+        rectSketch('sk_boss', 2, 2, 1, 1),
+        extrude('ex_boss', '$sk_boss', 4, 'add'),
+        pattern('pt1', 'ex_boss', linear({ count: 2, pitch: -20 })),
+      ],
+    })
+    const res = h.res(r, 'pt1')
+    expect(res.status).toBe('ok')
+    // The island is on the NEGATIVE side, so centroid order would rank it
+    // first; the target must still keep the existing id.
+    expect(res.body_ids).toEqual(['body_ex_plate', 'body_ex_plate_1'])
+    // The source boss sits inside the plate, so it adds no material; the island
+    // copy is outside it and contributes its own 2 x 2 x 4 volume.
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(500, 6)
+    expect(volumeAt(r, 'pt1', 'body_ex_plate_1')).toBeCloseTo(16, 6)
   })
 
   it('repeats a cut around an axis, one copy per 90 degrees', () => {
@@ -272,7 +316,7 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
         pattern('pt1', 'sk', linear({})),
       ],
     })
-    expect(String(h.res(notSolid, 'pt1').exception)).toContain('a pattern repeats an extrude, revolve or sweep')
+    expect(String(h.res(notSolid, 'pt1').exception)).toContain('a feature pattern repeats an extrude, revolve or sweep')
   })
 
   it('names the order fix when the source comes after the pattern', () => {

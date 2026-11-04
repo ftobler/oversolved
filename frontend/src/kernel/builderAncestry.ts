@@ -356,7 +356,7 @@ function _tryRegisterBodyBrepFromMeta(
 
 // Read one body's B-rep and register its ancestry into the live repo. Called
 // per feature in the build loop so a later feature's face/edge/vertex query
-// resolves against an earlier body's geometry (e.g. a circular_array axis edge
+// resolves against an earlier body's geometry (e.g. a pattern axis edge
 // query).
 //
 // Returns whether the ancestry actually landed. Both failure exits are silent by design

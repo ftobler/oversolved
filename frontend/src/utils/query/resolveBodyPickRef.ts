@@ -30,7 +30,7 @@ function normalizeBodyRef(ref: string): string {
 
 /**
  * Convert a viewport selection ID to a body reference for any field that names
- * a whole body (circular_array `source_body`, extrude/revolve `merge_target`).
+ * a whole body (pattern `source_body`, extrude/revolve `merge_target`).
  * Picking a face of the body is the natural gesture, so a `face:` selection
  * yields its inner ancestry query and a `?` query passes through untouched:
  * both are body-exact and resolve to the owning body in the kernel

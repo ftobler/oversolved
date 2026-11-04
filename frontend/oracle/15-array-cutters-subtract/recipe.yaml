@@ -118,15 +118,16 @@ features:
       direction: normal
       operation: new
   - id: ar1
-    kind: array
-    array:
+    kind: pattern
+    pattern:
+      subject: body
       source_body: "@body_ex2"
       mode: linear
       operation: new
       include_source: true
-      count_x: 3
-      pitch_x: 20
-      direction_x_query: "@sk1/bottom"
+      count: 3
+      pitch: 20
+      direction_query: "@sk1/bottom"
   - id: bo1
     kind: boolean
     boolean:

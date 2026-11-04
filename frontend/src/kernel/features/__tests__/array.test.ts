@@ -12,9 +12,76 @@ import type { Repository } from '../../query'
 import { Repository as RealRepository } from '../../query'
 import type { HandleTable } from '../../occ/handleTable'
 import type { Body } from '../../types3d'
-import { buildArrayTransforms, buildCircularTransforms, solveArray, solveCircularArray } from '../array'
+import { buildPatternTransforms, solvePattern } from '../pattern'
 import { bareBody } from '../shared/bodyResolution'
 import { emptyBrepDiff } from '../../types3d'
+
+type Dict = Record<string, unknown>
+
+// These suites were written against the separate array leaf. The unified
+// pattern leaf now owns the same transform arithmetic, told which grid to
+// build by `mode`; these adapters keep the cases focused on the arithmetic by
+// spelling the old linear/circular field names into the unified ones.
+function linearize(sub: Dict): Dict {
+  if ((sub.mode ?? 'linear') !== 'linear') return sub
+  return {
+    ...sub,
+    mode: 'linear',
+    count: sub.count ?? sub.count_x,
+    pitch: sub.pitch ?? sub.pitch_x,
+    direction: sub.direction ?? sub.direction_x,
+    direction_query: sub.direction_query ?? sub.direction_x_query,
+    invert: sub.invert ?? sub.invert_x,
+  }
+}
+
+function buildArrayTransforms(
+  oc: OccModule,
+  scope: DisposeScope,
+  sub: Dict,
+  repo: Repository,
+  bodyStore: Record<string, Body> = {},
+) {
+  return buildPatternTransforms(oc, scope, linearize(sub), repo, bodyStore, (sub.include_source as boolean) ?? true)
+}
+
+function buildCircularTransforms(
+  oc: OccModule,
+  scope: DisposeScope,
+  sub: Dict,
+  repo: Repository,
+  bodyStore: Record<string, Body> = {},
+) {
+  return buildPatternTransforms(oc, scope, { ...sub, mode: 'circular' }, repo, bodyStore, (sub.include_source as boolean) ?? true)
+}
+
+function solveArray(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  feature: Dict,
+  repo: Repository,
+  store: Record<string, Body>,
+) {
+  return solvePattern(oc, scope, table, {
+    ...feature,
+    pattern: { subject: 'body', ...linearize(feature.array as Dict) },
+  }, repo, store)
+}
+
+function solveCircularArray(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  feature: Dict,
+  repo: Repository,
+  store: Record<string, Body>,
+) {
+  return solvePattern(oc, scope, table, {
+    ...feature,
+    pattern: { subject: 'body', mode: 'circular', ...(feature.circular_array as Dict) },
+  }, repo, store)
+}
 
 // Recording trsf doubles: each builder leaves its translation or rotation on
 // the returned object so tests can assert the produced offsets/angles.
@@ -177,11 +244,11 @@ describe('buildArrayTransforms (linear)', () => {
   it('refuses a zero stored direction_x vector by name', () => {
     expect(() => buildArrayTransforms(
       makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5, direction_x: [0, 0, 0] }, repo,
-    )).toThrow(/direction X must be a non-zero vector/)
+    )).toThrow(/direction must be a non-zero vector/)
   })
 
   it('throws when the direction picker is empty', () => {
-    expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5 }, repo)).toThrow(/direction X is required/)
+    expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5 }, repo)).toThrow(/direction is required/)
   })
 
   it('throws when the direction query does not resolve', () => {
@@ -190,24 +257,24 @@ describe('buildArrayTransforms (linear)', () => {
 
   it('throws instead of silently no-opping when count_x is 0', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 0, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
-      .toThrow(/count_x must be a positive integer/)
+      .toThrow(/count must be a positive integer/)
   })
 
   it('throws when count_x is negative', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: -1, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
-      .toThrow(/count_x must be a positive integer/)
+      .toThrow(/count must be a positive integer/)
   })
 
   it('throws instead of silently truncating when count_x is fractional', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2.7, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
-      .toThrow(/count_x must be a positive integer/)
+      .toThrow(/count must be a positive integer/)
   })
 
   it('throws when pitch_x is not finite', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: NaN, direction_x_query: 'qx' }, xyRepo))
-      .toThrow(/pitch_x must be a finite number/)
+      .toThrow(/pitch must be a finite number/)
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: Infinity, direction_x_query: 'qx' }, xyRepo))
-      .toThrow(/pitch_x must be a finite number/)
+      .toThrow(/pitch must be a finite number/)
   })
 
   it('threads the body store so a :solid direction pick coerces upward', () => {
@@ -219,7 +286,7 @@ describe('buildArrayTransforms (linear)', () => {
       ['@ex1'],
       { type: 'flatface', body_id: 'body_ex1', face_index: 0, created_by: 'ex1' },
     )
-    const bodyStore = { body_ex1: { id: 'body_ex1', normal: [0, 0, 2] } }
+    const bodyStore = { body_ex1: { id: 'body_ex1', normal: [0, 0, 2] } } as unknown as Record<string, Body>
     const feature = { mode: 'linear', count_x: 2, pitch_x: 5, direction_x_query: '?4;@ex1:solid' }
     expect(() => buildArrayTransforms(makeFake(), scope, feature, realRepo)).toThrow()
     const t = buildArrayTransforms(makeFake(), scope, feature, realRepo, bodyStore)

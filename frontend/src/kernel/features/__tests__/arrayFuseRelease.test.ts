@@ -42,6 +42,7 @@ vi.mock('../../occ/transforms', () => ({
 vi.mock('../bodySplit', () => ({
   registerSplitBodies: () => ['body_ex1'],
   resplitBody: mocks.resplitBody,
+  solidHoldingFaces: () => null,
 }))
 // Reading a body's names walks its OCC shape; these bodies have none.
 vi.mock('../../occ/bodyNames', async (importOriginal) => {
@@ -51,7 +52,7 @@ vi.mock('../../occ/bodyNames', async (importOriginal) => {
 
 import { HandleTable } from '../../occ/handleTable'
 import { DisposeScope } from '../../occ/disposeScope'
-import { solveArray } from '../array'
+import { solveArray } from './patternBodyTestAdapters'
 import { bareBody } from '../shared/bodyResolution'
 import { emptyBrepDiff } from '../../types3d'
 import type { OccModule } from '../../occ/occTypes'
@@ -253,7 +254,7 @@ describe('array add fuse releases (H21)', () => {
         body_id: 'body_ex1',
         body_ids: [],
         operation: 'add',
-        solver_warning: "array: the add removed all of body 'body_ex1'; the body was deleted",
+        solver_warning: "pattern: the add removed all of body 'body_ex1'; the body was deleted",
       })
     } finally {
       scope.dispose()

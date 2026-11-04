@@ -5,11 +5,11 @@ import { applyRenamePart, applySetPartColor, applySetPartTransparency, applySetP
 import { applyReorderPickField } from '@/utils/yamlMutations/featureAdmin'
 import { applyAddFillet, applyAddChamfer, applySetFilletField, applySetChamferField } from '@/utils/yamlMutations/featureDefs'
 import { applyAddBoolean, applySetBooleanField } from '@/utils/yamlMutations/featureDefs'
-import { applySetArrayField } from '@/utils/yamlMutations/featureDefs'
+import { applySetPatternField } from '@/utils/yamlMutations/featureDefs'
 import { randomId, warn, setIdScope, setIdSource } from '@/utils/yamlMutations/helpers'
 import { featureAt } from '@/testing/featureAccess'
 
-const array0 = (doc: PartDoc) => featureAt(doc, 0, 'array').array
+const pattern0 = (doc: PartDoc) => featureAt(doc, 0, 'pattern').pattern
 const boolean0 = (doc: PartDoc) => featureAt(doc, 0, 'boolean').boolean
 const chamfer0 = (doc: PartDoc) => featureAt(doc, 0, 'chamfer').chamfer
 const constraints0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').constraints!
@@ -396,41 +396,41 @@ describe('applySetBooleanField keep_tools', () => {
   })
 })
 
-describe('applySetArrayField direction_x_query', () => {
-  it('sets direction_x_query on array feature', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'arr1', kind: 'array', array: { mode: 'linear', count_x: 2, pitch_x: 20, direction_x: [1, 0, 0], operation: 'add', include_source: true } }] }
-    applySetArrayField(doc, 'arr1', 'direction_x_query', '@body_ex1/edge/0')
-    expect(array0(doc).direction_x_query).toBe('@body_ex1/edge/0')
+describe('applySetPatternField direction_query', () => {
+  it('sets direction_query on a linear pattern', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'linear', count: 2, pitch: 20, direction: [1, 0, 0], operation: 'add', include_source: true } }] }
+    applySetPatternField(doc, 'pt1', 'direction_query', '@body_ex1/edge/0')
+    expect(pattern0(doc).direction_query).toBe('@body_ex1/edge/0')
   })
 
-  it('no-ops for feature without array', () => {
+  it('no-ops for feature without pattern', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ext1', kind: 'extrude', extrude: { sketch: ['s1'], distance: 10, direction: 'normal' } }] }
-    applySetArrayField(doc, 'ext1', 'direction_x_query', '@body_ex1/edge/0')
+    applySetPatternField(doc, 'ext1', 'direction_query', '@body_ex1/edge/0')
     expect(extrude0(doc).distance).toBe(10)
   })
 })
 
-describe('applySetArrayField direction_y_query', () => {
-  it('sets direction_y_query on array feature', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'arr1', kind: 'array', array: { mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20, direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add', include_source: true } }] }
-    applySetArrayField(doc, 'arr1', 'direction_y_query', '@body_ex1/edge/1')
-    expect(array0(doc).direction_y_query).toBe('@body_ex1/edge/1')
+describe('applySetPatternField direction_y_query', () => {
+  it('sets direction_y_query on a rectangular pattern', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20, direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add', include_source: true } }] }
+    applySetPatternField(doc, 'pt1', 'direction_y_query', '@body_ex1/edge/1')
+    expect(pattern0(doc).direction_y_query).toBe('@body_ex1/edge/1')
   })
 })
 
-describe('applySetArrayField direction_x', () => {
-  it('sets direction_x on array feature', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'arr1', kind: 'array', array: { mode: 'linear', count_x: 2, pitch_x: 20, direction_x: [1, 0, 0], operation: 'add', include_source: true } }] }
-    applySetArrayField(doc, 'arr1', 'direction_x', [0, 1, 0])
-    expect(array0(doc).direction_x).toEqual([0, 1, 0])
+describe('applySetPatternField direction', () => {
+  it('sets direction on a linear pattern', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'linear', count: 2, pitch: 20, direction: [1, 0, 0], operation: 'add', include_source: true } }] }
+    applySetPatternField(doc, 'pt1', 'direction', [0, 1, 0])
+    expect(pattern0(doc).direction).toEqual([0, 1, 0])
   })
 })
 
-describe('applySetArrayField direction_y', () => {
-  it('sets direction_y on array feature', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'arr1', kind: 'array', array: { mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20, direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add', include_source: true } }] }
-    applySetArrayField(doc, 'arr1', 'direction_y', [1, 0, 0])
-    expect(array0(doc).direction_y).toEqual([1, 0, 0])
+describe('applySetPatternField direction_y', () => {
+  it('sets direction_y on a rectangular pattern', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20, direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add', include_source: true } }] }
+    applySetPatternField(doc, 'pt1', 'direction_y', [1, 0, 0])
+    expect(pattern0(doc).direction_y).toEqual([1, 0, 0])
   })
 })
 

@@ -44,7 +44,7 @@ describe('findRecoveryOffer load gate', () => {
 
   it('declines a record the loader refuses', async () => {
     const stored = stringifyYaml(makeDoc(makeSketch('sk1')))
-    await park({ features: [{ id: 'a1', kind: 'array', array: { count_x: 5000 } }] })
+    await park({ features: [{ id: 'a1', kind: 'pattern', pattern: { count_x: 5000 } }] })
     expect(await findRecoveryOffer('ws-1', 'doc-1', stored)).toBeNull()
   })
 })

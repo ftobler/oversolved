@@ -8,6 +8,7 @@ import { resolveBodyPickRef, resolveAxisQuery } from '@/utils/query/resolveBodyP
 import { stripSelectionWrapper } from '@/utils/query/selectionId'
 import { positive, nonNegative, finite, between } from '@/utils/core/valueRules'
 import { arrayCountProblem, MAX_ARRAY_COUNT } from '@/persistence/docSchema'
+import { patternSubject } from '@/utils/core/patternSubject'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- schema data is a heterogeneous bag of editor values
 type SchemaData = Record<string, any>
@@ -362,30 +363,60 @@ function siblingCount(other: unknown, mode: unknown): number | null {
   return mode === 'rectangular' && typeof other === 'number' ? other : null
 }
 
-export const ARRAY_SCHEMA: FeatureEditorSchema = {
-  mutationPrefix: 'set_array',
-  subKey: 'array',
-  // The array direction now comes solely from the picked geometry
-  // (direction_x_query / direction_y_query); there is no raw-vector fallback, so
-  // an unpicked direction is a solve error rather than a silent world-axis array.
-  defaults: { source_body: '', mode: 'linear', operation: 'add', include_source: true, count_x: 2, pitch_x: 20 },
+export const PATTERN_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_pattern',
+  subKey: 'pattern',
+  defaults: { subject: 'body', mode: 'linear', operation: 'add', include_source: true, count: 2, pitch: 20 },
+  // Show a legacy feature pattern with its inferred subject, so its rows and
+  // fields are the ones it actually solves with.
+  normalize: (raw) => ({ ...raw, subject: patternSubject(raw) }),
   fields: [
-    { type: 'select', key: 'mode', label: 'Mode', default: 'linear',
-      options: [{ value: 'linear', label: 'Linear' }, { value: 'rectangular', label: 'Rectangular' }] },
-    // Empty means "the first body in the store", which is what the solver falls back to.
+    // One feature, two subjects: a body pattern copies a whole body, a feature
+    // pattern reapplies one earlier solid producer's own add or cut.
+    { type: 'select', key: 'subject', label: 'Subject', default: 'body',
+      options: [{ value: 'body', label: 'Body' }, { value: 'feature', label: 'Feature' }] },
     { type: 'pick', key: 'source_body', label: 'Body', transform: resolveBodyPickRef,
-      emptyText: '(first body)' },
+      showWhen: (d) => d.subject !== 'feature', emptyText: '(pick the body to copy)' },
+    // The source is a FEATURE row, not a viewport pick: the options are the
+    // document's own extrude/revolve/sweep rows, which are exactly the leaves
+    // whose tool the pattern can repeat.
+    { type: 'featureSelect', key: 'source_feature', label: 'Source Feature',
+      kinds: ['extrude', 'revolve', 'sweep'], showWhen: (d) => d.subject === 'feature',
+      emptyText: '(pick the feature to repeat)' },
+    { type: 'pick', key: 'target_body', label: 'Target body', transform: resolveBodyPickRef,
+      showWhen: (d) => d.subject === 'feature', emptyText: '(the body the source shaped)' },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
+      showWhen: (d) => d.subject !== 'feature',
       options: [{ value: 'add', label: 'Add' }, { value: 'new', label: 'New' }] },
-    { type: 'checkbox', key: 'include_source', label: 'Include src', default: true },
-    // A direction pick is required: an edge sets its own direction, a planar face
-    // its normal. `invert_x` flips whichever was picked.
+    { type: 'checkbox', key: 'include_source', label: 'Include src', default: true,
+      showWhen: (d) => d.subject !== 'feature' },
+    { type: 'select', key: 'mode', label: 'Mode', default: 'linear',
+      options: [
+        { value: 'linear', label: 'Linear' },
+        { value: 'rectangular', label: 'Rectangular' },
+        { value: 'circular', label: 'Circular' },
+      ] },
+    // Count is the total on one axis: the source's own slot is instance 1.
+    { type: 'number', key: 'count', label: 'Count', default: 2, parse: 'int', validate: positive, min: 1,
+      max: MAX_ARRAY_COUNT, showWhen: (d) => d.mode !== 'rectangular',
+      validateWith: (v) => arrayCountProblem('count', v) },
+    { type: 'pick', key: 'direction_query', label: 'Direction', transform: resolveAxisQuery,
+      showWhen: (d) => d.mode === 'linear', emptyText: '(pick edge or face, required)' },
+    { type: 'checkbox', key: 'invert', label: 'Invert', default: false,
+      showWhen: (d) => d.mode === 'linear' },
+    { type: 'number', key: 'pitch', label: 'Pitch', default: 20, validate: nonNegative, min: 0,
+      showWhen: (d) => d.mode === 'linear' },
+    // Rectangular mode: one picked direction per axis. The seed cell (0,0) is
+    // the source slot and is never a copy.
     { type: 'pick', key: 'direction_x_query', label: 'Direction X', transform: resolveAxisQuery,
-      emptyText: '(pick edge or face, required)' },
-    { type: 'checkbox', key: 'invert_x', label: 'Invert X', default: false },
-    { type: 'number', key: 'count_x', label: 'Count X', default: 2, parse: 'int', validate: positive, min: 1,
+      showWhen: (d) => d.mode === 'rectangular', emptyText: '(pick edge or face, required)' },
+    { type: 'checkbox', key: 'invert_x', label: 'Invert X', default: false,
+      showWhen: (d) => d.mode === 'rectangular' },
+    { type: 'number', key: 'count_x', label: 'Count X', default: 2,
+      showWhen: (d) => d.mode === 'rectangular', parse: 'int', validate: positive, min: 1,
       max: MAX_ARRAY_COUNT, validateWith: (v, d) => arrayCountProblem('count_x', v, siblingCount(d.count_y, d.mode)) },
-    { type: 'number', key: 'pitch_x', label: 'Pitch X', default: 20, validate: nonNegative, min: 0 },
+    { type: 'number', key: 'pitch_x', label: 'Pitch X', default: 20,
+      showWhen: (d) => d.mode === 'rectangular', validate: nonNegative, min: 0 },
     { type: 'pick', key: 'direction_y_query', label: 'Direction Y', transform: resolveAxisQuery,
       showWhen: (d) => d.mode === 'rectangular', emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert_y', label: 'Invert Y', default: false,
@@ -395,64 +426,17 @@ export const ARRAY_SCHEMA: FeatureEditorSchema = {
       max: MAX_ARRAY_COUNT, validateWith: (v, d) => arrayCountProblem('count_y', v, siblingCount(d.count_x, d.mode)) },
     { type: 'number', key: 'pitch_y', label: 'Pitch Y', default: 20,
       showWhen: (d) => d.mode === 'rectangular', validate: nonNegative, min: 0 },
-  ],
-}
-
-export const CIRCULAR_ARRAY_SCHEMA: FeatureEditorSchema = {
-  mutationPrefix: 'set_circular_array',
-  subKey: 'circular_array',
-  defaults: { source_body: '', operation: 'add', include_source: true, count: 4 },
-  fields: [
-    // Empty means "the first body in the store", which is what the solver falls back to.
-    { type: 'pick', key: 'source_body', label: 'Body', transform: resolveBodyPickRef,
-      emptyText: '(first body)' },
-    { type: 'select', key: 'operation', label: 'Operation', default: 'add',
-      options: [{ value: 'add', label: 'Add' }, { value: 'new', label: 'New' }] },
-    { type: 'checkbox', key: 'include_source', label: 'Include src', default: true },
-    { type: 'number', key: 'count', label: 'Count', default: 4, parse: 'int', validate: positive, min: 1,
-      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v) },
+    // Circular mode. An axis pick is required; `invert_axis` reverses the sweep.
     { type: 'checkbox', key: '_evenly_spaced', label: 'Evenly spaced', default: true,
+      showWhen: (d) => d.mode === 'circular',
       isChecked: (d) => d.step_angle == null,
       getMutation: (checked, d) => ({ field: 'step_angle', value: checked ? null : (360 / (d.count ?? 4)) }) },
     { type: 'number', key: 'step_angle', label: 'Step angle',
-      showWhen: (d) => d.step_angle != null },
-    // An axis pick is required: an edge is the rotation axis, a planar face its
-    // normal. `invert_axis` flips the axis, reversing the sweep sense.
-    { type: 'pick', key: 'axis', label: 'Axis', transform: resolveAxisQuery,
-      emptyText: '(pick edge or face, required)' },
-    { type: 'checkbox', key: 'invert_axis', label: 'Invert axis', default: false },
-  ],
-}
-
-export const PATTERN_SCHEMA: FeatureEditorSchema = {
-  mutationPrefix: 'set_pattern',
-  subKey: 'pattern',
-  defaults: { source_feature: '', mode: 'linear', count: 2, pitch: 20 },
-  fields: [
-    // The source is a FEATURE row, not a viewport pick: the options are the
-    // document's own extrude/revolve/sweep rows, which are exactly the leaves
-    // whose tool the pattern can repeat.
-    { type: 'featureSelect', key: 'source_feature', label: 'Source Feature',
-      kinds: ['extrude', 'revolve', 'sweep'], emptyText: '(pick the feature to repeat)' },
-    { type: 'select', key: 'mode', label: 'Mode', default: 'linear',
-      options: [{ value: 'linear', label: 'Linear' }, { value: 'circular', label: 'Circular' }] },
-    // Count is the total: the source's own application is instance 1.
-    { type: 'number', key: 'count', label: 'Count', default: 2, parse: 'int', validate: positive, min: 1,
-      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v) },
-    { type: 'pick', key: 'direction_query', label: 'Direction', transform: resolveAxisQuery,
-      showWhen: (d) => d.mode !== 'circular', emptyText: '(pick edge or face, required)' },
-    { type: 'checkbox', key: 'invert', label: 'Invert', default: false,
-      showWhen: (d) => d.mode !== 'circular' },
-    { type: 'number', key: 'pitch', label: 'Pitch', default: 20, validate: nonNegative, min: 0,
-      showWhen: (d) => d.mode !== 'circular' },
-    { type: 'number', key: 'step_angle', label: 'Step angle',
-      showWhen: (d) => d.mode === 'circular' },
+      showWhen: (d) => d.mode === 'circular' && d.step_angle != null },
     { type: 'pick', key: 'axis', label: 'Axis', transform: resolveAxisQuery,
       showWhen: (d) => d.mode === 'circular', emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert_axis', label: 'Invert axis', default: false,
       showWhen: (d) => d.mode === 'circular' },
-    { type: 'pick', key: 'target_body', label: 'Body', transform: resolveBodyPickRef,
-      emptyText: '(the body the source shaped)' },
   ],
 }
 
@@ -566,8 +550,6 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   transform: TRANSFORM_SCHEMA,
   mirror: MIRROR_SCHEMA,
   split: SPLIT_SCHEMA,
-  array: ARRAY_SCHEMA,
-  circular_array: CIRCULAR_ARRAY_SCHEMA,
   pattern: PATTERN_SCHEMA,
   delete_body: DELETE_BODY_SCHEMA,
   variable: VARIABLE_SCHEMA,

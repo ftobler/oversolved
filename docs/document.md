@@ -8,7 +8,8 @@ The rollback position is an index into that list, and an incremental rebuild
 reuses the unchanged prefix (`findFirstDirty`, `kernel/builder.ts`).
 
 The records are flat: no nesting, no control flow, no user functions. Repetition
-is a feature kind (`array`, `circular_array`). Dependencies between features are
+is the `pattern` feature kind, which repeats either a body or an earlier
+feature. Dependencies between features are
 references (query strings, see Query Syntax) plus the list order; numeric params
 may be expression strings evaluated against earlier `variable` features
 (`kernel/evalExpr.ts`). Some kinds are shorthand that is lowered before the
@@ -399,12 +400,13 @@ the body untouched; the other groups still apply (status `partial`).
     clearance: 0.1               # subtract only; signed length in the document unit, grows (+) or shrinks (-) every tool on all sides
 ```
 
-A `tools` entry naming an `array` or `circular_array` feature (`"@carr1"`)
-stands for that array's source body, every instance body, and every body an
-`operation: add` array split off as a disjoint copy, resolved at solve time, so
-a later count change is followed. The target is left out of the expansion. A
-list of body ids that names only some of one array's bodies solves with a
-warning naming both counts.
+A `tools` entry naming a body-subject `pattern` feature (`"@pt1"`)
+stands for that pattern's source body, every instance body, and every body an
+`operation: add` pattern split off as a disjoint copy, resolved at solve time,
+so a later count change is followed. The target is left out of the expansion. A
+list of body ids that names only some of one pattern's bodies solves with a
+warning naming both counts. A feature-subject pattern reshapes one existing
+body and is not expanded.
 
 ### hole
 
@@ -480,42 +482,56 @@ form) is migrated to `bodies:` on load by `migrateLegacyBodyPicks`. Write the
 plural key. The raw view (`RawDocumentDialog.tsx`) is a read-only fallback for a
 file that failed to load, not an editor.
 
-### array
+### pattern
+
+One feature patterns either a whole body or one earlier feature's own
+operation. `subject` selects what repeats; `mode` selects the instance grid.
+The same kind, row and mutation cover all three modes, so a linear, rectangular
+or circular pattern is one authored feature.
+
+#### Body subject
 
 ```yaml
-- id: arr1
-  kind: array
-  array:
+- id: pt1
+  kind: pattern
+  pattern:
+    subject: body                # body (default) | feature
     source_body: "@extrude1"     # required
-    mode: linear                 # linear | rectangular
-    operation: new               # new | add
-    include_source: true         # keep the source as instance 0 of the pattern
+    mode: linear                 # linear | rectangular | circular
+    operation: add               # add | new
+    include_source: true         # keep the source as instance 0
+    count: 3                     # linear/circular: total instances, source included
+    pitch: 20.0                  # linear: spacing along direction, document unit
+    direction: [1, 0, 0]         # linear: or direction_query, a straight edge or planar face
+    invert: false                # reverse the direction
+- id: pt2
+  kind: pattern
+  pattern:
+    subject: body
+    source_body: "@extrude1"
+    mode: rectangular            # two axes instead of the one-axis fields
+    operation: add
+    include_source: true
     count_x: 3
     pitch_x: 20.0
-    direction_x: [1, 0, 0]       # or direction_x_query, a straight edge or planar face
-    invert_x: false              # reverse the direction
-    count_y: 2                   # rectangular only
+    direction_x: [1, 0, 0]       # or direction_x_query
+    invert_x: false
+    count_y: 2
     pitch_y: 10.0
-    direction_y: [0, 1, 0]
-    direction_y_query: "?query:straightedge"
+    direction_y: [0, 1, 0]       # or direction_y_query
     invert_y: false
-```
-
-### circular_array
-
-A rotational array is its own feature kind (not a `mode` of `array`):
-
-```yaml
-- id: carr1
-  kind: circular_array
-  circular_array:
+- id: pt3
+  kind: pattern
+  pattern:
+    subject: body
     source_body: "@extrude1"
+    mode: circular
+    operation: add
+    include_source: true
     count: 4
     step_angle: 90.0             # optional; defaults to 360 / count
     axis: "@sk1/axisLine"        # query; or axis_origin + axis_direction
     invert_axis: false           # reverse the sweep sense
-    operation: new               # new | add
-    include_source: true
 ```
 
 A resolved `axis` overrides the stored pair; `axis_direction` alone rotates
@@ -528,27 +544,25 @@ intersect. Disjoint copies stay separate bodies, taking the source id plus
 `operation: new` to keep the source as instance 0 and give every copy its own
 body.
 
-### pattern
+#### Feature subject
 
-A pattern repeats an earlier FEATURE's own operation inside the body that
-feature already shaped. It is not a body array plus a boolean: the source's
-tool is applied again at each copy position, so one mutation makes one feature
-row and one undo entry, and every copied face gets its own construction names
-under the pattern feature.
+A feature-subject pattern repeats an earlier FEATURE's own operation inside the
+body that feature already shaped. It is not a body copy plus a boolean: the
+source's tool is applied again at each copy position, so one mutation makes one
+feature row and one undo entry, and every copied face gets its own construction
+names under the pattern feature.
 
 ```yaml
-- id: pt1
+- id: pt2
   kind: pattern
   pattern:
+    subject: feature
     source_feature: "@ex1"       # required: an earlier extrude, revolve or sweep
-    mode: linear                 # linear | circular
+    mode: linear                 # linear | rectangular | circular
     count: 3                     # total instances, the source's own included
-    pitch: 20.0                  # linear: spacing along direction, document unit
-    direction: [1, 0, 0]         # linear: or direction_query, a straight edge or planar face
-    invert: false                # reverse the direction
-    step_angle: 90.0             # circular: absent means 360 / count
-    axis: "@sk1/axisLine"        # circular: query; or axis_origin + axis_direction
-    invert_axis: false           # reverse the sweep sense
+    pitch: 20.0                  # linear: spacing along direction
+    direction: [1, 0, 0]         # linear: or direction_query
+    invert: false
     target_body: "@body_ex1"     # optional: the body to apply to when the source touched several
 ```
 
@@ -559,16 +573,23 @@ copy. The allowed source kinds are `extrude`, `revolve` and `sweep`; a hole
 pattern is the sketch's own multiple drill sites, and a fillet or shell has no
 standalone tool to repeat.
 
-`count` is the total instance count: the source feature already applied once,
-so `count: 3` adds two copies. `count: 1` is a no-op. The body is the one the
+For a feature subject, `count` is the total instance count: the source feature
+already applied once, so `count: 3` adds two copies and `count: 1` is a no-op.
+For a body subject, `count` includes the source only when `include_source` is
+true: with `include_source: false`, `count: 3` makes three copies and
+`count: 1` makes one. Rectangular mode always leaves the seed cell to the
+source, so it makes `count_x * count_y - 1` copies. The body is the one the
 source feature created or modified; when it touched more than one (a cut with
 no merge target reaches every body), the solver refuses with the list and
-`target_body` picks one.
+`target_body` picks one. A copy that cannot apply is named: some applied is a
+`partial` feature listing how many copies landed and which copy failed, none
+applied is an error.
 
 Copies apply through the same body operation the source used, one at a time. A
-copy that cannot apply is a failure for that copy: a cut that shares no volume
-with the body, or an add whose copy would be a separate island rather than
-fused material. If some copies applied the feature reports `partial` with the
+cut copy that shares no volume with the body is a failure for that copy. An add
+copy that does not touch the body is an island: it is a regular new part, not a
+failure, and the target keeps its id while the island takes a `_1`, `_2`...
+sibling id. If some cut copies applied the feature reports `partial` with the
 applied count and the failing copies, and if none applied it is a feature
 error. The body keeps its id and its `created_by`, so the pattern changes the
 part's material without renaming it.

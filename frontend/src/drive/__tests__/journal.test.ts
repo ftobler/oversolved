@@ -413,11 +413,11 @@ describe('replayJournal', () => {
 
   it('replays the app null clears for setter fields', async () => {
     // The app writes `value: null` to clear a setter field (hole.thread,
-    // circular_array.step_angle); the replay validator must accept it or real
-    // repros fail with invalid-mutation.
+    // pattern.step_angle); the replay validator must accept it or real repros
+    // fail with invalid-mutation.
     const doc = makeDoc(
       { id: 'h1', kind: 'hole', hole: { thread: { designation: 'M6x1' } } } as never,
-      { id: 'ca1', kind: 'circular_array', circular_array: { count: 4, step_angle: 45 } } as never,
+      { id: 'ca1', kind: 'pattern', pattern: { subject: 'body', mode: 'circular', count: 4, step_angle: 45 } } as never,
     )
     const journal = new CommandJournal()
     const recorded = makeSession(doc, journal)
@@ -425,7 +425,7 @@ describe('replayJournal', () => {
       type: 'set_hole_field', featureId: 'h1', field: 'thread', value: null,
     }).ok).toBe(true)
     expect(recorded.session.execute({
-      type: 'set_circular_array_field', featureId: 'ca1', field: 'step_angle', value: null,
+      type: 'set_pattern_field', featureId: 'ca1', field: 'step_angle', value: null,
     }).ok).toBe(true)
     const repro = journal.repro()!
     expect(repro.journal).toHaveLength(2)

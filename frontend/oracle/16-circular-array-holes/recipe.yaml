@@ -118,8 +118,10 @@ features:
       direction: normal
       operation: new
   - id: ca1
-    kind: circular_array
-    circular_array:
+    kind: pattern
+    pattern:
+      subject: body
+      mode: circular
       source_body: "@body_ex2"
       operation: new
       include_source: true

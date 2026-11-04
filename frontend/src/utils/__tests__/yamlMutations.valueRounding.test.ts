@@ -7,8 +7,7 @@ import {
   applyAddFillet,
   applyAddChamfer,
   applyAddShell,
-  applyAddArray,
-  applyAddCircularArray,
+  applyAddPattern,
   applyAddHole,
   applyAddPlane,
   applyAddEntity,
@@ -18,8 +17,7 @@ import {
   applySetShellField,
   applySetMoveFaceField,
   applySetTransformField,
-  applySetArrayField,
-  applySetCircularArrayField,
+  applySetPatternField,
   applySetPlaneDefinitionField,
   applySetConstraintValue,
 } from '@/utils/yamlMutations'
@@ -130,8 +128,8 @@ describe('feature value rounding', () => {
 
     it('an inline add field lands rounded through the setter funnel', () => {
       const doc: PartDoc = { features: [] }
-      applyAddArray(doc, 'ar1', undefined, { pitch_x: MESSY })
-      expect(featureAt(doc, 0, 'array').array.pitch_x).toBe(MESSY_ROUNDED)
+      applyAddPattern(doc, 'ar1', undefined, { pitch: MESSY })
+      expect(featureAt(doc, 0, 'pattern').pattern.pitch).toBe(MESSY_ROUNDED)
     })
 
     // A plane offset feeds the solver exactly like a feature distance, so it
@@ -252,48 +250,48 @@ describe('feature value rounding', () => {
     })
   })
 
-  describe('an array count is judged on the authored value', () => {
+  describe('a pattern count is judged on the authored value', () => {
     // The round would heal a float-noise count into the legal integer the user
     // did not author; the setter already refused it, so the add must too.
     it('refuses a float-noise count on both paths', () => {
       const added: PartDoc = { features: [] }
-      applyAddArray(added, 'ar1', undefined, { count_x: 4.0000004 })
+      applyAddPattern(added, 'ar1', undefined, { count: 4.0000004 })
       expect(added.features).toHaveLength(0)
-      const set: PartDoc = { features: [{ id: 'ar2', kind: 'array', array: { mode: 'linear', count_x: 2, pitch_x: 5 } }] }
-      applySetArrayField(set, 'ar2', 'count_x', 4.0000004)
-      expect(featureById(set, 'ar2', 'array').array.count_x).toBe(2)
+      const set: PartDoc = { features: [{ id: 'ar2', kind: 'pattern', pattern: { subject: 'body', mode: 'linear', count: 2, pitch: 5 } }] }
+      applySetPatternField(set, 'ar2', 'count', 4.0000004)
+      expect(featureById(set, 'ar2', 'pattern').pattern.count).toBe(2)
     })
 
     it('refuses a fractional inline count on both paths', () => {
       const added: PartDoc = { features: [] }
-      applyAddArray(added, 'ar1', undefined, { count_x: 2.4 })
-      applyAddCircularArray(added, 'ca1', undefined, { count: 3.5 })
+      applyAddPattern(added, 'ar1', undefined, { count: 2.4 })
+      applyAddPattern(added, 'ca1', undefined, { mode: 'circular', count: 3.5 })
       expect(added.features).toHaveLength(0)
     })
 
-    // The circular array's own setter, the path an edit of an existing array uses.
+    // The circular mode's own setter, the path an edit of an existing pattern uses.
     it('refuses a fractional count on the circular setter too', () => {
-      const set: PartDoc = { features: [{ id: 'ca1', kind: 'circular_array', circular_array: { count: 6 } }] }
-      applySetCircularArrayField(set, 'ca1', 'count', 3.5)
-      expect(featureById(set, 'ca1', 'circular_array').circular_array.count).toBe(6)
+      const set: PartDoc = { features: [{ id: 'ca1', kind: 'pattern', pattern: { subject: 'body', mode: 'circular', count: 6 } }] }
+      applySetPatternField(set, 'ca1', 'count', 3.5)
+      expect(featureById(set, 'ca1', 'pattern').pattern.count).toBe(6)
     })
 
     // The pair cap is judged on the authored pair, not on rounded stand-ins.
     it('judges a rectangular pair against the cells cap', () => {
       const doc: PartDoc = { features: [] }
-      applyAddArray(doc, 'ar1', undefined, { mode: 'rectangular', count_x: 999, count_y: 999 })
+      applyAddPattern(doc, 'ar1', undefined, { mode: 'rectangular', count_x: 999, count_y: 999 })
       expect(doc.features).toHaveLength(0)
-      applyAddArray(doc, 'ar2', undefined, { mode: 'rectangular', count_x: 1000 })
-      expect(featureAt(doc, 0, 'array').array.count_y).toBe(2)
+      applyAddPattern(doc, 'ar2', undefined, { mode: 'rectangular', count_x: 1000 })
+      expect(featureAt(doc, 0, 'pattern').pattern.count_y).toBe(2)
     })
 
     // A non-finite count stays the finiteness gate's job: it drops the key and
     // the seeded default stands, exactly as it did before the rounding boundary.
     it('lets the finiteness gate handle a non-finite inline count', () => {
       const doc: PartDoc = { features: [] }
-      applyAddArray(doc, 'ar1', undefined, { count_x: NaN })
-      expect(featureAt(doc, 0, 'array').array.count_x).toBe(2)
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('refusing count_x'))
+      applyAddPattern(doc, 'ar1', undefined, { count: NaN })
+      expect(featureAt(doc, 0, 'pattern').pattern.count).toBe(2)
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('refusing count'))
     })
   })
 

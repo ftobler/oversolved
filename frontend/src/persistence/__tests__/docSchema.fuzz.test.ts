@@ -26,7 +26,7 @@ const VALID_PART = {
       ],
     },
     { id: 'ex1', kind: 'extrude', extrude: { sketch: ['@sk1'], distance: 10, direction: 'normal' } },
-    { id: 'a1', kind: 'array', array: { source_body: '@ex1', count_x: 4, count_y: 2, pitch_x: 15 } },
+    { id: 'a1', kind: 'pattern', pattern: { source_body: '@ex1', count_x: 4, count_y: 2, pitch_x: 15 } },
   ],
   part_style: { ex1: { name: 'Body', color: '#4f8a8b', visible: true } },
 }
@@ -56,8 +56,8 @@ const PATHS: Array<Array<string | number>> = [
   ['features', 0, 'entities', 0], ['features', 0, 'constraints'],
   ['features', 0, 'initial'], ['features', 0, 'initial', 'line1'],
   ['features', 1, 'extrude'], ['features', 1, 'extrude', 'distance'],
-  ['features', 1, 'extrude', 'sketch'], ['features', 2, 'array'],
-  ['features', 2, 'array', 'count_x'], ['part_style'], ['part_style', 'ex1'],
+  ['features', 1, 'extrude', 'sketch'], ['features', 2, 'pattern'],
+  ['features', 2, 'pattern', 'count_x'], ['part_style'], ['part_style', 'ex1'],
   ['features', 1, 'instance'], ['features', 1, 'instance', 'transform'],
 ]
 

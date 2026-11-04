@@ -15,7 +15,7 @@
     }
   },
   "coverage": {
-    "array/anchor": [
+    "pattern/anchor": [
       "array_rectangular_3x2"
     ],
     "boolean/ancestral": [
@@ -32,7 +32,7 @@
       "pick_chamfer_edge0",
       "pick_chamfer_edge1"
     ],
-    "circular_array/ancestral": [
+    "pattern/ancestral": [
       "circular_array_3copies"
     ],
     "extrude/anchor": [
@@ -117,7 +117,7 @@
   },
   "cases": {
     "array_rectangular_3x2": {
-      "feature_kind": "array",
+      "feature_kind": "pattern",
       "query_tier": "anchor",
       "ok": true
     },
@@ -167,7 +167,7 @@
       "ok": true
     },
     "circular_array_3copies": {
-      "feature_kind": "circular_array",
+      "feature_kind": "pattern",
       "query_tier": "ancestral",
       "ok": true
     },

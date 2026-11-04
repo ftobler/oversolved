@@ -17,17 +17,21 @@ describe('Pattern mutations', () => {
         id: 'pt1',
         kind: 'pattern',
         label: 'Pattern',
-        pattern: { mode: 'linear', count: 2, pitch: 20 },
+        pattern: {
+          subject: 'body', mode: 'linear', operation: 'add', include_source: true,
+          count: 2, pitch: 20,
+        },
       })
     })
 
     it('merges inline fields like the setters, an empty value clearing a key', () => {
       const doc = makeDoc()
       applyAddPattern(doc, 'pt1', 'Ring', {
-        source_feature: '@ex1', count: 4, pitch: 8, direction: [1, 0, 0],
+        subject: 'feature', source_feature: '@ex1', count: 4, pitch: 8, direction: [1, 0, 0],
       })
       expect(pattern0(doc)).toEqual({
-        mode: 'linear', count: 4, pitch: 8, source_feature: '@ex1', direction: [1, 0, 0],
+        subject: 'feature', mode: 'linear', count: 4, pitch: 8,
+        source_feature: '@ex1', direction: [1, 0, 0],
       })
       applyAddPattern(doc, 'pt2', undefined, { count: 3, pitch: '' })
       expect(featureAt(doc, 1, 'pattern').pattern.pitch).toBeUndefined()
@@ -45,7 +49,7 @@ describe('Pattern mutations', () => {
   describe('applySetPatternField', () => {
     it('writes the known fields and clears on empty', () => {
       const doc = makeDoc()
-      applyAddPattern(doc, 'pt1', undefined, { source_feature: '@ex1' })
+      applyAddPattern(doc, 'pt1', undefined, { subject: 'feature', source_feature: '@ex1' })
       applySetPatternField(doc, 'pt1', 'count', 5)
       applySetPatternField(doc, 'pt1', 'mode', 'circular')
       applySetPatternField(doc, 'pt1', 'step_angle', 45)

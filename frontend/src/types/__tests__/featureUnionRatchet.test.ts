@@ -45,11 +45,11 @@ const RATCHETS: Ratchet[] = [
     // 362 after the batch B inline adds: featureDefs' generic mergeInlineFields
     // and setFeatureField take the definition object and name the write bag
     // (FieldBag) once instead of spelling a loose record per call. Same
-    // boundary looseness, one token fewer. 363 after the pattern kind: its leaf
-    // takes the raw feature record like every other leaf (`Dict`), which is the
-    // documented per-kind allowance.
+    // boundary looseness, one token fewer. 362 after the array and circular
+    // array leaves folded into the one pattern leaf: the body-subject half and
+    // the feature-subject half share the kind's single raw record allowance.
     token: 'Record<string, unknown>',
-    baseline: 363,
+    baseline: 362,
   },
 ]
 
