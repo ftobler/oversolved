@@ -83,7 +83,8 @@ describe('featureDeltaRows', () => {
     expect(rows[2]).not.toHaveProperty('warning')
   })
 
-  it('gives partial and overconstrained outcomes no row but keeps a suppressed one', () => {    for (const status of ['exception', 'partial', 'overconstrained'] as const) {
+  it('gives partial and overconstrained outcomes no row but keeps a suppressed one', () => {
+    for (const status of ['exception', 'partial', 'overconstrained'] as const) {
       const outcomes: Record<string, FeatureOutcome> = { ...CLEAN, ex1: { status } }
       expect(featureDeltaRows(DOC, MEASURES, outcomes).map(row => row.id), status)
         .toEqual(['sk1', 'fi1', 'ex2'])
