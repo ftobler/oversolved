@@ -172,11 +172,12 @@ export function transferBooleanNames(
   // A carried target or tool edge UUID keeps the owner it had; an edge this
   // operation created (or one whose faces the transfer renamed) takes the
   // face-side owner, with the tool winning a target-versus-tool boundary.
-  const edgeOwner: Record<string, string> = {}
+  // Recorded entries are applied last: a carried UUID's owner is authoritative,
+  // and a new edge uuid cannot collide with a carried one.
+  const edgeOwner: Record<string, string> = { ...derivedEdgeOwner }
   for (const uuid of edgeNames.entries()) {
     const recorded = input.targetEdgeOwner?.[uuid[1]] ?? input.toolEdgeOwner?.[uuid[1]]
     if (recorded) edgeOwner[uuid[1]] = recorded
   }
-  Object.assign(edgeOwner, derivedEdgeOwner)
   return { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry, faceOwner, edgeOwner }
 }
