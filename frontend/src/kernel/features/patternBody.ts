@@ -166,67 +166,84 @@ export function applyBodyPattern(
   let sourceFaces: OccShape[] = []
   // Chunk the copies into one boolean each. One fuse per copy grew the target
   // quadratically; one fuse for thousands of copies would hold every instance
-  // at once. The chunk is built immediately before its boolean and released
-  // after the names transfer, so the live instance peak is the chunk size.
+  // at once. On the batch path the chunk is built immediately before its
+  // boolean and released after the names transfer, so the live instance peak
+  // is the chunk size.
+  //
+  // Below one full chunk the copies stay on the one-at-a-time path: the chunk
+  // is built once, then each copy is fused and released in turn. The batch is
+  // a long-pattern optimization; a short array is a handful of cheap fuses,
+  // and it is the shape every document built before the batch already has.
+  // Its combined history also attributes an overlapping weld to a different
+  // input than the sequential fuse, which moved a source face UUID under an
+  // upstream resize (fuzz seed 235) and put UnifySameDomain on the
+  // coincident-face spin (seed 535) as soon as the fuzz's three-copy arrays
+  // switched to the batch.
+  const copyCount = transforms.length - firstCopy
+  const batchCopies = copyCount >= INSTANCE_FUSE_CHUNK
   for (let start = firstCopy; start < transforms.length; start += INSTANCE_FUSE_CHUNK) {
     const end = Math.min(start + INSTANCE_FUSE_CHUNK, transforms.length)
+    // Covers building this chunk's copies; each fuse below marks again.
     markFeatureStart(featureId)
-    const chunk: OccShape[] = []
-    const toolNames = emptyShapeNames()
-    for (let i = start; i < end; i++) {
-      const copy = buildCopy(i)
-      chunk.push(copy.shape)
-      mergeShapeNames(toolNames, copy.names)
-    }
-    const r = booleanWithDiffMany(oc, scope, fused, chunk, 'fuse', { unifyFaces: !body.imported })
-    const nextFused = scope.track(r.shape)
-    if (includeSource) {
-      const next: OccShape[] = []
-      const seen = new SubShapeDedup()
-      const firstUnion = start === firstCopy
-      for (const origin of r.faceOrigin) {
-        if (origin.fromTool) continue
-        const fromSource = firstUnion
-          || sourceFaces.some((sf) => (origin.source as OccSubShape).IsSame(sf as OccSubShape))
-        if (fromSource && seen.add(origin.output)) next.push(origin.output as OccShape)
+    const chunk: { shape: OccShape; names: NameMaps }[] = []
+    for (let i = start; i < end; i++) chunk.push(buildCopy(i))
+    const groups = batchCopies ? [chunk] : chunk.map((copy) => [copy])
+    for (const [groupIndex, group] of groups.entries()) {
+      markFeatureStart(featureId)
+      const toolNames = emptyShapeNames()
+      for (const copy of group) mergeShapeNames(toolNames, copy.names)
+      const r = booleanWithDiffMany(
+        oc, scope, fused, group.map((copy) => copy.shape), 'fuse', { unifyFaces: !body.imported },
+      )
+      const nextFused = scope.track(r.shape)
+      if (includeSource) {
+        const next: OccShape[] = []
+        const seen = new SubShapeDedup()
+        const firstUnion = start === firstCopy && groupIndex === 0
+        for (const origin of r.faceOrigin) {
+          if (origin.fromTool) continue
+          const fromSource = firstUnion
+            || sourceFaces.some((sf) => (origin.source as OccSubShape).IsSame(sf as OccSubShape))
+          if (fromSource && seen.add(origin.output)) next.push(origin.output as OccShape)
+        }
+        // An empty set means the history could not narrate the source at all; keep
+        // the last usable set rather than turning a naming fallback into a throw.
+        if (next.length > 0) sourceFaces = next
       }
-      // An empty set means the history could not narrate the source at all; keep
-      // the last usable set rather than turning a naming fallback into a throw.
-      if (next.length > 0) sourceFaces = next
+      const names = transferBooleanNames(oc, scope, {
+        bodyShape: nextFused,
+        faceOrigin: r.faceOrigin,
+        targetFaceNames: fusedNames.faceNames,
+        targetFaceAncestry: fusedNames.faceAncestry,
+        targetCapAncestry: fusedNames.capAncestry,
+        targetFaceOwner: fusedNames.faceOwner,
+        targetEdgeOwner: fusedNames.edgeOwner,
+        toolFaceNames: toolNames.faceNames,
+        toolFaceAncestry: toolNames.faceAncestry,
+        toolCapAncestry: toolNames.capAncestry,
+        toolFaceOwner: toolNames.faceOwner,
+        toolEdgeOwner: toolNames.edgeOwner,
+        toolCreatedBy: featureId,
+        // Each instance was already remapped to its own UUIDs by
+        // `rebuildNamesForTransformedCopy`, so nothing collides.
+        toolUuidScope: null,
+      })
+      fusedNames = names
+      lastDiff = r.diff
+      // Release ONLY here, never above. `r.faceOrigin`'s `source` entries are
+      // sub-shapes OF THE OPERANDS, and transferBooleanNames downcasts and hashes
+      // them. Freeing an operand before that call is a use-after-free that reads
+      // plausibly and fails nowhere.
+      //
+      // The seed is the HandleTable-owned `sourceShape` when include_source is
+      // set. `DisposeScope.release()` deletes a foreign object it was never
+      // tracking, so releasing it would free the table's shape out from under
+      // every later feature.
+      const prevIsTableOwned = includeSource && start === firstCopy && groupIndex === 0
+      if (!prevIsTableOwned) scope.release(fused)
+      for (const copy of group) scope.release(copy.shape)
+      fused = nextFused
     }
-    const names = transferBooleanNames(oc, scope, {
-      bodyShape: nextFused,
-      faceOrigin: r.faceOrigin,
-      targetFaceNames: fusedNames.faceNames,
-      targetFaceAncestry: fusedNames.faceAncestry,
-      targetCapAncestry: fusedNames.capAncestry,
-      targetFaceOwner: fusedNames.faceOwner,
-      targetEdgeOwner: fusedNames.edgeOwner,
-      toolFaceNames: toolNames.faceNames,
-      toolFaceAncestry: toolNames.faceAncestry,
-      toolCapAncestry: toolNames.capAncestry,
-      toolFaceOwner: toolNames.faceOwner,
-      toolEdgeOwner: toolNames.edgeOwner,
-      toolCreatedBy: featureId,
-      // Each instance was already remapped to its own UUIDs by
-      // `rebuildNamesForTransformedCopy`, so nothing collides.
-      toolUuidScope: null,
-    })
-    fusedNames = names
-    lastDiff = r.diff
-    // Release ONLY here, never above. `r.faceOrigin`'s `source` entries are
-    // sub-shapes OF THE OPERANDS, and transferBooleanNames downcasts and hashes
-    // them. Freeing an operand before that call is a use-after-free that reads
-    // plausibly and fails nowhere.
-    //
-    // The seed is the HandleTable-owned `sourceShape` when include_source is
-    // set. `DisposeScope.release()` deletes a foreign object it was never
-    // tracking, so releasing it would free the table's shape out from under
-    // every later feature.
-    const prevIsTableOwned = includeSource && start === firstCopy
-    if (!prevIsTableOwned) scope.release(fused)
-    for (const shape of chunk) scope.release(shape)
-    fused = nextFused
   }
   body.modified_by.push(featureId)
   body.brep_diff = lastDiff

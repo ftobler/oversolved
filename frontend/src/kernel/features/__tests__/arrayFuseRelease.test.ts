@@ -258,11 +258,33 @@ describe('array add fuse releases (H21)', () => {
     }
   })
 
-  it('caps the live instance peak at the chunk size', () => {
+  it('counts a no-source seed outside the chunk gate', () => {
+    // With include_source false, transforms[0] is the fuse seed and the chunk
+    // starts at 1: 16 transforms are 15 copies, still short of a chunk, while
+    // 17 transforms fill one.
+    const { table: t16, scope: s16 } = run(16, false)
+    try {
+      expect(chunkSizes).toEqual(Array.from({ length: 15 }, () => 1))
+    } finally {
+      s16.dispose()
+      t16.disposeAll()
+    }
+    reset()
+    const { table: t17, scope: s17 } = run(17, false)
+    try {
+      expect(chunkSizes).toEqual([INSTANCE_FUSE_CHUNK])
+    } finally {
+      s17.dispose()
+      t17.disposeAll()
+    }
+  })
+
+  it('caps the live instance peak at the chunk size and keeps a short array one fuse per copy', () => {
     const { table: t4, scope: s4 } = run(4, true)
     try {
-      // 3 copies and the source: one chunk, all three instances live at once.
-      expect(chunkSizes).toEqual([3])
+      // Three copies are short of one chunk: the batch is the long-pattern
+      // path, so each copy gets its own fuse while the whole chunk stays live.
+      expect(chunkSizes).toEqual([1, 1, 1])
       expect(Math.max(...peakSamples)).toBe(3)
     } finally {
       s4.dispose()

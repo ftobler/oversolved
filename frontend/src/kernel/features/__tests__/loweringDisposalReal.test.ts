@@ -227,11 +227,11 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
   })
 
   // H21: the array add fuse loop releases the superseded fused solid and the
-  // consumed instance at the end of every iteration (`applyArray`). The
+  // consumed instance at the end of every copy (`applyBodyPattern`). The
   // loop is the ONLY release traffic on this path (booleans/transformLineage/
   // bodySplit never call scope.release), so releaseCount is exactly 2 per
-  // extra instance minus one: iteration 1 skips the table-owned source and
-  // contributes a single release, every later iteration two.
+  // copy after the first: the first copy fuses into the table-owned source and
+  // contributes a single release, every later copy two.
   function arrayRun(countX: number): { released: number } {
     const table = new HandleTable()
     const scope = new CountingScope()
@@ -271,11 +271,13 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
     const c12: number[] = []
     for (let i = 0; i < 3; i++) c12.push(arrayRun(12).released)
     expectFlat(c12)
-    // Both counts fit in one chunk, so the only per-copy release is the
-    // consumed transformed instance: eight extra copies, eight releases. A
-    // superseded fused solid appears only when a chunk boundary is crossed
-    // (INSTANCE_FUSE_CHUNK), which arrayFuseRelease.test.ts pins.
-    expect(c12[0] - c4[0]).toBe(8)
+    // Both counts are below one chunk, so both take the one-at-a-time path:
+    // the first copy releases only itself (it fuses into the table-owned
+    // source), every later copy also releases the fused solid it supersedes.
+    // Eight extra copies therefore move the count by sixteen. The batch path,
+    // which releases one superseded solid per chunk boundary, starts at
+    // INSTANCE_FUSE_CHUNK and is pinned by arrayFuseRelease.test.ts.
+    expect(c12[0] - c4[0]).toBe(16)
     // Six full array solves (three at count 4, three at count 12) can run long
     // under the suite's parallel load; the default 5s timeout has flaked this
     // case, so it gets its own generous budget.
