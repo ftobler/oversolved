@@ -183,7 +183,7 @@ describe('array add fuse releases (H21)', () => {
       for (let i = 1; i <= transferCount; i++) {
         const transferAt = order.indexOf(`transfer:${i}`)
         expect(transferAt, `transfer:${i} present`).toBeGreaterThanOrEqual(0)
-        expect(order.indexOf(`delete:inst:${i === 1 ? 0 : 16 + i - 2}`)).toBeGreaterThan(transferAt)
+        expect(order.indexOf(`delete:inst:${i === 1 ? 0 : INSTANCE_FUSE_CHUNK + i - 2}`)).toBeGreaterThan(transferAt)
       }
     } finally {
       scope.dispose()
