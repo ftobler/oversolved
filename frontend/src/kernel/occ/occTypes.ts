@@ -304,6 +304,9 @@ export interface OccBRepBuilder extends OccDisposable {
   MakeCompound(compound: OccShape): void
   MakeSolid(solid: OccShape): void
   Add(parent: OccShape, shape: OccShape): void
+  // UpdateVertex(V, P, Tol): move a vertex onto P and give it this tolerance.
+  // Used by the profile wire builder's targeted joint weld, not general healing.
+  UpdateVertex_1(vertex: OccShape, point: OccPnt, tol: number): void
 }
 
 /** ShapeUpgrade_UnifySameDomain: cadquery Shape.clean() with exposed history. */
