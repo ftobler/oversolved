@@ -129,6 +129,14 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
       expect(typeof a1).toBe('string')
       expect(assembly.mates).toEqual([])
       expect((assembly.solve as { verdict: string }).verdict).toBe('fully_constrained')
+      // Each creating step names what it wrote, so a chained call can aim at
+      // the instance or mate without re-reading the document.
+      expect(assembly.steps).toEqual([
+        expect.objectContaining({ id: 'add_part', createdIds: ['inst_plate'] }),
+        expect.objectContaining({ id: 'add_part', createdIds: ['inst_pin'] }),
+        expect.objectContaining({ id: 'add_mate', createdIds: ['m1'] }),
+      ])
+      const mateId = (assembly.steps as Array<{ createdIds: string[] }>)[2].createdIds[0]
 
       // A chained measure needs no second argument: the binding travels with
       // the composite handle.
@@ -146,7 +154,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
       // same call returns to A1's pose.
       const moved = toolPayload(await client.request('tools/call', {
         name: 'run',
-        arguments: { docHash: a1, steps: [{ mutation: { type: 'update_mate', featureId: 'm1', offset: { z: 5 } } }] },
+        arguments: { docHash: a1, steps: [{ mutation: { type: 'update_mate', featureId: mateId, offset: { z: 5 } } }] },
       }))
       const movedPin = (moved.instances as Array<{ handle: string; position: number[] }>).find(i => i.handle === 'pin')!
       expect(movedPin.position[2]).toBeCloseTo(15, 3)
@@ -156,7 +164,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
         arguments: {
           docHash: a1,
           steps: [
-            { mutation: { type: 'update_mate', featureId: 'm1', offset: { z: 5 } } },
+            { mutation: { type: 'update_mate', featureId: mateId, offset: { z: 5 } } },
             { command: 'undo' },
           ],
         },
@@ -169,7 +177,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
       // moves the pin, and an edit that changes nothing lists no instance.
       const changed = toolPayload(await client.request('tools/call', {
         name: 'run',
-        arguments: { docHash: a1, detail: 'changed', steps: [{ mutation: { type: 'update_mate', featureId: 'm1', offset: { z: 5 } } }] },
+        arguments: { docHash: a1, detail: 'changed', steps: [{ mutation: { type: 'update_mate', featureId: mateId, offset: { z: 5 } } }] },
       }))
       expect(changed.stepsAccepted).toBe(1)
       expect(changed.steps).toBeUndefined()
