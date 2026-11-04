@@ -35,12 +35,19 @@ export interface ShapeNames {
   // `face_cap_ancestry`): edge lineage unions faceAncestry, and a cap's
   // whole-profile list is not the entity an edge lies on.
   capAncestry: Record<string, string[]>
+  // UUID -> the feature that minted it (Body.face_owner / edge_owner). The
+  // transfer carries an owner over with its UUID, so an earlier producer's
+  // element keeps its creator when a later one reshapes the body. Empty for
+  // producers that do not record owners; those fall back to the last modifier.
+  faceOwner?: Record<string, string>
+  edgeOwner?: Record<string, string>
 }
 
 export function emptyShapeNames(): ShapeNames {
   return {
     faceNames: new SubShapeMap(), edgeNames: new SubShapeMap(),
     faceAncestry: {}, edgeAncestry: {}, capAncestry: {},
+    faceOwner: {}, edgeOwner: {},
   }
 }
 
@@ -51,6 +58,8 @@ export function mergeShapeNames(into: ShapeNames, from: ShapeNames): ShapeNames 
   Object.assign(into.faceAncestry, from.faceAncestry)
   Object.assign(into.edgeAncestry, from.edgeAncestry)
   Object.assign(into.capAncestry, from.capAncestry)
+  Object.assign(into.faceOwner ??= {}, from.faceOwner ?? {})
+  Object.assign(into.edgeOwner ??= {}, from.edgeOwner ?? {})
   return into
 }
 
@@ -82,7 +91,11 @@ export function readBodyNames(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
-  body: Pick<Body, 'face_uuids' | 'edge_uuids' | 'face_ancestry' | 'edge_ancestry' | 'face_cap_ancestry'>,
+  body: Pick<
+    Body,
+    'face_uuids' | 'edge_uuids' | 'face_ancestry' | 'edge_ancestry' | 'face_cap_ancestry' |
+    'face_owner' | 'edge_owner'
+  >,
 ): ShapeNames {
   return {
     faceNames: namesFromArray(canonicalFaces(oc, scope, shape), body.face_uuids),
@@ -90,6 +103,8 @@ export function readBodyNames(
     faceAncestry: { ...(body.face_ancestry ?? {}) },
     edgeAncestry: { ...(body.edge_ancestry ?? {}) },
     capAncestry: { ...(body.face_cap_ancestry ?? {}) },
+    faceOwner: { ...(body.face_owner ?? {}) },
+    edgeOwner: { ...(body.edge_owner ?? {}) },
   }
 }
 

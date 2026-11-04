@@ -367,10 +367,11 @@ export function nameNeighboursAndDeriveEdges(
   faceNames: SubShapeMap<string>,
   faceAncestry: Record<string, string[]>,
   skip?: FaceSet,
-): { edgeNames: SubShapeMap<string>; edgeAncestry: Record<string, string[]> } {
+  owners?: EdgeOwnerSources,
+): { edgeNames: SubShapeMap<string>; edgeAncestry: Record<string, string[]>; edgeOwner: Record<string, string> } {
   const t = FaceEdgeTable.read(oc, scope, shape)
   nameFacesFromNeighbours(oc, scope, t, faceNames, faceAncestry, skip)
-  return deriveEdgeNames(oc, scope, t, faceNames, faceAncestry)
+  return deriveEdgeNames(oc, scope, t, faceNames, faceAncestry, owners)
 }
 
 /** A set of faces by identity, as the neighbour pass reads its skip list. */
@@ -512,7 +513,9 @@ export function nameFacesFromNeighbours(
  * (edge names, edge ancestry) for a shape, derived from its face names and the
  * face-ancestry map (uuid -> tokens). Each edge whose two adjacent faces are
  * both named gets a UUID from that face pair; the ancestry is the union of the
- * two faces' ancestry tokens.
+ * two faces' ancestry tokens. With `owners`, the same derivation also hands each
+ * edge uuid the owner of a named face it came from (a tool-side face wins over a
+ * target-side one, since the tool is the material just added).
  */
 export function deriveEdgeNames(
   oc: OccModule,
@@ -520,7 +523,8 @@ export function deriveEdgeNames(
   source: OccShape | FaceEdgeTable,
   faceNames: SubShapeMap<string>,
   faceAncestry: Record<string, string[]>,
-): { edgeNames: SubShapeMap<string>; edgeAncestry: Record<string, string[]> } {
+  owners?: EdgeOwnerSources,
+): { edgeNames: SubShapeMap<string>; edgeAncestry: Record<string, string[]>; edgeOwner: Record<string, string> } {
   const t = source instanceof FaceEdgeTable ? source : FaceEdgeTable.read(oc, scope, source)
   const adjacency = new SubShapeMap<Set<string>>()  // edge -> its adjacent named face uuids
   const edgeOrder: OccSubShape[] = []  // every such edge once, first-seen order
@@ -551,7 +555,7 @@ export function deriveEdgeNames(
     const tokens: string[] = []
     for (const fu of uuids) for (const tk of faceAncestry[fu] ?? []) if (!tokens.includes(tk)) tokens.push(tk)
     return tokens
-  })
+  }, owners)
 }
 
 /**
@@ -571,9 +575,11 @@ export function nameEdgeGroups(
   byPair: ReadonlyMap<string, OccSubShape[]>,
   bySingle: ReadonlyMap<string, OccSubShape[]>,
   ancestryOf: (faceUuids: string[], edge: OccSubShape) => string[],
-): { edgeNames: SubShapeMap<string>; edgeAncestry: Record<string, string[]> } {
+  owners?: EdgeOwnerSources,
+): { edgeNames: SubShapeMap<string>; edgeAncestry: Record<string, string[]>; edgeOwner: Record<string, string> } {
   const edgeNames = new SubShapeMap<string>()
   const edgeAncestry: Record<string, string[]> = {}
+  const edgeOwner: Record<string, string> = {}
   let frame: NormalFrame | null = null
   const order = (edges: OccSubShape[]): OccSubShape[] | null => {
     if (edges.length < 2) return edges
@@ -588,6 +594,10 @@ export function nameEdgeGroups(
   const name = (edge: OccSubShape, uuid: string, namedBy: string[]): void => {
     edgeNames.set(edge, uuid)
     edgeAncestry[uuid] = ancestryOf(namedBy, edge)
+    if (owners === undefined) return
+    const candidates = namedBy.filter((fu) => owners.faceOwner[fu] !== undefined)
+    const chosen = candidates.find((fu) => owners.prefer.has(fu)) ?? candidates[0]
+    if (chosen !== undefined) edgeOwner[uuid] = owners.faceOwner[chosen]
   }
   const nameByEnds = (edges: OccSubShape[], namedBy: string[]): void => {
     const keys = edges.map((edge) => endsKey(table, faceNames, edge, namedBy))
@@ -606,7 +616,17 @@ export function nameEdgeGroups(
     if (ordered === null) nameByEnds(edges, [faceUuid])
     else ordered.forEach((edge, i) => name(edge, deriveSeamEdgeUuid(faceUuid, edges.length > 1 ? i : 0), [faceUuid]))
   }
-  return { edgeNames, edgeAncestry }
+  return { edgeNames, edgeAncestry, edgeOwner }
+}
+
+/**
+ * What a naming pass may use to hand an edge UUID its owner: the face UUID ->
+ * owner map, and the face uuids whose owner must win when an edge lies between a
+ * target face and a tool face (the tool is the material this operation added).
+ */
+export interface EdgeOwnerSources {
+  faceOwner: Record<string, string>
+  prefer: ReadonlySet<string>
 }
 
 /**

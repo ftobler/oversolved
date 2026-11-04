@@ -150,7 +150,12 @@ export function extractNames(
   // Step 3: the corner patches steps 1-2 cannot reach (generated from a vertex
   // where blends meet), named off their neighbours so their edges stay pickable.
   const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, newShape, faceNames, faceAncestry)
-  return { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry }
+  // A face the fillet carried keeps the creator its UUID already had; the
+  // fillet's own new UUIDs have no entry and get the last-modifier stamp.
+  return {
+    faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry,
+    faceOwner: old.faceOwner, edgeOwner: old.edgeOwner,
+  }
 }
 
 /** Carry every named old face to its output image, keyed by the built solid's face.

@@ -9,14 +9,20 @@ import type { OccModule, OccShape, OccSubShape, OccTrsf } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import { resolveBody, AmbiguousBodyRefError } from './shared/bodyResolution'
-import { booleanWithDiff } from '../occ/booleans'
+import { booleanWithDiffMany } from '../occ/booleans'
 import { transformCopyWithMapping, rebuildNamesForTransformedCopy, readSourceFaceRows, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody, solidHoldingFaces } from './bodySplit'
-import { readBodyNames } from '../occ/bodyNames'
+import { emptyShapeNames, mergeShapeNames, readBodyNames } from '../occ/bodyNames'
+import { markFeatureStart } from '../featureProgress'
 import { SubShapeDedup } from '../occ/primitives'
 
 type Dict = Record<string, unknown>
+
+/** How many copies one fuse takes. Chunking bounds the live instance shapes: a
+ *  count in the thousands would otherwise hold every transformed copy at once,
+ *  and the release contract (arrayFuseRelease.test.ts) pins this peak. */
+export const INSTANCE_FUSE_CHUNK = 16
 
 export interface BodyPatternResult {
   [key: string]: unknown
@@ -122,43 +128,62 @@ export function applyBodyPattern(
     // dirty signal) and destroyed the previous op's diff. Leave the body as-is.
     return { status: 'ok', body_id: body.id, body_ids: [body.id], operation: 'add' }
   }
-  const instances: OccShape[] = []
-  const instanceNames: NameMaps[] = []
-  if (includeSource) {
-    instances.push(sourceShape)
-    instanceNames.push(sourceNames())
-  }
   // Same one-read-per-instance-loop hoist as the new branch: the source rows
   // are identical for every instance (M37 Change 2a).
   const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames().faceNames, sourceNames().faceAncestry)
-  for (let i = 0; i < transforms.length; i++) {
+  const buildCopy = (i: number): { shape: OccShape; names: NameMaps } => {
     const idx = includeSource ? i + 1 : i
     const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
     const shape = scope.track(instShape)
-    instances.push(shape)
-    instanceNames.push(rebuildNamesForTransformedCopy(oc, scope, shape, rows, featureId, idx, builder))
+    return { shape, names: rebuildNamesForTransformedCopy(oc, scope, shape, rows, featureId, idx, builder) }
   }
-  if (instances.length === 0) throw new Error('pattern produced no instances')
 
-  let fused = instances[0]
-  let fusedNames = instanceNames[0]
+  // The source instance keeps its original UUIDs; copied instances get
+  // instance-specific UUIDs so the fused body has no collisions.
+  let fused: OccShape
+  let fusedNames: NameMaps
+  let firstCopy: number
+  if (includeSource) {
+    fused = sourceShape
+    fusedNames = sourceNames()
+    firstCopy = 0
+  } else {
+    if (transforms.length === 0) throw new Error('pattern produced no instances')
+    // No source slot: the first transformed copy is the fuse seed and replaces
+    // the body, exactly as this branch did before the batch.
+    const first = buildCopy(0)
+    fused = first.shape
+    fusedNames = first.names
+    firstCopy = 1
+  }
   let lastDiff: BrepDiff | null = null
   // The source body's own faces, tracked through every union by the boolean's
   // face origin. Whole-solid IsSame does not survive the clean pass on a
   // multi-face body (measured: a fused rail loses it on the first disjoint
   // union), while the face lineage does; a solid is then identified by any of
   // its own faces. Without this the split ranked siblings by centroid and gave
-  // the source's id to a copy. The first union's target IS the source shape, so
-  // its target-side origins seed the set without a second face walk.
+  // the source's id to a copy.
   let sourceFaces: OccShape[] = []
-  for (let i = 1; i < instances.length; i++) {
-    const prev = fused
-    const r = booleanWithDiff(oc, scope, fused, instances[i], 'fuse', { unifyFaces: !body.imported })
-    fused = scope.track(r.shape)
+  // Chunk the copies into one boolean each. One fuse per copy grew the target
+  // quadratically; one fuse for thousands of copies would hold every instance
+  // at once. The chunk is built immediately before its boolean and released
+  // after the names transfer, so the live instance peak is the chunk size.
+  for (let start = firstCopy; start < transforms.length; start += INSTANCE_FUSE_CHUNK) {
+    const end = Math.min(start + INSTANCE_FUSE_CHUNK, transforms.length)
+    markFeatureStart(featureId)
+    const chunk: OccShape[] = []
+    const toolNames = emptyShapeNames()
+    for (let i = start; i < end; i++) {
+      const copy = buildCopy(i)
+      chunk.push(copy.shape)
+      mergeShapeNames(toolNames, copy.names)
+    }
+    const r = booleanWithDiffMany(oc, scope, fused, chunk, 'fuse', { unifyFaces: !body.imported })
+    const nextFused = scope.track(r.shape)
     if (includeSource) {
       const next: OccShape[] = []
       const seen = new SubShapeDedup()
-      const firstUnion = i === 1
+      const firstUnion = start === firstCopy
       for (const origin of r.faceOrigin) {
         if (origin.fromTool) continue
         const fromSource = firstUnion
@@ -170,14 +195,19 @@ export function applyBodyPattern(
       if (next.length > 0) sourceFaces = next
     }
     const names = transferBooleanNames(oc, scope, {
-      bodyShape: fused,
+      bodyShape: nextFused,
       faceOrigin: r.faceOrigin,
       targetFaceNames: fusedNames.faceNames,
       targetFaceAncestry: fusedNames.faceAncestry,
       targetCapAncestry: fusedNames.capAncestry,
-      toolFaceNames: instanceNames[i].faceNames,
-      toolFaceAncestry: instanceNames[i].faceAncestry,
-      toolCapAncestry: instanceNames[i].capAncestry,
+      targetFaceOwner: fusedNames.faceOwner,
+      targetEdgeOwner: fusedNames.edgeOwner,
+      toolFaceNames: toolNames.faceNames,
+      toolFaceAncestry: toolNames.faceAncestry,
+      toolCapAncestry: toolNames.capAncestry,
+      toolFaceOwner: toolNames.faceOwner,
+      toolEdgeOwner: toolNames.edgeOwner,
+      toolCreatedBy: featureId,
       // Each instance was already remapped to its own UUIDs by
       // `rebuildNamesForTransformedCopy`, so nothing collides.
       toolUuidScope: null,
@@ -189,17 +219,14 @@ export function applyBodyPattern(
     // them. Freeing an operand before that call is a use-after-free that reads
     // plausibly and fails nowhere.
     //
-    // instances[0] is the HandleTable-owned `sourceShape` when include_source is
+    // The seed is the HandleTable-owned `sourceShape` when include_source is
     // set. `DisposeScope.release()` deletes a foreign object it was never
     // tracking, so releasing it would free the table's shape out from under
     // every later feature.
-    const prevIsTableOwned = i === 1 && includeSource
-    if (!prevIsTableOwned) scope.release(prev)
-    scope.release(instances[i])
-    // The releases do not invalidate what survives the loop: body.brep_diff is
-    // lastDiff, whose sub-shape handles are independent embind wrappers holding
-    // their own refcounted TShape, so deleting an operand wrapper does not free
-    // geometry the diff still references.
+    const prevIsTableOwned = includeSource && start === firstCopy
+    if (!prevIsTableOwned) scope.release(fused)
+    for (const shape of chunk) scope.release(shape)
+    fused = nextFused
   }
   body.modified_by.push(featureId)
   body.brep_diff = lastDiff

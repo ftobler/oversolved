@@ -294,9 +294,14 @@ export function solveMirror(
       targetFaceNames: sourceNames.faceNames,
       targetFaceAncestry: sourceNames.faceAncestry,
       targetCapAncestry: sourceNames.capAncestry,
+      targetFaceOwner: sourceNames.faceOwner,
+      targetEdgeOwner: sourceNames.edgeOwner,
       toolFaceNames: mirroredNames.faceNames,
       toolFaceAncestry: mirroredNames.faceAncestry,
       toolCapAncestry: mirroredNames.capAncestry,
+      toolFaceOwner: mirroredNames.faceOwner,
+      toolEdgeOwner: mirroredNames.edgeOwner,
+      toolCreatedBy: featureId,
       // The mirrored copy already carries per-instance UUIDs, so nothing collides.
       toolUuidScope: null,
     })

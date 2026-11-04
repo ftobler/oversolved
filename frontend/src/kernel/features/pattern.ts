@@ -28,9 +28,14 @@ import { applyBodyPattern, resolvePatternSourceBody, type BodyPatternResult } fr
 import { resolveDirectionQueryStrict, resolveAxisQueryStrict } from './shared/directionQuery'
 import { makeTranslationTrsf, makeRotationTrsf } from '../occ/transforms'
 import {
-  readSourceFaceRows, rebuildNamesForTransformedCopy, transformCopyWithMapping,
+  readSourceFaceRows, rebuildNamesForTransformedCopy, transformCopyWithMapping, type NameMaps,
 } from '../occ/transformLineage'
-import { readBodyNames } from '../occ/bodyNames'
+import { emptyShapeNames, mergeShapeNames, readBodyNames } from '../occ/bodyNames'
+import { booleanWithDiffMany, countSolids, shapesIntersect } from '../occ/booleans'
+import { transferBooleanNames } from './booleanLineage'
+import { resplitBody, solidHoldingFaces } from './bodySplit'
+import { brepDiffIsEmpty } from './shared/brepDiff'
+import { markFeatureStart } from '../featureProgress'
 import { resolveFeatureExpressions } from '../featureExpressions'
 import { solveExtrude } from './extrude'
 import { solveRevolve } from './revolve'
@@ -386,6 +391,31 @@ function releaseScratch(table: HandleTable, tools: Body[]): void {
   }
 }
 
+/** One transformed tool copy: the shape and the identities it was minted with. */
+interface CopyInstance {
+  copy: number
+  shape: OccShape
+  names: NameMaps
+}
+
+/** Merge every selected copy's name maps into one tool map for the batch. */
+function mergeCopyNames(copies: readonly CopyInstance[]): NameMaps {
+  const merged = emptyShapeNames()
+  for (const copy of copies) mergeShapeNames(merged, copy.names)
+  return merged
+}
+
+/** Group instances by the 1-based copy number the failure text names. */
+function groupByCopy(copies: readonly CopyInstance[]): Map<number, CopyInstance[]> {
+  const groups = new Map<number, CopyInstance[]>()
+  for (const copy of copies) {
+    const group = groups.get(copy.copy)
+    if (group === undefined) groups.set(copy.copy, [copy])
+    else group.push(copy)
+  }
+  return groups
+}
+
 /**
  * Solve a feature-subject pattern. The source feature's operation is applied
  * `count - 1` more times, each with the source's tool rigidly transformed.
@@ -457,70 +487,181 @@ function solveFeaturePattern(
       })
     }
 
-    let appliedCopies = 0
-    let instance = 0
+    const total = transforms.length
     const failures: string[] = []
     const notes: string[] = []
-    const live = new Set<string>([targetId])
-    let consumed = false
-    const total = transforms.length
-    for (let copy = 0; copy < total && !consumed; copy++) {
-      let copyApplied = false
-      for (let toolIndex = 0; toolIndex < toolShapes.length; toolIndex++) {
-        const tool = toolShapes[toolIndex]
-        const { shape: rawShape, builder } = transformCopyWithMapping(oc, scope, tool.shape, transforms[copy])
+    let instance = 0
+    // Every copy is built before the first boolean. The batch below fuses or
+    // cuts the whole hit set in one operation, which is where the per-copy
+    // quadratic went: one history, one name transfer, one resplit.
+    const copies: CopyInstance[] = []
+    for (let copy = 1; copy <= total; copy++) {
+      markFeatureStart(featureId)
+      for (const tool of toolShapes) {
+        const { shape: rawShape, builder } = transformCopyWithMapping(oc, scope, tool.shape, transforms[copy - 1])
         const shape = scope.track(rawShape)
-        const names = rebuildNamesForTransformedCopy(oc, scope, shape, tool.rows, featureId, instance, builder)
+        copies.push({
+          copy,
+          shape,
+          names: rebuildNamesForTransformedCopy(oc, scope, shape, tool.rows, featureId, instance, builder),
+        })
         instance++
-        try {
-          const result = applyBodyOperation(oc, scope, table, {
-            toolShape: shape,
-            bodyStore,
-            operation,
-            mergeTarget: targetId,
-            bodyId: 'body_' + featureId,
-            featureId,
-            sketchId: target.sketch_id,
-            profileQueries: target.profile_queries,
-            faceNames: names.faceNames,
-            edgeNames: names.edgeNames,
-            faceAncestry: names.faceAncestry,
-            edgeAncestry: names.edgeAncestry,
-            capAncestry: names.capAncestry,
-            opName: 'pattern',
-          })
-          copyApplied = true
-          const ids = result.body_ids ?? (result.body_id ? [result.body_id] : [])
-          if (ids.length === 0) {
-            // The copy consumed the whole target: nothing keeps the id and no
-            // later copy has a body to land on.
-            live.delete(targetId)
-            consumed = true
-            notes.push(`pattern: copy ${copy + 1} removed all of body '${targetId}'; later copies were not applied`)
-            break
-          }
-          for (const id of ids) live.add(id)
-          if (result.solver_warning !== undefined && !notes.includes(result.solver_warning)) {
-            notes.push(result.solver_warning)
-          }
-        } catch (e) {
-          swallowUnlessTrap(e)
-          // applyBodyOperation already prefixes its message with opName; the
-          // copy prefix is the part the user needs, so drop the repeated name.
-          const reason = extractErrorMessage(e).replace(/^pattern: /, '')
-          failures.push(`copy ${copy + 1}: ${reason}`)
+      }
+    }
+
+    // A missed cut leaves the solid count unchanged, so a probe is the only
+    // reliable miss signal before the batch. Add copies are never misses: a
+    // disjoint one is a regular island, and the batch fallback below lets the
+    // per-copy path mint it.
+    let selected = copies
+    if (operation === 'cut') {
+      const targetShape = table.get<OccShape>(target.shape!)
+      const hits: CopyInstance[] = []
+      for (const [copyNo, group] of groupByCopy(copies)) {
+        const overlapping = group.filter((copy) => shapesIntersect(oc, targetShape, copy.shape))
+        if (overlapping.length === 0) {
+          failures.push(`copy ${copyNo}: cut does not intersect any target body - nothing to remove`)
+        } else {
+          hits.push(...overlapping)
         }
       }
-      if (copyApplied) appliedCopies++
+      selected = hits
     }
-    if (appliedCopies === 0) {
+
+    // The old per-copy path, kept for the two shapes a batch cannot report per
+    // copy: a copy that consumes the target, and a union that leaves islands.
+    const applyIndividually = (): PatternResult => {
+      let appliedCopies = 0
+      const live = new Set<string>([targetId])
+      let consumed = false
+      for (const [copyNo, group] of groupByCopy(selected)) {
+        if (consumed) break
+        markFeatureStart(featureId)
+        let copyApplied = false
+        for (const inst of group) {
+          try {
+            const result = applyBodyOperation(oc, scope, table, {
+              toolShape: inst.shape,
+              bodyStore,
+              operation,
+              mergeTarget: targetId,
+              bodyId: 'body_' + featureId,
+              featureId,
+              sketchId: target.sketch_id,
+              profileQueries: target.profile_queries,
+              faceNames: inst.names.faceNames,
+              edgeNames: inst.names.edgeNames,
+              faceAncestry: inst.names.faceAncestry,
+              edgeAncestry: inst.names.edgeAncestry,
+              capAncestry: inst.names.capAncestry,
+              faceOwner: inst.names.faceOwner,
+              edgeOwner: inst.names.edgeOwner,
+              opName: 'pattern',
+            })
+            copyApplied = true
+            const ids = result.body_ids ?? (result.body_id ? [result.body_id] : [])
+            if (ids.length === 0) {
+              // The copy consumed the whole target: nothing keeps the id and no
+              // later copy has a body to land on.
+              live.delete(targetId)
+              consumed = true
+              notes.push(`pattern: copy ${copyNo} removed all of body '${targetId}'; later copies were not applied`)
+              break
+            }
+            for (const id of ids) live.add(id)
+            if (result.solver_warning !== undefined && !notes.includes(result.solver_warning)) {
+              notes.push(result.solver_warning)
+            }
+          } catch (e) {
+            swallowUnlessTrap(e)
+            // applyBodyOperation already prefixes its message with opName; the
+            // copy prefix is the part the user needs, so drop the repeated name.
+            const reason = extractErrorMessage(e).replace(/^pattern: /, '')
+            failures.push(`copy ${copyNo}: ${reason}`)
+          }
+        }
+        if (copyApplied) appliedCopies++
+      }
+      if (appliedCopies === 0) {
+        throw new Error(`pattern: no copy was applied; ${failures[0] ?? 'nothing to apply'}`)
+      }
+      const liveIds = [...live]
+      const result: PatternResult = {
+        status: failures.length > 0 ? 'partial' : 'ok',
+        body_id: liveIds[0] ?? targetId,
+        body_ids: liveIds,
+        operation,
+      }
+      if (failures.length > 0) {
+        result.exception = `pattern: ${appliedCopies}/${total} copies applied; ${failures.join('; ')}`
+      }
+      if (notes.length > 0) result.solver_warning = notes.join('; ')
+      return result
+    }
+
+    if (selected.length === 0) {
       throw new Error(`pattern: no copy was applied; ${failures[0] ?? 'nothing to apply'}`)
     }
-    const liveIds = [...live]
+
+    // One boolean over every copy. A throw, a consumed target, or a result that
+    // gained solids (the island case) falls back to the per-copy path so the
+    // warning and the refusal stay exactly as they were.
+    markFeatureStart(featureId)
+    const targetShape = table.get<OccShape>(target.shape!)
+    const targetNames = readBodyNames(oc, scope, targetShape, target)
+    let batched
+    try {
+      batched = booleanWithDiffMany(
+        oc, scope, targetShape, selected.map((copy) => copy.shape),
+        operation === 'add' ? 'fuse' : 'cut',
+        { unifyFaces: !target.imported },
+      )
+    } catch (e) {
+      swallowUnlessTrap(e)
+      return applyIndividually()
+    }
+    const newShape = scope.track(batched.shape)
+    const oldSolids = countSolids(oc, scope, targetShape)
+    const newSolids = countSolids(oc, scope, newShape)
+    if (newSolids === 0 || newSolids > oldSolids) return applyIndividually()
+
+    const toolNames = mergeCopyNames(selected)
+    const names = transferBooleanNames(oc, scope, {
+      bodyShape: newShape,
+      faceOrigin: batched.faceOrigin,
+      targetFaceNames: targetNames.faceNames,
+      targetFaceAncestry: target.face_ancestry ?? {},
+      targetCapAncestry: target.face_cap_ancestry ?? {},
+      targetFaceOwner: targetNames.faceOwner,
+      targetEdgeOwner: targetNames.edgeOwner,
+      toolFaceNames: toolNames.faceNames,
+      toolFaceAncestry: toolNames.faceAncestry,
+      toolCapAncestry: toolNames.capAncestry,
+      toolFaceOwner: toolNames.faceOwner,
+      toolEdgeOwner: toolNames.edgeOwner,
+      // Every copy was already remapped to its own UUIDs, so nothing collides.
+      toolCreatedBy: featureId,
+      toolUuidScope: null,
+    })
+    let preferredFirst: OccShape | null = null
+    if (operation === 'add') {
+      const targetFaces = batched.faceOrigin
+        .filter((origin) => !origin.fromTool)
+        .map((origin) => origin.output as OccShape)
+      preferredFirst = solidHoldingFaces(oc, scope, newShape, targetFaces)
+    }
+    const bodyIds = resplitBody(
+      oc, scope, table, bodyStore, target, newShape, featureId, names, preferredFirst,
+    )
+    target.modified_by.push(featureId)
+    target.brep_diff = batched.diff
+    if (brepDiffIsEmpty(batched.diff)) notes.push('pattern: operation produced no geometry change')
+
+    const appliedCopies = groupByCopy(selected).size
     const result: PatternResult = {
       status: failures.length > 0 ? 'partial' : 'ok',
-      body_id: liveIds[0] ?? targetId,
-      body_ids: liveIds,
+      body_id: bodyIds[0] ?? targetId,
+      body_ids: bodyIds,
       operation,
     }
     if (failures.length > 0) {

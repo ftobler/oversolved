@@ -380,6 +380,8 @@ function nameMovedFaces(
     targetFaceNames: old.faceNames,
     targetFaceAncestry: old.faceAncestry,
     targetCapAncestry: old.capAncestry,
+    targetFaceOwner: old.faceOwner,
+    targetEdgeOwner: old.edgeOwner,
     toolFaceNames,
     toolFaceAncestry,
     toolCapAncestry: null,

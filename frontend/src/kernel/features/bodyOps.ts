@@ -43,6 +43,11 @@ export interface ApplyBodyOperationInput {
   faceAncestry?: Record<string, string[]> | null
   edgeAncestry?: Record<string, string[]> | null
   capAncestry?: Record<string, string[]> | null
+  // Per-uuid creators the tool body already has (a pattern copy's UUIDs belong
+  // to the pattern). Carried through the transfer so a body's owner maps keep
+  // every earlier application's attribution.
+  faceOwner?: Record<string, string> | null
+  edgeOwner?: Record<string, string> | null
   // A cut that misses every target probes this before it fails: the same tool
   // built the opposite way. When it would remove material the error names the
   // one-field fix (`message`) instead of only "nothing to remove". A face
@@ -132,6 +137,8 @@ export function applyBodyOperation(
     faceAncestry = null,
     edgeAncestry = null,
     capAncestry = null,
+    faceOwner = null,
+    edgeOwner = null,
     oppositeProbe,
     addRequiresExisting = false,
   } = input
@@ -139,7 +146,7 @@ export function applyBodyOperation(
   // The tool body's construction-name maps, carried onto a body the tool becomes
   // (the "new"/no-target paths) and narrowed per sibling when it splits. Boolean
   // paths (add/cut) rebuild them in Stage 2.
-  const toolNames = { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry }
+  const toolNames = { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry, faceOwner, edgeOwner }
 
   const result: ApplyBodyOperationResult = { status: 'ok', body_id: bodyId }
 
@@ -211,15 +218,21 @@ export function applyBodyOperation(
         continue
       }
 
+      const targetNames = readBodyNames(oc, scope, oldShape, existingBody)
       const names = transferBooleanNames(oc, scope, {
         bodyShape: newShape,
         faceOrigin,
-        targetFaceNames: readBodyNames(oc, scope, oldShape, existingBody).faceNames,
+        targetFaceNames: targetNames.faceNames,
         targetFaceAncestry: existingBody.face_ancestry ?? {},
         targetCapAncestry: existingBody.face_cap_ancestry ?? {},
+        targetFaceOwner: targetNames.faceOwner,
+        targetEdgeOwner: targetNames.edgeOwner,
         toolFaceNames: faceNames,
         toolFaceAncestry: faceAncestry,
         toolCapAncestry: capAncestry,
+        toolFaceOwner: faceOwner,
+        toolEdgeOwner: edgeOwner,
+        toolCreatedBy: featureId,
         // The tool shape itself is transient, but with no `merge_target` a cut
         // reaches EVERY body, and each one it hits inherits the same tool face
         // names. The first body cut keeps them verbatim -- so a single-target
@@ -327,15 +340,21 @@ export function applyBodyOperation(
         const toolN = countSolids(oc, scope, toolShape)
         if (countSolids(oc, scope, newShape) >= oldN + toolN) continue
       }
+      const targetNames = readBodyNames(oc, scope, oldShape, existingBody)
       const names = transferBooleanNames(oc, scope, {
         bodyShape: newShape,
         faceOrigin,
-        targetFaceNames: readBodyNames(oc, scope, oldShape, existingBody).faceNames,
+        targetFaceNames: targetNames.faceNames,
         targetFaceAncestry: existingBody.face_ancestry ?? {},
         targetCapAncestry: existingBody.face_cap_ancestry ?? {},
+        targetFaceOwner: targetNames.faceOwner,
+        targetEdgeOwner: targetNames.edgeOwner,
         toolFaceNames: faceNames,
         toolFaceAncestry: faceAncestry,
         toolCapAncestry: capAncestry,
+        toolFaceOwner: faceOwner,
+        toolEdgeOwner: edgeOwner,
+        toolCreatedBy: featureId,
         // A fuse lands on exactly one target (the loop breaks below), and the
         // tool shape is transient, so nothing else claims these names.
         toolUuidScope: null,

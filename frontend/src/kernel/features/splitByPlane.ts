@@ -272,6 +272,8 @@ function transferFor(
     targetFaceNames: names.faceNames,
     targetFaceAncestry: names.faceAncestry,
     targetCapAncestry: names.capAncestry,
+    targetFaceOwner: names.faceOwner,
+    targetEdgeOwner: names.edgeOwner,
     toolFaceNames,
     toolFaceAncestry: {},
     toolCapAncestry: {},

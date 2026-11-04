@@ -880,6 +880,8 @@ export function solveHole(
       targetFaceNames: names.faceNames,
       targetFaceAncestry: names.faceAncestry,
       targetCapAncestry: names.capAncestry,
+      targetFaceOwner: names.faceOwner,
+      targetEdgeOwner: names.edgeOwner,
       toolFaceNames: tool.faceNames,
       toolFaceAncestry: tool.faceAncestry,
       toolCapAncestry: tool.capAncestry,

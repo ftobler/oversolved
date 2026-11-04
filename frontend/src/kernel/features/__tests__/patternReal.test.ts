@@ -255,6 +255,26 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     expectUniqueFaceUuids(r, 'pt1')
   })
 
+  it('stops and names the copy when a cut consumes the target', () => {
+    // The source cut leaves a 10 x 1 strip; the copy at y = 9 removes the rest.
+    // The batch sees no solid and falls back to the per-copy path, which reports
+    // the deletion and applies no later copy.
+    const r = h.run({
+      features: [
+        rectSketch('sk_plate', 10, 10),
+        extrude('ex_plate', '$sk_plate', 5),
+        rectSketch('sk_slot', 10, 9, 0, 0),
+        extrude('ex_slot', '$sk_slot', 10, 'cut'),
+        pattern('pt1', 'ex_slot', linear({ count: 3, pitch: 9, direction: [0, 1, 0] })),
+      ],
+    })
+    const res = h.res(r, 'pt1')
+    expect(res.status).toBe('partial')
+    expect(String(res.solver_warning)).toContain("copy 1 removed all of body 'body_ex_plate'")
+    expect(String(res.solver_warning)).toContain('later copies were not applied')
+    expect(res.body_ids).toEqual([])
+  })
+
   it('reports a copy that misses the body as partial, naming the copy', () => {
     const r = h.run({
       features: [

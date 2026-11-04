@@ -174,13 +174,29 @@ export function booleanWithHistory(
   toolShape: OccShape,
   op: BooleanOp,
 ): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
+  return booleanWithHistoryMany(oc, scope, targetShape, [toolShape], op)
+}
+
+/**
+ * The multi-operand boolean: every shape in `toolShapes` is a separate tool in
+ * the same BRepAlgoAPI call, so one history reports each operand's modified
+ * faces separately. A pattern or array batches its copies here instead of
+ * growing the target once per copy.
+ */
+export function booleanWithHistoryMany(
+  oc: OccModule,
+  scope: DisposeScope,
+  targetShape: OccShape,
+  toolShapes: readonly OccShape[],
+  op: BooleanOp,
+): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
   const E = oc.TopAbs_ShapeEnum
   const algo = scope.track(makeBooleanOp(oc, op))
 
   const args = scope.track(new oc.TopTools_ListOfShape_1())
   args.Append_1(targetShape)
   const tools = scope.track(new oc.TopTools_ListOfShape_1())
-  tools.Append_1(toolShape)
+  for (const toolShape of toolShapes) tools.Append_1(toolShape)
   algo.SetArguments(args)
   algo.SetTools(tools)
   algo.SetToFillHistory(true)
@@ -204,8 +220,12 @@ export function booleanWithHistory(
   // the origin loop) (M19). All six pools are shared by the closures below.
   const targetFaces = explore(oc, scope, targetShape, E.TopAbs_FACE)
   const targetEdges = explore(oc, scope, targetShape, E.TopAbs_EDGE)
-  const toolFaces = explore(oc, scope, toolShape, E.TopAbs_FACE)
-  const toolEdges = explore(oc, scope, toolShape, E.TopAbs_EDGE)
+  const toolFaces: OccSubShape[] = []
+  const toolEdges: OccSubShape[] = []
+  for (const toolShape of toolShapes) {
+    toolFaces.push(...explore(oc, scope, toolShape, E.TopAbs_FACE))
+    toolEdges.push(...explore(oc, scope, toolShape, E.TopAbs_EDGE))
+  }
   const resultFaces = explore(oc, scope, result, E.TopAbs_FACE)
   const resultEdges = explore(oc, scope, result, E.TopAbs_EDGE)
 
@@ -486,10 +506,10 @@ function rawBooleanWithDiff(
   oc: OccModule,
   scope: DisposeScope,
   target: OccShape,
-  tool: OccShape,
+  tools: readonly OccShape[],
   op: BooleanOp,
 ): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
-  const { shape: raw, diff: rawDiff, faceOrigin: rawOrigin } = booleanWithHistory(oc, scope, target, tool, op)
+  const { shape: raw, diff: rawDiff, faceOrigin: rawOrigin } = booleanWithHistoryMany(oc, scope, target, tools, op)
   scope.track(raw)
   const canonical = canonicalizeCylinderFaces(oc, scope, raw)
   const preClean = canonical.shape
@@ -564,33 +584,43 @@ function booleanResultProblem(
   oc: OccModule,
   scope: DisposeScope,
   target: OccShape,
-  tool: OccShape,
+  tools: readonly OccShape[],
   op: BooleanOp,
   result: OccShape,
 ): string | null {
   try {
     const vr = Math.abs(volumeOf(oc, scope, result))
     const vt = Math.abs(volumeOf(oc, scope, target))
-    const vu = Math.abs(volumeOf(oc, scope, tool))
+    let vsum = 0
+    let vmax = 0
+    for (const tool of tools) {
+      const v = Math.abs(volumeOf(oc, scope, tool))
+      vsum += v
+      vmax = Math.max(vmax, v)
+    }
     if (!Number.isFinite(vr)) return `the result volume is not finite (${vr})`
     // A non-finite operand would make every bound below NaN, i.e. every
     // comparison false: the guard must not adopt a result it cannot judge.
-    if (!Number.isFinite(vt) || !Number.isFinite(vu)) {
-      return `an operand volume is not finite (target ${vt}, tool ${vu})`
+    if (!Number.isFinite(vt) || !Number.isFinite(vsum)) {
+      return `an operand volume is not finite (target ${vt}, tool ${vsum})`
     }
     // As in cleanShapeIsSound: a closed target's result has to validate, an
     // open-shell target (L5) has no closedness contract to enforce.
     if (isClosedByVolume(vt) && !shapeIsValid(oc, scope, result)) {
       return 'the result is not a valid solid (BRepCheck_Analyzer)'
     }
-    const tol = 1e-6 * Math.max(vt, vu, 1)
-    const bound = op === 'fuse' ? Math.max(vt, vu) : op === 'common' ? Math.min(vt, vu) : vt
+    const tol = 1e-6 * Math.max(vt, vsum, 1)
+    // A fuse cannot be smaller than its target or than any single tool. The
+    // tools' SUM is not a lower bound: batched copies may overlap each other,
+    // so the union is regularly smaller than the operand sum. The sum is only
+    // the upper bound (nothing can exceed the total material put in).
+    const bound = op === 'fuse' ? Math.max(vt, vmax) : op === 'common' ? Math.min(vt, vsum) : vt
     const relation = op === 'fuse' ? 'below' : 'above'
     if (op === 'fuse' ? vr < bound - tol : vr > bound + tol) {
       return `volume ${vr} is ${relation} the ${op} bound ${bound}`
     }
-    if (op === 'fuse' && vr > vt + vu + tol) {
-      return `volume ${vr} exceeds the operand sum ${vt + vu}`
+    if (op === 'fuse' && vr > vt + vsum + tol) {
+      return `volume ${vr} exceeds the operand sum ${vt + vsum}`
     }
     return null
   } catch (e) {
@@ -620,11 +650,11 @@ function composeBooleanAttempt(
   oc: OccModule,
   scope: DisposeScope,
   target: OccShape,
-  tool: OccShape,
+  tools: readonly OccShape[],
   op: BooleanOp,
   unifyFaces: boolean,
 ): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
-  const pre = rawBooleanWithDiff(oc, scope, target, tool, op)
+  const pre = rawBooleanWithDiff(oc, scope, target, tools, op)
   let rejected: OccShape | null = null
   try {
     const r = cleanWithHistory(oc, scope, pre.shape, unifyFaces)
@@ -650,7 +680,7 @@ function composeBooleanAttempt(
   // The fallback cannot reuse `pre.shape`: the merge works in place, so a
   // rejected or half-applied clean may have left it -- and the pre-clean result
   // is only safely readable from the untouched operands. Rebuild it.
-  return rawBooleanWithDiff(oc, scope, target, tool, op)
+  return rawBooleanWithDiff(oc, scope, target, tools, op)
 }
 
 /**
@@ -672,6 +702,22 @@ export function booleanWithDiff(
   op: BooleanOp,
   opts: { unifyFaces?: boolean } = {},
 ): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
+  return booleanWithDiffMany(oc, scope, target, [tool], op, opts)
+}
+
+/**
+ * The multi-tool form of `booleanWithDiff`: one boolean, one clean, one history
+ * over the whole tool set. A pattern or array passes every copy here so the
+ * target is not regrown and re-named once per copy.
+ */
+export function booleanWithDiffMany(
+  oc: OccModule,
+  scope: DisposeScope,
+  target: OccShape,
+  tools: readonly OccShape[],
+  op: BooleanOp,
+  opts: { unifyFaces?: boolean } = {},
+): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
   // The face merge (UnifySameDomain's face fold) can spin forever, not throw, on
   // imported-STEP topology (the reproducer: extruding a holed face of an
   // imported body back onto itself, double_with_hole.step). The two cases are
@@ -679,8 +725,8 @@ export function booleanWithDiff(
   // decides by provenance and passes `unifyFaces: false` for imported targets;
   // the edge merge (always safe) still runs, at the cost of an extra seam face.
   const unifyFaces = opts.unifyFaces ?? true
-  const attempt = withFoldedCavities(oc, scope, composeBooleanAttempt(oc, scope, target, tool, op, unifyFaces))
-  const problem = booleanResultProblem(oc, scope, target, tool, op, attempt.shape)
+  const attempt = withFoldedCavities(oc, scope, composeBooleanAttempt(oc, scope, target, tools, op, unifyFaces))
+  const problem = booleanResultProblem(oc, scope, target, tools, op, attempt.shape)
   if (problem === null) return attempt
   // A replaced attempt has no owner, so it joins the scope: the fallback result
   // composeBooleanAttempt returns may already be tracked, hence the check.
@@ -692,9 +738,9 @@ export function booleanWithDiff(
   // sphere-touching-a-wall case this recovers). The probe is the same call the
   // cut path already runs through shapesIntersect (M18), and it is only paid
   // here, after a result already failed the check.
-  shapesIntersect(oc, target, tool)
-  const retry = withFoldedCavities(oc, scope, composeBooleanAttempt(oc, scope, target, tool, op, unifyFaces))
-  const retryProblem = booleanResultProblem(oc, scope, target, tool, op, retry.shape)
+  for (const tool of tools) shapesIntersect(oc, target, tool)
+  const retry = withFoldedCavities(oc, scope, composeBooleanAttempt(oc, scope, target, tools, op, unifyFaces))
+  const retryProblem = booleanResultProblem(oc, scope, target, tools, op, retry.shape)
   if (retryProblem === null) return retry
   if (!scope.isTracked(retry.shape)) scope.track(retry.shape)
   throw new BooleanSoundnessError(
