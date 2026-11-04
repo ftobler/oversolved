@@ -15,7 +15,7 @@
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape } from './occTypes'
 import type { Vec3 } from './primitives'
-import { canonicalEdges, canonicalFaces, canonicalVertices } from './bodyNames'
+import { canonicalFaces, canonicalVertices, pickableEdgeCount } from './bodyNames'
 import { shapeBbox } from './faceBounds'
 import { surfaceAreaOf, volumeAndCentroidOf } from './volume'
 
@@ -33,6 +33,7 @@ export interface ShapeMeasure {
   centroid: Vec3 | null
   bbox: Bbox6 | null
   faces: number
+  // Degenerated edges are skipped: the population a pick and `select` see.
   edges: number
   vertices: number
 }
@@ -69,7 +70,10 @@ export function measureShape(
     centroid,
     bbox,
     faces: canonicalFaces(oc, scope, shape).length,
-    edges: canonicalEdges(oc, scope, shape).length,
+    // Degenerated edges have no geometry to pick, so they are not part of the
+    // edge population a caller can select; faces and vertices have no such
+    // counterpart and stay raw counts.
+    edges: pickableEdgeCount(oc, scope, shape),
     vertices: canonicalVertices(oc, scope, shape).length,
   }
 }

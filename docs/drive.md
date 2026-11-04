@@ -314,7 +314,13 @@ npm run drive -- replay repro.json
   (volume-weighted), `bbox` (a tight six-number box,
   `[xmin, ymin, zmin, xmax, ymax, zmax]`, computed from the faces so a trim that
   leaves a face's parameter rectangle whole cannot inflate it), plus face, edge
-  and vertex counts from the final checkpoint's bodies. `perBody` adds one
+  and vertex counts from the final checkpoint's bodies. The counts are sub-shape
+  counts with one exception: `edges` excludes degenerated edges, the same
+  population a pick and `select` see, because a pick can only name an edge that
+  has geometry; a face and a vertex have no degenerated counterpart and stay
+  raw counts. A fillet sphere corner, for example, leaves a degenerate patch
+  edge that counts in neither `edges` nor the body's `edge_queries`. `perBody`
+  adds one
   entry per live body (`id`, `volume`, `area`, `centroid`, `bbox`), in the
   solve's body order; its volumes and areas sum to the totals and its ids are
   the ids `run` and `select` use. The same `features`
@@ -622,7 +628,10 @@ banner on stdout, so a client config must use the direct node invocation.
 
   `topology` is optional (`"report"` by default, `"strict"` to enforce the
   face/edge counts); `tolerance` is required so every reference states its own
-  budget. The five measures `bodies`, `volume`, `area`, `centroid` and `bbox`
+  budget. A strict `edges` reference states the pickable population above, so
+  record the kernel version that produced it: a different OCCT build can report
+  a different sub-shape population even when the geometry matches. The five
+  measures `bodies`, `volume`, `area`, `centroid` and `bbox`
   are required as well, and the CadQuery runner
   (`frontend/scripts/cadqueryReference.py`) already emits all five, so a
   reference produced by another tool's exporter that omits `area` is refused

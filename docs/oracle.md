@@ -50,8 +50,8 @@ One directory per case: `frontend/oracle/<NN-name>/`.
 | 20-boolean-cut | 1 | 500.000000 | 400.000000 | faces 6, edges 12 | - | ok |
 | 21-boolean-intersect | 1 | 500.000000 | 400.000000 | faces 6, edges 12 | - | ok |
 | 22-boolean-union-enclosed-sphere | 1 | 1200.00000 | 680.000000 | faces 6, edges 12 | - | ok |
-| 23-boolean-cut-cavity | 1 | 1086.90266 | 793.097336 | faces 7, edges 15 | - | ok |
-| 24-boolean-intersect-octant | 1 | 179.594380 | 192.422550 | faces 4, edges 7 | - | ok |
+| 23-boolean-cut-cavity | 1 | 1086.90266 | 793.097336 | faces 7, edges 13 | - | ok |
+| 24-boolean-intersect-octant | 1 | 179.594380 | 192.422550 | faces 4, edges 6 | - | ok |
 | 25-extrude-up-to | 2 | 5600.00000 | 2440.00000 | faces 12, edges 24 | - | ok |
 | 26-sweep-circle-line | 1 | 376.991118 | 402.123860 | faces 3, edges 3 | - | ok |
 | 27-extrude-add | 1 | 1500.00000 | 800.000000 | faces 6, edges 12 | - | ok |
@@ -205,14 +205,14 @@ Live build (expected -> measured):
   - area 664.743339 -> 664.743339 (rel dev 1.71e-16)
   - centroid [10.0000000, 5.00000000, 3.00000000] -> [10.0000000, 5.00000000, 3.00000000] (max dev 5.33e-15)
   - bbox [0.00000000, 0.00000000, 0.00000000, 20.0000000, 10.0000000, 6.00000000] -> [-2.22044605e-16, -2.22044605e-16, -2.22044605e-16, 20.0000000, 10.0000000, 6.00000000] (max dev 2.22e-16)
-  - counts faces 26 -> faces 26, edges 56
+  - counts faces 26 -> faces 26, edges 48
 
 STEP round trip:
   - volume 1134.98892 -> 1134.98892 (rel dev -4.21e-15)
   - area 664.743339 -> 664.743339 (rel dev 1.06e-14)
   - centroid [10.0000000, 5.00000000, 3.00000000] -> [10.0000000, 5.00000000, 3.00000000] (max dev 3.02e-14)
   - bbox [0.00000000, 0.00000000, 0.00000000, 20.0000000, 10.0000000, 6.00000000] -> [-2.22044605e-16, -2.22044605e-16, -2.22044605e-16, 20.0000000, 10.0000000, 6.00000000] (max dev 2.22e-16)
-  - counts faces 26 -> faces 26, edges 56
+  - counts faces 26 -> faces 26, edges 48
 ### 09-fillet-vertical-naming
 
 `V = dx dy h - 4 (1 - pi/4) r^2 h (one corner prism per vertical edge); A = box - 4(2 r h + 2(r^2 - pi r^2/4) - pi r h/2); 10 faces`
@@ -465,38 +465,38 @@ STEP round trip:
   - counts faces 6, edges 12 -> faces 6, edges 12
 ### 23-boolean-cut-cavity
 
-`V = 1200 - 4/3 pi r^3 = 1200 - 36 pi (the cavity face integrates with opposite orientation); A = box + 4 pi r^2 (the cavity wall is surface); 7 faces (6 + cavity); the cavity face adds its seam and a degenerate edge at each pole: 15 edges (12 + 3)`
+`V = 1200 - 4/3 pi r^3 = 1200 - 36 pi (the cavity face integrates with opposite orientation); A = box + 4 pi r^2 (the cavity wall is surface); 7 faces (6 + cavity); the cavity face adds its seam edge and two degenerate edges at its poles: 13 pickable edges (12 + 1), the two degenerate pole edges having no geometry to pick`
 
 Live build (expected -> measured):
   - volume 1086.90266 -> 1086.90266 (rel dev -2.09e-16)
   - area 793.097336 -> 793.097336 (rel dev -1.43e-16)
   - centroid [5.00000000, 5.00000000, 0.00000000] -> [5.00000000, 5.00000000, -1.26294320e-17] (max dev 1.26e-17)
   - bbox [0.00000000, 0.00000000, -6.00000000, 10.0000000, 10.0000000, 6.00000000] -> [0.00000000, 0.00000000, -6.00000000, 10.0000000, 10.0000000, 6.00000000] (max dev 0)
-  - counts faces 7, edges 15 -> faces 7, edges 15
+  - counts faces 7, edges 13 -> faces 7, edges 13
 
 STEP round trip:
   - volume 1086.90266 -> 1086.90266 (rel dev -2.09e-16)
   - area 793.097336 -> 793.097336 (rel dev -1.43e-16)
   - centroid [5.00000000, 5.00000000, 0.00000000] -> [5.00000000, 5.00000000, -1.22265297e-17] (max dev 1.22e-17)
   - bbox [0.00000000, 0.00000000, -6.00000000, 10.0000000, 10.0000000, 6.00000000] -> [0.00000000, 0.00000000, -6.00000000, 10.0000000, 10.0000000, 6.00000000] (max dev 0)
-  - counts faces 7, edges 15 -> faces 7, edges 15
+  - counts faces 7, edges 13 -> faces 7, edges 13
 ### 24-boolean-intersect-octant
 
-`r=7 sphere centred at the box corner: V = (1/8)(4/3) pi r^3; A = 4 pi r^2 / 8 + 3 (pi r^2 / 4) = 1.25 pi r^2; centroid of a sphere octant is (3r/8)(1,1,1); 4 faces (3 flat quarters + the sphere patch); 7 edges (3 arcs + 3 lines + the pole's degenerate edge)`
+`r=7 sphere centred at the box corner: V = (1/8)(4/3) pi r^3; A = 4 pi r^2 / 8 + 3 (pi r^2 / 4) = 1.25 pi r^2; centroid of a sphere octant is (3r/8)(1,1,1); 4 faces (3 flat quarters + the sphere patch); 6 pickable edges (3 arcs + 3 lines, the pole's degenerate edge having no geometry to pick)`
 
 Live build (expected -> measured):
   - volume 179.594380 -> 179.594380 (rel dev 1.58e-16)
   - area 192.422550 -> 192.422550 (rel dev -1.48e-16)
   - centroid [2.62500000, 2.62500000, 2.62500000] -> [2.62500000, 2.62500000, 2.62500000] (max dev 4.44e-16)
   - bbox [0.00000000, 0.00000000, 0.00000000, 7.00000000, 7.00000000, 7.00000000] -> [0.00000000, 0.00000000, 0.00000000, 7.00000000, 7.00000000, 7.00000000] (max dev 0)
-  - counts faces 4, edges 7 -> faces 4, edges 7
+  - counts faces 4, edges 6 -> faces 4, edges 6
 
 STEP round trip:
   - volume 179.594380 -> 179.594380 (rel dev 8.50e-14)
   - area 192.422550 -> 192.422550 (rel dev 5.13e-14)
   - centroid [2.62500000, 2.62500000, 2.62500000] -> [2.62500000, 2.62500000, 2.62500000] (max dev 1.97e-13)
   - bbox [0.00000000, 0.00000000, 0.00000000, 7.00000000, 7.00000000, 7.00000000] -> [0.00000000, 0.00000000, 0.00000000, 7.00000000, 7.00000000, 7.00000000] (max dev 0)
-  - counts faces 4, edges 7 -> faces 4, edges 7
+  - counts faces 4, edges 6 -> faces 4, edges 6
 ### 25-extrude-up-to
 
 `Up-to the plane z = 16: the 10x10 profile becomes a 10x10x16 box; the plate stays a second body (operation new), so totals sum with the plate centred at (10, 10, 5)`
