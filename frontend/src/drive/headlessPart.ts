@@ -8,7 +8,7 @@
 
 import type { PartDoc, Mutation, SketchData, BodyResult } from '@/types/cad'
 import { createDocSession, type DocSession } from '@/session/DocSession'
-import type { SolveOptions, SolveScheduler } from '@/session/SolveScheduler'
+import type { SolveOptions, SolveScheduler, SolveSchedulerState } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
 import { measureSolveFeatures, solveLocally, type FeatureMeasure } from '@/kernel/solveLocally'
@@ -18,7 +18,7 @@ import { PART_COMMAND_SPECS, getSketchState, type PartCommandContext } from '@/p
 import { editorState } from '@/stores/editorState'
 import { partSolvePayload, applySolveToDoc } from '@/drive/solveWriteBack'
 import { journalSink, type CommandJournal } from '@/drive/journal'
-import { runScript, type ScriptRunOutcome, type ScriptStep } from '@/drive/scriptRunner'
+import { runScript, type ScriptRunOutcome, type ScriptStep, type ScriptStepOutcome } from '@/drive/scriptRunner'
 import { validateMutation } from '@/drive/mutationCatalog'
 import { readSolveOutcomes, type FeatureOutcome } from '@/drive/featureOutcome'
 import { featureFrames, type FeatureFrameMap } from '@/drive/featureFrames'
@@ -38,6 +38,21 @@ export interface HeadlessPartOptions {
   // Read-only for the session's lifetime, like the browser's file registry
   // snapshot is for one solve.
   files?: ReadonlyMap<string, Uint8Array>
+  // Called after every settled step with the state that step left behind. A
+  // worker host forwards this as a checkpoint: a solve that stalls in the next
+  // step is terminated with the state in hand, so the accepted prefix is
+  // reported instead of lost.
+  onStepSettled?: (checkpoint: HeadlessCheckpoint) => void
+}
+
+/** The state one settled step left, the unit a stalled solve can report. */
+export interface HeadlessCheckpoint {
+  doc: PartDoc
+  // The live body ids of the last settle, before the next step's solve.
+  bodies: readonly string[] | null
+  solve: SolveSchedulerState
+  // The step outcomes recorded so far, the refused tail included.
+  steps: readonly ScriptStepOutcome[]
 }
 
 export interface HeadlessPart {
@@ -54,6 +69,12 @@ export interface HeadlessPart {
   // The per-feature outcome of the last settle (status plus the kernel's own
   // exception/warning text). The CLI and MCP report every problem in here.
   solveOutcomes(): Record<string, FeatureOutcome>
+  // Whether a settle was attempted for the document this session now holds.
+  // Set when reSolve is entered, not when it completes: a faulted settle still
+  // answered nothing for its features, which is a problem to report. Reset at
+  // the start of every run, so a refused-only script (no mutation landed, no
+  // solve requested) is the one false case.
+  solveAttempted(): boolean
   // The resolved frame of every sketch and plane feature in the last solve,
   // keyed by feature id. Null when no solve has run yet.
   featureFrames(): FeatureFrameMap | null
@@ -81,9 +102,14 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
   const outcomesBox: { current: Record<string, FeatureOutcome> } = { current: {} }
   const bodiesBox: { current: string[] | null } = { current: null }
   const responseBox: { current: Awaited<ReturnType<typeof solveLocally>> } = { current: null }
+  const solvedBox = { current: false }
   const dirtyFacts = { dirty: false, saves: 0, savedHash: null as number | null }
 
   const reSolve: ReSolveFn = async (doc, solveOpts?: SolveOptions) => {
+    // Before the call, not after: a faulted or stalled solve still attempted an
+    // answer for this document, and the cutoff decides whether the reply may
+    // name the missing verdicts at all.
+    solvedBox.current = true
     outcomesBox.current = {}
     // A failed or faulted solve must not leave the previous response standing:
     // featureMeasures and featureFrames read it against the CURRENT document, so
@@ -175,6 +201,9 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
   for (const spec of PART_COMMAND_SPECS) registry.register(spec)
 
   const run = async (steps: readonly ScriptStep[]): Promise<ScriptRunOutcome> => {
+    // This call's own answer, not the session's history: a previous call that
+    // solved must not make a refused-only script look solved.
+    solvedBox.current = false
     if (steps.length === 0) {
       // An empty script is the "inspect this document" call: without a request
       // the reply carried generation 0 and no verdicts, so a passed document
@@ -218,7 +247,19 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
         if (!validated.ok) return { ok: false, code: validated.error.code, message: validated.error.message }
         return session.execute(validated.mutation)
       },
-      () => solve.idle(),
+      async (outcomes: readonly ScriptStepOutcome[]) => {
+        await solve.idle()
+        // The checkpoint is the state after this step settled, so a stall in
+        // the next step reports the accepted prefix, never the step that hung.
+        const doc = docBox.current
+        if (doc === null) return
+        opts.onStepSettled?.({
+          doc,
+          bodies: bodiesBox.current,
+          solve: solve.state(),
+          steps: outcomes,
+        })
+      },
     )
   }
 
@@ -229,6 +270,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     getDoc: () => docBox.current,
     bodyIds: () => bodiesBox.current,
     solveOutcomes: () => outcomesBox.current,
+    solveAttempted: () => solvedBox.current,
     featureFrames: () => responseBox.current === null
       ? null
       : featureFrames(docBox.current, responseBox.current.result),

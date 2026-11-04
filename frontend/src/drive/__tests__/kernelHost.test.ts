@@ -6,6 +6,7 @@
 // the MCP stall case in cliSmoke.test.ts.
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
+import type { PartDoc } from '@/types/cad'
 import { createKernelHost, KernelTimeout, type KernelWorkerLike, type KernelHostMessage, type KernelRequest } from '../kernelHost'
 
 class FakeKernelWorker implements KernelWorkerLike {
@@ -48,6 +49,17 @@ function setup(budgetMs = 1000) {
 }
 
 afterEach(() => vi.useRealTimers())
+
+// The state a settled step leaves: the document, its live bodies, the idle
+// solve and the outcomes recorded so far.
+const checkpoint = {
+  doc: { version: 1, kind: 'part', features: [{ id: 'sk1', kind: 'sketch' }] } as PartDoc,
+  bodies: ['body_ex1'],
+  solve: { generation: 4, pending: false, running: false, lastError: null },
+  steps: [
+    { index: 0, kind: 'mutation' as const, id: 'add_sketch', ok: true, createdIds: ['sk1'] },
+  ],
+}
 
 describe('createKernelHost', () => {
   it('posts a call to the worker and resolves with its reply value', async () => {
@@ -109,6 +121,50 @@ describe('createKernelHost', () => {
     const settled = expect(p).rejects.toThrow(/^solve timed out after 1 s$/)
     await vi.advanceTimersByTimeAsync(1000)
     await settled
+  })
+
+  it('carries the last settled checkpoint on the stall rejection', async () => {
+    vi.useFakeTimers()
+    const { host, created } = setup(2000)
+    const p = host.call('run', {})
+    await vi.waitFor(() => expect(created[0]?.posted).toHaveLength(1))
+    created[0].send({ kind: 'progress', featureId: 'ex2' })
+    created[0].send({ kind: 'checkpoint', id: created[0].last().id, ...checkpoint })
+    const caught = p.catch((e: unknown) => e)
+    await vi.advanceTimersByTimeAsync(2000)
+    const error = await caught
+    expect(error).toBeInstanceOf(KernelTimeout)
+    expect((error as Error).message).toBe('solve timed out after 2 s in feature ex2')
+    expect((error as KernelTimeout).checkpoint).toEqual(checkpoint)
+    expect(created[0].terminated).toBe(true)
+  })
+
+  it('does not leak a failed call checkpoint into the next call', async () => {
+    vi.useFakeTimers()
+    const { host, created } = setup(2000)
+    const first = host.call('run', {})
+    await vi.waitFor(() => expect(created[0]?.posted).toHaveLength(1))
+    created[0].send({ kind: 'checkpoint', id: created[0].last().id, ...checkpoint })
+    const firstCaught = first.catch((e: unknown) => e)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect((await firstCaught as KernelTimeout).checkpoint).toEqual(checkpoint)
+
+    // The failed call dropped the worker; the next call runs on a fresh one.
+    const next = host.call('measure', {})
+    await vi.waitFor(() => expect(created).toHaveLength(2))
+    await vi.waitFor(() => expect(created[1].posted).toHaveLength(1))
+    created[1].send({ kind: 'reply', id: created[1].last().id, ok: true, value: { ok: true } })
+    await expect(next).resolves.toEqual({ ok: true })
+
+    // A later stall on that worker has its own, empty checkpoint: the first
+    // call's state died with its in-flight entry.
+    const later = host.call('run', {})
+    await vi.waitFor(() => expect(created[1].posted).toHaveLength(2))
+    const laterCaught = later.catch((e: unknown) => e)
+    await vi.advanceTimersByTimeAsync(2000)
+    const error = await laterCaught
+    expect(error).toBeInstanceOf(KernelTimeout)
+    expect((error as KernelTimeout).checkpoint).toBeNull()
   })
 
   it('serializes calls: the second is not posted until the first answers', async () => {

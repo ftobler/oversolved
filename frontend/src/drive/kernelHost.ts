@@ -11,12 +11,16 @@
  * host terminates the worker, rejects the call with a KernelTimeout naming the
  * last feature, and the next call spawns a fresh worker. The worker loses only
  * its checkpoint cache; documents live with the server (the docHash store).
+ * The worker also posts the state each settled step left, so the timeout
+ * rejection carries the accepted prefix when there is one; it is stored on the
+ * in-flight call and dies with it, so a later call can never read a stale one.
  *
  * The worker side is kernelWorker.ts; this module never loads the kernel.
  */
 
 import { solveTimeoutMessage } from '@/kernel/featureProgress'
 import { SOLVE_STALL_BUDGET_MS } from '@/kernel/solverConstants'
+import type { HeadlessCheckpoint } from '@/drive/headlessPart'
 
 /** The kernel operations a worker serves (kernelWorker.ts). */
 export type KernelOp = 'run' | 'measure' | 'compare' | 'export' | 'select' | 'assemblyRun' | 'assemblyMeasure' | 'assemblyCompare' | 'assemblyExport'
@@ -33,9 +37,11 @@ export interface KernelErrorShape {
   message: string
 }
 
-/** Everything a kernel worker posts: a feature mark or the reply to a call. */
+/** Everything a kernel worker posts: a feature mark, the state a settled step
+ *  left (the stall answer), or the reply to a call. */
 export type KernelHostMessage =
   | { kind: 'progress'; featureId: string }
+  | ({ kind: 'checkpoint'; id: number } & HeadlessCheckpoint)
   | { kind: 'reply'; id: number; ok: true; value: unknown }
   | { kind: 'reply'; id: number; ok: false; error: KernelErrorShape }
 
@@ -48,9 +54,17 @@ export interface KernelWorkerLike {
   terminate(): Promise<number> | void
 }
 
-/** The host gave up on a call whose solve stopped announcing features. */
+/** The host gave up on a call whose solve stopped announcing features. The
+ *  checkpoint is the state the last settled step left, null when the call
+ *  stalled in its first solve and never had one. */
 export class KernelTimeout extends Error {
   override name = 'KernelTimeout'
+  readonly checkpoint: HeadlessCheckpoint | null
+
+  constructor(message: string, checkpoint: HeadlessCheckpoint | null = null) {
+    super(message)
+    this.checkpoint = checkpoint
+  }
 }
 
 /** The worker died under a call (a crash or an exit); the next call respawns. */
@@ -94,6 +108,9 @@ interface InFlight {
   lastFeatureId: string | null
   // The assembly bundle mark (`part <doc_id>`) that owns the feature marks.
   lastPartId: string | null
+  // The latest state a settled step posted, for the stall rejection. It dies
+  // with the call: a new call starts with none.
+  checkpoint: HeadlessCheckpoint | null
 }
 
 function reviveError(shape: KernelErrorShape): Error {
@@ -128,7 +145,8 @@ export function createKernelHost(opts: KernelHostOptions): KernelHost {
 
   const onStall = (): void => {
     const w = worker
-    settle((p) => p.reject(new KernelTimeout(solveTimeoutMessage(budgetMs, p.lastFeatureId, p.lastPartId))))
+    const checkpoint = inFlight?.checkpoint ?? null
+    settle(p => p.reject(new KernelTimeout(solveTimeoutMessage(budgetMs, p.lastFeatureId, p.lastPartId), checkpoint)))
     if (w) drop(w)
   }
 
@@ -146,6 +164,17 @@ export function createKernelHost(opts: KernelHostOptions): KernelHost {
         else p.lastFeatureId = msg.featureId
         clearTimeout(p.timer)
         p.timer = setTimeout(onStall, budgetMs)
+        return
+      }
+      if (msg.kind === 'checkpoint') {
+        const p = inFlight
+        if (!p || p.id !== msg.id) return
+        p.checkpoint = {
+          doc: msg.doc,
+          bodies: msg.bodies,
+          solve: msg.solve,
+          steps: msg.steps,
+        }
         return
       }
       if (inFlight?.id !== msg.id) return
@@ -178,7 +207,7 @@ export function createKernelHost(opts: KernelHostOptions): KernelHost {
       // Armed before the post, so the kernel load at a fresh worker's first
       // call counts against the budget too: a load that never finishes is a
       // stall like any other.
-      inFlight = { id, resolve, reject, timer: setTimeout(onStall, budgetMs), lastFeatureId: null, lastPartId: null }
+      inFlight = { id, resolve, reject, timer: setTimeout(onStall, budgetMs), lastFeatureId: null, lastPartId: null, checkpoint: null }
       try {
         ensureWorker().postMessage({ id, op, args })
       } catch (e) {

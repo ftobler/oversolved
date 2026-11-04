@@ -56,6 +56,7 @@ describe.skipIf(!oc || !solveBytes)('headless run after a kernel fault (real OCC
       featureDeltas: 'all',
     })
     expect(failed.ok).toBe(false)
+    expect(failed.solved).toBe(true)
     expect(failed.solve.lastError).toMatch(/kernel fault/)
     expect(failed.solve.lastError).toContain('memory access out of bounds')
     // No verdicts survived the failed settles, so every authored feature is

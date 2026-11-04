@@ -288,7 +288,8 @@ npm run drive -- replay repro.json
   (OCC's STEP transfer banner) go to stderr, so stdout parses whole.
 - `run` builds a document from mutation steps and/or command steps through one
   `DocSession` and the real kernel, optionally writes the final document (`--out`)
-  and the journal (`--repro`), and prints steps, document hash, solve state, the
+  and the journal (`--repro`), and prints steps, document hash, solve state,
+  `solved` (whether a settle was attempted), the
   feature problems (`features`, see the MCP section) and the resolved sketch and
   plane `frames` (also described there). The `--out` format is
   chosen by the extension: `.json` writes JSON, anything else writes YAML. The
@@ -397,7 +398,7 @@ banner on stdout, so a client config must use the direct node invocation.
 |---|---|---|
 | `commands` | optional `kind` (`part` default, or `assembly`) | the command catalog for that editor |
 | `mutations` | optional `kind` (`part` or `assembly`), optional `family` (`sketch`, `features`, `picks`, `part style`, `document`, `parts`, `mates`) | the mutation vocabularies grouped by family plus ready-to-run example scripts; no argument returns both whole (about 90 kB), a filter returns only that slice and an unknown family is refused with the valid list |
-| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, steps, docHash, solve, features, featureDeltas, frames, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
+| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, featureDeltas, frames, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
 | `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`frames`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }` |
 | `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
 | `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, docHash, features, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }` |
@@ -496,9 +497,16 @@ banner on stdout, so a client config must use the direct node invocation.
   for saving or hand-editing. The summary's body ids are the live bodies of the
   final solve, not the accumulated `part_style` keys: a boolean or join consumes
   a body while its colour entry stays behind, and the reply must not name what
-  the measure tool no longer counts. When a step is refused no final solve runs,
-  so the summary says `bodies: not solved (step N refused)` instead of falling
-  back to `part_style`. Chaining by hash is the intended flow: a
+  the measure tool no longer counts. A refused script has two states: when
+  nothing settled (every step refused before a mutation landed), the summary says
+  `bodies: not solved (step N refused)` and `solved` is false, because the
+  document was never solved and there are no verdicts to list; when an accepted
+  prefix settled and the next step was refused, the summary names that live set
+  plus `solved through step N-1; step N refused, not applied`, and `solved` is
+  true. A step whose solve hit the stall budget says `step N timed out` instead
+  of refused. `solved` is the one state flag: it means a settle was attempted
+  for the document the reply describes, so a faulted settle still lists its
+  missing verdicts. Chaining by hash is the intended flow: a
   modelling session does not re-send the part on every call.
 - The full document behind any reply's `docHash` is also a resource:
   `resources/templates/list` advertises `oversolved://doc/{docHash}`, and
@@ -525,7 +533,11 @@ banner on stdout, so a client config must use the direct node invocation.
   at all after the settle is listed with status `missing` and message `no verdict
   from the solve`, and makes `ok` false: an empty solve result must never read
   as a clean build. A kernel fault (a WASM trap that repeated on the reloaded
-  module) is also `ok: false`, with `solve.lastError` naming the fault.
+  module) is also `ok: false`, with `solve.lastError` naming the fault. A script
+  whose steps were all refused before any mutation landed is the one case with
+  no verdicts to report: `solved` is false, `features` is empty, and `ok` is
+  false because the steps did not apply. The caller's action is to fix the step;
+  a `run` with `steps: []` is how to ask that document for its verdicts.
   `export` is the one reply whose `ok` is stricter than a run's: the file is
   the answer, so any feature in `features` (failed, partial or warned) makes it
   `ok: false` even though the bytes are still written. An assembly export
@@ -569,9 +581,12 @@ banner on stdout, so a client config must use the direct node invocation.
   with cwd `frontend/`, and the file must stay inside `tmp/`, `bugreports/` or
   `scratch/`. A missing file or a path outside those roots is a tool error
   naming the `files[]` entry, not a JSON-RPC internal error.
-- `run` with `out` writes the final document (even the accepted prefix of a
-  refused script) as JSON for a `.json` path and YAML otherwise, and adds
-  `file` and `format` to the reply. `compare` with `referencePath` reads the
+- `run` with `out` writes the final document (the step's own document after a
+  refused script, or the checkpoint's document after a stalled one) as JSON for
+  a `.json` path and YAML otherwise, and adds
+  `file` and `format` to the reply. A stalled call whose first solve never
+  settled applied no step, so its input document is also its final document; it
+  is written with `solved: false`. `compare` with `referencePath` reads the
   reference from a file instead of inline. `run`'s `out`, `export`'s `out` and
   `compare`'s `referencePath` all resolve relative paths against the repo root,
   so `tmp/x.json` names the project's tmp even though the server runs with cwd
@@ -580,6 +595,16 @@ banner on stdout, so a client config must use the direct node invocation.
   refused with the allowed directories named. A missing parent directory is
   created at write time, so a fresh run directory needs no pre-making. The file
   reference goes through the same corpus validator as the inline object.
+- A `run` whose solve stops announcing features for the stall budget is
+  answered with the state it holds, not a bare timeout: when the worker posted a
+  checkpoint for an accepted step, the reply carries `ok: false`, that
+  document's `docHash`, the settled `steps` plus the step that timed out
+  (`error.code: "solve-timeout"`), `solved: true`, `features: []`, null
+  `featureDeltas` and `frames`, a summary naming the accepted prefix, and the
+  `out` file. A stall before the first settle has no checkpoint and keeps the
+  tool-error shape; with an empty script and `out` the input document is written
+  as above. The 30 s budget, the single worker and stop-on-first-error are
+  unchanged, and the killed worker is replaced for the next call.
 - `compare` takes its `reference` inline (the agent has just produced it) and
   validates it through the corpus parser, so a reference missing `tolerance`
   or carrying a malformed bbox is JSON-RPC invalid-params, not a tool error.

@@ -20,10 +20,12 @@ import { createRequire } from 'node:module'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, it, expect } from 'vitest'
+import { parse as parseYaml } from 'yaml'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { docHashOf } from '@/drive/docHash'
 import { DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
-import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
+import { CURRENT_DOC_VERSION, loadPartDoc } from '@/persistence/docSchema'
+import type { PartDoc } from '@/types/cad'
 import { HOLE_ON_LINE_SKETCH } from './featureFixtures'
 import { spawnMcp, toolPayload, errorPayload, FRONTEND_DIR } from './mcpStdioClient'
 
@@ -1066,11 +1068,12 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
     }
   }, 240_000)
 
-  it('answers a stalled solve with a timeout naming the feature, then serves the next call', async () => {
+  it('answers a stalled solve with the accepted prefix, its docHash and the out file', async () => {
     // The kernel worker's test hook spins forever when the build reaches
     // ex_stuck (bug-fuse-hang D2): the stand-in for a kernel operation that
-    // never returns. The server must kill that worker, answer the call, and
-    // build the next document on a fresh one.
+    // never returns. The server must kill that worker and answer the call with
+    // the state the accepted prefix holds, then serve the next call on a fresh
+    // worker.
     const client = spawnMcp({
       // Roomy enough that a kernel boot under a loaded full suite (counted
       // against the budget) never trips it before the first feature mark.
@@ -1081,20 +1084,97 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       await client.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'cliSmoke', version: '0' } })
       const stuckSteps = BOX_SCRIPT.steps.map(step =>
         step.mutation.type === 'add_extrude' ? { mutation: { ...step.mutation, featureId: 'ex_stuck' } } : step)
+      const outFile = path.join(TMP_DIR, 'mcp-stall-prefix.yaml')
+      rmSync(outFile, { force: true })
       const t0 = performance.now()
-      const stuck = await client.request('tools/call', { name: 'run', arguments: { steps: stuckSteps } })
+      const stuck = await client.request('tools/call', { name: 'run', arguments: { steps: stuckSteps, out: outFile } })
       expect(performance.now() - t0).toBeLessThan(60_000)
       expect(stuck.error).toBeUndefined()
-      const stuckResult = stuck.result as { content: Array<{ text: string }>; isError?: boolean }
-      expect(stuckResult.isError).toBe(true)
-      expect(JSON.parse(stuckResult.content[0].text)).toEqual({
+      const stuckResult = errorPayload(stuck)
+      expect(stuckResult.ok).toBe(false)
+      // The first two steps settled; the third hung, so the reply describes the
+      // state those two left rather than naming every feature missing.
+      expect(stuckResult.solved).toBe(true)
+      expect(stuckResult.error).toBeUndefined()
+      const stuckOutcomes = stuckResult.steps as Array<{
+        index: number; kind: string; id: string; ok: boolean; error?: { code: string; message: string }
+      }>
+      expect(stuckOutcomes.map(step => step.index)).toEqual([0, 1, 2])
+      expect(stuckOutcomes.slice(0, 2).map(step => step.ok)).toEqual([true, true])
+      expect(stuckOutcomes[2]).toMatchObject({
+        index: 2,
+        kind: 'mutation',
+        id: 'add_extrude',
         ok: false,
-        error: 'solve timed out after 10 s in feature ex_stuck',
+        error: { code: 'solve-timeout', message: 'solve timed out after 10 s in feature ex_stuck' },
       })
+      expect(typeof stuckResult.docHash).toBe('string')
+      expect((stuckResult.solve as { lastError: string | null }).lastError)
+        .toBe('solve timed out after 10 s in feature ex_stuck')
+      expect(stuckResult.featureDeltas).toBeNull()
+      expect(stuckResult.frames).toBeNull()
+      expect(stuckResult.summary).toContain('bodies: none (solved through step 1; step 2 timed out)')
+      expect(stuckResult.summary).not.toContain('refused')
+
+      // 3D negative: the saved document is the checkpoint's (the sketch the
+      // accepted prefix authored), never this call's empty input document.
+      expect(stuckResult.file).toBe(outFile)
+      const saved = loadPartDoc(parseYaml(readFileSync(outFile, 'utf8')), { name: outFile })
+      expect(saved.ok).toBe(true)
+      if (!saved.ok) throw new Error('unreachable')
+      const savedIds = (saved.doc.features ?? []).map(feature => feature.id)
+      expect(savedIds).toContain('sk1')
+      expect(savedIds).not.toContain('ex_stuck')
+      expect(savedIds).not.toContain('ex1')
 
       const next = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
       expect(next.ok).toBe(true)
       expect(next.summary).toContain('body_ex1')
+    } finally {
+      await client.close()
+    }
+  }, 240_000)
+
+  it('saves the input document when a stalled inspect applied no step', async () => {
+    // din_rail: the hang hits the call's first solve (steps: []), so there is no
+    // checkpoint. The input document is also the final document and is saved.
+    const client = spawnMcp({
+      OVERSOLVED_MCP_SOLVE_BUDGET_MS: '10000',
+      OVERSOLVED_MCP_TEST_HANG_FEATURE: 'ex_stuck',
+    })
+    try {
+      await client.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'cliSmoke', version: '0' } })
+      // Build a valid document first (this server only hangs on ex_stuck), then
+      // rename its extrude so the inspect call stalls in its first solve.
+      const built = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { steps: BOX_SCRIPT.steps, returnDoc: true },
+      }))
+      const source = built.doc as PartDoc
+      const stuckDoc = {
+        ...source,
+        features: (source.features ?? []).map(feature =>
+          feature.id === 'ex1' ? { ...feature, id: 'ex_stuck' } : feature),
+      } as PartDoc
+      const inputHash = docHashOf(stuckDoc)
+      const outFile = path.join(TMP_DIR, 'mcp-stall-input.yaml')
+      rmSync(outFile, { force: true })
+
+      const stalled = errorPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { doc: stuckDoc, steps: [], out: outFile },
+      }))
+      expect(stalled.ok).toBe(false)
+      expect(stalled.solved).toBe(false)
+      expect(stalled.docHash).toBe(inputHash)
+      expect(stalled.error).toBe('solve timed out after 10 s in feature ex_stuck')
+      expect(stalled.file).toBe(outFile)
+      expect(stalled.format).toBe('yaml')
+
+      const loaded = loadPartDoc(parseYaml(readFileSync(outFile, 'utf8')), { name: outFile })
+      expect(loaded.ok).toBe(true)
+      if (!loaded.ok) throw new Error('unreachable')
+      expect(loaded.doc).toEqual(stuckDoc)
     } finally {
       await client.close()
     }

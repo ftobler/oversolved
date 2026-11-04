@@ -171,42 +171,73 @@ export function resolveDoc(req: McpDocArguments, documents: DocHandleStore): Res
 // bodies the final solve reported when the caller has them: part_style can
 // keep a colour entry for a body a boolean or join consumed (an older document,
 // or the browser's add-only reconcile), so its keys alone would name dead
-// bodies. Feature ids and kinds come from the feature log. A refused
-// step skips the solve (the script stops there), so there are no live bodies to
-// report; saying "not solved" is honest where the part_style fallback is not.
+// bodies. A stopped script is described by two facts: a settle that ran (list
+// its live bodies, solved through the step before) or one that never did (say
+// not solved), plus whether the stopping step was refused or timed out.
 export function summarizeDoc(
   doc: PartDoc,
   liveBodies?: readonly string[] | null,
-  refusedStep?: number | null,
+  stopped?: StoppedStep | null,
 ): string {
   const features = (doc.features ?? []).map(feature => `${feature.id} (${feature.kind})`)
-  const bodies = refusedStep !== undefined && refusedStep !== null
-    ? `not solved (step ${refusedStep} refused)`
-    : (liveBodies ?? Object.keys(doc.part_style ?? {}))
-      .join(', ') || 'none'
+  let bodies: string
+  if (stopped) {
+    const timedOut = stopped.code === 'solve-timeout'
+    const verb = timedOut ? 'timed out' : 'refused'
+    const live = liveBodies ?? null
+    if (live === null) {
+      bodies = `not solved (step ${stopped.index} ${verb})`
+    } else {
+      const list = live.join(', ') || 'none'
+      // A timeout applied its mutation and lost only the settle, so the report
+      // stops before it without calling it refused; a refused step never landed.
+      bodies = stopped.index === 0
+        ? `${list} (step 0 ${timedOut ? 'timed out' : 'refused, not applied'})`
+        : `${list} (solved through step ${stopped.index - 1}; step ${stopped.index} ${timedOut ? 'timed out' : 'refused, not applied'})`
+    }
+  } else {
+    bodies = (liveBodies ?? Object.keys(doc.part_style ?? {})).join(', ') || 'none'
+  }
   return `features: ${features.length > 0 ? features.join(', ') : 'none'}; `
     + `bodies: ${bodies}`
 }
 
-// The refused step that stopped the script, as the index the outcomes carry.
+/** The last step when it failed, with the error code the summary words. */
+export interface StoppedStep {
+  index: number
+  code: string | null
+}
+
+// The failed step that stopped the script, as the index the outcomes carry.
 // A failed step in the middle only appears when `continueOnError` let later
 // steps run and solve, so it is not evidence that the final state is unsolved.
-function stoppedStep(steps: readonly unknown[]): number | null {
+function stoppedStep(steps: readonly unknown[]): StoppedStep | null {
   const last = steps[steps.length - 1]
   if (typeof last !== 'object' || last === null) return null
-  const candidate = last as { index?: unknown; ok?: unknown }
+  const candidate = last as { index?: unknown; ok?: unknown; error?: unknown }
   if (candidate.ok !== false) return null
-  return typeof candidate.index === 'number' ? candidate.index : null
+  if (typeof candidate.index !== 'number') return null
+  const error = typeof candidate.error === 'object' && candidate.error !== null
+    ? candidate.error as { code?: unknown }
+    : null
+  return {
+    index: candidate.index,
+    code: typeof error?.code === 'string' ? error.code : null,
+  }
 }
 
 export interface RunReplySource {
   ok: boolean
+  // Whether a settle was attempted for this document; false only for a script
+  // whose every step was refused before any mutation landed.
+  solved: boolean
   outcome: { steps: unknown[] }
   doc: PartDoc | null
   docHash: string | null
   solve: unknown
-  // The final solve's live body ids; null or absent means no solve ran, so the
-  // summary falls back to the document's part_style keys.
+  // The final solve's live body ids; null or absent means no settle ran, in
+  // which case the summary falls back to the document's part_style keys only
+  // when no step stopped the script.
   bodies?: readonly string[] | null
   // The problems the solve reported (featureOutcome.featureProblems): a
   // feature can fail or warn while `ok` stays true, so this rides every reply.
@@ -226,7 +257,9 @@ export interface RunReplySource {
  *
  * `ok` means the steps applied and the solve ran; a failed feature is data,
  * not a failed call. The features list and the summary's `problems:` suffix
- * are how a client that reads only one line still learns about it.
+ * are how a client that reads only one line still learns about it. `solved`
+ * separates "the settle answered" from "it was never asked": a refused script
+ * carries no verdicts rather than a row per authored feature.
  */
 export function runReply(
   result: RunReplySource,
@@ -236,15 +269,16 @@ export function runReply(
   const finalDoc = result.doc
   const docHash = finalDoc ? documents.put(finalDoc) : result.docHash
   const features = result.features
-  // A stopped script has no solve for its final, refused step, so the live-set
-  // fallback would name whatever part_style last carried. Say so instead; a
-  // script that continued past a failure (continueOnError) did solve later.
-  const refusedStep = stoppedStep(result.outcome.steps)
+  // A stopped script is worded from the state it holds: a settle that ran lists
+  // its live set and where it stopped, one that never ran says so. The step's
+  // code decides refused versus timed out.
+  const stopped = stoppedStep(result.outcome.steps)
   const summary = finalDoc
-    ? summarizeDoc(finalDoc, result.bodies, refusedStep) + (features.length > 0 ? `; problems: ${features.map(formatFeatureProblem).join('; ')}` : '')
+    ? summarizeDoc(finalDoc, result.bodies, stopped) + (features.length > 0 ? `; problems: ${features.map(formatFeatureProblem).join('; ')}` : '')
     : undefined
   return {
     ok: result.ok,
+    solved: result.solved,
     steps: result.outcome.steps,
     docHash,
     solve: result.solve,
