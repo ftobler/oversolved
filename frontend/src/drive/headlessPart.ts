@@ -114,6 +114,10 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     // name the missing verdicts at all.
     solvedBox.current = true
     outcomesBox.current = {}
+    // The body set belongs to the response being replaced: a faulted re-solve
+    // must not leave the previous document's live set to be reported as this
+    // one's.
+    bodiesBox.current = null
     // A failed or faulted solve must not leave the previous response standing:
     // featureMeasures and featureFrames read it against the CURRENT document, so
     // pairing the old frames with a document edited since would report a plane

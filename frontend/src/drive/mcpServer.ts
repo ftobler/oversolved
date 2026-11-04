@@ -66,7 +66,8 @@ export interface McpRunRequest extends McpDocArguments {
   files: McpFileRef[]
   // Default false: the reply carries docHash, not the whole document.
   returnDoc?: boolean
-  // 'all' lists every feature in featureDeltas instead of this call's changes.
+  // 'all' lists every built feature in featureDeltas instead of this call's
+  // changes; a warned feature that built follows the same rule.
   featureDeltas?: 'all'
   // Write the final document here (YAML or JSON by extension). Project paths
   // only; the entry script resolves and enforces the directory rule.
