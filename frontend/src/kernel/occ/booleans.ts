@@ -24,6 +24,7 @@ import { volumeOf } from './volume'
 import { foldCavitySolids } from './cavities'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { swallowUnlessTrap } from '../errors'
+import { OCC_CONFUSION } from '../solverConstants'
 
 // Re-exported for the callers that read a body's volume.
 export { volumeOf }
@@ -146,6 +147,46 @@ export function shapesIntersect(oc: OccModule, target: OccShape, tool: OccShape)
     // A failed probe is not evidence of disjointness: report intersect so the
     // caller runs the real cut and its own failure surfaces instead.
     return true
+  } finally {
+    s.dispose()
+  }
+}
+
+/**
+ * Do these two shapes touch, a shared face counting as a touch?
+ *
+ * This is the companion probe to `shapesIntersect`, not a replacement. It reads
+ * the minimum distance between the two boundaries: two solids that share a face
+ * answer 0, which the Common cannot see (a face-only Common has no solid). In
+ * this build DistShapeShape also answers 0 for a body fully inside the other
+ * (`InnerSolution`), so the distance probe happens to cover the Common's
+ * overlap and containment answers too; the caller still reads both, because
+ * the Common is the authoritative overlap answer and the distance probe falls
+ * back to it when it cannot run.
+ *
+ * A probe that cannot run falls back to `shapesIntersect`, the same rule the
+ * Common follows: a failed probe is not evidence of disjointness, and the
+ * distance builder reporting `IsDone() == false` is a failure, not a gap.
+ * Its own DisposeScope is disposed in a finally, so no probe proxy reaches the
+ * caller's build scope.
+ */
+export function shapesTouch(oc: OccModule, target: OccShape, tool: OccShape): boolean {
+  const s = new DisposeScope()
+  try {
+    // The 4-arg ctor: the deflection is mandatory in this build (there is no
+    // 2-arg form), and MIN asks for the minimum distance rather than the
+    // farthest pair.
+    const probe = s.track(new oc.BRepExtrema_DistShapeShape_2(
+      target,
+      tool,
+      OCC_CONFUSION,
+      oc.Extrema_ExtFlag.Extrema_ExtFlag_MIN,
+    ))
+    if (!probe.IsDone()) return shapesIntersect(oc, target, tool)
+    return probe.Value() <= OCC_CONFUSION
+  } catch (e) {
+    swallowUnlessTrap(e)
+    return shapesIntersect(oc, target, tool)
   } finally {
     s.dispose()
   }

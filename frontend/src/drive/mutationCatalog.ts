@@ -418,7 +418,9 @@ const VARIABLE_NAME_NOTE =
 // merge_target is a body id, not a ref: the practice runs guessed `@body_ex5`.
 const MERGE_TARGET_NOTE =
   'The bare body id the cut or add goes into, e.g. `body_ex5` (no @ sigil). Absent means automatic: a cut ' +
-  'reaches every body, and an add fuses the first body it reaches. ' +
+  'reaches every body, and an add fuses the first body it reaches. On an extrude, a body the new solid only ' +
+  'shares a face with is reported by the touch warning, not fused, so an overlap is not required for the ' +
+  'warning to name it. ' +
   'The feature\'s featureDeltas row names the receiving body as `body`, with its own `bodyVolume`.'
 
 // Up-to was documented in the document schema and the document guide but not in

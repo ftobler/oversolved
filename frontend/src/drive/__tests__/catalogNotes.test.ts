@@ -213,6 +213,18 @@ describe('F7: merge_target spelling', () => {
       expect(note, type).toContain('`body`')
     }
   })
+
+  // The touch warning now fires for a body that only shares a face with the new
+  // solid, which the volume probe cannot see, so the merge_target note must not
+  // read as "an overlap is what the warning requires".
+  it('says a shared face is enough for the extrude touch warning', () => {
+    for (const type of ['add_extrude', 'set_extrude_field'] as const) {
+      const note = mutationInfoOf(type).note!
+      expect(note, type).toContain('only shares a face')
+      expect(note, type).toContain('touch warning')
+      expect(note, type).toContain('overlap is not required')
+    }
+  })
 })
 
 describe('F12: face-sketch frame on the first read', () => {
