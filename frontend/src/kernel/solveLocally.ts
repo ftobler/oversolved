@@ -720,6 +720,25 @@ export interface LocalBuildAndMeasure {
 }
 
 /**
+ * The ids of the bodies the solve holds with a shape, from the last feature
+ * checkpoint's body store: the same set `buildAndMeasureLocally` measures, so a
+ * reply and a measure cannot name different live sets. The response's `bodies`
+ * map is the render tessellation, which omits a body whose tessellation failed
+ * while the solve still holds and measures it. Null when the response carries no
+ * build state at all (no solve ran); an empty list is a solved document with no
+ * bodies.
+ */
+export function finalLiveBodyIds(response: { _build_state?: unknown }): string[] | null {
+  const state = response._build_state as BuildState | undefined
+  if (state === undefined || state === null) return null
+  const last = state.feature_order[state.feature_order.length - 1]
+  const store = (last === undefined ? undefined : state.checkpoints[last])?.body_store_snapshot ?? {}
+  return Object.entries(store)
+    .filter(([, body]) => body.shape != null)
+    .map(([id]) => id)
+}
+
+/**
  * Build a document once and return both the solve response and the final body
  * set's measures. The body set is the last feature checkpoint's snapshot,
  * exactly the one `resolveExportShape` reads, so the measurement describes what

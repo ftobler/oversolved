@@ -88,6 +88,8 @@ export interface McpExportRequest extends McpDocArguments {
   body?: string
   docId?: string
   files: McpFileRef[]
+  // Assembly exports only; undefined means the default (full).
+  detail?: AssemblyDetail
 }
 
 export interface McpSelectRequest extends McpDocArguments {
@@ -168,10 +170,21 @@ const KIND_SCHEMA = {
 const DETAIL_SCHEMA = {
   type: 'string',
   enum: [...ASSEMBLY_DETAILS],
-  description: 'Assembly replies only (default full). summary: ok, docHash, solve verdict/dof/iters, mate and part problems, summary. '
-    + 'changed: adds the poses that moved against the starting document\'s solve (run only), the mate frames of mates this call added, edited '
-    + 'or that have a problem, solve.mates only for problem mates, and refused steps in full (accepted steps become stepsAccepted). '
-    + 'full: every instance, mate frame and step.',
+  description: 'Assembly replies only (default full). run, summary: ok, docHash, solve verdict/dof/iters, mate and part problems, summary. '
+    + 'measure, summary: the aggregate measures (bodies, volume, area, centroid, bbox and the topology counts), the solve verdict and the mate and part '
+    + 'problems, with no perBody table and no one-line summary. changed: adds the poses that moved against the starting document\'s solve (run only), '
+    + 'the mate frames of mates this call added, edited or that have a problem, solve.mates only for problem mates, and refused steps in full (accepted '
+    + 'steps become stepsAccepted); a measure has no starting document, so it lists no poses. full: every instance, mate frame and step, plus perBody '
+    + 'for measure.',
+}
+
+// An export's `detail` shares the level names but not the run/measure key
+// sets: the product is the file, so even `changed` trims to the summary form.
+const EXPORT_DETAIL_SCHEMA = {
+  type: 'string',
+  enum: [...ASSEMBLY_DETAILS],
+  description: 'Assembly exports only (default full). summary keeps ok, docHash, the solve verdict, the mate and part problems, the one-line summary '
+    + 'and the file fields. changed is treated as summary: an export has no starting document to compare against. full adds every instance pose.',
 }
 
 // The assembly binding. A bound {doc} is loaded and stored under its own hash,
@@ -378,18 +391,20 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + '(an empty list is a clean build). A feature the settle gave no verdict at all is listed with status '
       + 'missing and makes ok false, as does a kernel fault, which also sets solve.lastError. featureDeltas gives volume and bbox after each feature this call '
       + 'changed or touched, with the change from the previous checkpoint, so an additive step\'s contribution '
-      + 'is visible without repeating the whole history; a failed, partial or warning feature has no delta row. '
+      + 'is visible without repeating the whole history; a partial or exception feature has no delta row, while a warned feature '
+      + 'that built follows the same changed/touched rule and carries the warning text. '
       + 'A row\'s volume is the total over every live body; body and bodyVolume name the one body the feature '
       + 'built or changed (a merge_target cut\'s receiving body) and its own volume. '
-      + 'Pass featureDeltas: "all" to inspect every clean row instead. frames reports each sketch and add_plane '
+      + 'Pass featureDeltas: "all" to inspect every built row instead. frames reports each sketch and add_plane '
       + 'feature\'s resolved {origin, x_axis, y_axis, normal}, so a face sketch\'s axes are read from the reply '
       + 'rather than guessed (a feature whose solve threw has no frame). With steps: [] the given document is solved '
       + 'once and the same fields are returned, which is how to inspect a document. A reply\'s docHash is stable: '
       + 'run with steps: [] on it (by docHash, or its exported YAML/JSON as doc) returns the same hash. '
       + 'solved says whether a settle was attempted for this document: a script whose every step was refused before '
       + 'any mutation landed leaves it false and returns no per-feature rows, because nothing was solved; pass '
-      + 'steps: [] to ask for an inspect settle instead. The summary lists only the bodies the final solve left live: '
-      + 'a refused step names the live prefix and how far the script got, and a step that timed out is worded as a '
+      + 'steps: [] to ask for an inspect settle instead. The summary lists every body the final solve holds live: '
+      + 'that is the checkpoint body store, so it includes a body whose tessellation failed (the solve response\'s mesh map is not the body store). '
+      + 'A refused step names the live prefix and how far the script got, and a step that timed out is worded as a '
       + 'timeout, never refused. A call that stalls returns the state the accepted prefix holds: ok false, its '
       + 'docHash, its settled steps plus the step that timed out (error code solve-timeout), solved true, and the '
       + 'out file when asked. A stall before the first settle has no prefix; with an empty script and out it still '
@@ -407,7 +422,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         parts: PARTS_SCHEMA,
         steps: { type: 'array', items: { type: 'object' }, description: 'Script steps: {command,params} or {mutation}; mutation types: see the `mutations` tool (part and assembly).' },
         returnDoc: { type: 'boolean', description: 'Include the full final document in the reply (default false; the docHash resource serves it either way).' },
-        featureDeltas: { type: 'string', enum: ['all'], description: 'Pass "all" to list every clean feature; the default lists only features this call changed or touched.' },
+        featureDeltas: { type: 'string', enum: ['all'], description: 'Pass "all" to list every built feature; the default lists only features this call changed or touched. A warned feature that built is included under the same rule and carries the warning text.' },
         detail: DETAIL_SCHEMA,
         out: { type: 'string', description: 'Write the final document here. YAML or JSON by extension, or .zip for a workspace zip of the assembly and its parts; the path must resolve inside tmp/ or bugreports/ (relative paths resolve against the repo root).' },
         docId: { type: 'string' },
@@ -420,6 +435,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     name: 'measure',
     description: 'Measure a document: body count, volume, surface area, centroid, bounding box and B-rep counts, '
       + 'plus perBody: one entry per live body with its id, volume, area, centroid and bbox. '
+      + 'An assembly measure under detail: "summary" or "changed" keeps the aggregate measures, the solve verdict and the mate and part '
+      + 'problems, and omits perBody; it also returns no one-line summary. '
       + 'Also returns features, the same failed-or-warning feature list a run reply carries, and frames, '
       + 'the resolved {origin, x_axis, y_axis, normal} of every sketch and add_plane feature; a feature with no '
       + 'verdict makes ok false, and a kernel fault is ok false with an error naming it.',
@@ -473,7 +490,10 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: 'export',
     description: 'Export a document to STEP or STL and write the bytes to `out`. Returns the written path and size, '
-      + 'plus features (part) or solve/mates/parts (assembly). A feature that failed, only partly applied, or '
+      + 'plus features (part) or solve/mates/parts (assembly). For an assembly, detail: "summary" (or "changed", which is '
+      + 'the same for an export) keeps ok, docHash, the solve verdict, the mate and part problems, the one-line summary and the '
+      + 'file fields, and omits every instance pose; full adds them. '
+      + 'A feature that failed, only partly applied, or '
       + 'warned, and an assembly whose solve did not run or whose mates or bound parts reported a problem, make '
       + 'the reply ok false with the file still written: the bytes are not the clean model the document describes. '
       + 'An unknown body id is a tool error naming the live body ids.',
@@ -487,6 +507,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         format: { type: 'string', enum: ['step', 'stl'] },
         out: { type: 'string', description: 'The file to write; the path must resolve inside tmp/ or bugreports/ (relative paths resolve against the repo root). A missing parent directory is created.' },
         body: { type: 'string', description: 'Export this single body id; parts only. An assembly export takes no body and refuses one.' },
+        detail: EXPORT_DETAIL_SCHEMA,
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
@@ -776,7 +797,7 @@ function parseCompareArgs(raw: unknown): McpCompareRequest {
 
 function parseExportArgs(raw: unknown): McpExportRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'docHash', 'parts', 'format', 'out', 'body', 'docId', 'files'])
+  rejectUnknown(record, ['doc', 'docHash', 'parts', 'format', 'out', 'body', 'docId', 'files', 'detail'])
   const docArguments = readDocArguments(record, 'exactly-one')
   const format = record.format
   if (format !== 'step' && format !== 'stl') throw new McpInvalidParams('field "format" must be "step" or "stl"')
@@ -784,12 +805,14 @@ function parseExportArgs(raw: unknown): McpExportRequest {
   if (typeof out !== 'string' || out.length === 0) throw new McpInvalidParams('field "out" must be a non-empty string')
   const body = optionalString(record.body, 'body')
   const parts = readParts(record.parts)
+  const detail = readDetail(record.detail)
   return {
     ...docArguments,
     ...(parts !== undefined && { parts }),
     format,
     out,
     ...(body !== undefined && { body }),
+    ...(detail !== undefined && { detail }),
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
   }

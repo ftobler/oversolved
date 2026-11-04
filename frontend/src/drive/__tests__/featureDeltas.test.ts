@@ -2,9 +2,10 @@
 //
 // The run reply's per-feature delta rows. The geometry read itself is covered
 // through the real kernel in the CLI/MCP smoke suite; this pins the reply rule:
-// a clean feature gets the checkpoint's cumulative volume/bbox and the change
-// from the previous checkpoint, while a failed or warning feature gets no row
-// and cannot make a later delta look like it started from nothing.
+// a built feature gets the checkpoint's cumulative volume/bbox and the change
+// from the previous checkpoint, a warned one keeps its row with the warning,
+// and a failed or partial one gets no row and cannot make a later delta look
+// like it started from nothing.
 
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
@@ -54,17 +55,38 @@ describe('featureDeltaRows', () => {
     expect(rows[3].bboxDelta).toEqual([0, 0, 0, 10, 0, 0])
   })
 
-  it('omits a failed or warning feature but keeps its checkpoint as the baseline', () => {
+  it('keeps a warned feature\'s row and drops only the ones the kernel did not build', () => {
     const outcomes: Record<string, FeatureOutcome> = {
       ...CLEAN,
       ex1: { status: 'exception', exception: 'profile missing' },
       fi1: { status: 'ok', warning: 'one edge was skipped' },
     }
     const rows = featureDeltaRows(DOC, MEASURES, outcomes)
-    // sk1 is still clean; both failed statements are absent; ex2 measures from
-    // the geometry that actually existed after them, not from ex1's volume.
-    expect(rows.map(row => row.id)).toEqual(['sk1', 'ex2'])
-    expect(rows[1].volumeDelta).toBe(14000 - 11922.743)
+    // The exception has no row; the warning did build its geometry, so its row
+    // is there with the kernel's text and the next delta still measures from
+    // the geometry that actually existed after both.
+    expect(rows.map(row => row.id)).toEqual(['sk1', 'fi1', 'ex2'])
+    expect(rows[1]).toMatchObject({ id: 'fi1', status: 'ok', warning: 'one edge was skipped' })
+    expect(rows[2].volumeDelta).toBe(14000 - 11922.743)
+  })
+
+  it('gives partial and overconstrained outcomes no row but keeps a suppressed one', () => {
+    for (const status of ['exception', 'partial', 'overconstrained'] as const) {
+      const outcomes: Record<string, FeatureOutcome> = { ...CLEAN, ex1: { status } }
+      expect(featureDeltaRows(DOC, MEASURES, outcomes).map(row => row.id), status)
+        .toEqual(['sk1', 'fi1', 'ex2'])
+    }
+    const suppressed: Record<string, FeatureOutcome> = { ...CLEAN, ex1: { status: 'suppressed' } }
+    expect(featureDeltaRows(DOC, MEASURES, suppressed).map(row => row.id)).toEqual(['sk1', 'ex1', 'fi1', 'ex2'])
+  })
+
+  it('changed mode leaves out a warned feature that did not move and was not touched', () => {
+    const outcomes: Record<string, FeatureOutcome> = {
+      ...CLEAN,
+      fi1: { status: 'ok', warning: 'one edge was skipped' },
+    }
+    const rows = featureDeltaRows(DOC, MEASURES, outcomes, { baseline: MEASURES, mode: 'changed' })
+    expect(rows).toEqual([])
   })
 
   it('carries a hole\'s resolved drill side on its row, and no side elsewhere', () => {

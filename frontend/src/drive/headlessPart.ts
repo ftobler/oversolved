@@ -11,7 +11,7 @@ import { createDocSession, type DocSession } from '@/session/DocSession'
 import type { SolveOptions, SolveScheduler, SolveSchedulerState } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
-import { measureSolveFeatures, solveLocally, type FeatureMeasure } from '@/kernel/solveLocally'
+import { finalLiveBodyIds, measureSolveFeatures, solveLocally, type FeatureMeasure } from '@/kernel/solveLocally'
 import { CommandRegistry } from '@/utils/core/commandSpec'
 import type { CommandName } from '@/utils/core/commandNames'
 import { PART_COMMAND_SPECS, getSketchState, type PartCommandContext } from '@/pages/commandEntries'
@@ -60,11 +60,14 @@ export interface HeadlessPart {
   registry: CommandRegistry<PartCommandContext>
   solve: SolveScheduler<PartDoc>
   getDoc(): PartDoc | null
-  // The body ids the last solve left live, in solve order; null until a solve
-  // has run (an empty script has no live set of its own to report). The
-  // document itself cannot answer this: part_style keeps an entry for a body a
-  // boolean or join consumed (it only reconciles new ids in), so a summary
-  // built from it lists dead bodies.
+  // The body ids the last solve holds with a shape, from its last feature
+  // checkpoint's body store, in solve order; null until a solve has run (an
+  // empty script has no live set of its own to report). Not the response's
+  // render map: a body whose tessellation failed is still solved and measured,
+  // and the two replies must name the same live set. The document itself cannot
+  // answer this either: part_style keeps an entry for a body a boolean or join
+  // consumed (it only reconciles new ids in), so a summary built from it lists
+  // dead bodies.
   bodyIds(): readonly string[] | null
   // The per-feature outcome of the last settle (status plus the kernel's own
   // exception/warning text). The CLI and MCP report every problem in here.
@@ -132,8 +135,9 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     responseBox.current = response
     // The live body set of this solve, recorded before any later feature or
     // write-back: this is what the reply summary reports, not the accumulated
-    // part_style keys.
-    bodiesBox.current = Object.keys(response.bodies ?? {})
+    // part_style keys and not the render map (which drops a body whose
+    // tessellation failed while the solve still holds it).
+    bodiesBox.current = finalLiveBodyIds(response)
   }
 
   const solve = createWorkerSolveScheduler(() => reSolve)

@@ -516,6 +516,25 @@ describe('createMcpServer', () => {
       arguments: { steps: [], out: 7 },
     }), -32602)
 
+    // An assembly export takes the same detail levels; an unknown one is
+    // invalid params naming the valid list.
+    await request(server, 76, 'tools/call', {
+      name: 'export',
+      arguments: { doc: {}, format: 'step', out: 'tmp/x.step', detail: 'summary' },
+    })
+    expect(calls.at(-1)).toEqual({
+      tool: 'export',
+      args: { doc: {}, format: 'step', out: 'tmp/x.step', detail: 'summary', files: [] },
+    })
+    const badDetail = await request(server, 77, 'tools/call', {
+      name: 'export',
+      arguments: { doc: {}, format: 'step', out: 'tmp/x.step', detail: 'brief' },
+    })
+    expectError(badDetail, -32602)
+    const message = (badDetail as { error: { message: string } }).error.message
+    expect(message).toContain('field "detail"')
+    for (const level of ['summary', 'changed', 'full']) expect(message).toContain(level)
+
     await request(server, 73, 'tools/call', {
       name: 'compare',
       arguments: { doc: {}, referencePath: 'tmp/reference.json' },

@@ -11,13 +11,17 @@ import type { PartDoc } from '@/types/cad'
 import { DocHandleStore } from '../docHandleStore'
 import { runReply } from '../mcpDocRef'
 
-vi.mock('@/kernel/solveLocally', () => ({
-  solveLocally: vi.fn(),
-  measureSolveFeatures: vi.fn(),
-  buildAndMeasureLocally: vi.fn(),
-  exportLocallyInspect: vi.fn(),
-  exportAssemblyLocally: vi.fn(),
-}))
+vi.mock('@/kernel/solveLocally', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/kernel/solveLocally')>()
+  return {
+    ...actual,
+    solveLocally: vi.fn(),
+    measureSolveFeatures: vi.fn(),
+    buildAndMeasureLocally: vi.fn(),
+    exportLocallyInspect: vi.fn(),
+    exportAssemblyLocally: vi.fn(),
+  }
+})
 
 const kernel = await import('@/kernel/solveLocally')
 const { runHeadless } = await import('../headlessOps')
@@ -36,14 +40,21 @@ function twoFeatureDoc(): PartDoc {
 }
 
 // What a clean settle answers for the same document: the sketch state and the
-// extrude's live body, no missing verdicts.
+// extrude's live body in the last checkpoint (the summary's body source), no
+// missing verdicts.
 const cleanBuild = {
   result: {
     sk1: { status: 'underconstrained' },
     ex1: { status: 'ok', body_id: 'body_ex1' },
   },
   bodies: { body_ex1: { created_by: 'ex1' } },
-  _build_state: { feature_order: ['sk1', 'ex1'], checkpoints: {} },
+  _build_state: {
+    feature_order: ['sk1', 'ex1'],
+    checkpoints: {
+      sk1: { body_store_snapshot: {} },
+      ex1: { body_store_snapshot: { body_ex1: { shape: 1 } } },
+    },
+  },
 }
 
 describe('the state a run reports', () => {

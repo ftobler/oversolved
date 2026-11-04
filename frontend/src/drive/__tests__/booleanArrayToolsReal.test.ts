@@ -102,4 +102,25 @@ describe.skipIf(!ready)('boolean tools naming a body pattern (real OCC + Rust so
     const problem = built.features.find(feature => feature.id === 'bo1')
     expect(problem?.message).toContain('pattern ca1 has 6 instances, the boolean uses 2')
   }, 120_000)
+
+  // A partial tool list is a warning, not a failed build: the boolean still
+  // built its geometry, so its delta row carries the warning and the volume the
+  // step actually changed instead of forcing a second measure call.
+  it('keeps a warned boolean\'s delta row with its warning', async () => {
+    const steps = [
+      ...arraySteps(6),
+      m({ type: 'add_boolean', featureId: 'bo1', operation: 'subtract', target: 'body_ex1', tools: ['body_ex2', 'body_ca1'] }),
+    ]
+    const built = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps,
+      featureDeltas: 'all',
+    })
+    const row = built.featureDeltas?.find(candidate => candidate.id === 'bo1')
+    expect(row).toMatchObject({ id: 'bo1', status: 'ok' })
+    expect(row?.warning).toContain('pattern ca1 has 6 instances, the boolean uses 2')
+    // Two slot tools are consumed by the subtract, so the live total drops by
+    // four slots: the two that disappear and the two the two tools removed.
+    expect(row?.volumeDelta).toBeCloseTo(-4 * SLOT, 3)
+  }, 120_000)
 })

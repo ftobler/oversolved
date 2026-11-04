@@ -1,9 +1,11 @@
 // The per-feature volume/bbox delta in a run reply. A total volume answers
 // "what does the part weigh", not "what did this additive step contribute";
 // the checkpoint measures the kernel already holds answer the second question
-// without a second build. A failed, partial or warning feature has no row: its
+// without a second build. A failed or partial feature has no row: its
 // checkpoint may hold half-applied geometry, so any delta printed for it would
-// be a number the solver never stood behind.
+// be a number the solver never stood behind. A feature that built but warned
+// does get a row, carrying the kernel's `warning`, so the volume of a partial
+// tool list is readable without a second `measure` call.
 //
 // A chained call must not repeat the whole history: a plane or an untouched
 // sketch did not change because a later call added one feature. The reply
@@ -15,12 +17,15 @@
 
 import type { PartDoc } from '@/types/cad'
 import type { FeatureMeasure } from '@/kernel/solveLocally'
-import { isFeatureProblem, type FeatureOutcome } from '@/drive/featureOutcome'
+import { isBuiltOutcome, type FeatureOutcome } from '@/drive/featureOutcome'
 
 export interface FeatureDelta {
   id: string
   kind: string
   status: string
+  // The kernel's own note when the feature built but fell back or skipped
+  // something, e.g. "array ca1 has 5 instances, the boolean uses 4".
+  warning?: string
   // Cumulative volume and bbox of ALL the live bodies after this feature, not
   // the volume of the body it touched (ppp0105 read it as one body's).
   volume: number
@@ -45,7 +50,7 @@ export interface FeatureDeltaOptions {
   // Feature ids the steps created or named. Solid-producing entries get a row
   // even when their measure did not move, so a no-op edit is visible.
   touched?: ReadonlySet<string>
-  // 'all' lists every clean feature (the inspection opt-in); 'changed' keeps
+  // 'all' lists every built feature (the inspection opt-in); 'changed' keeps
   // only what this run changed or touched. Omitting the whole options object
   // keeps the historical all-rows behaviour; runHeadless always states one.
   mode?: 'changed' | 'all'
@@ -79,9 +84,10 @@ function sameMeasure(after: FeatureMeasure, before: FeatureMeasure): boolean {
 
 /**
  * Zip the checkpoint measures with the document's feature order and the solve
- * verdicts. Only a clean feature gets a row; a problem feature's checkpoint is
- * still the baseline for the next clean one, so later deltas describe the real
- * geometry rather than pretending the failure left nothing behind.
+ * verdicts. Only a feature the kernel built gets a row; a problem feature's
+ * checkpoint is still the baseline for the next built one, so later deltas
+ * describe the real geometry rather than pretending the failure left nothing
+ * behind. A warning is carried on the row it belongs to, not used to drop it.
  */
 export function featureDeltaRows(
   doc: PartDoc,
@@ -104,8 +110,8 @@ export function featureDeltaRows(
     const measure = byId.get(id)
     if (measure === undefined) continue
     const outcome = outcomes[id]
-    const clean = outcome !== undefined && !isFeatureProblem(outcome)
-    if (clean) {
+    const built = outcome !== undefined && isBuiltOutcome(outcome)
+    if (built) {
       const kind = typeof feature.kind === 'string' ? feature.kind : 'unknown'
       const volumeDelta = measure.volume - previousVolume
       const bboxDelta = subtractBbox(measure.bbox, previousBbox)
@@ -120,6 +126,7 @@ export function featureDeltaRows(
           bbox: measure.bbox,
           volumeDelta,
           bboxDelta,
+          ...(outcome.warning !== undefined && { warning: outcome.warning }),
           ...(outcome.direction !== undefined && { direction: outcome.direction }),
           ...(bodyId !== undefined && bodyVolume !== undefined && { body: bodyId, bodyVolume }),
         })
@@ -131,7 +138,7 @@ export function featureDeltaRows(
   return rows
 
   // A missing baseline means the run could not measure the input document, so
-  // it cannot call anything unchanged; showing every clean row is the honest
+  // it cannot call anything unchanged; showing every built row is the honest
   // fallback. Otherwise a feature is included when its checkpoint moved, when
   // it was added (no baseline row), or when the steps touched a solid feature.
   // An existing reference feature (sketch, plane) whose own delta is zero is

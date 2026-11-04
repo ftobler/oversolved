@@ -70,6 +70,17 @@ export function isFeatureProblem(outcome: FeatureOutcome): boolean {
 }
 
 /**
+ * Whether the kernel built geometry for this feature, even if it also said
+ * something about it. A warning is a problem row the caller must read, but the
+ * checkpoint still holds the geometry the feature built, so a delta row can
+ * describe it. The status vocabulary stays here so a reply never re-lists the
+ * clean words and silently drops a status a later kernel adds.
+ */
+export function isBuiltOutcome(outcome: FeatureOutcome): boolean {
+  return outcome.exception === undefined && NON_PROBLEM_STATUSES.has(outcome.status)
+}
+
+/**
  * The per-feature outcomes in a solve response. A feature without a string
  * status (null, a geometry-only row) is left out, matching the old
  * solveStatuses contract: the map only carries real verdicts.

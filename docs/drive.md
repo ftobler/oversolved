@@ -323,7 +323,9 @@ npm run drive -- replay repro.json
   adds one
   entry per live body (`id`, `volume`, `area`, `centroid`, `bbox`), in the
   solve's body order; its volumes and areas sum to the totals and its ids are
-  the ids `run` and `select` use. The same `features`
+  the ids `run` and `select` use. An assembly measure under `detail: "summary"`
+  or `"changed"` keeps the aggregate record and drops this perBody table. The
+  same `features`
   problem list `run` returns rides along (measuring builds every feature, so the
   kernel's verdicts are already known), and so does the `frames` map; a feature
   with no verdict makes `ok` false, exactly as it does for `run`. Every length in
@@ -405,9 +407,9 @@ banner on stdout, so a client config must use the direct node invocation.
 | `commands` | optional `kind` (`part` default, or `assembly`) | the command catalog for that editor |
 | `mutations` | optional `kind` (`part` or `assembly`), optional `family` (`sketch`, `features`, `picks`, `part style`, `document`, `parts`, `mates`) | the mutation vocabularies grouped by family plus ready-to-run example scripts; no argument returns both whole (about 90 kB), a filter returns only that slice and an unknown family is refused with the valid list |
 | `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, featureDeltas, frames, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
-| `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`frames`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }` |
+| `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`frames`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }`; under `detail: "summary"` or `"changed"` the aggregate measures, solve, mates and parts survive and `perBody` and `instances` are dropped |
 | `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
-| `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, docHash, features, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }` |
+| `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `detail` (assembly), `docId`, `files` | writes the file, returns `{ ok, docHash, features, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }`; an assembly `detail: "summary"` (or `"changed"`) keeps the file fields, solve, problem rows and summary and drops `instances` |
 | `select` | `doc` or `docHash`, `selector`, optional `docId`, `files` | `{ ok, docHash, queries, items }`: the query strings a click would store, plus a geometry summary per item; part documents only |
 
 - `select` runs a predicate over the solved bodies and returns the exact query
@@ -500,9 +502,12 @@ banner on stdout, so a client config must use the direct node invocation.
   `compare` and `export` all echo it.
 - By default `run` returns `docHash` and a one-line `summary` (feature ids and
   kinds, body ids), not the document; `returnDoc: true` adds the full `doc`
-  for saving or hand-editing. The summary's body ids are the live bodies of the
-  final solve, not the accumulated `part_style` keys: a boolean or join consumes
-  a body while its colour entry stays behind, and the reply must not name what
+  for saving or hand-editing. The summary's body ids are the bodies the final
+  solve holds, read from its last feature checkpoint's body store, not the
+  accumulated `part_style` keys and not the solve response's `bodies` mesh map: a boolean
+  or join consumes a body while its colour entry stays behind, and a body whose
+  tessellation failed is still solved and measured even though it does not
+  render, so the summary includes it. The reply must not name what
   the measure tool no longer counts. A refused script has two states: when no
   settle was attempted (every step refused before a mutation landed), the
   summary says `bodies: not solved (step N refused)` and `solved` is false,
@@ -564,12 +569,17 @@ banner on stdout, so a client config must use the direct node invocation.
   (so an edit that leaves the same volume still shows its zero contribution);
   untouched planes and sketches from an earlier call do not repeat, and neither
   does an existing sketch or plane whose own delta is zero (an upstream edit
-  moves its cumulative checkpoint, not its contribution). The first body's deltas start from zero. A failed, partial or
-  warning feature
+  moves its cumulative checkpoint, not its contribution). The first body's deltas start from zero. A failed or
+  partial feature
   has no row (its checkpoint may hold half-applied geometry), but that
-  checkpoint still sets the baseline for the next clean feature, so a later
-  delta describes the real part. Pass `featureDeltas: "all"` to list every clean
-  feature, which is how an empty `steps: []` call inspects the whole history.
+  checkpoint still sets the baseline for the next built feature, so a later
+  delta describes the real part. A feature that built with a warning keeps its
+  row and carries the kernel's `warning` text, so a partial tool list's volume
+  is visible without a second measure; the row-coverage rule is the same as for
+  a clean feature (changed, new, or touched), so an untouched warned feature
+  still appears only under `featureDeltas: "all"`. Pass `featureDeltas: "all"`
+  to list every built feature, which is how an empty `steps: []` call inspects
+  the whole history.
   The list is null when the final solve exposed
   no measurable checkpoints (the kernel was unavailable or faulted, which is
   also `ok: false` with `solve.lastError`). The checkpoint
@@ -1014,17 +1024,30 @@ authors `flip: true` by hand is equally valid.
   that already names a part which does not import the file is refused rather
   than replaced. The undo entry covers the instance, not the binding: `undo`
   removes the instance and leaves the part available.
-- `detail` trims an assembly `run` or `measure` reply to what changed (default
-  `full`, today's reply). `summary` keeps `ok`, `docHash`, the solve verdict,
-  dof and iterations, the mate and part problems and the one-line `summary`.
-  `changed` adds, for `run`, the instances whose solved pose moved against the
-  starting document's solve (a throwaway extra solve, paid only for this
-  level), the mate frames of mates the call added or edited or that have a
-  problem, `solve.mates` for problem mates only, and the refused steps whole
-  (accepted ones collapse to `stepsAccepted`). `measure` has no starting
-  document, so `changed` lists no instances there. A part document refuses
-  `detail`. Under `summary` and `changed` the reply's `steps` key becomes
-  `stepsAccepted` (a count) plus `steps` holding only the refused ones.
+- `detail` trims an assembly `run`, `measure` or `export` reply (default
+  `full`, today's reply). Each tool keeps its own key set:
+  - `run`, `summary` keeps `ok`, `docHash`, the solve verdict, dof and
+    iterations, the mate and part problem rows and the one-line `summary`.
+    `changed` adds the instances whose solved pose moved against the starting
+    document's solve (a throwaway extra solve, paid only for this level), the
+    mate frames of mates the call added or edited or that have a problem,
+    `solve.mates` for problem mates only, and the refused steps whole (accepted
+    ones collapse to `stepsAccepted`).
+  - `measure`, `summary` keeps `ok`, `docHash`, the aggregate `MeasureRecord`
+    (`bodies`, `volume`, `area`, `centroid`, `bbox` and the topology counts),
+    the solve verdict and the mate and part problem rows, and drops `perBody`.
+    A measure does not return the one-line summary. `changed` keeps the same
+    fields with the solve trimmed to the mate and part rows that reported a
+    problem; a measure has no starting document, so it lists no instances.
+  - `export`, `summary` keeps `ok`, `docHash`, the solve verdict, the mate and
+    part problem rows, the one-line `summary` and the file fields (`file`,
+    `format`, `bytes`), and drops `instances`. An export has no starting
+    document, so `changed` is treated as `summary`. `full` keeps today's reply.
+    `ok` is still the export's own verdict, computed before the trim, so a
+    failed mate or a bound-part problem is `ok: false` with the file written.
+  A part document refuses `detail`. Under a `run`'s `summary` and `changed` the
+  reply's `steps` key becomes `stepsAccepted` (a count) plus `steps` holding
+  only the refused ones.
 - `add_rect`, `add_center_rect` and `add_ngon` steps report `createdIds` as
   the entity ids in minting order (rect: bottom, right, top, left lines) plus
   `constraints: <count>`; the constraint ids stay readable from the document

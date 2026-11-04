@@ -102,8 +102,8 @@ export interface HeadlessRunResult {
   features: FeatureProblem[]
   // Volume and bbox for the features this run changed or touched, with the
   // change from the previous checkpoint. Null when the final solve exposed no
-  // measurable checkpoints (no kernel); a failed feature has no row, but its
-  // checkpoint still sets the baseline for the next clean one.
+  // measurable checkpoints (no kernel); a failed or partial feature has no row,
+  // but its checkpoint still sets the baseline for the next built one.
   featureDeltas: FeatureDelta[] | null
   // The resolved {origin, x_axis, y_axis, normal} of every sketch and add_plane
   // feature the final solve reached. Null when no solve ran; a feature whose

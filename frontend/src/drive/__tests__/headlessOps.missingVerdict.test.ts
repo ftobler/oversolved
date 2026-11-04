@@ -12,13 +12,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { MISSING_VERDICT_MESSAGE } from '../featureOutcome'
 
-vi.mock('@/kernel/solveLocally', () => ({
-  solveLocally: vi.fn(),
-  measureSolveFeatures: vi.fn(),
-  buildAndMeasureLocally: vi.fn(),
-  exportLocallyInspect: vi.fn(),
-  exportAssemblyLocally: vi.fn(),
-}))
+vi.mock('@/kernel/solveLocally', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/kernel/solveLocally')>()
+  return {
+    ...actual,
+    solveLocally: vi.fn(),
+    measureSolveFeatures: vi.fn(),
+    buildAndMeasureLocally: vi.fn(),
+    exportLocallyInspect: vi.fn(),
+    exportAssemblyLocally: vi.fn(),
+  }
+})
 
 const kernel = await import('@/kernel/solveLocally')
 const { runHeadless, measureHeadless, compareHeadless } = await import('../headlessOps')
