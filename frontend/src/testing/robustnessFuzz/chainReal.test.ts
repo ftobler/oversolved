@@ -358,6 +358,21 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
     expect(refusals).toBeLessThanOrEqual(Math.ceil(SEEDS * 0.75))
   })
 
+  // The 2026-11-04 fuzz failure: batching the fuzz's three-copy arrays moved a
+  // source face's UUID under the +2.5 mm perturbed start, so seed 235's hole
+  // pick went red. Short arrays now stay on the one-at-a-time path
+  // (patternBody's chunk gate); this seed pins the green re-resolution without
+  // widening the bounded sweep.
+  it('keeps the perturbed picks of a short-array seed', { timeout: TIMEOUT_MS }, async () => {
+    const guarded = await runChainWithTimeout(generateRecipe(235))
+    expect(guarded.status).toBe('done')
+    if (guarded.status !== 'done') return
+    expect(guarded.replay.run.violations).toEqual([])
+    expect(guarded.replay.stale).toEqual([])
+    expect(guarded.replay.run.completed).toBe(true)
+    expect(guarded.replay.run.picks.some((pick) => pick.step === 3 && pick.kind === 'face')).toBe(true)
+  })
+
   // The default start draw is hole-free (box, arc-profile, revolve), so a
   // nested-loop washer never reached this fuzz: the duplicated-hole extrude
   // that shipped a negative-volume washer was invisible here. The ring start
