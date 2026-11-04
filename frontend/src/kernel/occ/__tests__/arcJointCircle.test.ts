@@ -96,6 +96,26 @@ describe('arcJointCircle', () => {
     expect(r.message).toContain('radial error')
   })
 
+  it('refuses a near-semicircle whose radius cannot span both merged endpoints', () => {
+    // The plan's centre-shift guard is deliberately not relaxed for a chord
+    // near the diameter: the authored circle would move ~sqrt(2 r dr) away, so
+    // the "arc" would be visibly different even though its radial error is 5e-7.
+    const bad = arc({
+      id: 'near-semicircle',
+      radius: 5 + 5e-7,
+      angle_start_deg: 180,
+      angle_end_deg: 360,
+      start: [-5, 0],
+      end: [5, 0],
+    })
+    const r = arcJointCircle(bad)
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.code).toBe('center')
+    expect(r.centerShift).toBeGreaterThan(1e-3)
+    expect(r.radialError).toBeCloseTo(5e-7, 9)
+  })
+
   it('refuses an endpoint on the circle at a grossly different angle instead of taking the complement', () => {
     // Stored angles say a 90 degree CCW arc, stored endpoints say 270 degrees.
     const bad = arc({
@@ -112,6 +132,25 @@ describe('arcJointCircle', () => {
     expect(r.edge).toBe('bad-sweep')
     expect(r.angularError).toBeCloseTo(Math.PI, 9)
     expect(r.message).toContain('angular error')
+  })
+
+  it('keeps the stored-angle construction for a face-loop arc with no endpoints', () => {
+    // extractFaceLoops emits an arc from its pcurve with no 2D endpoints; there
+    // is no joint to build through, and refusing it would break every face loop.
+    const pc = arc({
+      id: 'pcurve',
+      angle_start_deg: 30,
+      angle_end_deg: 120,
+      start: undefined,
+      end: undefined,
+    })
+    const r = arcJointCircle(pc)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.fullTurn).toBe(false)
+    expect(r.center).toEqual([0, 0])
+    expect(r.angleStartDeg).toBe(30)
+    expect(r.angleEndDeg).toBe(120)
   })
 
   it('keeps a stored full turn on its stored span before deriving endpoints', () => {
@@ -148,5 +187,24 @@ describe('ellipseJointAngles', () => {
     expect(r.angleEndDeg).toBeCloseTo(90, 9)
     expect(r.radialError).toBeCloseTo(2e-6, 12)
     expect(r.angularError).toBeCloseTo(0, 9)
+  })
+
+  it('keeps a full-turn elliptical arc on its stored span', () => {
+    const e: LoopEdge = {
+      kind: 'ellipse_arc',
+      center: [0, 0],
+      a: 4,
+      b: 2,
+      theta: 0,
+      angle_start_deg: 0,
+      angle_end_deg: 360,
+      ccw: true,
+      start: [4, 0],
+      end: [4, 0],
+    }
+    const r = ellipseJointAngles(e)
+    expect(r.angleStartDeg).toBe(0)
+    expect(r.angleEndDeg).toBe(360)
+    expect(r.radialError).toBe(0)
   })
 })

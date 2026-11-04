@@ -141,11 +141,22 @@ export function arcJointCircle(edge: LoopEdge): ArcJointResult {
     }
   }
 
-  if (
-    center === undefined || radius === undefined || radius <= 0 ||
-    !Array.isArray(start) || !Array.isArray(end)
-  ) {
-    return refuse('parameters', `arc ${label} is missing its stored centre, radius or endpoints`)
+  if (center === undefined || radius === undefined || radius <= 0) {
+    return refuse('parameters', `arc ${label} is missing its stored centre or radius`)
+  }
+  // `extractFaceLoops` emits arcs from a pcurve with no 2D endpoints; there is
+  // no joint to build through, so those keep the stored-angle construction.
+  if (!Array.isArray(start) || !Array.isArray(end)) {
+    return {
+      ok: true,
+      fullTurn: false,
+      center: [center[0], center[1]],
+      radius,
+      angleStartDeg: a0Deg,
+      angleEndDeg: a1Deg,
+      radialError: 0,
+      angularError: 0,
+    }
   }
   const c0: [number, number] = [center[0], center[1]]
   const p0: [number, number] = [start[0], start[1]]
@@ -192,6 +203,10 @@ export function arcJointCircle(edge: LoopEdge): ArcJointResult {
     centerShift = shiftB
   }
   if (centerShift > JOINT_SNAP_TOL) {
+    // A chord near the diameter amplifies a tiny radial error into a large
+    // centre move (~sqrt(2 r dr)), which is exactly the case where the authored
+    // circle cannot pass through both merged endpoints. Refuse rather than
+    // silently build a visibly different circle.
     return refuse(
       'center',
       `arc ${label} stored endpoint is not on its arc: derived centre shifted ` +
@@ -269,7 +284,10 @@ export function ellipseJointAngles(edge: LoopEdge): EllipseJointSolution {
   const end = edge['end'] as number[] | undefined
   const a0Deg = (edge['angle_start_deg'] as number | undefined) ?? 0
   const a1Deg = (edge['angle_end_deg'] as number | undefined) ?? 360
-  if (a === undefined || b === undefined || !Array.isArray(start) || !Array.isArray(end)) {
+  if (
+    a === undefined || b === undefined || !Array.isArray(start) || !Array.isArray(end) ||
+    Math.abs(a1Deg - a0Deg) >= 360 - 1e-6
+  ) {
     return { angleStartDeg: a0Deg, angleEndDeg: a1Deg, radialError: 0, angularError: 0 }
   }
   const c: [number, number] = [center[0], center[1]]
@@ -413,6 +431,17 @@ function buildEllipseArcEdge(
   const a = edge['a'] as number
   const b = edge['b'] as number
   const joint = ellipseJointAngles(edge)
+  const angularScale = Math.max(a, b)
+  if (joint.angularError * angularScale > JOINT_SNAP_TOL) {
+    // A projected endpoint at a grossly different eccentric angle would build
+    // the ellipse's complement. The circular-arc builder refuses that too.
+    const id = typeof edge['id'] === 'string' ? `'${edge['id']}'` : '(no id)'
+    throw new Error(
+      `buildEllipseArcEdge: ellipse-arc ${id} stored endpoint sits at a different eccentric ` +
+      `angle (angular error ${formatGap(joint.angularError)} rad, ` +
+      `${formatGap(joint.angularError * angularScale)} at scale ${formatGap(angularScale)})`,
+    )
+  }
   let u0 = (joint.angleStartDeg * Math.PI) / 180
   let u1 = (joint.angleEndDeg * Math.PI) / 180
   // GC_MakeArcOfEllipse needs an increasing CCW span; flip a CW edge.

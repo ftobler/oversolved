@@ -451,6 +451,35 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
     }
   })
 
+  it('refuses an elliptical-arc endpoint at a grossly different eccentric angle', () => {
+    // The stored angles say the left half, the stored endpoints say the upper
+    // half. Projecting the endpoints would silently build the upper half.
+    const scope = new DisposeScope()
+    try {
+      const loop: LoopEdge[] = [
+        {
+          id: 'wrong-ea', kind: 'ellipse_arc', center: [0, 0], a: 5, b: 2, theta: 0,
+          angle_start_deg: 90, angle_end_deg: 270, ccw: true,
+          start: [5, 0], end: [-5, 0],
+        },
+        { kind: 'line', start: [-5, 0], end: [5, 0] },
+      ]
+      let message = ''
+      expect(() => {
+        try {
+          sketchLoopsToFace(occ, scope, [loop], XY_PLANE)
+        } catch (e) {
+          message = e instanceof Error ? e.message : String(e)
+          throw e
+        }
+      }).toThrow()
+      expect(message).toContain('wrong-ea')
+      expect(message).toContain('different eccentric')
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('describes the loops the kernel saw, not the ones before snapping', () => {
     // snapLoopJoints closes a 5e-7 line/line joint before any edge is built, so
     // the kernel never sees it. Describing the PRE-snap loops made the dev dump
