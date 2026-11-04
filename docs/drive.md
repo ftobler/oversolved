@@ -276,7 +276,7 @@ surfaces cannot drift:
 
 ```bash
 cd frontend
-npm run drive -- run script.json [--doc doc.yaml] [--out tmp/doc.(yaml|json)] [--repro tmp/repro.json] [--file id=path] [--doc-id id]
+npm run drive -- run script.json [--doc doc.yaml] [--out tmp/doc.(yaml|json)] [--repro tmp/repro.json] [--file id=path] [--doc-id id] [--frames all]
 npm run drive -- commands
 npm run drive -- measure doc.yaml [--file id=path]
 npm run drive -- compare doc.yaml reference.json [--file id=path] [--doc-id id]
