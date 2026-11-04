@@ -1,6 +1,6 @@
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS, CONSTRAINT_BY_KIND, ENTITY_BY_ACTIVE_TOOL } from '@/registry'
 import {
-  CORE_KEYBINDINGS, KEYMAP, FEATURE_KEYMAP, SKETCH_KEYMAP,
+  CORE_KEYBINDINGS, KEYMAP, FEATURE_KEYMAP, SKETCH_KEYBINDINGS, SKETCH_KEYMAP,
   ASSEMBLY_KEYBINDINGS, ASSEMBLY_KEYMAP,
 } from '@/utils/core/commandRegistry'
 
@@ -67,6 +67,12 @@ export function buildKeybindingRows(): KeybindingRow[] {
 
   // Core bindings (with labels and descriptions from CORE_KEYBINDINGS)
   for (const b of CORE_KEYBINDINGS) {
+    rows.push({ key: b.key, command: b.command, label: b.label, description: b.description })
+  }
+
+  // Sketch-only bindings: Enter finishes the drawing gesture, which must stay
+  // inert outside the sketch editor so a focused button keeps its activation.
+  for (const b of SKETCH_KEYBINDINGS) {
     rows.push({ key: b.key, command: b.command, label: b.label, description: b.description })
   }
 

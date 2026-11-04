@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, fireEvent, act } from '@testing-library/react'
-import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Viewport from '@/components/Viewport'
 import { clearStaleBandClickConsumed } from '@/components/Viewport/idDispatch/bandClickGuard'
@@ -79,6 +79,7 @@ function seedSelection(key: string): void {
 describe('part editor empty-space click clears the selection', () => {
   beforeEach(() => {
     clearStaleBandClickConsumed()
+    clearSketchCallbacks()
     usePartEditorStore.setState({
     features: [],
     bodies: {},
@@ -231,6 +232,75 @@ describe('part editor empty-space click clears the selection', () => {
     act(() => { fireEvent.pointerDown(el, { button: 2, isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 100 }) })
     act(() => { fireEvent.pointerCancel(el, { isPrimary: false, pointerId: 2 }) })
     act(() => { fireEvent.pointerUp(el, { button: 2, isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 100 }) })
+
+    expect(onRightClick).toHaveBeenCalledWith([100, 100])
+  })
+
+  it('a stationary right click stamps a staged fit spline and suppresses the menu', () => {
+    useEditorState.setState({
+      activeFeatureId: 'S1',
+      activeTool: 'fit_spline',
+      modeStack: ['tool:fit_spline'],
+      drawPoints: [[0, 0], [1, 1], [2, 0]],
+      drawSnapRefs: [],
+    })
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    const onRightClick = vi.fn()
+    const { container } = render(<Viewport onRightClick={onRightClick} />)
+    const el = container.firstChild as Element
+    captureStubs(el)
+
+    act(() => { fireEvent.pointerDown(el, { button: 2, isPrimary: true, pointerType: 'mouse', clientX: 100, clientY: 100 }) })
+    act(() => { fireEvent.pointerUp(el, { button: 2, isPrimary: true, pointerType: 'mouse', clientX: 100, clientY: 100 }) })
+
+    expect(onMutation).toHaveBeenCalledOnce()
+    expect(onMutation.mock.calls[0][0]).toMatchObject({
+      type: 'add_entity', kind: 'fit_spline', params: [0, 0, 1, 1, 2, 0],
+    })
+    expect(onRightClick).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+  })
+
+  it('a right-drag orbits: it neither stamps the spline nor opens the menu', () => {
+    useEditorState.setState({
+      activeFeatureId: 'S1',
+      activeTool: 'fit_spline',
+      modeStack: ['tool:fit_spline'],
+      drawPoints: [[0, 0], [1, 1], [2, 0]],
+      drawSnapRefs: [],
+    })
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    const onRightClick = vi.fn()
+    const { container } = render(<Viewport onRightClick={onRightClick} />)
+    const el = container.firstChild as Element
+    captureStubs(el)
+
+    act(() => { fireEvent.pointerDown(el, { button: 2, isPrimary: true, pointerType: 'mouse', clientX: 100, clientY: 100 }) })
+    act(() => { fireEvent.pointerMove(el, { button: 2, isPrimary: true, buttons: 2, pointerType: 'mouse', clientX: 140, clientY: 140 }) })
+    act(() => { fireEvent.pointerUp(el, { button: 2, isPrimary: true, pointerType: 'mouse', clientX: 140, clientY: 140 }) })
+
+    expect(onMutation).not.toHaveBeenCalled()
+    expect(onRightClick).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([[0, 0], [1, 1], [2, 0]])
+  })
+
+  it('a right click with no stampable gesture still opens the menu', () => {
+    useEditorState.setState({
+      activeFeatureId: 'S1',
+      activeTool: 'fit_spline',
+      modeStack: ['tool:fit_spline'],
+      drawPoints: [[0, 0]],
+      drawSnapRefs: [],
+    })
+    const onRightClick = vi.fn()
+    const { container } = render(<Viewport onRightClick={onRightClick} />)
+    const el = container.firstChild as Element
+    captureStubs(el)
+
+    act(() => { fireEvent.pointerDown(el, { button: 2, isPrimary: true, pointerType: 'mouse', clientX: 100, clientY: 100 }) })
+    act(() => { fireEvent.pointerUp(el, { button: 2, isPrimary: true, pointerType: 'mouse', clientX: 100, clientY: 100 }) })
 
     expect(onRightClick).toHaveBeenCalledWith([100, 100])
   })

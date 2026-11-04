@@ -9,7 +9,8 @@ import { mirrorSelectionPlan, type EditorState } from '@/stores/editorState'
 import { useSketchUiStore, CANNOT_APPLY_TITLE, type SketchUiState } from '@/stores/sketchEditorStore'
 import { projectSelection } from '@/tools/projectSelectionCommand'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
-import { CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
+import { CORE_KEYBINDINGS, SKETCH_KEYBINDINGS } from '@/utils/core/commandRegistry'
+import { canFinishDraw } from '@/utils/geometry/drawFinish'
 import { narrowCommandName } from '@/utils/core/commandNames'
 import { refusalText } from '@/utils/core/statusMark'
 import { cannotEvaluate } from '@/utils/core/valueRules'
@@ -116,6 +117,7 @@ function firstShortcut(pairs: readonly (readonly [string, CommandName])[]): Map<
 
 const PART_SHORTCUTS = firstShortcut([
   ...CORE_KEYBINDINGS.map(b => [b.key, b.command] as const),
+  ...SKETCH_KEYBINDINGS.map(b => [b.key, b.command] as const),
   ...CONSTRAINT_SHORTCUTS,
   ...ENTITY_SHORTCUTS,
 ])
@@ -312,6 +314,22 @@ export function constraintCommandSpec(c: ConstraintDef): CommandSpec<PartCommand
 
 const constraintSpecs: PartCommandSpec[] = CONSTRAINTS.map(constraintCommandSpec)
 
+// The keyboard/mouse stamp-down twin of cancel_draw: finishes the gesture in
+// progress instead of throwing it away. Bound to Enter in sketch-edit mode; a
+// right click and a double click on the draw plane call the same store action.
+const finishDrawSpec: PartCommandSpec = {
+  id: 'finish_draw',
+  label: 'Finish drawing',
+  shortcut: partShortcut('finish_draw'),
+  params: noParams(),
+  undoable: true,
+  enabled: ctx => (canFinishDraw(ctx.state().activeTool, ctx.state().drawPoints) ? true : 'nothing to finish'),
+  run: ctx => {
+    ctx.state().finishDraw()
+    return okResult()
+  },
+}
+
 const cancelDrawSpec: PartCommandSpec = {
   id: 'cancel_draw',
   label: 'Cancel',
@@ -465,6 +483,7 @@ export const PART_COMMAND_SPECS: readonly ErasedCommandSpec<PartCommandContext>[
   dimensionToolSpec,
   toggleConstructionSpec,
   ...constraintSpecs,
+  finishDrawSpec,
   cancelDrawSpec,
   mirrorSpec,
   offsetSpec,

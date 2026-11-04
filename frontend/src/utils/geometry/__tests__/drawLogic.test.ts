@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { resolveSnapPoint, computeDrawClick } from '@/utils/geometry/drawLogic'
+import { computeDrawFinish, canFinishDraw } from '@/utils/geometry/drawFinish'
 import type { DrawSnapState } from '@/utils/geometry/drawLogic'
 import { computePreviewPts, ELLIPSE_MINOR_RATIO } from '@/utils/geometry/drawGeometry'
 import type { Entity } from '@/types/cad'
@@ -1141,5 +1142,86 @@ describe('fit_spline draw gesture', () => {
     const last = click(second.nextDrawPoints!, [1, 1], carried)
     expect(last.mutations[0]).toMatchObject({ type: 'add_entity', kind: 'fit_spline' })
     expect(last.mutations.slice(1).some(m => m.type === 'add_constraint' && m.kind === 'coincident')).toBe(true)
+  })
+
+  it('drops a second press on the same spot while the gesture holds one point', () => {
+    // The first press of a double click opens the gesture; the second must not
+    // stage the same point again, which would be a zero-extent spline.
+    const r = click([[0, 0]], [0, 0])
+    expect(r.gestureComplete).toBe(false)
+    expect(r.mutations).toEqual([])
+    expect(r.nextDrawPoints).toBeNull()
+  })
+})
+
+describe('computeDrawFinish', () => {
+  const finish = (
+    pts: [number, number][],
+    refs: (string | null)[] = [],
+  ) => computeDrawFinish('fit_spline', pts, refs, FEATURE, newId)
+
+  it('stamps the points clicked so far down as one entity', () => {
+    const r = finish([[0, 0], [1, 1], [2, 0]])
+    expect(r.gestureComplete).toBe(true)
+    expect(r.nextDrawPoints).toBeNull()
+    expect(r.nextDrawSnap).toBeNull()
+    expect(r.mutations).toHaveLength(1)
+    expect(r.mutations[0]).toMatchObject({
+      type: 'add_entity', featureId: FEATURE, kind: 'fit_spline', params: [0, 0, 1, 1, 2, 0],
+    })
+  })
+
+  it('refuses fewer than two distinct points and leaves the buffer alone', () => {
+    for (const pts of [[], [[0, 0]], [[0, 0], [0, 0]]] as [number, number][][]) {
+      const r = finish(pts)
+      expect(r.gestureComplete).toBe(false)
+      expect(r.mutations).toEqual([])
+      expect(r.nextDrawPoints).toBeNull()
+    }
+  })
+
+  it('drops a trailing point that repeats its predecessor', () => {
+    const r = finish([[0, 0], [1, 1], [1, 1]])
+    expect(r.mutations[0]).toMatchObject({ type: 'add_entity', kind: 'fit_spline', params: [0, 0, 1, 1] })
+  })
+
+  it('commits a staged buffer whose ends coincide as authored', () => {
+    // A closing click never leaves this state (it commits and clears), so this
+    // is only the defensive shape: no seam point is invented a second time.
+    const r = finish([[0, 0], [1, 1], [0, 0]])
+    expect(r.mutations[0]).toMatchObject({
+      type: 'add_entity', kind: 'fit_spline', params: [0, 0, 1, 1, 0, 0],
+    })
+  })
+
+  it('pins every snapped point in the same batch', () => {
+    const refs = ['vertex:S1:L1:start', null, 'vertex:S1:L2:end']
+    const r = finish([[0, 0], [1, 1], [2, 0]], refs)
+    expect(r.mutations[0]).toMatchObject({ type: 'add_entity', kind: 'fit_spline' })
+    const constraints = r.mutations.filter(m => m.type === 'add_constraint')
+    expect(constraints).toHaveLength(2)
+    expect(constraints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'coincident', targets: expect.arrayContaining(['vertex:S1:L1:start']) }),
+      expect.objectContaining({ kind: 'coincident', targets: expect.arrayContaining(['vertex:S1:L2:end']) }),
+    ]))
+  })
+
+  it('only the fit spline has something left to stamp down', () => {
+    for (const tool of ['line', 'rect', 'circle', 'arc', 'ellipse', 'spline', 'point', 'dimension']) {
+      const r = computeDrawFinish(tool, [[0, 0], [1, 1], [2, 2]], [], FEATURE, newId)
+      expect(r.gestureComplete, tool).toBe(false)
+      expect(r.mutations, tool).toEqual([])
+    }
+  })
+})
+
+describe('canFinishDraw', () => {
+  it('is true only for a fit spline with two distinct points', () => {
+    expect(canFinishDraw('fit_spline', [[0, 0], [1, 1]])).toBe(true)
+    expect(canFinishDraw('fit_spline', [[0, 0], [1, 1], [1, 1]])).toBe(true)
+    expect(canFinishDraw('fit_spline', [[0, 0]])).toBe(false)
+    expect(canFinishDraw('fit_spline', [[0, 0], [0, 0]])).toBe(false)
+    expect(canFinishDraw('line', [[0, 0], [1, 1]])).toBe(false)
+    expect(canFinishDraw(null, [[0, 0], [1, 1]])).toBe(false)
   })
 })
