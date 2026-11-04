@@ -422,7 +422,7 @@ banner on stdout, so a client config must use the direct node invocation.
 | `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`frames`/`length_unit`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }`; under `detail: "summary"` or `"changed"` the aggregate measures, the solve verdict, and the mates and parts problem rows survive, and `perBody` and `instances` are dropped |
 | `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures, length_unit, compared_in }`; a failing row is data, not an MCP error |
 | `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `detail` (assembly), `docId`, `files` | writes the file, returns `{ ok, docHash, features, length_unit, file_unit, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }`; an assembly `detail: "summary"` (or `"changed"`) keeps the file fields, solve, problem rows and summary and drops `instances` |
-| `select` | `doc` or `docHash`, `selector`, optional `docId`, `files` | `{ ok, docHash, queries, items }`: the query strings a click would store, plus a geometry summary per item; part documents only |
+| `select` | `doc` or `docHash`, `selector`, optional `detail` (`full` default, or `queries`), `docId`, `files` | `{ ok, docHash, count, queries, items? }`: the query strings a click would store, plus `count` and, in `full` detail, a geometry summary per item (`queries` omits `items`); part documents only |
 
 - `select` runs a predicate over the solved bodies and returns the exact query
   strings a click would store, so a headless author (an LLM, a translator, the
@@ -484,7 +484,14 @@ banner on stdout, so a client config must use the direct node invocation.
   kind. An unknown predicate key is an invalid
   argument rejected by name. The selector itself is an authoring aid and is
   never stored: the returned queries are what goes into the document, exactly
-  as if each element had been clicked. The engine is pure TS in
+  as if each element had been clicked. `count` is the number of matches, the
+  same number in both detail modes. `detail` is the reply-size control on this
+  tool: `full` (the default) returns `count`, the queries and the per-item
+  geometry summary; `queries` returns only `count` and the queries with no
+  `items` key, so a large match should pass `detail: "queries"` rather than
+  spend the caller's token limit on geometry. The values are select's own
+  (`full`, `queries`); the assembly tools' `detail` (`summary`, `changed`,
+  `full`) is a separate per-tool enum. The engine is pure TS in
   `frontend/src/kernel/select/`.
 
   To name one outer vertical corner edge of a plate, chain the direction and
@@ -988,7 +995,7 @@ previous reply; the full document never crosses the wire by default:
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"select","arguments":{
   "docHash":"<hash1>","selector":{"kind":"edge","where":{"parallel":[0,1,0]}}
 }}}
-// {"ok":true,"docHash":"<hash1>","queries":["?..."],"items":[...]}
+// {"ok":true,"docHash":"<hash1>","count":4,"queries":["?..."],"items":[...]}
 // 3. Fillet those queries on the same handle: one call carries the whole pick.
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"run","arguments":{
   "docHash":"<hash1>","steps":[

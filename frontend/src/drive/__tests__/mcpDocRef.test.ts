@@ -8,8 +8,9 @@ import { describe, it, expect } from 'vitest'
 import type { AssemblyDoc, PartDoc } from '@/types/cad'
 import { DocHandleStore, DOC_HANDLE_CAPACITY, assemblyHandleOf } from '../docHandleStore'
 import { docHashOf } from '../docHash'
-import { requirePartDoc, resolveDoc, runReply, summarizeDoc } from '../mcpDocRef'
+import { requirePartDoc, resolveDoc, runReply, selectReply, summarizeDoc } from '../mcpDocRef'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
+import type { SelectResult } from '@/kernel/select'
 
 function doc(label: string, body = 'body_ex1'): PartDoc {
   return {
@@ -252,6 +253,48 @@ describe('runReply', () => {
     expect(timedOut.summary).toContain('step 1 timed out')
     expect(timedOut.summary).not.toContain('refused')
     expect(timedOut.summary).toContain('body_ex1')
+  })
+})
+
+describe('selectReply', () => {
+  function resultOf(count: number): SelectResult {
+    const items = Array.from({ length: count }, (_, index) => ({
+      query: `?edge_${index}`,
+      kind: 'edge' as const,
+      body: 'body_ex1',
+      index,
+      geometry: { kind: 'line', length: 10 },
+    }))
+    return { queries: items.map(item => item.query), items }
+  }
+
+  it('queries returns count and the queries without an items key', () => {
+    const result = resultOf(128)
+    const reply = selectReply('docHash1', result, 'queries')
+    expect(reply).toEqual({ ok: true, docHash: 'docHash1', count: 128, queries: result.queries })
+    expect('items' in reply).toBe(false)
+  })
+
+  it('full returns count with the items, and an omitted detail is full', () => {
+    const result = resultOf(128)
+    const full = selectReply('docHash1', result, 'full')
+    expect(full.count).toBe(128)
+    expect(full.queries).toHaveLength(128)
+    expect(full.items).toHaveLength(128)
+    expect(selectReply('docHash1', result)).toEqual(full)
+  })
+
+  it('preserves the engine query order', () => {
+    const result = resultOf(3)
+    result.queries = ['third', 'first', 'second']
+    expect(selectReply('h', result, 'queries').queries).toEqual(['third', 'first', 'second'])
+  })
+
+  it('does not mutate the engine result a non-MCP caller reuses', () => {
+    const result = resultOf(4)
+    selectReply('h', result, 'queries')
+    expect(result.queries).toHaveLength(4)
+    expect(result.items).toHaveLength(4)
   })
 })
 

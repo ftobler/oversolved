@@ -16,7 +16,8 @@ import { assemblyDocStrictProblem, partDocStrictProblem } from '@/drive/strictDo
 import { formatFeatureProblem, type FeatureProblem } from '@/drive/featureOutcome'
 import type { FeatureDelta } from '@/drive/featureDeltas'
 import type { FeatureFrameMap } from '@/drive/featureFrames'
-import type { McpDocArguments } from '@/drive/mcpServer'
+import type { McpDocArguments, SelectDetail } from '@/drive/mcpServer'
+import type { SelectResult } from '@/kernel/select'
 import type { AssemblyPartProblem, InstancePose, MateFrame, MateProblem } from '@/drive/assemblyOutcome'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { shapeAssemblyState, shapeSteps, type AssemblyDetail, type AssemblyDetailContext } from '@/drive/assemblyDetail'
@@ -306,6 +307,29 @@ export function runReply(
       && Object.keys(result.frames).length > 0 && { frames: result.frames }),
     ...(summary !== undefined && { summary }),
     ...(returnDoc && finalDoc && { doc: finalDoc }),
+  }
+}
+
+/**
+ * Build the `select` reply. `queries` is the actionable half of the engine's
+ * answer, so a large match can drop the per-item geometry summary that would
+ * otherwise blow a client's token limit. `count` rides both modes, before the
+ * caller decides whether the full summary is worth asking for.
+ *
+ * The engine result is read, never changed: selectHeadless keeps returning the
+ * whole SelectResult for the CLI and other callers.
+ */
+export function selectReply(
+  docHash: string,
+  result: SelectResult,
+  detail: SelectDetail = 'full',
+): { ok: true; [key: string]: unknown } {
+  return {
+    ok: true,
+    docHash,
+    count: result.items.length,
+    queries: result.queries,
+    ...(detail === 'full' && { items: result.items }),
   }
 }
 

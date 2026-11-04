@@ -29,7 +29,7 @@ import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
 import { createMcpServer, type McpCadOps, type McpToolPayload } from '@/drive/mcpServer'
 import { DocHandleStore } from '@/drive/docHandleStore'
 import { shapeAssemblyState, shapeAssemblyExport, shapeAssemblyMeasures, DEFAULT_ASSEMBLY_DETAIL } from '@/drive/assemblyDetail'
-import { assemblyRunReply, replyUnits, requirePartDoc, resolveAssemblyDoc, resolveDoc, runReply, type ResolvedDoc, type RunReplySource } from '@/drive/mcpDocRef'
+import { assemblyRunReply, replyUnits, requirePartDoc, resolveAssemblyDoc, resolveDoc, runReply, selectReply, type ResolvedDoc, type RunReplySource } from '@/drive/mcpDocRef'
 import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import { ASSEMBLY_DOC_SCHEMA_JSON } from '@/persistence/assemblyDocSchema'
 import { createHeadlessAssembly, emptyDriveAssemblyDoc, type AssemblyScriptStep } from '@/drive/headlessAssembly'
@@ -533,7 +533,7 @@ const ops: McpCadOps = {
       if (!result) {
         return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
       }
-      return { ok: true, docHash: part.docHash, ...result }
+      return selectReply(part.docHash, result, req.detail)
     } catch (e) {
       // An empty match or a bad predicate expression is a tool failure, not a
       // protocol error: the message names the offending clause. A timeout or a

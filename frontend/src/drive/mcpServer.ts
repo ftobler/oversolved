@@ -98,6 +98,7 @@ export interface McpExportRequest extends McpDocArguments {
 
 export interface McpSelectRequest extends McpDocArguments {
   selector: Selector
+  detail?: SelectDetail
   docId?: string
   files: McpFileRef[]
 }
@@ -171,10 +172,16 @@ const KIND_SCHEMA = {
   description: 'Only with neither doc nor docHash: the kind of fresh document to start (default part).',
 }
 
+/** The select reply-size values. Per tool: the assembly tools take
+ *  ASSEMBLY_DETAILS instead, so the two sets are separate contracts. */
+export const SELECT_DETAILS = ['full', 'queries'] as const
+export type SelectDetail = typeof SELECT_DETAILS[number]
+
 const DETAIL_SCHEMA = {
   type: 'string',
   enum: [...ASSEMBLY_DETAILS],
-  description: 'Assembly replies only (default full). run, summary: ok, docHash, solve verdict/dof/iters, mate and part problems, summary. '
+  description: 'Assembly replies only (default full); `detail` is per tool, and select takes its own enum ("full" | "queries"). '
+    + 'run, summary: ok, docHash, solve verdict/dof/iters, mate and part problems, summary. '
     + 'measure, summary: the aggregate measures (bodies, volume, area, centroid, bbox and the topology counts), the solve verdict and the mate and part '
     + 'problems, with no perBody table and no one-line summary. changed: adds the poses that moved against the starting document\'s solve (run only), '
     + 'the mate frames of mates this call added, edited or that have a problem, solve.mates only for problem mates, and refused steps in full (accepted '
@@ -189,6 +196,13 @@ const EXPORT_DETAIL_SCHEMA = {
   enum: [...ASSEMBLY_DETAILS],
   description: 'Assembly exports only (default full). summary keeps ok, docHash, the solve verdict, the mate and part problems, the one-line summary '
     + 'and the file fields. changed is treated as summary: an export has no starting document to compare against. full adds every instance pose.',
+}
+
+const SELECT_DETAIL_SCHEMA = {
+  type: 'string',
+  enum: [...SELECT_DETAILS],
+  description: 'Reply-size control for this tool (default full). full returns count, the queries and the per-item geometry '
+    + 'summary; queries returns only count and the queries, for a match too large to carry the summary.',
 }
 
 // The assembly binding. A bound {doc} is loaded and stored under its own hash,
@@ -532,7 +546,10 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: 'select',
     description: 'Find faces, edges or vertices by predicate over the solved document and return the query strings a click '
-      + 'would store, plus a geometry summary per item. Run it after `run`, then feed the queries to a feature '
+      + 'would store, plus `count` (the number of matches) and, in full detail, a geometry summary per item. '
+      + '`detail` is the reply-size control on this tool: "full" (default) returns count, the queries and every item; '
+      + '"queries" returns only count and the queries, so pass detail: "queries" for a large match rather than spend the '
+      + 'client\'s token limit on geometry. Run it after `run`, then feed the queries to a feature '
       + '(fillet, chamfer, hole, ...). Omit `where` to take every candidate: {from:"body_ex1",kind:"edge"} is '
       + 'all edges of that body. An edge direction test reads the edge\'s own tangent, so a fillet arc\'s underlying '
       + 'circle axis is not a direction; a full circle has no single tangent. A seam edge is the face meeting '
@@ -551,6 +568,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         doc: DOC_SCHEMA,
         docHash: DOC_HASH_SCHEMA,
         selector: { $ref: '#/$defs/selector' },
+        detail: SELECT_DETAIL_SCHEMA,
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
@@ -687,6 +705,16 @@ function readDetail(value: unknown): AssemblyDetail | undefined {
     throw new McpInvalidParams(`field "detail" must be one of ${ASSEMBLY_DETAILS.map(d => `"${d}"`).join(', ')}`)
   }
   return value as AssemblyDetail
+}
+
+// Select's own enum, not a superset of the assembly values: an assembly
+// spelling such as "summary" is refused by name rather than silently accepted.
+function readSelectDetail(value: unknown): SelectDetail | undefined {
+  if (value === undefined) return undefined
+  if (!(SELECT_DETAILS as readonly unknown[]).includes(value)) {
+    throw new McpInvalidParams(`field "detail" must be one of ${SELECT_DETAILS.map(d => `"${d}"`).join(', ')}`)
+  }
+  return value as SelectDetail
 }
 
 // Reject unknown fields by name: the inputSchema is additionalProperties false
@@ -840,9 +868,10 @@ function parseExportArgs(raw: unknown): McpExportRequest {
 
 function parseSelectArgs(raw: unknown): McpSelectRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'docHash', 'selector', 'docId', 'files'])
+  rejectUnknown(record, ['doc', 'docHash', 'selector', 'detail', 'docId', 'files'])
   const docArguments = readDocArguments(record, 'exactly-one')
   const selectorRaw = requiredObject(record.selector, 'selector')
+  const detail = readSelectDetail(record.detail)
   let selector: Selector
   try {
     selector = validateSelector(selectorRaw)
@@ -852,6 +881,7 @@ function parseSelectArgs(raw: unknown): McpSelectRequest {
   return {
     ...docArguments,
     selector,
+    ...(detail !== undefined && { detail }),
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
   }
