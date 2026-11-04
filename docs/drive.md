@@ -1091,7 +1091,9 @@ authors `flip: true` by hand is equally valid.
     document, so `changed` is treated as `summary`. `full` keeps today's reply.
     `ok` is still the export's own verdict, computed before the trim, so a
     failed mate or a bound-part problem is `ok: false` with the file written.
-  A part document refuses `detail`. Under a `run`'s `summary` and `changed` the
+  On a part document `run`, `measure` and `export` refuse `detail` (a part
+  reply has no detail levels); `select` has its own `detail` enum (`full` or
+  `queries`). Under a `run`'s `summary` and `changed` the
   reply's `steps` key becomes `stepsAccepted` (a count) plus `steps` holding
   only the refused ones.
 - `add_rect`, `add_center_rect` and `add_ngon` steps report `createdIds` as

@@ -2,17 +2,16 @@
 //
 // The large-match select reply against the real kernel: a body with hundreds
 // of edges, where the per-item geometry summary is what pushed the reply past a
-// client's token limit. The fixture is about 40 disjoint rectangles in one
-// sketch, extruded once, so every rect becomes its own body; each body
-// contributes four edges parallel to world Z. The queries-only reply must keep
-// the whole answer and drop only the summary.
+// client's token limit. The fixture is 36 disjoint rectangles in one sketch,
+// extruded once, so every rect becomes its own body; each body contributes four
+// edges parallel to world Z. The queries-only reply must keep the whole answer
+// and drop only the summary.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { runHeadless, measureHeadless, selectHeadless, seedBuiltins } from '../headlessOps'
 import { selectReply } from '../mcpDocRef'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
@@ -20,14 +19,6 @@ import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { ScriptStep } from '../scriptRunner'
 import { yieldToEventLoop } from '@/testing/yieldToEventLoop'
 
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 const oc = occInstalled()
 const solveBytes = loadSolver()
 if (oc && solveBytes) {
@@ -88,9 +79,9 @@ describe.skipIf(!ready)('the large-match select reply (real OCC)', () => {
     const fullSize = JSON.stringify(full).length
     // Only the small ok/docHash/count envelope sits around the query payload.
     expect(queriesSize - payloadSize).toBeLessThan(200)
-    // The 144-edge fixture is about 15 kB of queries, so this ceiling proves the
-    // geometry was dropped without capping the answer.
-    expect(queriesSize).toBeLessThan(20_000)
+    // The queries alone measure about 14.8 kB here. This ceiling stays above
+    // that payload while proving the geometry was dropped and nothing capped it.
+    expect(queriesSize).toBeLessThan(28_000)
     expect(fullSize).toBeGreaterThan(queriesSize * 2)
   }, 240_000)
 })

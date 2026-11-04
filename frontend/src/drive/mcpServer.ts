@@ -194,7 +194,8 @@ const DETAIL_SCHEMA = {
 const EXPORT_DETAIL_SCHEMA = {
   type: 'string',
   enum: [...ASSEMBLY_DETAILS],
-  description: 'Assembly exports only (default full). summary keeps ok, docHash, the solve verdict, the mate and part problems, the one-line summary '
+  description: 'Assembly exports only (default full); `detail` is per tool, and select takes its own enum ("full" | "queries"). '
+    + 'summary keeps ok, docHash, the solve verdict, the mate and part problems, the one-line summary '
     + 'and the file fields. changed is treated as summary: an export has no starting document to compare against. full adds every instance pose.',
 }
 
