@@ -157,6 +157,8 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect((run.payload.solve as { lastError: string | null }).lastError).toBeNull()
     // The problem list rides every run reply, empty for a clean build.
     expect(run.payload.features).toEqual([])
+    // A document with no length_unit is millimetres, named explicitly.
+    expect(run.payload.length_unit).toBe('mm')
     // The per-feature delta makes the extrude's contribution visible without a
     // second measure: the 10 x 10 x 5 prism is the whole 500.
     const deltas = run.payload.featureDeltas as Array<{
@@ -546,6 +548,34 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(result.payload.ok).toBe(false)
     expect(result.payload.error).toContain('tolerance')
   }, 60_000)
+
+  it('names the document unit in the CLI run, measure and export replies', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const inchScript = path.join(TMP_DIR, 'inch-script.json')
+    const inchDoc = path.join(TMP_DIR, 'inch.yaml')
+    const stepFile = path.join(TMP_DIR, 'inch.step')
+    writeFileSync(inchScript, JSON.stringify({
+      steps: [
+        { mutation: { type: 'set_length_unit', unit: 'inch' } },
+        ...BOX_SCRIPT.steps,
+      ],
+    }, null, 1))
+
+    const run = await drive('run', inchScript, '--out', inchDoc)
+    expect(run.status).toBe(0)
+    expect(run.payload.length_unit).toBe('inch')
+
+    const measure = await drive('measure', inchDoc)
+    expect(measure.status).toBe(0)
+    expect(measure.payload.length_unit).toBe('inch')
+    // The box is still the authored 10 x 10 x 5, now stated as inches.
+    expect(measure.payload.volume as number).toBeCloseTo(500, 6)
+
+    const exported = await drive('export', inchDoc, '--format', 'step', '--out', stepFile)
+    expect(exported.status).toBe(0)
+    expect(exported.payload).toMatchObject({ ok: true, length_unit: 'inch', file_unit: 'mm' })
+    expect(readFileSync(stepFile).byteLength).toBe(exported.payload.bytes as number)
+  }, 180_000)
 })
 
 // ─── MCP server ───

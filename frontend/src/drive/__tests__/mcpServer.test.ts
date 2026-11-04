@@ -495,21 +495,25 @@ describe('createMcpServer', () => {
     }), -32602)
   })
 
-  it('parses the run out/featureDeltas options and a compare referencePath', async () => {
+  it('parses the run out/featureDeltas/frames options and a compare referencePath', async () => {
     const { ops, calls } = fakeOps()
     const server = createMcpServer(ops)
 
     await request(server, 70, 'tools/call', {
       name: 'run',
-      arguments: { steps: [], out: 'tmp/x.json', featureDeltas: 'all' },
+      arguments: { steps: [], out: 'tmp/x.json', featureDeltas: 'all', frames: 'all' },
     })
     expect(calls.at(-1)).toEqual({
       tool: 'run',
-      args: { steps: [], files: [], out: 'tmp/x.json', featureDeltas: 'all' },
+      args: { steps: [], files: [], out: 'tmp/x.json', featureDeltas: 'all', frames: 'all' },
     })
     expectError(await request(server, 71, 'tools/call', {
       name: 'run',
       arguments: { steps: [], featureDeltas: 'changed' },
+    }), -32602)
+    expectError(await request(server, 76, 'tools/call', {
+      name: 'run',
+      arguments: { steps: [], frames: 'changed' },
     }), -32602)
     expectError(await request(server, 72, 'tools/call', {
       name: 'run',
@@ -651,5 +655,17 @@ describe('createMcpServer', () => {
     const exportTool = MCP_TOOLS.find(tool => tool.name === 'export')!
     expect((exportTool.inputSchema.properties as Record<string, { enum?: unknown[] }>).detail?.enum)
       .toEqual(['summary', 'changed', 'full'])
+  })
+
+  it('advertises the frames: "all" opt-in and describes the touched-only default', () => {
+    const run = MCP_TOOLS.find(tool => tool.name === 'run')!
+    const properties = run.inputSchema.properties as Record<string, { type?: string; enum?: string[]; description?: string }>
+    expect(properties.frames).toMatchObject({ type: 'string', enum: ['all'] })
+    expect(properties.frames.description).toContain('touched or moved')
+    expect(run.description).toContain('frames: "all"')
+    // The old contract promised the full map on every call, which is the defect
+    // this argument closes.
+    expect(run.description).not.toContain('frames reports each sketch')
+    expect(run.description).toContain('length_unit')
   })
 })

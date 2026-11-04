@@ -21,7 +21,7 @@ import { journalSink, type CommandJournal } from '@/drive/journal'
 import { runScript, type ScriptRunOutcome, type ScriptStep, type ScriptStepOutcome } from '@/drive/scriptRunner'
 import { validateMutation } from '@/drive/mutationCatalog'
 import { readSolveOutcomes, type FeatureOutcome } from '@/drive/featureOutcome'
-import { featureFrames, type FeatureFrameMap } from '@/drive/featureFrames'
+import { featureFrames, type FeatureFrameMap, type FeatureFrameOptions } from '@/drive/featureFrames'
 import { docHashOf } from '@/drive/docHash'
 import { seededIdSource, stepSeedFor } from '@/drive/seededIds'
 import { resolveSelectionAids, usesSelectionAid } from '@/drive/selectionAids'
@@ -79,8 +79,9 @@ export interface HeadlessPart {
   // solve requested) is the one false case.
   solveAttempted(): boolean
   // The resolved frame of every sketch and plane feature in the last solve,
-  // keyed by feature id. Null when no solve has run yet.
-  featureFrames(): FeatureFrameMap | null
+  // keyed by feature id. Null when no solve has run yet. The options filter the
+  // map the way a run reply does; without them every resolved frame is listed.
+  featureFrames(opts?: FeatureFrameOptions): FeatureFrameMap | null
   // The status-only view of solveOutcomes, for the repro test's sidecar
   // expectations.
   solveStatuses(): Record<string, string>
@@ -281,9 +282,9 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     bodyIds: () => bodiesBox.current,
     solveOutcomes: () => outcomesBox.current,
     solveAttempted: () => solvedBox.current,
-    featureFrames: () => responseBox.current === null
+    featureFrames: opts => responseBox.current === null
       ? null
-      : featureFrames(docBox.current, responseBox.current.result),
+      : featureFrames(docBox.current, responseBox.current.result, opts),
     // Derived rather than stored: the status view and the outcome view cannot
     // disagree about which features the last settle reached.
     solveStatuses: () => Object.fromEntries(

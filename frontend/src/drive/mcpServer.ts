@@ -69,6 +69,9 @@ export interface McpRunRequest extends McpDocArguments {
   // 'all' lists every built feature in featureDeltas instead of this call's
   // changes; a warned feature that built follows the same rule.
   featureDeltas?: 'all'
+  // 'all' lists every resolved frame instead of the ones this call touched or
+  // moved.
+  frames?: 'all'
   // Write the final document here (YAML or JSON by extension). Project paths
   // only; the entry script resolves and enforces the directory rule.
   out?: string
@@ -396,10 +399,14 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'that built follows the same changed/touched rule and carries the warning text. '
       + 'A row\'s volume is the total over every live body; body and bodyVolume name the one body the feature '
       + 'built or changed (a merge_target cut\'s receiving body) and its own volume. '
-      + 'Pass featureDeltas: "all" to inspect every built row instead. frames reports each sketch and add_plane '
-      + 'feature\'s resolved {origin, x_axis, y_axis, normal}, so a face sketch\'s axes are read from the reply '
-      + 'rather than guessed (a feature whose solve threw has no frame). With steps: [] the given document is solved '
-      + 'once and the same fields are returned, which is how to inspect a document. A reply\'s docHash is stable: '
+      + 'Pass featureDeltas: "all" to inspect every built row instead. frames reports the resolved {origin, '
+      + 'x_axis, y_axis, normal} of each sketch and add_plane feature this call touched or whose frame moved, so '
+      + 'a face sketch\'s axes are read from the reply rather than guessed (a feature whose solve threw has no '
+      + 'frame), and the key is omitted when nothing qualified; pass frames: "all" for every resolved frame. '
+      + 'A part reply also names the document\'s length_unit (mm unless the document set inch): every length it '
+      + 'returns is in that unit, while STEP and STL leave in millimetres. With steps: [] the given document is solved '
+      + 'once and the same fields are returned, which is how to inspect a document; read a frame an earlier call '
+      + 'authored with measure or frames: "all". A reply\'s docHash is stable: '
       + 'run with steps: [] on it (by docHash, or its exported YAML/JSON as doc) returns the same hash. '
       + 'solved says whether a settle was attempted for this document: a script whose every step was refused before '
       + 'any mutation landed leaves it false and returns no per-feature rows, because nothing was solved; pass '
@@ -424,6 +431,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         steps: { type: 'array', items: { type: 'object' }, description: 'Script steps: {command,params} or {mutation}; mutation types: see the `mutations` tool (part and assembly).' },
         returnDoc: { type: 'boolean', description: 'Include the full final document in the reply (default false; the docHash resource serves it either way).' },
         featureDeltas: { type: 'string', enum: ['all'], description: 'Pass "all" to list every built feature; the default lists only features this call changed or touched. A warned feature that built is included under the same rule and carries the warning text.' },
+        frames: { type: 'string', enum: ['all'], description: 'Pass "all" to list every resolved sketch and plane frame; the default lists only frames this call touched or moved.' },
         detail: DETAIL_SCHEMA,
         out: { type: 'string', description: 'Write the final document here. YAML or JSON by extension, or .zip for a workspace zip of the assembly and its parts; the path must resolve inside tmp/ or bugreports/ (relative paths resolve against the repo root).' },
         docId: { type: 'string' },
@@ -440,7 +448,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'problems, and omits perBody; it also returns no one-line summary. '
       + 'Also returns features, the same failed-or-warning feature list a run reply carries, and frames, '
       + 'the resolved {origin, x_axis, y_axis, normal} of every sketch and add_plane feature; a feature with no '
-      + 'verdict makes ok false, and a kernel fault is ok false with an error naming it.',
+      + 'verdict makes ok false, and a kernel fault is ok false with an error naming it. Every length is in the '
+      + 'document\'s length_unit (mm when absent), named in the reply.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -459,7 +468,9 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     description: 'Measure a document and compare it against a reference at the reference\'s tolerance. '
       + 'Pass the reference inline or as referencePath (a project file under tmp/, bugreports/ or scratch/). '
       + 'Returns pass plus one row per measure (ours, theirs, delta, within); a failing row is data, not a tool error, '
-      + 'but a settle with no verdict is ok:false and is not compared. '
+      + 'but a settle with no verdict is ok:false and is not compared. A reference is millimetres by construction, '
+      + 'so an inch document is measured then scaled into millimetres for the comparison; the reply names the '
+      + 'document unit as length_unit and the rows as compared_in: "mm". '
       + REFERENCE_FRAME_SENTENCE,
     inputSchema: {
       type: 'object',
@@ -497,6 +508,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'A feature that failed, only partly applied, or '
       + 'warned, and an assembly whose solve did not run or whose mates or bound parts reported a problem, make '
       + 'the reply ok false with the file still written: the bytes are not the clean model the document describes. '
+      + 'A part export names length_unit (the document) and file_unit: "mm" (the bytes, since STEP and STL are '
+      + 'written in millimetres). '
       + 'An unknown body id is a tool error naming the live body ids.',
     inputSchema: {
       type: 'object',
@@ -720,13 +733,17 @@ function readDocArguments(
 
 function parseRunArgs(raw: unknown): McpRunRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'docHash', 'kind', 'parts', 'steps', 'docId', 'files', 'returnDoc', 'featureDeltas', 'out', 'detail'])
+  rejectUnknown(record, ['doc', 'docHash', 'kind', 'parts', 'steps', 'docId', 'files', 'returnDoc', 'featureDeltas', 'frames', 'out', 'detail'])
   if (!Array.isArray(record.steps)) throw new McpInvalidParams('field "steps" must be an array')
   for (const [index, step] of record.steps.entries()) asObject(step, `field "steps[${index}]"`)
   const returnDoc = optionalBoolean(record.returnDoc, 'returnDoc')
   const featureDeltas = record.featureDeltas
   if (featureDeltas !== undefined && featureDeltas !== 'all') {
     throw new McpInvalidParams('field "featureDeltas" must be "all" when present')
+  }
+  const frames = record.frames
+  if (frames !== undefined && frames !== 'all') {
+    throw new McpInvalidParams('field "frames" must be "all" when present')
   }
   const out = optionalString(record.out, 'out')
   const kind = readKind(record.kind)
@@ -745,6 +762,7 @@ function parseRunArgs(raw: unknown): McpRunRequest {
     files: readFiles(record.files),
     ...(returnDoc !== undefined && { returnDoc }),
     ...(featureDeltas !== undefined && { featureDeltas }),
+    ...(frames !== undefined && { frames }),
     ...(out !== undefined && { out }),
   }
 }
@@ -908,7 +926,10 @@ export function createMcpServer(ops: McpCadOps): McpServer {
               + ASSEMBLY_DOC_SCHEMA_URI + '. Plane names are case-sensitive: use '
               + '@builtin_plane_front, @builtin_plane_top, @builtin_plane_right, a bare seeded name (Front, Top, '
               + 'Right) or @<planeId>; an unmatched plane is an error naming the valid planes. '
-              + worldFrameSentence() + ' ' + faceFrameSentence() + ' ' + addPlaneFrameSentence(),
+              + worldFrameSentence() + ' ' + faceFrameSentence() + ' ' + addPlaneFrameSentence() + ' '
+              + 'Part replies name the document\'s length_unit (mm unless the document family\'s '
+              + 'set_length_unit mutation made it inch): every length they carry is in that unit, while STEP and STL '
+              + 'exports are written in millimetres.',
           })
         case 'notifications/initialized':
           return null

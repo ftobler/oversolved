@@ -13,8 +13,9 @@
 import type { PartDoc, BodyResult, AssemblyDoc, Transform3D } from '@/types/cad'
 import type { SolveSchedulerState } from '@/session/SolveScheduler'
 import { exportLocallyInspect, solveLocally, buildAndMeasureLocally, measureSolveFeatures, measureAssemblyLocally, exportAssemblyLocally, type FeatureMeasure, type LocalExportOptions } from '@/kernel/solveLocally'
+import { MM_PER_LENGTH_UNIT, lengthUnitOf } from '@/utils/lengthUnit'
 import { KernelFault } from '@/kernel/errors'
-import { compareMeasures, type MeasureRow } from '@/kernel/occ/measureTolerance'
+import { compareMeasures, scaledMeasures, type MeasureRow } from '@/kernel/occ/measureTolerance'
 import type { MeasureRecord } from '@/kernel/occ/measure'
 import type { TranslationReference } from '@/translations/corpus'
 import { selectByPredicate, validateSelector, type SelectResult } from '@/kernel/select'
@@ -76,6 +77,9 @@ export interface HeadlessRunOptions {
   // 'all' restores the whole feature history in featureDeltas; the default
   // reports only what this call changed. The inspection opt-in.
   featureDeltas?: 'all'
+  // 'all' restores every resolved frame in `frames`; the default reports only
+  // the sketches and planes this call touched or moved.
+  frames?: 'all'
   // Forwards the state each settled step left behind; the kernel worker uses it
   // to report a stalled solve without losing the accepted prefix.
   onStepSettled?: (checkpoint: HeadlessCheckpoint) => void
@@ -105,9 +109,10 @@ export interface HeadlessRunResult {
   // measurable checkpoints (no kernel); a failed or partial feature has no row,
   // but its checkpoint still sets the baseline for the next built one.
   featureDeltas: FeatureDelta[] | null
-  // The resolved {origin, x_axis, y_axis, normal} of every sketch and add_plane
-  // feature the final solve reached. Null when no solve ran; a feature whose
-  // solve threw or that was suppressed has no frame.
+  // The resolved {origin, x_axis, y_axis, normal} of the sketch and add_plane
+  // features this reply needs: the ones this call touched or moved, or every
+  // one under `frames: 'all'`. Null when no solve ran; a feature whose solve
+  // threw or that was suppressed has no frame.
   frames: FeatureFrameMap | null
   // The live part, for a caller that wants the session (the CLI records a
   // repro from its journal; most callers only read the fields above).
@@ -120,13 +125,15 @@ export interface HeadlessRunResult {
  * document" call.
  */
 export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRunResult> {
-  // The delta filter compares the final checkpoints against the document the
-  // run started on. Measuring it through the same kernel keeps the comparison
-  // real (a raw, un-baked doc measures its authored features, not its stale
-  // `initial`); the solve is the one the first step's build restores from, so a
-  // chain by docHash is not a second full build. 'all' does not filter, so it
-  // skips this entirely.
-  const baseline = opts.featureDeltas === 'all' ? null : await measureBaselineFeatures(opts)
+  // The delta and frame filters compare the final solve against the document
+  // the run started on. Measuring it through the same kernel keeps the
+  // comparison real (a raw, un-baked doc measures its authored features, not its
+  // stale `initial`); the solve is the one the first step's build restores from,
+  // so a chain by docHash is not a second full build. Either 'all' does not
+  // filter, so it skips this entirely.
+  const baseline = opts.featureDeltas === 'all' || opts.frames === 'all'
+    ? null
+    : await measureBaselineFeatures(opts)
   const part = createHeadlessPart({
     doc: opts.doc,
     docId: opts.docId,
@@ -169,29 +176,45 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     features,
     featureDeltas: doc !== null && measures !== null
       ? featureDeltaRows(doc, measures, part.solveOutcomes(), {
-          baseline,
+          baseline: baseline?.measures ?? null,
           touched: touchedFeatureIds(opts.steps, outcome.steps),
           mode: opts.featureDeltas === 'all' ? 'all' : 'changed',
         })
       : null,
-    frames: part.featureFrames(),
+    frames: part.featureFrames({
+      baseline: baseline?.frames ?? null,
+      touched: touchedFeatureIds(opts.steps, outcome.steps),
+      mode: opts.frames === 'all' ? 'all' : 'changed',
+    }),
     part,
   }
 }
 
-// The input document's per-feature checkpoints, measured without writing the
-// solve back: the baseline measurement reads the document it was handed. The
-// run itself settles (and bakes) the doc once before its first step when that
-// step names a selector, so the journal's baseline hash is that settled doc in
-// that case; replay is unaffected because each entry carries its seed.
-async function measureBaselineFeatures(opts: HeadlessRunOptions): Promise<FeatureMeasure[] | null> {
+/** The starting document's checkpoints and frames, from one solve. Both filters
+ *  read it, so the extra build is paid once. */
+interface BaselineSolve {
+  measures: FeatureMeasure[] | null
+  frames: FeatureFrameMap
+}
+
+// The input document's per-feature checkpoints and frames, measured without
+// writing the solve back: the baseline measurement reads the document it was
+// handed. The run itself settles (and bakes) the doc once before its first step
+// when that step names a selector, so the journal's baseline hash is that
+// settled doc in that case; replay is unaffected because each entry carries its
+// seed.
+async function measureBaselineFeatures(opts: HeadlessRunOptions): Promise<BaselineSolve | null> {
   try {
     const payload = partSolvePayload(opts.doc, opts.docId ?? 'headless')
     const response = await solveLocally(payload, {
       rollbackPosition: payload.rollback_position,
       ...(opts.files ? { files: opts.files } : {}),
     })
-    return response === null ? null : await measureSolveFeatures(response)
+    if (response === null) return null
+    return {
+      measures: await measureSolveFeatures(response),
+      frames: featureFrames(opts.doc, response.result),
+    }
   } catch {
     return null
   }
@@ -233,6 +256,11 @@ export interface HeadlessCompareResult {
   pass: boolean
   rows: MeasureRow[]
   measures: MeasureRecord | null
+  // The unit the rows are stated in. A reference is millimetres by
+  // construction, so an inch document is measured in its own numbers and the
+  // measured copy is scaled for the comparison; `measures` stays the document's
+  // own record, labelled by the reply's `length_unit`.
+  compared_in: 'mm'
   error?: string
 }
 
@@ -242,6 +270,12 @@ export interface HeadlessCompareResult {
  * unavailable or the document did not build (what `measureHeadless` reports
  * as null or throws); a failing row is data: `ok: true, pass: false`, so an
  * agent loop can read which measure diverged.
+ *
+ * A reference is millimetres: every corpus source and exporter is, and the
+ * reference format has no unit field. The measured record is scaled to
+ * millimetres before the comparison (lengths by 25.4, area by 25.4^2, volume by
+ * 25.4^3), so an inch document compares correctly instead of failing every row
+ * by the unit factor. Nothing stored is converted.
  */
 export async function compareHeadless(
   doc: PartDoc,
@@ -257,6 +291,7 @@ export async function compareHeadless(
       pass: false,
       rows: [],
       measures: null,
+      compared_in: 'mm',
       error: e instanceof Error ? e.message : String(e),
     }
   }
@@ -266,6 +301,7 @@ export async function compareHeadless(
       pass: false,
       rows: [],
       measures: null,
+      compared_in: 'mm',
       error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)',
     }
   }
@@ -281,15 +317,18 @@ export async function compareHeadless(
       pass: false,
       rows: [],
       measures: measured.measures,
+      compared_in: 'mm',
       error: missing === '' ? 'the solve did not finish cleanly' : `no verdict from the solve for: ${missing}`,
     }
   }
   const measures = measured.measures
-  const { pass, rows } = compareMeasures(measures, reference, {
+  const unit = lengthUnitOf(doc.length_unit)
+  const compared = unit === 'mm' ? measures : scaledMeasures(measures, MM_PER_LENGTH_UNIT[unit])
+  const { pass, rows } = compareMeasures(compared, reference, {
     tolerance: reference.tolerance,
     topology: reference.topology,
   })
-  return { ok: true, pass, rows, measures }
+  return { ok: true, pass, rows, measures, compared_in: 'mm' }
 }
 
 export interface HeadlessExportOptions extends LocalExportOptions {

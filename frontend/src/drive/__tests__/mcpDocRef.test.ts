@@ -134,6 +134,26 @@ describe('runReply', () => {
     expect(runReply({ ...source, featureDeltas }, false, documents).featureDeltas).toEqual(featureDeltas)
   })
 
+  it('names the document length unit on every reply, mm by default', () => {
+    const documents = new DocHandleStore()
+    expect(runReply(source, false, documents).length_unit).toBe('mm')
+
+    const inch = { ...doc('sk1'), length_unit: 'inch' } as PartDoc
+    const inchReply = runReply({ ...source, doc: inch, docHash: docHashOf(inch) }, false, documents)
+    expect(inchReply.length_unit).toBe('inch')
+  })
+
+  it('omits an empty frames map and carries a non-empty one', () => {
+    const documents = new DocHandleStore()
+    expect(runReply({ ...source, frames: {} }, false, documents).frames).toBeUndefined()
+    expect(runReply({ ...source, frames: null }, false, documents).frames).toBeUndefined()
+
+    const frames = {
+      sk1: { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] },
+    }
+    expect(runReply({ ...source, frames }, false, documents).frames).toEqual(frames)
+  })
+
   it('always carries features, and the summary names them only when there are problems', () => {
     const documents = new DocHandleStore()
     expect(runReply(source, false, documents).features).toEqual([])

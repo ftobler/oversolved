@@ -12,7 +12,7 @@
 //
 // Usage:
 //   npm run drive -- run <script.json> [--doc <file>] [--out <doc.(yaml|json)>] [--repro <file>]
-//                     [--file <id>=<path>] [--doc-id <id>]
+//                     [--file <id>=<path>] [--doc-id <id>] [--frames all]
 //   npm run drive -- commands
 //   npm run drive -- measure <doc.(yaml|json)> [--file <id>=<path>]
 //   npm run drive -- compare <doc.(yaml|json)> <reference.json> [--file <id>=<path>] [--doc-id <id>]
@@ -36,7 +36,7 @@ import type { PartDoc } from '@/types/cad'
 import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { createHeadlessPart } from '@/drive/headlessPart'
 import { runHeadless, measureHeadless, compareHeadless, exportHeadless, seedBuiltins, emptyDriveDoc } from '@/drive/headlessOps'
-import { stampLoadedDoc } from '@/drive/mcpDocRef'
+import { replyUnits, stampLoadedDoc } from '@/drive/mcpDocRef'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createDriveJournal, type ReproPayload } from '@/drive/journal'
@@ -102,7 +102,7 @@ function parseArgs(argv: string[]): Args {
 }
 
 const USAGE = `usage: drive <run|commands|measure|compare|export|replay> [args] [--flags]
-  run <script.(json|yaml)> [--doc <file>] [--out <doc.(yaml|json)>] [--repro <file>] [--file <id>=<path>] [--doc-id <id>]
+  run <script.(json|yaml)> [--doc <file>] [--out <doc.(yaml|json)>] [--repro <file>] [--file <id>=<path>] [--doc-id <id>] [--frames all]
   commands
   measure <doc.(yaml|json)> [--file <id>=<path>] [--doc-id <id>]
   compare <doc.(yaml|json)> <reference.json> [--file <id>=<path>] [--doc-id <id>]
@@ -177,6 +177,9 @@ function readFiles(args: Args): ReadonlyMap<string, Uint8Array> | undefined {
 async function runCommand(args: Args): Promise<number> {
   const scriptFile = args.positional[0]
   if (!scriptFile) throw new UsageError('run needs a script file')
+  // 'all' is the one value the filter option takes, mirroring the MCP argument.
+  const frames = args.flags.frames
+  if (frames !== undefined && frames !== 'all') throw new UsageError('--frames accepts only "all"')
   // Resolve both writes before the script runs: a path outside tmp/ or
   // bugreports/ must be refused without doing the work it would have saved.
   const out = args.flags.out === undefined ? null : resolveProjectPath(args.flags.out, 'doc')
@@ -192,6 +195,7 @@ async function runCommand(args: Args): Promise<number> {
     docId: args.flags['doc-id'] ?? 'cli',
     files: readFiles(args),
     journal,
+    ...(frames !== undefined && { frames }),
   })
 
   let saved: { file: string; format: string } | null = null
@@ -215,7 +219,9 @@ async function runCommand(args: Args): Promise<number> {
     solve: result.solve,
     features: result.features,
     featureDeltas: result.featureDeltas,
-    frames: result.frames,
+    // The same rule the MCP run reply uses: an empty or absent map is omitted.
+    ...(result.frames !== null && Object.keys(result.frames).length > 0 && { frames: result.frames }),
+    ...replyUnits(result.doc),
     ...(saved !== null && { file: saved.file, format: saved.format }),
   })
   return result.ok ? 0 : 1
@@ -247,7 +253,7 @@ async function measureCommand(args: Args): Promise<number> {
     printJson({ ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' })
     return 1
   }
-  printJson({ ok: measure.ok, ...measure.measures, features: measure.features, frames: measure.frames })
+  printJson({ ok: measure.ok, ...measure.measures, features: measure.features, frames: measure.frames, ...replyUnits(doc) })
   return measure.ok ? 0 : 1
 }
 
@@ -264,7 +270,7 @@ async function compareCommand(args: Args): Promise<number> {
     docId: args.flags['doc-id'] ?? 'cli',
     files: readFiles(args),
   })
-  printJson(result)
+  printJson({ ...result, ...replyUnits(doc) })
   if (!result.ok) return 1
   return result.pass ? 0 : 1
 }
@@ -289,7 +295,7 @@ async function exportCommand(args: Args): Promise<number> {
     return 1
   }
   if (!exported.bytes) {
-    printJson({ ok: false, features: exported.features, error: 'export produced no solid' })
+    printJson({ ok: false, features: exported.features, ...replyUnits(doc), file_unit: 'mm', error: 'export produced no solid' })
     return 1
   }
   // A fresh run directory may not exist yet, so make the parent at write time.
@@ -301,6 +307,8 @@ async function exportCommand(args: Args): Promise<number> {
     format,
     bytes: exported.bytes.byteLength,
     features: exported.features,
+    ...replyUnits(doc),
+    file_unit: 'mm',
   })
   return exported.ok ? 0 : 1
 }
