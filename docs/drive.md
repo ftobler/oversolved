@@ -1090,7 +1090,12 @@ authors `flip: true` by hand is equally valid.
 - `add_rect`, `add_center_rect` and `add_ngon` steps report `createdIds` as
   the entity ids in minting order (rect: bottom, right, top, left lines) plus
   `constraints: <count>`; the constraint ids stay readable from the document
-  resource. Other mutations list every id they create.
+  resource. Other mutations list every id they create. In an assembly, a
+  step's `createdIds` names the assembly features it added, in document order:
+  `inst_<handle>` for a placed part, the mate's `featureId`, or
+  `inst_<newHandle>` for a duplicate. A step that creates nothing (a ref or
+  parameter edit, a delete, a reorder, a visibility or fixed toggle) reports
+  `[]`.
 - The reply's `docHash` is the assembly handle. It folds the assembly document
   and every bound part's content hash, so a chained `measure { "docHash": A1 }`
   needs no second argument, and a part edit yields a new handle. `parts` on a

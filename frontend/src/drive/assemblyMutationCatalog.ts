@@ -222,6 +222,7 @@ export const ASSEMBLY_MUTATION_CATALOG = {
   add_part: {
     summary: 'Place a bound part document as an instance with an explicit handle.',
     note: '`part` is a doc_id the run call bound; the feature id is derived as `inst_<handle>`. '
+      + 'The step result\'s `createdIds` names it. '
       + '`doc_rev` is recorded as 0: the headless binding has no revision. ' + POSITION_NOTE + ' ' + ROTATION_NOTE,
     fields: {
       handle: str('The instance handle, unique in this assembly and never "__assembly".'),
@@ -316,7 +317,7 @@ export const ASSEMBLY_MUTATION_CATALOG = {
   },
   add_mate: {
     summary: 'Add a complete mate (both refs, parameters and an optional label) as one step.',
-    note: REF_NOTE + ' ' + MATE_PARAM_NOTE + CAPTURE_RECIPE_NOTE,
+    note: REF_NOTE + ' ' + MATE_PARAM_NOTE + ' The step result\'s `createdIds` names the mate\'s `featureId`. ' + CAPTURE_RECIPE_NOTE,
     fields: {
       featureId: str('The mate feature id; unique in this assembly.'),
       kind: str(`One of ${MATE_KINDS.join(', ')}.`),
