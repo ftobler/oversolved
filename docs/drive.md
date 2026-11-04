@@ -588,7 +588,7 @@ banner on stdout, so a client config must use the direct node invocation.
   delta describes the real part. A feature that built with a warning keeps its
   row and carries the kernel's `warning` text, so a partial tool list's volume
   is visible without a second measure; the row-coverage rule is the same as for
-  a clean feature (changed, new, or touched), so an untouched warned feature
+  an unwarned build (changed, new, or touched), so an untouched warned feature
   still appears only under `featureDeltas: "all"`. Pass `featureDeltas: "all"`
   to list every built feature, which is how an empty `steps: []` call inspects
   the whole history.
