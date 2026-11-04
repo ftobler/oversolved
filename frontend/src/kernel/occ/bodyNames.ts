@@ -118,6 +118,21 @@ export function canonicalEdges(oc: OccModule, scope: DisposeScope, shape: OccSha
   return canonical(oc, scope, shape, 'EDGE')
 }
 
+/**
+ * The edge count `measure` reports: the canonical population less the
+ * degenerated edges `readSolidEdges` skips. A pick can only name an edge that
+ * has geometry, so this is the population a pick and `select` see. The
+ * canonical order itself is untouched: it stays the alignment key for the
+ * stored indices and `edge_uuids`.
+ */
+export function pickableEdgeCount(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
+  let count = 0
+  for (const edge of canonicalEdges(oc, scope, shape)) {
+    if (!(oc.BRep_Tool.Degenerated?.(edge) ?? false)) count++
+  }
+  return count
+}
+
 export function canonicalVertices(oc: OccModule, scope: DisposeScope, shape: OccShape): OccSubShape[] {
   return canonical(oc, scope, shape, 'VERTEX')
 }
