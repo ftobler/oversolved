@@ -390,9 +390,9 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
     })
 
     it('a whole-sketch pick skips construction points and circles', () => {
-      // A construction-flagged point (a document can carry one; the UI's toggle
-      // skips points) and an n-gon's construction circumcircle are reference
-      // geometry, so the whole-sketch meaning must not drill them. Both sit on
+      // A construction-flagged point (a document can carry one, and the toggle
+      // can now set or clear it) and an n-gon's construction circumcircle are
+      // reference geometry, so the whole-sketch meaning must not drill them. Both sit on
       // the body and would remove material if they were sites, so the volume
       // pins that only the real point was drilled.
       const scope = new DisposeScope()

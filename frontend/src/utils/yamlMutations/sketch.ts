@@ -307,7 +307,11 @@ export function applyToggleConstruction(doc: PartDoc, targets: string[]): void {
     const feature = findSketchFeature(doc, fid)
     if (!feature?.entities) continue
     for (const def of feature.entities) {
-      if (eids.has(def.id) && def.kind !== 'point') {
+      // A construction point is reference geometry like a construction line:
+      // the hole's whole-sketch pick skips it, and a picked one is refused. The
+      // toggle is the only way to flag or clear a point's flag, so it applies
+      // to every kind.
+      if (eids.has(def.id)) {
         if (def.construction) delete def.construction
         else def.construction = true
       }

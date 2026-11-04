@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
-import { applyDeleteElements, applyAddEntityWithConstraint, applyAddImportStep } from '@/utils/yamlMutations'
+import {
+  applyDeleteElements, applyAddEntityWithConstraint, applyAddImportStep, applyToggleConstruction,
+} from '@/utils/yamlMutations'
 import { featureAt } from '@/testing/featureAccess'
 
 const constraints0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').constraints!
@@ -106,6 +108,41 @@ describe('applyDeleteElements', () => {
     applyDeleteElements(doc, ['entity:Sketch1:line1'])
     expect(constraints0(doc)).toHaveLength(1)
     expect(constraints0(doc)[0].id).toBe('c_vert')
+  })
+})
+
+describe('applyToggleConstruction', () => {
+  const makeTwoEntityDoc = (): PartDoc => ({
+    version: 1,
+    kind: 'part',
+    features: [{
+      id: 'Sketch1',
+      kind: 'sketch',
+      initial: { pt1: [1, 2], line1: [0, 0, 10, 0] },
+      entities: [{ id: 'pt1', kind: 'point' }, { id: 'line1', kind: 'line' }],
+      constraints: [],
+    }],
+  })
+
+  it('flags a point and a line, then clears both back to the original document', () => {
+    const doc = makeTwoEntityDoc()
+    const original = structuredClone(doc)
+    applyToggleConstruction(doc, ['entity:Sketch1:pt1', 'entity:Sketch1:line1'])
+    expect(entities0(doc).map(e => e.construction)).toEqual([true, true])
+
+    applyToggleConstruction(doc, ['entity:Sketch1:pt1', 'entity:Sketch1:line1'])
+    expect(entities0(doc).map(e => 'construction' in e)).toEqual([false, false])
+    expect(doc).toEqual(original)
+  })
+
+  it('clears a hand-authored construction point flag', () => {
+    // A document can carry a construction point the product never authored (an
+    // import or a hand-written YAML); the toggle is the only way to clear it.
+    const doc = makeTwoEntityDoc()
+    entities0(doc)[0].construction = true
+    applyToggleConstruction(doc, ['entity:Sketch1:pt1'])
+    expect('construction' in entities0(doc)[0]).toBe(false)
+    expect(entities0(doc)[1]).toEqual({ id: 'line1', kind: 'line' })
   })
 })
 
