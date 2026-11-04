@@ -237,6 +237,14 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
       "undoable": true,
     },
     {
+      "enabled": "nothing to finish",
+      "id": "finish_draw",
+      "label": "Finish drawing",
+      "params": [],
+      "shortcut": "enter",
+      "undoable": true,
+    },
+    {
       "enabled": "no entities selected",
       "id": "mirror_entities",
       "label": "Mirror selection",

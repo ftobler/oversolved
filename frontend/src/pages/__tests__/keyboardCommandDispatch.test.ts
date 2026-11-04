@@ -111,4 +111,19 @@ describe('keyboard command dispatch', () => {
     dispatchKey(fakeKey('p'))
     expect(handler).toHaveBeenCalledOnce()
   })
+
+  it('Enter finishes the drawing gesture only while a sketch is edited', () => {
+    const finish = vi.fn()
+    registerCommand('finish_draw', finish)
+    // Outside the sketch editor Enter belongs to whatever control has focus:
+    // the sketch-only map must leave it alone.
+    expect(dispatchKey(fakeKey('Enter'))).toBe(false)
+    expect(finish).not.toHaveBeenCalled()
+
+    useSketchEditorStore.getState().setActiveFeatureId('feat-1')
+    const event = fakeKey('Enter')
+    expect(dispatchKey(event)).toBe(true)
+    expect(finish).toHaveBeenCalledOnce()
+    expect(event.preventDefault).toHaveBeenCalledOnce()
+  })
 })

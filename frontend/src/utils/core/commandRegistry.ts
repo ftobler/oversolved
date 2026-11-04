@@ -71,10 +71,16 @@ export const FEATURE_KEYMAP: Record<string, CommandName> = {
 
 // Keys that are only active inside sketch-edit mode.
 // These take precedence over KEYMAP entries when a sketch is being edited.
-// Currently empty: every binding that used to live here behaved the same in both
-// modes, so it belongs in CORE_KEYBINDINGS where the Registry page can see it.
-// An override here silently shadows KEYMAP, so only add one that really differs.
-export const SKETCH_KEYMAP: Record<string, CommandName> = {}
+// The one genuine sketch-only binding is Enter (finish the gesture being drawn):
+// outside a sketch Enter must keep activating a focused button, so it cannot
+// live in CORE_KEYBINDINGS where every mode would intercept it. An entry here
+// silently shadows KEYMAP, so only add one that really differs.
+export const SKETCH_KEYBINDINGS: readonly CoreKeybinding[] = [
+  { key: 'enter', command: 'finish_draw', label: 'Finish drawing', description: 'Stamp down the spline being drawn; a click on its last point does the same' },
+]
+
+export const SKETCH_KEYMAP: Record<string, CommandName> =
+  Object.fromEntries(SKETCH_KEYBINDINGS.map(b => [b.key, b.command]))
 
 // Assembly keymap, the only table consulted while WorkspacePage says the assembly
 // editor is active. It ships the shared keys (undo/redo/delete, including their alt

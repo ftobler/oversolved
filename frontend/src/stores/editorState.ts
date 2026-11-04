@@ -20,6 +20,8 @@ import { deriveSelectionDomain, devOnly, testMode, failLoud } from './stateInvar
 import { isDrawingTool } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
 import { planBrepDimensionPick, refreshProjectedPickKinds } from '@/tools/dimensionProjection'
+import { commitDrawGesture } from '@/tools/commitDrawGesture'
+import { computeDrawFinish } from '@/utils/geometry/drawFinish'
 import { randomId } from '@/utils/yamlMutations/helpers'
 import type { DialogState, SketchEditorState } from './sketchEditorTypes'
 import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectionEntityId, CANNOT_APPLY_TITLE, type PendingConstraint } from './sketchEditorCallbacks'
@@ -710,6 +712,21 @@ export const editorState = createStore<EditorState>((set, get) => ({
     if (devOnly || testMode) {
       validateWithRepair(get, set)
     }
+  },
+
+  finishDraw: () => {
+    const { activeTool, activeFeatureId, drawPoints, drawSnapRefs } = get()
+    if (!activeTool || !activeFeatureId) return false
+    const result = computeDrawFinish(activeTool, drawPoints, drawSnapRefs, activeFeatureId, () => randomId(12))
+    // The same commit path a click-built gesture takes: one undo batch, the
+    // buffer reset, and the tool's own arming policy.
+    return commitDrawGesture(result, {
+      onMutation: sketchCallbacks.onMutation,
+      onMutationBatch: sketchCallbacks.onMutationBatch,
+      clearDraw: get().clearDraw,
+      disarm: () => get().setActiveTool(null),
+      staysArmedAfterCommit: getToolPickConfig(activeTool).staysArmedAfterCommit,
+    }, '[editorState] finishDraw')
   },
 
   addDimensionPick: (pick: DimensionPick) => {

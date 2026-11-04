@@ -650,4 +650,73 @@ describe('sketchEditorStore', () => {
     })
   })
 
+  describe('finishDraw', () => {
+    // The stamp-down action behind Enter, a right click and a double click.
+    // The buffer is already staged by the clicks; the action turns it into the
+    // entity the click path would have emitted on the finishing click.
+    beforeEach(() => {
+      useEditorState.setState({ activeFeatureId: 'S1' })
+      useSketchEditorStore.getState().setActiveTool('fit_spline')
+      useEditorState.setState({
+        drawPoints: [[0, 0], [1, 1], [2, 0]],
+        drawSnapRefs: [],
+      })
+    })
+
+    it('commits the spline, clears the buffer and keeps the sticky tool armed', () => {
+      const onMutation = vi.fn()
+      setSketchCallback('onMutation', onMutation)
+
+      expect(useSketchEditorStore.getState().finishDraw()).toBe(true)
+
+      expect(onMutation).toHaveBeenCalledOnce()
+      expect(onMutation.mock.calls[0][0]).toMatchObject({
+        type: 'add_entity', featureId: 'S1', kind: 'fit_spline', params: [0, 0, 1, 1, 2, 0],
+      })
+      expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+      expect(useSketchEditorStore.getState().activeTool).toBe('fit_spline')
+      expect(useSketchEditorStore.getState().modeStack).toEqual(['tool:fit_spline'])
+    })
+
+    it('commits snapped points and their constraints as one undo batch', () => {
+      setSketchCallback('onMutation', vi.fn())
+      const onMutationBatch = vi.fn()
+      setSketchCallback('onMutationBatch', onMutationBatch)
+      useEditorState.setState({
+        drawSnapRefs: ['vertex:S1:L1:start', null, 'vertex:S1:L2:end'],
+      })
+
+      expect(useSketchEditorStore.getState().finishDraw()).toBe(true)
+
+      expect(onMutationBatch).toHaveBeenCalledOnce()
+      expect(onMutationBatch.mock.calls[0][0]).toHaveLength(3)
+    })
+
+    it('does nothing for fewer than two distinct points and leaves the buffer', () => {
+      const onMutation = vi.fn()
+      setSketchCallback('onMutation', onMutation)
+      useEditorState.setState({ drawPoints: [[1, 2]] })
+
+      expect(useSketchEditorStore.getState().finishDraw()).toBe(false)
+      expect(onMutation).not.toHaveBeenCalled()
+      expect(useSketchEditorStore.getState().drawPoints).toEqual([[1, 2]])
+    })
+
+    it('does nothing for a tool with no variable point count', () => {
+      useSketchEditorStore.getState().setActiveTool('line')
+      useEditorState.setState({ drawPoints: [[0, 0], [1, 1]] })
+      const onMutation = vi.fn()
+      setSketchCallback('onMutation', onMutation)
+
+      expect(useSketchEditorStore.getState().finishDraw()).toBe(false)
+      expect(onMutation).not.toHaveBeenCalled()
+      expect(useSketchEditorStore.getState().drawPoints).toEqual([[0, 0], [1, 1]])
+    })
+
+    it('does nothing with no active sketch', () => {
+      useEditorState.setState({ activeFeatureId: null })
+
+      expect(useSketchEditorStore.getState().finishDraw()).toBe(false)
+    })
+  })
 })

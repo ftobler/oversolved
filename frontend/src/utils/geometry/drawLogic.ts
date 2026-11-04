@@ -10,29 +10,13 @@ import { circumcircle, arcEndpointOrder, ELLIPSE_MINOR_RATIO } from '@/utils/geo
 import { isFiniteSketchPoint } from '@/utils/pointerAbstraction'
 import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
 import { sameSnapVertex } from '@/utils/snapRefs'
+import { finishFitSplineMutations, pointsCoincide } from '@/utils/geometry/drawFinish'
+import type { DrawClickResult } from '@/utils/geometry/drawFinish'
 import { failLoud } from '@/stores/stateInvariants'
 
 export type { DrawSnapState }
+export type { DrawClickResult }
 export { resolveSnapPoint }
-
-export interface DrawClickResult {
-  mutations: Mutation[]
-  /**
-   * null  -- leave draw points unchanged
-   * array -- replace draw points with this array (intermediate clicks, arc 2nd click)
-   */
-  nextDrawPoints: [number, number][] | null
-  // null means leave the carried draw snaps unchanged; an object replaces them.
-  // One ref per placed point, index-aligned with drawPoints, each naming either
-  // a vertex or a whole entity (a point on that curve). A gesture whose entity
-  // is created several clicks after a snapped point (the arc's two ends, the
-  // spline's start) reads its own click's ref back out of this list.
-  nextDrawSnap: { refs: (string | null)[] } | null
-  // true when this click completed the gesture and produced its entity; the
-  // adapter clears the draw buffer and consults the tool's
-  // `staysArmedAfterCommit` policy to decide whether to keep the tool armed.
-  gestureComplete: boolean
-}
 
 /** Pure draw click handler. Accepts all snap/draw state as plain data; has no store reads.
  *  newEntityIdFn is injected so tests can provide a deterministic ID instead of randomId(). */
@@ -251,46 +235,34 @@ export function computeDrawClick(
     return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
   }
 
-  const finishFitSpline = (
-    points: [number, number][],
-    refs: (string | null)[],
-  ): DrawClickResult => {
-    const fitId = newEntityIdFn()
-    const params = points.flatMap(p => [p[0], p[1]])
-    const mutations: Mutation[] = [
-      { type: 'add_entity', featureId, kind: 'fit_spline', params, entityId: fitId },
-    ]
-    refs.forEach((ref, i) => {
-      if (!ref) return
-      const key = i === 0 ? 'start' : i === points.length - 1 ? 'end' : `fit${i}`
-      // A closed curve's end is the start vertex; the start constraint already
-      // ties it down.
-      if (i === points.length - 1 && sameSnapVertex(ref, refs[0] ?? null)) return
-      mutations.push(...insertCoincidentPoint(ref, {
-        featureId, vertexRef: `vertex:${featureId}:${fitId}:${key}`,
-      }))
-    })
-    return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
-  }
-
   if (t === 'fit_spline') {
-    // Click fit points; Enter (or a click on the last point) finishes, a click
-    // on the first point closes the curve. Two points is the minimum.
-    const near = (p: readonly [number, number]): boolean =>
-      Math.hypot(p[0] - px, p[1] - py) <= SNAP_EPS
+    // Click fit points; Enter, a right click or a double click finishes (see
+    // `computeDrawFinish`), a click on the first point closes the curve. Two
+    // points is the minimum.
+    const near = (p: readonly [number, number]): boolean => pointsCoincide(p, [px, py])
     if (pts.length === 0) {
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: startSnap(), gestureComplete: false }
+    }
+    // The user pressed the same spot twice while the gesture holds one point
+    // (a double click that starts it). Staging the repeat would leave a
+    // zero-extent spline, so the press is dropped. Both the raw and resolved
+    // points must agree: a stale snap that merely resolves elsewhere is still a
+    // deliberate click somewhere else.
+    if (pts.length === 1 && near(pts[0]) && pointsCoincide(pts[0], rawPoint)) {
+      return nothing
     }
     const refs = pts.map((_, i) => snap.drawSnapRefs[i] ?? null)
     if (pts.length >= 2 && near(pts[0])) {
       // Closed: the last point repeats the first, the C0 seam CadQuery draws.
-      return finishFitSpline(
+      return finishFitSplineMutations(
+        featureId,
         [...pts.map(p => [p[0], p[1]] as [number, number]), [pts[0][0], pts[0][1]]],
         [...refs, refs[0] ?? null],
+        newEntityIdFn,
       )
     }
     if (pts.length >= 2 && near(pts[pts.length - 1])) {
-      return finishFitSpline(pts.map(p => [p[0], p[1]] as [number, number]), refs)
+      return finishFitSplineMutations(featureId, pts.map(p => [p[0], p[1]] as [number, number]), refs, newEntityIdFn)
     }
     const next: [number, number][] = [...pts.map(p => [p[0], p[1]] as [number, number]), [px, py]]
     return { mutations: [], nextDrawPoints: next, nextDrawSnap: { refs: [...refs, clickedRef()] }, gestureComplete: false }

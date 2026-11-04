@@ -95,6 +95,12 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   otherSketches?: Record<string, Sketch>
 }) {
   const meshRef = useRef<THREE.Mesh>(null)
+  // Double-click sequencing: the first press of the double click may already
+  // have completed the gesture and cleared the buffer, so the second press
+  // starts a fresh one. `onDoubleClick` then sees a one-point gesture that must
+  // not be left staged (a stray preview dot Enter cannot finish).
+  const previousPressFinishedRef = useRef(false)
+  const pressAfterFinishRef = useRef(false)
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const effectiveTool = activeTool ?? 'drag'
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
@@ -188,6 +194,12 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
       position={[0, 0, -0.002]}
       onPointerDown={e => {
         e.stopPropagation()
+        // A drawing gesture places points on the primary button only. A
+        // secondary press is the camera (the turntable orbits on right-drag);
+        // the stationary right click that stamps a fit spline down is resolved
+        // on pointer-up by the Viewport, so an orbit never commits the curve.
+        // Middle and back/forward presses never place a point either.
+        if (e.nativeEvent.button !== 0) return
         const group = resolvedGroupRef.current
         if (!group) return
         // The commit click resolves against the sketch PLANE, not against
@@ -273,6 +285,30 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           popMode: () => {},
         }
         tool.handlers.onPointerDown(e.nativeEvent, [x, y], context)
+        // A completed gesture clears the buffer. Remember it so the next press
+        // knows it is the second half of a double click that already stamped
+        // the curve down (see onDoubleClick below).
+        const finishedOnThisPress = state.drawPoints.length > 0
+          && useSketchEditorStore.getState().drawPoints.length === 0
+        pressAfterFinishRef.current = previousPressFinishedRef.current
+        previousPressFinishedRef.current = finishedOnThisPress
+      }}
+      onDoubleClick={e => {
+        e.stopPropagation()
+        if (pressAfterFinishRef.current) {
+          // The first press stamped the curve and the second opened a fresh
+          // gesture. Drop its lone point instead of leaving a preview dot that
+          // Enter cannot finish.
+          pressAfterFinishRef.current = false
+          previousPressFinishedRef.current = false
+          useSketchEditorStore.getState().clearDraw()
+          return
+        }
+        // The second press of a double click normally lands on the last fit
+        // point and finishes the spline through the click path. When the
+        // pointer drifted between the two presses that press places a new
+        // point instead, so this is the explicit stamp-down for the gesture.
+        useSketchEditorStore.getState().finishDraw()
       }}
       onPointerOut={() => setDrawHover(null)}
     >

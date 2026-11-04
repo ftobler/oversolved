@@ -426,10 +426,15 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
     if (click.wasDrag) return
 
-    // An armed section pick owns right-click as its cancel gesture; opening the
-    // part context menu at the same time would bury the cancel.
-    if (e.button === 2 && onRightClick && !useSectionStore.getState().picking) {
-      onRightClick([e.clientX, e.clientY])
+    if (e.button === 2 && !useSectionStore.getState().picking) {
+      // A stationary right click is the fit spline's mouse stamp-down (the twin
+      // of Enter). It commits here, after the gesture tracker has ruled out a
+      // right-drag orbit, and it must not also open the context menu. With
+      // nothing to stamp the click keeps its historical menu.
+      if (useSketchEditorStore.getState().finishDraw()) return
+      // An armed section pick owns right-click as its cancel gesture; opening the
+      // part context menu at the same time would bury the cancel.
+      if (onRightClick) onRightClick([e.clientX, e.clientY])
     }
   }, [onRightClick, rubberBand])
 
