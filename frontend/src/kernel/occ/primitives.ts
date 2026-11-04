@@ -386,8 +386,12 @@ export function wireVertexCount(oc: OccModule, scope: DisposeScope, wire: OccSha
  * BRepBuilderAPI_MakeWire refuses. The uv-space counterpart is `describeProfile`
  * in kernel/profileDiagnostics.ts.
  *
- * One entry per edge: index i is the gap from edge i's last point to edge
- * (i+1)'s first point, so the final entry is the loop's closure gap.
+ * One entry per edge: index i is the gap between edge i and edge (i+1), so the
+ * final entry is the loop's closure gap. Each edge's TWO built endpoints are
+ * tested and the closest pair wins: a clockwise arc is built as an increasing
+ * parameter range over swapped angles, so its curve's first parameter is the
+ * edge's stored END and a fixed first/last pairing would report the arc's chord
+ * as a joint gap.
  */
 export function wireEndpointGaps(oc: OccModule, scope: DisposeScope, edges: OccShape[]): number[] {
   const ends = edges.map((e) => {
@@ -401,9 +405,16 @@ export function wireEndpointGaps(oc: OccModule, scope: DisposeScope, edges: OccS
     ep.delete()
     return { first, last }
   })
+  const dist = (a: Vec3, b: Vec3): number =>
+    Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
   return ends.map((e, i) => {
-    const next = ends[(i + 1) % ends.length].first
-    return Math.hypot(e.last[0] - next[0], e.last[1] - next[1], e.last[2] - next[2])
+    const next = ends[(i + 1) % ends.length]
+    return Math.min(
+      dist(e.first, next.first),
+      dist(e.first, next.last),
+      dist(e.last, next.first),
+      dist(e.last, next.last),
+    )
   })
 }
 

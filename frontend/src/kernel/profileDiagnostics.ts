@@ -26,7 +26,13 @@ import {
   type LoopEdge,
 } from './profileLoops'
 import { extractProfileLoops } from './features/shared/profileLoops'
-import { OCC_CONFUSION, TOL_LOOP_CLOSURE, TOL_TOPOLOGY_EPS, TOL_TOPOLOGY_MERGE } from './solverConstants'
+import {
+  JOINT_SNAP_TOL,
+  OCC_CONFUSION,
+  TOL_LOOP_CLOSURE,
+  TOL_TOPOLOGY_EPS,
+  TOL_TOPOLOGY_MERGE,
+} from './solverConstants'
 
 // The anchored-kind set lives in kernel/profileLoops so the loop assembler can
 // snap merged joints without importing this module back (this module imports
@@ -146,6 +152,80 @@ function isSelfClosedEdge(e: LoopEdge): boolean {
   const s = endpoint(e, 'start')
   const en = endpoint(e, 'end')
   return s.length > 0 && en.length > 0 && dist2d(s, en) < TOL_TOPOLOGY_EPS
+}
+
+function angleDelta(a: number, b: number): number {
+  const twoPi = 2 * Math.PI
+  const d = ((a - b) % twoPi + twoPi) % twoPi
+  return Math.abs(d > Math.PI ? twoPi - d : d)
+}
+
+function ellipsePointAt(
+  center: number[],
+  a: number,
+  b: number,
+  thetaDeg: number,
+  phi: number,
+): number[] {
+  const rot = (thetaDeg * Math.PI) / 180
+  const cr = Math.cos(rot)
+  const sr = Math.sin(rot)
+  const ax = a * Math.cos(phi)
+  const ay = b * Math.sin(phi)
+  return [center[0] + ax * cr - ay * sr, center[1] + ax * sr + ay * cr]
+}
+
+interface EndpointConsistency {
+  which: 'start' | 'end'
+  radialError: number
+  angularError: number
+  scale: number
+}
+
+/**
+ * Compare an anchored arc or elliptical arc's stored endpoint with the point
+ * its stored angles produce. The radial check alone misses the wrong-sweep
+ * case, whose endpoint is on the circle at the wrong angle, so both are
+ * measured. This reads numbers the report already has; it does not change the
+ * merge rule.
+ */
+function endpointConsistency(e: LoopEdge, which: 'start' | 'end'): EndpointConsistency | null {
+  const kind = e['kind'] as string
+  if (kind !== 'arc' && kind !== 'ellipse_arc') return null
+  const p = endpoint(e, which)
+  const center = e['center'] as number[] | undefined
+  if (p.length < 2 || center === undefined) return null
+  const angleKey = which === 'start' ? 'angle_start_deg' : 'angle_end_deg'
+  const angleDeg = (e[angleKey] as number | undefined) ?? 0
+  const angle = (angleDeg * Math.PI) / 180
+  if (kind === 'arc') {
+    const radius = e['radius'] as number | undefined
+    if (radius === undefined || radius <= 0) return null
+    const dx = p[0] - center[0]
+    const dy = p[1] - center[1]
+    return {
+      which,
+      radialError: Math.abs(Math.hypot(dx, dy) - radius),
+      angularError: angleDelta(Math.atan2(dy, dx), angle),
+      scale: radius,
+    }
+  }
+  const a = e['a'] as number | undefined
+  const b = e['b'] as number | undefined
+  if (a === undefined || b === undefined || !(a > 0) || !(b > 0)) return null
+  const theta = ((e['theta'] as number | undefined) ?? 0) * (Math.PI / 180)
+  const dx = p[0] - center[0]
+  const dy = p[1] - center[1]
+  const x = dx * Math.cos(theta) + dy * Math.sin(theta)
+  const y = -dx * Math.sin(theta) + dy * Math.cos(theta)
+  const phi = Math.atan2(y / b, x / a)
+  const onCurve = ellipsePointAt(center, a, b, (theta * 180) / Math.PI, phi)
+  return {
+    which,
+    radialError: Math.hypot(p[0] - onCurve[0], p[1] - onCurve[1]),
+    angularError: angleDelta(phi, angle),
+    scale: Math.max(a, b),
+  }
 }
 
 /** Shoelace area over an explicitly sampled polygon. */
@@ -314,6 +394,18 @@ export function describeProfile(loops: LoopEdge[][]): ProfileReport {
       // anchored/anchored joint exactly as it found it.
       if (j.aAnchored && j.bAnchored) {
         note(`${where}both sides are anchored to a curve, so this joint is unsnappable`)
+      }
+    }
+    for (const e of loops[li]) {
+      for (const which of ['start', 'end'] as const) {
+        const c = endpointConsistency(e, which)
+        if (c === null) continue
+        if (c.radialError <= JOINT_SNAP_TOL && c.angularError * c.scale <= JOINT_SNAP_TOL) continue
+        const id = typeof e['id'] === 'string' ? `'${e['id']}'` : '(no id)'
+        note(
+          `loop ${li} ${String(e['kind'])} ${id} ${c.which}: stored endpoint disagrees with its ` +
+          `stored angles (radial ${fmt(c.radialError)}, angular ${fmt(c.angularError)} rad)`,
+        )
       }
     }
     if (lr.duplicateOf !== null) {

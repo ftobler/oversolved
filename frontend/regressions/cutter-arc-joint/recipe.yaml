@@ -1,0 +1,60 @@
+version: 5
+kind: part
+features:
+  - id: Origin
+    kind: origin
+  - id: Top
+    kind: plane
+    visible: false
+  - id: Front
+    kind: plane
+    visible: false
+  - id: Right
+    kind: plane
+    visible: false
+  - id: s1
+    kind: sketch
+    label: Cutter profile
+    plane: Top
+    initial:
+      d0eaZspsBxjqYrEL:
+        - 0
+        - 0
+        - 4
+        - 146.93351
+        - 134.349402
+      L-PdupMWVYzjmTkT:
+        - -2.796128
+        - 2.860361
+        - -3.40496
+        - 3.661455
+      Dd7YLGQgUIGcruhW:
+        - 0
+        - 0
+        - 5
+        - 132.921203
+        - 135
+      Vi6NVV4VeP5bbvf9:
+        - -1.06066
+        - 3.181981
+        - 2.5
+        - 171.869898
+        - 203.566497
+    entities:
+      - id: d0eaZspsBxjqYrEL
+        kind: arc
+      - id: L-PdupMWVYzjmTkT
+        kind: line
+      - id: Dd7YLGQgUIGcruhW
+        kind: arc
+      - id: Vi6NVV4VeP5bbvf9
+        kind: arc
+  - id: exT1
+    kind: extrude
+    label: Extrude
+    extrude:
+      sketch:
+        - $s1
+      distance: 1
+      direction: normal
+      operation: new

@@ -35,8 +35,319 @@ import { uvTo3d } from './prismGeometry'
 import type { LoopEdge } from '../profileLoops'
 import { copyShape } from './transforms'
 import { swallowUnlessTrap } from '../errors'
+import { JOINT_SNAP_TOL, OCC_CONFUSION, TOL_TOPOLOGY_MERGE } from '../solverConstants'
 
 // ─── sketch loops -> OCC face ───
+
+const TWO_PI = 2 * Math.PI
+const DEG_PER_RAD = 180 / Math.PI
+
+/** A refusal that names the arc and carries the numbers a bug report needs. */
+export interface ArcJointRefusal {
+  ok: false
+  code: 'parameters' | 'degenerate' | 'chord' | 'center' | 'sweep'
+  edge: string
+  centerShift: number
+  radialError: number
+  angularError: number
+  message: string
+}
+
+export interface ArcJointSolution {
+  ok: true
+  fullTurn: boolean
+  center: [number, number]
+  radius: number
+  angleStartDeg: number
+  angleEndDeg: number
+  radialError: number
+  angularError: number
+}
+
+export type ArcJointResult = ArcJointSolution | ArcJointRefusal
+
+function edgeLabel(edge: LoopEdge): string {
+  const id = edge['id']
+  return typeof id === 'string' && id.length > 0 ? `'${id}'` : '(no id)'
+}
+
+/** Signed sweep of two stored angles, radians, in the traversal direction. */
+function storedSweepRad(a0Deg: number, a1Deg: number, ccw: boolean): number {
+  const a0 = (a0Deg * Math.PI) / 180
+  const a1 = (a1Deg * Math.PI) / 180
+  return ccw
+    ? ((a1 - a0) % TWO_PI + TWO_PI) % TWO_PI
+    : -(((a0 - a1) % TWO_PI + TWO_PI) % TWO_PI)
+}
+
+function normalizeDeg(rad: number): number {
+  return ((rad * DEG_PER_RAD) % 360 + 360) % 360
+}
+
+/**
+ * The circle of an arc's AUTHORED radius through its two stored endpoints.
+ *
+ * The loop analyser merges each joint at TOL_TOPOLOGY_MERGE and hands both
+ * sides the same 2D point, while OCC's own MakeWire rung is
+ * Precision::Confusion (1e-7). Rebuilding the arc from its stored angles puts
+ * its realized endpoint wherever those angles point, up to ~5e-7 away from the
+ * merged joint, and MakeWire then drops the edge. The circle through the two
+ * stored endpoints of the authored radius has both realized endpoints exactly
+ * at the joint, so the wire is the shape the analyser described.
+ *
+ * Pure and loop-dict-only, so its guards run without WASM. `buildArcEdge` is
+ * the OCC wrapper. Refuses rather than silently building a different circle
+ * when an endpoint is not on the authored arc.
+ */
+export function arcJointCircle(edge: LoopEdge): ArcJointResult {
+  const label = edgeLabel(edge)
+  const center = edge['center'] as number[] | undefined
+  const radius = edge['radius'] as number | undefined
+  const start = edge['start'] as number[] | undefined
+  const end = edge['end'] as number[] | undefined
+  const a0Deg = (edge['angle_start_deg'] as number | undefined) ?? 0
+  const a1Deg = (edge['angle_end_deg'] as number | undefined) ?? 360
+  const ccw = (edge['ccw'] as boolean | undefined) ?? true
+  const refuse = (
+    code: ArcJointRefusal['code'],
+    message: string,
+    numbers: Partial<Pick<ArcJointRefusal, 'centerShift' | 'radialError' | 'angularError'>> = {},
+  ): ArcJointRefusal => ({
+    ok: false,
+    code,
+    edge: typeof edge['id'] === 'string' ? (edge['id'] as string) : '',
+    centerShift: numbers.centerShift ?? 0,
+    radialError: numbers.radialError ?? 0,
+    angularError: numbers.angularError ?? 0,
+    message,
+  })
+
+  // A stored span of a full turn is the shortcut, checked BEFORE deriving
+  // endpoints: such an edge has start == end, so the derivation below would
+  // read a zero sweep and makeArcEdge would reject it as a degenerate arc.
+  if (Math.abs(a1Deg - a0Deg) >= 360 - 1e-6) {
+    if (center === undefined || radius === undefined) {
+      return refuse('parameters', `arc ${label} has no stored centre or radius`)
+    }
+    return {
+      ok: true,
+      fullTurn: true,
+      center: [center[0], center[1]],
+      radius,
+      angleStartDeg: a0Deg,
+      angleEndDeg: a1Deg,
+      radialError: 0,
+      angularError: 0,
+    }
+  }
+
+  if (center === undefined || radius === undefined || radius <= 0) {
+    return refuse('parameters', `arc ${label} is missing its stored centre or radius`)
+  }
+  // `extractFaceLoops` emits arcs from a pcurve with no 2D endpoints; there is
+  // no joint to build through, so those keep the stored-angle construction.
+  if (!Array.isArray(start) || !Array.isArray(end)) {
+    return {
+      ok: true,
+      fullTurn: false,
+      center: [center[0], center[1]],
+      radius,
+      angleStartDeg: a0Deg,
+      angleEndDeg: a1Deg,
+      radialError: 0,
+      angularError: 0,
+    }
+  }
+  const c0: [number, number] = [center[0], center[1]]
+  const p0: [number, number] = [start[0], start[1]]
+  const p1: [number, number] = [end[0], end[1]]
+  const chord = Math.hypot(p1[0] - p0[0], p1[1] - p0[1])
+  const radialError = Math.max(
+    Math.abs(Math.hypot(p0[0] - c0[0], p0[1] - c0[1]) - radius),
+    Math.abs(Math.hypot(p1[0] - c0[0], p1[1] - c0[1]) - radius),
+  )
+  if (!(chord > 0)) {
+    return refuse(
+      'degenerate',
+      `arc ${label} has coincident stored endpoints; a full turn must carry its 360 degree span`,
+      { radialError },
+    )
+  }
+  if (chord > 2 * radius + TOL_TOPOLOGY_MERGE) {
+    return refuse(
+      'chord',
+      `arc ${label} endpoints are ${formatGap(chord)} apart, more than its diameter ${formatGap(2 * radius)}`,
+      { radialError },
+    )
+  }
+
+  // Two circles of this radius pass through both points; the nearer stored
+  // centre keeps the authored wrapping.
+  const midX = (p0[0] + p1[0]) / 2
+  const midY = (p0[1] + p1[1]) / 2
+  const half = Math.sqrt(Math.max(0, radius * radius - (chord * chord) / 4))
+  const nx = -(p1[1] - p0[1]) / chord
+  const ny = (p1[0] - p0[0]) / chord
+  const candidate = (side: number): [number, number] => [midX + side * half * nx, midY + side * half * ny]
+  const a = candidate(1)
+  const b = candidate(-1)
+  const shiftA = Math.hypot(a[0] - c0[0], a[1] - c0[1])
+  const shiftB = Math.hypot(b[0] - c0[0], b[1] - c0[1])
+  let c: [number, number]
+  let centerShift: number
+  if (shiftA <= shiftB) {
+    c = a
+    centerShift = shiftA
+  } else {
+    c = b
+    centerShift = shiftB
+  }
+  if (centerShift > JOINT_SNAP_TOL) {
+    // A chord near the diameter amplifies a tiny radial error into a large
+    // centre move (~sqrt(2 r dr)), which is exactly the case where the authored
+    // circle cannot pass through both merged endpoints. Refuse rather than
+    // silently build a visibly different circle.
+    return refuse(
+      'center',
+      `arc ${label} stored endpoint is not on its arc: derived centre shifted ` +
+      `${formatGap(centerShift)} from the stored centre, radial error ${formatGap(radialError)}`,
+      { centerShift, radialError },
+    )
+  }
+
+  const th0 = Math.atan2(p0[1] - c[1], p0[0] - c[0])
+  const th1 = Math.atan2(p1[1] - c[1], p1[0] - c[0])
+  const storedSweep = storedSweepRad(a0Deg, a1Deg, ccw)
+  const jointSweep = ccw ? ((th1 - th0) % TWO_PI + TWO_PI) % TWO_PI : -(((th0 - th1) % TWO_PI + TWO_PI) % TWO_PI)
+  const angularError = Math.abs(jointSweep - storedSweep)
+  // An endpoint on the circle but at a grossly different angle would otherwise
+  // take the arc's complement. The rung is the same joint snap distance: the
+  // realised endpoint may move by at most JOINT_SNAP_TOL along the arc.
+  if (angularError * radius > JOINT_SNAP_TOL) {
+    return refuse(
+      'sweep',
+      `arc ${label} stored endpoint sits at a different angle on its arc: angular error ` +
+      `${formatGap(angularError)} rad (${formatGap(angularError * radius)} at radius ${formatGap(radius)})`,
+      { centerShift, radialError, angularError },
+    )
+  }
+
+  return {
+    ok: true,
+    fullTurn: false,
+    center: c,
+    radius,
+    angleStartDeg: normalizeDeg(th0),
+    angleEndDeg: normalizeDeg(th1),
+    radialError,
+    angularError,
+  }
+}
+
+/** A projected elliptical-arc joint and the residual the weld must cover. */
+export interface EllipseJointSolution {
+  angleStartDeg: number
+  angleEndDeg: number
+  radialError: number
+  angularError: number
+}
+
+function ellipsePoint(
+  center: [number, number],
+  a: number,
+  b: number,
+  thetaRad: number,
+  phi: number,
+): [number, number] {
+  const ax = a * Math.cos(phi)
+  const ay = b * Math.sin(phi)
+  return [
+    center[0] + ax * Math.cos(thetaRad) - ay * Math.sin(thetaRad),
+    center[1] + ax * Math.sin(thetaRad) + ay * Math.cos(thetaRad),
+  ]
+}
+
+/**
+ * The eccentric angles of an elliptical arc's stored endpoints. An ellipse is
+ * fixed by its `theta`, `a` and `b`, so it cannot pass through two arbitrary
+ * joint points; projecting each point into the stored frame and taking
+ * `atan2(y / b, x / a)` is the closed form that puts the arc as close to the
+ * joint as the curve allows. The residual is welded at the joint rung by the
+ * caller, not silently accepted.
+ */
+export function ellipseJointAngles(edge: LoopEdge): EllipseJointSolution {
+  const center = (edge['center'] as number[] | undefined) ?? [0, 0]
+  const a = edge['a'] as number | undefined
+  const b = edge['b'] as number | undefined
+  const theta = ((edge['theta'] as number | undefined) ?? 0) * (Math.PI / 180)
+  const start = edge['start'] as number[] | undefined
+  const end = edge['end'] as number[] | undefined
+  const a0Deg = (edge['angle_start_deg'] as number | undefined) ?? 0
+  const a1Deg = (edge['angle_end_deg'] as number | undefined) ?? 360
+  if (
+    a === undefined || b === undefined || !Array.isArray(start) || !Array.isArray(end) ||
+    Math.abs(a1Deg - a0Deg) >= 360 - 1e-6
+  ) {
+    return { angleStartDeg: a0Deg, angleEndDeg: a1Deg, radialError: 0, angularError: 0 }
+  }
+  const c: [number, number] = [center[0], center[1]]
+  const cos = Math.cos(theta)
+  const sin = Math.sin(theta)
+  const project = (p: number[]): { phi: number; radialError: number; angularError: number } => {
+    const dx = p[0] - c[0]
+    const dy = p[1] - c[1]
+    // Inverse-rotate the point into the ellipse frame, then take the
+    // eccentric angle from the unit-circle image.
+    const x = dx * cos + dy * sin
+    const y = -dx * sin + dy * cos
+    const phi = Math.atan2(y / b, x / a)
+    const on = ellipsePoint(c, a, b, theta, phi)
+    const radialError = Math.hypot(p[0] - on[0], p[1] - on[1])
+    return { phi, radialError, angularError: 0 }
+  }
+  const p0 = project(start)
+  const p1 = project(end)
+  const angleGap = (storedDeg: number, derived: number): number => {
+    const stored = (storedDeg * Math.PI) / 180
+    return Math.abs(((derived - stored + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI)
+  }
+  return {
+    angleStartDeg: normalizeDeg(p0.phi),
+    angleEndDeg: normalizeDeg(p1.phi),
+    radialError: Math.max(p0.radialError, p1.radialError),
+    angularError: Math.max(angleGap(a0Deg, p0.phi), angleGap(a1Deg, p1.phi)),
+  }
+}
+
+/**
+ * Move an edge's two vertex points onto the loop's joint positions and raise
+ * their tolerances to `tol`. This is the targeted weld for a curve that cannot
+ * be made exact (an elliptical arc): it touches only this edge's own joint
+ * vertices, so a real gap far above the merge rung still refuses in makeWire.
+ */
+function weldEdgeEndpoints(
+  oc: OccModule,
+  scope: DisposeScope,
+  edge: OccShape,
+  start: Vec3,
+  end: Vec3,
+  tol: number,
+): void {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(edge, E.TopAbs_VERTEX, E.TopAbs_SHAPE))
+  const builder = scope.track(new oc.BRep_Builder())
+  for (; exp.More(); exp.Next()) {
+    const v = scope.track(oc.TopoDS.Vertex_1(exp.Current()))
+    const p = oc.BRep_Tool.Pnt(v)
+    const current: Vec3 = [p.X(), p.Y(), p.Z()]
+    p.delete()
+    const toStart = Math.hypot(current[0] - start[0], current[1] - start[1], current[2] - start[2])
+    const toEnd = Math.hypot(current[0] - end[0], current[1] - end[1], current[2] - end[2])
+    const target = toStart <= toEnd ? start : end
+    const point = scope.track(new oc.gp_Pnt_3(target[0], target[1], target[2]))
+    builder.UpdateVertex_1(v, point, tol)
+  }
+}
 
 function fullCircleOf(loop: LoopEdge[]): LoopEdge | null {
   if (loop.length < 2 || loop.some((e) => e['kind'] !== 'arc')) return null
@@ -63,31 +374,28 @@ function fullCircleOf(loop: LoopEdge[]): LoopEdge | null {
   }
 }
 
-function buildArcEdge(oc: OccModule, scope: DisposeScope, plane: PlaneLike, edge: LoopEdge): OccShape {
-  const centerUv = (edge['center'] as number[] | undefined) ?? [0.0, 0.0]
-  const radius = (edge['radius'] as number | undefined) ?? 1.0
-  const a0Deg = (edge['angle_start_deg'] as number | undefined) ?? 0.0
-  const a1Deg = (edge['angle_end_deg'] as number | undefined) ?? 360.0
-  const ccw = (edge['ccw'] as boolean | undefined) ?? true
-  const center3d = uvTo3d(plane, centerUv)
+/** Exported so the real-OCC profile test can read the joints the builder made. */
+export function buildArcEdge(oc: OccModule, scope: DisposeScope, plane: PlaneLike, edge: LoopEdge): OccShape {
+  const joint = arcJointCircle(edge)
+  if (!joint.ok) throw new Error(`buildArcEdge: ${joint.message}`)
+  const center3d = uvTo3d(plane, joint.center)
   const normal = plane.normal as Vec3
   const xAxis = plane.x_axis as Vec3
-
-  const span = ccw ? ((a1Deg - a0Deg + 360) % 360) : -(((a0Deg - a1Deg + 360) % 360))
-  if (Math.abs(Math.abs(span) - 360.0) < 1e-6) {
-    return makeArcEdge(oc, scope, center3d, normal, xAxis, radius, 0.0, 2 * Math.PI)
+  const ccw = (edge['ccw'] as boolean | undefined) ?? true
+  if (joint.fullTurn) {
+    return makeArcEdge(oc, scope, center3d, normal, xAxis, joint.radius, 0.0, TWO_PI)
   }
-  let u0 = (a0Deg * Math.PI) / 180
-  let u1 = (a1Deg * Math.PI) / 180
+  let u0 = (joint.angleStartDeg * Math.PI) / 180
+  let u1 = (joint.angleEndDeg * Math.PI) / 180
   if (ccw) {
-    if (u1 <= u0) u1 += 2 * Math.PI
+    if (u1 <= u0) u1 += TWO_PI
   } else {
-    if (u0 <= u1) u0 += 2 * Math.PI
+    if (u0 <= u1) u0 += TWO_PI
     const tmp = u0
     u0 = u1
     u1 = tmp
   }
-  return makeArcEdge(oc, scope, center3d, normal, xAxis, radius, u0, u1)
+  return makeArcEdge(oc, scope, center3d, normal, xAxis, joint.radius, u0, u1)
 }
 
 /** A uv-plane direction lifted to 3D (no origin offset), for the ellipse axis. */
@@ -104,28 +412,57 @@ function buildEllipseEdge(oc: OccModule, scope: DisposeScope, plane: PlaneLike, 
   return makeEllipseEdge(oc, scope, center3d, plane.normal as Vec3, majorAxis, edge['a'] as number, edge['b'] as number)
 }
 
-/** A sliced ellipse boundary edge: a trimmed elliptical arc over its angle span. */
-function buildEllipseArcEdge(oc: OccModule, scope: DisposeScope, plane: PlaneLike, edge: LoopEdge): OccShape {
-  const center3d = uvTo3d(plane, edge['center'] as number[])
+/**
+ * A sliced ellipse boundary edge: a trimmed elliptical arc over its angle span.
+ * The angles are projected from the stored joint endpoints (see
+ * `ellipseJointAngles`); when the projection leaves a residual over OCC's
+ * confusion rung the caller welds this edge's own joint vertices.
+ */
+function buildEllipseArcEdge(
+  oc: OccModule,
+  scope: DisposeScope,
+  plane: PlaneLike,
+  edge: LoopEdge,
+): { shape: OccShape; weld: { start: Vec3; end: Vec3 } | null; radialError: number } {
+  const centerUv = (edge['center'] as number[] | undefined) ?? [0, 0]
+  const center3d = uvTo3d(plane, centerUv)
   const theta = ((edge['theta'] as number | undefined) ?? 0) * (Math.PI / 180)
   const majorAxis = uvDirTo3d(plane, Math.cos(theta), Math.sin(theta))
   const a = edge['a'] as number
   const b = edge['b'] as number
-  let u0 = ((edge['angle_start_deg'] as number | undefined) ?? 0) * (Math.PI / 180)
-  let u1 = ((edge['angle_end_deg'] as number | undefined) ?? 0) * (Math.PI / 180)
+  const joint = ellipseJointAngles(edge)
+  const angularScale = Math.max(a, b)
+  if (joint.angularError * angularScale > JOINT_SNAP_TOL) {
+    // A projected endpoint at a grossly different eccentric angle would build
+    // the ellipse's complement. The circular-arc builder refuses that too.
+    const id = typeof edge['id'] === 'string' ? `'${edge['id']}'` : '(no id)'
+    throw new Error(
+      `buildEllipseArcEdge: ellipse-arc ${id} stored endpoint sits at a different eccentric ` +
+      `angle (angular error ${formatGap(joint.angularError)} rad, ` +
+      `${formatGap(joint.angularError * angularScale)} at scale ${formatGap(angularScale)})`,
+    )
+  }
+  let u0 = (joint.angleStartDeg * Math.PI) / 180
+  let u1 = (joint.angleEndDeg * Math.PI) / 180
   // GC_MakeArcOfEllipse needs an increasing CCW span; flip a CW edge.
   if (!((edge['ccw'] as boolean | undefined) ?? true)) {
     const t = u0
     u0 = u1
     u1 = t
   }
-  if (u1 <= u0) u1 += 2 * Math.PI
-  return makeEllipseEdge(oc, scope, center3d, plane.normal as Vec3, majorAxis, a, b, u0, u1)
+  if (u1 <= u0) u1 += TWO_PI
+  const shape = makeEllipseEdge(oc, scope, center3d, plane.normal as Vec3, majorAxis, a, b, u0, u1)
+  const start = edge['start'] as number[] | undefined
+  const end = edge['end'] as number[] | undefined
+  // A residual inside the merge rung is welded at the joint; one past it is
+  // left for makeWire to refuse, with the edge id and the measured residual in
+  // the message.
+  const weld = joint.radialError > OCC_CONFUSION && joint.radialError <= TOL_TOPOLOGY_MERGE &&
+    Array.isArray(start) && Array.isArray(end)
+    ? { start: uvTo3d(plane, start) as Vec3, end: uvTo3d(plane, end) as Vec3 }
+    : null
+  return { shape, weld, radialError: joint.radialError }
 }
-
-// Endpoint snapping (gap < this) bridges solver-precision joint mismatches; a
-// genuinely open loop sits far above it and still fails loudly in makeWire.
-const JOINT_SNAP_TOL = 1e-3
 
 // ANCHORED_KINDS is defined in kernel/profileLoops (re-exported by
 // profileDiagnostics) so the snapper below, the loop assembler and the pure
@@ -221,6 +558,8 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: L
     return singleEdge(buildEllipseEdge(oc, scope, plane, loop[0]))
   }
   const edges: OccShape[] = []
+  const welds: { shape: OccShape; start: Vec3; end: Vec3 }[] = []
+  const weldNotes: string[] = []
   for (const edge of loop) {
     const kind = edge['kind'] as string
     if (kind === 'arc') {
@@ -228,7 +567,19 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: L
     } else if (kind === 'ellipse') {
       edges.push(scope.track(buildEllipseEdge(oc, scope, plane, edge)))
     } else if (kind === 'ellipse_arc') {
-      edges.push(scope.track(buildEllipseArcEdge(oc, scope, plane, edge)))
+      const built = buildEllipseArcEdge(oc, scope, plane, edge)
+      const shape = scope.track(built.shape)
+      edges.push(shape)
+      if (built.weld !== null) welds.push({ shape, start: built.weld.start, end: built.weld.end })
+      if (built.radialError > OCC_CONFUSION) {
+        weldNotes.push(
+          built.weld === null
+            ? `\n  ellipse-arc ${edgeLabel(edge)} endpoint projected ${formatGap(built.radialError)} ` +
+              `off its curve, above the TOL_TOPOLOGY_MERGE weld rung (${formatGap(TOL_TOPOLOGY_MERGE)})`
+            : `\n  ellipse-arc ${edgeLabel(edge)} endpoint projected ${formatGap(built.radialError)} ` +
+              `off its curve, welded at TOL_TOPOLOGY_MERGE (${formatGap(TOL_TOPOLOGY_MERGE)})`,
+        )
+      }
     } else if (kind === 'spline') {
       // Cubic Bezier boundary: lift the 4-point control polygon to 3D.
       const poles = [
@@ -254,6 +605,12 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: L
       throw new Error(`buildWire: unknown loop edge kind '${kind}'`)
     }
   }
+  // An elliptical arc is fixed by its frame, so its realized endpoint cannot be
+  // made exact. Weld only those joints, at the same rung the area builder
+  // merged them, so a real open loop still refuses in makeWire.
+  for (const weld of welds) {
+    weldEdgeEndpoints(oc, scope, weld.shape, weld.start, weld.end, TOL_TOPOLOGY_MERGE)
+  }
   // A profile boundary that does not close is not a profile: without this the
   // face builder takes an open chain and the extrude reports ok. The uv-space
   // dump the caller attaches says what the SKETCH asked for; these gaps say what
@@ -264,7 +621,9 @@ function buildWire(oc: OccModule, scope: DisposeScope, plane: PlaneLike, loop: L
     wire = scope.track(makeWire(oc, scope, edges, { requireClosed: true }))
   } catch (e) {
     swallowUnlessTrap(e)
-    throw new Error(`${extractOccErrorMessage(oc, e)}${realizedGapsLine(oc, scope, edges)}`)
+    throw new Error(
+      `${extractOccErrorMessage(oc, e)}${weldNotes.join('')}${realizedGapsLine(oc, scope, edges)}`,
+    )
   }
   for (const e of edges) scope.release(e)
   return wire

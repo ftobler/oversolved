@@ -186,6 +186,34 @@ describe('describeProfile', () => {
     expect(r.reasons.some((x) => x.includes('degenerate'))).toBe(false)
   })
 
+  it('flags an arc whose stored endpoint disagrees with its stored angles', () => {
+    const radial = circleAsTwoArcs(0, 0, 5)
+    radial[0].id = 'bad-radial'
+    radial[0].end = [0, 5 + 2e-3]
+    radial[1].start = [0, 5 + 2e-3]
+    const r = describeProfile([radial])
+    expect(r.verdict).toBe('suspect')
+    expect(r.reasons.some((x) => x.includes("bad-radial") && x.includes('end'))).toBe(true)
+    expect(r.reasons.some((x) => x.includes('radial'))).toBe(true)
+
+    // A wrong angle is on the circle, so the radial check alone would miss it.
+    const angular = circleAsTwoArcs(0, 0, 5)
+    angular[0].id = 'bad-angle'
+    const a1 = (90 + 0.01) * (Math.PI / 180)
+    const wrong = [5 * Math.cos(a1), 5 * Math.sin(a1)]
+    angular[0].end = wrong
+    angular[1].start = wrong
+    const r2 = describeProfile([angular])
+    expect(r2.verdict).toBe('suspect')
+    expect(r2.reasons.some((x) => x.includes("bad-angle") && x.includes('angular'))).toBe(true)
+  })
+
+  it('keeps a consistent arc at ok', () => {
+    const r = describeProfile([circleAsTwoArcs(0, 0, 5)])
+    expect(r.verdict).toBe('ok')
+    expect(r.reasons.some((x) => x.includes('disagrees with its stored angles'))).toBe(false)
+  })
+
   it('reports the builder sampling and notes where the coarse pass disagrees', () => {
     // A small circle tucked against the big circle's chord: the 1-sample
     // polygon (a diamond) excludes its centroid, the 64-sample one contains it.

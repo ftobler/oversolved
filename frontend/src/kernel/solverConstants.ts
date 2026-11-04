@@ -15,6 +15,12 @@ export const TOL_TOPOLOGY_EPS = 1e-9
 // sketch-solver/src/topology/mod.rs.
 export const TOL_TOPOLOGY_MERGE = 1e-5
 export const TOL_TOPOLOGY_SPLIT = 1e-7
+// The distance a profile joint may move during the OCC-side snap: a solver
+// residual under this is treated as the same joint, while a genuinely open
+// loop sits far above it. The arc builder also uses it as its centre-shift and
+// sweep rungs so it never silently builds a different circle than the authored
+// one.
+export const JOINT_SNAP_TOL = 1e-3
 // Move-face tangent tolerance: the angular tolerance handed to
 // BRepOffset_Analyse. An edge whose dihedral angle is within this of flat is a
 // Tangent join (a fillet boundary), and move-face refuses it: the extended

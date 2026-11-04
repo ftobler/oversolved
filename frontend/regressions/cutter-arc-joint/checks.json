@@ -1,0 +1,46 @@
+{
+  "origin": {
+    "kind": "bug_report",
+    "ref": "bugreports/mcp-practice/04_occt__OCCT-tcl-samples-and-tutorial-docs__resources__samples__tcl__cutter.tcl/report.md",
+    "date": "2026-11-04"
+  },
+  "license": "own",
+  "severity": "hard",
+  "what": "the cutter's four-edge arc/arc/line loop extrudes as the analytic sector sum after the joints are built from the merged endpoints",
+  "features": {
+    "default": "ok",
+    "except": {
+      "Origin": "exception",
+      "Top": "exception",
+      "Front": "exception",
+      "Right": "exception",
+      "s1": "underconstrained"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 50.86729503917929,
+    "area": 128.55942310843687,
+    "centroid": [
+      -0.03869558481063858,
+      0.5,
+      -0.03479216969244565
+    ],
+    "bbox": [
+      -4.000000368187026,
+      0,
+      -3.999999640081077,
+      3.9999996318129742,
+      1,
+      4.000000359918923
+    ],
+    "faces": 6,
+    "edges": 12
+  },
+  "snapshot": false
+}
