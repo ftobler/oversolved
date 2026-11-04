@@ -186,9 +186,17 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
       }))
       expect(brief.instances).toBeUndefined()
       expect((brief.solve as { verdict: string }).verdict).toBe('fully_constrained')
+      expect(measured.perBody as Array<{ id: string }>).toHaveLength(2)
       const briefMeasure = toolPayload(await client.request('tools/call', { name: 'measure', arguments: { docHash: a1, detail: 'summary' } }))
       expect(briefMeasure.instances).toBeUndefined()
+      // summary trims the per-body table, not the aggregate numbers.
+      expect(briefMeasure.perBody).toBeUndefined()
+      expect(briefMeasure.bodies).toBe(2)
       expect(briefMeasure.volume as number).toBeCloseTo(TOTAL_VOLUME, 3)
+      const changedMeasure = toolPayload(await client.request('tools/call', { name: 'measure', arguments: { docHash: a1, detail: 'changed' } }))
+      expect(changedMeasure.instances).toBeUndefined()
+      expect(changedMeasure.perBody).toBeUndefined()
+      expect(changedMeasure.volume as number).toBeCloseTo(TOTAL_VOLUME, 3)
 
       const exported = toolPayload(await client.request('tools/call', {
         name: 'export',
@@ -205,6 +213,40 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
       expect((exported.instances as Array<{ handle: string }>).map(i => i.handle).sort()).toEqual(['pin', 'plate'])
       expect(String(exported.summary)).toContain('instances: plate (plate, fixed), pin (pin)')
       expect(readFileSync(stepFile).byteLength).toBe(exported.bytes as number)
+
+      // An export's product is the file: detail trims the verdict to the
+      // problem rows, summary and file fields, and `changed` is the same reply
+      // because an export has no starting document to diff against.
+      const briefFile = path.join(OUT_DIR, 'pin_plate_brief.step')
+      const briefExport = toolPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: a1, format: 'step', out: briefFile, detail: 'summary' },
+      }))
+      expect(briefExport).toMatchObject({
+        ok: true, kind: 'assembly', format: 'step', docHash: a1, file: briefFile,
+        bytes: expect.any(Number), summary: expect.any(String),
+      })
+      expect(briefExport.instances).toBeUndefined()
+      expect(briefExport.mateFrames).toBeUndefined()
+      expect(briefExport.solve).not.toHaveProperty('mates')
+      expect(briefExport.solve).not.toHaveProperty('parts')
+      expect(briefExport.mates).toEqual([])
+      expect(briefExport.parts).toEqual([])
+      expect(readFileSync(briefFile).byteLength).toBe(briefExport.bytes as number)
+      const changedFile = path.join(OUT_DIR, 'pin_plate_changed.step')
+      const changedExport = toolPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: a1, format: 'step', out: changedFile, detail: 'changed' },
+      }))
+      expect(Object.keys(changedExport).sort()).toEqual(Object.keys(briefExport).sort())
+      expect(readFileSync(changedFile).byteLength).toBe(changedExport.bytes as number)
+
+      // A part export refuses detail: the switch is assembly-only.
+      const refusedDetail = errorPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: plate.docHash, format: 'step', out: stepFile, detail: 'summary' },
+      }))
+      expect(String(refusedDetail.error)).toContain('detail applies only to assembly documents')
 
       const refusedBody = errorPayload(await client.request('tools/call', {
         name: 'export',
@@ -231,6 +273,21 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
       expect(conflictExport.mates).toContainEqual(expect.objectContaining({ id: '*', status: 'overconstrained' }))
       expect(conflictExport.parts).toEqual([])
       expect(readFileSync(conflictFile).byteLength).toBeGreaterThan(0)
+
+      // The trim keeps the export's own ok, computed from the full state: a
+      // conflicting mate still makes a summary export ok false, with the file
+      // written and the problem row present.
+      const conflictBriefFile = path.join(OUT_DIR, 'pin_plate_overconstrained_brief.step')
+      const conflictBrief = errorPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { docHash: conflicted.docHash, format: 'step', out: conflictBriefFile, detail: 'summary' },
+      }))
+      expect(conflictBrief.ok).toBe(false)
+      expect(conflictBrief.kind).toBe('assembly')
+      expect(conflictBrief.instances).toBeUndefined()
+      expect((conflictBrief.solve as { verdict: string }).verdict).toBe('overconstrained')
+      expect(conflictBrief.mates).toContainEqual(expect.objectContaining({ id: '*', status: 'overconstrained' }))
+      expect(readFileSync(conflictBriefFile).byteLength).toBeGreaterThan(0)
 
       const zipped = toolPayload(await client.request('tools/call', {
         name: 'run',

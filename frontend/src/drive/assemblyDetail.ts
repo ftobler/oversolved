@@ -1,10 +1,11 @@
-// The `detail` switch on assembly run and measure replies. The kernel always
-// builds the full state; this module trims it on the host so a one-field edit
-// does not repeat every pose and mate frame the caller already holds. Pure: no
-// kernel, no document store.
+// The `detail` switch on assembly run, measure and export replies. The kernel
+// always builds the full state; this module trims it on the host so a one-field
+// edit does not repeat every pose and mate frame the caller already holds. Pure:
+// no kernel, no document store.
 
 import type { AssemblyDoc } from '@/types/cad'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
+import type { MeasureRecord } from '@/kernel/occ/measure'
 import type { AssemblyPartProblem, InstancePose, MateFrame, MateProblem } from '@/drive/assemblyOutcome'
 import { mateFeatures } from '@/utils/assemblyMutations'
 import { round } from '@/utils/yamlMutations/helpers'
@@ -103,6 +104,35 @@ export function shapeAssemblyState(
   }
 }
 
+/** The assembly state an export reply repeats beside the file: no poses and no
+ *  mate frames, because the product is the bytes. */
+export interface AssemblyExportState {
+  solve: AssemblySolveStatus
+  mates: MateProblem[]
+  parts: AssemblyPartProblem[]
+  instances: InstancePose[]
+  summary: string
+}
+
+type ShapedExport = Omit<AssemblyExportState, 'solve' | 'instances'> & { solve: unknown }
+
+/**
+ * Trim an export verdict. `summary` keeps the solve in its summary form, the
+ * mate and part problem rows and the one-line summary. An export has no
+ * starting document to diff against, so `changed` is treated as `summary`;
+ * `full` keeps today's reply, poses included. This is deliberately not
+ * `shapeAssemblyState`'s `changed` arm, which adds the moved poses and mate
+ * frames an export does not carry.
+ */
+export function shapeAssemblyExport(
+  state: AssemblyExportState,
+  detail: AssemblyDetail,
+): AssemblyExportState | ShapedExport {
+  if (detail === 'full') return state
+  const { instances: _instances, solve, ...rest } = state
+  return { ...rest, solve: solveSummary(solve) }
+}
+
 /** Collapse accepted steps to a count; refused ones stay whole. */
 export function shapeSteps<S extends { ok: boolean }>(
   steps: readonly S[],
@@ -111,4 +141,19 @@ export function shapeSteps<S extends { ok: boolean }>(
   if (detail === 'full') return { steps }
   const refused = steps.filter(step => !step.ok)
   return { stepsAccepted: steps.length - refused.length, ...(refused.length > 0 && { steps: refused }) }
+}
+
+/**
+ * Trim an assembly measure for a `detail` level. The per-body table is the
+ * large part of a measure reply, so `summary` and `changed` keep the aggregate
+ * record (bodies, volume, area, centroid, bbox and the topology counts) alone;
+ * `full` keeps every body row.
+ */
+export function shapeAssemblyMeasures(
+  measures: MeasureRecord,
+  detail: AssemblyDetail,
+): MeasureRecord | Omit<MeasureRecord, 'perBody'> {
+  if (detail === 'full') return measures
+  const { perBody: _perBody, ...aggregate } = measures
+  return aggregate
 }

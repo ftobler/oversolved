@@ -28,7 +28,7 @@ import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
 import { createMcpServer, type McpCadOps, type McpToolPayload } from '@/drive/mcpServer'
 import { DocHandleStore } from '@/drive/docHandleStore'
-import { shapeAssemblyState, DEFAULT_ASSEMBLY_DETAIL } from '@/drive/assemblyDetail'
+import { shapeAssemblyState, shapeAssemblyExport, shapeAssemblyMeasures, DEFAULT_ASSEMBLY_DETAIL } from '@/drive/assemblyDetail'
 import { assemblyRunReply, requirePartDoc, resolveAssemblyDoc, resolveDoc, runReply, type ResolvedDoc, type RunReplySource } from '@/drive/mcpDocRef'
 import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import { ASSEMBLY_DOC_SCHEMA_JSON } from '@/persistence/assemblyDocSchema'
@@ -352,11 +352,13 @@ const ops: McpCadOps = {
     // no instances and no clean mate frames; only the problems and the numbers.
     const detail = req.detail ?? DEFAULT_ASSEMBLY_DETAIL
     const state = shapeAssemblyState(measured.state, detail, resolved.doc, { inputDoc: resolved.doc, baseline: null })
+    // perBody is the table detail exists to trim; the aggregate record still
+    // answers the size questions under summary and changed.
     return {
       ok: measured.ok,
       kind: 'assembly',
       docHash: resolved.docHash,
-      ...measured.measures,
+      ...shapeAssemblyMeasures(measured.measures, detail),
       ...(detail === 'full' && { instances: measured.state.instances }),
       solve: state.solve,
       mates: state.mates,
@@ -444,6 +446,9 @@ const ops: McpCadOps = {
     let exported: HeadlessExport | HeadlessAssemblyExport | null
     let verdict: Record<string, unknown>
     if (resolved.kind === 'part') {
+      if (req.detail !== undefined) {
+        return { ok: false, error: 'detail applies only to assembly documents' }
+      }
       const answer = await callKernel<HeadlessExport | null>('export', {
         doc: resolved.doc,
         format: req.format,
@@ -467,13 +472,18 @@ const ops: McpCadOps = {
       })
       if (!answer.ok) return answer
       exported = answer.value
+      const detail = req.detail ?? DEFAULT_ASSEMBLY_DETAIL
       verdict = exported === null ? {} : {
         kind: 'assembly',
-        solve: exported.solve,
-        mates: exported.mates,
-        parts: exported.parts,
-        instances: exported.instances,
-        summary: exported.summary,
+        // `ok` below still comes from exported.ok, computed from the full state
+        // before this trim, so a mate or part problem is not lost with the poses.
+        ...shapeAssemblyExport({
+          solve: exported.solve,
+          mates: exported.mates,
+          parts: exported.parts,
+          instances: exported.instances,
+          summary: exported.summary,
+        }, detail),
       }
     }
     if (exported === null) {

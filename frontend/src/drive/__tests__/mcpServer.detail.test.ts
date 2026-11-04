@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest'
 import type { AssemblyDoc, Transform3D } from '@/types/cad'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { instancePoses, type MateFrame, type MateProblem } from '../assemblyOutcome'
-import { movedInstances, shapeAssemblyState, touchedMateIds, type AssemblyDetailState } from '../assemblyDetail'
+import { movedInstances, shapeAssemblyExport, shapeAssemblyMeasures, shapeAssemblyState, touchedMateIds, type AssemblyDetailState, type AssemblyExportState } from '../assemblyDetail'
 import { assemblyRunReply } from '../mcpDocRef'
 import { DocHandleStore } from '../docHandleStore'
 import { emptyDriveAssemblyDoc } from '../headlessAssembly'
@@ -110,6 +110,64 @@ describe('shapeAssemblyState', () => {
     const shaped = shapeAssemblyState(stateOf(input), 'changed', input, { inputDoc: input, baseline })
     expect(shaped.instances).toEqual([])
     expect(shaped.mateFrames).toEqual({})
+  })
+})
+
+describe('shapeAssemblyExport', () => {
+  const state: AssemblyExportState = {
+    solve: solveOf(flangeDoc(2)),
+    mates: [problem],
+    parts: [],
+    instances: instancePoses(flangeDoc(2), { plate: identity(0), bolt0: identity(0), bolt1: identity(1) }),
+    summary: 'instances: plate (plate, fixed), bolt0 (bolt), bolt1 (bolt)',
+  }
+
+  it('full keeps the export state as it is', () => {
+    expect(shapeAssemblyExport(state, 'full')).toBe(state)
+  })
+
+  it('summary drops the poses and strips the solve record maps', () => {
+    const shaped = shapeAssemblyExport(state, 'summary') as Record<string, unknown>
+    expect(shaped.instances).toBeUndefined()
+    expect(shaped.solve).not.toHaveProperty('mates')
+    expect(shaped.solve).not.toHaveProperty('parts')
+    expect(shaped.mates).toEqual([problem])
+    expect(shaped.summary).toBe(state.summary)
+  })
+
+  it('changed is the same key set as summary, not the run changed arm', () => {
+    expect(Object.keys(shapeAssemblyExport(state, 'changed') as object).sort())
+      .toEqual(Object.keys(shapeAssemblyExport(state, 'summary') as object).sort())
+    expect((shapeAssemblyExport(state, 'changed') as Record<string, unknown>).instances).toBeUndefined()
+  })
+})
+
+describe('shapeAssemblyMeasures', () => {
+  const measures = {
+    bodies: 2,
+    volume: 6000,
+    area: 1200,
+    centroid: [1, 2, 3] as [number, number, number],
+    bbox: [0, 0, 0, 100, 60, 10] as [number, number, number, number, number, number],
+    faces: 12,
+    edges: 36,
+    vertices: 24,
+    perBody: [
+      { id: 'plate/body_ex1', volume: 5000, area: 900, centroid: [1, 2, 3] as [number, number, number], bbox: [0, 0, 0, 100, 60, 10] as [number, number, number, number, number, number], faces: 6, edges: 12, vertices: 8 },
+      { id: 'pin/body_ex1', volume: 1000, area: 300, centroid: [1, 2, 3] as [number, number, number], bbox: [0, 0, 0, 10, 10, 20] as [number, number, number, number, number, number], faces: 6, edges: 24, vertices: 16 },
+    ],
+  }
+
+  it('full keeps the per-body table', () => {
+    expect(shapeAssemblyMeasures(measures, 'full')).toBe(measures)
+  })
+
+  it('summary and changed drop perBody but keep the aggregate numbers', () => {
+    for (const detail of ['summary', 'changed'] as const) {
+      const shaped = shapeAssemblyMeasures(measures, detail) as Record<string, unknown>
+      expect(shaped.perBody, detail).toBeUndefined()
+      expect(shaped).toMatchObject({ bodies: 2, volume: 6000, area: 1200, faces: 12, edges: 36, vertices: 24 })
+    }
   })
 })
 
