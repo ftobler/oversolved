@@ -130,4 +130,49 @@ describe.skipIf(!ready)('feature frames (real OCC + Rust solver)', () => {
     expect(measured).not.toBeNull()
     expect(measured!.frames).toEqual(built.frames)
   }, 120_000)
+
+  it('reports only the frames a chained run touched, and frames: "all" restores the rest', async () => {
+    const authored = await runHeadless({
+      doc: emptyDoc(),
+      steps: [
+        { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' } },
+        { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [40, 30] } },
+        { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, operation: 'new' } },
+        { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_front' } },
+        { mutation: { type: 'add_rect', featureId: 'sk2', p0: [0, 0], p1: [4, 4] } },
+      ],
+    })
+    expect(authored.ok).toBe(true)
+    expect(Object.keys(authored.frames!).sort()).toEqual(['sk1', 'sk2'])
+
+    // A fillet touches no sketch or plane: both earlier frames are unchanged.
+    const filleted = await runHeadless({
+      doc: authored.doc!,
+      steps: [
+        { mutation: { type: 'add_fillet', featureId: 'f1', label: 'Fillet' } },
+        { mutation: { type: 'add_fillet_edge', featureId: 'f1', edgeQuery: '?body_ex1:edge:0' } },
+      ],
+    })
+    expect(filleted.ok).toBe(true)
+    expect(filleted.frames).toEqual({})
+
+    // The save-only case from the report: steps: [] reports no frames either.
+    const saved = await runHeadless({ doc: filleted.doc!, steps: [] })
+    expect(saved.frames).toEqual({})
+
+    // The explicit inspection path restores every resolved frame.
+    const all = await runHeadless({ doc: filleted.doc!, steps: [], frames: 'all' })
+    expect(Object.keys(all.frames!).sort()).toEqual(['sk1', 'sk2'])
+    // The two opt-ins are independent: asking for every frame still filters the
+    // delta rows, and asking for every delta row still filters the frames.
+    expect(all.featureDeltas).toEqual([])
+    const allDeltas = await runHeadless({ doc: filleted.doc!, steps: [], featureDeltas: 'all' })
+    expect(allDeltas.frames).toEqual({})
+    expect(allDeltas.featureDeltas!.map(row => row.id).sort()).toEqual(['ex1', 'f1', 'sk1', 'sk2'])
+
+    // measure is the measurement call: it keeps every resolved frame.
+    const measured = await measureHeadless(filleted.doc!)
+    expect(measured).not.toBeNull()
+    expect(Object.keys(measured!.frames).sort()).toEqual(['sk1', 'sk2'])
+  }, 240_000)
 })

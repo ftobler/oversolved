@@ -7,7 +7,8 @@
 // travels with it, and a `parts` merge on an existing handle overrides one
 // binding and yields a new hash.
 
-import type { AssemblyDoc, PartDoc } from '@/types/cad'
+import type { AssemblyDoc, LengthUnit, PartDoc } from '@/types/cad'
+import { lengthUnitOf } from '@/utils/lengthUnit'
 import { CURRENT_DOC_VERSION, docLoadErrorMessage, loadAssemblyDoc, loadPartDoc } from '@/persistence/docSchema'
 import { DocHandleStore, DOC_HANDLE_CAPACITY, assemblyHandleOf } from '@/drive/docHandleStore'
 import { docHashOf } from '@/drive/docHash'
@@ -226,6 +227,17 @@ function stoppedStep(steps: readonly unknown[]): StoppedStep | null {
   }
 }
 
+/**
+ * The length unit every part reply's numbers are stated in. Stored numbers keep
+ * the unit they were authored in, so a caller comparing a reply against a
+ * millimetre table needs this fact beside the numbers; absence in the document
+ * means millimetres, and the reply names it explicitly rather than leaving the
+ * reader to infer it.
+ */
+export function replyUnits(doc: PartDoc | null | undefined): { length_unit: LengthUnit } {
+  return { length_unit: lengthUnitOf(doc?.length_unit) }
+}
+
 export interface RunReplySource {
   ok: boolean
   // Whether a settle was attempted for this document; false only for a script
@@ -245,8 +257,9 @@ export interface RunReplySource {
   // Per-feature volume/bbox for the features this run changed or touched; null
   // when no checkpoints were measurable (no kernel).
   featureDeltas?: FeatureDelta[] | null
-  // The resolved sketch and plane frames of the final solve; null when no
-  // solve ran.
+  // The resolved sketch and plane frames this reply reports: a run keeps the
+  // ones this call touched or moved, while `measure` keeps every resolved one;
+  // null when no solve ran, an empty map when nothing qualified.
   frames?: FeatureFrameMap | null
 }
 
@@ -259,7 +272,9 @@ export interface RunReplySource {
  * not a failed call. The features list and the summary's `problems:` suffix
  * are how a client that reads only one line still learns about it. `solved`
  * separates "the settle answered" from "it was never asked": a refused script
- * carries no verdicts rather than a row per authored feature.
+ * carries no verdicts rather than a row per authored feature. Every reply names
+ * the document's `length_unit`, and a `frames` map with nothing to report is
+ * omitted rather than printed empty.
  */
 export function runReply(
   result: RunReplySource,
@@ -283,8 +298,12 @@ export function runReply(
     docHash,
     solve: result.solve,
     features,
+    ...replyUnits(finalDoc),
     ...(result.featureDeltas !== undefined && { featureDeltas: result.featureDeltas }),
-    ...(result.frames !== undefined && result.frames !== null && { frames: result.frames }),
+    // An empty map says nothing this call did: omit it rather than print a
+    // `frames: {}` on every save-only or solid-only reply.
+    ...(result.frames !== undefined && result.frames !== null
+      && Object.keys(result.frames).length > 0 && { frames: result.frames }),
     ...(summary !== undefined && { summary }),
     ...(returnDoc && finalDoc && { doc: finalDoc }),
   }

@@ -51,6 +51,7 @@ interface DocArgs {
 export interface KernelRunArgs extends DocArgs {
   steps: ScriptStep[]
   featureDeltas?: 'all'
+  frames?: 'all'
 }
 export type KernelMeasureArgs = DocArgs
 export interface KernelCompareArgs extends DocArgs {
@@ -93,6 +94,7 @@ async function runOp(req: KernelRequest, port: KernelPort): Promise<unknown> {
         files: a.files,
         journal: createDriveJournal(a.doc),
         ...(a.featureDeltas !== undefined && { featureDeltas: a.featureDeltas }),
+        ...(a.frames !== undefined && { frames: a.frames }),
         // Each settled step's state crosses to the host so a stall in the next
         // step can answer with the accepted prefix instead of a bare timeout.
         onStepSettled: (checkpoint) => {

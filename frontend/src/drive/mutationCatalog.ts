@@ -144,7 +144,8 @@ const PLANE_QUERY_NOTE =
   + 'Instead of pasting that query string, `plane` also takes the selector itself as `{selector: <a select '
   + 'selector naming exactly one face>}`; the headless drive resolves it against the settled solve and stores the '
   + 'query it matched, so the document never carries a selector. '
-  + 'The run/measure reply `frames` map reports the resolved origin and axes.'
+  + 'The measure reply `frames` map reports the resolved origin and axes; a run reports the ones this call '
+  + 'touched or moved, and `frames: "all"` restores every resolved frame.'
 
 // The params slot order per entity kind, generated from the entity registry so
 // a new kind or a moved slot cannot leave the catalog stale.
@@ -334,8 +335,9 @@ const PLANE_REF_NOTE =
   'An unmatched NAME is refused with the valid names; ' +
   'a name never silently falls back to the XY plane. A face query is resolved after the solve; ' +
   'a plane or face query that does not resolve fails the sketch, naming the cause (a plane defined ' +
-  'later in the log tells you to reorder). The run/measure reply `frames` map reports the resolved ' +
-  'frame; docs/drive.md (MCP Server) has the face-frame and add_plane mode tables.'
+  'later in the log tells you to reorder). The measure reply `frames` map reports the resolved ' +
+  'frame; a run reports the frames it touched or moved (`frames: "all"` for every resolved frame). ' +
+  'docs/drive.md (MCP Server) has the face-frame and add_plane mode tables.'
 
 // The plane modes' frames, per the same tables docs/drive.md serves. Kept short:
 // the catalog names where the detail lives so the two cannot disagree on a mode
@@ -355,7 +357,8 @@ const PLANE_MODE_NOTE =
   '@<planeId>, or a "?" face query from `select`; only offset, plane_point and origin_rotation read it, ' +
   'and a face query parent supplies the face axes and normal. rotation_axis is a WORLD axis in both ' +
   'spellings, not the parent frame\'s own x/y/z. docs/drive.md (MCP Server, add_plane frames) ' +
-  'has the exact conventions, and the run/measure reply `frames` map reports the frame each plane resolved.'
+  'has the exact conventions, and the reply `frames` map reports the frame each plane resolved (a run only ' +
+  'for one it touched or moved; `frames: "all"` restores all).'
 
 // One operation, two subjects: a body pattern copies a whole body, a feature
 // pattern reapplies one earlier feature's own add or cut inside the body it

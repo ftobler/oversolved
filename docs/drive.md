@@ -276,7 +276,7 @@ surfaces cannot drift:
 
 ```bash
 cd frontend
-npm run drive -- run script.json [--doc doc.yaml] [--out tmp/doc.(yaml|json)] [--repro tmp/repro.json] [--file id=path] [--doc-id id]
+npm run drive -- run script.json [--doc doc.yaml] [--out tmp/doc.(yaml|json)] [--repro tmp/repro.json] [--file id=path] [--doc-id id] [--frames all]
 npm run drive -- commands
 npm run drive -- measure doc.yaml [--file id=path]
 npm run drive -- compare doc.yaml reference.json [--file id=path] [--doc-id id]
@@ -290,8 +290,10 @@ npm run drive -- replay repro.json
   `DocSession` and the real kernel, optionally writes the final document (`--out`)
   and the journal (`--repro`), and prints steps, document hash, solve state,
   `solved` (whether a settle was attempted), the
-  feature problems (`features`, see the MCP section) and the resolved sketch and
-  plane `frames` (also described there). The `--out` format is
+  feature problems (`features`, see the MCP section), the document's `length_unit`
+  and the sketch and plane `frames` (also described there), which by default are
+  only the ones this call touched or moved; `--frames all` restores every
+  resolved frame. The `--out` format is
   chosen by the extension: `.json` writes JSON, anything else writes YAML. The
   `--out` path must resolve inside the project's `tmp/` or `bugreports/`
   (relative paths resolve against the repo root, not `frontend/`). `--repro`
@@ -329,11 +331,12 @@ npm run drive -- replay repro.json
   or `"changed"` keeps the aggregate record and drops this perBody table. The
   same `features`
   problem list `run` returns rides along (measuring builds every feature, so the
-  kernel's verdicts are already known), and so does the `frames` map; a feature
+  kernel's verdicts are already known), and so does the `frames` map, which a
+  measure reply carries in full (every resolved frame); a feature
   with no verdict makes `ok` false, exactly as it does for `run`. Every length in
   a measure reply is in the document's `length_unit` (absent means millimetres),
-  the same number the document stores; only the export scales it into
-  millimetres.
+  the same number the document stores; the reply names it as `length_unit`, and
+  only the export scales it into millimetres.
 - `compare` measures the document and compares it against a `reference.json`
   (the translation format: `source`, a required `tolerance`, an optional
   `topology` mode and the measure fields) with `compareMeasures`. It prints
@@ -341,14 +344,21 @@ npm run drive -- replay repro.json
   `delta`, `within` and `enforced`; exit 0 on pass, 1 on a failing row (or a
   build or kernel error), 2 on a usage error. A failing row is data, not an
   error: `ok` stays true so an agent loop reads which measure diverged. A
-  document the settle could not answer for (a missing verdict) is `ok: false`
-  instead, because comparing its empty measure to a reference would be
-  meaningless.
+  reference is millimetres by construction (no unit field exists), so an inch
+  document is measured in its own numbers and the measured copy is scaled into
+  millimetres for the comparison; the reply names the document as `length_unit`
+  and the rows as `compared_in: "mm"`, while `measures` stays the document's own
+  record. An assembly compare keeps its millimetre frame. The translations tier
+  calls `measureLocally` and `compareMeasures` directly and every corpus source is
+  millimetres, so it is unaffected. A document the settle could not answer for (a
+  missing verdict) is `ok: false` instead, because comparing its empty measure to
+  a reference would be meaningless.
 - `export` writes STEP or STL bytes to `--out` (default `tmp/out.<format>`),
   creating a missing parent directory. The reply carries the same `features`
   problem list a run or measure reply does; a failed, partial or warned feature
   makes `ok` false and exits 1 while the file is still written, so a file that
-  differs from the document is never reported as a clean export. STEP and STL
+  differs from the document is never reported as a clean export. The reply names
+  `length_unit` (the document) and `file_unit: "mm"` (the bytes). STEP and STL
   are written in millimetres: a part document whose `length_unit` is `inch`
   being exported is scaled by 25.4, so the file's geometry is the physical size
   the authored numbers mean (see `docs/document.md`). An assembly export keeps
@@ -408,10 +418,10 @@ banner on stdout, so a client config must use the direct node invocation.
 |---|---|---|
 | `commands` | optional `kind` (`part` default, or `assembly`) | the command catalog for that editor |
 | `mutations` | optional `kind` (`part` or `assembly`), optional `family` (`sketch`, `features`, `picks`, `part style`, `document`, `parts`, `mates`) | the mutation vocabularies grouped by family plus ready-to-run example scripts; no argument returns both whole (about 90 kB), a filter returns only that slice and an unknown family is refused with the valid list |
-| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, featureDeltas, frames, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
-| `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`frames`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }`; under `detail: "summary"` or `"changed"` the aggregate measures, the solve verdict, and the mates and parts problem rows survive, and `perBody` and `instances` are dropped |
-| `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures }`; a failing row is data, not an MCP error |
-| `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `detail` (assembly), `docId`, `files` | writes the file, returns `{ ok, docHash, features, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }`; an assembly `detail: "summary"` (or `"changed"`) keeps the file fields, solve, problem rows and summary and drops `instances` |
+| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `frames: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, featureDeltas, frames, length_unit, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
+| `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`frames`/`length_unit`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }`; under `detail: "summary"` or `"changed"` the aggregate measures, the solve verdict, and the mates and parts problem rows survive, and `perBody` and `instances` are dropped |
+| `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures, length_unit, compared_in }`; a failing row is data, not an MCP error |
+| `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `detail` (assembly), `docId`, `files` | writes the file, returns `{ ok, docHash, features, length_unit, file_unit, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }`; an assembly `detail: "summary"` (or `"changed"`) keeps the file fields, solve, problem rows and summary and drops `instances` |
 | `select` | `doc` or `docHash`, `selector`, optional `docId`, `files` | `{ ok, docHash, queries, items }`: the query strings a click would store, plus a geometry summary per item; part documents only |
 
 - `select` runs a predicate over the solved bodies and returns the exact query
@@ -578,7 +588,7 @@ banner on stdout, so a client config must use the direct node invocation.
   delta describes the real part. A feature that built with a warning keeps its
   row and carries the kernel's `warning` text, so a partial tool list's volume
   is visible without a second measure; the row-coverage rule is the same as for
-  a clean feature (changed, new, or touched), so an untouched warned feature
+  an unwarned build (changed, new, or touched), so an untouched warned feature
   still appears only under `featureDeltas: "all"`. Pass `featureDeltas: "all"`
   to list every built feature, which is how an empty `steps: []` call inspects
   the whole history.
@@ -586,9 +596,22 @@ banner on stdout, so a client config must use the direct node invocation.
   no measurable checkpoints (the kernel was unavailable or faulted, which is
   also `ok: false` with `solve.lastError`). The checkpoint
   measurement reads each unique OCC shape once, not once per feature.
+  The `run`, `measure`, `compare` and `export` part replies name the document's
+  `length_unit` (`mm` unless the document set `inch`); the numbers themselves are
+  never converted. `frames` is filtered the same way as `featureDeltas`: it keeps
+  the sketch and `add_plane` frames this call touched or moved, is omitted when
+  nothing qualified, and `frames: "all"` restores the whole map. The two opt-ins
+  are independent: `featureDeltas: "all"` still reports only the touched or moved
+  frames, `frames: "all"` still reports only the changed delta rows, and the
+  baseline solve is skipped only when both are `"all"`. `measure` is not
+  filtered: it reports every resolved frame.
 - `run` with `steps: []` solves the given `doc` or `docHash` once and returns
-  the same fields. It is the "inspect this document" call: the solve state has
-  a real `generation` and `features` is the document's problem list. A reply's
+  the same reply shape (the frame filter below still applies). It is the
+  "inspect this document" call: the solve state has
+  a real `generation` and `features` is the document's problem list. Its
+  `frames` key is absent unless something moved (or `frames: "all"` was
+  passed), and null on a stalled call's prefix, which has no settled final
+  solve; read an old frame with `measure` or the opt-in. A reply's
   `docHash` is stable: `run` with `steps: []` on it, by `docHash` or with its
   exported YAML or JSON as `doc`, returns the same hash. A loaded `doc` is
   stamped with the loader's current version, so a document an older stamp
@@ -626,7 +649,11 @@ banner on stdout, so a client config must use the direct node invocation.
 - `compare` takes its `reference` inline (the agent has just produced it) and
   validates it through the corpus parser, so a reference missing `tolerance`
   or carrying a malformed bbox is JSON-RPC invalid-params, not a tool error.
-  The reference shape is the translation file format:
+  A reference is millimetres by construction, so an inch document is measured
+  then scaled into millimetres for the comparison; the reply names
+  `length_unit` (the document) and `compared_in: "mm"` (the rows), and
+  `measures` stays the document's own record. The reference shape is the
+  translation file format:
 
   ```jsonc
   {
@@ -897,14 +924,20 @@ banner on stdout, so a client config must use the direct node invocation.
     world +X direction fixed rather than the parent's own x.
     `rotation_axis` and `rotation_angle` are required together; the common
     in-plane `rotation` still applies last.
-- Read the frame from the reply. Every `run` and `measure` reply carries
-  `frames`, an object keyed by feature id whose entries are
-  `{origin, x_axis, y_axis, normal}` for each sketch and `add_plane` feature
-  the solve resolved (rounded to the document's 6 decimals). A suppressed
-  feature or one whose solve threw (status `exception`) has no entry because
-  it produced no frame-bearing result; an overconstrained sketch still reports
-  the plane it solved on. `{origin, x_axis, y_axis, normal}` is world space,
-  Y-up, in the same frame the document and `compare` use.
+- Read the frame from the reply. A `run` reply carries `frames`, an object keyed
+  by feature id whose entries are `{origin, x_axis, y_axis, normal}` for each
+  sketch and `add_plane` feature this call touched (the ids its steps created or
+  named) or whose frame differs from the input document's solve; a frame that
+  did not move and that the call did not touch is left out, and the key is
+  absent when nothing qualified, which is why a fillet-only or `steps: []` call
+  on an unchanged document reports none. Pass `frames: "all"` for every resolved
+  frame, or use `measure`, which is the measurement call and always reports every
+  resolved frame (it has no steps and therefore no changed set). Frames are
+  rounded to the document's 6 decimals. A suppressed feature or one whose solve
+  threw (status `exception`) has no entry because it produced no frame-bearing
+  result; an overconstrained sketch still reports the plane it solved on.
+  `{origin, x_axis, y_axis, normal}` is world space, Y-up, in the same frame the
+  document and `compare` use.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; a user error a valid request reaches (an unknown export `body`, a
@@ -925,7 +958,11 @@ banner on stdout, so a client config must use the direct node invocation.
   generated rather than hand-typed so a plane change cannot leave it stale.
   `initialize` also carries the generated face-frame sentence (from
   `normalToFrame`), the +Z/-Z/+Y/-Y/+X/-X table above and the advice to read a
-  feature's frame from the `frames` map.
+  feature's frame from the `frames` map. A hand-typed sentence beside them names
+  the document's `length_unit`, the `set_length_unit` mutation and the fact that
+  reply numbers follow the document's unit while STEP and STL leave in
+  millimetres; it excepts the compare reply, whose rows are millimetres and are
+  labelled `compared_in`.
 - stdout carries protocol messages only: the entry redirects every other
   stdout write (the OCC STEP writer prints a transfer banner) to stderr.
 - The readline loop processes one call at a time, and every `run` is a fresh

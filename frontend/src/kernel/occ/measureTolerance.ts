@@ -11,7 +11,8 @@
  * and an absolute floor covers a measure near zero.
  */
 
-import type { MeasureRecord } from './measure'
+import type { Bbox6, MeasureRecord } from './measure'
+import type { Vec3 } from './primitives'
 
 export interface MeasureTolerance {
   rel: number
@@ -149,6 +150,39 @@ function swapsIntoPlace(
   tolerance: MeasureTolerance,
 ): boolean {
   return ours !== null && vectorWithinTolerance(ours, swapped(theirs), tolerance)
+}
+
+/**
+ * A measure record with every length scaled into another unit frame. Volume and
+ * area follow the cube and square of the factor; the count fields, vertices and
+ * body ids are not lengths and pass through. A comparison reference is
+ * millimetres by construction, so an inch document's stored numbers stay as
+ * authored and only the copy handed to `compareMeasures` is scaled.
+ */
+export function scaledMeasures(measures: MeasureRecord, scale: number): MeasureRecord {
+  const point = (value: Vec3 | null): Vec3 | null => value === null
+    ? null
+    : [value[0] * scale, value[1] * scale, value[2] * scale]
+  const box = (value: Bbox6 | null): Bbox6 | null => value === null
+    ? null
+    : [
+        value[0] * scale, value[1] * scale, value[2] * scale,
+        value[3] * scale, value[4] * scale, value[5] * scale,
+      ]
+  return {
+    ...measures,
+    volume: measures.volume * scale ** 3,
+    area: measures.area * scale ** 2,
+    centroid: point(measures.centroid),
+    bbox: box(measures.bbox),
+    perBody: measures.perBody.map(body => ({
+      ...body,
+      volume: body.volume * scale ** 3,
+      area: body.area * scale ** 2,
+      centroid: point(body.centroid),
+      bbox: box(body.bbox),
+    })),
+  }
 }
 
 /**

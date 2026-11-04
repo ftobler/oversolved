@@ -29,7 +29,7 @@ import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
 import { createMcpServer, type McpCadOps, type McpToolPayload } from '@/drive/mcpServer'
 import { DocHandleStore } from '@/drive/docHandleStore'
 import { shapeAssemblyState, shapeAssemblyExport, shapeAssemblyMeasures, DEFAULT_ASSEMBLY_DETAIL } from '@/drive/assemblyDetail'
-import { assemblyRunReply, requirePartDoc, resolveAssemblyDoc, resolveDoc, runReply, type ResolvedDoc, type RunReplySource } from '@/drive/mcpDocRef'
+import { assemblyRunReply, replyUnits, requirePartDoc, resolveAssemblyDoc, resolveDoc, runReply, type ResolvedDoc, type RunReplySource } from '@/drive/mcpDocRef'
 import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import { ASSEMBLY_DOC_SCHEMA_JSON } from '@/persistence/assemblyDocSchema'
 import { createHeadlessAssembly, emptyDriveAssemblyDoc, type AssemblyScriptStep } from '@/drive/headlessAssembly'
@@ -245,6 +245,7 @@ const ops: McpCadOps = {
         docId: req.docId ?? 'mcp',
         files,
         ...(req.featureDeltas !== undefined && { featureDeltas: req.featureDeltas }),
+        ...(req.frames !== undefined && { frames: req.frames }),
       }
       let result: RunReplySource
       try {
@@ -268,6 +269,9 @@ const ops: McpCadOps = {
 
     if (req.featureDeltas !== undefined) {
       return { ok: false, error: 'featureDeltas applies only to part documents' }
+    }
+    if (req.frames !== undefined) {
+      return { ok: false, error: 'frames applies only to part documents' }
     }
     const detail = req.detail ?? DEFAULT_ASSEMBLY_DETAIL
     const answer = await callKernel<AssemblyKernelResult>('assemblyRun', {
@@ -336,7 +340,7 @@ const ops: McpCadOps = {
       if (!measure) {
         return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
       }
-      return { ok: measure.ok, docHash: resolved.docHash, ...measure.measures, features: measure.features, frames: measure.frames }
+      return { ok: measure.ok, docHash: resolved.docHash, ...measure.measures, features: measure.features, frames: measure.frames, ...replyUnits(resolved.doc) }
     }
     const answer = await callKernel<HeadlessAssemblyMeasure | null>('assemblyMeasure', {
       doc: resolved.doc,
@@ -399,6 +403,8 @@ const ops: McpCadOps = {
         pass: result.pass,
         rows: result.rows,
         measures: result.measures,
+        ...replyUnits(resolved.doc),
+        compared_in: result.compared_in,
         ...(result.error !== undefined && { error: result.error }),
       }
     }
@@ -458,7 +464,12 @@ const ops: McpCadOps = {
       })
       if (!answer.ok) return answer
       exported = answer.value
-      verdict = exported === null ? {} : { features: exported.features }
+      // The document's numbers keep their unit; the bytes are millimetres.
+      verdict = {
+        ...replyUnits(resolved.doc),
+        file_unit: 'mm',
+        ...(exported === null ? {} : { features: exported.features }),
+      }
     } else {
       if (req.body !== undefined) {
         return { ok: false, error: 'per-instance export is not supported for an assembly; omit body' }
