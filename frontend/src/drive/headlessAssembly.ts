@@ -164,6 +164,14 @@ function failure(code: string, message: string): ScriptFailure {
   return { ok: false, code, message }
 }
 
+// The feature ids the step added, in document order. Additions only: a step
+// that deletes or edits a feature created nothing, and a diff in the other
+// direction would name ids that no longer answer to anything.
+function createdAssemblyFeatureIds(before: AssemblyDoc, after: AssemblyDoc): string[] {
+  const existing = new Set((before.features ?? []).map(feature => feature.id))
+  return (after.features ?? []).filter(feature => !existing.has(feature.id)).map(feature => feature.id)
+}
+
 // The doc_id a drive STEP import binds under. It is derived from the file id so
 // two steps importing one file share one document, and prefixed so it can never
 // collide with the file entry when the assembly is written to a workspace zip
@@ -467,6 +475,10 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
     mutation: AssemblyWireMutation,
     solveAfter: boolean,
   ): Promise<ScriptFailure | AnnotatedSuccess> {
+    // The pre-step document is the diff base for the reply's createdIds: one
+    // snapshot here covers the operation path and the set_part_fixed edit path,
+    // so a later mutation cannot forget to report what it wrote.
+    const before = docBox.current
     const validated = validateAssemblyMutation(mutation, {
       doc: docBox.current,
       boundPartIds: new Set(binding.keys()),
@@ -505,9 +517,10 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
       // authored one; anything else took the bake path.
       if (mutation.type === 'set_part_fixed') poseKept = last === null ? 'seed' : 'solved'
     }
+    const created = createdAssemblyFeatureIds(before, docBox.current)
     if (needsSolve && solveAfter) await solve()
     return {
-      ...okResult(),
+      ...okResult(created),
       ...(capture !== null && { captured: capture.captured }),
       ...(poseKept !== undefined && { poseKept }),
     }
