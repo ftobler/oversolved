@@ -999,10 +999,20 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       }))
       expect(selected.ok).toBe(true)
       expect(selected.docHash).toBe(boxHash)
+      expect(selected.count).toBe(4)
       const queries = selected.queries as string[]
       expect(queries).toHaveLength(4)
       const items = selected.items as Array<{ geometry: { length?: number } }>
       for (const item of items) expect(item.geometry.length).toBeCloseTo(10, 6)
+
+      // The reply-size control through the wired tool: queries-only keeps the
+      // count and the same query strings, and carries no per-item summary.
+      const queriesOnly = toolPayload(await client.request('tools/call', {
+        name: 'select',
+        arguments: { docHash: boxHash, selector: { kind: 'edge', where: { parallel: [0, 1, 0] } }, detail: 'queries' },
+      }))
+      expect(queriesOnly).toMatchObject({ ok: true, docHash: boxHash, count: 4, queries })
+      expect(queriesOnly.items).toBeUndefined()
 
       // One add_fillet call carries the whole pick set and the radius, instead
       // of one feature + four edge calls + one field call.

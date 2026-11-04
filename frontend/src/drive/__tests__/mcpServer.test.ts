@@ -108,6 +108,11 @@ describe('createMcpServer', () => {
     expect(call({ kind: 'face', where: { extreme: { axis: 'y', side: 'max' } } })).toBe(true)
     expect(call({ kind: 'face', where: { extreme: { axis: [0, 1, 0], side: 'max' } } })).toBe(true)
     expect(call({ kind: 'face', where: { extreme: { axis: 'up', side: 'max' } } })).toBe(false)
+    // `detail` is select's own reply-size enum, exactly the two values.
+    const properties = (tool!.inputSchema as { properties: Record<string, unknown> }).properties
+    expect(properties.detail).toMatchObject({ type: 'string', enum: ['full', 'queries'] })
+    expect(validate({ doc: {}, selector: { kind: 'edge' }, detail: 'queries' })).toBe(true)
+    expect(validate({ doc: {}, selector: { kind: 'edge' }, detail: 'summary' })).toBe(false)
     // A position range: the axis is one letter, min/max are optional, and an
     // unknown key or axis is refused by the schema before the engine sees it.
     expect(call({ kind: 'edge', where: { within: { axis: 'z', min: 10, max: 20 } } })).toBe(true)
@@ -351,6 +356,35 @@ describe('createMcpServer', () => {
         selector: { kind: 'face', where: { extreme: { axis: [0, 1, 0], side: 'max' } } },
       }),
     })
+
+    // `detail` is select's own enum and reaches the op unchanged.
+    const queriesOnly = await request(server, 28, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'edge' }, detail: 'queries' },
+    })
+    expect(queriesOnly).toMatchObject({ id: 28 })
+    expect(calls.at(-1)).toEqual({
+      tool: 'select',
+      args: expect.objectContaining({ detail: 'queries' }),
+    })
+
+    // An unknown value, and the assembly value "summary", are refused by name
+    // with select's own list: the per-tool enum is not a silent superset.
+    const unknownDetail = await request(server, 29, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'edge' }, detail: 'nope' },
+    })
+    expectError(unknownDetail, -32602)
+    expect((unknownDetail as { error: { message: string } }).error.message).toContain('"full"')
+    expect((unknownDetail as { error: { message: string } }).error.message).toContain('"queries"')
+
+    const assemblyDetail = await request(server, 30, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'edge' }, detail: 'summary' },
+    })
+    expectError(assemblyDetail, -32602)
+    expect((assemblyDetail as { error: { message: string } }).error.message).toContain('"full"')
+    expect((assemblyDetail as { error: { message: string } }).error.message).toContain('"queries"')
   })
 
   it('validates a compare reference through the corpus parser and passes it to the op', async () => {

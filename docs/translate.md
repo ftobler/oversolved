@@ -70,7 +70,8 @@ returns the query strings a click would store:
 }}}
 ```
 
-`select` returns `{ queries, items }`. Put those exact `queries` into the
+`select` returns `{ count, queries, items }`, or `{ count, queries }` with
+`detail: "queries"` for a large match. Put those exact `queries` into the
 `fillet.edges` or `chamfer.edges` list. Useful selectors for the committed
 cases:
 
