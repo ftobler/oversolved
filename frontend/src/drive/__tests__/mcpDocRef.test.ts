@@ -96,6 +96,7 @@ describe('summarizeDoc', () => {
 describe('runReply', () => {
   const source = {
     ok: true,
+    solved: true,
     outcome: { steps: [{ index: 0, ok: true }] },
     doc: doc('sk1'),
     docHash: docHashOf(doc('sk1')),
@@ -103,11 +104,12 @@ describe('runReply', () => {
     features: [],
   }
 
-  it('returns the handle, steps, solve and summary but not the doc by default', () => {
+  it('returns the handle, steps, solve, solved and summary but not the doc by default', () => {
     const documents = new DocHandleStore()
     const reply = runReply(source, false, documents)
     expect(reply).toMatchObject({
       ok: true,
+      solved: true,
       docHash: source.docHash,
       steps: source.outcome.steps,
       summary: 'features: sk1 (sketch); bodies: body_ex1',
@@ -151,7 +153,8 @@ describe('runReply', () => {
     )
   })
 
-  it('says a refused step was not solved and never lists a consumed body', () => {    const consumed = {
+  it('says a refused first step was not solved and never lists a consumed body', () => {
+    const consumed = {
       version: 1,
       kind: 'part',
       features: [
@@ -161,24 +164,74 @@ describe('runReply', () => {
       ],
       part_style: { body_ex1: {}, body_ex2: {} },
     } as unknown as PartDoc
-    // Three scripted steps, the second refused: the script stops there and the
-    // solve for the accepted prefix never runs, so bodies has no live set.
+    // A refused step 0: no mutation landed, so no settle was attempted and the
+    // reply has no live set to name. The part_style fallback would list bodies
+    // of a document that was never built.
     const refused = runReply({
       ...source,
       ok: false,
+      solved: false,
       doc: consumed,
       docHash: docHashOf(consumed),
       bodies: null,
       outcome: {
         steps: [
-          { index: 0, ok: true },
-          { index: 1, ok: false, error: { code: 'duplicate-id', message: 'feature id already exists' } },
+          { index: 0, ok: false, error: { code: 'duplicate-id', message: 'feature id already exists' } },
         ],
       },
     }, false, new DocHandleStore())
-    expect(refused.summary).toContain('bodies: not solved (step 1 refused)')
+    expect(refused.summary).toContain('bodies: not solved (step 0 refused)')
     expect(refused.summary).not.toContain('body_ex2')
     expect(refused.ok).toBe(false)
+    expect(refused.solved).toBe(false)
+  })
+
+  it('a refused step after an accepted one reports the live prefix', () => {
+    const built = {
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'sk1', kind: 'sketch' },
+        { id: 'ex1', kind: 'extrude' },
+      ],
+    } as unknown as PartDoc
+    const refused = runReply({
+      ...source,
+      ok: false,
+      doc: built,
+      docHash: docHashOf(built),
+      bodies: ['body_ex1'],
+      outcome: {
+        steps: [
+          { index: 0, ok: true },
+          { index: 1, ok: false, error: { code: 'unknown-command', message: 'unknown command "noop"' } },
+        ],
+      },
+    }, false, new DocHandleStore())
+    expect(refused.summary).toContain('body_ex1')
+    expect(refused.summary).toContain('solved through step 0; step 1 refused, not applied')
+    expect(refused.summary).not.toContain('not solved')
+    expect(refused.solved).toBe(true)
+  })
+
+  it('words a stalled step as a timeout, never a refusal', () => {
+    const built = doc('sk1')
+    const timedOut = runReply({
+      ...source,
+      ok: false,
+      doc: built,
+      docHash: docHashOf(built),
+      bodies: ['body_ex1'],
+      outcome: {
+        steps: [
+          { index: 0, ok: true },
+          { index: 1, ok: false, error: { code: 'solve-timeout', message: 'solve timed out after 30 s in feature ex1' } },
+        ],
+      },
+    }, false, new DocHandleStore())
+    expect(timedOut.summary).toContain('step 1 timed out')
+    expect(timedOut.summary).not.toContain('refused')
+    expect(timedOut.summary).toContain('body_ex1')
   })
 })
 

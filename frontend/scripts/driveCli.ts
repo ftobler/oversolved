@@ -209,6 +209,7 @@ async function runCommand(args: Args): Promise<number> {
 
   printJson({
     ok: result.ok,
+    solved: result.solved,
     steps: result.outcome.steps,
     docHash: result.docHash,
     solve: result.solve,

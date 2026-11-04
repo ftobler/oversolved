@@ -20,7 +20,7 @@ import type { TranslationReference } from '@/translations/corpus'
 import { selectByPredicate, validateSelector, type SelectResult } from '@/kernel/select'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
-import { createHeadlessPart, type HeadlessPart } from '@/drive/headlessPart'
+import { createHeadlessPart, type HeadlessCheckpoint, type HeadlessPart } from '@/drive/headlessPart'
 import { featureProblems, readSolveOutcomes, MISSING_VERDICT_STATUS, type FeatureProblem } from '@/drive/featureOutcome'
 import { featureDeltaRows, touchedFeatureIds, type FeatureDelta } from '@/drive/featureDeltas'
 import { featureFrames, type FeatureFrameMap } from '@/drive/featureFrames'
@@ -76,20 +76,29 @@ export interface HeadlessRunOptions {
   // 'all' restores the whole feature history in featureDeltas; the default
   // reports only what this call changed. The inspection opt-in.
   featureDeltas?: 'all'
+  // Forwards the state each settled step left behind; the kernel worker uses it
+  // to report a stalled solve without losing the accepted prefix.
+  onStepSettled?: (checkpoint: HeadlessCheckpoint) => void
 }
 
 export interface HeadlessRunResult {
   ok: boolean
+  // Whether a settle was attempted for the document this reply describes: set
+  // when the solve starts, reset per run. False is a refused-only script, the
+  // one case where an empty `features` list is honest; a faulted settle is
+  // true, because it attempted the answer and failed to give one.
+  solved: boolean
   outcome: ScriptRunOutcome
   doc: PartDoc | null
   docHash: string | null
   solve: SolveSchedulerState
-  // The live body ids of the final solve; null when the script ran no solve (an
-  // empty step list), in which case the reply falls back to the document's
-  // part_style keys.
+  // The live body ids of the last settle; null when no settle ran or the last
+  // one left no response (a faulted kernel), in which case the reply falls back
+  // to the document's part_style keys only when no step stopped the script.
   bodies: readonly string[] | null
   // The features the solve did not finish cleanly, in feature log order. This
-  // is always present: an empty list is the clean-build answer.
+  // is always present: an empty list is the clean-build answer, and a run that
+  // never settled has no verdicts to report, so it is empty there too.
   features: FeatureProblem[]
   // Volume and bbox for the features this run changed or touched, with the
   // change from the previous checkpoint. Null when the final solve exposed no
@@ -123,8 +132,10 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     docId: opts.docId,
     files: opts.files,
     journal: opts.journal,
+    ...(opts.onStepSettled && { onStepSettled: opts.onStepSettled }),
   })
   const outcome = await part.run(opts.steps)
+  const solved = part.solveAttempted()
   const doc = part.getDoc()
   const solve = part.solve.state()
   let measures: Awaited<ReturnType<HeadlessPart['featureMeasures']>> = null
@@ -140,14 +151,16 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       measureFault = e.message
     }
   }
-  const features = doc ? featureProblems(doc, part.solveOutcomes()) : []
+  const features = doc !== null && solved ? featureProblems(doc, part.solveOutcomes()) : []
   // A missing verdict means the settle did not answer for a feature at all;
   // that is a failed run, unlike a feature that answered `exception` (data the
   // caller reads from `features`). Without this the wedged-kernel reply was
-  // ok:true with an empty result.
+  // ok:true with an empty result. Only a settle that was attempted can have
+  // missing verdicts: a refused-only script never asked, so it has none.
   const missingVerdict = features.some(problem => problem.status === MISSING_VERDICT_STATUS)
   return {
     ok: outcome.ok && solve.lastError === null && !missingVerdict && measureFault === null,
+    solved,
     outcome,
     doc,
     docHash: doc ? docHashOf(doc) : null,

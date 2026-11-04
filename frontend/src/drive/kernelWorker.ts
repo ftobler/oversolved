@@ -79,7 +79,7 @@ export interface KernelAssemblyExportArgs extends AssemblyDocArgs {
   bodyId: string | null
 }
 
-async function runOp(req: KernelRequest): Promise<unknown> {
+async function runOp(req: KernelRequest, port: KernelPort): Promise<unknown> {
   switch (req.op) {
     case 'run': {
       const a = req.args as KernelRunArgs
@@ -93,6 +93,11 @@ async function runOp(req: KernelRequest): Promise<unknown> {
         files: a.files,
         journal: createDriveJournal(a.doc),
         ...(a.featureDeltas !== undefined && { featureDeltas: a.featureDeltas }),
+        // Each settled step's state crosses to the host so a stall in the next
+        // step can answer with the accepted prefix instead of a bare timeout.
+        onStepSettled: (checkpoint) => {
+          port.postMessage({ kind: 'checkpoint', id: req.id, ...checkpoint })
+        },
       })
       return result
     }
@@ -154,7 +159,7 @@ export function serveKernel(port: KernelPort): void {
         : { name: 'Error', message: String(e) }
       port.postMessage({ kind: 'reply', id: req.id, ok: false, error })
     }
-    runOp(req).then(
+    runOp(req, port).then(
       (value) => {
         // A reply that cannot be structured-cloned must answer as an error: an
         // unhandled throw here would kill the worker and lose the call.

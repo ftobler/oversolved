@@ -184,12 +184,14 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
  * the script unless that step (or the whole run) says continue. `settle` runs
  * after every executed step, so a caller that awaits the script also awaits the
  * solves each step started: the browser bridge passes the session idle, the CLI
- * passes its local scheduler's idle.
+ * passes its local scheduler's idle. It receives the outcomes recorded so far,
+ * refused tail included, so a caller that has to report a stalled solve can
+ * describe the accepted prefix.
  */
 export async function runScript<S extends AnyScriptStep = ScriptStep>(
   steps: readonly S[],
   run: ScriptStepRunner<S>,
-  settle?: () => Promise<void> | void,
+  settle?: (outcomes: readonly ScriptStepOutcome[]) => Promise<void> | void,
 ): Promise<ScriptRunOutcome> {
   const outcomes: ScriptStepOutcome[] = []
   for (let index = 0; index < steps.length; index++) {
@@ -213,7 +215,7 @@ export async function runScript<S extends AnyScriptStep = ScriptStep>(
       }
     }
     outcomes.push(outcome)
-    if (settle) await settle()
+    if (settle) await settle(outcomes)
     const continueOnError = isObject(step) && step.continueOnError === true
     if (!outcome.ok && !continueOnError) break
   }

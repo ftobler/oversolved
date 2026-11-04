@@ -70,6 +70,9 @@ describe.skipIf(!ready)('a touch warning resolved by a later union (real OCC + R
     const result = await runHeadless({ doc: emptyDriveDoc(), steps: posts() })
     const problem = result.features.find((p) => p.id === 'ex4')
     expect(problem?.message).toContain('also touches body_ex2, body_ex3')
+    // Control for the refused-script rule: an accepted script that ends on a
+    // warned feature did settle, so it keeps its verdict rows.
+    expect(result.solved).toBe(true)
     expect(result.part.solveOutcomes().ex4?.resolvedWarning).toBeUndefined()
     expect(result.part.solveOutcomes().ex4?.warning).toContain('also touches')
   }, 120_000)

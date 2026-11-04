@@ -26,7 +26,7 @@ import { emptyDriveDoc, type HeadlessMeasure, type HeadlessCompareResult, type H
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
-import { createMcpServer, type McpCadOps } from '@/drive/mcpServer'
+import { createMcpServer, type McpCadOps, type McpToolPayload } from '@/drive/mcpServer'
 import { DocHandleStore } from '@/drive/docHandleStore'
 import { shapeAssemblyState, DEFAULT_ASSEMBLY_DETAIL } from '@/drive/assemblyDetail'
 import { assemblyRunReply, requirePartDoc, resolveAssemblyDoc, resolveDoc, runReply, type ResolvedDoc, type RunReplySource } from '@/drive/mcpDocRef'
@@ -35,10 +35,10 @@ import { ASSEMBLY_DOC_SCHEMA_JSON } from '@/persistence/assemblyDocSchema'
 import { createHeadlessAssembly, emptyDriveAssemblyDoc, type AssemblyScriptStep } from '@/drive/headlessAssembly'
 import { buildAssemblyWorkspaceZip } from '@/drive/assemblyWorkspaceZip'
 import { docHashOf } from '@/drive/docHash'
-import type { ScriptStep } from '@/drive/scriptRunner'
+import type { ScriptStep, ScriptStepOutcome } from '@/drive/scriptRunner'
 import type { SelectResult } from '@/kernel/select'
 import { parseReference } from '@/translations/corpus'
-import { createKernelHost, isKernelCallFailure, type KernelOp, type KernelWorkerLike } from '@/drive/kernelHost'
+import { createKernelHost, isKernelCallFailure, KernelTimeout, type KernelOp, type KernelWorkerLike } from '@/drive/kernelHost'
 import { routeKernelStdoutToStderr } from './kernelStdout'
 import { readProjectFiles, readProjectReference, resolveProjectPath, writeDocFile } from './docPath'
 
@@ -93,6 +93,89 @@ function emptyPartDoc(): PartDoc {
 // of calls never re-sends the whole document. The protocol module parses the
 // argument shape; the store lives here with the real ops.
 const documents = new DocHandleStore()
+
+// The step that was in flight when the worker was killed: the one right after
+// the checkpoint's settled outcomes. No outcome exists for it, so its name is
+// read from the script and its failure is the timeout itself, which the
+// summary words as timed out rather than refused.
+function timeoutStepOutcome(
+  steps: readonly ScriptStep[],
+  settled: readonly ScriptStepOutcome[],
+  message: string,
+): ScriptStepOutcome {
+  const index = settled.length
+  const step = steps[index]
+  let kind: 'command' | 'mutation' = 'mutation'
+  let id = 'invalid-step'
+  if (step !== undefined) {
+    if ('command' in step) {
+      kind = 'command'
+      if (typeof step.command === 'string') id = step.command
+    } else {
+      const mutation = step.mutation as { type?: unknown } | null
+      if (typeof mutation?.type === 'string') id = mutation.type
+    }
+  }
+  return { index, kind, id, ok: false, createdIds: [], error: { code: 'solve-timeout', message } }
+}
+
+// A part run's kernel failure. A stall that carries a checkpoint answers with
+// the state the accepted prefix holds: its document, its settled steps, and the
+// timed-out tail. Without a checkpoint the bare error stays, except that an
+// empty script's input document is also its final document and is still saved
+// (3D). A script with steps may have applied one before it hung, so its input
+// document is never written over `out`.
+function partRunFailure(
+  e: unknown,
+  parts: { doc: PartDoc; docHash: string },
+  steps: readonly ScriptStep[],
+  out: string | undefined,
+  returnDoc: boolean,
+): McpToolPayload | null {
+  if (!isKernelCallFailure(e)) return null
+  if (e instanceof KernelTimeout && e.checkpoint !== null) {
+    const checkpoint = e.checkpoint
+    const settled = checkpoint.steps
+    const reply = runReply({
+      ok: false,
+      solved: true,
+      outcome: { steps: [...settled, timeoutStepOutcome(steps, settled, e.message)] },
+      doc: checkpoint.doc,
+      docHash: docHashOf(checkpoint.doc),
+      solve: { ...checkpoint.solve, lastError: e.message },
+      bodies: checkpoint.bodies,
+      features: [],
+      featureDeltas: null,
+      frames: null,
+    }, returnDoc, documents)
+    // The prefix has no checkpoint measurements or frames: both would need a
+    // settle of the final state, which is the one that stalled.
+    const partial = { ...reply, frames: null }
+    if (out === undefined) return partial
+    try {
+      const written = writeDocFile(out, checkpoint.doc)
+      return { ...partial, file: written.file, format: written.format }
+    } catch (writeError) {
+      return { ...partial, ok: false, error: writeError instanceof Error ? writeError.message : String(writeError) }
+    }
+  }
+  if (out !== undefined && steps.length === 0) {
+    try {
+      const written = writeDocFile(out, parts.doc)
+      return {
+        ok: false,
+        solved: false,
+        docHash: parts.docHash,
+        error: e.message,
+        file: written.file,
+        format: written.format,
+      }
+    } catch (writeError) {
+      return { ok: false, error: writeError instanceof Error ? writeError.message : String(writeError) }
+    }
+  }
+  return { ok: false, error: e.message }
+}
 
 const ops: McpCadOps = {
   partDocSchema: () => PART_DOC_SCHEMA_JSON,
@@ -156,15 +239,23 @@ const ops: McpCadOps = {
       }
       // The worker builds the drive journal from the starting document (its id
       // seed), as the in-process run did.
-      const answer = await callKernel<RunReplySource>('run', {
+      const runArgs = {
         doc: resolved.doc,
         steps: req.steps as ScriptStep[],
         docId: req.docId ?? 'mcp',
         files,
         ...(req.featureDeltas !== undefined && { featureDeltas: req.featureDeltas }),
-      })
-      if (!answer.ok) return answer
-      const result = answer.value
+      }
+      let result: RunReplySource
+      try {
+        result = await kernel.call('run', runArgs) as RunReplySource
+      } catch (e) {
+        // A part run answers a stall with the state it holds; the other ops keep
+        // the plain tool-error shape they always had.
+        const failure = partRunFailure(e, resolved, req.steps as ScriptStep[], out, req.returnDoc === true)
+        if (failure !== null) return failure
+        throw e
+      }
       const reply = runReply(result, req.returnDoc === true, documents)
       if (out === undefined || result.doc === null) return reply
       try {
