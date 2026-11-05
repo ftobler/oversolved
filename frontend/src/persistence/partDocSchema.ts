@@ -300,7 +300,7 @@ export const FEATURE_SCHEMA_BY_KIND = {
     properties: {
       bodies: REF_LIST, operation: { enum: ['new', 'replace'] }, translation: VEC3,
       translation_from: REF, translation_to: REF, rotation_axis: REF, rotation_angle: NUMBER_OR_EXPR,
-      rotation_axis_origin: VEC3, rotation_axis_direction: VEC3, scale: NUMBER_OR_EXPR,
+      rotation_euler: VEC3, rotation_axis_origin: VEC3, rotation_axis_direction: VEC3, scale: NUMBER_OR_EXPR,
       scale_center: VEC3, scale_center_from: REF,
     },
   }),

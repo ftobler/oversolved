@@ -52,6 +52,15 @@ describe('Transform mutations', () => {
       applyAddTransform(doc, 'xf1', 'My Transform')
       expect(doc.features![0].label).toBe('My Transform')
     })
+
+    it('drops the seeded rotation_angle when the Euler triple is chosen inline', () => {
+      // The add seeds rotation_angle: 0 for the axis spelling; an inline Euler
+      // triple is the other spelling, and the kernel refuses the pair.
+      const doc = makeDoc()
+      applyAddTransform(doc, 'xf1', 'Transform', { rotation_euler: [10, 20, 300] })
+      expect(transform0(doc).rotation_euler).toEqual([10, 20, 300])
+      expect('rotation_angle' in transform0(doc)).toBe(false)
+    })
   })
 
   describe('applyAddTransformBody / applyRemoveTransformBody', () => {

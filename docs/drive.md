@@ -898,9 +898,15 @@ banner on stdout, so a client config must use the direct node invocation.
   refused and the message names `direction: "reverse"` for the other way round.
   `add_transform` takes `bodies` and every `set_transform_field` field inline,
   so one call replaces the add plus one setter per field; the transform itself
-  applies scale first, then rotation, then translation, always about exactly
-  one axis given either as `rotation_axis` (a ref) or as `rotation_axis_origin`
-  plus `rotation_axis_direction`; `add_boolean` takes `operation`, `target`,
+  applies scale first, then rotation, then translation. The rotation is either
+  about exactly one axis given as `rotation_axis` (a ref) or as
+  `rotation_axis_origin` plus `rotation_axis_direction`, or about one
+  `rotation_euler` triple of extrinsic XYZ degrees (world X first, then world Y,
+  then world Z; numbers only, pivoting about `rotation_axis_origin` or the world
+  origin). `rotation_euler` cannot be combined with `rotation_axis`,
+  `rotation_angle` or `rotation_axis_direction`; clear the other spelling with a
+  null value before setting the triple; `add_boolean` takes `operation`,
+  `target`,
   `tools`, `keep_tools` and `clearance` inline, with `clearance` a signed
   offset on a subtract tool; `add_fillet` takes all of `edges` and
   `radius` in the same call and continues along the pick's whole tangent chain
