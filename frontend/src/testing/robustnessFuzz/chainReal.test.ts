@@ -124,7 +124,9 @@ const KNOWN_HANGS: readonly { seed: number; phase: ChainPhase; step: number; kin
 // set that fires once every recipe runs on a fresh kernel, then re-triaged on
 // 2026-10-31 with the fired-pin ratchet (seed 280 step 2 and seed 990 steps 3
 // and 4 no longer fire; seed 186 step 4 now reports the re-mint itself rather
-// than an unreached chain).
+// than an unreached chain), then on 2026-11-05 after the short-array per-copy
+// fuse moved seed 1476's start-body edge UUID: its perturbed chamfer now
+// reaches the pick and reports the re-mint instead of refusing before it.
 // Three kinds share the pin: a re-mint (the reference goes dead under the
 // +2.5 mm growth), an unreached pick (the perturbed chain refused at an
 // earlier step, so the reference cannot even be tested, reported only for a
@@ -189,7 +191,12 @@ const KNOWN_STALE_PICKS: readonly PickPin[] = [
   { seed: 1350, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1375, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1378, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1476, step: 3, match: PICK_UNREACHED, note: 'unreached: the perturbed chamfer refused on invalid geometry' },
+  {
+    seed: 1476,
+    step: 3,
+    match: PICK_REMINT_EDGE,
+    note: 'the start body edge @u|e_e5d7... re-mints under the +2.5 mm growth after the short-array per-copy fuse; the reference is now tested and goes dead, so the unreached note no longer applies',
+  },
 ]
 
 // The pin for a violation, or null. The message has to name the pinned class
