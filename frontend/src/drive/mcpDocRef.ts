@@ -188,8 +188,14 @@ export function summarizeDoc(
     const timedOut = stopped.code === 'solve-timeout'
     const verb = timedOut ? 'timed out' : 'refused'
     const live = liveBodies ?? null
+    const finalSolve = stopped.id === FINAL_SOLVE_STEP_ID
     if (live === null) {
-      bodies = `not solved (step ${stopped.index} ${verb})`
+      bodies = finalSolve
+        ? 'not solved (final solve timed out)'
+        : `not solved (step ${stopped.index} ${verb})`
+    } else if (finalSolve) {
+      const list = live.join(', ') || 'none'
+      bodies = `${list} (solved through step ${stopped.index - 1}; the final solve timed out)`
     } else {
       const list = live.join(', ') || 'none'
       // A timeout applied its mutation and lost only the settle, so the report
@@ -205,10 +211,16 @@ export function summarizeDoc(
     + `bodies: ${bodies}`
 }
 
+/** The synthetic step a stall reports. A solve that stalls inside a step names
+ *  that step; a stall in the run's final flush has no step to name, so it says
+ *  so instead of inventing one. */
+export const FINAL_SOLVE_STEP_ID = 'final solve'
+
 /** The last step when it failed, with the error code the summary words. */
 export interface StoppedStep {
   index: number
   code: string | null
+  id: string
 }
 
 // The failed step that stopped the script, as the index the outcomes carry.
@@ -217,7 +229,7 @@ export interface StoppedStep {
 function stoppedStep(steps: readonly unknown[]): StoppedStep | null {
   const last = steps[steps.length - 1]
   if (typeof last !== 'object' || last === null) return null
-  const candidate = last as { index?: unknown; ok?: unknown; error?: unknown }
+  const candidate = last as { index?: unknown; ok?: unknown; id?: unknown; error?: unknown }
   if (candidate.ok !== false) return null
   if (typeof candidate.index !== 'number') return null
   const error = typeof candidate.error === 'object' && candidate.error !== null
@@ -226,6 +238,7 @@ function stoppedStep(steps: readonly unknown[]): StoppedStep | null {
   return {
     index: candidate.index,
     code: typeof error?.code === 'string' ? error.code : null,
+    id: typeof candidate.id === 'string' ? candidate.id : '',
   }
 }
 

@@ -29,7 +29,7 @@ import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
 import { createMcpServer, type McpCadOps, type McpToolPayload } from '@/drive/mcpServer'
 import { DocHandleStore } from '@/drive/docHandleStore'
 import { shapeAssemblyState, shapeAssemblyExport, shapeAssemblyMeasures, DEFAULT_ASSEMBLY_DETAIL } from '@/drive/assemblyDetail'
-import { assemblyRunReply, replyUnits, requirePartDoc, resolveAssemblyDoc, resolveDoc, runReply, selectReply, type ResolvedDoc, type RunReplySource } from '@/drive/mcpDocRef'
+import { assemblyRunReply, FINAL_SOLVE_STEP_ID, replyUnits, requirePartDoc, resolveAssemblyDoc, resolveDoc, runReply, selectReply, type ResolvedDoc, type RunReplySource } from '@/drive/mcpDocRef'
 import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import { ASSEMBLY_DOC_SCHEMA_JSON } from '@/persistence/assemblyDocSchema'
 import { createHeadlessAssembly, emptyDriveAssemblyDoc, type AssemblyScriptStep } from '@/drive/headlessAssembly'
@@ -136,10 +136,23 @@ function partRunFailure(
   if (e instanceof KernelTimeout && e.checkpoint !== null) {
     const checkpoint = e.checkpoint
     const settled = checkpoint.steps
+    // The run defers its solves, so a stall normally lands in the final flush
+    // after every step applied. There is no step to blame then: name the final
+    // solve rather than inventing a fourth step.
+    const timedOut: ScriptStepOutcome = settled.length >= steps.length
+      ? {
+          index: settled.length,
+          kind: 'mutation',
+          id: FINAL_SOLVE_STEP_ID,
+          ok: false,
+          createdIds: [],
+          error: { code: 'solve-timeout', message: e.message },
+        }
+      : timeoutStepOutcome(steps, settled, e.message)
     const reply = runReply({
       ok: false,
       solved: true,
-      outcome: { steps: [...settled, timeoutStepOutcome(steps, settled, e.message)] },
+      outcome: { steps: [...settled, timedOut] },
       doc: checkpoint.doc,
       docHash: docHashOf(checkpoint.doc),
       solve: { ...checkpoint.solve, lastError: e.message },
