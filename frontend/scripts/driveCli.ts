@@ -19,7 +19,8 @@
 //   npm run drive -- export <doc.(yaml|json)> --format step|stl [--out <file>] [--body <id>] [--file <id>=<path>]
 //   npm run drive -- replay <repro.json>
 //
-// --file supplies the bytes for an import_step feature's file_id (repeatable).
+// --file supplies the bytes for an import_step feature's file_id, or for an
+// import_dxf step's file id (repeatable).
 // --out for run chooses JSON by a .json extension and YAML otherwise; the path
 // must resolve inside the project's tmp/ or bugreports/.
 // Every command prints one JSON object on stdout; diagnostics go to stderr.
@@ -154,9 +155,10 @@ function printJson(value: unknown): void {
 }
 
 // The solve file map from repeated `--file <id>=<path>` flags: the bytes for
-// an import_step feature's file_id, exactly what the browser's file registry
-// hands the worker. The path follows the project read rule, the same one the
-// MCP `files` map uses, so one spelling names one file on both surfaces.
+// an import_step feature's file_id or an import_dxf step's file id, exactly
+// what the browser's file registry hands the worker. The path follows the
+// project read rule, the same one the MCP `files` map uses, so one spelling
+// names one file on both surfaces.
 function readFiles(args: Args): ReadonlyMap<string, Uint8Array> | undefined {
   const entries = args.repeated.file ?? []
   if (entries.length === 0) return undefined

@@ -229,15 +229,28 @@ describe('import_dxf from the run files map', () => {
     expect(JSON.stringify(part.getDoc())).toBe(before)
   })
 
-  it('fails a file step in a part with no files map, and continues when told to', async () => {
+  it('fails a file step in a part with no files map, and stops the script', async () => {
+    const part = createHeadlessPart({ doc: sketchDoc() })
+    const before = JSON.stringify(part.getDoc())
+    const outcome = await part.run([
+      { mutation: { type: 'import_dxf', featureId: 'sk', file: 'rack' } },
+      { mutation: { type: 'add_sketch', featureId: 'later' } },
+    ])
+    expect(outcome.steps).toHaveLength(1)
+    expect(outcome.steps[0].ok).toBe(false)
+    expect(outcome.steps[0].error?.message).toContain('"rack"')
+    expect(outcome.steps[0].error?.message).toContain("run's files map")
+    expect(outcome.steps[0].error?.message).toContain('files argument')
+    expect(JSON.stringify(part.getDoc())).toBe(before)
+  })
+
+  it('continues past a file step the part cannot resolve when told to', async () => {
     const part = createHeadlessPart({ doc: sketchDoc() })
     const outcome = await part.run([
       { mutation: { type: 'import_dxf', featureId: 'sk', file: 'rack' }, continueOnError: true },
       { mutation: { type: 'add_sketch', featureId: 'later' } },
     ])
     expect(outcome.steps[0].ok).toBe(false)
-    expect(outcome.steps[0].error?.message).toContain("run's files map")
-    expect(outcome.steps[0].error?.message).toContain('files argument')
     expect(outcome.steps[1].ok).toBe(true)
     expect(part.getDoc()?.features?.map(f => f.id)).toContain('later')
   })

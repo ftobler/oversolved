@@ -166,7 +166,8 @@ const DXF_IMPORT_NOTE =
   + 'converts to the document unit (0 unitless, 1 inch, 2 foot, 4 mm, 5 cm, 6 m; unitless means document '
   + 'units). Every layer is imported and layer names are not stored; repeated entities are kept. '
   + 'The step reply reports `createdIds: []` and `createdCount`: the import is a bulk add, so the reply '
-  + 'carries the entity count and the document resource has the ids.'
+  + 'carries the entity count, the run reply\'s `docHash` names the document, and the document resource '
+  + 'has the ids.'
 
 // The constraint operand grammar an author writes by hand. A sketch-local
 // `$<entityId>` is accepted and is what the app stores; the explicit forms name
