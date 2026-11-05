@@ -66,6 +66,9 @@ export interface ScriptStepOutcome {
   createdIds: string[]
   // Present only when createdIds omits the constraints (rect, n-gon): their count.
   constraints?: number
+  // Present only on an import_dxf step, whose reply keeps the entity ids out:
+  // how many entities the import added. The document resource has the ids.
+  createdCount?: number
   error?: { code: string; message: string }
   // Present only when the step measured an orientation into the document.
   captured?: MateCapture
@@ -168,8 +171,13 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
     const poseKept = 'poseKept' in result ? result.poseKept : undefined
     const part = 'part' in result ? result.part : undefined
     const constraints = 'constraints' in result ? result.constraints : undefined
+    // A DXF import is the bulk case of the reply-size rule: one step can add
+    // hundreds of entities, so the reply carries the count and the document
+    // resource (or the run's docHash) serves the ids.
+    const counted = id === 'import_dxf'
     return {
-      index, kind, id, ok: true, createdIds,
+      index, kind, id, ok: true, createdIds: counted ? [] : createdIds,
+      ...(counted && { createdCount: createdIds.length }),
       ...(constraints !== undefined && { constraints }),
       ...(captured !== undefined && { captured }),
       ...(poseKept !== undefined && { poseKept }),

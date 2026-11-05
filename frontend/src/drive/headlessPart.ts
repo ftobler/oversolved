@@ -33,6 +33,8 @@ import { authoredHashOf } from '@/drive/docHash'
 import { seededIdSource, stepSeedFor } from '@/drive/seededIds'
 import { resolveSelectionAids, usesSelectionAid } from '@/drive/selectionAids'
 import { usesSettledSketchGeometry } from '@/drive/solveDependencies'
+import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
+import { lengthUnitOf } from '@/utils/lengthUnit'
 import { setIdSource } from '@/utils/yamlMutations'
 
 export interface HeadlessPartOptions {
@@ -42,7 +44,8 @@ export interface HeadlessPartOptions {
   // When given, every session mutation is journaled into it (and `run` can
   // hand back a repro); otherwise the session runs without a sink.
   journal?: CommandJournal
-  // The solve file map for documents with import_step: file_id -> STEP bytes.
+  // The solve file map for documents with import_step (file_id -> STEP bytes),
+  // and the ids an import_dxf `file` step may name (file id -> DXF text).
   // Read-only for the session's lifetime, like the browser's file registry
   // snapshot is for one solve.
   files?: ReadonlyMap<string, Uint8Array>
@@ -63,6 +66,50 @@ export interface HeadlessCheckpoint {
   solve: SolveSchedulerState
   // The step outcomes recorded so far, the refused tail included.
   steps: readonly ScriptStepOutcome[]
+}
+
+/**
+ * Turn an `import_dxf` step's `file` id into the text it names. The id is
+ * confined to this run's files map, and the bytes must decode as UTF-8 and
+ * parse as DXF, so a bad file is a named step failure with the document
+ * untouched. The mutation the session applies carries `content`, never
+ * `file`: undo and journal replay then need no file map.
+ */
+function resolveDxfFile(
+  mutation: Mutation,
+  files: ReadonlyMap<string, Uint8Array> | undefined,
+  doc: PartDoc | null,
+): { ok: true; mutation: Mutation } | { ok: false; code: string; message: string } {
+  if (mutation.type !== 'import_dxf' || mutation.file === undefined) return { ok: true, mutation }
+  const fileId = mutation.file
+  const bytes = files?.get(fileId)
+  if (bytes === undefined) {
+    const available = [...(files?.keys() ?? [])].sort()
+    return {
+      ok: false,
+      code: 'unknown-target',
+      message: `file ${JSON.stringify(fileId)} is not in this call's files map; available: `
+        + `${available.join(', ') || 'none'}. Pass its bytes with the run call's \`files\` argument.`,
+    }
+  }
+  let content: string
+  try {
+    content = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    return {
+      ok: false,
+      code: 'invalid-mutation',
+      message: `file ${JSON.stringify(fileId)} is not UTF-8 text; a DXF profile must be UTF-8 encoded`,
+    }
+  }
+  try {
+    parseDxfProfile(content, lengthUnitOf(doc?.length_unit))
+  } catch (e) {
+    if (e instanceof DxfImportError) return { ok: false, code: 'invalid-mutation', message: e.message }
+    throw e
+  }
+  const { file: _file, ...rest } = mutation
+  return { ok: true, mutation: { ...rest, content } }
 }
 
 export interface HeadlessPart {
@@ -109,6 +156,9 @@ export interface HeadlessPart {
 
 export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
   const docId = opts.docId ?? 'headless'
+  // The ids this call's files map supplies, fixed for the session's lifetime
+  // like the bytes themselves: an import_dxf `file` step may only name one.
+  const fileIds = opts.files === undefined ? null : new Set(opts.files.keys())
   const docBox: { current: PartDoc | null } = { current: opts.doc }
   const solveResultsBox: { current: Record<string, SketchData> } = { current: {} }
   // What the last settle published per feature, by id: the browser adapter
@@ -279,9 +329,14 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           // is a named step failure and the doc stays as it was. The live doc lets
           // the value rules refuse a duplicate id or a delete target that names
           // nothing instead of reporting an ok that changed nothing.
-          const validated = validateMutation(resolved.mutation, { doc: docBox.current })
+          const validated = validateMutation(resolved.mutation, { doc: docBox.current, fileIds })
           if (!validated.ok) return { ok: false, code: validated.error.code, message: validated.error.message }
-          return session.execute(validated.mutation)
+          // A `file` is resolved after the boundary checked the id against this
+          // call's map, and before the session: the journal and undo see the same
+          // content an inline step would have carried.
+          const importable = resolveDxfFile(validated.mutation, opts.files, docBox.current)
+          if (!importable.ok) return { ok: false, code: importable.code, message: importable.message }
+          return session.execute(importable.mutation)
         },
         async (outcomes: readonly ScriptStepOutcome[]) => {
           // A deferred request is not pending yet, so this only drains a solve

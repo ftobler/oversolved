@@ -43,6 +43,10 @@ export interface ValueContext {
   // The document the step is about to be applied to. Absent means the caller
   // can only judge the value's shape, not whether it names anything.
   doc: PartDoc | null
+  // The file ids the run's `files` map carries; import_dxf's `file` spelling
+  // needs one. Null or absent means the surface has no map (the browser
+  // bridge), so the id cannot be resolved and the step is refused by name.
+  fileIds?: ReadonlySet<string> | null
   // The schema definition of a `set_*_field` value, resolved by the catalog
   // from FIELD_SETTER_KIND. Null for a type that is not a field setter.
   fieldSchema: (type: Mutation['type'], field: string) => JsonSchema | null
@@ -1096,23 +1100,57 @@ function addImportStep(raw: RawStep): ValueViolation | null {
 
 // The DXF parser is the file contract, so the drive boundary runs it here as
 // well: an unsupported or malformed file is a named step failure before the
-// session sees it, not a silently empty import.
+// session sees it, not a silently empty import. The import takes exactly one
+// of an inline `content` and a `file` id; the id is checked against the run's
+// files map here, and the headless runner decodes and parses it before the
+// session so the journal stores the text rather than the id.
 function importDxf(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const featureId = raw.featureId
   if (typeof featureId !== 'string' || featureId.length === 0) {
     return invalid(`featureId must name the sketch the imported entities land in, got ${json(featureId)}`)
   }
-  if (typeof raw.content !== 'string' || raw.content.trim().length === 0) {
+  const hasContent = raw.content !== undefined
+  const hasFile = raw.file !== undefined
+  if (hasContent && hasFile) return invalid('import_dxf takes exactly one of content or file')
+  if (!hasContent && !hasFile) {
+    return invalid(
+      'import_dxf takes content (the DXF text inline) or file (the id of a DXF entry in the run call\'s '
+      + 'files map); got neither',
+    )
+  }
+  if (hasFile) {
+    const file = raw.file
+    if (typeof file !== 'string' || file.trim().length === 0) {
+      return invalid(`file must be a non-empty files id, got ${json(file)}`)
+    }
+    if (ctx.fileIds === undefined || ctx.fileIds === null) {
+      return invalid(
+        `import_dxf file ${json(file)} needs the run's files map; pass the bytes with the run call's `
+        + 'files argument',
+      )
+    }
+    if (!ctx.fileIds.has(file)) {
+      const available = [...ctx.fileIds].sort()
+      return unknownTarget(
+        `import_dxf file ${json(file)} is not in this call's files map; available: `
+        + `${available.join(', ') || 'none'}. Pass its bytes with the run call's files argument.`,
+      )
+    }
+  } else if (typeof raw.content !== 'string' || raw.content.trim().length === 0) {
     return invalid(`content must be the DXF file text, got ${json(raw.content ?? null)}`)
   }
   if (ctx.doc !== null && sketchOf(ctx.doc, featureId) === undefined) {
     return unknownTarget(`import_dxf names no sketch feature ${json(featureId)}`)
   }
-  try {
-    parseDxfProfile(raw.content, lengthUnitOf(ctx.doc?.length_unit))
-  } catch (e) {
-    if (e instanceof DxfImportError) return invalid(e.message)
-    throw e
+  // A `file` is parsed by the runner after it decodes the bytes; an inline
+  // `content` is parsed here so both spellings refuse the same way.
+  if (!hasFile) {
+    try {
+      parseDxfProfile(raw.content as string, lengthUnitOf(ctx.doc?.length_unit))
+    } catch (e) {
+      if (e instanceof DxfImportError) return invalid(e.message)
+      throw e
+    }
   }
   return null
 }

@@ -156,13 +156,18 @@ const ENTITY_PARAMS_NOTE =
 // The DXF import contract. The parser enforces it (utils/dxfImport.ts); this
 // note is what an author reads before writing an import step.
 const DXF_IMPORT_NOTE =
-  '`content` is the ASCII DXF file text, not a path. LINE, ARC, CIRCLE, LWPOLYLINE and a 2D POLYLINE '
+  'Give exactly one of `content` (the ASCII DXF file text) or `file` (the id of a DXF entry in the run '
+  + 'call\'s `files` map; the headless drive reads that confined project path and stores the text, never '
+  + 'the path). LINE, ARC, CIRCLE, LWPOLYLINE and a 2D POLYLINE '
   + '(bulges become arcs), a single-span cubic Bezier SPLINE, a full ELLIPSE and POINT import as authored '
   + 'sketch entities with fresh ids, all in one undo entry. TEXT, MTEXT, DIMENSION and the other annotation '
   + 'entities are skipped and counted, as is paper space; any other curve entity (INSERT, HATCH, a multi-span or rational '
   + 'SPLINE, a 3D POLYLINE) refuses the whole file by name so no profile is half imported. $INSUNITS '
   + 'converts to the document unit (0 unitless, 1 inch, 2 foot, 4 mm, 5 cm, 6 m; unitless means document '
-  + 'units). Every layer is imported and layer names are not stored; repeated entities are kept.'
+  + 'units). Every layer is imported and layer names are not stored; repeated entities are kept. '
+  + 'The step reply reports `createdIds: []` and `createdCount`: the import is a bulk add, so the reply '
+  + 'carries the entity count, the run reply\'s `docHash` names the document, and the document resource '
+  + 'has the ids.'
 
 // The constraint operand grammar an author writes by hand. A sketch-local
 // `$<entityId>` is accepted and is what the app stores; the explicit forms name
@@ -675,7 +680,8 @@ export const MUTATION_CATALOG = {
     note: DXF_IMPORT_NOTE,
     fields: {
       featureId: str('The sketch feature the imported entities land in.'),
-      content: str('The ASCII DXF file text; see the note for the supported entities and the unit rule.'),
+      content: optStr('The ASCII DXF file text; give this or `file`, not both.'),
+      file: optStr('The id of a DXF entry in the run call\'s files map; give this or `content`, not both.'),
     },
   },
   insert_fit_point: {
@@ -1394,6 +1400,11 @@ export interface MutationValidationOptions {
   // also refuse a target that names nothing and a duplicate entity id; without
   // it only the value's shape is checked.
   doc?: PartDoc | null
+  // The file ids the run's `files` map carries, so an import_dxf naming a file
+  // nobody supplied can be refused before the step runs. Null or absent skips
+  // the check and refuses the `file` spelling by name: the browser bridge has
+  // no files map to resolve it against.
+  fileIds?: ReadonlySet<string> | null
 }
 
 function fail(code: MutationValidationErrorCode, message: string): MutationValidation {
@@ -1572,6 +1583,7 @@ export function validateMutation(raw: unknown, options: MutationValidationOption
     // cannot hold. A row is 'none' where the applier owns every value it admits.
     const violation = mutationValueViolation(type as Mutation['type'], raw, {
       doc: options.doc ?? null,
+      fileIds: options.fileIds ?? null,
       fieldSchema: setterFieldSchema,
       fieldRequired: setterFieldRequired,
     })

@@ -54,7 +54,7 @@ never a thrown exception crossing the bridge.
 |---|---|---|
 | `commands()` | none | `{ id, label, shortcut?, enabled: true \| reason }[]` for the live spec table |
 | `execute(id, params?)` | command id, raw params | the registry `Result` (`ok` + `createdIds`, or `code`/`message`) |
-| `script(steps)` | step array (below) | `{ ok, steps: [{ index, kind, id, ok, createdIds, constraints?, error? }] }` |
+| `script(steps)` | step array (below) | `{ ok, steps: [{ index, kind, id, ok, createdIds, constraints?, createdCount?, error? }] }` |
 | `inspect()` | none | session, editor and probe facts (below) |
 | `idle()` | none | resolves when no solve is pending or running |
 | `hitTest(x, y, opts?)` | CSS pixels, optional window size and layer list | ordered `ProbeHit[]` |
@@ -402,14 +402,16 @@ npm run drive -- replay repro.json
   projection for a version-3 payload, the whole document for older ones) and
   exits nonzero on divergence.
 - `--file <id>=<path>` (repeatable) supplies the bytes for an `import_step`
-  feature's `file_id`, the same map the browser's file registry hands the
-  worker. The path resolves through the same read rule as the MCP `files` map:
+  feature's `file_id` or for an `import_dxf` step's `file`, the same map the
+  browser's file registry hands the worker. The path resolves through the same
+  read rule as the MCP `files` map:
   relative paths against the repo root and the file inside `tmp/`,
   `bugreports/` or `scratch/`, so one spelling names one file on both surfaces.
   A STEP file exported by `export` can therefore be re-imported and measured,
   which the `cliSmoke` suite does end to end. The byte map does not travel in
-  the repro payload, so a journal containing an import replays only with
-  `--file` supplied.
+  the repro payload, so a journal containing an `import_step` replays only with
+  `--file` supplied; an `import_dxf` step records the resolved DXF text, so it
+  replays without the map.
 
 One session per process is the v1 contract: `solveLocally` keeps its
 cross-solve checkpoint cache as single-writer module state, so two sessions in
@@ -698,7 +700,9 @@ banner on stdout, so a client config must use the direct node invocation.
   repo root, so `tmp/x.step` names the project's tmp even though the server runs
   with cwd `frontend/`, and the file must stay inside `tmp/`, `bugreports/` or
   `scratch/`. A missing file or a path outside those roots is a tool error
-  naming the `files[]` entry, not a JSON-RPC internal error.
+  naming the `files[]` entry, not a JSON-RPC internal error. The map carries
+  the bytes an `import_step` feature's `file_id` names and the DXF text an
+  `import_dxf` step's `file` field names.
 - `run` with `out` writes the final document (the step's own document after a
   refused script, or the checkpoint's document after a stalled one) as JSON for
   a `.json` path and YAML otherwise, and adds
@@ -788,10 +792,13 @@ banner on stdout, so a client config must use the direct node invocation.
   (`line [x1, y1, x2, y2]`, `circle [cx, cy, r]`,
   `arc [cx, cy, r, a0_deg, a1_deg]`, and so on, with arc and ellipse angles in
   degrees and arcs sweeping counter-clockwise), `import_dxf` takes the ASCII DXF
-  text inline (`content`, not a path), parses it with the same module the sketch
+  text inline (`content`) or the id of a DXF entry in the run's `files` map
+  (`file`; give exactly one of the two), parses it with the same module the sketch
   toolbar's file picker uses, and appends the supported entities to one sketch
   as one undo entry; its row note lists the supported entity kinds, the
-  annotation entities that are skipped, and the `$INSUNITS` rule. The
+  annotation entities that are skipped, and the `$INSUNITS` rule. Its step reply
+  is compact: `createdIds: []` and `createdCount`, because one import can add
+  hundreds of entities and the document resource has their ids. The
   `set_*_field` value note emits the enum members of every enum field in that
   kind's schema
   (`operation: add|cut|new`, `direction: normal|reverse|symmetric`,
@@ -1185,7 +1192,11 @@ authors `flip: true` by hand is equally valid.
 - `add_rect`, `add_center_rect` and `add_ngon` steps report `createdIds` as
   the entity ids in minting order (rect: bottom, right, top, left lines) plus
   `constraints: <count>`; the constraint ids stay readable from the document
-  resource. Other mutations list every id they create. In an assembly, an
+  resource. An `import_dxf` step reports `createdIds: []` and
+  `createdCount: <entities>` instead, because one import can add hundreds of
+  entities; its ids stay readable from the document resource, and the run's
+  `docHash` names the document that holds them. Other mutations list every id
+  they create. In an assembly, an
   ordinary mutation step's `createdIds` names the assembly features it added,
   in document order: `inst_<handle>` for an `add_part`, the mate's `featureId`
   for an `add_mate`, or `inst_<newHandle>` for a `duplicate_part`.

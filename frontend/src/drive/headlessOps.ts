@@ -71,7 +71,8 @@ export interface HeadlessRunOptions {
   steps: readonly ScriptStep[]
   // The solve cache key; stable per document so incremental rebuilds apply.
   docId?: string
-  // The solve file map for docs with import_step: file_id -> bytes.
+  // The solve file map for docs with import_step (file_id -> STEP bytes), and
+  // the ids an import_dxf `file` step may name (file id -> DXF text).
   files?: ReadonlyMap<string, Uint8Array>
   // When given, every session mutation is journaled into it.
   journal?: CommandJournal

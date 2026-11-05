@@ -156,7 +156,10 @@ export const mutationHandlers: MutationHandlers = {
       tangents: m.tangents, tangentScale: m.tangentScale,
     }),
   import_dxf: (next, m) =>
-    applyImportDxf(next, m.featureId, m.content),
+    // The headless runner resolves a `file` id into `content` before the
+    // session sees it; the empty fallback keeps a direct caller on the
+    // applier's own loud parse refusal.
+    applyImportDxf(next, m.featureId, m.content ?? ''),
   add_entity_with_constraint: (next, m) =>
     applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId, {
       tangents: m.tangents, tangentScale: m.tangentScale,
