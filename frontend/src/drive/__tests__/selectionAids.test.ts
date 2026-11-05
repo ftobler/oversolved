@@ -1,10 +1,10 @@
 // @vitest-environment node
 //
 // The pure half of selector picks in `add_sketch.plane` /
-// `set_feature_plane.plane` and `add_shell.faces`: resolveSelectionAids and
-// usesSelectionAid against synthetic solve results. The real half proves the
-// one-step drive path, the chained run's first-step solve, and the refusals
-// (selectionAidsReal.test.ts).
+// `set_feature_plane.plane`, `add_shell.faces` and `add_fillet.edges` /
+// `add_chamfer.edges`: resolveSelectionAids and usesSelectionAid against
+// synthetic solve results. The real half proves the one-step drive path, the
+// chained run's first-step solve, and the refusals (selectionAidsReal.test.ts).
 
 import { describe, it, expect } from 'vitest'
 import type { BodyResult, FaceData, EdgeData, PartDoc } from '@/types/cad'
@@ -20,6 +20,26 @@ function q(bodyId: string, tokens: string[], type: string): string {
 function face(centroid: V3, normal: V3): FaceData {
   return { centroid, normal, surface_type: 'flatface' }
 }
+function lineEdge(start: V3, end: V3): EdgeData {
+  return { kind: 'line', start, end }
+}
+// Two Z-parallel edges and one X-parallel edge on body_a, so an edge selector
+// can expand to several picks and a string entry can sit beside it.
+function bodiesWithEdges(): Record<string, BodyResult> {
+  const bodies = twoBodies()
+  bodies.body_a.edges = [
+    lineEdge([0, 0, 0], [0, 0, 10]),
+    lineEdge([10, 0, 0], [10, 0, 10]),
+    lineEdge([0, 0, 0], [10, 0, 0]),
+  ]
+  bodies.body_a.edge_queries = [
+    q('body_a', ['@u|e_0'], 'straightedge'),
+    q('body_a', ['@u|e_1'], 'straightedge'),
+    q('body_a', ['@u|e_2'], 'straightedge'),
+  ]
+  return bodies
+}
+const zEdgeSelector = { selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } }
 function twoBodies(): Record<string, BodyResult> {
   const body = (id: string, faces: FaceData[]): BodyResult => ({
     id,
@@ -139,11 +159,86 @@ describe('resolveSelectionAids', () => {
     ])
   })
 
+  it('expands an edge selector in a fillet list, keeping string entries in place', () => {
+    const bodies = bodiesWithEdges()
+    const existing = q('body_a', ['@u|e_2'], 'straightedge')
+    const resolved = resolveSelectionAids(
+      {
+        type: 'add_fillet', featureId: 'fi1',
+        edges: [existing, zEdgeSelector, '?body_a:edge:2'],
+        radius: 1,
+      },
+      bodies,
+    )
+    expect(resolved.ok).toBe(true)
+    if (!resolved.ok) return
+    expect((resolved.mutation as { edges: string[] }).edges).toEqual([
+      existing,
+      q('body_a', ['@u|e_0'], 'straightedge'),
+      q('body_a', ['@u|e_1'], 'straightedge'),
+      '?body_a:edge:2',
+    ])
+  })
+
+  it('dedupes an edge a second selector names again', () => {
+    const resolved = resolveSelectionAids(
+      { type: 'add_fillet', featureId: 'fi1', edges: [zEdgeSelector, zEdgeSelector], radius: 1 },
+      bodiesWithEdges(),
+    )
+    expect(resolved.ok).toBe(true)
+    if (!resolved.ok) return
+    expect((resolved.mutation as { edges: string[] }).edges).toEqual([
+      q('body_a', ['@u|e_0'], 'straightedge'),
+      q('body_a', ['@u|e_1'], 'straightedge'),
+    ])
+  })
+
+  it('refuses a face selector in a fillet or chamfer edge list, naming the kinds', () => {
+    for (const type of ['add_fillet', 'add_chamfer']) {
+      const resolved = resolveSelectionAids(
+        { type, featureId: 'f1', edges: [{ selector: { kind: 'face', where: { parallel: [0, 0, 1] } } }] },
+        bodiesWithEdges(),
+      )
+      expect(resolved.ok, type).toBe(false)
+      if (resolved.ok) continue
+      expect(resolved.code).toBe('unresolved-ref')
+      expect(resolved.message).toContain('only edges are picks here')
+      expect(resolved.message).toContain('face')
+    }
+  })
+
+  it('refuses an edge selector with no solved bodies, naming the alternative', () => {
+    const resolved = resolveSelectionAids(
+      { type: 'add_fillet', featureId: 'fi1', edges: [zEdgeSelector], radius: 1 },
+      null,
+    )
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) return
+    expect(resolved.code).toBe('unresolved-ref')
+    expect(resolved.message).toContain('no solved bodies')
+    expect(resolved.message).toContain('query string')
+  })
+
+  it('keeps the select engine nearest-miss text for an empty edge match', () => {
+    const resolved = resolveSelectionAids(
+      { type: 'add_chamfer', featureId: 'ch1', edges: [{ selector: { kind: 'edge', where: { parallel: [1, 1, 1] } } }] },
+      bodiesWithEdges(),
+    )
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) return
+    expect(resolved.code).toBe('unresolved-ref')
+    expect(resolved.message).toContain('matched no edges')
+    expect(resolved.message).toContain('parallel')
+  })
+
   it('reports whether a step needs a solve for its selector', () => {
     expect(usesSelectionAid({ type: 'add_sketch', plane: planeSelector })).toBe(true)
     expect(usesSelectionAid({ type: 'add_sketch', plane: '@builtin_plane_top' })).toBe(false)
     expect(usesSelectionAid({ type: 'add_shell', faces: [planeSelector] })).toBe(true)
     expect(usesSelectionAid({ type: 'add_shell', faces: ['?q'] })).toBe(false)
+    expect(usesSelectionAid({ type: 'add_fillet', edges: [zEdgeSelector] })).toBe(true)
+    expect(usesSelectionAid({ type: 'add_fillet', edges: ['?q'] })).toBe(false)
+    expect(usesSelectionAid({ type: 'add_chamfer', edges: [zEdgeSelector] })).toBe(true)
     expect(usesSelectionAid({ type: 'add_mirror', plane: planeSelector })).toBe(false)
   })
 

@@ -10,7 +10,7 @@
 // answer is the query `select` would have returned.
 
 import type { BodyResult } from '@/types/cad'
-import { selectByPredicate, SelectorError, validateSelector, type Selector } from '@/kernel/select'
+import { selectByPredicate, SelectorError, validateSelector, type SelectKind, type Selector } from '@/kernel/select'
 
 export type SelectionAidResolution =
   | { ok: true; mutation: unknown }
@@ -53,31 +53,36 @@ export function usesSelectionAid(raw: unknown): boolean {
       return pickOf(raw.plane)
     case 'add_shell':
       return Array.isArray(raw.faces) && raw.faces.some(pickOf)
+    case 'add_fillet':
+    case 'add_chamfer':
+      return Array.isArray(raw.edges) && raw.edges.some(pickOf)
     default:
       return false
   }
 }
 
-interface FaceQueries {
+interface PickQueries {
   ok: true
   queries: string[]
 }
 
-interface FaceRefusal {
+interface PickRefusal {
   ok: false
   code: 'invalid-ref' | 'unresolved-ref'
   message: string
 }
 
-/** Resolve one `{selector}` pick to the face queries it matches. `exactlyOne`
- *  is a sketch plane's rule: a plane sits on one face, while a shell opening
- *  list may name several. */
-function resolveFacePick(
+/** Resolve one `{selector}` pick to the queries it matches. `kind` is the
+ *  element the field accepts; `exactlyOne` is a sketch plane's rule: a plane
+ *  sits on one face, while a shell opening or fillet edge list may name
+ *  several. */
+function resolvePick(
   value: unknown,
   bodies: Record<string, BodyResult> | null,
   label: string,
+  kind: SelectKind,
   exactlyOne: boolean,
-): FaceQueries | FaceRefusal {
+): PickQueries | PickRefusal {
   let selector: Selector | null
   try {
     selector = selectorOf(value)
@@ -120,13 +125,13 @@ function resolveFacePick(
         + `so narrow the selector or ${SELECTOR_HINT}`,
     }
   }
-  const notFaces = items.filter(item => item.kind !== 'face')
-  if (notFaces.length > 0) {
+  const wrongKind = items.filter(item => item.kind !== kind)
+  if (wrongKind.length > 0) {
     return {
       ok: false,
       code: 'unresolved-ref',
-      message: `${label} selector matched ${notFaces.length} non-face item(s) (${notFaces.map(item => item.kind).join(', ')}); `
-        + 'only faces are picks here',
+      message: `${label} selector matched ${wrongKind.length} non-${kind} item(s) `
+        + `(${wrongKind.map(item => item.kind).join(', ')}); only ${kind}s are picks here`,
     }
   }
   return { ok: true, queries: items.map(item => item.query) }
@@ -134,30 +139,46 @@ function resolveFacePick(
 
 function planeStep(raw: RawStep, bodies: Record<string, BodyResult> | null): SelectionAidResolution {
   if (!pickOf(raw.plane)) return { ok: true, mutation: raw }
-  const pick = resolveFacePick(raw.plane, bodies, `${raw.type as string} plane`, true)
+  const pick = resolvePick(raw.plane, bodies, `${raw.type as string} plane`, 'face', true)
   if (!pick.ok) return pick
   return { ok: true, mutation: { ...raw, plane: pick.queries[0] } }
 }
 
-function shellStep(raw: RawStep, bodies: Record<string, BodyResult> | null): SelectionAidResolution {
-  const faces = raw.faces
-  if (!Array.isArray(faces)) return { ok: true, mutation: raw }
+// A pick list keeps the authored order: a string entry is already the stored
+// form and passes through, while a selector expands in place to every query it
+// matched, deduped so two selectors naming one edge store it once.
+function pickListStep(
+  raw: RawStep,
+  field: string,
+  bodies: Record<string, BodyResult> | null,
+  kind: SelectKind,
+): SelectionAidResolution {
+  const entries = raw[field]
+  if (!Array.isArray(entries)) return { ok: true, mutation: raw }
   const queries: unknown[] = []
-  for (let i = 0; i < faces.length; i++) {
-    const entry = faces[i]
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]
     // A string is already the stored form; any other junk is left to the value
     // rules so one boundary keeps the refusal wording.
     if (!pickOf(entry)) {
       queries.push(entry)
       continue
     }
-    const pick = resolveFacePick(entry, bodies, `add_shell faces[${i}]`, false)
+    const pick = resolvePick(entry, bodies, `${raw.type as string} ${field}[${i}]`, kind, false)
     if (!pick.ok) return pick
     for (const query of pick.queries) {
       if (!queries.includes(query)) queries.push(query)
     }
   }
-  return { ok: true, mutation: { ...raw, faces: queries } }
+  return { ok: true, mutation: { ...raw, [field]: queries } }
+}
+
+function shellStep(raw: RawStep, bodies: Record<string, BodyResult> | null): SelectionAidResolution {
+  return pickListStep(raw, 'faces', bodies, 'face')
+}
+
+function edgeStep(raw: RawStep, bodies: Record<string, BodyResult> | null): SelectionAidResolution {
+  return pickListStep(raw, 'edges', bodies, 'edge')
 }
 
 /** Rewrite every selector pick in a part mutation into the query string(s) it
@@ -174,6 +195,9 @@ export function resolveSelectionAids(
       return planeStep(raw, bodies)
     case 'add_shell':
       return shellStep(raw, bodies)
+    case 'add_fillet':
+    case 'add_chamfer':
+      return edgeStep(raw, bodies)
     default:
       return { ok: true, mutation: raw }
   }

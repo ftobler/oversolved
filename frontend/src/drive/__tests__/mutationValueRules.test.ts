@@ -640,6 +640,59 @@ describe('finding: add_fillet takes a whole edge set', () => {
   })
 })
 
+describe('finding: edge pick lists take inline selectors', () => {
+  // The headless drive resolves a selector before the value rules, so the
+  // selector form is a pick entry here rather than a plain-string list. A
+  // surface with no solved body set refuses it by name instead of calling it a
+  // malformed string list.
+  it('recognises a selector entry in a fillet list and names the solved-body requirement', () => {
+    const error = refusal({
+      type: 'add_fillet', featureId: 'fi1',
+      edges: [{ selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } }],
+      radius: 1,
+    })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('edges[0]')
+    expect(error.message).toContain('solved bodies')
+    expect(error.message).not.toContain('list of reference strings')
+  })
+
+  it('refuses a malformed selector entry on add_fillet, naming the entry', () => {
+    const error = refusal({
+      type: 'add_fillet', featureId: 'fi1', edges: [{ selector: 'nope' }], radius: 1,
+    })
+    expect(error.message).toContain('edges[0]')
+    expect(error.message).toContain('{selector: <a select selector>}')
+  })
+
+  it('mirrors both cases on add_chamfer', () => {
+    const selector = refusal({
+      type: 'add_chamfer', featureId: 'ch1',
+      edges: [{ selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } }],
+      distance: 1,
+    })
+    expect(selector.message).toContain('edges[0]')
+    expect(selector.message).toContain('solved bodies')
+    const malformed = refusal({
+      type: 'add_chamfer', featureId: 'ch1', edges: [{ selector: 'nope' }], distance: 1,
+    })
+    expect(malformed.message).toContain('edges[0]')
+    expect(malformed.message).toContain('{selector: <a select selector>}')
+  })
+
+  it('still refuses a non-pick object on both rows, naming the entry', () => {
+    for (const [type, extra] of [
+      ['add_fillet', { radius: 1 }],
+      ['add_chamfer', { distance: 1 }],
+    ] as const) {
+      const error = refusal({ type, featureId: 'f1', edges: [{ foo: 1 }], ...extra })
+      expect(error.code, type).toBe('invalid-mutation')
+      expect(error.message, type).toContain('edges[0]')
+      expect(error.message, type).toContain('{selector: <a select selector>}')
+    }
+  })
+})
+
 describe('finding 6: delete targets', () => {
   it.each(['l1', 'sk1/l1', '@sk1/l1'])('refuses %s as a delete target', (target) => {
     const error = refusal({ type: 'delete', targets: [target] })

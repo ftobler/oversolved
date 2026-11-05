@@ -76,6 +76,24 @@ describe('validateMutation', () => {
     expect(result.error.message).toContain('distance')
   })
 
+  it('refuses a lone edges selector object, since edges is a list field', () => {
+    // The supported spelling is the one-entry list; a lone object is refused by
+    // the catalog's array field type before any value rule or resolver sees it.
+    for (const [type, extra] of [
+      ['add_fillet', { radius: 1 }],
+      ['add_chamfer', { distance: 1 }],
+    ] as const) {
+      const result = validateMutation({
+        type, featureId: 'f1', edges: { selector: { kind: 'edge' } }, ...extra,
+      })
+      expect(result).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+      if (result.ok) throw new Error('unreachable')
+      expect(result.error.message).toContain('edges')
+      expect(result.error.message).toContain('must be array')
+      expect(result.error.message).toContain('object')
+    }
+  })
+
   it('refuses an internal mutation type', () => {
     const result = validateMutation({ type: 'edit_session', featureId: 'f1' })
     expect(result).toMatchObject({ ok: false, error: { code: 'internal-mutation' } })

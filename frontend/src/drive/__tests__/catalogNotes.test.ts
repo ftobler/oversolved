@@ -301,6 +301,19 @@ describe('Ex017: the shell note names the join', () => {
   })
 })
 
+describe('edge pick lists name the selector entry form', () => {
+  it('names it on both rows and in both edges field notes', () => {
+    for (const type of ['add_fillet', 'add_chamfer'] as const) {
+      const info = mutationInfoOf(type)
+      expect(info.note, type).toContain('{selector: <a select selector>}')
+      expect(info.note, type).toContain('one entry per edge it matches')
+      expect(info.note, type).toContain('document stores only query strings')
+      expect(info.fields.edges.note, type).toContain('{selector}')
+      expect(info.fields.edges.note, type).toContain('edges: [{selector: ...}]')
+    }
+  })
+})
+
 describe('F2: apply_offset side', () => {
   it('states the side relative to the loop', () => {
     const note = mutationInfoOf('apply_offset' as Mutation['type']).note!

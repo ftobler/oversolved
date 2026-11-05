@@ -963,7 +963,10 @@ banner on stdout, so a client config must use the direct node invocation.
   headless drive resolves it against the settled solve and stores the query
   string it matched, so no `select` round trip or paste is needed. The same
   form is accepted per `add_shell.faces` entry, where a selector may expand to
-  several faces; a selector is never stored.
+  several faces, and per `add_fillet.edges` / `add_chamfer.edges` entry, where
+  it expands to every edge it matches; a selector is never stored. `edges` is a
+  list field, so spell a lone selector `edges: [{selector: ...}]`; the object
+  form is refused as a non-array.
 - A sketch on a face uses that face's frame: origin at the face centroid, and
   the in-plane axes from the face normal by `normalToFrame` (the same rule
   every body face is registered with). For the six world-axis normals:

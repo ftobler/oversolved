@@ -1154,7 +1154,7 @@ function importDxf(raw: RawStep, ctx: ValueContext): ValueViolation | null {
 
 function addFillet(raw: RawStep): ValueViolation | null {
   if (raw.edges !== undefined) {
-    const edgesProblem = stringListProblem(raw.edges, 'edges')
+    const edgesProblem = pickListProblem(raw.edges, 'edges', 'edge')
     if (edgesProblem !== null) return invalid(edgesProblem)
   }
   const radius = raw.radius
@@ -1182,7 +1182,7 @@ function positiveScalarProblem(value: unknown, label: string): string | null {
 
 function addChamfer(raw: RawStep): ValueViolation | null {
   if (raw.edges !== undefined) {
-    const edgesProblem = stringListProblem(raw.edges, 'edges')
+    const edgesProblem = pickListProblem(raw.edges, 'edges', 'edge')
     if (edgesProblem !== null) return invalid(edgesProblem)
   }
   if (raw.distance !== undefined) {
@@ -1192,12 +1192,13 @@ function addChamfer(raw: RawStep): ValueViolation | null {
   return null
 }
 
-// Each shell face entry is a query string or a selector the drive resolves. A
-// string is checked like any other reference list; a selector that survives to
-// here is on a surface with no solved bodies, so name that.
-function facePickListProblem(value: unknown, label: string): string | null {
+// Each pick entry is a query string or a selector the drive resolves. A string
+// is checked like any other reference list; a selector that survives to here is
+// on a surface with no solved bodies, so name that. The noun keeps the refusal
+// specific to the field's element kind.
+function pickListProblem(value: unknown, label: string, noun: 'face' | 'edge'): string | null {
   if (!Array.isArray(value)) {
-    return `${label} must be a list of face queries or {selector} entries, got ${json(value)}`
+    return `${label} must be a list of ${noun} queries or {selector} entries, got ${json(value)}`
   }
   for (let i = 0; i < value.length; i++) {
     const entry = value[i]
@@ -1207,7 +1208,7 @@ function facePickListProblem(value: unknown, label: string): string | null {
       continue
     }
     if (typeof entry !== 'string') {
-      return `${label}[${i}] must be a face query or {selector: <a select selector>}, got ${json(entry)}`
+      return `${label}[${i}] must be a ${noun} query or {selector: <a select selector>}, got ${json(entry)}`
     }
     if (entry.trim().length === 0) return `${label}[${i}] must be a non-empty reference, got ${json(entry)}`
   }
@@ -1216,7 +1217,7 @@ function facePickListProblem(value: unknown, label: string): string | null {
 
 function addShell(raw: RawStep): ValueViolation | null {
   if (raw.faces !== undefined) {
-    const facesProblem = facePickListProblem(raw.faces, 'faces')
+    const facesProblem = pickListProblem(raw.faces, 'faces', 'face')
     if (facesProblem !== null) return invalid(facesProblem)
   }
   if (raw.thickness !== undefined) {
