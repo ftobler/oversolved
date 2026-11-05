@@ -806,9 +806,11 @@ banner on stdout, so a client config must use the direct node invocation.
   `definition` carries the same shape the part-document schema serves (its
   `mode` enum includes `offset`, and the common offset plane is
   `{mode:"offset", plane:"@builtin_plane_top", offset:43}`). A multisection
-  sweep is one `add_sweep_profile` per section and then
-  `set_sweep_field {field:"multisection", value:true}`; every section must be
-  pierced by the path.
+  sweep is one `add_sweep_profile` per section and `multisection: true` in the
+  add call (or a later `set_sweep_field {field:"multisection", value:true}`);
+  every section must be pierced by the path. `add_sweep` takes `transition`,
+  `multisection`, `operation` and `merge_target` inline, the same keys
+  `set_sweep_field` sets.
   A `fit_spline`'s `params` are its flat fit points (`x0, y0, ..., xN-1, yN-1`,
   2..64 points). The optional `tangents` pair (`[start, end]`, each `[tx, ty]`
   or null) is converted to the stored absolute end handles (the first piece's
@@ -858,11 +860,18 @@ banner on stdout, so a client config must use the direct node invocation.
   `add_center_rect` takes the half-diagonal corner (center `[0,0]` with corner
   `[1,1]` is 2x2) and leaves a centre point entity; `add_rect` creates its line
   ids in bottom, right, top, left order; `add_revolve` takes the required
-  `axis` inline (`@<sketchId>/<entityId>` or an edge query from `select`), and
-  an axis that crosses a profile's interior is refused by name; `transform`
+  `axis` inline (`@<sketchId>/<entityId>` or an edge query from `select`) plus
+  `direction`, `operation` and `merge_target`, the same keys
+  `set_revolve_field` sets, and an axis that crosses a profile's interior is
+  refused by name. A revolve angle is a positive magnitude: a negative angle is
+  refused and the message names `direction: "reverse"` for the other way round.
+  `add_transform` takes `bodies` and every `set_transform_field` field inline,
+  so one call replaces the add plus one setter per field; the transform itself
   applies scale first, then rotation, then translation, always about exactly
   one axis given either as `rotation_axis` (a ref) or as `rotation_axis_origin`
-  plus `rotation_axis_direction`; `add_fillet` takes all of `edges` and
+  plus `rotation_axis_direction`; `add_boolean` takes `operation`, `target`,
+  `tools`, `keep_tools` and `clearance` inline, with `clearance` a signed
+  offset on a subtract tool; `add_fillet` takes all of `edges` and
   `radius` in the same call and continues along the pick's whole tangent chain
   (one edge of a rounded loop rounds the loop), so the reply carries a `notes`
   entry with the chain and unpicked edge counts; it is informational and does

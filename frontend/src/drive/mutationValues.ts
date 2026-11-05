@@ -411,6 +411,14 @@ function positiveNumberProblem(value: unknown, label: string): string | null {
   return null
 }
 
+// A revolve angle is a positive magnitude; the other way round is the
+// `direction` field, not a negative angle. The refusal names that route so the
+// author does not reach for a second spelling the schema cannot store.
+function revolveAngleProblem(value: unknown, label: string): string | null {
+  if (isFiniteNumber(value) && value > 0) return null
+  return `${label} is a positive magnitude in degrees; to sweep the other way use direction: "reverse" (got ${json(value)})`
+}
+
 function nonNegativeIndexProblem(value: unknown, label: string): string | null {
   if (!isFiniteNumber(value) || !Number.isInteger(value) || value < 0) {
     return `${label} must be a non-negative integer index, got ${json(value)}`
@@ -963,25 +971,6 @@ function addSketch(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return problem === null ? null : invalid(problem)
 }
 
-// The fields a bulk add carries inline are checked against the same schema
-// definition their `set_<kind>_field` setter uses, so the two spellings of one
-// edit accept exactly the same values.
-function inlineFieldsProblem(
-  raw: RawStep,
-  ctx: ValueContext,
-  setter: Mutation['type'],
-  keys: readonly string[],
-): ValueViolation | null {
-  for (const key of keys) {
-    if (raw[key] === undefined) continue
-    const schema = ctx.fieldSchema(setter, key)
-    if (schema === null) continue
-    const problem = fieldValueProblem(raw[key], schema, `${raw.type as string} field ${json(key)}`)
-    if (problem !== null) return invalid(problem)
-  }
-  return null
-}
-
 // The ref fields an empty string clears, for the setter and its inline add in
 // one row each. The applier deletes the key on "", but the shared ref rule
 // refuses an empty string, so the boundary admits the clear only for the fields
@@ -1031,7 +1020,9 @@ function addBoolean(raw: RawStep, ctx: ValueContext): ValueViolation | null {
     const toolsProblem = stringListProblem(raw.tools, 'tools')
     if (toolsProblem !== null) return invalid(toolsProblem)
   }
-  return inlineFieldsProblem(raw, ctx, 'set_boolean_field', ['operation', 'target'])
+  // Every remaining field follows the boolean schema, so keep_tools and
+  // clearance need no second hand-kept key list.
+  return inlineFeatureFieldsProblem(raw, ctx, 'boolean', 'set_boolean_field')
 }
 
 // The pattern and mirror adds carry the same fields their setters set, so each
@@ -1065,10 +1056,10 @@ function addPattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return inlineFeatureFieldsProblem(raw, ctx, 'pattern', 'set_pattern_field')
 }
 
-function addRevolve(raw: RawStep): ValueViolation | null {
+function addRevolve(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const problem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
   if (problem !== null) return invalid(problem)
-  const angleProblem = positiveNumberProblem(raw.angle, 'angle (degrees)')
+  const angleProblem = revolveAngleProblem(raw.angle, 'angle')
   if (angleProblem !== null) return invalid(angleProblem)
   // The axis is a stored pick, not a default, so a malformed ref used to reach
   // the solver and fail there. Refuse it at the boundary with the accepted form.
@@ -1080,14 +1071,20 @@ function addRevolve(raw: RawStep): ValueViolation | null {
     )
   }
   const axisProblem = refValueProblem(axis, 'axis')
-  return axisProblem === null ? null : invalid(axisProblem)
+  if (axisProblem !== null) return invalid(axisProblem)
+  return inlineFeatureFieldsProblem(raw, ctx, 'revolve', 'set_revolve_field')
 }
 
-function addSweep(raw: RawStep): ValueViolation | null {
+function addSweep(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const sketchProblem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
   if (sketchProblem !== null) return invalid(sketchProblem)
   const pathProblem = sketchQueryProblem(raw.pathQuery, 'pathQuery')
-  return pathProblem === null ? null : invalid(pathProblem)
+  if (pathProblem !== null) return invalid(pathProblem)
+  return inlineFeatureFieldsProblem(raw, ctx, 'sweep', 'set_sweep_field')
+}
+
+function addTransform(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  return inlineFeatureFieldsProblem(raw, ctx, 'transform', 'set_transform_field')
 }
 
 function addImportStep(raw: RawStep): ValueViolation | null {
@@ -1444,7 +1441,8 @@ function setRevolveField(raw: RawStep, ctx: ValueContext): ValueViolation | null
   const generic = fieldValue(raw, ctx)
   if (generic !== null) return generic
   if (raw.field === 'angle' && typeof raw.value === 'number' && raw.value <= 0) {
-    return invalid(`set_revolve_field angle is in degrees and must be positive, got ${json(raw.value)}`)
+    const problem = revolveAngleProblem(raw.value, 'set_revolve_field angle')
+    return problem === null ? null : invalid(problem)
   }
   return null
 }
@@ -1530,7 +1528,7 @@ export const MUTATION_VALUE_RULES = {
   remove_delete_body_ref: indexField('index'),
   add_hole: addHole,
   set_hole_field: setHoleField,
-  add_transform: 'none',
+  add_transform: addTransform,
   set_transform_field: fieldValue,
   add_transform_body: queryField('bodyQuery'),
   remove_transform_body: indexField('index'),
