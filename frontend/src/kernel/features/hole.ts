@@ -32,7 +32,7 @@ import {
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { holeFacePath, mintFaceUuid, type HoleFaceRole } from '../constructionName'
 import { absolute, emitWire, featureRefId } from '../query'
-import { bodyFrame } from '../occ/tessellation'
+import { bodySpanAlong, projectedRadius } from './shared/bodyExtent'
 import { sameEnum } from '../occ/enumValue'
 import { booleanWithDiff, volumeOf } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
@@ -352,28 +352,6 @@ function backAlong(point: Vec3, axis: Vec3, distance: number): Vec3 {
     point[1] - axis[1] * distance,
     point[2] - axis[2] * distance,
   ]
-}
-
-/** Extent of the target along the drill axis, from its edge-sampled AABB: the
- *  length a through-all cutter must clear. The AABB is projected onto the axis
- *  (2*sum(|axis_i|*half_i)) instead of taking the max world-axis half-extent: an
- *  oblique axis can cross a cube along its space diagonal, where the max-axis
- *  span underestimates the body by up to sqrt(3), leaving the far corner uncut
- *  while intersects() still reports a hit. Vertices alone understate curved
- *  bodies (a cylinder's only vertices sit on its seam), so the edge samples
- *  carry the silhouette. */
-function bodySpanAlong(oc: OccModule, scope: DisposeScope, shape: OccShape, axis: Vec3): {
-  span: number
-  frame: { center: Vec3; half: Vec3 }
-} {
-  const frame = bodyFrame(oc, scope, shape)
-  return { span: projectedRadius(frame, axis) * 2.0, frame }
-}
-
-/** The AABB's half-extent projected onto `axis`: how far the body reaches
- *  either side of its centre along that direction. */
-function projectedRadius(frame: { half: Vec3 }, axis: Vec3): number {
-  return Math.abs(axis[0]) * frame.half[0] + Math.abs(axis[1]) * frame.half[1] + Math.abs(axis[2]) * frame.half[2]
 }
 
 /** How far `mouth` sits outside the body's AABB on its AIR side, along `dir`

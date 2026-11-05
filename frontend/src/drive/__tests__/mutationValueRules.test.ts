@@ -1236,6 +1236,37 @@ describe('finding: add_extrude carries the up-to termination inline', () => {
   })
 })
 
+describe('through_all is a cut termination at the drive boundary', () => {
+  it('accepts through_all with operation cut', () => {
+    expect(validateMutation({
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 1,
+      operation: 'cut', termination: 'through_all',
+    })).toMatchObject({ ok: true })
+  })
+
+  it('refuses add, new and an absent operation (which reads as add) by name', () => {
+    for (const operation of ['add', 'new', undefined]) {
+      const raw = {
+        type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 1,
+        termination: 'through_all', ...(operation === undefined ? {} : { operation }),
+      }
+      const error = refusal(raw)
+      expect(error.code).toBe('invalid-mutation')
+      expect(error.message).toContain('through_all')
+      expect(error.message).toContain('cut')
+      expect(error.message).toContain(`"${operation ?? 'add'}"`)
+    }
+  })
+
+  it('leaves the setter free so the kernel reports a switched feature', () => {
+    // A set_extrude_field switch must reach the solve: the kernel names it as a
+    // feature exception instead of the boundary refusing a legal field value.
+    expect(validateMutation({
+      type: 'set_extrude_field', featureId: 'ex1', field: 'termination', value: 'through_all',
+    })).toMatchObject({ ok: true })
+  })
+})
+
 describe('the positive twin of a seeded script still validates', () => {
   it('accepts a normal box script step by step', async () => {
     const steps: Array<{ mutation: Mutation }> = [

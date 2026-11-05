@@ -19,14 +19,15 @@ export type SelectionDomain = 'sketch_2d' | 'body_3d' | 'plane_3d' | 'mixed'
 
 export type ExtrudeDirection = 'normal' | 'reverse' | 'symmetric'
 export type ExtrudeOperation = 'add' | 'cut' | 'new'
-export type ExtrudeTermination = 'blind' | 'up_to'
+export type ExtrudeTermination = 'blind' | 'up_to' | 'through_all'
 
 export type ExtrudeFeatureDef = {
   sketch: string | string[]
   distance: NumberOrExpr
   direction?: ExtrudeDirection
   // 'blind' (default) extrudes by `distance`; 'up_to' terminates at the element
-  // referenced by `up_to` (a plane, point, or planar face).
+  // referenced by `up_to` (a plane, point, or planar face); 'through_all' is a
+  // cut sized from the live bodies, so `distance` is ignored.
   termination?: ExtrudeTermination
   up_to?: string
   operation?: ExtrudeOperation

@@ -245,6 +245,109 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(problem!.message).toContain('may touch the profile but not cut through it')
   }, 120_000)
 
+  it('cuts a through_all extrude through the whole box with distance 1 ignored', async () => {
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const result = await runHeadless({
+      doc: emptyDoc(),
+      steps: [
+        ...box.steps,
+        { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_top' } },
+        { mutation: { type: 'add_rect', featureId: 'sk2', p0: [10, 10], p1: [15, 15] } },
+        {
+          mutation: {
+            type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 1,
+            operation: 'cut', termination: 'through_all',
+          },
+        },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    // The step is accepted and the reply is clean: distance is stored because
+    // the row requires it, but the solve sizes the cut from the 10 mm box.
+    expect(result.features).toEqual([])
+    const row = result.featureDeltas?.find(entry => entry.id === 'ex2')
+    expect(row?.volumeDelta).toBeCloseTo(-25 * 10, 6)
+    expect(row?.bodyVolume).toBeCloseTo(12000 - 25 * 10, 6)
+    const measured = await measureHeadless(result.doc!)
+    expect(measured!.measures.volume).toBeCloseTo(12000 - 25 * 10, 2)
+  }, 120_000)
+
+  it('refuses an inline through_all add at the drive boundary, not in the kernel', async () => {
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    // An absent operation reads as add, so both spellings are refused by the
+    // value rule before the step touches the document.
+    const operations: Array<'add' | undefined> = ['add', undefined]
+    for (const operation of operations) {
+      const result = await runHeadless({
+        doc: emptyDoc(),
+        steps: [
+          ...box.steps,
+          { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_top' } },
+          { mutation: { type: 'add_rect', featureId: 'sk2', p0: [10, 10], p1: [15, 15] } },
+          {
+            mutation: {
+              type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 1,
+              termination: 'through_all', ...(operation === undefined ? {} : { operation }),
+            },
+          },
+        ],
+      })
+      const step = result.outcome.steps.at(-1)!
+      expect(step.ok, String(operation)).toBe(false)
+      expect(step.error?.code, String(operation)).toBe('invalid-mutation')
+      expect(step.error?.message, String(operation)).toContain('through_all')
+      expect(step.error?.message, String(operation)).toContain('cut')
+      // The refused step never landed, so the solve reports no feature problem.
+      expect(result.features).toEqual([])
+      expect(result.doc?.features?.some(feature => feature.id === 'ex2')).toBe(false)
+    }
+  }, 120_000)
+
+  it('carries a no-body through_all refusal as a feature row and keeps solving', async () => {
+    const result = await runHeadless({
+      doc: emptyDoc(),
+      steps: [
+        { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' } },
+        { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [5, 5] } },
+        {
+          mutation: {
+            type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 1,
+            operation: 'cut', termination: 'through_all',
+          },
+        },
+        { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_front' } },
+        { mutation: { type: 'add_rect', featureId: 'sk2', p0: [0, 0], p1: [4, 4] } },
+        { mutation: { type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 2, operation: 'new' } },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    const problem = result.features.find(feature => feature.id === 'ex1')
+    expect(problem?.status).toBe('exception')
+    expect(problem?.message).toContain('through_all')
+    expect(problem?.message).toContain('merge_target')
+    // The rest of the log still solved: only the through-all row is a problem.
+    expect(result.features.map(feature => feature.id)).toEqual(['ex1'])
+    expect(result.bodies).toContain('body_ex2')
+  }, 120_000)
+
+  it('reports a through_all switch on an add extrude as a feature exception', async () => {
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const result = await runHeadless({
+      doc: emptyDoc(),
+      steps: [
+        ...box.steps,
+        { mutation: { type: 'set_extrude_field', featureId: 'ex1', field: 'termination', value: 'through_all' } },
+      ],
+    })
+    // The setter is a legal field value, so the step lands and the kernel owns
+    // the refusal: a feature row, not a tool error.
+    expect(result.outcome.steps.at(-1)?.ok).toBe(true)
+    const problem = result.features.find(feature => feature.id === 'ex1')
+    expect(problem?.status).toBe('exception')
+    expect(problem?.message).toContain('through_all')
+    expect(problem?.message).toContain('cut')
+  }, 120_000)
+
   it('solves a passed document once when the script is empty', async () => {
     const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
     const built = await runHeadless({ doc: emptyDoc(), steps: box.steps })

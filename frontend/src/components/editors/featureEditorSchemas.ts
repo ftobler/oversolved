@@ -25,13 +25,19 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
       addMutationType: 'add_extrude_profile', addValueKey: 'sketchQuery',
       removeMutationType: 'remove_extrude_profile' },
     { type: 'select', key: 'termination', label: 'Termination', default: 'blind',
-      options: [{ value: 'blind', label: 'Blind' }, { value: 'up_to', label: 'Up to' }] },
+      options: [
+        { value: 'blind', label: 'Blind' },
+        { value: 'up_to', label: 'Up to' },
+        { value: 'through_all', label: 'Through all' },
+      ] },
     { type: 'pick', key: 'up_to', label: 'Up to',
       showWhen: (d) => d.termination === 'up_to',
       transform: stripSelectionWrapper, removeValue: undefined,
       emptyText: '(pick plane, point, or face)' },
     { type: 'number', key: 'distance', label: 'Distance', default: 10,
-      showWhen: (d) => d.termination !== 'up_to', validate: positive },
+      // An absent termination is the blind default, so the distance stays for
+      // a document that never wrote the key.
+      showWhen: (d) => (d.termination ?? 'blind') === 'blind', validate: positive },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',

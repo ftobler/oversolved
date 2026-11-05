@@ -236,6 +236,31 @@ describe('shape failures name the document and the field', () => {
   })
 })
 
+describe('the third extrude termination survives the loader', () => {
+  it('accepts termination through_all and re-exports it unchanged', () => {
+    // Both enums must move together: the part-document schema serves the value
+    // and checkExtrude is the gate loadPartDocText opens documents through, so a
+    // fix that updates only partDocSchema.ts refuses the saved document here.
+    const result = loadPartDocText(
+      'version: 1\n' +
+      'kind: part\n' +
+      'features:\n' +
+      '  - id: ex1\n' +
+      '    kind: extrude\n' +
+      '    extrude:\n' +
+      '      sketch: "@sk1"\n' +
+      '      distance: 1\n' +
+      '      operation: cut\n' +
+      '      termination: through_all\n',
+      { name: 'Through All' },
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const feature = (result.doc.features as Array<{ extrude: { termination: string } }>)[0]
+    expect(feature.extrude.termination).toBe('through_all')
+  })
+})
+
 describe('constraint operands carry the real wire and dict forms', () => {
   const partWithConstraints = (constraints: Array<Record<string, unknown>>) =>
     loadPartDoc({

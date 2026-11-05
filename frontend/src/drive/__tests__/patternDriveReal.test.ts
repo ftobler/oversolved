@@ -56,7 +56,7 @@ function rectSketch(id: string, w: number, h: number, x0 = 0, y0 = 0): PartFeatu
 }
 
 /** A 40 x 20 x 5 plate with one 4 x 4 slot cut through it at (6, 6). */
-function slottedPlate(): PartDoc {
+function slottedPlate(cut: { distance?: number; termination?: 'blind' | 'through_all' } = {}): PartDoc {
   return seedBuiltins({
     version: 1,
     kind: 'part',
@@ -64,7 +64,13 @@ function slottedPlate(): PartDoc {
       rectSketch('sk_plate', 40, 20),
       { id: 'ex_plate', kind: 'extrude', extrude: { sketch: '@sk_plate', distance: 5, direction: 'normal', operation: 'new' } },
       rectSketch('sk_slot', 4, 4, 6, 6),
-      { id: 'ex_slot', kind: 'extrude', extrude: { sketch: '@sk_slot', distance: 10, direction: 'normal', operation: 'cut' } },
+      {
+        id: 'ex_slot', kind: 'extrude',
+        extrude: {
+          sketch: '@sk_slot', distance: cut.distance ?? 10, direction: 'normal', operation: 'cut',
+          ...(cut.termination === undefined ? {} : { termination: cut.termination }),
+        },
+      },
     ],
   } as PartDoc)
 }
@@ -96,6 +102,33 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     // 40 x 20 x 5 minus four 4 x 4 x 5 slots.
     expect(measured!.measures.volume).toBeCloseTo(4000 - 320, 4)
     expect(measured!.measures.bodies).toBe(1)
+  }, 240_000)
+
+  it('patterns a through_all cut source the way its blind equivalent builds', async () => {
+    // The source cut's tool is measured from the plate the copies will cut, not
+    // from the empty scratch store the pattern re-solves into. A cut never
+    // grows the plate, so every copy measures the same 5 mm thickness and the
+    // pattern matches the blind source with a distance past the plate.
+    const run = async (doc: PartDoc) => runHeadless({
+      doc,
+      steps: [step({
+        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+        source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0],
+      })],
+    })
+    const through = await run(slottedPlate({ distance: 1, termination: 'through_all' }))
+    const blind = await run(slottedPlate({ distance: 10 }))
+    expect(through.ok).toBe(true)
+    expect(through.features.find(problem => problem.id === 'pt1')).toBeUndefined()
+
+    const throughMeasured = await measureHeadless(through.doc!)
+    const blindMeasured = await measureHeadless(blind.doc!)
+    expect(throughMeasured?.ok).toBe(true)
+    expect(blindMeasured?.ok).toBe(true)
+    // 40 x 20 x 5 minus four 4 x 4 x 5 slots, each copy cutting the whole
+    // thickness even though the through_all source stores distance 1.
+    expect(throughMeasured!.measures.volume).toBeCloseTo(4000 - 4 * 4 * 5 * 4, 4)
+    expect(throughMeasured!.measures.volume).toBeCloseTo(blindMeasured!.measures.volume, 4)
   }, 240_000)
 
   it('reports a copy that misses the plate in the feature list', async () => {

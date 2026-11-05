@@ -227,7 +227,7 @@ onto a workplane, and the drawing's local coordinates are the sketch's own.
     distance: 10.0              # required; the legacy `depth` spelling is read as an alias
     direction: normal           # normal | reverse | symmetric
     operation: new              # new | add | cut
-    termination: blind          # blind | up_to
+    termination: blind          # blind | up_to | through_all
     up_to: "@body_ex1/face/0"   # up_to only: a plane, a planar face, a vertex query, or a sketch point ref
     merge_target: "@body_ex1"   # optional: the body the result fuses into
 ```
@@ -259,6 +259,15 @@ too. A `@<bodyId>/face/<n>` ref that no longer names a face (the body is gone,
 the index is out of range, or the remap fails) fails the feature instead, since
 that spelling is a persisted pick rather than a query. A non-planar face target
 and `direction: symmetric` are refused.
+
+`through_all` is a cut that is sized from the live bodies instead of from
+`distance`, which it ignores: a part that later grows is still cut through. With
+no `merge_target` every body is a candidate, and `merge_target` narrows both the
+measurement and the cut to one body. It needs a body to cut through, and
+`operation` must be `cut`; add, new and intersect are refused. `normal` and
+`reverse` sweep the measured length from the profile plane, and `symmetric`
+straddles the plane. A document that stores `through_all` needs a build that
+knows it (the format moves forward only).
 
 ### revolve
 

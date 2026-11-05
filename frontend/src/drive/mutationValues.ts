@@ -999,6 +999,20 @@ function addExtrude(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const problem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
   if (problem !== null) return invalid(problem)
   if (!isFiniteNumber(raw.distance)) return invalid(`distance must be a finite number, got ${json(raw.distance)}`)
+  // through_all sizes its tool from the live bodies, so it is a cut termination:
+  // a long additive or intersecting tool is not the operation the term
+  // describes. Refused at the boundary so the bad step never touches the
+  // document; the kernel refuses it too, so a set_extrude_field switch is a
+  // feature exception rather than a wrong tool. An absent operation is `add`.
+  if (raw.termination === 'through_all') {
+    const operation = (raw.operation as string | undefined) ?? 'add'
+    if (operation !== 'cut') {
+      return invalid(
+        `add_extrude field "termination": through_all is a cut termination; operation ${json(operation)} ` +
+          'cannot use it, set operation: "cut" or use termination: "blind" or "up_to"',
+      )
+    }
+  }
   // Every remaining inline field follows the extrude schema, so a field added
   // there is validated here without a second hand-kept key list. sketchQuery
   // and distance are the two the explicit checks above own.

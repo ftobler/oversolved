@@ -119,6 +119,25 @@ describe('up-to termination on both extrude rows', () => {
   })
 })
 
+describe('through-all termination on both extrude rows', () => {
+  it('names through_all, the ignored distance and the merge_target narrowing', () => {
+    for (const type of ['add_extrude', 'set_extrude_field'] as const) {
+      const note = mutationInfoOf(type).note!
+      expect(note, type).toContain('`termination: through_all`')
+      expect(note, type).toContain('`distance`, which it ignores')
+      expect(note, type).toContain('`merge_target` narrows the reach')
+      expect(note, type).toContain('`operation` must be `cut`')
+    }
+  })
+
+  it('lists through_all on the inline add field', () => {
+    const note = mutationInfoOf('add_extrude').fields.termination.note!
+    expect(note).toContain('blind | up_to | through_all')
+    expect(note).toContain('`distance` is ignored')
+    expect(note).toContain('`merge_target` narrows the reach')
+  })
+})
+
 describe('helix reply placement', () => {
   it('names the curves map and the start/end refs on add_helix', () => {
     const note = mutationInfoOf('add_helix').note!

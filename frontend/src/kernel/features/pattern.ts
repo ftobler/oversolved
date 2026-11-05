@@ -338,7 +338,7 @@ function resolveSource(
   if (kind === 'extrude' && (sub.termination as string) === 'up_to') {
     throw new Error(
       `pattern: the source feature '${sourceId}' terminates up_to, so its tool is trimmed once and the trim ` +
-        'would travel with every copy; pattern a blind extrude instead',
+        'would travel with every copy; pattern a blind or through_all extrude instead',
     )
   }
   return { id: sourceId, kind, feature }
@@ -455,15 +455,25 @@ function solveFeaturePattern(
   }
 
   const scratch: Record<string, Body> = {}
-  const toolFeature: Dict = {
-    ...source.feature,
-    id: source.id,
-    [source.kind]: { ...sourceSub, operation: 'new', merge_target: undefined },
-  }
-  delete (toolFeature[source.kind] as Dict).merge_target
+  // A through_all cut sizes its tool from the bodies its copies will cut, which
+  // is this solve's real store rather than the empty scratch one. The forced
+  // `new` is only how the tool is handed back, so the cut-only rule judges the
+  // source's own operation. Keep the source's merge_target so its own narrowing
+  // still applies; `new` ignores that key when it registers the tool.
+  const throughAllSource = source.kind === 'extrude' && (sourceSub.termination as string) === 'through_all'
+    ? { operation, bodies: bodyStore }
+    : undefined
+  const toolSub: Dict = { ...sourceSub, operation: 'new' }
+  if (throughAllSource === undefined) delete toolSub.merge_target
+  const toolFeature: Dict = { ...source.feature, id: source.id, [source.kind]: toolSub }
   const tools: Body[] = []
   try {
-    const built = TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
+    const built = source.kind === 'extrude'
+      ? solveExtrude(
+          oc, scope, table, toolFeature, globalRepo, scratch, undefined,
+          throughAllSource === undefined ? undefined : { ...solveContext, throughAllSource },
+        )
+      : TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
     if (built.status !== 'ok') {
       throw new Error(
         `pattern: the source feature '${source.id}' could not provide its tool: ` +

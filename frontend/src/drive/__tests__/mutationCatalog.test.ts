@@ -253,7 +253,7 @@ describe('mutation catalog', () => {
     expect(joined).toContain('operation: new|replace')
     expect(joined).toContain('operation: union|subtract|intersect')
     expect(joined).toContain('direction: normal|reverse|symmetric')
-    expect(joined).toContain('termination: blind|up_to')
+    expect(joined).toContain('termination: blind|up_to|through_all')
   })
 
   it('explains which way hole.direction drills, from the schema description', () => {

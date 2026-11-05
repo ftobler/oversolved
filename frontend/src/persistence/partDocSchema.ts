@@ -160,7 +160,7 @@ export const FEATURE_SCHEMA_BY_KIND = {
     required: ['sketch', 'distance'],
     properties: {
       sketch: REF_OR_LIST, distance: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse', 'symmetric'] },
-      termination: { enum: ['blind', 'up_to'] }, up_to: REF, operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
+      termination: { enum: ['blind', 'up_to', 'through_all'] }, up_to: REF, operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
     },
   }),
   revolve: feature('revolve', {

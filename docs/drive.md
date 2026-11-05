@@ -802,9 +802,11 @@ banner on stdout, so a client config must use the direct node invocation.
   `set_*_field` value note emits the enum members of every enum field in that
   kind's schema
   (`operation: add|cut|new`, `direction: normal|reverse|symmetric`,
-  `termination: blind|up_to`, `operation: new|replace`), and `add_plane`'s
-  `definition` carries the same shape the part-document schema serves (its
-  `mode` enum includes `offset`, and the common offset plane is
+  `termination: blind|up_to|through_all`, `operation: new|replace`), and an
+  extrude's `through_all` termination is a cut sized from the bodies it can
+  reach, so `distance` is ignored and `merge_target` narrows the reach to one
+  body. `add_plane`'s `definition` carries the same shape the part-document
+  schema serves (its `mode` enum includes `offset`, and the common offset plane is
   `{mode:"offset", plane:"@builtin_plane_top", offset:43}`). A multisection
   sweep is one `add_sweep_profile` per section and `multisection: true` in the
   add call (or a later `set_sweep_field {field:"multisection", value:true}`);
@@ -932,7 +934,9 @@ banner on stdout, so a client config must use the direct node invocation.
   an error. An add copy that does not touch the target becomes its own body; a
   cut copy that misses is still named. A source with `operation: new` or an
   `up_to` extrude is refused by name, because a new body is not "inside the
-  existing body" and an up_to trim would travel with every rigid copy.
+  existing body" and an up_to trim would travel with every rigid copy. A
+  through_all cut is a legal source: its tool is measured from the body the
+  copies will cut, so every copy clears the same thickness.
 - A sketch is one profile, and a profile fills even/odd: a loop nested inside
   another is a hole (a disc plus a circle becomes a washer), while loops that
   CROSS each other are filled as their union. A circle meant as a hole that

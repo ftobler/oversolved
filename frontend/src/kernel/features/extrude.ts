@@ -22,6 +22,8 @@ import { collectExtrudeLoops } from './faceProfile'
 import { resolveDirection } from './shared/directionQuery'
 import { registerTopFace } from './shared/topFace'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
+import { resolveBodyIds } from './shared/bodyResolution'
+import { bodyFrame, projectedRadius } from './shared/bodyExtent'
 import { surfaceEntityIds } from './shared/bodyRef'
 import { openJointHint, profileAreaReport } from './shared/profileLoops'
 import { loopCentroid } from '../profileLoops'
@@ -119,6 +121,78 @@ function oppositeCutProbe(
   }
 }
 
+/**
+ * The pattern leaf re-solves a cut source with its operation forced to `new` in
+ * an empty scratch store, to hand the tool back for its copies. A through_all
+ * source cannot size its tool from that scratch store, and the forced operation
+ * is not the one the termination describes, so the caller states the authored
+ * operation and the bodies the copies will cut.
+ */
+export interface ThroughAllSource {
+  operation: 'add' | 'cut'
+  bodies: Record<string, Body>
+}
+
+/** The solve-context slot the pattern leaf's internal through_all tool build
+ *  fills. Every other caller leaves the through_all source out; the registry's
+ *  variable context rides the same slot, so its two keys are named here to keep
+ *  the shared context type assignable. extrude reads only the source. */
+interface ExtrudeSolveContext {
+  variables?: Record<string, number>
+  laterVariables?: Record<string, number>
+  throughAllSource?: ThroughAllSource
+}
+
+/** Normalize a plane normal or face normal for an AABB projection. */
+function unitDirection(v: number[]): Vec3 {
+  const length = Math.hypot(v[0], v[1], v[2])
+  if (!(length > 1e-12)) throw new Error('extrude: through_all needs a sweep direction')
+  return [v[0] / length, v[1] / length, v[2] / length]
+}
+
+/**
+ * The length a through-all cut must sweep: the union of the chosen bodies'
+ * edge-sampled AABBs projected onto the unit sweep direction, plus the hole's
+ * own relative margin (`length * 1e-3 + 1e-6`). `merge_target` narrows the
+ * measurement to the bodies it names; when it names no live body the whole
+ * store is measured and the body operation refuses the bad target afterwards.
+ *
+ * A body far away along the same axis inflates the tool. That is harmless for a
+ * cut because the extra length sits outside material, so do not add a lateral
+ * test here: it could silently under-size the tool.
+ */
+function throughAllSweepLength(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  bodyStore: Record<string, Body>,
+  mergeTarget: string | null,
+  direction: Vec3,
+): number {
+  const targeted = mergeTarget ? resolveBodyIds(mergeTarget, bodyStore) : []
+  const ids = targeted.length > 0 ? targeted : Object.keys(bodyStore)
+  let min = Infinity
+  let max = -Infinity
+  let measured = 0
+  for (const id of ids) {
+    const body = bodyStore[id]
+    if (body === undefined || body.shape === null) continue
+    const frame = bodyFrame(oc, scope, table.get<OccShape>(body.shape))
+    const centre = frame.center[0] * direction[0] + frame.center[1] * direction[1] + frame.center[2] * direction[2]
+    const radius = projectedRadius(frame, direction)
+    min = Math.min(min, centre - radius)
+    max = Math.max(max, centre + radius)
+    measured++
+  }
+  if (measured === 0) {
+    throw new Error(
+      'extrude: through_all needs a body to cut through; name merge_target or build the body first',
+    )
+  }
+  const span = max - min
+  return span + span * 1e-3 + 1e-6
+}
+
 /** Solve an extrude feature into the body store (mirrors `_solve_extrude`). */
 export function solveExtrude(
   oc: OccModule,
@@ -127,7 +201,16 @@ export function solveExtrude(
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
+  // The dispatch contract's two trailing slots: `featuresById` for the leaves
+  // that resolve other features, and the variable context for the ones that
+  // re-solve them. extrude reads neither (the slot is typed `unknown` so the
+  // ignored record does not re-add a loose feature shape to the ratchet), but
+  // the through_all tool build uses the context slot, so the arity stays the
+  // registry's.
+  _featuresById?: unknown,
+  solveContext?: ExtrudeSolveContext,
 ): ExtrudeResult {
+  const throughAllSource = solveContext?.throughAllSource
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.extrude as Dict) ?? {}
   const mergeTarget = (sub.merge_target as string) ?? null
@@ -300,6 +383,17 @@ export function solveExtrude(
   // Up-to termination: resolve the cut plane once, using a representative extrude
   // direction so a point target can take the extrude direction as its normal.
   const termination = (sub.termination as string) ?? 'blind'
+  // A through-all tool is sized from the bodies it cuts, which is meaningless
+  // for a tool that adds material or intersects it. The pattern leaf's internal
+  // tool build passes the authored operation because it forces `new` to get the
+  // tool back; every authored solve judges its own operation.
+  const terminationOperation = throughAllSource?.operation ?? operation
+  if (termination === 'through_all' && terminationOperation !== 'cut') {
+    throw new Error(
+      `extrude: through_all is a cut termination, but operation is ${terminationOperation}; ` +
+        'set operation: cut, or use termination: blind or up_to',
+    )
+  }
   const upToRef = (sub.up_to as string) ?? ''
   const usingFaces = cqFaces.length > 0 && allLoops.length === 0
   // One BRepAdaptor_Surface + BRepLProp_SLProps for the whole solve. Lazy, not
@@ -339,6 +433,29 @@ export function solveExtrude(
     // script may still publish the state before it picks a target. Silence
     // here read as an up-to that ignored its distance; name the fallback.
     upToWarning = 'extrude: up_to has no target; used blind distance'
+  }
+
+  // A through-all cut is sized from the bodies, not from the stored `distance`.
+  // The same length then feeds every direction: normal and reverse sweep it from
+  // the profile plane (over-reaching on one side when the plane sits inside the
+  // body, which cuts correctly and adds no material), and symmetric shifts the
+  // plane back by half and straddles it.
+  let sweepDistance = distance
+  if (termination === 'through_all') {
+    const frameNormal: Vec3 = usingFaces
+      ? profileNormal()
+      : (((firstPt?.normal as number[]) ?? [0, 0, 1]) as Vec3)
+    const sweepDir = direction === 'reverse'
+      ? (frameNormal.map((n) => -n) as Vec3)
+      : frameNormal
+    sweepDistance = throughAllSweepLength(
+      oc,
+      scope,
+      table,
+      throughAllSource?.bodies ?? bodyStore,
+      mergeTarget,
+      unitDirection(sweepDir),
+    )
   }
 
   let toolShape: OccShape
@@ -382,7 +499,7 @@ export function solveExtrude(
       names.faceNames = carryFaceNames(trimmed.faceOrigin, names.faceNames, null)
       scope.release(tool)
     } else if (direction === 'symmetric') {
-      const half = distance / 2.0
+      const half = sweepDistance / 2.0
       // Pair-first order preserved from the pre-disposal version: both halves
       // of a face fuse together, then into the running tool. Both halves' caps
       // sit inside the pair, so neither is seeded.
@@ -405,11 +522,11 @@ export function solveExtrude(
       toolShape = tool
     } else {
       const dir = direction === 'reverse' ? reverseVec : faceNormalVec
-      sweep = dir.map((c) => c * distance) as Vec3
+      sweep = dir.map((c) => c * sweepDistance) as Vec3
       toolShape = fuseChain(
         scope,
-        scope.track(prism(cqFaces[0], dir, distance, true)),
-        cqFaces.slice(1).map((f) => scope.track(prism(f, dir, distance, false))),
+        scope.track(prism(cqFaces[0], dir, sweepDistance, true)),
+        cqFaces.slice(1).map((f) => scope.track(prism(f, dir, sweepDistance, false))),
         fuse,
       )
     }
@@ -422,11 +539,13 @@ export function solveExtrude(
       normal,
       firstPt as PlaneLike,
       direction,
-      distance,
+      sweepDistance,
     )
     // Register the top face with the effective distance (after direction
-    // resolution) so reverse/symmetric extrudes place it correctly.
-    if (firstSurfaces !== undefined && firstPtData !== undefined) {
+    // resolution) so reverse/symmetric extrudes place it correctly. A
+    // through-all cut has no authored end, so there is no honest frame to
+    // register at the ignored distance.
+    if (termination !== 'through_all' && firstSurfaces !== undefined && firstPtData !== undefined) {
       registerTopFace(globalRepo, featureId, firstPtData, firstSurfaces, effectiveDistance)
     }
     const length = cutPlane !== null ? UP_TO_REACH : effectiveDistance
@@ -467,8 +586,9 @@ export function solveExtrude(
 
   // Editing handle: blind extrudes expose a draggable distance arrow anchored
   // at the profile centroid swept to the end face, so the grab point rides the
-  // face the distance moves. Up-to extrudes have no distance to drag.
-  if (termination !== 'up_to') {
+  // face the distance moves. Up-to and through-all have no authored distance to
+  // drag (through-all's length belongs to the bodies, not to the field).
+  if (termination === 'blind') {
     const grabDist = direction === 'symmetric' ? distance / 2 : distance
     let handleDir: number[] | null = null
     let handleBase: number[] | null = null
