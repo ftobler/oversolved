@@ -612,8 +612,8 @@ describeSolve('the captured orientation is what the solve holds', () => {
 
     const seed = partInstances(session.getDoc()).find(instance => instance.handle === 'b')!.transform
     const solved = poseOf(session, 'b')
-    // The captured offset is rounded to 0.001 mm and the roll to 0.001 deg, so
-    // the held pose is the seed within that authoring precision.
+    // The captured offset is rounded to the document's 1e-6 coordinate
+    // precision and the roll to 0.001 deg, so the held pose is the seed.
     for (const key of ['tx', 'ty', 'tz', 'qx', 'qy', 'qz', 'qw'] as const) {
       expect(Math.abs(solved[key] - seed[key]), key).toBeLessThan(1e-3)
     }

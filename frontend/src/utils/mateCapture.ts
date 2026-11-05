@@ -26,6 +26,14 @@ function round3(v: number): number {
   return Math.round(v * 1000) / 1000
 }
 
+/** The document's stored coordinate precision (1e-6, the same quantum the
+ *  mutation helpers round a persisted coordinate to), so a captured offset
+ *  reads like an authored coordinate. Also folds -0 to plain 0. */
+function round6(v: number): number {
+  const r = Math.round(v * 1e6) / 1e6
+  return r === 0 ? 0 : r
+}
+
 /**
  * A fixed mate's captured translation: the world delta between the two posed
  * anchors carried into A's own frame, `R_a^T (p_b - p_a)`, which is the frame
@@ -34,7 +42,8 @@ function round3(v: number): number {
  * identity, which is exactly the hand arithmetic this removes.
  *
  * A zero delta is the default (`offset` absent) and captures nothing, like a
- * default flip or angle, so the YAML stays clean.
+ * default flip or angle, so the YAML stays clean. A non-zero delta is rounded
+ * to the document's 1e-6 coordinate quantum.
  */
 function fixedCapturedOffset(
   poseA: { point: readonly number[] },
@@ -48,7 +57,7 @@ function fixedCapturedOffset(
     poseB.point[1] - poseA.point[1],
     poseB.point[2] - poseA.point[2],
   ])
-  const offset = { x: round3(delta[0]), y: round3(delta[1]), z: round3(delta[2]) }
+  const offset = { x: round6(delta[0]), y: round6(delta[1]), z: round6(delta[2]) }
   return offset.x === 0 && offset.y === 0 && offset.z === 0 ? undefined : offset
 }
 
