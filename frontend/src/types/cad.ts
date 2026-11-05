@@ -393,6 +393,9 @@ export interface BodyFeatureResult {
   failed_faces?: string[]
   mesh_warning?: string
   solver_warning?: string
+  // An informational note on an otherwise good solve (a blend that ran along a
+  // tangent chain). Not a failure: featureFailure reads only solver_warning.
+  solver_note?: string
   solve_ms?: number
 }
 
@@ -1205,6 +1208,9 @@ export interface SketchData {
   // A fallback or no-op the kernel took on an otherwise good solve, read by
   // featureFailure as a warning.
   solver_warning?: string
+  // Informational text about geometry the solve did build (a blend's tangent
+  // chain); it is not a failure and the tree shows no mark for it.
+  solver_note?: string
   mesh_warning?: string
   // Per-pick verdicts of a partial result, marked on the pick chips.
   unresolved_edges?: string[]

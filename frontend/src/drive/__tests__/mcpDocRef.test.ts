@@ -174,6 +174,14 @@ describe('runReply', () => {
     )
   })
 
+  it('carries the informational notes, and omits the key when the list is empty', () => {
+    const documents = new DocHandleStore()
+    const notes = [{ ids: ['fi1'], text: 'fillet: the picked edges continue along the tangent chain' }]
+    expect(runReply({ ...source, notes }, false, documents).notes).toEqual(notes)
+    expect(runReply({ ...source, notes: [] }, false, documents)).not.toHaveProperty('notes')
+    expect(runReply(source, false, documents)).not.toHaveProperty('notes')
+  })
+
   it('says a refused first step was not solved and never lists a consumed body', () => {
     const consumed = {
       version: 1,

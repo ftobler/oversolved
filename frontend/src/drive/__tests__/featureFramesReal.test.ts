@@ -175,4 +175,60 @@ describe.skipIf(!ready)('feature frames (real OCC + Rust solver)', () => {
     expect(measured).not.toBeNull()
     expect(Object.keys(measured!.frames).sort()).toEqual(['sk1', 'sk2'])
   }, 240_000)
+
+  it('names two sketches on one face query once a feature between them moved the face', async () => {
+    // ANC101 F2: sk8 sits on the canted face, a boss removes part of that face,
+    // and sk9 is drawn on the same stored query. Each sketch is internally
+    // consistent, but the pair is 0.12 mm apart and the bore would be eccentric.
+    const plate = await runHeadless({
+      doc: emptyDoc(),
+      steps: [
+        { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' } },
+        { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [40, 30] } },
+        { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, operation: 'new' } },
+      ],
+    })
+    expect(plate.ok).toBe(true)
+    const faces = (await selectHeadless(plate.doc!, {
+      kind: 'face',
+      where: { and: [{ parallel: [0, 0, 1] }, { extreme: { axis: [0, 0, 1], side: 'max' } }] },
+    }))!.queries
+    expect(faces).toHaveLength(1)
+
+    // A boss off the face centre consumes area from the face, so its centroid
+    // (the plane origin) moves before the bore sketch is drawn.
+    const boss = await runHeadless({
+      doc: plate.doc!,
+      steps: [
+        { mutation: { type: 'add_sketch', featureId: 'sk2', plane: faces[0] } },
+        { mutation: { type: 'add_entity', featureId: 'sk2', kind: 'circle', params: [5, 0, 3] } },
+        { mutation: { type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 3, operation: 'add' } },
+      ],
+    })
+    expect(boss.ok).toBe(true)
+    expect(boss.frames!.sk2).toBeDefined()
+
+    const bore = await runHeadless({
+      doc: boss.doc!,
+      steps: [
+        { mutation: { type: 'add_sketch', featureId: 'sk3', plane: faces[0] } },
+        { mutation: { type: 'add_entity', featureId: 'sk3', kind: 'circle', params: [5, 0, 1] } },
+      ],
+    })
+    expect(bore.ok).toBe(true)
+    expect(bore.features).toEqual([])
+    expect(bore.notes).toHaveLength(1)
+    expect(bore.notes[0].ids).toEqual(['sk2', 'sk3'])
+    expect(bore.notes[0].text).toContain(`sk2 and sk3 share the face query "${faces[0]}"`)
+    expect(bore.notes[0].text).toMatch(/their resolved origins differ by 0\.\d+ mm/)
+    // The run touched only sk3, so the reply's changed-only filter drops sk2;
+    // the conflict was still found in the full frames map before that filter.
+    expect(Object.keys(bore.frames ?? {})).toEqual(['sk3'])
+
+    // A measure resolves the same pair, so it reports the same conflict, and
+    // its frames map holds both origins the note compares.
+    const measured = await measureHeadless(bore.doc!)
+    expect(measured!.notes).toEqual(bore.notes)
+    expect(measured!.frames.sk3!.origin).not.toEqual(measured!.frames.sk2!.origin)
+  }, 120_000)
 })

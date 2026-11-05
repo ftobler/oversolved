@@ -20,7 +20,10 @@
 import type { PartDoc } from '@/types/cad'
 import type { BuildResponse } from '@/kernel/builderTypes'
 import { frameFromPlaneTransform } from '@/kernel/types3d'
+import { TOL_SELECT_DIRECTION } from '@/kernel/solverConstants'
 import { round } from '@/utils/yamlMutations/helpers'
+import { LENGTH_UNIT_LABEL, lengthUnitOf } from '@/utils/lengthUnit'
+import type { FeatureNote } from '@/drive/featureOutcome'
 
 export interface FeatureFrame {
   origin: number[]
@@ -137,4 +140,79 @@ export function featureFrames(
     frames[id] = frame
   }
   return frames
+}
+
+// The spelling a plane query groups by: a ref sigil is not part of the query,
+// so `$sk2` and `@sk2` name one plane.
+function planeKey(plane: string): string {
+  return plane.startsWith('$') || plane.startsWith('@') ? plane.slice(1) : plane
+}
+
+function axesMoved(a: readonly number[], b: readonly number[]): boolean {
+  return a.some((value, index) => Math.abs(value - (b[index] ?? value)) > TOL_SELECT_DIRECTION)
+}
+
+/**
+ * Two sketches drawn on one stored face query can resolve to different frames
+ * without a word in the document: the plane resolver re-derives a `?` face
+ * query's origin from the face centroid on every solve (resolveSketchPlane), so
+ * a feature between the two sketches that changed that face (a boss consuming
+ * part of it) moves the later sketch's frame. The document is internally
+ * consistent and the pair is not: a bore meant to sit inside a boss becomes
+ * eccentric.
+ *
+ * The frames map holds the answer for both sketches; grouping by the stored
+ * query is the only step that compares them. Emit one note per later sketch
+ * whose frame differs from the first sketch on the same query, naming both.
+ * A builtin plane or a plane-feature ref resolves to the same frame every time,
+ * so only a face query can produce a note in practice; the grouping does not
+ * depend on that, which keeps the check honest if a resolver changes.
+ *
+ * The distance is compared after the reply's own 6-decimal rounding, so a note
+ * never prints "differ by 0.000000"; an axes-only drift gets a wording that
+ * does not claim an origin distance.
+ */
+export function frameConflicts(
+  doc: PartDoc | null | undefined,
+  frames: FeatureFrameMap,
+): FeatureNote[] {
+  if (!doc) return []
+  const groups = new Map<string, { id: string; plane: string }[]>()
+  for (const feature of doc.features ?? []) {
+    if (feature.kind !== 'sketch') continue
+    const id = String(feature.id ?? '')
+    const plane = typeof feature.plane === 'string' ? feature.plane : ''
+    if (id === '' || plane === '' || frames[id] === undefined) continue
+    const key = planeKey(plane)
+    groups.set(key, [...(groups.get(key) ?? []), { id, plane }])
+  }
+  const unit = LENGTH_UNIT_LABEL[lengthUnitOf(doc.length_unit)]
+  const notes: FeatureNote[] = []
+  for (const group of groups.values()) {
+    if (group.length < 2) continue
+    const first = group[0]
+    const firstFrame = frames[first.id]
+    for (const sketch of group.slice(1)) {
+      const frame = frames[sketch.id]
+      const distance = round(Math.hypot(
+        frame.origin[0] - firstFrame.origin[0],
+        frame.origin[1] - firstFrame.origin[1],
+        frame.origin[2] - firstFrame.origin[2],
+      ))
+      const turned = axesMoved(firstFrame.x_axis, frame.x_axis)
+        || axesMoved(firstFrame.y_axis, frame.y_axis)
+      if (distance === 0 && !turned) continue
+      const what = distance !== 0
+        ? `their resolved origins differ by ${distance} ${unit}`
+        : 'their resolved in-plane axes differ'
+      notes.push({
+        ids: [first.id, sketch.id],
+        text: `${first.id} and ${sketch.id} share the face query "${first.plane}"; ${what}, `
+          + `so a feature between them changed that face and ${sketch.id}'s coordinates sit in a `
+          + `different frame. Sketch on a plane offset from the first sketch, or move ${sketch.id} `
+          + 'above that feature',
+      })
+    }
+  }
+  return notes
 }

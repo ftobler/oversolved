@@ -290,10 +290,10 @@ npm run drive -- replay repro.json
   `DocSession` and the real kernel, optionally writes the final document (`--out`)
   and the journal (`--repro`), and prints steps, document hash, solve state,
   `solved` (whether a settle was attempted), the
-  feature problems (`features`, see the MCP section), the document's `length_unit`
-  and the sketch and plane `frames` (also described there), which by default are
-  only the ones this call touched or moved; `--frames all` restores every
-  resolved frame. The `--out` format is
+  feature problems (`features`, see the MCP section), the informational
+  `notes`, the document's `length_unit` and the sketch and plane `frames` (also
+  described there), which by default are only the ones this call touched or
+  moved; `--frames all` restores every resolved frame. The `--out` format is
   chosen by the extension: `.json` writes JSON, anything else writes YAML. The
   `--out` path must resolve inside the project's `tmp/` or `bugreports/`
   (relative paths resolve against the repo root, not `frontend/`). `--repro`
@@ -331,8 +331,8 @@ npm run drive -- replay repro.json
   or `"changed"` keeps the aggregate record and drops this perBody table. The
   same `features`
   problem list `run` returns rides along (measuring builds every feature, so the
-  kernel's verdicts are already known), and so does the `frames` map, which a
-  measure reply carries in full (every resolved frame); a feature
+  kernel's verdicts are already known), and so do the `notes` and the `frames`
+  map, which a measure reply carries in full (every resolved frame); a feature
   with no verdict makes `ok` false, exactly as it does for `run`. Every length in
   a measure reply is in the document's `length_unit` (absent means millimetres),
   the same number the document stores; the reply names it as `length_unit`, and
@@ -355,9 +355,12 @@ npm run drive -- replay repro.json
   a reference would be meaningless.
 - `export` writes STEP or STL bytes to `--out` (default `tmp/out.<format>`),
   creating a missing parent directory. The reply carries the same `features`
-  problem list a run or measure reply does; a failed, partial or warned feature
+  problem list and `notes` a run or measure reply does; a failed, partial or
+  warned feature
   makes `ok` false and exits 1 while the file is still written, so a file that
-  differs from the document is never reported as a clean export. The reply names
+  differs from the document is never reported as a clean export. An
+  informational note does not enter that verdict: the file is the geometry the
+  note describes. The reply names
   `length_unit` (the document) and `file_unit: "mm"` (the bytes). STEP and STL
   are written in millimetres: a part document whose `length_unit` is `inch`
   being exported is scaled by 25.4, so the file's geometry is the physical size
@@ -418,10 +421,10 @@ banner on stdout, so a client config must use the direct node invocation.
 |---|---|---|
 | `commands` | optional `kind` (`part` default, or `assembly`) | the command catalog for that editor |
 | `mutations` | optional `kind` (`part` or `assembly`), optional `family` (`sketch`, `features`, `picks`, `part style`, `document`, `parts`, `mates`) | the mutation vocabularies grouped by family plus ready-to-run example scripts; no argument returns both whole (about 90 kB), a filter returns only that slice and an unknown family is refused with the valid list |
-| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `frames: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, featureDeltas, frames, length_unit, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
-| `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`frames`/`length_unit`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }`; under `detail: "summary"` or `"changed"` the aggregate measures, the solve verdict, and the mates and parts problem rows survive, and `perBody` and `instances` are dropped |
+| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `frames: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, notes, featureDeltas, frames, length_unit, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
+| `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`notes`/`frames`/`length_unit`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }`; under `detail: "summary"` or `"changed"` the aggregate measures, the solve verdict, and the mates and parts problem rows survive, and `perBody` and `instances` are dropped |
 | `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures, length_unit, compared_in }`; a failing row is data, not an MCP error |
-| `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `detail` (assembly), `docId`, `files` | writes the file, returns `{ ok, docHash, features, length_unit, file_unit, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }`; an assembly `detail: "summary"` (or `"changed"`) keeps the file fields, solve, problem rows and summary and drops `instances` |
+| `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `detail` (assembly), `docId`, `files` | writes the file, returns `{ ok, docHash, features, notes, length_unit, file_unit, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }`; an assembly `detail: "summary"` (or `"changed"`) keeps the file fields, solve, problem rows and summary and drops `instances` |
 | `select` | `doc` or `docHash`, `selector`, optional `detail` (`full` default, or `queries`), `docId`, `files` | `{ ok, docHash, count, queries, items? }`: the query strings a click would store, plus `count` and, in `full` detail, a geometry summary per item (`queries` omits `items`); part documents only |
 
 - `select` runs a predicate over the solved bodies and returns the exact query
@@ -552,7 +555,8 @@ banner on stdout, so a client config must use the direct node invocation.
   exception is a warning a later feature made moot: when a later union or merge
   fused the bodies a "the new solid also touches ..." warning named, the kernel
   moves that text to `resolved_warning` (exposed as `resolvedWarning` on the
-  outcome) and the feature is not listed. The
+  outcome) and the feature is not listed; the text rides the `notes` channel.
+  The
   `features` list carries every such feature in feature log order as
   `{ id, kind, status, message }`, where `message` is the kernel's own
   exception or warning text; it is always present and empty for a clean build.
@@ -570,7 +574,8 @@ banner on stdout, so a client config must use the direct node invocation.
   a `run` with `steps: []` is how to ask that document for its verdicts.
   `export` is the one reply whose `ok` is stricter than a run's: the file is
   the answer, so any feature in `features` (failed, partial or warned) makes it
-  `ok: false` even though the bytes are still written. An assembly export
+  `ok: false` even though the bytes are still written; a note does not change
+  that verdict. An assembly export
   carries `solve`, `mates`, `parts`, `instances` and `summary` like a measure,
   and is `ok: false` when the solve did not run or a mate or bound part reported
   a problem: the file then holds seed or best-effort poses, and the reply says
@@ -612,6 +617,16 @@ banner on stdout, so a client config must use the direct node invocation.
   frames, `frames: "all"` still reports only the changed delta rows, and the
   baseline solve is skipped only when both are `"all"`. `measure` is not
   filtered: it reports every resolved frame.
+- Informational notes ride beside the problem list as `notes`, a list of
+  `{ ids, text }` in feature log order. The key is omitted when there is no note
+  (unlike `features`, which is always present). A note is not a problem: it adds
+  no `features` row, never makes `ok` false and never drops a `featureDeltas`
+  row. A feature's own note carries its id once: the tangent chain a fillet or
+  chamfer ran along, with the chain and unpicked edge counts, and a warning a
+  later feature resolved. A note about a pair of sketches on one stored face
+  query carries both ids in log order, so it sorts at the later sketch. That
+  check reads every resolved frame before the changed-only filter, so a note can
+  name a sketch this call did not touch.
 - `run` with `steps: []` solves the given `doc` or `docHash` once and returns
   the same reply shape (the frame filter below still applies). It is the
   "inspect this document" call: the solve state has
@@ -783,9 +798,9 @@ banner on stdout, so a client config must use the direct node invocation.
   one axis given either as `rotation_axis` (a ref) or as `rotation_axis_origin`
   plus `rotation_axis_direction`; `add_fillet` takes all of `edges` and
   `radius` in the same call and continues along the pick's whole tangent chain
-  (one edge of a rounded loop rounds the loop), so the result carries a warning
-  with the chain and unpicked edge counts, which like every warning also makes
-  an export of that document `ok: false` with the bytes still written;
+  (one edge of a rounded loop rounds the loop), so the reply carries a `notes`
+  entry with the chain and unpicked edge counts; it is informational and does
+  not change an export's `ok`, because the geometry is what the pick produces;
   `add_shell` takes `faces`, `thickness` and
   `direction` in the same call, `thickness` is a positive magnitude with
   `direction` carrying the side, and its wall joins with sharp edges, so an
@@ -944,7 +959,12 @@ banner on stdout, so a client config must use the direct node invocation.
   threw (status `exception`) has no entry because it produced no frame-bearing
   result; an overconstrained sketch still reports the plane it solved on.
   `{origin, x_axis, y_axis, normal}` is world space, Y-up, in the same frame the
-  document and `compare` use.
+  document and `compare` use. Two sketches drawn on one stored face query resolve
+  that query at their own position in the log, so a feature between them that
+  changed the face moves the later sketch's frame; when their frames differ, the
+  reply's `notes` names both sketches and the origin distance (or the axes, when
+  only those moved). That check reads every resolved sketch before the
+  changed-only filter, so it also fires on a call that touched neither sketch.
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; a user error a valid request reaches (an unknown export `body`, a

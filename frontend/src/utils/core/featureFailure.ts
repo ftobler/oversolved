@@ -51,7 +51,9 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== 
  * red of an `exception`. A `solver_warning` on an otherwise 'ok' result is the
  * same kind of warning: the kernel took a fallback (an up-to target that did
  * not resolve became a blind distance) or the operation changed nothing, and
- * that note is the only trace of it.
+ * that note is the only trace of it. A `solver_note` is deliberately not read:
+ * it reports geometry the solve did build (a blend's tangent chain), so it is
+ * informational and gets no mark.
  */
 export function featureFailure(
   featureId: string,

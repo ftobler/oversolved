@@ -22,9 +22,9 @@ import { selectByPredicate, validateSelector, type SelectResult } from '@/kernel
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import { createHeadlessPart, type HeadlessCheckpoint, type HeadlessPart } from '@/drive/headlessPart'
-import { featureProblems, readSolveOutcomes, MISSING_VERDICT_STATUS, type FeatureProblem } from '@/drive/featureOutcome'
+import { featureProblems, featureNotes, readSolveOutcomes, MISSING_VERDICT_STATUS, type FeatureNote, type FeatureProblem } from '@/drive/featureOutcome'
 import { featureDeltaRows, touchedFeatureIds, type FeatureDelta } from '@/drive/featureDeltas'
-import { featureFrames, type FeatureFrameMap } from '@/drive/featureFrames'
+import { featureFrames, frameConflicts, type FeatureFrameMap } from '@/drive/featureFrames'
 import { partSolvePayload } from '@/drive/solveWriteBack'
 import { docHashOf } from '@/drive/docHash'
 import type { CommandJournal } from '@/drive/journal'
@@ -104,6 +104,11 @@ export interface HeadlessRunResult {
   // is always present: an empty list is the clean-build answer, and a run that
   // never settled has no verdicts to report, so it is empty there too.
   features: FeatureProblem[]
+  // The informational notes of the final solve: a built feature's own text
+  // (the tangent chain a blend ran along, a warning a later feature resolved)
+  // plus a same-query frame conflict the drive derived. Never a problem and
+  // never a delta exclusion; always present, empty for a clean build.
+  notes: FeatureNote[]
   // Volume and bbox for the features this run changed or touched, with the
   // change from the previous checkpoint. Null when the final solve exposed no
   // measurable checkpoints (no kernel); a failed or partial feature has no row,
@@ -160,6 +165,13 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     }
   }
   const features = doc !== null && solved ? featureProblems(doc, part.solveOutcomes()) : []
+  // The conflict check reads the FULL frames map, before the reply's
+  // changed-only filter drops entries: the two sketches need not be touched by
+  // this call to be inconsistent.
+  const allFrames = part.featureFrames()
+  const notes = doc !== null && solved
+    ? featureNotes(doc, part.solveOutcomes(), allFrames === null ? [] : frameConflicts(doc, allFrames))
+    : []
   // A missing verdict means the settle did not answer for a feature at all;
   // that is a failed run, unlike a feature that answered `exception` (data the
   // caller reads from `features`). Without this the wedged-kernel reply was
@@ -175,6 +187,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     solve: measureFault === null ? solve : { ...solve, lastError: measureFault },
     bodies: part.bodyIds(),
     features,
+    notes,
     featureDeltas: doc !== null && measures !== null
       ? featureDeltaRows(doc, measures, part.solveOutcomes(), {
           baseline: baseline?.measures ?? null,
@@ -234,6 +247,10 @@ export interface HeadlessMeasure {
   // The same problem list a `run` reply carries: measuring builds every
   // feature, so a bore that cut nothing is already known here.
   features: FeatureProblem[]
+  // The same informational notes a `run` reply carries, the frame conflict
+  // included: measuring resolves every sketch, so a pair that drifted is
+  // visible without rebuilding.
+  notes: FeatureNote[]
   // The resolved frames of every sketch and add_plane feature, the same map a
   // `frames: "all"` run reply carries.
   frames: FeatureFrameMap
@@ -243,12 +260,15 @@ export interface HeadlessMeasure {
 export async function measureHeadless(doc: PartDoc, opts: HeadlessMeasureOptions = {}): Promise<HeadlessMeasure | null> {
   const built = await buildAndMeasureLocally(partSolvePayload(doc, opts.docId ?? 'headless'), opts.files)
   if (built === null) return null
-  const features = featureProblems(doc, readSolveOutcomes(built.response.result))
+  const outcomes = readSolveOutcomes(built.response.result)
+  const features = featureProblems(doc, outcomes)
+  const frames = featureFrames(doc, built.response.result)
   return {
     ok: !features.some(problem => problem.status === MISSING_VERDICT_STATUS),
     measures: built.measures,
     features,
-    frames: featureFrames(doc, built.response.result),
+    notes: featureNotes(doc, outcomes, frameConflicts(doc, frames)),
+    frames,
   }
 }
 
@@ -343,6 +363,10 @@ export interface HeadlessExport {
   // The features the export build did not finish cleanly, in feature log
   // order; the same list a run or measure reply carries.
   features: FeatureProblem[]
+  // The same informational notes a run or measure reply carries. Notes do not
+  // enter `ok`: they describe geometry the file holds, so a chain note leaves
+  // the export clean.
+  notes: FeatureNote[]
   // An export's ok is stricter than a run's: the file is the answer, so any
   // failed, partial or warned feature makes it a different model than the
   // document describes. It stays separate from the file itself: the caller
@@ -355,10 +379,17 @@ export async function exportHeadless(doc: PartDoc, opts: HeadlessExportOptions):
   const { docId, files, ...exportOpts } = opts
   const outcome = await exportLocallyInspect(partSolvePayload(doc, docId ?? 'headless'), exportOpts, files)
   if (outcome === null) return null
-  const features = featureProblems(doc, readSolveOutcomes(outcome.response.result))
+  const outcomes = readSolveOutcomes(outcome.response.result)
+  const features = featureProblems(doc, outcomes)
+  const frames = featureFrames(doc, outcome.response.result)
   // No file is not a successful export: ok names the outcome the caller acts
   // on, and callers keep their own bytes guard for the message.
-  return { bytes: outcome.bytes, features, ok: outcome.bytes !== null && features.length === 0 }
+  return {
+    bytes: outcome.bytes,
+    features,
+    notes: featureNotes(doc, outcomes, frameConflicts(doc, frames)),
+    ok: outcome.bytes !== null && features.length === 0,
+  }
 }
 
 export interface HeadlessSelectOptions {

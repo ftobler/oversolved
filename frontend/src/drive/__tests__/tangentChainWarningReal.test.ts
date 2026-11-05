@@ -1,21 +1,23 @@
 // @vitest-environment node
 //
-// The tangent-chain warning on fillet/chamfer (plan
-// fillet-chamfer-tangent-chain). OCC continues a blend across a G1 joint, so a
-// single pick on a rounded loop edits the loop; the feature now says so instead
-// of reporting a clean `ok`. The Ex020 repro is the smallest case: a 3 x 3 x
-// 0.5 plate with R0.125 vertical fillets, then one top loop edge picked at
-// R0.1, which measured the whole 8-edge loop's volume with no warning.
+// The tangent-chain text on fillet/chamfer (plan fillet-chamfer-tangent-chain).
+// OCC continues a blend across a G1 joint, so a single pick on a rounded loop
+// edits the loop; the leaf says so in `solver_note`. That is informational, not
+// a warning: the geometry is what the pick produces, so the feature stays out of
+// the reply's `features` list, keeps its `featureDeltas` row, and an export of
+// the document stays `ok: true`. The Ex020 repro is the smallest case: a
+// 3 x 3 x 0.5 plate with R0.125 vertical fillets, then one top loop edge picked
+// at R0.1, which measured the whole 8-edge loop's volume.
 //
-// The warning is checked against the geometry it describes: the one-pick
-// result must equal the all-8-picks result, so the count is not a guess. A
-// refused pick is named separately and keeps its chain out of the count.
+// The note is checked against the geometry it describes: the one-pick result
+// must equal the all-8-picks result, so the count is not a guess. A refused pick
+// is named separately and keeps its chain out of the count.
 //
 // Real kernel, gated like the other drive suites.
 
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
-import { runHeadless, measureHeadless, selectHeadless, emptyDriveDoc } from '../headlessOps'
+import { runHeadless, measureHeadless, selectHeadless, exportHeadless, emptyDriveDoc } from '../headlessOps'
 import { partSolvePayload } from '../solveWriteBack'
 import { solveLocally, setOccLoader } from '@/kernel/solveLocally'
 import type { ScriptStep } from '../scriptRunner'
@@ -93,17 +95,22 @@ async function topLoop(doc: PartDoc): Promise<string[]> {
   return edges
 }
 
-describe.skipIf(!ready)('fillet/chamfer tangent-chain warning (real OCC + Rust solver)', () => {
-  it('one top edge of a filleted plate warns that the whole 8-edge loop was filleted', async () => {
+describe.skipIf(!ready)('fillet/chamfer tangent-chain note (real OCC + Rust solver)', () => {
+  it('one top edge of a filleted plate notes the whole 8-edge loop, and the export stays clean', async () => {
     const one = await plate()
     const loop = await topLoop(one)
     const single = await apply(one, { type: 'add_fillet', featureId: 'fi2', edges: [loop[0]], radius: 0.1 })
-    expect(single.problem?.status).toBe('ok')
-    expect(single.problem?.message).toBe(
-      'fillet: the picked edges continue along the tangent chain, so 8 edges were filleted (7 of them not picked)',
-    )
+    const chainNote = 'fillet: the picked edges continue along the tangent chain, so 8 edges were filleted (7 of them not picked)'
+    // The chain is a note, not a problem: no `features` row and no summary
+    // suffix. The volume contribution is still visible as a delta row.
+    expect(single.problem).toBeUndefined()
+    expect(single.result.features).toEqual([])
+    expect(single.result.notes).toEqual([{ ids: ['fi2'], text: chainNote }])
+    const row = single.result.featureDeltas?.find(row => row.id === 'fi2')
+    expect(row).toBeDefined()
+    expect(row!.volumeDelta).toBeLessThan(0)
 
-    // The warning reports what happened: one pick and the whole loop measure the
+    // The note reports what happened: one pick and the whole loop measure the
     // same body. Only the volume comparison can prove the chain was taken.
     const all = await plate()
     const whole = await apply(all, { type: 'add_fillet', featureId: 'fi2', edges: await topLoop(all), radius: 0.1 })
@@ -111,23 +118,34 @@ describe.skipIf(!ready)('fillet/chamfer tangent-chain warning (real OCC + Rust s
     const singleVolume = await volume(single.result.doc as PartDoc)
     expect(singleVolume).toBeCloseTo(await volume(whole.result.doc as PartDoc), 5)
     expect(singleVolume).toBeLessThan(4.5)
+
+    // A note does not enter the export verdict: the file is the loop's model.
+    const exported = await exportHeadless(single.result.doc as PartDoc, { format: 'step' })
+    expect(exported!.ok).toBe(true)
+    expect(exported!.bytes!.byteLength).toBeGreaterThan(0)
+    expect(exported!.notes).toEqual([{ ids: ['fi2'], text: chainNote }])
   }, 120_000)
 
   it('a chamfer propagates the same way and says so', async () => {
     const one = await plate()
     const single = await apply(one, { type: 'add_chamfer', featureId: 'ch2', edges: [(await topLoop(one))[0]], distance: 0.1 })
-    expect(single.problem?.status).toBe('ok')
-    expect(single.problem?.message).toBe(
-      'chamfer: the picked edges continue along the tangent chain, so 8 edges were chamfered (7 of them not picked)',
-    )
+    const chainNote = 'chamfer: the picked edges continue along the tangent chain, so 8 edges were chamfered (7 of them not picked)'
+    expect(single.problem).toBeUndefined()
+    expect(single.result.features).toEqual([])
+    expect(single.result.notes).toEqual([{ ids: ['ch2'], text: chainNote }])
+    expect(single.result.featureDeltas?.find(row => row.id === 'ch2')?.volumeDelta).toBeLessThan(0)
 
     const all = await plate()
     const whole = await apply(all, { type: 'add_chamfer', featureId: 'ch2', edges: await topLoop(all), distance: 0.1 })
     expect(whole.problem).toBeUndefined()
     expect(await volume(single.result.doc as PartDoc)).toBeCloseTo(await volume(whole.result.doc as PartDoc), 5)
+
+    const exported = await exportHeadless(single.result.doc as PartDoc, { format: 'step' })
+    expect(exported!.ok).toBe(true)
+    expect(exported!.notes).toEqual([{ ids: ['ch2'], text: chainNote }])
   }, 120_000)
 
-  it('a sharp corner is not a chain: one box edge reports no warning', async () => {
+  it('a sharp corner is not a chain: one box edge reports no note', async () => {
     const doc = await build([
       m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' }),
       m({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] }),
@@ -137,6 +155,7 @@ describe.skipIf(!ready)('fillet/chamfer tangent-chain warning (real OCC + Rust s
     expect(edges).toHaveLength(4)
     const fillet = await apply(doc, { type: 'add_fillet', featureId: 'fi1', edges: [edges[0]], radius: 1 })
     expect(fillet.problem).toBeUndefined()
+    expect(fillet.result.notes).toEqual([])
   }, 120_000)
 
   it('a refused pick is named, while the applied pick still reports its chain', async () => {
@@ -174,12 +193,39 @@ describe.skipIf(!ready)('fillet/chamfer tangent-chain warning (real OCC + Rust s
     const fillet = await apply(doc, { type: 'add_fillet', featureId: 'fi2', edges: [line[0], boss[0]], radius: 0.5 })
     expect(fillet.problem?.status).toBe('partial')
     expect(fillet.problem?.message).toContain('edge(s) could not be applied')
+    // A partial feature stays a problem row; the chain it did take rides the
+    // note channel beside it.
+    expect(fillet.result.features).toContainEqual(expect.objectContaining({ id: 'fi2', status: 'partial' }))
+    const chainNote = 'fillet: the picked edges continue along the tangent chain, so 4 edges were filleted (3 of them not picked)'
+    expect(fillet.result.notes).toEqual([{ ids: ['fi2'], text: chainNote }])
 
     const response = await solveLocally(partSolvePayload(fillet.result.doc as PartDoc, 'tangent-chain-partial'))
-    const row = response?.result.fi2 as { status?: string; solver_warning?: string } | undefined
+    const row = response?.result.fi2 as { status?: string; solver_warning?: string; solver_note?: string } | undefined
     expect(row?.status).toBe('partial')
-    expect(row?.solver_warning).toBe(
-      'fillet: the picked edges continue along the tangent chain, so 4 edges were filleted (3 of them not picked)',
-    )
+    expect(row?.solver_note).toBe(chainNote)
+    expect(row?.solver_warning).toBeUndefined()
+  }, 120_000)
+
+  it('a real fallback warning still lists the feature and makes the export ok false', async () => {
+    // An up_to extrude with no target falls back to its blind distance. That is
+    // exactly the warning channel the note is kept apart from.
+    const result = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [
+        ...PLATE,
+        m({ type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_front' }),
+        m({ type: 'add_rect', featureId: 'sk2', p0: [1, 1], p1: [2, 2] }),
+        m({ type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 0.25, termination: 'up_to', operation: 'add' }),
+      ],
+    })
+    const problem = result.features.find(feature => feature.id === 'ex2')
+    expect(problem?.status).toBe('ok')
+    expect(problem?.message).toContain('up_to has no target; used blind distance')
+    expect(result.notes).toEqual([])
+
+    const exported = await exportHeadless(result.doc as PartDoc, { format: 'step' })
+    expect(exported!.ok).toBe(false)
+    expect(exported!.bytes!.byteLength).toBeGreaterThan(0)
+    expect(exported!.features).toContainEqual(expect.objectContaining({ id: 'ex2', status: 'ok' }))
   }, 120_000)
 })

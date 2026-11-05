@@ -17,10 +17,15 @@ export interface FeatureOutcome {
   // The kernel's fallback or no-op note on an otherwise good solve, e.g. a
   // hole whose every drill site missed.
   warning?: string
+  // An informational note on a clean solve: the geometry is what the document
+  // asks for and the text only measures it, e.g. the tangent chain a fillet
+  // ran along. Neither a problem nor a warning, so it never makes `ok` false
+  // and never leaves the feature out of the delta rows.
+  note?: string
   // A warning an earlier feature emitted that a later feature made moot, e.g.
   // an "also touches ... add a boolean union" the later union resolved. The
-  // problem list ignores it; it stays available to a caller that wants to show
-  // the history.
+  // problem list ignores it; the note channel reports it so the history is
+  // visible without calling it a failure.
   resolvedWarning?: string
   // The side a hole drilled, as the kernel resolved it. A through hole under
   // `normal` drills wherever its sites find material, so this can differ from
@@ -38,6 +43,17 @@ export interface FeatureProblem {
   kind: string
   status: string
   message: string
+}
+
+/**
+ * One informational note about the solve, in the reply's `notes` list. The
+ * text is the kernel's own or the drive's, and the ids name the features it is
+ * about in feature log order: a solve note names its feature, a same-query
+ * frame conflict names both sketches and therefore sorts at the later one.
+ */
+export interface FeatureNote {
+  ids: string[]
+  text: string
 }
 
 // The statuses that are a pass or a chosen state rather than a failure. The
@@ -63,7 +79,8 @@ export const MISSING_VERDICT_MESSAGE = 'no verdict from the solve'
 /**
  * Whether a per-feature outcome is something the caller must read. A warning
  * alone is a problem too: the kernel took a fallback or removed no material,
- * which is exactly the silent success this reply exists to surface.
+ * which is exactly the silent success this reply exists to surface. An
+ * informational `note` is not: it describes geometry the solve did build.
  */
 export function isFeatureProblem(outcome: FeatureOutcome): boolean {
   return outcome.warning !== undefined || !NON_PROBLEM_STATUSES.has(outcome.status)
@@ -92,12 +109,13 @@ export function readSolveOutcomes(
   for (const [id, feature] of Object.entries(result ?? {})) {
     if (typeof feature !== 'object' || feature === null) continue
     const row = feature as {
-      status?: unknown; exception?: unknown; solver_warning?: unknown
+      status?: unknown; exception?: unknown; solver_warning?: unknown; solver_note?: unknown
       resolved_warning?: unknown; direction?: unknown; body_id?: unknown
     }
     if (typeof row.status !== 'string') continue
     const exception = typeof row.exception === 'string' && row.exception !== '' ? row.exception : undefined
     const warning = typeof row.solver_warning === 'string' && row.solver_warning !== '' ? row.solver_warning : undefined
+    const note = typeof row.solver_note === 'string' && row.solver_note !== '' ? row.solver_note : undefined
     const resolvedWarning = typeof row.resolved_warning === 'string' && row.resolved_warning !== ''
       ? row.resolved_warning
       : undefined
@@ -109,6 +127,7 @@ export function readSolveOutcomes(
       status: row.status,
       ...(exception !== undefined && { exception }),
       ...(warning !== undefined && { warning }),
+      ...(note !== undefined && { note }),
       ...(resolvedWarning !== undefined && { resolvedWarning }),
       ...(direction !== undefined && { direction }),
       ...(bodyId !== undefined && { bodyId }),
@@ -170,6 +189,52 @@ export function featureProblems(
     })
   }
   return problems
+}
+
+/**
+ * The informational notes of a solve, in feature log order. A feature can
+ * contribute two: the kernel's own informational text and a warning an earlier
+ * feature made moot. `extra` carries the notes the drive derives itself (the
+ * same-query frame conflict), which name more than one feature and sort at the
+ * last id they name.
+ *
+ * Notes are not problems: a note never adds a `features` row, never makes `ok`
+ * false and never drops a delta row. An empty list is the clean answer.
+ */
+export function featureNotes(
+  doc: PartDoc,
+  outcomes: Record<string, FeatureOutcome>,
+  extra: readonly FeatureNote[] = [],
+): FeatureNote[] {
+  const notes: FeatureNote[] = []
+  const features = doc.features ?? []
+  for (const feature of features) {
+    const id = typeof feature.id === 'string' ? feature.id : ''
+    if (id === '') continue
+    if (BUILTIN_FEATURE_IDS.has(id)) continue
+    if (feature.suppressed === true) continue
+    const outcome = outcomes[id]
+    if (outcome === undefined) continue
+    if (outcome.note !== undefined) notes.push({ ids: [id], text: outcome.note })
+    // The same informational class: the warning was real when it fired and a
+    // later feature resolved it. The problem list already ignores it, so the
+    // note channel is where a caller can still read what happened.
+    if (outcome.resolvedWarning !== undefined) notes.push({ ids: [id], text: outcome.resolvedWarning })
+  }
+  for (const note of extra) {
+    if (note.ids.length === 0 || note.text === '') continue
+    notes.push({ ids: [...note.ids], text: note.text })
+  }
+  // Stable, so two notes on one feature keep the order above. A note naming an
+  // id the document does not hold still reaches the caller, at the end.
+  const position = new Map<string, number>()
+  features.forEach((feature, index) => {
+    if (typeof feature.id === 'string') position.set(feature.id, index)
+  })
+  const docLength = features.length
+  const lastPosition = (note: FeatureNote): number =>
+    note.ids.map(id => position.get(id) ?? docLength).reduce((a, b) => Math.max(a, b), -1)
+  return notes.sort((a, b) => lastPosition(a) - lastPosition(b))
 }
 
 /** One problem as it appears in the reply's one-line summary. */

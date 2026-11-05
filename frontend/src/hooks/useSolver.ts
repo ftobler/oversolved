@@ -98,6 +98,7 @@ export function useSolver(
       value?: number
       exception?: string
       solver_warning?: string
+      solver_note?: string
       mesh_warning?: string
       unresolved_edges?: string[]
       failed_edges?: string[]
@@ -201,6 +202,11 @@ export function useSolver(
           // The feature status and the pick chips read these; this seam is
           // where they were lost (see useSolver.resultFields.test.ts).
           ...(feature.solver_warning !== undefined && { solver_warning: feature.solver_warning }),
+          // An informational note (the tangent chain a blend ran along) is
+          // copied so the value is not dropped at this seam; the tree ignores
+          // it, because it is not a failure and `StatusLevel` has no
+          // informational level yet.
+          ...(feature.solver_note !== undefined && { solver_note: feature.solver_note }),
           ...(feature.mesh_warning !== undefined && { mesh_warning: feature.mesh_warning }),
           ...(feature.unresolved_edges !== undefined && { unresolved_edges: feature.unresolved_edges }),
           ...(feature.failed_edges !== undefined && { failed_edges: feature.failed_edges }),

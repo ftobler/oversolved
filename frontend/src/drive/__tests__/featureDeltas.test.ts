@@ -70,6 +70,19 @@ describe('featureDeltaRows', () => {
     expect(rows[2].volumeDelta).toBe(14000 - 11922.743)
   })
 
+  it('keeps a noted feature\'s row: a note is not a warning', () => {
+    // A tangent-chain note describes geometry the feature built, so it must not
+    // drop the row or report a warning the row cannot carry.
+    const outcomes: Record<string, FeatureOutcome> = {
+      ...CLEAN,
+      fi1: { status: 'ok', note: 'fillet: the picked edges continue along the tangent chain' },
+    }
+    const rows = featureDeltaRows(DOC, MEASURES, outcomes)
+    expect(rows.map(row => row.id)).toEqual(['sk1', 'ex1', 'fi1', 'ex2'])
+    expect(rows[2]).toMatchObject({ id: 'fi1', status: 'ok' })
+    expect(rows[2]).not.toHaveProperty('warning')
+  })
+
   it('gives partial and overconstrained outcomes no row but keeps a suppressed one', () => {
     for (const status of ['exception', 'partial', 'overconstrained'] as const) {
       const outcomes: Record<string, FeatureOutcome> = { ...CLEAN, ex1: { status } }

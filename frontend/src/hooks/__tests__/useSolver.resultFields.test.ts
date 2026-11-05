@@ -104,6 +104,17 @@ describe('applySolveResult -- fields the feature tree reads', () => {
     expect(result.current.solveResults.ex1).toMatchObject({ solver_warning: 'used blind distance', mesh_warning: 'no shape' })
   })
 
+  it('keeps an informational solver note, even though the tree does not mark it', async () => {
+    // A tangent-chain note describes geometry the solve did build. It is
+    // dropped here only if this seam forgets it; featureFailure ignores it.
+    const result = setupHook()
+    await solveWith(result, {
+      ex1: { status: 'ok', body_id: 'body_ex1', solver_note: 'fillet: the picked edges continue along the tangent chain' },
+    })
+    expect(result.current.solveResults.ex1.solver_note)
+      .toBe('fillet: the picked edges continue along the tangent chain')
+  })
+
   it('keeps per-entity constraint status, defaulting a missing one', async () => {
     const result = setupHook()
     await solveWith(result, {
