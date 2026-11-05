@@ -333,8 +333,9 @@ npm run drive -- replay repro.json
   or `"changed"` keeps the aggregate record and drops this perBody table. The
   same `features`
   problem list `run` returns rides along (measuring builds every feature, so the
-  kernel's verdicts are already known), and so do the `notes` and the `frames`
-  map, which a measure reply carries in full (every resolved frame); a feature
+  kernel's verdicts are already known), and so do the `notes`, the `frames`
+  map, which a measure reply carries in full (every resolved frame), and the
+  `curves` map of every resolved helix; a feature
   with no verdict makes `ok` false, exactly as it does for `run`. Every length in
   a measure reply is in the document's `length_unit` (absent means millimetres),
   the same number the document stores; the reply names it as `length_unit`, and
