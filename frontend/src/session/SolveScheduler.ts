@@ -20,6 +20,10 @@ export type SolveOutcome =
   | { generation: number; status: 'applied' }
   // A newer request was issued before this one settled; the result was dropped.
   | { generation: number; status: 'superseded' }
+  // The request was recorded as the solve still owed and not started yet (the
+  // headless scheduler's deferral). The generation is the last one actually
+  // solved, because a queued request has not consumed a generation.
+  | { generation: number; status: 'queued' }
   | { generation: number; status: 'error'; error: string }
 
 export interface SolveSchedulerState {

@@ -156,10 +156,13 @@ build, because the recovery autosave reads the tail):
 
 - The session reports each apply it lands with the docs as they stood before
   and after, synchronously inside the apply and before any solve can write
-  back; the sink hashes them there. That is what makes drawing and gestures
-  (which dispatch mutations without a command) journaled, and what keeps the
-  solver write-back out (it never goes through the session). A no-op apply
-  (hashes equal) records nothing.
+  back; the sink hashes them there. The entry hash is the authored projection
+  (`authoredHashOf`: the document without `part_style` and each feature's
+  `initial`), so it is invariant under the solve write-back and a deferred run
+  chains the same way a settled one does. That is what makes drawing and
+  gestures (which dispatch mutations without a command) journaled, and what
+  keeps the solver write-back out (it never goes through the session). A no-op
+  apply (whole-document hashes equal) records nothing.
 - An apply that lands while a solve is pending or running is marked
   `unsettled: true`: the live doc is still authored at that moment, so a
   replay (which settles each step) reaches a baked state this entry cannot
@@ -173,7 +176,10 @@ build, because the recovery autosave reads the tail):
   suffix with a matching baseline.
 - `docHashOf` is the one canonical document hash: `stableJson` (the checkpoint
   serializer from `frontend/src/kernel/builderHash.ts`) hashed with
-  `sha256Hex`. The dirty fingerprint over saved YAML text
+  `sha256Hex`. `authoredHashOf` hashes the same way over a shallow projection
+  without `part_style` and each feature's `initial`, the two fields the solve
+  write-back writes; a repro's baseline and final hash stay the full hash. The
+  dirty fingerprint over saved YAML text
   (`frontend/src/session/dirty.ts`) is a different mechanism on the save path.
 
 `repro()` returns the payload `downloadRepro` writes:
@@ -181,7 +187,7 @@ build, because the recovery autosave reads the tail):
 ```jsonc
 {
   "kind": "oversolved-repro",
-  "version": 1,
+  "version": 3,
   "docHash": "sha256 of doc",
   "doc": { /* the baseline document */ },
   "seed": 1875250360,
@@ -193,26 +199,37 @@ build, because the recovery autosave reads the tail):
 `warnings` names every unsettled entry (index plus label or mutation type).
 It is empty for a settled recording.
 
+The version names the entry-hash contract. Version 1 (a browser generation)
+mints every entry under the top-level seed and hashes the whole document;
+version 2 adds a per-step seed on a script entry; version 3, the current shape,
+hashes the authored projection. All three replay. The baseline `docHash` is
+always the full document hash, so it compares with a `run` reply's `docHash`.
+
 `replayJournal` (`frontend/src/drive/replay.ts`) reproduces a repro on a fresh
 session: it checks the baseline hash first, then for every entry checks the
 running doc against `docHashBefore`, seeks the id source to `mintIndex`,
 applies the mutation (a batch through `executeGroup`), hashes synchronously
 right after the apply and compares with `docHashAfter`, and only then settles
 the step's solve. Hashing before the settle is what makes record and replay
-compare the same authored pre-write-back state. A failed apply or a diverged
-hash stops the replay and reports both hashes; a `mintIndex` that is not a
-finite in-range integer is rejected with an `invalid-mint-index` step failure
-rather than seeking forever.
+compare the same authored pre-write-back state; a version-3 entry hashes the
+authored projection, so the settle's write-back cannot move the chain either. A
+failed apply or a diverged hash stops the replay and reports both hashes; a
+`mintIndex` that is not a finite in-range integer is rejected with an
+`invalid-mint-index` step failure rather than seeking forever.
 
 Replay is guaranteed when every entry was settled:
 
-- Every CLI and script recording is settled by construction (each step waits
-  for its solve before the next), and so is any edit that waited for its
-  solve.
-- A repro containing unsettled entries fails loudly at the first divergence:
-  the before-hash check reports the expected and actual hashes and stops. That
-  boundary is the documented limit, not silent corruption, and the payload's
-  `warnings` names the entries before replay is attempted.
+- Every CLI and script recording is settled by construction: a run defers its
+  solves to a flush, so no apply lands while a solve is in flight, and every
+  reply is built after the final flush. Any edit that waited for its solve is
+  settled too.
+- A repro containing unsettled entries may diverge at the first such boundary:
+  a whole-document hash (versions 1 and 2) fails loudly there, and a version-3
+  entry still diverges when its handler read the solved state (a mirror or a
+  docked dimension). The before-hash check reports the expected and actual
+  hashes and stops. That boundary is the documented limit, not silent
+  corruption, and the payload's `warnings` names the entries before replay is
+  attempted.
 
 The seed travels in the payload (`frontend/src/drive/seededIds.ts`):
 
@@ -221,7 +238,10 @@ The seed travels in the payload (`frontend/src/drive/seededIds.ts`):
   CLI and the MCP `run` derive it from the starting document's content hash
   (`driveSeedFor`), so a repeat of the same document and script is
   byte-identical while a call chained onto the previous reply (a different
-  starting document) draws a different sequence. `randomId` and every mint site
+  starting document) draws a different sequence. A script step's own seed uses
+  `authoredHashOf` of the document before it, so a deferred step that never got
+  the previous solve's write-back still mints what the same step mid-chunk mints.
+  `randomId` and every mint site
   that routes through it (`uniqueConstraintId`, `freshEntityIds`, `mintEntityId`
   in `frontend/src/utils/yamlMutations/helpers.ts`) mint under that source, so
   an id a handler mints internally (`add_rect`, `add_ngon`, a fresh constraint
@@ -302,7 +322,15 @@ npm run drive -- replay repro.json
   follows the same rule. Both are checked before the script runs, so a refused
   path writes nothing, and both create a missing parent directory at write time.
   An empty script still solves the given document once and prints the same
-  fields, so `run` doubles as the "inspect this document" call. Its journal
+  fields, so `run` doubles as the "inspect this document" call. A run defers its
+  solves: the steps author the document and one solve at the end reports it, so
+  `solve.generation` counts solves rather than steps. A step whose mutation names
+  a selector and every command step flush the owed solve first (registry code may
+  read the solved state), and so does a mutation whose handler reads the sketch's
+  current geometry (a mirror, an offset, a relative move, a fit-spline edit or a
+  docked dimension); a reply that needs the input document's solve for
+  `featureDeltas` or `frames` pays one baseline solve before the steps; both
+  opt-ins as `"all"` skip that baseline. Its journal
   derives every generation seed from the starting document's hash, so two runs
   of one script on one document produce byte-identical documents and the
   recorded repro replays exactly (the `cliSmoke` suite runs the box script
@@ -370,8 +398,9 @@ npm run drive -- replay repro.json
   the authored numbers mean (see `docs/document.md`). An assembly export keeps
   its millimetre frame and does not scale an inch part.
 - `replay` applies the recorded mutations to a fresh session under the
-  payload's seed, verifies each step's before and after hash and exits nonzero
-  on divergence.
+  payload's seed, verifies each step's before and after hash (the authored
+  projection for a version-3 payload, the whole document for older ones) and
+  exits nonzero on divergence.
 - `--file <id>=<path>` (repeatable) supplies the bytes for an `import_step`
   feature's `file_id`, the same map the browser's file registry hands the
   worker. The path resolves through the same read rule as the MCP `files` map:
@@ -650,7 +679,11 @@ banner on stdout, so a client config must use the direct node invocation.
 - `run` with `steps: []` solves the given `doc` or `docHash` once and returns
   the same reply shape (the frame filter below still applies). It is the
   "inspect this document" call: the solve state has
-  a real `generation` and `features` is the document's problem list. Its
+  a real `generation` and `features` is the document's problem list. A script
+  run also solves at the end rather than after each step (a selector, command or
+  geometry-reading step flushes first), so `generation` counts solves;
+  `featureDeltas` and `frames` each add one baseline solve unless both are
+  `"all"`. Its
   `frames` key is absent unless something moved (or `frames: "all"` was
   passed), and null on a stalled call's prefix, which has no settled final
   solve; read an old frame with `measure` or the opt-in. `curves` is still the
@@ -686,10 +719,14 @@ banner on stdout, so a client config must use the direct node invocation.
   document's `docHash`, the settled `steps` plus the step that timed out
   (`error.code: "solve-timeout"`), `solved: true`, `features: []`, null
   `featureDeltas` and `frames`, a summary naming the accepted prefix, and the
-  `out` file. A stall before the first settle has no checkpoint and keeps the
-  tool-error shape; with an empty script and `out` the input document is written
-  as above. The 30 s budget, the single worker and stop-on-first-error are
-  unchanged, and the killed worker is replaced for the next call.
+  `out` file. A run defers its solves, so the stall usually lands in the final
+  flush after every step applied; the reply then names the timeout as a
+  synthetic `id: "final solve"` step after the applied ones, and the saved
+  document includes those steps' mutations. A stall before the first settle has
+  no checkpoint and keeps the tool-error shape; with an empty script and `out`
+  the input document is written as above. The 30 s budget, the single worker and
+  stop-on-first-error are unchanged, and the killed worker is replaced for the
+  next call.
 - `compare` takes its `reference` inline (the agent has just produced it) and
   validates it through the corpus parser, so a reference missing `tolerance`
   or carrying a malformed bbox is JSON-RPC invalid-params, not a tool error.

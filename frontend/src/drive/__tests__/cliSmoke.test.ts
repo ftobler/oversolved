@@ -1199,19 +1199,20 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       expect(stuck.error).toBeUndefined()
       const stuckResult = errorPayload(stuck)
       expect(stuckResult.ok).toBe(false)
-      // The first two steps settled; the third hung, so the reply describes the
-      // state those two left rather than naming every feature missing.
+      // Every step applied; the run's final solve is the one that hung, so the
+      // reply describes the accepted prefix rather than naming every feature
+      // missing.
       expect(stuckResult.solved).toBe(true)
       expect(stuckResult.error).toBeUndefined()
       const stuckOutcomes = stuckResult.steps as Array<{
         index: number; kind: string; id: string; ok: boolean; error?: { code: string; message: string }
       }>
-      expect(stuckOutcomes.map(step => step.index)).toEqual([0, 1, 2])
-      expect(stuckOutcomes.slice(0, 2).map(step => step.ok)).toEqual([true, true])
-      expect(stuckOutcomes[2]).toMatchObject({
-        index: 2,
+      expect(stuckOutcomes.map(step => step.index)).toEqual([0, 1, 2, 3])
+      expect(stuckOutcomes.slice(0, 3).map(step => step.ok)).toEqual([true, true, true])
+      expect(stuckOutcomes[3]).toMatchObject({
+        index: 3,
         kind: 'mutation',
-        id: 'add_extrude',
+        id: 'final solve',
         ok: false,
         error: { code: 'solve-timeout', message: 'solve timed out after 10 s in feature ex_stuck' },
       })
@@ -1220,18 +1221,19 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
         .toBe('solve timed out after 10 s in feature ex_stuck')
       expect(stuckResult.featureDeltas).toBeNull()
       expect(stuckResult.frames).toBeNull()
-      expect(stuckResult.summary).toContain('bodies: none (solved through step 1; step 2 timed out)')
+      expect(stuckResult.summary).toContain('bodies: not solved (final solve timed out)')
       expect(stuckResult.summary).not.toContain('refused')
 
-      // 3D negative: the saved document is the checkpoint's (the sketch the
-      // accepted prefix authored), never this call's empty input document.
+      // 3D negative: the saved document is the checkpoint's (every accepted
+      // step applied), never this call's empty input document. The hung
+      // feature's mutation landed; only its settle is missing.
       expect(stuckResult.file).toBe(outFile)
       const saved = loadPartDoc(parseYaml(readFileSync(outFile, 'utf8')), { name: outFile })
       expect(saved.ok).toBe(true)
       if (!saved.ok) throw new Error('unreachable')
       const savedIds = (saved.doc.features ?? []).map(feature => feature.id)
       expect(savedIds).toContain('sk1')
-      expect(savedIds).not.toContain('ex_stuck')
+      expect(savedIds).toContain('ex_stuck')
       expect(savedIds).not.toContain('ex1')
 
       const next = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))

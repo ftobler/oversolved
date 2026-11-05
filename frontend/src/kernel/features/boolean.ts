@@ -144,19 +144,27 @@ function patternMemberIds(patternId: string, def: Dict, bodyStore: Record<string
 function expandPatternTools(
   toolRefs: string[],
   targetId: string,
+  featureId: string,
   featuresById: Record<string, Dict>,
   bodyStore: Record<string, Body>,
 ): { refs: string[]; namedPatterns: Set<string> } {
   const refs: string[] = []
   const namedPatterns = new Set<string>()
+  const order = Object.keys(featuresById)
+  // A solver unit test may pass only the referenced features, with the
+  // boolean's own id absent; then nothing can be proven downstream and every
+  // present pattern counts as upstream, the historical behaviour.
+  const selfIndex = order.indexOf(featureId)
   for (const ref of toolRefs) {
     const key = stripRefSigil(ref, '@')
     const def = featuresById[key]
-    // A body id wins over a feature id of the same spelling.
-    if (def !== undefined && isBodyPattern(def) && !(key in bodyStore)) {
-      // featuresById holds only the features solved so far, so a pattern defined
-      // after this boolean never reaches here: its ref stays unresolved below
-      // and the tool loop refuses it by name instead of consuming its source.
+    // A body id wins over a feature id of the same spelling. A pattern defined
+    // after this feature has not solved yet; expanding it would read its source
+    // body and consume it before its own feature ran (the whole-document solve
+    // sees every feature, unlike a per-step one). Leave the ref unresolved so
+    // the tool loop refuses it by name.
+    const upstream = key !== featureId && (selfIndex < 0 || order.indexOf(key) < selfIndex)
+    if (def !== undefined && isBodyPattern(def) && upstream && !(key in bodyStore)) {
       namedPatterns.add(key)
       refs.push(...patternMemberIds(key, def, bodyStore).filter((id) => id !== targetId))
     } else {
@@ -175,13 +183,17 @@ function expandPatternTools(
 function partialPatternWarnings(
   toolIds: Set<string>,
   targetId: string,
+  featureId: string,
   namedPatterns: Set<string>,
   featuresById: Record<string, Dict>,
   bodyStore: Record<string, Body>,
 ): string[] {
   const warnings: string[] = []
+  const order = Object.keys(featuresById)
+  const selfIndex = order.indexOf(featureId)
   for (const [fid, def] of Object.entries(featuresById)) {
-    if (!isBodyPattern(def) || namedPatterns.has(fid)) continue
+    const upstream = fid !== featureId && (selfIndex < 0 || order.indexOf(fid) < selfIndex)
+    if (!isBodyPattern(def) || !upstream || namedPatterns.has(fid)) continue
     const members = patternMemberIds(fid, def, bodyStore).filter((id) => id !== targetId)
     const used = members.filter((id) => toolIds.has(id)).length
     if (used > 0 && used < members.length) {
@@ -230,7 +242,7 @@ export function solveBoolean(
 
   const targetBody = resolveBody(targetRef, bodyStore)
   if (targetBody.shape === null) throw new Error(`boolean: target '${targetRef}' has no shape`)
-  const { refs: toolRefs, namedPatterns } = expandPatternTools(authoredTools, targetBody.id, featuresById, bodyStore)
+  const { refs: toolRefs, namedPatterns } = expandPatternTools(authoredTools, targetBody.id, featureId, featuresById, bodyStore)
   if (toolRefs.length === 0) {
     throw new Error(`boolean: the pattern tool(s) ${[...namedPatterns].join(', ')} have no body besides the target`)
   }
@@ -258,7 +270,7 @@ export function solveBoolean(
       // The tool loop below reports a bad ref by name.
     }
   }
-  for (const w of partialPatternWarnings(explicitToolIds, targetBody.id, namedPatterns, featuresById, bodyStore)) warn(w)
+  for (const w of partialPatternWarnings(explicitToolIds, targetBody.id, featureId, namedPatterns, featuresById, bodyStore)) warn(w)
 
   for (const toolRef of toolRefs) {
     const toolBody = resolveBody(toolRef, bodyStore)

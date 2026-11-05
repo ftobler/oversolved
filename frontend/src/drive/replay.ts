@@ -7,7 +7,10 @@
 // apply and BEFORE the step's solve settles. Hashing before the settle is what
 // makes record and replay compare the same authored, pre-write-back state;
 // settling after the hash lets the next step start from the same baked state
-// the recording saw. A divergence stops the replay and is reported with both
+// the recording saw. A version-3 payload's entry hashes cover the authored
+// projection (no `initial`, no `part_style`), so even a replay that settles
+// between entries chains exactly; versions 1 and 2 hashed the whole document.
+// A divergence stops the replay and is reported with both
 // hashes, so a non-reproduction is a precise fact, not a silent failure.
 //
 // Replay installs the recorded seed for its duration (restoring the previous
@@ -26,7 +29,7 @@ import type { PartDoc, Mutation } from '@/types/cad'
 import type { Result } from '@/session/result'
 import { setIdSource, getIdSource } from '@/utils/yamlMutations'
 import { DRIVE_ID_SEED, seededIdSource } from './seededIds'
-import { docHashOf } from './docHash'
+import { authoredHashOf, docHashOf } from './docHash'
 import { validateMutation } from './mutationCatalog'
 import type { ReproPayload } from './journal'
 
@@ -73,6 +76,16 @@ export async function replayJournal(
   settle?: () => Promise<void> | void,
 ): Promise<ReplayOutcome> {
   const hashDoc = (): string | null => (session.getDoc() ? docHashOf(session.getDoc()) : null)
+  // A version-3 entry hash covers the authored projection, because the solve
+  // write-back between entries changes `initial` and `part_style`; versions 1
+  // and 2 hashed the whole document. The baseline and the final hash stay the
+  // full document hash for both, so they compare with a reply's docHash.
+  const hashEntryDoc = repro.version === 3
+    ? (): string | null => {
+        const doc = session.getDoc()
+        return doc ? authoredHashOf(doc) : null
+      }
+    : hashDoc
   const previousSource = getIdSource()
   // A payload read from disk is external input: a missing seed falls back to
   // the constant, the best a hand-written payload can do.
@@ -102,7 +115,7 @@ export async function replayJournal(
             ...(entry.label !== undefined && { label: entry.label }),
             ok: false,
             expectedBeforeHash: entry.docHashBefore,
-            actualBeforeHash: hashDoc(),
+            actualBeforeHash: hashEntryDoc(),
             expectedHash: entry.docHashAfter,
             actualHash: null,
             error: { code: 'invalid-mint-index', message: `entry ${index} mintIndex ${String(mintIndex)} is out of range` },
@@ -121,7 +134,7 @@ export async function replayJournal(
             ...(entry.label !== undefined && { label: entry.label }),
             ok: false,
             expectedBeforeHash: entry.docHashBefore,
-            actualBeforeHash: hashDoc(),
+            actualBeforeHash: hashEntryDoc(),
             expectedHash: entry.docHashAfter,
             actualHash: null,
             error: { code: 'invalid-seed', message: `entry ${index} seed ${String(stepSeed)} is not a uint32` },
@@ -129,7 +142,7 @@ export async function replayJournal(
           ok = false
           break
         }
-        const actualBeforeHash = hashDoc()
+        const actualBeforeHash = hashEntryDoc()
         if (actualBeforeHash !== entry.docHashBefore) {
           steps.push({
             index,
@@ -173,7 +186,7 @@ export async function replayJournal(
             expectedBeforeHash: entry.docHashBefore,
             actualBeforeHash,
             expectedHash: entry.docHashAfter,
-            actualHash: hashDoc(),
+            actualHash: hashEntryDoc(),
             error: invalidPayload,
           })
           ok = false
@@ -211,7 +224,7 @@ export async function replayJournal(
             expectedBeforeHash: entry.docHashBefore,
             actualBeforeHash,
             expectedHash: entry.docHashAfter,
-            actualHash: hashDoc(),
+            actualHash: hashEntryDoc(),
             error: { code: 'thrown', message: e instanceof Error ? e.message : String(e) },
           })
           ok = false
@@ -219,7 +232,7 @@ export async function replayJournal(
         }
         // Hash before settling: the recorded hash is the authored state, and
         // the settle below bakes solved geometry for the next step.
-        const actualHash = hashDoc()
+        const actualHash = hashEntryDoc()
         const stepOk = result.ok && actualHash === entry.docHashAfter
         steps.push({
           index,

@@ -1,11 +1,12 @@
 // @vitest-environment node
 //
-// The unsettled-entry policy on the real kernel. A browser recording can apply
-// a mutation while the previous solve is still in flight, so that entry's
-// before-doc is authored while a replay settles each step and reaches the baked
-// state: the repro must warn about such entries and replay must fail loudly at
-// the first divergence. A recording that waits for each solve is settled and
-// replays exactly.
+// A deferred recording applies several mutations before the solve that will
+// bake them, so the document the entries chain from is authored. Version-3
+// journal hashes cover the authored projection, so replay settles each entry
+// and still reproduces exactly: the write-back no longer moves the recorded
+// chain. A legacy version-2 payload, whose hashes cover the whole document,
+// still warns about an entry applied before its settle and fails loudly at that
+// boundary.
 //
 // Gated like the other Real suites: skips when OCC.js or the nodejs Rust build
 // is absent. One session per process is the v1 contract, so the recording
@@ -13,16 +14,18 @@
 // doc ids so solveLocally's checkpoint cache switches documents.
 
 import { createRequire } from 'node:module'
-import { beforeAll, describe, it, expect } from 'vitest'
+import { beforeAll, afterEach, describe, it, expect } from 'vitest'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { createHeadlessPart } from '../headlessPart'
-import { CommandJournal } from '../journal'
+import { CommandJournal, type ReproPayload } from '../journal'
 import { replayJournal } from '../replay'
 import { docHashOf } from '../docHash'
+import { seededIdSource } from '../seededIds'
+import { setIdSource } from '@/utils/yamlMutations'
 import type { PartDoc, Mutation } from '@/types/cad'
 
 function occInstalled(): boolean {
@@ -47,53 +50,33 @@ const addRect = (): Mutation =>
 const addExtrude = (featureId: string): Mutation =>
   ({ type: 'add_extrude', featureId, label: featureId, sketchQuery: '$sk1', distance: 5, operation: 'new' })
 
-describe.skipIf(!oc || !solveBytes)('unsettled replay (real OCC + Rust solver)', () => {
+describe.skipIf(!oc || !solveBytes)('authored replay (real OCC + Rust solver)', () => {
+  afterEach(() => {
+    setIdSource(null)
+  })
+
   beforeAll(() => {
     setOccLoader(loadOcc)
     setSketchSolver(loadSolver())
     setSketchTopology(loadTopology())
   })
 
-  it('warns about an unsettled entry and fails loudly at its boundary', async () => {
+  it('replays a deferred recording whose applies all precede the flush', async () => {
     const journal = new CommandJournal()
     const part = createHeadlessPart({ doc: sketchDoc(), journal })
     part.session.execute(addRect())
     await part.idle()
-    // The extrude's solve writes part_style back when it lands, so the next
-    // apply, fired before that solve settles, records against the authored doc
-    // while replay settles and reaches the part_style-carrying one.
+    // Two applies with no solve between them: the extrude and the sketch both
+    // land on the authored document, and only the flush at the end bakes them.
     part.session.execute(addExtrude('ex1'))
     part.session.execute({ type: 'add_sketch', featureId: 'sk2', label: 'sketch 2' })
     await part.idle()
 
     const repro = journal.repro()
     expect(repro).not.toBeNull()
-    expect(repro!.journal[0].unsettled).toBeUndefined()
-    expect(repro!.journal[1].unsettled).toBeUndefined()
-    expect(repro!.journal[2].unsettled).toBe(true)
-    expect(repro!.warnings).toHaveLength(1)
-    expect(repro!.warnings[0]).toContain('entry 2')
-    expect(repro!.warnings[0]).toContain('add sketch 2')
-
-    const fresh = createHeadlessPart({ doc: repro!.doc as PartDoc, docId: 'replay' })
-    const outcome = await replayJournal(repro!, fresh.session, () => fresh.idle())
-    expect(outcome.ok).toBe(false)
-    const failing = outcome.steps[outcome.steps.length - 1]
-    expect(failing.index).toBe(2)
-    expect(failing.ok).toBe(false)
-    expect(failing.actualBeforeHash).not.toBe(failing.expectedBeforeHash)
-  }, 180_000)
-
-  it('replays a settled recording exactly', async () => {
-    const journal = new CommandJournal()
-    const part = createHeadlessPart({ doc: sketchDoc(), journal })
-    part.session.execute(addRect())
-    await part.idle()
-    part.session.execute(addExtrude('ex1'))
-    await part.idle()
-
-    const repro = journal.repro()
-    expect(repro).not.toBeNull()
+    expect(repro!.version).toBe(3)
+    // A deferred request is not in flight, so no entry is unsettled; replay
+    // settles each entry and the authored hashes chain across the write-back.
     expect(repro!.warnings).toEqual([])
     expect(repro!.journal.every(entry => entry.unsettled === undefined)).toBe(true)
     const recordedHash = docHashOf(part.getDoc())
@@ -101,6 +84,51 @@ describe.skipIf(!oc || !solveBytes)('unsettled replay (real OCC + Rust solver)',
     const fresh = createHeadlessPart({ doc: repro!.doc as PartDoc, docId: 'replay' })
     const outcome = await replayJournal(repro!, fresh.session, () => fresh.idle())
     expect(outcome.ok).toBe(true)
+    expect(outcome.steps.every(step => step.ok)).toBe(true)
     expect(outcome.finalHash).toBe(recordedHash)
+  }, 180_000)
+
+  it('a legacy version-2 repro still diverges at an entry applied before its settle', async () => {
+    // The pre-version-3 contract: hashes over the whole document. The extrude's
+    // replay settle adds part_style, so the next entry's recorded before-hash no
+    // longer matches and replay stops there.
+    const doc = sketchDoc()
+    const recorded = createHeadlessPart({ doc, docId: 'legacy-record' })
+    // The rect mints inside the handler, so recording and replay must share the
+    // same addressable source; the payload below names this seed.
+    setIdSource(seededIdSource(0x5eed_0001))
+    const entries: ReproPayload['journal'] = []
+    const record = (payload: Mutation, kind: 'mutation' | 'batch' = 'mutation'): void => {
+      const before = docHashOf(recorded.getDoc())
+      recorded.session.execute(payload)
+      entries.push({
+        kind,
+        payload,
+        docHashBefore: before,
+        docHashAfter: docHashOf(recorded.getDoc()),
+        mintIndex: 0,
+        at: 0,
+      })
+    }
+    record(addRect())
+    record(addExtrude('ex1'))
+    record({ type: 'add_sketch', featureId: 'sk2', label: 'sketch 2' })
+    const repro: ReproPayload = {
+      kind: 'oversolved-repro',
+      version: 2,
+      docHash: docHashOf(doc),
+      doc: structuredClone(doc),
+      seed: 0x5eed_0001,
+      warnings: [],
+      journal: entries,
+    }
+
+    const fresh = createHeadlessPart({ doc: structuredClone(repro.doc) as PartDoc, docId: 'legacy-replay' })
+    const outcome = await replayJournal(repro, fresh.session, () => fresh.idle())
+    expect(outcome.ok).toBe(false)
+    const failing = outcome.steps[outcome.steps.length - 1]
+    expect(failing.index).toBe(2)
+    expect(failing.ok).toBe(false)
+    expect(failing.actualBeforeHash).not.toBe(failing.expectedBeforeHash)
   }, 180_000)
 })

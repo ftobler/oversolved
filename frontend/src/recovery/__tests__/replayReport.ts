@@ -23,9 +23,11 @@ export function replayCrashReport(
   return replayJournal(report.repro, session, settle)
 }
 
-/** The hash a report's repro must end on: the last recorded step's after-hash. */
+/** The full document hash a report's replay must end on: the snapshot hash the
+ *  report recorded. A version-3 entry hash covers only the authored projection,
+ *  so the last entry is not the full end state; the snapshot hash is the
+ *  document the recording actually held. */
 export function crashReportFinalHash(report: CrashReportRecord): string | null {
-  const journal = report.repro?.journal
-  if (!journal || journal.length === 0) return null
-  return journal[journal.length - 1].docHashAfter
+  if (!report.repro) return null
+  return report.docHash
 }

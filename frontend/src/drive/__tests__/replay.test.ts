@@ -1,15 +1,16 @@
 // @vitest-environment node
 //
 // The repro shapes replay accepts. A version-1 payload keeps the old contract:
-// one generation seed and an entry mint index, the shape every journal recorded
-// before per-step seeds existed. A version-2 payload names each script step's
-// seed, so a recording made after per-step seeding still reproduces and a step
-// with several applies keeps one source instead of resetting it per entry.
+// one generation seed, an entry mint index and whole-document hashes, the shape
+// every journal recorded before per-step seeds existed. A version-2 payload
+// names each script step's seed but still hashes the whole document; a new
+// version-3 payload hashes the authored projection, so the solve write-back
+// between entries cannot move the chain.
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { CommandJournal, JOURNAL_CAPACITY, createDriveJournal, journalSink, type ReproPayload } from '../journal'
 import { replayJournal } from '../replay'
-import { docHashOf } from '../docHash'
+import { authoredHashOf, docHashOf } from '../docHash'
 import { driveSeedFor } from '../seededIds'
 import { createDocSession, type DocSession } from '@/session/DocSession'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
@@ -56,30 +57,41 @@ const addExtrude = (featureId: string, distance: number): Mutation =>
   ({ type: 'add_extrude', featureId, label: featureId, sketchQuery: '$sk1', distance })
 
 describe('repro version compatibility', () => {
-  it('replays a version-1 payload under the old top-level seed semantics', async () => {
+  it('replays a version-1 payload under the old whole-document hash semantics', async () => {
     // A recording from before per-step seeds: one generation seed, entries that
-    // carry only a position in its sequence. add_rect mints inside the handler,
-    // so only replaying that sequence reproduces the ids.
+    // carry only a position in its sequence, and hashes over the whole document.
+    // Built by hand because the current journal only writes version 3.
     const doc = sketchDoc()
-    const seed = driveSeedFor(docHashOf(doc))
+    const before = docHashOf(doc)
+    const seed = driveSeedFor(before)
     const journal = new CommandJournal(JOURNAL_CAPACITY, Date.now, () => seed)
     const recorded = makeSession(doc, journal)
-    recorded.session.execute(addRect())
-    recorded.session.execute(addExtrude('ex1', 5))
-
-    const repro = journal.repro()!
-    expect(repro.version).toBe(1)
-    expect(repro.seed).toBe(seed)
-    expect(repro.journal).toHaveLength(2)
-    expect(repro.journal.every(entry => entry.seed === undefined)).toBe(true)
+    recorded.session.execute({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] })
+    const after = docHashOf(recorded.cell.current)
+    const repro: ReproPayload = {
+      kind: 'oversolved-repro',
+      version: 1,
+      docHash: before,
+      doc: structuredClone(doc),
+      seed,
+      warnings: [],
+      journal: [{
+        kind: 'mutation',
+        payload: journal.entries()[0].payload,
+        docHashBefore: before,
+        docHashAfter: after,
+        mintIndex: journal.entries()[0].mintIndex,
+        at: 0,
+      }],
+    }
 
     const fresh = makeSession(structuredClone(repro.doc) as PartDoc)
     const outcome = await replayJournal(repro, fresh.session)
     expect(outcome.ok).toBe(true)
-    expect(outcome.finalHash).toBe(docHashOf(recorded.cell.current))
+    expect(outcome.finalHash).toBe(after)
   })
 
-  it('round-trips a version-2 step-seeded recording', async () => {
+  it('round-trips a version-3 step-seeded recording under authored hashes', async () => {
     const journal = createDriveJournal({ version: 1, kind: 'part', features: [] } as PartDoc)
     const part = createHeadlessPart({ doc: { version: 1, kind: 'part', features: [] } as PartDoc, docId: 'seed-record', journal })
     const outcome = await part.run([
@@ -90,9 +102,13 @@ describe('repro version compatibility', () => {
     expect(outcome.ok).toBe(true)
 
     const repro = journal.repro()!
-    expect(repro.version).toBe(2)
+    expect(repro.version).toBe(3)
     expect(repro.journal).toHaveLength(3)
     expect(repro.journal.every(entry => typeof entry.seed === 'number')).toBe(true)
+    // Entry hashes cover the authored view: the final entry's after-hash is the
+    // authored hash of the document the run returns, not its full hash (the
+    // solve write-back added `initial` and part_style).
+    expect(repro.journal[2].docHashAfter).toBe(authoredHashOf(part.getDoc() as PartDoc))
     const recordedHash = docHashOf(part.getDoc())
 
     const fresh = createHeadlessPart({ doc: structuredClone(repro.doc) as PartDoc, docId: 'seed-replay' })
@@ -111,7 +127,7 @@ describe('repro version compatibility', () => {
     recorded.session.execute(addNgon())
 
     const repro = journal.repro()!
-    expect(repro.version).toBe(2)
+    expect(repro.version).toBe(3)
     expect(repro.journal.map(entry => entry.seed)).toEqual([0x1234_5678, 0x1234_5678])
     expect(repro.journal[1].mintIndex).toBeGreaterThan(repro.journal[0].mintIndex)
 

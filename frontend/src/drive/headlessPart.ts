@@ -5,12 +5,18 @@
 // cache is single-writer module state (see the reentrancy guard there). Two
 // sessions in one process would interleave their caches; split into two
 // processes instead of isolating the globals.
+//
+// A `run` defers its solves: every mutation requests one through the deferred
+// scheduler, and the run spends it at the flush points (a selector step, a
+// command step, the end) instead of after every step. The browser adapter keeps
+// its immediate scheduler; only this drive surface wraps one.
 
 import type { PartDoc, Mutation, SketchData, BodyResult } from '@/types/cad'
 import { createDocSession, type DocSession } from '@/session/DocSession'
-import type { SolveOptions, SolveScheduler, SolveSchedulerState } from '@/session/SolveScheduler'
+import type { SolveOptions, SolveSchedulerState } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
+import { createDeferredSolveScheduler, type DeferredSolveScheduler } from '@/drive/deferredSolveScheduler'
 import { finalLiveBodyIds, measureSolveFeatures, solveLocally, type FeatureMeasure } from '@/kernel/solveLocally'
 import { CommandRegistry } from '@/utils/core/commandSpec'
 import type { CommandName } from '@/utils/core/commandNames'
@@ -23,9 +29,10 @@ import { validateMutation } from '@/drive/mutationCatalog'
 import { readSolveOutcomes, type FeatureOutcome } from '@/drive/featureOutcome'
 import { featureFrames, type FeatureFrameMap, type FeatureFrameOptions } from '@/drive/featureFrames'
 import { featureCurves, type FeatureCurveMap } from '@/drive/featureCurves'
-import { docHashOf } from '@/drive/docHash'
+import { authoredHashOf } from '@/drive/docHash'
 import { seededIdSource, stepSeedFor } from '@/drive/seededIds'
 import { resolveSelectionAids, usesSelectionAid } from '@/drive/selectionAids'
+import { usesSettledSketchGeometry } from '@/drive/solveDependencies'
 import { setIdSource } from '@/utils/yamlMutations'
 
 export interface HeadlessPartOptions {
@@ -46,7 +53,9 @@ export interface HeadlessPartOptions {
   onStepSettled?: (checkpoint: HeadlessCheckpoint) => void
 }
 
-/** The state one settled step left, the unit a stalled solve can report. */
+/** The state one step left, the unit a stalled solve can report. The solve may
+ *  still be owed (a deferred run flushes at the end), so `bodies` and `solve`
+ *  describe the last flush and only the document and outcomes are this step's. */
 export interface HeadlessCheckpoint {
   doc: PartDoc
   // The live body ids of the last settle, before the next step's solve.
@@ -59,7 +68,8 @@ export interface HeadlessCheckpoint {
 export interface HeadlessPart {
   session: DocSession
   registry: CommandRegistry<PartCommandContext>
-  solve: SolveScheduler<PartDoc>
+  // Deferred for the run: `request` records the solve owed, `flush` spends it.
+  solve: DeferredSolveScheduler<PartDoc>
   getDoc(): PartDoc | null
   // The body ids the last solve holds with a shape, from its last feature
   // checkpoint's body store, in solve order; null until a solve has run (an
@@ -149,7 +159,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     bodiesBox.current = finalLiveBodyIds(response)
   }
 
-  const solve = createWorkerSolveScheduler(() => reSolve)
+  const solve = createDeferredSolveScheduler(createWorkerSolveScheduler(() => reSolve))
 
   const session = createDocSession({
     cloneDoc: cloneDocForUndo,
@@ -220,62 +230,82 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     if (steps.length === 0) {
       // An empty script is the "inspect this document" call: without a request
       // the reply carried generation 0 and no verdicts, so a passed document
-      // was never actually solved.
+      // was never actually solved. `refreshSolve` queues it and `flush` spends
+      // it through the base scheduler.
       session.refreshSolve()
-      await solve.idle()
+      await solve.flush()
       return { ok: true, steps: [] }
     }
-    return runScript(
-      steps,
-      async step => {
-        // Seed each step from the settled document before it and the step
-        // itself, and install the source before any handler runs, so internal
-        // mints (add_rect, add_ngon, constraint ids) and every apply a command
-        // dispatches follow the step. A journal records the seed; without one
-        // the headless session still mints deterministically.
-        const seed = stepSeedFor(docHashOf(docBox.current), step)
-        if (opts.journal) opts.journal.beginStep(seed)
-        else setIdSource(seededIdSource(seed))
-        if ('command' in step) return registry.execute(step.command as CommandName, step.params)
-        // A selector pick names geometry the last solve produced. Resolve it
-        // against the settled document before the boundary validates it; a run
-        // that starts from an unsolved document (a fresh doc, or a chained
-        // docHash whose reply carried no bodies) solves once first. That solve
-        // writes back like every step's solve, so the document the first step
-        // authors on is the settled one and the journal baseline is that same
-        // baked doc; replay is unaffected because each entry carries its seed.
-        let bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
-        if (bodies === undefined && usesSelectionAid(step.mutation)) {
-          session.refreshSolve()
+    try {
+      return await runScript(
+        steps,
+        async step => {
+          // Seed each step from the authored document before it and the step
+          // itself, and install the source before any handler runs, so internal
+          // mints (add_rect, add_ngon, constraint ids) and every apply a command
+          // dispatches follow the step. The authored hash ignores the solve
+          // write-back, so the seed cannot tell a deferred document from a
+          // settled one: the same step mints the same ids under any chunking.
+          const seed = stepSeedFor(authoredHashOf(docBox.current ?? opts.doc), step)
+          if (opts.journal) opts.journal.beginStep(seed)
+          else setIdSource(seededIdSource(seed))
+          if ('command' in step) {
+            // A command is registry code, not a validated mutation: it may read
+            // solved bodies or ask for a solve itself, so it starts from the
+            // settled document. Narrowing this needs a test per command family.
+            if (solve.owed()) await solve.flush()
+            return registry.execute(step.command as CommandName, step.params)
+          }
+          // A selector pick names geometry the last solve produced, and some
+          // mutation handlers read the solved `initial` (a mirror, an offset, a
+          // relative move, a dock). Both resolve against the settled document:
+          // a solve still owed is spent first, and a run that starts from an
+          // unsolved document (a fresh doc, or a chained docHash whose reply
+          // carried no bodies) solves once before its first selector step.
+          let bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
+          const needsBodies = usesSelectionAid(step.mutation)
+          if (needsBodies || usesSettledSketchGeometry(step.mutation)) {
+            if (solve.owed()) {
+              await solve.flush()
+            } else if (needsBodies && responseBox.current === null) {
+              session.refreshSolve()
+              await solve.flush()
+            }
+            bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
+          }
+          const resolved = resolveSelectionAids(step.mutation, bodies ?? null)
+          if (!resolved.ok) return { ok: false, code: resolved.code, message: resolved.message }
+          // The script carries untyped JSON; validate before the cast so a typo
+          // is a named step failure and the doc stays as it was. The live doc lets
+          // the value rules refuse a duplicate id or a delete target that names
+          // nothing instead of reporting an ok that changed nothing.
+          const validated = validateMutation(resolved.mutation, { doc: docBox.current })
+          if (!validated.ok) return { ok: false, code: validated.error.code, message: validated.error.message }
+          return session.execute(validated.mutation)
+        },
+        async (outcomes: readonly ScriptStepOutcome[]) => {
+          // A deferred request is not pending yet, so this only drains a solve
+          // the step flushed itself; the checkpoint describes the document the
+          // step left, and a stall in the next step reports that prefix.
           await solve.idle()
-          bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
-        }
-        const resolved = resolveSelectionAids(step.mutation, bodies ?? null)
-        if (!resolved.ok) return { ok: false, code: resolved.code, message: resolved.message }
-        // The script carries untyped JSON; validate before the cast so a typo
-        // is a named step failure and the doc stays as it was. The live doc lets
-        // the value rules refuse a duplicate id or a delete target that names
-        // nothing instead of reporting an ok that changed nothing.
-        const validated = validateMutation(resolved.mutation, { doc: docBox.current })
-        if (!validated.ok) return { ok: false, code: validated.error.code, message: validated.error.message }
-        return session.execute(validated.mutation)
-      },
-      async (outcomes: readonly ScriptStepOutcome[]) => {
-        await solve.idle()
-        // The checkpoint is the state after this step settled, so a stall in
-        // the next step reports the accepted prefix, never the step that hung.
-        const doc = docBox.current
-        if (doc === null) return
-        opts.onStepSettled?.({
-          doc,
-          bodies: bodiesBox.current,
-          solve: solve.state(),
-          // A snapshot: the runner keeps pushing onto its own array, and a
-          // consumer that holds this checkpoint must not see later steps.
-          steps: [...outcomes],
-        })
-      },
-    )
+          const doc = docBox.current
+          if (doc === null) return
+          opts.onStepSettled?.({
+            doc,
+            bodies: bodiesBox.current,
+            solve: solve.state(),
+            // A snapshot: the runner keeps pushing onto its own array, and a
+            // consumer that holds this checkpoint must not see later steps.
+            steps: [...outcomes],
+          })
+        },
+      )
+    } finally {
+      // Every reply is built from a settled document; a solve still owed would
+      // report the authored state. A refused-only script owes nothing, so this
+      // is a no-op there and it stays unsolved.
+      if (solve.owed()) await solve.flush()
+    }
   }
 
   return {
@@ -300,7 +330,13 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     featureMeasures: () => responseBox.current === null
       ? Promise.resolve(null)
       : measureSolveFeatures(responseBox.current),
-    idle: () => solve.idle(),
+    // The headless settle: replay calls this between entries and expects the
+    // document baked for the next one, so it spends an owed solve first. The
+    // run loop awaits `solve.idle` directly and keeps its deferral.
+    idle: async () => {
+      await solve.flush()
+      await solve.idle()
+    },
     run,
   }
 }

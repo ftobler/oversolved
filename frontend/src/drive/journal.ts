@@ -36,7 +36,7 @@
 import type { PartDoc } from '@/types/cad'
 import type { SessionJournalChange, SessionJournalSink } from '@/session/DocSession'
 import { setIdSource } from '@/utils/yamlMutations'
-import { docHashOf } from './docHash'
+import { authoredHashOf, docHashOf } from './docHash'
 import { driveSeedFor, cryptoGenerationSeed, seededIdSource, type SeededIdSource } from './seededIds'
 
 export const JOURNAL_CAPACITY = 500
@@ -70,9 +70,13 @@ export interface JournalEntry {
 export interface ReproPayload {
   kind: 'oversolved-repro'
   // Version 1: every entry mints under the top-level seed, continuing one
-  // sequence. Version 2: a script-step entry also carries its own seed, which
-  // replay installs at that entry. Both are accepted.
-  version: 1 | 2
+  // sequence, and entry hashes cover the whole document. Version 2: a
+  // script-step entry also carries its own seed, which replay installs at that
+  // entry. Version 3: entry hashes cover the authored projection
+  // (`authoredHashOf`), so a solve's write-back never moves the recorded state;
+  // entries may or may not carry a step seed, and the baseline `docHash` and a
+  // replay's final hash stay the full document hash. All three are accepted.
+  version: 1 | 2 | 3
   // The hash of `doc`, so a reader can check the baseline before replaying.
   docHash: string
   doc: unknown
@@ -209,11 +213,17 @@ export class CommandJournal {
   recordApplied(change: SessionJournalChange): void {
     if (change.docId !== this.currentDocId) this.reset(change.docId)
     const generation = this.generationSource ?? this.openGeneration(this.seedSource())
-    const beforeHash = docHashOf(change.beforeDoc)
-    const afterHash = docHashOf(change.afterDoc)
+    // The entry hash is the authored view: the solve write-back bakes `initial`
+    // and reconciles `part_style`, and a deferred run reaches the next apply
+    // before that write-back, so hashing the whole document would make the
+    // chain depend on when a solve happened. A style-only change still has two
+    // equal authored hashes but a different full document, so the no-op test
+    // reads the full hash before dropping the entry.
+    const beforeHash = authoredHashOf(change.beforeDoc)
+    const afterHash = authoredHashOf(change.afterDoc)
+    if (beforeHash === afterHash && docHashOf(change.beforeDoc) === docHashOf(change.afterDoc)) return
     const mintIndex = this.pendingMintIndex ?? generation.index()
     this.pendingMintIndex = null
-    if (beforeHash === afterHash) return
     if (this.ring.length >= this.capacity) {
       // The ring is full: drop the whole generation rather than the oldest
       // entry alone, because a suffix without its baseline cannot be replayed.
@@ -267,10 +277,10 @@ export class CommandJournal {
   // The replayable payload, or null while the journal holds nothing.
   repro(): ReproPayload | null {
     if (this.ring.length === 0 || this.baselineDoc === null || this.generationSeed === null) return null
-    // A step-seeded recording says so per entry (version 2). A browser journal,
-    // whose entries all mint under the generation seed, keeps the version-1
-    // shape so an older reader sees exactly what it always did.
-    const version: 1 | 2 = this.ring.some(entry => entry.seed !== undefined) ? 2 : 1
+    // Every new recording hashes the authored projection, so it is version 3;
+    // the per-entry step seed is still optional (a browser generation carries
+    // none). Versions 1 and 2 remain replayable but are not produced here.
+    const version: 1 | 2 | 3 = 3
     return {
       kind: 'oversolved-repro',
       version,
@@ -286,7 +296,7 @@ export class CommandJournal {
   // CLI, any script run, any edit that waited for its solve) yields none.
   private warnings(): string[] {
     return this.ring.flatMap((entry, index) => entry.unsettled
-      ? [`entry ${index} (${entryName(entry)}): applied while a solve was pending; replay settles each step and diverges at the first unsettled boundary`]
+      ? [`entry ${index} (${entryName(entry)}): applied while a solve was pending; replay settles each step and can reach a different state at this boundary`]
       : [])
   }
 
