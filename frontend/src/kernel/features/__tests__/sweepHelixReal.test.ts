@@ -147,6 +147,53 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
     }
   })
 
+  it('builds the bottle thread on the helix start side and refuses it across the axis', () => {
+    // The bottle half in miniature: the profile is drawn on a plane normal to
+    // the neck axis, so the helix pierces it at the start. Rotating the same
+    // profile across the axis leaves the crossing 20 mm away, where the old
+    // leaf built a displaced thread with status ok.
+    const squareAt = (cx: number) => [{
+      boundary: [
+        { kind: 'line', id: 'l1', start: [cx - 0.5, -0.5], end: [cx + 0.5, -0.5] },
+        { kind: 'line', id: 'l2', start: [cx + 0.5, -0.5], end: [cx + 0.5, 0.5] },
+        { kind: 'line', id: 'l3', start: [cx + 0.5, 0.5], end: [cx - 0.5, 0.5] },
+        { kind: 'line', id: 'l4', start: [cx - 0.5, 0.5], end: [cx - 0.5, -0.5] },
+      ],
+    }]
+    const seed = (cx: number): Repository => {
+      const repo = new Repository()
+      repo.register('_pt_skP', {
+        origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1],
+      })
+      repo.register('_topo_skP', { surfaces: squareAt(cx) })
+      repo.register('_curve_hx1', helixDescriptor())
+      return repo
+    }
+    const build = (cx: number): { status?: string; error?: string } => {
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      const bodyStore: Record<string, Body> = {}
+      try {
+        try {
+          const result = solveSweep(oc!, scope, table, {
+            id: 'sw1', kind: 'sweep',
+            sweep: { sketch: ['$skP'], path: '@hx1', operation: 'new' },
+          }, seed(cx), bodyStore)
+          return { status: result.status }
+        } catch (exc) {
+          return { error: (exc as Error).message }
+        }
+      } finally {
+        table.disposeAll()
+        scope.dispose()
+      }
+    }
+    expect(build(10).status).toBe('ok')
+    expect(build(-10).error).toBe(
+      "sweep: the path does not pass through the profile: the nearest crossing is 20 mm from its centroid (path '@hx1')",
+    )
+  })
+
   it('a profile taller than the pitch is the named overlap error, body unchanged', () => {
     // 4 tall along the helix axis over a pitch of 3: consecutive turns overlap,
     // so the swept solid is invalid. The leaf must name that as an overlap

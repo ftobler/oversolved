@@ -21,8 +21,8 @@ import { parseSketchEntityRef, surfaceEntityIds } from './shared/bodyRef'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage, type LineageResult } from '../occ/prismLineage'
 import { sweepSectionsWithLineage, type SweepSection } from '../occ/sweepSections'
-import { orderSections, type SectionInput, type SpineSampler, type Station } from './sweepStations'
-import { classifyLoops } from '../profileLoops'
+import { orderSections, findStation, describeProfileMiss, pointOnOrInLoop, MIN_CROSSING_SIN_ONCE, type SectionInput, type SpineSampler, type Station, type StationMiss } from './sweepStations'
+import { classifyLoops, loopCentroid } from '../profileLoops'
 import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, makeBSplineChainEdge, type Vec3 } from '../occ/primitives'
 import { buildCurveEdge } from '../occ/helixEdge'
 import { descriptorFromRepo } from './helix'
@@ -654,6 +654,92 @@ export function entityLoopDropMessage(
     `whose edges did not form a closed loop: ${dropped.join(', ')}`
 }
 
+/**
+ * The one-step authoring fix for a sketch that exists later in the document,
+ * or null when the id is absent or already earlier. `featuresById` preserves
+ * document order, the same rule `postRegister.ts` and `pattern.ts` use, and a
+ * later feature of another kind (a body, a helix) is not this mistake.
+ */
+function laterSketchReorderHint(
+  sketchId: string,
+  featureId: string,
+  featuresById: Record<string, Dict>,
+): string | null {
+  if (featuresById[sketchId]?.kind !== 'sketch') return null
+  const order = Object.keys(featuresById)
+  const sweepAt = order.indexOf(featureId)
+  if (sweepAt < 0 || order.indexOf(sketchId) <= sweepAt) return null
+  return (
+    `sketch '${sketchId}' is defined after this sweep; move it up with ` +
+    `reorder_features {featureId: '${sketchId}', before: '${featureId}'}`
+  )
+}
+
+/** The reorder sentence for a sketch path defined after the sweep, or null
+ *  when the path sketch is present, absent without a later feature, or its ref
+ *  form cannot name one sketch (a `?` ancestry query keeps its own message). */
+function pathReorderHint(
+  pathRefs: string[],
+  globalRepo: Repository,
+  featureId: string,
+  featuresById: Record<string, Dict>,
+): string | null {
+  for (const ref of pathRefs) {
+    if (helixPathRef(ref, globalRepo) !== null) continue
+    const picked = parseSketchEntityRef(ref)
+    let sketchId: string
+    if (picked !== null) {
+      sketchId = picked.sketchId
+    } else {
+      try {
+        sketchId = pathRefToSketchId(ref, globalRepo)
+      } catch (err) {
+        swallowUnlessTrap(err)
+        continue
+      }
+    }
+    if (globalRepo.elements.get('_pt_' + sketchId) !== undefined) continue
+    const hint = laterSketchReorderHint(sketchId, featureId, featuresById)
+    if (hint !== null) return hint
+  }
+  return null
+}
+
+/**
+ * Run the multisection station rule on the one-profile form. A profile is one
+ * face with possibly several filled groups and holes, so it passes when any
+ * group's crossing lies inside its outer loop and outside its holes; the
+ * crossing-to-centroid distance is measured per group so a refusal can say how
+ * far off the profile the path is.
+ */
+function assertProfileOnPath(
+  sampler: SpineSampler,
+  plane: PlaneLike,
+  loops: Dict[][],
+  pathRefs: string[],
+): void {
+  let firstMiss: StationMiss | null = null
+  for (const [outer, holes] of classifyLoops(loops)) {
+    const outcome = findStation(sampler, plane, outer, 0, MIN_CROSSING_SIN_ONCE)
+    if (outcome.ok) {
+      const inHole = holes.some((hole) => pointOnOrInLoop(hole, outcome.station.local))
+      if (!inHole) return
+      const centroid = loopCentroid(outer)
+      firstMiss ??= {
+        ok: false,
+        reason: 'not-on-path',
+        distance: Math.hypot(
+          outcome.station.local[0] - centroid[0],
+          outcome.station.local[1] - centroid[1],
+        ),
+      }
+      continue
+    }
+    firstMiss ??= outcome
+  }
+  if (firstMiss !== null) throw new Error(describeProfileMiss(firstMiss, pathRefs))
+}
+
 /** Solve a sweep feature into the body store (mirrors `_solve_sweep`). */
 export function solveSweep(
   oc: OccModule,
@@ -662,6 +748,7 @@ export function solveSweep(
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
+  featuresById: Record<string, Dict> = {},
 ): { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.sweep as Dict) ?? {}
@@ -722,6 +809,17 @@ export function solveSweep(
   let areaBuilt = 0
 
   for (const sketchRef of [...new Set(regionRefs)]) {
+    // A bare `$`/`@` ref names one sketch. When its plane is missing but the
+    // sketch sits later in the document, the generic "sketch not found" hides
+    // the one-step fix; a `?` ancestry query keeps its own message.
+    const wholeId = featureRefId(sketchRef)
+    if (wholeId !== null && globalRepo.elements.get('_pt_' + wholeId) === undefined) {
+      const hint = laterSketchReorderHint(wholeId, featureId, featuresById)
+      if (hint !== null) {
+        profileErrors.push(hint)
+        continue
+      }
+    }
     let resolved
     try {
       resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, bodyStore)
@@ -775,7 +873,9 @@ export function solveSweep(
   for (const [sketchId, eids] of entityEidsBySketch) {
     const plane = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
     if (plane === undefined) {
-      profileErrors.push(`sketch not found: ${sketchId}`)
+      profileErrors.push(
+        laterSketchReorderHint(sketchId, featureId, featuresById) ?? `sketch not found: ${sketchId}`,
+      )
       continue
     }
     const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
@@ -875,7 +975,7 @@ export function solveSweep(
             'feature, naming its merge_target.',
           )
         }
-        sectionInputs.push({ sketchId: ref.sketchId, plane: ref.plane, loop: outer })
+        sectionInputs.push({ sketchId: ref.sketchId, plane: ref.plane, loop: outer, loopIndex: loop })
       }
     }
     if (sectionInputs.length < 2) {
@@ -907,6 +1007,8 @@ export function solveSweep(
     helixPitch = Math.abs(desc.pitch)
     helixPath = true
   } else {
+    const hint = pathReorderHint(pathRefs, globalRepo, featureId, featuresById)
+    if (hint !== null) throw new Error(hint)
     spineEdges = collectPathEdges(oc, scope, pathRefs, globalRepo)[0]
   }
 
@@ -924,22 +1026,30 @@ export function solveSweep(
   const result: { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } = { status: 'ok', body_id: bodyId }
   const operation = ((sub.operation as string) ?? 'add') as BodyOperation
 
+  // Both forms sample the same spine: the station rule is one rule, and the
+  // one-profile form only differs in its slope floor.
+  if (multisection && spineEdges.length === 0) throw new Error('sweep: empty path')
+  const sampler = spineSampler(oc, scope, spineEdges)
   // In multisection mode each section is swept where it was drawn, in station
   // order derived from the path; the single-profile path below is untouched.
   let sections: SweepSection[] = []
   let opSketchId = firstSketchId
   if (multisection) {
-    // The path is checked before the stations: with no spine every section
-    // would report "not on the path", which names the wrong cause.
-    if (spineEdges.length === 0) throw new Error('sweep: empty path')
-    const sampler = spineSampler(oc, scope, spineEdges)
     sections = orderSections(sectionInputs, sampler).map((s) => ({
       sketchId: s.sketchId,
+      loopIndex: s.loopIndex,
       plane: s.plane,
       loop: s.loop,
       tangent: stationTangent(sampler, s.station, s.plane.normal as Vec3),
-      pick: s.pick,
+      sectionIndex: s.sectionIndex,
     }))
+  } else {
+    // MakePipeShell carries the profile from the spine start without checking
+    // where the profile sits, so a profile the path never pierces builds
+    // displaced or degenerate geometry with status ok. Refuse that placement
+    // before the build; this checks the crossing, it does not pin the profile
+    // to the start frame.
+    assertProfileOnPath(sampler, firstPt as PlaneLike, allLoops, pathRefs)
   }
 
   let lineage: LineageResult

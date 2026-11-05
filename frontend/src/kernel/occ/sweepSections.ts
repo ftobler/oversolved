@@ -30,14 +30,16 @@ import { countSolids } from './booleans'
 import { volumeOf } from './volume'
 
 /** One section as the station finder ordered it: its plane, its outer loop, the
- *  spine direction at its station (used only to orient the wire) and its 1-based
- *  position in the user's `sketch` pick list, which is how messages name it. */
+ *  spine direction at its station (used only to orient the wire), its
+ *  sketch-and-loop identity, and its flattened position (kept only so a
+ *  same-station pair can be reported deterministically). */
 export type SweepSection = {
   sketchId: string
+  loopIndex: number
   plane: PlaneLike
   loop: LoopEdge[]
   tangent: Vec3
-  pick: number
+  sectionIndex: number
 }
 
 // The plausibility gate is loose on purpose: it is a guard against a grossly
@@ -145,14 +147,18 @@ function prepareSection(
  * builds a valid but wrong 28-face solid, so this check cannot wait for the
  * build to fail.
  */
+function sectionWhere(section: SweepSection): string {
+  return `sketch ${section.sketchId}, loop ${section.loopIndex}`
+}
+
 function refuseUnmatchable(prepared: PreparedSection[]): void {
   for (let i = 0; i + 1 < prepared.length; i++) {
     const a = prepared[i].edges
     const b = prepared[i + 1].edges
     if (a > 1 && b > 1 && a !== b) {
       throw new Error(
-        `sweep: the sections could not be matched (edge counts ${a} at section ` +
-        `${prepared[i].section.pick}, ${b} at section ${prepared[i + 1].section.pick}): ` +
+        `sweep: the sections could not be matched (edge counts ${a} at ` +
+        `${sectionWhere(prepared[i].section)}, ${b} at ${sectionWhere(prepared[i + 1].section)}): ` +
         `OCC could not pair their vertices; ` +
         `give neighbouring sections the same number of edges`,
       )

@@ -310,6 +310,115 @@ describe('solveSweep guard paths', () => {
     ).toThrow(/sketch not found: missing/)
   })
 
+  it('names the reorder fix for a later whole-sketch profile', () => {
+    expect(() =>
+      solveSweep(
+        oc,
+        scope,
+        table,
+        { id: 'sw1', sweep: { sketch: '$s6', path: '$p' } },
+        new Repository(),
+        {},
+        { sw1: { id: 'sw1', kind: 'sweep' }, s6: { id: 's6', kind: 'sketch' } },
+      ),
+    ).toThrow(
+      "sketch 's6' is defined after this sweep; move it up with reorder_features {featureId: 's6', before: 'sw1'}",
+    )
+  })
+
+  it('keeps the generic miss for a profile sketch that is absent or earlier', () => {
+    const cases: Record<string, Record<string, unknown>>[] = [
+      { sw1: { id: 'sw1', kind: 'sweep' } },
+      { s6: { id: 's6', kind: 'sketch' }, sw1: { id: 'sw1', kind: 'sweep' } },
+    ]
+    for (const featuresById of cases) {
+      expect(() =>
+        solveSweep(
+          oc,
+          scope,
+          table,
+          { id: 'sw1', sweep: { sketch: '$s6', path: '$p' } },
+          new Repository(),
+          {},
+          featuresById,
+        ),
+      ).toThrow(/sketch not found: s6/)
+    }
+  })
+
+  it('names the reorder fix for a later edge-precise profile sketch', () => {
+    expect(() =>
+      solveSweep(
+        oc,
+        scope,
+        table,
+        { id: 'sw1', sweep: { sketch: ['entity:s6:e1'], path: '$p' } },
+        new Repository(),
+        {},
+        { sw1: { id: 'sw1', kind: 'sweep' }, s6: { id: 's6', kind: 'sketch' } },
+      ),
+    ).toThrow(
+      "sketch 's6' is defined after this sweep; move it up with reorder_features {featureId: 's6', before: 'sw1'}",
+    )
+  })
+
+  it('keeps the generic miss for an absent edge-precise profile sketch', () => {
+    expect(() =>
+      solveSweep(
+        oc,
+        scope,
+        table,
+        { id: 'sw1', sweep: { sketch: ['entity:s6:e1'], path: '$p' } },
+        new Repository(),
+        {},
+        { sw1: { id: 'sw1', kind: 'sweep' } },
+      ),
+    ).toThrow(/sketch not found: s6/)
+  })
+
+  it('names the reorder fix for a later path sketch', () => {
+    const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+    vi.mocked(collectExtrudeLoops).mockImplementation(() => (
+      { loops: [squareLoop(4)], plane, sketchId: 'skP', face: null }
+    ))
+    expect(() =>
+      solveSweep(
+        oc,
+        scope,
+        table,
+        { id: 'sw1', sweep: { sketch: '$skP', path: '$s6' } },
+        new Repository(),
+        {},
+        { sw1: { id: 'sw1', kind: 'sweep' }, s6: { id: 's6', kind: 'sketch' } },
+      ),
+    ).toThrow(
+      "sketch 's6' is defined after this sweep; move it up with reorder_features {featureId: 's6', before: 'sw1'}",
+    )
+  })
+
+  it('keeps the path miss for a path sketch that is absent or earlier', () => {
+    const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+    vi.mocked(collectExtrudeLoops).mockImplementation(() => (
+      { loops: [squareLoop(4)], plane, sketchId: 'skP', face: null }
+    ))
+    for (const featuresById of [
+      { sw1: { id: 'sw1', kind: 'sweep' } },
+      { s6: { id: 's6', kind: 'sketch' }, sw1: { id: 'sw1', kind: 'sweep' } },
+    ] as Record<string, Record<string, unknown>>[]) {
+      expect(() =>
+        solveSweep(
+          oc,
+          scope,
+          table,
+          { id: 'sw1', sweep: { sketch: '$skP', path: '$s6' } },
+          new Repository(),
+          {},
+          featuresById,
+        ),
+      ).toThrow(/path sketch not found: "s6"/)
+    }
+  })
+
   it('refuses a profile mixing a picked body face with sketch loops', () => {
     // Both a face ref and a loop ref resolved; the leaf sweeps only the loops,
     // so the mixed pick must be refused by name instead of silently dropping

@@ -828,7 +828,12 @@ banner on stdout, so a client config must use the direct node invocation.
   sweep is one `add_sweep_profile` per section and `multisection: true` in the
   add call (or a later `set_sweep_field {field:"multisection", value:true}`);
   every section must be pierced by the path. Each section is one outer loop, so
-  a section with a hole is refused. A profile or path ref is a whole sketch
+  a section with a hole is refused, and loops that cross each other are NOT
+  unioned in a section: draw one closed outer loop per section. A single-profile
+  sweep needs the path to cross the profile's plane inside the profile; a
+  profile lying along the path is refused, not built. That checks the placement
+  only: the profile is still carried from the path start, not moved to its
+  crossing. A profile or path ref is a whole sketch
   (`$<sketchId>` or `@<sketchId>`), one curve (`entity:<sketchId>:<entityId>`),
   or a `?` area query from `select`; a sweep takes one `entity:` ref per curve
   (a slotted loop needs its two lines and two arcs as four refs, one

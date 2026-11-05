@@ -14,7 +14,10 @@ import { SharedHarness } from '../../occ/sharedHarness'
 import { Repository } from '../../query'
 import { solveSweep } from '../sweep'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
+import { volumeOf } from '../../occ/volume'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import type { OccShape } from '../../occ/occTypes'
+import type { Body } from '../../types3d'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
@@ -155,6 +158,37 @@ function sweepSpec(sweepId: string, profileId: string, pathId: string, opts: { o
   }
   if (opts.mergeTarget) spec.sweep = { ...spec.sweep as Record<string, unknown>, merge_target: opts.mergeTarget }
   return spec
+}
+
+type Dict = Record<string, unknown>
+
+/** A closed square boundary in sketch coords, centred on (cx, cy). */
+function squareSurface(cx: number, cy: number, half: number, prefix = 's'): Dict[] {
+  const c: [number, number][] = [
+    [cx - half, cy - half], [cx + half, cy - half], [cx + half, cy + half], [cx - half, cy + half],
+  ]
+  return c.map((p, i) => ({
+    id: prefix + (i + 1), kind: 'line', start: p, end: c[(i + 1) % 4],
+  }))
+}
+
+/** A seeded one-profile sweep: the profile sits on the Front plane and the
+ *  path is one Top-plane line, so no Rust sketch solve is needed. */
+function seedOneProfileRepo(
+  profile: Dict[],
+  pathSegments: [number, number, number, number][] = [[0, 0, 0, 10]],
+): Repository {
+  const repo = new Repository()
+  repo.register('_pt_prof', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+  repo.register('_topo_prof', { surfaces: [{ boundary: profile }] })
+  repo.register('_pt_path', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0] })
+  repo.register('_topo_path', {
+    edges: pathSegments.map((p, i) => ({
+      entity_id: 'p' + i, edge_index: i, kind: 'line',
+      start: [p[0], p[1]], end: [p[2], p[3]],
+    })),
+  })
+  return repo
 }
 
 function assertMeshValid(mesh: Record<string, unknown>): void {
@@ -404,5 +438,102 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     } finally {
       scope.dispose()
     }
+  })
+
+  it('refuses a one-profile path that misses the profile, naming the distance', () => {
+    // Before the station rule this built a displaced body with status ok: the
+    // path starts at the origin and the profile sits 5 mm to the side.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    const repo = seedOneProfileRepo(squareSurface(5, 0, 1))
+    let message = ''
+    try {
+      try {
+        solveSweep(oc!, scope, table, {
+          id: 'sw1', kind: 'sweep',
+          sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
+        }, repo, {})
+      } catch (exc) {
+        message = (exc as Error).message
+      }
+    } finally {
+      table.disposeAll()
+      scope.dispose()
+    }
+    expect(message).toBe(
+      "sweep: the path does not pass through the profile: the nearest crossing is 5 mm from its centroid (path '$path')",
+    )
+  })
+
+  it('builds a one-profile sweep whose crossing is inside the profile', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    const bodyStore: Record<string, Body> = {}
+    const repo = seedOneProfileRepo(squareSurface(0, 0, 1))
+    try {
+      const result = solveSweep(oc!, scope, table, {
+        id: 'sw1', kind: 'sweep',
+        sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
+      }, repo, bodyStore)
+      expect(result.status).toBe('ok')
+      const body = bodyStore['body_sw1']
+      expect(body).toBeDefined()
+      const volume = volumeOf(oc!, scope, table.get<OccShape>(body.shape!))
+      expect(volume).toBeCloseTo(40, 2)
+    } finally {
+      table.disposeAll()
+      scope.dispose()
+    }
+  })
+
+  it('refuses a profile lying along the path as a shallow angle', () => {
+    // The torus reduced to one line: the whole path lies in the profile plane,
+    // so the crossing exists but has no component across the plane.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    const repo = seedOneProfileRepo(squareSurface(0, 0, 1), [[0, 0, 10, 0]])
+    try {
+      expect(() =>
+        solveSweep(oc!, scope, table, {
+          id: 'sw1', kind: 'sweep',
+          sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
+        }, repo, {}),
+      ).toThrow('sweep: the profile meets the path at a shallow angle; draw the profile square to the path')
+    } finally {
+      table.disposeAll()
+      scope.dispose()
+    }
+  })
+
+  it('keeps a profile on the path start and refuses the same profile moved across it', () => {
+    // The bottle half: the intended thread sits on the helix start side; the
+    // same profile on the other side of the neck is not pierced and must not
+    // build as a displaced body.
+    const solve = (cx: number): { status?: string; body?: Body; error?: string } => {
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      const bodyStore: Record<string, Body> = {}
+      try {
+        try {
+          const result = solveSweep(oc!, scope, table, {
+            id: 'sw1', kind: 'sweep',
+            sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
+          }, seedOneProfileRepo(squareSurface(cx, 0, 1)), bodyStore)
+          return { status: result.status, body: bodyStore['body_sw1'] }
+        } catch (exc) {
+          return { error: (exc as Error).message }
+        }
+      } finally {
+        table.disposeAll()
+        scope.dispose()
+      }
+    }
+    const onStart = solve(0)
+    expect(onStart.status).toBe('ok')
+    expect(onStart.body).toBeDefined()
+    const moved = solve(6)
+    expect(moved.error).toBe(
+      "sweep: the path does not pass through the profile: the nearest crossing is 6 mm from its centroid (path '$path')",
+    )
   })
 })

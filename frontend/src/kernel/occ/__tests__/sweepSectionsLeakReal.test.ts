@@ -60,13 +60,14 @@ function squareLoop(half: number): LoopEdge[] {
   })
 }
 
-function section(z: number, pick: number): SweepSection {
+function section(z: number, sectionIndex: number): SweepSection {
   return {
     sketchId: 'sk1',
+    loopIndex: 1,
     plane: { ...Z_PLANE, origin: [0, 0, z] },
     loop: squareLoop(1),
     tangent: [0, 0, 1],
-    pick,
+    sectionIndex,
   }
 }
 

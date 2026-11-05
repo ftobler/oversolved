@@ -143,7 +143,18 @@ const PROFILE_REF_NOTE =
   'entity as `entity:`, and `@<sketchId>/<entityId>` or `@<bodyId>/face/<n>` is a face-profile pick ' +
   '(a sweep refuses a face pick).'
 
+// The sweep profile field is read by two forms with their own rules, so the
+// extrude fill note above would be false here: a multisection classifies loops
+// by containment only and never unions crossing loops.
+const SWEEP_SKETCH_NOTE =
+  'A multisection sweep takes each outer loop a section sketch draws as one section; a loop nested ' +
+  'inside another is a hole and is refused; loops that cross each other are NOT unioned here, so draw ' +
+  'one closed outer loop per section. A single-profile sweep needs the path to cross the profile\'s ' +
+  'plane inside the profile; a profile lying along the path is refused, not built. That checks the ' +
+  'placement only: the profile is still carried from the path start, not moved to its crossing.'
+
 const sketchQuery = () => query('A profile ref. ' + PROFILE_REF_NOTE + ' ' + PROFILE_LOOPS_NOTE)
+const sweepSketchQuery = () => query('A profile ref. ' + PROFILE_REF_NOTE + ' ' + SWEEP_SKETCH_NOTE)
 const pathQuery = () => query('A path ref. ' + PROFILE_REF_NOTE)
 const edgeQuery = () => query('An edge query as returned by `select`.')
 const faceQuery = () => query('A face query as returned by `select`.')
@@ -945,7 +956,7 @@ export const MUTATION_CATALOG = {
     note: SWEEP_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
-      sketchQuery: sketchQuery(),
+      sketchQuery: sweepSketchQuery(),
       pathQuery: pathQuery(),
       transition: optStr('mitre | round; absent means mitre.'),
       multisection: optBool(),
@@ -959,7 +970,7 @@ export const MUTATION_CATALOG = {
   },
   add_sweep_profile: {
     summary: 'Add a profile sketch to a sweep.',
-    fields: { featureId: str(), sketchQuery: sketchQuery() },
+    fields: { featureId: str(), sketchQuery: sweepSketchQuery() },
   },
   remove_sweep_profile: {
     summary: 'Remove a sweep profile by index.',

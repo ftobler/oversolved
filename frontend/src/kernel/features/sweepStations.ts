@@ -30,14 +30,22 @@ export type SpineSampler = {
 /** One section: its own plane and its outer loop, in that plane's sketch coords. */
 export type SectionInput = {
   sketchId: string
+  /** The 1-based ordinal of this outer loop within `sketchId`. A sketch that
+   *  draws several disjoint loops contributes one section per loop, so the
+   *  sketch id plus this ordinal is what a message names; a flattened section
+   *  number would read as a pick position the user never chose. */
+  loopIndex: number
   plane: PlaneLike
   loop: LoopEdge[]
 }
 
 /** Where a section sits on the spine. `fraction` is an arc-length fraction over
- *  the whole spine, used for messages and station order only. */
+ *  the whole spine, used for messages and station order only. `local` is the
+ *  crossing in the section plane's own coords, so a profile's holes can be
+ *  tested against the same station without rebuilding the frame. */
 export type Station = {
   point: Vec3
+  local: [number, number]
   edge: number
   t: number
   fraction: number
@@ -45,15 +53,29 @@ export type Station = {
 
 export type StationedSection = SectionInput & {
   station: Station
-  /** The section's 1-based position in the `sketch` pick list. Every section
-   *  message numbers by this, not by station order, so reordering the list does
-   *  not renumber the same section two ways. */
-  pick: number
+  /** The section's 1-based position in the flattened section list, kept only
+   *  for the same-station pair check. It is not a user-visible pick index:
+   *  messages name the sketch and the loop ordinal instead. */
+  sectionIndex: number
 }
 
-export type StationOutcome =
-  | { ok: true; station: Station }
-  | { ok: false; reason: 'not-on-path' | 'shallow-angle' }
+export type StationMiss = {
+  ok: false
+  reason: 'not-on-path' | 'shallow-angle'
+  /** The distance from the loop centroid to the crossing nearest it, absent
+   *  when the spine never crosses the plane (so there is no crossing to
+   *  measure). */
+  distance?: number
+}
+
+export type StationOutcome = { ok: true; station: Station } | StationMiss
+
+/** The one-profile form's slope floor. It has no station-to-station
+ *  interpolation, so its only ill-conditioned case is a start lying in the
+ *  profile plane; the multisection 5 degree floor would refuse a legitimate
+ *  coil, where a radial profile on a helix crosses at
+ *  `sin(atan(pitch / (2 pi r)))` (0.0477 at r 10, pitch 3). */
+export const MIN_CROSSING_SIN_ONCE = 1e-6
 
 // A sample this close to the plane counts as on it, so a section sitting exactly
 // at the spine's start or end is found (its signed distance is a rounding error,
@@ -169,14 +191,18 @@ function crossingSlope(
 /**
  * The station of one section: the plane/spine crossing nearest the loop's
  * centroid, which must lie inside the loop and must not be near-tangent.
- * `sectionIndex` is the 0-based pick-list position, only used to name the
- * section in an error.
+ * `sectionIndex` is the 0-based flattened position, only used to name the
+ * section in a plane error. `minCrossingSin` is the slope floor: the
+ * multisection form keeps its absolute 5 degree bound, while the one-profile
+ * form passes `MIN_CROSSING_SIN_ONCE` because it has no interpolation between
+ * stations.
  */
 export function findStation(
   sampler: SpineSampler,
   plane: PlaneLike,
   loop: LoopEdge[],
   sectionIndex = 0,
+  minCrossingSin = MIN_CROSSING_SIN,
 ): StationOutcome {
   const frame = planeFrame(plane, sectionIndex)
   const crossings: Crossing[] = []
@@ -223,7 +249,7 @@ export function findStation(
     }
   }
 
-  const local: number[] = [
+  const local: [number, number] = [
     (best.point[0] - frame.o[0]) * plane.x_axis[0] +
       (best.point[1] - frame.o[1]) * plane.x_axis[1] +
       (best.point[2] - frame.o[2]) * plane.x_axis[2],
@@ -231,10 +257,12 @@ export function findStation(
       (best.point[1] - frame.o[1]) * plane.y_axis[1] +
       (best.point[2] - frame.o[2]) * plane.y_axis[2],
   ]
-  if (!pointOnOrInLoop(loop, local)) return { ok: false, reason: 'not-on-path' }
+  if (!pointOnOrInLoop(loop, local)) {
+    return { ok: false, reason: 'not-on-path', distance: bestDist }
+  }
 
-  if (crossingSlope(sampler, best, frame) < MIN_CROSSING_SIN) {
-    return { ok: false, reason: 'shallow-angle' }
+  if (crossingSlope(sampler, best, frame) < minCrossingSin) {
+    return { ok: false, reason: 'shallow-angle', distance: bestDist }
   }
 
   const total = edgeLengths.reduce((a, b) => a + b, 0)
@@ -243,8 +271,57 @@ export function findStation(
 
   return {
     ok: true,
-    station: { point: best.point, edge: best.edge, t: best.t, fraction },
+    station: { point: best.point, local, edge: best.edge, t: best.t, fraction },
   }
+}
+
+/** How a section message names its subject: the sketch the user picked plus
+ *  the outer loop's ordinal in that sketch, and how many outer loops the
+ *  sketch draws (above one, the refusal explains why it became several
+ *  sections). */
+export type SectionRef = {
+  sketchId: string
+  loopIndex: number
+  outerLoops: number
+}
+
+function sectionWhere(ref: SectionRef): string {
+  return `sketch ${ref.sketchId}, loop ${ref.loopIndex}`
+}
+
+/**
+ * The one multisection refusal text, shared by `orderSections` so the station
+ * messages cannot drift. A sketch that draws several outer loops produced
+ * several sections and the path missing one is usually that split, so it names
+ * the loop and the non-union rule rather than a bare section number.
+ */
+export function describeSectionMiss(outcome: StationMiss, ref: SectionRef): string {
+  const where = sectionWhere(ref)
+  if (outcome.reason === 'shallow-angle') {
+    return `sweep: ${where} meets the path at a shallow angle; draw the section square to the path`
+  }
+  if (ref.outerLoops > 1) {
+    return (
+      `sweep: sketch ${ref.sketchId} holds ${ref.outerLoops} outer loops; a multisection sweep takes each ` +
+      `outer loop as its own section, and the path does not pass through loop ${ref.loopIndex}. ` +
+      'Loops are not unioned in a multisection section: draw one closed outer loop per section, or split ' +
+      'the sketch into one sketch per section'
+    )
+  }
+  return `sweep: ${where} is not on the path: the path does not pass through it`
+}
+
+/** The one-profile form's refusal text, in the same words as its catalog note. */
+export function describeProfileMiss(outcome: StationMiss, pathRefs: string[]): string {
+  if (outcome.reason === 'shallow-angle') {
+    return 'sweep: the profile meets the path at a shallow angle; draw the profile square to the path'
+  }
+  const path = pathRefs.map((ref) => `'${ref}'`).join(', ')
+  const crossing =
+    outcome.distance === undefined
+      ? 'the path does not cross its plane'
+      : `the nearest crossing is ${Number(outcome.distance.toFixed(2))} mm from its centroid`
+  return `sweep: the path does not pass through the profile: ${crossing} (path ${path})`
 }
 
 /**
@@ -252,33 +329,39 @@ export function findStation(
  * return the sections in station order. The list order the user picked means
  * nothing: the path decides where each section sits.
  *
- * Every message numbers a section by its 1-based position in that pick list,
- * which is what the user sees in the `sketch` field, so the number does not
- * change when the sections are reordered by station.
+ * Messages name a section by its sketch id and loop ordinal, not by a pick
+ * position: each outer loop of a sketch is its own section, so a flattened
+ * index would point at a loop the user never picked separately.
  */
 export function orderSections(
   sections: SectionInput[],
   sampler: SpineSampler,
 ): StationedSection[] {
+  const outerLoopsBySketch = new Map<string, number>()
+  for (const section of sections) {
+    outerLoopsBySketch.set(section.sketchId, (outerLoopsBySketch.get(section.sketchId) ?? 0) + 1)
+  }
+  const refOf = (section: SectionInput): SectionRef => ({
+    sketchId: section.sketchId,
+    loopIndex: section.loopIndex,
+    outerLoops: outerLoopsBySketch.get(section.sketchId) ?? 1,
+  })
+
   const stationed: StationedSection[] = []
   for (let i = 0; i < sections.length; i++) {
     const outcome = findStation(sampler, sections[i].plane, sections[i].loop, i)
-    if (!outcome.ok) {
-      if (outcome.reason === 'shallow-angle') {
-        throw new Error(
-          `sweep: section ${i + 1} meets the path at a shallow angle; draw the section square to the path`,
-        )
-      }
-      throw new Error(`sweep: section ${i + 1} is not on the path: the path does not pass through it`)
-    }
-    stationed.push({ ...sections[i], station: outcome.station, pick: i + 1 })
+    if (!outcome.ok) throw new Error(describeSectionMiss(outcome, refOf(sections[i])))
+    stationed.push({ ...sections[i], station: outcome.station, sectionIndex: i + 1 })
   }
   // Every pair, not just neighbours: a hairpin can bring two far-apart stations
   // into the same place, which is exactly what confuses the section placement.
   for (let i = 0; i < stationed.length; i++) {
     for (let j = i + 1; j < stationed.length; j++) {
       if (dist3(stationed[i].station.point, stationed[j].station.point) < OCC_CONFUSION) {
-        throw new Error(`sweep: sections ${i + 1} and ${j + 1} sit at the same station`)
+        throw new Error(
+          `sweep: ${sectionWhere(refOf(stationed[i]))} and ${sectionWhere(refOf(stationed[j]))} ` +
+          'sit at the same station',
+        )
       }
     }
   }

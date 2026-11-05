@@ -165,30 +165,50 @@ describe.skipIf(!ready)('sweep profile refs (real OCC + Rust solver)', () => {
     expect(Math.abs((measured?.measures.volume ?? 0) - (tube + rod))).toBeLessThan(0.5)
   }, 180_000)
 
-  it('assembles a slot section from its four entity refs and sweeps it', async () => {
+  it('names the reorder fix for a profile sketch added after the sweep', async () => {
+    // The profile pick was accepted (the boundary checks grammar, not document
+    // order), but the sketch sits after the sweep in the list. The solve names
+    // the one-step fix instead of the bare "sketch not found".
     const run = await runHeadless({
       doc: emptyDriveDoc(),
       steps: [
-        m({ type: 'add_sketch', featureId: 'slot', plane: '@builtin_plane_top' }),
-        m({ type: 'add_entity', featureId: 'slot', kind: 'line', params: [-3, 2, 3, 2], entityId: 'top' }),
-        m({ type: 'add_entity', featureId: 'slot', kind: 'line', params: [3, -2, -3, -2], entityId: 'bottom' }),
-        m({ type: 'add_entity', featureId: 'slot', kind: 'arc', params: [3, 0, 2, -90, 90], entityId: 'right' }),
-        m({ type: 'add_entity', featureId: 'slot', kind: 'arc', params: [-3, 0, 2, 90, 270], entityId: 'left' }),
-        m({ type: 'add_sketch', featureId: 'path', plane: '@builtin_plane_front' }),
-        m({ type: 'add_entity', featureId: 'path', kind: 'line', params: [0, 0, 0, 10], entityId: 'spine' }),
-        m({
-          type: 'add_sweep', featureId: 'sw', sketchQuery: 'entity:slot:top', pathQuery: '$path',
-          operation: 'new',
-        }),
-        m({ type: 'add_sweep_profile', featureId: 'sw', sketchQuery: 'entity:slot:bottom' }),
-        m({ type: 'add_sweep_profile', featureId: 'sw', sketchQuery: 'entity:slot:right' }),
-        m({ type: 'add_sweep_profile', featureId: 'sw', sketchQuery: 'entity:slot:left' }),
+        ...scene(),
+        m({ type: 'add_sketch', featureId: 'prof', plane: '@builtin_plane_top' }),
+        m({ type: 'add_entity', featureId: 'prof', kind: 'circle', params: [0, 0, 2], entityId: 'pc' }),
+        m({ type: 'add_sweep', featureId: 'sw', sketchQuery: '$prof', pathQuery: '$path', operation: 'new' }),
+        m({ type: 'add_sketch', featureId: 'late', plane: '@builtin_plane_top' }),
+        m({ type: 'add_entity', featureId: 'late', kind: 'circle', params: [0, 0, 1], entityId: 'lc' }),
+        m({ type: 'add_sweep_profile', featureId: 'sw', sketchQuery: '$late' }),
       ],
     })
-    expect(run.features).toEqual([])
-    // 6 x 4 slot body plus two r2 half discs, carried 10 along the path.
-    const area = 6 * 4 + Math.PI * 4
-    const measured = await measureHeadless(run.doc as PartDoc)
-    expect(Math.abs((measured?.measures.volume ?? 0) - area * 10)).toBeLessThan(1)
+    const problem = run.features.find(feature => feature.id === 'sw')
+    expect(problem?.message).toBe(
+      "sketch 'late' is defined after this sweep; move it up with reorder_features {featureId: 'late', before: 'sw'}",
+    )
+    expect(problem?.message).not.toContain('sketch not found')
+  }, 120_000)
+
+  it('names the reorder fix for a path sketch added after the sweep', async () => {
+    // The same authoring mistake on the path side: a second path sketch was
+    // added after the sweep and then picked with add_sweep_path.
+    const run = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [
+        ...scene(),
+        m({ type: 'add_sketch', featureId: 'prof', plane: '@builtin_plane_top' }),
+        m({ type: 'add_entity', featureId: 'prof', kind: 'circle', params: [0, 0, 2], entityId: 'pc' }),
+        m({ type: 'add_sweep', featureId: 'sw', sketchQuery: '$prof', pathQuery: '$path', operation: 'new' }),
+        m({ type: 'add_sketch', featureId: 'latePath', plane: '@builtin_plane_front' }),
+        m({
+          type: 'add_entity', featureId: 'latePath', kind: 'line',
+          params: [0, 0, 0, 10], entityId: 'spine2',
+        }),
+        m({ type: 'add_sweep_path', featureId: 'sw', pathQuery: '$latePath' }),
+      ],
+    })
+    const problem = run.features.find(feature => feature.id === 'sw')
+    expect(problem?.message).toBe(
+      "sketch 'latePath' is defined after this sweep; move it up with reorder_features {featureId: 'latePath', before: 'sw'}",
+    )
   }, 120_000)
 })

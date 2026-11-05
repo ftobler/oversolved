@@ -332,6 +332,58 @@ describe.skipIf(!oc)('sweep multisection (real OCC)', () => {
     expect(solved?.volume).toBeCloseTo(93.333333, 3)
   })
 
+  it('builds one closed outer loop per section sketch', () => {
+    // The cutter's workaround in miniature: each section sketch is a single
+    // 4-edge loop, so the two sections build the straight prism.
+    const repo = new Repository()
+    repo.register('_pt_path', FRONT)
+    repo.register('_topo_path', {
+      edges: [{ entity_id: 'p0', edge_index: 0, kind: 'line', start: [0, 0], end: [0, 10] }],
+    })
+    const planeAt = (y: number): Dict => ({
+      origin: [0, y, 0], x_axis: [1, 0, 0], y_axis: [0, 0, 1], normal: [0, -1, 0],
+    })
+    registerSection(repo, 'a', planeAt(0), squareBoundary(2, 'a'))
+    registerSection(repo, 'b', planeAt(10), squareBoundary(2, 'b'))
+    const { solved, error } = solve(oc!, repo, {
+      sketch: ['@a', '@b'], path: '@path', multisection: true, operation: 'new',
+    })
+    expect(error).toBeNull()
+    expect(solved?.volume).toBeCloseTo(40, 3)
+  })
+
+  it('names the outer loop a crossing-loop sketch added, not a bare section', () => {
+    // A core circle plus a tooth loop that crosses it: classifyLoops reads
+    // containment only, so the sketch becomes two outer loops. The path pierces
+    // the core but not the tooth, and the refusal must say so by sketch and
+    // loop plus the non-union rule instead of blaming "section 2".
+    const repo = new Repository()
+    repo.register('_pt_path', FRONT)
+    repo.register('_topo_path', {
+      edges: [{ entity_id: 'p0', edge_index: 0, kind: 'line', start: [0, 0], end: [0, 10] }],
+    })
+    const planeAt = (y: number): Dict => ({
+      origin: [0, y, 0], x_axis: [1, 0, 0], y_axis: [0, 0, 1], normal: [0, -1, 0],
+    })
+    const tooth: Dict[] = [
+      { id: 't1', kind: 'line', start: [7, -1], end: [13, -1] },
+      { id: 't2', kind: 'line', start: [13, -1], end: [13, 1] },
+      { id: 't3', kind: 'line', start: [13, 1], end: [7, 1] },
+      { id: 't4', kind: 'line', start: [7, 1], end: [7, -1] },
+    ]
+    repo.register('_pt_cross', planeAt(0))
+    repo.register('_topo_cross', {
+      surfaces: [{ boundary: circleBoundary('core', 8) }, { boundary: tooth }],
+    })
+    const { error } = solve(oc!, repo, {
+      sketch: ['@cross'], path: '@path', multisection: true, operation: 'new',
+    })
+    expect(error).toMatch(/sweep: sketch cross holds 2 outer loops/)
+    expect(error).toMatch(/the path does not pass through loop 2/)
+    expect(error).toMatch(/Loops are not unioned in a multisection section/)
+    expect(error).toMatch(/split the sketch into one sketch per section/)
+  })
+
   it('refuses an 8/4 edge-count mismatch by name instead of building it', () => {
     // The shipped 7.4 does not throw here (the probe measured a valid but wrong
     // 28-face solid), so the refusal has to come from the edge-count check.
@@ -348,15 +400,15 @@ describe.skipIf(!oc)('sweep multisection (real OCC)', () => {
     const { error } = solve(oc!, repo, {
       sketch: ['@a', '@b'], path: '@path', multisection: true, operation: 'new',
     })
-    expect(error).toMatch(/the sections could not be matched \(edge counts 8 at section 1, 4 at section 2\)/)
+    expect(error).toMatch(/the sections could not be matched \(edge counts 8 at sketch a, loop 1, 4 at sketch b, loop 1\)/)
     expect(error).toMatch(/give neighbouring sections the same number of edges/)
   })
 
-  it('numbers the mismatch by the sketch pick list, not by station order', () => {
-    // The same two sections picked the other way round: the rounded rectangle is
-    // now section 1, so the numbers follow the list the user sees rather than
-    // where the path happens to put each section. The pair is still reported in
-    // station order, which is why the square comes first.
+  it('names the mismatch by sketch and loop in station order', () => {
+    // The same two sections picked the other way round: the pair is still
+    // reported in station order, which is why the square (b at z=0) comes
+    // first, and each end is named by its own sketch rather than a flattened
+    // position that reads as a pick index.
     const repo = new Repository()
     repo.register('_pt_path', FRONT)
     repo.register('_topo_path', {
@@ -370,7 +422,7 @@ describe.skipIf(!oc)('sweep multisection (real OCC)', () => {
     const { error } = solve(oc!, repo, {
       sketch: ['@a', '@b'], path: '@path', multisection: true, operation: 'new',
     })
-    expect(error).toMatch(/the sections could not be matched \(edge counts 4 at section 2, 8 at section 1\)/)
+    expect(error).toMatch(/edge counts 4 at sketch b, loop 1, 8 at sketch a, loop 1/)
   })
 
   it('refuses a section the path does not pass through', () => {
@@ -392,7 +444,7 @@ describe.skipIf(!oc)('sweep multisection (real OCC)', () => {
     const { error } = solve(oc!, repo, {
       sketch: ['@a', '@b', '@c'], path: '@path', multisection: true, operation: 'new',
     })
-    expect(error).toMatch(/sweep: section 3 is not on the path: the path does not pass through it/)
+    expect(error).toMatch(/sweep: sketch c, loop 1 is not on the path: the path does not pass through it/)
   })
 
   it('builds the remaining sections and reports the failed ref as partial', () => {

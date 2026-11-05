@@ -6,6 +6,7 @@ import {
   findStation,
   orderSections,
   pointOnOrInLoop,
+  MIN_CROSSING_SIN_ONCE,
   type SectionInput,
   type SpineSampler,
   type Vec3,
@@ -81,8 +82,8 @@ function reverseLoop(loop: LoopEdge[]): LoopEdge[] {
   })
 }
 
-function section(sketchId: string, plane: PlaneLike, loop: LoopEdge[]): SectionInput {
-  return { sketchId, plane, loop }
+function section(sketchId: string, plane: PlaneLike, loop: LoopEdge[], loopIndex = 1): SectionInput {
+  return { sketchId, loopIndex, plane, loop }
 }
 
 const STRAIGHT = polyline([[[0, 0, 0], [0, 0, 10]]])
@@ -103,15 +104,21 @@ describe('sweepStations findStation', () => {
     expect(end.ok && end.station.fraction).toBeCloseTo(1, 9)
   })
 
-  it('refuses a plane the spine crosses outside the loop', () => {
+  it('refuses a plane the spine crosses outside the loop, naming the distance', () => {
     const outcome = findStation(STRAIGHT, planeZ(5), squareLoop(100, 100, 1))
-    expect(outcome).toEqual({ ok: false, reason: 'not-on-path' })
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.reason).toBe('not-on-path')
+    // The crossing is at (0, 0, 5); the loop centroid is (100, 100, 0), so the
+    // refusal carries the real miss distance rather than a bare "not on path".
+    expect(outcome.distance).toBeCloseTo(Math.hypot(100, 100), 9)
   })
 
-  it('refuses a plane the spine never meets', () => {
+  it('refuses a plane the spine never meets, with no distance to name', () => {
     const short = polyline([[[0, 0, 0], [0, 0, 4]]])
     const outcome = findStation(short, planeZ(5), squareLoop(0, 0, 1))
     expect(outcome).toEqual({ ok: false, reason: 'not-on-path' })
+    expect(outcome.ok ? undefined : outcome.distance).toBeUndefined()
   })
 
   it('refuses a near-tangent crossing at an absolute 5 degree floor', () => {
@@ -124,10 +131,41 @@ describe('sweepStations findStation', () => {
       normal: n,
     }
     const spine = polyline([[[0, 0, 0], [10, 0, 0]]])
-    expect(findStation(spine, plane, squareLoop(0, 0, 1))).toEqual({ ok: false, reason: 'shallow-angle' })
+    expect(findStation(spine, plane, squareLoop(0, 0, 1))).toEqual({
+      ok: false, reason: 'shallow-angle', distance: 0,
+    })
     // The same spine square to the plane is accepted.
     const square: PlaneLike = { origin: [5, 0, 0], x_axis: [0, 1, 0], y_axis: [0, 0, 1], normal: [1, 0, 0] }
     expect(findStation(spine, square, squareLoop(0, 0, 1)).ok).toBe(true)
+  })
+
+  it('refuses a spine lying in the profile plane at exactly zero slope', () => {
+    // The torus reduced to one line: the whole path lies in the profile plane,
+    // so the start crossing is real but the tangent has no component across
+    // the plane.
+    const spine = polyline([[[0, 0, 0], [10, 0, 0]]])
+    const outcome = findStation(spine, planeZ(0), squareLoop(0, 0, 1))
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.reason).toBe('shallow-angle')
+    expect(outcome.distance).toBeCloseTo(0, 9)
+  })
+
+  it('accepts a coil-like crossing on the one-profile floor and refuses it on 5 degrees', () => {
+    // |n . t| = 0.048, the crossing a radial profile makes on a helix at
+    // r 10, pitch 3. It is a valid one-profile sweep but below the
+    // multisection floor; the floor is the only difference between the forms.
+    const slopeSin = 0.048
+    const angle = Math.asin(slopeSin)
+    const plane: PlaneLike = {
+      origin: [0, 0, 0],
+      x_axis: [Math.cos(angle), -Math.sin(angle), 0],
+      y_axis: [0, 0, 1],
+      normal: [Math.sin(angle), Math.cos(angle), 0],
+    }
+    const spine = polyline([[[0, 0, 0], [10, 0, 0]]])
+    expect(findStation(spine, plane, squareLoop(0, 0, 1), 0, MIN_CROSSING_SIN_ONCE).ok).toBe(true)
+    expect(findStation(spine, plane, squareLoop(0, 0, 1))).toEqual({ ok: false, reason: 'shallow-angle', distance: 0 })
   })
 })
 
@@ -141,9 +179,9 @@ describe('sweepStations orderSections', () => {
     const ordered = orderSections(sections, STRAIGHT)
     expect(ordered.map((s) => s.sketchId)).toEqual(['a', 'b', 'c'])
     expect(ordered.map((s) => Number(s.station.fraction.toFixed(9)))).toEqual([0, 0.5, 1])
-    // The pick index follows the user's list, not the station order, so the
-    // same section keeps its number in every message.
-    expect(ordered.map((s) => s.pick)).toEqual([2, 3, 1])
+    // The section index follows the station order, but it is only the
+    // same-station check's position; messages use sketch id and loop ordinal.
+    expect(ordered.map((s) => s.sectionIndex)).toEqual([2, 3, 1])
   })
 
   it('gives each end of a U spine the crossing nearest its own loop', () => {
@@ -165,22 +203,32 @@ describe('sweepStations orderSections', () => {
     expect(ordered[1].station.fraction).toBeCloseTo(1, 9)
   })
 
-  it('names the section that is off the path', () => {
+  it('names the sketch and loop that is off the path', () => {
+    // Two outer loops of one sketch: the far loop is section loop 2, and the
+    // long form names the split because a bare section number would read as a
+    // pick position the user never chose.
     const sections = [
-      section('a', planeZ(5), squareLoop(0, 0, 1)),
-      section('b', planeZ(7), squareLoop(100, 0, 1)),
+      section('s0', planeZ(5), squareLoop(0, 0, 1), 1),
+      section('s0', planeZ(7), squareLoop(100, 0, 1), 2),
     ]
-    expect(() => orderSections(sections, STRAIGHT))
-      .toThrow(/sweep: section 2 is not on the path: the path does not pass through it/)
+    expect(() => orderSections(sections, STRAIGHT)).toThrow(
+      /sweep: sketch s0 holds 2 outer loops; a multisection sweep takes each outer loop as its own section, and the path does not pass through loop 2\. Loops are not unioned in a multisection section: draw one closed outer loop per section, or split the sketch into one sketch per section/,
+    )
   })
 
-  it('names two sections that share a station', () => {
+  it('names a one-loop sketch that is off the path', () => {
+    const sections = [section('b', planeZ(7), squareLoop(100, 0, 1))]
+    expect(() => orderSections(sections, STRAIGHT))
+      .toThrow(/sweep: sketch b, loop 1 is not on the path: the path does not pass through it/)
+  })
+
+  it('names two sections that share a station by sketch and loop', () => {
     const sections = [
       section('a', planeZ(5), squareLoop(0, 0, 1)),
       section('b', planeZ(5), squareLoop(0, 0, 2)),
     ]
     expect(() => orderSections(sections, STRAIGHT))
-      .toThrow(/sweep: sections 1 and 2 sit at the same station/)
+      .toThrow(/sweep: sketch a, loop 1 and sketch b, loop 1 sit at the same station/)
   })
 })
 

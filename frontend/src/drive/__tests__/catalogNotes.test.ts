@@ -177,7 +177,10 @@ describe('batch B: the empty clear and the profile fill rule', () => {
   })
 
   it('states the even/odd fill rule on every profile field', () => {
-    const notes = allNotes().filter(([where]) => where.endsWith('.sketchQuery'))
+    // The sweep rows read two forms with their own loop rules, so they carry
+    // their own note and are asserted below instead of the extrude fill rule.
+    const sweepRows = new Set(['add_sweep.sketchQuery', 'add_sweep_profile.sketchQuery'])
+    const notes = allNotes().filter(([where]) => where.endsWith('.sketchQuery') && !sweepRows.has(where))
     expect(notes.length).toBeGreaterThan(3)
     for (const [where, note] of notes) {
       expect(note, where).toContain('nested inside another is a hole')
@@ -215,6 +218,22 @@ describe('profile refs and the multisection limits', () => {
       'There is no loft feature',
     ]) {
       expect(note, text).toContain(text)
+    }
+  })
+
+  it('gives the sweep profile field its own loop rule on both rows', () => {
+    // A multisection classifies loops by containment only, so the extrude
+    // union sentence would be false here; the one-profile precondition sits
+    // beside it because both forms read this field.
+    for (const type of ['add_sweep', 'add_sweep_profile'] as const) {
+      const note = mutationInfoOf(type).fields.sketchQuery.note!
+      expect(note, type).toContain('takes each outer loop a section sketch draws as one section')
+      expect(note, type).toContain('loops that cross each other are NOT unioned here')
+      expect(note, type).toContain('draw one closed outer loop per section')
+      expect(note, type).toContain('the path to cross the profile\'s plane inside the profile')
+      expect(note, type).toContain('a profile lying along the path is refused, not built')
+      expect(note, type).toContain('carried from the path start, not moved to its crossing')
+      expect(note, type).not.toContain('cross each other are filled as their union')
     }
   })
 })
