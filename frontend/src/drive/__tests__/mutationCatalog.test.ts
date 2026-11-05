@@ -16,7 +16,7 @@ import {
 } from '../mutationCatalog'
 import { featureFieldNames, featureParamsSchema, PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import { ENTITY_BY_KIND, ENTITY_PARAM_LAYOUT } from '@/registry/entityRegistry'
-import type { EntityKind, Mutation } from '@/types/cad'
+import type { EntityKind, FeatureKind, Mutation } from '@/types/cad'
 import { MUTATION_FAMILIES, mutationCatalogPayload } from '../mutationCatalogPayload'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 
@@ -356,10 +356,43 @@ describe('mutation catalog', () => {
     expect(info.fields.axis.note).toContain('@<sketchId>/<entityId>')
   })
 
-  it('points a revolve or sweep that must cut at the setter, since only extrude adds with an operation', () => {
-    expect(mutationInfoOf('add_revolve').note).toContain('set_revolve_field')
-    expect(mutationInfoOf('add_sweep').note).toContain('set_sweep_field')
-    expect(mutationInfoOf('add_revolve').fields.operation).toBeUndefined()
+  it('publishes the setter fields on the four add rows the practice runs reported', () => {
+    const rows: Array<{ type: Mutation['type']; fields: readonly string[] }> = [
+      { type: 'add_revolve', fields: ['direction', 'operation', 'merge_target'] },
+      { type: 'add_sweep', fields: ['transition', 'multisection', 'operation', 'merge_target'] },
+      { type: 'add_transform', fields: featureFieldNames('transform') },
+      { type: 'add_boolean', fields: ['keep_tools', 'clearance'] },
+    ]
+    for (const row of rows) {
+      const info = mutationInfoOf(row.type)
+      for (const field of row.fields) expect(info.fields[field], `${row.type}.${field}`).toBeDefined()
+      // The note may name the setter as the parity it keeps, but must not send
+      // the author there for a field the add row now carries.
+      expect(info.note ?? '', row.type).not.toContain('follow it with')
+      expect(info.note ?? '', row.type).not.toContain('has no `operation` field')
+    }
+  })
+
+  it('lets every setter field of the four add rows land inline, or names why not', () => {
+    const rows: Array<{ kind: FeatureKind; type: Mutation['type'] }> = [
+      { kind: 'revolve', type: 'add_revolve' },
+      { kind: 'sweep', type: 'add_sweep' },
+      { kind: 'transform', type: 'add_transform' },
+      { kind: 'boolean', type: 'add_boolean' },
+    ]
+    // The two rows that spell their required ref list under a query field.
+    const NOT_INLINE_ON_PURPOSE: Partial<Record<FeatureKind, readonly string[]>> = {
+      revolve: ['sketch'],
+      sweep: ['sketch', 'path'],
+    }
+    for (const row of rows) {
+      const info = mutationInfoOf(row.type)
+      const exempt = NOT_INLINE_ON_PURPOSE[row.kind] ?? []
+      for (const field of featureFieldNames(row.kind)) {
+        if (exempt.includes(field)) continue
+        expect(info.fields[field], `${row.type}.${field}`).toBeDefined()
+      }
+    }
   })
 
   it('explains how to sweep sections that sit on other planes', () => {

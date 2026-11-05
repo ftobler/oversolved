@@ -1282,11 +1282,11 @@ export type Mutation =
   | { type: 'set_extrude_field'; featureId: string; field: keyof ExtrudeFeatureDef; value: unknown }
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
-  | ({ type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number; axis: string } & FeatureInsertion)
+  | ({ type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number; axis: string; direction?: RevolveDirection; operation?: RevolveFeatureDef['operation']; merge_target?: string } & FeatureInsertion)
   | { type: 'set_revolve_field'; featureId: string; field: keyof RevolveFeatureDef; value: unknown }
   | { type: 'add_revolve_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_revolve_profile'; featureId: string; index: number }
-  | ({ type: 'add_sweep'; featureId: string; label?: string; sketchQuery: string; pathQuery: string } & FeatureInsertion)
+  | ({ type: 'add_sweep'; featureId: string; label?: string; sketchQuery: string; pathQuery: string; transition?: SweepFeatureDef['transition']; multisection?: boolean; operation?: SweepFeatureDef['operation']; merge_target?: string } & FeatureInsertion)
   | { type: 'set_sweep_field'; featureId: string; field: keyof SweepFeatureDef; value: unknown }
   | { type: 'add_sweep_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_sweep_profile'; featureId: string; index: number }
@@ -1312,7 +1312,7 @@ export type Mutation =
   | ({ type: 'add_delete_face'; featureId: string; label?: string; faces?: string[] } & FeatureInsertion)
   | { type: 'add_delete_face_ref'; featureId: string; faceQuery: string }
   | { type: 'remove_delete_face_ref'; featureId: string; index: number }
-  | ({ type: 'add_boolean'; featureId: string; label?: string; operation?: BooleanFeatureDef['operation']; target?: string; tools?: string[] } & FeatureInsertion)
+  | ({ type: 'add_boolean'; featureId: string; label?: string } & Partial<BooleanFeatureDef> & FeatureInsertion)
   | { type: 'set_boolean_field'; featureId: string; field: keyof BooleanFeatureDef; value: unknown }
   | { type: 'add_boolean_tool'; featureId: string; tool: string }
   | { type: 'remove_boolean_tool'; featureId: string; tool: string }
@@ -1323,7 +1323,7 @@ export type Mutation =
   | { type: 'remove_delete_body_ref'; featureId: string; index: number }
   | ({ type: 'add_hole'; featureId: string; label?: string } & Partial<HoleFeatureDef> & FeatureInsertion)
   | { type: 'set_hole_field'; featureId: string; field: keyof HoleFeatureDef; value: unknown }
-  | ({ type: 'add_transform'; featureId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_transform'; featureId: string; label?: string } & Partial<TransformFeatureDef> & FeatureInsertion)
   | { type: 'set_transform_field'; featureId: string; field: keyof TransformFeatureDef; value: unknown }
   | { type: 'add_transform_body'; featureId: string; bodyQuery: string }
   | { type: 'remove_transform_body'; featureId: string; index: number }

@@ -330,6 +330,7 @@ export function applyAddRevolve(
   sketchQuery: string,
   angle: number,
   axis?: string,
+  inline: Partial<RevolveFeatureDef> = {},
 ): void {
   // The angle crosses the same rounding boundary as every stored feature scalar
   // (setFeatureField's rule; the required field is written straight into the def
@@ -339,20 +340,18 @@ export function applyAddRevolve(
     warn('applyAddRevolve: ignoring non-finite angle', { featureId, angle })
     return
   }
-  const feature: PartFeature = {
-    id: featureId,
-    kind: 'revolve',
-    label: label ?? 'Revolve',
-    // The axis rides along in the add so a script needs one call. It is a
-    // stored pick, not a default: an absent axis stays absent and the solver
-    // reports the missing pick.
-    revolve: {
-      sketch: sketchQuery ? [sketchQuery] : [],
-      angle: round(angle),
-      ...(axis ? { axis } : {}),
-    },
+  // The axis rides along in the add so a script needs one call. It is a
+  // stored pick, not a default: an absent axis stays absent and the solver
+  // reports the missing pick.
+  const revolve: RevolveFeatureDef = {
+    sketch: sketchQuery ? [sketchQuery] : [],
+    angle: round(angle),
+    ...(axis ? { axis } : {}),
   }
-  pushFeature(doc, feature)
+  // Direction, operation and merge_target follow the setter's clearing and
+  // rounding rules, exactly as add_pattern and add_mirror do.
+  mergeInlineFields(revolve, inline)
+  pushFeature(doc, { id: featureId, kind: 'revolve', label: label ?? 'Revolve', revolve })
 }
 
 export const applyAddRevolveProfile = makeAddRefToggle('revolve', 'sketch', 'applyAddRevolveProfile')
@@ -371,17 +370,14 @@ export function applyAddSweep(
   label: string | undefined,
   sketchQuery: string,
   pathQuery: string,
+  inline: Partial<SweepFeatureDef> = {},
 ): void {
-  const feature: PartFeature = {
-    id: featureId,
-    kind: 'sweep',
-    label: label ?? 'Sweep',
-    sweep: {
-      sketch: sketchQuery ? [sketchQuery] : [],
-      path: pathQuery ? [pathQuery] : [],
-    },
+  const sweep: SweepFeatureDef = {
+    sketch: sketchQuery ? [sketchQuery] : [],
+    path: pathQuery ? [pathQuery] : [],
   }
-  pushFeature(doc, feature)
+  mergeInlineFields(sweep, inline)
+  pushFeature(doc, { id: featureId, kind: 'sweep', label: label ?? 'Sweep', sweep })
 }
 
 export const applyAddSweepProfile = makeAddRefToggle('sweep', 'sketch', 'applyAddSweepProfile')
@@ -591,20 +587,13 @@ export function applyAddBoolean(
   doc: PartDoc,
   featureId: string,
   label?: string,
-  inline: Partial<Pick<BooleanFeatureDef, 'operation' | 'target' | 'tools'>> = {},
+  inline: Partial<BooleanFeatureDef> = {},
 ): void {
-  const feature: PartFeature = {
-    id: featureId,
-    kind: 'boolean',
-    label: label ?? 'Boolean',
-    // The tool list is copied for the same journal reason as the fillet's edges.
-    boolean: {
-      operation: inline.operation ?? 'union',
-      target: inline.target ?? '',
-      tools: [...(inline.tools ?? [])],
-    },
-  }
-  pushFeature(doc, feature)
+  // The tool list is copied for the same journal reason as the fillet's edges,
+  // and clearance crosses the same rounding boundary as every feature scalar.
+  const boolean: BooleanFeatureDef = { operation: 'union', target: '', tools: [] }
+  mergeInlineFields(boolean, inline)
+  pushFeature(doc, { id: featureId, kind: 'boolean', label: label ?? 'Boolean', boolean })
 }
 
 export function applyAddBooleanTool(doc: PartDoc, featureId: string, tool: string): void {
@@ -857,19 +846,23 @@ export function applySetHoleSketch(doc: PartDoc, featureId: string, sketch: stri
 
 // ─── Transform ───
 
-export function applyAddTransform(doc: PartDoc, featureId: string, label?: string): void {
-  pushFeature(doc, {
-    id: featureId,
-    kind: 'transform',
-    label: label ?? 'Transform',
-    transform: {
-      bodies: [],
-      operation: 'new',
-      translation: [0, 0, 0],
-      rotation_angle: 0,
-      scale: 1,
-    },
-  })
+export function applyAddTransform(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  inline: Partial<TransformFeatureDef> = {},
+): void {
+  const transform: TransformFeatureDef = {
+    bodies: [],
+    operation: 'new',
+    translation: [0, 0, 0],
+    rotation_angle: 0,
+    scale: 1,
+  }
+  // Every setter field is accepted inline, so one call replaces the add plus
+  // one setter per field; bodies is copied like any other inline array.
+  mergeInlineFields(transform, inline)
+  pushFeature(doc, { id: featureId, kind: 'transform', label: label ?? 'Transform', transform })
 }
 
 /** Toggle a body ref in/out of the transform's pick list (re-picking removes). */

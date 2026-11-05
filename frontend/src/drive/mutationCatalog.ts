@@ -314,16 +314,11 @@ const TRANSFORM_NOTE =
   'or the stored pair `rotation_axis_origin` (VEC3 point) and `rotation_axis_direction` (VEC3, non-zero). ' +
   'A resolved `rotation_axis` derives both from that edge and overrides the pair; `rotation_axis_direction` alone rotates about the world origin, ' +
   'and `rotation_axis_origin` alone uses +Z. `translation_from`/`translation_to` and `scale_center_from` are point refs. ' +
-  '`rotation_angle` is degrees; `operation: new` keeps the source and emits a new body, `replace` consumes it.'
+  '`rotation_angle` is degrees; `operation: new` keeps the source and emits a new body, `replace` consumes it. ' +
+  'One call may carry the whole transform: `bodies` and every field `set_transform_field` sets are accepted inline.'
 
 // The revolve axis resolves through the feature-level query repository, not the
 // sketch-local `$` namespace: @sk/entity and edge queries work, `$sk` does not.
-// Only the extrude add carries operation inline; a revolve or sweep that must cut
-// or start a new body needs the setter (Resin_Mold F2 read this as a missing field).
-const OPERATION_SETTER_NOTE = (setter: string): string =>
-  `the add row has no \`operation\` field, so follow it with ${setter} field "operation" value cut or new ` +
-  '(and `merge_target` to fuse into one body).'
-
 const REVOLVE_AXIS_NOTE =
   '`axis` is required and is a feature-level ref, not the profile\'s sketch-local $ form: name a sketch entity as ' +
   '@<sketchId>/<entityId> (a line, or a circle/arc whose center sits on the axis), or an edge query from `select`. ' +
@@ -453,6 +448,18 @@ const EXTRUDE_UP_TO_NOTE =
   'A non-planar face is refused, and so is `up_to` with `direction: symmetric`. `up_to` is read only when ' +
   '`termination` is `up_to`; otherwise it is ignored.'
 
+const REVOLVE_INLINE_NOTE =
+  'One call may carry the whole revolve: `direction` (normal | reverse | symmetric), `operation` ' +
+  '(add | cut | new) and `merge_target` set the same keys `set_revolve_field` does; with no `operation` ' +
+  'a revolve adds to the body it touches. `merge_target`: ' + MERGE_TARGET_NOTE
+
+const SWEEP_INLINE_NOTE =
+  'One call may carry the whole sweep: `transition` (mitre | round), `multisection`, `operation` ' +
+  '(add | cut | new) and `merge_target` set the same keys `set_sweep_field` does; with no `operation` ' +
+  'a sweep adds to the body it touches. Sections on other planes are added with `add_sweep_profile`, ' +
+  'then `multisection: true` in the same add call; each section must be pierced by the path. ' +
+  '`merge_target`: ' + MERGE_TARGET_NOTE
+
 const EXTRUDE_ADD_NOTE =
   'An `add` extends an existing body: with no `merge_target` it fuses the first body its profile reaches, and ' +
   'a profile that reaches none fails the feature (`add does not merge with any existing body`). Start a new ' +
@@ -474,7 +481,10 @@ const EXTRUDE_INLINE_NOTE =
 // names them up front (Case_Seam_Lip F5).
 const BOOLEAN_INLINE_NOTE =
   'Solving needs `target` (one body id) and at least one entry in `tools`; `operation` defaults to union. ' +
-  'One call may carry all three; `set_boolean_field` and `add_boolean_tool` remain for later edits.'
+  'One call may carry the whole boolean: `operation`, `target`, `tools`, `keep_tools` and `clearance` set ' +
+  'the same keys `set_boolean_field` does. `keep_tools` keeps the tool bodies after a subtract; `clearance` ' +
+  'offsets a subtract tool (positive grows it, negative shrinks it). ' +
+  '`set_boolean_field` and `add_boolean_tool` remain for later edits.'
 
 const BOOLEAN_ARRAY_TOOL_NOTE =
   'A `tools` entry naming a body-subject pattern feature (`@<patternId>`) expands at solve time to that ' +
@@ -858,9 +868,17 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_revolve: {
-    summary: 'Revolve a sketch about a picked axis.',
-    note: REVOLVE_AXIS_NOTE + ' A revolve adds to the body it touches by default; ' + OPERATION_SETTER_NOTE('set_revolve_field'),
-    fields: { ...featureAddFields(), sketchQuery: sketchQuery(), angle: num(), axis: query(REVOLVE_AXIS_NOTE) },
+    summary: 'Revolve a sketch about a picked axis, optionally with its direction, operation and merge target.',
+    note: REVOLVE_AXIS_NOTE + ' ' + REVOLVE_INLINE_NOTE,
+    fields: {
+      ...featureAddFields(),
+      sketchQuery: sketchQuery(),
+      angle: num(),
+      axis: query(REVOLVE_AXIS_NOTE),
+      direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as revolve.direction).'),
+      operation: optStr('add | cut | new; absent means add (the key the document stores as revolve.operation).'),
+      merge_target: optStr(MERGE_TARGET_NOTE),
+    },
   },
   set_revolve_field: {
     summary: 'Set one revolve field.',
@@ -876,14 +894,16 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_sweep: {
-    summary: 'Sweep a profile sketch along a path sketch.',
-    note: 'A sweep adds to the body it touches by default; ' + OPERATION_SETTER_NOTE('set_sweep_field') +
-      ' Sections on other planes are added with `add_sweep_profile`, then `set_sweep_field` ' +
-      '`multisection` true; each section must be pierced by the path.',
+    summary: 'Sweep a profile sketch along a path sketch, optionally with its transition, multisection, operation and merge target.',
+    note: SWEEP_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
       sketchQuery: sketchQuery(),
       pathQuery: query('$<sketchId>: the path sketch.'),
+      transition: optStr('mitre | round; absent means mitre.'),
+      multisection: optBool(),
+      operation: optStr('add | cut | new; absent means add (the key the document stores as sweep.operation).'),
+      merge_target: optStr(MERGE_TARGET_NOTE),
     },
   },
   set_sweep_field: {
@@ -1012,13 +1032,15 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_boolean: {
-    summary: 'Add a boolean feature, optionally with its operation, target and tools in the same call.',
+    summary: 'Add a boolean feature, optionally with its operation, target, tools, keep_tools and clearance in the same call.',
     note: BOOLEAN_INLINE_NOTE + ' ' + BOOLEAN_ARRAY_TOOL_NOTE,
     fields: {
       ...featureAddFields(),
       operation: optStr('union | subtract | intersect; defaults to union.'),
       target: optStr('The body the tools fold into, e.g. body_ex1. Required to solve.'),
       tools: optArr('Body ids, or an array feature ref (@<arrayId>) for every body of that array. At least one is required to solve.'),
+      keep_tools: optBool(),
+      clearance: optScalar('Signed, subtract only: the tool grows (+) or shrinks (-) before the cut; absent means 0.'),
     },
   },
   set_boolean_field: {
@@ -1097,9 +1119,23 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), field: fieldOf('hole', 'set_hole_field'), value: setterValue('hole') },
   },
   add_transform: {
-    summary: 'Add a transform feature, then add its bodies.',
+    summary: 'Add a transform feature, optionally with its bodies, operation, translation, rotation and scale in the same call.',
     note: TRANSFORM_NOTE,
-    fields: featureAddFields(),
+    fields: {
+      ...featureAddFields(),
+      bodies: optArr('Body refs to move; the same array the document stores as transform.bodies. May be empty and edited with add_transform_body later.'),
+      operation: optStr('new | replace; absent means new.'),
+      translation: optPoint(),
+      translation_from: optStr('A point ref for the translation start.'),
+      translation_to: optStr('A point ref for the translation end.'),
+      rotation_angle: optScalar('Degrees; a number or an expression string.'),
+      rotation_axis_origin: optPoint(),
+      rotation_axis_direction: optPoint(),
+      rotation_axis: optStr('A feature-level ref such as @<sketchId>/<entityId>, or an edge query from `select`; overrides the origin/direction pair.'),
+      scale: optScalar('A uniform scale, number or expression.'),
+      scale_center: optPoint(),
+      scale_center_from: optStr('A point ref for the scale centre.'),
+    },
   },
   set_transform_field: {
     summary: 'Set one transform field.',

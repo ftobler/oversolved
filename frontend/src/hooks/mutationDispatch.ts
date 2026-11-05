@@ -221,16 +221,20 @@ export const mutationHandlers: MutationHandlers = {
     applyAddExtrudeProfile(next, m.featureId, m.sketchQuery),
   remove_extrude_profile: (next, m) =>
     applyRemoveExtrudeProfile(next, m.featureId, m.index),
-  add_revolve: (next, m) =>
-    applyAddRevolve(next, m.featureId, m.label, m.sketchQuery, m.angle, m.axis),
+  add_revolve: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, sketchQuery, angle, axis, ...inline } = m
+    applyAddRevolve(next, featureId, label, sketchQuery, angle, axis, inline)
+  },
   set_revolve_field: (next, m) =>
     applySetRevolveField(next, m.featureId, m.field, m.value),
   add_revolve_profile: (next, m) =>
     applyAddRevolveProfile(next, m.featureId, m.sketchQuery),
   remove_revolve_profile: (next, m) =>
     applyRemoveRevolveProfile(next, m.featureId, m.index),
-  add_sweep: (next, m) =>
-    applyAddSweep(next, m.featureId, m.label, m.sketchQuery, m.pathQuery),
+  add_sweep: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, sketchQuery, pathQuery, ...inline } = m
+    applyAddSweep(next, featureId, label, sketchQuery, pathQuery, inline)
+  },
   set_sweep_field: (next, m) =>
     applySetSweepField(next, m.featureId, m.field, m.value),
   add_sweep_profile: (next, m) =>
@@ -281,8 +285,10 @@ export const mutationHandlers: MutationHandlers = {
     applyAddDeleteFaceRef(next, m.featureId, m.faceQuery),
   remove_delete_face_ref: (next, m) =>
     applyRemoveDeleteFaceRef(next, m.featureId, m.index),
-  add_boolean: (next, m) =>
-    applyAddBoolean(next, m.featureId, m.label, { operation: m.operation, target: m.target, tools: m.tools }),
+  add_boolean: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
+    applyAddBoolean(next, featureId, label, inline)
+  },
   set_boolean_field: (next, m) =>
     applySetBooleanField(next, m.featureId, m.field, m.value),
   add_boolean_tool: (next, m) =>
@@ -319,8 +325,10 @@ export const mutationHandlers: MutationHandlers = {
     }),
   set_hole_field: (next, m) =>
     applySetHoleField(next, m.featureId, m.field, m.value),
-  add_transform: (next, m) =>
-    applyAddTransform(next, m.featureId, m.label),
+  add_transform: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
+    applyAddTransform(next, featureId, label, inline)
+  },
   set_transform_field: (next, m) =>
     applySetTransformField(next, m.featureId, m.field, m.value),
   add_transform_body: (next, m) =>
