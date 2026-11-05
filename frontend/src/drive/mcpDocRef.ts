@@ -16,6 +16,7 @@ import { assemblyDocStrictProblem, partDocStrictProblem } from '@/drive/strictDo
 import { formatFeatureProblem, type FeatureNote, type FeatureProblem } from '@/drive/featureOutcome'
 import type { FeatureDelta } from '@/drive/featureDeltas'
 import type { FeatureFrameMap } from '@/drive/featureFrames'
+import type { FeatureCurveMap } from '@/drive/featureCurves'
 import type { McpDocArguments, SelectDetail } from '@/drive/mcpServer'
 import type { SelectResult } from '@/kernel/select'
 import type { AssemblyPartProblem, InstancePose, MateFrame, MateProblem } from '@/drive/assemblyOutcome'
@@ -265,6 +266,10 @@ export interface RunReplySource {
   // ones this call touched or moved, while `measure` keeps every resolved one;
   // null when no solve ran, an empty map when nothing qualified.
   frames?: FeatureFrameMap | null
+  // The placement of every helix the final solve resolved, keyed by feature id;
+  // null when no solve ran. Reported whole: a sweep chained after the helix's
+  // own call reads the start from a map its call did not touch.
+  curves?: FeatureCurveMap | null
 }
 
 /**
@@ -277,8 +282,8 @@ export interface RunReplySource {
  * are how a client that reads only one line still learns about it. `solved`
  * separates "the settle answered" from "it was never asked": a refused script
  * carries no verdicts rather than a row per authored feature. Every reply names
- * the document's `length_unit`, and a `frames` map with nothing to report is
- * omitted rather than printed empty.
+ * the document's `length_unit`, and a `frames` or `curves` map with nothing to
+ * report is omitted rather than printed empty.
  */
 export function runReply(
   result: RunReplySource,
@@ -309,6 +314,9 @@ export function runReply(
     // `frames: {}` on every save-only or solid-only reply.
     ...(result.frames !== undefined && result.frames !== null
       && Object.keys(result.frames).length > 0 && { frames: result.frames }),
+    // The same empty-map rule: a reply with no helix prints no `curves` key.
+    ...(result.curves !== undefined && result.curves !== null
+      && Object.keys(result.curves).length > 0 && { curves: result.curves }),
     ...(summary !== undefined && { summary }),
     ...(returnDoc && finalDoc && { doc: finalDoc }),
   }

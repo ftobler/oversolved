@@ -1189,6 +1189,10 @@ export const MUTATION_CATALOG = {
   },
   add_helix: {
     summary: 'Add a helix feature, optionally from a picked reference.',
+    note: 'A helix is a reference curve, not a body. The run or measure reply reports the resolved ' +
+      'placement under `curves.<id>` as {origin, axis, start, end, radius, pitch, turns, height, hand}, ' +
+      'where `axis` is the climb direction (the reference axis, negated by `direction: reverse`). ' +
+      '`@<id>/start` and `@<id>/end` stay valid point refs, e.g. the origin of a sweep profile plane.',
     fields: {
       ...featureAddFields(),
       reference: optStr('A picked reference the helix rides on.'),

@@ -152,13 +152,18 @@ export interface HelixResult {
     length: number
   }
   curve: { kind: 'spline'; points: Vec3[] }
+  // Where the curve starts and which way it climbs. `origin` is the point on
+  // the axis the descriptor uses (the offset already folded in) and `axis` is
+  // the climb direction, so a default `normal` helix reports the reference
+  // axis while `direction: reverse` negates it.
+  placement: { origin: Vec3; axis: Vec3; start: Vec3; end: Vec3 }
 }
 
 /**
  * Solve a helix feature. Registers `_curve_<id>` (the plain descriptor
  * buildCurveEdge consumes), `<id>` (its axis, for downstream axis picks),
- * `<id>/start` and `<id>/end`, and returns the derived values plus the display
- * polyline.
+ * `<id>/start` and `<id>/end`, and returns the derived values, the placement
+ * (start, end and climb axis) plus the display polyline.
  */
 export function solveHelix(
   oc: OccModule,
@@ -237,6 +242,7 @@ export function solveHelix(
       length: params.length,
     },
     curve: { kind: 'spline', points: helixSamples(desc, POINTS_PER_TURN) },
+    placement: { origin: desc.origin, axis: desc.axis, start, end },
   }
 }
 
