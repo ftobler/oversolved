@@ -639,7 +639,9 @@ export function entityLoopDropMessage(
   const kept = new Set<string>()
   for (const loop of loops) {
     for (const edge of loop) {
-      const id = edge.entity_id
+      // A split topo edge carries `entity_id`; an undivided curve pulled from a
+      // surface boundary carries `id`. Both name the entity that kept a loop.
+      const id = typeof edge.entity_id === 'string' ? edge.entity_id : edge.id
       if (typeof id === 'string') kept.add(id)
     }
   }
@@ -778,6 +780,27 @@ export function solveSweep(
     }
     const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
     const edges = ((topo.edges as Dict[]) ?? []).filter((e) => eids.has(e.entity_id as string))
+    // An undivided curve (a lone circle, or the outer boundary of a ring) has no
+    // split edges in `topo.edges`; its geometry lives in the surface boundary.
+    // Pull that boundary for an entity the edge list did not supply, so an
+    // entity pick answers the same curve the viewport shows. The first surface
+    // that names the entity wins: a nested loop appears again as its container's
+    // hole, and adding both copies would duplicate the wire.
+    const supplied = new Set(edges.map((e) => e.entity_id as string))
+    for (const eid of eids) {
+      if (supplied.has(eid)) continue
+      for (const surface of (topo.surfaces as Dict[]) ?? []) {
+        const boundaries = [
+          (surface.boundary as Dict[]) ?? [],
+          ...((surface.holes as Dict[][] | undefined) ?? []),
+        ]
+        const mine = boundaries.flat().filter((e) => (e.id ?? e.entity_id) === eid)
+        if (mine.length === 0) continue
+        edges.push(...mine)
+        supplied.add(eid)
+        break
+      }
+    }
     const diags: ProfileLoopDiag[] = []
     const loops = extractProfileLoops([{ boundary: edges }], diags)
     if (loops.length === 0) {
@@ -838,9 +861,20 @@ export function solveSweep(
   // hole silently the way the single-profile path does.
   const sectionInputs: SectionInput[] = []
   if (multisection) {
+    // Count the outer loops within each sketch so the refusal names the loop the
+    // user drew, not a flattened station number that reads as a pick position.
+    const outerLoopsBySketch = new Map<string, number>()
     for (const ref of sectionRefs) {
       for (const [outer, holes] of classifyLoops(ref.loops)) {
-        if (holes.length > 0) throw new Error('sweep: a multisection section cannot have a hole')
+        const loop = (outerLoopsBySketch.get(ref.sketchId) ?? 0) + 1
+        outerLoopsBySketch.set(ref.sketchId, loop)
+        if (holes.length > 0) {
+          throw new Error(
+            `sweep: sketch ${ref.sketchId}, loop ${loop} has a hole; a multisection section must be one ` +
+            'outer loop. Sweep the outer loops in one feature and the inner loops in a second cut ' +
+            'feature, naming its merge_target.',
+          )
+        }
         sectionInputs.push({ sketchId: ref.sketchId, plane: ref.plane, loop: outer })
       }
     }

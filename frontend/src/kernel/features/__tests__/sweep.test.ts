@@ -380,6 +380,30 @@ describe('solveSweep guard paths', () => {
     ).toThrow(/do not form a closed loop \(sketch sk\)/)
   })
 
+  it('reads an undivided picked circle from the surface boundary', () => {
+    // A standalone circle has no split edges in `topo.edges`; its whole boundary
+    // lives in the surface. The pick must still assemble into a loop, so the
+    // missing path (the next guard) is the error, not a closed-loop refusal.
+    const repo = new Repository()
+    repo.register('_pt_sk', planeXY)
+    repo.register('_topo_sk', {
+      edges: [],
+      surfaces: [{
+        boundary: [
+          { id: 'c1', kind: 'arc', center: [0, 0], radius: 5, angle_start_deg: 0, angle_end_deg: 180, ccw: true, start: [5, 0], end: [-5, 0] },
+          { id: 'c1', kind: 'arc', center: [0, 0], radius: 5, angle_start_deg: 180, angle_end_deg: 360, ccw: true, start: [-5, 0], end: [5, 0] },
+        ],
+      }],
+    })
+    expect(() =>
+      solveSweep(
+        oc, scope, table,
+        { id: 'sw', sweep: { sketch: ['entity:sk:c1'], path: '$p' } },
+        repo, {},
+      ),
+    ).toThrow(/path sketch not found: "p"/)
+  })
+
   it('refuses a face profile, which sweep does not support', () => {
     const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
     vi.mocked(collectExtrudeLoops).mockImplementation(() => (
@@ -450,7 +474,15 @@ describe('solveSweep guard paths', () => {
         { id: 'sw', sweep: { sketch: ['$skH', '$skA'], path: '$p', multisection: true } },
         new Repository(), {},
       ),
-    ).toThrow(/a multisection section cannot have a hole/)
+    ).toThrow(/sketch skH, loop 1 has a hole/)
+    // The refusal gives the way forward, not only the limit.
+    expect(() =>
+      solveSweep(
+        oc, scope, table,
+        { id: 'sw', sweep: { sketch: ['$skH', '$skA'], path: '$p', multisection: true } },
+        new Repository(), {},
+      ),
+    ).toThrow(/second cut feature, naming its merge_target/)
   })
 
   it('refuses a multisection sweep with a single section', () => {
@@ -573,6 +605,18 @@ describe('entityLoopDropMessage', () => {
     expect(message).toBe(
       'dropped 1 of 2 picked profile entities whose edges did not form a closed loop: rect2',
     )
+  })
+
+  it('recognises a loop edge that carries id instead of entity_id', () => {
+    // Undivided curves come from a surface boundary, where the entity is `id`.
+    const message = entityLoopDropMessage(
+      ['c1'],
+      [[{ id: 'c1', start: [5, 0], end: [-5, 0] }]],
+      [{ kind: 'leftover', leftover: 1, total: 2, surface: 0 }],
+    )
+    expect(message).not.toBeNull()
+    expect(message).not.toMatch(/dropped/)
+    expect(message).toMatch(/did not all form a closed loop/)
   })
 
   it('returns null when the assembler diagnosed nothing', () => {

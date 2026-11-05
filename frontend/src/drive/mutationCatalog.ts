@@ -131,7 +131,20 @@ const PROFILE_LOOPS_NOTE =
   + 'other are filled as their union, so a circle meant as a hole that pokes past the rim of another loop '
   + 'adds a bump there instead of cutting, with no warning; keep a cut loop inside its boundary.'
 
-const sketchQuery = () => query('$<sketchId>: the sketch feature to consume. ' + PROFILE_LOOPS_NOTE)
+// The ref grammar the drive boundary accepts (mutationValues profileRefProblem)
+// and the leaves resolve. It is the same sentence on every profile and path
+// field, so a pick that works on one add is not refused on another; the sweep's
+// one-ref-per-curve rule is stated because a slot needs four refs, not one.
+const PROFILE_REF_NOTE =
+  'A profile or path ref is a whole sketch as `$<sketchId>` or `@<sketchId>`, one curve as ' +
+  '`entity:<sketchId>:<entityId>`, or a `?` area query from `select`; a sweep takes one ref per curve ' +
+  '(four for a slotted loop, one `add_sweep_profile` per curve) and one path ref per curve, while extrude ' +
+  'and revolve take one closed curve per ref. `vertex:<sketchId>:<entityId>:<vertexKey>` names the same ' +
+  'entity as `entity:`, and `@<sketchId>/<entityId>` or `@<bodyId>/face/<n>` is a face-profile pick ' +
+  '(a sweep refuses a face pick).'
+
+const sketchQuery = () => query('A profile ref. ' + PROFILE_REF_NOTE + ' ' + PROFILE_LOOPS_NOTE)
+const pathQuery = () => query('A path ref. ' + PROFILE_REF_NOTE)
 const edgeQuery = () => query('An edge query as returned by `select`.')
 const faceQuery = () => query('A face query as returned by `select`.')
 const bodyQuery = () => query('A body id such as body_ex1, or a stored body query.')
@@ -462,12 +475,23 @@ const REVOLVE_INLINE_NOTE =
   '(add | cut | new) and `merge_target` set the same keys `set_revolve_field` does; with no `operation` ' +
   'a revolve adds to the body it touches. `merge_target`: ' + MERGE_TARGET_NOTE
 
+// The product has no loft: a multisection sweep is justified because the path
+// pierces each section, where a loft has no defined surface between them. The
+// hole limit is named with the two-sweep workaround because the refusal alone
+// leaves a ring author no way forward.
+const SWEEP_MULTISECTION_NOTE =
+  'A blend between section sketches is `sweep.multisection`: two or more sections, each pierced by the ' +
+  'same path. There is no loft feature. Each section is one outer loop. A section with a hole is refused; ' +
+  'sweep the outer loops in an `add` sweep and the inner loops in a second `cut` sweep of the same path, ' +
+  'using the one-loop `entity:<sketchId>:<entityId>` refs and naming the cut\'s `merge_target` so the cut ' +
+  'cannot reach an unrelated body.'
+
 const SWEEP_INLINE_NOTE =
   'One call may carry the whole sweep: `transition` (mitre | round), `multisection`, `operation` ' +
   '(add | cut | new) and `merge_target` set the same keys `set_sweep_field` does; with no `operation` ' +
   'a sweep adds to the body it touches. Sections on other planes are added with `add_sweep_profile`, ' +
   'then `multisection: true` in the same add call; each section must be pierced by the path. ' +
-  '`merge_target`: ' + MERGE_TARGET_NOTE
+  SWEEP_MULTISECTION_NOTE + ' `merge_target`: ' + MERGE_TARGET_NOTE
 
 const EXTRUDE_ADD_NOTE =
   'An `add` extends an existing body: with no `merge_target` it fuses the first body its profile reaches, and ' +
@@ -915,7 +939,7 @@ export const MUTATION_CATALOG = {
     fields: {
       ...featureAddFields(),
       sketchQuery: sketchQuery(),
-      pathQuery: query('$<sketchId>: the path sketch.'),
+      pathQuery: pathQuery(),
       transition: optStr('mitre | round; absent means mitre.'),
       multisection: optBool(),
       operation: optStr('add | cut | new; absent means add (the key the document stores as sweep.operation).'),
@@ -936,7 +960,7 @@ export const MUTATION_CATALOG = {
   },
   add_sweep_path: {
     summary: 'Add a path sketch to a sweep.',
-    fields: { featureId: str(), pathQuery: query('$<sketchId>: the path sketch.') },
+    fields: { featureId: str(), pathQuery: pathQuery() },
   },
   remove_sweep_path: {
     summary: 'Remove a sweep path by index.',

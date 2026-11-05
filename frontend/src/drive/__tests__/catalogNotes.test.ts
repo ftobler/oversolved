@@ -187,6 +187,38 @@ describe('batch B: the empty clear and the profile fill rule', () => {
   })
 })
 
+// The profile ref grammar is the same on every profile and path field, so a
+// pick that works on add_extrude is not refused on add_sweep_profile. The sweep
+// row also says what a multisection section is and how a hole is worked around.
+describe('profile refs and the multisection limits', () => {
+  it('names the whole-sketch, one-loop and area forms on the sweep fields', () => {
+    for (const where of ['add_sweep.sketchQuery', 'add_sweep_profile.sketchQuery', 'add_sweep.pathQuery', 'add_sweep_path.pathQuery'] as const) {
+      const [type, field] = where.split('.') as [string, string]
+      const note = mutationInfoOf(type as Mutation['type']).fields[field].note!
+      expect(note, where).toContain('`$<sketchId>`')
+      expect(note, where).toContain('`@<sketchId>`')
+      expect(note, where).toContain('`entity:<sketchId>:<entityId>`')
+      expect(note, where).toContain('`?` area query')
+    }
+    expect(mutationInfoOf('add_sweep').fields.sketchQuery.note!).toContain('one ref per curve')
+  })
+
+  it('points a loft search at sweep.multisection and gives the hole workaround', () => {
+    const note = mutationInfoOf('add_sweep').note!
+    for (const text of [
+      'multisection',
+      'pierced by the path',
+      'outer loop',
+      'hole',
+      'entity:<sketchId>:<entityId>',
+      'merge_target',
+      'There is no loft feature',
+    ]) {
+      expect(note, text).toContain(text)
+    }
+  })
+})
+
 // Review of the batch B notes: the plane definition setter's value note first
 // repeated the feature-setter sentence "a null value clears the field (the key
 // is deleted)". The wire refuses null for that mutation and no applier path

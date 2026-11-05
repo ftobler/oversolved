@@ -810,7 +810,19 @@ banner on stdout, so a client config must use the direct node invocation.
   `{mode:"offset", plane:"@builtin_plane_top", offset:43}`). A multisection
   sweep is one `add_sweep_profile` per section and `multisection: true` in the
   add call (or a later `set_sweep_field {field:"multisection", value:true}`);
-  every section must be pierced by the path. `add_sweep` takes `transition`,
+  every section must be pierced by the path. Each section is one outer loop, so
+  a section with a hole is refused. A profile or path ref is a whole sketch
+  (`$<sketchId>` or `@<sketchId>`), one curve (`entity:<sketchId>:<entityId>`),
+  or a `?` area query from `select`; a sweep takes one `entity:` ref per curve
+  (a slotted loop needs its two lines and two arcs as four refs, one
+  `add_sweep_profile` per curve) and one path ref per curve, while extrude and
+  revolve take one closed curve per ref. `vertex:` refs name the same entity as
+  `entity:`, and a `@<sketchId>/<entityId>` or `@<bodyId>/face/<n>` pick is a
+  face profile, which a sweep refuses. To sweep a shape that has a hole, sweep
+  the outer loops in one `add` feature and the inner loops in a second `cut`
+  feature of the same path, with the cut naming its `merge_target` so it cannot
+  reach an unrelated body. The blend between sections is not a loft:
+  `sweep.multisection` is the feature for it. `add_sweep` takes `transition`,
   `multisection`, `operation` and `merge_target` inline, the same keys
   `set_sweep_field` sets.
   A `fit_spline`'s `params` are its flat fit points (`x0, y0, ..., xN-1, yN-1`,

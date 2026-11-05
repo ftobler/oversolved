@@ -426,17 +426,53 @@ function nonNegativeIndexProblem(value: unknown, label: string): string | null {
   return null
 }
 
-function sketchQueryProblem(value: unknown, field: string): string | null {
+// The profile and path grammar both the inline adds and the add_*_profile rows
+// share. The leaves accept more than the old sketch-only rule did: an area
+// query, a body face, and the viewport's entity/vertex picks all resolve to a
+// profile or a path. The boundary admits every one of them and leaves the
+// closed-loop rule to the leaf, which can say why a pick bounds nothing.
+const PROFILE_REF_FORMS =
+  '"$<sketchId>", "@<sketchId>", "entity:<sketchId>:<entityId>", ' +
+  '"vertex:<sketchId>:<entityId>:<vertexKey>", "@<sketchId>/<entityId>", ' +
+  '"@<bodyId>/face/<n>", or a "?" area query'
+
+function profileRefProblem(value: unknown, field: string): string | null {
+  const refuse = (why: string) =>
+    `field "${field}" ${why}; accepted forms: ${PROFILE_REF_FORMS}, got ${json(value)}`
   if (typeof value !== 'string' || value.length === 0) {
-    return `field "${field}" must name a sketch as "$<sketchId>" or "@<sketchId>", got ${json(value)}`
+    return `field "${field}" must be a profile reference: ${PROFILE_REF_FORMS}, got ${json(value)}`
   }
   if (/\s/.test(value)) {
-    return `field "${field}" must name a sketch without spaces, got ${json(value)}`
+    return `field "${field}" must be a reference without spaces: ${PROFILE_REF_FORMS}, got ${json(value)}`
   }
-  if (!value.startsWith('$') && !value.startsWith('@') && !value.startsWith('?')) {
-    return `field "${field}" must name a sketch as "$<sketchId>" or "@<sketchId>", got ${json(value)}`
+  if (value.startsWith('$')) {
+    // The legacy whole-sketch spelling. A slash form names geometry inside a
+    // feature, which `$` never did; `@` is the spelling for those picks.
+    return value.length > 1 && !value.includes('/') ? null : refuse('is not a whole-sketch ref')
   }
-  return null
+  if (value.startsWith('?')) {
+    return value.length > 1 ? null : refuse('is an empty area query')
+  }
+  if (value.startsWith('@')) {
+    const rest = value.slice(1)
+    return rest.length > 0 && rest.split('/').every(part => part.length > 0)
+      ? null
+      : refuse('is not a feature, entity or body-face ref')
+  }
+  for (const [prefix, parts] of [['entity:', 3], ['vertex:', 4]] as const) {
+    if (!value.startsWith(prefix)) continue
+    const segments = value.split(':')
+    const wellFormed = segments.length === parts && segments.every(part => part.length > 0)
+    return wellFormed ? null : refuse(`is a malformed ${prefix.slice(0, -1)} ref`)
+  }
+  return refuse('names no recognised profile or path form')
+}
+
+function profileRefField(field: string) {
+  return (raw: RawStep): ValueViolation | null => {
+    const problem = profileRefProblem(raw[field], field)
+    return problem === null ? null : invalid(problem)
+  }
 }
 
 function pickQueryProblem(value: unknown, field: string): string | null {
@@ -996,7 +1032,7 @@ function clearsOnEmpty(type: Mutation['type'], field: unknown, value: unknown): 
 }
 
 function addExtrude(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  const problem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
+  const problem = profileRefProblem(raw.sketchQuery, 'sketchQuery')
   if (problem !== null) return invalid(problem)
   if (!isFiniteNumber(raw.distance)) return invalid(`distance must be a finite number, got ${json(raw.distance)}`)
   // through_all sizes its tool from the live bodies, so it is a cut termination:
@@ -1071,7 +1107,7 @@ function addPattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
 }
 
 function addRevolve(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  const problem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
+  const problem = profileRefProblem(raw.sketchQuery, 'sketchQuery')
   if (problem !== null) return invalid(problem)
   const angleProblem = revolveAngleProblem(raw.angle, 'angle')
   if (angleProblem !== null) return invalid(angleProblem)
@@ -1090,9 +1126,9 @@ function addRevolve(raw: RawStep, ctx: ValueContext): ValueViolation | null {
 }
 
 function addSweep(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  const sketchProblem = sketchQueryProblem(raw.sketchQuery, 'sketchQuery')
+  const sketchProblem = profileRefProblem(raw.sketchQuery, 'sketchQuery')
   if (sketchProblem !== null) return invalid(sketchProblem)
-  const pathProblem = sketchQueryProblem(raw.pathQuery, 'pathQuery')
+  const pathProblem = profileRefProblem(raw.pathQuery, 'pathQuery')
   if (pathProblem !== null) return invalid(pathProblem)
   return inlineFeatureFieldsProblem(raw, ctx, 'sweep', 'set_sweep_field')
 }
@@ -1501,17 +1537,17 @@ export const MUTATION_VALUE_RULES = {
   toggle_plane_visibility: 'none',
   add_extrude: addExtrude,
   set_extrude_field: setExtrudeField,
-  add_extrude_profile: queryField('sketchQuery'),
+  add_extrude_profile: profileRefField('sketchQuery'),
   remove_extrude_profile: indexField('index'),
   add_revolve: addRevolve,
   set_revolve_field: setRevolveField,
-  add_revolve_profile: queryField('sketchQuery'),
+  add_revolve_profile: profileRefField('sketchQuery'),
   remove_revolve_profile: indexField('index'),
   add_sweep: addSweep,
   set_sweep_field: fieldValue,
-  add_sweep_profile: queryField('sketchQuery'),
+  add_sweep_profile: profileRefField('sketchQuery'),
   remove_sweep_profile: indexField('index'),
-  add_sweep_path: queryField('pathQuery'),
+  add_sweep_path: profileRefField('pathQuery'),
   remove_sweep_path: indexField('index'),
   add_import_step: addImportStep,
   add_chamfer: addChamfer,

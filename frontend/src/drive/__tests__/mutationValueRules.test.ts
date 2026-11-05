@@ -23,6 +23,8 @@ import { applySetHoleField } from '@/utils/yamlMutations/featureDefs'
 import { FIELD_SETTER_KIND } from '../mutationCatalog'
 import { EMPTY_REF_CLEARS } from '../mutationValues'
 import { sketchAt } from '@/testing/featureAccess'
+import { Repository } from '@/kernel/query'
+import { collectExtrudeLoops } from '@/kernel/features/faceProfile'
 
 function seededDoc(): PartDoc {
   return seedBuiltins({ version: 1, kind: 'part', features: [] })
@@ -764,6 +766,65 @@ describe('finding: add_revolve axis is a required pick', () => {
     expect(validateMutation({
       type: 'add_revolve', featureId: 'rv1', sketchQuery: '$sk1', angle: 90, axis: '?body:edge',
     })).toMatchObject({ ok: true })
+  })
+})
+
+describe('one profile and path ref grammar', () => {
+  const FORMS = [
+    '$sk1',
+    '@sk1',
+    'entity:sk1:l1',
+    'vertex:sk1:l1:start',
+    '@sk1/l1',
+    '@body_ex1/face/2',
+    '?15,4,9;@sk1/l1',
+  ]
+
+  it('accepts every leaf form on the inline adds and the profile/path rows', () => {
+    const calls = (form: string): Array<Record<string, unknown>> => [
+      { type: 'add_extrude', featureId: 'ex1', sketchQuery: form, distance: 5 },
+      { type: 'add_revolve', featureId: 'rv1', sketchQuery: form, angle: 90, axis: '@sk1/ax' },
+      { type: 'add_sweep', featureId: 'sw1', sketchQuery: form, pathQuery: '$path' },
+      { type: 'add_sweep', featureId: 'sw1', sketchQuery: '$sk1', pathQuery: form },
+      { type: 'add_extrude_profile', featureId: 'ex1', sketchQuery: form },
+      { type: 'add_revolve_profile', featureId: 'rv1', sketchQuery: form },
+      { type: 'add_sweep_profile', featureId: 'sw1', sketchQuery: form },
+      { type: 'add_sweep_path', featureId: 'sw1', pathQuery: form },
+    ]
+    for (const form of FORMS) {
+      for (const call of calls(form)) {
+        expect(validateMutation(call), `${String(call.type)} ${form}`).toMatchObject({ ok: true })
+      }
+    }
+  })
+
+  it('leaves the closed-loop refusal to the leaf after the boundary admits entity:', () => {
+    // The boundary only knows the ref shape. A lone line is a valid pick there;
+    // the extrude leaf is the layer that names the missing area.
+    expect(validateMutation({
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: 'entity:sk1:l1', distance: 5,
+    })).toMatchObject({ ok: true })
+    const repo = new Repository()
+    repo.register('_pt_sk1', {
+      origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1],
+    })
+    repo.register('_topo_sk1', {
+      edges: [{ entity_id: 'l1', kind: 'line', start: [0, 0], end: [10, 0] }],
+      surfaces: [],
+    })
+    expect(() => collectExtrudeLoops(
+      null as never, null as never, null as never, 'entity:sk1:l1', repo, {},
+    )).toThrow(/bounds no closed area/)
+  })
+
+  it('refuses malformed forms with every accepted spelling', () => {
+    for (const form of ['entity:sk1', 'entity::l1', 'sk1', 'entity:sk1:l1 extra', '']) {
+      const error = refusal({ type: 'add_extrude', featureId: 'ex1', sketchQuery: form, distance: 5 })
+      expect(error.code, form).toBe('invalid-mutation')
+      for (const spelling of ['$<sketchId>', '@<sketchId>', 'entity:<sketchId>:<entityId>', 'vertex:<sketchId>:<entityId>:<vertexKey>', '?']) {
+        expect(error.message, `${form}: ${spelling}`).toContain(spelling)
+      }
+    }
   })
 })
 
