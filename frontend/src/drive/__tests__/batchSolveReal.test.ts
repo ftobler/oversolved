@@ -165,24 +165,49 @@ describe.skipIf(!ready)('one deferred solve per run (real OCC + Rust solver)', (
         targets: ['vertex:sk1:free:xy', `dock:sk1:${host}`],
       }),
     ]
-    const once = await runWhole(steps, 'batch-dock')
-    const singles = await runOnePerCall(steps, 'batch-dock-singles')
-    expect(once.features).toEqual([])
-    expect(singles.features).toEqual([])
+    // The checkpoint after the dock step is the document before the end-of-run
+    // solve writes back, so its point seed is what the handler actually read.
+    const checkpointsOf = async (script: ScriptStep[], docId: string, doc: PartDoc) => {
+      const checkpoints: PartDoc[] = []
+      const outcome = await runHeadless({
+        doc, steps: script, docId, featureDeltas: 'all', frames: 'all',
+        onStepSettled: checkpoint => { checkpoints.push(checkpoint.doc) },
+      })
+      return { outcome, checkpoints }
+    }
+    const once = await checkpointsOf(steps, 'batch-dock', emptyDriveDoc())
+    let singlesOutcome: Awaited<ReturnType<typeof runHeadless>> | null = null
+    let singlesCheckpoint: PartDoc | null = null
+    let doc = emptyDriveDoc()
+    for (const [index, step] of steps.entries()) {
+      const call = await checkpointsOf([step], `batch-dock-singles-${index}`, doc)
+      expect(call.outcome.outcome.ok).toBe(true)
+      singlesOutcome = call.outcome
+      singlesCheckpoint = call.checkpoints[call.checkpoints.length - 1] ?? null
+      doc = call.outcome.doc as PartDoc
+    }
+    expect(singlesOutcome?.ok).toBe(true)
+    expect(once.outcome.features).toEqual([])
+    expect(singlesOutcome!.features).toEqual([])
+
+    const contactOf = (checkpoint: PartDoc | null): number[] | undefined => {
+      const sketch = checkpoint?.features?.find(feature => feature.id === 'sk1')
+      if (sketch?.kind !== 'sketch') return undefined
+      const point = sketch.entities?.find(entity => entity.kind === 'point')
+      return point ? sketch.initial?.[point.id] : undefined
+    }
+    const onceContact = contactOf(once.checkpoints[once.checkpoints.length - 1] ?? null)
+    const singlesContact = contactOf(singlesCheckpoint)
+    expect(onceContact).toEqual(singlesContact)
+    expect(onceContact).toHaveLength(2)
 
     const sketchOf = (doc: PartDoc | null) => doc?.features?.find(feature => feature.id === 'sk1')
-    const onceSketch = sketchOf(once.doc)
-    const singlesSketch = sketchOf(singles.doc)
+    const onceSketch = sketchOf(once.outcome.doc as PartDoc)
+    const singlesSketch = sketchOf(singlesOutcome!.doc as PartDoc)
     expect(onceSketch?.kind === 'sketch' ? onceSketch.initial : null)
       .toEqual(singlesSketch?.kind === 'sketch' ? singlesSketch.initial : null)
     expect(onceSketch?.kind === 'sketch' ? onceSketch.constraints : null)
       .toEqual(singlesSketch?.kind === 'sketch' ? singlesSketch.constraints : null)
-
-    // The dock point exists and both runs put it at the same contact.
-    if (onceSketch?.kind !== 'sketch') throw new Error('the run lost the sketch')
-    const point = onceSketch.entities?.find(entity => entity.kind === 'point')
-    expect(point).toBeDefined()
-    expect(onceSketch.initial?.[point!.id]).toHaveLength(2)
   }, 240_000)
 
   it('mirror_entities reads the same settled geometry deferred and one step per call', async () => {

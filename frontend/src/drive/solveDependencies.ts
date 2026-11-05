@@ -12,6 +12,25 @@ function isRecord(value: unknown): value is RawStep {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/** A dock pick names the host constraint whose current contact is the seed, so
+ *  any mutation carrying one reads `feature.initial` through `dockLocationOf`.
+ *  The ref can ride a target list or any of the sugar's corner/snap fields, so
+ *  scan the whole step rather than list today's field names. */
+function carriesDockRef(value: unknown): boolean {
+  if (typeof value === 'string') return value.startsWith('dock:')
+  if (Array.isArray(value)) return value.some(carriesDockRef)
+  if (isRecord(value)) return Object.values(value).some(carriesDockRef)
+  return false
+}
+
+// `vertex:<sketch>:<entity>:fit<k>` deletes one positional fit-spline point,
+// which the handler decodes from and writes back to `initial`.
+function deletesFitPoint(raw: RawStep): boolean {
+  const targets = raw.targets
+  return Array.isArray(targets)
+    && targets.some(target => typeof target === 'string' && /^vertex:[^:]+:[^:]+:fit\d+$/.test(target))
+}
+
 /** Whether a step's applier reads `feature.initial` and would answer differently
  *  on an authored document than on the settled one the previous step left. */
 export function usesSettledSketchGeometry(raw: unknown): boolean {
@@ -31,12 +50,9 @@ export function usesSettledSketchGeometry(raw: unknown): boolean {
     case 'insert_fit_point':
     case 'set_fit_spline_handle':
       return true
-    // A dock handle materializes its seed from the host constraint's current
-    // location; an ordinary target does not read geometry.
-    case 'add_constraint':
-      return Array.isArray(raw.targets)
-        && raw.targets.some(target => typeof target === 'string' && target.startsWith('dock:'))
+    case 'delete':
+      return deletesFitPoint(raw)
     default:
-      return false
+      return carriesDockRef(raw)
   }
 }

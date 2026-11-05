@@ -18,12 +18,25 @@ describe('usesSettledSketchGeometry', () => {
     }
   })
 
-  it('needs a flush for a dock handle but not an ordinary constraint target', () => {
+  it('needs a flush for a dock handle on any mutation that can carry one', () => {
     expect(usesSettledSketchGeometry({ type: 'add_constraint', targets: ['dock:sk1:c_t'] })).toBe(true)
+    expect(usesSettledSketchGeometry({
+      type: 'add_entity_with_constraint', featureId: 'sk1',
+      snapVertexId: 'dock:sk1:c_t', snapEntityRef: null,
+    })).toBe(true)
+    expect(usesSettledSketchGeometry({
+      type: 'add_rect', featureId: 'sk1',
+      p0: [0, 0], p1: [1, 1], p0Ref: 'dock:sk1:c_t',
+    })).toBe(true)
     expect(usesSettledSketchGeometry({
       type: 'add_constraint',
       targets: ['entity:sk1:l1', 'vertex:sk1:l1:start'],
     })).toBe(false)
+  })
+
+  it('needs a flush for deleting a fit-spline point', () => {
+    expect(usesSettledSketchGeometry({ type: 'delete', targets: ['vertex:sk1:sp:fit2'] })).toBe(true)
+    expect(usesSettledSketchGeometry({ type: 'delete', targets: ['entity:sk1:l1'] })).toBe(false)
   })
 
   it('leaves the writing mutations alone', () => {
