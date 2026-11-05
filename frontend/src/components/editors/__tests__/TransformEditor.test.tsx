@@ -174,4 +174,26 @@ describe('TransformEditor (via FeatureEditor)', () => {
       type: 'set_transform_field', featureId: 'tr1', field: 'translation', value: [7, 0, 5],
     })
   })
+
+  it('editing Euler Y writes a dense rotation_euler triple', () => {
+    const onMutation = vi.fn()
+    render(<FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />)
+    editField('Euler Y (deg)', '20')
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_transform_field', featureId: 'tr1', field: 'rotation_euler', value: [0, 20, 0],
+    })
+  })
+
+  it('editing Euler Z keeps the existing angles', () => {
+    const onMutation = vi.fn()
+    const withEuler = {
+      id: 'tr1', kind: 'transform', label: 'Transform',
+      transform: { bodies: [], operation: 'new', rotation_euler: [10, 20, 300], scale: 1 },
+    } as unknown as PartFeature
+    render(<FeatureEditor feature={withEuler} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />)
+    editField('Euler Z (deg)', '45')
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_transform_field', featureId: 'tr1', field: 'rotation_euler', value: [10, 20, 45],
+    })
+  })
 })

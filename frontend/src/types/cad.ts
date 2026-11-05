@@ -244,6 +244,11 @@ export type TransformFeatureDef = {
   translation_from?: string
   translation_to?: string
   rotation_angle?: NumberOrExpr
+  // Extrinsic XYZ degrees: rotate about world X first, then world Y, then world
+  // Z. Numbers only, unlike rotation_angle. The pivot is rotation_axis_origin
+  // when present, otherwise the world origin. Refused together with any of the
+  // axis spellings.
+  rotation_euler?: [number, number, number]
   rotation_axis_origin?: [number, number, number]
   rotation_axis_direction?: [number, number, number]
   rotation_axis?: string

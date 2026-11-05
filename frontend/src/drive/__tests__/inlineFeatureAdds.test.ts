@@ -14,7 +14,7 @@ describe('add_revolve / add_sweep / add_transform / add_boolean inline payloads'
     const rows: Array<[Parameters<typeof mutationInfoOf>[0], readonly string[]]> = [
       ['add_revolve', ['direction', 'operation', 'merge_target']],
       ['add_sweep', ['transition', 'multisection', 'operation', 'merge_target']],
-      ['add_transform', ['bodies', 'operation', 'translation', 'rotation_axis', 'rotation_angle', 'scale']],
+      ['add_transform', ['bodies', 'operation', 'translation', 'rotation_axis', 'rotation_angle', 'rotation_euler', 'scale']],
       ['add_boolean', ['keep_tools', 'clearance']],
     ]
     for (const [type, fields] of rows) {

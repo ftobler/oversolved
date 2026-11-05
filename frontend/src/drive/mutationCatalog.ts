@@ -77,7 +77,7 @@ const optObj = () => ({ type: 'object', required: false } as const)
 const bool = () => ({ type: 'boolean', required: true } as const)
 const optBool = () => ({ type: 'boolean', required: false } as const)
 const point = (note?: string) => ({ type: 'point', required: true, ...(note !== undefined && { note }) } as const)
-const optPoint = () => ({ type: 'point', required: false } as const)
+const optPoint = (note?: string) => ({ type: 'point', required: false, ...(note !== undefined && { note }) } as const)
 const arr = (note?: string) => ({ type: 'array', required: true, ...(note !== undefined && { note }) } as const)
 const optArr = (note?: string) => ({ type: 'array', required: false, ...(note !== undefined && { note }) } as const)
 const obj = (note?: string) => ({ type: 'object', required: true, ...(note !== undefined && { note }) } as const)
@@ -319,14 +319,21 @@ const SPLIT_NOTE =
   'With `both` the above half keeps the original body id and every further piece becomes its `_1`, `_2`, ... ' +
   'sibling in geometric order, so @<featureId> still names all of it.'
 
-// The transform's axis trio is the one place an author has to choose a
-// spelling; the solver composes exactly one axis for the whole feature.
+// The transform has two rotation spellings, one world axis or an Euler triple;
+// the solver composes exactly one for the whole feature and refuses a mix,
+// because a document that says both cannot mean one placement.
 const TRANSFORM_NOTE =
-  'One transform applies scale first, then rotation, then translation about a single axis, equally to every body in `bodies`. ' +
-  'For the rotation, name either `rotation_axis` (a feature-level ref such as @<sketchId>/<entityId>, or an edge query from `select`) ' +
-  'or the stored pair `rotation_axis_origin` (VEC3 point) and `rotation_axis_direction` (VEC3, non-zero). ' +
-  'A resolved `rotation_axis` derives both from that edge and overrides the pair; `rotation_axis_direction` alone rotates about the world origin, ' +
-  'and `rotation_axis_origin` alone uses +Z. `translation_from`/`translation_to` and `scale_center_from` are point refs. ' +
+  'One transform applies scale first, then rotation, then translation, equally to every body in `bodies`. ' +
+  'For the rotation, name either `rotation_euler` (three numbers in degrees, extrinsic XYZ: rotate about world X first, ' +
+  'then world Y, then world Z) or a single axis: `rotation_axis` (a feature-level ref such as @<sketchId>/<entityId>, ' +
+  'or an edge query from `select`) or the stored pair `rotation_axis_origin` (VEC3 point) and `rotation_axis_direction` ' +
+  '(VEC3, non-zero). The Euler triple is numbers-only: unlike `rotation_angle` its components take no expressions. ' +
+  'Its pivot is `rotation_axis_origin` when present, otherwise the world origin. ' +
+  'A resolved `rotation_axis` derives both from that edge and overrides the pair; `rotation_axis_direction` alone rotates ' +
+  'about the world origin, and `rotation_axis_origin` alone uses +Z. ' +
+  '`rotation_euler` cannot be combined with `rotation_axis`, `rotation_angle` or `rotation_axis_direction`; clear the ' +
+  'other spelling with a null value (`set_transform_field` with `value: null`) before setting the Euler triple. ' +
+  '`translation_from`/`translation_to` and `scale_center_from` are point refs. ' +
   '`rotation_angle` is degrees; `operation: new` keeps the source and emits a new body, `replace` consumes it. ' +
   'One call may carry the whole transform: `bodies` and every field `set_transform_field` sets are accepted inline.'
 
@@ -1169,6 +1176,11 @@ export const MUTATION_CATALOG = {
       translation_from: optStr('A point ref for the translation start.'),
       translation_to: optStr('A point ref for the translation end.'),
       rotation_angle: optScalar('Degrees; a number or an expression string.'),
+      rotation_euler: optPoint(
+        'Extrinsic XYZ degrees as three numbers, e.g. [10, 20, 300]: rotate about world X first, then world Y, then world Z. ' +
+        'Numbers only, no expressions. Pivots about rotation_axis_origin, or the world origin. ' +
+        'Refused together with rotation_axis, rotation_angle or rotation_axis_direction.',
+      ),
       rotation_axis_origin: optPoint(),
       rotation_axis_direction: optPoint(),
       rotation_axis: optStr('A feature-level ref such as @<sketchId>/<entityId>, or an edge query from `select`; overrides the origin/direction pair.'),

@@ -235,6 +235,47 @@ describe('solveTransform rotation axis guard', () => {
   })
 })
 
+describe('solveTransform rotation_euler conflict', () => {
+  it('refuses an all-zero Euler triple beside an angle of 0, naming both sides', () => {
+    // Presence is by key: an all-zero triple is still the Euler spelling, and a
+    // stored angle of 0 is still the axis spelling, so this pair is ambiguous
+    // even though neither value rotates the body.
+    expect(() =>
+      solveTransform(oc, scope, table, {
+        id: 't1',
+        transform: { bodies: ['body_a'], rotation_euler: [0, 0, 0], rotation_angle: 0 },
+      }, new Repository(), { body_a: body() }),
+    ).toThrow(/rotation_euler cannot be combined with rotation_angle.*null/)
+  })
+
+  it('refuses the triple beside an axis pick and names the clear', () => {
+    expect(() =>
+      solveTransform(oc, scope, table, {
+        id: 't1',
+        transform: { bodies: ['body_a'], rotation_euler: [10, 20, 300], rotation_axis: '@axis' },
+      }, new Repository(), { body_a: body() }),
+    ).toThrow(/rotation_euler cannot be combined with rotation_axis.*null/)
+  })
+
+  it('refuses the triple beside a direction vector', () => {
+    expect(() =>
+      solveTransform(oc, scope, table, {
+        id: 't1',
+        transform: { bodies: ['body_a'], rotation_euler: [10, 20, 300], rotation_axis_direction: [0, 0, 1] },
+      }, new Repository(), { body_a: body() }),
+    ).toThrow(/rotation_euler cannot be combined with rotation_axis_direction.*null/)
+  })
+
+  it('refuses a malformed triple instead of solving it as identity', () => {
+    expect(() =>
+      solveTransform(oc, scope, table, {
+        id: 't1',
+        transform: { bodies: ['body_a'], rotation_euler: [10, 20] },
+      }, new Repository(), { body_a: body() }),
+    ).toThrow(/rotation_euler must be three finite numbers/)
+  })
+})
+
 describe('solveMirror plane payloads and operation selection', () => {
   function bodyStore(): Record<string, Body> {
     return { body_a: body('body_a') }

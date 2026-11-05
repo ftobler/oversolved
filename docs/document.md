@@ -507,6 +507,11 @@ form) is migrated to `bodies:` on load by `migrateLegacyBodyPicks`. Write the
 plural key. The raw view (`RawDocumentDialog.tsx`) is a read-only fallback for a
 file that failed to load, not an editor.
 
+`rotation_euler: [x, y, z]` is an alternative to the axis spelling: extrinsic
+XYZ degrees (world X first, then world Y, then world Z), numbers only, pivoting
+about `rotation_axis_origin` or the world origin. It cannot be combined with
+`rotation_axis`, `rotation_angle` or `rotation_axis_direction`.
+
 ### pattern
 
 One feature patterns either a whole body or one earlier feature's own

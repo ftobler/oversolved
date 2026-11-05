@@ -862,6 +862,13 @@ export function applyAddTransform(
   // Every setter field is accepted inline, so one call replaces the add plus
   // one setter per field; bodies is copied like any other inline array.
   mergeInlineFields(transform, inline)
+  // The default axis spelling seeds rotation_angle: 0, which the kernel refuses
+  // beside an Euler triple. When the caller chose Euler inline and gave no
+  // angle, that seeded zero is not authored intent, so it must not make the
+  // freshly added feature ambiguous.
+  const eulerSupplied = inline.rotation_euler !== undefined && inline.rotation_euler !== null
+  const angleSupplied = inline.rotation_angle !== undefined && inline.rotation_angle !== null
+  if (eulerSupplied && !angleSupplied) delete transform.rotation_angle
   pushFeature(doc, { id: featureId, kind: 'transform', label: label ?? 'Transform', transform })
 }
 

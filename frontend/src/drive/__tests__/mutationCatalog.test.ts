@@ -424,6 +424,21 @@ describe('mutation catalog', () => {
     }
   })
 
+  it('names the Euler spelling, its order, its numbers-only shape and the refusal', () => {
+    for (const type of ['add_transform', 'set_transform_field'] as const) {
+      const note = mutationInfoOf(type).note
+      expect(note, type).toBeDefined()
+      expect(note, type).toContain('rotation_euler')
+      expect(note, type).toContain('extrinsic XYZ')
+      expect(note, type).toContain('world X first')
+      expect(note, type).toContain('numbers-only')
+      expect(note, type).toContain('world origin')
+      expect(note, type).toContain('cannot be combined with')
+      expect(note, type).toContain('value: null')
+    }
+    expect(mutationInfoOf('add_transform').fields.rotation_euler).toBeDefined()
+  })
+
   it('states that delete_feature leaves dependents behind', () => {
     const summary = mutationInfoOf('delete_feature').summary
     expect(summary).toContain('dependents stay')

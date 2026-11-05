@@ -843,7 +843,7 @@ function checkTransform(sub: DocRecord, field: string): void {
     checkOptional(sub, key, field, checkRef)
   }
   checkOptional(sub, 'rotation_angle', field, checkExpr)
-  for (const key of ['rotation_axis_origin', 'rotation_axis_direction', 'scale_center']) {
+  for (const key of ['rotation_euler', 'rotation_axis_origin', 'rotation_axis_direction', 'scale_center']) {
     checkOptional(sub, key, field, checkVec3)
   }
   checkOptional(sub, 'scale', field, checkExpr)

@@ -20,6 +20,7 @@ import { transformCopyWithMapping, rekeyNamesForTransformedBody, rebuildNamesFor
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody } from './bodySplit'
 import { readBodyNames } from '../occ/bodyNames'
+import { quatFromEulerXyz, quatToAxisAngle } from '@/utils/transform3d'
 
 type Dict = Record<string, unknown>
 
@@ -98,6 +99,41 @@ export function solveTransform(
   }
 
   const rotationAngle = Number(cfg.rotation_angle ?? 0.0)
+  // The Euler triple and the axis spellings are alternatives. Presence is by
+  // key on both sides, so an all-zero triple (or a stored angle of 0) still
+  // counts as chosen and cannot slip past the ambiguity check. rotation_axis_origin
+  // stays legal with the triple: it is the pivot.
+  const eulerPresent = Object.hasOwn(cfg, 'rotation_euler')
+  const axisSpellings = ['rotation_axis', 'rotation_angle', 'rotation_axis_direction']
+    .filter((key) => Object.hasOwn(cfg, key))
+  if (eulerPresent && axisSpellings.length > 0) {
+    throw new Error(
+      `transform: rotation_euler cannot be combined with ${axisSpellings.join(', ')}; ` +
+        'use the Euler triple or one axis spelling, not both. Clear the other with a null value ' +
+        '(set_transform_field with value: null).',
+    )
+  }
+  let eulerRotation: { axis: [number, number, number]; angle: number } | null = null
+  if (eulerPresent) {
+    const eulerRaw = cfg.rotation_euler
+    if (
+      !Array.isArray(eulerRaw) || eulerRaw.length !== 3
+      || !eulerRaw.every((component) => typeof component === 'number' && Number.isFinite(component))
+    ) {
+      throw new Error(
+        `transform: rotation_euler must be three finite numbers of degrees, got ${JSON.stringify(eulerRaw)}`,
+      )
+    }
+    const radians: [number, number, number] = [
+      (eulerRaw[0] * Math.PI) / 180,
+      (eulerRaw[1] * Math.PI) / 180,
+      (eulerRaw[2] * Math.PI) / 180,
+    ]
+    // One quaternion -> one axis and angle -> one Trsf: the same composition
+    // path as rotation_angle, so the Euler turn lands between scale and
+    // translation rather than as three chained Multiply calls.
+    eulerRotation = quatToAxisAngle(quatFromEulerXyz(radians))
+  }
   // NaN is falsy: without this guard a hand-edited NaN skipped BOTH the
   // missing-axis error below and the rotation itself, silently solving a
   // different transform than asked for.
@@ -160,7 +196,11 @@ export function solveTransform(
   if (translation) {
     combined.Multiply(makeTranslationTrsf(oc, scope, translation[0], translation[1], translation[2]))
   }
-  if (rotationAngle) {
+  if (eulerRotation !== null) {
+    combined.Multiply(
+      makeRotationTrsf(oc, scope, rotationAxisOrigin ?? [0, 0, 0], eulerRotation.axis, eulerRotation.angle),
+    )
+  } else if (rotationAngle) {
     const dir = rotationAxisDirection ?? [0, 0, 1]
     if (Math.hypot(dir[0], dir[1], dir[2]) < 1e-10) {
       throw new Error('transform: rotation axis direction must be a non-zero vector')

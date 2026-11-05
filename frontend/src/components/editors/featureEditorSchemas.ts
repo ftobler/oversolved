@@ -308,6 +308,12 @@ export const TRANSFORM_SCHEMA: FeatureEditorSchema = {
     { type: 'number', key: 'translation', label: 'Z', arrayField: 'translation', arrayIndex: 2, default: 0 },
     { type: 'number', key: 'rotation_angle', label: 'Angle (deg)', default: 0 },
     { type: 'pick', key: 'rotation_axis', label: 'Axis', transform: stripSelectionWrapper },
+    // The Euler triple is a second rotation spelling, shown beside the axis
+    // fields: the kernel refuses the pair, and the editor has no control that
+    // writes the null clear a mode toggle would need.
+    { type: 'number', key: 'rotation_euler', label: 'Euler X (deg)', arrayField: 'rotation_euler', arrayIndex: 0, default: 0 },
+    { type: 'number', key: 'rotation_euler', label: 'Euler Y (deg)', arrayField: 'rotation_euler', arrayIndex: 1, default: 0 },
+    { type: 'number', key: 'rotation_euler', label: 'Euler Z (deg)', arrayField: 'rotation_euler', arrayIndex: 2, default: 0 },
     { type: 'number', key: 'scale', label: 'Factor', default: 1 },
     { type: 'pick', key: 'scale_center_from', label: 'Origin', transform: stripSelectionWrapper },
   ],
