@@ -32,6 +32,7 @@ import { featureCurves, type FeatureCurveMap } from '@/drive/featureCurves'
 import { authoredHashOf } from '@/drive/docHash'
 import { seededIdSource, stepSeedFor } from '@/drive/seededIds'
 import { resolveSelectionAids, usesSelectionAid } from '@/drive/selectionAids'
+import { usesSettledSketchGeometry } from '@/drive/solveDependencies'
 import { setIdSource } from '@/utils/yamlMutations'
 
 export interface HeadlessPartOptions {
@@ -255,16 +256,18 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
             if (solve.owed()) await solve.flush()
             return registry.execute(step.command as CommandName, step.params)
           }
-          // A selector pick names geometry the last solve produced. Resolve it
-          // against the settled document before the boundary validates it: a
-          // solve still owed is spent first, and a run that starts from an
+          // A selector pick names geometry the last solve produced, and some
+          // mutation handlers read the solved `initial` (a mirror, an offset, a
+          // relative move, a dock). Both resolve against the settled document:
+          // a solve still owed is spent first, and a run that starts from an
           // unsolved document (a fresh doc, or a chained docHash whose reply
           // carried no bodies) solves once before its first selector step.
           let bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
-          if (usesSelectionAid(step.mutation)) {
+          const needsBodies = usesSelectionAid(step.mutation)
+          if (needsBodies || usesSettledSketchGeometry(step.mutation)) {
             if (solve.owed()) {
               await solve.flush()
-            } else if (responseBox.current === null) {
+            } else if (needsBodies && responseBox.current === null) {
               session.refreshSolve()
               await solve.flush()
             }

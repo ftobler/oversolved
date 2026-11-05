@@ -140,21 +140,63 @@ describe.skipIf(!ready)('one deferred solve per run (real OCC + Rust solver)', (
     expect(replay.finalHash).toBe(replyHash)
   }, 240_000)
 
-  it('mirror_entities reads the same geometry deferred and one step per call', async () => {
-    // A constrained sketch (the top line already satisfies its horizontal
-    // constraint, so the solve does not move it) mirrored about its own axis
-    // line. Under deferral the handler reads authored `initial`; a one-step
-    // call chain reads the baked one. Both must mirror the same geometry.
+  it('a docked dimension materializes the same contact deferred and one step per call', async () => {
+    // Two overlapping circles made tangent by the solve: the authored contact
+    // and the solved one differ, so the dock must read the settled params. The
+    // tangent host id is minted under the step seed, so a discovery run of the
+    // prefix names the same host in the full script.
+    const prefix: ScriptStep[] = [
+      m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' }),
+      m({ type: 'add_entity', featureId: 'sk1', kind: 'circle', params: [0, 0, 5], entityId: 'cA' }),
+      m({ type: 'add_entity', featureId: 'sk1', kind: 'circle', params: [12, 0, 5], entityId: 'cB' }),
+      m({ type: 'add_constraint', featureId: 'sk1', kind: 'tangent', targets: ['entity:sk1:cA', 'entity:sk1:cB'] }),
+    ]
+    const discovered = await runWhole(prefix, 'batch-dock-discover')
+    const discoveredSketch = discovered.doc?.features?.find(feature => feature.id === 'sk1')
+    const host = discoveredSketch?.kind === 'sketch'
+      ? discoveredSketch.constraints?.find(constraint => constraint.kind === 'tangent')?.id
+      : undefined
+    if (host === undefined) throw new Error('the tangent constraint minted no host id')
+
+    const steps: ScriptStep[] = [
+      ...prefix,
+      m({
+        type: 'add_constraint', featureId: 'sk1', kind: 'coincident',
+        targets: ['vertex:sk1:free:xy', `dock:sk1:${host}`],
+      }),
+    ]
+    const once = await runWhole(steps, 'batch-dock')
+    const singles = await runOnePerCall(steps, 'batch-dock-singles')
+    expect(once.features).toEqual([])
+    expect(singles.features).toEqual([])
+
+    const sketchOf = (doc: PartDoc | null) => doc?.features?.find(feature => feature.id === 'sk1')
+    const onceSketch = sketchOf(once.doc)
+    const singlesSketch = sketchOf(singles.doc)
+    expect(onceSketch?.kind === 'sketch' ? onceSketch.initial : null)
+      .toEqual(singlesSketch?.kind === 'sketch' ? singlesSketch.initial : null)
+    expect(onceSketch?.kind === 'sketch' ? onceSketch.constraints : null)
+      .toEqual(singlesSketch?.kind === 'sketch' ? singlesSketch.constraints : null)
+
+    // The dock point exists and both runs put it at the same contact.
+    if (onceSketch?.kind !== 'sketch') throw new Error('the run lost the sketch')
+    const point = onceSketch.entities?.find(entity => entity.kind === 'point')
+    expect(point).toBeDefined()
+    expect(onceSketch.initial?.[point!.id]).toHaveLength(2)
+  }, 240_000)
+
+  it('mirror_entities reads the same settled geometry deferred and one step per call', async () => {
+    // The length constraint moves the top line, so the authored params and the
+    // solved ones differ. A deferred mirror must flush first, exactly as the
+    // one-step-per-call chain does after each call; otherwise the one-call
+    // clone is mirrored from the stale authored length.
     const steps: ScriptStep[] = [
       m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' }),
       m({ type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, -3, 0, 3], entityId: 'ax' }),
       m({ type: 'toggle_construction', targets: ['entity:sk1:ax'] }),
-      m({ type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 2, 3, 2], entityId: 'top' }),
-      m({ type: 'add_entity', featureId: 'sk1', kind: 'line', params: [3, 2, 3, -2], entityId: 'side' }),
-      m({ type: 'add_entity', featureId: 'sk1', kind: 'line', params: [3, -2, 0, -2], entityId: 'bottom' }),
-      m({ type: 'add_constraint', featureId: 'sk1', kind: 'horizontal', targets: ['entity:sk1:top'] }),
-      m({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['top', 'side', 'bottom'], line: 'ax' }),
-      m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, operation: 'new' }),
+      m({ type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 2, 4, 2], entityId: 'top' }),
+      m({ type: 'add_constraint', featureId: 'sk1', kind: 'length', targets: ['entity:sk1:top'], value: 10 }),
+      m({ type: 'mirror_entities', featureId: 'sk1', sourceIds: ['top'], line: 'ax' }),
     ]
     const once = await runWhole(steps, 'batch-mirror')
     const singles = await runOnePerCall(steps, 'batch-mirror-singles')
@@ -166,11 +208,13 @@ describe.skipIf(!ready)('one deferred solve per run (real OCC + Rust solver)', (
       return sketch?.kind === 'sketch' ? sketch.initial ?? {} : {}
     }
     expect(geometry(singles.doc)).toEqual(geometry(once.doc))
-    expect(Object.keys(geometry(once.doc))).toHaveLength(7)
 
-    const onceMeasured = await measureHeadless(once.doc as PartDoc, { docId: 'batch-mirror-measure' })
-    const singlesMeasured = await measureHeadless(singles.doc as PartDoc, { docId: 'batch-mirror-singles-measure' })
-    expect(onceMeasured!.measures.volume).toBeCloseTo(120, 6)
-    expect(singlesMeasured!.measures.volume).toBeCloseTo(onceMeasured!.measures.volume, 6)
+    const initial = geometry(once.doc)
+    const clone = Object.entries(initial).find(([id]) => id !== 'ax' && id !== 'top')
+    expect(clone).toBeDefined()
+    const [x0, y0, x1, y1] = clone![1]
+    // The clone was mirrored after the solve moved `top` to length 10, so it is
+    // ten long; mirroring the stale authored length 4 would leave it at 4.
+    expect(Math.hypot(x1 - x0, y1 - y0)).toBeCloseTo(10, 6)
   }, 240_000)
 })

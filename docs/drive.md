@@ -326,7 +326,9 @@ npm run drive -- replay repro.json
   solves: the steps author the document and one solve at the end reports it, so
   `solve.generation` counts solves rather than steps. A step whose mutation names
   a selector and every command step flush the owed solve first (registry code may
-  read the solved state), and a reply that needs the input document's solve for
+  read the solved state), and so does a mutation whose handler reads the sketch's
+  current geometry (a mirror, an offset, a relative move, a fit-spline edit or a
+  docked dimension); a reply that needs the input document's solve for
   `featureDeltas` or `frames` pays one baseline solve before the steps; both
   opt-ins as `"all"` skip that baseline. Its journal
   derives every generation seed from the starting document's hash, so two runs
@@ -678,9 +680,10 @@ banner on stdout, so a client config must use the direct node invocation.
   the same reply shape (the frame filter below still applies). It is the
   "inspect this document" call: the solve state has
   a real `generation` and `features` is the document's problem list. A script
-  run also solves at the end rather than after each step (a selector or command
-  step flushes first), so `generation` counts solves; `featureDeltas` and
-  `frames` each add one baseline solve unless both are `"all"`. Its
+  run also solves at the end rather than after each step (a selector, command or
+  geometry-reading step flushes first), so `generation` counts solves;
+  `featureDeltas` and `frames` each add one baseline solve unless both are
+  `"all"`. Its
   `frames` key is absent unless something moved (or `frames: "all"` was
   passed), and null on a stalled call's prefix, which has no settled final
   solve; read an old frame with `measure` or the opt-in. `curves` is still the

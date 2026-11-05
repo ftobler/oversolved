@@ -180,6 +180,18 @@ describe('the headless run solves once per flush', () => {
     expect(kernel.solveLocally).toHaveBeenCalledTimes(2)
   })
 
+  it('a geometry-reading mutation flushes before it runs', async () => {
+    const steps: ScriptStep[] = [
+      addSketch('sk1'),
+      { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 0, 5, 0], entityId: 'l1' } },
+      { mutation: { type: 'move_entity', featureId: 'sk1', entityId: 'l1', delta: [1, 0] } },
+    ]
+    const result = await runHeadless({ doc: emptyDriveDoc(), steps, featureDeltas: 'all', frames: 'all' })
+    expect(result.outcome.ok).toBe(true)
+    // One flush before the move (which reads the solved params), one final.
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(2)
+  })
+
   it('a command step flushes before it runs', async () => {
     const result = await runHeadless({
       doc: emptyDriveDoc(),

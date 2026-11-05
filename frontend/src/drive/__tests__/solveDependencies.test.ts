@@ -1,0 +1,42 @@
+// @vitest-environment node
+//
+// The mutations whose handler reads a sketch's solved `initial` must flush
+// before they run in a deferred script, or a one-call run and a one-step-per-
+// call chain would read different geometry. A mutation that only writes
+// geometry does not need it.
+
+import { describe, it, expect } from 'vitest'
+import { usesSettledSketchGeometry } from '../solveDependencies'
+
+describe('usesSettledSketchGeometry', () => {
+  it('names every handler that reads the current sketch params', () => {
+    for (const type of [
+      'move_entity', 'move_vertex', 'move_vertex_with_constraint', 'resize_circle',
+      'mirror_entities', 'apply_offset', 'insert_fit_point', 'set_fit_spline_handle',
+    ]) {
+      expect(usesSettledSketchGeometry({ type })).toBe(true)
+    }
+  })
+
+  it('needs a flush for a dock handle but not an ordinary constraint target', () => {
+    expect(usesSettledSketchGeometry({ type: 'add_constraint', targets: ['dock:sk1:c_t'] })).toBe(true)
+    expect(usesSettledSketchGeometry({
+      type: 'add_constraint',
+      targets: ['entity:sk1:l1', 'vertex:sk1:l1:start'],
+    })).toBe(false)
+  })
+
+  it('leaves the writing mutations alone', () => {
+    for (const step of [
+      { type: 'add_rect', featureId: 'sk1' },
+      { type: 'add_entity', featureId: 'sk1', kind: 'line' },
+      { type: 'add_entity', featureId: 'sk1', kind: 'fit_spline' },
+      { type: 'toggle_construction', targets: ['entity:sk1:l1'] },
+      { type: 'add_extrude', featureId: 'ex1' },
+    ]) {
+      expect(usesSettledSketchGeometry(step)).toBe(false)
+    }
+    expect(usesSettledSketchGeometry(null)).toBe(false)
+    expect(usesSettledSketchGeometry('not a step')).toBe(false)
+  })
+})
