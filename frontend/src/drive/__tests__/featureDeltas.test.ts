@@ -496,4 +496,14 @@ describe('featureDeltaRows', () => {
     )
     expect([...touched].sort()).toEqual(['ex1', 'line1', 'sk9'])
   })
+
+  it('learns an import step\'s sketch from the mutation though its reply drops the ids', () => {
+    // The compact import reply has no entity ids to harvest, but the delta row
+    // still needs the sketch the step named.
+    const touched = touchedFeatureIds(
+      [{ mutation: { type: 'import_dxf', featureId: 'sk_import', file: 'rack' } }],
+      [{ index: 0, ok: true, createdIds: [], createdCount: 12 }],
+    )
+    expect([...touched]).toEqual(['sk_import'])
+  })
 })

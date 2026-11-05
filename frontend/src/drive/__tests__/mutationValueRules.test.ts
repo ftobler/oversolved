@@ -42,8 +42,8 @@ function sketchDoc(): PartDoc {
   })
 }
 
-function refusal(raw: unknown, doc: PartDoc | null = null) {
-  const result = validateMutation(raw, { doc })
+function refusal(raw: unknown, doc: PartDoc | null = null, fileIds?: ReadonlySet<string>) {
+  const result = validateMutation(raw, { doc, ...(fileIds === undefined ? {} : { fileIds }) })
   if (result.ok) throw new Error(`expected a refusal, got ok for ${JSON.stringify(raw)}`)
   return result.error
 }
@@ -1144,5 +1144,67 @@ describe('the positive twin of a seeded script still validates', () => {
     ]
     const result = await runHeadless({ doc: seededDoc(), steps })
     expect(result.outcome.steps.map(step => step.ok)).toEqual([true, true, true, true])
+  })
+})
+
+describe('import_dxf takes exactly one of content or file', () => {
+  const TEXT = '0\nSECTION\n2\nENTITIES\n0\nLINE\n10\n0\n20\n0\n11\n5\n21\n0\n0\nENDSEC\n0\nEOF\n'
+
+  function check(raw: Record<string, unknown>, fileIds?: ReadonlySet<string>) {
+    return validateMutation(raw, {
+      doc: sketchDoc(),
+      ...(fileIds === undefined ? {} : { fileIds }),
+    })
+  }
+
+  it('accepts inline content and keeps it as the field', () => {
+    const raw = { type: 'import_dxf', featureId: 'sk1', content: TEXT }
+    expect(check(raw)).toEqual({ ok: true, mutation: raw })
+  })
+
+  it('accepts a file id the run supplied, untouched for the runner to resolve', () => {
+    const raw = { type: 'import_dxf', featureId: 'sk1', file: 'rack' }
+    expect(check(raw, new Set(['rack']))).toEqual({ ok: true, mutation: raw })
+  })
+
+  it('refuses both spellings by name', () => {
+    const error = refusal({ type: 'import_dxf', featureId: 'sk1', content: TEXT, file: 'rack' })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('exactly one of content or file')
+  })
+
+  it('refuses neither spelling, naming both and the run files map', () => {
+    const error = refusal({ type: 'import_dxf', featureId: 'sk1' })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('content')
+    expect(error.message).toContain('file')
+    expect(error.message).toContain("files map")
+  })
+
+  it('refuses a file id the call did not supply, listing the available ones', () => {
+    const error = refusal({ type: 'import_dxf', featureId: 'sk1', file: 'rack' }, sketchDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain("run's files map")
+    expect(error.message).toContain('files argument')
+    const unknown = validateMutation(
+      { type: 'import_dxf', featureId: 'sk1', file: 'rack' },
+      { doc: sketchDoc(), fileIds: new Set(['other']) },
+    )
+    expect(unknown).toMatchObject({ ok: false, error: { code: 'unknown-target' } })
+    if (unknown.ok) return
+    expect(unknown.error.message).toContain('"rack"')
+    expect(unknown.error.message).toContain('available: other')
+  })
+
+  it('refuses an empty file id and keeps the empty content refusal', () => {
+    expect(refusal({ type: 'import_dxf', featureId: 'sk1', file: '' }, sketchDoc(), new Set(['rack'])).message)
+      .toContain('non-empty files id')
+    expect(refusal({ type: 'import_dxf', featureId: 'sk1', content: '' }).message)
+      .toContain('content must be the DXF file text')
+  })
+
+  it('refuses an inline file the parser does not support', () => {
+    const bad = '0\nSECTION\n2\nENTITIES\n0\nINSERT\n2\nBLOCK\n0\nENDSEC\n0\nEOF\n'
+    expect(refusal({ type: 'import_dxf', featureId: 'sk1', content: bad }).message).toContain('INSERT')
   })
 })

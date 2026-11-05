@@ -146,7 +146,8 @@ export interface McpToolDefinition {
 
 const FILE_LIST_SCHEMA = {
   type: 'array',
-  description: 'STEP bytes for import_step features: the feature file_id and a file path. Paths resolve '
+  description: 'The bytes a step names, by id: a STEP file for an import_step feature or an `add_step_part` '
+    + 'step, or a DXF file for an `import_dxf` step\'s `file` field. Paths resolve '
     + 'against the repo root and must stay inside tmp/, bugreports/ or scratch/.',
   items: {
     type: 'object',

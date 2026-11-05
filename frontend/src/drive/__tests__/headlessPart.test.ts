@@ -21,6 +21,35 @@ function emptyDoc(): PartDoc {
   return { version: 1, kind: 'part', features: [] } as PartDoc
 }
 
+function sketchDoc(): PartDoc {
+  return {
+    version: 1,
+    kind: 'part',
+    features: [{ id: 'sk', kind: 'sketch', entities: [], initial: {} }],
+  } as PartDoc
+}
+
+function dxfText(lines: ReadonlyArray<readonly [number, number, number, number]>): string {
+  const groups = ['0', 'SECTION', '2', 'ENTITIES']
+  for (const [x1, y1, x2, y2] of lines) {
+    groups.push('0', 'LINE', '10', String(x1), '20', String(y1), '11', String(x2), '21', String(y2))
+  }
+  groups.push('0', 'ENDSEC', '0', 'EOF')
+  return groups.join('\n') + '\n'
+}
+
+function utf8(text: string): Uint8Array {
+  return new TextEncoder().encode(text)
+}
+
+// The imported geometry without its minted ids: two runs draw different seeds
+// from different step payloads, so only the kind and params are comparable.
+function importedGeometry(doc: PartDoc | null): Array<{ kind: string; params: number[] | undefined }> {
+  const feature = doc?.features?.find(f => f.id === 'sk')
+  if (feature === undefined || feature.kind !== 'sketch') throw new Error('fixture lost its sketch')
+  return (feature.entities ?? []).map(entity => ({ kind: entity.kind, params: feature.initial?.[entity.id] }))
+}
+
 beforeEach(() => {
   setIdSource(null)
 })
@@ -161,5 +190,113 @@ describe('createHeadlessPart', () => {
     const first = await runOnce()
     const second = await runOnce()
     expect(second).toBe(first)
+  })
+})
+
+describe('import_dxf from the run files map', () => {
+  const TEXT = dxfText([[0, 0, 10, 0], [10, 0, 10, 10]])
+
+  it('builds the same geometry as the same content inline, as one undo entry', async () => {
+    const byFile = createHeadlessPart({
+      doc: sketchDoc(),
+      files: new Map([['rack', utf8(TEXT)]]),
+    })
+    const byContent = createHeadlessPart({ doc: sketchDoc() })
+    const fromFile = await byFile.run([{ mutation: { type: 'import_dxf', featureId: 'sk', file: 'rack' } }])
+    const inline = await byContent.run([{ mutation: { type: 'import_dxf', featureId: 'sk', content: TEXT } }])
+    expect(fromFile.ok).toBe(true)
+    expect(inline.ok).toBe(true)
+    expect(importedGeometry(byFile.getDoc())).toEqual(importedGeometry(byContent.getDoc()))
+    expect(importedGeometry(byFile.getDoc())).toHaveLength(2)
+    expect(byFile.session.historyEntries().undo).toHaveLength(1)
+  })
+
+  it('fails an unknown id, names it, and leaves the document unchanged', async () => {
+    const part = createHeadlessPart({
+      doc: sketchDoc(),
+      files: new Map([['other', utf8(TEXT)]]),
+    })
+    const before = JSON.stringify(part.getDoc())
+    const outcome = await part.run([
+      { mutation: { type: 'import_dxf', featureId: 'sk', file: 'rack' } },
+      { mutation: { type: 'add_sketch', featureId: 'later' } },
+    ])
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps).toHaveLength(1)
+    expect(outcome.steps[0].error?.code).toBe('unknown-target')
+    expect(outcome.steps[0].error?.message).toContain('"rack"')
+    expect(outcome.steps[0].error?.message).toContain('available: other')
+    expect(JSON.stringify(part.getDoc())).toBe(before)
+  })
+
+  it('fails a file step in a part with no files map, and continues when told to', async () => {
+    const part = createHeadlessPart({ doc: sketchDoc() })
+    const outcome = await part.run([
+      { mutation: { type: 'import_dxf', featureId: 'sk', file: 'rack' }, continueOnError: true },
+      { mutation: { type: 'add_sketch', featureId: 'later' } },
+    ])
+    expect(outcome.steps[0].ok).toBe(false)
+    expect(outcome.steps[0].error?.message).toContain("run's files map")
+    expect(outcome.steps[0].error?.message).toContain('files argument')
+    expect(outcome.steps[1].ok).toBe(true)
+    expect(part.getDoc()?.features?.map(f => f.id)).toContain('later')
+  })
+
+  it('journals the resolved content, so a replay needs no files map', async () => {
+    const journal = new CommandJournal()
+    const part = createHeadlessPart({
+      doc: sketchDoc(),
+      journal,
+      files: new Map([['rack', utf8(TEXT)]]),
+    })
+    const outcome = await part.run([{ mutation: { type: 'import_dxf', featureId: 'sk', file: 'rack' } }])
+    expect(outcome.ok).toBe(true)
+    const payload = journal.entries()[0].payload as Record<string, unknown>
+    expect(payload).toMatchObject({ type: 'import_dxf', featureId: 'sk', content: TEXT })
+    expect(payload).not.toHaveProperty('file')
+
+    const repro = journal.repro()
+    expect(repro).not.toBeNull()
+    const fresh = createHeadlessPart({ doc: repro!.doc as PartDoc, docId: 'replay' })
+    const replay = await replayJournal(repro!, fresh.session, () => fresh.idle())
+    expect(replay.ok).toBe(true)
+    expect(replay.finalHash).toBe(docHashOf(part.getDoc()))
+  })
+
+  it('refuses bytes that are not UTF-8, naming the file and the encoding', async () => {
+    const part = createHeadlessPart({
+      doc: sketchDoc(),
+      files: new Map([['bad', new Uint8Array([0x80, 0x81, 0x82])]]),
+    })
+    const outcome = await part.run([{ mutation: { type: 'import_dxf', featureId: 'sk', file: 'bad' } }])
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps[0].error?.message).toContain('"bad"')
+    expect(outcome.steps[0].error?.message).toContain('UTF-8')
+    expect(importedGeometry(part.getDoc())).toEqual([])
+  })
+
+  it('refuses a DXF the parser rejects instead of importing an empty sketch', async () => {
+    const bad = '0\nSECTION\n2\nENTITIES\n0\nINSERT\n2\nBLOCK\n0\nENDSEC\n0\nEOF\n'
+    const part = createHeadlessPart({
+      doc: sketchDoc(),
+      files: new Map([['bad', utf8(bad)]]),
+    })
+    const outcome = await part.run([{ mutation: { type: 'import_dxf', featureId: 'sk', file: 'bad' } }])
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps[0].error?.message).toContain('INSERT')
+    expect(importedGeometry(part.getDoc())).toEqual([])
+  })
+
+  it('reports the entity count instead of a bulk id list', async () => {
+    const bulk = dxfText(Array.from({ length: 512 }, (_, i) => [i, 0, i + 1, 0] as const))
+    const part = createHeadlessPart({
+      doc: sketchDoc(),
+      files: new Map([['rack', utf8(bulk)]]),
+    })
+    const outcome = await part.run([{ mutation: { type: 'import_dxf', featureId: 'sk', file: 'rack' } }])
+    expect(outcome.ok).toBe(true)
+    expect(outcome.steps[0].createdIds).toEqual([])
+    expect(outcome.steps[0].createdCount).toBe(512)
+    expect(importedGeometry(part.getDoc())).toHaveLength(512)
   })
 })

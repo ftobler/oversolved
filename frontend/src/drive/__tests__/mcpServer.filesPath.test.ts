@@ -15,10 +15,13 @@ import { createMcpServer, type McpCadOps } from '../mcpServer'
 const CASE_DIR = path.join(REPO_ROOT, 'tmp', 'mcp-files-path')
 const RELATIVE = path.join('tmp', 'mcp-files-path', 'part.step')
 const BYTES = new Uint8Array([1, 2, 3, 4])
+const DXF_RELATIVE = path.join('tmp', 'mcp-files-path', 'profile.dxf')
+const DXF_TEXT = '0\nSECTION\n2\nENTITIES\n0\nLINE\n10\n0\n20\n0\n11\n5\n21\n0\n0\nENDSEC\n0\nEOF\n'
 
 beforeAll(() => {
   mkdirSync(CASE_DIR, { recursive: true })
   writeFileSync(path.join(CASE_DIR, 'part.step'), BYTES)
+  writeFileSync(path.join(CASE_DIR, 'profile.dxf'), DXF_TEXT, 'utf8')
 })
 
 afterAll(() => {
@@ -41,6 +44,14 @@ describe('MCP files paths', () => {
     const files = readProjectFiles([{ id: 'f1', path: absolute }])
     expect([...files!.get('f1')!]).toEqual([...BYTES])
     expect(resolveProjectPath(absolute, 'input')).toBe(absolute)
+  })
+
+  it('resolves a DXF fixture for an import_dxf file id through the input rule', () => {
+    const files = readProjectFiles([{ id: 'rack', path: DXF_RELATIVE }])
+    expect(new TextDecoder().decode(files!.get('rack')!)).toBe(DXF_TEXT)
+    expect(resolveProjectPath(DXF_RELATIVE, 'input')).toBe(path.join(REPO_ROOT, DXF_RELATIVE))
+    expect(() => readProjectFiles([{ id: 'rack', path: '/etc/profile.dxf' }]))
+      .toThrow(/must resolve inside/)
   })
 
   it('refuses a path outside the read roots with the allowed directories named', () => {
