@@ -7,6 +7,8 @@
 import type { EdgeData, BodyResult, FaceData, MateAnchorDescriptor, Mesh3D } from '../types/cad'
 import { sha256Hex } from './sha256'
 import { constructionUuidToken, parseAncestry, partitionAncestryIds } from './queryWire'
+import { BUILTIN_PLANES, resolveBarePlaneId } from './solverConstants'
+import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { cross, sub } from '@/utils/vec3'
 
 export type AnchorKind = 'plane' | 'cylinder' | 'cone' | 'sphere' | 'torus' | 'line' | 'circle' | 'point'
@@ -100,9 +102,11 @@ export interface PartBundle {
  * the cylinder/cone/torus anchor POINT too, from the surface frame origin (an
  * end of the face, or outside it) to the face's own axial midpoint, so a cached
  * schema-1 bundle would hand an already-solved assembly its old end-anchored
- * pose. See `bundleCache.bundleCacheGet`.
+ * pose. Schema 3 adds the part's own frame anchors (`PART_FRAME_ANCHORS`), so a
+ * cached schema-2 bundle would leave every frame mate stale forever. See
+ * `bundleCache.bundleCacheGet`.
  */
-export const BUNDLE_SCHEMA = 2
+export const BUNDLE_SCHEMA = 3
 
 // Bumped whenever geometry-producing code changes at an unchanged BUNDLE_SCHEMA
 // (a tessellation tweak, a boolean-op fix, a builder behavior change). The
@@ -166,9 +170,55 @@ export function anchorKindHasAxis(kind: AnchorKind): boolean {
     kind === 'torus' || kind === 'line' || kind === 'circle'
 }
 
-// ─── Conversion from BuildResponse output ───
-
 type Vec3 = [number, number, number]
+
+// ─── The part's own frame ───
+
+/** The origin feature has no plane record of its own; it shares Front's +Z so
+ *  the frame anchor carries a real axis (a point anchor is refused by every
+ *  axis-reading mate, the fixed mate this table exists for). */
+function frameAxis(name: string): Vec3 {
+  const planeId = resolveBarePlaneId(name)
+  const normal = planeId === null ? undefined : BUILTIN_PLANES[planeId]?.normal as Vec3 | undefined
+  const fallback = BUILTIN_PLANES[resolveBarePlaneId('Front')!].normal as Vec3
+  const axis = normal ?? fallback
+  return [axis[0], axis[1], axis[2]]
+}
+
+/**
+ * A part's own coordinate frame as mate anchors: the names its builtin features
+ * already own (`BUILTIN_FEATURE_IDS`), minted as PLANES at the origin with the
+ * builtin plane's normal.
+ *
+ * Both halves of that choice are deliberate. Plane rather than point because
+ * every axis-reading mate refuses a placeholder axis, and Origin is the very
+ * anchor a fixed mate exists to reference. The names and normals come from the
+ * builtin feature table and `BUILTIN_PLANES` rather than a second hand-typed
+ * list, so the part frame and the builtin planes cannot drift apart (pinned by
+ * a drift test in partBundle.test.ts).
+ *
+ * The geom_hash is a fixed `part-frame/` token, not a construction UUID: the
+ * frame has no B-rep entity behind it, and a fixed token lets
+ * `anchorByDescriptor` tier 1 re-find a stored frame ref after a cache wipe.
+ * created_by is empty for the same reason: no feature built this anchor.
+ */
+export const PART_FRAME_ANCHORS: Readonly<Record<string, Anchor>> = Object.fromEntries(
+  BUILTIN_FEATURE_DEFAULTS.map(feature => [feature.id, {
+    kind: 'plane' as const,
+    point: [0, 0, 0] as Vec3,
+    axis: frameAxis(feature.id),
+    geom_hash: `part-frame/${feature.id.toLowerCase()}`,
+    created_by: '',
+  }]),
+)
+
+/** The deterministic id `toPartBundle` mints for a part-frame anchor. */
+export function partFrameAnchorId(name: string): string | undefined {
+  const anchor = PART_FRAME_ANCHORS[name]
+  return anchor === undefined ? undefined : anchorIdFor(anchor.geom_hash, anchor.kind)
+}
+
+// ─── Conversion from BuildResponse output ───
 
 function normalize(v: Vec3): Vec3 {
   const len = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
@@ -354,6 +404,18 @@ export function toPartBundle(
     const { anchors, entityAnchors } = extractBodyAnchors(body, mintAnchorId)
     bodies.push({ ...toBodyMesh(body), entityAnchors })
     Object.assign(allAnchors, anchors)
+  }
+  // The part frame is intrinsic to the document, so every bundle carries it,
+  // even one with no geometry. Minted after the body anchors so an entity id
+  // keeps its bare hash; the fixed geom_hash tokens cannot collide with a `@u|`
+  // construction UUID. The point/axis are copied so the bundle owns them, the
+  // same rule the mesh arrays follow.
+  for (const anchor of Object.values(PART_FRAME_ANCHORS)) {
+    allAnchors[mintAnchorId(anchor.geom_hash, anchor.kind)] = {
+      ...anchor,
+      point: [...anchor.point] as Vec3,
+      axis: [...anchor.axis] as Vec3,
+    }
   }
   return { doc_id, content_hash, schema: BUNDLE_SCHEMA, bodies, anchors: allAnchors }
 }

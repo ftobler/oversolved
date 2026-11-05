@@ -13,6 +13,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadPkgNodeExport, PKG_MATE } from '@/wasm-kernel/loadPkgNode'
 import type { PartDoc } from '@/types/cad'
 import { docHashOf } from '@/drive/docHash'
+import { partFrameAnchorId } from '@/kernel/partBundle'
 import { createHeadlessAssembly, emptyDriveAssemblyDoc, setMateSolver, type AssemblyScriptStep } from '../headlessAssembly'
 import { runAssemblyHeadless } from '../headlessOps'
 import { instancePoses } from '../assemblyOutcome'
@@ -418,6 +419,42 @@ describeReal('headless assembly with the real mate solver', () => {
     expect(bx - ax).toBeCloseTo(0, 6)
     expect(by - ay).toBeCloseTo(0, 6)
     expect(bz - az).toBeCloseTo(5, 6)
+    // The control for the part-frame anchors: a face selector still resolves to
+    // the picked face anchor, never to the frame anchor that shares its origin.
+    expect(frames.ref_a!.anchor).not.toBe(partFrameAnchorId('Origin'))
+    expect(frames.ref_b!.anchor).not.toBe(partFrameAnchorId('Origin'))
+  }, 180_000)
+
+  it('mates a pin to a plate by their own frame Origin with a +Z offset', async () => {
+    // The headline frame case: no face selector, no centroid arithmetic. Both
+    // parts' Origin planes carry +Z, so a vector offset {z: 15} puts the pin's
+    // origin 15 above the plate's. This fails if Origin is minted as a point,
+    // because the solve refuses every axis-reading mate on a placeholder axis.
+    const result = await runAssemblyHeadless({
+      doc: emptyDriveAssemblyDoc(),
+      parts: binding(),
+      steps: [
+        { mutation: { type: 'add_part', handle: 'plate', part: 'plate', fixed: true } },
+        { mutation: { type: 'add_part', handle: 'pin', part: 'pin', position: [30, 30, 40] } },
+        { mutation: {
+          type: 'add_mate', featureId: 'm1', kind: 'fixed',
+          ref_a: { part: 'plate', anchor: 'Origin' },
+          ref_b: { part: 'pin', anchor: 'Origin' },
+          offset: { z: 15 },
+        } },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    expect(result.mates).toEqual([])
+    expect(result.solve.verdict).toBe('fully_constrained')
+    const pin = result.instances.find(instance => instance.handle === 'pin')!
+    expect(pin.position[0]).toBeCloseTo(0, 6)
+    expect(pin.position[1]).toBeCloseTo(0, 6)
+    expect(pin.position[2]).toBeCloseTo(15, 6)
+    const frames = result.mateFrames.m1
+    expect(frames.ref_a!.anchor).toBe(partFrameAnchorId('Origin'))
+    expect(frames.ref_b!.anchor).toBe(partFrameAnchorId('Origin'))
+    expect(frames.ref_b!.point[2] - frames.ref_a!.point[2]).toBeCloseTo(15, 6)
   }, 180_000)
 
   it('refuses a malformed selector as an invalid ref', async () => {

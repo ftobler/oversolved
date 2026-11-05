@@ -1,7 +1,45 @@
 import { describe, it, expect } from 'vitest'
-import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors, anchorIdFor, anchorKindHasAxis, anchorByDescriptor, ANCHOR_TIE_EPSILON_SQ, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint } from '../partBundle'
+import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors, anchorIdFor, anchorKindHasAxis, anchorByDescriptor, ANCHOR_TIE_EPSILON_SQ, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint, PART_FRAME_ANCHORS, partFrameAnchorId } from '../partBundle'
 import type { Anchor, AnchorKind } from '../partBundle'
 import type { EdgeData, BodyResult, FaceData, MateAnchorDescriptor } from '../../types/cad'
+import { initGlobalRepo } from '../query'
+import { resolvePlaneRef } from '../features/shared/planes'
+import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
+
+/** The anchor ids toPartBundle mints for the part's own frame. */
+const FRAME_IDS = new Set(
+  Object.keys(PART_FRAME_ANCHORS).map(name => partFrameAnchorId(name)!),
+)
+
+/** The anchors a body contributed, i.e. everything that is not the part frame. */
+function bodyAnchorIds(bundle: { anchors: Record<string, Anchor> }): string[] {
+  return Object.keys(bundle.anchors).filter(id => !FRAME_IDS.has(id))
+}
+
+describe('PART_FRAME_ANCHORS', () => {
+  it('names exactly the part document builtins', () => {
+    expect(new Set(Object.keys(PART_FRAME_ANCHORS))).toEqual(BUILTIN_FEATURE_IDS)
+  })
+
+  it('takes Front, Top and Right axes from resolvePlaneRef', () => {
+    // A second hand-typed normal table is how the part frame and the builtin
+    // planes would drift apart, so the claim is checked against the real reader.
+    const repo = initGlobalRepo()
+    for (const name of ['Front', 'Top', 'Right']) {
+      expect(PART_FRAME_ANCHORS[name].axis).toEqual(resolvePlaneRef(repo, name, {}, 'part frame').normal)
+    }
+  })
+
+  it('mints Origin as a plane with an axis, so an axis-reading mate accepts it', () => {
+    const origin = PART_FRAME_ANCHORS.Origin
+    expect(origin.kind).toBe('plane')
+    expect(anchorKindHasAxis(origin.kind)).toBe(true)
+    expect(origin.point).toEqual([0, 0, 0])
+    expect(origin.axis).toEqual([0, 0, 1])
+    expect(origin.created_by).toBe('')
+    expect(origin.geom_hash).toBe('part-frame/origin')
+  })
+})
 
 describe('BUNDLE_BUILD_FINGERPRINT drift guard', () => {
   it('is derived from BUNDLE_SCHEMA and BUNDLE_BUILD_ID, so bumping either changes it', () => {
@@ -315,9 +353,53 @@ describe('toPartBundle', () => {
     expect(bundle.content_hash).toBe('h5')
     expect(bundle.bodies).toHaveLength(2)
     expect(bundle.bodies[1].edges).toHaveLength(1)
-    // These mock bodies carry no ancestry-format queries, so nothing mints an
-    // anchor. Pin the empty set rather than asserting the always-true >= 0.
-    expect(Object.keys(bundle.anchors)).toHaveLength(0)
+    // These mock bodies carry no ancestry-format queries, so no body mints an
+    // anchor; the four part-frame anchors are still there on every bundle.
+    expect(bodyAnchorIds(bundle)).toEqual([])
+    expect(Object.keys(bundle.anchors)).toHaveLength(4)
+  })
+
+  it('adds exactly the four part-frame anchors to a two-body bundle, with stable ids', () => {
+    const bodyWithFace = (uuid: string): BodyResult => ({
+      id: uuid, created_by: EX_FEATURE, modified_by: [],
+      mesh: {
+        vertices: [], faces: [],
+        face_queries: [makeQuery([`@u|${uuid}`, `@${EX_FEATURE}`], 'flatface')],
+        face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' }],
+      },
+    })
+    const bodies: Record<string, BodyResult> = {
+      b1: bodyWithFace('f:a'),
+      b2: bodyWithFace('f:b'),
+    }
+    const first = toPartBundle('doc', 'h1', bodies)
+    const second = toPartBundle('doc', 'h2', bodies)
+
+    // Two body anchors plus exactly the four frame anchors.
+    expect(Object.keys(first.anchors)).toHaveLength(2 + 4)
+    expect(bodyAnchorIds(first)).toHaveLength(2)
+
+    const expected: Record<string, { point: [number, number, number]; axis: [number, number, number] }> = {
+      Origin: { point: [0, 0, 0], axis: [0, 0, 1] },
+      Top: { point: [0, 0, 0], axis: [0, 1, 0] },
+      Front: { point: [0, 0, 0], axis: [0, 0, 1] },
+      Right: { point: [0, 0, 0], axis: [1, 0, 0] },
+    }
+    for (const [name, want] of Object.entries(expected)) {
+      const id = partFrameAnchorId(name)!
+      const anchor = first.anchors[id]
+      expect(anchor, name).toMatchObject({
+        kind: 'plane',
+        point: want.point,
+        axis: want.axis,
+        geom_hash: `part-frame/${name.toLowerCase()}`,
+        created_by: '',
+      })
+      // The id is minted from a fixed token, so two builds of the same body
+      // results name the same anchor (a persisted frame ref needs no remap).
+      expect(second.anchors).toHaveProperty(id)
+      expect(anchor).toEqual(second.anchors[id])
+    }
   })
 
   it('mints the same deterministic anchor id for two builds of the same geometry (no cache needed)', () => {
@@ -338,12 +420,15 @@ describe('toPartBundle', () => {
     }
     const bundleA = toPartBundle('doc1', 'h1', bodies)
     const bundleB = toPartBundle('doc1', 'h2', bodies)
-    const idsA = Object.keys(bundleA.anchors)
-    const idsB = Object.keys(bundleB.anchors)
+    const idsA = bodyAnchorIds(bundleA)
+    const idsB = bodyAnchorIds(bundleB)
     expect(idsA).toHaveLength(1)
     expect(idsB).toHaveLength(1)
     // Same geom_hash + kind -> same id, across builds and doc revs.
     expect(idsA).toEqual(idsB)
+    // The frame anchors are deterministic too, from their fixed tokens.
+    expect([...FRAME_IDS].every(id => bundleA.anchors[id] !== undefined)).toBe(true)
+    expect([...FRAME_IDS].every(id => bundleB.anchors[id] !== undefined)).toBe(true)
   })
 
   it('anchorIdFor is a deterministic hash of geom_hash + kind', () => {
@@ -374,7 +459,7 @@ describe('toPartBundle', () => {
       },
     }
     const bundle = toPartBundle('doc1', 'h1', bodies)
-    const ids = Object.keys(bundle.anchors)
+    const ids = bodyAnchorIds(bundle)
     expect(ids).toHaveLength(2)
     expect(new Set(ids).size).toBe(2)
     const base = anchorIdFor('@u|f:0,0,0|0,0,1', 'plane')

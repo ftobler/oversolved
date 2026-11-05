@@ -34,15 +34,19 @@ export type AnyScriptStep =
  * What a `capture: true` mate step measured at the instances' seeds and froze
  * into the document: `flip` from which way the two anchor axes point, `angle`
  * (only for the kinds that read a roll) from the roll between their canonical
- * frames. `overridden` names the keys the same step spelled explicitly, so the
- * captured value did not land there and the document carries the explicit one.
- * Only the assembly drive produces it; a step that captured nothing has no
- * `captured` field at all.
+ * frames, and `offset` (only a fixed mate, and only when the seed translation is
+ * non-zero) carried into A's own frame. `overridden` names the keys the same
+ * step spelled explicitly, so the captured value did not land there and the
+ * document carries the explicit one. Only the assembly drive produces it; a
+ * step that captured nothing has no `captured` field at all.
  */
 export interface MateCapture {
   flip: boolean
   angle?: number
-  overridden?: ('flip' | 'angle')[]
+  // B's anchor delta from A's anchor, in A's local frame (the fixed mate's
+  // offset convention); absent when the seed delta is the default zero.
+  offset?: [number, number, number]
+  overridden?: ('flip' | 'angle' | 'offset')[]
 }
 
 /** Which pose a `set_part_fixed` step froze into the instance's seed: the last

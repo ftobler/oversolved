@@ -1256,13 +1256,16 @@ authors `flip: true` by hand is equally valid.
   chained call overrides one binding and mints a new handle.
 - A mate ref is a part-local pick: `{ part: <handle>, query: <a select query> }`,
   `{ part: <handle>, selector: <exactly one entity> }`, `{ part: <handle>,
-  anchor: <anchor id> }`, or the assembly frame
+  anchor: <anchor id> }`, the part's own frame `{ part: <handle>, anchor:
+  "Origin" }` (`Origin`, `Top`, `Front` and `Right` are always available;
+  `Origin` and `Front` face +Z, `Top` +Y, `Right` +X), or the assembly frame
   `{ part: "__assembly", anchor: "AssemblyTop" }`. Run `select` on the part's
   own docHash to get queries; the selector is an authoring aid and is never
   stored. A mate selector is validated exactly like the `select` tool's
   argument, so the `"x" | "y" | "z"` extreme-axis sugar works and a typo is
-  refused with the same wording. Only `{ part, anchor, anchor_descriptor }`
-  reaches the document.
+  refused with the same wording. An unknown name is refused with the part frame
+  names, the `select` route and the bundle's anchor-id route all listed. Only
+  `{ part, anchor, anchor_descriptor }` reaches the document.
 - `flip` compares the two anchors' axes as `select` lists them (the `axis` of a
   circle item, the normal of a flat face, the analytic axis of a cylinder): for
   faces that is the outward normal, so `flip: true` is face-to-face contact
@@ -1274,20 +1277,28 @@ authors `flip: true` by hand is equally valid.
   `position`/`rotation` are exactly the kind of pose the editor captures from)
   and pass `capture: true` on `add_mate` or `set_mate_ref`: once the refs
   resolve, the step measures `flip` and `angle` at the instance seeds, the same
-  poses the solve starts from, and freezes them into the mate. The solve then
+  poses the solve starts from, and freezes them into the mate. For a `fixed`
+  mate it also stores the seed translation as the mate's `offset`, carried into
+  A's part frame (`R_a^T (p_b - p_a)`), so "place them, then capture" holds the
+  whole relative pose. The solve then
   holds the pose you seeded instead of one you found by trial solving, without
   having to learn each circle edge's axis direction from a failed solve first.
-  An explicit `flip`/`angle` in the same step wins over the captured value,
-  and the step result carries `captured: { flip, angle }` (angle only for the
-  kinds that read a roll; plus `overridden: [...]` when an explicit value beat
-  a captured one) so the reply says what was frozen into the document. The
+  An explicit `flip`/`angle`/`offset` in the same step wins over the captured
+  value, and the step result carries `captured: { flip, angle, offset }` (angle
+  only for the kinds that read a roll, offset only for a `fixed` mate whose
+  seed translation is non-zero and in A's local frame; plus
+  `overridden: [...]` when an explicit value beat a captured one) so the reply
+  says what was frozen into the document. The
   default is `capture: false`, so a document authored before this existed
   keeps its meaning, and a kind with no authored orientation (spherical,
   tangential, copy_rotation) captures nothing.
-  Read the reply's `mateFrames` (each mate's posed anchors) to see which way an
-  axis points at the solved pose.
+  Read the reply's `mateFrames` (each mate's posed anchors, with the stored
+  `anchor` id and the solved pose in the assembly frame) to see which way an
+  axis points at the solved pose. A frame anchor's `point` is local to its part
+  (the part origin is `[0, 0, 0]` in that frame), the same point a `fixed`
+  offset is measured from.
 - A mate `offset` is a number along A's anchor axis or a partial `{x, y, z}`
-  in body A's local frame (it rotates with A). The sign reads "B's anchor
+  in body A's part frame (it rotates with A). The sign reads "B's anchor
   sits at A's anchor PLUS the offset": the `add_mate` above with
   `"offset": 5` rests the pin's anchor 5 above the plate's top face (its
   outward normal), while a negative value sinks it into the plate.

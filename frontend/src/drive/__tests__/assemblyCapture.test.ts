@@ -66,7 +66,7 @@ function seeded(entries: Record<string, Transform3D>): AssemblyDoc {
 }
 
 function table(doc: AssemblyDoc, anchors: Record<string, Record<string, Anchor>>) {
-  return seedAnchorTable(doc, handle => anchors[handle])
+  return seedAnchorTable(doc, handle => anchors[handle]).anchors
 }
 
 const BOX_ANCHORS: Record<string, Record<string, Anchor>> = {
@@ -335,14 +335,16 @@ describe('the drive captures at the seeds', () => {
   })
 
   it("keeps the step's own offset when the capture freezes its orientation", async () => {
-    // The capture patch owns only flip/angle; the step's other authored
-    // params ride in the same input patch and must survive the merge (a
-    // served pin_on_plate with offset 5 silently lost its offset otherwise).
+    // The capture patch owns flip/angle (and a fixed mate's offset); the step's
+    // other authored params ride in the same input patch and must survive the
+    // merge (a served pin_on_plate with offset 5 silently lost its offset
+    // otherwise). The seed pair here is coincident, so the explicit offset is
+    // what beat the captured zero.
     setMateSolver(makeEchoSolver())
     const session = sessionWith(BOX_ANCHORS)
     const outcome = await session.run(boxSteps({ capture: true, offset: 5 }))
     expect(outcome.ok).toBe(true)
-    expect(outcome.steps[2].captured).toEqual({ flip: true, angle: 180 })
+    expect(outcome.steps[2].captured).toEqual({ flip: true, angle: 180, overridden: ['offset'] })
     expect(findMate(session.getDoc(), 'm1')).toMatchObject({ flip: true, angle: 180, offset: 5 })
   })
 
@@ -444,6 +446,44 @@ describe('the drive captures at the seeds', () => {
     expect(outcome.ok).toBe(true)
     expect(outcome.steps[0]).toMatchObject({ ok: true, poseKept: 'seed' })
     expect(partInstances(loaded.getDoc()).find(instance => instance.handle === 'b')!.transform.tx).toBe(100)
+  })
+
+  it('captures a fixed mate translation as an offset in A\'s own frame', async () => {
+    setMateSolver(makeEchoSolver())
+    const session = sessionWith(BOX_ANCHORS)
+    const outcome = await session.run([
+      // A is a quarter turn about Z: the world delta (0, 40, 0) is (40, 0, 0)
+      // in A's frame, so a world-delta implementation would store the wrong
+      // vector and the solve below would put B at (-40, 0, 0).
+      { mutation: { type: 'add_part', handle: 'a', part: 'box_a', fixed: true, rotation: [0, 0, 90] } },
+      { mutation: { type: 'add_part', handle: 'b', part: 'box_b', position: [0, 40, 0] } },
+      { mutation: {
+        type: 'add_mate', featureId: 'm1', kind: 'fixed',
+        ref_a: { part: 'a', anchor: 'face' }, ref_b: { part: 'b', anchor: 'face' },
+        capture: true,
+      } },
+    ])
+    expect(outcome.ok).toBe(true)
+    expect(outcome.steps[2].captured).toMatchObject({ offset: [40, 0, 0] })
+    expect(findMate(session.getDoc(), 'm1')).toMatchObject({ offset: { x: 40, y: 0, z: 0 } })
+  })
+
+  it('writes no offset for a sliding capture, where an offset would be a separation', async () => {
+    setMateSolver(makeEchoSolver())
+    const session = sessionWith(BOX_ANCHORS)
+    const outcome = await session.run([
+      { mutation: { type: 'add_part', handle: 'a', part: 'box_a', fixed: true } },
+      { mutation: { type: 'add_part', handle: 'b', part: 'box_b', position: [0, 40, 0] } },
+      { mutation: {
+        type: 'add_mate', featureId: 'm1', kind: 'sliding',
+        ref_a: { part: 'a', anchor: 'face' }, ref_b: { part: 'b', anchor: 'face' },
+        capture: true,
+      } },
+    ])
+    expect(outcome.ok).toBe(true)
+    const mate = findMate(session.getDoc(), 'm1')!
+    expect(mate).not.toHaveProperty('offset')
+    expect(outcome.steps[2].captured).not.toHaveProperty('offset')
   })
 })
 
@@ -550,5 +590,33 @@ describeSolve('the captured orientation is what the solve holds', () => {
     const moved = await movedSession.run(steps(false))
     expect(moved.ok).toBe(true)
     expect(movedFromSeed(poseOf(movedSession, 'seat'), seed)).toBe(true)
+  }, 60_000)
+
+  it('holds a fixed mate seeded at a rotated offset once the translation is captured', async () => {
+    // A quarter turn about Z: the world delta (0, 40, 0) is (40, 0, 0) in A's
+    // frame. A world-delta implementation stores (0, 40, 0), which the solver
+    // rotates back to (-40, 0, 0), so the seed assertion below fails it.
+    const steps: AssemblyScriptStep[] = [
+      { mutation: { type: 'add_part', handle: 'a', part: 'box_a', fixed: true, rotation: [0, 0, 90] } },
+      { mutation: { type: 'add_part', handle: 'b', part: 'box_b', position: [0, 40, 0] } },
+      { mutation: {
+        type: 'add_mate', featureId: 'm1', kind: 'fixed',
+        ref_a: { part: 'a', anchor: 'face' }, ref_b: { part: 'b', anchor: 'face' },
+        capture: true,
+      } },
+    ]
+    const session = sessionWith(BOX_ANCHORS)
+    const outcome = await session.run(steps)
+    expect(outcome.ok).toBe(true)
+    expect(findMate(session.getDoc(), 'm1')).toMatchObject({ offset: { x: 40, y: 0, z: 0 } })
+
+    const seed = partInstances(session.getDoc()).find(instance => instance.handle === 'b')!.transform
+    const solved = poseOf(session, 'b')
+    // The captured offset is rounded to 0.001 mm and the roll to 0.001 deg, so
+    // the held pose is the seed within that authoring precision.
+    for (const key of ['tx', 'ty', 'tz', 'qx', 'qy', 'qz', 'qw'] as const) {
+      expect(Math.abs(solved[key] - seed[key]), key).toBeLessThan(1e-3)
+    }
+    expect(movedFromSeed(solved, seed)).toBe(false)
   }, 60_000)
 })
