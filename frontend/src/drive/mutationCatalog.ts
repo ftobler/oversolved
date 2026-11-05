@@ -430,7 +430,8 @@ const MERGE_TARGET_NOTE =
   'reaches every body, and an add fuses the first body it reaches. On an extrude, a body the new solid only ' +
   'shares a face with is reported by the touch warning, not fused, so an overlap is not required for the ' +
   'warning to name it. ' +
-  'The feature\'s featureDeltas row names the receiving body as `body`, with its own `bodyVolume`.'
+  'The feature\'s featureDeltas row names a body the feature changed as `body`, with its own ' +
+  '`bodyVolume`: a merge_target cut\'s own receiving body when the cut changed it.'
 
 // Up-to was documented in the document schema and the document guide but not in
 // the mutation catalog, so a client authored the key it had to infer (Ex100).
