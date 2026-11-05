@@ -198,6 +198,29 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     expect(revolve(doc)!.angle).toBe(180)
   })
 
+  it('revolve / sweep carry their setter fields inline', () => {
+    const doc = sketchDoc()
+    mutationHandlers.add_revolve(doc, {
+      type: 'add_revolve', featureId: 'RV', sketchQuery: '@S1/area1', angle: 360, axis: '@S1/ax',
+      direction: 'reverse', operation: 'cut', merge_target: 'body_ex1',
+    })
+    expect(revolve(doc)).toMatchObject({
+      direction: 'reverse', operation: 'cut', merge_target: 'body_ex1',
+    })
+    mutationHandlers.add_sweep(doc, {
+      type: 'add_sweep', featureId: 'SW', sketchQuery: '@S1/area1', pathQuery: '@S1/l1',
+      transition: 'round', multisection: true, operation: 'cut', merge_target: 'body_ex2',
+    })
+    expect(featureById(doc, 'SW', 'sweep').sweep).toMatchObject({
+      transition: 'round', multisection: true, operation: 'cut', merge_target: 'body_ex2',
+    })
+    // An absent key leaves the def the plain add wrote.
+    mutationHandlers.add_revolve(doc, {
+      type: 'add_revolve', featureId: 'RV2', sketchQuery: '@S1/area1', angle: 90, axis: '@S1/ax',
+    })
+    expect(featureById(doc, 'RV2', 'revolve').revolve).not.toHaveProperty('operation')
+  })
+
   it('sweep: add, set field, add/remove profile and path', () => {
     const doc = sketchDoc()
     mutationHandlers.add_sweep(doc, { type: 'add_sweep', featureId: 'SW', sketchQuery: '@S1/area1', pathQuery: '@S1/l1' })
@@ -248,6 +271,17 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     expect(boolean(doc)!.tools).toHaveLength(0)
   })
 
+  it('boolean carries keep_tools and clearance inline', () => {
+    const doc = sketchDoc()
+    mutationHandlers.add_boolean(doc, {
+      type: 'add_boolean', featureId: 'BL', operation: 'subtract', target: 'body_1',
+      tools: ['body_2'], keep_tools: true, clearance: 0.2,
+    })
+    expect(boolean(doc)).toMatchObject({
+      operation: 'subtract', target: 'body_1', tools: ['body_2'], keep_tools: true, clearance: 0.2,
+    })
+  })
+
   it('pattern (linear + circular): add and set field', () => {
     const doc = sketchDoc()
     mutationHandlers.add_pattern(doc, { type: 'add_pattern', featureId: 'PT' })
@@ -285,6 +319,94 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     mutationHandlers.remove_delete_body_ref(doc, { type: 'remove_delete_body_ref', featureId: 'DB', index: 0 })
     expect(delBody(doc)!.bodies).toEqual(['@body_2'])
     expect(['HO', 'TR', 'MI', 'VR', 'DB'].every(id => !!feature(doc, id))).toBe(true)
+  })
+
+  it('transform carries bodies, operation, translation and rotation inline', () => {
+    const doc = sketchDoc()
+    mutationHandlers.add_transform(doc, {
+      type: 'add_transform', featureId: 'TR', bodies: ['body_1'], operation: 'replace',
+      translation: [0, 0, 5], rotation_angle: 90,
+    })
+    expect(transform(doc)).toMatchObject({
+      bodies: ['body_1'], operation: 'replace', translation: [0, 0, 5], rotation_angle: 90, scale: 1,
+    })
+    // An empty bodies list is legal, and the body toggle still edits it later.
+    mutationHandlers.add_transform(doc, { type: 'add_transform', featureId: 'TR2', bodies: [] })
+    const second = featureById(doc, 'TR2', 'transform').transform
+    expect(second.bodies).toEqual([])
+    mutationHandlers.add_transform_body(doc, { type: 'add_transform_body', featureId: 'TR2', bodyQuery: 'body_2' })
+    expect(second.bodies).toEqual(['body_2'])
+  })
+
+  it('one inline add lands the same def as the add plus setters', () => {
+    const revolveOne = sketchDoc()
+    mutationHandlers.add_revolve(revolveOne, {
+      type: 'add_revolve', featureId: 'RV', sketchQuery: '@S1/area1', angle: 360, axis: '@S1/ax',
+      direction: 'reverse', operation: 'cut', merge_target: 'body_1',
+    })
+    const revolveMany = sketchDoc()
+    mutationHandlers.add_revolve(revolveMany, {
+      type: 'add_revolve', featureId: 'RV', sketchQuery: '@S1/area1', angle: 360, axis: '@S1/ax',
+    })
+    for (const [field, value] of [
+      ['direction', 'reverse'], ['operation', 'cut'], ['merge_target', 'body_1'],
+    ] as const) {
+      mutationHandlers.set_revolve_field(revolveMany, {
+        type: 'set_revolve_field', featureId: 'RV', field, value,
+      })
+    }
+    expect(revolve(revolveOne)).toEqual(revolve(revolveMany))
+
+    const sweepOne = sketchDoc()
+    mutationHandlers.add_sweep(sweepOne, {
+      type: 'add_sweep', featureId: 'SW', sketchQuery: '@S1/area1', pathQuery: '@S1/l1',
+      transition: 'round', multisection: true, operation: 'cut', merge_target: 'body_2',
+    })
+    const sweepMany = sketchDoc()
+    mutationHandlers.add_sweep(sweepMany, {
+      type: 'add_sweep', featureId: 'SW', sketchQuery: '@S1/area1', pathQuery: '@S1/l1',
+    })
+    for (const [field, value] of [
+      ['transition', 'round'], ['multisection', true], ['operation', 'cut'], ['merge_target', 'body_2'],
+    ] as const) {
+      mutationHandlers.set_sweep_field(sweepMany, {
+        type: 'set_sweep_field', featureId: 'SW', field, value,
+      })
+    }
+    expect(featureById(sweepOne, 'SW', 'sweep').sweep).toEqual(featureById(sweepMany, 'SW', 'sweep').sweep)
+
+    const transformOne = sketchDoc()
+    mutationHandlers.add_transform(transformOne, {
+      type: 'add_transform', featureId: 'TR', bodies: ['body_1'], operation: 'replace',
+      translation: [0, 0, 5], rotation_angle: 90,
+    })
+    const transformMany = sketchDoc()
+    mutationHandlers.add_transform(transformMany, { type: 'add_transform', featureId: 'TR' })
+    for (const [field, value] of [
+      ['bodies', ['body_1']], ['operation', 'replace'], ['translation', [0, 0, 5]], ['rotation_angle', 90],
+    ] as const) {
+      mutationHandlers.set_transform_field(transformMany, {
+        type: 'set_transform_field', featureId: 'TR', field, value,
+      })
+    }
+    expect(transform(transformOne)).toEqual(transform(transformMany))
+
+    const booleanOne = sketchDoc()
+    mutationHandlers.add_boolean(booleanOne, {
+      type: 'add_boolean', featureId: 'BL', operation: 'subtract', target: 'body_1',
+      tools: ['body_2'], keep_tools: true, clearance: 0.2,
+    })
+    const booleanMany = sketchDoc()
+    mutationHandlers.add_boolean(booleanMany, { type: 'add_boolean', featureId: 'BL' })
+    for (const [field, value] of [
+      ['operation', 'subtract'], ['target', 'body_1'], ['tools', ['body_2']],
+      ['keep_tools', true], ['clearance', 0.2],
+    ] as const) {
+      mutationHandlers.set_boolean_field(booleanMany, {
+        type: 'set_boolean_field', featureId: 'BL', field, value,
+      })
+    }
+    expect(boolean(booleanOne)).toEqual(boolean(booleanMany))
   })
 
   it('add_import_step appends an import feature', () => {

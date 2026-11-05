@@ -162,6 +162,68 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(result.part.solveOutcomes().rev1.status).toBe('ok')
   }, 120_000)
 
+  it('builds an inline cut revolve that stores its operation and direction', async () => {
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const base = await runHeadless({ doc: emptyDoc(), steps: box.steps })
+    expect(base.ok).toBe(true)
+    const result = await runHeadless({
+      doc: structuredClone(base.doc!),
+      steps: [
+        // A Front plane offset to Z = -15 cuts through the box (Top's sketch
+        // y runs along -Z, so the box spans Z -30..0).
+        { mutation: { type: 'add_plane', featureId: 'pl1', definition: { mode: 'offset', plane: '@builtin_plane_front', offset: -15 } } },
+        { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@pl1' } },
+        { mutation: { type: 'add_rect', featureId: 'sk2', p0: [25, 3], p1: [30, 7] } },
+        { mutation: { type: 'add_entity', featureId: 'sk2', kind: 'line', params: [20, 3, 20, 7], entityId: 'ax' } },
+        {
+          mutation: {
+            type: 'add_revolve', featureId: 'rev1', sketchQuery: '$sk2', angle: 360, axis: '@sk2/ax',
+            operation: 'cut', direction: 'reverse',
+          },
+        },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    expect(result.features).toEqual([])
+    expect(result.part.solveOutcomes().rev1.status).toBe('ok')
+    const cut = result.doc?.features?.find(feature => feature.id === 'rev1')
+    expect(cut).toMatchObject({ kind: 'revolve', revolve: { operation: 'cut', direction: 'reverse' } })
+    const measured = await measureHeadless(result.doc!)
+    expect(measured).not.toBeNull()
+    // The revolved 5 x 4 section has its centroid at radius 7.5, so Pappus
+    // gives 2 pi * 7.5 * 20 out of the 12000 mm3 box.
+    expect(measured!.measures.volume).toBeCloseTo(12000 - 2 * Math.PI * 7.5 * 20, 2)
+  }, 120_000)
+
+  it('moves a body with one inline add_transform step', async () => {
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const base = await runHeadless({ doc: emptyDoc(), steps: box.steps })
+    expect(base.ok).toBe(true)
+    const before = await measureHeadless(base.doc!)
+    const moved = await runHeadless({
+      doc: structuredClone(base.doc!),
+      steps: [
+        {
+          mutation: {
+            type: 'add_transform', featureId: 'tr1', bodies: ['body_ex1'], operation: 'replace',
+            translation: [0, 5, 0],
+          },
+        },
+      ],
+    })
+    expect(moved.ok).toBe(true)
+    expect(moved.features).toEqual([])
+    const after = await measureHeadless(moved.doc!)
+    if (before === null || after === null) throw new Error('measure returned no row')
+    if (before.measures.centroid === null || after.measures.centroid === null) throw new Error('measure returned no centroid')
+    expect(after.measures.volume).toBeCloseTo(before.measures.volume, 6)
+    const expected = [0, 5, 0]
+    for (let i = 0; i < 3; i++) {
+      const delta = after.measures.centroid[i] - before.measures.centroid[i]
+      expect(delta, `centroid axis ${i}`).toBeCloseTo(expected[i], 6)
+    }
+  }, 120_000)
+
   it('refuses a revolve axis that cuts through the profile interior', async () => {
     const result = await runHeadless({
       doc: emptyDoc(),

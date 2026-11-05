@@ -90,10 +90,12 @@ describe('value rules cover the catalog', () => {
     }],
     ['add_boolean', { type: 'add_boolean', featureId: 'bo1', operation: 'difference' }],
     ['add_boolean', { type: 'add_boolean', featureId: 'bo1', tools: [''] }],
+    ['add_boolean', { type: 'add_boolean', featureId: 'bo1', keep_tools: 'yes' }],
     ['set_extrude_field', { type: 'set_extrude_field', featureId: 'ex1', field: 'operation', value: 'copy' }],
     ['add_extrude_profile', { type: 'add_extrude_profile', featureId: 'ex1', sketchQuery: '' }],
     ['remove_extrude_profile', { type: 'remove_extrude_profile', featureId: 'ex1', index: -1 }],
     ['add_revolve', { type: 'add_revolve', featureId: 'rv1', sketchQuery: '$sk1', angle: 0, axis: '@sk1/ax' }],
+    ['add_revolve', { type: 'add_revolve', featureId: 'rv1', sketchQuery: '$sk1', angle: 90, axis: '@sk1/ax', operation: 'subtract' }],
     ['set_revolve_field', { type: 'set_revolve_field', featureId: 'rv1', field: 'angle', value: 0 }],
     ['add_revolve_profile', { type: 'add_revolve_profile', featureId: 'rv1', sketchQuery: '' }],
     ['remove_revolve_profile', { type: 'remove_revolve_profile', featureId: 'rv1', index: -1 }],
@@ -146,6 +148,7 @@ describe('value rules cover the catalog', () => {
     ['remove_delete_body_ref', { type: 'remove_delete_body_ref', featureId: 'db1', index: -1 }],
     ['set_hole_field', { type: 'set_hole_field', featureId: 'ho1', field: 'sketch', value: '' }],
     ['add_hole', { type: 'add_hole', featureId: 'ho1', style: 'spotface' }],
+    ['add_transform', { type: 'add_transform', featureId: 'tr1', operation: 'copy' }],
     ['set_transform_field', { type: 'set_transform_field', featureId: 'tr1', field: 'operation', value: 'copy' }],
     ['add_transform_body', { type: 'add_transform_body', featureId: 'tr1', bodyQuery: '' }],
     ['remove_transform_body', { type: 'remove_transform_body', featureId: 'tr1', index: -1 }],
@@ -707,6 +710,52 @@ describe('finding: add_revolve axis is a required pick', () => {
     })).toMatchObject({ ok: true })
     expect(validateMutation({
       type: 'add_revolve', featureId: 'rv1', sketchQuery: '$sk1', angle: 90, axis: '?body:edge',
+    })).toMatchObject({ ok: true })
+  })
+})
+
+describe('reproduction: the inline add payloads the practice runs needed', () => {
+  it('accepts each of the three one-step calls', () => {
+    const calls: Array<Record<string, unknown>> = [
+      { type: 'add_revolve', featureId: 'rv2', sketchQuery: '$sk1', angle: 360, axis: '@sk1/ax', operation: 'cut' },
+      { type: 'add_transform', featureId: 't1', bodies: ['body_ex1'], operation: 'replace', translation: [0, 0, 5] },
+      {
+        type: 'add_boolean', featureId: 'b1', operation: 'subtract', target: 'body_ex1',
+        tools: ['body_ex1_1'], keep_tools: true,
+      },
+    ]
+    for (const call of calls) expect(validateMutation(call), JSON.stringify(call)).toMatchObject({ ok: true })
+  })
+
+  it('keeps the negative angle refused and names direction: "reverse"', () => {
+    const error = refusal({ type: 'add_revolve', featureId: 'rv3', sketchQuery: '$sk1', angle: -180, axis: '@sk1/ax' })
+    expect(error.message).toContain('direction')
+    expect(error.message).toContain('reverse')
+  })
+})
+
+describe('finding: the revolve angle is a positive magnitude', () => {
+  it('refuses a negative angle and names direction: "reverse"', () => {
+    const error = refusal({ type: 'add_revolve', featureId: 'rv1', sketchQuery: '$sk1', angle: -180, axis: '@sk1/ax' })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('direction')
+    expect(error.message).toContain('reverse')
+    expect(error.message).toContain('-180')
+  })
+
+  it('gives set_revolve_field the same route', () => {
+    const error = refusal({ type: 'set_revolve_field', featureId: 'rv1', field: 'angle', value: -90 })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('direction')
+    expect(error.message).toContain('reverse')
+  })
+
+  it('accepts the inline operation and keep_tools spellings', () => {
+    expect(validateMutation({
+      type: 'add_revolve', featureId: 'rv1', sketchQuery: '$sk1', angle: 360, axis: '@sk1/ax', operation: 'cut',
+    })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_boolean', featureId: 'bo1', keep_tools: true, clearance: 0.2,
     })).toMatchObject({ ok: true })
   })
 })

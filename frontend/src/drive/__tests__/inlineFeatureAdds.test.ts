@@ -9,6 +9,22 @@
 import { describe, it, expect } from 'vitest'
 import { mutationInfoOf } from '../mutationCatalog'
 
+describe('add_revolve / add_sweep / add_transform / add_boolean inline payloads', () => {
+  it('publishes the setter fields each add row now fronts', () => {
+    const rows: Array<[Parameters<typeof mutationInfoOf>[0], readonly string[]]> = [
+      ['add_revolve', ['direction', 'operation', 'merge_target']],
+      ['add_sweep', ['transition', 'multisection', 'operation', 'merge_target']],
+      ['add_transform', ['bodies', 'operation', 'translation', 'rotation_axis', 'rotation_angle', 'scale']],
+      ['add_boolean', ['keep_tools', 'clearance']],
+    ]
+    for (const [type, fields] of rows) {
+      const info = mutationInfoOf(type)
+      for (const field of fields) expect(info.fields[field], `${type}.${field}`).toBeDefined()
+      expect(info.note ?? '', type).not.toContain('follow it with')
+    }
+  })
+})
+
 describe('add_chamfer / add_shell document shape and notes', () => {
   it('publishes the inline fields and the bulk note', () => {
     const chamfer = mutationInfoOf('add_chamfer')
