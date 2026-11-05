@@ -356,7 +356,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
     mutation: AssemblyWireMutation,
     input: AssemblyOperationInputs[AssemblyOperationId],
   ): { input: AssemblyOperationInputs[AssemblyOperationId]; captured: MateCapture } | null {
-    const anchors = seedAnchorTable(docBox.current, localAnchorsFor)
+    const seedTable = seedAnchorTable(docBox.current, localAnchorsFor)
     if (mutation.type === 'add_mate') {
       const added = input as AssemblyOperationInputs['add_mate']
       if (!added.ref_a || !added.ref_b) return null
@@ -364,12 +364,14 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
         kind: added.kind,
         ref_a: added.ref_a,
         ref_b: added.ref_b,
-        anchors,
+        anchors: seedTable.anchors,
+        seeds: seedTable.seeds,
         ...(added.patch !== undefined && { explicit: added.patch }),
       })
-      // The capture owns flip/angle only: merge over the step's own patch so
-      // the other authored params (offset, radius, ratio) survive, while the
-      // patch's flip/angle stay the explicit-wins values capture computed.
+      // The capture owns flip/angle (and a fixed mate's offset): merge over the
+      // step's own patch so the other authored params (radius, ratio, a
+      // non-fixed offset) survive, while the captured keys stay the
+      // explicit-wins values capture computed.
       return capture === null ? null
         : { input: { ...added, patch: { ...added.patch, ...capture.patch } }, captured: capture.captured }
     }
@@ -381,9 +383,9 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
       kind: existing.kind,
       ref_a: mutation.field === 'ref_a' ? aimed.ref : existing.ref_a,
       ref_b: mutation.field === 'ref_b' ? aimed.ref : existing.ref_b,
-      anchors,
+      anchors: seedTable.anchors,
+      seeds: seedTable.seeds,
     })
-    // Same merge rule as add_mate: only flip/angle come from the capture.
     return capture === null ? null
       : { input: { ...aimed, patch: { ...aimed.patch, ...capture.patch } }, captured: capture.captured }
   }
@@ -494,7 +496,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
     needsSolve = false
     // Capture runs before the step writes anything: the seeds it measures
     // are the ones the solve below starts from. Its patch already lets an
-    // explicit flip/angle in this same step win, and says which it beat.
+    // explicit flip/angle/offset in this same step win, and says which it beat.
     const capture = captureRequested(mutation) ? captureStep(mutation, validated.input) : null
     const input = capture === null ? validated.input : capture.input
     let poseKept: KeptPose | undefined

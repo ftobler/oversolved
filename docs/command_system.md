@@ -348,7 +348,7 @@ ids: each row states `bake`/`undo`/`solve` and a pure `apply`. Commands call
 `planAssemblyOperation`. `set_mate_ref` is the one row with no command of its
 own: the store's `commitAimToMateField` calls `runAssemblyOperation('set_mate_ref',
 { id, field, ref, patch })` when a mate chip commits a pick, so the ref and the
-captured flip/angle land in one fold step. The drive's `set_mate_ref` mutation
+captured pose params land in one fold step. The drive's `set_mate_ref` mutation
 is the same cell.
 
 ## Keybindings

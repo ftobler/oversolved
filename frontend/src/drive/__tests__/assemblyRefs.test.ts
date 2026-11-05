@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import type { AssemblyDoc, BodyResult, EdgeData, FaceData } from '@/types/cad'
 import type { Anchor, PartBundle } from '@/kernel/partBundle'
+import { PART_FRAME_ANCHORS, partFrameAnchorId } from '@/kernel/partBundle'
 import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 import { appendPartInstance } from '@/utils/assemblyMutations'
 import { buildPartAnchorIndex, resolveDriveRef, type PartAnchorIndex } from '../assemblyRefs'
@@ -97,6 +98,41 @@ describe('resolveDriveRef', () => {
   it('resolves an assembly built-in with no descriptor', () => {
     const resolved = resolveDriveRef({ part: ASSEMBLY_HANDLE, anchor: 'AssemblyTop' }, doc(), indexFor)
     expect(resolved).toEqual({ ok: true, ref: { part: ASSEMBLY_HANDLE, anchor: 'AssemblyTop' } })
+  })
+
+  it('resolves a bare part-frame name to its minted id and descriptor', () => {
+    const resolved = resolveDriveRef({ part: 'left', anchor: 'Origin' }, doc(), indexFor)
+    expect(resolved).toEqual({
+      ok: true,
+      ref: {
+        part: 'left',
+        anchor: partFrameAnchorId('Origin'),
+        anchor_descriptor: {
+          geom_hash: 'part-frame/origin',
+          kind: 'plane',
+          created_by: '',
+          point: [0, 0, 0],
+        },
+      },
+    })
+  })
+
+  it('resolves Top to a plane anchor with the +Y normal', () => {
+    const resolved = resolveDriveRef({ part: 'left', anchor: 'Top' }, doc(), indexFor)
+    expect(resolved.ok).toBe(true)
+    const descriptor = resolved.ok ? resolved.ref.anchor_descriptor : undefined
+    expect(descriptor).toMatchObject({ geom_hash: 'part-frame/top', kind: 'plane', point: [0, 0, 0] })
+    expect(PART_FRAME_ANCHORS.Top.axis).toEqual([0, 1, 0])
+    expect(resolved.ok && resolved.ref.anchor).toBe(partFrameAnchorId('Top'))
+  })
+
+  it('refuses an unknown anchor name and lists the part frame beside select', () => {
+    const resolved = resolveDriveRef({ part: 'left', anchor: 'Origin2' }, doc(), indexFor)
+    expect(resolved).toMatchObject({ ok: false, code: 'unresolved-ref' })
+    const message = !resolved.ok ? resolved.message : ''
+    for (const name of ['Origin', 'Top', 'Front', 'Right', 'select']) {
+      expect(message).toContain(name)
+    }
   })
 
   it('refuses a query on the assembly frame, listing the four built-ins', () => {

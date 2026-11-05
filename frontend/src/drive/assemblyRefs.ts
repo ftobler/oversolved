@@ -11,6 +11,7 @@
 
 import type { AssemblyDoc, BodyResult, MateAnchorDescriptor, MateRef } from '@/types/cad'
 import type { Anchor, BodyMesh, PartBundle } from '@/kernel/partBundle'
+import { PART_FRAME_ANCHORS, partFrameAnchorId } from '@/kernel/partBundle'
 import { selectByPredicate, SelectorError, validateSelector, type Selector } from '@/kernel/select'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 import { findInstance } from '@/utils/assemblyMutations'
@@ -42,6 +43,9 @@ export type ResolvedDriveRef =
 export type DriveRefFailure = Extract<ResolvedDriveRef, { ok: false }>
 
 const BUILTIN_NAMES = Object.keys(ASSEMBLY_BUILTIN_ANCHORS)
+
+/** The four frame names every part offers as a mate ref (PART_FRAME_ANCHORS). */
+const PART_FRAME_NAMES = Object.keys(PART_FRAME_ANCHORS)
 
 function anchorDescriptor(anchor: Anchor): MateAnchorDescriptor {
   return {
@@ -115,6 +119,20 @@ function builtinRef(ref: DriveMateRef): ResolvedDriveRef {
 
 function anchorRef(part: string, id: string, anchor: Anchor): ResolvedDriveRef {
   return { ok: true, ref: { part, anchor: id, anchor_descriptor: anchorDescriptor(anchor) } }
+}
+
+/**
+ * A bare frame name on a part ref (`{part, anchor: "Origin"}`). The frame is
+ * intrinsic to the part document, so its geometry comes from
+ * PART_FRAME_ANCHORS; a bundle that carries the anchor is preferred only
+ * because it is the same data. The stored id is deterministic, so the next
+ * solve re-finds the element even with no cache.
+ */
+function frameRef(part: string, name: string, index: PartAnchorIndex): ResolvedDriveRef | undefined {
+  const frame = PART_FRAME_ANCHORS[name]
+  if (frame === undefined) return undefined
+  const id = partFrameAnchorId(name)!
+  return anchorRef(part, id, index.anchors[id] ?? frame)
 }
 
 function queryRef(part: string, query: string, index: PartAnchorIndex, docId: string): ResolvedDriveRef {
@@ -216,12 +234,15 @@ export function resolveDriveRef(
     return queryRef(ref.part, selected.query, index, instance.doc_id)
   }
   if ('query' in ref) return queryRef(ref.part, ref.query, index, instance.doc_id)
+  const frame = frameRef(ref.part, ref.anchor, index)
+  if (frame !== undefined) return frame
   const anchor = index.anchors[ref.anchor]
   if (!anchor) {
     return {
       ok: false,
       code: 'unresolved-ref',
-      message: `part "${instance.doc_id}" has no anchor "${ref.anchor}"; use a query from select or an anchor id the bundle reports`,
+      message: `part "${instance.doc_id}" has no anchor "${ref.anchor}"; name one of the part frame anchors `
+        + `(${PART_FRAME_NAMES.join(', ')}, always available), use a query from select, or pass an anchor id the bundle reports`,
     }
   }
   return anchorRef(ref.part, ref.anchor, anchor)

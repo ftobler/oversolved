@@ -15,6 +15,7 @@ import type { AssemblySolveResult } from '@/stores/assemblyStore'
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'
 import type { AnchorTable } from '@/utils/anchorGizmos'
 import { appendMate, findMate } from '@/utils/assemblyMutations'
+import { IDENTITY_TRANSFORM, quatFromEulerXyz } from '@/utils/transform3d'
 
 const PART = 'h1'
 const VERT = assemblyEntityKey(PART, 0, 'vertex', 0)
@@ -180,12 +181,13 @@ describe('closing a mate field', () => {
   })
 })
 
-// Completing a mate's reference pair captures the on-screen orientation into
-// its authored flip/angle (utils/mateCapture.ts): the pose the user picked at
-// is what the solver holds, as document data. Without the capture the solver
-// would have to derive orientation from its seed -- the drift/ratchet/flip bug
-// family this replaces.
-describe('orientation capture on pick', () => {
+// Completing a mate's reference pair captures the on-screen pose into its
+// authored params (utils/mateCapture.ts): flip/angle, and for a fixed weld the
+// translation as its offset in A's frame. The pose the user picked at is what
+// the solver holds, as document data. Without the capture the solver would have
+// to derive orientation from its seed -- the drift/ratchet/flip bug family this
+// replaces.
+describe('pose capture on pick', () => {
   const CAPTURE_ANCHORS: AnchorTable = {
     [PART]: {
       a_v: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], x_axis: [0, 1, 0] },
@@ -207,6 +209,40 @@ describe('orientation capture on pick', () => {
     // a_v (+Z, +Y frame) against b_f (-Z, -Y frame): a face-to-face pose.
     expect(currentMate('m1').flip).toBe(true)
     expect(currentMate('m1').angle).toBe(180)
+  })
+
+  it('freezes a fixed weld\'s translation as an offset in A\'s frame', () => {
+    // A is a quarter turn about Z, so the world delta (0, 40, 0) is (40, 0, 0)
+    // in A's frame; a world-delta implementation would store (0, 40, 0).
+    const [qx, qy, qz, qw] = quatFromEulerXyz([0, 0, Math.PI / 2])
+    const anchors: AnchorTable = {
+      [PART]: { a_v: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], x_axis: [0, 1, 0] } },
+      h2: { b_f: { kind: 'plane', point: [0, 40, 0], axis: [0, 0, 1], x_axis: [1, 0, 0] } },
+    }
+    getState().setSolveResult({
+      ...SOLVE_RESULT,
+      anchors,
+      transforms: {
+        [PART]: { tx: 0, ty: 0, tz: 0, qx, qy, qz, qw },
+        h2: IDENTITY_TRANSFORM,
+      },
+    })
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle([{ entityKey: VERT }])
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_b' })
+    getState().pickFromHitsOrCycle([{ entityKey: FACE_B }])
+    expect(currentMate('m1').offset).toEqual({ x: 40, y: 0, z: 0 })
+  })
+
+  it('leaves the offset alone when the fixed pair has no solved pose to measure', () => {
+    // SOLVE_RESULT carries no transforms, so the capture cannot carry the
+    // translation into A's frame; it must not guess a world delta.
+    getState().setSolveResult({ ...SOLVE_RESULT, anchors: CAPTURE_ANCHORS })
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().pickFromHitsOrCycle([{ entityKey: VERT }])
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_b' })
+    getState().pickFromHitsOrCycle([{ entityKey: FACE_B }])
+    expect(currentMate('m1')).not.toHaveProperty('offset')
   })
 
   it('cycling to a different anchor re-captures against the new geometry', () => {

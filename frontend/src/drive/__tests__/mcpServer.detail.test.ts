@@ -60,8 +60,8 @@ function stateOf(doc: AssemblyDoc, move?: string): AssemblyDetailState {
   for (const feature of doc.features ?? []) {
     if (feature.kind !== 'mate') continue
     frames[feature.id] = {
-      ref_a: { kind: 'cylinder', point: [1, 2, 3], axis: [0, 0, 1] },
-      ref_b: { kind: 'cylinder', point: [1, 2, 3], axis: [0, 0, 1] },
+      ref_a: { anchor: 'a', kind: 'cylinder', point: [1, 2, 3], axis: [0, 0, 1] },
+      ref_b: { anchor: 'b', kind: 'cylinder', point: [1, 2, 3], axis: [0, 0, 1] },
       residual: 1e-9,
     }
   }

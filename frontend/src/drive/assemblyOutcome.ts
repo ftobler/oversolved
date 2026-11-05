@@ -44,13 +44,19 @@ export interface InstancePose {
 }
 
 export interface MateFrameSide {
+  /** The stored anchor id (a part-frame name such as Origin resolves to the
+   *  deterministic id `toPartBundle` mints for it). */
+  anchor: string
   kind: string
   point: number[]
   axis: number[]
 }
 
 /** One mate's posed anchors and its residual, so an agent can read which way an
- *  axis points before choosing `flip`. */
+ *  axis points before choosing `flip`. Each side names the stored anchor id
+ *  beside the anchor's solved pose in the assembly frame; a part-frame anchor's
+ *  own point is that part's origin, local to the part and the point a `fixed`
+ *  mate's offset is measured from. */
 export interface MateFrame {
   ref_a?: MateFrameSide
   ref_b?: MateFrameSide
@@ -154,6 +160,7 @@ function sideOf(ref: MateRef, response: AssemblyBuildResponse): MateFrameSide | 
     : response.anchors[ref.part]?.[ref.anchor]
   if (!pose) return undefined
   return {
+    anchor: ref.anchor,
     kind: pose.kind,
     point: pose.point.map(round),
     axis: pose.axis.map(round),

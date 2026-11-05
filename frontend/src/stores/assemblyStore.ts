@@ -530,14 +530,19 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const otherField: MateRefField = activeMateField.field === 'ref_a' ? 'ref_b' : 'ref_a'
     const otherRef = mate?.[otherField]
     if (otherRef && otherRef.part === ref.part) return
-    // The pick that completes (or re-aims) the pair freezes the on-screen
-    // orientation into the mate's authored flip/angle, measured against the
-    // solved anchor table this scene is drawn from. Authored here, held by the
-    // solver forever: this is the WYSIWYG half of the no-seed-state contract
-    // (see utils/mateCapture.ts).
+    // The pick that completes (or re-aims) the pair freezes the on-screen pose
+    // into the mate's authored flip/angle and, for a fixed weld, the translation
+    // as its offset -- measured against the solved anchor table and the settled
+    // poses this scene is drawn from. Authored here, held by the solver forever:
+    // this is the WYSIWYG half of the no-seed-state contract (see
+    // utils/mateCapture.ts).
     const refA = activeMateField.field === 'ref_a' ? ref : mate?.ref_a
     const refB = activeMateField.field === 'ref_b' ? ref : mate?.ref_b
-    const patch = mate ? captureMateOrientationPatch(mate, refA, refB, get().anchors, get().anchorDescriptors) : null
+    const patch = mate
+      ? captureMateOrientationPatch(
+        mate, refA, refB, get().anchors, get().anchorDescriptors, get().settledPoses(),
+      )
+      : null
     // The one ref write the operation table owns, shared with the drive (D9):
     // the captured orientation rides the same step, so undo reverts ref and
     // capture together.

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import 'fake-indexeddb/auto'
 import { solveAssembly } from '../solveAssembly'
 import { bundleCachePut } from '../bundleCache'
-import { anchorIdFor, BUNDLE_SCHEMA } from '../partBundle'
+import { anchorIdFor, BUNDLE_SCHEMA, partFrameAnchorId, toPartBundle } from '../partBundle'
 import {
   makeRelay, makeBundle, makeDeterministicBundle, identityTransform, translationTransform,
   makeEchoSolver, freshDb,
@@ -129,6 +129,39 @@ describe('solveAssembly', () => {
     // ids resolve, so the mate is not stale-red.
     expect(relay.requestPartDoc).toHaveBeenCalled()
     expect(result.status.mates['m1'].stale).toBe(false)
+  })
+
+  it('a schema-2 cache without the part frame reads back as a miss, and a frame ref resolves after the rebuild', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    // The old bundle has anchors but no frame anchors: a document that stored a
+    // frame mate would read as stale forever if the schema were trusted.
+    await bundleCachePut(makeBundle('doc-a', '1', { schema: BUNDLE_SCHEMA - 1, anchors: {} }))
+    await bundleCachePut(makeBundle('doc-b', '1', { schema: BUNDLE_SCHEMA - 1, anchors: {} }))
+    // The cold rebuild is the current producer, so every bundle carries its
+    // part frame (toPartBundle with no bodies mints exactly those four).
+    vi.mocked(relay.requestBuildBundle).mockImplementation(async (doc_id: string, content_hash: string) =>
+      toPartBundle(doc_id, content_hash, {}),
+    )
+
+    const origin = partFrameAnchorId('Origin')!
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'fixed',
+      ref_a: { part: 'p1', anchor: origin },
+      ref_b: { part: 'p2', anchor: origin },
+      offset: { x: 28 },
+    }]
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeEchoSolver())
+
+    expect(relay.requestPartDoc).toHaveBeenCalled()
+    expect(result.status.mates['m1'].stale).toBe(false)
+    // The rebuilt bundle really carries the frame the ref names.
+    expect(result.anchors.p1[origin]).toMatchObject({ kind: 'plane', axis: [0, 0, 1] })
   })
 
   it('re-parents a ref holding a deterministic id onto the geometrically identical anchor when the dict was re-keyed', async () => {

@@ -157,7 +157,7 @@ const nullableBool = () => ({ type: 'boolean', required: false, nullable: true }
 const vec3 = (note: string) => ({ type: 'vec3', required: true, note } as const)
 const optVec3 = (note: string) => ({ type: 'vec3', required: false, note } as const)
 const ref = (note: string) => ({ type: 'ref', required: true, note } as const)
-const OFFSET_NOTE = 'A number along A\'s anchor axis, or a partial {x,y,z} in body A\'s local frame. '
+const OFFSET_NOTE = 'A number along A\'s anchor axis, or a partial {x,y,z} in body A\'s part frame (it rotates with A). '
   + 'The sign convention is "B lands at A plus the offset": fixed translates B\'s anchor by it, '
   + 'parallel_plane_distance reads it as the plane separation along A\'s normal, and tangential as a clearance.'
 const offsetOptional = () => ({ type: 'offset', required: false, note: OFFSET_NOTE } as const)
@@ -169,7 +169,10 @@ const ROTATION_NOTE = '[rx, ry, rz] in degrees, extrinsic XYZ (the editor\'s RX/
 const REF_NOTE =
   'A part-local pick: {part: <instance handle>, query: <a query `select` returned>}, '
   + '{part: <handle>, selector: <a select selector naming exactly one entity>}, '
-  + '{part: <handle>, anchor: <anchor id>}, or the assembly frame {part: "__assembly", anchor: "AssemblyTop"} '
+  + '{part: <handle>, anchor: <anchor id>}, {part: <handle>, anchor: "Origin"} for the part\'s own frame '
+  + '(Origin, Top, Front, Right are always available; Origin and Front face +Z, Top +Y, Right +X; a frame '
+  + 'anchor\'s point is its part origin, local to that part), '
+  + 'or the assembly frame {part: "__assembly", anchor: "AssemblyTop"} '
   + '(AssemblyOrigin, AssemblyTop, AssemblyFront, AssemblyRight). The selector is an authoring aid and is never stored.'
 
 // How `flip` reads, for every row that takes it: the axes as `select` lists
@@ -205,10 +208,12 @@ const MATE_PARAM_NOTE =
 const CAPTURE_NOTE =
   'Place the parts roughly (add_part position/rotation), then pass capture: true: the step measures flip and '
   + 'angle from the instances\' current seeds and freezes the pose you seeded into the mate, instead of making '
-  + 'you guess a canonical roll and learn each circle edge\'s axis direction from a failed solve. An explicit '
-  + 'flip/angle in the same step wins over the captured value, and the step result carries '
-  + '`captured: {flip, angle}` (angle only for the kinds that read a roll) naming what was measured and which '
-  + 'keys the explicit values beat. Default false, '
+  + 'you guess a canonical roll and learn each circle edge\'s axis direction from a failed solve. A fixed mate '
+  + 'also stores the seed translation as its offset, carried into A\'s part frame, so "place them, then capture" '
+  + 'reproduces the seed exactly. An explicit flip/angle/offset in the same step wins over the captured value, '
+  + 'and the step result carries `captured: {flip, angle, offset}` (angle only for the kinds that read a roll, '
+  + 'offset only for a fixed mate whose seed translation is non-zero, in A\'s local frame) naming what was '
+  + 'measured and which keys the explicit values beat. Default false, '
   + 'so a document authored without capture keeps its meaning. A kind with no authored orientation '
   + '(spherical, tangential, copy_rotation) captures nothing.'
 

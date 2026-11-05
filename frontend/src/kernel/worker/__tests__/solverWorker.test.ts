@@ -318,7 +318,9 @@ describe('handleBundleRequest', () => {
     expect(res.ok).toBe(true)
     expect(res.ok && res.payload.doc_id).toBe('abc')
     expect(res.ok && res.payload.content_hash).toBe('h3')
-    expect(res.ok && res.payload.anchors).toEqual({})
+    // The body names no ancestry-format query, so it mints no anchor; the four
+    // part-frame anchors ride on every bundle (partBundle.ts PART_FRAME_ANCHORS).
+    expect(res.ok && Object.keys(res.payload.anchors)).toHaveLength(4)
     expect(res.ok && res.payload.bodies.length).toBe(1)
     const body = res.ok && res.payload.bodies[0]
     expect(body && body.mesh.vertices).toBeInstanceOf(Float32Array)

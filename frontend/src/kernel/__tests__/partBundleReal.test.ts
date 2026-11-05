@@ -219,7 +219,9 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
   it('rect extrude anchors: 6 plane faces, 12 line edges, 8 point vertices', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const bundle = toPartBundle('doc7', 'h1', result.bodies as Record<string, BodyResult>)
-    const vals = Object.values(bundle.anchors)
+    // The part-frame anchors are minted from `part-frame/` tokens, not a B-rep
+    // entity; the entity counts below are about the body's own anchors.
+    const vals = Object.values(bundle.anchors).filter((a) => a.geom_hash.startsWith('@u|'))
     expect(vals.length).toBeGreaterThan(0)
 
     const planeAnchors = vals.filter((a) => a.kind === 'plane')
@@ -260,6 +262,9 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const bundle = toPartBundle('doc8', 'h1', result.bodies as Record<string, BodyResult>)
     for (const a of Object.values(bundle.anchors)) {
+      // A part-frame anchor belongs to no feature; its created_by is empty by
+      // construction (PART_FRAME_ANCHORS).
+      if (a.geom_hash.startsWith('part-frame/')) continue
       expect(a.created_by).toBeTruthy()
     }
   })
