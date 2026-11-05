@@ -1,0 +1,249 @@
+// @vitest-environment node
+//
+// The headless run defers its solves: a mutation requests one and the run
+// spends it once at the end, instead of solving after every step. The kernel is
+// stubbed so the count is exact. One baseline solve still happens when a reply
+// filter needs the input document's solve, which is why the one-solve cases
+// pass both opt-ins.
+//
+// A selector step needs solved bodies, so it flushes first; a command step is
+// registry code, so it flushes before it runs. A refused-only script owes
+// nothing and is never force-solved.
+
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { BodyResult } from '@/types/cad'
+import { makeAncestryQuery } from '@/kernel/query'
+import { emptyDriveDoc } from '../headlessOps'
+import { createHeadlessPart } from '../headlessPart'
+import type { ScriptStep } from '../scriptRunner'
+
+vi.mock('@/kernel/solveLocally', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/kernel/solveLocally')>()
+  return {
+    ...actual,
+    solveLocally: vi.fn(),
+    measureSolveFeatures: vi.fn(),
+    buildAndMeasureLocally: vi.fn(),
+    exportLocallyInspect: vi.fn(),
+    exportAssemblyLocally: vi.fn(),
+  }
+})
+
+const kernel = await import('@/kernel/solveLocally')
+const { runHeadless } = await import('../headlessOps')
+
+interface PayloadFeature {
+  id: string
+  kind: string
+}
+
+// What a clean solve answers for whatever the payload carries: sketches are
+// underconstrained, every other feature builds. No bodies by default, so the
+// document write-back only moves the authored state the tests never read.
+function cleanBuild(payload: { features?: PayloadFeature[] }) {
+  const features = payload.features ?? []
+  const result: Record<string, unknown> = {}
+  for (const feature of features) {
+    result[feature.id] = feature.kind === 'sketch'
+      ? { status: 'underconstrained' }
+      : { status: 'ok', body_id: `body_${feature.id}` }
+  }
+  return {
+    result,
+    bodies: {},
+    _build_state: { feature_order: features.map(f => f.id), checkpoints: {} },
+  }
+}
+
+// One flat face on top, enough for a `parallel: [0, 0, 1]` selector to resolve
+// against the body the step is building on.
+function solvedBody(id: string): BodyResult {
+  return {
+    id,
+    created_by: 'ex1',
+    modified_by: [],
+    edges: [],
+    edge_queries: [],
+    mesh: {
+      vertices: [],
+      faces: [],
+      face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], surface_type: 'flatface' }],
+      face_queries: [makeAncestryQuery([`@${id}`, '@u|f_0'], 'flatface')],
+      face_edge_queries: [[]],
+    },
+  } as BodyResult
+}
+
+const addSketch = (id: string): ScriptStep =>
+  ({ mutation: { type: 'add_sketch', featureId: id, plane: '@builtin_plane_front' } })
+const addRect = (id: string): ScriptStep =>
+  ({ mutation: { type: 'add_rect', featureId: id, p0: [0, 0], p1: [10, 10] } })
+const addExtrude = (featureId: string, sketch: string): ScriptStep =>
+  ({ mutation: { type: 'add_extrude', featureId, label: featureId, sketchQuery: `$${sketch}`, distance: 5, operation: 'new' } })
+
+// Five accepted mutations across two sketches and two extrudes.
+function fiveMutations(): ScriptStep[] {
+  return [
+    addSketch('sk1'),
+    addRect('sk1'),
+    addExtrude('ex1', 'sk1'),
+    addSketch('sk2'),
+    addRect('sk2'),
+  ]
+}
+
+describe('the headless run solves once per flush', () => {
+  beforeEach(() => {
+    vi.mocked(kernel.solveLocally).mockReset()
+    vi.mocked(kernel.measureSolveFeatures).mockReset()
+    vi.mocked(kernel.measureSolveFeatures).mockResolvedValue([])
+    vi.mocked(kernel.solveLocally).mockImplementation(async payload => cleanBuild(payload as never) as never)
+  })
+
+  it('a five-mutation run with both filters all makes one solve', async () => {
+    const result = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: fiveMutations(),
+      featureDeltas: 'all',
+      frames: 'all',
+    })
+    expect(result.outcome.ok).toBe(true)
+    expect(result.solved).toBe(true)
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(1)
+    expect(result.solve.generation).toBe(1)
+    expect(result.features).toEqual([])
+  })
+
+  it('the default reply pays the baseline plus the final solve, not one per step', async () => {
+    const result = await runHeadless({ doc: emptyDriveDoc(), steps: fiveMutations() })
+    expect(result.outcome.ok).toBe(true)
+    // One baseline measurement of the input document and one final solve; the
+    // five steps add nothing.
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(2)
+    expect(result.solve.generation).toBe(1)
+  })
+
+  it('every step keeps its createdIds and one undo entry', async () => {
+    const result = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: fiveMutations(),
+      featureDeltas: 'all',
+      frames: 'all',
+    })
+    expect(result.outcome.steps.map(step => step.ok)).toEqual([true, true, true, true, true])
+    expect(result.outcome.steps[1].createdIds).toHaveLength(4)
+    expect(result.outcome.steps[4].createdIds).toHaveLength(4)
+    expect(result.part.session.historyEntries().undo).toHaveLength(5)
+  })
+
+  it('a selector after three mutations flushes, then solves once at the end', async () => {
+    vi.mocked(kernel.solveLocally).mockImplementation(async payload => {
+      const build = cleanBuild(payload as never)
+      return { ...build, bodies: { body_ex1: solvedBody('body_ex1') } } as never
+    })
+    const steps: ScriptStep[] = [
+      addSketch('sk1'),
+      addRect('sk1'),
+      addExtrude('ex1', 'sk1'),
+      {
+        mutation: {
+          type: 'add_sketch', featureId: 'sk2',
+          plane: { selector: { kind: 'face', where: { parallel: [0, 0, 1] } } },
+        },
+      },
+    ]
+    const result = await runHeadless({ doc: emptyDriveDoc(), steps, featureDeltas: 'all', frames: 'all' })
+    expect(result.outcome.ok).toBe(true)
+    expect(result.outcome.steps[3].ok).toBe(true)
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(2)
+    const sk2 = result.doc?.features?.find(feature => feature.id === 'sk2')
+    expect(sk2?.kind === 'sketch' ? sk2.plane : undefined).toMatch(/^[?@]/)
+  })
+
+  it('a selector on the first step still solves before resolving it', async () => {
+    vi.mocked(kernel.solveLocally).mockImplementation(async payload => {
+      const build = cleanBuild(payload as never)
+      return { ...build, bodies: { body_ex1: solvedBody('body_ex1') } } as never
+    })
+    const result = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [{
+        mutation: {
+          type: 'add_sketch', featureId: 'sk1',
+          plane: { selector: { kind: 'face', where: { parallel: [0, 0, 1] } } },
+        },
+      }],
+      featureDeltas: 'all',
+      frames: 'all',
+    })
+    expect(result.outcome.ok).toBe(true)
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(2)
+  })
+
+  it('a command step flushes before it runs', async () => {
+    const result = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [...fiveMutations(), { command: 'undo' }],
+      featureDeltas: 'all',
+      frames: 'all',
+    })
+    expect(result.outcome.ok).toBe(true)
+    // One flush before the undo and one for the document its re-solve owes.
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(2)
+    expect(result.outcome.steps[5].ok).toBe(true)
+  })
+
+  it('a failed step stops the script and the final flush still runs', async () => {
+    const steps: ScriptStep[] = [
+      addSketch('sk1'),
+      { mutation: { type: 'not_a_mutation' } } as unknown as ScriptStep,
+      addRect('sk1'),
+    ]
+    const result = await runHeadless({ doc: emptyDriveDoc(), steps, featureDeltas: 'all', frames: 'all' })
+    expect(result.outcome.ok).toBe(false)
+    expect(result.outcome.steps).toHaveLength(2)
+    expect(result.outcome.steps[1].error?.code).toBe('unknown-mutation')
+    // One solve for the mutation that landed, one no-op would be wrong: only
+    // the final flush runs.
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(1)
+    expect(result.solved).toBe(true)
+    expect(result.features).toEqual([])
+  })
+
+  it('a refused-only script is never force-solved', async () => {
+    const result = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [{ command: 'noop_probe' }],
+      featureDeltas: 'all',
+      frames: 'all',
+    })
+    expect(result.outcome.ok).toBe(false)
+    expect(result.solved).toBe(false)
+    expect(kernel.solveLocally).not.toHaveBeenCalled()
+  })
+
+  it('an empty-steps run still solves once', async () => {
+    const result = await runHeadless({ doc: emptyDriveDoc(), steps: [], featureDeltas: 'all', frames: 'all' })
+    expect(result.solved).toBe(true)
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(1)
+    expect(result.solve.generation).toBe(1)
+  })
+
+  it('mutation, requestSolve and undo/redo requests wait for one flush', async () => {
+    const part = createHeadlessPart({ doc: emptyDriveDoc() })
+    expect(part.session.execute({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' }).ok).toBe(true)
+    // The non-mutation request paths the session owns all land on the same
+    // scheduler, so a deferral that only covered solveAfterMutation would leak
+    // a solve here.
+    part.session.refreshSolve()
+    expect(part.session.undo()).toBe(true)
+    expect(part.session.redo()).toBe(true)
+    expect(part.solve.owed()).toBe(true)
+    expect(kernel.solveLocally).not.toHaveBeenCalled()
+
+    await part.solve.flush()
+    expect(part.solve.owed()).toBe(false)
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(1)
+    expect(part.solve.state().generation).toBe(1)
+  })
+})
