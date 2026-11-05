@@ -484,8 +484,10 @@ banner on stdout, so a client config must use the direct node invocation.
   the tolerance alone) or inside a world-axis range on that point
   (`{"center":{"axis":"z","at":0}}` or `{"center":{"axis":"z","min":10,"max":20}}`;
   `at` is sugar for min = max = at), `on_face` (edges bounding the
-  selected faces), `created_by` (ancestry through the query engine) and
-  `radius`. A multi-key example:
+  selected faces), `created_by` (ancestry through the query engine), `radius`,
+  `convexity` (edge-only: the analyser's dihedral class, `"convex"`,
+  `"concave"`, `"tangent"` or `"other"`) and `seam` (edge-only boolean: the
+  face meets itself along the edge). A multi-key example:
   `{"and":[{"type":"line"},{"parallel":[0,1,0]}]}`. `extreme.axis` is a world
   vector; the letters `"x"`, `"y"` and `"z"`
   are sugar for the unit axis, and an invalid axis repeats the whole clause
@@ -502,6 +504,21 @@ banner on stdout, so a client config must use the direct node invocation.
   seam edge is the face meeting itself, not a boundary between two faces, so it
   has no direction to compare and matches neither `parallel` nor
   `perpendicular`; the other predicates still return it and a click can pick it.
+  `convexity` names the dihedral class the kernel's `BRepOffset_Analyse`
+  reports, and it is the analyser's word, not a hand rule: on a slot profile the
+  wall-to-wall inside corners are `concave` and the mouth rounds are `convex`
+  (the 80-20 rail's two radii are those two groups, 16 edges each), and a mouth
+  rim's class is whatever the pinned real test records rather than a guess. A
+  seam has the same face on both sides, so the analyse has no dihedral angle and
+  reports it as `other`, not `tangent`; `tangent` is a real smooth join and
+  `{convexity: "tangent"}` does not include seams. Read `geometry.convexity` on
+  an item to learn the class of a body. `seam` is the direct flag: a cylinder,
+  cone, sphere or torus closes on itself, and the edge the face meets twice is
+  its seam. On a revolved and shelled body `{from: "body_rv1", kind: "edge",
+  where: {seam: false}}` is the filletable boundary (the tea_cup recipe), and
+  `{not: {seam: true}}` is the same set for an author who prefers negation. A
+  face or vertex has no class or seam flag, so both clauses match none of them,
+  the `radius`-on-a-vertex rule.
   On a flat
   face `parallel` tests the normal; on a curved analytic face (cylinder, cone,
   torus) it tests the analytic axis from `surface_frame`, not the radial normal,

@@ -6,6 +6,8 @@
 // the document, exactly as if each element had been clicked. See
 // feature/knowledgebase.agent.md "Headless selection" for why.
 
+import type { EdgeKind } from '@/types/cad'
+
 /** A 3-vector in world coordinates. */
 export type Vec3 = [number, number, number]
 
@@ -73,6 +75,19 @@ export type Predicate =
   | { created_by: string }
   // Circles, cylinder faces.
   | { radius: RadiusTest }
+  // The analyser's dihedral class of an edge (BRepOffset_Analyse): a convex
+  // ridge, a concave valley, a smooth (tangent) join, or a class it could not
+  // name. A face or vertex has no class and matches none. A seam has one face
+  // on both sides, so the analyse has no dihedral angle and reports `other`
+  // (measured on a cylinder and a cone); `tangent` is a real smooth join, not
+  // a seam. An older result (or a body the analyse refused) carries no class
+  // and matches no value, never `other` by accident.
+  | { convexity: EdgeKind }
+  // Whether an edge is a face seam: the one face meets itself along it (a full
+  // cylinder, cone, sphere or torus closes on itself). A face or vertex has no
+  // seam flag and matches none, so `{not: {seam: true}}` is the filletable
+  // boundary workaround. Never changes what the direction predicates do.
+  | { seam: boolean }
 
 export interface Selector {
   // Restrict to one body id; omit for every body.
@@ -93,6 +108,11 @@ export interface EdgeGeometry {
   a?: number
   b?: number
   point_count?: number
+  // The analyser's class, absent when the solve did not publish one.
+  convexity?: EdgeKind
+  // Whether the edge is a face seam; always present on an edge item, so the
+  // discovery half of the `seam` predicate is on the reply.
+  seam?: boolean
 }
 
 export interface FaceGeometry {

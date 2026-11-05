@@ -33,6 +33,8 @@ import { elementCreator, namedElementCreator, type NewIndexSets } from './modifi
 import { deriveVertexUuid, deriveEdgesVertexUuid, orderSplitChildren, type SplitChild } from '../constructionName'
 import { shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
 import { buildFaceQuery } from '../faceQuery'
+import { isKernelTrap } from '../errors'
+import { classifyFaceEdges } from './moveFace'
 import { emitWithTiesTagged, type QueryParts } from '../tiedQuery'
 import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
 import type { EdgeData } from '@/types/cad'
@@ -502,6 +504,11 @@ interface SolidEdgesOptions {
   edgeOwner?: Record<string, string> | null
   newElements?: NewIndexSets | null
   modifiedBy?: string[]
+  // Fill EdgeData.convexity from one BRepOffset_Analyse over the solid. Opt-in
+  // and set only by the final render pass (`tessellateBodies`): the metadata
+  // pass runs per body per feature version and its ancestry output never reads
+  // the class, so it must not pay for the analyse.
+  computeConvexity?: boolean
 }
 
 interface SolidEdgesResult {
@@ -740,6 +747,20 @@ export function solidToEdges(
     const edge_uuids = raw.map((r) => opts.edgeUuids?.[r.canon] ?? null)
     const edge_queries: string[] = []
     const edge_created_by: string[] = []
+    if (opts.computeConvexity) {
+      // One analyse over the whole solid, mapped back through each row's
+      // canonical index. A shape the analyse refuses (an open shell, a
+      // non-manifold weld) leaves the field absent rather than failing the
+      // solve: the class is an authoring aid. A heap trap still escapes,
+      // because the module cannot be read after one.
+      try {
+        const classify = classifyFaceEdges(oc, scope, solid)
+        const classes = raw.map((r) => classify(canon[r.canon] as OccShape))
+        edges.forEach((ed, i) => { ed.convexity = classes[i] })
+      } catch (e) {
+        if (isKernelTrap(e)) throw e
+      }
+    }
     const { createdBy, bodyId } = opts
     if (createdBy) {
       const { center, half } = bodyFrame(oc, scope, solid)

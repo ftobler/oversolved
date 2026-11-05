@@ -5,7 +5,7 @@
 // (`edges`, `face_data`) and reads the parallel query array defensively; a
 // missing or empty query means the element is unnamed and cannot be selected.
 
-import type { BodyResult, EdgeData } from '@/types/cad'
+import type { BodyResult, EdgeData, EdgeKind } from '@/types/cad'
 import type { SurfaceType } from '@/kernel/occ/primitives'
 import type { EdgeGeometry, FaceGeometry, SelectKind, Vec3, VertexGeometry } from './types'
 
@@ -145,7 +145,7 @@ function conicTangent(
  *  the seam list existed fall back to the face-boundary count; that rule cannot
  *  tell the two apart, so it is only trusted when every face reported a boundary
  *  (a missing or unnamed neighbour would otherwise look like a seam). */
-function isSeamEdge(c: Candidate): boolean {
+export function isSeamEdge(c: Candidate): boolean {
   if (c.kind !== 'edge' || !c.query) return false
   const mesh = c.body.mesh
   const seamLists = mesh?.face_seam_queries
@@ -264,6 +264,14 @@ export function typeOf(c: Candidate): string | null {
   if (c.kind === 'vertex') return 'vertex'
   if (c.kind === 'face') return c.body.mesh?.face_data?.[c.index]?.surface_type ?? null
   return edgeData(c)?.kind ?? null
+}
+
+/** An edge's analyser class, or null when the solve did not publish one (an
+ *  older result, the metadata pass, or a body the analyse refused). A face or
+ *  vertex has no class, and null matches no `convexity` value. */
+export function convexityOf(c: Candidate): EdgeKind | null {
+  if (c.kind !== 'edge') return null
+  return edgeData(c)?.convexity ?? null
 }
 
 /** The axis-aligned bounding box of an element, for the `within` range test. */
@@ -480,17 +488,23 @@ export function geometryOf(c: Candidate): EdgeGeometry | FaceGeometry | VertexGe
     }
   }
   const ed = edgeData(c)!
+  // The discovery half of the two edge-only leaves: every edge item says
+  // whether it is a seam, and carries the class when the solve published one.
+  const extra = {
+    ...(ed.convexity !== undefined && { convexity: ed.convexity }),
+    seam: isSeamEdge(c),
+  }
   switch (ed.kind) {
     case 'line': {
       const length = Math.hypot(ed.end[0] - ed.start[0], ed.end[1] - ed.start[1], ed.end[2] - ed.start[2])
-      return { kind: 'line', start: ed.start, end: ed.end, length }
+      return { kind: 'line', start: ed.start, end: ed.end, length, ...extra }
     }
     case 'circle':
     case 'arc':
-      return { kind: ed.kind, center: ed.center, radius: ed.radius, axis: ed.axis }
+      return { kind: ed.kind, center: ed.center, radius: ed.radius, axis: ed.axis, ...extra }
     case 'ellipse':
-      return { kind: 'ellipse', center: ed.center, a: ed.a, b: ed.b, axis: ed.axis }
+      return { kind: 'ellipse', center: ed.center, a: ed.a, b: ed.b, axis: ed.axis, ...extra }
     case 'spline':
-      return { kind: 'spline', point_count: ed.points.length }
+      return { kind: 'spline', point_count: ed.points.length, ...extra }
   }
 }

@@ -5,7 +5,7 @@
 // synthetic solve results.
 
 import { describe, it, expect } from 'vitest'
-import { selectByPredicate, SelectorError } from '@/kernel/select'
+import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
 import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
 
@@ -230,5 +230,61 @@ describe('selectByPredicate: seam exclusion', () => {
       body_ex1: bodyResult('body_ex1', [line([0, 0, 0], [0, 0, 10])], ['q_only'], [], [], []),
     }
     expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies)).toEqual(['q_only'])
+  })
+})
+
+describe('selectByPredicate: the seam predicate', () => {
+  it('{seam: true} returns the seam and {seam: false} the rest', () => {
+    const bodies = cylinder()
+    expect(queriesOf({ kind: 'edge', where: { seam: true } }, bodies)).toEqual(['q_seam'])
+    const rest = ['q_bottom', 'q_top', 'q_wall', 'q_wa_upper', 'q_wa_lower', 'q_wb_upper', 'q_wb_lower']
+    expect(queriesOf({ kind: 'edge', where: { seam: false } }, bodies)).toEqual(rest)
+  })
+
+  it('not({seam: true}) is the same set as {seam: false}', () => {
+    const bodies = cylinder()
+    expect(queriesOf({ kind: 'edge', where: { not: { seam: true } } }, bodies))
+      .toEqual(queriesOf({ kind: 'edge', where: { seam: false } }, bodies))
+  })
+
+  it('a face or vertex has no seam flag and matches neither value', () => {
+    const bodies = cylinder()
+    bodies.body_ex1.vertices = [[0, 0, 0]]
+    bodies.body_ex1.vertex_queries = ['q_v']
+    expect(() => queriesOf({ kind: 'face', where: { seam: true } }, bodies))
+      .toThrow(/seam true matched 0/)
+    expect(() => queriesOf({ kind: 'face', where: { seam: false } }, bodies))
+      .toThrow(/seam false matched 0/)
+    expect(() => queriesOf({ kind: 'vertex', where: { seam: true } }, bodies))
+      .toThrow(/seam true matched 0/)
+    expect(() => queriesOf({ kind: 'vertex', where: { seam: false } }, bodies))
+      .toThrow(/seam false matched 0/)
+  })
+
+  it('composes with a direction clause', () => {
+    // The tea_cup recipe's shape: the seam runs along the axis, so the ordinary
+    // Z-parallel lines are what remain after the seam is excluded.
+    expect(queriesOf({
+      kind: 'edge',
+      where: { and: [{ seam: false }, { parallel: [0, 0, 1] }] },
+    }, cylinder())).toEqual(['q_wall'])
+  })
+})
+
+describe('validateSelector: seam', () => {
+  it('accepts true and false', () => {
+    expect(validateSelector({ kind: 'edge', where: { seam: true } }))
+      .toMatchObject({ where: { seam: true } })
+    expect(validateSelector({ kind: 'edge', where: { seam: false } }))
+      .toMatchObject({ where: { seam: false } })
+  })
+
+  it('refuses a string, a number and a misspelled key, with no truthy coercion', () => {
+    expect(() => validateSelector({ kind: 'edge', where: { seam: 'yes' } }))
+      .toThrow(/seam must be true or false/)
+    expect(() => validateSelector({ kind: 'edge', where: { seam: 1 } }))
+      .toThrow(/seam must be true or false/)
+    expect(() => validateSelector({ kind: 'edge', where: { seamx: true } }))
+      .toThrow(/unknown predicate "seamx"/)
   })
 })

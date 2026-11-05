@@ -15,12 +15,14 @@ import { TOL_SELECT_DIRECTION } from '@/kernel/solverConstants'
 import { SelectorError } from './errors'
 import {
   bboxOf,
+  convexityOf,
   cross,
   directionOf,
   dot,
   edgeCandidates,
   faceCandidates,
   geometryOf,
+  isSeamEdge,
   normalize,
   pointOf,
   radiusOf,
@@ -209,6 +211,10 @@ function evaluate(p: Predicate, pool: Candidate[], ctx: EvalContext): Candidate[
   if ('center' in p) return pool.filter(c => centerMatches(pointOf(c), p.center))
   if ('on_face' in p) return onFace(p.on_face, pool, ctx)
   if ('created_by' in p) return pool.filter(c => createdByMatches(c.query, p.created_by))
+  if ('convexity' in p) return pool.filter(c => convexityOf(c) === p.convexity)
+  // An edge-only leaf: a face or vertex candidate has no seam flag, so it
+  // matches neither `true` nor `false` (the `radius`-on-a-vertex rule).
+  if ('seam' in p) return pool.filter(c => c.kind === 'edge' && isSeamEdge(c) === p.seam)
   return pool.filter(c => radiusMatches(radiusOf(c), p.radius))
 }
 
@@ -223,6 +229,8 @@ function label(p: Predicate): string {
   if ('on_face' in p) return `on_face {${p.on_face.kind}}`
   if ('created_by' in p) return `created_by "${p.created_by}"`
   if ('radius' in p) return `radius ${JSON.stringify(p.radius)}`
+  if ('convexity' in p) return `convexity "${p.convexity}"`
+  if ('seam' in p) return `seam ${p.seam}`
   if ('not' in p) return 'not(...)'
   if ('and' in p) return 'and(...)'
   return 'or(...)'

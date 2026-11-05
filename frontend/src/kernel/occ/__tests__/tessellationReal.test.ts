@@ -8,8 +8,13 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { HandleTable } from '../handleTable'
+import { DisposeScope } from '../disposeScope'
 import { buildBox, buildCylinder, buildExtrudedProfile, buildProfileExtrude, type EdgeSpec } from '../shapes'
-import { solidToMesh, solidToEdges, solidToVertices, type TessMesh, type FaceDatum } from '../tessellation'
+import { solidToMesh, solidToEdges, solidToFaceEdgeQueries, solidToVertices, type TessMesh, type FaceDatum } from '../tessellation'
+import { booleanWithDiff } from '../booleans'
+import { makeBox, makeBoxAt, makeCone } from '../primitives'
+import { isSeamEdge } from '@/kernel/select/geometry'
+import type { BodyResult } from '@/types/cad'
 import { parseAncestry } from '../../query'
 import type { OccModule } from '../occTypes'
 import type { OccHandle } from '../handleTable'
@@ -337,6 +342,179 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
       expect(bareV.vertex_queries.length).toBe(bareV.vertices.length)
     } finally {
       table.release(h)
+      table.assertNoLeaks()
+    }
+  })
+})
+
+// ─── edge convexity published with the solve ───
+
+describe.skipIf(!oc)('solidToEdges convexity (real OCC)', () => {
+  let occ: OccModule
+  beforeAll(() => {
+    if (!oc) throw new Error('unreachable: skipIf guards this')
+    occ = oc
+  })
+
+  /** A plate with one rectangular through slot, cut from a solid so the mouth
+   *  rims and the four slot corners are real B-rep edges. */
+  function slottedPlate(table: HandleTable): OccHandle {
+    const scope = new DisposeScope()
+    try {
+      const plate = makeBox(occ, scope, 40, 30, 5)
+      const slot = makeBoxAt(occ, scope, [10, 10, -1], 20, 10, 7)
+      const { shape } = booleanWithDiff(occ, scope, plate, slot, 'cut')
+      // The result belongs to the caller's table, so it must outlive the scope.
+      // A clean result is untracked by contract; a fallback result is tracked.
+      if (scope.isTracked(shape)) scope.detach(shape)
+      return table.register(shape, 'slot')
+    } finally {
+      scope.dispose()
+    }
+  }
+
+  it('classifies a slotted plate: slot corners concave, outer edges convex', () => {
+    const table = new HandleTable()
+    const h = slottedPlate(table)
+    try {
+      const out = solidToEdges(occ, table, h, { computeConvexity: true })
+      expect(out.edges.length).toBe(24)
+      // The twelve outer edges of the plate (four top, four bottom, four
+      // vertical corners) are convex ridges.
+      const outer = out.edges.filter((e) =>
+        e.kind === 'line' && (e.start[0] === 0 || e.start[0] === 40 || e.start[1] === 0 || e.start[1] === 30))
+      expect(outer).toHaveLength(12)
+      for (const edge of outer) expect(edge.convexity, JSON.stringify(edge)).toBe('convex')
+
+      // The four vertical slot corners are inside corners.
+      const slotCorners = out.edges.filter((e) =>
+        e.kind === 'line' && e.start[2] === 0 && e.end[2] === 5
+        && e.start[0] > 0 && e.start[0] < 40 && e.start[1] > 0 && e.start[1] < 30)
+      expect(slotCorners).toHaveLength(4)
+      for (const edge of slotCorners) expect(edge.convexity, JSON.stringify(edge)).toBe('concave')
+    } finally {
+      table.release(h)
+      table.assertNoLeaks()
+    }
+  })
+
+  it('pins the slot mouth rim class the analyser actually reports', () => {
+    const table = new HandleTable()
+    const h = slottedPlate(table)
+    try {
+      const out = solidToEdges(occ, table, h, { computeConvexity: true })
+      const rim = out.edges.filter((e) =>
+        e.kind === 'line' && e.start[2] === e.end[2] && (e.start[2] === 0 || e.start[2] === 5)
+        && e.start[0] >= 10 && e.start[0] <= 30 && e.start[1] >= 10 && e.start[1] <= 20)
+      expect(rim).toHaveLength(8)
+      // A slot mouth where the top face meets the wall: the class the analyser
+      // reports, pinned. docs/drive.md's mouth-rim sentence derives from this.
+      const classes = new Set(rim.map((e) => e.convexity))
+      expect(classes).toEqual(new Set(['convex']))
+    } finally {
+      table.release(h)
+      table.assertNoLeaks()
+    }
+  })
+
+  it('reports a tangent chain along a stadium profile joint', () => {
+    const table = new HandleTable()
+    const h = buildProfileExtrude(occ, table, {
+      edges: [
+        { kind: 'line', start: [-10, -4, 0], end: [10, -4, 0] },
+        { kind: 'arc', center: [10, 0, 0], normal: [0, 0, 1], xAxis: [1, 0, 0], radius: 4, angleStart: -Math.PI / 2, angleEnd: Math.PI / 2 },
+        { kind: 'line', start: [10, 4, 0], end: [-10, 4, 0] },
+        { kind: 'arc', center: [-10, 0, 0], normal: [0, 0, 1], xAxis: [1, 0, 0], radius: 4, angleStart: Math.PI / 2, angleEnd: 3 * Math.PI / 2 },
+      ],
+      direction: [0, 0, 1],
+      distance: 5,
+    })
+    try {
+      const out = solidToEdges(occ, table, h, { computeConvexity: true })
+      // The two end arcs meet the straight walls tangentially, so the four
+      // vertical joints along the extrusion are the tangent chain.
+      const verticals = out.edges.filter((e) =>
+        e.kind === 'line' && Math.abs(e.end[2] - e.start[2]) > 1e-9)
+      expect(verticals).toHaveLength(4)
+      for (const edge of verticals) expect(edge.convexity, JSON.stringify(edge)).toBe('tangent')
+    } finally {
+      table.release(h)
+      table.assertNoLeaks()
+    }
+  })
+
+  it('reports a full cylinder seam as other and isSeamEdge agrees', () => {
+    const table = new HandleTable()
+    const h = buildCylinder(occ, table, { center: [0, 0, 0], axis: [0, 0, 1], radius: 5, height: 10 })
+    try {
+      const out = solidToEdges(occ, table, h, { computeConvexity: true, createdBy: 'ex1', bodyId: 'body_c' })
+      const faceData = solidToFaceEdgeQueries(occ, table, h, out.edge_queries)
+      const seams = new Set(faceData.face_seam_queries.flat())
+      expect(seams.size, 'one lateral seam').toBe(1)
+      const seamQuery = [...seams][0]
+      const index = out.edge_queries.indexOf(seamQuery)
+      expect(index).toBeGreaterThanOrEqual(0)
+      // A seam has the same face on both sides, so BRepOffset_Analyse has no
+      // dihedral angle to report and leaves it `other`. This is the measured
+      // kernel convention: a seam is NOT tangent, and the `seam` leaf is the
+      // only direct way to name it.
+      expect(out.edges[index].convexity).toBe('other')
+
+      const body: BodyResult = {
+        id: 'body_c',
+        created_by: 'ex1',
+        modified_by: [],
+        edges: out.edges,
+        edge_queries: out.edge_queries,
+        mesh: {
+          vertices: [],
+          faces: [],
+          face_data: [],
+          face_queries: [],
+          face_edge_queries: faceData.face_edge_queries,
+          face_seam_queries: faceData.face_seam_queries,
+        },
+      }
+      expect(isSeamEdge({ body, bodyId: 'body_c', kind: 'edge', index, query: seamQuery })).toBe(true)
+      const otherIndex = out.edge_queries.findIndex((q) => q !== seamQuery)
+      expect(isSeamEdge({ body, bodyId: 'body_c', kind: 'edge', index: otherIndex, query: out.edge_queries[otherIndex] })).toBe(false)
+    } finally {
+      table.release(h)
+      table.assertNoLeaks()
+    }
+  })
+
+  it('leaves the field absent when the pass is not opted in', () => {
+    const table = new HandleTable()
+    const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
+    try {
+      const out = solidToEdges(occ, table, h)
+      expect(out.edges.every((e) => e.convexity === undefined)).toBe(true)
+    } finally {
+      table.release(h)
+      table.assertNoLeaks()
+    }
+  })
+
+  it('reports a cone seam as other, the same convention as the cylinder', () => {
+    // The docs and the type comment say "measured on a cylinder and a cone";
+    // pin both, so a change in how OCC classifies a self-joining face is caught
+    // rather than only described.
+    const table = new HandleTable()
+    const scope = new DisposeScope()
+    const cone = scope.track(makeCone(occ, scope, [0, 0, 0], [0, 0, 1], 5, 2, 10))
+    const h = table.register(scope.detach(cone), 'cone')
+    try {
+      const out = solidToEdges(occ, table, h, { computeConvexity: true, createdBy: 'ex1', bodyId: 'body_cone' })
+      const faceData = solidToFaceEdgeQueries(occ, table, h, out.edge_queries)
+      const seams = new Set(faceData.face_seam_queries.flat())
+      expect(seams.size, 'one lateral seam').toBe(1)
+      const index = out.edge_queries.indexOf([...seams][0])
+      expect(index).toBeGreaterThanOrEqual(0)
+      expect(out.edges[index].convexity).toBe('other')
+    } finally {
+      table.release(h)
+      scope.dispose()
       table.assertNoLeaks()
     }
   })

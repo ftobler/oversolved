@@ -4,6 +4,7 @@
 // is the same contract the tool schemas keep for top-level fields.
 
 import type { CenterAxisTest, CenterPointTest, CenterTest, Predicate, RadiusTest, SelectKind, Selector, Vec3 } from './types'
+import type { EdgeKind } from '@/types/cad'
 import { SelectorError } from './errors'
 import { suggestTypeName, typeVocabulary } from './geometry'
 
@@ -11,8 +12,13 @@ import { suggestTypeName, typeVocabulary } from './geometry'
 // are leaves. Kept as data so the unknown-key rejection and the schema agree.
 export const PREDICATE_KEYS = [
   'and', 'or', 'not', 'parallel', 'perpendicular', 'type', 'extreme', 'within', 'center', 'on_face', 'created_by',
-  'radius',
+  'radius', 'convexity', 'seam',
 ] as const
+
+// The four classes BRepOffset_Analyse reports. A closed enum, not a free
+// string: a typo must be refused by name, especially under a `not` where it
+// would otherwise match everything.
+const CONVEXITY_VALUES: readonly EdgeKind[] = ['convex', 'concave', 'tangent', 'other']
 
 const SELECTOR_KEYS = ['from', 'kind', 'where']
 
@@ -233,6 +239,18 @@ function predicate(raw: unknown, path: string): Predicate {
       return { created_by: value }
     case 'radius':
       return { radius: radiusTest(value, `${path}.radius`) }
+    case 'convexity':
+      if (typeof value !== 'string' || !(CONVEXITY_VALUES as readonly string[]).includes(value)) {
+        throw new SelectorError(
+          `${path}.convexity must be "convex", "concave", "tangent" or "other"`,
+        )
+      }
+      return { convexity: value as EdgeKind }
+    case 'seam':
+      // Strict boolean: a truthy string or number is refused rather than
+      // coerced, the same contract the other leaves keep for their types.
+      if (typeof value !== 'boolean') throw new SelectorError(`${path}.seam must be true or false`)
+      return { seam: value }
     default:
       // Unreachable: the key check above gates this.
       throw new SelectorError(`${path} has unknown predicate "${key}"`)

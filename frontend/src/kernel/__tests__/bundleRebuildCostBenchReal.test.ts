@@ -24,6 +24,10 @@ import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { handleBundleRequest } from '../worker/solverWorker'
 import type { BundleRequest } from '../worker/solverProtocol'
+import { HandleTable } from '../occ/handleTable'
+import { solidToEdges } from '../occ/tessellation'
+import { buildExtrudedProfile } from '../occ/shapes'
+import type { Vec3 } from '../occ/primitives'
 
 // The gate is read FIRST and everything expensive hangs off it. Module scope
 // runs at collection whether or not the describe is skipped, so an unguarded
@@ -166,5 +170,35 @@ describe.skipIf(!oc || !solveBytes || !enabled)('bundle rebuild cost (real OCC +
 
   it('imported STEP part', async () => {
     await sweep('imported', (id, edit) => importedPart(id, edit))
+  }, 900_000)
+})
+
+// The added BRepOffset_Analyse is visible here: the same many-edge solid is
+// walked twice, once as the metadata pass does (no class) and once as the
+// final render pass does (`computeConvexity`). A 700-sided extrusion is 2100
+// edges, the order of a large imported or patterned body and harsher than the
+// 63-tooth rack the plan names. Log-only, like the rest of this file: a
+// wall-clock ceiling would flake on a contended box.
+describe.skipIf(!oc || !enabled)('edge convexity cost (real OCC, log-only)', () => {
+  it('measures the analyse on a many-edge body', async () => {
+    if (!oc) throw new Error('unreachable: skipIf guards this')
+    const sides = 700
+    const loop: Vec3[] = Array.from({ length: sides }, (_, i) => {
+      const t = (2 * Math.PI * i) / sides
+      return [20 * Math.cos(t), 20 * Math.sin(t), 0] as Vec3
+    })
+    const table = new HandleTable()
+    const h = buildExtrudedProfile(oc, table, { loop, direction: [0, 0, 1], distance: 10 })
+    try {
+      console.log(`\n[convexity cost, ${sides}-sided extrusion = ${sides * 3} edges]`)
+      await timed('solidToEdges, metadata pass (no class)', async () => solidToEdges(oc, table, h))
+      await timed('solidToEdges, render pass (computeConvexity)', async () =>
+        solidToEdges(oc, table, h, { computeConvexity: true }))
+      const sized = solidToEdges(oc, table, h)
+      expect(sized.edges.length).toBe(sides * 3)
+    } finally {
+      table.release(h)
+      table.assertNoLeaks()
+    }
   }, 900_000)
 })

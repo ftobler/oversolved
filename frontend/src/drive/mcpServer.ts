@@ -270,6 +270,20 @@ const EXTREME_AXIS_SCHEMA = {
 const TYPE_DESCRIPTION = `Edge kind (${typeVocabulary('edge').join(', ')}), face surface type (${typeVocabulary('face').join(', ')}) `
   + `or vertex type (${typeVocabulary('vertex').join(', ')}).`
 
+// The convexity words are the analyser's dihedral classes, not a hand rule, so
+// the description names where they come from: the rail example's two radii are
+// a concave group and a convex group, and a seam is `other` (one face on both
+// sides, so there is no dihedral to measure), never `tangent`.
+const CONVEXITY_DESCRIPTION = 'Edge-only: the dihedral class BRepOffset_Analyse reports, one of "convex", "concave", '
+  + '"tangent" or "other". The word is the analyser\'s: a slot wall\'s inside corner is concave and a mouth rim is '
+  + 'whatever the kernel classifies, so read geometry.convexity to learn a body. A seam has one face on both sides, so '
+  + 'the analyse reports it as "other", not "tangent"; {convexity:"tangent"} names real smooth joins only. An older '
+  + 'solve with no class matches no value, never "other" by accident.'
+
+const SEAM_DESCRIPTION = 'Edge-only: true for a face seam, the edge a face meets itself along (a full cylinder, cone, '
+  + 'sphere or torus closes on itself). A face or vertex has no seam flag and matches neither value. {not:{seam:true}} '
+  + 'is the filletable boundary of a revolved or shelled body.'
+
 // A `$ref` fragment resolves against the schema-document root, which for a tool
 // is the whole `inputSchema`. These definitions are therefore spread into that
 // root as `$defs` and the `selector` property refs into them; nesting the
@@ -349,6 +363,11 @@ const SELECTOR_DEFS: Record<string, unknown> = {
             },
           ],
         },
+        convexity: {
+          enum: ['convex', 'concave', 'tangent', 'other'],
+          description: CONVEXITY_DESCRIPTION,
+        },
+        seam: { type: 'boolean', description: SEAM_DESCRIPTION },
       },
       additionalProperties: false,
     },
@@ -360,7 +379,8 @@ const SELECTOR_DEFS: Record<string, unknown> = {
         kind: {
           enum: ['edge', 'face', 'vertex'],
           description: 'Topology to pick. A vertex is a corner point: only the position predicates name one '
-            + '(extreme, center, within, type "vertex", created_by); parallel, perpendicular and radius match none.',
+            + '(extreme, center, within, type "vertex", created_by); parallel, perpendicular, radius, convexity and '
+            + 'seam match none.',
         },
         where: { $ref: '#/$defs/predicate' },
       },
@@ -569,7 +589,12 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'all edges of that body. An edge direction test reads the edge\'s own tangent, so a fillet arc\'s underlying '
       + 'circle axis is not a direction; a full circle has no single tangent. A seam edge is the face meeting '
       + 'itself, not a boundary between two faces, so it has no direction to compare and matches neither parallel '
-      + 'nor perpendicular; the other predicates still return it and a click can pick it. A vertex is a corner point, '
+      + 'nor perpendicular; the other predicates still return it and a click can pick it. An edge also carries the '
+      + 'analyser\'s dihedral class: geometry.convexity is "convex", "concave", "tangent" or "other", and '
+      + 'geometry.seam says whether the edge is a seam. {convexity:"concave"} is a slot\'s inside corner group and '
+      + '{convexity:"convex"} the outer ridges (the two radii on a rail slot profile); a seam has one face on both '
+      + 'sides and reads other, so {seam:false} (or {not:{seam:true}}) is the filletable boundary of a revolved body. '
+      + 'A vertex is a corner point, '
       + 'so name it with the position predicates: {kind:"vertex",where:{and:[{extreme:{axis:[0,0,1],side:"max"}},'
       + '{extreme:{axis:[1,0,0],side:"min"}},{extreme:{axis:[0,1,0],side:"min"}}]}} is the top x-min y-min corner, '
       + 'the workplane-on-a-vertex idiom. `on_face` is the face-to-edge aid and needs an inner kind "face". '

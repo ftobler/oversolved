@@ -313,13 +313,26 @@ export interface Mesh3D {
   face_seam_queries?: string[][]
 }
 
-export interface EdgeDataLine {
+/** The dihedral class BRepOffset_Analyse reports for an edge: a convex ridge,
+ *  a concave valley, a tangent (smooth) join, or a class the analyse could not
+ *  name. Shared by the solve's EdgeData and move-face's hole/boss rule. */
+export type EdgeKind = 'convex' | 'concave' | 'tangent' | 'other'
+
+export interface EdgeDataBase {
+  // The analyser's class, published only by the final render solve
+  // (`tessellateBodies` with `computeConvexity`). Absent on the metadata pass,
+  // on an older result, and on a body the analyse refused, where the
+  // `convexity` selector matches no value rather than guessing `other`.
+  convexity?: EdgeKind
+}
+
+export interface EdgeDataLine extends EdgeDataBase {
   kind: 'line'
   start: [number, number, number]
   end: [number, number, number]
 }
 
-export interface EdgeDataCircleArc {
+export interface EdgeDataCircleArc extends EdgeDataBase {
   kind: 'circle' | 'arc'
   center: [number, number, number]
   radius: number
@@ -329,12 +342,12 @@ export interface EdgeDataCircleArc {
   angle_end: number
 }
 
-export interface EdgeDataSpline {
+export interface EdgeDataSpline extends EdgeDataBase {
   kind: 'spline'
   points: [number, number, number][]
 }
 
-export interface EdgeDataEllipse {
+export interface EdgeDataEllipse extends EdgeDataBase {
   kind: 'ellipse'
   center: [number, number, number]
   a: number  // semi-major radius

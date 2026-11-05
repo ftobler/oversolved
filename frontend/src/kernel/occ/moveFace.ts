@@ -36,6 +36,7 @@ import { SubShapeMap } from './subshapeIdentity'
 import { faceCentroid, bboxDiagonal } from './primitives'
 import { booleanWithDiff, type FaceOrigin } from './booleans'
 import type { BrepDiff } from '../types3d'
+import type { EdgeKind } from '@/types/cad'
 import { TOL_MOVE_FACE_TANGENT, TOL_SURFACE_IDENTITY } from '../solverConstants'
 import type { Vec3 } from '@/utils/vec3'
 import {
@@ -52,8 +53,9 @@ import {
 export { MoveFaceRefusal } from './moveFaceSurfaces'
 
 /** The edge convexity BRepOffset_Analyse reports, narrowed to the four the
- *  move-face rules care about. */
-export type EdgeKind = 'convex' | 'concave' | 'tangent' | 'other'
+ *  move-face rules care about. The union itself lives beside EdgeData in
+ *  `types/cad.ts`, because the solve now publishes it on every edge too. */
+export type { EdgeKind } from '@/types/cad'
 
 /** The three neighbour surface classes an extension can rebuild; anything
  *  else is refused by name. */
@@ -103,9 +105,10 @@ export function neighbourSurface(oc: OccModule, scope: DisposeScope, face: OccSh
 }
 
 /** A seam edge of `face`: it bounds the face on both sides (a full cylinder,
- *  cone, sphere or torus carries one) so it has no neighbour to look across,
- *  and the analyse reads the join across it as tangent. A degenerated edge (a
- *  sphere pole, a cone apex) is a point, not a boundary. */
+ *  cone, sphere or torus carries one) so it has no neighbour to look across.
+ *  BRepOffset_Analyse has only one face to read there and leaves the edge
+ *  unclassified (the solve publishes that as `other`, not `tangent`). A
+ *  degenerated edge (a sphere pole, a cone apex) is a point, not a boundary. */
 function isSeamOrDegenerate(oc: OccModule, face: OccShape, edge: OccShape): boolean {
   if (oc.BRep_Tool.Degenerated?.(edge)) return true
   return oc.BRep_Tool.IsClosed_2(edge, face)

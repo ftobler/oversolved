@@ -223,6 +223,9 @@ export function tessellateBodies(
         edgeOwner: body.edge_owner ?? null,
         newElements: newIndexSets(body.brep_new, body.shape),
         modifiedBy: body.modified_by,
+        // The final render pass owns the class; the mesh-free metadata pass
+        // below deliberately leaves it out.
+        computeConvexity: true,
       })
       const vertexResult = solidToVertices(oc, table, body.shape, {
         createdBy: body.created_by || '',
