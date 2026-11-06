@@ -9,8 +9,10 @@ import {
   orbitForward,
   orbitRight,
   orbitUp,
+  poseQuaternion,
   rightButtonMapping,
   rotateOrbit,
+  rotateTrackball,
   snapshotTurntablePose,
   restoreTurntablePose,
   turnAbout,
@@ -639,5 +641,119 @@ describe('orbit scratch reuse', () => {
     expect(out.equals(first)).toBe(true)
     // And the input vector is not mutated.
     expect(target.equals(new THREE.Vector3(4, 5, 6))).toBe(true)
+  })
+})
+
+describe('trackball orbit', () => {
+  const HEIGHT = 600
+  const RATE = (2 * Math.PI) / HEIGHT
+
+  function trackballSetup() {
+    const camera = makeCamera()
+    const controls = new TurntableControls(camera)
+    controls.orbitStyle = 'trackball'
+    const el = makeElement()
+    controls.connect(el)
+    return { camera, controls, el }
+  }
+
+  function drag(el: Element, from: [number, number], steps: Array<[number, number]>): void {
+    let [x, y] = from
+    press(el, 'pointerdown', { button: 2, clientX: x, clientY: y })
+    for (const [dx, dy] of steps) {
+      x += dx
+      y += dy
+      press(document, 'pointermove', { button: 2, clientX: x, clientY: y })
+    }
+    press(document, 'pointerup', { button: 2, clientX: x, clientY: y })
+  }
+
+  it('a roll-free pose is the turntable pose', () => {
+    const q = poseQuaternion({ azimuth: 0.7, elevation: -0.4, roll: 0 }, new THREE.Quaternion())
+    const right = orbitRight(0.7)
+    const up = orbitUp(0.7, -0.4)
+    expect(new THREE.Vector3(1, 0, 0).applyQuaternion(q).distanceTo(right)).toBeLessThan(1e-12)
+    expect(new THREE.Vector3(0, 1, 0).applyQuaternion(q).distanceTo(up)).toBeLessThan(1e-12)
+  })
+
+  it('a first step from a level side view matches the turntable step', () => {
+    const pose = { azimuth: 0.3, elevation: 0, roll: 0 }
+    const trackball = rotateTrackball(pose, 12, 7, HEIGHT)
+    const turntable = rotateOrbit(pose, 12, 7, HEIGHT)
+    expect(trackball.azimuth).toBeCloseTo(turntable.azimuth, 3)
+    expect(trackball.elevation).toBeCloseTo(turntable.elevation, 3)
+  })
+
+  it('a circular drag rolls the horizon: the law has no upright constraint', () => {
+    let pose = { azimuth: 0, elevation: 0.5, roll: 0 }
+    for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * 2 * Math.PI
+      pose = rotateTrackball(pose, 6 * Math.cos(a), 6 * Math.sin(a), HEIGHT)
+    }
+    expect(Math.abs(pose.roll)).toBeGreaterThan(0.05)
+  })
+
+  // The regression the trackball exists for: near a pole the turntable spins
+  // the view fast about the line of sight. Here every step turns the camera by
+  // exactly the drag angle, whatever the elevation, so there is no singularity.
+  it('turns the camera by the drag angle per step at every elevation, poles included', () => {
+    const q0 = new THREE.Quaternion()
+    const q1 = new THREE.Quaternion()
+    for (const elevation of [0, 0.8, Math.PI / 2 - 1e-3, Math.PI / 2, Math.PI / 2 + 1e-3, -1.4]) {
+      for (const [dx, dy] of [[4, 0], [0, 4], [3, -3]] as Array<[number, number]>) {
+        let pose = { azimuth: 0.4, elevation, roll: 0.2 }
+        for (let i = 0; i < 40; i++) {
+          poseQuaternion(pose, q0)
+          pose = rotateTrackball(pose, dx, dy, HEIGHT)
+          poseQuaternion(pose, q1)
+          expect(q0.angleTo(q1)).toBeCloseTo(RATE * Math.hypot(dx, dy), 9)
+        }
+      }
+    }
+  })
+
+  it('a straight drag and its reverse return to the same view', () => {
+    const q0 = new THREE.Quaternion()
+    const q1 = new THREE.Quaternion()
+    const start = { azimuth: 1.1, elevation: 1.5, roll: -0.3 }
+    let pose = start
+    for (let i = 0; i < 50; i++) pose = rotateTrackball(pose, 5, 2, HEIGHT)
+    for (let i = 0; i < 50; i++) pose = rotateTrackball(pose, -5, -2, HEIGHT)
+    expect(poseQuaternion(start, q0).angleTo(poseQuaternion(pose, q1))).toBeLessThan(1e-9)
+  })
+
+  it('a horizontal drag on the top view tumbles instead of spinning in place', () => {
+    const { camera, controls, el } = trackballSetup()
+    controls.setDirection(new THREE.Vector3(0, 1, 0), { poleAzimuth: 0 })
+    const forwardBefore = localAxis(camera, new THREE.Vector3(0, 0, -1))
+    drag(el, [400, 300], [[30, 0]])
+    const forwardAfter = localAxis(camera, new THREE.Vector3(0, 0, -1))
+    // The turntable keeps looking straight down here; the trackball tips.
+    expect(forwardAfter.angleTo(forwardBefore)).toBeGreaterThan(0.2)
+  })
+
+  it('keeps the grabbed pivot under the cursor', () => {
+    const { camera, controls, el } = trackballSetup()
+    const pivot = new THREE.Vector3(30, -10, 5)
+    controls.pivotPick = () => pivot.clone()
+    controls.elevation = 0.9
+    controls.update()
+    const before = pivot.clone().project(camera)
+    drag(el, [400, 300], [[25, -10], [30, 15], [-5, 20]])
+    const after = pivot.clone().project(camera)
+    expect(after.x).toBeCloseTo(before.x, 9)
+    expect(after.y).toBeCloseTo(before.y, 9)
+  })
+
+  it('a programmatic snap clears the roll and a snapshot carries it', () => {
+    const { controls, el } = trackballSetup()
+    drag(el, [400, 300], [[40, 40], [40, -40]])
+    const snapshot = snapshotTurntablePose(controls)
+    expect(snapshot.roll).toBe(controls.roll)
+    const other = makeControls()
+    restoreTurntablePose(other, snapshot)
+    expect(other.roll).toBe(controls.roll)
+    controls.setDirection(new THREE.Vector3(1, 0, 0))
+    expect(controls.roll).toBe(0)
   })
 })

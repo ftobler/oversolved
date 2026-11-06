@@ -129,6 +129,8 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
       clientY,
     )
     ctrl.orbitAroundCursor = useViewOptionsStore.getState().orbit_around_cursor
+    // The common CAD orbit: it has no pole, so no spin near the top view.
+    ctrl.orbitStyle = 'trackball'
     attachControls(ctrl)
     return () => {
       attachControls(null)

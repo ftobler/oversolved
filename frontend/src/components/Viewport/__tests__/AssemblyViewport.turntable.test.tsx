@@ -83,17 +83,17 @@ beforeEach(() => {
 })
 
 describe('AssemblyViewport turntable', () => {
-  it('right-drag rotates the shared unclamped turntable', () => {
+  it('right-drag rotates the shared trackball orbit', () => {
     render(<AssemblyViewport />)
     const before = h.camera!.position.clone()
 
     act(() => drag(2, [100, 100], [160, 40]))
 
     expect(h.camera!.position.distanceTo(before)).toBeGreaterThan(1)
-    // The level-horizon invariant holds in the assembly viewport too: the
-    // camera's local X (screen right) has no world-Y component.
-    const right = new THREE.Vector3().setFromMatrixColumn(h.camera!.matrixWorld, 0)
-    expect(Math.abs(right.y)).toBeLessThan(1e-9)
+    // The assembly viewport gets the same screen-axis orbit: a rigid turn about
+    // the target, so the eye keeps its distance (a diagonal drag may tilt the
+    // horizon; that is the law, not a defect).
+    expect(h.camera!.position.length()).toBeCloseTo(before.length(), 6)
     expect(h.invalidate).toHaveBeenCalled()
   })
 

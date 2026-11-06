@@ -1,6 +1,9 @@
 import * as THREE from 'three'
 
-// The viewport's orbit law: an unclamped turntable with a level horizon.
+// The viewport's orbit laws. The app drags as a screen-axis trackball (see
+// "trackball orbit" below); the pose it rolls is built on the turntable law
+// here, which is also the second style: an unclamped turntable with a level
+// horizon.
 //
 // OrbitControls is clamped to the poles by construction (its polar angle lives
 // in [0, pi] and `makeSafe` keeps it just off the ends), so a drag can never
@@ -152,6 +155,8 @@ const POSE_UP = new THREE.Vector3()
 const POSE_BASIS = new THREE.Matrix4()
 const TURN_RIGHT = new THREE.Vector3()
 const TURN_TARGET = new THREE.Vector3()
+const POSE_BEFORE = new THREE.Quaternion()
+const POSE_TURN = new THREE.Quaternion()
 
 // The two drag angles as one rigid turn: azimuth about world Y, then elevation
 // about the camera's right axis. `dir(az + dAz, el + dEl)` is exactly this
@@ -176,12 +181,113 @@ export function turnAbout(
     .add(pivot)
 }
 
+// ─── trackball orbit ───
+//
+// The turntable locks the horizontal drag to world Y, which near a pole turns
+// into a fast in-plane spin of the view: it reads as gimbal lock. The trackball
+// style is the common CAD orbit (SolidWorks, Onshape, Creo, NX): a horizontal
+// drag turns about the screen's own up axis, a vertical drag about its right
+// axis. There is no pole and no special angle, so the view behaves the same
+// everywhere; only a circular or diagonal drag rolls the horizon, and the cube
+// or a standard view puts it upright again.
+//
+// An upright spring that bled the roll back toward level was tried and
+// rejected: near a pole "upright" swings with the azimuth, so the spring itself
+// spun the view, the very effect this style removes.
+//
+// The pose is (azimuth, elevation, roll): the turntable basis turned by `roll`
+// about the view direction. roll = 0 is exactly the turntable pose, so every
+// programmatic snap (cube, align, fit) lands upright.
+
+export type OrbitStyle = 'turntable' | 'trackball'
+
+export interface RolledPose {
+  azimuth: number
+  elevation: number
+  roll: number
+}
+
+const ROLL_SCRATCH = new THREE.Vector3()
+
+// The turntable right/up turned by `roll` about the view direction: right is
+// swung toward up for a positive roll.
+export function rolledBasis(
+  azimuth: number,
+  elevation: number,
+  roll: number,
+  right: THREE.Vector3,
+  up: THREE.Vector3,
+): void {
+  orbitRight(azimuth, right)
+  orbitUp(azimuth, elevation, up)
+  if (roll === 0) return
+  const c = Math.cos(roll)
+  const s = Math.sin(roll)
+  ROLL_SCRATCH.copy(right)
+  right.multiplyScalar(c).addScaledVector(up, s)
+  up.multiplyScalar(c).addScaledVector(ROLL_SCRATCH, -s)
+}
+
+const Q_RIGHT = new THREE.Vector3()
+const Q_UP = new THREE.Vector3()
+const Q_DIR = new THREE.Vector3()
+const Q_BASIS = new THREE.Matrix4()
+
+// The camera orientation of a rolled pose (columns right, up, back).
+export function poseQuaternion(pose: RolledPose, out: THREE.Quaternion): THREE.Quaternion {
+  rolledBasis(pose.azimuth, pose.elevation, pose.roll, Q_RIGHT, Q_UP)
+  orbitDirection(pose.azimuth, pose.elevation, Q_DIR)
+  return out.setFromRotationMatrix(Q_BASIS.makeBasis(Q_RIGHT, Q_UP, Q_DIR))
+}
+
+const STEP_RIGHT = new THREE.Vector3()
+const STEP_UP = new THREE.Vector3()
+const STEP_DIR = new THREE.Vector3()
+const STEP_Q = new THREE.Quaternion()
+const STEP_AXIS = new THREE.Vector3()
+const STEP_R0 = new THREE.Vector3()
+const STEP_U0 = new THREE.Vector3()
+
+// One trackball drag step. It uses the same signs and rate as the turntable
+// (rotateOrbit), so at a level, unrolled side view the first step is the same;
+// the difference is only that the axes follow the screen.
+export function rotateTrackball(
+  pose: RolledPose,
+  dx: number,
+  dy: number,
+  height: number,
+): RolledPose {
+  const length = Math.hypot(dx, dy)
+  if (length === 0) return { azimuth: pose.azimuth, elevation: pose.elevation, roll: pose.roll }
+  const h = height > 0 ? height : 1
+  const delta = (2 * Math.PI) / h
+  rolledBasis(pose.azimuth, pose.elevation, pose.roll, STEP_RIGHT, STEP_UP)
+  orbitDirection(pose.azimuth, pose.elevation, STEP_DIR)
+  // One turn about the screen axis perpendicular to the drag, not a horizontal
+  // then a vertical turn: those do not commute, so a straight drag and its
+  // reverse would not retrace each other and a diagonal would turn too little.
+  STEP_AXIS.copy(STEP_UP).multiplyScalar(-dx).addScaledVector(STEP_RIGHT, -dy).divideScalar(length)
+  STEP_Q.setFromAxisAngle(STEP_AXIS, delta * length)
+  STEP_DIR.applyQuaternion(STEP_Q)
+  STEP_RIGHT.applyQuaternion(STEP_Q)
+  // Re-express the turned camera in (azimuth, elevation, roll). The direction
+  // fixes the first two; on a pole the old azimuth is kept and roll absorbs
+  // the rest, so the pose is exact even where the azimuth is ill-conditioned.
+  const angles = anglesFromDirection(STEP_DIR, pose.azimuth)
+  orbitRight(angles.azimuth, STEP_R0)
+  orbitUp(angles.azimuth, angles.elevation, STEP_U0)
+  const roll = Math.atan2(STEP_RIGHT.dot(STEP_U0), STEP_RIGHT.dot(STEP_R0))
+  return { azimuth: angles.azimuth, elevation: angles.elevation, roll }
+}
+
 export interface TurntablePoseSnapshot {
   target: [number, number, number]
   distance: number
   azimuth: number
   elevation: number
   zoom: number
+  // Absent in a turntable snapshot, which is always unrolled.
+  roll?: number
 }
 
 function pointerIdOf(e: PointerEvent): number {
@@ -204,6 +310,12 @@ export class TurntableControls {
   distance = 1
   azimuth = 0
   elevation = 0
+  // Turn about the view direction on top of the turntable basis. Only the
+  // trackball style ever makes it non-zero; every programmatic pose resets it.
+  roll = 0
+  // The class keeps the turntable as its own default so the turntable law
+  // stays testable alone; SceneController picks the style the app uses.
+  orbitStyle: OrbitStyle = 'turntable'
   // Orbit around the body under the cursor on a right-drag (the View options
   // row). The pick itself is injected: the controller owns the gesture, the
   // scene owner owns the raycast.
@@ -263,6 +375,7 @@ export class TurntableControls {
     const angles = anglesFromDirection(offset, 0)
     this.azimuth = angles.azimuth
     this.elevation = angles.elevation
+    this.roll = 0
     this.applyPose(false, false)
   }
 
@@ -303,6 +416,7 @@ export class TurntableControls {
     const angles = anglesFromDirection(direction, options.poleAzimuth ?? this.azimuth)
     this.azimuth = angles.azimuth
     this.elevation = angles.elevation
+    this.roll = 0
     this.applyPose(true)
   }
 
@@ -311,6 +425,7 @@ export class TurntableControls {
     this.distance = Math.max(pose.distance, MIN_DISTANCE)
     this.azimuth = pose.azimuth
     this.elevation = pose.elevation
+    this.roll = pose.roll ?? 0
     this.setZoom(pose.zoom)
   }
 
@@ -330,11 +445,10 @@ export class TurntableControls {
   private applyPose(writePosition: boolean, notify = true): void {
     const direction = orbitDirection(this.azimuth, this.elevation, POSE_DIR)
     if (writePosition) this.camera.position.copy(this.target).addScaledVector(direction, this.distance)
-    const right = orbitRight(this.azimuth, POSE_RIGHT)
-    const up = orbitUp(this.azimuth, this.elevation, POSE_UP)
-    const basis = POSE_BASIS.makeBasis(right, up, direction)
+    rolledBasis(this.azimuth, this.elevation, this.roll, POSE_RIGHT, POSE_UP)
+    const basis = POSE_BASIS.makeBasis(POSE_RIGHT, POSE_UP, direction)
     this.camera.quaternion.setFromRotationMatrix(basis)
-    this.camera.up.copy(up)
+    this.camera.up.copy(POSE_UP)
     const camera = this.camera as THREE.Camera & { updateProjectionMatrix?: () => void }
     camera.updateProjectionMatrix?.()
     this.camera.updateMatrixWorld()
@@ -347,6 +461,10 @@ export class TurntableControls {
   // two-axis rotation the turntable law already applies to the view direction.
   // Without a pivot this is the plain phase-1 orbit around `target`.
   private rotateByPixels(dx: number, dy: number): void {
+    if (this.orbitStyle === 'trackball') {
+      this.rotateTrackballByPixels(dx, dy)
+      return
+    }
     const next = rotateOrbit(this, dx, dy, this.elementHeight())
     const dAz = next.azimuth - this.azimuth
     const dEl = next.elevation - this.elevation
@@ -356,6 +474,23 @@ export class TurntableControls {
     }
     this.azimuth = next.azimuth
     this.elevation = next.elevation
+    this.applyPose(true)
+  }
+
+  // The pivot turn is the camera's whole orientation change, taken from the two
+  // poses: turning the camera and the target rigidly about the pivot by it
+  // keeps the grabbed point under the cursor.
+  private rotateTrackballByPixels(dx: number, dy: number): void {
+    const next = rotateTrackball(this, dx, dy, this.elementHeight())
+    const pivot = this.gesture?.pivot
+    if (pivot) {
+      const before = poseQuaternion(this, POSE_BEFORE)
+      const turn = poseQuaternion(next, POSE_TURN).multiply(before.invert())
+      this.target.sub(pivot).applyQuaternion(turn).add(pivot)
+    }
+    this.azimuth = next.azimuth
+    this.elevation = next.elevation
+    this.roll = next.roll
     this.applyPose(true)
   }
 
@@ -374,8 +509,9 @@ export class TurntableControls {
     const zoom = this.zoom || 1
     const worldPerPixelX = frustumWidth / zoom / width
     const worldPerPixelY = frustumHeight / zoom / height
-    const right = orbitRight(this.azimuth, POSE_RIGHT)
-    const up = orbitUp(this.azimuth, this.elevation, POSE_UP)
+    rolledBasis(this.azimuth, this.elevation, this.roll, POSE_RIGHT, POSE_UP)
+    const right = POSE_RIGHT
+    const up = POSE_UP
     // The target slides opposite to the cursor so the model follows it: drag
     // right and the scene moves right under the pointer.
     this.target.addScaledVector(right, -dx * worldPerPixelX)
@@ -585,6 +721,7 @@ export function snapshotTurntablePose(controls: TurntableControls): TurntablePos
     azimuth: controls.azimuth,
     elevation: controls.elevation,
     zoom: controls.zoom,
+    roll: controls.roll,
   }
 }
 
