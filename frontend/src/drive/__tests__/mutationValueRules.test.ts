@@ -76,6 +76,8 @@ describe('value rules cover the catalog', () => {
     ['add_ngon', { type: 'add_ngon', featureId: 'sk1', center: [0, 0], corner: [1, 1], sides: 2 }],
     ['apply_offset', { type: 'apply_offset', featureId: 'sk1', sourceIds: [], distance: 2 }],
     ['mirror_entities', { type: 'mirror_entities', featureId: 'sk1', sourceIds: [], line: 'l1' }],
+    ['fillet_corners', { type: 'fillet_corners', featureId: 'sk1', radius: 0,
+      corners: [{ a: 'l1', aVertex: 'end', b: 'l2', bVertex: 'start' }] }],
     ['toggle_construction', { type: 'toggle_construction', targets: ['l1'] }],
     ['set_feature_plane', { type: 'set_feature_plane', featureId: 'sk1', plane: '' }],
     ['add_sketch', { type: 'add_sketch', featureId: 'sk1', plane: 'a plane with spaces' }],

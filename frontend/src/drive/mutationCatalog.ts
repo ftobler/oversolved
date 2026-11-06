@@ -451,6 +451,21 @@ const OFFSET_SIDE_NOTE =
   'An open selection keeps the per-entity rule: a line moves along the left normal of its start->end direction ' +
   'and a circle or arc grows its radius.'
 
+// The fillet's authored-arc contract is what an author cannot infer from the
+// mutation shape; the rules are pinned in yamlMutations/sketchFillet.ts and its
+// test.
+const FILLET_CORNERS_NOTE =
+  'Each corner trims the named endpoint of both straight sides to its tangent point and adds one authored ' +
+  'arc joining them; this is geometry, not a live fillet relation, so editing a side later does not move ' +
+  'the arc. The radius must be strictly less than both side lengths, and two corners sharing a line must ' +
+  'leave a segment on it. Both sides must be lines of the same sketch; an arc, circle, spline, ellipse or ' +
+  'projected side is refused, as is a corner whose sides already meet tangentially. The material side is ' +
+  'probed from the whole sketch profile unless `side` names it; a mixed construction/normal corner is ' +
+  'refused, and the arc is construction only when both sides are. The coincident joint between the two ' +
+  'trimmed endpoints is consumed. A second coincident, a tangent between the sides, or a `fixed` or ' +
+  'dimension that anchors a trimmed endpoint is refused by constraint id. Arc params are ' +
+  '`[cx, cy, r, a0_deg, a1_deg]` and keep the CCW sweep.'
+
 const VARIABLE_NAME_NOTE =
   'An expression refers to a variable by the variable feature\'s `label` (the name; `add_variable` sanitizes it to an ' +
   'identifier and suffixes `_2`, `_3`... on a clash), not by its featureId: `label: width` is used as `width * 2`.'
@@ -842,6 +857,15 @@ export const MUTATION_CATALOG = {
       featureId: str(),
       sourceIds: arr('Bare entity ids of the featureId sketch; the axis may not be one of them, and projected entities are refused.'),
       line: str('Entity id of one line-kind entity of the same sketch (normal or construction); it is the axis and is not mirrored.'),
+    },
+  },
+  fillet_corners: {
+    summary: 'Round one or more sketch corners by trimming both straight sides and adding a tangent arc.',
+    note: FILLET_CORNERS_NOTE,
+    fields: {
+      featureId: str(),
+      radius: num('The fillet radius, strictly less than both side lengths at every corner.'),
+      corners: arr('Non-empty list of { a, aVertex, b, bVertex, side? }: bare entity ids of two line entities in the featureId sketch, each with the endpoint key that meets at the corner; side is convex or concave and skips the material probe.'),
     },
   },
   toggle_construction: {
@@ -1398,6 +1422,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   add_ngon: 'sketch',
   apply_offset: 'sketch',
   mirror_entities: 'sketch',
+  fillet_corners: 'sketch',
   toggle_construction: 'sketch',
   set_feature_plane: 'sketch',
   add_sketch: 'sketch',

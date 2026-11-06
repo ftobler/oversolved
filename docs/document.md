@@ -171,6 +171,8 @@ Projection is not a kind: any base-kind entity (`line`/`circle`/`arc`/`point`) t
 
 Mirroring a selection (`mirror_entities`) writes plain authored entities: the copies are ordinary rows with their own ids, and there is no stored mirror relation, so moving the originals later does not move them. A constraint is carried over only when every one of its operands is a mirrored source or the axis line; a constraint that reaches anything else stays with the originals alone. A source whose mirror is itself (a seam edge on the axis, a line across it) gets no copy; it serves both halves, and its constraints to the other sources carry onto the copies. In the sketch editor the selection holds the sources and the axis: a lone selected line is the axis, and when the sources include lines the axis is the one selected construction line.
 
+Rounding sketch corners (`fillet_corners`) is also authored geometry, not a live relation: each named line endpoint is trimmed to its tangent point and joined to its partner by one arc, with coincident and tangent constraints tying the arc to the two sides. The radius must be strictly less than both side lengths (and two corners on one line must leave a segment), the material side is probed from the sketch's own profile unless the corner passes `side: convex | concave`, and a corner that already meets an arc, a projected side, a mixed construction corner, or a `fixed`/dimension anchoring a trimmed endpoint is refused by name. One step is one undo entry, and a step with any bad corner writes nothing.
+
 #### DXF import
 
 `import_dxf` turns the entities of an ASCII DXF file into authored entities of

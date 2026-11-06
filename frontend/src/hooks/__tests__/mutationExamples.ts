@@ -43,6 +43,14 @@ const docWithFitSpline = (): PartDoc => makeDoc(makeSketch('sk1', {
   constraints: [],
 }))
 
+// Two lines meeting at the origin, with the joint the fillet consumes. The
+// open chain has no material side, so the corner rounds as convex by default.
+const cornerDoc = (): PartDoc => makeDoc(makeSketch('sk1', {
+  entities: [{ id: 'l1', kind: 'line' }, { id: 'l2', kind: 'line' }],
+  initial: { l1: [0, 10, 0, 0], l2: [0, 0, 10, 0] },
+  constraints: [{ id: 'c_joint', kind: 'coincident', a: '$l1end', b: '$l2start' }],
+}))
+
 const circleDoc = (): PartDoc => makeDoc(makeSketch('sk1', {
   entities: [{ id: 'circ1', kind: 'circle' }, { id: 'ln1', kind: 'line' }],
   initial: { circ1: [5, 5, 3], ln1: [0, 0, 10, 0] },
@@ -284,6 +292,13 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   mirror_entities: {
     makeDoc: sketchDoc,
     mutation: { type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l2'], line: 'l1' },
+  },
+  fillet_corners: {
+    makeDoc: cornerDoc,
+    mutation: {
+      type: 'fillet_corners', featureId: 'sk1', radius: 2,
+      corners: [{ a: 'l1', aVertex: 'end', b: 'l2', bVertex: 'start' }],
+    },
   },
   toggle_construction: {
     makeDoc: sketchDoc,

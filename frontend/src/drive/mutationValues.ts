@@ -17,11 +17,12 @@
 // mutations the app itself produced, and refusing a historical value would make
 // an old journal unreplayable.
 
-import type { EntityKind, FeatureKind, Mutation, PartDoc } from '@/types/cad'
+import type { EntityKind, FeatureKind, FilletCorner, Mutation, PartDoc } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
 import { mirrorAxisFromLineParams, mirrorsToItself } from '@/utils/geometry/mirrorSketch'
+import { planFilletCorners } from '@/utils/yamlMutations/sketchFillet'
 import { MAX_FIT_POINTS } from '@/utils/geometry/fitSpline'
 import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
 import { lengthUnitOf } from '@/utils/lengthUnit'
@@ -876,6 +877,53 @@ function mirrorEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null 
   return null
 }
 
+// fillet_corners repeats the applier's whole validation against the document:
+// the shape of every explicit pair, the kinds, the meeting tolerance, the
+// corner constraints and the trim lengths. The applier is the backstop for the
+// UI; an external step is refused here by name before it can silently apply to
+// a subset.
+function filletCorners(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const radiusProblem = positiveNumberProblem(raw.radius, 'radius')
+  if (radiusProblem !== null) return invalid(radiusProblem)
+  if (!Array.isArray(raw.corners) || raw.corners.length === 0) {
+    return invalid(`corners must be a non-empty list of { a, aVertex, b, bVertex, side? }, got ${json(raw.corners)}`)
+  }
+  const corners: FilletCorner[] = []
+  for (let i = 0; i < raw.corners.length; i++) {
+    const entry = raw.corners[i]
+    if (!isRecord(entry)) return invalid(`corners[${i}] must be an object, got ${json(entry)}`)
+    const { a, b, aVertex, bVertex, side } = entry
+    if (typeof a !== 'string' || a.length === 0) {
+      return invalid(`corners[${i}].a must be a non-empty entity id, got ${json(a)}`)
+    }
+    if (typeof b !== 'string' || b.length === 0) {
+      return invalid(`corners[${i}].b must be a non-empty entity id, got ${json(b)}`)
+    }
+    if (aVertex !== 'start' && aVertex !== 'end') {
+      return invalid(`corners[${i}].aVertex must be "start" or "end", got ${json(aVertex)}`)
+    }
+    if (bVertex !== 'start' && bVertex !== 'end') {
+      return invalid(`corners[${i}].bVertex must be "start" or "end", got ${json(bVertex)}`)
+    }
+    if (side !== undefined && side !== 'convex' && side !== 'concave') {
+      return invalid(`corners[${i}].side must be "convex" or "concave", got ${json(side)}`)
+    }
+    corners.push({ a, b, aVertex, bVertex, ...(side !== undefined && { side }) })
+  }
+  const featureId = raw.featureId
+  if (ctx.doc === null || typeof featureId !== 'string') return null
+  const sketch = sketchOf(ctx.doc, featureId)
+  if (sketch === undefined) {
+    return unknownTarget(`fillet_corners names no sketch feature ${json(featureId)}`)
+  }
+  const plan = planFilletCorners(sketch, raw.radius as number, corners)
+  if ('reason' in plan) {
+    const message = `fillet_corners: ${plan.reason}`
+    return plan.code === 'unknown-target' ? unknownTarget(message) : invalid(message)
+  }
+  return null
+}
+
 // The bare builtin names resolveSketchPlane accepts. They stay case-sensitive:
 // accepting "top" would shadow a user plane whose id is exactly that, so the
 // boundary refuses an unmatched spelling with the valid names instead of
@@ -1524,6 +1572,7 @@ export const MUTATION_VALUE_RULES = {
   add_ngon: addNgon,
   apply_offset: applyOffset,
   mirror_entities: mirrorEntities,
+  fillet_corners: filletCorners,
   toggle_construction: toggleConstructionRule,
   set_feature_plane: setFeaturePlane,
   add_sketch: addSketch,

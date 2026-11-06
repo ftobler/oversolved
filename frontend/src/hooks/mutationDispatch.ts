@@ -16,6 +16,7 @@ import {
   applyAddNgon,
   applyAddOffset,
   applyMirrorEntities,
+  applyFilletCorners,
   applySetConstraintValue,
   applySetConstraintPos,
   applySetConstraintSign,
@@ -180,6 +181,8 @@ export const mutationHandlers: MutationHandlers = {
     applyAddOffset(next, m.featureId, m.sourceIds, m.distance),
   mirror_entities: (next, m) =>
     applyMirrorEntities(next, m.featureId, m.sourceIds, m.line),
+  fillet_corners: (next, m) =>
+    applyFilletCorners(next, m.featureId, m.radius, m.corners),
   toggle_construction: (next, m) =>
     applyToggleConstruction(next, m.targets),
   set_feature_plane: (next, m) => {

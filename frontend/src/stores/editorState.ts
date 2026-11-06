@@ -12,7 +12,7 @@
 // hooks/useEditorState.ts, and the historical name `useSketchEditorStore` is a
 // re-export of that binding from stores/sketchEditorStore.ts.
 import { createStore } from 'zustand/vanilla'
-import type { PartDoc, PartStyleEntry, SelectionDomain } from '@/types/cad'
+import type { FilletCorner, PartDoc, PartStyleEntry, SelectionDomain } from '@/types/cad'
 import type { DimensionPick } from '@/registry'
 import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND } from '@/registry'
 import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints, computeDimensionSign, computeAnglePlacementIsSupplement } from '@/utils/geometry/dimensionNaturalValue'
@@ -23,7 +23,7 @@ import { planBrepDimensionPick, refreshProjectedPickKinds } from '@/tools/dimens
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
 import { randomId } from '@/utils/yamlMutations/helpers'
-import type { DialogState, SketchEditorState } from './sketchEditorTypes'
+import type { DialogState, FilletCornerMap, SketchEditorState } from './sketchEditorTypes'
 import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectionEntityId, CANNOT_APPLY_TITLE, type PendingConstraint } from './sketchEditorCallbacks'
 import { samePoint, validateWithRepair, prunePickClaims } from './sketchEditorHelpers'
 import { activateTool, deactivateTool } from './sketchEditorToolLifecycle'
@@ -102,6 +102,58 @@ export function mirrorSelectionPlan(
   // the mutation dispatch and do nothing.
   if (sourceIds.length === 0) return { reason: 'mirror needs an entity to mirror besides the axis line' }
   return { axis, sourceIds }
+}
+
+// The selection contract of fillet_corners: every selected vertex is one
+// corner, and its partner comes from the corner map Geometry3D publishes for
+// the active sketch. A selected vertex with no single line partner, or with a
+// T-junction, is refused with the map's own reason so the gate and the drive
+// boundary say the same thing. Exported so the command's `enabled` verdict and
+// the store action read one definition.
+export interface FilletSelectionPlan {
+  corners: FilletCorner[]
+}
+
+export function filletSelectionPlan(
+  selection: Set<string>,
+  activeFeatureId: string | null,
+  cornerMap: FilletCornerMap,
+): FilletSelectionPlan | { reason: string } {
+  if (!activeFeatureId) return { reason: 'no active sketch' }
+  const vertices = [...selection].filter(target =>
+    target.startsWith('vertex:') && target.split(':')[1] === activeFeatureId)
+  if (vertices.length === 0) return { reason: 'select one or more sketch vertices to fillet' }
+
+  const corners: FilletCorner[] = []
+  const seen = new Set<string>()
+  for (const target of vertices) {
+    const parts = target.split(':')
+    const entityId = parts[2]
+    const vertexKey = parts[3]
+    if (vertexKey !== 'start' && vertexKey !== 'end') {
+      return { reason: `vertex "${entityId}:${vertexKey}" is not a line endpoint` }
+    }
+    const entry = cornerMap[target]
+    if (entry === undefined) {
+      return { reason: `vertex "${entityId}:${vertexKey}" has no line partner in this sketch` }
+    }
+    if ('reason' in entry) return { reason: entry.reason }
+    const pairKey = [
+      `${entityId}:${vertexKey}`,
+      `${entry.partner.entityId}:${entry.partner.vertexKey}`,
+    ].sort().join('|')
+    if (seen.has(pairKey)) continue
+    seen.add(pairKey)
+    corners.push({
+      a: entityId,
+      aVertex: vertexKey,
+      b: entry.partner.entityId,
+      bVertex: entry.partner.vertexKey,
+      ...(entry.side !== undefined && { side: entry.side }),
+    })
+  }
+  if (corners.length === 0) return { reason: 'select one or more sketch vertices to fillet' }
+  return { corners }
 }
 
 // The user-facing reason for an add the redundancy gate refuses. Shared by the
@@ -195,6 +247,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
   isRotating: false,
   entityKindMap: {},
   constructionEntityKeys: new Set(),
+  filletCornerMap: {},
   hoveredConstraintEntityIds: new Set(),
   hoveredVertexId: null,
   hoveredFaceNormal: null,
@@ -311,6 +364,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
       // the previous document's entity kinds.
       entityKindMap: {},
       constructionEntityKeys: new Set(),
+      filletCornerMap: {},
     })
   },
 
@@ -562,6 +616,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
 
   setEntityKindMap: (map) => set({ entityKindMap: map }),
   setConstructionEntityKeys: (keys) => set({ constructionEntityKeys: keys }),
+  setFilletCornerMap: (map) => set({ filletCornerMap: map }),
 
   // Reflects the document origin in the active sketch's local frame. Published by
   // Geometry3D while its feature is being edited, and cleared back to [0,0] when
@@ -679,6 +734,19 @@ export const editorState = createStore<EditorState>((set, get) => ({
     const onMutation = requireMutation('mirrorSelection')
     if (!onMutation) return null
     onMutation({ type: 'mirror_entities', featureId: activeFeatureId!, sourceIds: plan.sourceIds, line: plan.axis })
+    return null
+  },
+
+  // Fillet every selected corner in one mutation, so a four-corner rectangle is
+  // one undo entry. Returns the human-readable reason when the selection cannot
+  // carry the fillet; null when it was authored or there was nothing to act on.
+  filletCorners: (radius) => {
+    const { normalSelection: selection, activeFeatureId, filletCornerMap } = get()
+    const plan = filletSelectionPlan(selection, activeFeatureId, filletCornerMap)
+    if ('reason' in plan) return plan.reason
+    const onMutation = requireMutation('filletCorners')
+    if (!onMutation) return null
+    onMutation({ type: 'fillet_corners', featureId: activeFeatureId!, radius, corners: plan.corners })
     return null
   },
 

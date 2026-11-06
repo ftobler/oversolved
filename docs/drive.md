@@ -938,6 +938,12 @@ banner on stdout, so a client config must use the direct node invocation.
   the mirrored copies are plain authored geometry, not a live mirror relation
   (a source whose mirror is itself, such as a seam on the axis, gets no copy
   and serves both halves);
+  `fillet_corners` takes `radius` and a non-empty `corners` list of
+  `{a, aVertex, b, bVertex, side?}` naming two line entities of one sketch and
+  the endpoints that meet, trims each endpoint to its tangent point and adds one
+  tangent arc per corner; an arc or projected side, a mixed construction corner,
+  a `fixed`/dimension on a trimmed endpoint, or a radius that would consume a
+  side is refused by name, and one step is one undo entry;
   `add_variable` must sit
   before every feature that names it, and `reorder_features` takes exactly one
   of `toIndex` (which counts the seeded plane rows), `before: <featureId>` or

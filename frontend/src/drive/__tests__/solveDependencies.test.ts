@@ -12,7 +12,7 @@ describe('usesSettledSketchGeometry', () => {
   it('names every handler that reads the current sketch params', () => {
     for (const type of [
       'move_entity', 'move_vertex', 'move_vertex_with_constraint', 'resize_circle',
-      'mirror_entities', 'apply_offset', 'insert_fit_point', 'set_fit_spline_handle',
+      'mirror_entities', 'apply_offset', 'fillet_corners', 'insert_fit_point', 'set_fit_spline_handle',
     ]) {
       expect(usesSettledSketchGeometry({ type })).toBe(true)
     }

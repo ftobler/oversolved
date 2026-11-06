@@ -297,6 +297,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | `delete_selected` | Delete selection | `delete` | yes | any |
 | `duplicate_part` | Duplicate part | - | yes | assembly |
 | `export_assembly` | Export assembly | - | no | assembly |
+| `fillet_corners` | Fillet corners | `shift+f` | yes | sketch/part |
 | `finish_draw` | Finish drawing | `enter` | yes | sketch/part |
 | `insert_mate_copy_rotation` | Insert Copy rotation mate | - | yes | assembly |
 | `insert_mate_fixed` | Insert Fixed mate | - | yes | assembly |

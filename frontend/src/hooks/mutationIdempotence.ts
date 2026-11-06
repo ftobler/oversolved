@@ -128,6 +128,9 @@ export const IDEMPOTENT_MUTATION = {
   // mirror_entities mints fresh entity ids per dispatch like the add_* family:
   // re-running it clones the sources a second time.
   mirror_entities: false,
+  // fillet_corners mints an arc every dispatch, so it can never be a value
+  // no-op even when the corners were already rounded.
+  fillet_corners: false,
 
   // Structural edits. A resolved add_constraint appends a fresh unique id, and
   // toggle_construction flips the flag so re-dispatching it is a real change

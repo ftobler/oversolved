@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
 import { useCommandRegistry } from '@/contexts/CommandRegistryContext'
-import { openOffsetDialog } from '@/pages/commandEntries'
+import { openFilletDialog, openOffsetDialog } from '@/pages/commandEntries'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'
 import { iconUrl } from '@/components/Toolbar/tools/toolUtils'
 import EntityTools from '@/components/Toolbar/tools/EntityTools'
@@ -23,6 +23,7 @@ interface SketchToolbarProps {
 }
 
 const mirrorKey = CORE_KEYBINDINGS.find(b => b.command === 'mirror_entities')?.key.toUpperCase()
+const filletKey = CORE_KEYBINDINGS.find(b => b.command === 'fillet_corners')?.key.toUpperCase()
 const constructionKey = CORE_KEYBINDINGS.find(b => b.command === 'toggle_construction')?.key.toUpperCase()
 
 export default function SketchToolbar({ onResetViewport, onImportDxf, canImportDxf }: SketchToolbarProps) {
@@ -36,6 +37,9 @@ export default function SketchToolbar({ onResetViewport, onImportDxf, canImportD
   // The mirror verdict also reads which lines are construction, so a toggle or
   // its undo under an unchanged selection must re-run it as well.
   const constructionKeys = useSketchEditorStore(s => s.constructionEntityKeys)
+  // The fillet verdict reads the published corner map, so a solve or edit that
+  // changes the partners must re-run it even under an unchanged selection.
+  const filletCornerMap = useSketchEditorStore(s => s.filletCornerMap)
   const isDragActive = drag !== null
   // The disabled verdicts come from the same specs the clicks run through, so
   // a button can no longer disagree with its command. The token is a
@@ -51,6 +55,11 @@ export default function SketchToolbar({ onResetViewport, onImportDxf, canImportD
     () => registry.enabled('apply_offset') !== true,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionToken is the invalidation key for the verdict read
     [registry, selectionToken],
+  )
+  const filletDisabled = useMemo(
+    () => registry.enabled('fillet_corners') !== true,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionToken and filletCornerMap are the invalidation keys for the verdict read
+    [registry, selectionToken, filletCornerMap],
   )
 
   return (
@@ -93,6 +102,14 @@ export default function SketchToolbar({ onResetViewport, onImportDxf, canImportD
         disabled={mirrorDisabled}
         onClick={() => registry.execute('mirror_entities')}
         handle="toolbar:mirror_entities"
+      />
+
+      <ToolbarButton
+        title={filletKey ? `Fillet corners (${filletKey})` : 'Fillet corners'}
+        icon={iconUrl('feature-fillet')}
+        disabled={filletDisabled}
+        onClick={() => openFilletDialog(radius => { registry.execute('fillet_corners', { radius }) })}
+        handle="toolbar:fillet_corners"
       />
 
       <ToolbarButton

@@ -32,6 +32,8 @@ export { applyImportDxf } from './sketchDxf'
 
 export { applyMirrorEntities } from './sketchMirror'
 
+export { applyFilletCorners, planFilletCorners, type FilletSketchPlan, type PlannedFilletCorner } from './sketchFillet'
+
 export {
   applyAddExtrude,
   applyAddExtrudeProfile,

@@ -94,6 +94,7 @@ export function installPartRegistry(context: PartCommandContext = partContext())
 // absent: execute passes undefined and noParams accepts it.
 const PART_PARAMS: Readonly<Record<string, unknown>> = {
   apply_offset: { distance: 5 },
+  fillet_corners: { radius: 5 },
 }
 
 const ASSEMBLY_PARAMS: Readonly<Record<string, unknown>> = {

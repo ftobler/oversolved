@@ -237,6 +237,19 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
       "undoable": true,
     },
     {
+      "enabled": "no active sketch",
+      "id": "fillet_corners",
+      "label": "Fillet corners",
+      "params": [
+        {
+          "name": "radius",
+          "type": "number",
+        },
+      ],
+      "shortcut": "shift+f",
+      "undoable": true,
+    },
+    {
       "enabled": "nothing to finish",
       "id": "finish_draw",
       "label": "Finish drawing",

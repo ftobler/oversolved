@@ -4,6 +4,17 @@
 import type { ActiveTool, SelectionDomain } from '@/types/cad'
 import type { SnapKind, DimensionPick } from '@/registry'
 import type { SnapTarget } from '@/utils/geometry/snapDetection'
+import type { FilletCornerMap } from '@/utils/geometry/filletCorner'
+
+// A selected sketch vertex's fillet partner, published by Geometry3D next to
+// entityKindMap. The map and its verdict live with the corner math so the gate,
+// the store action and the publisher share one shape.
+export type {
+  FilletCornerCandidate,
+  FilletCornerMap,
+  FilletCornerPartner,
+  FilletVertexKey,
+} from '@/utils/geometry/filletCorner'
 
 export interface DialogState {
   position: [number, number]
@@ -254,6 +265,12 @@ export interface SketchEditorState {
   // construction toggle (or its undo) re-runs the toolbar verdict too.
   constructionEntityKeys: ReadonlySet<string>
   setConstructionEntityKeys: (keys: ReadonlySet<string>) => void
+  // The corner partner map of the active sketch, keyed by vertex selection id.
+  // Published by Geometry3D from the same entities/constraints/initial it
+  // renders; filletSelectionPlan reads it so the command gate and the store
+  // action share one verdict.
+  filletCornerMap: FilletCornerMap
+  setFilletCornerMap: (map: FilletCornerMap) => void
   // Sticky-placement state: the picks the user has made inside the active
   // dimension-tool gesture. Empty until the first click, cleared on tool exit
   // or after the placement dialog closes.
@@ -290,6 +307,10 @@ export interface SketchEditorState {
   // human-readable rejection when the selection cannot carry the mirror, or
   // null when it was authored and there was nothing to reject.
   mirrorSelection: () => string | null
+  // Fillet every selected sketch corner at `radius` (filletSelectionPlan).
+  // Returns a human-readable rejection when the selection cannot carry the
+  // fillet, or null when it was authored and there was nothing to reject.
+  filletCorners: (radius: number) => string | null
   toggleConstruction: () => void
   deleteSelected: () => void
   addDimensionPick: (pick: DimensionPick) => void

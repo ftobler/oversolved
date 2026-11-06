@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, SketchFeature } from '@/types/cad'
+import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, PartEntityDef, SketchFeature } from '@/types/cad'
 import { useSketchEditorStore, type VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 
 // Vertex/point rendering
@@ -23,6 +23,7 @@ import { DragPlane, DragSnapIndicator } from '@/components/Geometry3D/Dragging'
 // Inferred contact points: tangencies + curve-curve intersections (lazy inferred materialization)
 import { InferredContactMarkers } from '@/components/Geometry3D/InferredContactMarkers'
 import { inferredContactCandidates } from '@/utils/geometry/snapDetection'
+import { buildFilletCornerMap } from '@/utils/geometry/filletCorner'
 
 // Edge drag preview: frontend-only translation of the dragged entity's vertices.
 // No constraint resolution -- the WASM hard solve handles that on pointer-up.
@@ -219,6 +220,23 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     setConstructionEntityKeys(new Set(keys))
     return () => setConstructionEntityKeys(new Set())
   }, [isEditing, featureId, entities, setConstructionEntityKeys])
+  const setFilletCornerMap = useSketchEditorStore(s => s.setFilletCornerMap)
+  useEffect(() => {
+    if (!isEditing) return
+    // The corner map is built from authored params, the same blocks the applier
+    // trims, not from the solved display geometry.
+    const defs: Array<Pick<PartEntityDef, 'id' | 'kind' | 'construction' | 'source'>> =
+      featureDef?.entities ?? entities ?? []
+    const sides = defs.map(entity => ({
+      id: entity.id,
+      kind: entity.kind,
+      params: featureDef?.initial?.[entity.id] ?? [],
+      construction: entity.construction === true,
+      source: entity.source,
+    }))
+    setFilletCornerMap(buildFilletCornerMap(featureId, sides, featureDef?.constraints ?? []))
+    return () => setFilletCornerMap({})
+  }, [isEditing, featureId, featureDef, entities, setFilletCornerMap])
 
   // Register the held-or-solved sketch, NOT displaySketch: displaySketch is
   // replaced every drag tick, which would unregister/re-allocate per frame.

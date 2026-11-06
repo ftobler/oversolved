@@ -1255,6 +1255,17 @@ export type EntityStatus = Record<string, ConstraintStatus>
 // reproduce the insertion instead of re-deriving it from transient editor state.
 type FeatureInsertion = { insertAt?: number }
 
+/** One corner for `fillet_corners`: the two straight sides and the endpoint of
+ *  each that meets at the corner. The pair is explicit because a hand-drawn
+ *  sketch can have coordinate-equal endpoints with no coincident constraint. */
+export type FilletCorner = {
+  a: string
+  aVertex: 'start' | 'end'
+  b: string
+  bVertex: 'start' | 'end'
+  side?: 'convex' | 'concave'
+}
+
 /** An authoring aid: a `select` selector naming the pick. The headless drive
  *  resolves it against the settled solve before the mutation applies and stores
  *  the query string it resolved to; a selector is never persisted. The inner
@@ -1287,6 +1298,7 @@ export type Mutation =
   | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number; centerRef?: string | null; cornerRef?: string | null }
   | { type: 'apply_offset'; featureId: string; sourceIds: string[]; distance: number }
   | { type: 'mirror_entities'; featureId: string; sourceIds: string[]; line: string }
+  | { type: 'fillet_corners'; featureId: string; radius: number; corners: FilletCorner[] }
   | { type: 'toggle_construction'; targets: string[] }
   | { type: 'set_feature_plane'; featureId: string; plane: string | SelectorRef }
   | ({ type: 'add_sketch'; featureId: string; label?: string; plane?: string | SelectorRef } & FeatureInsertion)

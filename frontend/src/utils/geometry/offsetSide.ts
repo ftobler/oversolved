@@ -13,22 +13,19 @@
 // plain seed rule: it bounds no region, so "outward" has no meaning there.
 
 import { endpointVertices } from './offsetProfile'
+import { inside, probeExtent, segmentsOf, type ProfileSource } from './profileProbe'
 import { TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
 
 type Point = [number, number]
-type Segment = [Point, Point]
 
-export interface OffsetSource {
-  id: string
-  kind: string
-  params: readonly number[]
-}
+// The offset rule's sources are the shared profile probe's sources. The alias
+// keeps this module's callers unchanged while the even-odd soup lives in one
+// place.
+export type OffsetSource = ProfileSource
 
-// Arcs and circles are polygonized for the inside test. An even count puts a
-// vertex on the arc's mid angle, the point the side probe starts from, so the
-// probe sits on the true curve rather than on a chord.
-const ARC_PIECES = 64
-
+// Arcs and circles are polygonized for the inside test by the shared probe; an
+// even count puts a vertex on the arc's mid angle, the point the side probe
+// starts from, so the probe sits on the true curve rather than on a chord.
 function arcSweepDeg(a0: number, a1: number): number {
   const sweep = (((a1 - a0) % 360) + 360) % 360
   return sweep === 0 ? 360 : sweep
@@ -37,37 +34,6 @@ function arcSweepDeg(a0: number, a1: number): number {
 function arcPoint(cx: number, cy: number, r: number, deg: number): Point {
   const t = (deg * Math.PI) / 180
   return [cx + r * Math.cos(t), cy + r * Math.sin(t)]
-}
-
-function segmentsOf(source: OffsetSource): Segment[] {
-  const p = source.params
-  if (source.kind === 'line') return [[[p[0], p[1]], [p[2], p[3]]]]
-  if (source.kind === 'circle' || source.kind === 'arc') {
-    const [cx, cy, r] = p
-    const a0 = source.kind === 'arc' ? p[3] : 0
-    const sweep = source.kind === 'arc' ? arcSweepDeg(p[3], p[4]) : 360
-    const out: Segment[] = []
-    for (let i = 0; i < ARC_PIECES; i++) {
-      out.push([
-        arcPoint(cx, cy, r, a0 + (sweep * i) / ARC_PIECES),
-        arcPoint(cx, cy, r, a0 + (sweep * (i + 1)) / ARC_PIECES),
-      ])
-    }
-    return out
-  }
-  return []
-}
-
-/** Even-odd inside test against an unordered segment soup (a +x ray). */
-function inside(point: Point, segments: readonly Segment[]): boolean {
-  let crossings = 0
-  for (const [a, b] of segments) {
-    // Half-open in y, so a ray through a shared vertex counts it once.
-    if ((a[1] > point[1]) === (b[1] > point[1])) continue
-    const x = a[0] + ((point[1] - a[1]) / (b[1] - a[1])) * (b[0] - a[0])
-    if (x > point[0]) crossings++
-  }
-  return crossings % 2 === 1
 }
 
 /** Every line/arc endpoint meets an endpoint of another selected entity. */
@@ -93,15 +59,10 @@ export function offsetSideFactors(sources: readonly OffsetSource[]): Map<string,
   const supported = sources.filter((s) => s.kind === 'line' || s.kind === 'arc' || s.kind === 'circle')
   if (supported.length !== sources.length || supported.length === 0) return factors
   if (!closesIntoLoops(supported)) return factors
-  const segments = supported.flatMap(segmentsOf)
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-  for (const [a, b] of segments) {
-    for (const q of [a, b]) {
-      minX = Math.min(minX, q[0]); maxX = Math.max(maxX, q[0])
-      minY = Math.min(minY, q[1]); maxY = Math.max(maxY, q[1])
-    }
-  }
-  const eps = 1e-6 * Math.max(1, Math.hypot(maxX - minX, maxY - minY))
+  // The supported filter above keeps every kind the probe samples, so a null
+  // block here is unreachable; dropping it keeps the soup type non-nullable.
+  const segments = supported.flatMap(s => segmentsOf(s) ?? [])
+  const eps = 1e-6 * probeExtent(segments)
   for (const s of supported) {
     const p = s.params
     let from: Point

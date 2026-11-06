@@ -23,6 +23,7 @@ export const COMMAND_NAMES = [
   'add_pattern',
   'apply_offset',
   'mirror_entities',
+  'fillet_corners',
 
   // Sketch tools: set_tool_<activeTool>. Entity tools come from ENTITIES, the
   // rest are the compound and selection tools hardcoded in commandEntries.

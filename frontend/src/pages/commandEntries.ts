@@ -5,7 +5,7 @@ import type { Result } from '@/session/result'
 import { okResult } from '@/session/result'
 import type { ActiveTool } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
-import { mirrorSelectionPlan, type EditorState } from '@/stores/editorState'
+import { filletSelectionPlan, mirrorSelectionPlan, type EditorState } from '@/stores/editorState'
 import { useSketchUiStore, CANNOT_APPLY_TITLE, type SketchUiState } from '@/stores/sketchEditorStore'
 import { projectSelection } from '@/tools/projectSelectionCommand'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
@@ -405,6 +405,48 @@ const mirrorSpec: PartCommandSpec = {
   },
 }
 
+// Fillet is a selection action like mirror: every selected sketch vertex is one
+// corner and its partner comes from the published corner map. The radius is
+// data, and the toolbar path collects it through openFilletDialog. `enabled` and
+// the store action read the same filletSelectionPlan over the same state, so a
+// press on a vertex with no unique line partner is refused at the gate.
+const filletCornersSpec: CommandSpec<PartCommandContext, { radius: number }> = {
+  id: 'fillet_corners',
+  label: 'Fillet corners',
+  shortcut: partShortcut('fillet_corners'),
+  params: objectParams({ radius: Field.number() }),
+  undoable: true,
+  enabled: ctx => {
+    const st = ctx.state()
+    const plan = filletSelectionPlan(st.normalSelection, st.activeFeatureId, st.filletCornerMap)
+    return 'reason' in plan ? plan.reason : true
+  },
+  run: (ctx, { radius }) => {
+    const reason = ctx.state().filletCorners(radius)
+    if (reason !== null) ctx.showMessage({ title: 'Cannot fillet corner', message: reason, variant: 'error' })
+    return okResult()
+  },
+}
+
+// The value-dialog front end for fillet_corners. Programmatic callers pass the
+// parsed radius straight to execute; the toolbar button takes this path.
+export function openFilletDialog(onRadius: (radius: number) => void): void {
+  const st = useSketchUiStore.getState()
+  const cx = typeof window !== 'undefined' ? window.innerWidth / 2 : 200
+  const cy = typeof window !== 'undefined' ? window.innerHeight / 2 : 200
+  st.openDialog({
+    position: [cx, cy],
+    label: 'Fillet radius',
+    defaultValue: '5',
+    validate: (input) => refusalText('Value', isNaN(parseFloat(input)) ? cannotEvaluate(input) : null),
+    onConfirm: (input) => {
+      onRadius(parseFloat(input))
+      st.closeDialog()
+    },
+    onCancel: () => st.closeDialog(),
+  })
+}
+
 // Offset is a selection action, not a draw mode: it operates on the currently
 // selected sketch entities. The distance is data; the dialog below is only the
 // user-facing front end that collects it and calls execute.
@@ -486,6 +528,7 @@ export const PART_COMMAND_SPECS: readonly ErasedCommandSpec<PartCommandContext>[
   finishDrawSpec,
   cancelDrawSpec,
   mirrorSpec,
+  filletCornersSpec,
   offsetSpec,
   addExtrudeSpec,
   addHoleSpec,

@@ -3,6 +3,7 @@ import type { Entity, LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, Fi
 import { getEntityKind } from '@/types/cad'
 import { RENDER_KIND_TO_ICON } from '@/registry'
 import { iconModules } from '@/utils/core/iconModules'
+export { sampleBezier, sampleEllipse } from './sketchSamplers'
 
 /** Check if all values in a tuple are finite numbers. */
 export function allFinite(...vals: number[]): boolean {
@@ -110,44 +111,6 @@ export function sampleArcCCW(cx: number, cy: number, r: number, a0deg: number, a
 /** Sample an ellipse circumference into a closed 3D polyline.
  *  Parametric form `(a cos t, b sin t)` rotated by `thetaDeg` and translated to
  *  the center. The last point repeats the first so the polyline closes. */
-export function sampleEllipse(
-  cx: number, cy: number, a: number, b: number, thetaDeg: number, steps = 64,
-): [number, number, number][] {
-  if (!allFinite(cx, cy, a, b, thetaDeg)) return []
-  const th = thetaDeg * (Math.PI / 180)
-  const ct = Math.cos(th), st = Math.sin(th)
-  const pts: [number, number, number][] = []
-  for (let i = 0; i <= steps; i++) {
-    const t = (i / steps) * 2 * Math.PI
-    const ex = a * Math.cos(t)
-    const ey = b * Math.sin(t)
-    pts.push([cx + ex * ct - ey * st, cy + ex * st + ey * ct, 0])
-  }
-  return pts
-}
-
-/** Sample a cubic Bezier `B(t)` defined by four control points into a polyline.
- *  P1/P4 are on-curve endpoints, P2/P3 the off-curve handles. */
-export function sampleBezier(
-  p1: Point, p2: Point, p3: Point, p4: Point, steps = 32,
-): [number, number, number][] {
-  if (!allFinite(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1], p4[0], p4[1])) return []
-  const pts: [number, number, number][] = []
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps
-    const mt = 1 - t
-    const a = mt * mt * mt
-    const b = 3 * mt * mt * t
-    const c = 3 * mt * t * t
-    const d = t * t * t
-    pts.push([
-      a * p1[0] + b * p2[0] + c * p3[0] + d * p4[0],
-      a * p1[1] + b * p2[1] + c * p3[1] + d * p4[1],
-      0,
-    ])
-  }
-  return pts
-}
 
 // The ellipse axis keys and their derived-point math live in `ellipseAxis.ts`,
 // which imports nothing so the kernel drag path can use it inside the worker.
