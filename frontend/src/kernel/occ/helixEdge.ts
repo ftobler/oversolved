@@ -34,16 +34,17 @@ export function buildCurveEdge(oc: OccModule, scope: DisposeScope, desc: HelixDe
   const normal = scope.track(new oc.gp_Dir_4(desc.axis[0], desc.axis[1], desc.axis[2]))
   const xDir = scope.track(new oc.gp_Dir_4(desc.xAxis[0], desc.xAxis[1], desc.xAxis[2]))
   const ax3 = scope.track(new oc.gp_Ax3_3(pnt, normal, xDir))
-  const surf = scope.track(new oc.Geom_CylindricalSurface_1(ax3, desc.radius))
+  // The raw surface and 2D line live on in the edge's pcurve, owned through
+  // the Handles. Each is adopted the moment it exists, so a later throw frees
+  // it through the tracked Handle; tracking the raw object instead would free
+  // it under the edge.
+  const hSurf = scope.track(new oc.Handle_Geom_Surface_2(new oc.Geom_CylindricalSurface_1(ax3, desc.radius)))
 
   const { u } = startUV(desc)
   const { du, dv } = uvDirection(desc)
   const p2d = scope.track(new oc.gp_Pnt2d_3(u, 0))
   const d2d = scope.track(new oc.gp_Dir2d_4(du, dv))
-  const line = scope.track(new oc.Geom2d_Line_3(p2d, d2d))
-
-  const hCurve = scope.track(new oc.Handle_Geom2d_Curve_2(line))
-  const hSurf = scope.track(new oc.Handle_Geom_Surface_2(surf))
+  const hCurve = scope.track(new oc.Handle_Geom2d_Curve_2(new oc.Geom2d_Line_3(p2d, d2d)))
 
   // Over the parameter range [0, len2d] the 2D line advances one turn of angle
   // per pitch of axial rise, for `turns` turns.

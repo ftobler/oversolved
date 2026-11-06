@@ -144,9 +144,12 @@ function serializationProblem(doc: PartDoc): string | null {
 // a way to complete whatever the scheduler deferred, so a synchronous fake can
 // reach idle. A real-kernel scheduler settles on its own and its settle() is a
 // no-op.
+// settle() may be async: the real suite hands the event loop a macrotask
+// there, since a seed of synchronous WASM solves otherwise never leaves the
+// microtask queue and trips the test-setup stall guard.
 export interface FuzzSolver {
   scheduler: SolveScheduler<PartDoc>
-  settle(): void
+  settle(): void | Promise<void>
 }
 
 export interface FuzzRunOptions {
@@ -243,7 +246,7 @@ export async function runFuzzSequence(
   let droppedEntries = 0
 
   const settle = async (): Promise<void> => {
-    solver.settle()
+    await solver.settle()
     await session.idle()
   }
 

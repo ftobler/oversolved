@@ -223,8 +223,10 @@ export function makeArcEdge(
 export function makeBezierEdge(oc: OccModule, scope: DisposeScope, poles: Vec3[]): OccShape {
   const arr = scope.track(new oc.TColgp_Array1OfPnt_2(1, poles.length))
   poles.forEach((p, i) => arr.SetValue(i + 1, scope.track(new oc.gp_Pnt_3(p[0], p[1], p[2]))))
-  const bez = scope.track(new oc.Geom_BezierCurve_1(arr))
-  // Upcast the raw Geom_BezierCurve to a Handle_Geom_Curve for MakeEdge.
+  // Upcast the raw Geom_BezierCurve to a Handle_Geom_Curve for MakeEdge. The
+  // Handle adopts the curve into OCC's refcount and the edge keeps it alive, so
+  // the raw object must not be tracked: dispose would free it under the edge.
+  const bez = new oc.Geom_BezierCurve_1(arr)
   const geomCurve = scope.track(new oc.Handle_Geom_Curve_2(bez))
   const builder = scope.track(new oc.BRepBuilderAPI_MakeEdge_24(geomCurve))
   return builder.Edge()
@@ -258,7 +260,10 @@ export function makeBSplineChainEdge(
     const mult = i === 0 || i === knots.length - 1 ? 4 : 3
     multArr.SetValue(i + 1, mult)
   })
-  const curve = scope.track(new oc.Geom_BSplineCurve_1(poleArr, knotArr, multArr, 3, false))
+  // Adopted by the Handle at once and never tracked (see makeBezierEdge); the
+  // Handle keeps it alive through the knot removal below.
+  const curve = new oc.Geom_BSplineCurve_1(poleArr, knotArr, multArr, 3, false)
+  const geomCurve = scope.track(new oc.Handle_Geom_Curve_2(curve))
   for (let i = 2; i < knots.length; i++) {
     // Interior knot indices are 1-based in OCC; the loop skips the first knot
     // (index 1) and the last (index knots.length).
@@ -270,7 +275,6 @@ export function makeBSplineChainEdge(
       // same curve, only a C0 representation. Never fail the edge for it.
     }
   }
-  const geomCurve = scope.track(new oc.Handle_Geom_Curve_2(curve))
   const builder = scope.track(new oc.BRepBuilderAPI_MakeEdge_24(geomCurve))
   return builder.Edge()
 }
@@ -318,7 +322,8 @@ export function makeEllipseEdge(
     const geomCurve = scope.track(new oc.Handle_Geom_Curve_2(curve))
     return scope.track(new oc.BRepBuilderAPI_MakeEdge_24(geomCurve)).Edge()
   }
-  const ell = scope.track(new oc.Geom_Ellipse_1(elips))
+  // Adopted by the Handle, never tracked (see makeBezierEdge).
+  const ell = new oc.Geom_Ellipse_1(elips)
   const geomCurve = scope.track(new oc.Handle_Geom_Curve_2(ell))
   const builder = scope.track(new oc.BRepBuilderAPI_MakeEdge_24(geomCurve))
   return builder.Edge()

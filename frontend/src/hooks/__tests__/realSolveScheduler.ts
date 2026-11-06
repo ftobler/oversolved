@@ -13,7 +13,15 @@ import type { PartDoc } from '@/types/cad'
 import type { SolveOutcome, SolveScheduler, SolveSchedulerState } from '@/session/SolveScheduler'
 import { solveLocally } from '@/kernel/solveLocally'
 
-export function createRealSolveScheduler(): SolveScheduler<PartDoc> {
+// `trapCount` reads how many kernel traps solveLocally has recovered from so
+// far. A trap is retried on a fresh module and the retry usually passes, which
+// leaves no trace in the response; a solve during which the count moved is
+// reported as an error anyway, because the trap itself is the kernel bug.
+export interface RealSolveSchedulerOptions {
+  trapCount?: () => number
+}
+
+export function createRealSolveScheduler(options: RealSolveSchedulerOptions = {}): SolveScheduler<PartDoc> {
   let generation = 0
   let pendingCount = 0
   let lastError: string | null = null
@@ -25,6 +33,7 @@ export function createRealSolveScheduler(): SolveScheduler<PartDoc> {
       pendingCount++
       lastError = null
       let error: string | null = null
+      const trapsBefore = options.trapCount?.() ?? 0
       try {
         const response = await solveLocally(doc as unknown as Record<string, unknown>, {
           bypassCache: opts?.bypassCache,
@@ -33,6 +42,9 @@ export function createRealSolveScheduler(): SolveScheduler<PartDoc> {
         // The real suite is gated on OCC being loaded; a null here means the
         // loader got torn down mid-run, which is a test bug, not a solve.
         if (response === null) throw new Error('OCC.js unavailable for a real-kernel fuzz run')
+        if ((options.trapCount?.() ?? 0) > trapsBefore) {
+          throw new Error('kernel trap recovered by a reload; the retry passed but the trap is a kernel bug')
+        }
       } catch (e) {
         error = e instanceof Error ? e.message : String(e)
       } finally {

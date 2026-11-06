@@ -459,7 +459,9 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
         arr.SetValue(1, scope.track(new occ.gp_Pnt_3(0, 0, 0)))
         arr.SetValue(2, scope.track(new occ.gp_Pnt_3(5, -3, 0)))
         arr.SetValue(3, scope.track(new occ.gp_Pnt_3(10, 0, 0)))
-        return new occ.Handle_Geom_Curve_2(scope.track(new occ.Geom_BezierCurve_1(arr)))
+        // The Handle adopts the raw curve; tracking the raw object as well
+        // would free it under the edge (handleAdoptsRaw.test.ts).
+        return new occ.Handle_Geom_Curve_2(new occ.Geom_BezierCurve_1(arr))
       })())
       const line = scope.track(new occ.BRepBuilderAPI_MakeEdge_3(
         scope.track(new occ.gp_Pnt_3(10, 0, 0)), scope.track(new occ.gp_Pnt_3(0, 0, 0)),
