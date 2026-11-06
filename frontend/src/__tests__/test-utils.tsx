@@ -95,7 +95,7 @@ export function viewportMockModule(handle: Record<string, unknown> = {}) {
         // that captures off the settled signal would never capture in a test.
         autoZoomToFit: (_force?: boolean, onSettled?: () => void) => { onSettled?.() },
         captureScreenshotForSaving: vi.fn(),
-        alignCameraToPlane: vi.fn(),
+        alignCameraToFrame: vi.fn(),
         alignCameraToFace: vi.fn(),
         ...handle,
       }))

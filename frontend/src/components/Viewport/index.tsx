@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
-import type { Feature, PartFeature, Sketch, BodyResult } from '@/types/cad'
+import type { Feature, PartFeature, Sketch, BodyResult, PlaneTransform } from '@/types/cad'
 import Geometry3D from '@/components/Geometry3D'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
 import '@/components/Viewport/ViewportHud.css'
@@ -27,7 +27,7 @@ import { useSectionPipelineEffects } from '@/viewport/useSection'
 import { autoRangeFromMeshes } from '@/components/Geometry3D/curvature'
 import { MsaaRender } from '@/components/Viewport/MsaaRender'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
-import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/components/Viewport/cameraController'
+import { fitToContent, alignToFrame, alignToFace, traceCamera } from '@/components/Viewport/cameraController'
 import type { TurntableControls } from '@/components/Viewport/turntable'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
@@ -125,7 +125,7 @@ export interface ViewportHandle {
   // whatever camera happened to be live, often before the fit landed.
   autoZoomToFit: (force?: boolean, onSettled?: () => void) => void
   cancelPendingFit: () => void
-  alignCameraToPlane: (planeId: string) => void
+  alignCameraToFrame: (frame: PlaneTransform) => void
   alignCameraToFace: (faceNormal: [number, number, number], faceCenter: [number, number, number]) => void
 }
 
@@ -302,10 +302,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     fitSettledRef.current = null
   }, [])
 
-  const alignCameraToPlane = useCallback((planeId: string) => {
+  const alignCameraToFrame = useCallback((frame: PlaneTransform) => {
     const camera = cameraRef.current as THREE.OrthographicCamera | null
     if (!camera) return
-    alignToPlane(camera, controlsRef.current, planeId)
+    alignToFrame(camera, controlsRef.current, frame)
     invalidateRef.current?.()  // camera move outside React, same as the fit
   }, [cameraRef])
 
@@ -329,10 +329,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       captureScreenshotForSaving,
       autoZoomToFit,
       cancelPendingFit,
-      alignCameraToPlane,
+      alignCameraToFrame,
       alignCameraToFace,
     }),
-    [captureScreenshotForSaving, autoZoomToFit, cancelPendingFit, alignCameraToPlane, alignCameraToFace],
+    [captureScreenshotForSaving, autoZoomToFit, cancelPendingFit, alignCameraToFrame, alignCameraToFace],
   )
 
   const closeContextMenu = useSketchUiStore(s => s.closeContextMenu)

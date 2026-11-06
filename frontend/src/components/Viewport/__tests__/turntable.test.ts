@@ -16,7 +16,7 @@ import {
   turnAbout,
 } from '@/components/Viewport/turntable'
 import { pickPivotPoint } from '@/components/Viewport/pivotPick'
-import { alignToFace, alignToPlane, snapToDirection } from '@/components/Viewport/cameraController'
+import { alignToFace, alignToFrame, snapToDirection } from '@/components/Viewport/cameraController'
 
 // The pure half of the orbit law plus the controller against a real camera.
 // No R3F scene: the camera and a detached canvas are all these cases need.
@@ -204,29 +204,39 @@ describe('turntable pose math', () => {
 })
 
 describe('camera alignment on the turntable state', () => {
-  it('gives every builtin plane its view direction and a defined screen-up', () => {
-    const cases: Array<[string, [number, number, number], [number, number, number]]> = [
-      ['builtin_plane_front', [0, 0, 100], [0, 1, 0]],
-      ['builtin_plane_back', [0, 0, -100], [0, 1, 0]],
-      ['builtin_plane_right', [100, 0, 0], [0, 1, 0]],
-      ['builtin_plane_left', [-100, 0, 0], [0, 1, 0]],
+  it('gives every axis frame its view direction and puts a pole frame\'s y axis up the screen', () => {
+    // Rows are x axis, y axis, normal. Side frames keep the level horizon (up
+    // +Y); a frame facing straight up or down has a free roll, which the
+    // frame's own y axis decides.
+    const cases: Array<[string, number[], [number, number, number], [number, number, number]]> = [
+      ['front', [1, 0, 0, 0, 1, 0, 0, 0, 1], [0, 0, 100], [0, 1, 0]],
+      ['back', [-1, 0, 0, 0, 1, 0, 0, 0, -1], [0, 0, -100], [0, 1, 0]],
+      ['right', [0, 0, -1, 0, 1, 0, 1, 0, 0], [100, 0, 0], [0, 1, 0]],
+      ['left', [0, 0, 1, 0, 1, 0, -1, 0, 0], [-100, 0, 0], [0, 1, 0]],
       // Top has the Front plane at the bottom of the screen: screen up is -Z.
-      ['builtin_plane_top', [0, 100, 0], [0, 0, -1]],
+      ['top', [1, 0, 0, 0, 0, -1, 0, 1, 0], [0, 100, 0], [0, 0, -1]],
       // Bottom mirrors it.
-      ['builtin_plane_bottom', [0, -100, 0], [0, 0, 1]],
+      ['bottom', [1, 0, 0, 0, 0, 1, 0, -1, 0], [0, -100, 0], [0, 0, 1]],
+      // A sketch on a -Y face (x -> -X, y -> -Z): seen from below, still y up.
+      ['-Y face', [-1, 0, 0, 0, 0, -1, 0, -1, 0], [0, -100, 0], [0, 0, -1]],
+      // A sketch on a top face turned a quarter: its y axis is +X, so is up.
+      ['turned top', [0, 0, 1, 1, 0, 0, 0, 1, 0], [0, 100, 0], [1, 0, 0]],
     ]
-    for (const [plane, position, screenUp] of cases) {
+    for (const [name, rotation, position, screenUp] of cases) {
       const camera = makeCamera()
       const controls = makeControls(camera)
-      alignToPlane(camera, controls, plane)
-      expect(camera.position.x).toBeCloseTo(position[0], 9)
-      expect(camera.position.y).toBeCloseTo(position[1], 9)
-      expect(camera.position.z).toBeCloseTo(position[2], 9)
+      // A leftover azimuth must not leak into a pole frame's roll.
+      controls.azimuth = 2.4
+      controls.update()
+      alignToFrame(camera, controls, { rotation, origin: [0, 0, 0] })
+      expect(camera.position.x, name).toBeCloseTo(position[0], 9)
+      expect(camera.position.y, name).toBeCloseTo(position[1], 9)
+      expect(camera.position.z, name).toBeCloseTo(position[2], 9)
       const up = localAxis(camera, new THREE.Vector3(0, 1, 0))
-      expect(up.x).toBeCloseTo(screenUp[0], 12)
-      expect(up.y).toBeCloseTo(screenUp[1], 12)
-      expect(up.z).toBeCloseTo(screenUp[2], 12)
-      expect(Number.isFinite(up.x + up.y + up.z)).toBe(true)
+      expect(up.x, name).toBeCloseTo(screenUp[0], 12)
+      expect(up.y, name).toBeCloseTo(screenUp[1], 12)
+      expect(up.z, name).toBeCloseTo(screenUp[2], 12)
+      expect(Number.isFinite(up.x + up.y + up.z), name).toBe(true)
     }
   })
 

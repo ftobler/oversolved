@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { BodyResult } from '@/types/cad'
+import type { BodyResult, PlaneTransform } from '@/types/cad'
 import { INITIAL_ZOOM } from './cameraConstants'
 import type { TurntableControls } from './turntable'
 
@@ -85,25 +85,28 @@ export function snapToDirection(camera: THREE.Camera, controls: Controls, dir: T
   pointCamera(camera, controls, dir, camera.position.length(), new THREE.Vector3(), 0)
 }
 
-const PLANE_DIRECTIONS: Record<string, [number, number, number]> = {
-  builtin_plane_front: [0, 0, 100],
-  builtin_plane_top: [0, 100, 0],
-  builtin_plane_right: [100, 0, 0],
-  builtin_plane_bottom: [0, -100, 0],
-  builtin_plane_back: [0, 0, -100],
-  builtin_plane_left: [-100, 0, 0],
+// The turntable azimuth whose straight-up (normalY > 0) or straight-down view
+// has screen up along `yAxis`. On a pole the orbit law gives up = (-sin a, 0,
+// -cos a) looking down and (sin a, 0, cos a) looking up, solved here for a.
+export function poleAzimuthForUp(yAxis: [number, number, number], normalY: number): number {
+  const [x, , z] = yAxis
+  return normalY >= 0 ? Math.atan2(-x, -z) : Math.atan2(x, z)
 }
 
-// Look straight at a builtin plane.
-export function alignToPlane(camera: THREE.Camera, controls: Controls, planeId: string): void {
-  const direction = PLANE_DIRECTIONS[planeId]
-  if (!direction) { traceCamera('alignToPlane', 'unknown plane', planeId); return }
-  traceCamera('alignToPlane', planeId)
-
-  // The builtin views all look from a 100-unit standoff at the origin, and the
-  // poles carry the canonical CAD roll: Top has the Front plane at the bottom
-  // of the screen, Bottom mirrors it.
-  pointCamera(camera, controls, new THREE.Vector3(...direction), 100, new THREE.Vector3(), 0)
+// Look straight at a sketch (or plane) frame from its normal side, centred on
+// its origin. The turntable never rolls, so a tilted frame keeps the level
+// horizon; only a frame facing straight up or down has a free roll, and there
+// the frame's own y axis is put up the screen, so the sketch reads the way it
+// was drawn. For the builtin Top plane that is the canonical top view (Front
+// at the bottom of the screen).
+export function alignToFrame(camera: THREE.Camera, controls: Controls, frame: PlaneTransform): void {
+  const r = frame.rotation
+  const normal = new THREE.Vector3(r[6], r[7], r[8])
+  if (!(normal.lengthSq() > 0)) { traceCamera('alignToFrame', 'degenerate normal'); return }
+  traceCamera('alignToFrame', 'origin=', frame.origin)
+  const poleAzimuth = poleAzimuthForUp([r[3], r[4], r[5]], normal.y)
+  const [ox, oy, oz] = frame.origin
+  pointCamera(camera, controls, normal, 100, new THREE.Vector3(ox, oy, oz), poleAzimuth)
 }
 
 // Look straight at a face, centred on it.

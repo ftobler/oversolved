@@ -28,7 +28,7 @@ The frontend 3D viewport is an R3F (React Three Fiber) scene inside a single `Ca
 
 ### Root: `Viewport/index.tsx`
 
-Top-level `forwardRef` component exposing `ViewportHandle`: `captureScreenshotForSaving`, `autoZoomToFit`, `cancelPendingFit`, `alignCameraToPlane`, `alignCameraToFace`.
+Top-level `forwardRef` component exposing `ViewportHandle`: `captureScreenshotForSaving`, `autoZoomToFit`, `cancelPendingFit`, `alignCameraToFrame`, `alignCameraToFace`.
 
 ### Geometry3D Package (`src/components/Geometry3D/`)
 
@@ -77,7 +77,7 @@ Transforms raw events into clean primitives:
 
 - **SceneController**: TurntableControls + CubeGizmo + keyboard modifiers + snap-to-direction animation in one `useFrame`
 - **TurntableControls**: an unclamped, level-horizon turntable (`Viewport/turntable.ts`): right-drag rotates over the poles without clamping, the camera never rolls (screen right stays horizontal), and past a pole the view is upside down with the horizon still level. Left button disabled (reserved for selection), Middle=pan, Right=rotate. Ctrl=pan, Shift=dolly. The state (`target`, `distance`, `azimuth`, `elevation`, ortho `zoom`) is the single source of the camera pose; fit and plane/face alignment set it rather than calling `lookAt`. With Orbit around cursor on (View options), the right-drag pivot is the body point under the press (`Viewport/pivotPick.ts`, one raycast at button-down): the whole camera turns rigidly about it, so that point keeps its screen position and the press itself moves nothing. A miss keeps the target pivot.
-- **Camera alignment**: `autoZoomToFit`, `alignCameraToPlane` (Front/Top/Right/etc.), `alignCameraToFace`
+- **Camera alignment**: `autoZoomToFit`, `alignCameraToFrame` (a sketch's solved plane_transform: builtin, user plane or face; a frame facing up or down puts its y axis up the screen), `alignCameraToFace`
 - **CubeGizmo**: 2D canvas overlay, painted on drawn frames with face/edge/vertex hit detection
 
 ### Layer 3B: Selection Subsystem

@@ -26,7 +26,7 @@ vi.mock('../../components/Viewport', async () => {
     ) {
       React.useImperativeHandle(ref, () => ({
         autoZoomToFit: vi.fn(),
-        alignCameraToPlane: vi.fn(),
+        alignCameraToFrame: vi.fn(),
         alignCameraToFace: vi.fn(),
         captureScreenshotForSaving: vi.fn(),
       }))

@@ -15,6 +15,7 @@ import { executeCommand } from '@/utils/core/commandRegistry'
 import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
 import { useEditorState } from '@/hooks/useEditorState'
 import type { PartDoc } from '@/types/cad'
+import { builtinPlaneTransform } from '@/utils/geometry/bodySnapProjection'
 
 const F = vi.hoisted(() => {
   const doc: PartDoc = {
@@ -29,6 +30,9 @@ const F = vi.hoisted(() => {
       { id: 'sketch1', kind: 'sketch', label: 'Sketch 1', plane: '@builtin_plane_front', auto_hidden: true, constraints: [{ id: 'c1', kind: 'superfluous' }] },
       { id: 'extrude1', kind: 'extrude', label: 'Extrude 1', extrude: { sketch: '$sketch1', distance: 10 } },
       { id: 'plane1', kind: 'plane', label: 'Plane 1' },
+      // A sketch off the builtin planes: Normal to sketch must frame its solved
+      // frame, which no builtin-id lookup can know.
+      { id: 'sketch2', kind: 'sketch', label: 'Sketch 2', plane: '@plane1' },
     ],
     part_style: { 'body-1': { name: 'Body One', color: '#FF0000' } },
   }
@@ -40,6 +44,7 @@ const F = vi.hoisted(() => {
       sketch1: { solved: {}, constraints: { c1: { superfluous: true } } },
       extrude1: { solved: {} },
       plane1: { plane_transform: { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], origin: [1, 2, 3] } },
+      sketch2: { solved: {}, plane_transform: { rotation: [0, 0, -1, 0, 1, 0, 1, 0, 0], origin: [4, 5, 6] } },
     },
   }
   return self
@@ -55,7 +60,7 @@ const h = vi.hoisted(() => ({
   commitPreview: vi.fn(),
   cancelPreview: vi.fn(),
   alignFace: vi.fn(),
-  alignPlane: vi.fn(),
+  alignFrame: vi.fn(),
   exportOpen: vi.fn(),
   registryCreate: vi.fn(async () => ({ id: 'file-1' })),
 }))
@@ -106,7 +111,7 @@ vi.mock('@/components/Viewport', async () => {
         cancelPendingFit: vi.fn(),
         captureScreenshotForSaving: vi.fn(),
         alignCameraToFace: h.alignFace,
-        alignCameraToPlane: h.alignPlane,
+        alignCameraToFrame: h.alignFrame,
       }))
       return (
         <div data-testid="viewport">
@@ -321,8 +326,8 @@ describe('Part page actions', () => {
 
     fireEvent.click(screen.getByTestId('feature-ctx-sketch1'))
     fireEvent.click(menuItem('Normal to sketch'))
-    // The stored plane query is stripped of its @ before it reaches the camera.
-    expect(h.alignPlane).toHaveBeenCalledWith('builtin_plane_front')
+    // sketch1 has no solved frame, so its builtin plane supplies one.
+    expect(h.alignFrame).toHaveBeenCalledWith(builtinPlaneTransform('@builtin_plane_front'))
 
     expect(useSketchUiStore.getState().showConstraintTiles).toBe(false)
     fireEvent.click(menuItem('Show Constraints'))
@@ -339,7 +344,21 @@ describe('Part page actions', () => {
     fireEvent.click(screen.getByTestId('viewport-ctx'))
     fireEvent.click(menuItem('Normal to sketch'))
 
-    expect(h.alignPlane).toHaveBeenCalledWith('builtin_plane_front')
+    expect(h.alignFrame).toHaveBeenCalledWith(builtinPlaneTransform('@builtin_plane_front'))
+  })
+
+  it('Normal to sketch frames a sketch on a user plane by its solved frame', () => {
+    useEditorState.setState({
+    editingFeatureId: 'sketch2',
+    rollbackPosition: F.doc.features!.length,
+  })
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('feature-ctx-sketch2'))
+    fireEvent.click(menuItem('Normal to sketch'))
+
+    expect(h.alignFrame).toHaveBeenCalledTimes(1)
+    expect(h.alignFrame).toHaveBeenCalledWith(F.solve.sketch2.plane_transform)
   })
 
   it('a viewport right-click aims Normal to at the one selected plane', () => {

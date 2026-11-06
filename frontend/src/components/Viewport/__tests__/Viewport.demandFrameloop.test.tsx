@@ -86,7 +86,7 @@ vi.mock('../../dialogs/ContextMenuDialog', () => ({ default: () => null, __esMod
 // camera math (cameraController.test.ts owns that).
 vi.mock('@/components/Viewport/cameraController', () => ({
   fitToContent: vi.fn(() => true),
-  alignToPlane: vi.fn(),
+  alignToFrame: vi.fn(),
   alignToFace: vi.fn(),
   traceCamera: vi.fn(),
 }))
@@ -219,7 +219,7 @@ describe('Viewport demand rendering', () => {
     publishCamera()
     h.invalidate.mockClear()
 
-    act(() => { ref.current!.alignCameraToPlane('builtin_plane_front') })
+    act(() => { ref.current!.alignCameraToFrame({ rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], origin: [0, 0, 0] }) })
     act(() => { ref.current!.alignCameraToFace([0, 0, 1], [0, 0, 0]) })
 
     expect(h.invalidate).toHaveBeenCalledTimes(2)

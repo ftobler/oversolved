@@ -4,7 +4,6 @@ import type { ViewportHandle } from '@/components/Viewport'
 import type { PartDoc, PartFeature, Mutation, Sketch, LengthUnit } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations'
 import { isWholeBodySelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
-import { stripRefSigil } from '@/utils/refSigil'
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { wouldOverconstrain } from '@/kernel/features/constraintProbe'
@@ -66,7 +65,7 @@ import { getFileRegistry } from '@/stores/fileRegistry'
 
 import { normalizeHexColor } from '@/utils/core/partColors'
 import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
-import { builtinPlaneTransform, planeTransformNormal } from '@/utils/geometry/bodySnapProjection'
+import { builtinPlaneTransform, planeTransformNormal, resolvePlaneTransform } from '@/utils/geometry/bodySnapProjection'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
 import { hasDanglingContentInDoc } from '@/utils/yamlMutations/solveResult'
@@ -1242,12 +1241,14 @@ export default function Part() {
     const activeSketch = features.find(f => f.id === activeSketchFeatureId)
     if (!activeSketch || activeSketch.kind !== 'sketch') return
 
-    const planeId = activeSketch.plane
-    if (!planeId) return
-    const cleanPlaneId = stripRefSigil(planeId, '@')
+    // The sketch's own solved frame covers every plane kind (builtin, user
+    // plane, face); the builtin fallback keeps a sketch the solve has no frame
+    // for yet (or a failed one) framable on Front/Top/Right.
+    const frame = resolvePlaneTransform(solveResults?.[activeSketchFeatureId]?.plane_transform, activeSketch.plane)
+    if (!frame) return
 
-    viewportRef.current?.alignCameraToPlane(cleanPlaneId)  // camera-only; intentional no-op when Viewport absent
-  }, [activeSketchFeatureId, features])
+    viewportRef.current?.alignCameraToFrame(frame)  // camera-only; intentional no-op when Viewport absent
+  }, [activeSketchFeatureId, features, solveResults])
 
   // Built-in planes never reach the kernel, so only user-defined ones carry a
   // solved plane_transform; the built-ins are derived locally from their query.

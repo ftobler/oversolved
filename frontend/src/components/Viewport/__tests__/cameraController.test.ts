@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { snapToDirection, alignToPlane, alignToFace, fitToContent, shouldAutoFit } from '@/components/Viewport/cameraController'
+import { snapToDirection, alignToFrame, alignToFace, fitToContent, shouldAutoFit } from '@/components/Viewport/cameraController'
 import { TurntableControls } from '@/components/Viewport/turntable'
 import type { BodyResult } from '@/types/cad'
 
@@ -31,17 +31,21 @@ describe('cameraController', () => {
     expect(controls.target.toArray()).toEqual([0, 0, 0])
   })
 
-  it('alignToPlane positions the camera for a known plane and no-ops on unknown', () => {
+  it('alignToFrame looks down a tilted frame normal at its origin and no-ops on a degenerate one', () => {
     const cam = makeOrtho()
-    alignToPlane(cam, makeControls(cam), 'builtin_plane_top')
-    // Top plane looks down +Y, distance 100.
-    expect(cam.position.x).toBeCloseTo(0)
-    expect(cam.position.y).toBeCloseTo(100)
-    expect(cam.position.z).toBeCloseTo(0)
+    const controls = makeControls(cam)
+    // A sketch on a 45 degree face, away from the world origin: the case the
+    // builtin-only lookup could not frame at all.
+    const s = Math.SQRT1_2
+    alignToFrame(cam, controls, { rotation: [1, 0, 0, 0, s, -s, 0, s, s], origin: [10, 20, 30] })
+    expect(cam.position.x).toBeCloseTo(10, 9)
+    expect(cam.position.y).toBeCloseTo(20 + 100 * s, 9)
+    expect(cam.position.z).toBeCloseTo(30 + 100 * s, 9)
+    expect(controls.target.toArray()).toEqual([10, 20, 30])
 
     const cam2 = makeOrtho()
     const before = cam2.position.toArray()
-    alignToPlane(cam2, makeControls(cam2), 'not_a_plane')
+    alignToFrame(cam2, makeControls(cam2), { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 0], origin: [0, 0, 0] })
     expect(cam2.position.toArray()).toEqual(before)
   })
 

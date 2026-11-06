@@ -96,9 +96,9 @@ export function orbitUp(
 
 // Direction (target -> camera) to the unbounded angles. `poleAzimuth` supplies
 // the roll of a straight-up or straight-down view, where the direction itself
-// says nothing about it: the cube snap and the builtin planes ask for 0 (Top
-// with screen up -Z), while alignToFace passes the current azimuth so fitting a
-// horizontal face does not spin the view.
+// says nothing about it: the cube snap asks for 0 (Top with screen up -Z),
+// alignToFrame the azimuth that puts the sketch's y axis up, while alignToFace
+// passes the current azimuth so fitting a horizontal face does not spin the view.
 export function anglesFromDirection(
   direction: THREE.Vector3,
   poleAzimuth = 0,
