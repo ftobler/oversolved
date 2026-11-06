@@ -28,7 +28,7 @@
  */
 
 import { createRequire } from 'node:module'
-import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { OccModule } from './occTypes'
@@ -48,10 +48,26 @@ const occ = memoizedLoad(async (): Promise<OccModule | null> => {
       /export default opencascade;\s*$/,
       'module.exports = opencascade;',
     )
+    // The rewritten copy is only needed for the require: once it returns the
+    // module lives in memory, so the directory goes at once. Left behind, one
+    // copy per load (every vitest worker, trap recovery and MCP process) filled
+    // a RAM-backed /tmp to 40 GB.
     const dir = mkdtempSync(path.join(os.tmpdir(), 'occjs-'))
-    const cjsPath = path.join(dir, 'opencascade.cjs')
-    writeFileSync(cjsPath, src)
-    const factory = require(cjsPath) as OccFactory
+    let factory: OccFactory
+    try {
+      const cjsPath = path.join(dir, 'opencascade.cjs')
+      writeFileSync(cjsPath, src)
+      factory = require(cjsPath) as OccFactory
+      // Each reload after resetOcc() has a fresh path, so the cache entry
+      // would only pin one more dead copy of the script per recovery.
+      delete require.cache[cjsPath]
+    } finally {
+      try {
+        rmSync(dir, { recursive: true, force: true })
+      } catch {
+        // A failed cleanup must not turn a loaded kernel into "OCC absent".
+      }
+    }
     const wasmBinary = readFileSync(wasmPath)
     return await factory({ wasmBinary, locateFile: (p) => p })
   } catch {
