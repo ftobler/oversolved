@@ -23850,7 +23850,7 @@
     ["project_circular_edge","entity:sk2:proj0","fillet_corners","refused","select one or more sketch vertices to fillet"],
     ["project_circular_edge","entity:sk2:proj0","finish_draw","refused","nothing to finish"],
     ["project_circular_edge","entity:sk2:proj0","mirror_entities","refused","mirror needs a selected line to mirror across"],
-    ["project_circular_edge","entity:sk2:proj0","pattern_entities","ok",null],
+    ["project_circular_edge","entity:sk2:proj0","pattern_entities","refused","source id \"proj0\" names a projected entity; projected geometry re-projects from its source and is not copied"],
     ["project_circular_edge","entity:sk2:proj0","redo","refused","nothing to redo"],
     ["project_circular_edge","entity:sk2:proj0","set_tool_arc","ok",null],
     ["project_circular_edge","entity:sk2:proj0","set_tool_center_rect","ok",null],
