@@ -178,3 +178,42 @@ Deferred work and accepted limitations go to `feature/backlog.md` (sections: nee
 - The shell resets to the repo root between calls; nothing needs a trailing
   `cd` back. Within one call, prefer two calls with explicit directories
   over one chained line.
+
+## Shell commands under Claude Code
+
+Applies to Claude Code only. Its Bash tool has no `workdir` parameter, and
+`permissions.blockReadsOutsideWorkingDirectories` is on: before a command
+runs, the harness must prove every path it touches lies inside the working
+directories. Anything it cannot resolve statically stops for a human prompt,
+which stalls unattended work. Each rule below comes from a logged rejection.
+
+- No `cd` chained with other commands (`cd x && grep ... src/`, `cd ..`,
+  `cd /abs/path; git diff`). After a `cd` every relative path is "computed
+  at run time". Use absolute paths, `git -C <dir>`, `npm --prefix <dir>`,
+  or a `cd /abs/path` alone as its own call (Claude Code keeps the cwd for
+  the next call), then plain relative commands.
+- No shell variables in paths or loops over paths (`W=...; ln -s $R/x $W/x`,
+  `for d in ...; do cp $d ...`, `$f`). Spell every path out literally, one
+  command per path if needed.
+- No `source` (`source .venv/bin/activate && just ...`). The recipes call
+  `.venv/bin/python` themselves, so run `just <recipe>` plainly from the
+  tree's root; call tools directly as `.venv/bin/python -m ...`.
+- No subshells: `( ... )`, `$( ... )`, backticks. `(cmd | tail) && (cmd2 |
+  tail)` becomes two calls, or `cmd 2>&1 | tail`.
+- No code on stdin: `python3 - <<'EOF'`, `node -e`, heredoc scripts.
+- No in-place or substituting stream editors: `sed -i`, `sed 's/...//'`,
+  `perl -pi -e`. Edit files with the Edit tool (Write for new files). Only
+  `sed -n 'A,Bp' file` reads pass; prefer the Read tool with offset/limit.
+- Gate logs carry ANSI colour codes; do not strip them with `sed`. Use
+  `grep -a` on the raw log or the Read tool on `tmp/<gate>.log`.
+- No paths outside the project, including `../` escaping a worktree to reach
+  the main tree's artifacts, and the harness task output files under
+  `/tmp/claude-*`: a background command reports back on its own.
+- `git` after a directory change, or after writing files git reads (HEAD,
+  config, hooks), is unverifiable; run git as its own call with `git -C`.
+- Keep a call to one purpose. A long `;`-chain fails as a whole if any part
+  trips a rule, and the readable description no longer matches it.
+- Worktree setup (symlinking `.venv`, `node_modules`, `occ`, `wasm`) goes
+  through `bash tmp/setup_worktree.sh <topic>`, not an ad-hoc variable-laden
+  one-liner. Variables inside a script file are fine; only the command line
+  is checked.
