@@ -84,6 +84,61 @@ describe.skipIf(!ready)('fit_spline drive round trip (real kernel)', () => {
     // CadQuery 2.8.0 with scale=True.
     expect(measure!.measures.volume).toBeCloseTo(5.074999999999999, 5)
   }, 120_000)
+
+  // Regression pin for the recipe docs/drive.md teaches (tea_cup practice, F2):
+  // a per-end scalar is the unit direction times the scalar with
+  // tangentScale: false, and it lands on the same stored handles as writing
+  // the documented formula through set_fit_spline_handle.
+  it('authors per-end tangent scalars the documented way, equal to the handle formula', async () => {
+    const p0 = [4, 0]
+    const p1 = [0, 3]
+    const h = 5  // one piece, so the first and last chord are the same 3-4-5 chord
+    const t0: [number, number] = [0 * 1.75, 1 * 1.75]  // unit (0, 1) times scalar 1.75
+    const t1: [number, number] = [-1 * 1, 0 * 1]  // unit (-1, 0) times scalar 1
+    const frame = (spline: ScriptStep[]): ScriptStep[] => [
+      { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' } },
+      { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 0, 4, 0], entityId: 'bottom' } },
+      ...spline,
+      { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 3, 0, 0], entityId: 'left' } },
+      { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 1, operation: 'new' } },
+    ]
+    const byTangents = frame([{
+      mutation: {
+        type: 'add_entity', featureId: 'sk1', kind: 'fit_spline',
+        params: [...p0, ...p1], entityId: 'sp', tangents: [t0, t1], tangentScale: false,
+      },
+    }])
+    const byHandles = frame([
+      { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'fit_spline', params: [...p0, ...p1], entityId: 'sp' } },
+      {
+        mutation: {
+          type: 'set_fit_spline_handle', featureId: 'sk1', entityId: 'sp', end: 'start',
+          handle: [p0[0] + h * t0[0] / 3, p0[1] + h * t0[1] / 3],
+        },
+      },
+      {
+        mutation: {
+          type: 'set_fit_spline_handle', featureId: 'sk1', entityId: 'sp', end: 'end',
+          handle: [p1[0] - h * t1[0] / 3, p1[1] - h * t1[1] / 3],
+        },
+      },
+    ])
+    const a = await runHeadless({ doc: emptyDriveDoc(), steps: byTangents })
+    const b = await runHeadless({ doc: emptyDriveDoc(), steps: byHandles })
+    expect(a.features).toEqual([])
+    expect(b.features).toEqual([])
+    const stored = (doc: unknown): number[] => {
+      const sketch = (doc as PartDoc).features!.find(f => f.id === 'sk1') as { initial?: Record<string, number[]> }
+      return sketch.initial!.sp
+    }
+    const storedA = stored(a.doc)
+    expect(storedA).toHaveLength(8)
+    expect(storedA[5]).toBeCloseTo(35 / 12, 6)  // the 1.75 scalar survived into the start handle
+    stored(b.doc).forEach((value, i) => expect(value, `param ${i}`).toBeCloseTo(storedA[i], 6))
+    const volumeA = (await measureHeadless(a.doc!))!.measures.volume
+    const volumeB = (await measureHeadless(b.doc!))!.measures.volume
+    expect(Math.abs(volumeA - volumeB) / volumeB).toBeLessThan(1e-3)
+  }, 120_000)
 })
 
 describe.skipIf(!ready)('fit_spline sweep path (real kernel)', () => {

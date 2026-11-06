@@ -77,7 +77,7 @@ const num = (note?: string) => ({ type: 'number', required: true, ...(note !== u
 const optNum = () => ({ type: 'number', required: false } as const)
 const optObj = () => ({ type: 'object', required: false } as const)
 const bool = () => ({ type: 'boolean', required: true } as const)
-const optBool = () => ({ type: 'boolean', required: false } as const)
+const optBool = (note?: string) => ({ type: 'boolean', required: false, ...(note !== undefined && { note }) } as const)
 const point = (note?: string) => ({ type: 'point', required: true, ...(note !== undefined && { note }) } as const)
 const optPoint = (note?: string) => ({ type: 'point', required: false, ...(note !== undefined && { note }) } as const)
 const arr = (note?: string) => ({ type: 'array', required: true, ...(note !== undefined && { note }) } as const)
@@ -157,7 +157,29 @@ const SWEEP_SKETCH_NOTE =
 
 const sketchQuery = () => query('A profile ref. ' + PROFILE_REF_NOTE + ' ' + PROFILE_LOOPS_NOTE)
 const sweepSketchQuery = () => query('A profile ref. ' + PROFILE_REF_NOTE + ' ' + SWEEP_SKETCH_NOTE)
-const pathQuery = () => query('A path ref. ' + PROFILE_REF_NOTE)
+// A helix is a sweep path through its own arm in solveSweep, not the sketch
+// topology route, so the profile-ref grammar above never mentions it; a thread
+// author reading only the catalogue would otherwise never try it.
+// docs/drive.md quotes the sentence verbatim (fitSplineDocs.test.ts).
+export const SWEEP_HELIX_PATH_NOTE =
+  'A bare `$<helixId>` (or `@<helixId>`) names a helix as the path, the way to sweep a thread; it ' +
+  'must stand alone as the only path ref and is refused with `multisection`.'
+const pathQuery = () =>
+  query('A path ref. ' + PROFILE_REF_NOTE + ' ' + SWEEP_HELIX_PATH_NOTE + ' See docs/document.md, helix.')
+
+// The authoring recipe a practice run could not find: the tangent vector's
+// length already is the per-end magnitude, so no separate scalar field exists.
+// docs/drive.md quotes this sentence verbatim (fitSplineDocs.test.ts).
+export const FIT_SPLINE_TANGENT_MAGNITUDE_NOTE =
+  'Each tangent is an end derivative vector, so its length is that end\'s magnitude: `tangentScale: false` ' +
+  'keeps the authored length, while the default `true` replaces it with OCCT\'s `ScaleTangents` value and ' +
+  'keeps only the direction. A per-end tangent scalar is the unit direction times that scalar, with ' +
+  '`tangentScale: false`.'
+const FIT_SPLINE_TANGENTS_NOTE =
+  'fit_spline only: [start, end] end tangents, each [tx, ty] or null. ' + FIT_SPLINE_TANGENT_MAGNITUDE_NOTE
+const FIT_SPLINE_TANGENT_SCALE_NOTE =
+  'fit_spline only: true (default) rescales each authored tangent with OCCT\'s `ScaleTangents` (CadQuery ' +
+  '`scale=True`); false keeps each tangent\'s length as that end\'s magnitude.'
 const edgeQuery = () => query('An edge query as returned by `select`.')
 const faceQuery = () => query('A face query as returned by `select`.')
 const bodyQuery = () => query('A body id such as body_ex1, or a stored body query.')
@@ -787,8 +809,8 @@ export const MUTATION_CATALOG = {
       kind: str('Entity kind: line, circle, arc, ellipse, spline, fit_spline or point. A fit_spline takes its flat fit points plus optional tangents/tangentScale.'),
       params: arr(ENTITY_PARAMS_NOTE),
       entityId: optStr(),
-      tangents: optArr('fit_spline only: [start, end] end tangents, each [tx, ty] or null.'),
-      tangentScale: optBool(),
+      tangents: optArr(FIT_SPLINE_TANGENTS_NOTE),
+      tangentScale: optBool(FIT_SPLINE_TANGENT_SCALE_NOTE),
     },
   },
   import_dxf: {
@@ -842,8 +864,8 @@ export const MUTATION_CATALOG = {
       snapEntityRef: optStr(),
       constraintKind: str(),
       entityId: optStr(),
-      tangents: optArr('fit_spline only: [start, end] end tangents, each [tx, ty] or null.'),
-      tangentScale: optBool(),
+      tangents: optArr(FIT_SPLINE_TANGENTS_NOTE),
+      tangentScale: optBool(FIT_SPLINE_TANGENT_SCALE_NOTE),
     },
   },
   add_projected_entity: {
@@ -1385,7 +1407,8 @@ export const MUTATION_CATALOG = {
     note: 'A helix is a reference curve, not a body. The run or measure reply reports the resolved ' +
       'placement under `curves.<id>` as {origin, axis, start, end, radius, pitch, turns, height, hand}, ' +
       'where `axis` is the climb direction (the reference axis, negated by `direction: reverse`). ' +
-      '`@<id>/start` and `@<id>/end` stay valid point refs, e.g. the origin of a sweep profile plane.',
+      '`@<id>/start` and `@<id>/end` stay valid point refs, e.g. the origin of a sweep profile plane. ' +
+      'A bare `$<helixId>` is a valid `pathQuery` on a sweep (a thread), see `add_sweep`.',
     fields: {
       ...featureAddFields(),
       reference: optStr('A picked reference the helix rides on.'),

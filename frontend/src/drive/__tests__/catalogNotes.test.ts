@@ -461,3 +461,31 @@ describe('assembly catalog: mate param claims', () => {
     }
   })
 })
+
+// Practice runs tea_cup (F2) and bottle (F4): the per-end tangent magnitude and
+// the helix sweep path were both implemented but named on no row an author reads.
+describe('practice doc cases: fit_spline magnitude and helix sweep path', () => {
+  it('states the per-end magnitude on both fit_spline add rows', () => {
+    for (const type of ['add_entity', 'add_entity_with_constraint'] as const) {
+      const fields = mutationInfoOf(type).fields
+      expect(fields.tangents.note, type).toContain('its length is that end\'s magnitude')
+      expect(fields.tangents.note, type).toContain('`tangentScale: false` keeps the authored length')
+      expect(fields.tangentScale.note, type).toContain('false keeps each tangent\'s length')
+    }
+  })
+
+  it('names the helix path form and both limits on both pathQuery fields', () => {
+    for (const type of ['add_sweep', 'add_sweep_path'] as const) {
+      const note = mutationInfoOf(type).fields.pathQuery.note!
+      expect(note, type).toContain('`$<helixId>`')
+      expect(note, type).toContain('must stand alone')
+      expect(note, type).toContain('refused with `multisection`')
+    }
+  })
+
+  it('points the add_helix row at the sweep path form', () => {
+    const note = mutationInfoOf('add_helix').note!
+    expect(note).toContain('`$<helixId>` is a valid `pathQuery` on a sweep')
+    expect(note).toContain('`add_sweep`')
+  })
+})

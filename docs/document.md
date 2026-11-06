@@ -778,7 +778,9 @@ reply also carries the placement under `curves.<id>` as
 is the climb direction (`direction: reverse` negates it). `@<id>/start` and
 `@<id>/end` stay valid point refs, for example as a sweep profile plane's
 `origin`, so a profile can be placed on the curve without a throwaway plane. A
-helix is never a `bodyStore` body.
+helix is never a `bodyStore` body. A bare `$<id>` or `@<id>` is a valid sweep
+`path` (the way to sweep a thread): it must be the sweep's only path ref, and a
+`multisection` sweep refuses it.
 
 ## Constraints
 

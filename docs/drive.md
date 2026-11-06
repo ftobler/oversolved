@@ -840,10 +840,13 @@ banner on stdout, so a client config must use the direct node invocation.
   `add_sweep_profile` per curve) and one path ref per curve, while extrude and
   revolve take one closed curve per ref. `vertex:` refs name the same entity as
   `entity:`, and a `@<sketchId>/<entityId>` or `@<bodyId>/face/<n>` pick is a
-  face profile, which a sweep refuses. To sweep a shape that has a hole, sweep
-  the outer loops in one `add` feature and the inner loops in a second `cut`
-  feature of the same path, with the cut naming its `merge_target` so it cannot
-  reach an unrelated body. The blend between sections is not a loft:
+  face profile, which a sweep refuses. A bare `$<helixId>` (or `@<helixId>`)
+  names a helix as the path, the way to sweep a thread; it must stand alone as
+  the only path ref and is refused with `multisection`. See `docs/document.md`,
+  helix. To sweep a shape that has a hole, sweep the outer loops in one `add`
+  feature and the inner loops in a second `cut` feature of the same path, with
+  the cut naming its `merge_target` so it cannot reach an unrelated body. The
+  blend between sections is not a loft:
   `sweep.multisection` is the feature for it. `add_sweep` takes `transition`,
   `multisection`, `operation` and `merge_target` inline, the same keys
   `set_sweep_field` sets.
@@ -854,10 +857,18 @@ banner on stdout, so a client config must use the direct node invocation.
   true, CadQuery's `scale=True`, and applies OCCT's `ScaleTangents` once at
   authoring. With no tangents the ends take the Lagrange derivative, exactly
   like CadQuery. Mapping: CadQuery `spline(points, tangents, scale)` is
-  `params: points`, `tangents`, `tangentScale: scale`. build123d's
-  `Spline(*pts, tangents, tangent_scalars)` is believed to normalize the
-  tangents, multiply by the scalars and interpolate with `scale=False`; that
-  mapping is UNVERIFIED until a tea_cup/handle practice re-run confirms it.
+  `params: points`, `tangents`, `tangentScale: scale`.
+  Each tangent is an end derivative vector, so its length is that end's
+  magnitude: `tangentScale: false` keeps the authored length, while the default
+  `true` replaces it with OCCT's `ScaleTangents` value and keeps only the
+  direction. A per-end tangent scalar is the unit direction times that scalar,
+  with `tangentScale: false`. The stored start handle is
+  `P0 + h0 * t0 / 3` and the end handle `P_last - h_last * t1 / 3`, with `t0`
+  and `t1` the end tangents after any `ScaleTangents` scaling, and `h0` and
+  `h_last` the first and last chord lengths (the end handle is the last
+  piece's third control point, hence the minus). `set_fit_spline_handle` writes
+  that stored absolute form directly on a later edit; it is not the authoring
+  recipe, and its end point differs in sign from the tangent.
   Guidance that a field list cannot carry lives in the row note: `hole` lists
   its required fields (`sketch`, `diameter`, `depth_mode`) and its optional ones
   (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,
