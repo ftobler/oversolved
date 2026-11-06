@@ -213,6 +213,50 @@ describe('captureMateAtSeeds', () => {
       anchors,
     })).toBeNull()
   })
+
+  it('reports a rotating seed roll without writing an angle', () => {
+    const capture = captureMateAtSeeds({
+      kind: 'rotating',
+      ref_a: { part: 'box_a', anchor: 'face' },
+      ref_b: { part: 'box_b', anchor: 'face' },
+      anchors: table(seeded({ box_a: IDENTITY, box_b: seedAt([0, 0, 0], [0, 0, 80]) }), BOX_ANCHORS),
+    })
+    expect(capture!.captured).toEqual({ flip: false, roll: 80 })
+    expect(capture!.patch).toEqual({ flip: undefined })
+  })
+
+  it('reports a negative seed roll in the limit coordinate, not as 350', () => {
+    const capture = captureMateAtSeeds({
+      kind: 'rotating',
+      ref_a: { part: 'box_a', anchor: 'face' },
+      ref_b: { part: 'box_b', anchor: 'face' },
+      anchors: table(seeded({ box_a: IDENTITY, box_b: seedAt([0, 0, 0], [0, 0, -10]) }), BOX_ANCHORS),
+    })
+    expect(capture!.captured.roll).toBe(-10)
+  })
+
+  it('reports no roll when a rotating anchor carries no posed frame', () => {
+    const anchors = table(seeded({ box_a: IDENTITY, box_b: seedAt([0, 0, 0], [0, 0, 80]) }), BOX_ANCHORS)
+    const { x_axis: _dropped, ...frameless } = anchors.box_b.face
+    const capture = captureMateAtSeeds({
+      kind: 'rotating',
+      ref_a: { part: 'box_a', anchor: 'face' },
+      ref_b: { part: 'box_b', anchor: 'face' },
+      anchors: { ...anchors, box_b: { ...anchors.box_b, face: frameless } },
+    })
+    expect(capture!.captured).toEqual({ flip: false })
+  })
+
+  it('keeps a single angle field for the kinds that capture one', () => {
+    const capture = captureMateAtSeeds({
+      kind: 'sliding',
+      ref_a: { part: 'box_a', anchor: 'face' },
+      ref_b: { part: 'box_b', anchor: 'face' },
+      anchors: table(seeded({ box_a: IDENTITY, box_b: seedAt([0, 0, 0], [0, 0, 80]) }), BOX_ANCHORS),
+    })
+    expect(capture!.captured).toEqual({ flip: false, angle: 80 })
+    expect(capture!.captured).not.toHaveProperty('roll')
+  })
 })
 
 // ─── the drive: capture lands in the document and in the step result ───
@@ -485,7 +529,68 @@ describe('the drive captures at the seeds', () => {
     expect(mate).not.toHaveProperty('offset')
     expect(outcome.steps[2].captured).not.toHaveProperty('offset')
   })
+
+  it('reports a rotating seed roll that copies into a limit as is', async () => {
+    setMateSolver(makeEchoSolver())
+    const session = sessionWith(BOX_ANCHORS)
+    const outcome = await session.run(hingeSteps(-10))
+    expect(outcome.ok).toBe(true)
+    expect(outcome.steps[2]).toMatchObject({ ok: true, captured: { flip: false, roll: -10 } })
+    // The hinge stays free: the measured roll is a report, not a lock.
+    expect(findMate(session.getDoc(), 'm1')).not.toHaveProperty('angle')
+
+    // The reported value is a legal bound; the angle's [0, 360) spelling of
+    // the same roll is not, which is why the report is not in that form.
+    const bounded = await session.run([{ mutation: { type: 'update_mate', featureId: 'm1', limit_min: -10, limit_max: 20 } }])
+    expect(bounded.ok).toBe(true)
+    expect(findMate(session.getDoc(), 'm1')).toMatchObject({ limit_min: -10, limit_max: 20 })
+    const folded = await session.run([{ mutation: { type: 'update_mate', featureId: 'm1', limit_min: 350 } }])
+    expect(folded.ok).toBe(false)
+  })
+
+  it('lets an explicit rotating angle lock the hinge and still reports the seed roll', async () => {
+    setMateSolver(makeEchoSolver())
+    const locked = sessionWith(BOX_ANCHORS)
+    const outcome = await locked.run(hingeSteps(80, { angle: 200 }))
+    expect(outcome.ok).toBe(true)
+    expect(outcome.steps[2].captured).toEqual({ flip: false, roll: 80, overridden: ['angle'] })
+    expect(findMate(locked.getDoc(), 'm1')).toMatchObject({ angle: 200 })
+
+    // A lock at the seed roll beat nothing, in either spelling.
+    const same = sessionWith(BOX_ANCHORS)
+    const agreed = await same.run(hingeSteps(-10, { angle: 350 }))
+    expect(agreed.steps[2].captured).toEqual({ flip: false, roll: -10 })
+  })
+
+  it('reports the rotating seed roll through set_mate_ref as well', async () => {
+    setMateSolver(makeEchoSolver())
+    const session = sessionWith(BOX_ANCHORS)
+    const first = await session.run(hingeSteps(80, { capture: false }))
+    expect(first.steps[2].captured).toBeUndefined()
+    const second = await session.run([{
+      mutation: { type: 'set_mate_ref', featureId: 'm1', field: 'ref_b', ref: { part: 'b', anchor: 'face' }, capture: true },
+    }])
+    expect(second.ok).toBe(true)
+    expect(second.steps[0]).toMatchObject({ ok: true, captured: { flip: false, roll: 80 } })
+    expect(findMate(session.getDoc(), 'm1')).not.toHaveProperty('angle')
+  })
 })
+
+/** A hinge between box_a's face and box_b's face, box_b seeded rolled `rollDeg`
+ *  about the shared +Z axis, captured unless told otherwise. */
+function hingeSteps(rollDeg: number, options: { angle?: number; capture?: boolean } = {}): AssemblyScriptStep[] {
+  const { angle, capture = true } = options
+  return [
+    { mutation: { type: 'add_part', handle: 'a', part: 'box_a', fixed: true } },
+    { mutation: { type: 'add_part', handle: 'b', part: 'box_b', rotation: [0, 0, rollDeg] } },
+    { mutation: {
+      type: 'add_mate', featureId: 'm1', kind: 'rotating',
+      ref_a: { part: 'a', anchor: 'face' }, ref_b: { part: 'b', anchor: 'face' },
+      ...(capture && { capture: true }),
+      ...(angle !== undefined && { angle }),
+    } },
+  ]
+}
 
 // ─── the real mate solver: the capture is what the solve holds ───
 
@@ -618,5 +723,27 @@ describeSolve('the captured orientation is what the solve holds', () => {
       expect(Math.abs(solved[key] - seed[key]), key).toBeLessThan(1e-3)
     }
     expect(movedFromSeed(solved, seed)).toBe(false)
+  }, 60_000)
+
+  it('opens a captured hinge N degrees from its seed with angle = roll + N', async () => {
+    // The tutorial_joints trap: the lid seeded at roll 90, then `angle: 120`
+    // swung it to an absolute 120 (30 from the seed). The reported roll is
+    // what makes "open 120 from here" a sum instead of a probe.
+    const session = sessionWith(BOX_ANCHORS)
+    const first = await session.run(hingeSteps(90))
+    expect(first.ok).toBe(true)
+    const roll = first.steps[2].captured!.roll!
+    expect(roll).toBe(90)
+
+    const opened = await session.run([{ mutation: { type: 'update_mate', featureId: 'm1', angle: roll + 120 } }])
+    expect(opened.ok).toBe(true)
+    const mate = session.lastSolve()!.status.mates.m1
+    expect(mate.residual ?? Infinity).toBeLessThan(1e-6)
+    // B's canonical frame now sits 210 degrees about +Z: its local +Y (the
+    // canonical perp of a +Z face) lands at world (-sin 210, cos 210, 0).
+    const solvedY = worldAxis(poseOf(session, 'b'), [0, 1, 0])
+    const rad = ((roll + 120) * Math.PI) / 180
+    expect(solvedY[0]).toBeCloseTo(-Math.sin(rad), 6)
+    expect(solvedY[1]).toBeCloseTo(Math.cos(rad), 6)
   }, 60_000)
 })

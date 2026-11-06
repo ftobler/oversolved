@@ -14,8 +14,8 @@ import type { AssemblyDoc, MateKind, MateRef, NumberOrExpr, Transform3D } from '
 import type { Anchor, AnchorPose } from '@/kernel/partBundle'
 import { partInstances, type MateParamPatch } from '@/utils/assemblyMutations'
 import { buildAnchorTable, type AnchorTable } from '@/utils/anchorGizmos'
-import { captureMateOrientationPatch } from '@/utils/mateCapture'
-import { mateCapturesAngle } from '@/utils/mateKinds'
+import { captureMateOrientationPatch, measureMateRoll } from '@/utils/mateCapture'
+import { mateCapturesAngle, normalizeMateAngleDeg } from '@/utils/mateKinds'
 import { canonicalPerp } from '@/utils/mateOrientation'
 import { rotateVector, transformQuat } from '@/utils/transform3d'
 import type { MateCapture } from '@/drive/scriptRunner'
@@ -124,6 +124,12 @@ function sameOffset(a: MateParamPatch['offset'], b: MateParamPatch['offset']): b
   return near(num(a.x), num(b.x)) && near(num(a.y), num(b.y)) && near(num(a.z), num(b.z))
 }
 
+/** Whether an authored angle names the measured roll: angle wraps, so 350 and
+ *  -10 are the same lock. An expression is never known to match. */
+function sameRoll(angle: NumberOrExpr, roll: number): boolean {
+  return typeof angle === 'number' && normalizeMateAngleDeg(angle) === normalizeMateAngleDeg(roll)
+}
+
 /**
  * The flip/angle a seed pose implies for one mate, plus (for a fixed mate) the
  * seed translation as its offset in A's own frame, or null when there is
@@ -149,9 +155,14 @@ export function captureMateAtSeeds(input: SeedMateCaptureInput): SeedMateCapture
   // angle is typed as the wire's NumberOrExpr, but capture only ever writes a
   // plain number, which is all the report can carry.
   const offset = capturedOffset(patch)
+  // A rotating hinge captures no angle (that would lock it), but its seed roll
+  // is reported so the author can open it from the seed or bound it around the
+  // seed. Absent when either anchor carries no posed frame.
+  const roll = input.kind === 'rotating' ? measureMateRoll(input.ref_a, input.ref_b, input.anchors) : null
   const captured: MateCapture = {
     flip: patch.flip === true,
     ...(readsAngle && { angle: typeof patch.angle === 'number' ? patch.angle : 0 }),
+    ...(roll !== null && { roll }),
     ...(offset !== undefined && { offset }),
   }
 
@@ -164,6 +175,10 @@ export function captureMateAtSeeds(input: SeedMateCaptureInput): SeedMateCapture
   if (input.explicit?.angle !== undefined) {
     merged.angle = input.explicit.angle
     if (readsAngle && input.explicit.angle !== captured.angle) overridden.push('angle')
+    // A rotating lock that names a different roll than the seed moves the
+    // hinge off the measured pose; one naming the same roll (in either
+    // coordinate, since angle wraps) beat nothing.
+    if (roll !== null && !sameRoll(input.explicit.angle, roll)) overridden.push('angle')
   }
   // Only a fixed mate captures a translation, so an explicit offset on any
   // other kind never met a captured value to beat.

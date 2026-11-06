@@ -13,9 +13,12 @@
 import type { MateFeatureDef, MateOffsetVec, MateRef, Transform3D } from '@/types/cad'
 import { dot } from '@/utils/gizmoMath'
 import { lookupAnchor, type AnchorDescriptorTable, type AnchorTable } from '@/utils/anchorGizmos'
+import type { AnchorPose } from '@/kernel/partBundle'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
 import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
-import { isMateRefEmpty, mateCapturesAngle, mateParams, normalizeMateAngleDeg } from '@/utils/mateKinds'
+import {
+  isMateRefEmpty, mateCapturesAngle, mateParams, normalizeMateAngleDeg, normalizeMateLimitDeg,
+} from '@/utils/mateKinds'
 import { rollAboutAxisDeg } from '@/utils/mateOrientation'
 import { IDENTITY_TRANSFORM, rotateVector, transformQuat, type Quat } from '@/utils/transform3d'
 
@@ -62,6 +65,49 @@ function fixedCapturedOffset(
 }
 
 /**
+ * The roll between two posed anchors' canonical frames, rounded and still in
+ * atan2's (-180, 180], or null when either anchor lacks its posed frame (a
+ * static producer predating x_axis): measuring against a wrong frame would
+ * report a roll the solver never reads. The one implementation of the roll
+ * math both the captured angle and the reported seed roll fold from.
+ *
+ * Rounding comes FIRST, before either fold: a value a hair below zero folded
+ * into [0, 360) lands just under 360, and rounding that afterwards would author
+ * a 360 the angle range does not contain.
+ */
+function roundedRollDeg(poseA: AnchorPose, poseB: AnchorPose): number | null {
+  if (!poseA.x_axis || !poseB.x_axis) return null
+  return round3(rollAboutAxisDeg(poseA.x_axis, poseB.x_axis, poseA.axis))
+}
+
+/**
+ * The measured roll of a mate's two posed anchors in the LIMIT coordinate,
+ * signed degrees in (-180, 180], or null when the pair is unfinished or either
+ * anchor cannot be resolved or carries no posed frame.
+ *
+ * This is a report, not a capture: a rotating hinge must stay free, so its seed
+ * roll is never written into the mate (mateCapturesAngle). The author still
+ * needs the number to say "open N degrees from here" (`angle = roll + N`) or to
+ * bound the hinge around its seed, and limit_min/limit_max accept only
+ * (-180, 180], so the report is folded there: a -10 degree seed reported as
+ * the angle's 350 could not be copied into a bound. `angle` wraps, so the same
+ * number is valid there too.
+ */
+export function measureMateRoll(
+  refA: MateRef | undefined,
+  refB: MateRef | undefined,
+  anchors: Readonly<AnchorTable>,
+  descriptors?: Readonly<AnchorDescriptorTable>,
+): number | null {
+  if (isMateRefEmpty(refA) || isMateRefEmpty(refB)) return null
+  const poseA = lookupAnchor(anchors, refA!, descriptors)
+  const poseB = lookupAnchor(anchors, refB!, descriptors)
+  if (!poseA || !poseB) return null
+  const raw = roundedRollDeg(poseA, poseB)
+  return raw === null ? null : normalizeMateLimitDeg(raw)
+}
+
+/**
  * The `flip`/`angle` patch the current pose implies for a mate, or null when
  * there is nothing to capture: a kind with no authored orientation, an
  * unfinished pick, or anchors the table cannot resolve (a stale ref with no
@@ -103,15 +149,11 @@ export function captureMateOrientationPatch(
   // the mate then holds the canonical zero roll.
   // A rotating mate's angle is an explicit lock, so a re-pick leaves it alone.
   if (mateCapturesAngle(mate.kind)) {
-    const measurable = poseA.x_axis && poseB.x_axis
     // Normalised into the editor's [0, 360) authoring form, so a captured roll
-    // reads the same as one typed or clicked into the box: rollAboutAxisDeg
-    // returns atan2's (-180, 180], and a -10 degree pose would otherwise show
-    // as -10 in a box that can produce no negative value itself. Rounding comes
-    // FIRST -- normalising a hair below zero lands just under 360, and rounding
-    // that afterwards would author a 360 the range does not contain.
-    const raw = measurable ? round3(rollAboutAxisDeg(poseA.x_axis!, poseB.x_axis!, poseA.axis)) : 0
-    const angle = normalizeMateAngleDeg(raw)
+    // reads the same as one typed or clicked into the box: the measured roll is
+    // atan2's (-180, 180], and a -10 degree pose would otherwise show as -10 in
+    // a box that can produce no negative value itself.
+    const angle = normalizeMateAngleDeg(roundedRollDeg(poseA, poseB) ?? 0)
     patch.angle = angle === 0 ? undefined : angle
   }
 

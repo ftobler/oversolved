@@ -43,6 +43,11 @@ export type AnyScriptStep =
 export interface MateCapture {
   flip: boolean
   angle?: number
+  // A rotating mate's measured seed roll, report only: never written into the
+  // mate, since capturing it would lock the hinge. Signed degrees in
+  // (-180, 180], the limit_min/limit_max coordinate, so it copies into a bound
+  // as is and `roll + N` opens the hinge N degrees from the seed.
+  roll?: number
   // B's anchor delta from A's anchor, in A's local frame (the fixed mate's
   // offset convention); absent when the seed delta is the default zero.
   offset?: [number, number, number]

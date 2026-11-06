@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import type { AnchorPose } from '@/kernel/partBundle'
 import type { MateRef } from '@/types/cad'
 import type { AnchorDescriptorTable, AnchorTable } from '@/utils/anchorGizmos'
-import { captureMateOrientationPatch } from '@/utils/mateCapture'
+import { captureMateOrientationPatch, measureMateRoll } from '@/utils/mateCapture'
 
 const A = { part: 'pa', anchor: 'top' }
 const B = { part: 'pb', anchor: 'bottom' }
@@ -99,5 +99,41 @@ describe('captureMateOrientationPatch', () => {
     expect(captureMateOrientationPatch({ kind: 'fixed' }, staleA, B, t, descriptors)).toEqual({
       flip: undefined, angle: 30,
     })
+  })
+})
+
+/** B's canonical frame rolled `deg` degrees about the shared +Z axis. */
+function rolled(deg: number): AnchorTable {
+  const r = (deg * Math.PI) / 180
+  return table({}, { x_axis: [-Math.sin(r), Math.cos(r), 0] })
+}
+
+describe('measureMateRoll', () => {
+  it('measures a rotating seed roll while the capture patch stays flip only', () => {
+    const t = rolled(80)
+    expect(captureMateOrientationPatch({ kind: 'rotating' }, A, B, t)).toEqual({ flip: undefined })
+    expect(measureMateRoll(A, B, t)).toBe(80)
+  })
+
+  it('reports in the limit coordinate, (-180, 180], not the angle form', () => {
+    expect(measureMateRoll(A, B, rolled(-10))).toBe(-10)
+    const zero = measureMateRoll(A, B, rolled(0))
+    expect(zero).toBe(0)
+    expect(Object.is(zero, -0)).toBe(false)
+    // The half turn is spelled +180, the closed end of the limit range.
+    expect(measureMateRoll(A, B, table({}, { x_axis: [0, -1, 0] }))).toBe(180)
+  })
+
+  it('rounds before folding, so a hair below zero reports 0', () => {
+    const roll = measureMateRoll(A, B, rolled(-1e-7))
+    expect(roll).toBe(0)
+    expect(Object.is(roll, -0)).toBe(false)
+  })
+
+  it('measures nothing without a posed frame or a resolvable pair', () => {
+    expect(measureMateRoll(A, B, table({ x_axis: undefined }, {}))).toBeNull()
+    expect(measureMateRoll(A, B, table({}, { x_axis: undefined }))).toBeNull()
+    expect(measureMateRoll(A, { part: '', anchor: '' }, rolled(30))).toBeNull()
+    expect(measureMateRoll(A, { part: 'gone', anchor: 'x' }, rolled(30))).toBeNull()
   })
 })

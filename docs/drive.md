@@ -1233,7 +1233,8 @@ authors `flip: true` by hand is equally valid.
     document's solve (a throwaway extra solve, paid only for this level), the
     mate frames of mates the call added or edited or that have a problem,
     `solve.mates` for problem mates only, and the refused steps whole (accepted
-    ones collapse to `stepsAccepted`).
+    ones collapse to `stepsAccepted`, except a step carrying a `captured`
+    report, which stays whole).
   - `measure`, `summary` keeps `ok`, `docHash`, the aggregate `MeasureRecord`
     (`bodies`, `volume`, `area`, `centroid`, `bbox` and the topology counts),
     the solve verdict and the mate and part problem rows, and drops `perBody`.
@@ -1301,11 +1302,18 @@ authors `flip: true` by hand is equally valid.
   holds the pose you seeded instead of one you found by trial solving, without
   having to learn each circle edge's axis direction from a failed solve first.
   An explicit `flip`/`angle`/`offset` in the same step wins over the captured
-  value, and the step result carries `captured: { flip, angle, offset }` (angle
-  only for the kinds that read a roll, offset only for a `fixed` mate whose
-  seed translation is non-zero and in A's local frame; plus
-  `overridden: [...]` when an explicit value beat a captured one) so the reply
-  says what was frozen into the document. The
+  value, and the step result carries `captured: { flip, angle, roll, offset }`
+  (angle only for `fixed` and `sliding`, roll only for `rotating`, offset only
+  for a `fixed` mate whose seed translation is non-zero and in A's local frame;
+  plus `overridden: [...]` when an explicit value beat a captured one) so the
+  reply says what was frozen into the document. A `rotating` mate never
+  captures an angle, because that would lock the hinge; its `roll` is the
+  measured seed roll, reported and never written, in the `limit_min`/`limit_max`
+  coordinate (signed degrees in (-180, 180]). Opening the hinge N degrees from
+  the seed is `angle = roll + N`, and a bound around the seed is the roll plus
+  or minus the tolerance; with no `angle` the hinge's zero is the canonical
+  frames' dihedral, not the seed. Under `detail: "changed"` a step carrying
+  `captured` stays whole in `steps`. The
   default is `capture: false`, so a document authored before this existed
   keeps its meaning, and a kind with no authored orientation (spherical,
   tangential, copy_rotation) captures nothing.

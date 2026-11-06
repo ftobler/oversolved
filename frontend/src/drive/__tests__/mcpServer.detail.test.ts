@@ -223,6 +223,20 @@ describe('assemblyRunReply', () => {
     expect((reply.steps as Array<{ index: number }>).map(s => s.index)).toEqual([47])
   })
 
+  // A rotating capture's seed roll lives only in the step report, never in
+  // the document, so the edited-delta level must not collapse it away.
+  it('changed keeps an accepted step that carries a captured report; summary does not', () => {
+    const src = source()
+    ;(src.outcome.steps[3] as { captured?: unknown }).captured = { flip: false, roll: 80 }
+    const context = { inputDoc: flangeDoc(6), baseline: stateOf(flangeDoc(6)).instances }
+    const changed = assemblyRunReply(src, false, new DocHandleStore(), { detail: 'changed', context })
+    expect(changed.stepsAccepted).toBe(48)
+    expect(changed.steps).toEqual([expect.objectContaining({ index: 3, ok: true, captured: { flip: false, roll: 80 } })])
+    const summary = assemblyRunReply(src, false, new DocHandleStore(), { detail: 'summary', context })
+    expect(summary.stepsAccepted).toBe(48)
+    expect(summary.steps).toBeUndefined()
+  })
+
   // The six-stack flange call returned about 40 kB; a later field must not
   // creep back into the compact reply.
   it('the six-stack changed reply stays under 6 kB', () => {

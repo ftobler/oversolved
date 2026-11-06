@@ -133,14 +133,22 @@ export function shapeAssemblyExport(
   return { ...rest, solve: solveSummary(solve) }
 }
 
-/** Collapse accepted steps to a count; refused ones stay whole. */
-export function shapeSteps<S extends { ok: boolean }>(
+/**
+ * Collapse accepted steps to a count; refused ones stay whole. Under `changed`
+ * an accepted step that carries a `captured` report stays whole too: the
+ * report is the only place a capture's measurement appears (a rotating
+ * hinge's seed roll is never written into the document), and a script that
+ * asks for the edited delta must not lose it. Each kept step carries its own
+ * `index`, so a reader can tell which step it was.
+ */
+export function shapeSteps<S extends { ok: boolean; captured?: unknown }>(
   steps: readonly S[],
   detail: AssemblyDetail,
 ): { steps: readonly S[] } | { stepsAccepted: number; steps?: S[] } {
   if (detail === 'full') return { steps }
-  const refused = steps.filter(step => !step.ok)
-  return { stepsAccepted: steps.length - refused.length, ...(refused.length > 0 && { steps: refused }) }
+  const accepted = steps.filter(step => step.ok).length
+  const kept = steps.filter(step => !step.ok || (detail === 'changed' && step.captured !== undefined))
+  return { stepsAccepted: accepted, ...(kept.length > 0 && { steps: kept }) }
 }
 
 /**

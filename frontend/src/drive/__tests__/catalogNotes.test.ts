@@ -431,6 +431,24 @@ describe('assembly catalog: mate param claims', () => {
     }
   })
 
+  // Two practice runs read "capture freezes flip and angle" as covering a
+  // rotating hinge and authored an absolute angle as if it opened from the
+  // seed. The exception and the reported roll must stay in the prose.
+  it('states that a rotating capture locks nothing and reports the seed roll', () => {
+    for (const type of ['add_mate', 'set_mate_ref'] as const) {
+      const note = ASSEMBLY_MUTATION_CATALOG[type].fields.capture.note!
+      expect(note, type).toContain('A rotating mate never captures an angle')
+      expect(note, type).toContain('`roll` is the measured seed roll, reported and never written')
+      expect(note, type).toContain('limit_min/limit_max coordinate (signed degrees in (-180, 180])')
+      expect(note, type).toContain('angle = roll + N')
+      expect(note, type).toContain('Under detail "changed" a step that carries `captured` stays in `steps`')
+    }
+    for (const type of ['add_mate', 'update_mate'] as const) {
+      expect(ASSEMBLY_MUTATION_CATALOG[type].note, type)
+        .toContain('With no angle the hinge\'s zero is the canonical frames\' dihedral, not the seeded pose')
+    }
+  })
+
   it('names exactly the flip-less kinds as the ones capture cannot measure', () => {
     // captureMateOrientationPatch returns null exactly for a kind whose params
     // exclude flip, which is the prose claim the capture note makes.

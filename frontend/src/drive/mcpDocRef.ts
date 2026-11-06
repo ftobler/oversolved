@@ -420,7 +420,7 @@ export function assemblyRunReply(
   return {
     ok: result.ok,
     kind: 'assembly',
-    ...shapeSteps(result.outcome.steps as { ok: boolean }[], shaping.detail),
+    ...shapeSteps(result.outcome.steps as { ok: boolean; captured?: unknown }[], shaping.detail),
     docHash,
     solve: state.solve,
     mates: state.mates,

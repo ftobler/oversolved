@@ -186,7 +186,7 @@ const DETAIL_SCHEMA = {
     + 'measure, summary: the aggregate measures (bodies, volume, area, centroid, bbox and the topology counts), the solve verdict and the mate and part '
     + 'problems, with no perBody table and no one-line summary. changed: adds the poses that moved against the starting document\'s solve (run only), '
     + 'the mate frames of mates this call added, edited or that have a problem, solve.mates only for problem mates, and refused steps in full (accepted '
-    + 'steps become stepsAccepted); a measure has no starting document, so it lists no poses. full: every instance, mate frame and step, plus perBody '
+    + 'steps become stepsAccepted, except one carrying a captured report);a measure has no starting document, so it lists no poses. full: every instance, mate frame and step, plus perBody '
     + 'for measure.',
 }
 
@@ -993,7 +993,8 @@ export function createMcpServer(ops: McpCadOps): McpServer {
               + 'step to import a STEP from files and instance it without a part document; author mates from '
               + 'part-local picks (run select on the part\'s docHash), place the parts roughly and pass '
               + 'capture: true to freeze the seeds\' pose (flip/angle, and a fixed mate\'s offset; or set '
-              + 'flip: true by hand for face-to-face contact). Mate kinds: ' + MATE_KINDS.join(', ') + '. The assembly JSON Schema is the resource '
+              + 'flip: true by hand for face-to-face contact). A rotating capture freezes flip only, so the '
+              + 'hinge stays free, and reports the seed roll as captured.roll. Mate kinds: ' + MATE_KINDS.join(', ') + '. The assembly JSON Schema is the resource '
               + ASSEMBLY_DOC_SCHEMA_URI + '. Plane names are case-sensitive: use '
               + '@builtin_plane_front, @builtin_plane_top, @builtin_plane_right, a bare seeded name (Front, Top, '
               + 'Right) or @<planeId>; an unmatched plane is an error naming the valid planes. '
