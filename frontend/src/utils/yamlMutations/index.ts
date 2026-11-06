@@ -30,6 +30,8 @@ export { applyInsertFitPoint, applySetFitSplineHandle, applyDeleteFitPoint, type
 
 export { applyImportDxf } from './sketchDxf'
 
+export { applyAddText, planAddText, textEntityRows, type AddTextFields } from './sketchText'
+
 export { applyMirrorEntities } from './sketchMirror'
 
 export { applyFilletCorners, planFilletCorners, type FilletSketchPlan, type PlannedFilletCorner } from './sketchFillet'

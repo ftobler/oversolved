@@ -952,6 +952,12 @@ banner on stdout, so a client config must use the direct node invocation.
   stacked copy, more than 200 instances or more than 4096 sketch entities is
   refused by name, the copies are plain authored rows whose ids are not
   reported, and one step is one undo entry;
+  `add_text` takes `text` and optional `origin`, `size`, `angle` and `align`
+  (`left | center | right`) and writes the string's glyph outlines as plain
+  line and spline rows; a character outside printable ASCII is refused by code
+  point, a run over 2000 entities is refused, a missing sketch is an
+  `unknown-target`, and the reply carries `createdCount` with `createdIds: []`,
+  like `import_dxf`;
   `add_variable` must sit
   before every feature that names it, and `reorder_features` takes exactly one
   of `toIndex` (which counts the seeded plane rows), `before: <featureId>` or
@@ -1263,8 +1269,8 @@ authors `flip: true` by hand is equally valid.
 - `add_rect`, `add_center_rect` and `add_ngon` steps report `createdIds` as
   the entity ids in minting order (rect: bottom, right, top, left lines) plus
   `constraints: <count>`; the constraint ids stay readable from the document
-  resource. An `import_dxf` step reports `createdIds: []` and
-  `createdCount: <entities>` instead, because one import can add hundreds of
+  resource. An `import_dxf` or `add_text` step reports `createdIds: []` and
+  `createdCount: <entities>` instead, because one step can add hundreds of
   entities; its ids stay readable from the document resource, and the run's
   `docHash` names the document that holds them. Other mutations list every id
   they create. In an assembly, an

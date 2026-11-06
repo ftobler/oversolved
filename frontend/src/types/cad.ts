@@ -1291,6 +1291,9 @@ export type Mutation =
   | { type: 'delete'; targets: string[] }
   | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
   | { type: 'import_dxf'; featureId: string; content?: string; file?: string }
+  // Lettering expanded once into authored line/spline outlines; no text kind
+  // is stored. origin/size/angle/align place the run (utils/geometry/textExpand.ts).
+  | { type: 'add_text'; featureId: string; text: string; origin?: Point; size?: number; angle?: number; align?: 'left' | 'center' | 'right' }
   | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string; entityId?: string; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
   | { type: 'insert_fit_point'; featureId: string; entityId: string; index: number; point: Point }
   | { type: 'set_fit_spline_handle'; featureId: string; entityId: string; end: 'start' | 'end'; handle: Point | null }

@@ -7,6 +7,7 @@ import {
   applyDeleteElements,
   applyAddEntity,
   applyImportDxf,
+  applyAddText,
   applyInsertFitPoint,
   applySetFitSplineHandle,
   applyAddEntityWithConstraint,
@@ -162,6 +163,8 @@ export const mutationHandlers: MutationHandlers = {
     // session sees it; the empty fallback keeps a direct caller on the
     // applier's own loud parse refusal.
     applyImportDxf(next, m.featureId, m.content ?? ''),
+  add_text: (next, m) =>
+    applyAddText(next, m.featureId, m),
   add_entity_with_constraint: (next, m) =>
     applyAddEntityWithConstraint(next, m.featureId, m.kind, m.params, m.vertexKey, m.snapVertexId, m.constraintKind, m.snapEntityRef, m.entityId, {
       tangents: m.tangents, tangentScale: m.tangentScale,

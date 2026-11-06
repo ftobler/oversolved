@@ -27,6 +27,8 @@ import { planPatternEntities, type PatternEntitiesStep } from '@/utils/yamlMutat
 import { instanceTransforms } from '@/utils/geometry/sketchPattern'
 import { MAX_FIT_POINTS } from '@/utils/geometry/fitSpline'
 import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
+import { textFieldsProblem } from '@/utils/geometry/textExpand'
+import { planAddText, type AddTextFields } from '@/utils/yamlMutations/sketchText'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 
@@ -1293,6 +1295,33 @@ function importDxf(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return null
 }
 
+// The writer's plan owns the text contract (characters, size, the step and
+// sketch caps, a run that draws nothing), so the drive runs the same plan the
+// applier does; only the sketch lookup is the boundary's own, so a missing
+// sketch is an unknown target rather than a silent no-op. Without the live doc
+// the field shape is all that can be judged.
+function addText(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const featureId = raw.featureId
+  if (typeof featureId !== 'string' || featureId.length === 0) {
+    return invalid(`featureId must name the sketch the text lands in, got ${json(featureId)}`)
+  }
+  const problem = textFieldsProblem(raw)
+  if (problem !== null) return invalid(`add_text: ${problem}`)
+  if (ctx.doc === null) return null
+  const sketch = sketchOf(ctx.doc, featureId)
+  if (sketch === undefined) return unknownTarget(`add_text names no sketch feature ${json(featureId)}`)
+  // textFieldsProblem has checked every field's shape, so these narrowings hold.
+  const fields: AddTextFields = {
+    text: raw.text as string,
+    origin: raw.origin as Point | undefined,
+    size: raw.size as number | undefined,
+    angle: raw.angle as number | undefined,
+    align: raw.align as AddTextFields['align'],
+  }
+  const plan = planAddText(fields, sketch.entities?.length ?? 0)
+  return 'reason' in plan ? invalid(`add_text: ${plan.reason}`) : null
+}
+
 function addFillet(raw: RawStep): ValueViolation | null {
   if (raw.edges !== undefined) {
     const edgesProblem = pickListProblem(raw.edges, 'edges', 'edge')
@@ -1607,6 +1636,7 @@ export const MUTATION_VALUE_RULES = {
   add_entity: addEntity,
   add_entity_with_constraint: addEntityWithConstraint,
   import_dxf: importDxf,
+  add_text: addText,
   insert_fit_point: insertFitPoint,
   set_fit_spline_handle: setFitSplineHandle,
   add_projected_entity: addProjectedEntity,

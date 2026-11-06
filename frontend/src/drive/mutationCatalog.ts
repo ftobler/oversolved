@@ -21,6 +21,7 @@ import { entityParamLayoutsSentence } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { mutationValueViolation, EMPTY_REF_CLEARS } from '@/drive/mutationValues'
 import { MAX_PATTERN_INSTANCES, MAX_SKETCH_ENTITIES } from '@/utils/geometry/sketchPattern'
+import { MAX_TEXT_ENTITIES } from '@/utils/geometry/textExpand'
 
 export type FieldType =
   | 'string'
@@ -193,6 +194,18 @@ const DXF_IMPORT_NOTE =
   + 'The step reply reports `createdIds: []` and `createdCount`: the import is a bulk add, so the reply '
   + 'carries the entity count, the run reply\'s `docHash` names the document, and the document resource '
   + 'has the ids.'
+
+// The text expansion contract (utils/geometry/textExpand.ts): what the author
+// gets and what is refused, so a lettering step can be written blind.
+const ADD_TEXT_NOTE =
+  'Expands the string once, in Roboto 400, into closed glyph contours of `line` and `spline` entities with '
+  + 'fresh ids and no constraints, all in one undo entry; there is no stored text entity, so editing the '
+  + 'string later means deleting the outlines and adding new text. `size` is the em size in document units '
+  + '(positive, default 10; a capital is about 0.71 em tall), `angle` turns the baseline counter-clockwise in '
+  + `degrees (default 0). Kerning is not applied, and there is no multi-line layout. A character outside `
+  + `U+0020..U+007E is refused by code point, never dropped, and a run over ${MAX_TEXT_ENTITIES} entities is `
+  + 'refused. An extrude of the sketch fills the glyphs even-odd, so counters (o, B) stay open. '
+  + 'The step reply reports `createdIds: []` and `createdCount`; the document resource has the ids.'
 
 // The constraint operand grammar an author writes by hand. A sketch-local
 // `$<entityId>` is accepted and is what the app stores; the explicit forms name
@@ -785,6 +798,18 @@ export const MUTATION_CATALOG = {
       featureId: str('The sketch feature the imported entities land in.'),
       content: optStr('The ASCII DXF file text; give this or `file`, not both.'),
       file: optStr('The id of a DXF entry in the run call\'s files map; give this or `content`, not both.'),
+    },
+  },
+  add_text: {
+    summary: 'Write a string into a sketch as authored glyph outlines (lines and cubic splines).',
+    note: ADD_TEXT_NOTE,
+    fields: {
+      featureId: str('The sketch the outlines land in.'),
+      text: str('Printable ASCII (U+0020..U+007E), one line.'),
+      origin: optPoint('The baseline start in sketch coordinates; default [0, 0].'),
+      size: optNum(),
+      angle: optNum(),
+      align: optStr('left | center | right: which part of the run sits on origin; default left.'),
     },
   },
   insert_fit_point: {
@@ -1453,6 +1478,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   add_entity: 'sketch',
   add_entity_with_constraint: 'sketch',
   import_dxf: 'sketch',
+  add_text: 'sketch',
   insert_fit_point: 'sketch',
   set_fit_spline_handle: 'sketch',
   add_projected_entity: 'sketch',

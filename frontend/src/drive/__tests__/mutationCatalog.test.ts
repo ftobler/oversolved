@@ -347,6 +347,18 @@ describe('mutation catalog', () => {
     expect(toggleTargets).toContain('entity:<sketchId>:<entityId>')
   })
 
+  it('lists add_text in the sketch family with its fields and the bulk reply shape', () => {
+    const info = mutationInfoOf('add_text')
+    expect(MUTATION_FAMILY.add_text).toBe('sketch')
+    expect(Object.keys(info.fields).sort()).toEqual(['align', 'angle', 'featureId', 'origin', 'size', 'text'])
+    expect(info.fields.text.required).toBe(true)
+    expect(info.fields.featureId.required).toBe(true)
+    expect(info.note).toContain('`createdCount`')
+    expect(info.note).toContain('U+0020..U+007E')
+    expect(info.note).toContain('2000')
+    expect(info.note).toContain('Kerning is not applied')
+  })
+
   it('takes the revolve axis in the add call and never calls it the plane axis', () => {
     const info = mutationInfoOf('add_revolve')
     expect(info.fields.axis).toBeDefined()

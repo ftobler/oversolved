@@ -265,6 +265,10 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
       content: '0\nSECTION\n2\nENTITIES\n0\nLINE\n10\n0\n20\n0\n11\n5\n21\n0\n0\nENDSEC\n0\nEOF\n',
     },
   },
+  add_text: {
+    makeDoc: sketchDoc,
+    mutation: { type: 'add_text', featureId: 'sk1', text: 'Hi', origin: [0, 0], size: 5 },
+  },
   add_entity_with_constraint: {
     makeDoc: sketchDoc,
     mutation: { type: 'add_entity_with_constraint', featureId: 'sk1', kind: 'line', params: [1, 1, 2, 2], vertexKey: 'start', snapVertexId: 'vertex:sk1:l1:end', constraintKind: 'coincident', entityId: 'l3' },
