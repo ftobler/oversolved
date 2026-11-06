@@ -9,9 +9,9 @@
 //
 // The fake-scheduler half: FUZZ_FAKE_SEEDS and FUZZ_FAKE_STEPS size its long
 // run, and it covers the history mechanics on an unprovisioned checkout.
-// fuzzReal.test.ts holds the real-kernel ratchet, sized by FUZZ_SEEDS and
-// FUZZ_STEPS (`just fuzz-session` carries both, and the main gate's `just fuzz`
-// runs it at 200 x 40).
+// fuzzRealShard.ts drives the real-kernel ratchet, sized by FUZZ_SEEDS and
+// FUZZ_STEPS and split over FUZZ_SHARDS shard files (`just fuzz-session`
+// carries all three, and the main gate's `just fuzz` runs it at 200 x 40).
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { stringify } from 'yaml'

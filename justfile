@@ -169,13 +169,17 @@ fuzz:
 # PR gate runs a bounded 4 seeds x 6 steps; this recipe widens both sides (fake
 # and real) and settles every step before asserting its document, idle and
 # history-cap invariants. A failing seed is printed by number and can be
-# replayed alone.
+# replayed alone. The real seeds split round robin over `shards` test files
+# (FUZZ_SHARDS, at most 4: fuzzReal.test.ts and fuzzShard<N>Real.test.ts), so
+# vitest replays them in parallel forks, each with its own ~0.75 GB kernel; the
+# fork pool in vitest.config.ts still caps how many run at once by cores and
+# memory. `shards=1` replays every seed in one fork, as the PR gate does.
 
 # Seeded mutation and undo/redo fuzz (real kernel required).
 [working-directory: "frontend"]
-fuzz-session seeds="200" steps="40":
+fuzz-session seeds="200" steps="40" shards="4":
     mkdir -p ../tmp
-    FUZZ_REQUIRE_REAL=1 FUZZ_SEEDS={{seeds}} FUZZ_STEPS={{steps}} FUZZ_FAKE_SEEDS={{seeds}} FUZZ_FAKE_STEPS={{steps}} npx vitest run src/hooks/__tests__/fuzz.test.ts src/hooks/__tests__/fuzzReal.test.ts 2>&1 | tee ../tmp/fuzz_session.log
+    FUZZ_REQUIRE_REAL=1 FUZZ_SEEDS={{seeds}} FUZZ_STEPS={{steps}} FUZZ_SHARDS={{shards}} FUZZ_FAKE_SEEDS={{seeds}} FUZZ_FAKE_STEPS={{steps}} npx vitest run src/hooks/__tests__/fuzz.test.ts src/hooks/__tests__/fuzzReal.test.ts src/hooks/__tests__/fuzzShard1Real.test.ts src/hooks/__tests__/fuzzShard2Real.test.ts src/hooks/__tests__/fuzzShard3Real.test.ts 2>&1 | tee ../tmp/fuzz_session.log
 
 # The full action-matrix sweep: every part command on every target of every
 # corpus document (the regression baseline plus the doc-shaped fixtures),

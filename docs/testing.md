@@ -94,9 +94,13 @@ document, by deep equality.
 
 - PR gate: bounded defaults (`FUZZ_SEEDS=4`, `FUZZ_STEPS=6` real; 24 x 16
   fake) plus pinned regression seeds and the minimiser tests.
-- Long run: `just fuzz-session <seeds> <steps>` (defaults 200 x 40; the main
-  gate's `just fuzz` uses those defaults), widening both the fake and real
-  sweeps.
+- Long run: `just fuzz-session <seeds> <steps> [shards]` (defaults 200 x 40;
+  the main gate's `just fuzz` uses those defaults), widening both the fake and
+  real sweeps. The real seeds split round robin over up to 4 shard files
+  (`fuzzReal.test.ts` is shard 0, `fuzzShard<N>Real.test.ts` the rest, one
+  driver in `fuzzRealShard.ts`), so vitest replays them in parallel forks, each
+  with its own kernel; the recipe defaults to 4 shards, and `FUZZ_SHARDS` unset
+  (the PR gate) keeps every seed in shard 0.
 - Failure: a failing seed becomes a pinned regression entry with the seed kept;
   `minimizeSequence` reduces the sequence while a replay still fails.
 
