@@ -25,11 +25,14 @@ import { yieldToEventLoop } from '../yieldToEventLoop'
 // The command set is the real part table, enumerated in its declaration order.
 export const PART_COMMANDS: CommandName[] = PART_COMMAND_SPECS.map(spec => spec.id)
 
-// The single part command whose payload carries data; every other spec is
-// noParams, which accepts undefined (the same minimal payload commandFixtures
-// hands the completeness suite).
+// The part commands whose payload carries data; every other spec is noParams,
+// which accepts undefined (the same minimal payloads commandFixtures hands the
+// completeness suite). A command missing here sweeps as an "invalid params"
+// failure instead of exercising its action.
 const MINIMAL_PARAMS: Partial<Record<CommandName, unknown>> = {
   apply_offset: { distance: 5 },
+  fillet_corners: { radius: 5 },
+  pattern_entities: { count: 3, pitch: 10 },
 }
 
 export interface MatrixSweep {

@@ -38,10 +38,11 @@ import {
   mirrorPoint, mirrorVector, mirrorsToItself, type MirrorAxis,
 } from '@/utils/geometry/mirrorSketch'
 
-// Constraint kinds cloned with their value and operands intact. horizontal and
-// vertical are the axis-dependent pair handled separately; everything outside
-// this set (dimension sugar, ngon, dock, focus...) is never cloned.
-const CARRY_KINDS = new Set([
+// Constraint kinds cloned with their value and operands intact, shared with the
+// pattern_entities carry (sketchPattern.ts). horizontal and vertical are the
+// axis-dependent pair handled separately; everything outside this set
+// (dimension sugar, ngon, dock, focus...) is never cloned.
+export const CARRY_KINDS: ReadonlySet<string> = new Set([
   'coincident', 'concentric', 'equal_length', 'parallel', 'normal', 'tangent',
   'midpoint', 'colinear', 'fixed', 'length', 'radius', 'diameter',
   'radius_difference', 'point_distance', 'point_distance_x', 'point_distance_y',

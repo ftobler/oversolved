@@ -131,6 +131,8 @@ export const IDEMPOTENT_MUTATION = {
   // fillet_corners mints an arc every dispatch, so it can never be a value
   // no-op even when the corners were already rounded.
   fillet_corners: false,
+  // pattern_entities mints a fresh block of copies every dispatch.
+  pattern_entities: false,
 
   // Structural edits. A resolved add_constraint appends a fresh unique id, and
   // toggle_construction flips the flag so re-dispatching it is a real change

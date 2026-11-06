@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
 import { useCommandRegistry } from '@/contexts/CommandRegistryContext'
-import { openFilletDialog, openOffsetDialog } from '@/pages/commandEntries'
+import { openFilletDialog, openOffsetDialog, openPatternDialog } from '@/pages/commandEntries'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'
 import { iconUrl } from '@/components/Toolbar/tools/toolUtils'
 import EntityTools from '@/components/Toolbar/tools/EntityTools'
@@ -24,6 +24,7 @@ interface SketchToolbarProps {
 
 const mirrorKey = CORE_KEYBINDINGS.find(b => b.command === 'mirror_entities')?.key.toUpperCase()
 const filletKey = CORE_KEYBINDINGS.find(b => b.command === 'fillet_corners')?.key.toUpperCase()
+const patternKey = CORE_KEYBINDINGS.find(b => b.command === 'pattern_entities')?.key.toUpperCase()
 const constructionKey = CORE_KEYBINDINGS.find(b => b.command === 'toggle_construction')?.key.toUpperCase()
 
 export default function SketchToolbar({ onResetViewport, onImportDxf, canImportDxf }: SketchToolbarProps) {
@@ -60,6 +61,11 @@ export default function SketchToolbar({ onResetViewport, onImportDxf, canImportD
     () => registry.enabled('fillet_corners') !== true,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionToken and filletCornerMap are the invalidation keys for the verdict read
     [registry, selectionToken, filletCornerMap],
+  )
+  const patternDisabled = useMemo(
+    () => registry.enabled('pattern_entities') !== true,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionToken is the invalidation key for the verdict read
+    [registry, selectionToken],
   )
 
   return (
@@ -110,6 +116,14 @@ export default function SketchToolbar({ onResetViewport, onImportDxf, canImportD
         disabled={filletDisabled}
         onClick={() => openFilletDialog(radius => { registry.execute('fillet_corners', { radius }) })}
         handle="toolbar:fillet_corners"
+      />
+
+      <ToolbarButton
+        title={patternKey ? `Pattern entities along X (${patternKey})` : 'Pattern entities along X'}
+        icon={iconUrl('feature-pattern')}
+        disabled={patternDisabled}
+        onClick={() => openPatternDialog((count, pitch) => { registry.execute('pattern_entities', { count, pitch }) })}
+        handle="toolbar:pattern_entities"
       />
 
       <ToolbarButton

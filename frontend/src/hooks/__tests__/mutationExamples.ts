@@ -300,6 +300,10 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
       corners: [{ a: 'l1', aVertex: 'end', b: 'l2', bVertex: 'start' }],
     },
   },
+  pattern_entities: {
+    makeDoc: sketchDoc,
+    mutation: { type: 'pattern_entities', featureId: 'sk1', sourceIds: ['l1', 'l2'], mode: 'linear', count: 2, pitch: 20 },
+  },
   toggle_construction: {
     makeDoc: sketchDoc,
     mutation: { type: 'toggle_construction', targets: ['entity:sk1:l2'] },

@@ -17,12 +17,14 @@
 // mutations the app itself produced, and refusing a historical value would make
 // an old journal unreplayable.
 
-import type { EntityKind, FeatureKind, FilletCorner, Mutation, PartDoc } from '@/types/cad'
+import type { EntityKind, FeatureKind, FilletCorner, Mutation, PartDoc, Point, SketchPatternMode } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
 import { mirrorAxisFromLineParams, mirrorsToItself } from '@/utils/geometry/mirrorSketch'
 import { planFilletCorners } from '@/utils/yamlMutations/sketchFillet'
+import { planPatternEntities, type PatternEntitiesStep } from '@/utils/yamlMutations/sketchPattern'
+import { instanceTransforms } from '@/utils/geometry/sketchPattern'
 import { MAX_FIT_POINTS } from '@/utils/geometry/fitSpline'
 import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
 import { lengthUnitOf } from '@/utils/lengthUnit'
@@ -924,6 +926,47 @@ function filletCorners(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return null
 }
 
+// pattern_entities: the instance transforms (mode, the fields that mode reads,
+// counts, cap, stacking) and the document checks are the applier's own plan, so
+// the boundary and the applier refuse with the same words. The transforms run
+// without a document too, so a shape-only caller still hears a bad mode or a
+// field from another mode.
+function patternEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const sourceProblem = nonEmptyStringsProblem(raw.sourceIds, 'sourceIds')
+  if (sourceProblem !== null) return invalid(sourceProblem)
+  const featureId = raw.featureId
+  const crossSketch = typeof raw.targetFeatureId === 'string' && raw.targetFeatureId !== featureId
+  if (crossSketch && raw.mode !== 'copy') {
+    return invalid(`pattern_entities: targetFeatureId is a copy-mode field; a ${String(raw.mode)} pattern repeats inside its own sketch`)
+  }
+  // The planners check every field's value themselves, so each untyped field is
+  // handed over as the type it claims to be.
+  const step: PatternEntitiesStep = {
+    featureId: featureId as string,
+    sourceIds: raw.sourceIds as string[],
+    mode: raw.mode as SketchPatternMode,
+    count: raw.count as number | undefined,
+    count2: raw.count2 as number | undefined,
+    pitch: raw.pitch as number | undefined,
+    pitch2: raw.pitch2 as number | undefined,
+    direction: raw.direction as Point | undefined,
+    direction2: raw.direction2 as Point | undefined,
+    angle_deg: raw.angle_deg as number | undefined,
+    center: raw.center as Point | undefined,
+    translate: raw.translate as Point | undefined,
+    targetFeatureId: raw.targetFeatureId as string | undefined,
+  }
+  const built = instanceTransforms(step, { crossSketch })
+  if ('reason' in built) return invalid(`pattern_entities: ${built.reason}`)
+  if (ctx.doc === null || typeof featureId !== 'string') return null
+  const plan = planPatternEntities(ctx.doc, step)
+  if ('reason' in plan) {
+    const message = `pattern_entities: ${plan.reason}`
+    return plan.code === 'unknown-target' ? unknownTarget(message) : invalid(message)
+  }
+  return null
+}
+
 // The bare builtin names resolveSketchPlane accepts. They stay case-sensitive:
 // accepting "top" would shadow a user plane whose id is exactly that, so the
 // boundary refuses an unmatched spelling with the valid names instead of
@@ -1573,6 +1616,7 @@ export const MUTATION_VALUE_RULES = {
   apply_offset: applyOffset,
   mirror_entities: mirrorEntities,
   fillet_corners: filletCorners,
+  pattern_entities: patternEntities,
   toggle_construction: toggleConstructionRule,
   set_feature_plane: setFeaturePlane,
   add_sketch: addSketch,

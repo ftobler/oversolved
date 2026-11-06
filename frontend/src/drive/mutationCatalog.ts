@@ -20,6 +20,7 @@ import {
 import { entityParamLayoutsSentence } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { mutationValueViolation, EMPTY_REF_CLEARS } from '@/drive/mutationValues'
+import { MAX_PATTERN_INSTANCES, MAX_SKETCH_ENTITIES } from '@/utils/geometry/sketchPattern'
 
 export type FieldType =
   | 'string'
@@ -466,6 +467,25 @@ const FILLET_CORNERS_NOTE =
   'dimension that anchors a trimmed endpoint is refused by constraint id. Arc params are ' +
   '`[cx, cy, r, a0_deg, a1_deg]` and keep the CCW sweep.'
 
+// What an author cannot read off the field list: the copies are plain rows,
+// the count includes the source, where the new ids land, and which
+// constraints follow. The rules are pinned in yamlMutations/sketchPattern.ts
+// and its tests.
+const PATTERN_ENTITIES_NOTE =
+  'Repeats the source entities as authored geometry inside one sketch (or, in copy mode, into another sketch on ' +
+  'the same plane); there is no live pattern relation, so editing a source later does not move the copies. ' +
+  'Modes: linear reads count, pitch and direction (default [1, 0]); grid reads count and count2 with pitch/pitch2 ' +
+  'along direction/direction2 (defaults [1, 0] and [0, 1]); rotate reads count, angle_deg (the step) and center ' +
+  '(default [0, 0]); copy makes one copy, rotated by angle_deg about center and then moved by translate. A field ' +
+  `from another mode is refused. count includes the source and the step makes at most ${MAX_PATTERN_INSTANCES} ` +
+  `instances; the sketch holds at most ${MAX_SKETCH_ENTITIES} entities. A copy that lands on the source or an ` +
+  'earlier copy is refused. New ids are minted in one block, instance by instance in sourceIds order, and are ' +
+  'not reported: the appended entities rows are the mapping. A constraint is copied only when every operand is ' +
+  'a source; one that ties a source to anything else stays on the source alone. horizontal/vertical, ' +
+  'point_distance_x/y, a midpoint axis and a one-coordinate fixed swap at a quarter turn and are dropped at any ' +
+  'other angle. Projected sources are refused. Copy-mode targetFeatureId must name a sketch on the same plane ' +
+  '(Front and @builtin_plane_front are one plane); this never reflects, which is mirror_entities.'
+
 const VARIABLE_NAME_NOTE =
   'An expression refers to a variable by the variable feature\'s `label` (the name; `add_variable` sanitizes it to an ' +
   'identifier and suffixes `_2`, `_3`... on a clash), not by its featureId: `label: width` is used as `width * 2`.'
@@ -866,6 +886,25 @@ export const MUTATION_CATALOG = {
       featureId: str(),
       radius: num('The fillet radius, strictly less than both side lengths at every corner.'),
       corners: arr('Non-empty list of { a, aVertex, b, bVertex, side? }: bare entity ids of two line entities in the featureId sketch, each with the endpoint key that meets at the corner; side is convex or concave and skips the material probe.'),
+    },
+  },
+  pattern_entities: {
+    summary: 'Repeat sketch entities as authored copies: linear, grid, rotate, or one transformed copy (optionally into another sketch on the same plane).',
+    note: PATTERN_ENTITIES_NOTE,
+    fields: {
+      featureId: str('The sketch holding the sources.'),
+      sourceIds: arr('Bare entity ids of the featureId sketch; projected entities are refused.'),
+      mode: str('linear | grid | rotate | copy.'),
+      count: optNum(),
+      count2: optNum(),
+      pitch: optNum(),
+      pitch2: optNum(),
+      direction: optPoint('linear/grid: the step direction, normalized; default [1, 0].'),
+      direction2: optPoint('grid: the second direction, normalized; default [0, 1].'),
+      angle_deg: optNum(),
+      center: optPoint('rotate/copy: the rotation centre in sketch coordinates; default [0, 0].'),
+      translate: optPoint('copy: the move applied after the rotation.'),
+      targetFeatureId: optStr('copy: another sketch on the same plane to copy into; default the source sketch.'),
     },
   },
   toggle_construction: {
@@ -1423,6 +1462,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   apply_offset: 'sketch',
   mirror_entities: 'sketch',
   fillet_corners: 'sketch',
+  pattern_entities: 'sketch',
   toggle_construction: 'sketch',
   set_feature_plane: 'sketch',
   add_sketch: 'sketch',

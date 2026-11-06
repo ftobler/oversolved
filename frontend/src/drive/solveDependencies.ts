@@ -42,10 +42,11 @@ export function usesSettledSketchGeometry(raw: unknown): boolean {
     case 'move_vertex_with_constraint':
     case 'resize_circle':
       return true
-    // The mirror, offset and fillet plans are built from the current params.
+    // The mirror, offset, fillet and pattern plans are built from the current params.
     case 'mirror_entities':
     case 'apply_offset':
     case 'fillet_corners':
+    case 'pattern_entities':
       return true
     // Fit-spline editors decode the positional params they are editing.
     case 'insert_fit_point':

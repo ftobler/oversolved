@@ -104,6 +104,25 @@ export function mirrorSelectionPlan(
   return { axis, sourceIds }
 }
 
+// The selection contract of pattern_entities: every selected entity of the
+// active sketch is a source. A vertex or constraint selection names no entity
+// to copy, so a selection holding only those is refused rather than read as
+// "the entity under the vertex". Exported so the command's `enabled` verdict
+// and the store action read one definition.
+export function patternSelectionPlan(
+  selection: Set<string>,
+  activeFeatureId: string | null,
+): { sourceIds: string[] } | { reason: string } {
+  if (!activeFeatureId) return { reason: 'no active sketch' }
+  const inSketch = [...selection].filter(t => t.split(':')[1] === activeFeatureId)
+  const sourceIds = inSketch.filter(t => t.startsWith('entity:')).map(t => t.split(':')[2])
+  if (sourceIds.length > 0) return { sourceIds }
+  if (inSketch.some(t => t.startsWith('vertex:'))) {
+    return { reason: 'pattern copies whole entities; select the entities, not their vertices' }
+  }
+  return { reason: 'select one or more entities of the active sketch to pattern' }
+}
+
 // The selection contract of fillet_corners: every selected vertex is one
 // corner, and its partner comes from the corner map Geometry3D publishes for
 // the active sketch. A selected vertex with no single line partner, or with a
@@ -734,6 +753,22 @@ export const editorState = createStore<EditorState>((set, get) => ({
     const onMutation = requireMutation('mirrorSelection')
     if (!onMutation) return null
     onMutation({ type: 'mirror_entities', featureId: activeFeatureId!, sourceIds: plan.sourceIds, line: plan.axis })
+    return null
+  },
+
+  // Pattern the selection along +X in one mutation, so the whole row is one
+  // undo entry. The other modes are drive-first; this is the dialog's linear
+  // case. Returns the reason the selection cannot carry it, or null.
+  patternEntities: (count, pitch) => {
+    const { normalSelection: selection, activeFeatureId } = get()
+    const plan = patternSelectionPlan(selection, activeFeatureId)
+    if ('reason' in plan) return plan.reason
+    const onMutation = requireMutation('patternEntities')
+    if (!onMutation) return null
+    onMutation({
+      type: 'pattern_entities', featureId: activeFeatureId!, sourceIds: plan.sourceIds,
+      mode: 'linear', count, pitch,
+    })
     return null
   },
 

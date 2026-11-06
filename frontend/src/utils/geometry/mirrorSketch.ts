@@ -111,7 +111,7 @@ export function mirrorArcAngles(
 
 /** The CCW sweep of an authored (a0, a1) pair in (0, 360]; a full-circle arc
  *  keeps its 360 instead of collapsing to a zero arc. */
-function arcSpanDeg(a0: number, a1: number): number {
+export function arcSpanDeg(a0: number, a1: number): number {
   const raw = a1 - a0
   const span = normDeg(raw)
   return span === 0 && raw !== 0 ? 360 : span

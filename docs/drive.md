@@ -944,6 +944,14 @@ banner on stdout, so a client config must use the direct node invocation.
   tangent arc per corner; an arc or projected side, a mixed construction corner,
   a `fixed`/dimension on a trimmed endpoint, or a radius that would consume a
   side is refused by name, and one step is one undo entry;
+  `pattern_entities` takes `sourceIds` and a `mode`: `linear` (`count`,
+  `pitch`, `direction`), `grid` (`count`, `count2`, `pitch`, `pitch2`,
+  `direction`, `direction2`), `rotate` (`count`, `angle_deg`, `center`) or
+  `copy` (`angle_deg`, `center`, `translate`, `targetFeatureId` for a sketch on
+  the same plane); `count` includes the source, a field from another mode, a
+  stacked copy, more than 200 instances or more than 4096 sketch entities is
+  refused by name, the copies are plain authored rows whose ids are not
+  reported, and one step is one undo entry;
   `add_variable` must sit
   before every feature that names it, and `reorder_features` takes exactly one
   of `toIndex` (which counts the seeded plane rows), `before: <featureId>` or

@@ -311,6 +311,10 @@ export interface SketchEditorState {
   // Returns a human-readable rejection when the selection cannot carry the
   // fillet, or null when it was authored and there was nothing to reject.
   filletCorners: (radius: number) => string | null
+  // Pattern the selected entities `count` times (source included) at `pitch`
+  // along +X (patternSelectionPlan). Returns a human-readable rejection, or
+  // null when it was authored or there was nothing to act on.
+  patternEntities: (count: number, pitch: number) => string | null
   toggleConstruction: () => void
   deleteSelected: () => void
   addDimensionPick: (pick: DimensionPick) => void

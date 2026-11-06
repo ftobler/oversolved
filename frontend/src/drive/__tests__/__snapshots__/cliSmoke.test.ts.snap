@@ -266,6 +266,23 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
       "undoable": true,
     },
     {
+      "enabled": "no active sketch",
+      "id": "pattern_entities",
+      "label": "Pattern entities",
+      "params": [
+        {
+          "name": "count",
+          "type": "number",
+        },
+        {
+          "name": "pitch",
+          "type": "number",
+        },
+      ],
+      "shortcut": "shift+p",
+      "undoable": true,
+    },
+    {
       "enabled": "nothing to redo",
       "id": "redo",
       "label": "Redo",

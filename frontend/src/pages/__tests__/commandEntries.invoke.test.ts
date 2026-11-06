@@ -61,6 +61,53 @@ describe('command bodies that drive the sketch editor store', () => {
     setSketchCallback('onMutation', null)
   })
 
+  it('pattern_entities dispatches the selected entities as one linear step', () => {
+    setSketchCallback('onMutation', null)
+    useEditorState.setState({
+      normalSelection: new Set(['entity:Sketch1:L1', 'vertex:Sketch1:L1:start', 'entity:Sketch1:L2']),
+      activeFeatureId: 'Sketch1',
+    })
+    const handler = vi.fn()
+    setSketchCallback('onMutation', handler)
+    const showMessage = vi.fn()
+
+    execute('pattern_entities', partContext({ showMessage }), { count: 4, pitch: 12 })
+
+    expect(handler).toHaveBeenCalledOnce()
+    expect(handler).toHaveBeenCalledWith({
+      type: 'pattern_entities', featureId: 'Sketch1', sourceIds: ['L1', 'L2'], mode: 'linear', count: 4, pitch: 12,
+    })
+    expect(showMessage).not.toHaveBeenCalled()
+    setSketchCallback('onMutation', null)
+  })
+
+  it('pattern_entities shows the plan refusal for a projected source and dispatches nothing', () => {
+    setSketchCallback('onMutation', null)
+    useEditorState.setState({
+      normalSelection: new Set(['entity:Sketch1:P1']),
+      activeFeatureId: 'Sketch1',
+    })
+    const handler = vi.fn()
+    setSketchCallback('onMutation', handler)
+    const showMessage = vi.fn()
+    const doc = {
+      features: [{
+        id: 'Sketch1', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [{ id: 'P1', kind: 'line', source: '@sk0/edge' }],
+        initial: { P1: [0, 0, 1, 0] },
+        constraints: [],
+      }],
+    }
+    const session = { getDoc: () => doc } as unknown as NonNullable<ReturnType<typeof partContext>['session']>
+
+    execute('pattern_entities', partContext({ showMessage, session }), { count: 3, pitch: 5 })
+
+    expect(handler).not.toHaveBeenCalled()
+    expect(showMessage).toHaveBeenCalledOnce()
+    expect(showMessage.mock.calls[0][0].message).toContain('names a projected entity')
+    setSketchCallback('onMutation', null)
+  })
+
   it('mirror_entities takes the construction line as the axis when the sources are lines too', () => {
     // A half profile (three lines) plus its centerline: the kind map alone
     // cannot tell them apart, so the plan reads the published construction keys.

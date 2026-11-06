@@ -1266,6 +1266,12 @@ export type FilletCorner = {
   side?: 'convex' | 'concave'
 }
 
+/** The instance generator of `pattern_entities`. One flat bag rather than a
+ *  per-mode union because the mutation catalog pairs one row with each
+ *  Mutation member; which fields a mode reads is SKETCH_PATTERN_MODE_FIELDS in
+ *  utils/geometry/sketchPattern.ts, and the drive refuses a field outside it. */
+export type SketchPatternMode = 'linear' | 'grid' | 'rotate' | 'copy'
+
 /** An authoring aid: a `select` selector naming the pick. The headless drive
  *  resolves it against the settled solve before the mutation applies and stores
  *  the query string it resolved to; a selector is never persisted. The inner
@@ -1299,6 +1305,11 @@ export type Mutation =
   | { type: 'apply_offset'; featureId: string; sourceIds: string[]; distance: number }
   | { type: 'mirror_entities'; featureId: string; sourceIds: string[]; line: string }
   | { type: 'fillet_corners'; featureId: string; radius: number; corners: FilletCorner[] }
+  | {
+      type: 'pattern_entities'; featureId: string; sourceIds: string[]; mode: SketchPatternMode
+      count?: number; count2?: number; pitch?: number; pitch2?: number; direction?: Point; direction2?: Point
+      angle_deg?: number; center?: Point; translate?: Point; targetFeatureId?: string
+    }
   | { type: 'toggle_construction'; targets: string[] }
   | { type: 'set_feature_plane'; featureId: string; plane: string | SelectorRef }
   | ({ type: 'add_sketch'; featureId: string; label?: string; plane?: string | SelectorRef } & FeatureInsertion)

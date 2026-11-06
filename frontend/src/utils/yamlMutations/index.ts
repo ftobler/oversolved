@@ -34,6 +34,8 @@ export { applyMirrorEntities } from './sketchMirror'
 
 export { applyFilletCorners, planFilletCorners, type FilletSketchPlan, type PlannedFilletCorner } from './sketchFillet'
 
+export { applyPatternEntities, planPatternEntities, type PatternEntitiesStep } from './sketchPattern'
+
 export {
   applyAddExtrude,
   applyAddExtrudeProfile,

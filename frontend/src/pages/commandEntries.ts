@@ -5,7 +5,7 @@ import type { Result } from '@/session/result'
 import { okResult } from '@/session/result'
 import type { ActiveTool } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
-import { filletSelectionPlan, mirrorSelectionPlan, type EditorState } from '@/stores/editorState'
+import { filletSelectionPlan, mirrorSelectionPlan, patternSelectionPlan, type EditorState } from '@/stores/editorState'
 import { useSketchUiStore, CANNOT_APPLY_TITLE, type SketchUiState } from '@/stores/sketchEditorStore'
 import { projectSelection } from '@/tools/projectSelectionCommand'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
@@ -14,6 +14,9 @@ import { canFinishDraw } from '@/utils/geometry/drawFinish'
 import { narrowCommandName } from '@/utils/core/commandNames'
 import { refusalText } from '@/utils/core/statusMark'
 import { cannotEvaluate } from '@/utils/core/valueRules'
+import { evalExpr } from '@/kernel/evalExpr'
+import { planPatternEntities } from '@/utils/yamlMutations/sketchPattern'
+import { MAX_PATTERN_INSTANCES } from '@/utils/geometry/sketchPattern'
 import type { CommandName } from '@/utils/core/commandNames'
 import { noParams, objectParams, Field, type CommandResult, type ErasedCommandSpec, type CommandSpec } from '@/utils/core/commandSpec'
 
@@ -447,6 +450,83 @@ export function openFilletDialog(onRadius: (radius: number) => void): void {
   })
 }
 
+// Pattern is a selection action like mirror: the selected entities of the
+// active sketch are the sources. The dialog front end is the linear case along
+// +X; grid, rotate and copy are drive modes. `enabled` and the store action
+// read the same patternSelectionPlan, so the gate cannot drift from the action.
+const patternEntitiesSpec: CommandSpec<PartCommandContext, { count: number; pitch: number }> = {
+  id: 'pattern_entities',
+  label: 'Pattern entities',
+  shortcut: partShortcut('pattern_entities'),
+  params: objectParams({ count: Field.number(), pitch: Field.number() }),
+  undoable: true,
+  enabled: ctx => {
+    const st = ctx.state()
+    const plan = patternSelectionPlan(st.normalSelection, st.activeFeatureId)
+    return 'reason' in plan ? plan.reason : true
+  },
+  run: (ctx, { count, pitch }) => {
+    // The applier refuses silently (a dev warn), so the document checks the
+    // drive rule runs (the cap, a projected source, the entity limit) are run
+    // here first and shown, instead of dispatching a step that writes nothing.
+    const st = ctx.state()
+    const selection = patternSelectionPlan(st.normalSelection, st.activeFeatureId)
+    const doc = ctx.session?.getDoc() ?? null
+    if (!('reason' in selection) && doc !== null) {
+      const plan = planPatternEntities(doc, {
+        featureId: st.activeFeatureId!, sourceIds: selection.sourceIds, mode: 'linear', count, pitch,
+      })
+      if ('reason' in plan) {
+        ctx.showMessage({ title: 'Cannot pattern entities', message: plan.reason, variant: 'error' })
+        return okResult()
+      }
+    }
+    const reason = st.patternEntities(count, pitch)
+    if (reason !== null) ctx.showMessage({ title: 'Cannot pattern entities', message: reason, variant: 'error' })
+    return okResult()
+  },
+}
+
+/** The pattern dialog's text, `count pitch` (or `count, pitch`), each an
+ *  expression: `4 12` and `2*3 10` both read. A reason when it does not. Pure,
+ *  so the dialog's parse is tested without a store. */
+export function parsePatternInput(input: string): { count: number; pitch: number } | { reason: string } {
+  const text = input.trim()
+  const parts = (text.includes(',') ? text.split(',') : text.split(/\s+/)).map(s => s.trim()).filter(s => s !== '')
+  if (parts.length !== 2) return { reason: `enter "count pitch", for example "4 12", got "${text}"` }
+  const count = evalExpr(parts[0])
+  const pitch = evalExpr(parts[1])
+  if (isNaN(count)) return { reason: cannotEvaluate(parts[0]) }
+  if (isNaN(pitch)) return { reason: cannotEvaluate(parts[1]) }
+  if (!Number.isInteger(count) || count < 2) return { reason: `count must be a whole number of at least 2 (the source included), got ${count}` }
+  if (count > MAX_PATTERN_INSTANCES) return { reason: `count ${count} is above the cap of ${MAX_PATTERN_INSTANCES} instances` }
+  if (pitch === 0) return { reason: 'pitch must not be zero' }
+  return { count, pitch }
+}
+
+// The value-dialog front end for pattern_entities, like openOffsetDialog.
+export function openPatternDialog(onValues: (count: number, pitch: number) => void): void {
+  const st = useSketchUiStore.getState()
+  const cx = typeof window !== 'undefined' ? window.innerWidth / 2 : 200
+  const cy = typeof window !== 'undefined' ? window.innerHeight / 2 : 200
+  st.openDialog({
+    position: [cx, cy],
+    label: 'Pattern count and pitch along X',
+    defaultValue: '3 10',
+    validate: (input) => {
+      const parsed = parsePatternInput(input)
+      return refusalText('Value', 'reason' in parsed ? parsed.reason : null)
+    },
+    onConfirm: (input) => {
+      const parsed = parsePatternInput(input)
+      if ('reason' in parsed) return
+      onValues(parsed.count, parsed.pitch)
+      st.closeDialog()
+    },
+    onCancel: () => st.closeDialog(),
+  })
+}
+
 // Offset is a selection action, not a draw mode: it operates on the currently
 // selected sketch entities. The distance is data; the dialog below is only the
 // user-facing front end that collects it and calls execute.
@@ -529,6 +609,7 @@ export const PART_COMMAND_SPECS: readonly ErasedCommandSpec<PartCommandContext>[
   cancelDrawSpec,
   mirrorSpec,
   filletCornersSpec,
+  patternEntitiesSpec,
   offsetSpec,
   addExtrudeSpec,
   addHoleSpec,
