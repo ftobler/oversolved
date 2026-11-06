@@ -106,7 +106,10 @@ function generate() {
   const Typr = typrFactory()
   const woff2otf = woff2otfFactory()
   const woff = readFileSync(fontPath)
-  const otf = woff2otf(new Uint8Array(woff.buffer, woff.byteOffset, woff.byteLength).buffer)
+  // A Buffer may be a view into a larger or pooled ArrayBuffer (newer Node
+  // readFileSync does this), and woff2otf reads its DataView from offset 0 of
+  // whatever it is given, so hand it a copy of exactly the file's bytes.
+  const otf = woff2otf(woff.buffer.slice(woff.byteOffset, woff.byteOffset + woff.byteLength))
   // Typr reports the GSUB lookups it skips on console.debug; shaping is out of
   // scope here, so the notice is noise in a gate log.
   const debug = console.debug
