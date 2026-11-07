@@ -42,15 +42,17 @@ const RATCHETS: Ratchet[] = [
     baseline: 48,
   },
   {
-    // 363 after the batch B inline adds: featureDefs' generic mergeInlineFields
-    // and setFeatureField take the definition object and name the write bag
-    // (FieldBag) once instead of spelling a loose record per call. Same
-    // boundary looseness, one token fewer. The array and circular array leaves
-    // folded into one pattern leaf: its dispatch record, the body subject and
-    // the shared patternSubject accessor keep the three removed array records'
-    // total, so the baseline stays 363.
+    // 362 after the mutation catalog's family filter stopped constraining a
+    // generic to Record<string, unknown>; the filter now yields a typed partial
+    // family map. The earlier 363 baseline also recorded the batch B inline adds: featureDefs'
+    // generic mergeInlineFields and setFeatureField take the definition object
+    // and name the write bag (FieldBag) once instead of spelling a loose record
+    // per call. Same boundary looseness, one token fewer. The array and circular
+    // array leaves folded into one pattern leaf: its dispatch record, the body
+    // subject and the shared patternSubject accessor keep the three removed
+    // array records' total, so the baseline stayed 363 until this change.
     token: 'Record<string, unknown>',
-    baseline: 363,
+    baseline: 362,
   },
 ]
 

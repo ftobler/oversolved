@@ -230,7 +230,7 @@ describe('createMcpServer', () => {
   it('serves the mutation catalog as a tool and as the same resource', async () => {    const server = createMcpServer(fakeOps().ops)
     const tool = MCP_TOOLS.find(t => t.name === 'mutations')
     expect(tool).toBeDefined()
-    expect(Object.keys((tool!.inputSchema as { properties: object }).properties)).toEqual(['kind', 'family'])
+    expect(Object.keys((tool!.inputSchema as { properties: object }).properties)).toEqual(['kind', 'family', 'type', 'detail'])
     expectError(await request(server, 41, 'tools/call', { name: 'mutations', arguments: { typo: 1 } }), -32602)
 
     const call = await request(server, 42, 'tools/call', { name: 'mutations', arguments: {} })

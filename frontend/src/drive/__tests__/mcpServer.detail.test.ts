@@ -2,8 +2,8 @@
 //
 // The `detail` switch on assembly replies: the shapes of summary and changed,
 // full staying byte-identical to the untrimmed reply, the size budget a
-// six-bolt-stack call must stay under, and the `mutations` family filters. All
-// pure: the kernel is replaced by hand-built solve state.
+// six-bolt-stack call must stay under, and the `mutations` family, type and
+// detail filters. All pure: the kernel is replaced by hand-built solve state.
 
 import { describe, it, expect } from 'vitest'
 import type { AssemblyDoc, Transform3D } from '@/types/cad'
@@ -264,7 +264,7 @@ describe('mutations family and kind filters', () => {
     if (!result.ok) return
     expect(Object.keys(result.payload.families!)).toEqual(['features'])
     expect(result.payload.assembly).toBeUndefined()
-    const types = new Set(result.payload.families!.features.map(entry => entry.type))
+    const types = new Set(result.payload.families!.features!.map(entry => entry.type))
     for (const example of result.payload.examples!) {
       expect(example.steps.some(step => 'mutation' in step && types.has((step.mutation as { type: never }).type))).toBe(true)
     }
@@ -298,5 +298,141 @@ describe('mutations family and kind filters', () => {
     expect(Object.keys(JSON.parse(text).assembly.families)).toEqual(['mates'])
     const bad = await server.handle({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'mutations', arguments: { family: 'nope' } } })
     expect(bad).toMatchObject({ error: { code: -32602 } })
+  })
+})
+
+describe('mutations type and detail filters', () => {
+  const full = mutationCatalogPayload()
+
+  it('a type returns its one row and only the examples that use it', () => {
+    const result = filterMutationCatalog(full, { type: 'add_shell' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(Object.keys(result.payload.families!)).toEqual(['features'])
+    expect(result.payload.assembly).toBeUndefined()
+    expect(result.payload.families!.features!.map(row => row.type)).toEqual(['add_shell'])
+    // No served example runs add_shell today.
+    expect(result.payload.examples).toEqual([])
+  })
+
+  it('an array of types keeps one row per type across families', () => {
+    const result = filterMutationCatalog(full, { type: ['add_rect', 'add_hole'] })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(Object.keys(result.payload.families!).sort()).toEqual(['features', 'sketch'])
+    expect(result.payload.families!.sketch!.map(row => row.type)).toEqual(['add_rect'])
+    expect(result.payload.families!.features!.map(row => row.type)).toEqual(['add_hole'])
+    expect(result.payload.examples!.map(example => example.name)).toEqual(['box', 'filleted-box'])
+  })
+
+  it('an unknown type names the closest known type and its family', () => {
+    const result = filterMutationCatalog(full, { type: 'add_shel' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('"add_shell"')
+    expect(result.error).toContain('features')
+  })
+
+  it('a type of another family is refused', () => {
+    const result = filterMutationCatalog(full, { type: 'add_shell', family: 'sketch' })
+    expect(result).toMatchObject({ ok: false })
+    if (result.ok) return
+    expect(result.error).toContain('family "sketch"')
+  })
+
+  it('a type of another kind is refused', () => {
+    const result = filterMutationCatalog(full, { type: 'add_shell', kind: 'assembly' })
+    expect(result).toMatchObject({ ok: false })
+    if (result.ok) return
+    expect(result.error).toContain('kind "assembly"')
+  })
+
+  it('type and family agree when they name the same row', () => {
+    const result = filterMutationCatalog(full, { type: 'add_shell', family: 'features' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(Object.keys(result.payload.families!)).toEqual(['features'])
+    expect(result.payload.families!.features!.map(row => row.type)).toEqual(['add_shell'])
+  })
+
+  it('an empty type array is refused', () => {
+    expect(filterMutationCatalog(full, { type: [] })).toMatchObject({ ok: false })
+  })
+
+  it('an assembly type lands under assembly.families', () => {
+    const result = filterMutationCatalog(full, { type: 'add_mate' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.payload.families).toBeUndefined()
+    expect(Object.keys(result.payload.assembly!.families)).toEqual(['mates'])
+    expect(result.payload.assembly!.families.mates!.map(row => row.type)).toEqual(['add_mate'])
+    expect(result.payload.assembly!.examples.length).toBeGreaterThan(0)
+    for (const example of result.payload.assembly!.examples) {
+      expect(example.steps.some(step => step.mutation.type === 'add_mate')).toBe(true)
+    }
+  })
+
+  it('detail index keeps only type and summary per row and stays under 15 kB', () => {
+    const result = filterMutationCatalog(full, { detail: 'index' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.payload.examples).toEqual([])
+    expect(result.payload.assembly!.examples).toEqual([])
+    const rows = [
+      ...Object.values(result.payload.families!),
+      ...Object.values(result.payload.assembly!.families),
+    ].flat()
+    expect(rows.length).toBeGreaterThan(100)
+    for (const row of rows) expect(Object.keys(row).sort()).toEqual(['summary', 'type'])
+    // A ratchet against notes or fields creeping back into the index.
+    expect(JSON.stringify(result.payload).length).toBeLessThan(15000)
+  })
+
+  it('detail index composes with a family', () => {
+    const result = filterMutationCatalog(full, { family: 'features', detail: 'index' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(Object.keys(result.payload.families!)).toEqual(['features'])
+    expect(result.payload.assembly).toBeUndefined()
+    const rows = result.payload.families!.features!
+    expect(rows.length).toBeGreaterThan(1)
+    for (const row of rows) expect(Object.keys(row).sort()).toEqual(['summary', 'type'])
+    expect(result.payload.examples).toEqual([])
+  })
+
+  it('the tool accepts type and detail and refuses an unknown detail', async () => {
+    const server = createMcpServer({} as McpCadOps)
+    const call = await server.handle({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'mutations', arguments: { type: 'add_shell', detail: 'index' } },
+    })
+    const text = (call as { result: { content: Array<{ text: string }> } }).result.content[0].text
+    const payload = JSON.parse(text) as { families: Record<string, Array<{ type: string; summary: string }>> }
+    expect(payload.families.features).toEqual([{ type: 'add_shell', summary: expect.any(String) }])
+
+    const badDetail = await server.handle({
+      jsonrpc: '2.0', id: 2, method: 'tools/call',
+      params: { name: 'mutations', arguments: { detail: 'brief' } },
+    })
+    expect(badDetail).toMatchObject({ error: { code: -32602 } })
+
+    const badType = await server.handle({
+      jsonrpc: '2.0', id: 3, method: 'tools/call',
+      params: { name: 'mutations', arguments: { type: 'add_shel' } },
+    })
+    expect(badType).toMatchObject({ error: { code: -32602 } })
+    expect((badType as { error: { message: string } }).error.message).toContain('add_shell')
+
+    const badElement = await server.handle({
+      jsonrpc: '2.0', id: 4, method: 'tools/call',
+      params: { name: 'mutations', arguments: { type: [1] } },
+    })
+    expect(badElement).toMatchObject({ error: { code: -32602 } })
+
+    const empty = await server.handle({
+      jsonrpc: '2.0', id: 5, method: 'tools/call',
+      params: { name: 'mutations', arguments: { type: [] } },
+    })
+    expect(empty).toMatchObject({ error: { code: -32602 } })
   })
 })
