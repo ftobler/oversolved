@@ -107,6 +107,7 @@ export function useSolver(
       handle?: FeatureHandleData
       helix?: Record<string, number>
       curve?: import('@/types/cad').EdgeDataSpline
+      thread?: import('@/types/cad').ThreadDisplayData
       solve_ms?: number
       projection_errors?: string[]
     }>
@@ -216,6 +217,8 @@ export function useSolver(
           // A helix's solved curve (the viewport draws it) and derived values.
           ...(feature.curve !== undefined && { curve: feature.curve }),
           ...(feature.helix !== undefined && { helix: feature.helix }),
+          // A hole's cosmetic thread (the tapped bores the viewport shades).
+          ...(feature.thread !== undefined && { thread: feature.thread }),
           ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
         }
       }

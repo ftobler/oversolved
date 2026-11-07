@@ -115,6 +115,19 @@ describe('applySolveResult -- fields the feature tree reads', () => {
       .toBe('fillet: the picked edges continue along the tangent chain')
   })
 
+  it('keeps a hole\'s cosmetic thread, which the viewport shades', async () => {
+    // Dropped here, the thread never reached the viewport: the old display
+    // helix and the bore shading both showed nothing in the app while every
+    // kernel and viewport unit test passed.
+    const result = setupHook()
+    const thread = {
+      designation: 'M6x1', nominal: 6, pitch: 1,
+      sites: [{ center: [0, 0, 0], axis: [0, 1, 0], radius: 2.5, length: 15, bore_uuids: ['u_bore'] }],
+    }
+    await solveWith(result, { ex1: { status: 'ok', body_id: 'body_ex1', thread } })
+    expect(result.current.solveResults.ex1.thread).toEqual(thread)
+  })
+
   it('keeps per-entity constraint status, defaulting a missing one', async () => {
     const result = setupHook()
     await solveWith(result, {

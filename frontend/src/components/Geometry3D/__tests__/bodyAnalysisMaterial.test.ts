@@ -223,6 +223,13 @@ describe('thread shading patch', () => {
     expect(shader.vertexShader).toContain('vThreadAxis = mat3( modelViewMatrix ) * aThreadAxis;')
   })
 
+  it('stays inside the GLSL ES character set and carries no comments', () => {
+    // A strict front end refuses a stray backtick or quote even in a comment,
+    // and a refused program silently leaves the plain material.
+    expect(THREAD_GLSL).toMatch(/^[A-Za-z0-9_ \t\n.+\-*/%<>[\](){}^|&~=!:;,?]*$/)
+    expect(THREAD_GLSL).not.toContain('//')
+  })
+
   it('takes its derivatives outside any branch, masking the plain wall instead', () => {
     // dFdx/dFdy in non-uniform control flow are undefined in GLSL ES 3.0.
     expect(THREAD_GLSL).not.toMatch(/\bif\s*\(/)

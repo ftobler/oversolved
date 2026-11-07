@@ -185,32 +185,36 @@ const THREAD_ROOT_SHADE = '0.18'
 // straddling the run's end would read garbage), so everything is computed for
 // every fragment and the plain wall is a zero mask, not a skipped block. Every
 // factor is finite for any input, untapped vertices included (sMax = -1 and a
-// zero axis), so a 0 mask can never meet a NaN.
+// zero axis), so a 0 mask can never meet a NaN. The floors are 1e-4 or larger
+// so they survive mediump, where 1e-12 flushes to 0 and the untapped wall's
+// phase derivative would become 0/0.
+//
+// Line by line: the phase and its screen derivative; the fade once a pitch is
+// under about three pixels (moire); the mask to the tapped run with short end
+// fades (sMax <= 0 marks an untapped vertex); the guarded axis; the tilt, where
+// faceDirection undoes the back-face flip normal_fragment_begin applied so a
+// bore seen from behind (a section view) tilts its flanks the same way; and the
+// root darkening, which sells the depth the tilted normal alone cannot.
+//
+// The string itself carries no comments: some GLSL ES front ends reject
+// characters outside the GLSL character set even inside a comment, and a
+// refused program silently leaves the plain material.
 export const THREAD_GLSL = `
-  float threadR2 = max( dot( vThreadCoord.xy, vThreadCoord.xy ), 1e-12 );
-  float threadPhase = vThreadCoord.z - atan( vThreadCoord.y, vThreadCoord.x + 1e-12 ) / 6.28318530718;
+  float threadR2 = max( dot( vThreadCoord.xy, vThreadCoord.xy ), 1e-4 );
+  float threadPhase = vThreadCoord.z - atan( vThreadCoord.y, vThreadCoord.x + 1e-4 ) / 6.28318530718;
   vec2 threadDu = vec2( dFdx( vThreadCoord.x ), dFdy( vThreadCoord.x ) );
   vec2 threadDv = vec2( dFdx( vThreadCoord.y ), dFdy( vThreadCoord.y ) );
   vec2 threadDs = vec2( dFdx( vThreadCoord.z ), dFdy( vThreadCoord.z ) );
   vec2 threadDphase = threadDs - ( vThreadCoord.x * threadDv - vThreadCoord.y * threadDu ) / ( threadR2 * 6.28318530718 );
-  // Phase change per pixel: past about a third of a pitch the ridges alias
-  // into moire, so the wall fades back to plain as the bore shrinks on screen.
   float threadWidth = abs( threadDphase.x ) + abs( threadDphase.y );
   float threadVisible = 1.0 - smoothstep( 0.15, 0.35, threadWidth );
-  // Inside the tapped run only, with a short fade at both ends instead of a
-  // hard cut line. sMax <= 0 marks an untapped vertex.
   threadVisible *= step( 0.0, vThreadCoord.w ) * smoothstep( 0.0, 0.2, vThreadCoord.z )
     * smoothstep( 0.0, 0.2, vThreadCoord.w - vThreadCoord.z );
   float threadAxisLength = length( vThreadAxis );
-  threadVisible *= step( 1e-6, threadAxisLength );
-  vec3 threadAxis = vThreadAxis / max( threadAxisLength, 1e-6 );
+  threadVisible *= step( 1e-3, threadAxisLength );
+  vec3 threadAxis = vThreadAxis / max( threadAxisLength, 1e-3 );
   float threadWave = 6.28318530718 * threadPhase;
-  // faceDirection undoes the back-face flip normal_fragment_begin applied to
-  // \`normal\`, so a bore seen from behind (a section view) tilts its flanks
-  // the same way its root shade says.
   normal = normalize( normal + faceDirection * ${THREAD_STRENGTH} * threadVisible * sin( threadWave ) * threadAxis );
-  // The roots sit in their own shadow; a light darkening sells the depth the
-  // tilted normal alone cannot.
   diffuseColor.rgb *= 1.0 - ${THREAD_ROOT_SHADE} * threadVisible * ( 0.5 - 0.5 * cos( threadWave ) );
 `
 
