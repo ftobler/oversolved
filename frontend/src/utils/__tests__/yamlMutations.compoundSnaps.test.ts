@@ -110,7 +110,9 @@ describe('applyAddCenterRect snap refs', () => {
   it('without refs authors exactly the plain center rectangle constraints', () => {
     const doc = sketchDoc()
     applyAddCenterRect(doc, FID, [0, 0], [3, 2])
-    expect(feat(doc).constraints).toHaveLength(10)
+    // The eight rect constraints plus one diagonal midpoint; the second
+    // diagonal's midpoint is implied by the parallelogram and was redundant.
+    expect(feat(doc).constraints).toHaveLength(9)
   })
 })
 

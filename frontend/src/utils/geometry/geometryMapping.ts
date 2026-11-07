@@ -543,6 +543,23 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
 
   if (kind === 'midpoint') {
     const line = resolved.line
+    // The two-point form (`point` midway between `point_a` and `point_b`, what
+    // the center rectangle authors on its diagonal) has no line to anchor on.
+    // Without this branch it fell through to the generic `symbol_unknown`
+    // glyph, which read as a stray constraint nobody asked for.
+    if (!line && resolved.point_a && resolved.point_b && resolved.point) {
+      const pa = geomPoint(sketch, resolved.point_a)
+      const pb = geomPoint(sketch, resolved.point_b)
+      if (!pa || !pb) return { kind: 'unknown' }
+      const entities = [resolved.point.entity, resolved.point_a.entity, resolved.point_b.entity]
+        .filter((e): e is string => !!e)
+      return {
+        kind: 'symbol_midpoint',
+        at: [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2],
+        entity: resolved.point.entity,
+        entities: [...new Set(entities)],
+      }
+    }
     if (!line) return { kind: 'unknown' }
     const eid = line.entity
     if (!eid) return { kind: 'unknown' }

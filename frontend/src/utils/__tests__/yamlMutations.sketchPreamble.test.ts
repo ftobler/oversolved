@@ -325,7 +325,7 @@ describe('multi-entity sugar mints distinct ids under a repeating generator', ()
   })
 
   it('applyAddCenterRect: the center point is minted after the four lines are pushed', () => {
-    // The point is minted between `_applyRectLines` and the diagonal midpoints, so
+    // The point is minted between `_applyRectLines` and the diagonal midpoint, so
     // it must see the lines that call already pushed. The echoing stub is what
     // makes this bite: a mint reading a snapshot of `entities` taken before
     // `_applyRectLines` would accept the echoed line id and duplicate it.

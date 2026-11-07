@@ -894,7 +894,7 @@ export const MUTATION_CATALOG = {
     summary: 'Add a rectangle by centre and corner.',
     note: '`corner` is the half-diagonal corner: the rectangle mirrors it through `center`, so '
       + 'center [0,0] with corner [1,1] gives a 2x2 rectangle. The feature also leaves a centre point entity '
-      + '(not construction geometry) that the two diagonal midpoint constraints reference; delete it if it is not wanted. '
+      + '(not construction geometry) that the diagonal midpoint constraint references; delete it if it is not wanted. '
       + 'The created entity ids are the four lines, then the centre point: line 1 lies on the mirrored corner\'s y, '
       + 'line 2 on `corner`\'s x, line 3 on `corner`\'s y, line 4 on the mirrored corner\'s x. With `corner` up and right '
       + 'of `center` that is bottom, right, top, left, the add_rect order.',

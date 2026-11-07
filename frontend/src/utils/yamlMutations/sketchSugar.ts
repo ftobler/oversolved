@@ -114,8 +114,8 @@ export function applyAddCenterRect(
   // 4 corners of the rectangle (symmetric around center); (x1, y1) is the click.
   const [x0, y0, x1, y1] = centerRectCorners(center, corner)
   // Same guard as applyAddRect, on the derived corners so one collapsed axis is
-  // caught too; here it must also keep the center point and its two diagonal
-  // midpoint constraints from being authored.
+  // caught too; here it must also keep the center point and its diagonal
+  // midpoint constraint from being authored.
   if (!isProperRect(x0, y0, x1, y1)) {
     warn('applyAddCenterRect: degenerate rectangle skipped', { center, corner })
     return
@@ -123,26 +123,22 @@ export function applyAddCenterRect(
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
 
-  const [lA, lB, lC, lD] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1)
+  const [lA, , lC] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1)
 
   // Create point entity at center
   const pointId = mintEntityId(feature.entities)
   feature.entities.push({ id: pointId, kind: 'point' })
   feature.initial[pointId] = [cx, cy].map(round)
 
-  // The center point is the midpoint of each diagonal. Which corner is "top" or
-  // "left" depends on where the user clicked, so the corners are named by the
-  // click: (x1, y1) is the clicked corner, (x0, y0) its mirror through center.
-  // Diagonal 1: lA:start (x0, y0, the mirror) to lC:start (x1, y1, the click)
+  // The center point is the midpoint of ONE diagonal. On the drawn branch the
+  // rect lines make a parallelogram, whose diagonals bisect each other, so a midpoint on
+  // the second diagonal adds nothing and the solver flags it redundant (it
+  // landed already "broken"). Which corner is "top" or "left" depends on where
+  // the user clicked, so the corners are named by the click: lA:start is
+  // (x0, y0), the mirror of the click through center; lC:start is (x1, y1).
   applyAddConstraint(doc, featureId, 'midpoint', [
     `vertex:${featureId}:${lA}:start`,
     `vertex:${featureId}:${lC}:start`,
-    `vertex:${featureId}:${pointId}:xy`,
-  ])
-  // Diagonal 2: lB:start (x1, y0) to lD:start (x0, y1)
-  applyAddConstraint(doc, featureId, 'midpoint', [
-    `vertex:${featureId}:${lB}:start`,
-    `vertex:${featureId}:${lD}:start`,
     `vertex:${featureId}:${pointId}:xy`,
   ])
 

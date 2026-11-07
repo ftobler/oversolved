@@ -6,8 +6,9 @@ import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl, groupConstraintsByEn
 import { renderDimension } from '@/components/Geometry3D/dimensions/renderDimension'
 import { COLOR_SELECTED, COLOR_ERROR_DEEP, LABEL_Z_OFFSET, highlightState } from '@/components/Geometry3D/constants'
 import { findEntitiesAtPoint } from '@/utils/geometry/drawGeometry'
+import { constraintTileLabel } from '@/registry/constraintRegistry'
 
-function ConstraintTile({ url, id, featureId, highlightIds, superfluous, culprit }: { url: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean }) {
+function ConstraintTile({ url, title, id, featureId, highlightIds, superfluous, culprit }: { url: string; title: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean }) {
   const [hovered, setHovered] = useState(false)
   const wasHoveredRef = useRef(false)
   const cId = `constraint:${featureId}:${id}`
@@ -41,6 +42,7 @@ function ConstraintTile({ url, id, featureId, highlightIds, superfluous, culprit
   return (
     <div
       key={id}
+      title={title}
       onMouseEnter={() => { wasHoveredRef.current = true; setHovered(true); setHoveredConstraintEntities(new Set(highlightIds)) }}
       onMouseLeave={() => { wasHoveredRef.current = false; setHovered(false); setHoveredConstraintEntities(new Set()) }}
       onClick={(e) => { e.stopPropagation(); const s = useSketchEditorStore.getState(); s.clearNormalSelection(); s.addToNormalSelection(cId) }}
@@ -98,7 +100,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
 
     // Sub-group symbols by their `at` position so each distinct location gets its own Html anchor.
     // Key is a rounded grid string; value holds the canonical position and its icon list.
-    const atGroups = new Map<string, { at: [number, number]; icons: { url: string; key: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean }[] }>()
+    const atGroups = new Map<string, { at: [number, number]; icons: { url: string; title: string; key: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean }[] }>()
 
     for (const [cid, c] of clist) {
       const r = c.render as { kind: string; at?: [number, number]; point?: string; entities?: string[]; [key: string]: unknown }
@@ -126,7 +128,8 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
           const atEntities = findEntitiesAtPoint(sketch, at)
           highlightIds = atEntities.length > 0 ? atEntities : [eid]
         }
-        atGroups.get(atKey)!.icons.push({ url, key: cid, highlightIds, superfluous: c.superfluous, culprit: c.culprit })
+        const title = constraintTileLabel(r.kind, c)
+        atGroups.get(atKey)!.icons.push({ url, title, key: cid, highlightIds, superfluous: c.superfluous, culprit: c.culprit })
 
       } else {
         // The solve verdicts ride the interaction block so the dimension label
@@ -146,8 +149,8 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
       symbolElements.push(
         <Html key={`icons-${eid}-${atKey}`} position={[at[0], at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
-            {icons.map(({ url, key, highlightIds, superfluous, culprit }) => (
-              <ConstraintTile key={key} url={url} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} culprit={culprit} />
+            {icons.map(({ url, title, key, highlightIds, superfluous, culprit }) => (
+              <ConstraintTile key={key} url={url} title={title} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} culprit={culprit} />
             ))}
           </div>
         </Html>

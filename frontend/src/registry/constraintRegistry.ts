@@ -455,6 +455,29 @@ export const RENDER_KIND_TO_ICON: Readonly<Record<string, string>> = {
   symbol_unknown: 'constraint-unknown',
 }
 
+// Hover name of an on-canvas constraint tile, keyed like RENDER_KIND_TO_ICON.
+// A glyph alone did not say what it was (a stray tile could not be told from a
+// real one), so the tile names its constraint and the solve verdict it carries.
+const RENDER_KIND_TO_LABEL: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(
+    CONSTRAINTS
+      .filter(c => c.symbolIcon)
+      .map(c => [c.renderKind, c.label])
+  ),
+  symbol_ngon: 'Regular polygon',
+  symbol_unknown: 'Unrenderable constraint',
+}
+
+export function constraintTileLabel(
+  renderKind: string,
+  verdict: { superfluous?: boolean; culprit?: boolean } = {},
+): string {
+  const name = RENDER_KIND_TO_LABEL[renderKind] ?? 'Constraint'
+  if (verdict.culprit) return `${name} (conflicting)`
+  if (verdict.superfluous) return `${name} (redundant)`
+  return name
+}
+
 // Constraints that appear as direct toolbar buttons, in display order.
 export const TOOLBAR_CONSTRAINTS: readonly ConstraintDef[] =
   CONSTRAINTS.filter(c => c.showInToolbar)
