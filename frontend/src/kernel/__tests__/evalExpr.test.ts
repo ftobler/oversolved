@@ -167,3 +167,24 @@ describe('boolean clearance expression', () => {
     expect(sub.clearance_error).toBe('Cannot evaluate "2+/"')
   })
 })
+
+describe('hole thread_depth expression', () => {
+  it('evaluates a tapped depth against a variable context, like depth', () => {
+    const sub: Record<string, unknown> = { depth: 'drill', thread_depth: 'drill * 0.75' }
+    evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.hole, { drill: 20 })
+    expect(sub.depth).toBe(20)
+    expect(sub.thread_depth).toBe(15)
+  })
+})
+
+describe('hole thread_depth through the solve-time resolver', () => {
+  it('resolves an expression on a stored hole feature before the leaf sees it', async () => {
+    const { resolveFeatureExpressions } = await import('../featureExpressions')
+    const feature = { id: 'h1', kind: 'hole', hole: { sketch: '@s', diameter: 5, depth_mode: 'blind', depth: 20,
+      thread: { designation: 'M6x1', nominal: 6, pitch: 1 }, thread_depth: 'tap' } }
+    const out = resolveFeatureExpressions(feature, { tap: 15 })
+    expect('feature' in out && (out.feature.hole as Record<string, unknown>).thread_depth).toBe(15)
+    // The document keeps the authored expression.
+    expect(feature.hole.thread_depth).toBe('tap')
+  })
+})

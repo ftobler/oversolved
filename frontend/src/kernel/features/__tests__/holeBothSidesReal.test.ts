@@ -147,11 +147,11 @@ describe.skipIf(!oc)('a through hole with material on both sides of its plane (r
     const { result } = drill({
       direction: 'normal', ...COUNTERBORE, thread: { designation: 'M2.5x0.45', nominal: 2.5, pitch },
     })
-    const thread = result.thread as { helices: Array<{ center: number[]; turns: number }> }
-    expect(thread.helices).toHaveLength(2)
-    for (const helix of thread.helices) {
-      expect(helix.center[2]).toBeCloseTo(5 - CB_DEPTH, 6)
-      expect(helix.turns * pitch).toBeCloseTo(10 - CB_DEPTH, 6)
+    const thread = result.thread as { sites: Array<{ center: number[]; length: number }> }
+    expect(thread.sites).toHaveLength(2)
+    for (const site of thread.sites) {
+      expect(site.center[2]).toBeCloseTo(5 - CB_DEPTH, 6)
+      expect(site.length).toBeCloseTo(10 - CB_DEPTH, 6)
     }
   })
 

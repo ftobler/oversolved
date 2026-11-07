@@ -380,8 +380,8 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(3)
-        const helices = (result.thread as { helices: Array<{ radius: number }> }).helices
-        expect(helices.map((h) => h.radius)).toEqual([2, 5, 3])
+        const sites = (result.thread as { sites: Array<{ radius: number }> }).sites
+        expect(sites.map((s) => s.radius)).toEqual([2, 5, 3])
         const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
         expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * (2 * 2 + 5 * 5 + 3 * 3) * 5, 2)
       } finally {

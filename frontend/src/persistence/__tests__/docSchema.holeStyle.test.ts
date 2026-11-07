@@ -50,6 +50,22 @@ describe('hole style document validation', () => {
     expect(result.error.field).toBe('features[0].hole.tip')
   })
 
+  it('accepts a tapped thread_depth as a number or an expression', () => {
+    for (const thread_depth of [15, 'depth_var * 0.75']) {
+      const result = loadPartDoc(doc({ thread: { designation: 'M6x1', nominal: 6, pitch: 1 }, thread_depth }))
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(holeOf(result.doc)).toMatchObject({ thread_depth })
+    }
+  })
+
+  it('rejects a thread_depth that is neither a number nor an expression', () => {
+    const result = loadPartDoc(doc({ thread_depth: [15] }))
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.field).toBe('features[0].hole.thread_depth')
+  })
+
   it('accepts a simple hole with no style field', () => {
     const result = loadPartDoc(doc({}))
     expect(result.ok).toBe(true)

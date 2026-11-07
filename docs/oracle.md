@@ -800,7 +800,7 @@ STEP round trip:
   - bbox [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] -> [-2.00000000, -2.00000000, 0.00000000, 2.00000000, 2.00000000, 10.0000000] (max dev 0)
 ### 40-hole-thread
 
-`A cosmetic thread is metadata: the plate carries exactly the blind bore it would without one, so V = 1200 - pi r^2 h with r = 2.5, h = 4, 8 faces (the top face gains the bore's rim, the wall and the floor are the two new faces) and 15 edges; the solve reports M6x1 (nominal 6, pitch 1) with a display helix on the bore`
+`A cosmetic thread is metadata: the plate carries exactly the blind bore it would without one, so V = 1200 - pi r^2 h with r = 2.5, h = 4, 8 faces (the top face gains the bore's rim, the wall and the floor are the two new faces) and 15 edges; the solve reports M6x1 (nominal 6, pitch 1) with one tapped run on the bore for the viewport to shade`
 
 Live build (expected -> measured):
   - volume 1121.46018 -> 1121.46018 (rel dev 0)

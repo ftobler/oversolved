@@ -30,7 +30,7 @@ import {
   makeCylinder, makeCylinderWithFaces, makeCone, faceSurfaceType, type CylinderFaces, type Vec3,
 } from '../occ/primitives'
 import { SubShapeMap } from '../occ/subshapeIdentity'
-import { holeFacePath, mintFaceUuid, type HoleFaceRole } from '../constructionName'
+import { holeFacePath, mintFaceUuid, splitFacePath, type HoleFaceRole } from '../constructionName'
 import { absolute, emitWire, featureRefId } from '../query'
 import { bodySpanAlong, projectedRadius } from './shared/bodyExtent'
 import { sameEnum } from '../occ/enumValue'
@@ -38,8 +38,8 @@ import { booleanWithDiff, volumeOf } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
 import { transferBooleanNames } from './booleanLineage'
 import { readBodyNames, type ShapeNames } from '../occ/bodyNames'
-import { threadHelices, type ThreadDisplay, type ThreadSite } from './threadDisplay'
 import { DRILL_POINT_ANGLE } from '../threadTable'
+import type { ThreadDisplayData, ThreadSiteData } from '@/types/cad'
 import type { PlaneLike } from './shared/planes'
 import { swallowUnlessTrap } from '../errors'
 import { OCC_CONFUSION, TOL_LENGTH_SLACK, TOL_VOLUME_DEGENERATE } from '../solverConstants'
@@ -56,9 +56,56 @@ interface HoleResult {
   // have voted `reverse`, which is otherwise only visible by measuring faces.
   direction: 'normal' | 'reverse'
   // The cosmetic thread the drilled bores are for, if the feature names one: its
-  // metadata plus one display helix per drilled site. A cosmetic thread changes
+  // metadata plus one tapped run per drilled site. A cosmetic thread changes
   // no geometry, so this rides the result rather than the body.
-  thread?: ThreadDisplay
+  thread?: ThreadDisplayData
+}
+
+/** A length for a warning: enough digits to read, no float noise. */
+function roundForMessage(value: number): number {
+  return Math.round(value * 1e4) / 1e4
+}
+
+/**
+ * The uuids the bore named `bore` carries on a shape whose face uuids are
+ * `present`: itself if it survived whole, else its split children, and theirs
+ * if a later site of this hole split a piece again. Pure identity (the split
+ * names are derived from the parent uuid and the child index), never a
+ * geometry match.
+ *
+ * A present uuid is a leaf: a split replaces the parent's name with its
+ * children's, so the common whole bore costs one lookup. An absent one was
+ * split; its children are numbered from 0, and each is present, split again
+ * (absent with children of its own), or consumed outright by a later site's
+ * cut, which leaves a gap in the numbering. So the scan tolerates a few
+ * consecutive misses before it concludes the children ended. Both bounds keep
+ * a bore that vanished entirely to a few dozen hashes.
+ */
+const BORE_SPLIT_DEPTH = 3
+const BORE_SPLIT_GAP = 3
+
+export function boreFamily(bore: string, present: ReadonlySet<string>): string[] {
+  const out: string[] = []
+  const visit = (uuid: string, depth: number): boolean => {
+    if (present.has(uuid)) {
+      out.push(uuid)
+      return true
+    }
+    if (depth >= BORE_SPLIT_DEPTH) return false
+    let found = false
+    let misses = 0
+    for (let i = 0; i < present.size && misses < BORE_SPLIT_GAP; i++) {
+      if (visit(mintFaceUuid(splitFacePath(uuid, i)), depth + 1)) {
+        found = true
+        misses = 0
+      } else {
+        misses++
+      }
+    }
+    return found
+  }
+  visit(bore, 0)
+  return out
 }
 
 /**
@@ -621,6 +668,11 @@ export function solveHole(
   const direction = (sub.direction as string) ?? 'normal'
   const targetRef = (sub.target as string) ?? ''
   const thread = readThreadSpec(sub.thread)
+  // Absent means the whole bore. Only a threaded hole reads it, so a stale
+  // value left behind by switching the thread off cannot refuse a plain hole.
+  const threadDepth = thread !== null && sub.thread_depth !== undefined && sub.thread_depth !== null
+    ? Number(sub.thread_depth)
+    : null
   const style = (sub.style as string) ?? 'simple'
   const cbDiameter = Number(sub.cb_diameter ?? 0)
   const cbDepth = Number(sub.cb_depth ?? 0)
@@ -652,6 +704,9 @@ export function solveHole(
     if (!Number.isFinite(csAngle) || csAngle <= 0 || csAngle >= 180) {
       throw new Error(`hole: the countersink angle ${csAngle} must be between 0 and 180 degrees`)
     }
+  }
+  if (threadDepth !== null && (!Number.isFinite(threadDepth) || threadDepth <= 0)) {
+    throw new Error('hole: thread_depth must be positive')
   }
   if (tip !== 'flat' && tip !== 'drill_point') {
     throw new Error(`hole: tip '${tip}' is not flat or drill_point`)
@@ -807,9 +862,13 @@ export function solveHole(
     return probe === 'both' || (probe !== undefined && probe !== 'none' && probe !== side)
   }
 
-  // The bores the thread display rides: one entry per site that actually cut,
-  // so a thread never draws where the hole removed nothing.
-  const threadSites: ThreadSite[] = []
+  // The tapped bores the viewport shades: one entry per site that actually cut,
+  // so a thread never shows where the hole removed nothing.
+  const threadSites: ThreadSiteData[] = []
+  // Sites whose thread_depth overran the bore (clamped) or stopped inside the
+  // widened mouth (no tapped run), named in the warning.
+  const threadClamped: string[] = []
+  const threadUntapped: string[] = []
   // This hole's own cuts only, like boolean and bodyOps. Seeding with the body's
   // previous diff credited the last modifier's surviving elements to the hole in a
   // full build, while a build restored past that modifier has no diff to seed with.
@@ -914,11 +973,23 @@ export function solveHole(
     const boreLength = depthMode === 'through_all' && throughFrame !== null
       ? reachAlong(throughFrame, center3d, drillAxis) - airGap
       : depth
-    const threadLength = boreLength - threadOffset
+    // Where the tap stops, from the same origin as the bore length (the entry
+    // face; the sketch plane for a blind hole): the authored thread_depth, but
+    // never past the full-diameter bore, so a drill-point cone stays untapped.
+    let tapEnd = boreLength
+    if (threadDepth !== null) {
+      // A through bore's length is the body's bounding-box reach, so a value
+      // that runs past the real exit face but inside the box (an L flange
+      // further along the axis) clamps silently; the shading itself still
+      // stops at the faces, which are all the bore has.
+      if (threadDepth > boreLength + TOL_LENGTH_SLACK) threadClamped.push(`${eid} (${roundForMessage(boreLength)})`)
+      tapEnd = Math.min(threadDepth, boreLength)
+    }
+    const threadLength = tapEnd - threadOffset
     // The thread rides the bore below the widened mouth, measured from the
     // entry face, not the sketch plane that may sit above it.
     const threadStart = airGap + threadOffset
-    if (threadLength > 0) {
+    if (threadLength > TOL_LENGTH_SLACK) {
       threadSites.push({
         center: [
           center3d[0] + drillAxis[0] * threadStart,
@@ -928,7 +999,12 @@ export function solveHole(
         axis: [drillAxis[0], drillAxis[1], drillAxis[2]],
         radius: site.radius,
         length: threadLength,
+        // The name cutterNames gave this site's bore face; widened to its
+        // split pieces once every site has cut (boreFamily below).
+        bore_uuids: [mintFaceUuid(holeFacePath(feature.id as string, `${sketchId}/${eid}`, 'bore'))],
       })
+    } else if (thread !== null && threadDepth !== null) {
+      threadUntapped.push(eid)
     }
   }
 
@@ -941,6 +1017,16 @@ export function solveHole(
     throw new Error(
       `hole: all ${total} drill site(s) in sketch '${sketchId}' have no solved geometry; nothing to place`,
     )
+  }
+
+  // A bore that crosses a gap (a slot, the inside of a U channel) or is cut by
+  // a later site of this hole leaves several faces, and the boolean names each
+  // piece as a split child of the bore rather than the bore itself. The
+  // viewport shades by uuid, so each site reports its whole family as it
+  // stands on the final shape.
+  if (names !== null) {
+    const present = new Set(names.faceNames.values())
+    for (const site of threadSites) site.bore_uuids = boreFamily(site.bore_uuids[0], present)
   }
 
   let bodyIds = [targetBody.id]
@@ -980,7 +1066,7 @@ export function solveHole(
       designation: thread.designation,
       nominal: thread.nominal,
       pitch: thread.pitch,
-      helices: threadHelices(threadSites, thread.pitch),
+      sites: threadSites,
     }
   }
   // Both messages are facts about this solve: the skipped sites were never
@@ -1021,6 +1107,24 @@ export function solveHole(
   }
   if (overlappingSites.length > 0) {
     const note = `hole: drill sites overlap and merge into one cut: ${overlappingSites.map(pair => `sites ${pair}`).join('; ')}`
+    result.solver_warning = result.solver_warning === undefined ? note : `${result.solver_warning}; ${note}`
+  }
+  // A cosmetic overrun is a warning, not a failure: the cut itself is right,
+  // and a thread note must not red the feature.
+  const threadNotes: string[] = []
+  if (threadClamped.length > 0) {
+    threadNotes.push(
+      `hole: thread_depth ${threadDepth} exceeds the bore at sites ${threadClamped.join(', ')} (bore length in parentheses); ` +
+      'the thread stops at the bore end',
+    )
+  }
+  if (threadUntapped.length > 0) {
+    threadNotes.push(
+      `hole: thread_depth ${threadDepth} ends above the bore ${style === 'simple' ? 'start' : `(inside the ${style})`} ` +
+      `at sites ${threadUntapped.join(', ')}; no thread is tapped there`,
+    )
+  }
+  for (const note of threadNotes) {
     result.solver_warning = result.solver_warning === undefined ? note : `${result.solver_warning}; ${note}`
   }
   return result

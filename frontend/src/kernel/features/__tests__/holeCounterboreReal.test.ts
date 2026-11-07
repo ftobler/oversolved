@@ -172,13 +172,13 @@ describe.skipIf(!oc)('hole counterbore and countersink (real OCC)', () => {
       diameter: 4, depth: 8, style: 'counterbore', cb_diameter: 8, cb_depth: 3,
       thread: { designation: 'M4x0.7', nominal: 4, pitch: 0.7 },
     }, pointSite, pointEntity)
-    const thread = result.thread as { helices: Array<{ radius: number; turns: number; center: number[] }> }
-    expect(thread.helices).toHaveLength(1)
-    expect(thread.helices[0].radius).toBeCloseTo(2)
+    const thread = result.thread as { sites: Array<{ radius: number; length: number; center: number[] }> }
+    expect(thread.sites).toHaveLength(1)
+    expect(thread.sites[0].radius).toBeCloseTo(2)
     // The bore is 8 deep and the step takes the first 3, so the thread starts
     // at z=3 and covers 5 of the 8, not the counterbore wall.
-    expect(thread.helices[0].center[2]).toBeCloseTo(3)
-    expect(thread.helices[0].turns).toBeCloseTo(5 / 0.7)
+    expect(thread.sites[0].center[2]).toBeCloseTo(3)
+    expect(thread.sites[0].length).toBeCloseTo(5)
   })
 
   it('refuses a mouth no wider than the bore', () => {
@@ -288,8 +288,8 @@ describe.skipIf(!oc)('hole drill-point tip (real OCC)', () => {
     const { result } = runHole({
       diameter: 4, depth: 8, tip: 'drill_point', thread: { designation: 'M4x0.7', nominal: 4, pitch: 0.7 },
     }, pointSite, pointEntity)
-    const thread = result.thread as { helices: Array<{ turns: number }> }
-    expect(thread.helices[0].turns).toBeCloseTo(8 / 0.7)
+    const thread = result.thread as { sites: Array<{ length: number }> }
+    expect(thread.sites[0].length).toBeCloseTo(8)
   })
 
   it('refuses an unknown tip and a point angle outside (0, 180)', () => {

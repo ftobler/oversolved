@@ -1254,6 +1254,16 @@ describe('hole styles: the new fields cross the same boundary', () => {
       .toContain('drill_point')
     expect(refusal({ type: 'add_hole', featureId: 'ho1', tip: 'ball' }).code).toBe('invalid-mutation')
   })
+
+  it('accepts a tapped thread_depth as a number, an expression or a null clear', () => {
+    for (const value of [15, 'depth * 0.75', null]) {
+      expect(validateMutation({ type: 'set_hole_field', featureId: 'ho1', field: 'thread_depth', value }), String(value))
+        .toMatchObject({ ok: true })
+    }
+    expect(validateMutation({ type: 'add_hole', featureId: 'ho1', thread_depth: 15 })).toMatchObject({ ok: true })
+    expect(refusal({ type: 'set_hole_field', featureId: 'ho1', field: 'thread_depth', value: '' }).code)
+      .toBe('invalid-mutation')
+  })
 })
 
 describe('finding: add_extrude carries the up-to termination inline', () => {

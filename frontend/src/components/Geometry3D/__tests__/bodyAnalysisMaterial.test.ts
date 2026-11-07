@@ -10,9 +10,13 @@ import {
   CURVATURE_HIGHLIGHT_GLSL,
   ZEBRA_GLSL,
   ZEBRA_HIGHLIGHT_GLSL,
+  THREAD_GLSL,
+  ThreadProgram,
   analysisMaterialName,
   makeZebraPatch,
+  selectBodyPatch,
   useBodyAnalysisMaterial,
+  type BodyAnalysisMode,
   type BodyAnalysisParams,
 } from '@/components/Geometry3D/bodyAnalysisMaterial'
 
@@ -202,5 +206,52 @@ describe('useBodyAnalysisMaterial', () => {
     }
     material.onBeforeCompile(shader as unknown as WebGLProgramParametersWithUniforms, {} as never)
     expect(shader.fragmentShader).toBe(THREE.ShaderLib.standard.fragmentShader)
+  })
+})
+
+describe('thread shading patch', () => {
+  it('reads the bore frame from vertex attributes and shades after the view-space normal', () => {
+    const shader = applyPatch(new ThreadProgram())
+    expect(shader.vertexShader).toContain('attribute vec4 aThreadCoord;')
+    expect(shader.vertexShader).toContain('attribute vec3 aThreadAxis;')
+    expect(shader.fragmentShader.indexOf(THREAD_GLSL)).toBeGreaterThan(
+      shader.fragmentShader.indexOf('#include <normal_fragment_begin>'),
+    )
+    // The angle is taken per fragment, never interpolated across the seam.
+    expect(THREAD_GLSL).toContain('atan( vThreadCoord.y, vThreadCoord.x')
+    // The axis is a surface direction: model-view, not the normal matrix.
+    expect(shader.vertexShader).toContain('vThreadAxis = mat3( modelViewMatrix ) * aThreadAxis;')
+  })
+
+  it('takes its derivatives outside any branch, masking the plain wall instead', () => {
+    // dFdx/dFdy in non-uniform control flow are undefined in GLSL ES 3.0.
+    expect(THREAD_GLSL).not.toMatch(/\bif\s*\(/)
+    expect(THREAD_GLSL).toContain('dFdx')
+    // A back face tilts its flanks the same way as the front.
+    expect(THREAD_GLSL).toContain('faceDirection')
+  })
+
+  it('compiles as its own program, distinct from plain, zebra and curvature', () => {
+    const keys = ['zebra', 'curvature', 'none'].map(mode =>
+      selectBodyPatch(mode as BodyAnalysisMode, true, true)?.customProgramCacheKey() ?? '')
+    expect(keys).toEqual(['zebra-vc', 'curvature-vc', 'thread'])
+    expect(selectBodyPatch('none', true, false)).toBeNull()
+  })
+
+  it('gives way to an analysis mode, which must show the true surface, and comes back after it', () => {
+    const material = new THREE.MeshPhysicalMaterial()
+    const ref = { current: material as THREE.Material | null }
+    const plainThreaded: BodyAnalysisParams = { ...zebraParams, mode: 'none', threaded: true }
+    const { rerender } = renderHook(
+      ({ params }) => useBodyAnalysisMaterial(ref, params),
+      { initialProps: { params: plainThreaded } },
+    )
+    expect(material.customProgramCacheKey()).toBe('thread')
+    rerender({ params: { ...plainThreaded, mode: 'zebra' } })
+    expect(material.customProgramCacheKey()).toBe('zebra-vc')
+    rerender({ params: plainThreaded })
+    expect(material.customProgramCacheKey()).toBe('thread')
+    rerender({ params: { ...plainThreaded, threaded: false } })
+    expect(material.customProgramCacheKey()).toBe('')
   })
 })

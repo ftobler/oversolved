@@ -236,6 +236,10 @@ export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+// The tapped depth a through hole starts from when "Tap full depth" is
+// unchecked: it stores no depth to copy, so any positive value is a start.
+const THREAD_DEPTH_FALLBACK = 10
+
 export const HOLE_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_hole',
   subKey: 'hole',
@@ -284,7 +288,29 @@ export const HOLE_SCHEMA: FeatureEditorSchema = {
       valueFrom: (d) => String(d.thread?.designation ?? d._thread_designation ?? threadDesignations()[0]),
       getMutation: (option) => ({ field: 'thread', value: threadSpecFor(option) }),
       options: THREAD_TABLE.map((entry) => ({ value: entry.designation, label: threadLabel(entry) })) },
+    // The tapped depth (drill 20, tap 15). The number widget has no empty
+    // state, so "the whole bore" (no thread_depth stored) is its own checkbox:
+    // checking it clears the field, unchecking seeds the blind depth so the
+    // user edits down from a value that changes nothing yet.
+    { type: 'checkbox', key: '_thread_full', label: 'Tap full depth', default: true,
+      showWhen: (d) => d.thread != null,
+      isChecked: (d) => d.thread_depth == null,
+      getMutation: (checked, d) => ({
+        field: 'thread_depth',
+        value: checked ? null : threadDepthSeed(d),
+      }) },
+    { type: 'number', key: 'thread_depth', label: 'Thread depth', default: THREAD_DEPTH_FALLBACK,
+      showWhen: (d) => d.thread != null && d.thread_depth != null, validate: positive, unit: 'mm' },
   ],
+}
+
+/** The value unchecking "Tap full depth" writes: the blind depth (the same
+ *  tapped run the checkbox showed), else the fallback. */
+function threadDepthSeed(d: SchemaData): number | string {
+  if (d.depth_mode !== 'through_all' && (typeof d.depth === 'number' || typeof d.depth === 'string') && d.depth !== '') {
+    return d.depth
+  }
+  return THREAD_DEPTH_FALLBACK
 }
 
 /** The doc's thread spec for a table designation, or the first entry when the

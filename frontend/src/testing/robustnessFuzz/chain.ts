@@ -774,6 +774,7 @@ function applyStep(
         direction: 'reverse',
         target: step.target,
         ...(step.thread !== null ? { thread: threadSpec(step.thread) } : {}),
+        ...(step.threadDepth != null ? { thread_depth: step.threadDepth } : {}),
       },
     }, repoForLeaves, bodyStore, { [sketchId]: { entities: [{ id: 'p1', kind: 'point' }] } })
     return { editedIds: result.body_ids }

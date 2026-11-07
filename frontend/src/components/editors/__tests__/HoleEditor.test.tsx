@@ -146,4 +146,48 @@ describe('HoleEditor (via FeatureEditor)', () => {
     expect(screen.queryByDisplayValue('Drill point')).toBeNull()
     expect(screen.queryByDisplayValue('118')).toBeNull()
   })
+
+  describe('thread depth', () => {
+    const M6 = { designation: 'M6x1', nominal: 6, pitch: 1 }
+    const tapFull = () => screen.queryByLabelText('Tap full depth') as HTMLInputElement | null
+
+    it('shows nothing about the tapped depth without a thread', () => {
+      render(<FeatureEditor feature={makeFeature()} onMutation={vi.fn()} schema={HOLE_SCHEMA} />)
+      expect(tapFull()).toBeNull()
+      expect(screen.queryByLabelText('Thread depth')).toBeNull()
+    })
+
+    it('taps the full bore by default and hides the number', () => {
+      render(<FeatureEditor feature={makeFeature({ thread: M6 })} onMutation={vi.fn()} schema={HOLE_SCHEMA} />)
+      expect(tapFull()?.checked).toBe(true)
+      expect(screen.queryByLabelText('Thread depth')).toBeNull()
+    })
+
+    it('unchecking seeds the blind depth, so the shading does not move yet', () => {
+      const onMutation = vi.fn()
+      render(<FeatureEditor feature={makeFeature({ thread: M6 })} onMutation={onMutation} schema={HOLE_SCHEMA} />)
+      fireEvent.click(tapFull()!)
+      expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'thread_depth', value: 20 })
+    })
+
+    it('a through hole seeds the fallback, having no depth to copy', () => {
+      const onMutation = vi.fn()
+      const feature = makeFeature({ thread: M6, depth_mode: 'through_all', depth: undefined })
+      render(<FeatureEditor feature={feature} onMutation={onMutation} schema={HOLE_SCHEMA} />)
+      fireEvent.click(tapFull()!)
+      expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'thread_depth', value: 10 })
+    })
+
+    it('edits a stored depth, and checking full depth clears it', () => {
+      const onMutation = vi.fn()
+      render(<FeatureEditor feature={makeFeature({ thread: M6, thread_depth: 15 })} onMutation={onMutation} schema={HOLE_SCHEMA} />)
+      expect(tapFull()?.checked).toBe(false)
+      const input = screen.getByDisplayValue('15')
+      fireEvent.change(input, { target: { value: '12' } })
+      fireEvent.blur(input)
+      expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'thread_depth', value: 12 })
+      fireEvent.click(tapFull()!)
+      expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'thread_depth', value: null })
+    })
+  })
 })

@@ -103,6 +103,9 @@ export interface RecipeHole {
   // bore. The thread changes no geometry; it is derived from `face` at draw
   // time so the generator's stream does not move.
   thread: string | null
+  // The tapped depth, or null/absent for the whole bore. Derived like `thread`
+  // (no randomness consumed); absent in recipes pinned before it existed.
+  threadDepth?: number | null
 }
 
 export interface RecipeLinearArray {
@@ -333,10 +336,17 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
       return { kind: 'chamfer', id, target: PRIMARY_BODY, edge: drawInt(rnd, 0, 11), distance: grid(drawInt(rnd, 1, 2)) }
     case 'hole': {
       const face = drawInt(rnd, 0, 3)
+      // Drawn in the original order (diameter, depth, mode): reordering the
+      // draws would move every pinned seed's chain.
+      const diameter = grid(drawInt(rnd, 2, 3))
+      const depth = grid(drawInt(rnd, 2, 4))
+      const depthMode = rnd() < 0.7 ? 'blind' : 'through_all'
       return {
-        kind: 'hole', id, target: PRIMARY_BODY, face,
-        diameter: grid(drawInt(rnd, 2, 3)), depth: grid(drawInt(rnd, 2, 4)),
-        depthMode: rnd() < 0.7 ? 'blind' : 'through_all',
+        kind: 'hole', id, target: PRIMARY_BODY, face, diameter, depth, depthMode,
+        // A tapped run shorter than the bore on odd faces, an overrun the leaf
+        // must clamp on face 2, the whole bore otherwise. Derived from the
+        // drawn values for the same no-extra-randomness reason as `thread`.
+        threadDepth: face % 2 === 1 ? depth / 2 : face === 2 ? depth * 2 : null,
         // The cosmetic thread is derived from the already-drawn face index, so
         // the generator consumes no extra randomness: every seed's chain stays
         // byte-identical to the pre-thread generator and the pinned findings

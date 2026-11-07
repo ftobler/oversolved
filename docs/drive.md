@@ -872,7 +872,7 @@ banner on stdout, so a client config must use the direct node invocation.
   Guidance that a field list cannot carry lives in the row note: `hole` lists
   its required fields (`sketch`, `diameter`, `depth_mode`) and its optional ones
   (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,
-  `cs_angle`, `tip`, `tip_angle`), with `depth` required only for a blind hole because a
+  `cs_angle`, `tip`, `tip_angle`, `thread_depth`), with `depth` required only for a blind hole because a
   `through_all` hole is sized by the target body and stores no depth; all are
   optional in an `add_hole` payload. The widened mouth is one field,
   `cb_diameter`, under both the `counterbore` and the `countersink` style, so

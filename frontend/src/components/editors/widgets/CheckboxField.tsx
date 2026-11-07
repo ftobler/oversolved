@@ -11,6 +11,10 @@ export function CheckboxFieldWidget({
       <span className="feature-field-label">{field.label}</span>
       <input
         type="checkbox"
+        // The visible label is a sibling span, not a <label>, so name the box
+        // itself the way NumberField names its input: an editor with two
+        // checkboxes is otherwise two anonymous controls.
+        aria-label={field.label}
         checked={checked as boolean}
         onClick={(e) => e.stopPropagation()}
         onChange={(e) => {

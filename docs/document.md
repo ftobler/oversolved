@@ -54,7 +54,8 @@ a script authors the same field), because the leaf solver never sees the
 document unit. Assembly documents keep the millimetre frame, so an inch part
 placed in an assembly is placed by its authored numbers in that frame, and an
 assembly export does not scale it. The cosmetic thread table stays metric
-(`nominal` and `pitch` are mm lookups) whatever the document unit says.
+(`nominal` and `pitch` are mm lookups) whatever the document unit says; the
+viewport converts the pitch to the document unit when it shades the bore.
 
 The assembly document (parts, instances, mates) is a separate format. Its
 contract is the JSON Schema in `persistence/assemblyDocSchema.ts`, served over
@@ -461,6 +462,7 @@ body and is not expanded.
       designation: M6x1          # a thread-table entry
       nominal: 6.0               # the thread's major diameter, mm (the table is metric whatever the document unit)
       pitch: 1.0                 # mm per turn
+    thread_depth: 15.0           # optional: how deep the thread is tapped (absent: the whole bore)
 ```
 
 The `sketch` pick drills every non-construction point and circle in the sketch:
@@ -494,9 +496,20 @@ has no bottom and ignores both fields.
 
 A cosmetic thread adds no geometry: the bore keeps its drilled size (the authored
 `diameter` for a point, the circle's own radius for a circle) and the solve
-reports the thread's metadata plus one display helix per drilled bore, drawn on
-the bore wall below the widened mouth. The pair is checked against the thread
-table at load time when the table carries the designation.
+reports the thread's metadata plus one tapped run per drilled bore, which the
+viewport shades as helical ridges on the bore wall below the widened mouth. The
+pair is checked against the thread table at load time when the table carries
+the designation.
+
+`thread_depth` is how deep the thread is tapped when that is less than the
+drilled bore (drill 20, tap 15). It is measured from the same origin as
+`depth` (the sketch plane for a blind hole, the entry face for a through hole),
+so the two read as one callout. Absent means the whole bore. A value past the
+full-diameter bore (into a drill point, or beyond a through hole's far face)
+is clamped there with a warning, and one that ends inside a counterbore or
+countersink taps nothing, also with a warning: neither fails the hole, whose
+cut is unaffected. A hole without `thread` ignores the field, so switching the
+thread off and on again keeps the depth.
 
 ### transform
 

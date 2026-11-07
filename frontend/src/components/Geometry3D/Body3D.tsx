@@ -29,6 +29,7 @@ import {
 } from '@/components/Geometry3D/bodyGeometry'
 import { analysisMaterialName, useBodyAnalysisMaterial } from '@/components/Geometry3D/bodyAnalysisMaterial'
 import { curvatureForMesh, effectiveCurvatureRange } from '@/components/Geometry3D/curvature'
+import { buildThreadAttributes, type ThreadSiteIndex } from '@/components/Geometry3D/threadShading'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { lazyGeometryCache } from '@/components/Geometry3D/lazyGeometryCache'
 import { faceRuns, triangleRuns, edgeRuns, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
@@ -94,9 +95,12 @@ interface Body3DProps {
   // Stable position in the viewport's body list; owns the section cap's render
   // order band so bodies cannot interleave their stencil passes.
   capBand?: number
+  // The part's tapped bores by bore-face UUID (null: none). The body shades
+  // the faces of its own mesh that carry one of them.
+  threadSites?: ThreadSiteIndex | null
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true, capBand = 0 }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true, capBand = 0, threadSites = null }: Body3DProps) {
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible && showFaces })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible && showEdges })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
@@ -289,12 +293,21 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     [faceHighlightIndex, faceSelectionFlags, faceHoverFlags],
   )
 
+  // Null for a body with no tapped bore (the common case), so a solve that
+  // changes some other hole's thread leaves this body's geometry memo alone.
+  const threadAttributes = useMemo(() => buildThreadAttributes(mesh, threadSites), [mesh, threadSites])
+
   const geometry = useMemo(() => {
     const indexed = buildBodySurfaceGeometry(mesh)
     if (curvatureActive) {
       // The field follows the indexed vertex order, and toNonIndexed below
       // copies this attribute per split vertex exactly like the smooth normals.
       indexed.setAttribute('aCurvature', new THREE.BufferAttribute(curvatureForMesh(mesh).values, 2))
+    }
+    if (threadAttributes !== null) {
+      // Indexed like aCurvature, for the same reason.
+      indexed.setAttribute('aThreadCoord', new THREE.BufferAttribute(threadAttributes.coord, 4))
+      indexed.setAttribute('aThreadAxis', new THREE.BufferAttribute(threadAttributes.axis, 3))
     }
     // toNonIndexed gives each triangle its own vertex slots so faceColors[i*9..i*9+8]
     // maps 1:1 to face i without bleeding into shared-vertex neighbors. The
@@ -311,7 +324,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     }
     geo.setAttribute('color', new THREE.BufferAttribute(initialColors, 3))
     return geo
-  }, [mesh, curvatureActive])
+  }, [mesh, curvatureActive, threadAttributes])
 
   useDispose(geometry)
 
@@ -363,6 +376,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     zebraStripes,
     curvatureKind,
     curvatureRange: effectiveCurvatureRange(curvatureManualRange, curvatureAutoRange),
+    threaded: threadAttributes !== null,
   })
 
   // The section clips the body's faces and edges, not the reference geometry

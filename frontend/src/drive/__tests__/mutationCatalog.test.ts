@@ -135,7 +135,7 @@ describe('mutation catalog', () => {
       expect(info.note).toContain('required fields are sketch, diameter, depth_mode')
       expect(info.note).toContain('depth is required only for a blind hole')
       expect(info.note).toContain('stores no depth')
-      expect(info.note).toContain('optional fields are direction, target, thread, style, cb_diameter, cb_depth, cs_angle, tip, tip_angle')
+      expect(info.note).toContain('optional fields are direction, target, thread, style, cb_diameter, cb_depth, cs_angle, tip, tip_angle, thread_depth')
       expect(info.note).toContain('all optional in an `add_hole` payload')
       expect(info.note).toContain('blind or through_all')
       // The one spelling difference an author hits: a hole's sketch ref is

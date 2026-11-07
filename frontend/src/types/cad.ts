@@ -186,10 +186,16 @@ export type HoleFeatureDef = {
   tip?: HoleTip
   // The drill point's included angle in degrees; absent means DRILL_POINT_ANGLE.
   tip_angle?: NumberOrExpr
-  // A cosmetic thread: metadata plus the display helix the solve reports. It
-  // changes no geometry, so the bore stays the authored `diameter` (normally the
-  // table entry's tap drill).
+  // A cosmetic thread: metadata plus the tapped bores the solve reports for the
+  // viewport to shade. It changes no geometry, so the bore stays the authored
+  // `diameter` (normally the table entry's tap drill).
   thread?: ThreadSpec
+  // How deep the thread is tapped, from the same origin `depth` is measured
+  // from (the sketch plane for a blind hole, the entry face for a through
+  // hole). Drill 20, tap 15 is a common callout and a drawing reads it from
+  // here. Absent means the whole bore. Read only with `thread`, and kept when
+  // the thread is switched off so switching it back restores the depth.
+  thread_depth?: NumberOrExpr
 }
 
 export interface ThreadSpec {
@@ -201,24 +207,30 @@ export interface ThreadSpec {
   pitch: number
 }
 
-/** One drilled bore's cosmetic-thread display helix. */
-export interface ThreadHelixData {
+/** One drilled bore's tapped run, in document length units. */
+export interface ThreadSiteData {
+  // Where the tapped run starts (below any widened mouth), on the bore axis,
+  // and the drill direction it runs along.
   center: [number, number, number]
   axis: [number, number, number]
-  // The bore's radius: the wall the helix rides on, not the thread's nominal.
+  // The bore's radius: the wall the shading rides on, not the thread's nominal.
   radius: number
-  pitch: number
-  turns: number
-  points: [number, number, number][]
+  // The tapped length after the `thread_depth` clamp.
+  length: number
+  // The UUIDs this site's bore face carries on the drilled body: the one the
+  // hole minted, or its split pieces where the bore crossed a gap. The
+  // viewport shades the faces whose query carries one: identity, never a
+  // geometry match. Empty when no piece of the bore survived.
+  bore_uuids: string[]
 }
 
 /** What a hole solve reports for its cosmetic thread: the metadata plus one
- *  display helix per drilled bore. */
+ *  tapped run per drilled bore. `pitch` stays the table's millimetres. */
 export interface ThreadDisplayData {
   designation: string
   nominal: number
   pitch: number
-  helices: ThreadHelixData[]
+  sites: ThreadSiteData[]
 }
 
 export type MirrorFeatureDef = {
@@ -1248,7 +1260,7 @@ export interface SketchData {
   // and the angle) plus the sampled curve the viewport draws.
   helix?: Record<string, number>
   curve?: EdgeDataSpline
-  // A hole's cosmetic thread: metadata plus the bore display helices.
+  // A hole's cosmetic thread: metadata plus the tapped bores.
   thread?: ThreadDisplayData
 }
 

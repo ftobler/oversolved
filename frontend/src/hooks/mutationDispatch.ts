@@ -333,6 +333,7 @@ export const mutationHandlers: MutationHandlers = {
       tip: m.tip,
       tip_angle: m.tip_angle,
       thread: m.thread,
+      thread_depth: m.thread_depth,
     }),
   set_hole_field: (next, m) =>
     applySetHoleField(next, m.featureId, m.field, m.value),

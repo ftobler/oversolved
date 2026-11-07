@@ -167,6 +167,83 @@ export class CurvatureProgram implements BodyAnalysisPatch {
   }
 }
 
+// The cosmetic thread: a procedural normal map on a tapped bore. The phase
+// `s - theta / 2pi` is constant along a right-hand helix advancing one pitch per
+// turn, so sin(2pi phase) is a smooth flank profile and its sign tilts the
+// normal up or down the bore axis. The angle comes from the interpolated
+// (u, v) per fragment, which is continuous across the cylinder seam, and so is
+// the analytic phase derivative used for the fade: fwidth of atan2 itself would
+// spike on the seam and draw a plain stripe there.
+//
+// Strength is how far a flank tilts the normal (tuned by eye until the bore
+// still reads as a cylinder); root shade is the darkening in the groove.
+const THREAD_STRENGTH = '0.55'
+const THREAD_ROOT_SHADE = '0.18'
+
+//
+// No branch: derivatives are undefined in non-uniform control flow (a 2x2 quad
+// straddling the run's end would read garbage), so everything is computed for
+// every fragment and the plain wall is a zero mask, not a skipped block. Every
+// factor is finite for any input, untapped vertices included (sMax = -1 and a
+// zero axis), so a 0 mask can never meet a NaN.
+export const THREAD_GLSL = `
+  float threadR2 = max( dot( vThreadCoord.xy, vThreadCoord.xy ), 1e-12 );
+  float threadPhase = vThreadCoord.z - atan( vThreadCoord.y, vThreadCoord.x + 1e-12 ) / 6.28318530718;
+  vec2 threadDu = vec2( dFdx( vThreadCoord.x ), dFdy( vThreadCoord.x ) );
+  vec2 threadDv = vec2( dFdx( vThreadCoord.y ), dFdy( vThreadCoord.y ) );
+  vec2 threadDs = vec2( dFdx( vThreadCoord.z ), dFdy( vThreadCoord.z ) );
+  vec2 threadDphase = threadDs - ( vThreadCoord.x * threadDv - vThreadCoord.y * threadDu ) / ( threadR2 * 6.28318530718 );
+  // Phase change per pixel: past about a third of a pitch the ridges alias
+  // into moire, so the wall fades back to plain as the bore shrinks on screen.
+  float threadWidth = abs( threadDphase.x ) + abs( threadDphase.y );
+  float threadVisible = 1.0 - smoothstep( 0.15, 0.35, threadWidth );
+  // Inside the tapped run only, with a short fade at both ends instead of a
+  // hard cut line. sMax <= 0 marks an untapped vertex.
+  threadVisible *= step( 0.0, vThreadCoord.w ) * smoothstep( 0.0, 0.2, vThreadCoord.z )
+    * smoothstep( 0.0, 0.2, vThreadCoord.w - vThreadCoord.z );
+  float threadAxisLength = length( vThreadAxis );
+  threadVisible *= step( 1e-6, threadAxisLength );
+  vec3 threadAxis = vThreadAxis / max( threadAxisLength, 1e-6 );
+  float threadWave = 6.28318530718 * threadPhase;
+  // faceDirection undoes the back-face flip normal_fragment_begin applied to
+  // \`normal\`, so a bore seen from behind (a section view) tilts its flanks
+  // the same way its root shade says.
+  normal = normalize( normal + faceDirection * ${THREAD_STRENGTH} * threadVisible * sin( threadWave ) * threadAxis );
+  // The roots sit in their own shadow; a light darkening sells the depth the
+  // tilted normal alone cannot.
+  diffuseColor.rgb *= 1.0 - ${THREAD_ROOT_SHADE} * threadVisible * ( 0.5 - 0.5 * cos( threadWave ) );
+`
+
+/**
+ * The cosmetic-thread program: the body's own material with the tapped bores
+ * shaded, so hover and selection colours, section clipping and transparency
+ * keep working on the bore wall. Analysis modes replace it (they must show the
+ * true surface), so it is installed only while no analysis mode is on.
+ */
+export class ThreadProgram implements BodyAnalysisPatch {
+  readonly name = 'thread-material'
+  readonly uniforms: BodyAnalysisPatch['uniforms'] = { uStripeFrequency: { value: 0 } }
+
+  customProgramCacheKey = (): string => 'thread'
+
+  onBeforeCompile = (shader: WebGLProgramParametersWithUniforms): void => {
+    shader.vertexShader = 'attribute vec4 aThreadCoord;\nattribute vec3 aThreadAxis;\n'
+      + 'varying vec4 vThreadCoord;\nvarying vec3 vThreadAxis;\n' + shader.vertexShader
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      // View space, the space `normal` lives in at normal_fragment_begin. The
+      // axis is a direction along the surface, not a normal, so it takes the
+      // model-view matrix (the normal matrix is only equal under uniform scale).
+      '#include <begin_vertex>\n  vThreadCoord = aThreadCoord;\n  vThreadAxis = mat3( modelViewMatrix ) * aThreadAxis;',
+    )
+    shader.fragmentShader = 'varying vec4 vThreadCoord;\nvarying vec3 vThreadAxis;\n' + shader.fragmentShader
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <normal_fragment_begin>',
+      `#include <normal_fragment_begin>\n${THREAD_GLSL}`,
+    )
+  }
+}
+
 /** A standalone patch for a caller that has no hook (tests, one-off previews). */
 export function makeZebraPatch(opts: {
   stripes: number
@@ -191,23 +268,35 @@ export interface BodyAnalysisParams {
   zebraStripes: number
   curvatureKind: CurvatureKind
   curvatureRange: [number, number]
+  // The geometry carries thread attributes (a tapped bore). Optional so a
+  // caller with no threads (the assembly) never has to say so.
+  threaded?: boolean
+}
+
+/** Which program a body material runs: an analysis mode wins, since it must
+ *  show the true surface; the thread shading is the plain view's patch. */
+export function selectBodyPatch(mode: BodyAnalysisMode, mixVertexColor: boolean, threaded: boolean): BodyAnalysisPatch | null {
+  if (mode === 'zebra') return new ZebraProgram(mixVertexColor)
+  if (mode === 'curvature') return new CurvatureProgram(mixVertexColor)
+  if (threaded) return new ThreadProgram()
+  return null
 }
 
 /**
  * Install the analysis patch on a material and keep its uniforms current.
- * `params.mode` is the only compile-time input; every other field updates the
- * already compiled program through its uniforms.
+ * `params.mode` and `params.threaded` are the only compile-time inputs; every
+ * other field updates the already compiled program through its uniforms.
  */
 export function useBodyAnalysisMaterial(
   materialRef: RefObject<THREE.Material | null>,
   params: BodyAnalysisParams,
 ): BodyAnalysisPatch | null {
   const { mode, mixVertexColor } = params
-  const patch = useMemo<BodyAnalysisPatch | null>(() => {
-    if (mode === 'zebra') return new ZebraProgram(mixVertexColor)
-    if (mode === 'curvature') return new CurvatureProgram(mixVertexColor)
-    return null
-  }, [mode, mixVertexColor])
+  const threaded = params.threaded ?? false
+  const patch = useMemo<BodyAnalysisPatch | null>(
+    () => selectBodyPatch(mode, mixVertexColor, threaded),
+    [mode, mixVertexColor, threaded],
+  )
 
   useEffect(() => {
     patch?.setStripeCount?.(params.zebraStripes)

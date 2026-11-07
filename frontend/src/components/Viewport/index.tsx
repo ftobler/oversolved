@@ -33,8 +33,8 @@ import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import HelixCurve from '@/components/Viewport/HelixCurve'
-import ThreadCurves from '@/components/Viewport/ThreadCurves'
-import { collectThreadCurves } from '@/components/Viewport/threadHelices'
+import { collectThreadSites, threadSitesFromKey, threadSitesKey } from '@/components/Geometry3D/threadShading'
+import { lengthUnitOf } from '@/utils/lengthUnit'
 import { DEFAULT_PLANE_SIZE } from '@/components/Viewport/planeConstants'
 import { BUILTIN_PLANE_ROTATIONS } from '@/utils/builtinPlanes'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
@@ -520,15 +520,21 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     return sizes
   }, [features, bodies])
 
-  // The threaded holes' display helices. The hide/rollback filter runs on the
-  // feature list first, so a hidden hole takes its thread line with it.
-  const threadCurves = useMemo(
-    () => collectThreadCurves(
+  // The tapped bores each body shades. The hide/rollback filter runs on the
+  // feature list first, so a hidden hole takes its thread shading with it. The
+  // pitch is scaled to the document unit here, the one place that knows it.
+  const lengthUnit = lengthUnitOf(doc?.length_unit)
+  const threadKey = useMemo(
+    () => threadSitesKey(collectThreadSites(
       (features ?? []).filter(f => isActive(f.id, features, rollbackPosition, visibleFeatures)),
       solveResults,
-    ),
-    [features, rollbackPosition, visibleFeatures, solveResults],
+      lengthUnit,
+    )),
+    [features, rollbackPosition, visibleFeatures, solveResults, lengthUnit],
   )
+  // Keyed on content, so an edit that leaves every thread alone keeps the
+  // index identity and no threaded body rebuilds its geometry for it.
+  const threadSites = useMemo(() => threadSitesFromKey(threadKey), [threadKey])
 
   // Latch the travel as it happens, then hand the move on to the rubber band. An
   // orbit that swings out and returns near its start would otherwise read as a
@@ -577,6 +583,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       showFaces={shading}
       showEdges={edges}
       capBand={capBand}
+      threadSites={threadSites}
     />
   )
 
@@ -671,8 +678,6 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
               />
             )
           })}
-
-        <ThreadCurves curves={threadCurves} />
 
         {(() => {
           const sketchPlaneQuery = getActiveSketchPlane(activeFeatureId, features)

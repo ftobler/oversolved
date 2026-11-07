@@ -297,6 +297,10 @@ export const FEATURE_SCHEMA_BY_KIND = {
         },
         additionalProperties: false,
       },
+      thread_depth: {
+        ...NUMBER_OR_EXPR,
+        description: 'How deep the thread is tapped, from the origin depth is measured from (the sketch plane for a blind hole, the entry face for a through hole). Absent means the whole bore; a value past the bore is clamped with a warning. Read only with thread',
+      },
     },
   }),
   transform: feature('transform', {

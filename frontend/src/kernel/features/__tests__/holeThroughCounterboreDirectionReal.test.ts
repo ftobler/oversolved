@@ -157,10 +157,10 @@ describe.skipIf(!oc)('a through counterbore widens on the material side (real OC
     const { result } = drill(PLATE_Z + 1, 0, {
       ...COUNTERBORE, direction: 'normal', thread: { designation: 'M4x0.7', nominal: 4, pitch: 0.7 },
     })
-    const thread = result.thread as { helices: Array<{ center: number[] }> }
+    const thread = result.thread as { sites: Array<{ center: number[] }> }
     // The step is 4 mm into the plate, so the thread starts at z=9: measuring
     // from the raised sketch plane would start it 1 mm higher, inside the step.
-    expect(thread.helices[0].center[2]).toBeCloseTo(PLATE_Z - CB_DEPTH)
+    expect(thread.sites[0].center[2]).toBeCloseTo(PLATE_Z - CB_DEPTH)
   })
 
   it('gives both directions the same bore, step wall and step floor uuids', () => {
