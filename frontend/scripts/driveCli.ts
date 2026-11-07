@@ -1,8 +1,8 @@
 // The headless drive CLI: run scripts, list the command registry, measure and
 // export documents, and replay repro journals through the real in-process
 // kernel. Beside regenCorpus.ts and under the same --experimental-strip-types
-// recipe (with driveCli.loader.mjs, which adds the import.meta.env shim the
-// app sources need outside Vite). The operations themselves live in
+// recipe (with driveCli.register.mjs, whose hooks add the import.meta.env shim
+// the app sources need outside Vite). The operations themselves live in
 // src/drive/headlessOps.ts, shared with the MCP server so the two surfaces
 // cannot drift.
 //

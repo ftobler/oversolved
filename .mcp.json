@@ -5,7 +5,7 @@
         "args": [
           "--no-warnings",
           "--experimental-strip-types",
-          "--loader=./frontend/scripts/driveCli.loader.mjs",
+          "--import=./frontend/scripts/driveCli.register.mjs",
           "frontend/scripts/mcpServer.ts"
         ]
       }

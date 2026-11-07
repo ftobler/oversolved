@@ -1,6 +1,6 @@
 // The MCP stdio test client: one interactive server child process, its stdout
-// demuxed by response id. Extracted from cliSmoke.test.ts unchanged so the
-// assembly protocol suite speaks to the server the same way.
+// demuxed by response id. Shared by the MCP e2e suite (mcpSmoke.test.ts) and
+// the assembly protocol suite so both speak to the server the same way.
 
 import { spawn } from 'node:child_process'
 import path from 'node:path'
@@ -24,11 +24,14 @@ export interface McpClient {
   close(): Promise<void>
 }
 
+// The Node flags every headless drive child starts with, relative to
+// FRONTEND_DIR: type stripping plus the alias and import.meta.env hooks.
+export const DRIVE_NODE_ARGS = ['--experimental-strip-types', '--import=./scripts/driveCli.register.mjs']
+
 // One interactive child process: line-buffered stdout demuxed by response id.
 export function spawnMcp(env: Record<string, string> = {}): McpClient {
   const child = spawn('node', [
-    '--experimental-strip-types',
-    '--loader=./scripts/driveCli.loader.mjs',
+    ...DRIVE_NODE_ARGS,
     'scripts/mcpServer.ts',
   ], { cwd: FRONTEND_DIR, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } })
 

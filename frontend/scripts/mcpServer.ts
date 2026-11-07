@@ -51,7 +51,9 @@ function budgetFromEnv(): number | undefined {
 }
 
 // The worker inherits this process's execArgv (the strip-types flag and the
-// alias loader). Its stdout is piped to our stderr: the kernel prints (the OCC
+// `--import` register entry). The entry re-runs in the worker thread, which
+// matters because `registerHooks` hooks only the thread that registers them.
+// Its stdout is piped to our stderr: the kernel prints (the OCC
 // STEP writer's banner) must never reach the protocol channel.
 const kernel = createKernelHost({
   budgetMs: budgetFromEnv(),

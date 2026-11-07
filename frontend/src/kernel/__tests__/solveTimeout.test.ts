@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { existsSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 import {
   solveWithTimeout, disposeWorker, setSolveChildForTest, resetSolveChildForTest,
-  runnerPath, loaderPath,
+  runnerPath, aliasHooksPath, childExecArgv,
 } from '../solveTimeout'
 
 class FakeChild {
@@ -213,11 +214,12 @@ describe('disposeWorker', () => {
 })
 
 describe('forked child wiring', () => {
-  it('runner and loader paths point at the real files the fork needs', () => {
+  it('runner and alias hook paths point at the real files the fork needs', () => {
     // A rename of either file silently breaks every direct solve; the paths
     // are computed from import.meta.url, so assert they land on real files.
     expect(existsSync(runnerPath())).toBe(true)
-    expect(existsSync(loaderPath())).toBe(true)
+    expect(existsSync(aliasHooksPath())).toBe(true)
+    expect(childExecArgv()).toContain(pathToFileURL(aliasHooksPath()).href)
   })
 
   it('re-injecting a factory while a child is live tears the old child down', async () => {

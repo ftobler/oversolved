@@ -16,9 +16,9 @@
     "test:run": "vitest run",
     "docs:commands": "UPDATE_COMMAND_DOCS=1 vitest run src/pages/registry/__tests__/commandDocs.test.ts",
     "docs:oracle": "UPDATE_ORACLE_DOCS=1 vitest run src/oracle/__tests__/oracleReal.test.ts",
-    "regen:corpus": "node --experimental-strip-types --loader=./resolve-alias.loader.mjs scripts/regenCorpus.ts && ../.venv/bin/python scripts/mergeCorpus.py",
-    "regressions:add": "node --experimental-strip-types --loader=./scripts/driveCli.loader.mjs scripts/regressions.ts add",
-    "regressions:regen": "node --experimental-strip-types --loader=./scripts/driveCli.loader.mjs scripts/regressions.ts regen",
+    "regen:corpus": "node --experimental-strip-types --import=./scripts/resolveAlias.register.mjs scripts/regenCorpus.ts && ../.venv/bin/python scripts/mergeCorpus.py",
+    "regressions:add": "node --experimental-strip-types --import=./scripts/driveCli.register.mjs scripts/regressions.ts add",
+    "regressions:regen": "node --experimental-strip-types --import=./scripts/driveCli.register.mjs scripts/regressions.ts regen",
     "regen:action-matrix": "vite-node scripts/regenActionMatrix.ts",
     "licenses:generate": "node scripts/generateThirdPartyNotices.mjs && node scripts/generateRustNotices.mjs",
     "licenses:generate:npm": "node scripts/generateThirdPartyNotices.mjs",
@@ -29,8 +29,8 @@
     "occ:provision": "node scripts/occProvision.mjs provision",
     "occ:usage": "node scripts/occUsage.mjs",
     "occ:usage:check": "node scripts/occUsage.mjs --check",
-    "drive": "node --experimental-strip-types --loader=./scripts/driveCli.loader.mjs scripts/driveCli.ts",
-    "mcp": "node --experimental-strip-types --loader=./scripts/driveCli.loader.mjs scripts/mcpServer.ts"
+    "drive": "node --experimental-strip-types --import=./scripts/driveCli.register.mjs scripts/driveCli.ts",
+    "mcp": "node --experimental-strip-types --import=./scripts/driveCli.register.mjs scripts/mcpServer.ts"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

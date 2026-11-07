@@ -50,7 +50,7 @@ Start the MCP server (the JSON-RPC stdio surface over the real kernel):
 
 ```bash
 cd frontend
-node --experimental-strip-types --loader=./scripts/driveCli.loader.mjs scripts/mcpServer.ts
+node --experimental-strip-types --import=./scripts/driveCli.register.mjs scripts/mcpServer.ts
 ```
 
 `run` takes mutation steps and returns a `docHash`; chain the next call with

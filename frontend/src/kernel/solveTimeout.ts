@@ -17,13 +17,14 @@
  * and its native code. A terminated child drops its checkpoint cache; the next
  * request spawns a fresh process.
  *
- * The child is started with --experimental-strip-types (Node 22.6+) and a
- * custom --loader that maps @/ to ./src/, so it can import the full source
- * tree without vitest or a build step.
+ * The child is started with --experimental-strip-types (Node 22.6+) and
+ * `--import` of scripts/resolveAlias.register.mjs, whose hooks map @/ to
+ * ./src/, so it can import the full source tree without vitest or a build
+ * step.
  */
 
 import { fork, type ChildProcess } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import type { BuildResponse } from './builder'
 
@@ -58,17 +59,22 @@ export function runnerPath(): string {
   )
 }
 
-export function loaderPath(): string {
+/** The `--import` entry that registers the `@/` alias hooks in the child. */
+export function aliasHooksPath(): string {
   return path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
-    '../../resolve-alias.loader.mjs',
+    '../../scripts/resolveAlias.register.mjs',
   )
 }
 
+/** Node flags for a forked child that imports the source tree directly; the
+ *  chain fuzz watchdog forks its children with the same set. */
+export function childExecArgv(): string[] {
+  return ['--experimental-strip-types', '--import', pathToFileURL(aliasHooksPath()).href]
+}
+
 function defaultFactory(): SolveChildLike {
-  const child: ChildProcess = fork(runnerPath(), [], {
-    execArgv: ['--experimental-strip-types', `--loader=${loaderPath()}`],
-  })
+  const child: ChildProcess = fork(runnerPath(), [], { execArgv: childExecArgv() })
   return {
     send(msg) { child.send(msg) },
     on(event, cb) { child.on(event, cb) },

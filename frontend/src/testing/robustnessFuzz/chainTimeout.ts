@@ -40,6 +40,7 @@
 import { fork, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { childExecArgv } from '@/kernel/solveTimeout'
 import type { ChainRun, StalePick } from './chain'
 import type { Recipe } from './recipe'
 
@@ -139,17 +140,8 @@ function runnerPath(): string {
   )
 }
 
-function loaderPath(): string {
-  return path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    '../../../resolve-alias.loader.mjs',
-  )
-}
-
 function defaultFactory(): ChainChildLike {
-  const child: ChildProcess = fork(runnerPath(), [], {
-    execArgv: ['--experimental-strip-types', `--loader=${loaderPath()}`],
-  })
+  const child: ChildProcess = fork(runnerPath(), [], { execArgv: childExecArgv() })
   return {
     send(msg) { child.send(msg) },
     on(event, cb) { child.on(event, cb) },

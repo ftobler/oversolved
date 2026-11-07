@@ -3,7 +3,7 @@
  * spawned by solveTimeout.ts so a synchronous WASM hang can be killed with
  * SIGKILL (unlike worker_threads terminate(), which cannot interrupt native
  * WASM execution). Started with --experimental-strip-types (for .ts files)
- * and --loader (resolve-alias.loader.mjs for @/ aliases).
+ * and --import of scripts/resolveAlias.register.mjs (for @/ aliases).
  *
  * Communicates with the parent via IPC (process.send / process.on).
  */

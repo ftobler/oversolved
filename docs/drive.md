@@ -408,8 +408,8 @@ npm run drive -- replay repro.json
   relative paths against the repo root and the file inside `tmp/`,
   `bugreports/` or `scratch/`, so one spelling names one file on both surfaces.
   A STEP file exported by `export` can therefore be re-imported and measured,
-  which the `cliSmoke` suite does end to end. The byte map does not travel in
-  the repro payload, so a journal containing an `import_step` replays only with
+  which the `cliSmokeMeasure` suite does end to end. The byte map does not
+  travel in the repro payload, so a journal containing an `import_step` replays only with
   `--file` supplied; an `import_dxf` step records the resolved DXF text, so it
   replays without the map.
 
@@ -443,7 +443,7 @@ functions the CLI does. Point an MCP client at it directly (`cwd` is
 ```json
 {
   "command": "node",
-  "args": ["--experimental-strip-types", "--loader=./scripts/driveCli.loader.mjs", "scripts/mcpServer.ts"],
+  "args": ["--experimental-strip-types", "--import=./scripts/driveCli.register.mjs", "scripts/mcpServer.ts"],
   "cwd": "frontend"
 }
 ```

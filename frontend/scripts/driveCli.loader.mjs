@@ -7,15 +7,18 @@
  * entries are not Vite builds, so this loader rewrites the expression to a
  * literal production-shaped env before Node strips the types. Only the app's
  * own .ts sources are rewritten; node_modules are untouched.
+ *
+ * `load` serves the off-thread `register()` API and `loadSync` the in-thread
+ * `registerHooks()` API; scripts/driveCli.register.mjs picks between them.
  */
 
 export * from '../resolve-alias.loader.mjs'
 
 const ENV_LITERAL = '({ DEV: false, MODE: "production", BASE_URL: "/" })'
 
-export async function load(url, context, nextLoad) {
-  const result = await nextLoad(url, context)
+function shimEnv(url, result) {
   if (!url.startsWith('file:')) return result
+  if (url.includes('/node_modules/')) return result
   if (!url.includes('/src/') && !url.includes('/scripts/')) return result
   if (!url.endsWith('.ts') && !url.endsWith('.tsx')) return result
   const source = typeof result.source === 'string'
@@ -25,4 +28,12 @@ export async function load(url, context, nextLoad) {
     ...result,
     source: source.replace(/import\.meta\.env(?![\w$])/g, ENV_LITERAL),
   }
+}
+
+export async function load(url, context, nextLoad) {
+  return shimEnv(url, await nextLoad(url, context))
+}
+
+export function loadSync(url, context, nextLoad) {
+  return shimEnv(url, nextLoad(url, context))
 }
