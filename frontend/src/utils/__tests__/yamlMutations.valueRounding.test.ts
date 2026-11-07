@@ -29,7 +29,7 @@ import { featureAt, featureById } from '@/testing/featureAccess'
 // feature writes stored the authored float verbatim, so one drag could spell
 // 0.351324 in a profile and 0.351324026 in the feature built from it. The
 // feature side of a part document now crosses the same boundary. Constraint
-// VALUES keep their own coarser 1e-3 rule, and an assembly mate's params are
+// dimension values use the same grid too, and an assembly mate's params are
 // written outside yamlMutations.
 const MESSY = 0.351324026
 const MESSY_ROUNDED = 0.351324
@@ -303,9 +303,9 @@ describe('feature value rounding', () => {
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('not a finite number'))
     })
 
-    // A dimension value keeps its own 1e-3 quantum, now through the same -0
-    // folding, so no document writer stores `-0`.
-    it('folds -0 in the 1e-3 dimension spelling too', () => {
+    // A dimension value now uses the same 1e-6 quantum as every other stored
+    // scalar, through the same -0 folding, so no document writer stores `-0`.
+    it('folds -0 in the dimension spelling too', () => {
       const doc: PartDoc = {
         features: [{
           id: 'sk1',
@@ -315,7 +315,7 @@ describe('feature value rounding', () => {
           constraints: [{ id: 'c1', kind: 'distance', a: 'entity:sk1:e1', b: 'entity:sk1:e2', value: 5 }],
         }],
       }
-      applySetConstraintValue(doc, 'sk1', 'c1', -3e-4)
+      applySetConstraintValue(doc, 'sk1', 'c1', -3e-7)
       const c = featureAt(doc, 0, 'sketch').constraints![0]
       expect(Object.is(c.value, 0)).toBe(true)
     })

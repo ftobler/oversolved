@@ -74,10 +74,10 @@ describe('applyMoveEntity', () => {
 })
 
 describe('applySetConstraintValue', () => {
-  it('sets constraint value rounded to 3 decimal places', () => {
+  it('sets constraint value rounded to the document grid', () => {
     const doc = makeSketchDoc()
-    applySetConstraintValue(doc, 'Sketch1', 'c_len', 42.5678)
-    expect(constraints0(doc).find(c => c.id === 'c_len')!.value).toBe(42.568)
+    applySetConstraintValue(doc, 'Sketch1', 'c_len', 42.567891234)
+    expect(constraints0(doc).find(c => c.id === 'c_len')!.value).toBe(42.567891)
   })
 
   it('no-ops for unknown constraint id', () => {

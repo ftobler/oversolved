@@ -17,18 +17,18 @@ solver runs (`center_rect`, the `ngon` constraint`).
 
 A stored number carries the document's precision. Every scalar feature number a
 part document's mutation writes (a distance, a radius, an array pitch, a plane
-offset, a transform translation component) and every sketch seed crosses the
-same 1e-6 rounding boundary on the way in, so an authored `0.351324026` is
-stored as `0.351324`, and a magnitude below half of that is stored as zero, the
-nearest spelling the format can hold. Where a field's loader rule refuses what
-the write lands on (a shell thickness or a helix angle after the round, an array
-count on the authored value, which the round would otherwise heal a non-integer
-into a legal one), the write refuses it instead of saving a document that cannot
-reopen. Four spellings stay outside the boundary: a constraint dimension value
-keeps its own coarser 1e-3 precision, an expression string is stored as written
-and evaluated by the solver, a cosmetic thread's `nominal` and `pitch` are
-thread-table lookups the loader checks against that table, and an assembly
-document's mate params and part poses are written by
+offset, a transform translation component), every sketch seed and every
+dimension constraint value crosses the same 1e-6 rounding boundary on the way
+in, so an authored `0.351324026` is stored as `0.351324`, and a magnitude below
+half of that is stored as zero, the nearest spelling the format can hold. Where
+a field's loader rule refuses what the write lands on (a shell thickness or a
+helix angle after the round, an array count on the authored value, which the
+round would otherwise heal a non-integer into a legal one), the write refuses it
+instead of saving a document that cannot reopen. Three spellings stay outside
+the boundary: an expression string is stored as written and evaluated by the
+solver, a cosmetic thread's `nominal` and `pitch` are thread-table lookups the
+loader checks against that table, and an assembly document's mate params and
+part poses are written by
 `utils/assemblyMutations.ts`, not by the part-document writers.
 
 The same document is the target for every author: the GUI, the drive surface
