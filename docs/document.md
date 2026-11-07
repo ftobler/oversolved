@@ -455,6 +455,8 @@ body and is not expanded.
     cb_diameter: 16.0            # the widened mouth diameter (counterbore/countersink)
     cb_depth: 3.0                # the counterbore step depth
     cs_angle: 90.0               # the countersink's included angle, degrees (default 90)
+    tip: drill_point             # optional, blind only: flat (default) | drill_point
+    tip_angle: 118.0             # the drill point's included angle, degrees (default 118)
     thread:                      # optional, cosmetic only (no geometry change)
       designation: M6x1          # a thread-table entry
       nominal: 6.0               # the thread's major diameter, mm (the table is metric whatever the document unit)
@@ -481,6 +483,14 @@ than `depth` in a blind hole); a `countersink` reads `cb_diameter` and
 one field, `cb_diameter`, under both styles: there is no `cs_diameter`. Both
 default the widened mouth to the drill site's plane, so the bore's through
 portion is the small diameter.
+
+`tip` shapes a blind hole's bottom. `flat` (the default) ends the bore in a
+flat floor; `drill_point` ends it in the cone a twist drill leaves, with
+included angle `tip_angle` (default 118, the general-purpose drill point).
+`depth` stays the full-diameter depth to the shoulder, and the point reaches
+`r / tan(tip_angle / 2)` past it, so the same depth keeps the same usable bore
+(and the same cosmetic thread length) under either tip. A `through_all` hole
+has no bottom and ignores both fields.
 
 A cosmetic thread adds no geometry: the bore keeps its drilled size (the authored
 `diameter` for a point, the circle's own radius for a circle) and the solve

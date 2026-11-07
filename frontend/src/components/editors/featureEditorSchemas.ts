@@ -2,7 +2,7 @@ import type { FeatureEditorSchema } from './FeatureEditor'
 import {
   normalizeRefList,
 } from '@/utils/yamlMutations'
-import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations } from '@/kernel/threadTable'
+import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations, DRILL_POINT_ANGLE } from '@/kernel/threadTable'
 import type { ThreadSpec } from '@/types/cad'
 import { resolveBodyPickRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
 import { stripSelectionWrapper } from '@/utils/query/selectionId'
@@ -260,6 +260,13 @@ export const HOLE_SCHEMA: FeatureEditorSchema = {
       showWhen: (d) => d.style === 'counterbore', validate: positive, unit: 'mm' },
     { type: 'number', key: 'cs_angle', label: 'Included angle', default: 90,
       showWhen: (d) => d.style === 'countersink', validate: between(0, 180), unit: 'deg' },
+    // A blind hole's bottom: flat, or the cone a twist drill leaves. A through
+    // hole has no bottom, so both fields hide there.
+    { type: 'select', key: 'tip', label: 'Bottom', default: 'flat',
+      showWhen: (d) => d.depth_mode === 'blind',
+      options: [{ value: 'flat', label: 'Flat' }, { value: 'drill_point', label: 'Drill point' }] },
+    { type: 'number', key: 'tip_angle', label: 'Point angle', default: DRILL_POINT_ANGLE,
+      showWhen: (d) => d.depth_mode === 'blind' && d.tip === 'drill_point', validate: between(0, 180), unit: 'deg' },
     // The cosmetic thread: metadata plus a display helix on the bore, no
     // geometry change. The checkbox writes (or clears) the whole spec and the
     // select looks the designation up in the table, so neither writes a field

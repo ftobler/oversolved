@@ -200,6 +200,105 @@ describe.skipIf(!oc)('hole counterbore and countersink (real OCC)', () => {
   })
 })
 
+/** The cone a drill point of included `angleDeg` adds under a bore of radius r. */
+function drillPointVolume(r: number, angleDeg: number): number {
+  const h = r / Math.tan((angleDeg * Math.PI) / 360)
+  return (Math.PI * r * r * h) / 3
+}
+
+describe.skipIf(!oc)('hole drill-point tip (real OCC)', () => {
+  it('a blind drill point adds the 118 degree cone below the full-depth bore', () => {
+    // The depth is to the shoulder, so the bore volume is unchanged and the
+    // cone is pure extra: 2 / tan(59 deg) = 1.20 deep, inside the 10 box.
+    const { volume, result } = runHole({ diameter: 4, depth: 8, tip: 'drill_point' }, pointSite, pointEntity)
+    expect(result.status).toBe('ok')
+    expect(volume).toBeCloseTo(BOX - (Math.PI * 4 * 8 + drillPointVolume(2, 118)), 4)
+  })
+
+  it('reads the authored point angle', () => {
+    const { volume } = runHole({ diameter: 4, depth: 8, tip: 'drill_point', tip_angle: 90 }, pointSite, pointEntity)
+    expect(volume).toBeCloseTo(BOX - (Math.PI * 4 * 8 + drillPointVolume(2, 90)), 4)
+  })
+
+  it('a circle site gets the point of its own radius', () => {
+    const { volume } = runHole({ diameter: 10, depth: 8, tip: 'drill_point' }, circleSite, circleEntity)
+    expect(volume).toBeCloseTo(BOX - (Math.PI * 4 * 8 + drillPointVolume(2, 118)), 4)
+  })
+
+  it('a flat tip and an absent tip cut the same flat floor', () => {
+    const flat = runHole({ diameter: 4, depth: 8, tip: 'flat' }, pointSite, pointEntity).volume
+    const absent = runHole({ diameter: 4, depth: 8 }, pointSite, pointEntity).volume
+    expect(flat).toBeCloseTo(absent, 6)
+    expect(absent).toBeCloseTo(BOX - Math.PI * 4 * 8, 4)
+  })
+
+  it('combines with a counterbore', () => {
+    const { volume } = runHole({
+      diameter: 4, depth: 8, style: 'counterbore', cb_diameter: 8, cb_depth: 3, tip: 'drill_point',
+    }, pointSite, pointEntity)
+    expect(volume).toBeCloseTo(BOX - (counterboreRemoved(2, 8, 4, 3) + drillPointVolume(2, 118)), 4)
+  })
+
+  it('combines with a countersink', () => {
+    const { volume } = runHole({
+      diameter: 4, depth: 8, style: 'countersink', cb_diameter: 8, tip: 'drill_point',
+    }, pointSite, pointEntity)
+    expect(volume).toBeCloseTo(
+      BOX - (Math.PI * 4 * 8 + countersinkExtra(2, 4, 90) + drillPointVolume(2, 118)), 4)
+  })
+
+  it('points the other way under reverse', () => {
+    // A plane on the box's top (z = 10) with its normal +Z drills down only
+    // reversed; a cone that followed the plane normal would poke out into air
+    // and the volume would miss it.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const repo = new Repository()
+      repo.register('_pt_sk', { ...PLANE, origin: [0, 0, 10] })
+      pointSite(repo)
+      const bodyStore = boxTarget(oc!, scope, table)
+      const result = solveHole(oc!, scope, table, {
+        id: 'h1',
+        hole: { sketch: '@sk', target: 'body_t', diameter: 4, depth: 8, direction: 'reverse', tip: 'drill_point' },
+      }, repo, bodyStore, { sk: { entities: pointEntity } })
+      expect(result.status).toBe('ok')
+      const volume = volumeOf(oc!, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+      expect(volume).toBeCloseTo(BOX - (Math.PI * 4 * 8 + drillPointVolume(2, 118)), 4)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a through hole ignores the tip', () => {
+    const { volume } = runHole({ diameter: 4, depth_mode: 'through_all', tip: 'drill_point' }, pointSite, pointEntity)
+    expect(volume).toBeCloseTo(BOX - Math.PI * 4 * 10, 4)
+  })
+
+  it('names the point cone as the tip and leaves no flat floor', () => {
+    const { body } = runHole({ diameter: 4, depth: 8, tip: 'drill_point' }, pointSite, pointEntity)
+    const uuids = body.face_uuids ?? []
+    const uuid = (role: string) => mintFaceUuid(holeFacePath('h1', 'sk/p1', role as never))
+    expect(uuids).toContain(uuid('tip'))
+    expect(uuids).toContain(uuid('bore'))
+    expect(uuids).not.toContain(uuid('floor'))
+  })
+
+  it('keeps the cosmetic thread on the full-diameter depth', () => {
+    const { result } = runHole({
+      diameter: 4, depth: 8, tip: 'drill_point', thread: { designation: 'M4x0.7', nominal: 4, pitch: 0.7 },
+    }, pointSite, pointEntity)
+    const thread = result.thread as { helices: Array<{ turns: number }> }
+    expect(thread.helices[0].turns).toBeCloseTo(8 / 0.7)
+  })
+
+  it('refuses an unknown tip and a point angle outside (0, 180)', () => {
+    expect(() => runHole({ diameter: 4, depth: 8, tip: 'round' }, pointSite, pointEntity)).toThrow(/flat or drill_point/)
+    expect(() => runHole({ diameter: 4, depth: 8, tip: 'drill_point', tip_angle: 0 }, pointSite, pointEntity))
+      .toThrow(/drill point angle 0 must be between 0 and 180/)
+  })
+})
+
 describe.skipIf(!oc || !solveBytes)('hole widened-mouth naming survives an upstream edit', () => {
   const h = new SharedHarness(oc!)
   beforeAll(() => {

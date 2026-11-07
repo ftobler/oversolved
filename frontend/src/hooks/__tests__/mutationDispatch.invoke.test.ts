@@ -299,13 +299,14 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     mutationHandlers.add_hole(doc, {
       type: 'add_hole', featureId: 'HO2', label: 'Counterbore', sketch: '@S1', diameter: 4,
       depth_mode: 'blind', depth: 10, direction: 'normal', target: '@body_1',
-      style: 'counterbore', cb_diameter: 8, cb_depth: 3,
+      style: 'counterbore', cb_diameter: 8, cb_depth: 3, tip: 'drill_point', tip_angle: 135,
     })
     const configured = featureById(doc, 'HO2', 'hole') as { hole: Record<string, unknown>; label?: string }
     expect(configured.label).toBe('Counterbore')
     expect(configured.hole).toMatchObject({
       sketch: '@S1', diameter: 4, depth_mode: 'blind', depth: 10, direction: 'normal',
       target: '@body_1', style: 'counterbore', cb_diameter: 8, cb_depth: 3,
+      tip: 'drill_point', tip_angle: 135,
     })
     mutationHandlers.add_transform(doc, { type: 'add_transform', featureId: 'TR' })
     mutationHandlers.set_transform_field(doc, { type: 'set_transform_field', featureId: 'TR', field: 'operation', value: 'new' })

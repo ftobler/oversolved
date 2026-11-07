@@ -157,6 +157,7 @@ export type DeleteBodyFeatureDef = {
 }
 
 export type HoleStyle = 'simple' | 'counterbore' | 'countersink'
+export type HoleTip = 'flat' | 'drill_point'
 
 export type HoleFeatureDef = {
   sketch: string
@@ -179,6 +180,12 @@ export type HoleFeatureDef = {
   cb_depth?: NumberOrExpr
   // The countersink's included angle in degrees; absent means 90.
   cs_angle?: NumberOrExpr
+  // A blind hole's bottom: the flat floor, or the cone a twist drill leaves.
+  // Absent means `flat`, so older documents read unchanged. `depth` stays the
+  // full-diameter depth (to the shoulder); the point reaches past it.
+  tip?: HoleTip
+  // The drill point's included angle in degrees; absent means DRILL_POINT_ANGLE.
+  tip_angle?: NumberOrExpr
   // A cosmetic thread: metadata plus the display helix the solve reports. It
   // changes no geometry, so the bore stays the authored `diameter` (normally the
   // table entry's tap drill).

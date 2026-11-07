@@ -39,6 +39,7 @@ import { resplitBody } from './bodySplit'
 import { transferBooleanNames } from './booleanLineage'
 import { readBodyNames, type ShapeNames } from '../occ/bodyNames'
 import { threadHelices, type ThreadDisplay, type ThreadSite } from './threadDisplay'
+import { DRILL_POINT_ANGLE } from '../threadTable'
 import type { PlaneLike } from './shared/planes'
 import { swallowUnlessTrap } from '../errors'
 import { OCC_CONFUSION, TOL_LENGTH_SLACK, TOL_VOLUME_DEGENERATE } from '../solverConstants'
@@ -204,8 +205,9 @@ function drilledEntities(
  * Construction names for one drill site's cutter, keyed by its faces before the
  * cut: the bore wall, the mouth (the cutter's start disc), the floor (its end
  * disc), and for a widened mouth the counterbore's wall and step floor or the
- * countersink's cone. A through_all cutter starts backed off outside the body
- * and ends past it, so only a blind hole's floor, or a mouth at a site inside
+ * countersink's cone, and for a drill-point blind hole the tip cone in place of
+ * the floor. A through_all cutter starts backed off outside the body and ends
+ * past it, so only a blind hole's floor or tip, or a mouth at a site inside
  * the body, ever survives the cut; the names are minted for every role anyway,
  * since which survive is the boolean's to say. The roles come from the cutter
  * primitives themselves, never from where a face sits, and the uuid from the
@@ -243,7 +245,8 @@ interface Cutter {
 
 /** The bore cylinder's roles: its wall and end disc, plus the start disc as the
  *  mouth. A counterbore/step or countersink cone reuses `mouth`; the fuse maps
- *  only the surviving disc. */
+ *  only the surviving disc. A drill-point tip fused under the bore drops the
+ *  end disc, so its `floor` maps to nothing. */
 function cylinderRoles(faces: CylinderFaces, wall: HoleFaceRole, end: HoleFaceRole): SubShapeMap<HoleFaceRole> {
   const roles = new SubShapeMap<HoleFaceRole>()
   roles.set(faces.lateral as OccSubShape, wall)
@@ -292,6 +295,7 @@ function fuseCutter(oc: OccModule, scope: DisposeScope, target: Cutter, tool: Cu
  * fuses the bore with a wider, short cylinder at the mouth; a countersink fuses
  * it with a cone whose included angle is `csAngle` (the cone runs from the wide
  * mouth radius down to the bore radius, so no separate floor is introduced).
+ * A drill-point tip is fused first, at the bore's far end.
  *
  * `start` and `boreAxis` place the bore (backed off across any air gap for a
  * through hole); `mouth` and `mouthAxis` place the widened mouth, measured from
@@ -301,6 +305,10 @@ function fuseCutter(oc: OccModule, scope: DisposeScope, target: Cutter, tool: Cu
  * plus a hair), so the mouth is opened at full width at the FACE, with its
  * depth measured from there. Both are zero for a blind hole, whose mouth is on
  * the face, and for a through hole whose plane already touches the material.
+ *
+ * `tipHeight` is a blind bore's drill-point cone, fused under the bore's end so
+ * the depth stays measured to the shoulder (the full-diameter part) and the
+ * point reaches past it; zero keeps the flat floor.
  */
 function buildCutter(
   oc: OccModule,
@@ -317,9 +325,19 @@ function buildCutter(
   cbRadius: number,
   cbDepth: number,
   coneHeight: number,
+  tipHeight: number,
 ): Cutter {
   const bore = makeCylinderWithFaces(oc, scope, start, boreAxis, radius, boreLength)
   let cutter: Cutter = { shape: bore.shape, roles: cylinderRoles(bore.faces, 'bore', 'floor') }
+  if (tipHeight > 0) {
+    // The cone's base is the bore's end disc, so the fuse drops both and the
+    // flat floor gives way to the point.
+    const tip = makeCone(oc, scope, backAlong(start, boreAxis, -boreLength), boreAxis, radius, 0, tipHeight)
+    const lateral = coneLateral(oc, scope, tip)
+    const roles = new SubShapeMap<HoleFaceRole>()
+    if (lateral !== null) roles.set(lateral, 'tip')
+    cutter = fuseCutter(oc, scope, cutter, { shape: tip, roles })
+  }
   // The widened mouth is measured from the entry FACE, which is airGap below
   // the sketch plane; the overhang carries it back past the plane.
   const reach = overhang + airGap
@@ -467,9 +485,10 @@ function cutterReaches(
   cbRadius: number,
   cbDepth: number,
   coneHeight: number,
+  tipHeight: number,
 ): boolean {
   const probe = buildCutter(
-    oc, scope, style, mouth, axis, mouth, axis, 0, 0, radius, depth, cbRadius, cbDepth, coneHeight,
+    oc, scope, style, mouth, axis, mouth, axis, 0, 0, radius, depth, cbRadius, cbDepth, coneHeight, tipHeight,
   )
   const hit = intersects(oc, shape, probe.shape)
   scope.release(probe.shape)
@@ -606,6 +625,10 @@ export function solveHole(
   const cbDiameter = Number(sub.cb_diameter ?? 0)
   const cbDepth = Number(sub.cb_depth ?? 0)
   const csAngle = Number(sub.cs_angle ?? 90)
+  // The blind bore's bottom: flat, or the cone a twist drill leaves. A through
+  // hole has no bottom, so it never reads either field.
+  const tip = (sub.tip as string) ?? 'flat'
+  const tipAngle = Number(sub.tip_angle ?? DRILL_POINT_ANGLE)
 
   if (!Number.isFinite(diameter) || diameter <= 0) throw new Error('hole: diameter must be positive')
   if (depthMode !== 'through_all') {
@@ -629,6 +652,13 @@ export function solveHole(
     if (!Number.isFinite(csAngle) || csAngle <= 0 || csAngle >= 180) {
       throw new Error(`hole: the countersink angle ${csAngle} must be between 0 and 180 degrees`)
     }
+  }
+  if (tip !== 'flat' && tip !== 'drill_point') {
+    throw new Error(`hole: tip '${tip}' is not flat or drill_point`)
+  }
+  const pointed = tip === 'drill_point' && depthMode !== 'through_all'
+  if (pointed && (!Number.isFinite(tipAngle) || tipAngle <= 0 || tipAngle >= 180)) {
+    throw new Error(`hole: the drill point angle ${tipAngle} must be between 0 and 180 degrees`)
   }
 
   const radius = diameter / 2.0
@@ -663,7 +693,7 @@ export function solveHole(
   // drill side can be resolved across all of them first. Settled before the
   // target too: a hole with no authored target drills into the body its sites
   // sit on, so the sites must exist before that body is chosen.
-  const sites: Array<{ eid: string; radius: number; center3d: Vec3; countersinkDepth: number }> = []
+  const sites: Array<{ eid: string; radius: number; center3d: Vec3; countersinkDepth: number; tipHeight: number }> = []
   let skippedCount = 0
   const skippedEntityIds: string[] = []
   // Bores that overlap in the sketch merge into one cut without a word (kcl
@@ -712,7 +742,10 @@ export function solveHole(
         )
       }
     }
-    sites.push({ eid, radius: site.radius, center3d, countersinkDepth })
+    // The point's height follows the site's own bore, so a circle site wider
+    // than the feature diameter gets the longer cone a wider drill leaves.
+    const tipHeight = pointed ? site.radius / Math.tan((tipAngle * Math.PI) / 360.0) : 0
+    sites.push({ eid, radius: site.radius, center3d, countersinkDepth, tipHeight })
   }
 
   // The body the sites drill: the authored target settled above, or the body
@@ -789,7 +822,7 @@ export function solveHole(
 
   for (let i = 0; i < sites.length; i++) {
     const site = sites[i]
-    const { eid, center3d, countersinkDepth } = site
+    const { eid, center3d, countersinkDepth, tipHeight } = site
 
     // A through hole drills one way: from the sketch plane (backed off across
     // the air gap, plus a hair, when nothing lies behind it) to past the far
@@ -818,7 +851,7 @@ export function solveHole(
 
     const cutter = buildCutter(
       oc, scope, style, start3d, drillAxis, center3d, drillAxis, airGap, overhang,
-      site.radius, h, cbRadius, cbDepth, countersinkDepth,
+      site.radius, h, cbRadius, cbDepth, countersinkDepth, tipHeight,
     )
     const cyl = cutter.shape
     if (!intersects(oc, currentShape, cyl)) {
@@ -839,7 +872,7 @@ export function solveHole(
           : depth
         oppositeCuts = cutterReaches(
           oc, scope, currentShape, style, center3d, away, site.radius, reach,
-          cbRadius, cbDepth, countersinkDepth,
+          cbRadius, cbDepth, countersinkDepth, tipHeight,
         )
       }
       missedSites.push(eid)

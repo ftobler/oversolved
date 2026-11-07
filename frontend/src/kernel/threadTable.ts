@@ -25,6 +25,11 @@ export interface ThreadEntry {
   tapDrill: number
 }
 
+// The included point angle of a general-purpose twist drill (DIN 1414 / ANSI
+// jobber), the default for a blind hole's drill-point tip. Shared by the editor
+// default and the kernel so an absent `tip_angle` means the same cone in both.
+export const DRILL_POINT_ANGLE = 118
+
 export const THREAD_TABLE: readonly ThreadEntry[] = [
   { designation: 'M2x0.4', system: 'metric', nominal: 2, pitch: 0.4, tapDrill: 1.6 },
   { designation: 'M2.5x0.45', system: 'metric', nominal: 2.5, pitch: 0.45, tapDrill: 2.05 },

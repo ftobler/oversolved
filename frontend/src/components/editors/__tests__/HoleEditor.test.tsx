@@ -122,4 +122,28 @@ describe('HoleEditor (via FeatureEditor)', () => {
     fireEvent.blur(angle)
     expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'cs_angle', value: 82 })
   })
+
+  it('bottom select emits the drill-point tip, and the angle shows only for a point', () => {
+    const onMutation = vi.fn()
+    render(<FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={HOLE_SCHEMA} />)
+    expect(screen.queryByDisplayValue('118')).toBeNull()
+    fireEvent.change(screen.getByDisplayValue('Flat'), { target: { value: 'drill_point' } })
+    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'tip', value: 'drill_point' })
+  })
+
+  it('a drill point shows its 118 degree default angle and edits it', () => {
+    const onMutation = vi.fn()
+    render(<FeatureEditor feature={makeFeature({ tip: 'drill_point' })} onMutation={onMutation} schema={HOLE_SCHEMA} />)
+    const angle = screen.getByDisplayValue('118')
+    fireEvent.change(angle, { target: { value: '135' } })
+    fireEvent.blur(angle)
+    expect(onMutation).toHaveBeenCalledWith({ type: 'set_hole_field', featureId: 'h1', field: 'tip_angle', value: 135 })
+  })
+
+  it('a through hole hides the bottom fields', () => {
+    const feature = makeFeature({ depth_mode: 'through_all', tip: 'drill_point' })
+    render(<FeatureEditor feature={feature} onMutation={vi.fn()} schema={HOLE_SCHEMA} />)
+    expect(screen.queryByDisplayValue('Drill point')).toBeNull()
+    expect(screen.queryByDisplayValue('118')).toBeNull()
+  })
 })

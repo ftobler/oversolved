@@ -310,7 +310,7 @@ const HOLE_FIELD_NOTE =
   'The required fields are sketch, diameter, depth_mode; depth is required only for a blind hole. ' +
   'A through_all hole sizes itself from the target body and stores no depth, so omit it. ' +
   'A blind add with no depth keeps the editor default of 20. ' +
-  'The optional fields are direction, target, thread, style, cb_diameter, cb_depth, cs_angle; ' +
+  'The optional fields are direction, target, thread, style, cb_diameter, cb_depth, cs_angle, tip, tip_angle; ' +
   'they are all optional in an `add_hole` payload. ' +
   'With no `target` the hole drills the body its drill sites sit on or in (a face sketch whose sites lie on or in ' +
   'the material picks that body even when it is not the first); a site outside every body falls back to the ' +
@@ -331,6 +331,8 @@ const HOLE_FIELD_NOTE =
   'A single point or circle picked alone drills only that one, and a picked construction one is refused. ' +
   '`style` widens the mouth: `counterbore` reads `cb_diameter` and `cb_depth`, `countersink` reads `cb_diameter` and `cs_angle` (degrees, default 90); absent means `simple`. ' +
   'The widened mouth is one field, `cb_diameter`, under both styles: there is no `cs_diameter` (`cs_angle` is the only `cs_` field). ' +
+  '`tip` is a blind hole\'s bottom: `flat` (absent) or `drill_point`, a cone of included angle `tip_angle` (degrees, default 118) ' +
+  'under the bore; `depth` stays the full-diameter depth to the shoulder and the point reaches past it. A through_all hole ignores both. ' +
   'An empty value clears the `target` pick (the key is deleted, and the hole then drills the body its drill sites sit on); ' +
   'null clears an optional field the same way. `sketch` is stored verbatim, so send a sketch id rather than "". ' +
   'An enum or numeric field refuses an empty value instead of silently reverting to its default.'
@@ -354,6 +356,8 @@ const holeAddFields = () => {
     cb_diameter: optScalar(),
     cb_depth: optScalar(),
     cs_angle: optScalar(),
+    tip: optStr('flat | drill_point (absent means flat; blind holes only).'),
+    tip_angle: optScalar(),
     thread: thread === undefined ? optObj() : shapedObj(thread, 'The cosmetic thread spec: designation, nominal and pitch.'),
   }
 }

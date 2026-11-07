@@ -330,6 +330,8 @@ export const mutationHandlers: MutationHandlers = {
       cb_diameter: m.cb_diameter,
       cb_depth: m.cb_depth,
       cs_angle: m.cs_angle,
+      tip: m.tip,
+      tip_angle: m.tip_angle,
       thread: m.thread,
     }),
   set_hole_field: (next, m) =>

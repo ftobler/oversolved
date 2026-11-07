@@ -36,6 +36,20 @@ describe('hole style document validation', () => {
     expect(holeOf(result.doc)).toMatchObject({ style: 'countersink', cs_angle: 82 })
   })
 
+  it('accepts a drill-point tip and its angle', () => {
+    const result = loadPartDoc(doc({ tip: 'drill_point', tip_angle: 135 }))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(holeOf(result.doc)).toMatchObject({ tip: 'drill_point', tip_angle: 135 })
+  })
+
+  it('rejects an unknown tip', () => {
+    const result = loadPartDoc(doc({ tip: 'ball' }))
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.field).toBe('features[0].hole.tip')
+  })
+
   it('accepts a simple hole with no style field', () => {
     const result = loadPartDoc(doc({}))
     expect(result.ok).toBe(true)

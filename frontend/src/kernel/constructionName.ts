@@ -105,8 +105,9 @@ export function moveFaceSetExtendPath(createdBy: string, neighbourUuid: string, 
  *  A counterbore adds a wider `step_wall` from the mouth and the annular
  *  `step_floor` where it meets the bore. A countersink adds the conical `sink`
  *  wall; its cone runs from the mouth down to the bore, so it has no planar
- *  floor of its own. */
-export type HoleFaceRole = 'bore' | 'floor' | 'mouth' | 'step_wall' | 'step_floor' | 'sink'
+ *  floor of its own. A blind hole with a drill-point tip ends in the conical
+ *  `tip` instead of the flat `floor`. */
+export type HoleFaceRole = 'bore' | 'floor' | 'mouth' | 'step_wall' | 'step_floor' | 'sink' | 'tip'
 
 /**
  * A face one hole drills at one site: `<createdBy>|hole|<siteSlot>|<role>`,

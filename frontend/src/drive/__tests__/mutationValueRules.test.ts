@@ -1244,6 +1244,16 @@ describe('hole styles: the new fields cross the same boundary', () => {
     expect(error.code).toBe('invalid-mutation')
     expect(error.message).toContain('simple')
   })
+
+  it('accepts the drill-point tip and an angle expression, refuses an unknown tip', () => {
+    for (const [field, value] of [['tip', 'drill_point'], ['tip', 'flat'], ['tip_angle', 135], ['tip_angle', '2*59']] as const) {
+      expect(validateMutation({ type: 'set_hole_field', featureId: 'ho1', field, value }), field)
+        .toMatchObject({ ok: true })
+    }
+    expect(refusal({ type: 'set_hole_field', featureId: 'ho1', field: 'tip', value: 'ball' }).message)
+      .toContain('drill_point')
+    expect(refusal({ type: 'add_hole', featureId: 'ho1', tip: 'ball' }).code).toBe('invalid-mutation')
+  })
 })
 
 describe('finding: add_extrude carries the up-to termination inline', () => {

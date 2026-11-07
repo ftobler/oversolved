@@ -282,6 +282,11 @@ export const FEATURE_SCHEMA_BY_KIND = {
       target: REF,
       style: { enum: ['simple', 'counterbore', 'countersink'] },
       cb_diameter: NUMBER_OR_EXPR, cb_depth: NUMBER_OR_EXPR, cs_angle: NUMBER_OR_EXPR,
+      tip: {
+        enum: ['flat', 'drill_point'],
+        description: 'A blind hole\'s bottom: flat, or the drill_point cone (depth is to the shoulder, the point reaches past it). Absent means flat; a through_all hole ignores it',
+      },
+      tip_angle: NUMBER_OR_EXPR,
       thread: {
         type: 'object',
         required: ['designation', 'nominal', 'pitch'],
