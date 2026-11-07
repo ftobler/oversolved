@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { PartDoc, PartConstraint } from '@/types/cad'
-import { applyAddConstraint, applySetConstraintPos, dropDeadAxisConstraints } from '@/utils/yamlMutations'
+import { applyAddConstraint, applySetConstraintValue, applySetConstraintPos, dropDeadAxisConstraints } from '@/utils/yamlMutations'
 import { featureAt } from '@/testing/featureAccess'
 import { sketchAt } from '@/testing/featureAccess'
 
@@ -429,5 +429,52 @@ describe('dropDeadAxisConstraints', () => {
     ]
     expect(dropDeadAxisConstraints(doc)).toBe(0)
     expect(constraints0(doc)).toHaveLength(1)
+  })
+})
+
+describe('constraint dimension value stored precision', () => {
+  it('stores an add_constraint value of 0.3125 exactly', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'length', ['entity:Sketch1:line1'], 0.3125)
+    const added = constraints0(doc).find(c => c.id.startsWith('c_length'))
+    expect(added!.value).toBe(0.3125)
+  })
+
+  it('stores a set_constraint_value of 0.03125 exactly', () => {
+    const doc = makeSampleDoc()
+    applySetConstraintValue(doc, 'Sketch1', 'c_len', 0.03125)
+    const c = constraints0(doc).find(c => c.id === 'c_len')
+    expect(c!.value).toBe(0.03125)
+  })
+
+  it('rounds a set_constraint_value to the 1e-6 document grid', () => {
+    const doc = makeSampleDoc()
+    applySetConstraintValue(doc, 'Sketch1', 'c_len', 0.1234567)
+    const c = constraints0(doc).find(c => c.id === 'c_len')
+    expect(c!.value).toBe(0.123457)
+  })
+
+  it('ignores a non-finite set_constraint_value', () => {
+    const doc = makeSampleDoc()
+    applySetConstraintValue(doc, 'Sketch1', 'c_len', NaN)
+    const c = constraints0(doc).find(c => c.id === 'c_len')
+    expect(c!.value).toBe(10)
+  })
+
+  it('keeps an angle constraint value of 22.5 exact', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'angle', ['entity:Sketch1:line1'], 22.5)
+    const added = constraints0(doc).find(c => c.kind === 'angle')
+    expect(added!.value).toBe(22.5)
+  })
+
+  it('still ignores a non-finite add_constraint value', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'length', ['entity:Sketch1:line1'], NaN)
+    const added = constraints0(doc).find(c => c.id.startsWith('c_length'))
+    // The value is dropped at the boundary, not rounded into the document; the
+    // constraint itself is still authored as a value-less dimension.
+    expect(added).toBeDefined()
+    expect('value' in added!).toBe(false)
   })
 })

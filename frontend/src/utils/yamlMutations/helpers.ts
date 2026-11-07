@@ -9,9 +9,9 @@ import { failLoud } from '@/utils/invariants'
 // child and the document test fixtures, where import.meta.env is undefined.
 export const warn = import.meta.env?.DEV ? (...args: unknown[]) => console.warn(...args) : () => undefined
 
-/** Round to a quantum (`1e6` for a stored coordinate, `1e3` for a dimension
- *  value). Two edge spellings are folded here because every caller persists what
- *  this returns: a tiny negative would reach the YAML as `-0`, which the repo
+/** Round to the given quantum; the document's stored grid is `round` below.
+ *  Two edge spellings are folded here because every caller persists what this
+ *  returns: a tiny negative would reach the YAML as `-0`, which the repo
  *  elsewhere treats as junk, and a huge finite input overflows `v * quantum` to
  *  Infinity, so the vetted input spelling is kept rather than emerging
  *  non-finite. round(NaN) is still NaN: the finiteness gates beside every caller

@@ -1,7 +1,7 @@
 import type { PartDoc, PartConstraint, PartTarget } from '@/types/cad'
 import { entityVertexIndices, entityCoordPairs } from '@/registry'
 import {
-  warn, round, roundTo, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
+  warn, round, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
   resolveSketch, mintEntityId, CONSTRAINT_REF_FIELDS, refMatchesEntity,
 } from './helpers'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
@@ -287,7 +287,7 @@ export function applyAddConstraint(
   // like applySetConstraintValue/Pos. The finiteness gate alone is not enough to
   // match the set path: value and pos are rounded to the same precision there,
   // or the same value would serialize differently depending on the write path.
-  if (value !== undefined && Number.isFinite(value)) c.value = roundTo(value, 1000)
+  if (value !== undefined && Number.isFinite(value)) c.value = round(value)
   if (pos !== undefined && Number.isFinite(pos[0]) && Number.isFinite(pos[1])) c.pos = [round(pos[0]), round(pos[1])]
   if (sign !== undefined && Number.isFinite(sign)) c.sign = sign
   feature.constraints.push(c)
@@ -383,15 +383,15 @@ export function applySetConstraintValue(
 ): void {
   const feature = findSketchFeature(doc, featureId)
   if (!feature?.constraints) return
-  // A dimension value is stored at its own 1e-3 precision, coarser than the
-  // seed precision, through the same -0 folding; a NaN/Inf must be rejected at
-  // the boundary rather than rounded into it.
+  // A dimension value is stored on the document grid (1e-6), the same precision
+  // as every other stored scalar, through the same -0 folding; a NaN/Inf must
+  // be rejected at the boundary rather than rounded into it.
   if (!Number.isFinite(value)) {
     warn('applySetConstraintValue: ignoring non-finite value', { featureId, constraintId, value })
     return
   }
   const c = feature.constraints.find(c => c.id === constraintId)
-  if (c) c.value = roundTo(value, 1000)
+  if (c) c.value = round(value)
 }
 
 export function applySetConstraintPos(
