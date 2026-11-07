@@ -3,7 +3,7 @@
 // The MCP server protocol: initialize, tools/list, tools/call and the framing
 // around them (parse errors, notifications, unknown methods), driven through
 // fake ops so no kernel is needed. The real tools are pinned by the MCP e2e
-// suite in cliSmoke.test.ts.
+// suite in mcpSmoke.test.ts.
 
 import { describe, it, expect } from 'vitest'
 import Ajv from 'ajv'

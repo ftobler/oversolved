@@ -3,7 +3,7 @@
 // answers the call with a timeout naming the last feature, and spawns a fresh
 // worker for the next call (bug-fuse-hang D2). Driven by a fake worker so
 // every timing is exact; the real worker and the stdio server are covered by
-// the MCP stall case in cliSmoke.test.ts.
+// the MCP stall case in mcpSmoke.test.ts.
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import type { PartDoc } from '@/types/cad'

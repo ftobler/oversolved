@@ -4,7 +4,7 @@
 //
 // OVERSOLVED_MCP_TEST_HANG_FEATURE=<featureId> is a test hook: the worker
 // spins forever when its build reaches that feature, the stand-in for a kernel
-// operation that never returns (cliSmoke.test.ts drives the stall path with
+// operation that never returns (mcpSmoke.test.ts drives the stall path with
 // it). Nothing in production sets it.
 
 import { parentPort } from 'node:worker_threads'
