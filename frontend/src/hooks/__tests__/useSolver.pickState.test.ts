@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * `pickStateReady` reports whether the two-world (ghost) state actually exists:
  * entering a feature edit flips the editor store immediately, but the pick

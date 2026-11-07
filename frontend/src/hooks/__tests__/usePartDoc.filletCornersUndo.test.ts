@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // One fillet_corners step over four corners is one history entry, whatever the
 // arc count: undo returns to the pre-fillet document and redo restores the arcs.
 // Runs through the real usePartDoc with the mocked document/solver seams.

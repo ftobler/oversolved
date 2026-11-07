@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * `applySolveResult` rebuilds every feature result into a fixed shape at the
  * worker -> store seam, so a field it forgets to copy is invisible to the whole

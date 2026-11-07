@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The dead-entry and invalidation branches of the part undo funnel that the
 // main undoIntegration suite does not cover: commitMutationGroup no-op / empty
 // / suppressed groups, the null-docRef early return, the preview label

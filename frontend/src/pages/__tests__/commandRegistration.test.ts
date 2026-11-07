@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeAll } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { initializeTools } from '@/tools'

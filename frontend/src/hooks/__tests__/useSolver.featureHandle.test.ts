@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Tests that applySolveResult propagates the kernel's `handle` descriptor for
  * brep feature results. The FeatureHandles arrow reads it from solveResults;

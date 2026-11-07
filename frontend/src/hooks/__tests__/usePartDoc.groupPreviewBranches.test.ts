@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The commitMutationGroup prune/restore path and the preview/group escape and
 // suppression branches of usePartDoc that the roundtrip and undoGaps suites do
 // not reach. The real DocSession and real mutation handlers; only the document and

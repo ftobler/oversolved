@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The audit of the zebra program without a GPU: the patch is a pure function of
 // the shader source plus a uniforms record, and the hook is the only thing that
 // decides what is compile-time (the mode) and what is a uniform (every slider).

@@ -87,9 +87,7 @@ export default defineConfig({
     },
   },
   test: {
-    environment: 'jsdom',
     globals: true,
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     setupFiles: ['src/test-setup.ts'],
     testTimeout: ci ? 180000 : undefined,
     hookTimeout: ci ? 300000 : undefined,
@@ -98,5 +96,24 @@ export default defineConfig({
     // those heaps accumulate per worker without limit until the host OOMs, so
     // the flag is not an option here however tempting the saved WASM compiles.
     poolOptions: { forks: { maxForks, execArgv } },
+    // Isolation also means every file re-imports its whole graph in a fresh
+    // process. mathjs is ~1,260 ESM modules that evalExpr (and through it
+    // docSchema, so nearly every file) loads at module scope: ~0.7 s per file
+    // as loose modules, about a third of that pre-bundled into one. Both
+    // transform modes, since the jsdom project runs in `web` mode.
+    deps: {
+      optimizer: {
+        ssr: { enabled: true, include: ['mathjs'] },
+        web: { enabled: true, include: ['mathjs'] },
+      },
+    },
+    // A jsdom environment costs ~0.4 s per file, and most logic tests never
+    // touch the DOM (the frontend goal: delete the Viewport and the logic
+    // still passes). So .ts files run in node and .tsx files in jsdom; a .ts
+    // file that needs the DOM opts in with `// @vitest-environment jsdom`.
+    projects: [
+      { extends: true, test: { name: 'node', environment: 'node', include: ['src/**/*.test.ts'] } },
+      { extends: true, test: { name: 'jsdom', environment: 'jsdom', include: ['src/**/*.test.tsx'] } },
+    ],
   },
 })

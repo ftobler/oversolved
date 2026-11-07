@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest'
 import { DOM_HANDLE_ATTRIBUTE, scanDomHandles } from '../domHandles'
 import {

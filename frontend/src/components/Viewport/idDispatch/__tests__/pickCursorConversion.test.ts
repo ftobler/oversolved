@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest'
 import { IdPipeline, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'

@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // loadOccWeb is the main-thread path to the opencascade.js artifact. It is
 // deliberately failure-tolerant: any loader failure resolves to null so the
 // kernel degrades to "local solver unavailable". The test-environment guard

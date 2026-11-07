@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 //
 // The crash report store: the snapshot and repro round-trip, identical crashes
 // dedupe into one record, the store is capped, the zip carries the report and

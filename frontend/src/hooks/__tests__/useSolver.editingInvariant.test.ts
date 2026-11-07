@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // assertEditingInvariant guards the pick/edit seam: the rollback and pick
 // boundary the solve is about to run with must match the feature being edited.
 // A desync (an undo, a stale add+enter) must surface as a solver error instead

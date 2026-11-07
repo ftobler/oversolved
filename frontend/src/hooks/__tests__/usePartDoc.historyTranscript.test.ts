@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The frozen session/history transcript table: one row per promised behaviour
 // from the history-behaviour-freeze plan, driven through the real hook
 // composition (historyTranscript's driver) over the real mutation handlers.

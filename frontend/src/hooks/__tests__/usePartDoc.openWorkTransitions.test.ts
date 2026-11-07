@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The transition table of the open-work slot, row by row: idle, preview and
 // session (suppressed or sketch), and what each machine action does to the
 // successor state. The real DocSession and real mutation handlers; only the

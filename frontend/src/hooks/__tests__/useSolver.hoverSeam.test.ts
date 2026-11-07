@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * M1: the solve seam clears `selectedPicks` because a re-solve can re-tessellate
  * and shift a pickKey's positional index onto a different primitive. Hover is the

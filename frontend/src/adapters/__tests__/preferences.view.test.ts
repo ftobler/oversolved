@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The viewer options travel in the same localStorage record as the documents
 // sort. A stored value is untrusted, and a single stale field must not reset
 // the rest of the view, so every field is checked on its own here.

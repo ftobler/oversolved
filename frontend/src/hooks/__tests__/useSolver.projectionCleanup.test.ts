@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Regression tests for the solver write-back purity.
  *

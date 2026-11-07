@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Tests that applySolveResult propagates plane_transform from error responses (feature 277).
  */

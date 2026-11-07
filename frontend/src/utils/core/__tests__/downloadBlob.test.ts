@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The export path ends here: a Blob becomes a browser download through a
 // throwaway object URL and anchor element. The function is pure side effects, so
 // the test pins those side effects and the cleanup, not a return value.

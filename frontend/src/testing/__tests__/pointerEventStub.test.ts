@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Guards the shared jsdom PointerEvent stub the Viewport tests install.
  */

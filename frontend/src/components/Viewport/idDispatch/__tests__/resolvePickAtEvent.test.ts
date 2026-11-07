@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { resolvePickAtEvent } from '../useIdBufferPointerDispatch'
 import { IdPipeline, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking'

@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The undo tooltip (PartToolbar) renders describeMutation(entry.mutation) for
 // every step. usePartDoc resolves a preview or a pending brep projection into a
 // label-only preview_commit entry, so the description it pushes IS the text the

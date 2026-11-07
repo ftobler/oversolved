@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // Direct coverage for the persistence seam both editors now share. The
 // per-editor suites exercise saveDoc/renameDoc/cloneDoc through their hooks;
 // these pin the mechanism itself, so the extraction cannot quietly weaken the

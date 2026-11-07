@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The adapter's return shape is the boundary: a raw doc setter or a raw
 // solve-result setter would let a caller write around DocSession (past docRef,
 // undo and the dirty decision), which is exactly how the old hook leaked. The

@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The section is a momentary inspection view, not a saved view: a document
 // loaded after another one starts uncut. Its source may name a face that only
 // existed in the previous document, so keeping it would show a stale cut or a

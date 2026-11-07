@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The viewer options store: browser preference behind the preferences port,
 // never document state. Its defaults are pinned to today's look so an upgrade
 // cannot silently change the image, and its cross-field rules are pinned here

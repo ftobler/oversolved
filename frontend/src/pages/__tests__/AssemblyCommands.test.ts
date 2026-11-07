@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { useAssemblyCommands } from '@/pages/AssemblyKeyboardShortcuts'

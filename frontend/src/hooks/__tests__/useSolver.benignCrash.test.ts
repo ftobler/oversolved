@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * The crash cooldown in solverClient rejects a solve issued within the window
  * with 'solver worker crashed (backoff)'. Both that and the plain crash string

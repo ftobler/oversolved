@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The undo stack no longer carries import bytes at all: after C1 a document
 // holds a `file_id` reference and the registry owns the payload. cloneDocForUndo
 // is a plain structuredClone, so MAX_UNDO_DEPTH entries retain ~MAX_UNDO_DEPTH

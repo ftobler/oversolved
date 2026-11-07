@@ -314,6 +314,17 @@ describe('buildKeyString', () => {
 })
 ```
 
+### Test Environment
+
+- `*.test.ts` files run in the vitest `node` project and `*.test.tsx` in the
+  `jsdom` project (`frontend/vitest.config.ts`). A jsdom environment costs
+  ~0.4 s per file, and logic tests should not need the DOM.
+- A `.ts` test that does need it (`renderHook`, `document`, `localStorage`)
+  puts `// @vitest-environment jsdom` on its first line.
+- A headless node child (CLI, MCP server, watchdog fork) starts with
+  `--import=./scripts/*.register.mjs`, never `--loader=`: the off-thread
+  loader costs ~1.2 s of every spawn.
+
 ### ESLint Rules
 
 - `npm run lint` must pass with zero warnings/errors

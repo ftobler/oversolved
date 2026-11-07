@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // Parameterized undo/redo round-trip through the REAL mutation handlers.
 //
 // Under snapshot undo the doc-equality half of a round-trip is near-mechanical:

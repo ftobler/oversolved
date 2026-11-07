@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // Store-level tests for the circle-rim drag commit path: one undo entry per drag,
 // the locked no-op (no junk undo entry), and the checkpoint-cache bypass. No
 // canvas, no WASM. Mirrors the wiring in DragTool (it only forwards a non-null

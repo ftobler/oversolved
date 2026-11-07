@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The IDEMPOTENT_MUTATION no-op guard in handleMutation: a dispatch that leaves
 // the doc byte-identical must push no undo entry, set no dirty flag and waste no
 // re-solve, but ONLY for a mutation classified idempotent. This pins the guard

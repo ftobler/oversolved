@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // A doc edit must re-solve INCREMENTALLY. `handleMutation` used to pass
 // `bypassCache: true` for every mutation, which discards the checkpoint cache
 // and rebuilds the whole stack: deleting one part out of a 200-part STEP import

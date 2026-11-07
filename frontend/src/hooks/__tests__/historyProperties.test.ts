@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // History properties over the mutation example registry: every registered
 // mutation, run through the real hook composition, must round-trip through undo
 // and redo, must obey the no-op guard's contract, must let a fresh edit clear

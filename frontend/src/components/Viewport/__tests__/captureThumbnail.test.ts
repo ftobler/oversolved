@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import * as THREE from 'three'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'

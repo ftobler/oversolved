@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * ST-L1 regression: the solver write-back must not defeat the save identity
  * guard. applySolveResult used to mint a fresh doc object on every solve, so a

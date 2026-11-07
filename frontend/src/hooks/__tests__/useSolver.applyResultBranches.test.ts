@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The applySolveResult/reSolve branches the main useSolver suite does not reach:
 // projection kind resolution, constraint render positions, per-feature transform
 // fields, drag-anchor threading, a feature-less doc, a phantom editing feature,

@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // The doc-swap residue regression, pinned end to end: the assembly store is
 // module-level and survives a document swap, so a live manipulation/gizmoDrag/
 // pick/selection from doc A must not leak into doc B. useAssemblyDoc's load

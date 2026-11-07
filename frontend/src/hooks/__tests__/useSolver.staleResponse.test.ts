@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Regression tests for the stale-result guard in useSolver.reSolve.
  *

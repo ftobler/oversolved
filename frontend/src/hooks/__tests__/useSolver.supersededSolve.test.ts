@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * A solve the Worker flushed out of its queue (a newer solve replaced it before
  * it ever ran) rejects with SUPERSEDED_ERROR. That is queue bookkeeping, not a

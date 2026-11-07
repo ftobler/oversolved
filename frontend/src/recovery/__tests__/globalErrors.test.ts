@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 //
 // The window crash handlers against a plain target and fake-indexeddb: an
 // uncaught throw and an unhandled rejection each land as a report, a resource

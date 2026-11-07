@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+//
 // Undo/redo for the boolean clearance field. `set_boolean_field` already carries
 // any key of BooleanFeatureDef, so clearance needs no new mutation; this pins the
 // two things that could regress: it is exactly one undo entry, and an absent
