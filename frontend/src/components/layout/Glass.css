@@ -4,7 +4,7 @@
    layout that places these lives in Part.css; the palette lives here so the
    blur and the tint can be tuned in one place. */
 :root {
-  --glass-bg: rgba(17, 17, 17, 0.55);
+  --glass-bg: rgba(17, 17, 17, 0.65);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-blur: blur(14px) saturate(1.2);
   --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
@@ -20,8 +20,13 @@
 
 .glass-panel {
   background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
+  /* The unprefixed property must come last. The build minifier (lightningcss)
+     folds the pair into one property where the later declaration wins, so a
+     trailing -webkit- form left only the prefix, which Chrome and Firefox
+     ignore: the production panels lost their blur while `vite dev`, which
+     does not minify, kept it. Glass.css.test.ts pins this. */
   -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   border-radius: 8px;
   box-shadow: var(--glass-shadow);
