@@ -20,7 +20,7 @@ import { ASSEMBLY_DOC_SCHEMA_URI } from '@/persistence/assemblyDocSchema'
 import { MATE_KINDS } from '@/utils/mateKinds'
 import { validateSelector, typeVocabulary, type Selector } from '@/kernel/select'
 import { parseReference, type TranslationReference } from '@/translations/corpus'
-import { MUTATION_CATALOG_URI, mutationCatalogPayload, filterMutationCatalog, catalogFamilyNames } from '@/drive/mutationCatalogPayload'
+import { MUTATION_CATALOG_URI, mutationCatalogPayload, filterMutationCatalog, catalogFamilyNames, MUTATION_DETAILS, type MutationDetail } from '@/drive/mutationCatalogPayload'
 import { ASSEMBLY_DETAILS, type AssemblyDetail } from '@/drive/assemblyDetail'
 import { DOC_HANDLE_CAPACITY } from '@/drive/docHandleStore'
 import {
@@ -412,12 +412,24 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
     description: 'List the mutation vocabulary grouped by family (sketch, features, picks, part style, document), '
       + 'with each type\'s summary and fields, plus ready-to-run example scripts. Mutation steps author geometry; '
       + 'commands act on the current selection. The full catalog is large: pass kind ("part" or "assembly") and/or '
-      + 'family (' + catalogFamilyNames().join(', ') + ') to fetch only that slice; an unknown family is refused with the valid list.',
+      + 'family (' + catalogFamilyNames().join(', ') + ') to fetch only that slice; pass type (one name or an array) '
+      + 'to fetch one row, e.g. type: "add_shell"; pass detail: "index" for {type, summary} only. '
+      + 'An unknown family is refused with the valid list, an unknown type with a did-you-mean when a close name exists.',
     inputSchema: {
       type: 'object',
       properties: {
         kind: KIND_SCHEMA,
         family: { type: 'string', description: 'One family name; filters the part or assembly families.' },
+        type: {
+          anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+          description: 'One mutation type or an array of them, e.g. "add_shell" or ["add_hole", "add_extrude"].',
+        },
+        detail: {
+          type: 'string',
+          enum: [...MUTATION_DETAILS],
+          description: 'Reply-size control for this tool (default full). full returns the normal catalog shape; '
+            + 'index returns {type, summary} per row only.',
+        },
       },
       additionalProperties: false,
     },
@@ -747,6 +759,28 @@ function readDetail(value: unknown): AssemblyDetail | undefined {
   return value as AssemblyDetail
 }
 
+function readMutationType(value: unknown): string | string[] | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) {
+    const out: string[] = []
+    for (const [index, entry] of value.entries()) {
+      if (typeof entry !== 'string') throw new McpInvalidParams(`field "type[${index}]" must be a string`)
+      out.push(entry)
+    }
+    return out
+  }
+  throw new McpInvalidParams('field "type" must be a string or an array of strings')
+}
+
+function readMutationDetail(value: unknown): MutationDetail | undefined {
+  if (value === undefined) return undefined
+  if (!(MUTATION_DETAILS as readonly unknown[]).includes(value)) {
+    throw new McpInvalidParams(`field "detail" must be one of ${MUTATION_DETAILS.map(d => `"${d}"`).join(', ')}`)
+  }
+  return value as MutationDetail
+}
+
 // Select's own enum, not a superset of the assembly values: an assembly
 // spelling such as "summary" is refused by name rather than silently accepted.
 function readSelectDetail(value: unknown): SelectDetail | undefined {
@@ -936,10 +970,17 @@ async function callTool(ops: McpCadOps, name: string, args: unknown): Promise<Mc
     }
     case 'mutations': {
       const record = asObject(args ?? {}, 'arguments')
-      rejectUnknown(record, ['kind', 'family'])
+      rejectUnknown(record, ['kind', 'family', 'type', 'detail'])
       const kind = readKind(record.kind)
       const family = optionalString(record.family, 'family')
-      const filtered = filterMutationCatalog(mutationCatalogPayload(), { ...(kind && { kind }), ...(family && { family }) })
+      const type = readMutationType(record.type)
+      const detail = readMutationDetail(record.detail)
+      const filtered = filterMutationCatalog(mutationCatalogPayload(), {
+        ...(kind && { kind }),
+        ...(family && { family }),
+        ...(type !== undefined && { type }),
+        ...(detail !== undefined && { detail }),
+      })
       if (!filtered.ok) throw new McpInvalidParams(filtered.error)
       return { ok: true, ...filtered.payload }
     }
@@ -981,7 +1022,7 @@ export function createMcpServer(ops: McpCadOps): McpServer {
             capabilities: { tools: {}, resources: {} },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
             instructions: 'Drive the CAD document headlessly: commands lists the registry, mutations lists the '
-              + 'mutation vocabulary and example scripts (large: fetch it by kind and family, e.g. family "mates"), run executes scripts, '
+              + 'mutation vocabulary and example scripts (large: fetch one row with type, list names with detail: "index", or fetch by kind and family, e.g. family "mates"), run executes scripts, '
               + 'and an assembly run or measure takes detail "summary" or "changed" to keep the reply small, '
               + 'measure reports geometry facts, compare checks a document against a reference, '
               + 'select finds faces/edges by predicate over the solve output, '
