@@ -122,6 +122,7 @@ When asked to plan a feature:
 - Write a detailed plan including test specs
 - Do NOT execute the plan or touch any other files
 - Read existing `feature/*.md` files first to know what is already in development
+- A plan built from MCP practice findings cites the run directory as evidence and never lists deleting it as an action (see the implement rules below).
 - Keep an overview and order of execution of features to apply documented in `feature/overview.md`. Keep it very short. One line per feature.
 
 When asked to implement a feature:
@@ -130,6 +131,7 @@ When asked to implement a feature:
 - Always make tests. Especially on bugs.
 - Code review using a subagent.
 - When done append a one-line shipped entry to `feature/overview.md` and remove the `*.md` file you implemented the feature from.
+- MCP practice output is permanent: never delete `bugreports/mcp-practice/<slug>/` run directories or `scratch/mcp-practice/scripts/`, even when a plan's findings came from them. The plan file is what gets deleted. A plan that says otherwise is stale; skip that step.
 - Use a worktree in `.worktrees/<topic>` with branch `feature/<topic>` except if the user indicates you directly to work in `dev` or any other branch.
 
 When the user asks to plan a feature but mentions of making it light or quick:

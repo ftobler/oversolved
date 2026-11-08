@@ -24,9 +24,11 @@ the scripts, which works from any harness. The data is local and gitignored:
 called the run directory below) and `scratch/mcp-practice/scripts/` (the
 script store, one directory per run that built something).
 
-The two homes have different lifetimes. A run directory is consumed: once its
-findings are triaged into plans or the backlog, it is deleted. The script store
-is permanent: triage never deletes it. It is the replay set that later checks a
+Both homes are permanent. A run directory stays in place after its findings
+are triaged into plans or the backlog: it is the claim that keeps another run
+off the same example, and the record the plan's findings point back to. The
+plan is what gets deleted, when it ships. The script store is permanent too:
+it is the replay set that later checks a
 reimplementation of the mutation layer (the planned Rust document core) against
 the TypeScript one, so a built or partial run normally leaves its script there.
 If the queue is missing, generate it with

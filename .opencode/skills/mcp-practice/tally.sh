@@ -11,8 +11,8 @@ claimed=("$runs"/*/)
 
 echo "claimed: ${#claimed[@]}  reported: ${#reports[@]}"
 
-# The script store outlives the run directories (triage deletes those), so its
-# count is the one that keeps growing across rounds.
+# Run directories and the script store both stay after triage; the script
+# count is the one that says how much of the replay set exists.
 metas=("$repo/scratch/mcp-practice/scripts"/*/meta.json)
 failed=0
 ((${#metas[@]})) && failed="$(grep -l '"replay": *"failed"' "${metas[@]}" | wc -l)"
