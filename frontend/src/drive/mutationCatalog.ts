@@ -20,6 +20,7 @@ import {
 import { entityParamLayoutsSentence } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { mutationValueViolation, EMPTY_REF_CLEARS } from '@/drive/mutationValues'
+import { MAX_REPORTED_CREATED_IDS } from '@/drive/scriptRunner'
 import { MAX_PATTERN_INSTANCES, MAX_SKETCH_ENTITIES } from '@/utils/geometry/sketchPattern'
 import { MAX_TEXT_ENTITIES } from '@/utils/geometry/textExpand'
 
@@ -469,6 +470,12 @@ const CONSTRAINT_KIND_NOTE =
   `The constraint kind, one of: ${[...CONSTRAINT_BY_KIND.keys()].join(', ')}. A line's dimension is ` +
   '`length`; two points take `point_distance`.'
 
+// The reply-size rule shared by the sketch copy sugar: `scriptRunner.ts` names
+// the ids up to the limit and reports a count past it.
+const CREATED_IDS_REPLY_NOTE =
+  ` The step reply names the new entity ids up to ${MAX_REPORTED_CREATED_IDS}; past that it reports ` +
+  '`createdCount` instead, and the document resource has the ids.'
+
 // Mirror carry-over is the fact an author cannot infer from the mutation shape;
 // the rules are pinned in yamlMutations/sketchMirror.ts and its test.
 const MIRROR_ENTITIES_NOTE =
@@ -483,7 +490,8 @@ const MIRROR_ENTITIES_NOTE =
   'A source whose mirror is itself (a seam edge on the axis, a line across it, an arc centred on it) gets no ' +
   'copy: the original serves both halves, and its constraints to the other sources carry onto the copies. ' +
   'A one-coordinate `fixed` carries only on a horizontal or vertical axis. A step whose every source mirrors ' +
-  'to itself is refused.'
+  'to itself is refused. New entity ids are reported in source order, one per fresh copy; a source that ' +
+  'mirrors to itself adds none.' + CREATED_IDS_REPLY_NOTE
 
 // The side is relative to the loop, not to each line's drawn direction, so a
 // CW, CCW or projected loop all read the same (birdhouse F3, Case_Seam_Lip F6).
@@ -507,7 +515,8 @@ const FILLET_CORNERS_NOTE =
   'refused, and the arc is construction only when both sides are. The coincident joint between the two ' +
   'trimmed endpoints is consumed. A second coincident, a tangent between the sides, or a `fixed` or ' +
   'dimension that anchors a trimmed endpoint is refused by constraint id. Arc params are ' +
-  '`[cx, cy, r, a0_deg, a1_deg]` and keep the CCW sweep.'
+  '`[cx, cy, r, a0_deg, a1_deg]` and keep the CCW sweep. The step reply reports one new arc id per ' +
+  'corner in `corners` order.' + CREATED_IDS_REPLY_NOTE
 
 // What an author cannot read off the field list: the copies are plain rows,
 // the count includes the source, where the new ids land, and which
@@ -521,12 +530,14 @@ const PATTERN_ENTITIES_NOTE =
   '(default [0, 0]); copy makes one copy, rotated by angle_deg about center and then moved by translate. A field ' +
   `from another mode is refused. count includes the source and the step makes at most ${MAX_PATTERN_INSTANCES} ` +
   `instances; the sketch holds at most ${MAX_SKETCH_ENTITIES} entities. A copy that lands on the source or an ` +
-  'earlier copy is refused. New ids are minted in one block, instance by instance in sourceIds order, and are ' +
-  'not reported: the appended entities rows are the mapping. A constraint is copied only when every operand is ' +
-  'a source; one that ties a source to anything else stays on the source alone. horizontal/vertical, ' +
+  'earlier copy is refused. New ids are minted in one block, instance by instance in sourceIds order, and the ' +
+  'step reply reports them in that order (in copy mode, in the target sketch). A constraint is copied only ' +
+  'when every operand is a source; one that ties a source to anything else stays on the source alone. ' +
+  'horizontal/vertical, ' +
   'point_distance_x/y, a midpoint axis and a one-coordinate fixed swap at a quarter turn and are dropped at any ' +
   'other angle. Projected sources are refused. Copy-mode targetFeatureId must name a sketch on the same plane ' +
-  '(Front and @builtin_plane_front are one plane); this never reflects, which is mirror_entities.'
+  '(Front and @builtin_plane_front are one plane); this never reflects, which is mirror_entities.' +
+  CREATED_IDS_REPLY_NOTE
 
 const VARIABLE_NAME_NOTE =
   'An expression refers to a variable by the variable feature\'s `label` (the name; `add_variable` sanitizes it to an ' +
@@ -893,6 +904,8 @@ export const MUTATION_CATALOG = {
       p1: point(),
       p0Ref: nullableStr(),
       p1Ref: nullableStr(),
+      entityIds: optArr('Optional authored ids for the four lines, in bottom, right, top, left order. '
+        + 'The list must hold exactly 4 ids, each unused in the sketch.'),
     },
   },
   add_center_rect: {
@@ -909,10 +922,14 @@ export const MUTATION_CATALOG = {
       corner: point(),
       centerRef: nullableStr(),
       cornerRef: nullableStr(),
+      entityIds: optArr('Optional authored ids for the four lines then the centre point (5 ids); '
+        + 'the lines are in bottom, right, top, left order, each id unused in the sketch.'),
     },
   },
   add_ngon: {
     summary: 'Add a regular polygon by centre, corner and side count.',
+    note: 'The created entity ids are the n lines in chain order, then the construction circumcircle.' +
+      CREATED_IDS_REPLY_NOTE,
     fields: {
       featureId: str(),
       center: point(),
@@ -920,6 +937,8 @@ export const MUTATION_CATALOG = {
       sides: num(),
       centerRef: nullableStr(),
       cornerRef: nullableStr(),
+      entityIds: optArr('Optional authored ids for the n lines in chain order then the construction '
+        + 'circumcircle (sides + 1 ids), each unused in the sketch.'),
     },
   },
   apply_offset: {

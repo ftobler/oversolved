@@ -334,6 +334,14 @@ describe('mutation catalog', () => {
     expect(note).toContain('face axes and normal')
   })
 
+  it('documents the authored id block on the compound sketch adds', () => {
+    expect(mutationInfoOf('add_rect').fields.entityIds.required).toBe(false)
+    expect(mutationInfoOf('add_rect').fields.entityIds.note).toContain('exactly 4')
+    expect(mutationInfoOf('add_center_rect').fields.entityIds.note).toContain('centre point')
+    expect(mutationInfoOf('add_ngon').fields.entityIds.note).toContain('sides + 1')
+    expect(mutationInfoOf('add_ngon').note).toContain('construction circumcircle')
+  })
+
   it('documents the add_rect id order and the sketch target forms', () => {
     expect(mutationInfoOf('add_rect').summary).toContain('bottom, right, top, left')
 

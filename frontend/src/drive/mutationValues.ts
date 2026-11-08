@@ -769,15 +769,60 @@ function addProjectedEntity(raw: RawStep, ctx: ValueContext): ValueViolation | n
   return idProblem === null ? null : invalid(idProblem)
 }
 
-function addRect(raw: RawStep): ValueViolation | null {
-  for (const field of ['p0', 'p1']) {
-    const problem = finitePointProblem(raw[field], field)
-    if (problem !== null) return invalid(problem)
+// An author-supplied id block on a compound sketch add. The applier takes the
+// ids verbatim, so a short list, a repeated id or one the sketch already holds
+// would leave a half-authored feature; the drive refuses each by name.
+function entityIdsProblem(raw: RawStep, ctx: ValueContext, expected: number, order: string): string | null {
+  const entityIds = raw.entityIds
+  if (entityIds === undefined) return null
+  const label = `entityIds (${order})`
+  if (!isStringArray(entityIds)) return `${label} must be a list of entity ids, got ${json(entityIds)}`
+  if (entityIds.length !== expected) {
+    return `${label} must hold exactly ${expected} ids, got ${entityIds.length}`
+  }
+  for (let i = 0; i < entityIds.length; i++) {
+    if (entityIds[i].length === 0) {
+      return `${label}[${i}] must be a non-empty id, got ${json(entityIds[i])}`
+    }
+    // The whole point of an authored id is to name the entity in a later ref.
+    // `@<sketch>/<id>` splits on `/` and `entity:<sketch>:<id>` on `:`, so an
+    // id carrying either, or whitespace, could not be addressed.
+    if (/[/:\s]/.test(entityIds[i])) {
+      return `${label}[${i}] must be ref-safe (no "/", ":" or whitespace), got ${json(entityIds[i])}`
+    }
+  }
+  const seen = new Set<string>()
+  for (const id of entityIds) {
+    if (seen.has(id)) {
+      return `${label} repeats the id ${json(id)}; every new entity needs its own id`
+    }
+    seen.add(id)
+  }
+  const featureId = raw.featureId
+  if (ctx.doc === null || typeof featureId !== 'string') return null
+  const sketch = sketchOf(ctx.doc, featureId)
+  const takenEntity = sketch?.entities?.find(entity => entityIds.includes(entity.id))
+  if (takenEntity !== undefined) {
+    return `${label} names entity id ${json(takenEntity.id)}, which already exists in sketch ${featureId}; a sketch cannot hold two entities with the same id, so pick a new id or delete the existing one first`
+  }
+  const takenConstraint = sketch?.constraints?.find(constraint => entityIds.includes(constraint.id))
+  if (takenConstraint !== undefined) {
+    return `${label} names constraint id ${json(takenConstraint.id)}, which already exists in sketch ${featureId}; entity and constraint ids share one reference namespace, so pick a new id`
   }
   return null
 }
 
-function addCenterRect(raw: RawStep): ValueViolation | null {
+function addRect(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  for (const field of ['p0', 'p1']) {
+    const problem = finitePointProblem(raw[field], field)
+    if (problem !== null) return invalid(problem)
+  }
+  const idProblem = entityIdsProblem(raw, ctx, 4, 'bottom, right, top, left')
+  return idProblem === null ? null : invalid(idProblem)
+}
+
+// The centre-and-corner pair the center rect and the n-gon share.
+function centerCornerProblem(raw: RawStep): ValueViolation | null {
   for (const field of ['center', 'corner']) {
     const problem = finitePointProblem(raw[field], field)
     if (problem !== null) return invalid(problem)
@@ -785,14 +830,22 @@ function addCenterRect(raw: RawStep): ValueViolation | null {
   return null
 }
 
-function addNgon(raw: RawStep): ValueViolation | null {
-  const rectProblem = addCenterRect(raw)
-  if (rectProblem !== null) return rectProblem
+function addCenterRect(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const geometry = centerCornerProblem(raw)
+  if (geometry !== null) return geometry
+  const idProblem = entityIdsProblem(raw, ctx, 5, 'four lines then the centre point')
+  return idProblem === null ? null : invalid(idProblem)
+}
+
+function addNgon(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const geometry = centerCornerProblem(raw)
+  if (geometry !== null) return geometry
   const sides = raw.sides
   if (!isFiniteNumber(sides) || !Number.isInteger(sides) || sides < 3) {
     return invalid(`sides must be an integer of at least 3, got ${json(sides)}`)
   }
-  return null
+  const idProblem = entityIdsProblem(raw, ctx, sides + 1, `${sides} lines then the construction circumcircle`)
+  return idProblem === null ? null : invalid(idProblem)
 }
 
 function applyOffset(raw: RawStep, ctx: ValueContext): ValueViolation | null {

@@ -218,12 +218,18 @@ const PREVIEW_COMMIT_FALLBACK: Mutation = { type: 'preview_commit', description:
 // the drag path pays nothing for a field it can never fill.
 // The helpers whose reply lists entities and counts constraints instead of
 // naming every constraint id.
-const COMPACT_CREATED_TYPES = new Set<Mutation['type']>(['add_rect', 'add_center_rect', 'add_ngon'])
+const COMPACT_CREATED_TYPES = new Set<Mutation['type']>([
+  'add_rect', 'add_center_rect', 'add_ngon',
+  // The copy/trim sugar carries a constraint per copy or corner; the reply
+  // keeps the entity order and collapses those to a count like a rect.
+  'mirror_entities', 'pattern_entities', 'fillet_corners',
+])
 
 const CREATING_MUTATION_TYPES = new Set<Mutation['type']>([
   'add_constraint',
   'add_entity', 'add_entity_with_constraint', 'add_projected_entity', 'import_dxf', 'add_text',
   'add_rect', 'add_center_rect', 'add_ngon', 'apply_offset',
+  'mirror_entities', 'pattern_entities', 'fillet_corners',
   'add_sketch', 'add_plane', 'add_import_step',
   'add_extrude', 'add_revolve', 'add_sweep',
   'add_fillet', 'add_chamfer', 'add_boolean',
@@ -764,14 +770,24 @@ export class DocSession {
     if (!mutations.some(m => CREATING_MUTATION_TYPES.has(m.type))) return okResult()
     const created = createdIdsBetween(before, after)
     if (!mutations.every(m => COMPACT_CREATED_TYPES.has(m.type))) return okResult(created)
-    // A rect or n-gon mints a dozen coincident/equal/horizontal constraints
-    // beside its lines. The ids list keeps the entities in minting order and
-    // the constraints collapse to a count; the document resource has their ids.
-    const constraintIds = new Set<string>()
+    // A rect, n-gon, mirror, pattern or fillet mints several constraints beside
+    // its entities. The ids list keeps the entities in minting order and the
+    // constraints collapse to a count; the document resource has their ids.
+    // Only constraints this apply CREATED count: filtering against every
+    // constraint in the document would drop an authored entity id that happens
+    // to match another sketch's constraint id.
+    const createdConstraintIds = new Set<string>()
     for (const feature of after.features ?? []) {
-      if (feature.kind === 'sketch') for (const c of feature.constraints ?? []) constraintIds.add(c.id)
+      if (feature.kind !== 'sketch') continue
+      const beforeFeature = before.features?.find(f => f.id === feature.id)
+      const heldBefore = new Set(
+        beforeFeature?.kind === 'sketch' ? (beforeFeature.constraints ?? []).map(c => c.id) : [],
+      )
+      for (const c of feature.constraints ?? []) {
+        if (!heldBefore.has(c.id)) createdConstraintIds.add(c.id)
+      }
     }
-    const ids = created.filter(id => !constraintIds.has(id))
+    const ids = created.filter(id => !createdConstraintIds.has(id))
     return okResult(ids, created.length - ids.length)
   }
 

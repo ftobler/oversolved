@@ -1,6 +1,6 @@
 import type { PartDoc, PartFeature } from '@/types/cad'
 import {
-  warn, round, allFinite, resolveSketch, freshEntityIds, mintEntityId,
+  warn, round, allFinite, resolveSketch, findSketchFeature, freshEntityIds, mintEntityId,
   uniqueConstraintId, parseTarget,
 } from './helpers'
 import type { SketchLists } from './helpers'
@@ -15,8 +15,52 @@ import { offsetSideFactors } from '@/utils/geometry/offsetSide'
 import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
 import { sameSnapVertex } from '@/utils/snapRefs'
 
+/** Check an author-supplied id block against the sketch. Returns the ids, or
+ *  null after a warn when the block is the wrong length, holds a duplicate or
+ *  carries an id the sketch already uses. The drive boundary refuses the same
+ *  shape by name; this is the backstop for a direct dispatch, which must not
+ *  write a half-authored document. */
+function _authoredEntityIds(
+  doc: PartDoc,
+  featureId: string,
+  ids: readonly string[],
+  expected: number,
+  what: string,
+): string[] | null {
+  if (ids.length !== expected) {
+    warn(`${what}: entityIds must hold ${expected} ids`, { got: ids.length })
+    return null
+  }
+  if (ids.some(id => typeof id !== 'string' || id.length === 0)) {
+    warn(`${what}: entityIds must be non-empty strings`, { ids })
+    return null
+  }
+  // The id has to survive the ref grammar the catalog documents: `@sk/<id>`
+  // splits on `/` and `entity:sk:<id>` on `:`, and whitespace breaks both.
+  if (ids.some(id => /[/:\s]/.test(id))) {
+    warn(`${what}: entityIds must be ref-safe (no "/", ":" or whitespace)`, { ids })
+    return null
+  }
+  if (new Set(ids).size !== ids.length) {
+    warn(`${what}: entityIds must not repeat an id`, { ids })
+    return null
+  }
+  const feature = findSketchFeature(doc, featureId)
+  const existing = (feature?.entities ?? []).map(e => e.id)
+  // Entity and constraint ids share one reference namespace: a fixed or
+  // dimension could not be told apart from the new entity by a bare id.
+  const existingConstraints = (feature?.constraints ?? []).map(c => c.id)
+  const taken = ids.find(id => existing.includes(id) || existingConstraints.includes(id))
+  if (taken !== undefined) {
+    warn(`${what}: entity id already exists in the sketch`, { id: taken })
+    return null
+  }
+  return [...ids]
+}
+
 /** Helper: add 4 rectangle lines with corner/edge/dimension constraints.
  *  Returns the 4 line IDs [lA, lB, lC, lD] for use in additional constraints.
+ *  `entityIds`, when given, authors that block instead of minting one.
  */
 function _applyRectLines(
   // Only the two containers this body indexes. The corner constraints go through
@@ -28,8 +72,9 @@ function _applyRectLines(
   y0: number,
   x1: number,
   y1: number,
+  entityIds?: readonly string[],
 ): [string, string, string, string] {
-  const [lA, lB, lC, lD] = freshEntityIds(feature.entities, 4)
+  const [lA, lB, lC, lD] = entityIds ?? freshEntityIds(feature.entities, 4)
   const fid = featureId
 
   const lines: [string, number[]][] = [
@@ -81,6 +126,7 @@ export function applyAddRect(
   p1: [number, number],
   p0Ref?: string | null,
   p1Ref?: string | null,
+  entityIds?: readonly string[],
 ): void {
   const [x0, y0] = p0
   const [x1, y1] = p1
@@ -91,11 +137,15 @@ export function applyAddRect(
     warn('applyAddRect: degenerate rectangle skipped', { p0, p1 })
     return
   }
+  const authored = entityIds === undefined
+    ? undefined
+    : _authoredEntityIds(doc, featureId, entityIds, 4, 'applyAddRect')
+  if (authored === null) return
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
 
   // _applyRectLines starts lA at (x0, y0) and lC at the diagonal (x1, y1).
-  const [lA, , lC] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1)
+  const [lA, , lC] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1, authored)
   _pinSnappedVertices(doc, featureId, [
     [`vertex:${featureId}:${lA}:start`, p0Ref],
     [`vertex:${featureId}:${lC}:start`, p1Ref],
@@ -109,6 +159,7 @@ export function applyAddCenterRect(
   corner: [number, number],
   centerRef?: string | null,
   cornerRef?: string | null,
+  entityIds?: readonly string[],
 ): void {
   const [cx, cy] = center
   // 4 corners of the rectangle (symmetric around center); (x1, y1) is the click.
@@ -120,13 +171,18 @@ export function applyAddCenterRect(
     warn('applyAddCenterRect: degenerate rectangle skipped', { center, corner })
     return
   }
+  // Four lines then the centre point: the block the catalog documents.
+  const authored = entityIds === undefined
+    ? undefined
+    : _authoredEntityIds(doc, featureId, entityIds, 5, 'applyAddCenterRect')
+  if (authored === null) return
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
 
-  const [lA, , lC] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1)
+  const [lA, , lC] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1, authored?.slice(0, 4))
 
   // Create point entity at center
-  const pointId = mintEntityId(feature.entities)
+  const pointId = authored?.[4] ?? mintEntityId(feature.entities)
   feature.entities.push({ id: pointId, kind: 'point' })
   feature.initial[pointId] = [cx, cy].map(round)
 
@@ -164,10 +220,8 @@ export function applyAddNgon(
   sides: number,
   cornerRef?: string | null,
   centerRef?: string | null,
+  entityIds?: readonly string[],
 ): void {
-  const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
-  if (!feature) return
-
   const n = Math.max(3, Math.floor(sides))
   const [cx, cy] = center
   const [vx, vy] = corner
@@ -181,9 +235,17 @@ export function applyAddNgon(
   }
   const radius = Math.hypot(vx - cx, vy - cy)
   if (radius <= 0) return  // degenerate: a point, not a polygon
-  const angle0 = Math.atan2(vy - cy, vx - cx)
 
-  const lineIds = freshEntityIds(feature.entities, n)
+  // n lines then the construction circumcircle: the block the catalog documents.
+  const authored = entityIds === undefined
+    ? undefined
+    : _authoredEntityIds(doc, featureId, entityIds, n + 1, 'applyAddNgon')
+  if (authored === null) return
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
+  if (!feature) return
+
+  const angle0 = Math.atan2(vy - cy, vx - cx)
+  const lineIds = authored?.slice(0, n) ?? freshEntityIds(feature.entities, n)
   for (let i = 0; i < n; i++) {
     const id = lineIds[i]
     const a1 = angle0 + (i / n) * 2 * Math.PI
@@ -205,7 +267,7 @@ export function applyAddNgon(
 
   // The circumcircle carries the n-gon's center. Construction, so it never
   // becomes profile geometry.
-  const circleId = mintEntityId(feature.entities)
+  const circleId = authored?.[n] ?? mintEntityId(feature.entities)
   feature.entities.push({ id: circleId, kind: 'circle', construction: true })
   feature.initial[circleId] = [cx, cy, radius].map(round)
 

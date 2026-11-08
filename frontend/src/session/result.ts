@@ -22,7 +22,8 @@ export interface SessionSuccess {
   ok: true
   createdIds: string[]
   // Present only when createdIds leaves the constraints out: how many the
-  // mutation minted (a rect or n-gon helper).
+  // mutation minted (the rect/n-gon helpers and the mirror/pattern/fillet
+  // sketch copy sugar).
   constraints?: number
 }
 

@@ -73,10 +73,13 @@ export interface ScriptStepOutcome {
   id: string
   ok: boolean
   createdIds: string[]
-  // Present only when createdIds omits the constraints (rect, n-gon): their count.
+  // Present only when createdIds omits the constraints (rect, n-gon, mirror,
+  // pattern, fillet): their count.
   constraints?: number
-  // Present only on an import_dxf or add_text step, whose reply keeps the
-  // entity ids out: how many entities the step added. The document resource has the ids.
+  // Present when createdIds leaves the ids out: on an import_dxf or add_text
+  // step, or a sketch copy step that created more than
+  // MAX_REPORTED_CREATED_IDS ids. How many entities the step added. The
+  // document resource has the ids.
   createdCount?: number
   error?: { code: string; message: string }
   // Present only when the step measured an orientation into the document.
@@ -161,6 +164,14 @@ function malformedStep(index: number, step: unknown): ScriptStepOutcome | null {
   return null
 }
 
+// Past this many ids a sketch copy step reports `createdCount` instead, so a
+// large pattern or import does not double the reply; the document resource has
+// the ids. Assembly pattern steps keep their documented per-copy order, so the
+// limit is scoped by step id rather than applied to every reply.
+export const MAX_REPORTED_CREATED_IDS = 200
+const ALWAYS_COUNTED_STEPS = new Set(['import_dxf', 'add_text'])
+const SKETCH_COPY_STEPS = new Set(['mirror_entities', 'pattern_entities', 'fillet_corners'])
+
 function outcomeFor(index: number, step: unknown, result: ScriptStepResult): ScriptStepOutcome {
   const kind = stepKind(step)
   const id = stepId(step)
@@ -182,8 +193,10 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
     const constraints = 'constraints' in result ? result.constraints : undefined
     // A DXF import or a text run is the bulk case of the reply-size rule: one
     // step can add hundreds of entities, so the reply carries the count and
-    // the document resource (or the run's docHash) serves the ids.
-    const counted = id === 'import_dxf' || id === 'add_text'
+    // the document resource (or the run's docHash) serves the ids. A sketch
+    // copy step (pattern, mirror, fillet) is the other way to cross the limit.
+    const counted = ALWAYS_COUNTED_STEPS.has(id)
+      || (SKETCH_COPY_STEPS.has(id) && createdIds.length > MAX_REPORTED_CREATED_IDS)
     return {
       index, kind, id, ok: true, createdIds: counted ? [] : createdIds,
       ...(counted && { createdCount: createdIds.length }),

@@ -489,4 +489,15 @@ describe('practice doc cases: fit_spline magnitude and helix sweep path', () => 
     expect(note).toContain('`$<helixId>` is a valid `pathQuery` on a sweep')
     expect(note).toContain('`add_sweep`')
   })
+
+  it('states the created id order and the bulk threshold on the copy sugar', () => {
+    expect(mutationInfoOf('mirror_entities').note).toContain('in source order')
+    expect(mutationInfoOf('fillet_corners').note).toContain('in `corners` order')
+    expect(mutationInfoOf('pattern_entities').note).toContain('instance by instance in sourceIds order')
+    for (const type of ['mirror_entities', 'fillet_corners', 'pattern_entities'] as const) {
+      const note = mutationInfoOf(type).note!
+      expect(note, type).toContain('up to 200')
+      expect(note, type).toContain('`createdCount`')
+    }
+  })
 })

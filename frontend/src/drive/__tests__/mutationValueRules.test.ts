@@ -1353,6 +1353,66 @@ describe('through_all is a cut termination at the drive boundary', () => {
   })
 })
 
+describe('the compound sketch adds take an authored id block', () => {
+  it('accepts a block of the right length with ids the sketch does not hold', () => {
+    expect(validateMutation({
+      type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 6],
+      entityIds: ['b', 'r', 't', 'l'],
+    }, { doc: sketchDoc() })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_center_rect', featureId: 'sk1', center: [0, 0], corner: [1, 1],
+      entityIds: ['b', 'r', 't', 'l', 'c'],
+    }, { doc: sketchDoc() })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_ngon', featureId: 'sk1', center: [0, 0], corner: [1, 1], sides: 6,
+      entityIds: ['a', 'b', 'c', 'd', 'e', 'f', 'circ'],
+    }, { doc: sketchDoc() })).toMatchObject({ ok: true })
+  })
+
+  it('refuses a wrong length by field name, with the expected block', () => {
+    for (const [raw, expected] of [
+      [{ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [1, 1], entityIds: ['a', 'b'] }, 'exactly 4'],
+      [{ type: 'add_center_rect', featureId: 'sk1', center: [0, 0], corner: [1, 1], entityIds: ['a'] }, 'exactly 5'],
+      [{ type: 'add_ngon', featureId: 'sk1', center: [0, 0], corner: [1, 1], sides: 5, entityIds: ['a'] }, 'exactly 6'],
+    ] as const) {
+      const error = refusal(raw, sketchDoc())
+      expect(error.message).toContain('entityIds')
+      expect(error.message).toContain(expected)
+    }
+  })
+
+  it('refuses an id the sketch already holds and a repeated id', () => {
+    const taken = refusal({
+      type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [1, 1], entityIds: ['l1', 'r', 't', 'l'],
+    }, sketchDoc())
+    expect(taken.message).toContain('entityIds')
+    expect(taken.message).toContain('"l1"')
+    expect(taken.message).toContain('already exists')
+
+    const repeated = refusal({
+      type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [1, 1], entityIds: ['a', 'a', 't', 'l'],
+    }, sketchDoc())
+    expect(repeated.message).toContain('entityIds')
+    expect(repeated.message).toContain('repeats')
+  })
+
+  it('refuses an id a ref cannot address and one that names a constraint', () => {
+    const unsafe = refusal({
+      type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [1, 1], entityIds: ['a/b', 'r', 't', 'l'],
+    }, sketchDoc())
+    expect(unsafe.message).toContain('ref-safe')
+
+    const withConstraint = sketchDoc()
+    const sketch = withConstraint.features![0] as { constraints?: unknown[] }
+    sketch.constraints = [{ id: 'c9', kind: 'horizontal', target: '$l1' }]
+    const clash = refusal({
+      type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [1, 1], entityIds: ['c9', 'r', 't', 'l'],
+    }, withConstraint)
+    expect(clash.message).toContain('entityIds')
+    expect(clash.message).toContain('constraint id "c9"')
+  })
+})
+
 describe('the positive twin of a seeded script still validates', () => {
   it('accepts a normal box script step by step', async () => {
     const steps: Array<{ mutation: Mutation }> = [

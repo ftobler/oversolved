@@ -906,7 +906,11 @@ banner on stdout, so a client config must use the direct node invocation.
   picking one alone is refused by name;
   `add_center_rect` takes the half-diagonal corner (center `[0,0]` with corner
   `[1,1]` is 2x2) and leaves a centre point entity; `add_rect` creates its line
-  ids in bottom, right, top, left order; `add_revolve` takes the required
+  ids in bottom, right, top, left order, and all three of `add_rect`,
+  `add_center_rect` and `add_ngon` take optional `entityIds` (the whole block:
+  4 lines; 4 lines in that same order then the centre point; n lines in chain
+  order then the circumcircle) so a script can name a side in its own step;
+  `add_revolve` takes the required
   `axis` inline (`@<sketchId>/<entityId>` or an edge query from `select`) plus
   `direction`, `operation` and `merge_target`, the same keys
   `set_revolve_field` sets, and an axis that crosses a profile's interior is
@@ -962,8 +966,9 @@ banner on stdout, so a client config must use the direct node invocation.
   `copy` (`angle_deg`, `center`, `translate`, `targetFeatureId` for a sketch on
   the same plane); `count` includes the source, a field from another mode, a
   stacked copy, more than 200 instances or more than 4096 sketch entities is
-  refused by name, the copies are plain authored rows whose ids are not
-  reported, and one step is one undo entry;
+  refused by name, the copies are plain authored rows whose ids the reply
+  reports instance by instance in `sourceIds` order, and one step is one undo
+  entry;
   `add_text` takes `text` and optional `origin`, `size`, `angle` and `align`
   (`left | center | right`) and writes the string's glyph outlines as plain
   line and spline rows; a character outside printable ASCII is refused by code
@@ -1282,13 +1287,21 @@ authors `flip: true` by hand is equally valid.
   `queries`). Under a `run`'s `summary` and `changed` the
   reply's `steps` key becomes `stepsAccepted` (a count) plus `steps` holding
   only the refused ones.
-- `add_rect`, `add_center_rect` and `add_ngon` steps report `createdIds` as
+- A sketch step's `createdIds` is how a later step in the same `run` names
+  what it made: one `add_rect` with `entityIds` (the rect family authors its
+  whole id block) can be revolved about `@sk1/<id>` without a read-back.
+  `add_rect`, `add_center_rect` and `add_ngon` steps report `createdIds` as
   the entity ids in minting order (rect: bottom, right, top, left lines) plus
   `constraints: <count>`; the constraint ids stay readable from the document
-  resource. An `import_dxf` or `add_text` step reports `createdIds: []` and
+  resource. `mirror_entities` reports its copy ids in source order,
+  `pattern_entities` instance by instance in `sourceIds` order and
+  `fillet_corners` one arc id per corner, each with `constraints: <count>`.
+  An `import_dxf` or `add_text` step reports `createdIds: []` and
   `createdCount: <entities>` instead, because one step can add hundreds of
-  entities; its ids stay readable from the document resource, and the run's
-  `docHash` names the document that holds them. Other mutations list every id
+  entities; a sketch copy step that creates more than 200 ids reports them the
+  same way. The ids of such a step stay readable from the document resource,
+  and the run's `docHash` names the document that holds them. Other mutations
+  list every id
   they create. In an assembly, an
   ordinary mutation step's `createdIds` names the assembly features it added,
   in document order: `inst_<handle>` for an `add_part`, the mate's `featureId`

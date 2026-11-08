@@ -306,6 +306,27 @@ describe('replayJournal', () => {
     expect(fresh.cell.current?.features?.some(f => f.id === 'ex1')).toBe(true)
   })
 
+  it('replays an add_rect whose authored entityIds are stored in the payload', async () => {
+    // An optional field on a stored mutation: replay applies it verbatim, so
+    // the authored ids land again and the mint sequence advances identically.
+    const journal = new CommandJournal()
+    const recorded = makeSession(sketchDoc(), journal)
+    recorded.session.execute({
+      type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10],
+      entityIds: ['b', 'r', 't', 'l'],
+    })
+    const repro = journal.repro()!
+    expect(repro.journal[0].payload).toMatchObject({ entityIds: ['b', 'r', 't', 'l'] })
+
+    const fresh = makeSession(structuredClone(repro.doc) as PartDoc, undefined, 'doc-1')
+    const outcome = await replayJournal(repro, fresh.session)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.finalHash).toBe(docHashOf(recorded.cell.current))
+    const sketch = fresh.cell.current?.features?.find(feature => feature.id === 'sk1')
+    expect(sketch?.kind === 'sketch' ? sketch.entities?.map(entity => entity.id) : null)
+      .toEqual(['b', 'r', 't', 'l'])
+  })
+
   it('replays a recording whose mint skipped an id the document already held', async () => {
     // Seed the journal so its first draw is a known id, and start from a
     // document that already carries it: both the recording and the replay skip

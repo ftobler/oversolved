@@ -257,6 +257,38 @@ describe('execute', () => {
     expect(result).toEqual({ ok: true, createdIds: ['pt1', minted] })
   })
 
+  it('reports the authored ids of a rectangle in its role order', () => {
+    const { session } = makeSession(makeDoc(makeSketch('sk1')))
+
+    expect(session.execute({
+      type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 6],
+      entityIds: ['b', 'r', 't', 'l'],
+    })).toEqual({ ok: true, createdIds: ['b', 'r', 't', 'l'], constraints: 8 })
+
+    const sketch = sketchAt(session.getDoc()!)
+    expect(sketch.initial).toMatchObject({
+      b: [0, 0, 10, 0], r: [10, 0, 10, 6], t: [10, 6, 0, 6], l: [0, 6, 0, 0],
+    })
+  })
+
+  it('keeps an authored entity id that matches a constraint id in another sketch', () => {
+    // Entity ids are sketch-scoped while constraint ids share the same text
+    // space, so only the ids this apply created may collapse to a count.
+    const { session } = makeSession(makeDoc(
+      makeSketch('sk1', {
+        entities: [{ id: 'l1', kind: 'line' }],
+        initial: { l1: [0, 0, 1, 0] },
+        constraints: [{ id: 'c1', kind: 'horizontal', target: '$l1' }],
+      }),
+      makeSketch('sk2'),
+    ))
+
+    expect(session.execute({
+      type: 'add_rect', featureId: 'sk2', p0: [0, 0], p1: [1, 1],
+      entityIds: ['c1', 'r', 't', 'l'],
+    })).toEqual({ ok: true, createdIds: ['c1', 'r', 't', 'l'], constraints: 8 })
+  })
+
   it('returns an error Result and records a diagnostic when there is no document', () => {
     const { session } = makeSession(null)
 
@@ -266,6 +298,103 @@ describe('execute', () => {
     expect(session.diagnostics()).toEqual([
       { code: 'no-document', message: expect.stringContaining('no document') },
     ])
+  })
+})
+
+describe('created ids of the sketch copy sugar', () => {
+  const mirrorDoc = () => makeDoc(makeSketch('sk1', {
+    entities: [
+      { id: 'ax', kind: 'line' },
+      { id: 'l1', kind: 'line' },
+      { id: 'l2', kind: 'line' },
+    ],
+    initial: { ax: [0, -1, 0, 5], l1: [2, 0, 2, 4], l2: [2, 4, 4, 4] },
+    constraints: [{ id: 'k1', kind: 'length', a: '$l1', value: 4 }],
+  }))
+
+  it('mirror_entities names its copies in source order and counts the carried constraints', () => {
+    const { session } = makeSession(mirrorDoc())
+
+    const result = session.execute({
+      type: 'mirror_entities', featureId: 'sk1', sourceIds: ['l1', 'l2'], line: 'ax',
+    })
+
+    const sketch = sketchAt(session.getDoc()!)
+    const copies = sketch.entities!.slice(3)
+    expect(copies).toHaveLength(2)
+    expect(result).toEqual({ ok: true, createdIds: copies.map(e => e.id), constraints: 1 })
+    // The first copy is the mirror of l1 and the second of l2.
+    expect(sketch.initial![copies[0].id]).toEqual([-2, 0, -2, 4])
+    expect(sketch.initial![copies[1].id]).toEqual([-2, 4, -4, 4])
+  })
+
+  it('does not report a source that mirrors to itself', () => {
+    // `self` crosses the vertical axis, so it is its own image and no copy is
+    // minted for it; only l2's copy is in the list.
+    const { session } = makeSession(makeDoc(makeSketch('sk1', {
+      entities: [
+        { id: 'ax', kind: 'line' },
+        { id: 'self', kind: 'line' },
+        { id: 'l2', kind: 'line' },
+      ],
+      initial: { ax: [0, -1, 0, 5], self: [-2, 0, 2, 0], l2: [2, 0, 2, 4] },
+    })))
+
+    const result = session.execute({
+      type: 'mirror_entities', featureId: 'sk1', sourceIds: ['self', 'l2'], line: 'ax',
+    })
+
+    const sketch = sketchAt(session.getDoc()!)
+    const copies = sketch.entities!.slice(3)
+    expect(copies).toHaveLength(1)
+    expect(result).toEqual({ ok: true, createdIds: [copies[0].id], constraints: 0 })
+  })
+
+  it('pattern_entities names one id per copy in instance order', () => {
+    const { session } = makeSession(makeDoc(makeSketch('sk1', {
+      entities: [{ id: 'l1', kind: 'line' }],
+      initial: { l1: [0, 0, 10, 0] },
+    })))
+
+    const result = session.execute({
+      type: 'pattern_entities', featureId: 'sk1', sourceIds: ['l1'], mode: 'linear', count: 3, pitch: 5,
+    })
+
+    const sketch = sketchAt(session.getDoc()!)
+    expect(sketch.entities!.slice(1).map(e => e.id)).toHaveLength(2)
+    expect(result).toEqual({
+      ok: true, createdIds: sketch.entities!.slice(1).map(e => e.id), constraints: 0,
+    })
+  })
+
+  it('fillet_corners names one arc per corner and counts the new constraints', () => {
+    const { session } = makeSession(makeDoc(makeSketch('sk1', {
+      entities: [
+        { id: 'l1', kind: 'line' }, { id: 'l2', kind: 'line' },
+        { id: 'l3', kind: 'line' }, { id: 'l4', kind: 'line' },
+      ],
+      initial: {
+        l1: [0, 0, 10, 0], l2: [10, 0, 10, 10],
+        l3: [20, 0, 30, 0], l4: [30, 0, 30, 10],
+      },
+    })))
+    const before = sketchAt(session.getDoc()!).constraints?.length ?? 0
+
+    const result = session.execute({
+      type: 'fillet_corners', featureId: 'sk1', radius: 1,
+      corners: [
+        { a: 'l1', aVertex: 'end', b: 'l2', bVertex: 'start', side: 'convex' },
+        { a: 'l3', aVertex: 'end', b: 'l4', bVertex: 'start', side: 'convex' },
+      ],
+    })
+
+    const sketch = sketchAt(session.getDoc()!)
+    const arcs = sketch.entities!.filter(e => e.kind === 'arc')
+    expect(arcs).toHaveLength(2)
+    const createdConstraints = (sketch.constraints?.length ?? 0) - before
+    expect(result).toEqual({
+      ok: true, createdIds: arcs.map(e => e.id), constraints: createdConstraints,
+    })
   })
 })
 

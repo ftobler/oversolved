@@ -116,6 +116,46 @@ describe('applyAddCenterRect snap refs', () => {
   })
 })
 
+describe('authored entity id blocks', () => {
+  it('add_rect uses the block as bottom, right, top, left', () => {
+    const doc = sketchDoc()
+    applyAddRect(doc, FID, [0, 0], [10, 6], null, null, ['b', 'r', 't', 'l'])
+    expect(feat(doc).initial).toMatchObject({
+      b: [0, 0, 10, 0], r: [10, 0, 10, 6], t: [10, 6, 0, 6], l: [0, 6, 0, 0],
+    })
+  })
+
+  it('add_center_rect uses four line ids then the centre point', () => {
+    const doc = sketchDoc()
+    applyAddCenterRect(doc, FID, [0, 0], [3, 2], null, null, ['b', 'r', 't', 'l', 'c'])
+    const sketch = feat(doc)
+    expect(sketch.initial).toMatchObject({
+      b: [-3, -2, 3, -2], r: [3, -2, 3, 2], t: [3, 2, -3, 2], l: [-3, 2, -3, -2], c: [0, 0],
+    })
+    expect(sketch.entities!.find(e => e.id === 'c')?.kind).toBe('point')
+  })
+
+  it('add_ngon uses the n line ids then the circumcircle', () => {
+    const doc = sketchDoc()
+    applyAddNgon(doc, FID, [0, 0], [10, 0], 5, null, null, ['a', 'b', 'c', 'd', 'e', 'circ'])
+    const sketch = feat(doc)
+    expect(sketch.entities!.map(e => e.id)).toEqual(['a', 'b', 'c', 'd', 'e', 'circ'])
+    expect(sketch.entities![5]).toMatchObject({ id: 'circ', kind: 'circle', construction: true })
+  })
+
+  it('refuses a short block and writes nothing, and refuses a taken id', () => {
+    const doc = sketchDoc()
+    applyAddRect(doc, FID, [0, 0], [10, 6], null, null, ['b', 'r'])
+    expect(feat(doc).entities).toEqual([])
+
+    applyAddRect(doc, FID, [0, 0], [10, 6])
+    const before = JSON.stringify(doc)
+    const minted = feat(doc).entities![0].id
+    applyAddRect(doc, FID, [1, 1], [5, 5], null, null, [minted, 'x', 'y', 'z'])
+    expect(JSON.stringify(doc)).toBe(before)
+  })
+})
+
 describe('applyAddNgon snap refs', () => {
   it('pins the first line start (the corner click) to cornerRef', () => {
     const doc = sketchDoc()

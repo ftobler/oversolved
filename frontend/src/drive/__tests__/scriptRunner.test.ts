@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, it, expect } from 'vitest'
-import { runScript, type ScriptStep } from '../scriptRunner'
+import { runScript, type AnyScriptStep, type ScriptStep } from '../scriptRunner'
 import { okResult, errorResult } from '@/session/result'
 
 const step = (command: string, continueOnError = false): ScriptStep => ({ command, continueOnError })
@@ -102,5 +102,32 @@ describe('runScript', () => {
     const outcome = await runScript([step('a')], () => null)
     expect(outcome.ok).toBe(false)
     expect(outcome.steps[0].error).toMatchObject({ code: 'no-document' })
+  })
+
+  it('turns more than 200 created ids into a count', async () => {
+    const pattern: ScriptStep = {
+      mutation: { type: 'pattern_entities', featureId: 'sk1', sourceIds: ['l1'], mode: 'linear', count: 3, pitch: 5 },
+    }
+    const ids = (count: number) => Array.from({ length: count }, (_, i) => `e${i}`)
+
+    const atLimit = await runScript([pattern], () => okResult(ids(200)))
+    expect(atLimit.steps[0].createdIds).toHaveLength(200)
+    expect(atLimit.steps[0].createdCount).toBeUndefined()
+
+    const pastLimit = await runScript([pattern], () => okResult(ids(201)))
+    expect(pastLimit.steps[0].createdIds).toEqual([])
+    expect(pastLimit.steps[0].createdCount).toBe(201)
+  })
+
+  it('keeps the documented per-copy ids on an assembly pattern step', async () => {
+    // add_part_pattern's reply is per copy, not bulk: the sketch-copy limit
+    // must not swallow a large hole pattern's instance ids.
+    const assemble = {
+      mutation: { type: 'add_part_pattern', featureId: 'pat1', source_body: 'b1', mode: 'linear', count: 3 },
+    } as AnyScriptStep
+    const ids = Array.from({ length: 240 }, (_, i) => `copy-${i}`)
+    const outcome = await runScript([assemble], () => okResult(ids))
+    expect(outcome.steps[0].createdIds).toHaveLength(240)
+    expect(outcome.steps[0].createdCount).toBeUndefined()
   })
 })

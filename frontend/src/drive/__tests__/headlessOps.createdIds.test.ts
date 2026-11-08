@@ -1,8 +1,9 @@
 // @vitest-environment node
 //
-// A rect, center rect or n-gon reports its entities in minting order and the
-// number of constraints it minted; the constraint ids stay readable from the
-// document. Every other creating mutation still names all of its ids.
+// A rect, center rect, n-gon, mirror, pattern or fillet reports its entities in
+// minting order and the number of constraints it minted; the constraint ids
+// stay readable from the document. Every other creating mutation still names
+// all of its ids.
 
 import { describe, it, expect } from 'vitest'
 import type { SketchFeature } from '@/types/cad'
