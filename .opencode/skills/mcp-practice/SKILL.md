@@ -20,8 +20,15 @@ Paths: this skill exists twice with identical content, in
 harness looks in its own folder); the commands below use the `.claude` copy of
 the scripts, which works from any harness. The data is local and gitignored:
 `scratch/code-cad-examples/` (the examples), `scratch/mcp-practice/queue.tsv`
-(the queue) and `bugreports/mcp-practice/` (one directory per claimed item,
-called the run directory below).
+(the queue), `bugreports/mcp-practice/` (one directory per claimed item,
+called the run directory below) and `scratch/mcp-practice/scripts/` (the
+script store, one directory per run that built something).
+
+The two homes have different lifetimes. A run directory is consumed: once its
+findings are triaged into plans or the backlog, it is deleted. The script store
+is permanent: triage never deletes it. It is the replay set that later checks a
+reimplementation of the mutation layer (the planned Rust document core) against
+the TypeScript one, so a built or partial run normally leaves its script there.
 If the queue is missing, generate it with
 `bash .claude/skills/mcp-practice/build_queue.sh`. Run every command from the
 repo root with explicit paths; do not `cd`.
@@ -71,11 +78,74 @@ instructions.
 - At the end, `run` with `returnDoc: true` and save the document as
   `bugreports/mcp-practice/<slug>/doc.yaml` (or `.json`). Save intermediate
   documents that show a bug as `bugreports/mcp-practice/<slug>/bug-<n>.yaml`.
+- Keep track of the `run` calls in the `docHash` chain that led to the final
+  document, with their steps as sent: section 4 needs them.
 
 Budget: stop after about 60 tool calls or when you are stuck on the same
 problem three times. A stuck run is a finding, not a failure.
 
-## 4. Write the report
+## 4. Keep the script
+
+For a `built` or `partial` outcome, write one replayable script that rebuilds
+the final document from an empty one. Skip this section for `skipped`, and for
+`stuck` when nothing was built.
+
+This is a soft rule. A run without a script is fine when the result does not
+fit the script format or a replay cannot be made to pass within the budget
+(for example a document that only exists through a path `run` steps cannot
+express). Then say why in the report's Notes, one line, and move on; do not
+spend the run's budget forcing a script.
+
+1. Concatenate, in chain order, the steps of every `run` whose `docHash` led
+   to the final document. Leave out refused runs and side branches you
+   abandoned; keep failing steps only when the final document contains them
+   (a `partial` result is still the document as you left it).
+2. Replay it: `run` with those steps, no `doc` and no `docHash` (a fresh
+   document; pass `kind`, `parts` or `files` the way the original runs did).
+   Then `measure` the replay and the final document.
+3. The replay passes when it is `ok`, its `features` list matches the final
+   document's, and volume, area and bbox agree with the final document's
+   at the 1e-6 level. The `docHash` may differ: minted ids are seeded per
+   document and script, so one long script can mint other ids than a chain of
+   short ones. If the replay fails, fix the script (usually a step that leaned
+   on an id minted in an earlier run); if you cannot quickly, keep it anyway
+   with `replay: failed`, or drop it under the soft rule above.
+
+Save to `scratch/mcp-practice/scripts/<slug>/` (the same `<slug>` as the run
+directory):
+
+- `script.json`: `{ "steps": [...] }`, the format `run` takes and
+  `npm run drive -- run script.json` replays (`docs/drive.md`, "Script
+  format").
+- For an assembly, one `part-<doc_id>.json` per part script and
+  `assembly.json` as `{ "kind": "assembly", "parts": { "<doc_id>":
+  "part-<doc_id>.json" }, "steps": [...] }`: the parts map names the part
+  script files instead of a `docHash`, so a replay builds each part first and
+  binds its hash. A STEP file passed in `files` is noted by its path under
+  `scratch/code-cad-examples/`, not copied.
+- `meta.json`: what a replay is checked against.
+
+```json
+{
+  "example": "scratch/code-cad-examples/<path>",
+  "outcome": "built",
+  "date": "<YYYY-MM-DD>",
+  "commit": "<git rev-parse --short HEAD at the time of the run>",
+  "replay": "passed",
+  "finalDocHash": "<docHash of the final document>",
+  "replayDocHash": "<docHash of the replay>",
+  "length_unit": "mm",
+  "measure": { "volume": 0, "area": 0, "bbox": [[0, 0, 0], [0, 0, 0]] },
+  "features": []
+}
+```
+
+`measure` and `features` copy the final document's `measure` reply (the
+assembly reply's aggregate measures for an assembly). The `commit` matters:
+a later replay that drifts is compared against the code the script was made
+with, so a drift is attributed to a change, not to the script.
+
+## 5. Write the report
 
 `bugreports/mcp-practice/<slug>/report.md`, exactly this shape so `tally.sh` can fold reports:
 
@@ -126,8 +196,8 @@ End by telling the user the outcome and the findings in a few lines.
 
 When asked for the state of the practice runs rather than to do one:
 `bash .claude/skills/mcp-practice/tally.sh` prints claimed/reported counts,
-outcomes, and every finding grouped by kind and symptom key with the runs that
-hit it. Summarise the top groups; turning a group into a bug or MCP plan is a
+the number of kept scripts and how many failed their replay, outcomes, and
+every finding grouped by kind and symptom key with the runs that hit it. Summarise the top groups; turning a group into a bug or MCP plan is a
 separate request.
 
 ## Licenses
@@ -135,5 +205,7 @@ separate request.
 You may read and model any example, whatever its license, including LGPL,
 non-commercial and unlicensed collections: that is use, not distribution. The
 license column only matters later, and the rule is fixed: nothing from these
-runs enters the repo. A bug worth keeping is re-created from scratch by a
+runs enters the repo. The kept scripts are derived from the examples, so they
+fall under the same rule: they live in the gitignored `scratch/` and are never
+committed, copied into a test, or turned into a fixture. A bug worth keeping is re-created from scratch by a
 separate agent that sees only the finding text, never the example.
