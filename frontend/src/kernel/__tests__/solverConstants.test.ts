@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  GPROP_EPS,
   OCC_CONFUSION,
   TOL_LENGTH_SLACK,
   TOL_LOOP_CLOSURE,
@@ -36,6 +37,7 @@ function rustTolerances(): Map<string, number> {
 
 describe('solverConstants', () => {
   const toleranceConstants = [
+    GPROP_EPS,
     OCC_CONFUSION,
     TOL_LOOP_CLOSURE,
     TOL_NEAR_ZERO_AREA,
@@ -146,6 +148,9 @@ describe('solverConstants', () => {
     expect(TOL_SURFACE_IDENTITY).toBe(TOL_LOOP_CLOSURE)  // one scale for "this point is on this geometry"
     expect(TOL_SURFACE_PARALLEL).toBeLessThan(TOL_SURFACE_IDENTITY)  // analytic axes: noise only
     expect(TOL_VOLUME_DEGENERATE).toBeLessThan(TOL_VOLUME_SUM)  // empty vs additive closure
+    // The read's accuracy target must sit under the budget it feeds, or the
+    // guard would be judging the integrator's own error.
+    expect(GPROP_EPS).toBeLessThan(TOL_VOLUME_SUM)
     expect(TOL_PREVIEW_CELL).toBe(TOL_MOVE_FACE_TANGENT)  // the two coarse rendering-side rungs stand level
     expect(TOL_PREVIEW_CELL).toBeGreaterThan(TOL_SURFACE_IDENTITY)  // a rendering coincidence, not a solver decision
     // select's position clauses (extreme, center, within) lean on the measure

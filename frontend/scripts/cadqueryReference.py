@@ -43,6 +43,9 @@ DEFAULT_REL = 1e-5
 DEFAULT_ABS = 1e-6
 DEFAULT_TOPOLOGY = "report"
 
+# The same relative accuracy the app's shared volume read uses (occ/volume.ts).
+GPROP_EPS = 1e-9
+
 RESULT_NAMES = ("result", "model", "part")
 
 
@@ -60,14 +63,33 @@ def show_object(*_args: Any, **_kwargs: Any) -> None:
 
 
 def measure(target: Any) -> dict[str, Any]:
-    """The corpus measures for a CadQuery Workplane or Shape."""
+    """The corpus measures for a CadQuery Workplane or Shape.
+
+    The volume and centre use the rules the app's shared read uses, not
+    Shape.Volume()/Center(): on a BSPLINE surface OCCT's adaptive volume
+    property (both under CadQuery's OCP and our pinned build) reads about 0.6%
+    high, while Gauss-Kronrod lands on the analytic value. The centre is the
+    opposite case: the default rule agrees with the analytic one and GK's
+    CentreOfMass is coarse even with its CGFlag set. Area stays on the default
+    rule for the same reason as the centre.
+    """
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+
     shape = shape_of(target)
     bbox = shape.BoundingBox()
+    volume_props = GProp_GProps()
+    BRepGProp.VolumePropertiesGK_s(
+        shape.wrapped, volume_props, GPROP_EPS, True, False, False, False, False,
+    )
+    centre_props = GProp_GProps()
+    BRepGProp.VolumeProperties_s(shape.wrapped, centre_props)
+    centre = centre_props.CentreOfMass()
     return {
         "bodies": len(shape.Solids()),
-        "volume": shape.Volume(),
+        "volume": volume_props.Mass(),
         "area": shape.Area(),
-        "centroid": list(shape.Center().toTuple()),
+        "centroid": [centre.X(), centre.Y(), centre.Z()],
         "bbox": [bbox.xmin, bbox.ymin, bbox.zmin, bbox.xmax, bbox.ymax, bbox.zmax],
         "faces": len(shape.Faces()),
         "edges": len(shape.Edges()),

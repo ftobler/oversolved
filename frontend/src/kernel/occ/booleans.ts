@@ -20,7 +20,7 @@ import { drainList, DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccHistory } from './occTypes'
 import { canonicalizeCylinderFaces } from './canonicalSurfaces'
 import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex } from './primitives'
-import { volumeOf } from './volume'
+import { volumeOf, volumeOfDefault } from './volume'
 import { foldCavitySolids } from './cavities'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { swallowUnlessTrap } from '../errors'
@@ -588,8 +588,12 @@ export function shapeIsValid(oc: OccModule, scope: DisposeScope, shape: OccShape
  */
 function cleanShapeIsSound(oc: OccModule, scope: DisposeScope, before: OccShape, after: OccShape): boolean {
   try {
-    const v0 = volumeOf(oc, scope, before)
-    const v1 = volumeOf(oc, scope, after)
+    // The same solid before and after a topology-only step: the default rule's
+    // correlated read error cancels in the difference, and using the adaptive
+    // rule here flipped an adoption verdict that rewrote face UUIDs under a
+    // perturbed rebuild (fuzz seed 235). See volumeOfDefault.
+    const v0 = volumeOfDefault(oc, scope, before)
+    const v1 = volumeOfDefault(oc, scope, after)
     // BRepCheck flags an open shell invalid for its very openness, and an open
     // shell is a supported body (L5), so only a closed input's result has to
     // validate; a shell is judged by the preserved volume alone.
@@ -630,37 +634,69 @@ function booleanResultProblem(
   result: OccShape,
 ): string | null {
   try {
-    const vr = Math.abs(volumeOf(oc, scope, result))
-    const vt = Math.abs(volumeOf(oc, scope, target))
-    let vsum = 0
-    let vmax = 0
-    for (const tool of tools) {
-      const v = Math.abs(volumeOf(oc, scope, tool))
-      vsum += v
-      vmax = Math.max(vmax, v)
+    // Read the default rule first and pay the adaptive re-read only when the
+    // verdict is borderline. The array-cut corpus (count 3) takes minutes
+    // inside GK's first read on a shape whose volume is nowhere near a bound,
+    // so an unconditional adaptive read is not affordable here. Ten times the
+    // budget is the borderline band: outside it the default rule's read error
+    // (about 2e-6 of the body on a BSPLINE-trimmed face, up to 2.8e-5 on a
+    // BSPLINE surface) cannot change the verdict, and inside it the adaptive
+    // read decides.
+    const measureWith = (read: typeof volumeOfDefault) => {
+      let vsum = 0
+      let vmax = 0
+      const vr = Math.abs(read(oc, scope, result))
+      const vt = Math.abs(read(oc, scope, target))
+      for (const tool of tools) {
+        const v = Math.abs(read(oc, scope, tool))
+        vsum += v
+        vmax = Math.max(vmax, v)
+      }
+      return { vr, vt, vsum, vmax }
     }
-    if (!Number.isFinite(vr)) return `the result volume is not finite (${vr})`
-    // A non-finite operand would make every bound below NaN, i.e. every
+    // A non-finite read would make every bound below NaN, i.e. every
     // comparison false: the guard must not adopt a result it cannot judge.
-    if (!Number.isFinite(vt) || !Number.isFinite(vsum)) {
-      return `an operand volume is not finite (target ${vt}, tool ${vsum})`
+    // Run on both reads, because the adaptive re-read can be the non-finite one.
+    const finiteProblem = (r: number, t: number, s: number): string | null => {
+      if (!Number.isFinite(r)) return `the result volume is not finite (${r})`
+      if (!Number.isFinite(t) || !Number.isFinite(s)) {
+        return `an operand volume is not finite (target ${t}, tool ${s})`
+      }
+      return null
+    }
+    let { vr, vt, vsum, vmax } = measureWith(volumeOfDefault)
+    const firstProblem = finiteProblem(vr, vt, vsum)
+    if (firstProblem !== null) return firstProblem
+    const tolFor = (targetVolume: number, toolSum: number) =>
+      1e-6 * Math.max(targetVolume, toolSum, 1)
+    const boundFor = (targetVolume: number, toolMax: number, toolSum: number) =>
+      op === 'fuse' ? Math.max(targetVolume, toolMax) : op === 'common' ? Math.min(targetVolume, toolSum) : targetVolume
+    const tol = tolFor(vt, vsum)
+    const bound = boundFor(vt, vmax, vsum)
+    const margin = op === 'fuse'
+      ? Math.min(Math.abs(vr - bound), Math.abs(vr - (vt + vsum)))
+      : Math.abs(vr - bound)
+    if (margin <= 10 * tol) {
+      ({ vr, vt, vsum, vmax } = measureWith(volumeOf))
+      const retryProblem = finiteProblem(vr, vt, vsum)
+      if (retryProblem !== null) return retryProblem
     }
     // As in cleanShapeIsSound: a closed target's result has to validate, an
     // open-shell target (L5) has no closedness contract to enforce.
     if (isClosedByVolume(vt) && !shapeIsValid(oc, scope, result)) {
       return 'the result is not a valid solid (BRepCheck_Analyzer)'
     }
-    const tol = 1e-6 * Math.max(vt, vsum, 1)
+    const tolFinal = tolFor(vt, vsum)
     // A fuse cannot be smaller than its target or than any single tool. The
     // tools' SUM is not a lower bound: batched copies may overlap each other,
     // so the union is regularly smaller than the operand sum. The sum is only
     // the upper bound (nothing can exceed the total material put in).
-    const bound = op === 'fuse' ? Math.max(vt, vmax) : op === 'common' ? Math.min(vt, vsum) : vt
+    const boundFinal = boundFor(vt, vmax, vsum)
     const relation = op === 'fuse' ? 'below' : 'above'
-    if (op === 'fuse' ? vr < bound - tol : vr > bound + tol) {
-      return `volume ${vr} is ${relation} the ${op} bound ${bound}`
+    if (op === 'fuse' ? vr < boundFinal - tolFinal : vr > boundFinal + tolFinal) {
+      return `volume ${vr} is ${relation} the ${op} bound ${boundFinal}`
     }
-    if (op === 'fuse' && vr > vt + vsum + tol) {
+    if (op === 'fuse' && vr > vt + vsum + tolFinal) {
       return `volume ${vr} exceeds the operand sum ${vt + vsum}`
     }
     return null

@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
-import { volumeOf } from '../booleans'
+import { volumeForMeasure } from '../volume'
 import { extrudeProfileWithLineage } from '../prismLineage'
 import type { PlaneLike } from '../../features/shared/planes'
 import type { LoopEdge } from '../../profileLoops'
@@ -64,11 +64,14 @@ describe.skipIf(!oc)('fit spline chain edge (real OCC)', () => {
       { kind: 'line', start: [0, 1], end: [0, 0] },
     ]
     const { solid } = extrudeProfileWithLineage(oc!, scope, [loop], XY, [0, 0, 1], 0.5, 'sk')
-    const vol = volumeOf(oc!, scope, solid)
-    // CadQuery 2.8.0: 1.8925830470835936. OCC's own volume integration on the
-    // same B-spline is deterministic, so a chord (which would be a different
-    // area) fails well outside this window.
-    expect(vol).toBeCloseTo(1.8925830470835936, 6)
+    const vol = volumeForMeasure(oc!, scope, solid)
+    // The analytic extrusion: the profile area (bottom edge plus the integral
+    // under the fitted curve, 3.785059288899729) times the 0.5 height. The
+    // old pin, CadQuery 2.8.0's 1.8925830470835936, came from the default
+    // fixed-Gauss rule and is 2.8e-5 high; the shared GK read lands here. A
+    // chord (which would be a different area) still fails well outside the
+    // window.
+    expect(vol).toBeCloseTo(1.8925296444, 6)
 
     // The plan's spec, not just the volume: the writer's knot removal must
     // leave OCC's clamped C2 curve (Ex010's 8 fit points -> 10 poles), or the
@@ -92,7 +95,7 @@ describe.skipIf(!oc)('fit spline chain edge (real OCC)', () => {
       { kind: 'line', start: [0, 1], end: [0, 0] },
     ]
     const { solid } = extrudeProfileWithLineage(oc!, scope, [loop], XY, [0, 0, 1], 0.5, 'sk')
-    const vol = volumeOf(oc!, scope, solid)
+    const vol = volumeForMeasure(oc!, scope, solid)
     // The straight chord from (3,1) to (0,1) gives exactly 1.5; the bulged
     // curve is far above it.
     expect(Math.abs(vol - 1.5)).toBeGreaterThan(0.3)
