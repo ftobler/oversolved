@@ -303,6 +303,9 @@ pub struct TopologyOut {
     /// part of the planar subdivision for the same reason as `hole_regions`,
     /// but never fillable. Deliberately not serialized: the TS side sees only
     /// `surfaces`, so a void is simply absent from the profile.
+    // The only reader is the test oracle, which the production build does not
+    // compile, so the dead-code lint has to be relaxed there.
+    #[cfg_attr(not(any(test, feature = "fuzz")), allow(dead_code))]
     pub void_regions: Vec<SurfaceOut>,
 }
 

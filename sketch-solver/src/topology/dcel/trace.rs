@@ -336,15 +336,6 @@ pub(super) fn trace_face_cycles_detailed(
     (surfaces, metas)
 }
 
-/// The traced faces alone, for callers that do not apply the material rule.
-pub(super) fn trace_face_cycles(
-    hes: &[HalfEdge],
-    he_eid: &[String],
-    verts: &Verts,
-) -> Vec<SurfaceOut> {
-    trace_face_cycles_detailed(hes, he_eid, verts).0
-}
-
 pub(super) fn circle_arcs(cx: f64, cy: f64, r: f64, eid: &str) -> Vec<BoundaryEdge> {
     vec![
         BoundaryEdge {

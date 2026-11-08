@@ -2,7 +2,7 @@ use crate::radians;
 use crate::tolerance::tangent_gap_tol;
 use crate::topology::dcel::build::{push_half_edge_pair, HalfEdge};
 use crate::topology::dcel::intersect::{cc, collinear_overlap};
-use crate::topology::dcel::trace::{face_area, trace_face_cycles};
+use crate::topology::dcel::trace::{face_area, trace_face_cycles_detailed};
 use crate::topology::dcel::{detect_topology, norm_arc_param, InputEntity, Verts};
 use crate::topology::profile_loops::{loop_pts, BoundaryEdge, EdgeGeom};
 use crate::topology::{TOL_TOPOLOGY_MERGE as MERGE, TOL_TOPOLOGY_SPLIT as SPLIT_EPS, TWO_PI};
@@ -152,7 +152,7 @@ fn nan_departure_angle_does_not_panic_the_cycle_tracer() {
     push_half_edge_pair(&mut hes, &mut he_eid, "good", &v0, &v1, straight);
     push_half_edge_pair(&mut hes, &mut he_eid, "bad", &v0, &v2, poisoned);
     // The result is meaningless geometry; the point is that it returns.
-    let _ = trace_face_cycles(&hes, &he_eid, &verts);
+    let _ = trace_face_cycles_detailed(&hes, &he_eid, &verts);
 }
 
 #[test]
