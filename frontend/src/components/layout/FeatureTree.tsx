@@ -8,11 +8,11 @@ import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { RebuildButton } from '@/components/rebuild/RebuildButton'
 import { FeatureItemActions } from '@/components/layout/FeatureItemActions'
 import { isEditableFeatureKind } from '@/components/layout/featureItemKinds'
+import { hasFeatureVisibilityToggle } from '@/components/layout/featureVisibilityKinds'
 import { RollbackSlider } from '@/components/layout/RollbackSlider'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
-import { isSketchClassFeature } from '@/utils/sketchClass'
 import { domHandleProps } from '@/picking'
 
 // The features list is one of the part editor's floating cards now: it sizes to
@@ -252,11 +252,7 @@ export function FeatureTree() {
                   isBuiltIn={isBuiltIn}
                   isOrigin={feature.id === 'Origin'}
                   isVisible={visibleFeatures.has(feature.id)}
-                  hasVisibility={
-                    isSketchClassFeature(feature) ||
-                    feature.kind === 'plane' ||
-                    (isBuiltIn && feature.id !== 'Origin')
-                  }
+                  hasVisibility={hasFeatureVisibilityToggle(feature.kind)}
                   onEnterEditSketch={onEnterEditSketch}
                   onEnterEditFeature={onEnterEditFeature}
                   onEditCommit={onEditCommit}

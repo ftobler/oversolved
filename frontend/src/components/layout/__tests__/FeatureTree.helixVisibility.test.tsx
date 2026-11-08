@@ -31,12 +31,12 @@ describe('FeatureTree helix visibility', () => {
     expect(callbacks.onToggleVisibility).toHaveBeenCalledWith('hx1')
   })
 
-  it('still reserves the slot on a solid feature, which cannot be hidden as a feature', () => {
+  it('offers the same eye on a solid feature, which hides the bodies it made', () => {
     setupStore([...builtInFeatures, extrudeFeature], null)
     renderSidebar()
 
     const row = screen.getByText('ex1').closest('.feature-item')!
-    expect(row.querySelector('.feature-visibility-btn')).toBeNull()
-    expect(row.querySelector('.feature-visibility-placeholder')).not.toBeNull()
+    expect(row.querySelector('.feature-visibility-btn')).not.toBeNull()
+    expect(row.querySelector('.feature-visibility-placeholder')).toBeNull()
   })
 })

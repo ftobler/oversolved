@@ -86,10 +86,10 @@ export function FeatureItemActions({
           <img src={isVisible ? iconEyeIcon : iconEyeOffIcon} alt={isVisible ? 'Visible' : 'Hidden'} />
         </button>
       )}
-      {/* Reserve the visibility slot for every editable row that has no
-          visibility button (sketch, plane and helix own one), so the tridot
-          aligns. Non-editable kinds (e.g. import_step) have neither an edit nor
-          a visibility control, so they get no slot and their tridot sits first. */}
+      {/* Reserve the visibility slot on an editable kind the visibility table
+          excludes (featureVisibilityKinds.ts), so the tridot stays aligned with
+          its neighbours. Non-editable kinds get neither control, so their
+          tridot sits first. */}
       {!isEditing && canEdit && !hasVisibility && (
         <span className="feature-visibility-placeholder" />
       )}

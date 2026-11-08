@@ -201,6 +201,7 @@ describe('Viewport body interactivity', () => {
     const mesh = { vertices: surface.positions, faces: surface.indices, face_data: [], face_queries: [] }
     usePartEditorStore.setState({
       features: [sketch, extrude],
+      visibleFeatures: new Set(['sk1', 'ex1']),
       bodies: {
         body_ex1: {
           id: 'body_ex1',
@@ -287,6 +288,7 @@ describe('Viewport delete_body ghost preview', () => {
     const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
     usePartEditorStore.setState({
     features: [sketch, extrude, ex2, del],
+    visibleFeatures: new Set(['sk1', 'ex1', 'ex2', 'db1']),
     bodies: preview,
     pickBodies: twoBodies(),
     visibleBodies: visibleOf(preview),
@@ -309,6 +311,7 @@ describe('Viewport delete_body ghost preview', () => {
     const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
     usePartEditorStore.setState({
     features: [sketch, extrude, ex2, del],
+    visibleFeatures: new Set(['sk1', 'ex1', 'ex2', 'db1']),
     bodies: preview,
     pickBodies: twoBodies(),
     visibleBodies: visibleOf(preview),
@@ -330,6 +333,7 @@ describe('Viewport delete_body ghost preview', () => {
     const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
     usePartEditorStore.setState({
     features: [sketch, extrude, ex2, del],
+    visibleFeatures: new Set(['sk1', 'ex1', 'ex2', 'db1']),
     bodies: preview,
     pickBodies: twoBodies(),
     visibleBodies: visibleOf(preview),
