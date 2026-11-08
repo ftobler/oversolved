@@ -1015,6 +1015,10 @@ banner on stdout, so a client config must use the direct node invocation.
   instead of cutting a notch, with no warning: `Ex007` measures 1.5036 against
   the 1.4726 of the same sketch with that hole inside the rim. Keep a cut loop
   inside its boundary, or cut with a separate sketch.
+- A sketch line split by a construction line, and collinear lines that meet end
+  to end, extrude, revolve and sweep as one lateral face: the profile fuses
+  collinear and co-circular neighbours before the wire is built. The sketch
+  itself keeps its pickable pieces and its area division.
 - Plane refs are exact. `add_sketch.plane`, `set_feature_plane.plane`,
   `add_split.plane`, `set_split_field` with `field: "plane"`,
   `add_plane.definition.plane` and `set_plane_definition_field` with

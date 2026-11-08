@@ -77,10 +77,13 @@ function closedCircleMatchesEntity(
 }
 
 /**
- * Map each profile-face OCC edge (explorer order) to a sketch entity id, by
- * matching 3D endpoints (mirrors `_entity_to_occ_edge_map`). Each OCC edge maps
- * to at most one entity, and entities claim the first matching unclaimed edge,
- * iterating entities in loop order (so the assignment matches Python).
+ * Map each profile-face OCC edge (explorer order) to the LoopEdge that built
+ * it, by matching 3D endpoints (mirrors `_entity_to_occ_edge_map`). Each OCC
+ * edge maps to at most one entity, and entities claim the first matching
+ * unclaimed edge, iterating entities in loop order (so the assignment matches
+ * Python). The edge itself is returned, not only its id: a fused edge's
+ * `mergedIds` aliases belong to that occurrence, and the same entity id can
+ * occur in two loops with a different alias list.
  */
 export function entityForEdges(
   oc: OccModule,
@@ -88,8 +91,8 @@ export function entityForEdges(
   occEdges: OccShape[],
   loops: LoopEdge[][],
   plane: PlaneLike,
-): (string | null)[] {
-  const result: (string | null)[] = new Array(occEdges.length).fill(null)
+): (LoopEdge | null)[] {
+  const result: (LoopEdge | null)[] = new Array(occEdges.length).fill(null)
   const endpoints = readOccEdgeEndpoints(oc, scope, occEdges)
 
   for (const loop of loops) {
@@ -106,7 +109,7 @@ export function entityForEdges(
           (pointsMatch(start3d, ep.ep) && pointsMatch(end3d, ep.sp)) ||
           closedCircleMatchesEntity(entity, ep, plane)
         ) {
-          result[i] = eid
+          result[i] = entity
           break
         }
       }

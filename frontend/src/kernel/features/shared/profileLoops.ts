@@ -143,8 +143,7 @@ export function extractProfileLoops(
   // published is dropped here; an area that repeats a loop in its own data is
   // malformed and validateSketchArea still refuses it.
   const published = new Set<string>()
-  const publish = (loop: Dict[]): void => {
-    const key = loopGeometryKey(loop as LoopEdge[])
+  const publish = (loop: Dict[], key: string): void => {
     if (published.has(key)) return
     published.add(key)
     allLoops.push(loop)
@@ -153,6 +152,10 @@ export function extractProfileLoops(
     const mine = new Set<string>()
     const publishHere = (loop: Dict[]): void => {
       builtSurfaces?.push(surfaceIndex)
+      // loopGeometryKey canonicalizes the collinear pieces, so a boundary
+      // published by two areas in different piece counts still reads as the
+      // same loop. The loop itself stays as traced: classification needs the
+      // pieces, and the solid builder fuses after it has decided the groups.
       const key = loopGeometryKey(loop as LoopEdge[])
       if (mine.has(key)) {
         // A repeat inside this area's own boundary/holes is the gate's to
@@ -161,7 +164,7 @@ export function extractProfileLoops(
         return
       }
       mine.add(key)
-      publish(loop)
+      publish(loop, key)
     }
     // Emit the outer boundary and every inner hole as separate loops;
     // classifyLoops re-nests them (outer + holes) for the OCC face.

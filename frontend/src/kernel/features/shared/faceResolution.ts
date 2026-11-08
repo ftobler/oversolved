@@ -24,7 +24,7 @@ import {
 import { canonicalFaces, assertAligned } from '../../occ/bodyNames'
 import { faceCentroid, faceSurfaceType, type Vec3 } from '../../occ/primitives'
 import { geometryClassifiers } from '../../geomHash'
-import { mintFaceUuid, sideFacePath } from '../../constructionName'
+import { mintFaceUuid, sideFacePath, splitFacePath } from '../../constructionName'
 import { bodyFrame } from '../../occ/tessellation'
 
 /** Payload registered per face in the ancestry repo; carries the OCC shape out. */
@@ -163,13 +163,8 @@ export function bodyOfQuery(
   return null
 }
 
-/** True when `uuid` is the pre-split prism side-face UUID recomputed from
- *  exactly one `(createdBy, sketchId/entityId)` pair in the query's own lineage.
- *  The old producer named a whole profile entity's lateral face
- *  `<createdBy>|side|<sketchId>/<entity>`; before split side faces existed that
- *  uuid was unique. Only a query whose lineage reproduces the dead uuid this
- *  way may migrate, so an arbitrary stale uuid still misses. */
-function isPreSplitPrismSideFaceUuid(ids: string[], uuid: string): boolean {
+/** The `(createdBy, sketchId/entityId)` pairs a query's own lineage names. */
+function preSplitSlotPairs(ids: string[]): { feature: string; slot: string }[] {
   const features: string[] = []
   const slots: string[] = []
   for (const id of ids) {
@@ -183,13 +178,43 @@ function isPreSplitPrismSideFaceUuid(ids: string[], uuid: string): boolean {
       slots.push(token)
     }
   }
+  const out: { feature: string; slot: string }[] = []
+  for (const feature of features) for (const slot of slots) out.push({ feature, slot })
+  return out
+}
+
+/** True when `uuid` is the pre-split prism side-face UUID recomputed from
+ *  exactly one `(createdBy, sketchId/entityId)` pair in the query's own lineage.
+ *  The old producer named a whole profile entity's lateral face
+ *  `<createdBy>|side|<sketchId>/<entity>`; before split side faces existed that
+ *  uuid was unique. Only a query whose lineage reproduces the dead uuid this
+ *  way may migrate, so an arbitrary stale uuid still misses. */
+function isPreSplitPrismSideFaceUuid(ids: string[], uuid: string): boolean {
   const matches = new Set<string>()
-  for (const feature of features) {
-    for (const slot of slots) {
-      if (mintFaceUuid(sideFacePath(feature, slot)) === uuid) matches.add(`${feature}|${slot}`)
-    }
+  for (const { feature, slot } of preSplitSlotPairs(ids)) {
+    if (mintFaceUuid(sideFacePath(feature, slot)) === uuid) matches.add(`${feature}|${slot}`)
   }
   return matches.size === 1
+}
+
+/**
+ * A construction-split lateral face used to be named `splitFacePath(base, i)`
+ * for each piece `i` of one entity. After collinear fusion those pieces are
+ * one face named by `base`, so a pick stored on a piece carries a dead child
+ * UUID. The child hash is one-way, so recognise it by probing the indices the
+ * old producer used (a bounded handful; a side face was split once per
+ * crossing on it).
+ */
+const MAX_LEGACY_SPLIT_CHILDREN = 64
+
+function isPreSplitPrismSplitChildUuid(ids: string[], uuid: string): boolean {
+  for (const { feature, slot } of preSplitSlotPairs(ids)) {
+    const base = mintFaceUuid(sideFacePath(feature, slot))
+    for (let i = 0; i < MAX_LEGACY_SPLIT_CHILDREN; i++) {
+      if (mintFaceUuid(splitFacePath(base, i)) === uuid) return true
+    }
+  }
+  return false
 }
 
 /** Stable-ancestry tier: recover a face whose UUID died, validated by its
@@ -225,7 +250,9 @@ function resolveByStableAncestry(
   if (uuidTokens.length !== 1 || wanted.length === 0) return null
   const deadUuid = uuidTokens[0]
   const live = (repo.byUuid.get(deadUuid) ?? []).some((eid) => repo.elements.has(eid))
-  if (live || !isPreSplitPrismSideFaceUuid(ids, deadUuid)) return null
+  const legacy =
+    isPreSplitPrismSideFaceUuid(ids, deadUuid) || isPreSplitPrismSplitChildUuid(ids, deadUuid)
+  if (live || !legacy) return null
   const withoutUuid = ids.filter((id) => !isConstructionUuidId(id))
   try {
     return accept(repo.query(makeAncestryQuery(withoutUuid, typeRestriction, classifier), null, bodyStore))

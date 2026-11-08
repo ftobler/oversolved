@@ -43,6 +43,12 @@ type Case = {
 const fx = fixture as unknown as { cases: Case[] }
 
 /**
+ * Re-pin note: the fixture's `rect_hole` row now lists BOTH `@sk2/c1` and
+ * `@sk2/c2` on the hole wall. Those two arcs are one circle, so the collinear
+ * fuse makes them one LoopEdge whose `mergedIds` aliases both source entities;
+ * the old row pinned only the first arc's token. Geometries and counts are
+ * unchanged, and a pick naming either arc resolves to the merged face.
+ *
  * Sorted multiset of the NON-EMPTY sorted token-lists (key-independent view).
  * The geom-hash face_lineage/edge_lineage producer was removed; the
  * same profile-entity tokens now survive on the construction-name ancestry maps

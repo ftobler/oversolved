@@ -34,7 +34,7 @@ import {
   SubShapeMultiIndex,
   type Vec3,
 } from './primitives'
-import { classifyLoops, type LoopEdge } from '../profileLoops'
+import { classifyLoops, fuseCollinearRuns, type LoopEdge } from '../profileLoops'
 import { booleanWithHistory, cleanWithHistory, composeOriginThroughClean, countSolids } from './booleans'
 import {
   FaceEdgeTable,
@@ -235,19 +235,36 @@ export function buildPrismLineageMap(
     const raw = scope.track(fexp.Current())
     profEdges.push(scope.track(oc.TopoDS.Edge_1(raw)))
   }
-  const edgeEids = entityForEdges(oc, scope, profEdges, loops, plane)
+  const edgeEntities = entityForEdges(oc, scope, profEdges, loops, plane)
+
+  // Every source id of a fused LoopEdge aliases the same face. Read the list
+  // off the edge that actually built this profile edge: the same entity id can
+  // occur in two loops with a different alias list, so a global id map would
+  // lose one occurrence's aliases.
+  const entityId = (entity: LoopEdge): string => String(entity['id'] ?? '')
+  const entityAliases = (entity: LoopEdge): string[] => {
+    const merged = entity['mergedIds']
+    if (Array.isArray(merged)) {
+      const ids = (merged as unknown[]).map((id) => String(id)).filter((id) => id !== '')
+      if (ids.length > 0) return ids
+    }
+    const id = entityId(entity)
+    return id ? [id] : []
+  }
 
   // profile edge -> generated lateral face(s) via Generated(). Match these to
   // solid faces by subshape identity (IsSame), NOT by geom hash: Generated()
   // can return a face whose orientation -- and therefore normal-sign-dependent
   // geom hash -- differs from the same face as it sits in the solid shell.
-  const genFaces: { face: OccSubShape; eid: string }[] = []
+  const genFaces: { face: OccSubShape; eid: string; aliases: string[] }[] = []
   // Multi, not single: one generated face can be reached from more than one
   // profile edge, and the main loop's old genFaces.find took the FIRST -- so
   // the index must too, hence get()[0] preserves the first-wins tie-break.
-  const genIdx = new SubShapeMultiIndex<{ face: OccSubShape; eid: string }>()
+  const genIdx = new SubShapeMultiIndex<{ face: OccSubShape; eid: string; aliases: string[] }>()
   for (let i = 0; i < profEdges.length; i++) {
-    const eid = edgeEids[i]
+    const entity = edgeEntities[i]
+    if (entity === null) continue
+    const eid = entityId(entity)
     if (!eid) continue
     let generated: OccShape[]
     try {
@@ -260,13 +277,17 @@ export function buildPrismLineageMap(
       const gexp = scope.track(new oc.TopExp_Explorer_2(g, E.TopAbs_FACE, E.TopAbs_SHAPE))
       for (; gexp.More(); gexp.Next()) {
         const raw = scope.track(gexp.Current())
-        const entry = { face: scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape, eid }
+        const entry = {
+          face: scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape,
+          eid,
+          aliases: entityAliases(entity),
+        }
         genFaces.push(entry)
         genIdx.add(entry.face, entry)
       }
     }
   }
-  if (profEdges.length > 0 && edgeEids.some((e) => e) && genFaces.length === 0) {
+  if (profEdges.length > 0 && edgeEntities.some((e) => e !== null) && genFaces.length === 0) {
     throw new Error(
       'sweep/prism lineage: the builder generated no face for any profile edge ' +
       `(${profEdges.length} edges); the swept wire and the queried edges disagree`,
@@ -339,7 +360,9 @@ export function buildPrismLineageMap(
   // It goes in `capAncestry`, not `faceAncestry`: edge lineage unions the
   // adjacent faces' ancestry, and a cap's whole-loop list on a rim edge would
   // swamp the one profile entity that edge actually lies on.
-  const capTokens = [...new Set(edgeEids.filter((eid): eid is string => eid !== null))].sort()
+  const capTokens = [...new Set(edgeEntities.flatMap((entity) =>
+    entity === null ? [] : entityAliases(entity),
+  ))].sort()
   const capTokensFor = (which: 'start' | 'end'): string[] =>
     capTokensByRole === null ? capTokens : capTokensByRole[which]
 
@@ -366,7 +389,7 @@ export function buildPrismLineageMap(
       }
       if (uuid !== null) {
         faceNames.set(sf, uuid)
-        if (match !== undefined) faceAncestry[uuid] = [match.eid]
+        if (match !== undefined) faceAncestry[uuid] = match.aliases
         else {
           faceAncestry[uuid] = []
           capAncestry[uuid] = capTokensFor(capRole)
@@ -722,7 +745,11 @@ export function extrudeProfileWithLineage(
   sketchId = '',
   createdBy = '',
 ): LineageResult {
-  const groups = classifyLoops(loops)
+  // Classification reads the traced pieces (a tangent hole is recognised by the
+  // arcs it shares with its neighbours), so fuse only after the groups exist.
+  const groups = classifyLoops(loops).map(
+    ([outer, holes]): [LoopEdge[], LoopEdge[][]] => [fuseCollinearRuns(outer), holes.map(fuseCollinearRuns)],
+  )
   if (groups.length === 0) throw new Error('no loops to extrude')
   const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
 
@@ -797,7 +824,9 @@ export function revolveProfileWithLineage(
   sketchId = '',
   createdBy = '',
 ): LineageResult {
-  const groups = classifyLoops(loops)
+  const groups = classifyLoops(loops).map(
+    ([outer, holes]): [LoopEdge[], LoopEdge[][]] => [fuseCollinearRuns(outer), holes.map(fuseCollinearRuns)],
+  )
   if (groups.length === 0) throw new Error('no loops to revolve')
   const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
   const angleRad = (angleDeg * Math.PI) / 180
@@ -926,7 +955,8 @@ export function sweepProfileWithLineage(
   if (loops.length === 0) throw new Error('sweep: no profile loops')
   if (spineEdges.length === 0) throw new Error('sweep: empty path')
 
-  const face = scope.track(sketchLoopsToFace(oc, scope, loops, plane))
+  const fusedLoops = loops.map(fuseCollinearRuns)
+  const face = scope.track(sketchLoopsToFace(oc, scope, fusedLoops, plane))
   // The raw wire inputs are consumed by their heal pass; the healed wires are
   // consumed by the pipe shell. All four would otherwise outlive the build.
   const rawSpineWire = scope.track(makeWire(oc, scope, spineEdges))
@@ -954,7 +984,7 @@ export function sweepProfileWithLineage(
   scope.release(spineWire)
 
   const lineage = buildPrismLineageMap(
-    oc, scope, face, pipeBuilder, loops, plane, createdBy, sketchId, 0, outerWire,
+    oc, scope, face, pipeBuilder, fusedLoops, plane, createdBy, sketchId, 0, outerWire,
   )
   // The shell builder held its own handle to the outer wire; it must outlive
   // the lineage call above, which explores its edges for the profile mapping.

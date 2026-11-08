@@ -1,7 +1,7 @@
 // Arc sampling, polygon point list, area-weighted centroid. Only what the slice
 // topology needs lives here.
 
-import { TOL_NEAR_ZERO_AREA } from "./solverConstants"
+import { TOL_LOOP_CLOSURE, TOL_NEAR_ZERO_AREA, TOL_SELECT_DIRECTION } from "./solverConstants"
 import { chainSamples } from "@/utils/geometry/fitSpline"
 
 // Sample count that makes a curved loop read as its true shape rather than as
@@ -188,6 +188,11 @@ const LOOP_SHAPE_FIELDS = [
  * profile dump (a repeated loop is flagged). One definition, so the two cannot
  * disagree about what "the same loop" means.
  *
+ * The key is computed on `fuseCollinearRuns`, so a boundary that one area
+ * publishes as one line and another as two collinear pieces still keys equal.
+ * Every caller (the assembler, the dump, the area gate) therefore compares the
+ * same canonical shape.
+ *
  * Every geometry field that can tell two edges of the same kind apart is in the
  * key. The endpoint multiset alone is NOT enough: a full ellipse carries no
  * start/end and no radius, so two concentric ellipses of different size hashed
@@ -202,7 +207,7 @@ export function loopGeometryKey(loop: LoopEdge[]): string {
     if (typeof v === 'boolean') return String(v)
     return ''
   }
-  return loop
+  return fuseCollinearRuns(loop)
     .map((e) => [String(e['kind'] ?? ''), ...LOOP_SHAPE_FIELDS.map((k) => field(e[k]))].join('|'))
     .sort()
     .join(';')
@@ -616,6 +621,227 @@ export function subdivideLoops(loops: LoopEdge[][]): [LoopEdge[], LoopEdge[][]][
     result.push([loops[oi], holes])
   }
   return result
+}
+
+// Two arc pieces meeting at a joint must name the same point of their shared
+// circle. A degree-scale rung, far above f64 noise, still refuses a stored
+// angle range that describes a different point than the shared endpoint.
+const ARC_ANGLE_TOL_DEG = 1e-3
+
+/**
+ * Merge consecutive collinear (line) or co-circular (arc) edges of a closed
+ * 2D loop into single edges. Construction-line splits and authored end-to-end
+ * collinear lines both survive as one edge on the solid, so the prism emits one
+ * lateral face per geometric run instead of one per piece.
+ *
+ * A merged edge keeps its primary `id` and carries `mergedIds`: every source
+ * entity id in loop order, de-duplicated. When all pieces came from one entity
+ * the `id` is that entity; when several entities fused, the `id` is the
+ * smallest of them (deterministic across edits) and the others are aliases
+ * through the ancestry list. Runs wrap around the loop start. A run of arcs
+ * that closes the whole loop is stored as one arc spanning a full turn.
+ *
+ * Pure and OCC-free, so it unit-tests without WASM.
+ */
+export function fuseCollinearRuns(loop: LoopEdge[]): LoopEdge[] {
+  const n = loop.length
+  if (n === 0) return []
+  const edges: LoopEdge[] = loop.map((e) => ({ ...e }))
+  if (n === 1) return [withMergedIds(edges[0])]
+
+  const closePt = (a: number[], b: number[]): boolean =>
+    Math.hypot(a[0] - b[0], a[1] - b[1]) <= TOL_LOOP_CLOSURE
+
+  // adj[i] is true when edge i continues into edge (i + 1) % n as one geometric
+  // run: two lines straight through their shared vertex, or two arcs of the
+  // same circle with the same sweep sense. A corner, a reversal or a different
+  // circle breaks the run.
+  const adj: boolean[] = new Array(n).fill(false)
+  for (let i = 0; i < n; i++) {
+    const a = edges[i]
+    const b = edges[(i + 1) % n]
+    const aEnd = a['end'] as number[] | undefined
+    const bStart = b['start'] as number[] | undefined
+    if (!Array.isArray(aEnd) || !Array.isArray(bStart) || !closePt(aEnd, bStart)) continue
+    const ak = String(a['kind'] ?? 'line')
+    const bk = String(b['kind'] ?? 'line')
+    if (ak === 'line' && bk === 'line') {
+      const aStart = a['start'] as number[] | undefined
+      const bEnd = b['end'] as number[] | undefined
+      if (!Array.isArray(aStart) || !Array.isArray(bEnd)) continue
+      // Both directions are measured from the shared joint, so a joint the
+      // assembler snapped by up to TOL_LOOP_CLOSURE cannot read as a kink.
+      const joint = aEnd
+      const da = [joint[0] - aStart[0], joint[1] - aStart[1]]
+      const db = [bEnd[0] - joint[0], bEnd[1] - joint[1]]
+      const la = Math.hypot(da[0], da[1])
+      const lb = Math.hypot(db[0], db[1])
+      if (la === 0 || lb === 0) continue
+      const cross = da[0] * db[1] - da[1] * db[0]
+      const dot = da[0] * db[0] + da[1] * db[1]
+      // The same sine rung select's parallel clause uses: it absorbs the
+      // solver's angular residual while still rejecting a visible bend.
+      adj[i] = Math.abs(cross) <= TOL_SELECT_DIRECTION * la * lb && dot > 0
+    } else if (ak === 'arc' && bk === 'arc') {
+      const ca = a['center'] as number[] | undefined
+      const cb = b['center'] as number[] | undefined
+      const ra = a['radius'] as number | undefined
+      const rb = b['radius'] as number | undefined
+      if (!Array.isArray(ca) || !Array.isArray(cb) || ra === undefined || rb === undefined) continue
+      if (Math.abs(ra - rb) > TOL_LOOP_CLOSURE) continue
+      if (Math.hypot(ca[0] - cb[0], ca[1] - cb[1]) > TOL_LOOP_CLOSURE) continue
+      if (((a['ccw'] as boolean) ?? true) !== ((b['ccw'] as boolean) ?? true)) continue
+      // The shared endpoint is already checked; the stored angles only need to
+      // agree on which point of the circle that is (modulo a full turn).
+      const aEndDeg = (a['angle_end_deg'] as number) ?? 0
+      const bStartDeg = (b['angle_start_deg'] as number) ?? 0
+      adj[i] = angleDiffDeg(aEndDeg, bStartDeg) <= ARC_ANGLE_TOL_DEG
+    }
+  }
+
+  // One break linearizes the cycle; every run then falls between two breaks.
+  // With no break at all the whole loop is one run (an arc loop on one circle
+  // becomes a full turn). The LAST break is the start point so a loop with no
+  // fuse keeps its authored edge order.
+  let breakAt = -1
+  for (let i = 0; i < n; i++) if (!adj[i]) breakAt = i
+  if (breakAt === -1) {
+    // No break anywhere: every joint is continuous, so this run may close the
+    // whole loop into a full turn.
+    return [mergeRun(edges, Array.from({ length: n }, (_, i) => i), true)]
+  }
+  const runs: number[][] = []
+  let run: number[] = []
+  for (let k = 0; k < n; k++) {
+    const i = (breakAt + 1 + k) % n
+    run.push(i)
+    if (!adj[i]) {
+      runs.push(run)
+      run = []
+    }
+  }
+  return runs.map((indices) => mergeRun(edges, indices, false))
+}
+
+/** Source entity ids of one loop edge: its aliases when already merged. */
+function sourceIds(e: LoopEdge): string[] {
+  const merged = e['mergedIds']
+  if (Array.isArray(merged)) return merged.map((id) => String(id))
+  const id = String(e['id'] ?? '')
+  return id ? [id] : []
+}
+
+function mergeRun(E: LoopEdge[], indices: number[], wholeLoop: boolean): LoopEdge {
+  const first = E[indices[0]]
+  const last = E[indices[indices.length - 1]]
+  const kind = String(first['kind'] ?? 'line')
+  // Read `mergedIds` rather than `id` so fusing an already-fused loop cannot
+  // drop an alias.
+  const mergedIds: string[] = []
+  const seen = new Set<string>()
+  for (const i of indices) {
+    for (const id of sourceIds(E[i])) {
+      if (id === '' || seen.has(id)) continue
+      seen.add(id)
+      mergedIds.push(id)
+    }
+  }
+  const primary = mergedIds.length === 0 ? '' : [...mergedIds].sort()[0]
+  const assign = (out: LoopEdge): LoopEdge => {
+    out['id'] = primary
+    out['mergedIds'] = mergedIds
+    return out
+  }
+  const copyPoint = (out: LoopEdge, key: 'start' | 'end', src: unknown): void => {
+    if (Array.isArray(src)) out[key] = [...(src as number[])]
+    else delete out[key]
+  }
+  const setVertex = (out: LoopEdge, key: 'start_vertex' | 'end_vertex', value: unknown): void => {
+    if (value === undefined) delete out[key]
+    else out[key] = value
+  }
+
+  if (kind === 'line') {
+    const out: LoopEdge = { ...first }
+    out['kind'] = 'line'
+    copyPoint(out, 'start', first['start'])
+    copyPoint(out, 'end', last['end'])
+    // The merged edge now runs from the first piece's start vertex to the last
+    // piece's end vertex; an inherited interior id would make the matchable
+    // key disagree with the geometry the OCC wire and `edgeMatch` see.
+    setVertex(out, 'start_vertex', first['start_vertex'])
+    setVertex(out, 'end_vertex', last['end_vertex'])
+    return assign(out)
+  }
+
+  if (kind === 'arc') {
+    const centerRaw = first['center']
+    const radius = first['radius']
+    if (!Array.isArray(centerRaw) || typeof radius !== 'number') return assign({ ...first })
+    const firstArc = first
+    const ccw = ((firstArc['ccw'] as boolean) ?? true)
+    let totalSweep = 0
+    for (const i of indices) {
+      const e = E[i]
+      const a0 = (e['angle_start_deg'] as number) ?? 0
+      const a1 = (e['angle_end_deg'] as number) ?? 0
+      totalSweep += arcSweepDeg(a0, a1, ccw)
+    }
+    const out: LoopEdge = { ...firstArc }
+    out['kind'] = 'arc'
+    const center = [...(centerRaw as number[])]
+    out['center'] = center
+    out['radius'] = radius
+    out['ccw'] = ccw
+    const startDeg = (firstArc['angle_start_deg'] as number) ?? 0
+    if (wholeLoop && Math.abs(totalSweep) >= 360 - 1e-6) {
+      // A run with no break that closes the whole loop is a full turn. Store it
+      // as a 360-degree arc (the closed-circle form `arcJointCircle` rebuilds as
+      // one OCC circle edge), not as a `circle` loop kind, which the wire writer
+      // does not accept. Start at the circle's own 0 degrees so the stored
+      // endpoints and angles describe the same point.
+      out['angle_start_deg'] = 0
+      out['angle_end_deg'] = totalSweep >= 0 ? 360 : -360
+      out['start'] = [center[0] + radius, center[1]]
+      out['end'] = [center[0] + radius, center[1]]
+      setVertex(out, 'start_vertex', first['start_vertex'])
+      setVertex(out, 'end_vertex', first['start_vertex'])
+    } else {
+      out['angle_start_deg'] = startDeg
+      out['angle_end_deg'] = startDeg + totalSweep
+      copyPoint(out, 'start', first['start'])
+      copyPoint(out, 'end', last['end'])
+      setVertex(out, 'start_vertex', first['start_vertex'])
+      setVertex(out, 'end_vertex', last['end_vertex'])
+    }
+    return assign(out)
+  }
+
+  return assign({ ...first })
+}
+
+function withMergedIds(e: LoopEdge): LoopEdge {
+  const out: LoopEdge = { ...e }
+  if (!Array.isArray(out['mergedIds'])) out['mergedIds'] = sourceIds(out)
+  return out
+}
+
+function arcSweepDeg(a0: number, a1: number, ccw: boolean): number {
+  if (Math.abs(a1 - a0) >= 360 - 1e-6) return ccw ? 360 : -360
+  if (ccw) {
+    let s = (a1 - a0) % 360
+    if (s < 0) s += 360
+    return s
+  }
+  let s = (a0 - a1) % 360
+  if (s < 0) s += 360
+  return -s
+}
+
+function angleDiffDeg(a: number, b: number): number {
+  let d = Math.abs((a - b) % 360)
+  if (d > 180) d = 360 - d
+  return d
 }
 
 /** Area-weighted centroid of a 2D loop polygon. */

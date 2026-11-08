@@ -601,9 +601,16 @@ const EXTRUDE_FIELDS_NOTE =
   '(distance 10 spans -5..+5); `normal` and `reverse` take it whole on one side. `merge_target`: ' + MERGE_TARGET_NOTE +
   ' ' + EXTRUDE_UP_TO_NOTE + ' ' + EXTRUDE_THROUGH_ALL_NOTE
 
+// Construction lines divide the sketch's pickable pieces but must not divide the
+// solid: the profile fuses collinear pieces before the wire is built.
+const COLLINEAR_PROFILE_NOTE =
+  'A sketch line split by a construction line, and collinear lines that meet end to end, fuse into one ' +
+  'lateral face; the sketch keeps its pieces and its area division.'
+
 const EXTRUDE_INLINE_NOTE =
   'One call may carry the whole extrude: `direction`, `termination`, `up_to`, `operation` and `merge_target` set ' +
-  'the same keys `set_extrude_field` does. ' + EXTRUDE_FIELDS_NOTE + ' ' + EXTRUDE_ADD_NOTE
+  'the same keys `set_extrude_field` does. ' + EXTRUDE_FIELDS_NOTE + ' ' + EXTRUDE_ADD_NOTE + ' ' +
+  COLLINEAR_PROFILE_NOTE
 
 // The boolean refuses to solve without a target and a tool, so the catalog
 // names them up front (Case_Seam_Lip F5).

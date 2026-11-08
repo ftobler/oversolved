@@ -283,7 +283,8 @@
           "@sk2/o4"
         ],
         "gface_4bf606dd370a5a61": [
-          "@sk2/c1"
+          "@sk2/c1",
+          "@sk2/c2"
         ],
         "gface_14f0b0c0213d445f": [],
         "gface_ec1c134511d134cc": []
@@ -330,13 +331,16 @@
           "@sk2/o4"
         ],
         "gedge_59fa57c824ea628c": [
-          "@sk2/c1"
+          "@sk2/c1",
+          "@sk2/c2"
         ],
         "gedge_62722017fe1ca19d": [
-          "@sk2/c1"
+          "@sk2/c1",
+          "@sk2/c2"
         ],
         "gedge_6641a353aab0eec7": [
-          "@sk2/c1"
+          "@sk2/c1",
+          "@sk2/c2"
         ]
       }
     },
