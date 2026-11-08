@@ -420,11 +420,11 @@ describe('bakeSolvedTransforms', () => {
     expect(instances(next)[0].transform).toEqual(seed)
   })
 
-  // The mate wire is f32, so a free DOF returns a pose a few f32 ulps off its
-  // f64 seed. Baking that rounding persists it, and each commit re-rounds, so
-  // the DOF walks and every part churns its document diff. A rounding-only
-  // delta must be skipped; a real move must still bake.
-  it('skips a solved pose that differs from the seed only by f32 rounding', () => {
+  // A document authored under the rev 2 f32 wire holds seeds a few f32 ulps
+  // off the f64 solve. Baking that legacy rounding persists it, and each commit
+  // re-rounds, so the DOF walks and every part churns its document diff. A
+  // rounding-only delta must be skipped; a real move must still bake.
+  it('skips a solved pose that differs from the seed only by legacy f32 rounding', () => {
     let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
     doc = appendPartInstance(doc, 'doc-B', 1)
     const [a, b] = instances(doc)

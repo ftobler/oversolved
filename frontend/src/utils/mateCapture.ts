@@ -23,8 +23,8 @@ import { rollAboutAxisDeg } from '@/utils/mateOrientation'
 import { IDENTITY_TRANSFORM, rotateVector, transformQuat, type Quat } from '@/utils/transform3d'
 
 /** Round to make the captured value read like a number a user typed. 3
- *  decimals is ~0.06 arc-seconds of roll: far below solver tolerance, far
- *  above f32 wire noise. */
+ *  decimals is 3.6 arc-seconds of roll: below the solver's angular verdict and
+ *  far above f64 rounding, so a captured angle reads like an authored one. */
 function round3(v: number): number {
   return Math.round(v * 1000) / 1000
 }

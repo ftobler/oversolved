@@ -260,10 +260,11 @@ export function setInstanceFixedFromSolved(
       // the exception -- freezing its current pose is what this call is for.
       if (inst.fixed && inst.handle !== handle) return f
       const solved = transforms[inst.handle]
-      // Only write a pose that actually differs from the seed. The wire is f32,
-      // so a free DOF comes back a few ulps off its f64 seed; baking that
-      // rounding persists it and the next commit re-rounds, walking the part by
-      // roughly one f32 ulp per commit and putting every part in every diff.
+      // Only write a pose that actually differs from the seed. A document
+      // authored under the rev 2 f32 wire holds seeds a few f32 ulps off the
+      // f64 solve (see `transformApproxEqual`); baking that legacy rounding
+      // persists it and the next commit re-rounds, walking the part by roughly
+      // one f32 ulp per commit and putting every part in every diff.
       const moved = solved !== undefined && !transformApproxEqual(solved, inst.transform)
       const isTarget = inst.handle === handle
       // An absent `fixed` means false: re-setting false is a no-op, not a
@@ -313,8 +314,8 @@ export function bakeSolvedTransforms(
       if (f.instance.fixed) return f
       const solved = transforms[f.instance.handle]
       if (!solved) return f
-      // A solve whose pose agrees with the seed within a few f32 ulps moved
-      // nothing: the wire's f32 rounding must not be baked in, or the free DOF
+      // A solve whose pose agrees with the seed within the legacy f32 envelope
+      // moved nothing: that rounding must not be baked in, or the free DOF
       // walks one ulp per commit and every part churns in every document diff.
       if (transformApproxEqual(solved, f.instance.transform)) return f
       return { ...f, instance: { ...f.instance, transform: { ...solved } } }

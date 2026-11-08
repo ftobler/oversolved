@@ -1,11 +1,11 @@
 // @vitest-environment node
 //
 // Grep gate for the rev 3 wire: no f32 scalar may survive in either wire
-// codec. The codec files are read from disk and their comments stripped first:
-// history comments legitimately explain why f32 was dropped, but no executable
-// line may still select a 32-bit width. `solveAssembly.ts` keeps
-// `Float32Array` for mesh vertices (render data, never the wire), so for that
-// one only the DataView accessors are banned.
+// codec or in the byte cursor they share. The files are read from disk and
+// their comments stripped first: history comments legitimately explain why f32
+// was dropped, but no executable line may still select a 32-bit width.
+// `solveAssembly.ts` keeps `Float32Array` for mesh vertices (render data, never
+// the wire), so for that one only the DataView accessors are banned.
 
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -27,6 +27,9 @@ const WIRE_CODEC_FILES = [
   'mate-solver/src/codec.rs',
   'mate-solver/src/mate.rs',
   'sketch-solver/tests/node/flatCodec.mjs',
+  // The shared little-endian cursor: a 32-bit accessor here would let a future
+  // codec quietly reintroduce the width both wires deliberately dropped.
+  'solver-core/src/bytes.rs',
 ]
 
 describe('rev 3 wire codecs carry no f32', () => {

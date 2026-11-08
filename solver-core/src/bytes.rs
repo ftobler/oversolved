@@ -59,11 +59,6 @@ impl<'a> Reader<'a> {
         Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
     }
 
-    pub fn f32(&mut self) -> Result<f32, Eof> {
-        let b = self.take(4)?;
-        Ok(f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-    }
-
     pub fn f64(&mut self) -> Result<f64, Eof> {
         let b = self.take(8)?;
         Ok(f64::from_le_bytes([
@@ -87,10 +82,6 @@ impl Writer {
         self.buf.extend_from_slice(&v.to_le_bytes());
     }
 
-    pub fn f32(&mut self, v: f32) {
-        self.buf.extend_from_slice(&v.to_le_bytes());
-    }
-
     pub fn f64(&mut self, v: f64) {
         self.buf.extend_from_slice(&v.to_le_bytes());
     }
@@ -109,14 +100,12 @@ mod tests {
         let mut w = Writer::default();
         w.u8(0xAB);
         w.u32(0xDEAD_BEEF);
-        w.f32(1.5);
         w.f64(-2.25);
         let bytes = w.into_bytes();
 
         let mut r = Reader::new(&bytes);
         assert_eq!(r.u8(), Ok(0xAB));
         assert_eq!(r.u32(), Ok(0xDEAD_BEEF));
-        assert_eq!(r.f32(), Ok(1.5));
         assert_eq!(r.f64(), Ok(-2.25));
         assert_eq!(r.u8(), Err(Eof));
     }
