@@ -152,9 +152,11 @@ const PROFILE_REF_NOTE =
 const SWEEP_SKETCH_NOTE =
   'A multisection sweep takes each outer loop a section sketch draws as one section; a loop nested ' +
   'inside another is a hole and is refused; loops that cross each other are NOT unioned here, so draw ' +
-  'one closed outer loop per section. A single-profile sweep needs the path to cross the profile\'s ' +
-  'plane inside the profile; a profile lying along the path is refused, not built. That checks the ' +
-  'placement only: the profile is still carried from the path start, not moved to its crossing.'
+  'one closed outer loop per section. A single-profile sweep carries the profile from the path start ' +
+  'as drawn, so a profile beside the path, or off its plane, keeps its offset in the moving frame; it ' +
+  'must lie within its own size of a path crossing, or of the path start when the path never crosses ' +
+  'its plane, and the path start must leave the plane at 5 degrees or more. A profile lying along the ' +
+  'path is refused, not built.'
 
 const sketchQuery = () => query('A profile ref. ' + PROFILE_REF_NOTE + ' ' + PROFILE_LOOPS_NOTE)
 const sweepSketchQuery = () => query('A profile ref. ' + PROFILE_REF_NOTE + ' ' + SWEEP_SKETCH_NOTE)
@@ -1467,7 +1469,10 @@ export const MUTATION_CATALOG = {
       'A bare `$<helixId>` is a valid `pathQuery` on a sweep (a thread), see `add_sweep`.',
     fields: {
       ...featureAddFields(),
-      reference: optStr('A picked reference the helix rides on.'),
+      reference: optStr(
+        'A picked reference the helix rides on: a cylindrical face, a circular or straight edge, or a ' +
+        'sketch circle or line (see docs/document.md, helix).',
+      ),
     },
   },
   set_helix_field: {

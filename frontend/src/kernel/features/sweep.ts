@@ -21,8 +21,8 @@ import { parseSketchEntityRef, surfaceEntityIds } from './shared/bodyRef'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage, type LineageResult } from '../occ/prismLineage'
 import { sweepSectionsWithLineage, type SweepSection } from '../occ/sweepSections'
-import { orderSections, findStation, describeProfileMiss, pointOnOrInLoop, MIN_CROSSING_SIN_ONCE, type SectionInput, type SpineSampler, type Station, type StationMiss } from './sweepStations'
-import { classifyLoops, loopCentroid } from '../profileLoops'
+import { orderSections, profilePlacement, describeProfileMiss, type ProfileMiss, type SectionInput, type SpineSampler, type Station } from './sweepStations'
+import { classifyLoops } from '../profileLoops'
 import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, makeBSplineChainEdge, type Vec3 } from '../occ/primitives'
 import { buildCurveEdge } from '../occ/helixEdge'
 import { descriptorFromRepo } from './helix'
@@ -706,11 +706,12 @@ function pathReorderHint(
 }
 
 /**
- * Run the multisection station rule on the one-profile form. A profile is one
- * face with possibly several filled groups and holes, so it passes when any
- * group's crossing lies inside its outer loop and outside its holes; the
- * crossing-to-centroid distance is measured per group so a refusal can say how
- * far off the profile the path is.
+ * Check the one-profile form's placement. MakePipeShell carries the profile
+ * rigidly from the spine start, so a profile beside the path, or off its plane,
+ * keeps that offset and builds as drawn; the band in `profilePlacement` only
+ * refuses a placement so far off that it is not this profile. The profile is
+ * one face with possibly several filled groups and holes, so it passes when any
+ * group takes the placement.
  */
 function assertProfileOnPath(
   sampler: SpineSampler,
@@ -718,23 +719,10 @@ function assertProfileOnPath(
   loops: Dict[][],
   pathRefs: string[],
 ): void {
-  let firstMiss: StationMiss | null = null
+  let firstMiss: ProfileMiss | null = null
   for (const [outer, holes] of classifyLoops(loops)) {
-    const outcome = findStation(sampler, plane, outer, 0, MIN_CROSSING_SIN_ONCE)
-    if (outcome.ok) {
-      const inHole = holes.some((hole) => pointOnOrInLoop(hole, outcome.station.local))
-      if (!inHole) return
-      const centroid = loopCentroid(outer)
-      firstMiss ??= {
-        ok: false,
-        reason: 'not-on-path',
-        distance: Math.hypot(
-          outcome.station.local[0] - centroid[0],
-          outcome.station.local[1] - centroid[1],
-        ),
-      }
-      continue
-    }
+    const outcome = profilePlacement(sampler, plane, outer, holes)
+    if (outcome.ok) return
     firstMiss ??= outcome
   }
   if (firstMiss !== null) throw new Error(describeProfileMiss(firstMiss, pathRefs))
@@ -1044,11 +1032,10 @@ export function solveSweep(
       sectionIndex: s.sectionIndex,
     }))
   } else {
-    // MakePipeShell carries the profile from the spine start without checking
-    // where the profile sits, so a profile the path never pierces builds
-    // displaced or degenerate geometry with status ok. Refuse that placement
-    // before the build; this checks the crossing, it does not pin the profile
-    // to the start frame.
+    // MakePipeShell carries the profile from the spine start as drawn, offset
+    // included, so a profile beside the path or off its plane is a legitimate
+    // placement. Only a placement farther off than the profile's own size is
+    // refused before the build; the check never pins the profile to the start.
     assertProfileOnPath(sampler, firstPt as PlaneLike, allLoops, pathRefs)
   }
 

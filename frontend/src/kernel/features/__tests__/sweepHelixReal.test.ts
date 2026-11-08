@@ -23,7 +23,8 @@ import { sweepProfileWithLineage } from '../../occ/prismLineage'
 import { buildCurveEdge } from '../../occ/helixEdge'
 import { descriptorFromRepo } from '../helix'
 import { extractProfileLoops } from '../shared/profileLoops'
-import { volumeOf } from '../../occ/volume'
+import { volumeOf, surfaceAreaOf } from '../../occ/volume'
+import { countSolids } from '../../occ/booleans'
 import type { OccShape } from '../../occ/occTypes'
 import type { Body } from '../../types3d'
 import type { PlaneLike } from '../shared/planes'
@@ -73,6 +74,74 @@ function seedRepo(): Repository {
   repo.register('_topo_skP', { surfaces: profileBoundary() })
   repo.register('_curve_hx1', helixDescriptor())
   return repo
+}
+
+// The Top plane (world XZ): sketch (u, v) -> world (u, 0, -v). A thread
+// profile is drawn here, in the plane the helix axis lies in.
+const TOP_PLANE: PlaneLike = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0] }
+
+// The Ex025 thread profile: a trapezoid beside the helix start, spanning world
+// x 0.35..0.5 and z 0.05..0.35, so its outer edge touches the helix radius.
+// Sketch v is -z, hence the negative second coordinates.
+function threadProfileBoundary() {
+  return [{
+    boundary: [
+      { kind: 'line', id: 'l1', start: [0.35, -0.1], end: [0.5, -0.05] },
+      { kind: 'line', id: 'l2', start: [0.5, -0.05], end: [0.5, -0.35] },
+      { kind: 'line', id: 'l3', start: [0.5, -0.35], end: [0.35, -0.3] },
+      { kind: 'line', id: 'l4', start: [0.35, -0.3], end: [0.35, -0.1] },
+    ],
+  }]
+}
+
+// A helix of radius 0.5, pitch 0.4, 6 turns starting at (0.5, 0, zOffset).
+// `zOffset` is the helix feature's own `offset`: it slides the whole path
+// along its axis, which is a rigid translation of everything the sweep builds.
+function threadHelixDescriptor(zOffset: number) {
+  return {
+    kind: 'helix', origin: [0, 0, zOffset], axis: [0, 0, 1], ref_axis: [0, 0, 1], x_axis: [0, 1, 0],
+    radius: 0.5, pitch: 0.4, turns: 6, start_angle: -90, hand: 'right' as const,
+  }
+}
+
+function seedThreadRepo(zOffset: number): Repository {
+  const repo = new Repository()
+  repo.register('_pt_skP', TOP_PLANE)
+  repo.register('_topo_skP', { surfaces: threadProfileBoundary() })
+  repo.register('_curve_hx1', threadHelixDescriptor(zOffset))
+  return repo
+}
+
+type ThreadBuild = { status?: string; error?: string; volume?: number; area?: number; solids?: number }
+
+/** Build the thread through solveSweep and read its mass properties before the
+ *  scope drains. */
+function buildThread(zOffset: number): ThreadBuild {
+  const scope = new DisposeScope()
+  const table = new HandleTable()
+  const bodyStore: Record<string, Body> = {}
+  try {
+    try {
+      const result = solveSweep(oc!, scope, table, {
+        id: 'sw1', kind: 'sweep',
+        sweep: { sketch: ['$skP'], path: '@hx1', operation: 'new' },
+      }, seedThreadRepo(zOffset), bodyStore)
+      const body = bodyStore['body_sw1']
+      if (body?.shape == null) return { status: result.status }
+      const solid = table.get<OccShape>(body.shape)
+      return {
+        status: result.status,
+        volume: volumeOf(oc!, scope, solid),
+        area: surfaceAreaOf(oc!, scope, solid),
+        solids: countSolids(oc!, scope, solid),
+      }
+    } catch (exc) {
+      return { error: (exc as Error).message }
+    }
+  } finally {
+    table.disposeAll()
+    scope.dispose()
+  }
 }
 
 describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
@@ -190,8 +259,63 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
     }
     expect(build(10).status).toBe('ok')
     expect(build(-10).error).toBe(
-      "sweep: the path does not pass through the profile: the nearest crossing is 20 mm from its centroid (path '@hx1')",
+      "sweep: the profile is too far from the path: the nearest crossing is 19.5 mm outside it " +
+      "(the band is the profile's own size) (path '@hx1')",
     )
+  })
+
+  it('builds a thread profile drawn beside the helix start', () => {
+    // Ex025: the profile is offset 0.05 from the helix start, the ordinary way
+    // a thread is modelled. It used to be refused as "the path does not pass
+    // through the profile".
+    const built = buildThread(0)
+    expect(built.error).toBeUndefined()
+    expect(built.status).toBe('ok')
+    expect(built.solids).toBe(1)
+  })
+
+  it('equals the grazing build, where the helix touches the profile edge', () => {
+    // A helix shifted along its own axis is the same rigid motion, so offset
+    // 0.2 (the old workaround) must build the same body. This is the oracle:
+    // no reference tool is needed.
+    const offset = buildThread(0)
+    const grazing = buildThread(0.2)
+    expect(offset.error).toBeUndefined()
+    expect(grazing.error).toBeUndefined()
+    expect(offset.solids).toBe(1)
+    expect(grazing.solids).toBe(1)
+    expect(Math.abs(offset.volume! - grazing.volume!)).toBeLessThanOrEqual(grazing.volume! * 1e-9)
+    expect(Math.abs(offset.area! - grazing.area!)).toBeLessThanOrEqual(grazing.area! * 1e-9)
+  })
+
+  it('refuses a profile farther beside the path than its own size, naming the gap', () => {
+    // A 1 mm square whose nearest edge is 5 mm from the helix start: the gap is
+    // far past the square's own 1.414 diagonal.
+    const squareAt = (cx: number) => [{
+      boundary: [
+        { kind: 'line', id: 'l1', start: [cx - 0.5, -0.5], end: [cx + 0.5, -0.5] },
+        { kind: 'line', id: 'l2', start: [cx + 0.5, -0.5], end: [cx + 0.5, 0.5] },
+        { kind: 'line', id: 'l3', start: [cx + 0.5, 0.5], end: [cx - 0.5, 0.5] },
+        { kind: 'line', id: 'l4', start: [cx - 0.5, 0.5], end: [cx - 0.5, -0.5] },
+      ],
+    }]
+    const repo = new Repository()
+    repo.register('_pt_skP', {
+      origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1],
+    })
+    repo.register('_topo_skP', { surfaces: squareAt(4.5) })
+    repo.register('_curve_hx1', helixDescriptor())
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      expect(() => solveSweep(oc!, scope, table, {
+        id: 'sw1', kind: 'sweep',
+        sweep: { sketch: ['$skP'], path: '@hx1', operation: 'new' },
+      }, repo, {})).toThrow(/5 mm outside it/)
+    } finally {
+      table.disposeAll()
+      scope.dispose()
+    }
   })
 
   it('a profile taller than the pitch is the named overlap error, body unchanged', () => {
