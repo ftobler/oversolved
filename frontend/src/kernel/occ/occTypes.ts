@@ -35,6 +35,10 @@ export interface OccRealArray extends OccDisposable {
 /** TColStd_Array1OfInteger(lower, upper): 1-based integer array (multiplicities). */
 export interface OccIntArray extends OccDisposable {
   SetValue(index: number, value: number): void
+  Value(index: number): number
+  Length(): number
+  Lower(): number
+  Upper(): number
 }
 
 /** Geom_BSplineCurve(poles, knots, multiplicities, degree), with the knot
@@ -380,6 +384,18 @@ export interface OccTriangulationHandle extends OccDisposable {
   get(): OccTriangulation | null
 }
 
+/** A B-rep edge's chain of 1-based node indices into a face triangulation. */
+export interface OccPolygonOnTriangulation extends OccDisposable {
+  NbNodes(): number
+  // The full index array; per-node `Node(i)` is not bound in this build.
+  Nodes(): OccIntArray
+}
+
+export interface OccPolygonOnTriangulationHandle extends OccDisposable {
+  IsNull(): boolean
+  get(): OccPolygonOnTriangulation | null
+}
+
 export interface OccGProps extends OccDisposable {
   CentreOfMass(): OccXYZ
   Mass(): number
@@ -627,6 +643,14 @@ export interface OccModule extends OccBaseModule {
   TopLoc_Location_1: new () => OccLocation
   BRep_Tool: {
     Triangulation(face: OccShape, loc: OccLocation): OccTriangulationHandle
+    /** The edge's polygon on the face's triangulation, or a null handle when
+     *  the face is unmeshed or has no polygon for this edge. Overload _1 is
+     *  (E, Handle(Poly_Triangulation), TopLoc_Location&) in this build. */
+    PolygonOnTriangulation_1(
+      edge: OccShape,
+      triangulation: OccTriangulationHandle,
+      loc: OccLocation,
+    ): OccPolygonOnTriangulationHandle
     Pnt(vertex: OccShape): OccXYZ
     Degenerated(edge: OccShape): boolean
     /** IsClosed(edge, face): the edge is a seam of the face (it bounds the
