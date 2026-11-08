@@ -769,7 +769,10 @@ export function solidToEdges(
       // recorded owner (or none at all) falls back to the last-modifier rule,
       // the same attribution the fillet/chamfer edge index applies.
       edges.forEach((ed, i) => {
-        const pt = edgeRepresentativePoint(ed)
+        // `rep` is the B-rep spline midpoint captured before the render mesh
+        // replaced the display polyline, so identification stays mesh-free and
+        // the metadata and render passes name an edge identically.
+        const pt = raw[i].rep ?? edgeRepresentativePoint(ed)
         const classifiers = pt ? geometryClassifiers(pt, center, half) : []
         const uuid = edge_uuids[i]
         // An EMPTY edge ancestry token list is "no ancestry": read `[]` as

@@ -1063,7 +1063,7 @@ export function readSolidEdges(
   oc: OccModule,
   scope: DisposeScope,
   solid: OccShape,
-): { ed: EdgeData; sortKey: EdgeSortKey; canon: number }[] {
+): { ed: EdgeData; sortKey: EdgeSortKey; canon: number; rep?: Vec3 }[] {
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_EDGE, E.TopAbs_SHAPE))
   const dedup = new SubShapeDedup()
@@ -1079,7 +1079,98 @@ export function readSolidEdges(
     if (oc.BRep_Tool.Degenerated?.(edge)) continue
     uniq.push({ edge, canon: at })
   }
-  return uniq.map(({ edge, canon: at }) => ({ ...edgeToGeom(oc, scope, edge), canon: at }))
+  const raw = uniq.map(({ edge, canon: at }) => {
+    const { ed, sortKey } = edgeToGeom(oc, scope, edge)
+    // The spline representative point is taken BEFORE the mesher polyline
+    // replaces `points` below. Identification must read the B-rep alone (the
+    // metadata pass is unmeshed), and this point feeds the `cls_*` classifier,
+    // so it cannot depend on whether a render mesh happens to be present.
+    const rep = ed.kind === 'spline' ? ed.points[Math.floor(ed.points.length / 2)] : undefined
+    return { ed, sortKey, canon: at, rep }
+  })
+  // A spline edge is drawn from the polyline BRepMesh already stored on an
+  // adjacent face, so the overlay follows the face boundary point for point.
+  // The fallback in `edgeToGeom` steps a fixed 32 parameters, which a swept
+  // helix (4 knots per turn) turns into ~5 straight segments per turn. Faces
+  // carry the mesher's deflection; their polygons are the right density.
+  const splineAt: number[] = []
+  raw.forEach((r, i) => { if (r.ed.kind === 'spline') splineAt.push(i) })
+  if (splineAt.length > 0) {
+    const edgeIndex = new SubShapeIndexMap()
+    uniq.forEach(({ edge }, i) => edgeIndex.set(edge, i))
+    const polylines: (Vec3[] | null)[] = uniq.map(() => null)
+    readMeshedEdgePolylines(oc, scope, solid, edgeIndex, splineAt, polylines)
+    raw.forEach((r, i) => {
+      const meshed = polylines[i]
+      if (meshed === null || r.ed.kind !== 'spline') return
+      r.ed.points = orientLikeSample(meshed, r.ed.points)
+    })
+  }
+  return raw
+}
+
+/**
+ * Fill `out` with the polyline BRepMesh stored for each wanted edge on the
+ * triangulation of one of its adjacent faces (`BRep_Tool::PolygonOnTriangulation`).
+ * A body that has not been meshed yet leaves every entry null; the caller keeps
+ * its own sampler fallback then. The polygon stores 1-based node indices into
+ * the face triangulation, so applying the face location to those nodes yields
+ * points the render mesh shares exactly.
+ */
+function readMeshedEdgePolylines(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+  edgeIndex: SubShapeIndexMap,
+  wanted: readonly number[],
+  out: (Vec3[] | null)[],
+): void {
+  const want = new Set(wanted)
+  let pending = want.size
+  const E = oc.TopAbs_ShapeEnum
+  const fexp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
+  for (; fexp.More() && pending > 0; fexp.Next()) {
+    const face = scope.track(oc.TopoDS.Face_1(fexp.Current()))
+    const loc = scope.track(new oc.TopLoc_Location_1())
+    const triHandle = scope.track(oc.BRep_Tool.Triangulation(face, loc))
+    if (triHandle.IsNull()) continue
+    const tri = triHandle.get()
+    if (!tri) continue
+    const trsf = scope.track(loc.Transformation())
+    const eexp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+    for (; eexp.More() && pending > 0; eexp.Next()) {
+      const edge = scope.track(oc.TopoDS.Edge_1(eexp.Current())) as OccSubShape
+      const at = edgeIndex.get(edge)
+      if (at < 0 || !want.has(at) || out[at] !== null) continue
+      const polyHandle = scope.track(oc.BRep_Tool.PolygonOnTriangulation_1(edge, triHandle, loc))
+      if (polyHandle.IsNull()) continue
+      const poly = polyHandle.get()
+      if (!poly) continue
+      const count = poly.NbNodes()
+      if (count < 2) continue
+      const nodes = scope.track(poly.Nodes())
+      const points: Vec3[] = []
+      for (let i = nodes.Lower(); i <= nodes.Upper(); i++) {
+        const node = tri.Node(nodes.Value(i))
+        node.Transform(trsf)
+        points.push([node.X(), node.Y(), node.Z()])
+        node.delete()
+      }
+      out[at] = points
+      pending--
+    }
+  }
+}
+
+/** Reverse a mesher polyline that runs against the edge's own parameter
+ *  direction, so the endpoints the bundle publishes keep their meaning. */
+function orientLikeSample(points: Vec3[], sample: Vec3[]): Vec3[] {
+  if (points.length < 2 || sample.length < 2) return points
+  const first = points[0]
+  const last = points[points.length - 1]
+  const start = sample[0]
+  const toStart = (p: Vec3) => (p[0] - start[0]) ** 2 + (p[1] - start[1]) ** 2 + (p[2] - start[2]) ** 2
+  return toStart(first) <= toStart(last) ? points : [...points].reverse()
 }
 
 /** Unique B-rep vertices of a solid (deduped by topological identity). */
