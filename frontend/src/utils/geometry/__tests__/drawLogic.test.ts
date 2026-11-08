@@ -637,7 +637,7 @@ describe('computeDrawClick - arc tool', () => {
     expect(second.nextDrawPoints).toEqual([[0, 0], [10, 0]])
     const third = computeDrawClick('arc', second.nextDrawPoints!, [5, 5], emptySnap(), FEATURE, () => 'A1')
     expect(third.gestureComplete).toBe(true)
-    expect(third.mutations[0]).toMatchObject({ type: 'add_entity', kind: 'arc' })
+    expect(third.mutations[0]).toMatchObject({ type: 'add_three_point_arc' })
   })
 
   it('keeps the first snapped point and its ref when the second click snaps back to it', () => {
@@ -648,13 +648,14 @@ describe('computeDrawClick - arc tool', () => {
     expect(result.nextDrawSnap?.refs).toEqual(['vertex:S1:V1:end'])
   })
 
-  it('third click emits add_entity arc', () => {
-    const result = computeDrawClick('arc', [[0, 0], [10, 0]], [5, 5], emptySnap(), FEATURE, newId)
+  it('third click emits one add_three_point_arc in start, end, through order', () => {
+    const result = computeDrawClick('arc', [[0, 0], [10, 0]], [5, 5], emptySnap(), FEATURE, () => 'A1')
     expect(result.mutations).toHaveLength(1)
-    if (result.mutations[0].type === 'add_entity') {
-      expect(result.mutations[0].kind).toBe('arc')
-      expect(result.mutations[0].params).toHaveLength(5)
-    }
+    expect(result.mutations[0]).toEqual({
+      type: 'add_three_point_arc', featureId: FEATURE,
+      start: [0, 0], end: [10, 0], through: [5, 5],
+      startRef: null, endRef: null, entityId: 'A1',
+    })
     expect(result.gestureComplete).toBe(true)
   })
 
@@ -664,24 +665,40 @@ describe('computeDrawClick - arc tool', () => {
     expect(result.gestureComplete).toBe(false)
   })
 
-  it('both ends on the same curve pin each end onto it', () => {
+  it('both ends on the same curve carry that ref on both ends', () => {
     const snap = emptySnap()
     snap.drawSnapRefs = ['entity:S1:L9', 'entity:S1:L9']
     const result = computeDrawClick('arc', [[-3, 0], [3, 0]], [0, 3], snap, FEATURE, () => 'A1', LINE_SKETCH)
-    expect(result.mutations).toHaveLength(2)
-    const add = result.mutations[0]
-    expect(add).toMatchObject({ type: 'add_entity_with_constraint', snapEntityRef: 'entity:S1:L9', entityId: 'A1' })
-    const firstKey = add.type === 'add_entity_with_constraint' ? add.vertexKey : ''
-    const secondKey = firstKey === 'start' ? 'end' : 'start'
-    expect(result.mutations[1]).toEqual({ type: 'add_constraint', featureId: FEATURE, kind: 'coincident',
-      targets: [`vertex:S1:A1:${secondKey}`, 'entity:S1:L9'] })
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0]).toMatchObject({
+      type: 'add_three_point_arc',
+      startRef: 'entity:S1:L9',
+      endRef: 'entity:S1:L9',
+    })
   })
 
-  it('both ends on the same vertex author that coincident once', () => {
+  it('carries distinct start and end snaps in click order', () => {
+    const snap = emptySnap()
+    snap.drawSnapRefs = ['vertex:S1:V1:end', 'vertex:S1:V2:start']
+    const result = computeDrawClick('arc', [[-3, 0], [3, 0]], [0, 3], snap, FEATURE, () => 'A1')
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0]).toMatchObject({
+      startRef: 'vertex:S1:V1:end',
+      endRef: 'vertex:S1:V2:start',
+    })
+  })
+
+  it('both ends on the same vertex carry that ref on both ends', () => {
+    // The writer authors one coincident for the repeated vertex; the click path
+    // still hands it both refs rather than deciding which one to drop.
     const snap = emptySnap()
     snap.drawSnapRefs = ['vertex:S1:V1:end', 'vertex:S1:V1:end']
     const result = computeDrawClick('arc', [[-3, 0], [3, 0]], [0, 3], snap, FEATURE, () => 'A1')
     expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0]).toMatchObject({
+      startRef: 'vertex:S1:V1:end',
+      endRef: 'vertex:S1:V1:end',
+    })
   })
 })
 

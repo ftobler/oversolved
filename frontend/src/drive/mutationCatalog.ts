@@ -943,6 +943,28 @@ export const MUTATION_CATALOG = {
         + 'circumcircle (sides + 1 ids), each unused in the sketch.'),
     },
   },
+  add_three_point_arc: {
+    summary: 'Add an arc through three points: a start, a point on the arc, and an end.',
+    note: '`start` is the first point, `through` lies on the arc, and `end` is the last, the order of '
+      + 'CadQuery\'s threePointArc. The arc is stored counter-clockwise from a0_deg to a1_deg, so the vertex key '
+      + 'at the given start is `start` when start -> through -> end runs counter-clockwise and `end` when it runs '
+      + 'clockwise. The through point also picks the side, so a through point beyond the chord gives the major arc '
+      + '(a sweep over 180 degrees). Without refs the stored centre, radius and angles are rounded to the 1e-6 '
+      + 'document grid, so the arc ends land within about 1e-6 of the given points, inside the 1e-5 loop closure '
+      + '(a profile closes), but they are not constrained to a neighbour. `startRef` and `endRef` name what each '
+      + 'end snapped to, a `vertex:` ref such as vertex:sk1:l1:end or an `entity:` ref for a point on that curve, '
+      + 'and pin that end with a coincident. An arc given by centre and angles is still add_entity kind: arc. '
+      + 'The step reply names the arc id followed by its constraint ids, up to two.',
+    fields: {
+      featureId: str(),
+      start: point('The first end of the arc.'),
+      through: point('A point on the arc; it picks which side of the chord the arc takes.'),
+      end: point('The other end of the arc.'),
+      startRef: nullableStr(),
+      endRef: nullableStr(),
+      entityId: optStr('Optional authored arc id, unused in the sketch.'),
+    },
+  },
   apply_offset: {
     summary: 'Offset sketch entities by a distance. Each sourceId must name an entity in the featureId sketch; '
       + 'a connected chain (coincident or coordinate-joined) is refitted corner to corner: a sharp joint is '
@@ -1542,6 +1564,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   add_rect: 'sketch',
   add_center_rect: 'sketch',
   add_ngon: 'sketch',
+  add_three_point_arc: 'sketch',
   apply_offset: 'sketch',
   mirror_entities: 'sketch',
   fillet_corners: 'sketch',

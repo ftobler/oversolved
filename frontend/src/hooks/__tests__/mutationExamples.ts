@@ -289,6 +289,10 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
     makeDoc: sketchDoc,
     mutation: { type: 'add_ngon', featureId: 'sk1', center: [0, 0], corner: [10, 0], sides: 6 },
   },
+  add_three_point_arc: {
+    makeDoc: sketchDoc,
+    mutation: { type: 'add_three_point_arc', featureId: 'sk1', start: [0, 0], through: [5, 5], end: [10, 0] },
+  },
   apply_offset: {
     makeDoc: sketchDoc,
     mutation: { type: 'apply_offset', featureId: 'sk1', sourceIds: ['l1'], distance: 2 },

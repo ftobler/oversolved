@@ -910,6 +910,11 @@ banner on stdout, so a client config must use the direct node invocation.
   `add_center_rect` and `add_ngon` take optional `entityIds` (the whole block:
   4 lines; 4 lines in that same order then the centre point; n lines in chain
   order then the circumcircle) so a script can name a side in its own step;
+  `add_three_point_arc` takes `start`, a point `through` the arc, and `end`
+  (CadQuery's `threePointArc` order), stores the arc CCW, and pins an end to
+  `startRef` / `endRef` (a vertex ref or a point-on-curve entity ref); without
+  refs the ends land within about 1e-6 of the given points, so a profile closes
+  but is not constrained to a neighbour;
   `add_revolve` takes the required
   `axis` inline (`@<sketchId>/<entityId>` or an edge query from `select`) plus
   `direction`, `operation` and `merge_target`, the same keys

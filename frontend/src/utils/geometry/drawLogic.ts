@@ -6,7 +6,7 @@ import type { DrawSnapState, InsertTarget } from '@/utils/geometry/drawAutoConst
 import { createInsertionHelper, insertCoincidentPoint, insertAxisConstraint, carriedSnapFields, resolveSnapPoint, SNAP_EPS } from '@/utils/geometry/drawAutoConstraints'
 import { getEntityKind } from '@/types/cad'
 import { projectionMutationsForId } from '@/tools/projectionMutations'
-import { circumcircle, arcEndpointOrder, ELLIPSE_MINOR_RATIO } from '@/utils/geometry/drawGeometry'
+import { circumcircle, ELLIPSE_MINOR_RATIO } from '@/utils/geometry/drawGeometry'
 import { isFiniteSketchPoint } from '@/utils/pointerAbstraction'
 import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
 import { sameSnapVertex } from '@/utils/snapRefs'
@@ -330,36 +330,23 @@ export function computeDrawClick(
       }
     }
 
-    // Third click: compute arc from 3 points
+    // Third click: one mutation for the whole arc, the same sugar shape the MCP
+    // server takes. The writer decides which clicked end becomes the stored CCW
+    // start; the snaps were made on the points, so each ref follows its own
+    // point across that swap. A vertex ref and an entity ref are both plain
+    // refs here, so a curve snap survives as a point-on-curve pin.
     const cc = circumcircle(pts[0], pts[1], [px, py])
     if (!cc) return nothing
-
-    // The arc is stored CCW from angle_start, so the bulge click decides which
-    // of the two clicked ends became the `start` vertex. The snaps were made on
-    // the points, not on the angles: they follow their own point across the swap.
-    const { angles: [aStart, aEnd], startsAtFirst } = arcEndpointOrder(cc.cx, cc.cy, pts[0], pts[1], [px, py])
-    const arcId = newEntityIdFn()
-    const params = [cc.cx, cc.cy, cc.r, aStart, aEnd]
-    const [firstKey, secondKey] = startsAtFirst ? ['start', 'end'] : ['end', 'start']
-    const firstRef = snap.drawSnapRefs[0] ?? null
-    const secondRef = snap.drawSnapRefs[1] ?? null
-
-    // The seed constraint rides along with the entity so the pair commits
-    // atomically; a second snapped end is a plain constraint on the same batch
-    // (skipped only when it names the first end's vertex again).
-    const mutations: Mutation[] = [
-      firstRef
-        ? { type: 'add_entity_with_constraint', featureId, kind: 'arc', params,
-            vertexKey: firstKey, ...carriedSnapFields(firstRef),
-            constraintKind: 'coincident', entityId: arcId }
-        : { type: 'add_entity', featureId, kind: 'arc', params, entityId: arcId },
-    ]
-    if (secondRef && !sameSnapVertex(secondRef, firstRef)) {
-      mutations.push(...insertCoincidentPoint(secondRef, {
-        featureId, vertexRef: `vertex:${featureId}:${arcId}:${secondKey}`,
-      }))
+    return {
+      mutations: [{
+        type: 'add_three_point_arc', featureId,
+        start: pts[0], end: pts[1], through: [px, py],
+        startRef: snap.drawSnapRefs[0] ?? null,
+        endRef: snap.drawSnapRefs[1] ?? null,
+        entityId: newEntityIdFn(),
+      }],
+      nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true,
     }
-    return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
   }
 
   // The second click of the two-click shape tools (rect, center rect, n-gon).

@@ -13,6 +13,8 @@ import {
 import type { OffsetCorner } from '@/utils/geometry/offsetProfile'
 import { offsetSideFactors } from '@/utils/geometry/offsetSide'
 import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
+import { circumcircle, arcEndpointOrder } from '@/utils/geometry/arcFromPoints'
+import { SNAP_EPS } from '@/utils/geometry/snapTolerance'
 import { sameSnapVertex } from '@/utils/snapRefs'
 
 /** Check an author-supplied id block against the sketch. Returns the ids, or
@@ -287,6 +289,76 @@ export function applyAddNgon(
   _pinSnappedVertices(doc, featureId, [
     [`vertex:${featureId}:${circleId}:center`, centerRef],
     [`vertex:${featureId}:${lineIds[0]}:start`, cornerRef],
+  ])
+}
+
+/** Three-point arc sugar: the arc the app's draw tool makes, in CadQuery's
+ *  `threePointArc(start, through, end)` order (a point ON the arc sits between
+ *  its two ends). The tool's click order is start, end, bulge, so its third
+ *  click is `through`.
+ *
+ *  The stored arc is CCW from a0_deg to a1_deg, so the through point decides
+ *  which authored end becomes the stored `start` vertex; a ref is pinned to the
+ *  vertex its own point occupies, never to the click order. Without refs the
+ *  stored circle and angles are rounded to the document grid, so the ends land
+ *  within about 1e-6 of the given points: inside the 1e-5 loop closure, but
+ *  not constrained to a neighbour. */
+export function applyAddThreePointArc(
+  doc: PartDoc,
+  featureId: string,
+  start: [number, number],
+  through: [number, number],
+  end: [number, number],
+  startRef?: string | null,
+  endRef?: string | null,
+  entityId?: string,
+): void {
+  // Same gate as applyAddNgon: round(NaN) is still NaN, so a non-finite point
+  // would seed a poisoned arc that every later solve reads.
+  if (!allFinite([...start, ...through, ...end])) {
+    warn('applyAddThreePointArc: ignoring non-finite points', { featureId, start, through, end })
+    return
+  }
+  // The draw tool's own "same point" tolerance, so a pair of clicks it would
+  // have collapsed is refused by the same measure here. Which pair failed is
+  // named: the caller can only fix the one it sent.
+  const coincide = (a: [number, number], b: [number, number]) =>
+    Math.hypot(a[0] - b[0], a[1] - b[1]) <= SNAP_EPS
+  const coincidence = coincide(start, end)
+    ? 'start and end'
+    : coincide(start, through)
+      ? 'start and through'
+      : coincide(through, end) ? 'through and end' : null
+  if (coincidence !== null) {
+    const advice = coincidence === 'start and end' ? 'use a circle' : 'an arc needs three distinct points'
+    warn(`applyAddThreePointArc: ${coincidence} coincide; ${advice}`, { start, through, end })
+    return
+  }
+  const cc = circumcircle(start, end, through)
+  if (!cc) {
+    warn('applyAddThreePointArc: start, through and end are collinear; an arc needs a bend, use a line',
+      { start, through, end })
+    return
+  }
+  const authored = entityId === undefined
+    ? undefined
+    : _authoredEntityIds(doc, featureId, [entityId], 1, 'applyAddThreePointArc')
+  if (authored === null) return
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial')
+  if (!feature) return
+
+  // A through point beyond the chord picks the major arc (a sweep over 180).
+  const { angles: [aStart, aEnd], startsAtFirst } = arcEndpointOrder(cc.cx, cc.cy, start, end, through)
+  const arcId = authored?.[0] ?? mintEntityId(feature.entities)
+  feature.entities.push({ id: arcId, kind: 'arc' })
+  feature.initial[arcId] = [cc.cx, cc.cy, cc.r, aStart, aEnd].map(round)
+
+  // The authored start sits on the stored `end` vertex when the order ran
+  // clockwise; its ref follows the point, not the key.
+  const [startKey, endKey] = startsAtFirst ? ['start', 'end'] : ['end', 'start']
+  _pinSnappedVertices(doc, featureId, [
+    [`vertex:${featureId}:${arcId}:${startKey}`, startRef],
+    [`vertex:${featureId}:${arcId}:${endKey}`, endRef],
   ])
 }
 

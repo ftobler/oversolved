@@ -228,7 +228,7 @@ const COMPACT_CREATED_TYPES = new Set<Mutation['type']>([
 const CREATING_MUTATION_TYPES = new Set<Mutation['type']>([
   'add_constraint',
   'add_entity', 'add_entity_with_constraint', 'add_projected_entity', 'import_dxf', 'add_text',
-  'add_rect', 'add_center_rect', 'add_ngon', 'apply_offset',
+  'add_rect', 'add_center_rect', 'add_ngon', 'add_three_point_arc', 'apply_offset',
   'mirror_entities', 'pattern_entities', 'fillet_corners',
   'add_sketch', 'add_plane', 'add_import_step',
   'add_extrude', 'add_revolve', 'add_sweep',

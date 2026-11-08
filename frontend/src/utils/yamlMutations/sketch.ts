@@ -13,7 +13,7 @@ import { applyAddFitSpline, applyDeleteFitPoint, type FitSplineAddOptions } from
 // The rect/ngon/offset sugar lives in a sibling module so this file stays a
 // focused set of the core sketch mutations. Re-exported here so the historical
 // `@/utils/yamlMutations/sketch` import path keeps naming all of them.
-export { applyAddRect, applyAddCenterRect, applyAddNgon, applyAddOffset } from './sketchSugar'
+export { applyAddRect, applyAddCenterRect, applyAddNgon, applyAddThreePointArc, applyAddOffset } from './sketchSugar'
 
 /** Drag commit: adopt the last WASM drag frame for ALL entities, so the hard solve
  *  seeds from the on-screen state instead of pre-drag geometry plus one teleported

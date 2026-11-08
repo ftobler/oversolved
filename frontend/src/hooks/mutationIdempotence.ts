@@ -124,6 +124,7 @@ export const IDEMPOTENT_MUTATION = {
   add_rect: false,
   add_center_rect: false,
   add_ngon: false,
+  add_three_point_arc: false,
   apply_offset: false,
   // mirror_entities mints fresh entity ids per dispatch like the add_* family:
   // re-running it clones the sources a second time.

@@ -372,29 +372,23 @@ describe('auto-inserted constraints per draw tool', () => {
 describe('arc tool auto constraints', () => {
   // Both ends are clicked before the arc exists, so each one's snap has to
   // survive in the carried list until the third click creates the entity.
-  it('pins the first clicked end to the vertex it landed on', () => {
+  it('carries a first end snapped to a vertex', () => {
     const snap = { ...emptySnap(), drawSnapRefs: ['vertex:S1:V1:end'] }
     const result = computeDrawClick('arc', [[0, 0], [10, 0]], [5, 5], snap, FEATURE, newId)
-    const m = result.mutations[0]
-    expect(m.type).toBe('add_entity_with_constraint')
-    if (m.type === 'add_entity_with_constraint') {
-      expect(m.kind).toBe('arc')
-      expect(m.snapVertexId).toBe('vertex:S1:V1:end')
-      expect(m.constraintKind).toBe('coincident')
-    }
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0]).toMatchObject({
+      type: 'add_three_point_arc', startRef: 'vertex:S1:V1:end', endRef: null,
+    })
   })
 
-  it('pins the first clicked end onto a curve it landed on', () => {
+  it('carries a first end snapped onto a curve', () => {
     const first = computeDrawClick('arc', [], [4, 3], onPath('L1'), FEATURE, newId, LINE)
     expect(first.nextDrawSnap).toEqual({ refs: ['entity:S1:L1'] })
     expect(first.nextDrawPoints).toEqual([[4, 0]])
 
     const snap = { ...emptySnap(), drawSnapRefs: ['entity:S1:L1'] }
     const result = computeDrawClick('arc', [[4, 0], [10, 0]], [7, 3], snap, FEATURE, newId, LINE)
-    const m = result.mutations[0]
-    if (m.type === 'add_entity_with_constraint') {
-      expect(m.snapEntityRef).toBe('entity:S1:L1')
-    }
+    expect(result.mutations[0]).toMatchObject({ type: 'add_three_point_arc', startRef: 'entity:S1:L1' })
   })
 
   it('carries the second click snap through to the commit', () => {
@@ -403,41 +397,32 @@ describe('arc tool auto constraints', () => {
 
     const snap = { ...emptySnap(), drawSnapRefs: [null, 'vertex:S1:V2:start'] }
     const result = computeDrawClick('arc', [[0, 0], [10, 0]], [5, 5], snap, FEATURE, newId)
-    expect(result.mutations).toHaveLength(2)
-    expect(result.mutations[0].type).toBe('add_entity')
-    expect(result.mutations[1].type).toBe('add_constraint')
-  })
-
-  it('follows each end across the start/end swap the bulge decides', () => {
-    const snap = { ...emptySnap(), drawSnapRefs: ['vertex:S1:V1:end', 'vertex:S1:V2:start'] }
-    // Bulge above the chord: the CCW sweep runs from the second click, so the
-    // first clicked point is the arc's `end`.
-    const above = computeDrawClick('arc', [[0, 0], [10, 0]], [5, 5], snap, FEATURE, newId)
-    const aboveSeed = above.mutations[0]
-    expect(aboveSeed.type === 'add_entity_with_constraint' && aboveSeed.vertexKey).toBe('end')
-
-    // Bulge below the chord: the sweep runs the other way and the same click is
-    // now the arc's `start`.
-    const below = computeDrawClick('arc', [[0, 0], [10, 0]], [5, -5], snap, FEATURE, newId)
-    const belowSeed = below.mutations[0]
-    expect(belowSeed.type === 'add_entity_with_constraint' && belowSeed.vertexKey).toBe('start')
-  })
-
-  it('the second constraint names the other vertex key', () => {
-    const snap = { ...emptySnap(), drawSnapRefs: ['vertex:S1:V1:end', 'vertex:S1:V2:start'] }
-    const result = computeDrawClick('arc', [[0, 0], [10, 0]], [5, 5], snap, FEATURE, newId)
-    const seed = result.mutations[0]
-    const arcId = seed.type === 'add_entity_with_constraint' ? seed.entityId : undefined
-    expect(result.mutations[1]).toEqual({
-      type: 'add_constraint', featureId: FEATURE, kind: 'coincident',
-      targets: [`vertex:${FEATURE}:${arcId}:start`, 'vertex:S1:V2:start'],
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0]).toMatchObject({
+      type: 'add_three_point_arc', startRef: null, endRef: 'vertex:S1:V2:start',
     })
   })
 
-  it('an unsnapped arc is still a plain add_entity', () => {
+  it('keeps each ref on its own click, whichever side the bulge picks', () => {
+    // Which stored vertex key a ref lands on is the writer's CCW rule (pinned
+    // in yamlMutations.threePointArc); the click path hands the refs over in
+    // click order.
+    const snap = { ...emptySnap(), drawSnapRefs: ['vertex:S1:V1:end', 'vertex:S1:V2:start'] }
+    const throughs: Array<[number, number]> = [[5, 5], [5, -5]]
+    for (const through of throughs) {
+      const result = computeDrawClick('arc', [[0, 0], [10, 0]], through, snap, FEATURE, newId)
+      expect(result.mutations[0]).toMatchObject({
+        type: 'add_three_point_arc',
+        start: [0, 0], end: [10, 0], through,
+        startRef: 'vertex:S1:V1:end', endRef: 'vertex:S1:V2:start',
+      })
+    }
+  })
+
+  it('an unsnapped arc is still one add_three_point_arc', () => {
     const result = computeDrawClick('arc', [[0, 0], [10, 0]], [5, 5], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
-    expect(result.mutations[0].type).toBe('add_entity')
+    expect(result.mutations[0]).toMatchObject({ type: 'add_three_point_arc', startRef: null, endRef: null })
   })
 
   it('three collinear points still commit nothing', () => {

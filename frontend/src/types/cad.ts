@@ -1330,6 +1330,11 @@ export type Mutation =
   | { type: 'add_rect'; featureId: string; p0: Point; p1: Point; p0Ref?: string | null; p1Ref?: string | null; entityIds?: string[] }
   | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point; centerRef?: string | null; cornerRef?: string | null; entityIds?: string[] }
   | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number; centerRef?: string | null; cornerRef?: string | null; entityIds?: string[] }
+  // The app's arc tool emits this too. The argument order is CadQuery's
+  // threePointArc(start, through, end); the tool's click order is start, end,
+  // bulge, so its bulge click is `through`. The through point picks which side
+  // of the chord the stored CCW arc takes.
+  | { type: 'add_three_point_arc'; featureId: string; start: Point; through: Point; end: Point; startRef?: string | null; endRef?: string | null; entityId?: string }
   | { type: 'apply_offset'; featureId: string; sourceIds: string[]; distance: number }
   | { type: 'mirror_entities'; featureId: string; sourceIds: string[]; line: string }
   | { type: 'fillet_corners'; featureId: string; radius: number; corners: FilletCorner[] }
