@@ -6,6 +6,7 @@ import type { SnapKind } from '@/registry'
 import { suggestConstraint } from '@/registry'
 import { getEntityKind } from '@/types/cad'
 import { nearestPointOnEntity } from '@/utils/geometry/nearestPoint'
+import { SNAP_EPS } from '@/utils/geometry/snapTolerance'
 
 /** The hover/snap signals a draw click resolves against. Owned here because
  *  this module, not the per-tool click math, decides what they mean. */
@@ -39,9 +40,10 @@ export interface SketchGeometry {
   otherSketches?: Record<string, Record<string, Entity>>
 }
 
-// Click positions that agree within this distance are the same point. Shared
-// with drawLogic so the two tolerances can never drift.
-export const SNAP_EPS = 1e-6
+/** Click positions that agree within this distance are the same point. Kept in
+ *  a pure sibling so the document writers can share the tolerance; re-exported
+ *  here for the draw path's existing imports. */
+export { SNAP_EPS }
 
 // Only these carry a well-defined foot for a cursor point, so only these can
 // host a point. A spline or an ellipse under the cursor is not a snap target.

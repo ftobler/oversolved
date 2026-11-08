@@ -20,6 +20,7 @@ const ALL_MUTATION_TYPES = [
   'add_rect',
   'add_center_rect',
   'add_ngon',
+  'add_three_point_arc',
   'apply_offset',
   'mirror_entities',
   'fillet_corners',

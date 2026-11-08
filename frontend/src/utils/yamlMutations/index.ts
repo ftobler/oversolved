@@ -22,6 +22,7 @@ export {
   applyAddRect,
   applyAddCenterRect,
   applyAddNgon,
+  applyAddThreePointArc,
   applyAddOffset,
   applySetFeaturePlane,
 } from './sketch'

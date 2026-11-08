@@ -75,6 +75,7 @@ describe('value rules cover the catalog', () => {
     ['add_rect', { type: 'add_rect', featureId: 'sk1', p0: [0], p1: [1, 1] }],
     ['add_center_rect', { type: 'add_center_rect', featureId: 'sk1', center: [0, 0], corner: [1] }],
     ['add_ngon', { type: 'add_ngon', featureId: 'sk1', center: [0, 0], corner: [1, 1], sides: 2 }],
+    ['add_three_point_arc', { type: 'add_three_point_arc', featureId: 'sk1', start: [0], through: [1, 1], end: [2, 0] }],
     ['apply_offset', { type: 'apply_offset', featureId: 'sk1', sourceIds: [], distance: 2 }],
     ['mirror_entities', { type: 'mirror_entities', featureId: 'sk1', sourceIds: [], line: 'l1' }],
     ['fillet_corners', { type: 'fillet_corners', featureId: 'sk1', radius: 0,
@@ -1350,6 +1351,50 @@ describe('through_all is a cut termination at the drive boundary', () => {
     expect(validateMutation({
       type: 'set_extrude_field', featureId: 'ex1', field: 'termination', value: 'through_all',
     })).toMatchObject({ ok: true })
+  })
+})
+
+describe('add_three_point_arc values', () => {
+  it('refuses a start that is not a point, naming the field', () => {
+    const error = refusal({
+      type: 'add_three_point_arc', featureId: 'sk1', start: [0], through: [1, 1], end: [2, 0],
+    }, sketchDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('start')
+    expect(error.message).toContain('2 finite numbers')
+  })
+
+  it('refuses a missing through, naming the field', () => {
+    const error = refusal({
+      type: 'add_three_point_arc', featureId: 'sk1', start: [0, 0], end: [2, 0],
+    }, sketchDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('through')
+  })
+
+  it('refuses a non-string ref, naming the field', () => {
+    const error = refusal({
+      type: 'add_three_point_arc', featureId: 'sk1', start: [0, 0], through: [1, 1], end: [2, 0], startRef: 7,
+    }, sketchDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('startRef')
+    expect(error.message).toContain('string')
+  })
+
+  it('refuses an authored entityId the sketch already holds', () => {
+    const error = refusal({
+      type: 'add_three_point_arc', featureId: 'sk1', start: [0, 0], through: [1, 1], end: [2, 0], entityId: 'l1',
+    }, sketchDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('entity id "l1"')
+    expect(error.message).toContain('already exists')
+  })
+
+  it('accepts a proper arc with and without refs', () => {
+    expect(validateMutation({
+      type: 'add_three_point_arc', featureId: 'sk1', start: [2, 0], through: [1, 1], end: [0, 0],
+      startRef: 'vertex:sk1:l1:end', endRef: 'vertex:sk1:l1:start', entityId: 'a1',
+    }, { doc: sketchDoc() })).toMatchObject({ ok: true })
   })
 })
 

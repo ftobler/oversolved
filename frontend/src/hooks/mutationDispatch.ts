@@ -15,6 +15,7 @@ import {
   applyAddRect,
   applyAddCenterRect,
   applyAddNgon,
+  applyAddThreePointArc,
   applyAddOffset,
   applyMirrorEntities,
   applyFilletCorners,
@@ -181,6 +182,8 @@ export const mutationHandlers: MutationHandlers = {
     applyAddCenterRect(next, m.featureId, m.center, m.corner, m.centerRef, m.cornerRef, m.entityIds),
   add_ngon: (next, m) =>
     applyAddNgon(next, m.featureId, m.center, m.corner, m.sides, m.cornerRef, m.centerRef, m.entityIds),
+  add_three_point_arc: (next, m) =>
+    applyAddThreePointArc(next, m.featureId, m.start, m.through, m.end, m.startRef, m.endRef, m.entityId),
   apply_offset: (next, m) =>
     applyAddOffset(next, m.featureId, m.sourceIds, m.distance),
   mirror_entities: (next, m) =>

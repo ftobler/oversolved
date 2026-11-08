@@ -5,7 +5,7 @@
 // rest of the catalog's notes are, so these pin the sentences a client reads.
 
 import { describe, it, expect } from 'vitest'
-import { MUTATION_CATALOG, mutationInfoOf, FIELD_SETTER_KIND } from '../mutationCatalog'
+import { MUTATION_CATALOG, mutationInfoOf, FIELD_SETTER_KIND, MUTATION_FAMILY } from '../mutationCatalog'
 import { ASSEMBLY_MUTATION_CATALOG } from '../assemblyMutationCatalog'
 import { MATE_KINDS, mateParams } from '@/utils/mateKinds'
 import type { MateKind } from '@/types/cad'
@@ -527,5 +527,27 @@ describe('vertex keys named per entity kind', () => {
         }
       }
     }
+  })
+})
+
+describe('add_three_point_arc catalog row', () => {
+  it('sits in the sketch family', () => {
+    expect(MUTATION_FAMILY.add_three_point_arc).toBe('sketch')
+  })
+
+  it('states the CCW storage rule that decides the vertex key at the given start', () => {
+    const note = mutationInfoOf('add_three_point_arc').note!
+    expect(note).toContain('runs counter-clockwise')
+    expect(note).toContain('`start`')
+    expect(note).toContain('`end`')
+  })
+
+  it('states the rounding, the ref pins and the centre/angle alternative', () => {
+    const note = mutationInfoOf('add_three_point_arc').note!
+    expect(note).toContain('1e-6')
+    expect(note).toContain('1e-5')
+    expect(note).toContain('`startRef`')
+    expect(note).toContain('`endRef`')
+    expect(note).toContain('add_entity kind: arc')
   })
 })

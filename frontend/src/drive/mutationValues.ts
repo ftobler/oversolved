@@ -848,6 +848,15 @@ function addNgon(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return idProblem === null ? null : invalid(idProblem)
 }
 
+function addThreePointArc(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  for (const field of ['start', 'through', 'end']) {
+    const problem = finitePointProblem(raw[field], field)
+    if (problem !== null) return invalid(problem)
+  }
+  const idProblem = entityIdProblem(raw, ctx)
+  return idProblem === null ? null : invalid(idProblem)
+}
+
 function applyOffset(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const sourceProblem = nonEmptyStringsProblem(raw.sourceIds, 'sourceIds')
   if (sourceProblem !== null) return invalid(sourceProblem)
@@ -1699,6 +1708,7 @@ export const MUTATION_VALUE_RULES = {
   add_rect: addRect,
   add_center_rect: addCenterRect,
   add_ngon: addNgon,
+  add_three_point_arc: addThreePointArc,
   apply_offset: applyOffset,
   mirror_entities: mirrorEntities,
   fillet_corners: filletCorners,

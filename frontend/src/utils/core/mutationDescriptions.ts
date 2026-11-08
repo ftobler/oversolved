@@ -36,6 +36,8 @@ export function describeMutation(m: Mutation): string {
       return `add center rect in ${m.featureId}`
     case 'add_ngon':
       return `add ${m.sides}-gon in ${m.featureId}`
+    case 'add_three_point_arc':
+      return `add three-point arc in ${m.featureId}`
     case 'apply_offset':
       return `offset ${m.sourceIds.length} entity(ies) by ${m.distance} in ${m.featureId}`
     case 'mirror_entities':
