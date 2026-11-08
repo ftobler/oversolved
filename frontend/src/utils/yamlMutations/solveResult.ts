@@ -79,21 +79,28 @@ function sameGeometryWithinF32(
 // Solved geometry adoption is the ONLY write-back the generic solve owns. The
 // superfluous/projection_error flags and resolved kinds are solve-time facts and
 // live in solveResults, so undo never fights an invisible re-delete.
+//
+// Returns whether it installed a fresh `initial`. The headless flush uses that
+// as its settle signal: the install is the solve rounded to the document grid,
+// and a solve seeded from it can land elsewhere, so the reply must be built
+// from another solve of the stored document. A non-sketch feature and a solve
+// that agreed with the authored spelling both report false.
 export function applyGeometryToFeature(
   doc: PartDoc,
   featureId: string,
   geometry: Record<string, number[]>,
-): void {
+): boolean {
   const featureDef = (doc.features ?? []).find(f => f.id === featureId)
-  if (featureDef?.kind !== 'sketch') return
+  if (featureDef?.kind !== 'sketch') return false
   const existing = featureDef.initial
   // Keep the arrays the doc already holds, by reference: they may be shared with
   // the pre-solve doc the caller compares this clone against, so they must not
   // be rebuilt or rounded in place here. Only a solve that moved the geometry
   // outside the legacy f32 envelope -- or changed which entities exist --
   // installs a fresh map, rounded to the precision the mutators write.
-  if (existing && sameGeometryWithinF32(existing, geometry)) return
+  if (existing && sameGeometryWithinF32(existing, geometry)) return false
   featureDef.initial = roundGeometry(geometry)
+  return true
 }
 
 // The explicit cleanup command's handler: removes the projected entities and

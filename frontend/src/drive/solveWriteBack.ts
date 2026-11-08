@@ -24,6 +24,16 @@ export interface SolveResponseLike {
   bodies?: Record<string, unknown>
 }
 
+/** What one write-back left behind. `movedFeatureIds` names the sketches whose
+ *  geometry was installed (a fresh map rounded to the document grid); they are
+ *  the sketches a settle pass must solve again, and the ones a non-settling cap
+ *  names in the reply's note. */
+export interface SolveWriteBack {
+  doc: PartDoc
+  geometryMoved: boolean
+  movedFeatureIds: string[]
+}
+
 /**
  * The solve payload a headless host builds: builtin features are display-only
  * and never reach the kernel (the browser adapter filters them too), and the
@@ -40,11 +50,12 @@ export function partSolvePayload(doc: PartDoc, docId: string): Record<string, un
   }
 }
 
-export function applySolveToDoc(doc: PartDoc, response: SolveResponseLike): PartDoc {
+export function applySolveToDoc(doc: PartDoc, response: SolveResponseLike): SolveWriteBack {
   const cloned: PartDoc = structuredClone(doc)
+  const movedFeatureIds: string[] = []
   for (const [id, feature] of Object.entries(response.result ?? {})) {
     const geometry = (feature as { geometry?: Record<string, number[]> } | null)?.geometry
-    if (geometry) applyGeometryToFeature(cloned, id, geometry)
+    if (geometry && applyGeometryToFeature(cloned, id, geometry)) movedFeatureIds.push(id)
   }
   if (response.bodies) {
     // Drop colour entries for bodies this solve consumed before reconciling:
@@ -59,5 +70,9 @@ export function applySolveToDoc(doc: PartDoc, response: SolveResponseLike): Part
     }
     reconcilePartStyle(cloned, response.bodies as Record<string, BodyResult>)
   }
-  return cloned
+  return {
+    doc: cloned,
+    geometryMoved: movedFeatureIds.length > 0,
+    movedFeatureIds,
+  }
 }

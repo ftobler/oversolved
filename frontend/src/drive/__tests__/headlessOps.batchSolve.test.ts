@@ -11,10 +11,10 @@
 // nothing and is never force-solved.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { BodyResult } from '@/types/cad'
+import type { BodyResult, PartDoc } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
 import { emptyDriveDoc } from '../headlessOps'
-import { createHeadlessPart } from '../headlessPart'
+import { createHeadlessPart, SETTLE_PASSES } from '../headlessPart'
 import type { ScriptStep } from '../scriptRunner'
 
 vi.mock('@/kernel/solveLocally', async importOriginal => {
@@ -257,5 +257,142 @@ describe('the headless run solves once per flush', () => {
     expect(part.solve.owed()).toBe(false)
     expect(kernel.solveLocally).toHaveBeenCalledTimes(1)
     expect(part.solve.state().generation).toBe(1)
+  })
+})
+
+// ─── the settle on the stored document ───
+
+// The reply is built from a solve of the document its docHash names. The
+// write-back can install fresh sketch geometry (the solve rounded to the 1e-6
+// grid); a solve of that stored document can land elsewhere, so the flush
+// solves once more. The stub below controls exactly when that happens: a
+// sketch with no constraint re-derives its stored initial, and a constrained
+// one moves to a fixed target, which the next pass then keeps.
+
+interface StubSketch {
+  id: string
+  kind: string
+  initial?: Record<string, number[]>
+  constraints?: unknown[]
+}
+
+function geometryBuild(payload: { features?: StubSketch[] }) {
+  const features = payload.features ?? []
+  const result: Record<string, unknown> = {}
+  for (const feature of features) {
+    if (feature.kind === 'sketch') {
+      const moved = (feature.constraints ?? []).length > 0
+      result[feature.id] = {
+        status: 'underconstrained',
+        geometry: moved ? { l1: [0, 0, 1.001, 0] } : (feature.initial ?? { l1: [0, 0, 1, 0] }),
+      }
+    } else {
+      result[feature.id] = { status: 'ok', body_id: `body_${feature.id}` }
+    }
+  }
+  return {
+    result,
+    bodies: {},
+    _build_state: { feature_order: features.map(feature => feature.id), checkpoints: {} },
+  }
+}
+
+function sketchAndExtrude(constraints: unknown[] = []): PartDoc {
+  return {
+    version: 1,
+    kind: 'part',
+    features: [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'l1', kind: 'line' }],
+        constraints,
+        initial: { l1: [0, 0, 1, 0] },
+      },
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 5 } },
+    ],
+  } as unknown as PartDoc
+}
+
+const setExtrudeDistance: ScriptStep = {
+  mutation: { type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: 7 },
+}
+const addHorizontal: ScriptStep = {
+  mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'horizontal', targets: ['entity:sk1:l1'] },
+}
+
+describe('the headless flush settles on the stored document', () => {
+  beforeEach(() => {
+    vi.mocked(kernel.solveLocally).mockReset()
+    vi.mocked(kernel.measureSolveFeatures).mockReset()
+    vi.mocked(kernel.measureSolveFeatures).mockResolvedValue([])
+  })
+
+  it('T4: an edit that moves no sketch geometry pays one solve', async () => {
+    vi.mocked(kernel.solveLocally).mockImplementation(async payload => geometryBuild(payload as never) as never)
+    const result = await runHeadless({
+      doc: sketchAndExtrude(),
+      steps: [setExtrudeDistance],
+      featureDeltas: 'all',
+      frames: 'all',
+    })
+    expect(result.outcome.ok).toBe(true)
+    // The write-back kept the stored geometry, so there was nothing to settle.
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(1)
+  })
+
+  it('T4: a constraint that moves sketch geometry pays exactly two solves', async () => {
+    vi.mocked(kernel.solveLocally).mockImplementation(async payload => geometryBuild(payload as never) as never)
+    const result = await runHeadless({
+      doc: sketchAndExtrude(),
+      steps: [addHorizontal],
+      featureDeltas: 'all',
+      frames: 'all',
+    })
+    expect(result.outcome.ok).toBe(true)
+    // The first solve moved the sketch, the second kept the rounded geometry.
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(2)
+    expect(result.notes).toEqual([])
+  })
+
+  it('T6: a solve that never settles stops at the pass cap and notes it', async () => {
+    vi.mocked(kernel.solveLocally).mockImplementation(async payload => {
+      const features = (payload as { features?: StubSketch[] }).features ?? []
+      const result: Record<string, unknown> = {}
+      for (const feature of features) {
+        if (feature.kind !== 'sketch') {
+          result[feature.id] = { status: 'ok', body_id: `body_${feature.id}` }
+          continue
+        }
+        // Offset the stored seed every pass, so the write-back always installs.
+        const [x, y, z, w] = feature.initial?.l1 ?? [0, 0, 1, 0]
+        result[feature.id] = {
+          status: 'underconstrained',
+          geometry: { l1: [x, y, z + 1e-3, w] },
+        }
+      }
+      return {
+        result,
+        bodies: {},
+        _build_state: { feature_order: features.map(feature => feature.id), checkpoints: {} },
+      } as never
+    })
+    const result = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [addSketch('sk1')],
+      featureDeltas: 'all',
+      frames: 'all',
+    })
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(SETTLE_PASSES)
+    expect(result.solved).toBe(true)
+    expect(result.ok).toBe(true)
+    expect(result.features).toEqual([])
+    // A note, not a problem: the reply still reports the last pass it made.
+    expect(result.notes).toEqual([{
+      ids: ['sk1'],
+      text: `solved sketch geometry did not settle on the document grid after ${SETTLE_PASSES} passes; `
+        + 'this reply may differ from a re-solve of its docHash at the 1e-6 level',
+    }])
   })
 })

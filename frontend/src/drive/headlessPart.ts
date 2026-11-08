@@ -26,7 +26,7 @@ import { partSolvePayload, applySolveToDoc } from '@/drive/solveWriteBack'
 import { journalSink, type CommandJournal } from '@/drive/journal'
 import { runScript, type ScriptRunOutcome, type ScriptStep, type ScriptStepOutcome } from '@/drive/scriptRunner'
 import { validateMutation } from '@/drive/mutationCatalog'
-import { readSolveOutcomes, type FeatureOutcome } from '@/drive/featureOutcome'
+import { readSolveOutcomes, type FeatureNote, type FeatureOutcome } from '@/drive/featureOutcome'
 import { featureFrames, type FeatureFrameMap, type FeatureFrameOptions } from '@/drive/featureFrames'
 import { featureCurves, type FeatureCurveMap } from '@/drive/featureCurves'
 import { authoredHashOf } from '@/drive/docHash'
@@ -36,6 +36,13 @@ import { usesSettledSketchGeometry } from '@/drive/solveDependencies'
 import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { setIdSource } from '@/utils/yamlMutations'
+
+/** The most solves one headless flush may spend on the settle: the first on the
+ *  requested document, then one per pass whose write-back installed fresh
+ *  sketch geometry. One extra pass normally suffices (the stored seeds are
+ *  already inside the solver's envelope), and a cap hit is a precision caveat
+ *  reported as a note, never a failed step. */
+export const SETTLE_PASSES = 3
 
 export interface HeadlessPartOptions {
   doc: PartDoc
@@ -146,6 +153,10 @@ export interface HeadlessPart {
   // The status-only view of solveOutcomes, for the repro test's sidecar
   // expectations.
   solveStatuses(): Record<string, string>
+  // A note to add to the reply when the last solve never settled: the sketches
+  // whose write-back kept moving through the pass cap. Null when the last solve
+  // settled (the normal case) or no solve ran.
+  settleNote(): FeatureNote | null
   // Per-feature volume and bbox of the last solve's checkpoints, in feature
   // order. Null when the last solve never produced a measurable state (no
   // kernel, or nothing solved yet).
@@ -170,6 +181,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
   const outcomesBox: { current: Record<string, FeatureOutcome> } = { current: {} }
   const bodiesBox: { current: string[] | null } = { current: null }
   const responseBox: { current: Awaited<ReturnType<typeof solveLocally>> } = { current: null }
+  const settleNoteBox: { current: FeatureNote | null } = { current: null }
   const solvedBox = { current: false }
   const dirtyFacts = { dirty: false, saves: 0, savedHash: null as number | null }
 
@@ -179,6 +191,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     // name the missing verdicts at all.
     solvedBox.current = true
     outcomesBox.current = {}
+    settleNoteBox.current = null
     // The body set belongs to the response being replaced: a faulted re-solve
     // must not leave the previous document's live set to be reported as this
     // one's.
@@ -188,18 +201,42 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     // pairing the old frames with a document edited since would report a plane
     // that solve never reached.
     responseBox.current = null
-    const payload = partSolvePayload(doc, docId)
-    const response = await solveLocally(payload, {
-      rollbackPosition: payload.rollback_position,
-      ...(opts.files ? { files: opts.files } : {}),
-      ...(solveOpts?.bypassCache ? { bypassCache: true } : {}),
-      ...(solveOpts?.validate ? { validate: true } : {}),
-    })
-    if (!response) throw new Error('Local solver unavailable (OCC.js failed to load)')
-    // The same doc write-back the browser adapter applies: bake solved geometry
-    // and reconcile part_style. The journal ignores it: its hashes were taken
-    // synchronously around the apply, before this write-back landed.
-    docBox.current = applySolveToDoc(doc, response)
+    // The reply must describe the document its docHash names, and the write-back
+    // can install the solve rounded to the 1e-6 document grid. A sketch solved
+    // from that stored seed can land elsewhere (underconstrained, it keeps the
+    // grid offset), so the first pass's numbers would describe a document that
+    // no longer exists. Settle: solve, write back, and while the write-back
+    // installed fresh sketch geometry, solve the written document again. The
+    // passes are one scheduler request, so the kernel worker's stall budget
+    // covers them exactly as it covers a single solve: a stall is reported by
+    // the host as a solve-timeout with the last settled-step checkpoint, not as
+    // a refused step. Only the last pass is published.
+    let current = doc
+    let response: NonNullable<Awaited<ReturnType<typeof solveLocally>>> | null = null
+    let stillMoving: string[] = []
+    for (let pass = 0; pass < SETTLE_PASSES; pass++) {
+      const payload = partSolvePayload(current, docId)
+      const solved = await solveLocally(payload, {
+        rollbackPosition: payload.rollback_position,
+        ...(opts.files ? { files: opts.files } : {}),
+        // Only the first pass discards the cache; every settle pass is the
+        // incremental build the moved sketch triggers, restoring everything
+        // upstream of it from the checkpoint.
+        ...(pass === 0 && solveOpts?.bypassCache ? { bypassCache: true } : {}),
+        ...(solveOpts?.validate ? { validate: true } : {}),
+      })
+      if (!solved) throw new Error('Local solver unavailable (OCC.js failed to load)')
+      response = solved
+      // The same write-back the browser adapter applies: bake solved geometry
+      // and reconcile part_style. The journal ignores it: its hashes were taken
+      // synchronously around the apply, before this write-back landed.
+      const written = applySolveToDoc(current, solved)
+      current = written.doc
+      stillMoving = written.movedFeatureIds
+      if (!written.geometryMoved) break
+    }
+    if (response === null) throw new Error('Local solver unavailable (OCC.js failed to load)')
+    docBox.current = current
     outcomesBox.current = readSolveOutcomes(response.result)
     responseBox.current = response
     // The live body set of this solve, recorded before any later feature or
@@ -207,6 +244,16 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     // part_style keys and not the render map (which drops a body whose
     // tessellation failed while the solve still holds it).
     bodiesBox.current = finalLiveBodyIds(response)
+    if (stillMoving.length > 0) {
+      // The cap was hit with the write-back still installing geometry. Report
+      // the sketches in feature order; the note alone acknowledges the gap.
+      const order = new Map((current.features ?? []).map((feature, index) => [feature.id, index]))
+      settleNoteBox.current = {
+        ids: [...stillMoving].sort((a, b) => (order.get(a) ?? -1) - (order.get(b) ?? -1)),
+        text: `solved sketch geometry did not settle on the document grid after ${SETTLE_PASSES} passes; `
+          + 'this reply may differ from a re-solve of its docHash at the 1e-6 level',
+      }
+    }
   }
 
   const solve = createDeferredSolveScheduler(createWorkerSolveScheduler(() => reSolve))
@@ -382,6 +429,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     solveStatuses: () => Object.fromEntries(
       Object.entries(outcomesBox.current).map(([id, outcome]) => [id, outcome.status]),
     ),
+    settleNote: () => settleNoteBox.current,
     featureMeasures: () => responseBox.current === null
       ? Promise.resolve(null)
       : measureSolveFeatures(responseBox.current),

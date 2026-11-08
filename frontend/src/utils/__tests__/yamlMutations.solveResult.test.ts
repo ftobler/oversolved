@@ -209,6 +209,39 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     applyGeometryToFeature(doc, 'sk1', {})
     expect(feat.initial).toBe(before)
   })
+
+  // The return value is the settle signal: the headless flush re-solves the
+  // written document only when this write-back installed something new.
+  it('reports false and keeps the arrays by reference when the solve agrees', () => {
+    const doc = makeDoc()
+    const feat = sk1(doc)
+    feat.initial = { line1: [0, 0, 25.7, 0] }
+    const before = feat.initial
+    expect(applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(25.7), 0] })).toBe(false)
+    expect(feat.initial).toBe(before)
+  })
+
+  it('reports true when a component moved beyond the envelope', () => {
+    const doc = makeDoc()
+    const feat = sk1(doc)
+    feat.initial = { line1: [0, 0, 25.7, 0] }
+    expect(applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, 30, 0] })).toBe(true)
+  })
+
+  it('reports true when the entity id set changed', () => {
+    const doc = makeDoc()
+    const feat = sk1(doc)
+    feat.initial = { line1: [0, 0, 25.7, 0] }
+    expect(applyGeometryToFeature(doc, 'sk1', {
+      line1: [0, 0, Math.fround(25.7), 0],
+      proj1: [1, 1],
+    })).toBe(true)
+  })
+
+  it('reports false for a non-sketch feature', () => {
+    const doc = makeDoc()
+    expect(applyGeometryToFeature(doc, 'ex1', { x: [1] })).toBe(false)
+  })
 })
 
 describe('applyRemoveDanglingContent (explicit cleanup command)', () => {

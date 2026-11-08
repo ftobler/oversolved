@@ -666,6 +666,11 @@ banner on stdout, so a client config must use the direct node invocation.
   no measurable checkpoints (the kernel was unavailable or faulted, which is
   also `ok: false` with `solve.lastError`). The checkpoint
   measurement reads each unique OCC shape once, not once per feature.
+  Every part reply's measures come from a solve of the stored document. A
+  flush whose write-back re-baked sketch geometry (a solve rounded to the
+  1e-6 document grid) solves the written document once more, so a reply and a
+  later `measure` of its `docHash` agree exactly; a document that never settles
+  is solved at most three times and says so in `notes`.
   The `run`, `measure`, `compare` and `export` part replies name the document's
   `length_unit` (`mm` unless the document set `inch`); the numbers themselves are
   never converted. `frames` is filtered the same way as `featureDeltas`: it keeps
@@ -694,7 +699,11 @@ banner on stdout, so a client config must use the direct node invocation.
   later feature resolved. A note about a pair of sketches on one stored face
   query carries both ids in log order, so it sorts at the later sketch. That
   check reads every resolved frame before the changed-only filter, so a note can
-  name a sketch this call did not touch.
+  name a sketch this call did not touch. A headless flush adds one more note when
+  its write-back kept moving sketch geometry through the settle pass cap: it
+  names the sketches still moving and says the reply may differ from a re-solve
+  of its `docHash` at the 1e-6 level. That note is informational too, so `ok`,
+  `features` and the delta rows are unaffected.
 - `run` with `steps: []` solves the given `doc` or `docHash` once and returns
   the same reply shape (the frame filter below still applies). It is the
   "inspect this document" call: the solve state has

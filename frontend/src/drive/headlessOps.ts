@@ -175,8 +175,12 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   // changed-only filter drops entries: the two sketches need not be touched by
   // this call to be inconsistent.
   const allFrames = part.featureFrames()
+  const settleNote = part.settleNote()
   const notes = doc !== null && solved
-    ? featureNotes(doc, part.solveOutcomes(), allFrames === null ? [] : frameConflicts(doc, allFrames))
+    ? featureNotes(doc, part.solveOutcomes(), [
+        ...(settleNote === null ? [] : [settleNote]),
+        ...(allFrames === null ? [] : frameConflicts(doc, allFrames)),
+      ])
     : []
   // A missing verdict means the settle did not answer for a feature at all;
   // that is a failed run, unlike a feature that answered `exception` (data the
