@@ -458,8 +458,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const showRight  = isActive('Right',  features, rollbackPosition, visibleFeatures)
 
   const bodyItems = useMemo(
-    () => getBodiesToRender(bodies, features, rollbackPosition, visibleBodies),
-    [bodies, features, rollbackPosition, visibleBodies]
+    () => getBodiesToRender(bodies, features, rollbackPosition, visibleBodies, visibleFeatures),
+    [bodies, features, rollbackPosition, visibleBodies, visibleFeatures]
   )
 
   // The legend names the range the bodies are actually painted with, and the
@@ -479,16 +479,16 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // pick faces/edges as references for the feature being edited. Bodies the edit
   // removes stay, marked doomed (see getGhostBodiesToRender).
   const pickBodyItems = useMemo(
-    () => getGhostBodiesToRender(pickBodies, bodies, features, partStyle),
-    [pickBodies, bodies, features, partStyle]
+    () => getGhostBodiesToRender(pickBodies, bodies, features, partStyle, visibleFeatures),
+    [pickBodies, bodies, features, partStyle, visibleFeatures]
   )
 
   const previewBodyItems = useMemo(() => {
     if (ghostMode) {
-      return getBodiesToRender(bodies, features, undefined, visibleBodies)
+      return getBodiesToRender(bodies, features, undefined, visibleBodies, visibleFeatures)
     }
-    return getPreviewBodies(bodies, features, rollbackPosition, visibleBodies)
-  }, [bodies, features, rollbackPosition, visibleBodies, ghostMode])
+    return getPreviewBodies(bodies, features, rollbackPosition, visibleBodies, visibleFeatures)
+  }, [bodies, features, rollbackPosition, visibleBodies, visibleFeatures, ghostMode])
 
   const activeSketchFeatures = useMemo(
     () => getSketchesToRender(features, rollbackPosition, visibleFeatures),

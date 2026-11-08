@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  getBodiesToRender, getGhostBodiesToRender, computeEffectiveVisibleBodies,
+  getBodiesToRender, getGhostBodiesToRender, getPreviewBodies, computeEffectiveVisibleBodies,
   sketchForRender, snapSketchesFor,
 } from '@/components/Viewport/bodyUtils'
 import type { Feature, BodyResult, PartStyleEntry, Sketch, SketchFeature, SketchData } from '@/types/cad'
@@ -123,6 +123,35 @@ describe('getBodiesToRender', () => {
     const items = getBodiesToRender(bodies, features, undefined, visible)
     expect(items).toHaveLength(1)
     expect(items[0].visible).toBe(true)
+  })
+
+  it('hides a body whose creating feature is hidden in the tree', () => {
+    const shown = getBodiesToRender(bodies, features, undefined, undefined, new Set(['sk1', 'ex1']))
+    expect(shown[0].visible).toBe(true)
+    // The eye on the extrude writes `visible: false` on the feature; the body
+    // it made disappears without a per-body write.
+    const hidden = getBodiesToRender(bodies, features, undefined, undefined, new Set(['sk1']))
+    expect(hidden[0].visible).toBe(false)
+  })
+
+  it('keeps a body visible when its creator is not in the feature log', () => {
+    // An unresolved creator is not a user hide: imported and legacy bodies
+    // must not blank because their creator id is missing.
+    const orphan: Record<string, BodyResult> = {
+      body_orphan: {
+        id: 'body_orphan',
+        created_by: 'missing_feature',
+        modified_by: [],
+        mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
+      } as unknown as BodyResult,
+    }
+    const items = getBodiesToRender(orphan, features, undefined, undefined, new Set(['sk1']))
+    expect(items[0].visible).toBe(true)
+  })
+
+  it('does not let body visibility resurrect a feature-hidden body', () => {
+    const items = getBodiesToRender(bodies, features, undefined, new Set(['body_ex1']), new Set(['sk1']))
+    expect(items[0].visible).toBe(false)
   })
 
   it('filters by rollbackPosition', () => {
@@ -281,6 +310,41 @@ describe('getGhostBodiesToRender', () => {
   it('ignores rollbackPosition so every prior body stays pickable', () => {
     const items = getGhostBodiesToRender(pickBodies, pickBodies, features, undefined)
     expect(items).toHaveLength(2)
+  })
+
+  it('keeps a hidden feature body out of the ghost layer', () => {
+    // A body the user hid through its feature row must not come back as a pick
+    // target just because an unrelated feature's editor is open.
+    const items = getGhostBodiesToRender(pickBodies, pickBodies, features, {}, new Set(['ex2', 'db1']))
+    expect(items.map(i => [i.bodyId, i.visible]))
+      .toEqual([['body_ex1', false], ['body_ex2', true]])
+  })
+})
+
+describe('getPreviewBodies', () => {
+  const features: Feature[] = [
+    { id: 'sk1', kind: 'sketch' },
+    { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+  ]
+  const previewBodies: Record<string, BodyResult> = {
+    body_ex1: {
+      id: 'body_ex1',
+      created_by: 'ex1',
+      modified_by: [],
+      mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
+    } as unknown as BodyResult,
+  }
+
+  it('hides the preview body of a hidden creating feature', () => {
+    const items = getPreviewBodies(previewBodies, features, 2, undefined, new Set(['sk1']))
+    expect(items.map(i => i.visible)).toEqual([false])
+  })
+
+  it('shows the preview body while the edit forces its feature visible', () => {
+    // Opening the editor puts the feature id in the forced-visible set, so a
+    // feature the user had hidden still shows what is being edited.
+    const items = getPreviewBodies(previewBodies, features, 2, undefined, new Set(['sk1', 'ex1']))
+    expect(items.map(i => i.visible)).toEqual([true])
   })
 })
 

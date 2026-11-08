@@ -1,7 +1,7 @@
 import type { PartFeature } from '@/types/cad'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
-import { isSketchClassFeature } from '@/utils/sketchClass'
+import { hasFeatureVisibilityToggle } from '@/components/layout/featureVisibilityKinds'
 
 import contextRebuildIcon from '@/assets/icons/context-rebuild.svg'
 import contextHideIcon from '@/assets/icons/context-hide.svg'
@@ -263,13 +263,14 @@ function buildMenuContext(
   // mean "this sketch"; a tree click on any other feature does not.
   const canNormalToSketch = !!input.activeSketchFeatureId
     && (!featureId || featureId === input.activeSketchFeatureId)
-  // Hide/Show only ever touches a plane or sketch-class reference geometry, the
-  // overlays the tree draws. A tree target wins when it is one of those and is
-  // not the sketch already under edit; otherwise the edited sketch is the thing
-  // on screen to hide or show. With neither, the slot is greyed.
+  // Hide/Show offers the same set as the tree eye, read from the one per-kind
+  // table, so a body-producing feature's Hide hides the bodies it made. A tree
+  // target wins when its kind has a toggle and it is not the sketch already
+  // under edit; otherwise the edited sketch is the thing on screen to hide or
+  // show. With neither, the slot is greyed.
   const targetIsHideable = !!featureId && featureId !== input.activeSketchFeatureId
     && !!target && !input.builtInIds.has(featureId)
-    && (target.kind === 'plane' || isSketchClassFeature(target))
+    && hasFeatureVisibilityToggle(target.kind)
   const visibilityFeature = targetIsHideable
     ? target
     : input.activeSketchFeatureId

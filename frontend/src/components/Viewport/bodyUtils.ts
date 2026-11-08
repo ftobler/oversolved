@@ -1,5 +1,5 @@
 import type { Feature, SketchFeature, BodyResult, PartStyleEntry, Constraints, Sketch, SketchData } from '@/types/cad'
-import { getBodiesToRender } from '@/utils/bodyRender'
+import { getBodiesToRender, isBodyHiddenByFeature } from '@/utils/bodyRender'
 import type { BodyRenderItem } from '@/utils/bodyRender'
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { bodySnapSketches, builtinPlaneTransform } from '@/utils/geometry/bodySnapProjection'
@@ -73,10 +73,14 @@ export function getGhostBodiesToRender(
   previewBodies: Record<string, BodyResult> | undefined,
   features: Feature[] | undefined,
   partStyle: Record<string, PartStyleEntry> | undefined,
+  visibleFeatures?: ReadonlySet<string>,
 ): BodyRenderItem[] {
-  const items = getBodiesToRender(pickBodies, features, undefined, undefined)
+  // Feature visibility rides on the item already: a body a hidden feature made
+  // stays out of the ghost layer too, so it cannot be picked through a row the
+  // user has hidden.
+  const items = getBodiesToRender(pickBodies, features, undefined, undefined, visibleFeatures)
   return items.map(item => {
-    const visible = partStyle?.[item.bodyId]?.visible !== false
+    const visible = item.visible && partStyle?.[item.bodyId]?.visible !== false
     if (previewBodies && !(item.bodyId in previewBodies)) {
       return { ...item, visible, doomed: true }
     }
@@ -143,6 +147,7 @@ export function getPreviewBodies(
   features: Feature[] | undefined,
   rollbackPosition: number | undefined,
   visibleBodies: Set<string> | undefined,
+  visibleFeatures?: ReadonlySet<string>,
 ): BodyRenderItem[] {
   const items: BodyRenderItem[] = []
   if (!bodies || rollbackPosition === undefined) return items
@@ -168,7 +173,11 @@ export function getPreviewBodies(
       edgeQueries: body.edge_queries,
       vertices: body.vertices,
       vertexQueries: body.vertex_queries,
-      visible: visibleBodies ? visibleBodies.has(bodyId) : true,
+      // The edited feature is forced visible while its editor is open
+      // (visibleFeatureIds), so its own preview body still shows even when the
+      // user had hidden the feature before opening it.
+      visible: (visibleBodies ? visibleBodies.has(bodyId) : true)
+        && !isBodyHiddenByFeature(createdBy, features, visibleFeatures),
 
     })
   }

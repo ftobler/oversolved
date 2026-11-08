@@ -219,6 +219,23 @@ describe('buildContextMenu', () => {
     expect(seen).toEqual(['hx1'])
   })
 
+  it('offers Hide for a sweep, whose eye hides the bodies it made', () => {
+    // The tree and the context menu read one per-kind table, so a body-producing
+    // feature must not have the eye in one place and a grey slot in the other.
+    const features = [makeFeature({ id: 'sw1', kind: 'sweep', sweep: { sketch: '$sk1', path: '$hx1' } })]
+    const seen: string[] = []
+    const callbacks = defaultCallbacks()
+    callbacks.onToggleVisibility = (id) => { seen.push(id) }
+    const result = buildContextMenu(
+      defaultInput({ targetId: 'sw1', features, visibleFeatures: new Set(['sw1']) }),
+      callbacks,
+    )
+    const hide = findLabel(result.items, 'Hide')!
+    expect(hide.disabled).toBeFalsy()
+    hide.onClick()
+    expect(seen).toEqual(['sw1'])
+  })
+
   it('offers New Sketch on a user-defined plane, keyed by its feature query', () => {
     const features = [makeFeature({ id: 'plane1', kind: 'plane' })]
     let plane: string | undefined
@@ -767,26 +784,32 @@ describe('buildContextMenu', () => {
       expect(findLabel(result.items, 'Delete')!.disabled).toBe(true)
     })
 
-    it('greys Hide/Show for a feature that is neither a plane nor a sketch', () => {
-      const features = [makeFeature({ id: 'f1', kind: 'extrude' })]
+    it('greys Hide/Show for the origin, the one kind without an eye', () => {
+      const features = [makeFeature({ id: 'Origin', kind: 'origin' })]
       const result = buildContextMenu(
-        defaultInput({ targetId: 'f1', features, visibleFeatures: new Set(['f1']) }),
+        defaultInput({
+          targetId: 'Origin',
+          features,
+          visibleFeatures: new Set(['Origin']),
+          builtInIds: new Set(['Origin']),
+        }),
         defaultCallbacks(),
       )
       expect(findLabel(result.items, 'Show')!.disabled).toBe(true)
     })
 
-    it('still offers the edited sketch Hide when the targeted feature is not hideable', () => {
+    it('still offers the edited sketch Hide when the targeted feature has no eye', () => {
       const features = [
         makeFeature({ id: 'sketch1', kind: 'sketch' }),
-        makeFeature({ id: 'f1', kind: 'extrude' }),
+        makeFeature({ id: 'Origin', kind: 'origin' }),
       ]
       const result = buildContextMenu(
         defaultInput({
-          targetId: 'f1',
+          targetId: 'Origin',
           features,
           visibleFeatures: new Set(['sketch1']),
           activeSketchFeatureId: 'sketch1',
+          builtInIds: new Set(['Origin']),
         }),
         defaultCallbacks(),
       )
