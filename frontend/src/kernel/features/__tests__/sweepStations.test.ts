@@ -6,6 +6,9 @@ import {
   findStation,
   orderSections,
   pointOnOrInLoop,
+  loopBoundaryGap,
+  profileStartGap,
+  profilePlacement,
   MIN_CROSSING_SIN_ONCE,
   type SectionInput,
   type SpineSampler,
@@ -282,6 +285,66 @@ describe('sweepStations curved sections', () => {
     if (!outcome.ok) return
     expect(outcome.station.point[0]).toBeCloseTo(1.98, 9)
     expect(outcome.station.fraction).toBeCloseTo(0.5, 9)
+  })
+})
+
+// The one-profile form carries the profile rigidly from the path start, so an
+// offset profile is a deliberate idiom (a thread beside its helix). The band is
+// the profile's own size: a crossing (or the start) within that distance of the
+// loop is accepted, and the gap is measured off the same polygon containment
+// uses.
+describe('sweepStations one-profile placement', () => {
+  const unit = squareLoop(0, 0, 0.5)
+
+  it('measures the gap from a point to the loop boundary', () => {
+    expect(loopBoundaryGap(unit, [0, 0])).toBe(0)
+    // Beside an edge: the perpendicular distance to x = 0.5.
+    expect(loopBoundaryGap(unit, [2, 0])).toBeCloseTo(1.5, 12)
+    // Past a corner: the distance to (0.5, 0.5).
+    expect(loopBoundaryGap(unit, [2, 2])).toBeCloseTo(Math.hypot(1.5, 1.5), 12)
+  })
+
+  it('measures a start straight above the loop interior as the normal distance', () => {
+    expect(profileStartGap(planeZ(0), unit, [0, 0, 1])).toBeCloseTo(1, 12)
+  })
+
+  it('combines the in-plane gap with the normal distance', () => {
+    // 1 above the plane, 1.5 outside the loop in plane: hypot(1, 1.5).
+    expect(profileStartGap(planeZ(0), unit, [2, 0, 1])).toBeCloseTo(Math.hypot(1, 1.5), 12)
+  })
+
+  it('accepts a crossing beside the loop within its own size', () => {
+    // The 1 x 1 square spans x 0.5..1.5, so the crossing at the origin is 0.5
+    // from it; its own diagonal is 1.414.
+    const outcome = profilePlacement(STRAIGHT, planeZ(0), squareLoop(1, 0, 0.5), [])
+    expect(outcome.ok).toBe(true)
+  })
+
+  it('refuses a crossing past the loop size, naming the gap', () => {
+    // Spans x 1.5..2.5: the crossing is 1.5 outside, past the 1.414 band.
+    const outcome = profilePlacement(STRAIGHT, planeZ(0), squareLoop(2, 0, 0.5), [])
+    expect(outcome).toEqual({ ok: false, reason: 'not-on-path', crossingGap: 1.5 })
+  })
+
+  it('accepts a start off the plane within the loop size', () => {
+    const offPlane = polyline([[[0, 0, 1], [0, 0, 11]]])
+    expect(profilePlacement(offPlane, planeZ(0), unit, []).ok).toBe(true)
+  })
+
+  it('refuses a start farther off the plane than the loop size, naming the gap', () => {
+    const farOff = polyline([[[0, 0, 2], [0, 0, 12]]])
+    const outcome = profilePlacement(farOff, planeZ(0), unit, [])
+    expect(outcome).toEqual({ ok: false, reason: 'not-on-path', startGap: 2 })
+  })
+
+  it('refuses a start parallel to the plane even when the distance is inside the band', () => {
+    // 1 above the plane, running along it: the distance test passes, the slope
+    // floor must still refuse an edge-on profile.
+    const parallel = polyline([[[0, 0, 1], [5, 0, 1]]])
+    const outcome = profilePlacement(parallel, planeZ(0), unit, [])
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.reason).toBe('shallow-angle')
   })
 })
 

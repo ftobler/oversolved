@@ -839,10 +839,12 @@ banner on stdout, so a client config must use the direct node invocation.
   every section must be pierced by the path. Each section is one outer loop, so
   a section with a hole is refused, and loops that cross each other are NOT
   unioned in a section: draw one closed outer loop per section. A single-profile
-  sweep needs the path to cross the profile's plane inside the profile; a
-  profile lying along the path is refused, not built. That checks the placement
-  only: the profile is still carried from the path start, not moved to its
-  crossing. A profile or path ref is a whole sketch
+  sweep carries the profile from the path start as drawn, so a profile beside
+  the path, or off its plane, keeps its offset in the moving frame; it must lie
+  within its own size of a path crossing, or of the path start when the path
+  never crosses its plane, and the path start must leave the plane at 5 degrees
+  or more. A profile lying along the path is refused, not built. A profile or
+  path ref is a whole sketch
   (`$<sketchId>` or `@<sketchId>`), one curve (`entity:<sketchId>:<entityId>`),
   or a `?` area query from `select`; a sweep takes one `entity:` ref per curve
   (a slotted loop needs its two lines and two arcs as four refs, one

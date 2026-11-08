@@ -14,7 +14,10 @@ import { SharedHarness } from '../../occ/sharedHarness'
 import { Repository } from '../../query'
 import { solveSweep } from '../sweep'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
-import { volumeOf } from '../../occ/volume'
+import { volumeOf, surfaceAreaOf } from '../../occ/volume'
+import { shapeBbox } from '../../occ/faceBounds'
+import { countSolids } from '../../occ/booleans'
+import { fitSplineFromParams } from '@/utils/geometry/fitSpline'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { OccShape } from '../../occ/occTypes'
 import type { Body } from '../../types3d'
@@ -461,7 +464,8 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
       scope.dispose()
     }
     expect(message).toBe(
-      "sweep: the path does not pass through the profile: the nearest crossing is 5 mm from its centroid (path '$path')",
+      "sweep: the profile is too far from the path: the nearest crossing is 4 mm outside it " +
+      "(the band is the profile's own size) (path '$path')",
     )
   })
 
@@ -533,7 +537,196 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     expect(onStart.body).toBeDefined()
     const moved = solve(6)
     expect(moved.error).toBe(
-      "sweep: the path does not pass through the profile: the nearest crossing is 6 mm from its centroid (path '$path')",
+      "sweep: the profile is too far from the path: the nearest crossing is 5 mm outside it " +
+      "(the band is the profile's own size) (path '$path')",
+    )
+  })
+
+  it('builds a square offset beside a straight path, the same prism as the centred square', () => {
+    // The one-profile form carries the profile from the path start as drawn, so
+    // a profile beside the path keeps its offset in the moving frame instead of
+    // being refused: the band is the profile's own size.
+    const build = (cx: number): { status?: string; volume?: number; error?: string } => {
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      const bodyStore: Record<string, Body> = {}
+      try {
+        try {
+          const result = solveSweep(oc!, scope, table, {
+            id: 'sw1', kind: 'sweep',
+            sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
+          }, seedOneProfileRepo(squareSurface(cx, 0, 1)), bodyStore)
+          const body = bodyStore['body_sw1']
+          return {
+            status: result.status,
+            volume: body?.shape == null ? undefined : volumeOf(oc!, scope, table.get<OccShape>(body.shape)),
+          }
+        } catch (exc) {
+          return { error: (exc as Error).message }
+        }
+      } finally {
+        table.disposeAll()
+        scope.dispose()
+      }
+    }
+    const centred = build(0)
+    expect(centred.status).toBe('ok')
+    expect(centred.volume).toBeCloseTo(40, 6)
+    // The 2x2 square spans x 1..3, so its nearest edge is 1 from the crossing
+    // and its own diagonal is 2.83: inside the band. The offset sweep is a
+    // translated prism, so the volume is unchanged.
+    const offset = build(2)
+    expect(offset.error).toBeUndefined()
+    expect(offset.status).toBe('ok')
+    expect(offset.volume).toBeCloseTo(centred.volume!, 6)
+  })
+})
+
+// ─── swept off the profile plane ───
+
+// The builtin top plane: sketch (u, v) -> world (u, 0, -v).
+const TOP = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0] }
+
+// A standalone circle boundary: a full ellipse edge is its own closed loop.
+const CIRCLE_BOUNDARY: Dict[] = [{ kind: 'ellipse', id: 'c0', center: [0, 0], a: 1, b: 1, theta: 0 }]
+
+/** The Front plane, moved to z. */
+function frontPlaneAt(z: number): Dict {
+  return { origin: [0, 0, z], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+}
+
+/** A Front circle profile and a Top fit_spline path through `points` (sketch
+ *  coords). The poles come from the same interpolation the sketch topology
+ *  carries, so the seeded path is the curve the solver would emit. */
+function seedFitPathRepo(profilePlane: Dict, points: [number, number][]): Repository {
+  const curve = fitSplineFromParams(points.flat())
+  const poles = curve.poles()
+  const repo = new Repository()
+  repo.register('_pt_prof', profilePlane)
+  repo.register('_topo_prof', { surfaces: [{ boundary: CIRCLE_BOUNDARY }] })
+  repo.register('_pt_path', TOP)
+  repo.register('_topo_path', {
+    edges: [{
+      entity_id: 'p0', edge_index: 0, kind: 'fit_spline',
+      start: poles[0], end: poles[poles.length - 1],
+      poles, knots: curve.knots,
+    }],
+  })
+  return repo
+}
+
+type SeededBuild = {
+  status?: string
+  volume?: number
+  area?: number
+  // [xmin, ymin, zmin, xmax, ymax, zmax], the measure path's exact box.
+  bbox?: number[]
+  solids?: number
+  error?: string
+}
+
+/** Solve one seeded repo through solveSweep and read the built body's mass
+ *  properties before the scope drains. */
+function solveSeeded(repo: Repository): SeededBuild {
+  const scope = new DisposeScope()
+  const table = new HandleTable()
+  const bodyStore: Record<string, Body> = {}
+  try {
+    try {
+      const result = solveSweep(oc!, scope, table, {
+        id: 'sw1', kind: 'sweep',
+        sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
+      }, repo, bodyStore)
+      const body = bodyStore['body_sw1']
+      if (body?.shape == null) return { status: result.status }
+      const solid = table.get<OccShape>(body.shape)
+      return {
+        status: result.status,
+        volume: volumeOf(oc!, scope, solid),
+        area: surfaceAreaOf(oc!, scope, solid),
+        bbox: shapeBbox(oc!, scope, solid),
+        solids: countSolids(oc!, scope, solid),
+      }
+    } catch (exc) {
+      return { error: (exc as Error).message }
+    }
+  } finally {
+    table.disposeAll()
+    scope.dispose()
+  }
+}
+
+describe('sweep profile off its plane, carried from the path start (Ex023)', () => {
+  // A Top fit_spline through sketch (0,-1), (1,-2), (2,-4): world (0,0,1),
+  // (1,0,2), (2,0,4). It starts 1 above the z=0 plane, moving away from it.
+  const PATH_POINTS: [number, number][] = [[0, -1], [1, -2], [2, -4]]
+
+  it('builds the circle swept by a path that starts off its plane', () => {
+    const built = solveSeeded(seedFitPathRepo(frontPlaneAt(0), PATH_POINTS))
+    expect(built.error).toBeUndefined()
+    expect(built.status).toBe('ok')
+    expect(built.solids).toBe(1)
+  })
+
+  it('keeps the start cap on the plane the circle was drawn on', () => {
+    // The path starts at z=1; a build that moved the profile to the start would
+    // put the cap there instead of on z=0, where the circle was drawn.
+    const built = solveSeeded(seedFitPathRepo(frontPlaneAt(0), PATH_POINTS))
+    expect(built.bbox).toBeDefined()
+    expect(built.bbox![2]).toBeCloseTo(0, 6)
+  })
+
+  it('is not the profile moved to the path start', () => {
+    const offPlane = solveSeeded(seedFitPathRepo(frontPlaneAt(0), PATH_POINTS))
+    const onStart = solveSeeded(seedFitPathRepo(frontPlaneAt(1), PATH_POINTS))
+    expect(offPlane.error).toBeUndefined()
+    expect(onStart.error).toBeUndefined()
+    // The section area is the same wherever it is drawn, so the volumes agree.
+    expect(Math.abs(offPlane.volume! - onStart.volume!)).toBeLessThanOrEqual(onStart.volume! * 1e-9)
+    // But the bodies differ: the offset is carried in the moving frame, so the
+    // surface area is visibly different.
+    expect(Math.abs(offPlane.area! - onStart.area!)).toBeGreaterThan(1)
+  })
+
+  it('matches CadQuery 2.8 with its default CorrectedFrenet trihedron', () => {
+    // CadQuery's default sweep is isFrenet=False, which is MakePipeShell's own
+    // default mode (no binormal), the one this path takes.
+    const built = solveSeeded(seedFitPathRepo(frontPlaneAt(0), PATH_POINTS))
+    expect(built.error).toBeUndefined()
+    expect(Math.abs(built.volume! - 7.117723893)).toBeLessThan(7.117723893 * 1e-5)
+    expect(Math.abs(built.area! - 27.07766965)).toBeLessThan(27.07766965 * 1e-5)
+    expect(built.bbox![0]).toBeCloseTo(-1, 4)
+    expect(built.bbox![1]).toBeCloseTo(-1, 4)
+    expect(built.bbox![2]).toBeCloseTo(0, 4)
+    expect(built.bbox![3]).toBeCloseTo(3.39650, 4)
+    expect(built.bbox![4]).toBeCloseTo(1, 4)
+    expect(built.bbox![5]).toBeCloseTo(3.77686, 4)
+  })
+
+  it('refuses a start farther off the plane than the profile size, naming the gap', () => {
+    // Shifted 9 down in sketch v, i.e. 9 up in world z: the start is 10 above
+    // the z=0 plane, past the circle's own 2.83 diagonal.
+    const far = seedFitPathRepo(frontPlaneAt(0), [[0, -10], [1, -11], [2, -13]])
+    const refused = solveSeeded(far)
+    expect(refused.error).toBe(
+      "sweep: the profile is too far from the path: the path never crosses its plane and starts 10 mm from it " +
+      "(the band is the profile's own size) (path '$path')",
+    )
+  })
+
+  it('refuses a path that starts parallel to the profile plane', () => {
+    // A straight Top line at world z=1, parallel to the z=0 plane and 1 above
+    // it: inside the band, but the profile would sweep edge-on.
+    const repo = new Repository()
+    repo.register('_pt_prof', frontPlaneAt(0))
+    repo.register('_topo_prof', { surfaces: [{ boundary: CIRCLE_BOUNDARY }] })
+    repo.register('_pt_path', TOP)
+    repo.register('_topo_path', {
+      edges: [{ entity_id: 'p0', edge_index: 0, kind: 'line', start: [0, -1], end: [5, -1] }],
+    })
+    const refused = solveSeeded(repo)
+    expect(refused.error).toBe(
+      'sweep: the profile meets the path at a shallow angle; draw the profile square to the path',
     )
   })
 })

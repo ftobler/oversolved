@@ -148,6 +148,15 @@ describe('helix reply placement', () => {
     expect(note).toContain('climb direction')
     expect(note).toContain('`direction: reverse`')
   })
+
+  it('names the reference kinds a helix accepts', () => {
+    // F2 of the Ex025 run: the row named no valid reference at all, so a client
+    // had to guess between a face, an edge and a sketch curve.
+    const note = mutationInfoOf('add_helix').fields.reference.note!
+    expect(note).toContain('cylindrical face')
+    expect(note).toContain('circular or straight edge')
+    expect(note).toContain('sketch circle or line')
+  })
 })
 
 // Batch B docs findings: the sentences a client reads when it sends an empty
@@ -222,18 +231,22 @@ describe('profile refs and the multisection limits', () => {
     }
   })
 
-  it('gives the sweep profile field its own loop rule on both rows', () => {
+  it('gives the sweep profile field its own loop rule and the offset band on both rows', () => {
     // A multisection classifies loops by containment only, so the extrude
-    // union sentence would be false here; the one-profile precondition sits
+    // union sentence would be false here; the one-profile placement rule sits
     // beside it because both forms read this field.
     for (const type of ['add_sweep', 'add_sweep_profile'] as const) {
       const note = mutationInfoOf(type).fields.sketchQuery.note!
       expect(note, type).toContain('takes each outer loop a section sketch draws as one section')
       expect(note, type).toContain('loops that cross each other are NOT unioned here')
       expect(note, type).toContain('draw one closed outer loop per section')
-      expect(note, type).toContain('the path to cross the profile\'s plane inside the profile')
-      expect(note, type).toContain('a profile lying along the path is refused, not built')
-      expect(note, type).toContain('carried from the path start, not moved to its crossing')
+      expect(note, type).toContain('from the path start as drawn')
+      expect(note, type).toContain('within its own size of a path crossing')
+      expect(note, type).toContain('5 degrees or more')
+      expect(note, type).toContain('profile lying along the path is refused, not built')
+      // The old containment sentence promised a crossing inside the profile,
+      // which refused the ordinary offset thread profile.
+      expect(note, type).not.toContain('the path to cross the profile\'s plane inside the profile')
       expect(note, type).not.toContain('cross each other are filled as their union')
     }
   })
