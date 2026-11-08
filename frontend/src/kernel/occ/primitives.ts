@@ -30,6 +30,7 @@ import {
 } from './subshapeIdentity'
 import type { EdgeData } from '@/types/cad'
 import { swallowUnlessTrap } from '../errors'
+import { surfaceAreaOf, surfaceCentroidOf, volumeCentroidOf } from './volume'
 
 // Re-exported so the topological-identity indexes keep their primitives.ts home
 // for every existing caller.
@@ -770,18 +771,11 @@ export function faceSurfaceTypeAndNormal(
 }
 
 export function faceCentroid(oc: OccModule, scope: DisposeScope, face: OccShape): Vec3 {
-  const props = scope.track(new oc.GProp_GProps_1())
-  oc.BRepGProp.SurfaceProperties_1(face, props, false, false)
-  const c = props.CentreOfMass()
-  const out: Vec3 = [c.X(), c.Y(), c.Z()]
-  c.delete()
-  return out
+  return surfaceCentroidOf(oc, scope, face)
 }
 
 export function faceArea(oc: OccModule, scope: DisposeScope, face: OccShape): number {
-  const props = scope.track(new oc.GProp_GProps_1())
-  oc.BRepGProp.SurfaceProperties_1(face, props, false, false)
-  return props.Mass()
+  return surfaceAreaOf(oc, scope, face)
 }
 
 /**
@@ -790,12 +784,7 @@ export function faceArea(oc: OccModule, scope: DisposeScope, face: OccShape): nu
  * material actually is, which is what makes it survive a resize of the parent.
  */
 export function solidCentroid(oc: OccModule, scope: DisposeScope, solid: OccShape): Vec3 {
-  const props = scope.track(new oc.GProp_GProps_1())
-  oc.BRepGProp.VolumeProperties_1(solid, props, true, false, false)
-  const c = props.CentreOfMass()
-  const out: Vec3 = [c.X(), c.Y(), c.Z()]
-  c.delete()
-  return out
+  return volumeCentroidOf(oc, scope, solid)
 }
 
 /** An axis-aligned bounding box read: the corners, their centre and the diagonal. */

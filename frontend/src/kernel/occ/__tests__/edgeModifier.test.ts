@@ -545,6 +545,7 @@ function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShap
     },
     BRepGProp: {
       VolumeProperties_1: (): void => {},
+      VolumePropertiesGK_1: (): number => 0,
     },
   } as unknown as OccModule
   return { oc, shape }

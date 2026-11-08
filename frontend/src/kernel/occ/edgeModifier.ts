@@ -11,7 +11,7 @@
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccModifierHistory, OccShapeEnumValue, OccShapeFixShape } from './occTypes'
 import { faceCentroid, SubShapeIndexMap } from './primitives'
-import { volumeOf } from './booleans'
+import { volumeOfDefault } from './volume'
 import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
 import { canonicalEdges, canonicalVertices, type ShapeNames } from './bodyNames'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
@@ -487,8 +487,10 @@ export function healShape(
   if (after.solids !== before.solids || after.faces !== before.faces || after.edges !== before.edges) {
     return reject()
   }
-  const v0 = volumeOf(oc, scope, shape)
-  const v1 = volumeOf(oc, scope, healed)
+  // Same geometry before and after the heal: the default rule's correlated
+  // read error cancels in the difference (see volumeOfDefault).
+  const v0 = volumeOfDefault(oc, scope, shape)
+  const v1 = volumeOfDefault(oc, scope, healed)
   // A build with no material (a shell whose walls meet) is collapsed, not
   // missing a pcurve, and keeping its ~0 volume would pass the check below.
   if (!(v0 > 1e-9)) return reject()

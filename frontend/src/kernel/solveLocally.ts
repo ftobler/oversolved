@@ -25,7 +25,7 @@ import { copyShape, makeScaleTrsf, makeRigidTrsf, transformCopy } from './occ/tr
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
 import { resolveTessellation, type TessellationPreset } from './tessellationPresets'
 import { measureBodies, type Bbox6, type MeasureRecord } from './occ/measure'
-import { volumeOf } from './occ/volume'
+import { volumeForMeasure } from './occ/volume'
 import { shapeBbox } from './occ/faceBounds'
 import { MM_PER_LENGTH_UNIT, lengthUnitOf } from '@/utils/lengthUnit'
 import type { OccHandle } from './occ/handleTable'
@@ -837,7 +837,7 @@ function measureFeatureCheckpoints(
         let measured = cache.get(body.shape)
         if (measured === undefined) {
           const shape = table.get<OccShape>(body.shape)
-          measured = { volume: volumeOf(oc, scope, shape), bbox: shapeBbox(oc, scope, shape) }
+          measured = { volume: volumeForMeasure(oc, scope, shape), bbox: shapeBbox(oc, scope, shape) }
           cache.set(body.shape, measured)
         }
         volume += measured.volume

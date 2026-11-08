@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
-import { volumeOf } from '../booleans'
+import { volumeForMeasure } from '../volume'
 import { extrudeProfileWithLineage } from '../prismLineage'
 import type { PlaneLike } from '../../features/shared/planes'
 import type { LoopEdge } from '../../profileLoops'
@@ -23,7 +23,7 @@ describe.skipIf(!oc)('curved profile extrude (real OCC)', () => {
     const scope = new DisposeScope()
     const loop: LoopEdge[] = [{ kind: 'ellipse', center: [0, 0], a: 4, b: 2, theta: 0 }]
     const { solid } = extrudeProfileWithLineage(oc!, scope, [loop], XY, [0, 0, 1], 5, 'sk')
-    const vol = volumeOf(oc!, scope, solid)
+    const vol = volumeForMeasure(oc!, scope, solid)
     // pi*a*b*h = pi*4*2*5 ~= 125.66; assert it is near that, not the bbox.
     expect(vol).toBeGreaterThan(120)
     expect(vol).toBeLessThan(131)
@@ -38,7 +38,7 @@ describe.skipIf(!oc)('curved profile extrude (real OCC)', () => {
       { kind: 'spline', start: [0, 0], c1: [4, 4], c2: [-4, 4], end: [0, 0] },
     ]
     const { solid } = extrudeProfileWithLineage(oc!, scope, [loop], XY, [0, 0, 1], 2, 'sk')
-    const vol = volumeOf(oc!, scope, solid)
+    const vol = volumeForMeasure(oc!, scope, solid)
     expect(vol).toBeGreaterThan(1)
     scope.dispose()
   })
@@ -55,7 +55,7 @@ describe.skipIf(!oc)('curved profile extrude (real OCC)', () => {
       { kind: 'line', start: [0, 2], end: [0, 0] },
     ]
     const { solid } = extrudeProfileWithLineage(oc!, scope, [loop], XY, [0, 0, 1], 1, 'sk')
-    expect(volumeOf(oc!, scope, solid)).toBeCloseTo(5.074999999999999, 5)
+    expect(volumeForMeasure(oc!, scope, solid)).toBeCloseTo(5.074999999999999, 5)
     scope.dispose()
   })
 
@@ -71,7 +71,7 @@ describe.skipIf(!oc)('curved profile extrude (real OCC)', () => {
       { kind: 'line', start: [0, 2], end: [0, 0] },
     ]
     const { solid } = extrudeProfileWithLineage(oc!, scope, [loop], XY, [0, 0, 1], 1, 'sk')
-    expect(volumeOf(oc!, scope, solid)).toBeCloseTo(5.363880262166624, 5)
+    expect(volumeForMeasure(oc!, scope, solid)).toBeCloseTo(5.363880262166624, 5)
     scope.dispose()
   })
 
@@ -87,7 +87,10 @@ describe.skipIf(!oc)('curved profile extrude (real OCC)', () => {
       { kind: 'line', start: [0, 3], end: [0, 0] },
     ]
     const { solid } = extrudeProfileWithLineage(oc!, scope, [loop], XY, [0, 0, 1], 1, 'sk')
-    expect(volumeOf(oc!, scope, solid)).toBeCloseTo(9.911651440844567, 5)
+    // The analytic extrusion (profile area times the unit height): 9.9113936924.
+    // CadQuery's 9.911651440844567 came from the default fixed-Gauss rule,
+    // which reads this B-spline profile 2.6e-5 high.
+    expect(volumeForMeasure(oc!, scope, solid)).toBeCloseTo(9.9113936924, 5)
     scope.dispose()
   })
 
@@ -109,7 +112,7 @@ describe.skipIf(!oc)('curved profile extrude (real OCC)', () => {
       { kind: 'spline', start: B, end: A, c1: [3, 3], c2: [1, 3] },
     ]
     const { solid } = extrudeProfileWithLineage(oc!, scope, [loop], XY, [0, 0, 1], 2, 'sk')
-    const vol = volumeOf(oc!, scope, solid)
+    const vol = volumeForMeasure(oc!, scope, solid)
     // The bulged area is clearly positive; a chord approximation would give a
     // different (smaller, triangle-ish) volume, but any valid solid is > 0.
     expect(vol).toBeGreaterThan(1)

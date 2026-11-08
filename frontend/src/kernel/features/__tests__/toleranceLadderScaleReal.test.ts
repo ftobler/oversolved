@@ -22,7 +22,8 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { volumeOf } from '../../occ/booleans'
 import { offsetSolid } from '../../occ/offsetShape'
 import { makeBoxAt } from '../../occ/primitives'
-import { TOL_VOLUME_DEGENERATE, TOL_VOLUME_SUM } from '../../solverConstants'
+import { GPROP_EPS, TOL_VOLUME_DEGENERATE, TOL_VOLUME_SUM } from '../../solverConstants'
+import { splineTrimDoc } from '../../occ/__tests__/splineTrimBody'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
 
@@ -254,6 +255,25 @@ describe.skipIf(!oc || !solveBytes)('volume budgets judge a part at any scale (r
       expect(verdictOf(1000, fraction), `thickness fraction ${fraction} at scale 1000`).toBe(want)
     }
   })
+
+  it('splits the spline-trimmed body symmetrically at both scales', () => {
+    // The guard the eps read exists for. The body's r10 face is trimmed by a
+    // BSPLINE intersection curve, where the default fixed-Gauss read lands
+    // ~2e-6 of the body off, above TOL_VOLUME_SUM. The eps read has an
+    // accuracy target, so the verdict travels with the part: both scales must
+    // build the split, halve it, and close the additivity budget.
+    for (const k of SCALES) {
+      const r = h.run(splineTrimDoc(k, true))
+      const res = h.res(r, 'sp1')
+      expect(res.status, `scale ${k}: ${String(res.exception ?? '')}`).toBe('ok')
+      const ids = (res.body_ids ?? []) as string[]
+      expect(ids.length, `scale ${k}: keep both yields two bodies`).toBe(2)
+      const source = bodyVolume(r, 'ho1', 'body_ex1')
+      const halves = ids.map((id) => bodyVolume(r, 'sp1', id))
+      expect(Math.abs(halves[0] - halves[1]), `scale ${k}: equal halves`).toBeLessThanOrEqual(GPROP_EPS * source)
+      expect(Math.abs(halves[0] + halves[1] - source) / source, `scale ${k}: additivity`).toBeLessThan(TOL_VOLUME_SUM)
+    }
+  }, 300_000)
 
   it('the drilled hole reports the same material removed at both scales', () => {
     // The hole's hit test compares a tool's intersection volume against a

@@ -93,6 +93,16 @@ export const TOL_LENGTH_SLACK = 1e-9
 export const TOL_VOLUME_DEGENERATE = 1e-9
 export const TOL_VOLUME_SUM = 1e-6
 
+// The relative accuracy target the shared BRepGProp volume reads hand OCCT's
+// adaptive rules (occ/volume.ts: the eps rule for decisions, Gauss-Kronrod for
+// reported values). It is three orders under
+// TOL_VOLUME_SUM, so the guard can tell a real additivity failure from the
+// read's own error: the default fixed-Gauss rule has no target and lands
+// ~2e-6 of the body on a BSPLINE-trimmed face, which is above the sum budget
+// it is judged by. Relative on purpose: the same target must judge a 1000x
+// copy of a part on the same footing as the part itself.
+export const GPROP_EPS = 1e-9
+
 // The lattice the preview-edge overlay keys its sampled points to
 // (components/Geometry3D/PreviewEdgeOverlay.tsx): a sampled point moved by less
 // than a cell is the same point, which is what lets two passes over one curve

@@ -1,5 +1,5 @@
 {
-  "method": "A 1x1 radial square (in the y=0 plane, centred at radius 10) swept along a right-hand helix r=10, pitch=3, turns=4: V = A * 2 pi xbar * turns = 1 * 2 pi * 10 * 4 = 80 pi. Area/centroid/bbox have no closed form and are frozen from the kernel build (6 faces, 12 edges).",
+  "method": "A 1x1 radial square (in the y=0 plane, centred at radius 10) swept along a right-hand helix r=10, pitch=3, turns=4. The helix twist means the Pappus product 2 pi xbar A turns is only an approximation of this swept solid, so volume/area/centroid/bbox are frozen from the kernel build (6 faces, 12 edges).",
   "bodies": 1,
   "volume": 251.32748189557412,
   "area": 1007.8829977388083,
@@ -9,13 +9,13 @@
   "edges": 12,
   "edit": {
     "what": "edit hx1.turns 4 -> 6",
-    "method": "The same sweep at turns=6: V = 1 * 2 pi * 10 * 6 = 120 pi; the frozen area/centroid/bbox follow the taller helix.",
+    "method": "The same helical sweep at turns=6; volume/area/centroid/bbox are frozen from the kernel build, which reads 376.990882 for the twisted solid (120 pi is only the Pappus approximation).",
     "feature": "hx1",
     "field": "turns",
     "value": 6,
     "expect": {
       "bodies": 1,
-      "volume": 376.9912814018819,
+      "volume": 376.9908824694571,
       "area": 1510.8250981788074,
       "centroid": [0.00000561699751260344, 0, 9],
       "bbox": [-10.50003163993082, -10.500031639930796, -0.5000001, 10.500031639930844, 10.500031639930802, 18.500000099999994],

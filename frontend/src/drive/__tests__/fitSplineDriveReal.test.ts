@@ -1,7 +1,7 @@
 // @vitest-environment node
 //
 // MCP drive round trip for the fit_spline entity: the Ex010 script builds,
-// measures CadQuery's volume, selects the two B-spline edges, and its doc
+// measures the analytic extrusion volume, selects the two B-spline edges, and its doc
 // reloads and re-runs to the same volume. The tangent case pins the authoring
 // sugar's handle conversion end to end. Skips when OCC or the solver is absent.
 import { createRequire } from 'node:module'
@@ -50,7 +50,10 @@ describe.skipIf(!ready)('fit_spline drive round trip (real kernel)', () => {
     const built = await runHeadless({ doc: emptyDriveDoc(), steps: ex010Steps })
     expect(built.features).toEqual([])
     const measure = await measureHeadless(built.doc!)
-    expect(measure!.measures.volume).toBeCloseTo(1.8925830470835936, 6)
+    // The analytic extrusion (profile area 3.785059288899729 times the 0.5
+    // height). CadQuery's 1.8925830470835936 is the default rule's 2.8e-5-high
+    // reading; the shared measure read is accurate here.
+    expect(measure!.measures.volume).toBeCloseTo(1.8925296444, 6)
 
     const selected = await selectHeadless(built.doc!, { kind: 'edge', where: { type: 'spline' } })
     expect(selected!.queries).toHaveLength(2)
@@ -60,7 +63,7 @@ describe.skipIf(!ready)('fit_spline drive round trip (real kernel)', () => {
     if (!reloaded.ok) return
     const rerun = await runHeadless({ doc: reloaded.doc, steps: [] })
     const again = await measureHeadless(rerun.doc ?? reloaded.doc)
-    expect(again!.measures.volume).toBeCloseTo(1.8925830470835936, 6)
+    expect(again!.measures.volume).toBeCloseTo(1.8925296444, 6)
   }, 120_000)
 
   it('authors tan2pt through the mutation sugar and matches CadQuery', async () => {

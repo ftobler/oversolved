@@ -37,7 +37,7 @@ import type {
   OccReShape,
   OccSurfaceAdaptor,
 } from './occTypes'
-import { volumeOf } from './volume'
+import { volumeOfDefault } from './volume'
 import { faceSurfaceFrame } from './primitives'
 import { swallowUnlessTrap } from '../errors'
 
@@ -384,8 +384,11 @@ export function canonicalizeCylinderFaces(
     // 5. Guards: an orientation slip would corrupt the solid, so require both
     //    BRepCheck validity and an unchanged volume before adopting the result.
     if (!scope.track(new oc.BRepCheck_Analyzer(healed, true)).IsValid_2()) return identity
-    const v0 = volumeOf(oc, scope, shape)
-    const v1 = volumeOf(oc, scope, healed)
+    // Same geometry before and after the heal: the default rule's correlated
+    // read error cancels in the difference, and the adaptive rule's own
+    // refinement must not flip a verdict (see volumeOfDefault).
+    const v0 = volumeOfDefault(oc, scope, shape)
+    const v1 = volumeOfDefault(oc, scope, healed)
     if (!(Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0)))) return identity
 
     // 6. Re-base the swap targets through the fixer's substitution context:

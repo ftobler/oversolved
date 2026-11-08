@@ -729,6 +729,19 @@ export interface OccModule extends OccBaseModule {
       skipShared: boolean,
       useTriangulation: boolean,
     ): void
+    // The adaptive surface read: it refines until the relative error estimate
+    // is at most Eps and returns that estimate. Its fixed Gauss form (_1, no
+    // accuracy target) is weak on faces trimmed by an approximated
+    // intersection curve; occ/volume.ts reads this one.
+    // OCCT 7.4.0p1 declares a trailing UseTriangulation default here, and
+    // opencascade.js omits a trailing defaulted parameter from the binding
+    // (the probe in gpropEpsReal pins the four-argument form).
+    SurfaceProperties_2(
+      shape: OccShape,
+      props: OccGProps,
+      eps: number,
+      skipShared: boolean,
+    ): number
     // Volume of a (closed) shape; mirrors cadquery Solid.Volume.
     VolumeProperties_1(
       shape: OccShape,
@@ -737,6 +750,30 @@ export interface OccModule extends OccBaseModule {
       skipShared: boolean,
       useTriangulation: boolean,
     ): void
+    // The adaptive volume read, the same Eps form as SurfaceProperties_2.
+    // The same omitted trailing default applies to UseTriangulation here.
+    VolumeProperties_2(
+      shape: OccShape,
+      props: OccGProps,
+      eps: number,
+      onlyClosed: boolean,
+      skipShared: boolean,
+    ): number
+    // The Gauss-Kronrod adaptive volume read. It carries the same relative
+    // accuracy target as the eps overload but, unlike it, stays accurate on a
+    // BSPLINE surface (the probe in gpropEpsReal pins both sides of that).
+    // OCCT 7.4.0p1's signature is (S, VProps, Eps, OnlyClosed, IsUseSpan,
+    // CGFlag, IFlag, SkipShared); opencascade.js marshals all eight.
+    VolumePropertiesGK_1(
+      shape: OccShape,
+      props: OccGProps,
+      eps: number,
+      onlyClosed: boolean,
+      isUseSpan: boolean,
+      cgFlag: boolean,
+      iFlag: boolean,
+      skipShared: boolean,
+    ): number
   }
   BRepAdaptor_Surface_2: new (face: OccShape, restriction: boolean) => OccSurfaceAdaptor
   BRepLProp_SLProps_1: new (
