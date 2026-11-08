@@ -13,6 +13,7 @@ import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import type { Mutation, SketchFeature } from '@/types/cad'
 import { featureParamsSchema } from '@/persistence/partDocSchema'
 import { runHeadless, emptyDriveDoc } from '../headlessOps'
+import { isVertexPointKey } from '@/types/vertexKeys'
 
 // Every note text of every row: the row note plus each field note.
 function allNotes(): Array<[string, string]> {
@@ -498,6 +499,33 @@ describe('practice doc cases: fit_spline magnitude and helix sweep path', () => 
       const note = mutationInfoOf(type).note!
       expect(note, type).toContain('up to 200')
       expect(note, type).toContain('`createdCount`')
+    }
+  })
+})
+
+// The 2026-11-08 practice run had to guess an arc's endpoint keys: both notes
+// listed only `center` for an arc, while the solver also takes start and end.
+describe('vertex keys named per entity kind', () => {
+  const notes = (): Array<[string, string]> => [
+    ['add_constraint', mutationInfoOf('add_constraint').note!],
+    ['add_entity_with_constraint', mutationInfoOf('add_entity_with_constraint').note!],
+  ]
+
+  it('names the arc endpoints and the ellipse axis keys', () => {
+    for (const [where, note] of notes()) {
+      expect(note, where).toContain('start/end/center on an arc')
+      expect(note, where).toContain('center/major1/major2/minor1/minor2 on an ellipse')
+    }
+  })
+
+  it('names only keys the vertex-key vocabulary accepts', () => {
+    // A slash group before " on a" or " on an" is one kind's key list.
+    for (const [where, note] of notes()) {
+      for (const match of note.matchAll(/([a-z0-9<>/]+) on an? [a-z_]+/g)) {
+        for (const key of match[1].split('/')) {
+          expect(isVertexPointKey(key.replace('<k>', '1')), `${where}: ${key}`).toBe(true)
+        }
+      }
     }
   })
 })

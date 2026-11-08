@@ -236,7 +236,9 @@ const ADD_TEXT_NOTE =
 const VERTEX_REF_NOTE =
   'A constraint target may be a sketch-local ref ($<entityId>, as the app stores it) or an explicit ref '
   + 'entity:<sketchId>:<entityId> / vertex:<sketchId>:<entityId>:<key>, where key is start/end on a line, '
-  + 'center on a circle or arc, and xy on a point. Builtin refs such as @builtin_origin are also accepted.'
+  + 'center on a circle, start/end/center on an arc (start is the a0_deg end, end the a1_deg end), '
+  + 'center/major1/major2/minor1/minor2 on an ellipse, start/c1/c2/end on a spline, '
+  + 'start/fit<k>/end/c1/c2 on a fit_spline, and xy on a point. Builtin refs such as @builtin_origin are also accepted.'
 
 // Every `set_<kind>_field` names one feature kind; the kind's schema
 // sub-definition is the one list of fields it may set. The Record makes a new
@@ -877,7 +879,7 @@ export const MUTATION_CATALOG = {
   },
   add_entity_with_constraint: {
     summary: 'Add a sketch entity and pin one of its vertices to a snap target.',
-    note: '`vertexKey` names the new entity vertex the snap constraint attaches: start/end on a line, center on a circle or arc, xy on a point, start/fit<k>/end/c1/c2 on a fit_spline.',
+    note: '`vertexKey` names the new entity vertex the snap constraint attaches: start/end on a line, center on a circle, start/end/center on an arc (start is the a0_deg end), center/major1/major2/minor1/minor2 on an ellipse, start/c1/c2/end on a spline, xy on a point, start/fit<k>/end/c1/c2 on a fit_spline.',
     fields: {
       featureId: str(),
       kind: str('Entity kind: line, circle, arc, ellipse, spline, fit_spline or point. A fit_spline takes its flat fit points plus optional tangents/tangentScale.'),
