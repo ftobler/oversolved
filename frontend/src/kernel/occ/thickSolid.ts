@@ -377,17 +377,24 @@ export function applyShellWithLineage(
   const sign = direction === 'inward' ? -thickness : thickness
   let maker: OccModifierHistory | null = null
   let built: OccShape | null = null
-  // OCC's sharp-join offset refuses some shapes whose removed face is bounded
-  // by fillets (the key_cap repro: a box with its top edges rounded, then the
-  // flat top opened). The same shape offsets with arc joins, which round the
-  // inner corners instead of extending the faces. Sharp joins stay first so a
-  // normal shell keeps its authored corners; the arc attempt is the fallback
-  // only when the sharp build genuinely fails.
+  // A build that reports IsDone() can still hand back an invalid solid: OCC
+  // welds a filleted removed face into a non-manifold result instead of
+  // refusing, and the validity knife-edge depends on the allocation layout, so
+  // the same input can build valid here and invalid there. An invalid result is
+  // as much a genuine failure as a refused Build(), so the sharp-then-arc
+  // fallback retries it too: the arc join rounds the inner corners instead of
+  // extending the faces and builds the same shape. Sharp stays first so a
+  // normal shell keeps its authored corners. A healable invalid result is kept,
+  // exactly as before, so the retry only runs when the heal also refuses.
   let lastReason = 'build_not_done'
+  // A produced-but-invalid shape is the more useful diagnosis when a later
+  // join also refuses outright, so it outranks build_not_done/build_failed.
+  let invalidReason: string | null = null
   const joinList = join === 'arc'
     ? [oc.GeomAbs_JoinType.GeomAbs_Arc]
     : [oc.GeomAbs_JoinType.GeomAbs_Intersection, oc.GeomAbs_JoinType.GeomAbs_Arc]
   let usedJoin: ShellJoin = join === 'arc' ? 'arc' : 'sharp'
+  let healed: ReturnType<typeof healShape> = null
   for (const j of joinList) {
     try {
       const mk = scope.track(new oc.BRepOffsetAPI_MakeThickSolid_1())
@@ -402,8 +409,26 @@ export function applyShellWithLineage(
         lastReason = 'build_not_done'
         continue
       }
-      built = scope.track(mk.Shape())
-      maker = mk
+      const candidate = scope.track(mk.Shape())
+      if (isValidShape(oc, scope, candidate)) {
+        built = candidate
+        maker = mk
+        healed = null
+      } else {
+        const heal = healShape(oc, scope, candidate)
+        if (heal === null) {
+          // Invalid and unhealable: drop it and let the next join try.
+          scope.release(candidate)
+          invalidReason = 'the operation produced invalid geometry; try a smaller thickness or fewer removed faces'
+          continue
+        }
+        built = candidate
+        maker = mk
+        healed = heal
+        // The healed shape is detached from the scope; claim it so a throw in
+        // the naming pass still frees it, and hand it out detached below.
+        scope.track(heal.shape)
+      }
       usedJoin = j === oc.GeomAbs_JoinType.GeomAbs_Arc ? 'arc' : 'sharp'
       break
     } catch (e) {
@@ -411,7 +436,7 @@ export function applyShellWithLineage(
       lastReason = 'build_failed'
     }
   }
-  if (maker === null || built === null) return fail(shape, lastReason)
+  if (maker === null || built === null) return fail(shape, invalidReason ?? lastReason)
 
   const newFaces = canonicalFaces(oc, scope, built) as OccShape[]
   const newEdges = canonicalEdges(oc, scope, built) as OccShape[]
@@ -458,16 +483,12 @@ export function applyShellWithLineage(
     }
   }
 
-  if (!isValidShape(oc, scope, built)) {
-    const heal = healShape(oc, scope, built)
-    if (heal === null) {
-      scope.release(built)
-      return fail(shape, 'the operation produced invalid geometry; try a smaller thickness or fewer removed faces')
-    }
-    const rebased = names === null ? null : rebaseNames(names, heal.rebase)
-    diff = rebaseDiff(diff, heal.rebase)
+  if (healed !== null) {
+    const rebased = names === null ? null : rebaseNames(names, healed.rebase)
+    diff = rebaseDiff(diff, healed.rebase)
+    const shape = scope.detach(healed.shape)
     scope.release(built)
-    return { shape: heal.shape, success: true, reason: null, names: rebased, diff, usedJoin }
+    return { shape, success: true, reason: null, names: rebased, diff, usedJoin }
   }
 
   return { shape: scope.detach(built), success: true, reason: null, names, diff, usedJoin }
