@@ -257,11 +257,13 @@ describe.skipIf(!oc || !solveBytes)('volume budgets judge a part at any scale (r
   })
 
   it('splits the spline-trimmed body symmetrically at both scales', () => {
-    // The guard the eps read exists for. The body's r10 face is trimmed by a
-    // BSPLINE intersection curve, where the default fixed-Gauss read lands
-    // ~2e-6 of the body off, above TOL_VOLUME_SUM. The eps read has an
-    // accuracy target, so the verdict travels with the part: both scales must
-    // build the split, halve it, and close the additivity budget.
+    // The guard the accurate read exists for. The body's r10 face is trimmed by
+    // a BSPLINE intersection curve, where the default fixed-Gauss read lands
+    // 8.6e-7 of the body off here (the plan's larger part measured ~2e-6),
+    // above TOL_VOLUME_SUM. The split uses volumeForMeasure, so the verdict
+    // travels with the part: both scales must build the split, halve it, and
+    // close the additivity budget. The additivity red-before proof on an
+    // unambiguously over-budget body is the Ex010 split in gpropEpsReal.
     for (const k of SCALES) {
       const r = h.run(splineTrimDoc(k, true))
       const res = h.res(r, 'sp1')

@@ -1,7 +1,7 @@
 {
-  "method": "The right-hand 80 pi sweep mirrored: the same 1x1 radial square on a left-hand helix r=10, pitch=3, turns=4. V = A * 2 pi xbar * turns = 1 * 2 pi * 10 * 4 = 80 pi; the left chirality mirrors the solid through the y=0 plane, so area/bbox match the right-hand case and the centroid sits on the axis.",
+  "method": "The right-hand sweep mirrored: the same 1x1 radial square on a left-hand helix r=10, pitch=3, turns=4. The helix twist makes the Pappus product 80 pi only an approximation, so volume/area/centroid/bbox are frozen from the kernel build; the left chirality mirrors the solid through the y=0 plane, so area/bbox match the right-hand case and the centroid sits on the axis.",
   "bodies": 1,
-  "volume": 251.32748189557412,
+  "volume": 251.327472,
   "area": 1007.8829977388083,
   "centroid": [0.000003845464010315328, 0, 6],
   "bbox": [-10.499988797020961, -10.499999483832985, -0.5000000999999998, 10.500000100000927, 10.499999483832946, 12.500000099999998],

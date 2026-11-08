@@ -638,8 +638,9 @@ function booleanResultProblem(
     // verdict is borderline. The array-cut corpus (count 3) takes minutes
     // inside GK's first read on a shape whose volume is nowhere near a bound,
     // so an unconditional adaptive read is not affordable here. Ten times the
-    // budget is the plan's borderline band: outside it the default rule's
-    // ~2e-6 read error cannot change the verdict, and inside it the adaptive
+    // budget is the borderline band: outside it the default rule's read error
+    // (about 2e-6 of the body on a BSPLINE-trimmed face, up to 2.8e-5 on a
+    // BSPLINE surface) cannot change the verdict, and inside it the adaptive
     // read decides.
     const measureWith = (read: typeof volumeOfDefault) => {
       let vsum = 0
@@ -653,13 +654,19 @@ function booleanResultProblem(
       }
       return { vr, vt, vsum, vmax }
     }
-    let { vr, vt, vsum, vmax } = measureWith(volumeOfDefault)
-    if (!Number.isFinite(vr)) return `the result volume is not finite (${vr})`
-    // A non-finite operand would make every bound below NaN, i.e. every
+    // A non-finite read would make every bound below NaN, i.e. every
     // comparison false: the guard must not adopt a result it cannot judge.
-    if (!Number.isFinite(vt) || !Number.isFinite(vsum)) {
-      return `an operand volume is not finite (target ${vt}, tool ${vsum})`
+    // Run on both reads, because the adaptive re-read can be the non-finite one.
+    const finiteProblem = (r: number, t: number, s: number): string | null => {
+      if (!Number.isFinite(r)) return `the result volume is not finite (${r})`
+      if (!Number.isFinite(t) || !Number.isFinite(s)) {
+        return `an operand volume is not finite (target ${t}, tool ${s})`
+      }
+      return null
     }
+    let { vr, vt, vsum, vmax } = measureWith(volumeOfDefault)
+    const firstProblem = finiteProblem(vr, vt, vsum)
+    if (firstProblem !== null) return firstProblem
     const tolFor = (targetVolume: number, toolSum: number) =>
       1e-6 * Math.max(targetVolume, toolSum, 1)
     const boundFor = (targetVolume: number, toolMax: number, toolSum: number) =>
@@ -671,6 +678,8 @@ function booleanResultProblem(
       : Math.abs(vr - bound)
     if (margin <= 10 * tol) {
       ({ vr, vt, vsum, vmax } = measureWith(volumeOf))
+      const retryProblem = finiteProblem(vr, vt, vsum)
+      if (retryProblem !== null) return retryProblem
     }
     // As in cleanShapeIsSound: a closed target's result has to validate, an
     // open-shell target (L5) has no closedness contract to enforce.

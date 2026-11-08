@@ -23,7 +23,8 @@ import type { Repository } from '../query'
 import type { ShapeNames } from '../occ/bodyNames'
 import type { FaceOrigin } from '../occ/booleans'
 import { readBodyNames } from '../occ/bodyNames'
-import { booleanWithDiff, exploreSolids, volumeOf } from '../occ/booleans'
+import { booleanWithDiff, exploreSolids } from '../occ/booleans'
+import { volumeForMeasure } from '../occ/volume'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { makeHalfSpaceBox } from '../occ/halfSpace'
 import { mintFaceUuid, splitPlaneFacePath, type SplitSide } from '../constructionName'
@@ -134,7 +135,10 @@ export function solveSplit(
     if (body.shape === null) throw new Error(`split: body has no shape: ${JSON.stringify(key)}`)
     const shape = table.get<OccShape>(body.shape)
     const names = readBodyNames(oc, scope, shape, body)
-    const sourceVolume = Math.abs(volumeOf(oc, scope, shape))
+    // Additivity is judged once per split, not in the boolean hot path, so it
+    // pays the accurate read: the eps decision read is 0.6% high on a
+    // BSPLINE-surfaced body, which would make its own halves miss.
+    const sourceVolume = Math.abs(volumeForMeasure(oc, scope, shape))
     const unifyFaces = !body.imported
 
     // `above` keeps the normal side, so it cuts away a box on the opposite
@@ -162,8 +166,8 @@ export function solveSplit(
     // why: OCC's integration error scales with the solid, so the split verdict
     // must hold on a 1000x copy of the part, not just at scale 1.
     const epsilon = TOL_VOLUME_DEGENERATE * sourceVolume
-    const aboveVolume = above === null ? 0 : Math.abs(volumeOf(oc, scope, above.shape))
-    const belowVolume = below === null ? 0 : Math.abs(volumeOf(oc, scope, below.shape))
+    const aboveVolume = above === null ? 0 : Math.abs(volumeForMeasure(oc, scope, above.shape))
+    const belowVolume = below === null ? 0 : Math.abs(volumeForMeasure(oc, scope, below.shape))
 
     if (keep === 'both') {
       if (aboveVolume <= epsilon || belowVolume <= epsilon) {

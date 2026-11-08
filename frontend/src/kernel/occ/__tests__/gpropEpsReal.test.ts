@@ -14,7 +14,7 @@ import { loadOcc } from '../loadOcc'
 import { SharedHarness } from '../sharedHarness'
 import { DisposeScope } from '../disposeScope'
 import { makeBox } from '../primitives'
-import { volumeForMeasure, volumeOf } from '../volume'
+import { volumeForMeasure, volumeOf, volumeOfDefault } from '../volume'
 import { makeTranslationTrsf, transformCopy } from '../transforms'
 import { applyFilletWithDiff } from '../edgeModifier'
 import { canonicalEdges } from '../bodyNames'
@@ -31,6 +31,47 @@ import { analyticHoleRemoval, splineTrimDoc } from './splineTrimBody'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
+
+// The Ex010 fit points, the fitted-spline body the rule probe uses.
+const EX010_FIT: [number, number][] = [
+  [3, 1], [2.75, 1.5], [2.5, 1.75], [2, 1.5], [1.5, 1], [1, 1.25], [0.5, 1], [0, 1],
+]
+
+// The fitted-spline plate split through x = 1.5, keep both. The body has a
+// BSPLINE lateral surface, so both the old default read and the eps decision
+// read miss the 1e-6 additivity budget on it; the split guard now reads
+// volumeForMeasure.
+function ex010SplitDoc(): { features: Record<string, unknown>[] } {
+  const lines: Array<{ id: string; initial: number[] }> = [
+    { id: 'bottom', initial: [0, 0, 3, 0] },
+    { id: 'right', initial: [3, 0, 3, 1] },
+    { id: 'left', initial: [0, 1, 0, 0] },
+  ]
+  const sketch = {
+    id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+    entities: [
+      { id: 'bottom', kind: 'line' },
+      { id: 'right', kind: 'line' },
+      { id: 'sp', kind: 'fit_spline' },
+      { id: 'left', kind: 'line' },
+    ],
+    initial: {
+      ...Object.fromEntries(lines.map((l) => [l.id, l.initial])),
+      sp: EX010_FIT.flat(),
+    },
+    constraints: ['bottom', 'right', 'sp', 'left'].map((id) => ({
+      id: `f${id}`, kind: 'fixed', target: { entity: id },
+    })),
+  }
+  return {
+    features: [
+      sketch,
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 0.5, direction: 'normal', operation: 'new' } },
+      { id: 'pl1', kind: 'plane', definition: { mode: 'offset', plane: '@builtin_plane_right', offset: 1.5 } },
+      { id: 'sp1', kind: 'split', split: { bodies: ['@body_ex1'], plane: '@pl1', keep: 'both' } },
+    ],
+  }
+}
 
 describe.skipIf(!oc)('BRepGProp eps overloads (real OCC)', () => {
   const occ = oc as OccModule
@@ -64,22 +105,20 @@ describe.skipIf(!oc)('BRepGProp eps overloads (real OCC)', () => {
   })
 })
 
-// The probe that decided which adaptive rule each read uses. The eps overload
-// is wrong on a BSPLINE *surface*: it reads the lateral face of this
-// fitted-spline extrusion 6.7% high, while the GK overload lands on the
-// analytic extrusion volume (profile area times height) and the default rule
-// is already within 3e-5. Decisions take eps, reported volumes take GK.
+// The probe that decided which adaptive rule each read uses. On this
+// fitted-spline extrusion the eps rule reads the whole-body volume 0.6% high
+// (per-face: its lateral BSPLINE surface is 6.65% high), while GK lands on the
+// analytic volume and the default rule is 2.8e-5 high. Decisions take eps,
+// reported volumes and the split additivity guard take GK where a BSPLINE
+// surface is present.
 describe.skipIf(!oc)('the adaptive rules on a BSPLINE surface (real OCC)', () => {
   const occ = oc as OccModule
   const XY: PlaneLike = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
-  const EX010: [number, number][] = [
-    [3, 1], [2.75, 1.5], [2.5, 1.75], [2, 1.5], [1.5, 1], [1, 1.25], [0.5, 1], [0, 1],
-  ]
 
   // The exact volume: the profile area (bottom edge plus the integral under
   // the fitted curve) times the 0.5 extrusion height, by dense quadrature.
   function analyticExtrudeVolume(): number {
-    const curve = interpolateFitSpline(EX010)
+    const curve = interpolateFitSpline(EX010_FIT)
     const lastU = curve.knots[curve.knots.length - 1]
     const n = 200_000
     let area = 0
@@ -95,7 +134,7 @@ describe.skipIf(!oc)('the adaptive rules on a BSPLINE surface (real OCC)', () =>
   it('GPROP_EPS via GK matches the analytic volume; the eps overload does not', () => {
     const scope = new DisposeScope()
     try {
-      const curve = interpolateFitSpline(EX010)
+      const curve = interpolateFitSpline(EX010_FIT)
       const loop: LoopEdge[] = [
         { kind: 'line', start: [0, 0], end: [3, 0] },
         { kind: 'line', start: [3, 0], end: [3, 1] },
@@ -111,8 +150,10 @@ describe.skipIf(!oc)('the adaptive rules on a BSPLINE surface (real OCC)', () =>
       const epsProps = scope.track(new occ.GProp_GProps_1())
       occ.BRepGProp.VolumeProperties_2(solid, epsProps, GPROP_EPS, true, false)
       // A named regression, not a budget: the eps rule's own error estimate
-      // says ~1e-16 while it is 0.6% high on this face.
-      expect(epsProps.Mass() - exact).toBeGreaterThan(0.005)
+      // says ~1e-16 while the whole-body volume is 0.6% high.
+      const epsRelative = (epsProps.Mass() - exact) / exact
+      expect(epsRelative).toBeGreaterThan(0.005)
+      expect(epsRelative).toBeLessThan(0.01)
     } finally {
       scope.dispose()
     }
@@ -142,6 +183,24 @@ describe.skipIf(!oc || !solveBytes)('the shared volume read on a spline-trimmed 
     }
   }
 
+  function measuredBodyVolume(r: BuildResponse, featureId: string, bodyId: string): number {
+    const scope = new DisposeScope()
+    try {
+      return Math.abs(volumeForMeasure(occ, scope, shapeOf(r, featureId, bodyId)))
+    } finally {
+      scope.dispose()
+    }
+  }
+
+  function defaultBodyVolume(r: BuildResponse, featureId: string, bodyId: string): number {
+    const scope = new DisposeScope()
+    try {
+      return Math.abs(volumeOfDefault(occ, scope, shapeOf(r, featureId, bodyId)))
+    } finally {
+      scope.dispose()
+    }
+  }
+
   it('reads the blind hole\'s removal to 1e-7 of the body', () => {
     const r = h.run(splineTrimDoc(1))
     expect(h.res(r, 'rev1').status).toBe('ok')
@@ -151,7 +210,7 @@ describe.skipIf(!oc || !solveBytes)('the shared volume read on a spline-trimmed 
     const removed = before - after
     const analytic = analyticHoleRemoval(1)
     // The default rule was 0.0446 (8.6e-7 of the body) off here; the plan's
-    // larger resin-mold part was 0.111 off. The eps read is what fixes both.
+    // larger resin-mold part was 0.111 off. The adaptive read fixes both.
     expect(Math.abs(removed - analytic)).toBeLessThanOrEqual(1e-7 * after)
   }, 120_000)
 
@@ -168,6 +227,29 @@ describe.skipIf(!oc || !solveBytes)('the shared volume read on a spline-trimmed 
     expect(Math.abs(halves[0] - halves[1])).toBeLessThanOrEqual(GPROP_EPS * source)
     expect(Math.abs(halves[0] + halves[1] - source)).toBeLessThanOrEqual(TOL_VOLUME_SUM * source)
   }, 180_000)
+
+  it('splits the Ex010 BSPLINE-surface body with the additivity guard', () => {
+    // The reviewer's counter-case: on this body the eps decision read is 0.6%
+    // high and the default read is 2.8e-5 high, so both old reads made
+    // solveSplit refuse. The guard now reads volumeForMeasure, which is GK
+    // here because the body carries a BSPLINE surface.
+    const r = h.run(ex010SplitDoc())
+    expect(h.res(r, 'ex1').status).toBe('ok')
+    const res = h.res(r, 'sp1')
+    expect(res.status, String(res.exception ?? '')).toBe('ok')
+    const ids = (res.body_ids ?? []) as string[]
+    expect(ids).toHaveLength(2)
+    const source = measuredBodyVolume(r, 'ex1', 'body_ex1')
+    const halves = ids.map((id) => measuredBodyVolume(r, 'sp1', id))
+    expect(source).toBeCloseTo(1.8925296444, 6)
+    expect(Math.abs(halves[0] + halves[1] - source)).toBeLessThanOrEqual(TOL_VOLUME_SUM * source)
+    // Red-before proof: the old default read and the eps decision read are
+    // both over the additivity budget on this body.
+    expect(Math.abs(defaultBodyVolume(r, 'ex1', 'body_ex1') - source))
+      .toBeGreaterThan(TOL_VOLUME_SUM * source)
+    expect(Math.abs(bodyVolume(r, 'ex1', 'body_ex1') - source))
+      .toBeGreaterThan(TOL_VOLUME_SUM * source)
+  }, 120_000)
 })
 
 // Step 2 of the plan: how much the adaptive rule costs, on the shapes the

@@ -730,12 +730,11 @@ export interface OccModule extends OccBaseModule {
       useTriangulation: boolean,
     ): void
     // The adaptive surface read: it refines until the relative error estimate
-    // is at most Eps and returns that estimate. Its fixed Gauss form (_1, no
-    // accuracy target) is weak on faces trimmed by an approximated
-    // intersection curve; occ/volume.ts reads this one.
-    // OCCT 7.4.0p1 declares a trailing UseTriangulation default here, and
-    // opencascade.js omits a trailing defaulted parameter from the binding
-    // (the probe in gpropEpsReal pins the four-argument form).
+    // is at most Eps and returns that estimate. Probe-only: occ/volume.ts
+    // reads SurfaceProperties_1, because this eps rule is the inaccurate one
+    // on a BSPLINE surface (gpropEpsReal pins 6.65% on the lateral face).
+    // OCCT 7.4.0p1's eps overloads are exactly these 4 parameters; the probe
+    // pins that arity.
     SurfaceProperties_2(
       shape: OccShape,
       props: OccGProps,
@@ -751,7 +750,8 @@ export interface OccModule extends OccBaseModule {
       useTriangulation: boolean,
     ): void
     // The adaptive volume read, the same Eps form as SurfaceProperties_2.
-    // The same omitted trailing default applies to UseTriangulation here.
+    // OCCT 7.4.0p1's eps overloads are exactly these 5 parameters; the probe
+    // pins that arity.
     VolumeProperties_2(
       shape: OccShape,
       props: OccGProps,

@@ -80,7 +80,7 @@ def measure(target: Any) -> dict[str, Any]:
     bbox = shape.BoundingBox()
     volume_props = GProp_GProps()
     BRepGProp.VolumePropertiesGK_s(
-        shape.wrapped, volume_props, GPROP_EPS, True, False, True, False, False,
+        shape.wrapped, volume_props, GPROP_EPS, True, False, False, False, False,
     )
     centre_props = GProp_GProps()
     BRepGProp.VolumeProperties_s(shape.wrapped, centre_props)

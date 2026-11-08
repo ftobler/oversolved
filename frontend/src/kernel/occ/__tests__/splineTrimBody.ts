@@ -2,7 +2,8 @@
 // smallest shape that reproduces the default BRepGProp rule's weakness: every
 // surface is analytic, but the blind hole breaks into the revolved pocket, so
 // the r10 cylinder carries a BSPLINE-trimmed inner loop and the default Gauss
-// read integrates that face wrong by ~2e-6 of the body.
+// read integrates that face wrong by 8.6e-7 of the body here (the plan's
+// larger resin-mold part measured ~2e-6).
 //
 // The authored part, from the evidence in the gprop-eps-volume plan: a
 // 120 x 40 x 13 box (z 0..13) minus a revolved r10 pocket about the X line

@@ -1,7 +1,7 @@
 {
   "method": "A 1x1 radial square (in the y=0 plane, centred at radius 10) swept along a right-hand helix r=10, pitch=3, turns=4. The helix twist means the Pappus product 2 pi xbar A turns is only an approximation of this swept solid, so volume/area/centroid/bbox are frozen from the kernel build (6 faces, 12 edges).",
   "bodies": 1,
-  "volume": 251.32748189557412,
+  "volume": 251.327472,
   "area": 1007.8829977388083,
   "centroid": [0.000003845464010315328, 0, 6],
   "bbox": [-10.499988797020961, -10.499999483832946, -0.5000000999999998, 10.500000100000927, 10.499999483832985, 12.500000099999998],

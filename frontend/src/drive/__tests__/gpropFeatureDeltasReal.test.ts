@@ -2,9 +2,11 @@
 //
 // The drive-level featureDeltas row over the spline-trimmed hole body. Every
 // checkpoint measure is a GProp read, so the row's volumeDelta is where the
-// default rule's error looked largest: the hole's removal came out 0.11 short
-// of the analytic value. The shared eps read (occ/volume.ts) is what the row
-// is built from now; this pins the row against the analytic removal.
+// default rule's error looked largest: on the plan's larger resin-mold part
+// the hole's removal came out 0.11 short (this smaller fixture measures 0.045
+// short). The row is now built from volumeForMeasure (occ/volume.ts), which is
+// eps for this all-analytic body and GK where a BSPLINE surface is present;
+// this pins the row against the analytic removal.
 //
 // Skips when OCC.js or the sketch solver is absent, like the other real gates.
 
