@@ -929,13 +929,14 @@ banner on stdout, so a client config must use the direct node invocation.
   (one edge of a rounded loop rounds the loop), so the reply carries a `notes`
   entry with the chain and unpicked edge counts; it is informational and does
   not change an export's `ok`, because the geometry is what the pick produces;
-  `add_shell` takes `faces`, `thickness` and
-  `direction` in the same call, `thickness` is a positive magnitude with
-  `direction` carrying the side, and its wall joins with sharp edges, so an
-  outward shell of a sharp part keeps sharp outer corners where CadQuery's
-  `shell()` (default `kind="arc"`) rounds them: `Ex017` measures 1.0405
-  against CadQuery's 1.031678 on a 2 mm cube shelled 0.05 outward. The arc
-  join here is only the fallback for a build the sharp join refuses;
+  `add_shell` takes `faces`, `thickness`, `direction` and `join` in the same
+  call, `thickness` is a positive magnitude with `direction` carrying the side,
+  and `join` is `sharp` (the default) or `arc`. Sharp keeps the part's authored
+  corners; arc rounds the offset gap and matches CadQuery's default
+  `kind="arc"`: on a 2 mm cube shelled 0.05 outward `Ex017` measures 1.0405
+  with the default against CadQuery's 1.031678, and 1.031678 with
+  `join: "arc"`. A default sharp build still falls back to arc when the sharp
+  offset refuses, and reports that in the reply's `notes`;
   `add_split` takes `bodies`, `plane` and `keep` inline, `above` is the side the
   plane normal points to (a picked face's
   normal is outward, so `above` of a face pick is its air side), and with

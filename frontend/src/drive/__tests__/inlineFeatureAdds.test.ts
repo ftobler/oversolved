@@ -38,9 +38,11 @@ describe('add_chamfer / add_shell document shape and notes', () => {
     expect(shell.fields.faces).toBeDefined()
     expect(shell.fields.thickness).toBeDefined()
     expect(shell.fields.direction).toBeDefined()
+    expect(shell.fields.join).toBeDefined()
     expect(shell.note).toContain('faces')
     expect(shell.note).toContain('thickness')
     expect(shell.note).toContain('direction')
+    expect(shell.note).toContain('join')
   })
 
   it('says the shell sign is the direction field, names inward as the default and maps CadQuery', () => {

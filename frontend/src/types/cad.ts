@@ -48,12 +48,16 @@ export type ChamferFeatureDef = {
 
 export type ShellDirection = 'inward' | 'outward'
 
+/** The shell corner treatment: sharp (intersection) or arc (rounded). */
+export type ShellJoin = 'sharp' | 'arc'
+
 export type ShellFeatureDef = {
   // Removed faces (the openings), may be empty for a closed hollow. Then
   // `source_body` is required, since no face names the body.
   faces: string[]
   thickness: NumberOrExpr
   direction?: ShellDirection
+  join?: ShellJoin
   source_body?: string
 }
 
@@ -1365,7 +1369,7 @@ export type Mutation =
   | { type: 'remove_fillet_edge'; featureId: string; index: number }
   | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_chamfer_edge'; featureId: string; index: number }
-  | ({ type: 'add_shell'; featureId: string; label?: string; faces?: (string | SelectorRef)[]; thickness?: NumberOrExpr; direction?: ShellDirection } & FeatureInsertion)
+  | ({ type: 'add_shell'; featureId: string; label?: string; faces?: (string | SelectorRef)[]; thickness?: NumberOrExpr; direction?: ShellDirection; join?: ShellJoin } & FeatureInsertion)
   | { type: 'set_shell_field'; featureId: string; field: keyof ShellFeatureDef; value: unknown }
   | { type: 'add_shell_face'; featureId: string; faceQuery: string }
   | { type: 'remove_shell_face'; featureId: string; index: number }

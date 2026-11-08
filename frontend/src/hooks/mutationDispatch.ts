@@ -273,7 +273,7 @@ export const mutationHandlers: MutationHandlers = {
   remove_chamfer_edge: (next, m) =>
     applyRemoveChamferEdge(next, m.featureId, m.index),
   add_shell: (next, m) =>
-    applyAddShell(next, m.featureId, m.label, resolvedQueries(m.faces), m.thickness, m.direction),
+    applyAddShell(next, m.featureId, m.label, resolvedQueries(m.faces), m.thickness, m.direction, m.join),
   set_shell_field: (next, m) =>
     applySetShellField(next, m.featureId, m.field, m.value),
   add_shell_face: (next, m) =>

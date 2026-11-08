@@ -13,7 +13,7 @@ import { resolveBody } from './shared/bodyResolution'
 import { resplitBody } from './bodySplit'
 import { readBodyNames, type UuidArray } from '../occ/bodyNames'
 import { SubShapeDedup } from '../occ/primitives'
-import { applyShellWithLineage, type ShellDirection } from '../occ/thickSolid'
+import { applyShellWithLineage, type ShellDirection, type ShellJoin } from '../occ/thickSolid'
 import { exploreFaces } from '../occ/edgeModifier'
 import { bodyOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
 import { OCC_CONFUSION, TOL_LENGTH_SLACK } from '../solverConstants'
@@ -33,6 +33,9 @@ interface ShellResult {
   // per-face failure; the field stays for the shared pick-chip contract.
   failed_faces?: string[]
   exception?: string
+  // Informational: sharp was asked but the kernel built arc. Not a warning, so
+  // the body stays ok and an export is unaffected.
+  solver_note?: string
 }
 
 function named(uuids: UuidArray | undefined): boolean {
@@ -134,6 +137,7 @@ export function solveShell(
   const thickness = Number(sub.thickness ?? 1)
   if (!Number.isFinite(thickness) || thickness <= 0) throw new Error('shell: thickness must be positive')
   const direction: ShellDirection = sub.direction === 'outward' ? 'outward' : 'inward'
+  const join: ShellJoin = sub.join === 'arc' ? 'arc' : 'sharp'
   const faces = (sub.faces as string[]) ?? []
   const sourceBody = (sub.source_body as string) ?? ''
   if (Object.keys(bodyStore).length === 0) throw new Error('shell: no bodies in body_store')
@@ -184,7 +188,7 @@ export function solveShell(
     ? { createdBy: featureId, ...readBodyNames(oc, scope, oldShape, body) }
     : null
 
-  const res = applyShellWithLineage(oc, scope, oldShape, topoFaces, thickness, direction, oldNames)
+  const res = applyShellWithLineage(oc, scope, oldShape, topoFaces, thickness, direction, oldNames, join)
   if (!res.success) {
     // The kernel refused: report the reason and leave the body alone. res.shape
     // is the UNCHANGED input, so resplitting it would re-register the same
@@ -207,6 +211,10 @@ export function solveShell(
   body.brep_diff = res.diff
   body.modified_by.push(featureId)
 
+  const fallbackNote = (join === 'sharp' && res.usedJoin === 'arc')
+    ? 'shell: the sharp join was refused; corners were rounded (join: arc)'
+    : undefined
+
   if (unresolved.length > 0) {
     return {
       status: 'partial',
@@ -215,7 +223,8 @@ export function solveShell(
       unresolved_faces: [...new Set(unresolved)],
       failed_faces: [],
       exception: `shell: ${unresolved.length} face(s) could not be resolved`,
+      ...(fallbackNote !== undefined && { solver_note: fallbackNote }),
     }
   }
-  return { status: 'ok', body_id: ids[0], body_ids: ids }
+  return { status: 'ok', body_id: ids[0], body_ids: ids, ...(fallbackNote !== undefined && { solver_note: fallbackNote }) }
 }

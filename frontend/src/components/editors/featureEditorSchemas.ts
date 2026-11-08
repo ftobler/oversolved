@@ -184,6 +184,8 @@ export const SHELL_SCHEMA: FeatureEditorSchema = {
     { type: 'number', key: 'thickness', label: 'Thickness', default: 1, validate: positive, unit: 'mm' },
     { type: 'select', key: 'direction', label: 'Direction', default: 'inward',
       options: [{ value: 'inward', label: 'Inward' }, { value: 'outward', label: 'Outward' }] },
+    { type: 'select', key: 'join', label: 'Corners', default: 'sharp',
+      options: [{ value: 'sharp', label: 'Sharp' }, { value: 'arc', label: 'Round' }] },
     // No face names the body for a closed hollow, so the body pick is the only
     // way to choose it; it is shown only when the opening list is empty.
     { type: 'pick', key: 'source_body', label: 'Body',

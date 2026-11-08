@@ -4,7 +4,7 @@
 // refusal carries the reason the user is shown.
 import { describe, it, expect } from 'vitest'
 import { SHELL_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
-import type { PickFieldDef } from '@/components/editors/widgets/fieldTypes'
+import type { PickFieldDef, SelectFieldDef } from '@/components/editors/widgets/fieldTypes'
 
 const facesField = (): PickFieldDef => {
   const field = SHELL_SCHEMA.fields.find((f) => f.type === 'pick' && f.key === 'faces')
@@ -34,6 +34,20 @@ describe('SHELL_SCHEMA', () => {
     expect(validate('?4;@ex1:vertex')).toBe('pick a face, not an edge or vertex')
     expect(validate('@body_ex1/face/0')).toBe('this face has no named query')
     expect(validate('@builtin_plane_top')).toBe('pick a face')
+  })
+
+  it('offers the corner join as a select that writes set_shell_field', () => {
+    const field = SHELL_SCHEMA.fields.find((f) => f.type === 'select' && f.key === 'join') as SelectFieldDef | undefined
+    expect(field).toBeDefined()
+    expect(field!.label).toBe('Corners')
+    expect(field!.default).toBe('sharp')
+    expect(field!.options).toEqual([
+      { value: 'sharp', label: 'Sharp' }, { value: 'arc', label: 'Round' },
+    ])
+    // The shared editor writes `set_shell_field` from the prefix and the key,
+    // so one change of this select is one document mutation and one undo entry.
+    expect(SHELL_SCHEMA.mutationPrefix).toBe('set_shell')
+    expect(field!.key).toBe('join')
   })
 
   it('shows the source_body pick only when no faces are open', () => {

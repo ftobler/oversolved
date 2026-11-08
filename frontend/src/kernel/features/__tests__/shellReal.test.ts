@@ -15,14 +15,15 @@ import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
-import { makeBox, makeCylinderWithFaces, faceCentroid } from '../../occ/primitives'
+import { makeBox, makeBoxAt, makeCylinderWithFaces, faceCentroid } from '../../occ/primitives'
 import { volumeOf, surfaceAreaOf } from '../../occ/volume'
+import { booleanWithDiff } from '../../occ/booleans'
 import { canonicalEdges, canonicalFaces, namesFromArray, namesToArray } from '../../occ/bodyNames'
 import { deriveEdgeNames } from '../../occ/constructionLineage'
 import { ref, Repository, makeAncestryQuery, constructionUuidToken } from '../../query'
 import { solveShell } from '../shell'
 import { solveFillet } from '../filletChamfer'
-import { exploreEdges } from '../../occ/edgeModifier'
+import { exploreEdges, exploreFaces } from '../../occ/edgeModifier'
 import { buildFaceIndex } from '../shared/faceResolution'
 import { mintFaceUuid, shellFacePath } from '../../constructionName'
 import type { Body } from '../../types3d'
@@ -39,21 +40,45 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
   let occ: OccModule
   if (oc) occ = oc
 
-  // A named 10-millimetre box body: faces `f0..f5` in canonical order.
-  function boxBody(scope: DisposeScope, table: HandleTable, size = 10): Record<string, Body> {
-    const box = makeBox(occ, scope, size, size, size)
-    const faces = canonicalFaces(occ, scope, box)
+  // A named body: faces `f0..fN` in canonical order, edges derived from them.
+  function namedBody(scope: DisposeScope, table: HandleTable, shape: OccShape, id = 'body_b'): Record<string, Body> {
+    const faces = canonicalFaces(occ, scope, shape)
     const face_uuids = faces.map((_, i) => `f${i}`)
-    const faceAncestry = Object.fromEntries(face_uuids.map((u) => [u, [ref('ex1'), ref('body_b')]]))
-    const { edgeNames, edgeAncestry } = deriveEdgeNames(occ, scope, box, namesFromArray(faces, face_uuids), faceAncestry)
-    const edge_uuids = namesToArray(canonicalEdges(occ, scope, box), edgeNames)
+    const faceAncestry = Object.fromEntries(face_uuids.map((u) => [u, [ref('ex1'), ref(id)]]))
+    const { edgeNames, edgeAncestry } = deriveEdgeNames(occ, scope, shape, namesFromArray(faces, face_uuids), faceAncestry)
+    const edge_uuids = namesToArray(canonicalEdges(occ, scope, shape), edgeNames)
     return {
-      body_b: {
-        id: 'body_b', created_by: 'ex1', modified_by: [],
-        shape: table.register(box, 'ex1'), sketch_id: 'sk', brep_diff: null,
+      [id]: {
+        id, created_by: 'ex1', modified_by: [],
+        shape: table.register(shape, 'ex1'), sketch_id: 'sk', brep_diff: null,
         profile_queries: [], face_uuids, edge_uuids, face_ancestry: faceAncestry, edge_ancestry: edgeAncestry,
       },
     }
+  }
+
+  // A named 10-millimetre box body: faces `f0..f5` in canonical order.
+  function boxBody(scope: DisposeScope, table: HandleTable, size = 10): Record<string, Body> {
+    return namedBody(scope, table, makeBox(occ, scope, size, size, size))
+  }
+
+  // An L-section prism: a 10 x 10 x 10 box with a 6 x 6 notch removed from one
+  // top quadrant, so the inner vertical corner at (4, 4) is CONCAVE.
+  function lBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
+    const outer = makeBox(occ, scope, 10, 10, 10)
+    const notch = makeBoxAt(occ, scope, [4, 4, 0], 6, 6, 10)
+    const { shape } = booleanWithDiff(occ, scope, outer, notch, 'cut')
+    return namedBody(scope, table, scope.track(shape))
+  }
+
+  // Every cylindrical face's radius, for the concave-corner check.
+  function cylinderRadii(scope: DisposeScope, shape: OccShape): number[] {
+    const radii: number[] = []
+    for (const face of exploreFaces(occ, scope, shape)) {
+      const surface = scope.track(new occ.BRepAdaptor_Surface_2(face, true))
+      if (surface.GetType().value !== occ.GeomAbs_SurfaceType.GeomAbs_Cylinder.value) continue
+      radii.push(scope.track(surface.Cylinder()).Radius())
+    }
+    return radii
   }
 
   // The canonical index of the body shape top face (max centroid Z).
@@ -183,6 +208,139 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
       occ.BRepBndLib.Add(shape, box, false)
       expect([box.GetXmin(), box.GetYmin(), box.GetZmin(), box.GetXmax(), box.GetYmax(), box.GetZmax()].map((n) => Number(n.toFixed(3))))
         .toEqual([-0.05, -0.05, -0.05, 2.05, 2.05, 2])
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('Ex017 parity: join arc on the same box matches CadQuery (V=1.031678, A=41.6802, 23 faces)', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = boxBody(scope, table, 2)
+      const body = bodyStore.body_b
+      const q = faceQuery(body.face_uuids![topFaceIndex(scope, table, body)]!)
+      const res = solveShell(occ, scope, table, {
+        id: 'sh1', shell: { faces: [q], thickness: 0.05, direction: 'outward', join: 'arc' },
+      }, new Repository(), bodyStore)
+      expect(res.status).toBe('ok')
+      expect(res.solver_note).toBeUndefined()
+      const shape = shelledShape(scope, table, body)
+      // CadQuery's own run for Ex017 (Box(2, 2, 2), +Z open, shell(0.05)).
+      expect(volumeOf(occ, scope, shape)).toBeCloseTo(1.0316777267316828, 6)
+      expect(surfaceAreaOf(occ, scope, shape)).toBeCloseTo(41.68019900821944, 4)
+      expect(canonicalFaces(occ, scope, shape)).toHaveLength(23)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('join arc inward on a convex box equals the sharp inward shell', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const volume = (join?: 'sharp' | 'arc'): number => {
+        const bodyStore = boxBody(scope, table)
+        const body = bodyStore.body_b
+        const q = faceQuery(body.face_uuids![topFaceIndex(scope, table, body)]!)
+        const res = solveShell(occ, scope, table, { id: 'sh1', shell: { faces: [q], thickness: 1, join } }, new Repository(), bodyStore)
+        expect(res.status).toBe('ok')
+        return volumeOf(occ, scope, shelledShape(scope, table, body))
+      }
+      expect(volume(undefined)).toBeCloseTo(424, 4)
+      expect(volume('arc')).toBeCloseTo(424, 4)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('join arc inward rounds the concave edge of an L-section', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const shell = (join?: 'sharp' | 'arc'): { volume: number; cylinders: number[] } => {
+        const bodyStore = lBody(scope, table)
+        const body = bodyStore.body_b
+        const q = faceQuery(body.face_uuids![topFaceIndex(scope, table, body)]!)
+        const res = solveShell(occ, scope, table, { id: 'sh1', shell: { faces: [q], thickness: 1, join } }, new Repository(), bodyStore)
+        expect(res.status).toBe('ok')
+        const shape = shelledShape(scope, table, body)
+        return { volume: volumeOf(occ, scope, shape), cylinders: cylinderRadii(scope, shape) }
+      }
+      const sharp = shell(undefined)
+      const arc = shell('arc')
+      expect(sharp.cylinders).toHaveLength(0)
+      // The concave corner's inner wall is a quarter cylinder of radius = t;
+      // the round trims the corner wedge, so the arc shell is lighter.
+      expect(arc.cylinders).toHaveLength(1)
+      expect(arc.cylinders[0]).toBeCloseTo(1, 6)
+      expect(arc.volume).toBeLessThan(sharp.volume)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('join arc outward on a closed hollow removes the outer corner prisms', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const volume = (join?: 'sharp' | 'arc'): number => {
+        const bodyStore = boxBody(scope, table)
+        const res = solveShell(occ, scope, table, {
+          id: 'sh1', shell: { faces: [], thickness: 1, direction: 'outward', source_body: '@body_b', join },
+        }, new Repository(), bodyStore)
+        expect(res.status).toBe('ok')
+        return volumeOf(occ, scope, shelledShape(scope, table, bodyStore.body_b))
+      }
+      // The outward offset grows every side by t, so the sharp closed hollow is
+      // 12^3 - 10^3. The arc rounds the outer edges and corners and loses the
+      // corner prisms.
+      const sharp = volume(undefined)
+      const arc = volume('arc')
+      expect(sharp).toBeCloseTo(12 ** 3 - 10 ** 3, 4)
+      expect(arc).toBeLessThan(sharp)
+      expect(arc).toBeGreaterThan(0)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('the sharp-to-arc fallback reports a note, and an explicit arc does not', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      // The key_cap repro: an 18 x 18 x 10 box with its top edges filleted,
+      // then the flat top opened at 0.75 inward.
+      const build = (): Record<string, Body> => {
+        const bodyStore = namedBody(scope, table, makeBox(occ, scope, 18, 18, 10))
+        const body = bodyStore.body_b
+        const topIdx = topFaceIndex(scope, table, body)
+        const topUuid = body.face_uuids![topIdx]!
+        const topFace = buildFaceIndex(occ, scope, table, body).byUuid.get(topUuid)!
+        const canonEdges = canonicalEdges(occ, scope, table.get<OccShape>(body.shape!)) as OccShape[]
+        const queries = exploreEdges(occ, scope, topFace).map((e) => {
+          const at = canonEdges.findIndex((ce) => (ce as OccSubShape).IsSame(e as OccSubShape))
+          return makeAncestryQuery([constructionUuidToken(body.edge_uuids![at]!)], 'edge')
+        })
+        const fillet = solveFillet(occ, scope, table, { id: 'fi1', fillet: { edges: queries, radius: 1 } }, new Repository(), bodyStore)
+        expect(fillet.status).toBe('ok')
+        return bodyStore
+      }
+      const shell = (join?: 'sharp' | 'arc'): { volume: number; note?: string } => {
+        const bodyStore = build()
+        const body = bodyStore.body_b
+        const topUuid = body.face_uuids![topFaceIndex(scope, table, body)]!
+        const res = solveShell(occ, scope, table, {
+          id: 'sh1', shell: { faces: [faceQuery(topUuid)], thickness: 0.75, direction: 'inward', join },
+        }, new Repository(), bodyStore)
+        expect(res.status).toBe('ok')
+        return { volume: volumeOf(occ, scope, shelledShape(scope, table, body)), note: res.solver_note }
+      }
+      const fallback = shell(undefined)
+      expect(fallback.note).toBe('shell: the sharp join was refused; corners were rounded (join: arc)')
+      const arc = shell('arc')
+      expect(arc.note).toBeUndefined()
+      expect(arc.volume).toBeCloseTo(fallback.volume, 6)
     } finally {
       scope.dispose()
     }

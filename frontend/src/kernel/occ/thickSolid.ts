@@ -15,13 +15,15 @@
 //     origin plus the offset maker's own history.
 //
 // Names are construction-based, never geometric: a kept face carries its old
-// UUID, an offset wall mints `<createdBy>|shell|offset|<sourceUuid>`, a rim
-// mints `<createdBy>|shell|rim|<removedUuid>`. Geometry enters only the split
-// ordering when one source face yields several images.
+// UUID, an offset wall mints `<createdBy>|shell|offset|<sourceFaceUuid>`, a rim
+// mints `<createdBy>|shell|rim|<removedFaceUuid>`, and an arc join adds
+// `<createdBy>|shell|blend|<sourceEdgeUuid>` and
+// `<createdBy>|shell|corner|<incidentEdgeUuids>` for the rounded corner faces.
+// Geometry enters only the split ordering when one source yields several images.
 
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccModifierHistory } from './occTypes'
-import { canonicalFaces, canonicalEdges, carryFaceNames } from './bodyNames'
+import { canonicalFaces, canonicalEdges, canonicalVertices, carryFaceNames } from './bodyNames'
 import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
 import { SubShapeIndexMap, faceCentroid } from './primitives'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
@@ -45,12 +47,16 @@ type Lineage = Record<string, string[]>
 /** The shell direction: inward keeps the outer skin, outward grows the part. */
 export type ShellDirection = 'inward' | 'outward'
 
+/** The shell corner treatment: sharp (intersection) or arc (rounded). */
+export type ShellJoin = 'sharp' | 'arc'
+
 export interface ShellResult {
   shape: OccShape
   success: boolean
   reason: string | null
   names: NewNames | null
   diff: BrepDiff
+  usedJoin?: ShellJoin
 }
 
 function fail(shape: OccShape, reason: string): ShellResult {
@@ -64,17 +70,19 @@ function facesOf(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[
 }
 
 /**
- * Mint `<createdBy>|shell|<role>|<sourceUuid>` for every image the maker
- * narrates for `sourceFaces`. One image -> the base path; several -> ordered
- * split children. Existing names are never overwritten, so the kept faces
- * inherited first win. `which` selects the history call: a kept face's wall is
- * `Generated`, a removed face's rim is `Modified`.
+ * Mint `<createdBy>|shell|<role>|<sourceKey>` for every image the maker narrates
+ * for `sourceItems`. A source may be a face (offset/rim), an edge (blend) or a
+ * vertex (corner), so both the key and its ancestry come from `uuidOf` and
+ * `ancestryOf`. One image -> the base path; several -> ordered split children.
+ * Existing names are never overwritten, so the kept faces inherited first win.
+ * `which` selects the history call: a kept face's wall is `Generated`, a
+ * removed face's rim is `Modified`.
  */
 function mintRoleFaces(
   oc: OccModule,
   scope: DisposeScope,
   maker: OccModifierHistory,
-  sourceFaces: OccShape[],
+  sourceItems: OccShape[],
   uuidOf: (f: OccShape) => string | undefined,
   which: 'Generated' | 'Modified',
   role: ShellFaceRole,
@@ -82,11 +90,11 @@ function mintRoleFaces(
   builtFace: (f: OccShape) => OccSubShape,
   faceNames: SubShapeMap<string>,
   faceAncestry: Lineage,
-  old: OldNames,
   newShape: OccShape,
+  ancestryOf: (srcUuid: string) => string[] = () => [],
 ): void {
   let frame: NormalFrame | null = null
-  for (const src of sourceFaces) {
+  for (const src of sourceItems) {
     const srcUuid = uuidOf(src)
     if (!srcUuid) continue
     let images: OccShape[]
@@ -97,7 +105,7 @@ function mintRoleFaces(
       continue
     }
     if (images.length === 0) continue
-    const ancestry = old.faceAncestry[srcUuid] ?? []
+    const ancestry = ancestryOf(srcUuid)
     const base = mintFaceUuid(shellFacePath(createdBy, role, srcUuid))
     const assign = (face: OccShape, uuid: string): void => {
       const key = builtFace(face)
@@ -118,6 +126,52 @@ function mintRoleFaces(
       )
       if (ordered !== null) ordered.forEach((f, i) => assign(f, mintFaceUuid(splitFacePath(base, i))))
     }
+  }
+}
+
+/**
+ * A vertex has no UUID, so a corner face minted from one is keyed by the sorted
+ * UUIDs of the named edges meeting there: construction-based and stable across
+ * rebuilds, with no geometry. Two vertices that would share a key get a
+ * deterministic `|m<n>` suffix in canonical vertex order, since one UUID must
+ * never name two faces. The corner inherits the union of its edges' ancestry.
+ * A vertex with no named adjacent edge stays unnamed and falls to the neighbour
+ * pass.
+ */
+function cornerNames(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  edges: OccShape[],
+  edgeNames: SubShapeMap<string>,
+  edgeAncestry: Lineage,
+): { keyOf: (vertex: OccShape) => string | undefined; ancestryOf: (key: string) => string[] } {
+  const incident = edges.map((e) => ({
+    uuid: edgeNames.get(e as OccSubShape),
+    ancestry: edgeAncestry[edgeNames.get(e as OccSubShape) ?? ''] ?? [],
+    vertices: canonicalVertices(oc, scope, e) as OccSubShape[],
+  }))
+  const keys = new SubShapeMap<string>()
+  const ancestryOfKey = new Map<string, string[]>()
+  const seen = new Map<string, number>()
+  for (const vertex of canonicalVertices(oc, scope, shape)) {
+    const hits = incident.filter((i) =>
+      i.uuid !== undefined && i.vertices.some((v) => v.IsSame(vertex as OccSubShape)))
+    if (hits.length === 0) continue
+    const base = hits.map((i) => i.uuid as string).sort().join('|')
+    const n = seen.get(base) ?? 0
+    seen.set(base, n + 1)
+    const key = n === 0 ? base : `${base}|m${n}`
+    keys.set(vertex as OccSubShape, key)
+    const tokens: string[] = []
+    for (const hit of hits) {
+      for (const token of hit.ancestry) if (!tokens.includes(token)) tokens.push(token)
+    }
+    ancestryOfKey.set(key, tokens)
+  }
+  return {
+    keyOf: (vertex) => keys.get(vertex as OccSubShape),
+    ancestryOf: (key) => ancestryOfKey.get(key) ?? [],
   }
 }
 
@@ -161,21 +215,24 @@ function applySealedShell(
   shape: OccShape,
   thickness: number,
   direction: ShellDirection,
+  join: ShellJoin,
   old: OldNames,
   oldFaces: OccShape[],
 ): ShellResult {
   const sign = direction === 'inward' ? -thickness : thickness
   let off: OccShape | null = null
   let offMaker: OccModifierHistory | null = null
-  // Same join fallback as the open shell: a filleted body can refuse the sharp
-  // offset and accept the arc one. See applyShellWithLineage.
   let lastReason = 'build_not_done'
-  for (const join of [oc.GeomAbs_JoinType.GeomAbs_Intersection, oc.GeomAbs_JoinType.GeomAbs_Arc]) {
+  const joins = join === 'arc'
+    ? [oc.GeomAbs_JoinType.GeomAbs_Arc]
+    : [oc.GeomAbs_JoinType.GeomAbs_Intersection, oc.GeomAbs_JoinType.GeomAbs_Arc]
+  let usedJoin: ShellJoin = join === 'arc' ? 'arc' : 'sharp'
+  for (const j of joins) {
     try {
       const maker = scope.track(new oc.BRepOffsetAPI_MakeOffsetShape_1())
       maker.PerformByJoin(
         shape, sign, 1e-3,
-        oc.BRepOffset_Mode.BRepOffset_Skin, false, false, join, false,
+        oc.BRepOffset_Mode.BRepOffset_Skin, false, false, j, false,
       )
       maker.Build()
       if (!maker.IsDone()) {
@@ -184,6 +241,7 @@ function applySealedShell(
       }
       off = scope.track(maker.Shape())
       offMaker = maker
+      usedJoin = j === oc.GeomAbs_JoinType.GeomAbs_Arc ? 'arc' : 'sharp'
       break
     } catch (e) {
       swallowUnlessTrap(e)
@@ -212,6 +270,21 @@ function applySealedShell(
   const offsetNames: SubShapeMap<string> = new SubShapeMap()
   for (const [face, srcUuid] of offsetUuid.entries()) {
     offsetNames.set(face, mintFaceUuid(shellFacePath(old.createdBy, 'offset', srcUuid)))
+  }
+
+  // Arc join rounds the offset at the input's edges and vertices, so the maker
+  // narrates blend faces from EDGES and corner faces from VERTICES. A sharp
+  // build has neither, and probing every sub-shape there would only cost time.
+  const offsetFaceAncestry: Lineage = {}
+  if (usedJoin === 'arc') {
+    const offBuiltFace = builtFaceOf(canonicalFaces(oc, scope, off) as OccShape[])
+    const oldEdgesSealed = canonicalEdges(oc, scope, shape) as OccShape[]
+    const edgeUuidOfSealed = (e: OccShape): string | undefined => old.edgeNames.get(e as OccSubShape)
+    mintRoleFaces(oc, scope, offMaker, oldEdgesSealed, edgeUuidOfSealed, 'Generated', 'blend', old.createdBy, offBuiltFace, offsetNames, offsetFaceAncestry, off, (srcUuid) => old.edgeAncestry[srcUuid] ?? [])
+
+    const oldVerticesSealed = canonicalVertices(oc, scope, shape) as OccShape[]
+    const corners = cornerNames(oc, scope, shape, oldEdgesSealed, old.edgeNames, old.edgeAncestry)
+    mintRoleFaces(oc, scope, offMaker, oldVerticesSealed, corners.keyOf, 'Generated', 'corner', old.createdBy, offBuiltFace, offsetNames, offsetFaceAncestry, off, corners.ancestryOf)
   }
 
   // Inward: material between the original skin (target) and the inner void
@@ -250,7 +323,8 @@ function applySealedShell(
   const faceAncestry: Lineage = {}
   for (const [face, uuid] of faceNames.entries()) {
     const srcUuid = offsetUuid.get(face)
-    faceAncestry[uuid] = [...(old.faceAncestry[srcUuid ?? uuid] ?? [])]
+    if (offsetFaceAncestry[uuid]) faceAncestry[uuid] = [...offsetFaceAncestry[uuid]]
+    else faceAncestry[uuid] = [...(old.faceAncestry[srcUuid ?? uuid] ?? [])]
   }
   const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, built, faceNames, faceAncestry)
   let names: NewNames = {
@@ -270,7 +344,7 @@ function applySealedShell(
   }
   // The repaired shape is already detached by healShape; the raw build is
   // scope-tracked, so hand it out untracked either way.
-  return { shape: scope.isTracked(built) ? scope.detach(built) : built, success: true, reason: null, names, diff }
+  return { shape: scope.isTracked(built) ? scope.detach(built) : built, success: true, reason: null, names, diff, usedJoin }
 }
 
 /**
@@ -289,6 +363,7 @@ export function applyShellWithLineage(
   thickness: number,
   direction: ShellDirection,
   oldNames: OldNames | null = null,
+  join: ShellJoin = 'sharp',
 ): ShellResult {
   if ((shape as unknown as { IsNull(): boolean }).IsNull()) return fail(shape, 'null_shape')
 
@@ -296,7 +371,7 @@ export function applyShellWithLineage(
   const oldEdges = canonicalEdges(oc, scope, shape) as OccShape[]
   if (closingFaces.length === 0) {
     if (oldNames === null) return fail(shape, 'no_names')
-    return applySealedShell(oc, scope, shape, thickness, direction, oldNames, oldFaces)
+    return applySealedShell(oc, scope, shape, thickness, direction, join, oldNames, oldFaces)
   }
 
   const sign = direction === 'inward' ? -thickness : thickness
@@ -309,14 +384,18 @@ export function applyShellWithLineage(
   // normal shell keeps its authored corners; the arc attempt is the fallback
   // only when the sharp build genuinely fails.
   let lastReason = 'build_not_done'
-  for (const join of [oc.GeomAbs_JoinType.GeomAbs_Intersection, oc.GeomAbs_JoinType.GeomAbs_Arc]) {
+  const joinList = join === 'arc'
+    ? [oc.GeomAbs_JoinType.GeomAbs_Arc]
+    : [oc.GeomAbs_JoinType.GeomAbs_Intersection, oc.GeomAbs_JoinType.GeomAbs_Arc]
+  let usedJoin: ShellJoin = join === 'arc' ? 'arc' : 'sharp'
+  for (const j of joinList) {
     try {
       const mk = scope.track(new oc.BRepOffsetAPI_MakeThickSolid_1())
       const list = scope.track(new oc.TopTools_ListOfShape_1())
       for (const f of closingFaces) list.Append_1(f)
       mk.MakeThickSolidByJoin(
         shape, list, sign, 1e-3,
-        oc.BRepOffset_Mode.BRepOffset_Skin, false, false, join, false,
+        oc.BRepOffset_Mode.BRepOffset_Skin, false, false, j, false,
       )
       mk.Build()
       if (!mk.IsDone()) {
@@ -325,6 +404,7 @@ export function applyShellWithLineage(
       }
       built = scope.track(mk.Shape())
       maker = mk
+      usedJoin = j === oc.GeomAbs_JoinType.GeomAbs_Arc ? 'arc' : 'sharp'
       break
     } catch (e) {
       swallowUnlessTrap(e)
@@ -358,8 +438,18 @@ export function applyShellWithLineage(
     // Offset walls (Generated from a kept face) then rims (Modified from a
     // removed face). The uuidOf map reads the source face's old UUID.
     const uuidOf = (f: OccShape): string | undefined => oldNames.faceNames.get(f as OccSubShape)
-    mintRoleFaces(oc, scope, maker, keptFaces, uuidOf, 'Generated', 'offset', oldNames.createdBy, builtFace, faceNames, faceAncestry, oldNames, built)
-    mintRoleFaces(oc, scope, maker, closingFaces, uuidOf, 'Modified', 'rim', oldNames.createdBy, builtFace, faceNames, faceAncestry, oldNames, built)
+    mintRoleFaces(oc, scope, maker, keptFaces, uuidOf, 'Generated', 'offset', oldNames.createdBy, builtFace, faceNames, faceAncestry, built, (srcUuid) => oldNames.faceAncestry[srcUuid] ?? [])
+    mintRoleFaces(oc, scope, maker, closingFaces, uuidOf, 'Modified', 'rim', oldNames.createdBy, builtFace, faceNames, faceAncestry, built, (srcUuid) => oldNames.faceAncestry[srcUuid] ?? [])
+
+    // Arc join rounds the offset at the input's edges and vertices, so the maker
+    // narrates blend faces from EDGES and corner faces from VERTICES. The
+    // offset walls and rims above are the only images a sharp build has.
+    if (usedJoin === 'arc') {
+      const edgeUuidOf = (e: OccShape): string | undefined => oldNames.edgeNames.get(e as OccSubShape)
+      mintRoleFaces(oc, scope, maker, oldEdges, edgeUuidOf, 'Generated', 'blend', oldNames.createdBy, builtFace, faceNames, faceAncestry, built, (srcUuid) => oldNames.edgeAncestry[srcUuid] ?? [])
+      const corners = cornerNames(oc, scope, shape, oldEdges, oldNames.edgeNames, oldNames.edgeAncestry)
+      mintRoleFaces(oc, scope, maker, canonicalVertices(oc, scope, shape) as OccShape[], corners.keyOf, 'Generated', 'corner', oldNames.createdBy, builtFace, faceNames, faceAncestry, built, corners.ancestryOf)
+    }
 
     const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, built, faceNames, faceAncestry)
     names = {
@@ -377,8 +467,8 @@ export function applyShellWithLineage(
     const rebased = names === null ? null : rebaseNames(names, heal.rebase)
     diff = rebaseDiff(diff, heal.rebase)
     scope.release(built)
-    return { shape: heal.shape, success: true, reason: null, names: rebased, diff }
+    return { shape: heal.shape, success: true, reason: null, names: rebased, diff, usedJoin }
   }
 
-  return { shape: scope.detach(built), success: true, reason: null, names, diff }
+  return { shape: scope.detach(built), success: true, reason: null, names, diff, usedJoin }
 }

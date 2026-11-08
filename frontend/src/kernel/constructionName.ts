@@ -53,19 +53,20 @@ export function filletFacePath(createdBy: string, filletedEdgeUuid: string): str
   return `${createdBy}|fillet|${filletedEdgeUuid}`
 }
 
-/** What a shell face is: the offset wall born from a kept source face, or the
- *  rim strip where a removed (open) face was. */
-export type ShellFaceRole = 'offset' | 'rim'
+/** What a shell face is: an offset wall from a kept source face, a rim strip
+ *  where a removed face was, an arc blend from an input edge, or an arc corner
+ *  from an input vertex. */
+export type ShellFaceRole = 'offset' | 'rim' | 'blend' | 'corner'
 
 /**
- * A shell face: `<createdBy>|shell|<role>|<sourceFaceUuid>`. The source face
- * names it, never its geometry: an offset wall is named after the face it was
- * offset from, a rim after the removed face whose opening it borders. Both
- * survive a thickness change, a face edit or a resize because the source face's
- * UUID does.
+ * A shell face: `<createdBy>|shell|<role>|<sourceKey>`. The key is construction-
+ * based, never geometry: an offset wall uses the face it was offset from, a rim
+ * the removed face, a blend an input edge's UUID, and a corner the sorted UUIDs
+ * of the edges meeting at its vertex. All survive a thickness change, a face
+ * edit or a resize because the source identity does.
  */
-export function shellFacePath(createdBy: string, role: ShellFaceRole, sourceFaceUuid: string): string {
-  return `${createdBy}|shell|${role}|${sourceFaceUuid}`
+export function shellFacePath(createdBy: string, role: ShellFaceRole, sourceKey: string): string {
+  return `${createdBy}|shell|${role}|${sourceKey}`
 }
 
 /**

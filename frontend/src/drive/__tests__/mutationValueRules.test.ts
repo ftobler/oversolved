@@ -134,6 +134,7 @@ describe('value rules cover the catalog', () => {
     ['add_shell', { type: 'add_shell', featureId: 'sh1', faces: [''], thickness: 1 }],
     ['add_shell', { type: 'add_shell', featureId: 'sh1', faces: [{ selector: { kind: 'face' } }], thickness: 1 }],
     ['add_shell', { type: 'add_shell', featureId: 'sh1', direction: 'sideways' }],
+    ['add_shell', { type: 'add_shell', featureId: 'sh1', join: 'round' }],
     ['add_shell_face', { type: 'add_shell_face', featureId: 'sh1', faceQuery: '' }],
     ['remove_shell_face', { type: 'remove_shell_face', featureId: 'sh1', index: -1 }],
     ['set_move_face_field', { type: 'set_move_face_field', featureId: 'mf1', field: 'distance', value: {} }],

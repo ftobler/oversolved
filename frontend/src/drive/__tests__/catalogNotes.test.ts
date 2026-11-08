@@ -361,12 +361,13 @@ describe('Ex017: the shell note names the join', () => {
     }
   })
 
-  it('names the arc join only as the fallback the kernel actually uses', () => {
-    // applyShellWithLineage tries GeomAbs_Intersection first and GeomAbs_Arc
-    // only after that build fails, so the note must not read as a choice.
+  it('names the sharp-to-arc fallback the kernel still uses', () => {
+    // `join` is now a choice, but the default sharp build still retries arc
+    // when the sharp offset genuinely refuses; the note says so.
     for (const type of ['add_shell', 'set_shell_field'] as const) {
       const note = mutationInfoOf(type).note!
-      expect(note, type).toContain('only when the sharp build refuses')
+      expect(note, type).toContain('falls back to arc only when it genuinely refuses')
+      expect(note, type).toContain('join: "arc"')
     }
   })
 })

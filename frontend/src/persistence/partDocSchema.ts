@@ -196,7 +196,7 @@ export const FEATURE_SCHEMA_BY_KIND = {
     key: 'shell',
     required: ['faces', 'thickness'],
     properties: {
-      faces: REF_LIST, thickness: NUMBER_OR_EXPR, direction: { enum: ['inward', 'outward'] }, source_body: REF,
+      faces: REF_LIST, thickness: NUMBER_OR_EXPR, direction: { enum: ['inward', 'outward'] }, join: { enum: ['sharp', 'arc'] }, source_body: REF,
     },
   }),
   move_face: feature('move_face', {

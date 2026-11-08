@@ -1397,6 +1397,9 @@ function addShell(raw: RawStep): ValueViolation | null {
   if (raw.direction !== undefined && raw.direction !== 'inward' && raw.direction !== 'outward') {
     return invalid(`direction must be "inward" or "outward", got ${json(raw.direction)}`)
   }
+  if (raw.join !== undefined && raw.join !== 'sharp' && raw.join !== 'arc') {
+    return invalid(`join must be "sharp" or "arc", got ${json(raw.join)}`)
+  }
   return null
 }
 

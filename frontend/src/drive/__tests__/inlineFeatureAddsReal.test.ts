@@ -10,6 +10,7 @@ import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { runHeadless, measureHeadless, selectHeadless, seedBuiltins } from '../headlessOps'
+import { featureById } from '@/testing/featureAccess'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
@@ -112,5 +113,38 @@ describe.skipIf(!ready)('inline chamfer and shell (real OCC + Rust solver)', () 
     expect(one).not.toBeNull()
     expect(many).not.toBeNull()
     expect(one!.measures.volume).toBeCloseTo(many!.measures.volume, 9)
+  }, 240_000)
+
+  it('carries add_shell join arc through the dispatch table and the kernel', async () => {
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const built = await runHeadless({ doc: emptyDoc(), steps: box.steps })
+    expect(built.ok).toBe(true)
+    const base = built.doc!
+    const faces = (await selectHeadless(base, {
+      kind: 'face',
+      where: { and: [{ parallel: [0, 1, 0] }, { extreme: { axis: [0, 1, 0], side: 'max' } }] },
+    }))!.queries
+    const face = faces[0]
+    const shell = (join?: 'arc') => runHeadless({
+      doc: structuredClone(base),
+      steps: [step({
+        type: 'add_shell', featureId: 'sh1', label: 'Shell', faces: [face],
+        thickness: 0.05, direction: 'outward', ...(join === undefined ? {} : { join }),
+      })],
+    })
+    const arc = await shell('arc')
+    const sharp = await shell()
+    expect(arc.ok).toBe(true)
+    expect(sharp.ok).toBe(true)
+    expect(featureById(arc.doc!, 'sh1', 'shell')).toMatchObject({
+      kind: 'shell', shell: { join: 'arc', direction: 'outward' },
+    })
+    expect(featureById(sharp.doc!, 'sh1', 'shell').shell).not.toHaveProperty('join')
+    // The rounded corners remove the corner prisms from an outward shell.
+    const arcMeasure = await measureHeadless(arc.doc!)
+    const sharpMeasure = await measureHeadless(sharp.doc!)
+    expect(arcMeasure).not.toBeNull()
+    expect(sharpMeasure).not.toBeNull()
+    expect(arcMeasure!.measures.volume).toBeLessThan(sharpMeasure!.measures.volume)
   }, 240_000)
 })

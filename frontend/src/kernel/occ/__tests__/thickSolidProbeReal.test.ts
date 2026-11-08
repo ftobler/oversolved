@@ -22,7 +22,7 @@ import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
 import { makeBox, makeCylinderWithFaces, faceCentroid } from '../primitives'
 import { volumeOf } from '../volume'
-import { canonicalFaces, canonicalEdges } from '../bodyNames'
+import { canonicalFaces, canonicalEdges, canonicalVertices } from '../bodyNames'
 import { booleanWithDiff } from '../booleans'
 import { applyFilletWithDiff } from '../edgeModifier'
 import { applyShellWithLineage } from '../thickSolid'
@@ -193,6 +193,73 @@ describe.skipIf(!oc)('thickSolid phase-1 probe (real OCC)', () => {
       const top = topFace(module, scope, box)
       const { result } = thickSolid(module, scope, box, [top], -1, module.GeomAbs_JoinType.GeomAbs_Intersection)
       expect(canonicalEdges(module, scope, result)).toHaveLength(24)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('arc join narrates blend faces from edges and corner faces from vertices', () => {
+    // The naming roles for an arc shell need the maker to say which new faces
+    // came from an input edge (quarter cylinders) and which from an input
+    // vertex (sphere patches). This pins the history for the 2 mm Ex017 box
+    // with the +Z face removed and a 0.05 outward offset.
+    const module = setup()
+    const scope = new DisposeScope()
+    try {
+      const box = boxOf(module, scope, 2)
+      const top = topFace(module, scope, box)
+      const edges = canonicalEdges(module, scope, box) as OccShape[]
+      const vertices = canonicalVertices(module, scope, box) as OccShape[]
+      const { maker, result } = thickSolid(module, scope, box, [top], 0.05, module.GeomAbs_JoinType.GeomAbs_Arc)
+      expect(maker.IsDone()).toBe(true)
+      expect(canonicalFaces(module, scope, result)).toHaveLength(23)
+      const narrate = (src: OccShape): number =>
+        drain(scope, maker.Generated(src)).flatMap((g) => canonicalFaces(module, scope, g)).length
+      const edgeImages = edges.map(narrate)
+      const vertexImages = vertices.map(narrate)
+      // 4 vertical edges + 4 bottom edges round; the 4 top rim edges do not.
+      // Each of the 4 bottom vertices needs a sphere patch.
+      expect(edgeImages.filter((n) => n > 0)).toHaveLength(8)
+      expect(vertexImages.filter((n) => n > 0)).toHaveLength(4)
+      expect(edgeImages.reduce((a, b) => a + b, 0)).toBe(8)
+      expect(vertexImages.reduce((a, b) => a + b, 0)).toBe(4)
+      // A sharp build can narrate shapes from an edge, but never a FACE, so the
+      // blend and corner roles are arc-only.
+      const sharp = thickSolid(module, scope, box, [top], 0.05, module.GeomAbs_JoinType.GeomAbs_Intersection)
+      const sharpImages = (src: OccShape): number =>
+        drain(scope, sharp.maker.Generated(src)).flatMap((g) => canonicalFaces(module, scope, g)).length
+      expect(edges.map(sharpImages).reduce((a, b) => a + b, 0)).toBe(0)
+      expect(vertices.map(sharpImages).reduce((a, b) => a + b, 0)).toBe(0)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('the offset maker narrates arc blend faces the same way (sealed hollow)', () => {
+    // The closed hollow offsets first, so its blend/corner names come from
+    // MakeOffsetShape's history. This pins that the same Generated(edge) and
+    // Generated(vertex) narration exists there.
+    const module = setup()
+    const scope = new DisposeScope()
+    try {
+      const box = boxOf(module, scope, 2)
+      const edges = canonicalEdges(module, scope, box) as OccShape[]
+      const vertices = canonicalVertices(module, scope, box) as OccShape[]
+      const maker = scope.track(new module.BRepOffsetAPI_MakeOffsetShape_1())
+      maker.PerformByJoin(
+        box, 0.05, 1e-3,
+        module.BRepOffset_Mode.BRepOffset_Skin, false, false, module.GeomAbs_JoinType.GeomAbs_Arc, false,
+      )
+      maker.Build()
+      expect(maker.IsDone()).toBe(true)
+      const narrate = (src: OccShape): number =>
+        drain(scope, maker.Generated(src)).flatMap((g) => canonicalFaces(module, scope, g)).length
+      const edgeImages = edges.map(narrate)
+      const vertexImages = vertices.map(narrate)
+      expect(edgeImages.filter((n) => n > 0)).toHaveLength(12)
+      expect(vertexImages.filter((n) => n > 0)).toHaveLength(8)
+      expect(edgeImages.reduce((a, b) => a + b, 0)).toBe(12)
+      expect(vertexImages.reduce((a, b) => a + b, 0)).toBe(8)
     } finally {
       scope.dispose()
     }

@@ -25,6 +25,15 @@ describe('applyAddShell', () => {
     applyAddShell(doc, 'sh1', 'My Shell')
     expect(doc.features![0].label).toBe('My Shell')
   })
+
+  it('stores join arc and leaves the key absent for sharp', () => {
+    const arc: PartDoc = {}
+    applyAddShell(arc, 'sh1', undefined, undefined, undefined, undefined, 'arc')
+    expect(shell0(arc).join).toBe('arc')
+    const sharp: PartDoc = {}
+    applyAddShell(sharp, 'sh1', undefined, undefined, undefined, undefined, 'sharp')
+    expect(shell0(sharp)).not.toHaveProperty('join')
+  })
 })
 
 describe('applySetShellField', () => {
@@ -34,6 +43,16 @@ describe('applySetShellField', () => {
     expect(shell0(doc).thickness).toBe(3)
     applySetShellField(doc, 'sh1', 'direction', '')
     expect(shell0(doc)).not.toHaveProperty('direction')
+  })
+
+  it('deletes join on sharp, returning the byte-identical document', () => {
+    const doc: PartDoc = { features: [{ id: 'sh1', kind: 'shell', shell: { faces: [], thickness: 1, direction: 'inward' } }] }
+    const before = JSON.stringify(doc)
+    applySetShellField(doc, 'sh1', 'join', 'arc')
+    expect(shell0(doc).join).toBe('arc')
+    applySetShellField(doc, 'sh1', 'join', 'sharp')
+    expect(shell0(doc)).not.toHaveProperty('join')
+    expect(JSON.stringify(doc)).toBe(before)
   })
 
   it('refuses a non-finite thickness', () => {

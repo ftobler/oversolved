@@ -737,6 +737,7 @@ function checkShell(sub: DocRecord, field: string): void {
   checkOptional(sub, 'faces', field, checkRefList)
   checkOptional(sub, 'thickness', field, checkPositiveExpr)
   checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, ['inward', 'outward']))
+  checkOptional(sub, 'join', field, (v, f) => checkEnum(v, f, ['sharp', 'arc']))
   checkOptional(sub, 'source_body', field, checkRef)
 }
 

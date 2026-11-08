@@ -362,6 +362,7 @@ and a sharp corner is not a joint.
     faces: ["?query:flatface"]   # removed faces (openings); may be empty
     thickness: 1.0               # expression-capable, > 0
     direction: inward            # inward | outward (inward keeps the outer skin)
+    join: sharp                  # sharp | arc; absent means sharp
     source_body: "@body_ex1"     # required when faces is empty
 ```
 
@@ -370,16 +371,19 @@ An empty `faces` list makes a closed hollow (one solid with an inner void), so
 is an error.
 
 `thickness` is a magnitude and `direction` carries the side: `inward` keeps the
-outer skin where it is and hollows from inside, `outward` grows the part. The
-wall joins with sharp edges (OCC's intersection join): the offset walls of two
-kept faces meet at a sharp edge, so a shell keeps the part's authored corners
-and an outward shell of a sharp solid has sharp outer corners. The arc join,
-which rounds those corners instead, is only the fallback the kernel uses when
-the sharp build refuses (a removed face whose boundary is filleted). CadQuery's
-`shell()` takes a signed thickness and defaults to `kind="arc"`, so a translated
-outward shell of a sharp part measures smaller than this one; the sign maps as
-positive -> `outward` and negative -> `inward`, with the magnitude as
-`thickness`.
+outer skin where it is and hollows from inside, `outward` grows the part.
+`join` chooses the corner treatment. `sharp` (the default, stored as an absent
+key) is OCC's intersection join: the offset walls of two kept faces meet at a
+sharp edge, so a shell keeps the part's authored corners. `arc` rounds the
+opened gap with a quarter cylinder of radius equal to the thickness (and a
+sphere patch at a corner): outward that rounds the outer corners, inward it
+rounds a concave inner corner such as an L brace. A sharp build the kernel
+refuses (a removed face whose boundary is filleted) still retries arc and
+reports the fallback in `solver_note`; an explicit `arc` never falls back, so a
+refusal is a feature error. CadQuery's `shell()` takes a signed thickness and
+defaults to `kind="arc"`, which maps to `join: arc`; `kind="intersection"` maps
+to the default. The sign maps as positive -> `outward` and negative -> `inward`,
+with the magnitude as `thickness`.
 
 ### move_face
 

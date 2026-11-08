@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, MoveFaceFeatureDef, PatternFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, ShellJoin, MoveFaceFeatureDef, PatternFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList, round } from './helpers'
 import { arrayCountProblem } from '@/persistence/docSchema'
 
@@ -502,8 +502,10 @@ export function applyAddShell(
   faces?: string[],
   thickness?: NumberOrExpr,
   direction?: ShellDirection,
+  join?: ShellJoin,
 ): void {
   const shell: ShellFeatureDef = { faces: [...(faces ?? [])], thickness: thickness ?? 1, direction: direction ?? 'inward' }
+  if (join === 'arc') shell.join = 'arc'
   if (!roundNumericFields(shell, 'applyAddShell')) return
   if (refuseShellThickness('thickness', shell.thickness, 'applyAddShell')) return
   pushFeature(doc, {
@@ -518,6 +520,10 @@ export function applySetShellField(doc: PartDoc, featureId: string, field: keyof
   const feature = findFeature(doc, featureId)
   const sub = feature?.kind === 'shell' ? feature.shell : undefined
   if (sub !== undefined && refuseShellThickness(field, value, 'applySetShellField')) return
+  if (field === 'join' && value === 'sharp' && sub !== undefined) {
+    delete sub.join
+    return
+  }
   setSubFeatureField(featureId, 'shell', sub, field, value, 'applySetShellField')
 }
 
