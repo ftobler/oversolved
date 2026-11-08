@@ -51,6 +51,7 @@ function roundGeometry(geometry: Record<string, number[]>): Record<string, numbe
   return rounded
 }
 
+// LEGACY: rev 2 f32 wire compatibility for the sketch write-back.
 // Whether the freshly solved geometry says the same thing as the one already in
 // the document: same entity ids, same arity per entity, every component inside
 // the legacy f32 envelope of the matching component. The compare is per

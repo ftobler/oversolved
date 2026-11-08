@@ -204,6 +204,8 @@ export function transformsEqual(a: Transform3D, b: Transform3D, eps = 1e-9): boo
 const APPROX_F32_EPS = 1e-6
 
 /**
+ * LEGACY: rev 2 f32 wire compatibility.
+ *
  * Whether two scalars agree within the f32 wire quantum.
  *
  * Relative to the larger magnitude, floored at an absolute epsilon so a value
@@ -221,6 +223,7 @@ export function approxF32Equal(a: number, b: number, eps = APPROX_F32_EPS): bool
   return Math.abs(a - b) <= eps * Math.max(1, Math.abs(a), Math.abs(b))
 }
 
+// LEGACY: rev 2 f32 wire compatibility for the assembly bake.
 // Like transformsEqual but for the bake's "did the solver actually move this
 // part" question: each component is compared relative to its own magnitude, so
 // the tolerance rides the legacy f32 quantum at the value (see
