@@ -521,6 +521,24 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
     }
   })
 
+  it('syncs a self-closed fit spline whose merged ends its poles still straddle', () => {
+    // A standalone closed fit spline is one loop edge with no joint to walk: the
+    // area builder merged its two authored ends into one vertex, but the chain
+    // still ends 5e-7 away from where it starts.
+    const curve = interpolateFitSpline([[0, 0], [2, 1], [3, 0], [2, -1], [5e-7, 0]])
+    const loop: LoopEdge[] = [{
+      kind: 'fit_spline', id: 'closed', start: [0, 0], end: [0, 0],
+      poles: curve.poles().map((p) => [...p]), knots: [...curve.knots],
+    }]
+    const scope = new DisposeScope()
+    try {
+      const face = scope.track(sketchLoopsToFace(occ, scope, [loop], XY_PLANE))
+      expect(scope.track(new occ.BRepCheck_Analyzer(face, true)).IsValid_2()).toBe(true)
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('builds a fit-spline joint the area builder merged onto an arc', () => {
     // The arc is anchored to its own circle and the fit spline to its poles, so
     // snapLoopJoints cannot move either endpoint: the split is inside the fit

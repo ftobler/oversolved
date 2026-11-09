@@ -490,7 +490,9 @@ function snapLoopJoints(loop: LoopEdge[]): LoopEdge[] {
     if (Array.isArray(e['end'])) c['end'] = [...(e['end'] as number[])]
     return c
   })
-  if (out.length < 2) return out
+  // A one-edge loop has no joint to walk, but a self-closed fit spline can
+  // still carry start=end from a merged vertex while its poles straddle it.
+  if (out.length < 2) return out.map(syncFitSplineEnds)
   const isAnchored = (e: LoopEdge): boolean => ANCHORED_KINDS.has(e['kind'] as string)
   for (let i = 0; i < out.length; i++) {
     const a = out[i]
