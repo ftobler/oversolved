@@ -413,3 +413,16 @@ describe('headless drive boundary', () => {
     if (step.error) expect(step.error.message).toContain('has no field "cs_diameter"; did you mean "cb_diameter"?')
   })
 })
+
+describe('target-list mutations refuse a featureId by teaching the shape', () => {
+  for (const type of ['toggle_construction', 'delete'] as const) {
+    it(`${type} names targets and the entity ref spelling`, () => {
+      const result = validateMutation({ type, featureId: 'sk1' } as never)
+      expect(result).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+      if (result.ok) throw new Error('unreachable')
+      expect(result.error.message).toContain(`${type} takes targets`)
+      expect(result.error.message).toContain('entity:<sketchId>:<entityId>')
+      expect(result.error.message).toContain('["entity:')
+    })
+  }
+})

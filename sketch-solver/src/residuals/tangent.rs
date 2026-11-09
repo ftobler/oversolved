@@ -41,18 +41,61 @@ impl Problem<'_> {
         (d - (ra + rb), d - (ra - rb).abs())
     }
 
+    /// One residual row per tangent.
+    ///
+    /// Tangency is a direction condition wherever a coincident pins an
+    /// endpoint of one operand onto the other (its endpoint or its locus):
+    /// `Problem::build_tangent_contacts` finds those contacts, and the row is
+    /// measured at the contact point. Two touching circles through a common
+    /// point can only touch AT that point, so the centre-distance form is a
+    /// double root there: its Jacobian loses rank, LM crawls, and a chain
+    /// stalls above `verdict_tol`. Free tangency (no coincident) keeps the
+    /// centre-distance form and the seeded internal/external type.
     pub(super) fn r_tangent(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
         let Some((line_idx, arc_idx, arc_pt)) = self.tangent_operands(c) else {
             return;
         };
+        let contact = self.tangent_contact.get(&(line_idx, arc_idx));
         // Neither operand is a line: this is curve/curve tangency (two circles
-        // or arcs). The centers' distance equals rA+rB when the circles touch
-        // externally or |rA-rB| when one sits inside the other. Which one is
-        // decided once from the seed (`curve_tangent_internal`): choosing the
-        // nearer one per evaluation made the residual jump (-2 to +1.5 between
-        // two nearby center distances) and let the type flip mid-solve. The
-        // Jacobian comes from the finite-difference fallback.
+        // or arcs). With a pinned contact the row is the sine of the angle
+        // between the two radials at that point, so it stays smooth and holds
+        // both the internal (parallel) and external (anti-parallel) case.
+        // Without one the centers' distance equals rA+rB when the circles
+        // touch externally or |rA-rB| when one sits inside the other, decided
+        // once from the seed (`curve_tangent_internal`): choosing the nearer
+        // per evaluation made the residual jump (-2 to +1.5 between two nearby
+        // center distances) and let the type flip mid-solve. The Jacobian comes
+        // from the finite-difference fallback.
         if !matches!(self.kind_of(line_idx), Kind::Line) {
+            if let Some(contact) = contact {
+                let owner = if contact.owner == 0 {
+                    line_idx
+                } else {
+                    arc_idx
+                };
+                let p = self.point(
+                    x,
+                    Ref::Entity {
+                        index: owner,
+                        point: contact.selector,
+                    },
+                );
+                let sel_first = if contact.owner == 0 {
+                    contact.selector
+                } else {
+                    PointSelector::Absent
+                };
+                let sel_second = if contact.owner == 1 {
+                    contact.selector
+                } else {
+                    PointSelector::Absent
+                };
+                let ra = self.radius_dir(x, line_idx, sel_first, p);
+                let rb = self.radius_dir(x, arc_idx, sel_second, p);
+                let cross = ra[0] * rb[1] - ra[1] * rb[0];
+                r.push(self.curve_pair_radius0(line_idx, arc_idx) * cross);
+                return;
+            }
             let (external, internal) = self.curve_tangent_terms(x, line_idx, arc_idx);
             let use_internal = match self.curve_tangent_internal.get(&(line_idx, arc_idx)) {
                 Some(&decided) => decided,
@@ -104,26 +147,33 @@ impl Problem<'_> {
             r.push(self.fit_len0(arc_idx) * (line_dir[0] * ty - line_dir[1] * tx));
         } else if matches!(self.kind_of(arc_idx), Kind::Circle | Kind::Arc) {
             // Line tangent to a circle or arc (identical math: an arc reuses its
-            // underlying circle). If a coincident maps a line endpoint to the
-            // curve, the contact is pinned and we measure perpendicularity of the
-            // line direction against the radial direction at that endpoint.
-            // Otherwise the line body is tangent to the circle: perpendicular
-            // distance from the centre to the infinite line equals the radius.
-            if let Some(&pinned_pt) = self.line_circle_coincident.get(&(line_idx, arc_idx)) {
-                // Contact is whichever line endpoint the coincident constraint
-                // pinned onto the curve. Resolving through `point()` with the
-                // stored selector (not a hand-inverted copy of it) keeps this
-                // honest for both pin sides: reading the opposite foot measured
-                // tangency at a point the constraints never tied down, and a
-                // correctly-tangent sketch read ~-0.9 instead of 0.
-                let contact = self.point(
+            // underlying circle). When a coincident pins an endpoint of either
+            // operand onto the other, the contact is pinned and we measure
+            // perpendicularity of the line direction against the radial
+            // direction at that contact. Otherwise the line body is tangent to
+            // the circle: perpendicular distance from the centre to the
+            // infinite line equals the radius.
+            if let Some(contact) = contact {
+                // Contact is whichever operand endpoint the coincident pinned
+                // onto the other. Resolving through `point()` with the stored
+                // selector (not a hand-inverted copy of it) keeps this honest
+                // for both pin sides and for the locus form: reading the
+                // opposite foot measured tangency at a point the constraints
+                // never tied down, and a correctly-tangent sketch read ~-0.9
+                // instead of 0.
+                let owner = if contact.owner == 0 {
+                    line_idx
+                } else {
+                    arc_idx
+                };
+                let p = self.point(
                     x,
                     Ref::Entity {
-                        index: line_idx,
-                        point: pinned_pt,
+                        index: owner,
+                        point: contact.selector,
                     },
                 );
-                let rd = self.radius_dir(x, arc_idx, arc_pt, contact);
+                let rd = self.radius_dir(x, arc_idx, arc_pt, p);
                 r.push(self.line_len0(line_idx) * (line_dir[0] * rd[0] + line_dir[1] * rd[1]));
             } else {
                 let (cx, cy) = (arc_ep[0], arc_ep[1]);

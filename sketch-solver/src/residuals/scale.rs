@@ -95,6 +95,15 @@ impl Problem<'_> {
         (self.line_len0(a) * self.line_len0(b)).sqrt()
     }
 
+    /// Seed length of a contact-pinned curve/curve tangent row: the smaller of
+    /// the two seed radii, floored like `line_len0`. The row is a sine times
+    /// this length, so it scales with the pair's own size and with the sketch.
+    pub(super) fn curve_pair_radius0(&self, a: u32, b: u32) -> f64 {
+        let ra = self.params(&self.x0, a)[2].abs();
+        let rb = self.params(&self.x0, b)[2].abs();
+        ra.min(rb).max(MIN_LEN_REL * self.scale)
+    }
+
     /// Seed length of a fit spline: its fit-point polyline, which is the curve's
     /// own scale (the chain lies inside the hull of the points and handles).
     pub(super) fn fit_len0(&self, index: u32) -> f64 {

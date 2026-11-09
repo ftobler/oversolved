@@ -487,8 +487,8 @@ fn line_circle_tangent_honors_the_pinned_end() {
     );
     let p = Problem::new(&inp);
     assert_eq!(
-        p.line_circle_coincident.get(&(0, 1)),
-        Some(&PointSelector::End)
+        p.tangent_contact.get(&(0, 1)).map(|c| c.selector),
+        Some(PointSelector::End)
     );
     let r = p.residuals(&p.x0);
     assert_eq!(r.len(), 2);
@@ -521,8 +521,8 @@ fn line_circle_tangent_honors_the_pinned_start() {
     );
     let p = Problem::new(&inp);
     assert_eq!(
-        p.line_circle_coincident.get(&(0, 1)),
-        Some(&PointSelector::Start)
+        p.tangent_contact.get(&(0, 1)).map(|c| c.selector),
+        Some(PointSelector::Start)
     );
     let r = p.residuals(&p.x0);
     assert_eq!(r.len(), 2);
@@ -628,6 +628,94 @@ fn solve_from_a_pinned_tangent_seed_stays_put() {
             );
         }
     }
+}
+
+/// A contact-pinned arc/arc tangent is an angle row, so its residual is a
+/// sine times a seed length: scaling the sketch scales the row, and a
+/// correctly tangent seed reads 0 whether the joint is on the outer or the
+/// inner side of the line of centres.
+#[test]
+fn arc_arc_contact_tangent_row_is_a_length() {
+    let absent = PointSelector::Absent;
+    // 2-4-6: A centre (0,0) r2 Start (2,0); B centre (2,2) r2 Start (2,0)
+    // is its 270 deg point. The radials at the joint are (1,0) and (0,-1),
+    // so the sine is -1 and the row -min(rA,rB).
+    let build = |s: f64| {
+        input(
+            vec![ent(Kind::Arc, 0), ent(Kind::Arc, 5)],
+            vec![
+                0.0,
+                0.0,
+                2.0 * s,
+                0.0,
+                90.0,
+                2.0 * s,
+                2.0 * s,
+                2.0 * s,
+                270.0,
+                360.0,
+            ],
+            vec![
+                cons(
+                    ConstraintKind::Coincident,
+                    ab(
+                        e_ref(0, PointSelector::Start),
+                        e_ref(1, PointSelector::Start),
+                    ),
+                ),
+                cons(
+                    ConstraintKind::Tangent,
+                    ab(e_ref(0, absent), e_ref(1, absent)),
+                ),
+            ],
+        )
+    };
+    let row = |s: f64| {
+        let inp = build(s);
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert_eq!(r.len(), 3, "coincident 2 rows, tangent 1");
+        r[2]
+    };
+    let base = row(1.0);
+    assert!((base.abs() - 2.0).abs() < 1e-12, "row {base}");
+    let scaled = row(1000.0);
+    assert!(
+        (scaled - 1000.0 * base).abs() < 1e-6,
+        "scaled row {scaled} from {base}"
+    );
+
+    // External tangency: A Start (2,0), B centre (4,0) r2 Start (2,0).
+    // Internal tangency: A End (0,2), B centre (0,1) r1 Start (0,2).
+    let zero_seed = |a: [f64; 5], b: [f64; 5]| {
+        let inp = input(
+            vec![ent(Kind::Arc, 0), ent(Kind::Arc, 5)],
+            [a.as_slice(), b.as_slice()].concat(),
+            vec![
+                cons(
+                    ConstraintKind::Coincident,
+                    ab(
+                        e_ref(0, PointSelector::Start),
+                        e_ref(1, PointSelector::Start),
+                    ),
+                ),
+                cons(
+                    ConstraintKind::Tangent,
+                    ab(e_ref(0, absent), e_ref(1, absent)),
+                ),
+            ],
+        );
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert_eq!(r.len(), 3);
+        assert!(p.tangent_contact.contains_key(&(1, 0)));
+        r[2]
+    };
+    let external = zero_seed([0.0, 0.0, 2.0, 0.0, 90.0], [4.0, 0.0, 2.0, 180.0, 270.0]);
+    assert!(external.abs() < 1e-12, "external tangency row {external}");
+
+    let internal = zero_seed([0.0, 0.0, 2.0, 0.0, 90.0], [0.0, 1.0, 1.0, 90.0, 180.0]);
+    assert!(internal.abs() < 1e-12, "internal tangency row {internal}");
 }
 
 #[test]

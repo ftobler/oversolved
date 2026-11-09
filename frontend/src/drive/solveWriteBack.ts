@@ -11,7 +11,7 @@
 // the backlog's `part_style` decision.
 
 import type { PartDoc, BodyResult } from '@/types/cad'
-import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
+import { applyGeometryToFeature, shouldBakeSketchGeometry } from '@/utils/yamlMutations/solveResult'
 import { reconcilePartStyle } from '@/utils/core/partStyle'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 
@@ -54,8 +54,11 @@ export function applySolveToDoc(doc: PartDoc, response: SolveResponseLike): Solv
   const cloned: PartDoc = structuredClone(doc)
   const movedFeatureIds: string[] = []
   for (const [id, feature] of Object.entries(response.result ?? {})) {
-    const geometry = (feature as { geometry?: Record<string, number[]> } | null)?.geometry
-    if (geometry && applyGeometryToFeature(cloned, id, geometry)) movedFeatureIds.push(id)
+    const row = feature as { geometry?: Record<string, number[]>; status?: string } | null
+    const geometry = row?.geometry
+    if (geometry && shouldBakeSketchGeometry(row) && applyGeometryToFeature(cloned, id, geometry)) {
+      movedFeatureIds.push(id)
+    }
   }
   if (response.bodies) {
     // Drop colour entries for bodies this solve consumed before reconciling:

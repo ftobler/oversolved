@@ -914,3 +914,31 @@ describe('unknown mutation boundary', () => {
     }
   })
 })
+
+describe('add_three_point_arc reply', () => {
+  const arcSketchDoc = () => makeDoc(makeSketch('sk1', { entities: [], initial: {} }))
+
+  const run = (through: [number, number]) => {
+    const { session } = makeSession(arcSketchDoc())
+    const result = session.execute({
+      type: 'add_three_point_arc', featureId: 'sk1',
+      start: [0, 0], through, end: [2, 0], entityId: 'a1',
+    })
+    if (!result.ok) throw new Error(`refused: ${result.message}`)
+    return result
+  }
+
+  it('names which stored vertex key holds each given point', () => {
+    const result = run([1, 1])
+    expect(result.createdIds[0]).toBe('a1')
+    expect(result.vertexKeys).toBeDefined()
+    expect([result.vertexKeys!.start, result.vertexKeys!.end].sort()).toEqual(['end', 'start'])
+  })
+
+  it('mirrors the keys when the through point flips the stored orientation', () => {
+    const above = run([1, 1]).vertexKeys!
+    const below = run([1, -1]).vertexKeys!
+    expect(above).not.toEqual(below)
+    expect({ ...below, start: below.end, end: below.start }).toEqual(above)
+  })
+})

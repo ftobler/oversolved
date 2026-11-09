@@ -4,7 +4,7 @@ import { useSolverStore } from '@/stores/solverStore'
 import { editorState, clampRollback } from '@/stores/editorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { unflattenGeometry } from '@/utils/geometry/geometryMapping'
-import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
+import { applyGeometryToFeature, shouldBakeSketchGeometry } from '@/utils/yamlMutations/solveResult'
 
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
@@ -120,7 +120,11 @@ export function useSolver(
       // other kind the authored sketch view of the result stays empty.
       const sketchDef = featureDef?.kind === 'sketch' ? featureDef : undefined
       if (feature.geometry) {
-        applyGeometryToFeature(cloned, id, feature.geometry)
+        // A failed solve still renders below, but it must not move the
+        // document: `initial` holds the last satisfied solve.
+        if (shouldBakeSketchGeometry(feature)) {
+          applyGeometryToFeature(cloned, id, feature.geometry)
+        }
         // A projection can resolve to a different kind than was declared at pick
         // time (a tilted circle -> ellipse, a partial ellipse -> spline). The
         // resolved kind shapes the rendered sketch here without rewriting the
