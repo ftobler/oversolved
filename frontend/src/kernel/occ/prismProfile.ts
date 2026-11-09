@@ -32,7 +32,7 @@ import {
   type Vec3,
 } from './primitives'
 import { uvTo3d } from './prismGeometry'
-import type { LoopEdge } from '../profileLoops'
+import { syncFitSplineEnds, type LoopEdge } from '../profileLoops'
 import { copyShape } from './transforms'
 import { swallowUnlessTrap } from '../errors'
 import { JOINT_SNAP_TOL, OCC_CONFUSION, TOL_TOPOLOGY_MERGE } from '../solverConstants'
@@ -510,7 +510,11 @@ function snapLoopJoints(loop: LoopEdge[]): LoopEdge[] {
       b['start'] = [...aEnd]  // free/free: collapse b's start onto a's end
     }
   }
-  return out
+  // A fit spline is anchored to its POLES, not to its start/end, so a joint it
+  // won moves nothing above. Sync its terminal poles onto the merged endpoints
+  // the assembler (or this snapper) gave it, or the wire is built 5e-7 away
+  // from the joint the dump calls closed.
+  return out.map(syncFitSplineEnds)
 }
 
 /**

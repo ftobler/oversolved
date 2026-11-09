@@ -220,6 +220,19 @@ export function extractProfileLoops(
                 rev.angle_end_deg = (edict.angle_start_deg as number) ?? 0
                 rev.ccw = !((edict.ccw as boolean) ?? true)
               }
+              // A fit spline is built from its poles, not from start/end: the
+              // chain has to be reversed and its knots reflected (u_max - u) or
+              // start pairs with the last pole of a curve still running the old
+              // way. Same rule as the Rust `rev` and the sweep spine.
+              if (edict.kind === 'fit_spline') {
+                const poles = edict.poles as number[][] | undefined
+                const knots = edict.knots as number[] | undefined
+                if (Array.isArray(poles)) rev.poles = [...poles].reverse().map((p) => [...p])
+                if (Array.isArray(knots) && knots.length > 0) {
+                  const uMax = knots[knots.length - 1]
+                  rev.knots = [...knots].reverse().map((u) => uMax - u)
+                }
+              }
               loop.push(rev)
               current = [...s]
             }

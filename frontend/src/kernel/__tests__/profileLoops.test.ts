@@ -3,8 +3,9 @@
 
 import { describe, it, expect } from 'vitest'
 import { interpolateFitSpline } from '@/utils/geometry/fitSpline'
-import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, loopContainment, dissolveAdjacentLoops, arcSamplePoints, ellipseArcSamplePoints, loopPts, loopGeometryKey, CENTROID_ARC_SAMPLES, type LoopEdge } from '../profileLoops'
+import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, loopContainment, dissolveAdjacentLoops, arcSamplePoints, ellipseArcSamplePoints, loopPts, loopGeometryKey, syncFitSplineEnds, CENTROID_ARC_SAMPLES, type LoopEdge } from '../profileLoops'
 import { extractProfileLoops } from '../features/shared/profileLoops'
+import { JOINT_SNAP_TOL } from '../solverConstants'
 
 const square = (s: number): LoopEdge[] => [
   { kind: 'line', start: [0, 0], end: [s, 0] },
@@ -227,6 +228,40 @@ describe('extractProfileLoops', () => {
     ]
     const loops = extractProfileLoops([surfaceFromEdges(edges)])
     expect(Array.isArray(loops)).toBe(true)
+  })
+
+  it('reverses a fit_spline with its poles and knots when it attaches backwards', () => {
+    // The authored chain runs 10 -> 5; the chain reaches it from 5, so the
+    // reversed edge must traverse 5 -> 10. Swapping start/end alone would leave
+    // start paired with the LAST pole and the dump would then measure the joint
+    // against a terminal it does not build.
+    const curve = interpolateFitSpline([[5, 0], [8, 2], [10, 0]])
+    const forward = curve.poles()
+    const backward: LoopEdge = {
+      kind: 'fit_spline',
+      start: [...forward[forward.length - 1]],
+      end: [...forward[0]],
+      poles: [...forward].reverse().map((p) => [...p]),
+      knots: [...curve.knots],
+    }
+    const surface = {
+      boundary: [
+        { kind: 'line', start: [0, 0], end: [5, 0] },
+        backward,
+        { kind: 'line', start: [10, 0], end: [0, 0] },
+      ],
+    }
+    const loops = extractProfileLoops([surface])
+    expect(loops).toHaveLength(1)
+    const fs = loops[0].find((e) => e.kind === 'fit_spline') as LoopEdge
+    const poles = fs.poles as number[][]
+    expect(fs.start).toEqual(poles[0])
+    expect(fs.end).toEqual(poles[poles.length - 1])
+    expect(fs.start).toEqual([5, 0])
+    expect(fs.end).toEqual([10, 0])
+    const knots = fs.knots as number[]
+    for (let i = 1; i < knots.length; i++) expect(knots[i]).toBeGreaterThan(knots[i - 1])
+    expect(knots[0]).toBeCloseTo(0, 12)
   })
 })
 
@@ -915,6 +950,66 @@ describe('loopGeometryKey', () => {
 
   it('calls a copy of a loop the same loop', () => {
     expect(loopGeometryKey(square().map((e) => ({ ...e })))).toBe(loopGeometryKey(square()))
+  })
+})
+
+describe('syncFitSplineEnds', () => {
+  const fitEdge = (points: [number, number][]): LoopEdge => {
+    const curve = interpolateFitSpline(points)
+    return {
+      kind: 'fit_spline',
+      start: [...curve.points[0]],
+      end: [...curve.points[curve.points.length - 1]],
+      poles: curve.poles().map((p) => [...p]),
+      knots: [...curve.knots],
+    }
+  }
+
+  it('moves a one-piece chain terminal poles and their inner neighbours', () => {
+    // A two-point interpolation is a single cubic: poles[1] and poles[2] are the
+    // inner neighbours of the two terminals and must move with them.
+    const edge = fitEdge([[0, 0], [10, 0]])
+    const poles = (edge.poles as number[][]).map((p) => [...p])
+    const knots = [...(edge.knots as number[])]
+    edge.start = [5e-7, 0]
+    edge.end = [10 + 3e-7, 0]
+    const out = syncFitSplineEnds(edge)
+    const moved = out.poles as number[][]
+    expect(out).not.toBe(edge)
+    expect(moved[0]).toEqual([5e-7, 0])
+    expect(moved[3]).toEqual([10 + 3e-7, 0])
+    expect(moved[1][0]).toBeCloseTo(poles[1][0] + 5e-7, 12)
+    expect(moved[2][0]).toBeCloseTo(poles[2][0] + 3e-7, 12)
+    expect(out.knots).toEqual(knots)
+    expect((edge.poles as number[][])[0]).toEqual(poles[0])
+    expect((edge.poles as number[][])[1]).toEqual(poles[1])
+  })
+
+  it('moves only the outer pairs of a multi-piece chain', () => {
+    const edge = fitEdge([[0, 0], [5, 3], [10, 0]])
+    const poles = (edge.poles as number[][]).map((p) => [...p])
+    edge.start = [5e-7, 0]
+    edge.end = [10 + 3e-7, 0]
+    const moved = syncFitSplineEnds(edge).poles as number[][]
+    expect(moved[0]).toEqual([5e-7, 0])
+    expect(moved[6]).toEqual([10 + 3e-7, 0])
+    expect(moved[1][0]).toBeCloseTo(poles[1][0] + 5e-7, 12)
+    expect(moved[5][0]).toBeCloseTo(poles[5][0] + 3e-7, 12)
+    for (const i of [2, 3, 4]) expect(moved[i]).toEqual(poles[i])
+  })
+
+  it('leaves a terminal pole alone when its gap exceeds JOINT_SNAP_TOL', () => {
+    // Above the snapper's rung this is a real gap and must still reach makeWire.
+    const edge = fitEdge([[0, 0], [10, 0]])
+    const poles = (edge.poles as number[][]).map((p) => [...p])
+    edge.start = [JOINT_SNAP_TOL * 2, 0]
+    edge.end = [10, 0]
+    expect(syncFitSplineEnds(edge).poles).toEqual(poles)
+  })
+
+  it('returns a non-fit-spline edge as it is', () => {
+    const line: LoopEdge = { kind: 'line', start: [0, 0], end: [1, 0] }
+    expect(syncFitSplineEnds(line)).toBe(line)
   })
 })
 
