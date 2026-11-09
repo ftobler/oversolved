@@ -143,6 +143,14 @@ describe('createMcpServer', () => {
     expect(schemaText).toContain('cylinderface')
   })
 
+  it('warns that extreme can pick a near-parallel face of another feature', () => {
+    // F2 from the spatula practice run: nothing in the reply says the winning
+    // face belongs to another feature, so the trap has to be in the tool text.
+    const select = MCP_TOOLS.find(tool => tool.name === 'select')!
+    expect(select.description).toContain('near-parallel')
+    expect(select.description).toContain('`created_by` or `on_face`')
+  })
+
   it('calls a tool and returns its payload as text content', async () => {
     const { ops, calls } = fakeOps(() => ({ ok: true, value: 7 }))
     const server = createMcpServer(ops)

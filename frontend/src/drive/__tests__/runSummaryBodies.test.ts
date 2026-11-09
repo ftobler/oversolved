@@ -104,7 +104,15 @@ describe('the run summary body source', () => {
     vi.mocked(kernel.measureSolveFeatures).mockReset()
     vi.mocked(kernel.measureSolveFeatures).mockResolvedValue([
       { id: 'sk1', volume: 0, bbox: null, bodies: {} },
-      { id: 'ex1', volume: 50, bbox: [0, 0, 0, 1, 1, 1], bodies: { body_rvA: 5, body_rvB: 5, body_rvC: 5, body_swD: 35 } },
+      {
+        id: 'ex1', volume: 50, bbox: [0, 0, 0, 1, 1, 1],
+        bodies: {
+          body_rvA: { volume: 5, faces: 6, edges: 12 },
+          body_rvB: { volume: 5, faces: 6, edges: 12 },
+          body_rvC: { volume: 5, faces: 6, edges: 12 },
+          body_swD: { volume: 35, faces: 6, edges: 12 },
+        },
+      },
     ])
   })
 

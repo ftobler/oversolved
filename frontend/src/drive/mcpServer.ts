@@ -612,6 +612,9 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'the workplane-on-a-vertex idiom. `on_face` is the face-to-edge aid and needs an inner kind "face". '
       + 'A `type` outside the kind\'s vocabulary is invalid params with the valid list '
       + 'and a "did you mean" hint. An empty match is an error naming the nearest-miss count per predicate. '
+      + '`extreme` compares projections inside the pool the earlier clauses left, so a parallel face of '
+      + 'another feature a fraction further along the axis wins; when two features have near-parallel faces, '
+      + 'add `created_by` or `on_face`, or use a predicate that separates them. '
       + 'Returns the docHash it ran against. ' + worldFrameSentence(),
     inputSchema: {
       type: 'object',
