@@ -214,6 +214,9 @@ describe('profile refs and the multisection limits', () => {
       expect(note, where).toContain('`@<sketchId>`')
       expect(note, where).toContain('`entity:<sketchId>:<entityId>`')
       expect(note, where).toContain('`?` area query')
+      // The same note serves a profile and a sweep path; only a profile needs
+      // the curve closed, so the note must not call every one-curve ref closed.
+      expect(note, where).toContain('one curve, closed for a profile')
     }
     expect(mutationInfoOf('add_sweep').fields.sketchQuery.note!).toContain('one ref per curve')
   })
@@ -571,5 +574,34 @@ describe('add_three_point_arc catalog row', () => {
     expect(note).toContain('`vertexKeys`')
     expect(note).toContain('"start"')
     expect(note).toContain('"end"')
+  })
+})
+
+// The 2026-11-08 practice round found three notes that sent a headless client
+// down the wrong path: an area query only a viewport click can store, an axis
+// split that reads as a refusal, and a selector shape only `select` documented.
+describe('practice round 2026-11-08: profile areas, the axis split and the selector shape', () => {
+  it('never promises a `?` area query from `select`', () => {
+    for (const [where, note] of allNotes()) {
+      expect(note, where).not.toContain('area query from `select`')
+    }
+  })
+
+  it('names the diameter-line split in the add_revolve axis note', () => {
+    const note = mutationInfoOf('add_revolve').fields.axis.note!
+    expect(note).toContain('diameter line')
+    expect(note).toContain('sphere or spheroid')
+  })
+
+  it('states the selector shape on the shell, fillet and chamfer notes', () => {
+    for (const [type, field] of [
+      ['add_shell', 'faces'],
+      ['add_fillet', 'edges'],
+      ['add_chamfer', 'edges'],
+    ] as const) {
+      const info = mutationInfoOf(type)
+      expect(info.note, type).toContain('{from?, kind, where}')
+      expect(info.fields[field].note, type).toContain('{from?, kind, where}')
+    }
   })
 })

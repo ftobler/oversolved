@@ -851,7 +851,9 @@ banner on stdout, so a client config must use the direct node invocation.
   or more. A profile lying along the path is refused, not built. A profile or
   path ref is a whole sketch
   (`$<sketchId>` or `@<sketchId>`), one curve (`entity:<sketchId>:<entityId>`),
-  or a `?` area query from `select`; a sweep takes one `entity:` ref per curve
+  or a `?` area query a viewport click stored (`select` does not produce sketch
+  areas; a headless client names a whole sketch or one curve, closed for a
+  profile); a sweep takes one `entity:` ref per curve
   (a slotted loop needs its two lines and two arcs as four refs, one
   `add_sweep_profile` per curve) and one path ref per curve, while extrude and
   revolve take one closed curve per ref. `vertex:` refs name the same entity as
@@ -936,7 +938,10 @@ banner on stdout, so a client config must use the direct node invocation.
   `axis` inline (`@<sketchId>/<entityId>` or an edge query from `select`) plus
   `direction`, `operation` and `merge_target`, the same keys
   `set_revolve_field` sets, and an axis that crosses a profile's interior is
-  refused by name. A revolve angle is a positive magnitude: a negative angle is
+  refused by name. Interior means one area's: a line drawn along the axis splits
+  a closed curve into two areas that each touch it, so a full circle or ellipse
+  plus its diameter line revolves into a sphere or spheroid. A revolve angle is
+  a positive magnitude: a negative angle is
   refused and the message names `direction: "reverse"` for the other way round.
   `add_transform` takes `bodies` and every `set_transform_field` field inline,
   so one call replaces the add plus one setter per field; the transform itself

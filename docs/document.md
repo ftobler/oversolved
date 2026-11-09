@@ -289,6 +289,11 @@ knows it (the format moves forward only).
     merge_target: "@body_ex1"   # optional
 ```
 
+The axis may touch the profile boundary but must not cut through its interior.
+Interior means one area's: a line drawn along the axis splits a closed curve into
+two areas that each touch it, so a full circle or ellipse plus its diameter line
+revolves into a sphere or spheroid.
+
 ### sweep
 
 ```yaml
