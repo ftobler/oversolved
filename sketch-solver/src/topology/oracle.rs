@@ -56,7 +56,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::dcel::{detect_topology, InputEntity, TopologyOut};
+use super::dcel::{detect_topology, Contact, ContactKind, ContactRef, InputEntity, TopologyOut};
 use super::profile_loops::Vec2;
 use super::TOL_TOPOLOGY_MERGE as MERGE;
 use crate::radians;
@@ -67,7 +67,7 @@ mod holes;
 mod structure;
 
 use coverage::{coverage_violations, face_polys, region_polys};
-use geometry::bbox_of;
+use geometry::{bbox_of, sample_curve};
 use structure::{check_loop, euler_violations, half_edge_usage_violations, hole_wiring_violations};
 
 // The fuzz-feature build reaches only the JSON entry, so the helpers the
@@ -254,8 +254,20 @@ fn chord_tol_for(span: f64) -> f64 {
 }
 
 /// Judge one builder run against its input. `out` must be the output of
-/// `detect_topology(input)`.
+/// `detect_topology(input, &[])`.
 pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut) -> Vec<Violation> {
+    check_topology_with_contacts(input, &[], out)
+}
+
+/// Judge one builder run that carried declared contacts. The oracle rebuilds
+/// the same identity rule from the RAW geometry and the contacts (it never
+/// reads the builder's merge), so a declared join sews the coverage grid's
+/// opening exactly as the builder sews the vertex.
+pub(crate) fn check_topology_with_contacts(
+    input: &[(String, InputEntity)],
+    contacts: &[Contact],
+    out: &TopologyOut,
+) -> Vec<Violation> {
     if input.is_empty() {
         return vec![];
     }
@@ -279,6 +291,7 @@ pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut)
         .map(|b| (b[2] - b[0]).hypot(b[3] - b[1]))
         .unwrap_or(0.0);
     let chord_tol = chord_tol_for(span);
+    let declared = declared_seals(input, contacts, chord_tol);
 
     let mut violations = Vec::new();
 
@@ -290,7 +303,7 @@ pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut)
         let authored = holes::authored_chains(&curves, chord_tol);
         let split = holes::split_chains(&out.edges, chord_tol);
         violations.extend(coverage_violations(
-            &curves, &faces, &voids, chord_tol, &shells, &authored, &split,
+            &curves, &faces, &voids, chord_tol, &shells, &authored, &split, &declared,
         ));
     }
 
@@ -306,6 +319,7 @@ pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut)
             &input_ids,
             &construction_ids,
             chord_tol,
+            &declared,
             &mut violations,
         );
     }
@@ -319,6 +333,7 @@ pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut)
             &input_ids,
             &construction_ids,
             chord_tol,
+            &declared,
             &mut violations,
         );
     }
@@ -331,6 +346,7 @@ pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut)
                 &input_ids,
                 &construction_ids,
                 chord_tol,
+                &declared,
                 &mut violations,
             );
         }
@@ -341,20 +357,129 @@ pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut)
             &input_ids,
             &construction_ids,
             chord_tol,
+            &declared,
             &mut violations,
         );
     }
     violations.extend(hole_wiring_violations(out));
     violations.extend(half_edge_usage_violations(out));
-    violations.extend(euler_violations(out));
+    violations.extend(euler_violations(out, &declared));
 
     violations
 }
 
+/// The declared-contact seals: the endpoint pairs (and endpoint-to-locus feet)
+/// the builder will weld, rebuilt from the raw records and the contacts alone.
+/// The oracle does not read the builder's vertex merge; this is its own reading
+/// of the same authored rule, so the grid can treat a declared join as the one
+/// vertex the Euler identity and coverage expect.
+fn declared_seals(
+    input: &[(String, InputEntity)],
+    contacts: &[Contact],
+    chord_tol: f64,
+) -> Vec<(Vec2, Vec2)> {
+    if contacts.is_empty() {
+        return vec![];
+    }
+    let curves = real_curves(input);
+    let mut pts: Vec<Vec2> = Vec::new();
+    for (_, c) in &curves {
+        pts.extend_from_slice(&hull_points(c));
+    }
+    let span = bbox_of(&pts)
+        .map(|b| (b[2] - b[0]).hypot(b[3] - b[1]))
+        .unwrap_or(0.0);
+    let cap = crate::tolerance::verdict_tol(if span > 0.0 { span } else { 1.0 }).max(MERGE);
+
+    let by_id: BTreeMap<&str, &InputEntity> =
+        input.iter().map(|(id, e)| (id.as_str(), e)).collect();
+    let endpoint = |r: &ContactRef| -> Option<Vec2> {
+        let e = by_id.get(r.entity.as_str())?;
+        if e.construction {
+            return None;
+        }
+        let end = match r.point.as_deref() {
+            Some("start") => false,
+            Some("end") => true,
+            _ => return None,
+        };
+        if e.kind.as_deref() == Some("fit_spline") {
+            let points = e.points.as_ref()?;
+            let curve =
+                crate::fit_spline::FitSpline::new(points, e.handle_start, e.handle_end).ok()?;
+            let last = curve.knots()[curve.point_count() - 1];
+            return Some(if end {
+                curve.eval(last)
+            } else {
+                curve.eval(curve.knots()[0])
+            });
+        }
+        if e.start.is_some() {
+            return if end { e.end } else { e.start };
+        }
+        None
+    };
+    let host_foot = |r: &ContactRef, p: Vec2| -> Option<Vec2> {
+        if r.point.is_some() {
+            return None;
+        }
+        let e = by_id.get(r.entity.as_str())?;
+        if e.construction {
+            return None;
+        }
+        let c = curve_of(e)?;
+        let sampled = sample_curve(&c, chord_tol);
+        sampled
+            .pts
+            .iter()
+            .map(|q| (*q, (q[0] - p[0]).hypot(q[1] - p[1])))
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(q, _)| q)
+    };
+
+    let mut out = Vec::new();
+    let near = |a: Vec2, b: Vec2| (a[0] - b[0]).hypot(a[1] - b[1]) <= cap;
+    for c in contacts {
+        match c.kind {
+            ContactKind::Join => {
+                if let (Some(a), Some(b)) = (endpoint(&c.a), endpoint(&c.b)) {
+                    if near(a, b) {
+                        out.push((a, b));
+                    }
+                }
+            }
+            ContactKind::On => {
+                let pa = endpoint(&c.a);
+                let pb = endpoint(&c.b);
+                if let (Some(a), Some(q)) = (pa, host_foot(&c.b, pa.unwrap_or([0.0, 0.0]))) {
+                    if near(a, q) {
+                        out.push((a, q));
+                    }
+                }
+                if let (Some(b), Some(q)) = (pb, host_foot(&c.a, pb.unwrap_or([0.0, 0.0]))) {
+                    if near(b, q) {
+                        out.push((b, q));
+                    }
+                }
+            }
+            ContactKind::Tangent { .. } => {}
+        }
+    }
+    out
+}
+
 /// Convenience: run the builder and judge the result.
 pub(crate) fn check_input(input: &[(String, InputEntity)]) -> Vec<Violation> {
-    let out = detect_topology(input);
-    check_topology(input, &out)
+    check_input_with_contacts(input, &[])
+}
+
+/// Run the builder with declared contacts and judge the result.
+pub(crate) fn check_input_with_contacts(
+    input: &[(String, InputEntity)],
+    contacts: &[Contact],
+) -> Vec<Violation> {
+    let out = detect_topology(input, contacts);
+    check_topology_with_contacts(input, contacts, &out)
 }
 
 /// Determinism against an already-computed run: the vertex id sequence, the
@@ -367,7 +492,7 @@ pub(crate) fn check_determinism_against(
     input: &[(String, InputEntity)],
     out: &TopologyOut,
 ) -> Vec<Violation> {
-    let other = detect_topology(input);
+    let other = detect_topology(input, &[]);
     let ids_a: Vec<&String> = out.vertices.iter().map(|(k, _)| k).collect();
     let ids_b: Vec<&String> = other.vertices.iter().map(|(k, _)| k).collect();
     let edges_a: Vec<(&String, usize)> = out
@@ -392,7 +517,7 @@ pub(crate) fn check_determinism_against(
 
 /// Determinism: the same input twice, from scratch.
 pub(crate) fn check_determinism(input: &[(String, InputEntity)]) -> Vec<Violation> {
-    let out = detect_topology(input);
+    let out = detect_topology(input, &[]);
     check_determinism_against(input, &out)
 }
 
@@ -409,8 +534,8 @@ pub(crate) fn check_order_independence(
         )];
     }
     let permuted: Vec<(String, InputEntity)> = perm.iter().map(|&i| input[i].clone()).collect();
-    let base = face_summaries(&detect_topology(input));
-    let other = face_summaries(&detect_topology(&permuted));
+    let base = face_summaries(&detect_topology(input, &[]));
+    let other = face_summaries(&detect_topology(&permuted, &[]));
     // A reordering moves nothing; the only noise it can introduce is a merge
     // decision at sub-merge distances, so that is the perturbation the
     // comparison is allowed to explain.
@@ -433,8 +558,8 @@ pub(crate) fn check_stability(
     input: &[(String, InputEntity)],
     jittered: &[(String, InputEntity)],
 ) -> Vec<Violation> {
-    let base = face_summaries(&detect_topology(input));
-    let moved = face_summaries(&detect_topology(jittered));
+    let base = face_summaries(&detect_topology(input, &[]));
+    let moved = face_summaries(&detect_topology(jittered, &[]));
     // Two endpoints can move towards each other by 2 * MERGE / 10; that is the
     // largest boundary motion the comparison must be able to explain.
     compare_face_multisets(
@@ -480,8 +605,8 @@ pub(crate) fn jitter_input(
 /// JSON of the violations for the node boundary: `[{class, reason, text}]`.
 #[cfg(feature = "fuzz")]
 pub(crate) fn violations_json(input: &[u8]) -> Result<Vec<u8>, String> {
-    let geometry = super::codec::decode_input(input).map_err(|e| format!("{e:?}"))?;
-    let violations = check_input(&geometry);
+    let decoded = super::codec::decode_payload(input).map_err(|e| format!("{e:?}"))?;
+    let violations = check_input_with_contacts(&decoded.entities, &decoded.contacts);
     let values: Vec<serde_json::Value> = violations
         .iter()
         .map(|v| {

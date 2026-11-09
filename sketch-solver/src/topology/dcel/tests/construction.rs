@@ -9,7 +9,7 @@ fn construction_corner_diagonal_adds_no_crossing() {
     // already real corners contributes nothing, so the golden stays valid.
     let mut geom = square(2.0);
     geom.push(("diag".into(), as_construction(line([0.0, 0.0], [2.0, 2.0]))));
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(
         t.surfaces.len(),
         1,
@@ -26,7 +26,7 @@ fn construction_crossbar_yields_two_snap_points_and_one_face() {
     // the sides they cross stay single edges (the Design-B parity pin).
     let mut geom = square(2.0);
     geom.push(("bar".into(), as_construction(line([-1.0, 1.0], [3.0, 1.0]))));
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(
         t.surfaces.len(),
         1,
@@ -64,7 +64,7 @@ fn construction_crossbar_does_not_renumber_real_vertices() {
     prepended.extend(square(2.0));
 
     for geom in [appended, prepended] {
-        let vm = vert_map(&detect_topology(&geom));
+        let vm = vert_map(&detect_topology(&geom, &[]));
         assert_eq!(
             vm.len(),
             6,
@@ -94,7 +94,7 @@ fn construction_crossbar_does_not_renumber_real_vertices() {
 #[test]
 fn construction_circle_alone_emits_nothing() {
     let geom = vec![("c0".into(), as_construction(circle([0.0, 0.0], 1.0)))];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 0);
     assert_eq!(t.intersection_points.len(), 0);
     assert_eq!(t.edges.len(), 0);
@@ -109,7 +109,7 @@ fn construction_circle_crossing_line_yields_two_snap_points_no_face() {
         ("l0".into(), line([-2.0, 0.0], [2.0, 0.0])),
         ("c0".into(), as_construction(circle([0.0, 0.0], 1.0))),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 0);
     assert_eq!(t.intersection_points.len(), 2);
     assert!(has_point(&t.intersection_points, [1.0, 0.0]));
@@ -129,7 +129,7 @@ fn two_crossing_construction_lines_yield_one_snap_point() {
         ("x".into(), as_construction(line([0.0, 0.0], [2.0, 2.0]))),
         ("y".into(), as_construction(line([0.0, 2.0], [2.0, 0.0]))),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 0);
     assert_eq!(t.intersection_points.len(), 1);
     assert!(has_point(&t.intersection_points, [1.0, 1.0]));
@@ -155,7 +155,7 @@ fn construction_arc_crosses_line_only_inside_its_sweep() {
         ("l0".into(), line([0.5, -2.0], [0.5, 2.0])),
         ("a0".into(), quarter.clone()),
     ];
-    let t = detect_topology(&inside);
+    let t = detect_topology(&inside, &[]);
     assert_eq!(
         t.intersection_points.len(),
         1,
@@ -168,7 +168,7 @@ fn construction_arc_crosses_line_only_inside_its_sweep() {
         ("a0".into(), quarter),
     ];
     assert_eq!(
-        detect_topology(&outside).intersection_points.len(),
+        detect_topology(&outside, &[]).intersection_points.len(),
         0,
         "crossings past the sweep end are not snap points"
     );
@@ -187,7 +187,7 @@ fn construction_ellipse_crossing_is_clipped_to_the_line_segment() {
             as_construction(ellipse([0.0, 0.0], 4.0, 2.0, 0.0)),
         ),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(
         t.surfaces.len(),
         0,
@@ -220,7 +220,7 @@ fn construction_arc_crossing_a_real_ellipse_is_clipped_to_its_sweep() {
         ("e0".into(), ellipse([0.0, 0.0], 4.0, 2.0, 0.0)),
         ("a0".into(), quarter),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(
         t.surfaces.len(),
         1,

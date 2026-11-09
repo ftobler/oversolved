@@ -10,7 +10,7 @@
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
-use super::dcel::{InputEntity, TopologyOut};
+use super::dcel::{Contact, ContactKind, ContactRef, InputEntity, TopologyOut, UnmetContact};
 use super::profile_loops::{BoundaryEdge, EdgeGeom, Vec2};
 use crate::fit_spline::{fit_spline_error_message, FitSpline};
 
@@ -31,6 +31,9 @@ pub enum TopologyCodecError {
     /// philosophy: counts are untrusted, and here the cost of believing them
     /// is quadratic downstream, so the refusal happens at decode.
     TooManyEntities,
+    /// More declared contacts than `MAX_ENTITIES`. The area builder resolves
+    /// each against the entity list, so the same untrusted-count rule applies.
+    TooManyContacts,
     /// A `fit_spline` whose point list cannot be interpolated (coincident
     /// consecutive points, too few or too many). The message names the entity
     /// and the points, the same refusal the authoring sugar surfaces.
@@ -162,11 +165,85 @@ fn reject_non_finite(raw: &[(String, RawGeom)]) -> Result<(), TopologyCodecError
     Ok(())
 }
 
-/// Decode the ordered `[[eid, geom], ...]` payload into classified-ready input.
-pub fn decode_input(bytes: &[u8]) -> Result<Vec<(String, InputEntity)>, TopologyCodecError> {
-    let raw: Vec<(String, RawGeom)> = serde_json::from_slice(bytes)?;
+/// A declared contact on the wire: the authored constraint id, its kind, and
+/// its two operands.
+#[derive(Clone, Debug, Deserialize)]
+struct RawContact {
+    #[serde(default)]
+    id: String,
+    kind: String,
+    a: RawRef,
+    b: RawRef,
+    #[serde(default)]
+    join: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct RawRef {
+    entity: String,
+    #[serde(default)]
+    point: Option<String>,
+}
+
+impl From<RawContact> for Contact {
+    fn from(c: RawContact) -> Self {
+        let kind = match c.kind.as_str() {
+            "on" => ContactKind::On,
+            "tangent" => ContactKind::Tangent { join: c.join },
+            _ => ContactKind::Join,
+        };
+        Contact {
+            id: c.id,
+            kind,
+            a: ContactRef {
+                entity: c.a.entity,
+                point: c.a.point,
+            },
+            b: ContactRef {
+                entity: c.b.entity,
+                point: c.b.point,
+            },
+        }
+    }
+}
+
+/// The decoded topology payload: the ordered entity list plus the declared
+/// contacts (empty for the legacy array form and for every pre-contact
+/// caller).
+#[derive(Debug, Default)]
+pub struct DecodedTopology {
+    pub entities: Vec<(String, InputEntity)>,
+    pub contacts: Vec<Contact>,
+}
+
+/// The v2 object form, `{"entities": [...], "contacts": [...]}`. Kept separate
+/// from the legacy bare array so a payload without contacts decodes exactly as
+/// it always did.
+#[derive(Deserialize)]
+struct ObjectPayload {
+    entities: Vec<(String, RawGeom)>,
+    #[serde(default)]
+    contacts: Vec<RawContact>,
+}
+
+/// Decode either payload form. The bare array is the original ordered
+/// `[[eid, geom], ...]` form and carries no contacts.
+pub fn decode_payload(bytes: &[u8]) -> Result<DecodedTopology, TopologyCodecError> {
+    let value: Value = serde_json::from_slice(bytes)?;
+    let (raw, contacts) = if value.is_array() {
+        (
+            serde_json::from_value::<Vec<(String, RawGeom)>>(value)?,
+            Vec::new(),
+        )
+    } else {
+        let payload: ObjectPayload = serde_json::from_value(value)?;
+        (payload.entities, payload.contacts)
+    };
     if raw.len() > MAX_ENTITIES {
         return Err(TopologyCodecError::TooManyEntities);
+    }
+    if contacts.len() > MAX_ENTITIES {
+        return Err(TopologyCodecError::TooManyContacts);
     }
     reject_non_finite(&raw)?;
     // A fit spline whose points cannot be interpolated is refused here, with the
@@ -185,7 +262,19 @@ pub fn decode_input(bytes: &[u8]) -> Result<Vec<(String, InputEntity)>, Topology
             ));
         }
     }
-    Ok(raw.into_iter().map(|(eid, g)| (eid, g.into())).collect())
+    Ok(DecodedTopology {
+        entities: raw.into_iter().map(|(eid, g)| (eid, g.into())).collect(),
+        contacts: contacts.into_iter().map(Contact::from).collect(),
+    })
+}
+
+/// Decode the ordered `[[eid, geom], ...]` payload into classified-ready input.
+/// Test-only now that the WASM entry decodes the full payload: it intentionally
+/// ignores the contacts of an object-form payload, so the fixtures that need
+/// only geometry keep their old contract.
+#[cfg(test)]
+pub fn decode_input(bytes: &[u8]) -> Result<Vec<(String, InputEntity)>, TopologyCodecError> {
+    Ok(decode_payload(bytes)?.entities)
 }
 
 // ─── Output ───
@@ -270,7 +359,11 @@ fn reject_non_finite_output(out: &TopologyOut) -> Result<(), TopologyCodecError>
             .chain(s.holes.iter().flatten())
             .all(|be| geom_is_finite(&be.geom))
     });
-    if points_ok && edges_ok && surfaces_ok {
+    let unmet_ok = out
+        .unmet_contacts
+        .iter()
+        .all(|c| pt_ok(&c.a) && pt_ok(&c.b) && c.gap.is_finite());
+    if points_ok && edges_ok && surfaces_ok && unmet_ok {
         Ok(())
     } else {
         Err(TopologyCodecError::NonFinite)
@@ -445,12 +538,29 @@ pub fn encode_output(out: &TopologyOut) -> Result<Vec<u8>, TopologyCodecError> {
         })
         .collect();
 
+    // Declared contacts the geometry did not meet. The TS decorator carries
+    // them beside the surfaces so the feature error can name the authored
+    // constraint id instead of only the nearest open ends.
+    let unmet_contacts: Vec<Value> = out
+        .unmet_contacts
+        .iter()
+        .map(|c: &UnmetContact| {
+            json!({
+                "id": c.id,
+                "a": pt(c.a),
+                "b": pt(c.b),
+                "gap": c.gap,
+            })
+        })
+        .collect();
+
     let root = json!({
         "intersection_points": Value::Object(ip),
         "vertices": Value::Object(verts),
         "edges": edges,
         "surfaces": surfaces,
         "hole_regions": hole_regions,
+        "unmet_contacts": unmet_contacts,
     });
     serde_json::to_vec(&root).map_err(TopologyCodecError::Json)
 }
@@ -469,7 +579,7 @@ mod tests {
         ]);
         let bytes = serde_json::to_vec(&input).unwrap();
         let geom = decode_input(&bytes).unwrap();
-        let out = super::super::detect_topology(&geom);
+        let out = super::super::detect_topology(&geom, &[]);
         let encoded = encode_output(&out).expect("square output is finite");
         let v: Value = serde_json::from_slice(&encoded).unwrap();
         assert_eq!(v["surfaces"].as_array().unwrap().len(), 1);
@@ -492,7 +602,7 @@ mod tests {
         let input = json!([["e0", {"kind": "ellipse", "center": [0.0, 0.0], "a": 3.0, "b": 1.0, "theta": 0.0}]]);
         let bytes = serde_json::to_vec(&input).unwrap();
         let geom = decode_input(&bytes).unwrap();
-        let out = super::super::detect_topology(&geom);
+        let out = super::super::detect_topology(&geom, &[]);
         let v: Value =
             serde_json::from_slice(&encode_output(&out).expect("ellipse output is finite"))
                 .unwrap();
@@ -620,7 +730,7 @@ mod tests {
                 ["d", {"start": [0.0, 2.0], "end": [0.0, 0.0]}],
             ]);
             let bytes = serde_json::to_vec(&input).unwrap();
-            super::super::detect_topology(&decode_input(&bytes).unwrap())
+            super::super::detect_topology(&decode_input(&bytes).unwrap(), &[])
         }
         assert!(encode_output(&square()).is_ok());
         type Poison = fn(&mut TopologyOut);

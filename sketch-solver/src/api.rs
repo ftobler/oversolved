@@ -9,7 +9,7 @@
 use crate::codec::{decode_input, encode_output, CodecError};
 use crate::solve::solve_sketch;
 use crate::topology::codec::{
-    decode_input as decode_topology_input, encode_output as encode_topology_output,
+    decode_payload as decode_topology_payload, encode_output as encode_topology_output,
     TopologyCodecError,
 };
 use crate::topology::detect_topology;
@@ -33,8 +33,8 @@ pub fn solve_bytes(input: &[u8]) -> Result<Vec<u8>, CodecError> {
 /// native `cargo test` exercises the exact path the browser runs. Kept separate
 /// from the solve so the two stay independently testable.
 pub fn detect_topology_bytes(input: &[u8]) -> Result<Vec<u8>, TopologyCodecError> {
-    let geometry = decode_topology_input(input)?;
-    let out = detect_topology(&geometry);
+    let decoded = decode_topology_payload(input)?;
+    let out = detect_topology(&decoded.entities, &decoded.contacts);
     encode_topology_output(&out)
 }
 

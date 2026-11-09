@@ -8,6 +8,7 @@ use self::helpers::*;
 
 mod construction;
 mod db9;
+mod declared_contacts;
 mod fit_spline;
 mod helpers;
 mod primitives;
@@ -59,7 +60,7 @@ fn circle_crossed_by_a_closed_slot_keeps_the_circle() {
     // -4.86 and the existence gate dropped it. Three areas: the slot inside the
     // circle, the slot outside it, and the circle minus the slot.
     let geom = circle_with_closed_slot([0.0, 0.0], true);
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 3, "the circle complement is an area");
     let area: f64 = t
         .surfaces
@@ -107,7 +108,7 @@ fn a_line_closed_slot_and_an_offset_circle_keep_the_same_union() {
         circle_with_closed_slot([-1.0, 0.0], true),
     ];
     for (k, geom) in controls.into_iter().enumerate() {
-        let t = detect_topology(&geom);
+        let t = detect_topology(&geom, &[]);
         let area: f64 = t
             .surfaces
             .iter()
@@ -130,7 +131,7 @@ fn frame_of_four_rects_publishes_the_void() {
     geom.extend(rect_lines("B", 0.0, 4.0, 6.0, 6.0));
     geom.extend(rect_lines("C", 0.0, 2.0, 2.0, 4.0));
     geom.extend(rect_lines("D", 4.0, 2.0, 6.0, 4.0));
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 4, "the four rectangle areas, no void");
     let area: f64 = t
         .surfaces
@@ -166,7 +167,7 @@ fn nested_rect_keeps_its_hole() {
     // the inner rectangle remains its own selectable surface.
     let mut geom = rect_lines("out", 0.0, 0.0, 10.0, 10.0);
     geom.extend(rect_lines("in", 3.0, 3.0, 6.0, 6.0));
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 2, "the ring and the inner rectangle");
     let ring = t
         .surfaces
@@ -208,7 +209,7 @@ fn an_l_shaped_union_of_touching_rects_stays_material() {
     // sample would not tell this from the frame's void.
     let mut geom = rect_lines("a", 0.0, 0.0, 2.0, 2.0);
     geom.extend(rect_lines("b", 0.0, 2.0, 1.0, 4.0));
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 2, "both rectangles stay material");
     let area: f64 = t
         .surfaces
@@ -248,12 +249,12 @@ fn vertex_emission_order_is_the_registration_order_on_every_run() {
         // after the four seeded corners.
         ("cross".into(), line([-1.0, 2.0], [5.0, 2.0])),
     ];
-    let first = detect_topology(&geom);
+    let first = detect_topology(&geom, &[]);
     let vertex_ids = |t: &crate::topology::dcel::TopologyOut| -> Vec<String> {
         t.vertices.iter().map(|(k, _)| k.clone()).collect()
     };
     for _ in 0..64 {
-        assert_eq!(vertex_ids(&detect_topology(&geom)), vertex_ids(&first));
+        assert_eq!(vertex_ids(&detect_topology(&geom, &[])), vertex_ids(&first));
     }
     // Registration order, not sorted: the seeded corners own _v0.._v3, the
     // cross line's free endpoints follow, then the two chord hits.
@@ -274,7 +275,7 @@ fn vertex_emission_order_is_the_registration_order_on_every_run() {
 
 #[test]
 fn single_square_is_one_surface() {
-    let t = detect_topology(&square(2.0));
+    let t = detect_topology(&square(2.0), &[]);
     assert_eq!(t.surfaces.len(), 1);
     assert_eq!(t.surfaces[0].boundary.len(), 4);
     assert!(t.surfaces[0].holes.is_empty());
@@ -284,7 +285,7 @@ fn single_square_is_one_surface() {
 #[test]
 fn standalone_circle_is_one_surface_two_arcs() {
     let geom = vec![("c0".into(), circle([0.0, 0.0], 1.0))];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 1);
     assert_eq!(t.surfaces[0].boundary.len(), 2);
     assert_eq!(t.surfaces[0].face_entity_ids, vec!["c0".to_string()]);
@@ -299,7 +300,7 @@ fn near_tangent_circles_stay_two_standalone_faces() {
         ("cA".into(), circle([0.0, 0.0], 5.0)),
         ("cB".into(), circle([10.0 - 1e-6, 0.0], 5.0)),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 2);
     assert!(
         t.edges.is_empty(),
@@ -329,7 +330,7 @@ fn near_tangent_lines_at_the_circle_seam_keep_the_disk_face() {
         ("l1".into(), tangent_line(std::f64::consts::PI - delta)),
         ("l2".into(), tangent_line(-std::f64::consts::PI + delta)),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert!(
         t.surfaces
             .iter()
@@ -367,7 +368,7 @@ fn near_tangent_lines_at_the_ellipse_seam_keep_the_face() {
         ("l1".into(), tangent_line(delta)),
         ("l2".into(), tangent_line(-delta)),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     // The two contacts land a hair either side of the 0/2pi seam and must fuse
     // into one vertex; without the seam collapse that vertex splits the ellipse
     // into two zero-length segments and the standalone face is dropped.
@@ -447,7 +448,7 @@ fn incomplete_entities_are_dropped_per_kind() {
         ),
     ];
     for (label, ent) in cases {
-        let t = detect_topology(&[("bad".into(), ent)]);
+        let t = detect_topology(&[("bad".into(), ent)], &[]);
         assert!(t.edges.is_empty(), "{label} must contribute no edges");
         assert!(t.surfaces.is_empty(), "{label} must contribute no surfaces");
     }
@@ -537,7 +538,7 @@ fn line_tangent_exactly_at_arc_endpoint_closes_the_slot() {
     // tangent at the arc end must close the slot corner as one surface and
     // emit no degenerate sliver arc edge below MERGE/r of angular span.
     let r: f64 = 2.0;
-    let t = detect_topology(&slot_corner(r, 90.0));
+    let t = detect_topology(&slot_corner(r, 90.0), &[]);
     assert_eq!(
         t.surfaces.len(),
         1,
@@ -573,7 +574,7 @@ fn arc_endpoint_tangency_tolerance_is_world_scaled() {
                 angle_in_arc(radians(90.0), r, 0.0, end_deg),
                 "delta_world {delta_world:e}: a contact within MERGE of the arc end is inside the sweep"
             );
-        let t = detect_topology(&slot_corner(r, end_deg));
+        let t = detect_topology(&slot_corner(r, end_deg), &[]);
         assert_eq!(
             t.surfaces.len(),
             1,
@@ -586,7 +587,7 @@ fn arc_endpoint_tangency_tolerance_is_world_scaled() {
         !angle_in_arc(radians(90.0), r, 0.0, end_deg),
         "a contact 2x MERGE past the arc end is outside the sweep"
     );
-    let t = detect_topology(&slot_corner(r, end_deg));
+    let t = detect_topology(&slot_corner(r, end_deg), &[]);
     assert_eq!(
         t.surfaces.len(),
         0,
@@ -603,7 +604,7 @@ fn arc_with_huge_decoded_angles_completes_and_keeps_the_square_intact() {
     // resolve exactly as without the hostile arc.
     let mut geom = square(2.0);
     geom.push(("bad".into(), arc([50.0, 50.0], 1.0, 3e38, 3e38)));
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 1);
     assert_eq!(t.surfaces[0].boundary.len(), 4);
     assert_eq!(t.edges.len(), 4);
@@ -621,7 +622,7 @@ fn incomplete_entity_does_not_take_down_its_neighbours() {
             ..Default::default()
         },
     ));
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 1);
     assert_eq!(t.edges.len(), 4);
 }
@@ -633,7 +634,7 @@ fn concentric_circles_make_two_areas_outer_has_hole() {
         ("outer".into(), circle([0.0, 0.0], 2.0)),
         ("inner".into(), circle([0.0, 0.0], 1.0)),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 2);
     // The bigger circle carries the smaller as a hole; the smaller is its own area.
     let with_hole = t.surfaces.iter().filter(|s| !s.holes.is_empty()).count();
@@ -646,7 +647,7 @@ fn two_crossing_lines_enclose_nothing() {
         ("h".into(), line([-1.0, 0.0], [1.0, 0.0])),
         ("v".into(), line([0.0, -1.0], [0.0, 1.0])),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 0);
     // One intersection vertex at the origin.
     assert_eq!(t.intersection_points.len(), 1);
@@ -672,7 +673,7 @@ fn three_mutually_tangent_circles_make_three_areas() {
             circle([-2.4280929565429688, -4.629749298095703], r),
         ),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 3, "the three disks; the gap is a void");
     let area: f64 = t
         .surfaces
@@ -695,7 +696,7 @@ fn near_tangent_circle_pair_miss_side_stays_two_standalone_faces() {
     let r: f64 = 5.0;
     let tol = tangent_gap_tol(r, MERGE);
     for gap in [1e-9, 1e-7, 0.5 * tol] {
-        let t = detect_topology(&circle_pair_offset_by(r, gap));
+        let t = detect_topology(&circle_pair_offset_by(r, gap), &[]);
         assert_eq!(t.surfaces.len(), 2, "gap {gap:e}: two standalone disks");
         assert!(
             t.edges.is_empty(),
@@ -725,7 +726,7 @@ fn three_circles_a_hair_apart_make_three_areas() {
             ("B".into(), circle([s, 0.0], r)),
             ("C".into(), circle([s / 2.0, 3.0f64.sqrt() * s / 2.0], r)),
         ];
-        let t = detect_topology(&geom);
+        let t = detect_topology(&geom, &[]);
         assert_eq!(t.surfaces.len(), 3, "gap {gap:e}: the three disks");
     }
 }
@@ -746,7 +747,7 @@ fn tangent_line_between_two_circles_closes_its_own_area() {
             line([3.340658664703369, 12.2], [7.9340643882751465, 5.225]),
         ),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(
         t.surfaces.len(),
         4,
@@ -757,7 +758,7 @@ fn tangent_line_between_two_circles_closes_its_own_area() {
     // in two; both of its ends are free, so neither crescent is divided.
     let mut with_chord = geom.clone();
     with_chord.push(("V".into(), line([0.0, 10.0], [0.0, 0.0])));
-    let t2 = detect_topology(&with_chord);
+    let t2 = detect_topology(&with_chord, &[]);
     assert_eq!(t2.surfaces.len(), 5, "the chord splits only the lens");
 }
 
@@ -769,7 +770,7 @@ fn tangent_collapse_holds_across_the_solver_residual_band() {
     // as soon as a drag loosens the solve. This is the side that needs the
     // rule -- only a near-MISS has no roots to work from.
     for gap in [0.0, 1e-9, 9e-8, 1e-6, 1e-5, 4e-5] {
-        let t = detect_topology(&tangent_pair_offset_by(gap));
+        let t = detect_topology(&tangent_pair_offset_by(gap), &[]);
         assert_eq!(
             t.surfaces.len(),
             4,
@@ -782,7 +783,7 @@ fn tangent_collapse_holds_across_the_solver_residual_band() {
     // past it the chords are honest geometry: 4 either way, never a
     // degenerate extra face.
     for gap in [-1e-5, -1e-4, -1e-2] {
-        let t = detect_topology(&tangent_pair_offset_by(gap));
+        let t = detect_topology(&tangent_pair_offset_by(gap), &[]);
         assert_eq!(t.surfaces.len(), 4, "gap {gap:e}: no sliver face");
     }
     // Past tolerance on the miss side the line touches nothing, leaving just
@@ -790,7 +791,7 @@ fn tangent_collapse_holds_across_the_solver_residual_band() {
     // SMALLER circle (4e-5 here) since the region needs both contacts; it is
     // pinned from both sides so widening the constant cannot pass unnoticed.
     for gap in [4.1e-5, 1e-3, 1e-2, 0.1] {
-        let t = detect_topology(&tangent_pair_offset_by(gap));
+        let t = detect_topology(&tangent_pair_offset_by(gap), &[]);
         assert_eq!(t.surfaces.len(), 3, "gap {gap:e}: a real miss stays a miss");
     }
 }
@@ -826,14 +827,14 @@ fn near_tangent_lines_to_an_ellipse_close_the_side_regions() {
         ]
     };
     for gap in [1e-7, 5e-6] {
-        let t = detect_topology(&stadium(gap));
+        let t = detect_topology(&stadium(gap), &[]);
         assert_eq!(
             t.surfaces.len(),
             3,
             "gap {gap:e}: disk + left and right side regions"
         );
     }
-    let t = detect_topology(&stadium(1e-2));
+    let t = detect_topology(&stadium(1e-2), &[]);
     assert_eq!(t.surfaces.len(), 2, "a real miss leaves the stadium whole");
 }
 
@@ -885,7 +886,7 @@ fn a_concave_container_keeps_a_nested_face_as_its_hole() {
     geom.extend(small);
     geom.push(("disc".into(), circle([8.0, 6.0], 1.0)));
 
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 3, "big C, small C and the disc");
     let with_hole: Vec<_> = t.surfaces.iter().filter(|s| !s.holes.is_empty()).collect();
     assert_eq!(with_hole.len(), 1, "only the big C carries a hole");
@@ -919,7 +920,7 @@ fn a_crossing_survives_a_foot_that_lies_off_the_segment() {
             ("A".into(), circle([0.0, 0.0], r)),
             ("H".into(), line([0.1, y], [half + 0.5, y])), // foot at x=0, off-segment
         ];
-        let t = detect_topology(&g);
+        let t = detect_topology(&g, &[]);
         assert_eq!(
             t.intersection_points.len(),
             1,
@@ -939,7 +940,7 @@ fn a_near_miss_whose_foot_is_off_the_segment_stays_a_miss() {
         ("A".into(), circle([0.0, 0.0], r)),
         ("H".into(), line([5.0, y], [40.0, y])), // foot at x=0, well off the segment
     ];
-    let t = detect_topology(&g);
+    let t = detect_topology(&g, &[]);
     assert!(t.intersection_points.is_empty());
 }
 
@@ -975,7 +976,7 @@ fn venn_chord_splits_lens_into_four_areas() {
             ),
         ),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 4, "2 crescents + 2 lens halves");
 }
 
@@ -985,7 +986,7 @@ fn line_slashes_circle_into_two_areas() {
         ("c0".into(), circle([0.0, 0.0], 1.0)),
         ("l0".into(), line([-2.0, 0.0], [2.0, 0.0])),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 2);
 }
 
@@ -1004,7 +1005,7 @@ fn center_to_center_line_bounds_no_spike() {
         ("B".into(), circle([0.0, 10.0], 4.0)),
         ("V".into(), line([0.0, 10.0], [0.0, 0.0])),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 4, "2 crescents + 2 lens halves");
     // The line only divides the lens, so it must appear in exactly the two
     // lens-half faces, never in a crescent it merely dangled into.
@@ -1036,7 +1037,7 @@ fn full_open_spline_half_edge_preserves_its_control_points() {
         ("s0".into(), spline_open(start, c1, c2, end)),
         ("l0".into(), line(end, start)),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 1, "spline plus chord close one loop");
     let spline = t
         .edges
@@ -1052,7 +1053,7 @@ fn full_open_spline_half_edge_preserves_its_control_points() {
 #[test]
 fn standalone_ellipse_is_one_surface() {
     let geom = vec![("e0".into(), ellipse([0.0, 0.0], 4.0, 2.0, 30.0))];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 1);
     assert_eq!(t.surfaces[0].boundary.len(), 1);
     assert!(matches!(
@@ -1068,7 +1069,7 @@ fn closed_spline_is_one_surface() {
         "s0".into(),
         spline_closed([0.0, 0.0], [1.0, 2.0], [-1.0, 2.0]),
     )];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 1);
     assert_eq!(t.surfaces[0].boundary.len(), 1);
     assert!(matches!(
@@ -1086,7 +1087,7 @@ fn ellipse_split_by_a_center_line_makes_two_faces() {
         ("e0".into(), ellipse([0.0, 0.0], 4.0, 2.0, 0.0)),
         ("l0".into(), line([0.0, -3.0], [0.0, 3.0])),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 2, "the chord splits the ellipse in two");
     let arcs = t
         .edges
@@ -1107,7 +1108,7 @@ fn closed_spline_split_by_a_line_makes_two_faces() {
         ),
         ("l0".into(), line([-2.0, 1.0], [2.0, 1.0])),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 2, "the chord splits the spline loop");
     let spline_edges = t
         .edges
@@ -1131,7 +1132,7 @@ fn a_self_crossing_spline_closes_its_lobe() {
         "s0".into(),
         spline_open([0.0, 0.0], [4.0, 3.0], [-4.0, 3.0], [1.0, 0.0]),
     )];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 1, "the lobe is the one face");
     let boundary = &t.surfaces[0].boundary;
     assert_eq!(boundary.len(), 1, "the lobe is the self-loop piece alone");
@@ -1170,7 +1171,7 @@ fn a_node_at_the_start_still_slices_its_lobe() {
         "s0".into(),
         spline_open([0.0, 0.0], [1.0, 1.0], [0.0, 2.0], [-3.0, -9.0]),
     )];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 1, "the lobe is the one face");
     let boundary = &t.surfaces[0].boundary;
     assert_eq!(boundary.len(), 1, "the lobe is the self-loop piece alone");
@@ -1197,7 +1198,7 @@ fn a_sliced_washer_keeps_the_c_shapes_and_drops_the_bore_halves() {
         ("inner".into(), circle([0.0, 0.0], 1.0)),
         ("slice".into(), line([-3.0, 0.0], [3.0, 0.0])),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 2, "the two ring halves are the areas");
     assert_eq!(t.hole_regions.len(), 2, "the bore halves are holes");
     for s in &t.surfaces {
@@ -1237,7 +1238,7 @@ fn an_unsliced_washer_keeps_its_island() {
         ("outer".into(), circle([0.0, 0.0], 2.0)),
         ("inner".into(), circle([0.0, 0.0], 1.0)),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 2);
     assert_eq!(t.hole_regions.len(), 0, "nothing is cut, nothing is a hole");
 }
@@ -1257,7 +1258,7 @@ fn a_nearly_closed_spline_is_a_shell_like_a_closed_one() {
             ),
             ("l0".into(), line([-3.0, 0.0], [3.0, 0.0])),
         ];
-        let t = detect_topology(&geom);
+        let t = detect_topology(&geom, &[]);
         assert_eq!(
             t.surfaces.len(),
             1,
@@ -1291,7 +1292,7 @@ fn a_lone_island_still_subtracts_the_bore_it_covers() {
         ("slit_a".into(), line([3.0, 4.5], [-1.0, 4.5])),
         ("slit_b".into(), line([-1.0, -1.5], [3.0, -1.5])),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert!(
         t.surfaces.iter().any(|s| !s.holes.is_empty()),
         "the covering face subtracts the bore: {} surfaces, {} hole regions",
@@ -1318,7 +1319,7 @@ fn a_traced_face_subtracts_the_bore_it_owns() {
         ("ring_cut".into(), line([-3.0, 1.8], [3.0, 1.8])),
         ("bore_cut".into(), line([-1.5, 0.5], [1.5, 0.5])),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 2, "the cap and the lower ring");
     assert_eq!(t.hole_regions.len(), 2, "the two bore halves are holes");
     let ring = t
@@ -1352,7 +1353,7 @@ fn a_hole_circle_crossed_by_a_shell_keeps_its_pieces_as_material() {
             circle([-6.614378452301025, 7.5], 5.703681945800781),
         ),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(
         t.surfaces.len(),
         6,
@@ -1387,7 +1388,7 @@ fn a_washer_sliced_by_a_diameter_line_keeps_its_two_rings() {
         ("outer".into(), circle([-0.005, 0.01], 0.025)),
         ("inner".into(), circle([-0.005, 0.01], 0.01)),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 2, "the two ring halves are the areas");
     assert_eq!(t.hole_regions.len(), 2, "the bore halves are holes");
     let violations = crate::topology::oracle::check_input(&geom)
@@ -1426,7 +1427,7 @@ fn quarter_arc_split_by_a_bezier_makes_two_faces() {
         ("l1".into(), line([0.0, 0.0], [0.0, 1.0])),
         ("s0".into(), bezier),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(
         t.surfaces.len(),
         2,
@@ -1453,7 +1454,7 @@ fn a_hole_circle_crossed_by_another_circle_keeps_its_pieces_as_areas() {
         ("hole".into(), circle([0.0, 0.0], 15.0)),
         ("offset".into(), circle([30.0, 0.0], 25.0)),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 5, "all five bounded regions are areas");
     assert_eq!(t.hole_regions.len(), 0, "nothing is a clean bore here");
     let hole_pieces = t
@@ -1506,7 +1507,7 @@ fn two_overlapping_circles_partition_their_union() {
         ("A".into(), circle([0.0, 0.0], 10.0)),
         ("B".into(), circle([8.0, 0.0], 10.0)),
     ];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 3, "two crescents plus the lens");
     assert_eq!(t.hole_regions.len(), 0, "nothing is a bore here");
     for s in &t.surfaces {
@@ -1537,7 +1538,7 @@ fn two_crossing_rectangles_partition_the_plus() {
     // nested, so a whole-sketch extrude can union them into the plus.
     let mut geom = rect_lines("h", -2.05, -0.585, 2.05, 0.585);
     geom.extend(rect_lines("v", -0.585, -2.05, 0.585, 2.05));
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 5, "four arms plus the centre");
     assert_eq!(t.hole_regions.len(), 0);
     for s in &t.surfaces {
@@ -1569,7 +1570,7 @@ fn a_circle_with_crossing_rects_keeps_the_five_touching_holes() {
     let mut geom = vec![("circ".into(), circle([0.0, 0.0], 4.0))];
     geom.extend(rect_lines("h", -3.0, -1.0, 3.0, 1.0));
     geom.extend(rect_lines("v", -1.0, -3.0, 1.0, 3.0));
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(
         t.surfaces.len(),
         6,

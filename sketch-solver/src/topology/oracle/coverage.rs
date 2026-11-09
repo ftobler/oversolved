@@ -244,6 +244,7 @@ pub(crate) fn coverage_violations(
     shells: &[Chain],
     authored: &[ClosedChain],
     split: &[ClosedChain],
+    declared: &[(Vec2, Vec2)],
 ) -> Vec<Violation> {
     let mut all: Vec<Vec2> = Vec::new();
     let sampled: Vec<Sampled> = curves
@@ -329,14 +330,19 @@ pub(crate) fn coverage_violations(
     // judged.
     let barriers = barrier_segments(&sampled);
     let index = barrier_index(&barriers, &grid);
-    let seals = gap_seals(&sampled, &reach);
+    let mut seals = gap_seals(&sampled, &reach, declared, chord_tol);
+    // The declared joints themselves are seals too: the builder welds them by
+    // id, so no path may thread the authored opening.
+    seals.extend_from_slice(declared);
     let test = BarrierTest {
         grid: &grid,
         index: &index,
         barriers: &barriers,
         seals: &seals,
     };
-    let tunnels = gap_tunnels(&sampled, &reach, &test, &grid, &blocked, band);
+    let tunnels = gap_tunnels(
+        &sampled, &reach, &test, &grid, &blocked, band, declared, chord_tol,
+    );
     let pessimistic_blocked = dilate(&blocked, &grid);
     let reached = flood_reach(&grid, &pessimistic_blocked, &BTreeMap::new(), None);
     let reached_opt = flood_reach(&grid, &blocked, &tunnels, Some(&test));
@@ -582,13 +588,30 @@ fn end_fuses(reach: f64, end_dir: Vec2, target_dir: Vec2, d: f64) -> bool {
     d <= reach * cross.abs() / (end_len * target_len)
 }
 
+/// Whether an opening's two ends are the pair a declared contact welds. The
+/// oracle rebuilt those pairs from the raw records (`declared_seals`), so this
+/// is the same authored rule read independently of the builder's merge.
+fn declared_matches(p: Vec2, q: Vec2, declared: &[(Vec2, Vec2)], tol: f64) -> bool {
+    let near = |a: Vec2, b: Vec2| (a[0] - b[0]).hypot(a[1] - b[1]) <= tol;
+    declared
+        .iter()
+        .any(|(s, t)| (near(p, *s) && near(q, *t)) || (near(p, *t) && near(q, *s)))
+}
+
 /// The barrier points an open curve's end could fuse with or gap against,
 /// nearest first: one per other curve, plus the own curve's best loop-back. A
 /// same-curve point whose along-curve distance is comparable to its Euclidean
 /// distance is just the curve continuing past the end (it cannot be a passage:
 /// any path "through" it crosses the curve), so only a real loop-back, where
 /// the curve has travelled far to return close, is kept.
-fn gap_candidates(sampled: &[Sampled], reach: &[f64], own: usize, end_idx: usize) -> Vec<Opening> {
+fn gap_candidates(
+    sampled: &[Sampled],
+    reach: &[f64],
+    own: usize,
+    end_idx: usize,
+    declared: &[(Vec2, Vec2)],
+    tol: f64,
+) -> Vec<Opening> {
     let own_curve = &sampled[own];
     let own_pt = own_curve.pts[end_idx];
     let n_own = own_curve.pts.len();
@@ -642,7 +665,7 @@ fn gap_candidates(sampled: &[Sampled], reach: &[f64], own: usize, end_idx: usize
         candidates.push(Opening {
             q,
             d,
-            fused: own_end && d < MERGE,
+            fused: (own_end && d < MERGE) || declared_matches(own_pt, q, declared, tol),
         });
     }
     for (j, s) in sampled.iter().enumerate() {
@@ -672,7 +695,11 @@ fn gap_candidates(sampled: &[Sampled], reach: &[f64], own: usize, end_idx: usize
         } else {
             end_fuses(reach[own], end_dir, target_dir, d)
         };
-        candidates.push(Opening { q, d, fused });
+        candidates.push(Opening {
+            q,
+            d,
+            fused: fused || declared_matches(own_pt, q, declared, tol),
+        });
     }
     candidates.sort_by(|a, b| a.d.total_cmp(&b.d));
     candidates
@@ -705,14 +732,19 @@ fn barrier_index(barriers: &[(Vec2, Vec2)], grid: &Grid) -> BTreeMap<usize, Vec<
 /// opening, so a region behind one stays reportable as a lost area; an
 /// opening the builder leaves open carries a tunnel instead and its region is
 /// skipped, never judged from the grid's guess.
-fn gap_seals(sampled: &[Sampled], reach: &[f64]) -> Vec<(Vec2, Vec2)> {
+fn gap_seals(
+    sampled: &[Sampled],
+    reach: &[f64],
+    declared: &[(Vec2, Vec2)],
+    tol: f64,
+) -> Vec<(Vec2, Vec2)> {
     let mut seals: Vec<(Vec2, Vec2)> = Vec::new();
     for (i, s) in sampled.iter().enumerate() {
         if s.closed || s.pts.len() < 2 {
             continue;
         }
         for end_idx in [0, s.pts.len() - 1] {
-            for opening in gap_candidates(sampled, reach, i, end_idx) {
+            for opening in gap_candidates(sampled, reach, i, end_idx, declared, tol) {
                 if opening.fused {
                     seals.push((s.pts[end_idx], opening.q));
                 }
@@ -730,6 +762,7 @@ fn gap_seals(sampled: &[Sampled], reach: &[f64]) -> Vec<(Vec2, Vec2)> {
 /// threaded). Every edge a hub adds is a pair of cells whose polylines
 /// through the hub provably miss every sampled barrier piece and every seal,
 /// so a tunnel can never pierce a closed boundary.
+#[allow(clippy::too_many_arguments)]
 fn gap_tunnels(
     sampled: &[Sampled],
     reach: &[f64],
@@ -737,6 +770,8 @@ fn gap_tunnels(
     grid: &Grid,
     blocked: &[bool],
     band: f64,
+    declared: &[(Vec2, Vec2)],
+    tol: f64,
 ) -> BTreeMap<usize, Vec<usize>> {
     let mut tunnels: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     let passage_reach = PASSAGE_REACH_CELLS * (grid.cell + band);
@@ -759,7 +794,7 @@ fn gap_tunnels(
             if step_len <= EPS {
                 continue;
             }
-            for (ci, opening) in gap_candidates(sampled, reach, i, end_idx)
+            for (ci, opening) in gap_candidates(sampled, reach, i, end_idx, declared, tol)
                 .into_iter()
                 .enumerate()
             {

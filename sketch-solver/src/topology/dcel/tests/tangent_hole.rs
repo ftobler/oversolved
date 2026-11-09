@@ -45,7 +45,7 @@ fn square_with_circle(c: [f64; 2]) -> Vec<(String, InputEntity)> {
 fn a_circle_touching_one_side_is_the_square_hole() {
     // One tangent point leaves the circle a standalone loop: the square's
     // area carries it as a hole and the disc stays its own area.
-    let t = detect_topology(&square_with_circle([2.0, 10.0]));
+    let t = detect_topology(&square_with_circle([2.0, 10.0]), &[]);
     assert_eq!(t.surfaces.len(), 2);
     let sq = t.surfaces.iter().find(|s| !is_disc(s)).expect("the square");
     assert_eq!(
@@ -67,7 +67,7 @@ fn a_circle_touching_two_sides_leaves_the_disc_out_of_its_neighbours() {
     // rest of the square, and the disc. The disc is the circle's whole
     // interior, and the two areas around it sum to the square minus the disc,
     // so a profile that fills the neighbours and not the disc is the drawing.
-    let t = detect_topology(&square_with_circle([2.0, 2.0]));
+    let t = detect_topology(&square_with_circle([2.0, 2.0]), &[]);
     assert_eq!(t.surfaces.len(), 3);
     assert!(t.hole_regions.is_empty());
     let discs: Vec<&SurfaceOut> = t.surfaces.iter().filter(|s| is_disc(s)).collect();

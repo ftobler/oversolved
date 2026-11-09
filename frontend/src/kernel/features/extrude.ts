@@ -330,7 +330,10 @@ export function solveExtrude(
     areaTotal += report.total
     areaBuilt += report.built
     if (report.total === 0) {
-      const hint = openJointHint((topo.edges as Dict[]) ?? [])
+      const hint = openJointHint(
+        (topo.edges as Dict[]) ?? [],
+        (topo.unmet_contacts as Dict[]) ?? [],
+      )
       if (hint !== null && !unbuildableReasons.includes(hint)) unbuildableReasons.push(hint)
     }
     for (const reason of report.reasons) {

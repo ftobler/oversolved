@@ -43,7 +43,7 @@ fn profile() -> Vec<(String, InputEntity)> {
 #[test]
 fn the_ex010_profile_has_one_fit_spline_edge_with_the_whole_chain() {
     let geom = profile();
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 1, "one bounded profile");
     let surface = &t.surfaces[0];
     assert_eq!(surface.boundary.len(), 4, "3 lines + the fit spline");
@@ -79,7 +79,7 @@ fn a_cut_fit_spline_yields_three_sub_chains_that_reproduce_the_curve() {
     // and on the way back down, so it slices the profile into two faces.
     let mut geom = profile();
     geom.push(("cut".into(), line([0.0, 1.6], [3.0, 1.6])));
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(fit_edges(&t).len(), 3, "three sub-chains");
     assert_eq!(t.surfaces.len(), 2, "the line splits the profile in two");
 
@@ -115,7 +115,7 @@ fn a_figure_eight_through_points_slices_into_two_lobes() {
     // A closed curve whose pieces cross in the middle. The crossing is a real
     // split, so the two lobes are separate faces.
     let points = [[0.0, 0.0], [2.0, 2.0], [2.0, 0.0], [0.0, 2.0], [0.0, 0.0]];
-    let t = detect_topology(&[("sp".into(), fit_spline(&points, None, None))]);
+    let t = detect_topology(&[("sp".into(), fit_spline(&points, None, None))], &[]);
     assert_eq!(t.surfaces.len(), 2, "two lobes");
     for surface in &t.surfaces {
         assert!(
@@ -129,7 +129,7 @@ fn a_figure_eight_through_points_slices_into_two_lobes() {
 fn a_closed_fit_spline_is_a_standalone_area() {
     let points = [[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [1.0, -1.0], [0.0, 0.0]];
     let geom = vec![("sp".into(), fit_spline(&points, None, None))];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 1);
     assert_eq!(t.surfaces[0].boundary.len(), 1, "one closed chain edge");
     let (area, _) = loop_area_centroid(&t.surfaces[0].boundary);
@@ -163,7 +163,7 @@ fn a_smooth_joint_never_produces_a_split_near_itself() {
     // Every piece joint of a C2 fit spline is tangent, so the graze rule must
     // not invent a contact there: an uncut fit spline has exactly its two end
     // vertices and one edge.
-    let t = detect_topology(&[("sp".into(), fit_spline(&EX010, None, None))]);
+    let t = detect_topology(&[("sp".into(), fit_spline(&EX010, None, None))], &[]);
     assert_eq!(t.vertices.len(), 2, "only the endpoints");
     assert_eq!(t.edges.len(), 1, "one uncut chain edge");
     assert!(t.surfaces.is_empty());
@@ -180,7 +180,7 @@ fn a_single_piece_that_loops_bounds_its_lobe() {
         "sp".into(),
         fit_spline(&points, Some([4.0, 3.0]), Some([-4.0, 3.0])),
     )];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert_eq!(t.surfaces.len(), 1, "the loop bounds one lobe");
     let (area, _) = loop_area_centroid(&t.surfaces[0].boundary);
     assert!(area.abs() > 0.1, "the lobe collapsed: area {}", area.abs());
@@ -205,7 +205,7 @@ fn adjacent_pieces_that_cross_again_close_their_lobe() {
         [0.0, 0.0],
     ];
     let geom = vec![("sp".into(), fit_spline(&points, None, None))];
-    let t = detect_topology(&geom);
+    let t = detect_topology(&geom, &[]);
     assert!(
         !t.surfaces.is_empty(),
         "the adjacent crossing left no closed region"
@@ -236,10 +236,10 @@ fn the_chain_topology_is_the_same_at_every_sketch_scale() {
             fit_spline(&EX010.map(|p| [p[0] * s, p[1] * s]), None, None),
         )]
     };
-    let base = detect_topology(&scaled(1.0));
+    let base = detect_topology(&scaled(1.0), &[]);
     assert_eq!((base.vertices.len(), base.edges.len()), (2, 1));
     for s in [0.1, 0.01] {
-        let t = detect_topology(&scaled(s));
+        let t = detect_topology(&scaled(s), &[]);
         assert_eq!(t.vertices.len(), 2, "s={s}: a joint became a vertex");
         assert_eq!(t.edges.len(), 1, "s={s}: the chain was split");
         assert!(t.surfaces.is_empty(), "s={s}: a phantom sliver face");
@@ -251,12 +251,12 @@ fn a_scaled_closed_loop_keeps_its_one_edge_boundary() {
     // The same world-distance rule on the closed case: the seam and the piece
     // joints must stay off the split list at every size.
     let points = [[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [1.0, -1.0], [0.0, 0.0]];
-    let base = detect_topology(&[("sp".into(), fit_spline(&points, None, None))]);
+    let base = detect_topology(&[("sp".into(), fit_spline(&points, None, None))], &[]);
     assert_eq!(base.surfaces.len(), 1);
     assert_eq!(base.surfaces[0].boundary.len(), 1);
     for s in [0.1, 0.01] {
         let scaled: Vec<[f64; 2]> = points.iter().map(|p| [p[0] * s, p[1] * s]).collect();
-        let t = detect_topology(&[("sp".into(), fit_spline(&scaled, None, None))]);
+        let t = detect_topology(&[("sp".into(), fit_spline(&scaled, None, None))], &[]);
         assert_eq!(t.surfaces.len(), 1, "s={s}");
         assert_eq!(
             t.surfaces[0].boundary.len(),
