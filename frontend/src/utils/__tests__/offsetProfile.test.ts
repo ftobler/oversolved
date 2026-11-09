@@ -380,10 +380,11 @@ describe('applyAddOffset connectivity', () => {
     const arcStart = endpointVertices('arc', f.initial![cloneAr])
       .find((v) => v.vertexKey === 'start')!.point
     // The clone line stays on its seeded y=2 offset; the shared point is the
-    // near intersection with the seeded r12 circle, not the offset vertex.
+    // near intersection with the seeded r8 circle (the walk through the arc
+    // puts +2 toward its centre), not the offset vertex.
     expect(lineEnd[1]).toBeCloseTo(2, 9)
-    expect(arcStart[0]).toBeCloseTo(Math.sqrt(140), 5)
-    expect(f.initial![cloneAr][2]).toBeCloseTo(12, 9)
+    expect(arcStart[0]).toBeCloseTo(Math.sqrt(60), 5)
+    expect(f.initial![cloneAr][2]).toBeCloseTo(8, 9)
     expect(Math.hypot(lineEnd[0] - arcStart[0], lineEnd[1] - arcStart[1])).toBeLessThan(1e-6)
   })
 
@@ -398,16 +399,19 @@ describe('applyAddOffset connectivity', () => {
 
     const cloneAA = cloneOfSource(f, 'aa')
     const cloneBB = cloneOfSource(f, 'bb')
+    // The walk enters aa at its free end (so the copy grows to r12) and leaves
+    // through bb (so its copy shrinks to r6): one side of the chain, not each
+    // arc's own seed side.
     expect(f.initial![cloneAA][2]).toBeCloseTo(12, 9)
-    expect(f.initial![cloneBB][2]).toBeCloseTo(10, 9)
+    expect(f.initial![cloneBB][2]).toBeCloseTo(6, 9)
     const startA = endpointVertices('arc', f.initial![cloneAA])
       .find((v) => v.vertexKey === 'start')!.point
     const startB = endpointVertices('arc', f.initial![cloneBB])
       .find((v) => v.vertexKey === 'start')!.point
     expect(Math.hypot(startA[0] - startB[0], startA[1] - startB[1])).toBeLessThan(1e-6)
-    // The near root of the two offset circles, not the far one at ~(-1.7, -11.9).
-    expect(startA[0]).toBeCloseTo(11.92617, 4)
-    expect(startA[1]).toBeCloseTo(1.32908, 4)
+    // The near root of the two offset circles, not the far one at ~(2.9, -11.6).
+    expect(startA[0]).toBeCloseTo(11.536005, 4)
+    expect(startA[1]).toBeCloseTo(-3.304632, 4)
   })
 
   it('never mutates a source entity: only clone ids are added to initial', () => {
@@ -438,11 +442,13 @@ describe('applyAddOffset connectivity', () => {
   it('an arc miter whose near root lies past the arc end leaves the joint ungrafted', () => {
     const doc = sketchDoc()
     // The same 70 degree cusp, but the first arc ends at 5 degrees while the
-    // near offset root sits at ~6.4 degrees: past its end.
+    // near offset root sits at ~18 degrees: past its end. Listing bb first walks
+    // the chain from bb's free end, which seeds aa at r8 and bb at r10; the near
+    // root then falls outside aa's sweep instead of just behind its start.
     applyAddEntity(doc, 'sk', 'arc', [0, 0, 10, 0, 5], 'aa')
     applyAddEntity(doc, 'sk', 'arc', [...CUSP_CENTRE, 8, 70, 160], 'bb')
     applyAddConstraint(doc, 'sk', 'coincident', ['vertex:sk:aa:start', 'vertex:sk:bb:start'])
-    applyAddOffset(doc, 'sk', ['aa', 'bb'], 2)
+    applyAddOffset(doc, 'sk', ['bb', 'aa'], 2)
 
     const f = feat(doc)
     expect(cloneCoincidents(f, ['aa', 'bb'])).toHaveLength(0)

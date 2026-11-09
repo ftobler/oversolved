@@ -11,7 +11,7 @@ import {
   arcAngleKeepsSweep,
 } from '@/utils/geometry/offsetProfile'
 import type { OffsetCorner } from '@/utils/geometry/offsetProfile'
-import { offsetSideFactors } from '@/utils/geometry/offsetSide'
+import { offsetSidePlan } from '@/utils/geometry/offsetSide'
 import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
 import { circumcircle, arcEndpointOrder } from '@/utils/geometry/arcFromPoints'
 import { SNAP_EPS } from '@/utils/geometry/snapTolerance'
@@ -386,9 +386,10 @@ export function applyAddThreePointArc(
  *  Seed rule (locked by tests so a refactor cannot silently flip it): a
  *  positive `distance` moves a line along the LEFT normal of its start->end
  *  direction `(-dy, dx)/L`, and grows the radius of a circle/arc. This is the
- *  per-entity rule an OPEN selection uses; applyAddOffset corrects the sign per
- *  entity for a selection that closes into loops (geometry/offsetSide.ts), so
- *  there a positive distance always goes out of the bounded region.
+ *  per-entity rule a branching open selection, or a lone entity, uses;
+ *  applyAddOffset corrects the sign per entity for a selection that closes into
+ *  loops (positive out of the region) or forms an open chain (positive to the
+ *  left of the chain walk) in geometry/offsetSide.ts.
  *  Spline/ellipse have no clean parametric offset, so the seed is an exact copy.
  *  Shared with the connected-profile offset so both author identical seeds. */
 function offsetSeed(kind: string, p: number[], distance: number): number[] | null {
@@ -610,13 +611,20 @@ export function applyAddOffset(
   const kindOf = new Map<string, string>()   // source id -> entity kind
 
   // A selection that closes into loops offsets by side, not by seed rule:
-  // positive is out of the bounded region whatever each entity's direction.
+  // positive is out of the bounded region whatever each entity's direction. An
+  // open chain follows its walk; a branch has no single walk, so it keeps the
+  // per-entity rule and the user is told the side is per entity.
   const sources = sourceIds.flatMap((id) => {
     const entity = feature.entities.find(e => e.id === id)
     const params = feature.initial[id]
     return entity && params ? [{ id, kind: entity.kind, params }] : []
   })
-  const sideFactor = offsetSideFactors(sources)
+  const sidePlan = offsetSidePlan(sources, feature.constraints ?? [])
+  if (sidePlan.branches) {
+    warn('applyAddOffset: selection branches, keeping the per-entity side for every copy',
+      { featureId, sourceIds })
+  }
+  const sideFactor = sidePlan.factors
 
   for (const srcId of sourceIds) {
     const src = feature.entities.find(e => e.id === srcId)
