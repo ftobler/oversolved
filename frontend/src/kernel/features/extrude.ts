@@ -150,25 +150,42 @@ function unitDirection(v: number[]): Vec3 {
   return [v[0] / length, v[1] / length, v[2] / length]
 }
 
+/** The reach a through-all cut needs, measured from the profile plane: the
+ *  signed distance to the far material extent ahead and behind it along the
+ *  sweep direction, plus the union span of both for the one-sided directions.
+ *  A plane outside the material makes the side beyond it negative. */
+interface ThroughAllExtent {
+  ahead: number
+  behind: number
+  span: number
+}
+
 /**
- * The length a through-all cut must sweep: the union of the chosen bodies'
- * edge-sampled AABBs projected onto the unit sweep direction, plus the hole's
- * own relative margin (`length * 1e-3 + 1e-6`). `merge_target` narrows the
- * measurement to the bodies it names; when it names no live body the whole
- * store is measured and the body operation refuses the bad target afterwards.
+ * The reach a through-all cut must sweep from the profile plane: the union of
+ * the chosen bodies' edge-sampled AABBs projected onto the unit sweep
+ * direction, measured on each side of `origin` (a point on the profile plane)
+ * and widened by the hole's own relative margin (`span * 1e-3 + 1e-6`) per
+ * side. `merge_target` narrows the measurement to the bodies it names; when it
+ * names no live body the whole store is measured and the body operation refuses
+ * the bad target afterwards.
+ *
+ * Symmetric needs both sides because the plane can sit anywhere inside the
+ * bodies, including outside them; one length measured from the union span only
+ * clears the material when the plane happens to be at the span's midpoint.
  *
  * A body far away along the same axis inflates the tool. That is harmless for a
  * cut because the extra length sits outside material, so do not add a lateral
  * test here: it could silently under-size the tool.
  */
-function throughAllSweepLength(
+function throughAllSweepExtent(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
   bodyStore: Record<string, Body>,
   mergeTarget: string | null,
   direction: Vec3,
-): number {
+  origin: Vec3,
+): ThroughAllExtent {
   const targeted = mergeTarget ? resolveBodyIds(mergeTarget, bodyStore) : []
   const ids = targeted.length > 0 ? targeted : Object.keys(bodyStore)
   let min = Infinity
@@ -190,7 +207,13 @@ function throughAllSweepLength(
     )
   }
   const span = max - min
-  return span + span * 1e-3 + 1e-6
+  const margin = span * 1e-3 + 1e-6
+  const at = origin[0] * direction[0] + origin[1] * direction[1] + origin[2] * direction[2]
+  return {
+    ahead: max - at + margin,
+    behind: at - min + margin,
+    span: span + margin,
+  }
 }
 
 /** Solve an extrude feature into the body store (mirrors `_solve_extrude`). */
@@ -435,11 +458,11 @@ export function solveExtrude(
     upToWarning = 'extrude: up_to has no target; used blind distance'
   }
 
-  // A through-all cut is sized from the bodies, not from the stored `distance`.
-  // The same length then feeds every direction: normal and reverse sweep it from
-  // the profile plane (over-reaching on one side when the plane sits inside the
-  // body, which cuts correctly and adds no material), and symmetric shifts the
-  // plane back by half and straddles it.
+  // A through-all cut is sized from the bodies, not from the stored `distance`,
+  // and measured from the profile plane. Normal and reverse stay one-sided and
+  // sweep the union span ahead of the plane; symmetric is both-sided, so it
+  // straddles the plane by the larger of the reach ahead and behind. Sizing by
+  // the union span alone under-cuts symmetric whenever the plane is off-centre.
   let sweepDistance = distance
   if (termination === 'through_all') {
     const frameNormal: Vec3 = usingFaces
@@ -448,14 +471,21 @@ export function solveExtrude(
     const sweepDir = direction === 'reverse'
       ? (frameNormal.map((n) => -n) as Vec3)
       : frameNormal
-    sweepDistance = throughAllSweepLength(
+    const planeOrigin: Vec3 = usingFaces
+      ? faceCentroid(oc, scope, cqFaces[0])
+      : (((firstPt?.origin as number[] | undefined) ?? [0, 0, 0]) as Vec3)
+    const extent = throughAllSweepExtent(
       oc,
       scope,
       table,
       throughAllSource?.bodies ?? bodyStore,
       mergeTarget,
       unitDirection(sweepDir),
+      planeOrigin,
     )
+    sweepDistance = direction === 'symmetric'
+      ? 2 * Math.max(extent.ahead, extent.behind)
+      : extent.span
   }
 
   let toolShape: OccShape

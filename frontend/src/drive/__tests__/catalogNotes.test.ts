@@ -128,6 +128,7 @@ describe('through-all termination on both extrude rows', () => {
       expect(note, type).toContain('`distance`, which it ignores')
       expect(note, type).toContain('`merge_target` narrows the reach')
       expect(note, type).toContain('`operation` must be `cut`')
+      expect(note, type).toContain('`direction: symmetric` cuts through all material on BOTH sides')
     }
   })
 
@@ -136,6 +137,7 @@ describe('through-all termination on both extrude rows', () => {
     expect(note).toContain('blind | up_to | through_all')
     expect(note).toContain('`distance` is ignored')
     expect(note).toContain('`merge_target` narrows the reach')
+    expect(note).toContain('`direction: symmetric` cutting both sides')
   })
 })
 

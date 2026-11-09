@@ -831,7 +831,9 @@ banner on stdout, so a client config must use the direct node invocation.
   `termination: blind|up_to|through_all`, `operation: new|replace`), and an
   extrude's `through_all` termination is a cut sized from the bodies it can
   reach, so `distance` is ignored and `merge_target` narrows the reach to one
-  body. `add_plane`'s `definition` carries the same shape the part-document
+  body. `direction: symmetric` cuts through all material on both sides of the
+  profile plane; `normal` and `reverse` cut one side, ahead of the plane along
+  the sweep direction. `add_plane`'s `definition` carries the same shape the part-document
   schema serves (its `mode` enum includes `offset`, and the common offset plane is
   `{mode:"offset", plane:"@builtin_plane_top", offset:43}`). A multisection
   sweep is one `add_sweep_profile` per section and `multisection: true` in the

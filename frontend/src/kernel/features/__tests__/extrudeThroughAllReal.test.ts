@@ -177,9 +177,9 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
   }, 240_000)
 
   it('cuts both sides of the profile plane with direction symmetric', () => {
-    // The offset plane sits at z=5 inside the 0..10 body. Symmetric shifts it
-    // back by half the 10 mm measured length, so the tool straddles the plane
-    // and clears the whole thickness.
+    // The offset plane sits at z=5 inside the 0..10 body. Symmetric measures
+    // both sides and shifts the plane back by half the longer side, so the tool
+    // straddles the plane and clears the whole thickness.
     const result = h.run({
       features: [
         ...plate(10),
@@ -190,6 +190,84 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
     expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+  }, 240_000)
+
+  it('cuts the whole body with symmetric when the plane is the body bottom face', () => {
+    // The sketch sits on the builtin Front at z=0, the bottom face of the 0..10
+    // body. There is no material behind the plane, so the symmetric tool must
+    // reach the full 10 mm ahead of it.
+    const result = h.run({
+      features: [...plate(10), slotSketch(), cut('through_all', { direction: 'symmetric' })],
+    })
+    expect(h.res(result, 'ex2').status).toBe('ok')
+    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+  }, 240_000)
+
+  it('cuts the whole body with symmetric from an off-centre interior plane', () => {
+    // Plane z=2 inside 0..10: 8 mm ahead, 2 mm behind. Sizing from the union
+    // span alone would straddle only z -3..7 and leave the top 3 mm.
+    const result = h.run({
+      features: [
+        ...plate(10),
+        offsetPlane('plOff', 2),
+        slotSketch('@plOff'),
+        cut('through_all', { direction: 'symmetric' }),
+      ],
+    })
+    expect(h.res(result, 'ex2').status).toBe('ok')
+    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+  }, 240_000)
+
+  it('cuts the whole body with symmetric from a plane outside the body', () => {
+    // Plane z=-4 below the body: all 14 mm is ahead of the plane. The tool has
+    // to reach z=10 even though the plane is outside the 0..10 extent.
+    const result = h.run({
+      features: [
+        ...plate(10),
+        offsetPlane('plBelow', -4),
+        slotSketch('@plBelow'),
+        cut('through_all', { direction: 'symmetric' }),
+      ],
+    })
+    expect(h.res(result, 'ex2').status).toBe('ok')
+    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+  }, 240_000)
+
+  it('cuts the whole body with symmetric from a body-face profile', () => {
+    // A small boss under the plate gives the picked bottom face a small area.
+    // The cut is sized from the boss bottom at z=-5, so it must reach the plate
+    // above and remove the full 10 x 10 x 15 column (the face-profile halfPair
+    // path).
+    const bossFeatures = [
+      ...plate(10),
+      offsetPlane('plBottom', -5),
+      rectSketchSk('skBoss', 10, 10, '@plBottom'),
+      extrudeSpec('skBoss', 'exBoss', { distance: 5, operation: 'add' }),
+    ]
+    const base = h.run({ features: bossFeatures })
+    expect(h.res(base, 'exBoss').status).toBe('ok')
+    const mesh = h.body(base, 'body_ex1').mesh as
+      | { face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }> }
+      | undefined
+    const bottomIdx = mesh?.face_data?.findIndex(
+      (f) => f.surface_type === 'flatface' && f.normal[2] < -0.9 && Math.abs(f.centroid[2] + 5) < 0.1,
+    ) ?? -1
+    expect(bottomIdx).toBeGreaterThanOrEqual(0)
+    const result = h.run({
+      features: [
+        ...bossFeatures,
+        {
+          id: 'exCut', kind: 'extrude', label: 'Cut',
+          extrude: {
+            sketch: `@body_ex1/face/${bottomIdx}`, distance: 1, direction: 'symmetric',
+            operation: 'cut', termination: 'through_all',
+          },
+        },
+      ],
+    })
+    expect(h.res(result, 'exCut').status).toBe('ok')
+    // 40 x 30 x 10 plate + 10 x 10 x 5 boss minus a 10 x 10 x 15 column.
+    expect(bodyVolume(h, result, 'exCut', 'body_ex1')).toBeCloseTo(12000 + 500 - 1500, 6)
   }, 240_000)
 
   it('cuts only the reverse side from an offset plane inside the body', () => {
@@ -206,6 +284,21 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
     expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(12000 - 25 * 4, 6)
+  }, 240_000)
+
+  it('leaves the material behind the plane with normal from an interior plane', () => {
+    // The one-sided rule: normal from z=4 sweeps only toward +z, so the 4 mm
+    // behind the plane stays. Symmetric is the only both-sided direction.
+    const result = h.run({
+      features: [
+        ...plate(10),
+        offsetPlane('plMid', 4),
+        slotSketch('@plMid'),
+        cut('through_all', { direction: 'normal' }),
+      ],
+    })
+    expect(h.res(result, 'ex2').status).toBe('ok')
+    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(12000 - 25 * 6, 6)
   }, 240_000)
 
   it('registers no top_face, so a later plane naming one is refused', () => {

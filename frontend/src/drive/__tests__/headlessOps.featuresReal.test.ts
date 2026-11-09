@@ -272,6 +272,33 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(measured!.measures.volume).toBeCloseTo(12000 - 25 * 10, 2)
   }, 120_000)
 
+  it('cuts a symmetric through_all extrude through the whole box from its bottom face', async () => {
+    // The MCP practice repro: a 20 x 20 x 10 plate on Front, then a r=5 circle
+    // on the same plane (z=0, the bottom face) cut through_all symmetric. The
+    // full bore removes pi * 25 * 10, not the half the centred-span sizing took.
+    const result = await runHeadless({
+      doc: emptyDoc(),
+      steps: [
+        { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' } },
+        { mutation: { type: 'add_rect', featureId: 'sk1', p0: [-10, -10], p1: [10, 10] } },
+        { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, operation: 'new' } },
+        { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_front' } },
+        { mutation: { type: 'add_entity', featureId: 'sk2', kind: 'circle', params: [0, 0, 5], entityId: 'c1' } },
+        {
+          mutation: {
+            type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 1, operation: 'cut',
+            termination: 'through_all', direction: 'symmetric',
+          },
+        },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    expect(result.features).toEqual([])
+    const row = result.featureDeltas?.find(entry => entry.id === 'ex2')
+    expect(row?.volumeDelta).toBeCloseTo(-Math.PI * 25 * 10, 3)
+    expect(row?.bodyVolume).toBeCloseTo(4000 - Math.PI * 25 * 10, 3)
+  }, 120_000)
+
   it('refuses an inline through_all add at the drive boundary, not in the kernel', async () => {
     const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
     // An absent operation reads as add, so both spellings are refused by the
