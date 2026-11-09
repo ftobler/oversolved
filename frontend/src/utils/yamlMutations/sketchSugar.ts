@@ -8,7 +8,7 @@ import { applyAddConstraint } from './sketch'
 import {
   offsetCorners, coordinateCorners, uniqueCorners, lineIntersect, lineVertexIndices,
   vertexPoint, tangentCorner, lineCircleIntersect, circleCircleIntersect, nearestPoint,
-  arcAngleKeepsSweep,
+  arcAngleKeepsSweep, snapTangentJoint,
 } from '@/utils/geometry/offsetProfile'
 import type { OffsetCorner } from '@/utils/geometry/offsetProfile'
 import { offsetSidePlan } from '@/utils/geometry/offsetSide'
@@ -497,11 +497,12 @@ function miterCurvedCorner(
 
 /** Reconnect the corners among offset clones: miter sharp corners on the two
  *  *seeded* (untrimmed) offset curves (NOT the offset of the shared vertex), and
- *  carry a genuinely tangent joint over as a `tangent`. A corner is either an
- *  explicit `coincident` or two selected endpoints the area builder welds by
- *  coordinate (a hand-drawn chain), so both authoring styles rebuild the same
- *  joint. Snapshot the seeds before trimming endpoints -- otherwise the second
- *  corner of a shared line would intersect an already-moved line and drift.
+ *  carry a genuinely tangent joint over as a `coincident` on the two clone
+ *  vertices plus a `tangent` on the two curves. A corner is either an explicit
+ *  `coincident` or two selected endpoints the area builder welds by coordinate
+ *  (a hand-drawn chain), so both authoring styles rebuild the same joint.
+ *  Snapshot the seeds before trimming endpoints -- otherwise the second corner
+ *  of a shared line would intersect an already-moved line and drift.
  *  Spline/ellipse corners stay ungrafted (matches the copy-at-source clone
  *  policy). */
 function reconnectOffsetCorners(
@@ -546,8 +547,11 @@ function reconnectOffsetCorners(
       // LINE/ARC or ARC/ARC. The SOURCE joint's tangents decide the join, never
       // the kind alone: a `tangent` at a sharp joint is false, and because the
       // clones are tied to their sources the solver satisfies it by moving
-      // them. A tangent joint needs nothing from the solver (the seeds already
-      // satisfy it); a sharp one is sealed at the offset-curve intersection.
+      // them. A tangent joint is snapped so the two clone ends start at one
+      // point and is declared as a `coincident` plus a `tangent`: the seeds
+      // already satisfy both, so the solver has a contact to hold rather than
+      // an implied meeting it may let open. A sharp one is sealed at the
+      // offset-curve intersection.
       const paramsA = initial[corner.a.entityId]
       const paramsB = initial[corner.b.entityId]
       const tangent = paramsA && paramsB && tangentCorner(
@@ -555,6 +559,20 @@ function reconnectOffsetCorners(
         { kind: kindB!, params: paramsB, vertexKey: corner.b.vertexKey },
       )
       if (tangent) {
+        // A `tangent` alone only says the two curves meet tangentially: it does
+        // not declare that their endpoints touch, so a solve that moves one a
+        // hair leaves a gap and the area builder (which merges at the absolute
+        // grid) then finds no closed loop. Pin the two clone vertices together
+        // first, after snapping the free line end onto the anchored arc end, so
+        // the contact is declared at the seed and the solver holds it as one;
+        // the fillet path writes the same pair in the same order.
+        snapTangentJoint(initial,
+          { cloneId: cloneA, kind: kindA!, vertexKey: corner.a.vertexKey },
+          { cloneId: cloneB, kind: kindB!, vertexKey: corner.b.vertexKey })
+        applyAddConstraint(doc, featureId, 'coincident', [
+          `vertex:${featureId}:${cloneA}:${corner.a.vertexKey}`,
+          `vertex:${featureId}:${cloneB}:${corner.b.vertexKey}`,
+        ])
         applyAddConstraint(doc, featureId, 'tangent', [
           `entity:${featureId}:${cloneA}`,
           `entity:${featureId}:${cloneB}`,
@@ -587,10 +605,12 @@ function reconnectOffsetCorners(
  *  held together at its corners. Offsetting each entity in isolation would tear
  *  those corners apart, so after cloning we rebuild every corner among the
  *  selected sources on the clones. A joint whose SOURCE tangents are already
- *  aligned keeps a `tangent`; every other line/arc and arc/arc joint is sealed
- *  at the intersection of the two offset curves (never the offset of the shared
- *  vertex), and line/line stays the plain miter. Still no dimensions; the
- *  reconnection is the only added structure. */
+ *  aligned keeps a `coincident` between the two clone vertices plus a `tangent`
+ *  between the curves, the pair fillet_corners writes at its joints; every other
+ *  line/arc and arc/arc joint is sealed at the intersection of the two offset
+ *  curves (never the offset of the shared vertex), and line/line stays the
+ *  plain miter. Still no dimensions; the reconnection is the only added
+ *  structure. */
 export function applyAddOffset(
   doc: PartDoc,
   featureId: string,

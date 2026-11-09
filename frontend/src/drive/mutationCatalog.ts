@@ -508,7 +508,11 @@ const OFFSET_SIDE_NOTE =
   'that walk, so the whole chain offsets to one side (an arc walked with its stored CCW sweep shrinks, one walked ' +
   'against it grows). A lone entity, or an open selection whose chain branches at a vertex of degree three or ' +
   'more, keeps the per-entity rule: a line moves along the left normal of its start->end direction and a circle ' +
-  'or arc grows its radius; a branching selection is reported in a warning.'
+  'or arc grows its radius; a branching selection is reported in a warning. ' +
+  'Every rebuilt joint declares its contact with a coincident on the two copy vertices: a line/line corner is ' +
+  'the intersection of the two offset lines, a sharp line/arc or arc/arc corner is mitered on the offset curves, ' +
+  'and a joint the sources already meet tangentially keeps the same coincident plus a tangent between the two ' +
+  'curves, the pair fillet_corners writes. A sharp joint whose offset curves do not meet is left open.'
 
 // The fillet's authored-arc contract is what an author cannot infer from the
 // mutation shape; the rules are pinned in yamlMutations/sketchFillet.ts and its
@@ -516,7 +520,9 @@ const OFFSET_SIDE_NOTE =
 const FILLET_CORNERS_NOTE =
   'Each corner trims the named endpoint of both straight sides to its tangent point and adds one authored ' +
   'arc joining them; this is geometry, not a live fillet relation, so editing a side later does not move ' +
-  'the arc. The radius must be strictly less than both side lengths, and two corners sharing a line must ' +
+  'the arc. The joints it leaves are a coincident on each trimmed endpoint and the arc end, plus a tangent ' +
+  'between each trimmed side and the arc: the same coincident-plus-tangent pair apply_offset writes at a ' +
+  'tangent joint. The radius must be strictly less than both side lengths, and two corners sharing a line must ' +
   'leave a segment on it. Both sides must be lines of the same sketch; an arc, circle, spline, ellipse or ' +
   'projected side is refused, as is a corner whose sides already meet tangentially. The material side is ' +
   'probed from the whole sketch profile unless `side` names it; a mixed construction/normal corner is ' +
@@ -525,6 +531,15 @@ const FILLET_CORNERS_NOTE =
   'dimension that anchors a trimmed endpoint is refused by constraint id. Arc params are ' +
   '`[cx, cy, r, a0_deg, a1_deg]` and keep the CCW sweep. The step reply reports one new arc id per ' +
   'corner in `corners` order.' + CREATED_IDS_REPLY_NOTE
+
+// The run's end caps: an authored line meets its neighbour only by coordinate,
+// so a solve that nudges either one leaves the profile open. add_entity stays
+// free of an implicit coincident; the note points at the two ways to pin it.
+const ADD_ENTITY_NOTE =
+  'The entity is authored as plain geometry: an end that meets another entity does so only by coordinate, ' +
+  'so it is not constrained to that neighbour. A line that closes a profile onto an existing end should pin ' +
+  'it instead: add_entity_with_constraint pins one vertex at creation, or add an explicit coincident with ' +
+  'add_constraint.'
 
 // What an author cannot read off the field list: the copies are plain rows,
 // the count includes the source, where the new ids land, and which
@@ -837,6 +852,7 @@ export const MUTATION_CATALOG = {
   },
   add_entity: {
     summary: 'Add one sketch entity of a kind with numeric params.',
+    note: ADD_ENTITY_NOTE,
     fields: {
       featureId: str(),
       kind: str('Entity kind: line, circle, arc, ellipse, spline, fit_spline or point. A fit_spline takes its flat fit points plus optional tangents/tangentScale.'),
@@ -977,8 +993,9 @@ export const MUTATION_CATALOG = {
   },
   apply_offset: {
     summary: 'Offset sketch entities by a distance. Each sourceId must name an entity in the featureId sketch; '
-      + 'a connected chain (coincident or coordinate-joined) is refitted corner to corner: a sharp joint is '
-      + 'mitred on the offset curves, and only a joint the sources already meet tangentially keeps a `tangent`.',
+      + 'a connected chain (coincident or coordinate-joined) is refitted corner to corner: every rebuilt joint '
+      + 'gets a coincident on the two copy vertices, a sharp joint is mitred on the offset curves, and a joint '
+      + 'the sources already meet tangentially keeps the coincident plus a `tangent`.',
     note: OFFSET_SIDE_NOTE,
     fields: { featureId: str(), sourceIds: arr(), distance: num('Signed; see the row note for the side.') },
   },
