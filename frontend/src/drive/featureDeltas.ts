@@ -16,7 +16,7 @@
 // whole history.
 
 import type { PartDoc } from '@/types/cad'
-import type { FeatureMeasure } from '@/kernel/solveLocally'
+import type { FeatureMeasure, FeatureMeasureBody } from '@/kernel/solveLocally'
 import { isBuiltOutcome, type FeatureOutcome } from '@/drive/featureOutcome'
 
 export interface FeatureDelta {
@@ -38,7 +38,7 @@ export interface FeatureDelta {
   direction?: 'normal' | 'reverse'
   // A body this feature changed and that body's own volume after it. The name
   // is the feature's own reported body when that one changed, otherwise the
-  // one body whose volume moved; a rigid transform or mirror still names its
+  // one body whose measure moved; a rigid transform or mirror still names its
   // body though the volume comparison cannot see it. When several changed and
   // the reported body is not one of them, this stays off and the row carries
   // changedBodyCount, so a disjoint array does not single out its source.
@@ -88,17 +88,26 @@ function sameMeasure(after: FeatureMeasure, before: FeatureMeasure): boolean {
   return after.bbox.every((value, index) => closeNumber(value, before.bbox![index]))
 }
 
-// Live bodies whose own volume moved, a new id counting as changed. A body the
+// True when the body's own measure moved: volume within the close rule, the
+// face and edge counts exactly. Counting topology as well is what sees a
+// fillet whose additive and subtractive material cancel.
+function bodyChanged(after: FeatureMeasureBody, before: FeatureMeasureBody): boolean {
+  return !closeNumber(after.volume, before.volume)
+    || after.faces !== before.faces
+    || after.edges !== before.edges
+}
+
+// Live bodies whose own measure moved, a new id counting as changed. A body the
 // feature removed is not live and is not counted: the row describes what the
 // checkpoint still holds.
 function changedBodyIds(
-  bodies: Record<string, number>,
-  previousBodies: Record<string, number>,
+  bodies: Record<string, FeatureMeasureBody>,
+  previousBodies: Record<string, FeatureMeasureBody>,
 ): string[] {
   const changed: string[] = []
-  for (const [id, volume] of Object.entries(bodies)) {
+  for (const [id, measure] of Object.entries(bodies)) {
     const before = previousBodies[id]
-    if (before === undefined || !closeNumber(volume, before)) changed.push(id)
+    if (before === undefined || bodyChanged(measure, before)) changed.push(id)
   }
   return changed
 }
@@ -110,27 +119,27 @@ function changedBodyIds(
 function bodyFields(
   kind: string,
   bodyId: string | undefined,
-  bodies: Record<string, number> | undefined,
+  bodies: Record<string, FeatureMeasureBody> | undefined,
   changed: readonly string[],
 ): Pick<FeatureDelta, 'body' | 'bodyVolume' | 'changedBodyCount'> {
   if (bodies === undefined) return {}
   const count = changed.length > 1 ? { changedBodyCount: changed.length } : {}
   if (bodyId !== undefined && changed.includes(bodyId)) {
-    const volume = bodies[bodyId]
-    if (volume !== undefined) return { body: bodyId, bodyVolume: volume, ...count }
+    const measure = bodies[bodyId]
+    if (measure !== undefined) return { body: bodyId, bodyVolume: measure.volume, ...count }
   }
   if (changed.length === 1) {
     const only = changed[0]
-    const volume = bodies[only]
-    if (volume !== undefined) return { body: only, bodyVolume: volume }
+    const measure = bodies[only]
+    if (measure !== undefined) return { body: only, bodyVolume: measure.volume }
   }
   if (changed.length > 1) return count
   // A rigid move replaces a body's shape or placement without necessarily
   // changing its volume, so the comparison above cannot see it. This exception
   // is what keeps a transform or mirror described.
   if ((kind === 'transform' || kind === 'mirror') && bodyId !== undefined) {
-    const volume = bodies[bodyId]
-    if (volume !== undefined) return { body: bodyId, bodyVolume: volume }
+    const measure = bodies[bodyId]
+    if (measure !== undefined) return { body: bodyId, bodyVolume: measure.volume }
   }
   return {}
 }
@@ -160,7 +169,7 @@ export function featureDeltaRows(
   // The previous checkpoint's body map moves with the volume and bbox above,
   // including past a failed feature: its half-applied bodies are the baseline
   // the next clean row is measured from.
-  let previousBodies: Record<string, number> = {}
+  let previousBodies: Record<string, FeatureMeasureBody> = {}
   for (const feature of doc.features ?? []) {
     const id = typeof feature.id === 'string' ? feature.id : ''
     if (id === '') continue

@@ -10,8 +10,12 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { featureDeltaRows, touchedFeatureIds } from '../featureDeltas'
-import type { FeatureMeasure } from '@/kernel/solveLocally'
+import type { FeatureMeasure, FeatureMeasureBody } from '@/kernel/solveLocally'
 import type { FeatureOutcome } from '../featureOutcome'
+
+// Most cases care only about a body's volume, so the topology counts default to
+// a value every body shares. A case about topology moving states them itself.
+const body = (volume: number, faces = 6, edges = 12): FeatureMeasureBody => ({ volume, faces, edges })
 
 const DOC = {
   version: 1,
@@ -171,9 +175,9 @@ describe('featureDeltaRows', () => {
   it('names the body a feature changed and that body\'s own volume', () => {
     const measures: FeatureMeasure[] = [
       { id: 'sk1', volume: 0, bbox: null, bodies: {} },
-      { id: 'ex1', volume: 12000, bbox: [0, 0, 0, 40, 10, 30], bodies: { body_ex1: 8000, body_ex9: 4000 } },
-      { id: 'fi1', volume: 11922.743, bbox: [0, 0, 0, 40, 10, 30], bodies: { body_ex1: 7922.743, body_ex9: 4000 } },
-      { id: 'ex2', volume: 14000, bbox: [0, 0, 0, 50, 10, 30], bodies: { body_ex1: 7922.743, body_ex9: 6077.257 } },
+      { id: 'ex1', volume: 12000, bbox: [0, 0, 0, 40, 10, 30], bodies: { body_ex1: body(8000), body_ex9: body(4000) } },
+      { id: 'fi1', volume: 11922.743, bbox: [0, 0, 0, 40, 10, 30], bodies: { body_ex1: body(7922.743), body_ex9: body(4000) } },
+      { id: 'ex2', volume: 14000, bbox: [0, 0, 0, 50, 10, 30], bodies: { body_ex1: body(7922.743), body_ex9: body(6077.257) } },
     ]
     const outcomes: Record<string, FeatureOutcome> = {
       sk1: { status: 'ok' },
@@ -205,11 +209,11 @@ describe('featureDeltaRows', () => {
         { id: 'ar1', kind: 'pattern' },
       ],
     } as unknown as PartDoc
-    const copies: Record<string, number> = { body_ex2: 60 }
-    for (let i = 1; i <= 15; i++) copies[`body_ex2_${i}`] = 60
+    const copies: Record<string, FeatureMeasureBody> = { body_ex2: body(60) }
+    for (let i = 1; i <= 15; i++) copies[`body_ex2_${i}`] = body(60)
     const measures: FeatureMeasure[] = [
       { id: 'sk1', volume: 0, bbox: null, bodies: {} },
-      { id: 'ex2', volume: 60, bbox: [0, 0, 0, 2, 3, 10], bodies: { body_ex2: 60 } },
+      { id: 'ex2', volume: 60, bbox: [0, 0, 0, 2, 3, 10], bodies: { body_ex2: body(60) } },
       { id: 'ar1', volume: 960, bbox: [0, 0, 0, 40, 40, 10], bodies: copies },
     ]
     const outcomes: Record<string, FeatureOutcome> = {
@@ -230,8 +234,8 @@ describe('featureDeltaRows', () => {
       features: [{ id: 'ex1', kind: 'extrude' }, { id: 'cut1', kind: 'extrude' }],
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
-      { id: 'ex1', volume: 12000, bbox: [0, 0, 0, 40, 10, 30], bodies: { body_ex1: 12000 } },
-      { id: 'cut1', volume: 7922.743, bbox: [0, 0, 0, 40, 10, 30], bodies: { body_ex1: 7922.743 } },
+      { id: 'ex1', volume: 12000, bbox: [0, 0, 0, 40, 10, 30], bodies: { body_ex1: body(12000) } },
+      { id: 'cut1', volume: 7922.743, bbox: [0, 0, 0, 40, 10, 30], bodies: { body_ex1: body(7922.743) } },
     ]
     const outcomes: Record<string, FeatureOutcome> = {
       ex1: { status: 'ok', bodyId: 'body_ex1' },
@@ -249,8 +253,8 @@ describe('featureDeltaRows', () => {
       features: [{ id: 'ex2', kind: 'extrude' }, { id: 'ar1', kind: 'pattern' }],
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
-      { id: 'ex2', volume: 60, bbox: [0, 0, 0, 2, 3, 10], bodies: { body_ex2: 60 } },
-      { id: 'ar1', volume: 120, bbox: [0, 0, 0, 4, 3, 10], bodies: { body_ex2: 120 } },
+      { id: 'ex2', volume: 60, bbox: [0, 0, 0, 2, 3, 10], bodies: { body_ex2: body(60) } },
+      { id: 'ar1', volume: 120, bbox: [0, 0, 0, 4, 3, 10], bodies: { body_ex2: body(120) } },
     ]
     const outcomes: Record<string, FeatureOutcome> = {
       ex2: { status: 'ok', bodyId: 'body_ex2' },
@@ -270,10 +274,10 @@ describe('featureDeltaRows', () => {
       features: [{ id: 'ex2', kind: 'extrude' }, { id: 'ar1', kind: 'pattern' }],
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
-      { id: 'ex2', volume: 60, bbox: [0, 0, 0, 2, 3, 10], bodies: { body_ex2: 60 } },
+      { id: 'ex2', volume: 60, bbox: [0, 0, 0, 2, 3, 10], bodies: { body_ex2: body(60) } },
       {
         id: 'ar1', volume: 120, bbox: [0, 0, 0, 20, 3, 10],
-        bodies: { body_ex2: 60, body_ex2_1: 60 },
+        bodies: { body_ex2: body(60), body_ex2_1: body(60) },
       },
     ]
     const outcomes: Record<string, FeatureOutcome> = {
@@ -285,15 +289,15 @@ describe('featureDeltaRows', () => {
     expect(rows[1]).not.toHaveProperty('changedBodyCount')
   })
 
-  it('leaves the body fields off a touched feature that changed no body volume', () => {
+  it('leaves the body fields off a touched feature that changed no body measure', () => {
     const doc = {
       version: 1,
       kind: 'part',
       features: [{ id: 'ex1', kind: 'extrude' }, { id: 'fi1', kind: 'fillet' }],
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
-      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 8000 } },
-      { id: 'fi1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 8000 } },
+      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: body(8000, 8, 18) } },
+      { id: 'fi1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: body(8000, 8, 18) } },
     ]
     const outcomes: Record<string, FeatureOutcome> = {
       ex1: { status: 'ok', bodyId: 'body_ex1' },
@@ -308,6 +312,29 @@ describe('featureDeltaRows', () => {
     expect(rows[1]).not.toHaveProperty('changedBodyCount')
   })
 
+  // The practice run's bent bar: a fillet over the convex and concave bend
+  // edges moves material both ways, so the net volume and the bbox are
+  // unchanged while two faces and two edges appear. Naming no body there reads
+  // as "the fillet changed nothing".
+  it('names a body whose face and edge counts moved with no volume change', () => {
+    const doc = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'ex1', kind: 'extrude' }, { id: 'fi1', kind: 'fillet' }],
+    } as unknown as PartDoc
+    const measures: FeatureMeasure[] = [
+      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: body(8000, 8, 18) } },
+      { id: 'fi1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: body(8000, 10, 20) } },
+    ]
+    const outcomes: Record<string, FeatureOutcome> = {
+      ex1: { status: 'ok', bodyId: 'body_ex1' },
+      fi1: { status: 'ok', bodyId: 'body_ex1' },
+    }
+    const rows = featureDeltaRows(doc, measures, outcomes)
+    expect(rows[1]).toMatchObject({ id: 'fi1', volumeDelta: 0, body: 'body_ex1', bodyVolume: 8000 })
+    expect(rows[1]).not.toHaveProperty('changedBodyCount')
+  })
+
   it('names the preferred first body of a split and counts both changed bodies', () => {
     const doc = {
       version: 1,
@@ -319,14 +346,14 @@ describe('featureDeltaRows', () => {
       ],
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
-      { id: 'ex1', volume: 12000, bbox: [0, 0, 0, 40, 10, 30], bodies: { body_ex1: 12000 } },
+      { id: 'ex1', volume: 12000, bbox: [0, 0, 0, 40, 10, 30], bodies: { body_ex1: body(12000) } },
       {
         id: 'bo1', volume: 12000, bbox: [0, 0, 0, 40, 10, 30],
-        bodies: { body_ex1: 6000, body_ex1_1: 6000 },
+        bodies: { body_ex1: body(6000), body_ex1_1: body(6000) },
       },
       {
         id: 'fi1', volume: 11800, bbox: [0, 0, 0, 40, 10, 30],
-        bodies: { body_ex1: 5900, body_ex1_1: 5900 },
+        bodies: { body_ex1: body(5900), body_ex1_1: body(5900) },
       },
     ]
     const outcomes: Record<string, FeatureOutcome> = {
@@ -349,8 +376,8 @@ describe('featureDeltaRows', () => {
         features: [{ id: 'ex1', kind: 'extrude' }, { id: 'mv1', kind }],
       } as unknown as PartDoc
       const measures: FeatureMeasure[] = [
-        { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 8000 } },
-        { id: 'mv1', volume: 8000, bbox: [0, 0, 0, 20, 40, 20], bodies: { body_ex1: 8000 } },
+        { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: body(8000) } },
+        { id: 'mv1', volume: 8000, bbox: [0, 0, 0, 20, 40, 20], bodies: { body_ex1: body(8000) } },
       ]
       const outcomes: Record<string, FeatureOutcome> = {
         ex1: { status: 'ok', bodyId: 'body_ex1' },
@@ -370,7 +397,7 @@ describe('featureDeltaRows', () => {
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
       { id: 'sk1', volume: 0, bbox: null, bodies: {} },
-      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 8000 } },
+      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: body(8000) } },
     ]
     const outcomes: Record<string, FeatureOutcome> = {
       sk1: { status: 'ok' },
@@ -387,8 +414,8 @@ describe('featureDeltaRows', () => {
       features: [{ id: 'ex1', kind: 'extrude' }, { id: 'bo1', kind: 'boolean' }],
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
-      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 5000, body_ex2: 3000 } },
-      { id: 'bo1', volume: 2000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 2000 } },
+      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: body(5000), body_ex2: body(3000) } },
+      { id: 'bo1', volume: 2000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: body(2000) } },
     ]
     const outcomes: Record<string, FeatureOutcome> = {
       ex1: { status: 'ok', bodyId: 'body_ex1' },
@@ -423,9 +450,9 @@ describe('featureDeltaRows', () => {
       ],
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
-      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 8000 } },
+      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: body(8000) } },
       { id: 'fi1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20] },
-      { id: 'ex2', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 8000 } },
+      { id: 'ex2', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: body(8000) } },
     ]
     const outcomes: Record<string, FeatureOutcome> = {
       ex1: { status: 'ok' },
@@ -445,8 +472,8 @@ describe('featureDeltaRows', () => {
       features: [{ id: 'ex1', kind: 'extrude' }, { id: 'sk2', kind: 'sketch' }],
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
-      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 8000 } },
-      { id: 'sk2', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: 9000 } },
+      { id: 'ex1', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: body(8000) } },
+      { id: 'sk2', volume: 8000, bbox: [0, 0, 0, 20, 20, 20], bodies: { body_ex1: body(9000) } },
     ]
     const outcomes: Record<string, FeatureOutcome> = {
       ex1: { status: 'ok', bodyId: 'body_ex1' },
@@ -467,10 +494,10 @@ describe('featureDeltaRows', () => {
       features: [{ id: 'ex2', kind: 'extrude' }, { id: 'ar1', kind: 'pattern' }],
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
-      { id: 'ex2', volume: 60, bbox: [0, 0, 0, 2, 3, 10], bodies: { body_ex2: 60 } },
+      { id: 'ex2', volume: 60, bbox: [0, 0, 0, 2, 3, 10], bodies: { body_ex2: body(60) } },
       {
         id: 'ar1', volume: 240, bbox: [0, 0, 0, 20, 3, 10],
-        bodies: { body_ex2: 60, body_ex2_1: 60, body_ex2_2: 60, body_ex2_3: 60 },
+        bodies: { body_ex2: body(60), body_ex2_1: body(60), body_ex2_2: body(60), body_ex2_3: body(60) },
       },
     ]
     const outcomes: Record<string, FeatureOutcome> = {

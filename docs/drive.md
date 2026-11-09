@@ -491,7 +491,11 @@ banner on stdout, so a client config must use the direct node invocation.
   `{"and":[{"type":"line"},{"parallel":[0,1,0]}]}`. `extreme.axis` is a world
   vector; the letters `"x"`, `"y"` and `"z"`
   are sugar for the unit axis, and an invalid axis repeats the whole clause
-  (`{"extreme":{"axis":"up","side":"max"}}`) in the error. Omitting `where`
+  (`{"extreme":{"axis":"up","side":"max"}}`) in the error. `extreme` compares
+  projections inside the pool the earlier clauses left. A parallel face of
+  another feature that sits a fraction further along the axis wins, so when two
+  features have near-parallel faces add `created_by` (the feature that made the
+  face) or `on_face`, or use a predicate that separates them. Omitting `where`
   takes every candidate, so `{from:"body_ex1",kind:"edge"}` is all edges of one
   body. An edge direction test reads the edge's own tangent, not its
   underlying curve's axis: a line's direction, an arc or partial ellipse's

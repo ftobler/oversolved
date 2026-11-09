@@ -151,6 +151,19 @@ def test_setup_doc_quotes_the_mypy_recipe() -> None:
     assert "mypy tests/ oversolved/" not in text
 
 
+def test_select_doc_names_the_extreme_near_parallel_trap() -> None:
+    """F2 from the spatula practice run: `extreme` may pick a neighbour face.
+
+    The selector pool can hold a parallel face of another feature a fraction
+    further along the axis, and nothing in the reply marks its owner. The doc
+    has to send the author to created_by / on_face before that surprise lands
+    a sketch on the wrong face.
+    """
+    doc = _squashed(_read("docs/drive.md"))
+    assert "A parallel face of another feature that sits a fraction further along the axis wins" in doc
+    assert "`created_by`" in doc and "`on_face`" in doc
+
+
 def test_lint_py_docstring_points_at_real_convention_doc() -> None:
     # Tooling drift: lint.py described its rules as living in CLAUDE.md, which
     # does not exist; they live in AGENTS.md.

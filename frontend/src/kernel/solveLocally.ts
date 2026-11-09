@@ -27,6 +27,7 @@ import { resolveTessellation, type TessellationPreset } from './tessellationPres
 import { measureBodies, type Bbox6, type MeasureRecord } from './occ/measure'
 import { volumeForMeasure } from './occ/volume'
 import { shapeBbox } from './occ/faceBounds'
+import { canonicalFaces, pickableEdgeCount } from './occ/bodyNames'
 import { MM_PER_LENGTH_UNIT, lengthUnitOf } from '@/utils/lengthUnit'
 import type { OccHandle } from './occ/handleTable'
 import type { OccModule, OccShape } from './occ/occTypes'
@@ -794,14 +795,24 @@ export async function buildAndMeasureLocally(
   }
 }
 
+/** One live body's own measure at a feature checkpoint. */
+export interface FeatureMeasureBody {
+  volume: number
+  // The canonical face count and the pickable edge count `measure` reports.
+  // A fillet that adds and removes the same volume still moves these, so the
+  // delta row can see a shape change the volume cannot.
+  faces: number
+  edges: number
+}
+
 /** The volume and bbox a feature checkpoint's body set carried. */
 export interface FeatureMeasure {
   id: string
   volume: number
   bbox: Bbox6 | null
-  // Each live body's own volume at this checkpoint, so a delta row can name
+  // Each live body's own measure at this checkpoint, so a delta row can name
   // the body a feature changed beside the all-bodies total.
-  bodies?: Record<string, number>
+  bodies?: Record<string, FeatureMeasureBody>
 }
 
 function unionBbox(a: Bbox6 | null, b: Bbox6): Bbox6 {
@@ -814,15 +825,16 @@ function unionBbox(a: Bbox6 | null, b: Bbox6): Bbox6 {
 
 // One measurement per unique shape, not per checkpoint: a checkpoint body set
 // mostly shares handles with its neighbours, so sketches and untouched bodies
-// cost nothing after the feature that minted them. Volume and bbox only: area
-// and the topology counts are not part of the per-feature delta.
+// cost nothing after the feature that minted them. The topology counts are part
+// of the measure because a shape change can leave the volume and bbox alone
+// (a fillet over a bend moves material both ways).
 function measureFeatureCheckpoints(
   oc: OccModule,
   state: BuildState,
   table: HandleTable,
 ): FeatureMeasure[] {
   const scope = new DisposeScope()
-  const cache = new Map<OccHandle, { volume: number; bbox: Bbox6 }>()
+  const cache = new Map<OccHandle, FeatureMeasureBody & { bbox: Bbox6 }>()
   let faulted = false
   try {
     const out: FeatureMeasure[] = []
@@ -831,18 +843,23 @@ function measureFeatureCheckpoints(
       if (!checkpoint) continue
       let volume = 0
       let bbox: Bbox6 | null = null
-      const bodies: Record<string, number> = {}
+      const bodies: Record<string, FeatureMeasureBody> = {}
       for (const [bodyId, body] of Object.entries(checkpoint.body_store_snapshot)) {
         if (body.shape == null) continue
         let measured = cache.get(body.shape)
         if (measured === undefined) {
           const shape = table.get<OccShape>(body.shape)
-          measured = { volume: volumeForMeasure(oc, scope, shape), bbox: shapeBbox(oc, scope, shape) }
+          measured = {
+            volume: volumeForMeasure(oc, scope, shape),
+            bbox: shapeBbox(oc, scope, shape),
+            faces: canonicalFaces(oc, scope, shape).length,
+            edges: pickableEdgeCount(oc, scope, shape),
+          }
           cache.set(body.shape, measured)
         }
         volume += measured.volume
         bbox = unionBbox(bbox, measured.bbox)
-        bodies[bodyId] = measured.volume
+        bodies[bodyId] = { volume: measured.volume, faces: measured.faces, edges: measured.edges }
       }
       out.push({ id, volume, bbox, bodies })
     }
