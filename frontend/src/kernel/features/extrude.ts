@@ -31,6 +31,7 @@ import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { makeTranslationTrsf, transformCopy } from '../occ/transforms'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
+import { draftPrismBuilder } from '../occ/draftPrism'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
 import { resolveUpToPlane, orientToTarget, trimAtPlane, UP_TO_REACH, type CutPlane } from './upTo'
 import { deriveEdgeNames, nameNeighboursAndDeriveEdges } from '../occ/constructionLineage'
@@ -251,6 +252,14 @@ export function solveExtrude(
   )
 
   if (!Number.isFinite(distance) || distance === 0) throw new Error('extrude: distance must be non-zero')
+  // Absent or 0 is the straight prism this feature has always built; only a
+  // non-zero angle takes the draft path.
+  const taper = Number(sub.taper ?? 0)
+  if (!Number.isFinite(taper) || Math.abs(taper) >= 90) {
+    throw new Error('extrude: taper must be a finite angle with |taper| < 90 degrees')
+  }
+  const taperDeg = taper
+  const taperRad = (taper * Math.PI) / 180
   if (sketchRefs.length === 0) {
     throw new Error('extrude: requires at least one profile reference')
   }
@@ -362,6 +371,11 @@ export function solveExtrude(
   const result: ExtrudeResult = { status: 'ok', body_id: bodyId }
   const operation = ((sub.operation as string) ?? 'add') as BodyOperation
   const direction = (sub.direction as string) ?? 'normal'
+  if (taperDeg !== 0 && direction === 'symmetric') {
+    throw new Error(
+      'extrude: taper is not supported with direction symmetric; use normal or reverse',
+    )
+  }
 
   if (cqFaces.length === 0 && allLoops.length === 0) {
     // No profile geometry resolved -> no part. A part-less extrude is a failed
@@ -409,6 +423,11 @@ export function solveExtrude(
   // Up-to termination: resolve the cut plane once, using a representative extrude
   // direction so a point target can take the extrude direction as its normal.
   const termination = (sub.termination as string) ?? 'blind'
+  if (taperDeg !== 0 && (termination === 'up_to' || termination === 'through_all')) {
+    throw new Error(
+      `extrude: taper is not supported with termination ${termination}; use termination blind`,
+    )
+  }
   // A through-all tool is sized from the bodies it cuts, which is meaningless
   // for a tool that adds material or intersects it. The pattern leaf's internal
   // tool build passes the authored operation because it forces `new` to get the
@@ -506,8 +525,12 @@ export function solveExtrude(
     const seed = bodyFaceName(oc, scope, table, bodyStore, cqFaces[0])
     if (seed !== null) names.faceAncestry[seed.uuid] = seed.ancestry
     const prism = (face: OccShape, dir: Vec3, length: number, seeded: boolean): OccShape => {
-      const vec = scope.track(new oc.gp_Vec_4(dir[0] * length, dir[1] * length, dir[2] * length))
-      const builder = scope.track(new oc.BRepPrimAPI_MakePrism_1(face, vec, true, true)) as OccPrismBuilder
+      const builder = taperRad === 0
+        ? (() => {
+            const vec = scope.track(new oc.gp_Vec_4(dir[0] * length, dir[1] * length, dir[2] * length))
+            return scope.track(new oc.BRepPrimAPI_MakePrism_1(face, vec, true, true)) as OccPrismBuilder
+          })()
+        : draftPrismBuilder(oc, scope, face, dir, length, taperRad)
       const cap = seeded && seed !== null ? builder.FirstShape?.() : undefined
       if (cap !== undefined) names.faceNames.set(scope.track(cap) as OccSubShape, seed!.uuid)
       return builder.Shape()
@@ -594,6 +617,7 @@ export function solveExtrude(
       length,
       firstSketchId,
       featureId,
+      taperDeg,
     )
     // The tool is scope-owned from here: applyBodyOperation detaches whatever
     // becomes a body, and the leftover (an add/cut tool, a compound wrapper)

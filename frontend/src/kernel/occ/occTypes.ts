@@ -105,6 +105,41 @@ export interface OccListOfShape extends OccDisposable {
   Append_1(s: OccShape): void
 }
 
+/** BRepOffsetAPI_ThruSections: the loft between two or more section wires. The
+ *  extrude taper fallback uses the solid form with two wires (profile and its
+ *  offset moved to the top). `AddWire` is the one-argument overload in this
+ *  build. */
+export interface OccThruSectionsBuilder extends OccDisposable {
+  CheckCompatibility(check: boolean): void
+  AddWire(wire: OccShape): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
+  FirstShape(): OccShape
+  LastShape(): OccShape
+  GeneratedFace(edge: OccShape): OccShape
+}
+
+/** BRepOffsetAPI_MakeOffset: offset a planar wire (or face) in its own plane.
+ *  `Perform(offset, alt)` does the work; a collapsed offset returns a wire with
+ *  no edges rather than throwing. */
+export interface OccOffsetMaker extends OccDisposable {
+  Perform(offset: number, alt: number): void
+  IsDone?(): boolean
+  Shape(): OccShape
+}
+
+/** LocOpe_DPrism: the draft prism investigated for the taper feature. It is not
+ *  the shipped builder (it cannot take a face with holes and leaves unsewn
+ *  edges), but the spike test keeps the binding pinned. */
+export interface OccDPrismBuilder extends OccDisposable {
+  IsDone(): boolean
+  Shape(): OccShape
+  Shapes(edge: OccShape): OccListOfShape
+  FirstShape(): OccShape
+  LastShape(): OccShape
+}
+
 /**
  * BRepOffsetAPI_MakePipeShell: sweep a profile along a spine. Shares the
  * Shape()/Generated() lineage surface with OccPrismBuilder; adds the
@@ -665,6 +700,8 @@ export interface OccModule extends OccBaseModule {
     TopAbs_SOLID: OccShapeEnumValue
     TopAbs_SHELL: OccShapeEnumValue
     TopAbs_WIRE: OccShapeEnumValue
+    TopAbs_COMPOUND: OccShapeEnumValue
+    TopAbs_COMPSOLID: OccShapeEnumValue
     TopAbs_SHAPE: OccShapeEnumValue
   }
   TopoDS: {
@@ -672,7 +709,10 @@ export interface OccModule extends OccBaseModule {
     Edge_1(shape: OccShape): OccShape
     Vertex_1(shape: OccShape): OccShape
     Solid_1(shape: OccShape): OccShape
+    Shell_1(shape: OccShape): OccShape
     Wire_1(shape: OccShape): OccShape
+    Compound_1(shape: OccShape): OccShape
+    CompSolid_1(shape: OccShape): OccShape
   }
   // A default-constructed TopoDS_Solid, filled by BRep_Builder.MakeSolid + Add.
   TopoDS_Solid: new () => OccShape
@@ -897,6 +937,31 @@ export interface OccModule extends OccBaseModule {
     GeomAbs_Tangent: OccEnumValue
     GeomAbs_Intersection: OccEnumValue
   }
+
+  // ─── extrude taper (draftPrism.ts) ───
+  // BRepOffsetAPI_MakeOffset(wire, join, openResult): the wire overload is _3
+  // in this build (_2 takes a face, _1 is the empty ctor). It offsets the wire
+  // in its own plane; a collapsed offset yields a wire with no edges.
+  BRepOffsetAPI_MakeOffset_3: new (
+    spine: OccShape,
+    join: OccEnumValue,
+    openResult: boolean,
+  ) => OccOffsetMaker
+  // BRepOffsetAPI_ThruSections(isSolid, ruled, pres3d): the solid loft the
+  // taper fallback builds between the profile wire and its offset. AddWire
+  // takes one argument here (no check flag).
+  BRepOffsetAPI_ThruSections: new (
+    isSolid: boolean,
+    ruled: boolean,
+    pres3d: number,
+  ) => OccThruSectionsBuilder
+  // LocOpe_DPrism(spine, height, angle): the 3-arg ctor is _2 in this build.
+  // Height is the lateral edge length, so the axial height is height*cos(angle).
+  LocOpe_DPrism_2: new (
+    spine: OccShape,
+    height: number,
+    angle: number,
+  ) => OccDPrismBuilder
 
   // ─── canonical surface recognition (canonicalSurfaces.ts) ───
   gp_Pnt_1: new () => OccXYZ

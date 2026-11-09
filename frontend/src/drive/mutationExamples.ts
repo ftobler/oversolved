@@ -40,6 +40,17 @@ const FILLET_STEPS: ScriptStep[] = [
   { mutation: { type: 'add_fillet', featureId: 'fi1', label: 'Fillet', edges: FILLET_EDGES, radius: 3 } },
 ]
 
+const TAPERED_BLOCK_STEPS: ScriptStep[] = [
+  { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Rectangle', plane: '@builtin_plane_top' } },
+  { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [18, 18] } },
+  {
+    mutation: {
+      type: 'add_extrude', featureId: 'ex1', label: 'Extrude',
+      sketchQuery: '$sk1', distance: 10, taper: 15, operation: 'new',
+    },
+  },
+]
+
 export const MUTATION_EXAMPLES: readonly MutationExample[] = [
   {
     name: 'box',
@@ -50,5 +61,10 @@ export const MUTATION_EXAMPLES: readonly MutationExample[] = [
     name: 'filleted-box',
     summary: 'The box with its four Y-parallel edges filleted at radius 3: 11922.743 mm3.',
     steps: FILLET_STEPS,
+  },
+  {
+    name: 'tapered-block',
+    summary: 'An 18 x 18 sketch on Top extruded 10 with taper 15: 2371.112 mm3.',
+    steps: TAPERED_BLOCK_STEPS,
   },
 ]

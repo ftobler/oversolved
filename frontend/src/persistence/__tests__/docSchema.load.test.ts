@@ -398,4 +398,38 @@ describe('hostile sizes are capped before the builder', () => {
     })
     expect(result.ok).toBe(true)
   })
+
+  it('loads an extrude taper and keeps it on the re-serialised document', () => {
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [
+        { id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front', entities: [], constraints: [] },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 10, taper: 15 } },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const extrude = (result.doc.features![1] as { extrude: { taper?: number } }).extrude
+    expect(extrude.taper).toBe(15)
+    const serialised = JSON.parse(JSON.stringify(result.doc)) as {
+      features: Array<{ extrude: { taper?: number } }>
+    }
+    expect(serialised.features[1].extrude.taper).toBe(15)
+  })
+
+  it('leaves an unauthored taper absent', () => {
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [
+        { id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front', entities: [], constraints: [] },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 10 } },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const extrude = (result.doc.features![1] as { extrude: Record<string, unknown> }).extrude
+    expect('taper' in extrude).toBe(false)
+  })
 })
