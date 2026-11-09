@@ -36,8 +36,8 @@ process.on('message', async ({ id, recipe }) => {
     // any document, and replaying it would only echo the refusal (some such
     // picks resolved in the base body and the solver then refused, others never
     // resolved at all). Unreached picks are only reported for completed base
-    // runs; on a refused base run the refusal is already reported (see
-    // runPersistenceCheck).
+    // runs whose perturbed chain stopped on a stale pick; a generic refusal is
+    // a geometry outcome, not a naming failure (see runPersistenceCheck).
     const builtSteps = new Set(run.reports.filter((report) => report.status === 'built').map((report) => report.step))
     const persistentPicks = run.picks.filter((pick) => builtSteps.has(pick.step))
     let stale = []
