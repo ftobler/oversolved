@@ -154,13 +154,16 @@ describe.skipIf(!ready)('declared contacts at the real kernel', () => {
   }, 300_000)
 
   it('names an unmet coincident instead of welding it', async () => {
-    // A small real profile with one joint open by 2e-4, every line fixed so the
+    // A small real profile with one joint open by 1e-2, every line fixed so the
     // solve cannot close it. A far construction line inflates the solver's
     // sketch scale (its verdict width follows the SEED bbox), so the miss still
     // reads as a satisfied solve; the area builder's own scale comes from the
     // real geometry only, so the same gap is past its cap and must be reported,
-    // not welded.
-    const gap = 1e-3
+    // not welded. The conflict is deliberately larger than the 1e-3 first used:
+    // the headless settle re-seeds the soft `fixed` rows on every pass, so five
+    // passes erode a 1e-3 miss to a few grid steps, under the builder's 1e-5
+    // floor, while a 1e-2 miss is still about 4e-5 when the builder reads it.
+    const gap = 1e-2
     const built = await runHeadless({
       doc: emptyDriveDoc(),
       steps: [
