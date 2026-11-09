@@ -180,21 +180,39 @@ interface EndpointConsistency {
   radialError: number
   angularError: number
   scale: number
+  // A fit spline has no stored angles: its curve is the pole chain, so only the
+  // terminal pole can answer where the OCC edge really ends.
+  terminalPole: boolean
 }
 
 /**
  * Compare an anchored arc or elliptical arc's stored endpoint with the point
  * its stored angles produce. The radial check alone misses the wrong-sweep
  * case, whose endpoint is on the circle at the wrong angle, so both are
- * measured. This reads numbers the report already has; it does not change the
- * merge rule.
+ * measured. A fit spline's endpoint is compared with the terminal pole its
+ * edge is actually built from. This reads numbers the report already has; it
+ * does not change the merge rule.
  */
 function endpointConsistency(e: LoopEdge, which: 'start' | 'end'): EndpointConsistency | null {
   const kind = e['kind'] as string
-  if (kind !== 'arc' && kind !== 'ellipse_arc') return null
   const p = endpoint(e, which)
+  if (p.length < 2) return null
+  if (kind === 'fit_spline') {
+    const poles = e['poles'] as number[][] | undefined
+    if (!Array.isArray(poles) || poles.length === 0) return null
+    const pole = which === 'start' ? poles[0] : poles[poles.length - 1]
+    if (!Array.isArray(pole) || pole.length < 2) return null
+    return {
+      which,
+      radialError: dist2d(p, pole),
+      angularError: 0,
+      scale: 1,
+      terminalPole: true,
+    }
+  }
+  if (kind !== 'arc' && kind !== 'ellipse_arc') return null
   const center = e['center'] as number[] | undefined
-  if (p.length < 2 || center === undefined) return null
+  if (center === undefined) return null
   const angleKey = which === 'start' ? 'angle_start_deg' : 'angle_end_deg'
   const angleDeg = (e[angleKey] as number | undefined) ?? 0
   const angle = (angleDeg * Math.PI) / 180
@@ -208,6 +226,7 @@ function endpointConsistency(e: LoopEdge, which: 'start' | 'end'): EndpointConsi
       radialError: Math.abs(Math.hypot(dx, dy) - radius),
       angularError: angleDelta(Math.atan2(dy, dx), angle),
       scale: radius,
+      terminalPole: false,
     }
   }
   const a = e['a'] as number | undefined
@@ -225,6 +244,7 @@ function endpointConsistency(e: LoopEdge, which: 'start' | 'end'): EndpointConsi
     radialError: Math.hypot(p[0] - onCurve[0], p[1] - onCurve[1]),
     angularError: angleDelta(phi, angle),
     scale: Math.max(a, b),
+    terminalPole: false,
   }
 }
 
@@ -400,8 +420,18 @@ export function describeProfile(loops: LoopEdge[][]): ProfileReport {
       for (const which of ['start', 'end'] as const) {
         const c = endpointConsistency(e, which)
         if (c === null) continue
-        if (c.radialError <= JOINT_SNAP_TOL && c.angularError * c.scale <= JOINT_SNAP_TOL) continue
         const id = typeof e['id'] === 'string' ? `'${e['id']}'` : '(no id)'
+        if (c.terminalPole) {
+          // OCC connects at its confusion rung, so a terminal pole past that is
+          // the curve's real endpoint disagreeing with the joint, not f64 noise.
+          if (c.radialError <= OCC_CONFUSION) continue
+          note(
+            `loop ${li} ${String(e['kind'])} ${id} ${c.which}: stored endpoint disagrees with ` +
+            `its terminal pole (gap ${fmt(c.radialError)})`,
+          )
+          continue
+        }
+        if (c.radialError <= JOINT_SNAP_TOL && c.angularError * c.scale <= JOINT_SNAP_TOL) continue
         note(
           `loop ${li} ${String(e['kind'])} ${id} ${c.which}: stored endpoint disagrees with its ` +
           `stored angles (radial ${fmt(c.radialError)}, angular ${fmt(c.angularError)} rad)`,

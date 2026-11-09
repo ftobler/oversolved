@@ -1,7 +1,7 @@
 // Arc sampling, polygon point list, area-weighted centroid. Only what the slice
 // topology needs lives here.
 
-import { TOL_LOOP_CLOSURE, TOL_NEAR_ZERO_AREA, TOL_SELECT_DIRECTION } from "./solverConstants"
+import { JOINT_SNAP_TOL, TOL_LOOP_CLOSURE, TOL_NEAR_ZERO_AREA, TOL_SELECT_DIRECTION } from "./solverConstants"
 import { chainSamples } from "@/utils/geometry/fitSpline"
 
 // Sample count that makes a curved loop read as its true shape rather than as
@@ -14,13 +14,65 @@ export const CENTROID_ARC_SAMPLES = 64
 export type LoopEdge = Record<string, unknown>
 
 /**
- * Edges whose OCC endpoints are pinned to an analytic curve (center+radius+angle
- * for arcs, the eccentric-angle frame for ellipse arcs): a neighbouring joint
- * cannot pull them off that curve, so at a joint they win and the free edge
- * moves. Shared by the pure profile dump, the loop assembler's merged-vertex
- * snap and the OCC-side snapper (`snapLoopJoints`).
+ * Edges whose OCC endpoints are pinned to a curve: an arc to its
+ * center+radius+angle, an ellipse or elliptical arc to its eccentric-angle
+ * frame, and a fit spline to the terminal poles it is built from. A
+ * neighbouring joint cannot pull them off that curve, so at a joint they win
+ * and the free edge moves. A fit spline's poles follow the joint through
+ * `syncFitSplineEnds`, which is what keeps this rule true for it. Shared by the
+ * pure profile dump, the loop assembler's merged-vertex snap and the OCC-side
+ * snapper (`snapLoopJoints`).
  */
 export const ANCHORED_KINDS = new Set(['arc', 'ellipse', 'ellipse_arc', 'fit_spline'])
+
+/**
+ * Move a fit spline's terminal poles onto its stored endpoints, and each moved
+ * pole's inner neighbour with it.
+ *
+ * The loop dict's `start`/`end` are the merged joint positions, while the OCC
+ * edge is built from `poles`; when the area builder merges a fit-spline end with
+ * an anchored arc end, the dict says the joint is closed and the curve still
+ * ends at its own pole. The chain is a C0 cubic Bezier chain, so translating a
+ * terminal pole together with the next pole keeps the end tangent's direction
+ * and magnitude exactly: the shape change is bounded by the joint delta and no
+ * fillet or tangent constraint downstream sees a turned tangent.
+ *
+ * A delta at or under `JOINT_SNAP_TOL` is the rung the snapper repairs; a wider
+ * one is a real gap and is left for makeWire to refuse. Returns a clone: the
+ * stored topology dicts are never mutated.
+ */
+export function syncFitSplineEnds(edge: LoopEdge): LoopEdge {
+  if (edge['kind'] !== 'fit_spline') return edge
+  const polesRaw = edge['poles']
+  // A fit spline chain is 3 (N - 1) + 1 poles, so one cubic is the shortest:
+  // anything under four has no terminal-plus-neighbour pair to move.
+  if (!Array.isArray(polesRaw) || polesRaw.length < 4) return edge
+  const poles = polesRaw as number[][]
+  const delta = (pole: number[] | undefined, target: unknown): [number, number] | null => {
+    if (!Array.isArray(pole) || !Array.isArray(target) || (target as number[]).length < 2) return null
+    const dx = (target as number[])[0] - pole[0]
+    const dy = (target as number[])[1] - pole[1]
+    const gap = Math.hypot(dx, dy)
+    if (gap === 0 || gap > JOINT_SNAP_TOL) return null
+    return [dx, dy]
+  }
+  const startDelta = delta(poles[0], edge['start'])
+  const endDelta = delta(poles[poles.length - 1], edge['end'])
+  const out: number[][] = poles.map((p) => [...p])
+  const move = (i: number, d: [number, number]): void => {
+    out[i] = [out[i][0] + d[0], out[i][1] + d[1]]
+  }
+  if (startDelta !== null) {
+    move(0, startDelta)
+    move(1, startDelta)
+  }
+  if (endDelta !== null) {
+    move(out.length - 1, endDelta)
+    move(out.length - 2, endDelta)
+  }
+  if (startDelta === null && endDelta === null) return { ...edge }
+  return { ...edge, poles: out }
+}
 
 export function radians(deg: number): number {
   return (deg * Math.PI) / 180

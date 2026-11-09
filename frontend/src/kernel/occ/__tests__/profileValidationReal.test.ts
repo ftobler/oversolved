@@ -15,6 +15,7 @@ import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
 import {
   makeArcEdge,
+  makeBSplineChainEdge,
   makeFaceFromWire,
   makeLineEdge,
   makePrism,
@@ -27,9 +28,11 @@ import { sketchLoopsToFace, sweepProfileWithLineage } from '../prismLineage'
 import { buildArcEdge } from '../prismProfile'
 import { volumeOf } from '../booleans'
 import { describeProfile } from '../../profileDiagnostics'
+import { syncFitSplineEnds, type LoopEdge } from '../../profileLoops'
+import { OCC_CONFUSION } from '../../solverConstants'
+import { interpolateFitSpline } from '@/utils/geometry/fitSpline'
 import type { OccModule } from '../occTypes'
 import type { PlaneLike } from '../../features/shared/planes'
-import type { LoopEdge } from '../../profileLoops'
 
 const oc = await loadOcc()
 
@@ -69,6 +72,28 @@ function gappedSquare(gap: number): LoopEdge[] {
 function arcPoint(center: number[], radius: number, deg: number): number[] {
   const a = (deg * Math.PI) / 180
   return [center[0] + radius * Math.cos(a), center[1] + radius * Math.sin(a)]
+}
+
+/**
+ * The bug-1 tooth in its smallest form: a bottom line, the right half of the
+ * tip circle, and a flank fit spline that the area builder merged onto the arc's
+ * top end. The spline's own first pole is still 5e-7 radially outside the
+ * circle, so the loop dict's joint is closed while the OCC curve is not.
+ */
+function mergedFitSplineLoop(): LoopEdge[] {
+  const curve = interpolateFitSpline([[10, 10.0000005], [5, 8], [0, 0]])
+  return [
+    { kind: 'line', id: 'bottom', start: [0, 0], end: [10, 0] },
+    {
+      kind: 'arc', id: 'tip', center: [10, 5], radius: 5,
+      angle_start_deg: -90, angle_end_deg: 90, ccw: true,
+      start: arcPoint([10, 5], 5, -90), end: arcPoint([10, 5], 5, 90),
+    },
+    {
+      kind: 'fit_spline', id: 'flank', start: [10, 10], end: [0, 0],
+      poles: curve.poles().map((p) => [...p]), knots: [...curve.knots],
+    },
+  ]
 }
 
 /**
@@ -492,6 +517,56 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
       expect(warn).not.toHaveBeenCalled()
     } finally {
       warn.mockRestore()
+      scope.dispose()
+    }
+  })
+
+  it('syncs a self-closed fit spline whose merged ends its poles still straddle', () => {
+    // A standalone closed fit spline is one loop edge with no joint to walk: the
+    // area builder merged its two authored ends into one vertex, but the chain
+    // still ends 5e-7 away from where it starts.
+    const curve = interpolateFitSpline([[0, 0], [2, 1], [3, 0], [2, -1], [5e-7, 0]])
+    const loop: LoopEdge[] = [{
+      kind: 'fit_spline', id: 'closed', start: [0, 0], end: [0, 0],
+      poles: curve.poles().map((p) => [...p]), knots: [...curve.knots],
+    }]
+    const scope = new DisposeScope()
+    try {
+      const face = scope.track(sketchLoopsToFace(occ, scope, [loop], XY_PLANE))
+      expect(scope.track(new occ.BRepCheck_Analyzer(face, true)).IsValid_2()).toBe(true)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('builds a fit-spline joint the area builder merged onto an arc', () => {
+    // The arc is anchored to its own circle and the fit spline to its poles, so
+    // snapLoopJoints cannot move either endpoint: the split is inside the fit
+    // spline's own dict. Its terminal poles must follow the merged joints or
+    // makeWire drops the spline 5.9e-7 from the arc end.
+    const loop = mergedFitSplineLoop()
+    const scope = new DisposeScope()
+    try {
+      const face = scope.track(sketchLoopsToFace(occ, scope, [loop], XY_PLANE))
+      expect(scope.track(new occ.BRepCheck_Analyzer(face, true)).IsValid_2()).toBe(true)
+
+      // The edges the wire writer asked for realize every joint inside OCC's
+      // confusion rung, not just inside the sketch's merge rung.
+      const synced = loop.map(syncFitSplineEnds)
+      const edges = synced.map((e) => {
+        if (e['kind'] === 'arc') return scope.track(buildArcEdge(occ, scope, XY_PLANE, e))
+        if (e['kind'] === 'fit_spline') {
+          const poles = (e['poles'] as number[][]).map((p) => [p[0], p[1], 0] as Vec3)
+          return scope.track(makeBSplineChainEdge(occ, scope, poles, e['knots'] as number[]))
+        }
+        const s = e['start'] as number[]
+        const en = e['end'] as number[]
+        return scope.track(makeLineEdge(occ, scope, [s[0], s[1], 0], [en[0], en[1], 0]))
+      })
+      for (const g of wireEndpointGaps(occ, scope, edges)) {
+        expect(g).toBeLessThanOrEqual(OCC_CONFUSION)
+      }
+    } finally {
       scope.dispose()
     }
   })

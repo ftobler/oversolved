@@ -214,6 +214,38 @@ describe('describeProfile', () => {
     expect(r.reasons.some((x) => x.includes('disagrees with its stored angles'))).toBe(false)
   })
 
+  it('flags a fit_spline endpoint that disagrees with its terminal pole', () => {
+    // The loop joints agree (both sides carry the merged position), so the
+    // joints alone read clean; the curve, however, is built from its poles and
+    // would end 5.9e-7 away from the joint makeWire is asked to close.
+    const curve = interpolateFitSpline([[10, 0], [0, 0]])
+    const loop: LoopEdge[] = [
+      { kind: 'line', start: [0, 0], end: [10 + 5.9e-7, 0] },
+      {
+        kind: 'fit_spline', id: 'flank', start: [10 + 5.9e-7, 0], end: [0, 0],
+        poles: curve.poles(), knots: [...curve.knots],
+      },
+    ]
+    const r = describeProfile([loop])
+    expect(r.verdict).toBe('suspect')
+    expect(r.reasons.some((x) => x.includes('flank') && x.includes('terminal pole'))).toBe(true)
+    expect(r.reasons.some((x) => x.includes('5.900e-7'))).toBe(true)
+  })
+
+  it('keeps a fit_spline whose endpoints are its terminal poles at ok', () => {
+    const curve = interpolateFitSpline([[10, 0], [0, 0]])
+    const loop: LoopEdge[] = [
+      { kind: 'line', start: [0, 0], end: [10, 0] },
+      {
+        kind: 'fit_spline', start: [10, 0], end: [0, 0],
+        poles: curve.poles(), knots: [...curve.knots],
+      },
+    ]
+    const r = describeProfile([loop])
+    expect(r.verdict).toBe('ok')
+    expect(r.reasons.some((x) => x.includes('terminal pole'))).toBe(false)
+  })
+
   it('reports the builder sampling and notes where the coarse pass disagrees', () => {
     // A small circle tucked against the big circle's chord: the 1-sample
     // polygon (a diamond) excludes its centroid, the 64-sample one contains it.
