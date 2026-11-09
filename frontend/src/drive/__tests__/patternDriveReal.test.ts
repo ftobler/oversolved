@@ -56,7 +56,11 @@ function rectSketch(id: string, w: number, h: number, x0 = 0, y0 = 0): PartFeatu
 }
 
 /** A 40 x 20 x 5 plate with one 4 x 4 slot cut through it at (6, 6). */
-function slottedPlate(cut: { distance?: number; termination?: 'blind' | 'through_all' } = {}): PartDoc {
+function slottedPlate(cut: {
+  distance?: number
+  termination?: 'blind' | 'through_all'
+  direction?: 'normal' | 'reverse' | 'symmetric'
+} = {}): PartDoc {
   return seedBuiltins({
     version: 1,
     kind: 'part',
@@ -67,7 +71,7 @@ function slottedPlate(cut: { distance?: number; termination?: 'blind' | 'through
       {
         id: 'ex_slot', kind: 'extrude',
         extrude: {
-          sketch: '@sk_slot', distance: cut.distance ?? 10, direction: 'normal', operation: 'cut',
+          sketch: '@sk_slot', distance: cut.distance ?? 10, direction: cut.direction ?? 'normal', operation: 'cut',
           ...(cut.termination === undefined ? {} : { termination: cut.termination }),
         },
       },
@@ -129,6 +133,27 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     // thickness even though the through_all source stores distance 1.
     expect(throughMeasured!.measures.volume).toBeCloseTo(4000 - 4 * 4 * 5 * 4, 4)
     expect(throughMeasured!.measures.volume).toBeCloseTo(blindMeasured!.measures.volume, 4)
+  }, 240_000)
+
+  it('patterns a symmetric through_all cut from the bottom face through every copy', async () => {
+    // The source sketch sits on Front at z=0, the plate's bottom face. A
+    // symmetric tool sized from the union span alone covers only half the 5 mm
+    // plate, so both copies would leave a blind pocket.
+    const run = await runHeadless({
+      doc: slottedPlate({ distance: 1, termination: 'through_all', direction: 'symmetric' }),
+      steps: [step({
+        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+        source_feature: '@ex_slot', mode: 'linear', count: 2, pitch: 8, direction: [1, 0, 0],
+      })],
+    })
+    expect(run.ok).toBe(true)
+    expect(run.features.find(problem => problem.id === 'pt1')).toBeUndefined()
+
+    const measured = await measureHeadless(run.doc!)
+    expect(measured?.ok).toBe(true)
+    // 40 x 20 x 5 minus two 4 x 4 x 5 slots, each cut through the thickness.
+    expect(measured!.measures.volume).toBeCloseTo(4000 - 2 * 4 * 4 * 5, 4)
+    expect(measured!.measures.bodies).toBe(1)
   }, 240_000)
 
   it('reports a copy that misses the plate in the feature list', async () => {

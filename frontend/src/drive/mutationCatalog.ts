@@ -578,6 +578,8 @@ const EXTRUDE_THROUGH_ALL_NOTE =
   '`termination: through_all` is a CUT that is sized from the bodies it can reach instead of from ' +
   '`distance`, which it ignores: `merge_target` narrows the reach and the cut to one body, and with no ' +
   'target every body is a candidate, so a body farther along the same axis only makes the tool longer. ' +
+  '`direction: normal` and `reverse` cut one side of the profile plane; `direction: symmetric` cuts ' +
+  'through all material on BOTH sides of it. ' +
   'It needs a body to cut through, and `operation` must be `cut`; add, new and intersect are refused.'
 
 const REVOLVE_INLINE_NOTE =
@@ -1075,7 +1077,7 @@ export const MUTATION_CATALOG = {
       sketchQuery: sketchQuery(),
       distance: num(),
       direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as extrude.direction).'),
-      termination: optNullableStr('blind | up_to | through_all; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance`; `through_all` is a cut sized from the bodies it can reach, so `distance` is ignored and `merge_target` narrows the reach (the key the document stores as extrude.termination). A null value clears it, so the add writes no key.'),
+      termination: optNullableStr('blind | up_to | through_all; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance`; `through_all` is a cut sized from the bodies it can reach, so `distance` is ignored and `merge_target` narrows the reach, with `direction: symmetric` cutting both sides of the plane and normal/reverse cutting one (the key the document stores as extrude.termination). A null value clears it, so the add writes no key.'),
       up_to: optNullableStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, a planar body face (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback), a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`) (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it.'),
       operation: optStr('add | cut | new; absent means add (the key the document stores as extrude.operation).'),
       merge_target: optStr(MERGE_TARGET_NOTE),
