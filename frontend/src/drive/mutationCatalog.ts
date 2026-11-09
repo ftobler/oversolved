@@ -503,8 +503,12 @@ const OFFSET_SIDE_NOTE =
   'When the selected entities close into loops, a positive `distance` moves every copy out of the region the ' +
   'loops bound and a negative one moves it inward, whatever the winding (OpenSCAD `offset(r>0)` and CadQuery ' +
   'positive `offset2D` are outward too); a selected inner loop is a hole, so its positive offset shrinks it. ' +
-  'An open selection keeps the per-entity rule: a line moves along the left normal of its start->end direction ' +
-  'and a circle or arc grows its radius.'
+  'An open selection is walked: each connected chain starts at the chain end of the first listed sourceId that ' +
+  'is an end of that chain and runs to its other end, and a positive `distance` moves every copy to the left of ' +
+  'that walk, so the whole chain offsets to one side (an arc walked with its stored CCW sweep shrinks, one walked ' +
+  'against it grows). A lone entity, or an open selection whose chain branches at a vertex of degree three or ' +
+  'more, keeps the per-entity rule: a line moves along the left normal of its start->end direction and a circle ' +
+  'or arc grows its radius; a branching selection is reported in a warning.'
 
 // The fillet's authored-arc contract is what an author cannot infer from the
 // mutation shape; the rules are pinned in yamlMutations/sketchFillet.ts and its
