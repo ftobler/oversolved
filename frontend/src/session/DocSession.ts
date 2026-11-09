@@ -5,6 +5,7 @@ import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { applySetRollback, setIdScope } from '@/utils/yamlMutations'
 import { pruneSolveResults } from '@/utils/yamlMutations/solveResults'
+import { threePointArcVertexKeys } from '@/utils/yamlMutations/sketchSugar'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { isDimensionKind } from '@/registry/constraintRegistry'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
@@ -769,7 +770,10 @@ export class DocSession {
   private createdIdsFor(mutations: Mutation[], before: PartDoc, after: PartDoc): SessionSuccess {
     if (!mutations.some(m => CREATING_MUTATION_TYPES.has(m.type))) return okResult()
     const created = createdIdsBetween(before, after)
-    if (!mutations.every(m => COMPACT_CREATED_TYPES.has(m.type))) return okResult(created)
+    const vertexKeys = mutations.length === 1 && mutations[0].type === 'add_three_point_arc'
+      ? threePointArcVertexKeys(mutations[0].start, mutations[0].through, mutations[0].end) ?? undefined
+      : undefined
+    if (!mutations.every(m => COMPACT_CREATED_TYPES.has(m.type))) return okResult(created, undefined, vertexKeys)
     // A rect, n-gon, mirror, pattern or fillet mints several constraints beside
     // its entities. The ids list keeps the entities in minting order and the
     // constraints collapse to a count; the document resource has their ids.

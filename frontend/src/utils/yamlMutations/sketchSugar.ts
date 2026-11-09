@@ -292,6 +292,23 @@ export function applyAddNgon(
   ])
 }
 
+/** Which stored arc vertex key holds each given point of a three-point arc.
+ *
+ *  The arc is stored counter-clockwise, so a through point that sends
+ *  start -> through -> end clockwise makes the given start the stored `end`
+ *  and the given end the stored `start`. The reply names this so a caller can
+ *  write `vertex:<sketch>:<arc>:<key>` without guessing. */
+export function threePointArcVertexKeys(
+  start: [number, number],
+  through: [number, number],
+  end: [number, number],
+): { start: 'start' | 'end'; end: 'start' | 'end' } | null {
+  const cc = circumcircle(start, end, through)
+  if (!cc) return null
+  const { startsAtFirst } = arcEndpointOrder(cc.cx, cc.cy, start, end, through)
+  return startsAtFirst ? { start: 'start', end: 'end' } : { start: 'end', end: 'start' }
+}
+
 /** Three-point arc sugar: the arc the app's draw tool makes, in CadQuery's
  *  `threePointArc(start, through, end)` order (a point ON the arc sits between
  *  its two ends). The tool's click order is start, end, bulge, so its third

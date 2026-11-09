@@ -925,7 +925,8 @@ banner on stdout, so a client config must use the direct node invocation.
   (CadQuery's `threePointArc` order), stores the arc CCW, and pins an end to
   `startRef` / `endRef` (a vertex ref or a point-on-curve entity ref); without
   refs the ends land within about 1e-6 of the given points, so a profile closes
-  but is not constrained to a neighbour;
+  but is not constrained to a neighbour; its step reply carries `vertexKeys`
+  (`{ start, end }`), naming the stored vertex key that holds each given point;
   `add_revolve` takes the required
   `axis` inline (`@<sketchId>/<entityId>` or an edge query from `select`) plus
   `direction`, `operation` and `merge_target`, the same keys

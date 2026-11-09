@@ -103,6 +103,21 @@ export function applyGeometryToFeature(
   return true
 }
 
+// Whether a sketch solve may be baked into the document's `initial`.
+//
+// An overconstrained solve is a least-squares compromise, not the geometry the
+// user asked for: baking it moves `fixed` geometry, reseeds the next solve from
+// the compromise, and the headless settle closes on a document that keeps
+// shifting. The render path still shows the best-effort solve with its culprit
+// constraints painted; only the stored geometry keeps the last SATISFIED solve
+// (or the authored seed on a cold solve). Underconstrained and fully
+// constrained solves bake as they always did.
+export function shouldBakeSketchGeometry(
+  featureResult: { status?: string } | null | undefined,
+): boolean {
+  return featureResult?.status !== 'overconstrained'
+}
+
 // The explicit cleanup command's handler: removes the projected entities and
 // superfluous constraints the last solve flagged, then drops any constraint that
 // references a removed entity so no dangling refs linger in the doc. Only

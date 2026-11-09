@@ -563,4 +563,11 @@ describe('add_three_point_arc catalog row', () => {
     expect(note).toContain('`endRef`')
     expect(note).toContain('add_entity kind: arc')
   })
+
+  it('names the vertexKeys field the reply carries', () => {
+    const note = mutationInfoOf('add_three_point_arc').note!
+    expect(note).toContain('`vertexKeys`')
+    expect(note).toContain('"start"')
+    expect(note).toContain('"end"')
+  })
 })

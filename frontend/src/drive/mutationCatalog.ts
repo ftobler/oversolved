@@ -956,7 +956,9 @@ export const MUTATION_CATALOG = {
       + '(a profile closes), but they are not constrained to a neighbour. `startRef` and `endRef` name what each '
       + 'end snapped to, a `vertex:` ref such as vertex:sk1:l1:end or an `entity:` ref for a point on that curve, '
       + 'and pin that end with a coincident. An arc given by centre and angles is still add_entity kind: arc. '
-      + 'The step reply names the arc id followed by its constraint ids, up to two.',
+      + 'The step reply names the arc id followed by its constraint ids, up to two, and carries `vertexKeys`: '
+      + 'an object whose `start` and `end` fields name the stored vertex key ("start" or "end") that holds each of '
+      + 'the given start and end points, so the next step can write vertex:<sketchId>:<arcId>:<key>.',
     fields: {
       featureId: str(),
       start: point('The first end of the arc.'),
@@ -1773,6 +1775,18 @@ function typeName(value: unknown): string {
 }
 
 /**
+ * The target-list sketch mutations that take no `featureId`. A caller that
+ * sends one is taught the shape the row holds rather than only that the key is
+ * unknown: the document and journals already carry this shape, so this is
+ * guidance, not an alias.
+ */
+const TARGET_LIST_SHAPE: Partial<Record<Mutation['type'], string>> = {
+  toggle_construction: 'targets: ["entity:<sketchId>:<entityId>"]',
+  delete: 'targets: ["entity:<sketchId>:<entityId>", '
+    + '"vertex:<sketchId>:<entityId>:<vertexKey>" or "constraint:<sketchId>:<constraintId>"]',
+}
+
+/**
  * Refuse an untyped mutation at the drive boundary. A non-object, a missing
  * type, an unknown type, a hidden type and a wrong or missing field all come
  * back as a named Result, so the script runner records one failing step
@@ -1802,6 +1816,12 @@ export function validateMutation(raw: unknown, options: MutationValidationOption
   for (const key of Object.keys(raw)) {
     if (key === 'type') continue
     if (!Object.hasOwn(info.fields, key)) {
+      if (key === 'featureId') {
+        const shape = TARGET_LIST_SHAPE[type as Mutation['type']]
+        if (shape !== undefined) {
+          return fail('invalid-mutation', `${type} takes ${shape}`)
+        }
+      }
       return fail('invalid-mutation', `mutation type "${type}" has no field "${key}"${fieldHint(info.fields, key)}`)
     }
   }

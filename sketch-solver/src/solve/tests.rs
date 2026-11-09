@@ -1295,6 +1295,482 @@ fn angled_pair(s: f64) -> Input {
     )
 }
 
+fn arc_point(params: &[f64], deg: f64) -> [f64; 2] {
+    let a = deg.to_radians();
+    [
+        params[0] + params[2] * a.cos(),
+        params[1] + params[2] * a.sin(),
+    ]
+}
+
+/// Circumcircle through three points, `None` when they are collinear.
+fn circumcircle(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> Option<([f64; 2], f64)> {
+    let d = 2.0 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
+    if d.abs() < 1e-12 {
+        return None;
+    }
+    let (a2, b2, c2) = (
+        a[0] * a[0] + a[1] * a[1],
+        b[0] * b[0] + b[1] * b[1],
+        c[0] * c[0] + c[1] * c[1],
+    );
+    let ux = (a2 * (b[1] - c[1]) + b2 * (c[1] - a[1]) + c2 * (a[1] - b[1])) / d;
+    let uy = (a2 * (c[0] - b[0]) + b2 * (a[0] - c[0]) + c2 * (b[0] - a[0])) / d;
+    Some(([ux, uy], ((a[0] - ux).powi(2) + (a[1] - uy).powi(2)).sqrt()))
+}
+
+/// A near seed of an exact arc: the same stored start and end points, with a
+/// through point pushed 10 percent of the chord along the bulge.
+fn seeded_arc(centre: [f64; 2], r: f64, a0: f64, a1: f64) -> Vec<f64> {
+    let exact = [centre[0], centre[1], r, 0.0, 0.0];
+    let start = arc_point(&exact, a0);
+    let end = arc_point(&exact, a1);
+    let mid = arc_point(&exact, 0.5 * (a0 + a1));
+    let chord = ((end[0] - start[0]).powi(2) + (end[1] - start[1]).powi(2)).sqrt();
+    let rv = [mid[0] - centre[0], mid[1] - centre[1]];
+    let rn = (rv[0] * rv[0] + rv[1] * rv[1]).sqrt();
+    let through = [
+        mid[0] + 0.1 * chord * rv[0] / rn,
+        mid[1] + 0.1 * chord * rv[1] / rn,
+    ];
+    let (c, sr) = circumcircle(start, end, through).expect("seed arc points are not collinear");
+    let sa = (start[1] - c[1]).atan2(start[0] - c[0]).to_degrees();
+    let ea = (end[1] - c[1]).atan2(end[0] - c[0]).to_degrees();
+    let delta = (ea - sa).rem_euclid(360.0);
+    vec![c[0], c[1], sr, sa, sa + delta]
+}
+
+/// The minimal line plus arc repro: a fixed line, a vertex-to-vertex
+/// coincident at the shared joint, the far arc end fixed, and a tangent.
+fn line_arc_shared_vertex() -> Input {
+    let absent = PointSelector::Absent;
+    input(
+        vec![line(0), ent(Kind::Arc, 4)],
+        vec![
+            // Line (0,0)-(1,0).
+            0.0, 0.0, 1.0, 0.0,
+            // Arc centre (1,-1) r 1, stored CCW 0..90: Start (2,-1), End (1,0).
+            1.0, -1.0, 1.0, 0.0, 90.0,
+        ],
+        vec![
+            c_target(ConstraintKind::Fixed, 0, absent),
+            cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(0, PointSelector::End), e_ref(1, PointSelector::End)),
+            ),
+            c_target(ConstraintKind::Fixed, 1, PointSelector::Start),
+            cons(
+                ConstraintKind::Tangent,
+                vec![
+                    (RefRole::Line, e_ref(0, absent)),
+                    (RefRole::Arc, e_ref(1, absent)),
+                ],
+            ),
+        ],
+    )
+}
+
+/// The two-arc repro: the same line and first arc, then a second arc joined at
+/// the first one's far end, its own far end fixed and a tangent at the joint.
+fn line_arc_arc_shared_vertices() -> Input {
+    let absent = PointSelector::Absent;
+    input(
+        vec![line(0), ent(Kind::Arc, 4), ent(Kind::Arc, 9)],
+        vec![
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            -1.0,
+            1.0,
+            0.0,
+            90.0,
+            // Seeded just off the exact B: centre (12.1,-1), r 10.1. These
+            // are the circumcircle of the three authored points, so the seed
+            // arc still passes through both fixed ends.
+            12.113018978396916,
+            -0.9986981021603096,
+            10.113019062196718,
+            -179.9926240372614,
+            -168.58618968773933,
+        ],
+        vec![
+            c_target(ConstraintKind::Fixed, 0, absent),
+            cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(0, PointSelector::End), e_ref(1, PointSelector::End)),
+            ),
+            c_target(ConstraintKind::Fixed, 1, PointSelector::Start),
+            cons(
+                ConstraintKind::Tangent,
+                vec![
+                    (RefRole::Line, e_ref(0, absent)),
+                    (RefRole::Arc, e_ref(1, absent)),
+                ],
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                ab(
+                    e_ref(1, PointSelector::Start),
+                    e_ref(2, PointSelector::Start),
+                ),
+            ),
+            c_target(ConstraintKind::Fixed, 2, PointSelector::End),
+            cons(
+                ConstraintKind::Tangent,
+                ab(e_ref(1, absent), e_ref(2, absent)),
+            ),
+        ],
+    )
+}
+
+#[test]
+fn line_arc_tangent_at_a_shared_vertex_is_fully_constrained() {
+    let inp = line_arc_shared_vertex();
+    let out = solve_sketch(&inp);
+    assert_eq!(
+        out.overall_status,
+        Status::FullyConstrained.to_u8(),
+        "norm {}",
+        out.diagnostics.residual_norm
+    );
+    assert_eq!(out.diagnostics.rank as usize, inp.params_initial.len());
+    assert!(
+        (out.params_solved[4] - 1.0).abs() < 1e-9,
+        "centre x {}",
+        out.params_solved[4]
+    );
+    assert!(
+        (out.params_solved[5] + 1.0).abs() < 1e-9,
+        "centre y {}",
+        out.params_solved[5]
+    );
+    assert!(
+        (out.params_solved[6] - 1.0).abs() < 1e-9,
+        "radius {}",
+        out.params_solved[6]
+    );
+}
+
+#[test]
+fn arc_arc_tangent_at_a_shared_vertex_solves_exactly() {
+    let inp = line_arc_arc_shared_vertices();
+    let out = solve_sketch(&inp);
+    assert_eq!(
+        out.overall_status,
+        Status::FullyConstrained.to_u8(),
+        "norm {}",
+        out.diagnostics.residual_norm
+    );
+    // The geometry sits at 12.1 with an error amplified by this pair's
+    // conditioning (radius 10.1 against a 2.0 chord): the residual is at the
+    // driver's gradient tolerance, so the centre lands at the document grid
+    // rather than at machine epsilon. The old centre-distance row left it
+    // 1.3e-2 off.
+    assert!(
+        (out.params_solved[9] - 12.1).abs() < 1e-6,
+        "B centre x {}",
+        out.params_solved[9]
+    );
+    assert!(
+        (out.params_solved[10] + 1.0).abs() < 1e-6,
+        "B centre y {}",
+        out.params_solved[10]
+    );
+    assert!(
+        (out.params_solved[11] - 10.1).abs() < 1e-6,
+        "B radius {}",
+        out.params_solved[11]
+    );
+}
+
+#[test]
+fn arc_arc_internal_tangent_at_a_shared_vertex() {
+    let absent = PointSelector::Absent;
+    // A is fixed: centre (0,0), r 2, 0..90 deg. B touches A's 90 deg end at
+    // (0,2) from inside, centre (0,1), r 1, curling the same way.
+    let inp = input(
+        vec![ent(Kind::Arc, 0), ent(Kind::Arc, 5)],
+        vec![0.0, 0.0, 2.0, 0.0, 90.0, 0.05, 1.0, 1.05, 90.0, 180.0],
+        vec![
+            c_target(ConstraintKind::Fixed, 0, absent),
+            cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(0, PointSelector::End), e_ref(1, PointSelector::Start)),
+            ),
+            c_target(ConstraintKind::Fixed, 1, PointSelector::End),
+            cons(
+                ConstraintKind::Tangent,
+                ab(e_ref(0, absent), e_ref(1, absent)),
+            ),
+        ],
+    );
+    let out = solve_sketch(&inp);
+    assert_eq!(
+        out.overall_status,
+        Status::FullyConstrained.to_u8(),
+        "norm {}",
+        out.diagnostics.residual_norm
+    );
+    assert!(
+        (out.params_solved[5] - 0.0).abs() < 1e-9,
+        "B centre x {}",
+        out.params_solved[5]
+    );
+    assert!(
+        (out.params_solved[6] - 1.0).abs() < 1e-9,
+        "B centre y {}",
+        out.params_solved[6]
+    );
+    assert!(
+        (out.params_solved[7] - 1.0).abs() < 1e-9,
+        "B radius {}",
+        out.params_solved[7]
+    );
+}
+
+#[test]
+fn arc_endpoint_on_circle_locus_tangent_is_contact_pinned() {
+    let absent = PointSelector::Absent;
+    // Circle at the origin r 2 fixed; arc centre (0,3) r 1 from 180 to 270,
+    // so its End is the circle's top point (0,2). A radius row removes the
+    // last arc degree of freedom, so the sketch is exactly determined.
+    let mut radius = c_target(ConstraintKind::Radius, 1, absent);
+    radius.value = Some(1.0);
+    let inp = input(
+        vec![ent(Kind::Circle, 0), ent(Kind::Arc, 3)],
+        vec![0.0, 0.0, 2.0, 0.0, 3.0, 1.0, 180.0, 270.0],
+        vec![
+            c_target(ConstraintKind::Fixed, 0, absent),
+            cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(1, PointSelector::End), e_ref(0, absent)),
+            ),
+            c_target(ConstraintKind::Fixed, 1, PointSelector::Start),
+            radius,
+            cons(
+                ConstraintKind::Tangent,
+                ab(e_ref(0, absent), e_ref(1, absent)),
+            ),
+        ],
+    );
+    let out = solve_sketch(&inp);
+    assert_eq!(
+        out.overall_status,
+        Status::FullyConstrained.to_u8(),
+        "norm {}",
+        out.diagnostics.residual_norm
+    );
+    assert!(
+        (out.params_solved[3] - 0.0).abs() < 1e-9,
+        "arc centre x {}",
+        out.params_solved[3]
+    );
+    assert!(
+        (out.params_solved[4] - 3.0).abs() < 1e-9,
+        "arc centre y {}",
+        out.params_solved[4]
+    );
+    assert!(
+        (out.params_solved[5] - 1.0).abs() < 1e-9,
+        "arc radius {}",
+        out.params_solved[5]
+    );
+}
+
+/// Two fixed lines with four arcs between them: line, cw arc, ccw arc, cw
+/// arc, ccw arc, line, each arc's start tangent to the previous curve.
+fn four_arc_s_chain() -> (Input, Vec<[f64; 5]>) {
+    let absent = PointSelector::Absent;
+    // The exact arcs, stored CCW. The first three curve one way then the
+    // other, giving an S that returns to a horizontal line.
+    let exact = vec![
+        [-3.0, -1.0, 1.0, 0.0, 90.0],
+        [0.0, -1.0, 2.0, 180.0, 270.0],
+        [0.0, -2.0, 1.0, 270.0, 360.0],
+        [3.0, -2.0, 2.0, 90.0, 180.0],
+    ];
+    let mut params = vec![
+        // Line 1: (-4,0) to (-3,0).
+        -4.0, 0.0, -3.0, 0.0,
+    ];
+    for a in &exact {
+        params.extend(seeded_arc([a[0], a[1]], a[2], a[3], a[4]));
+    }
+    // Line 2: (3,0) to (4,0).
+    params.extend([3.0, 0.0, 4.0, 0.0]);
+
+    let entities = vec![
+        line(0),
+        ent(Kind::Arc, 4),
+        ent(Kind::Arc, 9),
+        ent(Kind::Arc, 14),
+        ent(Kind::Arc, 19),
+        line(24),
+    ];
+    let constraints = vec![
+        c_target(ConstraintKind::Fixed, 0, absent),
+        c_target(ConstraintKind::Fixed, 5, absent),
+        cons(
+            ConstraintKind::Coincident,
+            ab(e_ref(0, PointSelector::End), e_ref(1, PointSelector::End)),
+        ),
+        cons(
+            ConstraintKind::Coincident,
+            ab(
+                e_ref(1, PointSelector::Start),
+                e_ref(2, PointSelector::Start),
+            ),
+        ),
+        cons(
+            ConstraintKind::Coincident,
+            ab(e_ref(2, PointSelector::End), e_ref(3, PointSelector::Start)),
+        ),
+        cons(
+            ConstraintKind::Coincident,
+            ab(e_ref(3, PointSelector::End), e_ref(4, PointSelector::End)),
+        ),
+        cons(
+            ConstraintKind::Coincident,
+            ab(
+                e_ref(4, PointSelector::Start),
+                e_ref(5, PointSelector::Start),
+            ),
+        ),
+        // The three arc-to-arc joints are pinned.
+        c_target(ConstraintKind::Fixed, 1, PointSelector::Start),
+        c_target(ConstraintKind::Fixed, 2, PointSelector::End),
+        c_target(ConstraintKind::Fixed, 3, PointSelector::End),
+        cons(
+            ConstraintKind::Tangent,
+            ab(e_ref(0, absent), e_ref(1, absent)),
+        ),
+        cons(
+            ConstraintKind::Tangent,
+            ab(e_ref(1, absent), e_ref(2, absent)),
+        ),
+        cons(
+            ConstraintKind::Tangent,
+            ab(e_ref(2, absent), e_ref(3, absent)),
+        ),
+        cons(
+            ConstraintKind::Tangent,
+            ab(e_ref(3, absent), e_ref(4, absent)),
+        ),
+        cons(
+            ConstraintKind::Tangent,
+            ab(e_ref(4, absent), e_ref(5, absent)),
+        ),
+    ];
+    (input(entities, params, constraints), exact)
+}
+
+#[test]
+fn tangent_chain_of_four_arcs_between_two_lines_converges() {
+    let (inp, exact) = four_arc_s_chain();
+    let out = solve_sketch(&inp);
+    assert_ne!(
+        out.overall_status,
+        Status::Overconstrained.to_u8(),
+        "norm {}",
+        out.diagnostics.residual_norm
+    );
+    assert!(
+        out.diagnostics.residual_norm < 1e-9,
+        "norm {}",
+        out.diagnostics.residual_norm
+    );
+    for (i, want) in exact.iter().enumerate() {
+        let off = 4 + 5 * i;
+        let want_start = arc_point(want, want[3]);
+        let want_end = arc_point(want, want[4]);
+        let got = &out.params_solved[off..off + 5];
+        let got_start = arc_point(got, got[3]);
+        let got_end = arc_point(got, got[4]);
+        for (label, (got_pt, want_pt)) in [
+            ("start", (got_start, want_start)),
+            ("end", (got_end, want_end)),
+        ] {
+            assert!(
+                (got_pt[0] - want_pt[0]).abs() < 1e-9 && (got_pt[1] - want_pt[1]).abs() < 1e-9,
+                "arc {i} {label}: got {got_pt:?} want {want_pt:?}"
+            );
+        }
+    }
+    // The fixed lines are pinned; the write-back relies on them not moving
+    // (the failing chain used to shift one by 2e-6).
+    for i in (0..4).chain(24..28) {
+        assert!(
+            (out.params_solved[i] - inp.params_initial[i]).abs() < 1e-9,
+            "param {i}: {} from {}",
+            out.params_solved[i],
+            inp.params_initial[i]
+        );
+    }
+}
+
+#[test]
+fn conflicting_tangent_chain_is_overconstrained() {
+    let mut inp = line_arc_arc_shared_vertices();
+    // Pin B's centre well off the exact one, which the tangency and the two
+    // coincidents cannot satisfy together.
+    let mut fixed_centre = c_target(ConstraintKind::Fixed, 2, PointSelector::Center);
+    fixed_centre.xy = Some((12.1, 0.0));
+    inp.constraints.push(fixed_centre);
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::Overconstrained.to_u8());
+    let extra_fixed = inp.constraints.len() - 1;
+    let tangent_a_b = extra_fixed - 1;
+    // The frontend blames the largest misses until they cover 90 percent of
+    // the total; the conflict must land on the added pin or the tangent, not
+    // only on the pins that happen to be nearby.
+    let mut order: Vec<(f64, usize)> = out
+        .constraint_miss
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|(_, m)| m.is_finite() && *m > 0.0)
+        .map(|(i, m)| (m, i))
+        .collect();
+    order.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let total: f64 = order.iter().map(|(m, _)| m).sum();
+    let mut culprits = Vec::new();
+    let mut covered = 0.0;
+    for (miss, i) in order {
+        culprits.push(i);
+        covered += miss;
+        if covered >= 0.9 * total {
+            break;
+        }
+    }
+    assert!(
+        culprits.contains(&extra_fixed) || culprits.contains(&tangent_a_b),
+        "culprits {culprits:?}: {:?}",
+        out.constraint_miss
+    );
+    assert!(
+        out.constraint_miss[extra_fixed] > 0.0,
+        "the added pin carries no miss: {:?}",
+        out.constraint_miss
+    );
+}
+
+#[test]
+fn a_contact_pinned_tangent_chain_has_no_redundant_constraint() {
+    let inp = line_arc_arc_shared_vertices();
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+    for (i, flag) in out.constraint_flags.iter().enumerate() {
+        assert_eq!(
+            flag & crate::CONSTRAINT_FLAG_REDUNDANT,
+            0,
+            "constraint {i} reads redundant: {:?}",
+            out.constraint_flags
+        );
+    }
+}
+
 #[test]
 fn the_finite_difference_step_keeps_the_rank_and_verdict_at_every_scale() {
     // The angle row is the finite-difference fallback, so this reads the

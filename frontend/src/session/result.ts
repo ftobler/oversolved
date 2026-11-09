@@ -25,6 +25,10 @@ export interface SessionSuccess {
   // mutation minted (the rect/n-gon helpers and the mirror/pattern/fillet
   // sketch copy sugar).
   constraints?: number
+  // Present only on an add_three_point_arc step: which stored arc vertex key
+  // holds the given start and end points, so the next step can name the vertex
+  // without guessing the CCW storage orientation.
+  vertexKeys?: { start: 'start' | 'end'; end: 'start' | 'end' }
 }
 
 export interface OpenedSuccess {
@@ -36,8 +40,17 @@ export type Result = SessionSuccess | SessionFailure
 
 export type OpenedResult = OpenedSuccess | SessionFailure
 
-export function okResult(createdIds: string[] = [], constraints?: number): SessionSuccess {
-  return constraints === undefined ? { ok: true, createdIds } : { ok: true, createdIds, constraints }
+export function okResult(
+  createdIds: string[] = [],
+  constraints?: number,
+  vertexKeys?: SessionSuccess['vertexKeys'],
+): SessionSuccess {
+  return {
+    ok: true,
+    createdIds,
+    ...(constraints === undefined ? {} : { constraints }),
+    ...(vertexKeys === undefined ? {} : { vertexKeys }),
+  }
 }
 
 export function openedResult(id: string): OpenedSuccess {

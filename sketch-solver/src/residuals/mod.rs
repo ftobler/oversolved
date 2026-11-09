@@ -34,6 +34,15 @@ mod tests;
 /// A point in sketch-plane coordinates.
 type P2 = [f64; 2];
 
+/// A tangency whose contact a coincident pins: which tangent operand owns the
+/// contact point and the vertex selector that names it there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct TangentContact {
+    /// 0 for the first operand `tangent_operands` returns, 1 for the second.
+    owner: u8,
+    selector: PointSelector,
+}
+
 pub struct Problem<'a> {
     entities: &'a [Entity],
     /// Initial param vector (the wire's f64 params, verbatim), the `x0` of
@@ -50,10 +59,12 @@ pub struct Problem<'a> {
     constraint_wire_indices: Vec<usize>,
     pinned_indices: Vec<usize>,
     equality_pins: Vec<(usize, f64)>,
-    /// (line_index, curve_index) -> which line endpoint is pinned to the
-    /// curve (circle or arc). An arc tangent uses the same pinned-foot path as
-    /// a circle once the coincident is known.
-    line_circle_coincident: HashMap<(u32, u32), PointSelector>,
+    /// Tangent operand pair -> the contact a coincident pins. Tangency at a
+    /// shared endpoint is a direction condition at that point, not a
+    /// curve-to-curve centre distance: the latter is singular when a
+    /// coincident already ties the two curves' endpoints together, because
+    /// two touching circles through a common point only touch there.
+    tangent_contact: HashMap<(u32, u32), TangentContact>,
     /// (first, second) curve operands of a curve/curve tangent -> true when
     /// the tangency is internal. Decided once from `x0`, so the residual is
     /// one smooth branch for the whole solve.
@@ -106,65 +117,6 @@ impl<'a> Problem<'a> {
             .map(|&i| &input.constraints[i])
             .collect();
 
-        let mut line_circle_coincident = HashMap::new();
-        for c in &constraints {
-            if c.kind() != Some(ConstraintKind::Coincident) {
-                continue;
-            }
-            let a = c.ref_for(RefRole::A);
-            let b = c.ref_for(RefRole::B);
-            if let (
-                Some(Ref::Entity {
-                    index: a_idx,
-                    point: a_pt,
-                }),
-                Some(Ref::Entity {
-                    index: b_idx,
-                    point: b_pt,
-                }),
-            ) = (a, b)
-            {
-                // a is a line with an explicit point; b is a curve without one.
-                if a_pt.is_present()
-                    && input.entities.get(a_idx as usize).map(|e| e.kind) == Some(Kind::Line)
-                    && is_curve(
-                        input
-                            .entities
-                            .get(b_idx as usize)
-                            .map(|e| e.kind)
-                            .unwrap_or(Kind::Point),
-                    )
-                    && !b_pt.is_present()
-                {
-                    let sel = if a_pt == PointSelector::End {
-                        PointSelector::End
-                    } else {
-                        PointSelector::Start
-                    };
-                    line_circle_coincident.insert((a_idx, b_idx), sel);
-                }
-                // Symmetric: b is a line with an explicit point; a is a curve without one.
-                if b_pt.is_present()
-                    && input.entities.get(b_idx as usize).map(|e| e.kind) == Some(Kind::Line)
-                    && is_curve(
-                        input
-                            .entities
-                            .get(a_idx as usize)
-                            .map(|e| e.kind)
-                            .unwrap_or(Kind::Point),
-                    )
-                    && !a_pt.is_present()
-                {
-                    let sel = if b_pt == PointSelector::End {
-                        PointSelector::End
-                    } else {
-                        PointSelector::Start
-                    };
-                    line_circle_coincident.insert((b_idx, a_idx), sel);
-                }
-            }
-        }
-
         let scale = scale::geometry_scale(input, &x0, &constraints);
         let mut problem = Problem {
             entities: &input.entities,
@@ -173,10 +125,11 @@ impl<'a> Problem<'a> {
             constraint_wire_indices,
             pinned_indices,
             equality_pins,
-            line_circle_coincident,
+            tangent_contact: HashMap::new(),
             curve_tangent_internal: HashMap::new(),
             scale,
         };
+        problem.tangent_contact = problem.build_tangent_contacts();
         // Curve/curve tangents follow whichever tangency the drawn geometry is
         // nearest; ties go external.
         let decided: Vec<((u32, u32), bool)> = problem
@@ -192,6 +145,86 @@ impl<'a> Problem<'a> {
             .collect();
         problem.curve_tangent_internal.extend(decided);
         problem
+    }
+
+    /// Map each tangent operand pair to the contact a direct coincident pins.
+    ///
+    /// Only a coincident naming both operands counts: a joint reached through
+    /// a third entity leaves the body form alone, which is not singular there
+    /// because no coincidence row duplicates it. A selector only names a
+    /// contact when it is a real line or arc endpoint; the other operand may
+    /// be an endpoint (vertex to vertex) or the curve as a locus (its ref
+    /// carries no selector).
+    fn build_tangent_contacts(&self) -> HashMap<(u32, u32), TangentContact> {
+        let mut contacts = HashMap::new();
+        let pairs: Vec<(u32, u32)> = self
+            .constraints
+            .iter()
+            .filter(|c| c.kind() == Some(ConstraintKind::Tangent))
+            .filter_map(|c| self.tangent_operands(c))
+            .map(|(first, second, _)| (first, second))
+            .collect();
+        for (first, second) in pairs {
+            if !matches!(
+                (self.kind_of(first), self.kind_of(second)),
+                (
+                    Kind::Line | Kind::Circle | Kind::Arc,
+                    Kind::Line | Kind::Circle | Kind::Arc
+                )
+            ) {
+                continue;
+            }
+            let contact = self.constraints.iter().find_map(|c| {
+                if c.kind() != Some(ConstraintKind::Coincident) {
+                    return None;
+                }
+                let (a, b) = (c.ref_for(RefRole::A)?, c.ref_for(RefRole::B)?);
+                let (
+                    Ref::Entity {
+                        index: a_idx,
+                        point: a_pt,
+                    },
+                    Ref::Entity {
+                        index: b_idx,
+                        point: b_pt,
+                    },
+                ) = (a, b)
+                else {
+                    return None;
+                };
+                let (p_first, p_second) = if (a_idx, b_idx) == (first, second) {
+                    (a_pt, b_pt)
+                } else if (a_idx, b_idx) == (second, first) {
+                    (b_pt, a_pt)
+                } else {
+                    return None;
+                };
+                let first_ep = Self::endpoint_selector(self.kind_of(first), p_first);
+                let second_ep = Self::endpoint_selector(self.kind_of(second), p_second);
+                match (first_ep, second_ep) {
+                    (Some(selector), Some(_)) => Some(TangentContact { owner: 0, selector }),
+                    (Some(selector), None) if !p_second.is_present() => {
+                        Some(TangentContact { owner: 0, selector })
+                    }
+                    (None, Some(selector)) if !p_first.is_present() => {
+                        Some(TangentContact { owner: 1, selector })
+                    }
+                    _ => None,
+                }
+            });
+            if let Some(contact) = contact {
+                contacts.insert((first, second), contact);
+            }
+        }
+        contacts
+    }
+
+    /// The selector when it names a real endpoint of a line or an arc; a
+    /// centre, a locus ref (absent) or a kind with no endpoint is not one.
+    fn endpoint_selector(kind: Kind, selector: PointSelector) -> Option<PointSelector> {
+        (matches!(kind, Kind::Line | Kind::Arc)
+            && matches!(selector, PointSelector::Start | PointSelector::End))
+        .then_some(selector)
     }
 
     /// True when a reference names a slot the entity actually has.
