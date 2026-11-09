@@ -938,7 +938,10 @@ banner on stdout, so a client config must use the direct node invocation.
   `axis` inline (`@<sketchId>/<entityId>` or an edge query from `select`) plus
   `direction`, `operation` and `merge_target`, the same keys
   `set_revolve_field` sets, and an axis that crosses a profile's interior is
-  refused by name. A revolve angle is a positive magnitude: a negative angle is
+  refused by name. Interior means one area's: a line drawn along the axis splits
+  a closed curve into two areas that each touch it, so a full circle or ellipse
+  plus its diameter line revolves into a sphere or spheroid. A revolve angle is
+  a positive magnitude: a negative angle is
   refused and the message names `direction: "reverse"` for the other way round.
   `add_transform` takes `bodies` and every `set_transform_field` field inline,
   so one call replaces the add plus one setter per field; the transform itself
