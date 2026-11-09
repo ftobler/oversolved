@@ -55,7 +55,7 @@ use std::cell::RefCell;
 use crate::mate::{
     AnchorKind, Mate, MateDiagnostics, MateInput, MateKind, MateOutput, MateStatus, RigidBody,
 };
-use crate::tolerance::{RESIDUAL_ANGLE_TOL, RESIDUAL_REL_TOL};
+use crate::tolerance::{pose_keep_tol, POSE_KEEP_ANGLE, RESIDUAL_ANGLE_TOL, RESIDUAL_REL_TOL};
 use solver_core::lm;
 
 /// Pre-built problem: holds decodings from MateInput for fast residual/Jacobian eval.
@@ -1445,6 +1445,44 @@ fn retry_reaches_tolerance(input: &MateInput, problem: &MateProblem, solved: &[f
 
 // ─── Solve entry point ───
 
+/// The rotation angle between two quaternions, in radians. `|dot|` because q
+/// and -q are the same pose, and the clamp because a non-unit pair (a hand-built
+/// wire or a solver that has not normalised yet) can read past 1.
+fn pose_angle(a: &[f64], b: &[f64]) -> f64 {
+    let dot = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]).abs();
+    2.0 * dot.min(1.0).acos()
+}
+
+/// One byte per body: 1 when the solve moved the pose by more than the keep
+/// rung (`tolerance::pose_keep_tol` in translation, `POSE_KEEP_ANGLE` in
+/// rotation). The host keeps a seed for a 0.
+///
+/// A grounded body is out of the free parameters and comes back as its seed
+/// bytes, so it always reads 0 without a special case here.
+fn moved_bodies(input: &MateInput, params_solved: &[f64], scale: f64) -> Vec<u8> {
+    let tol = pose_keep_tol(scale);
+    (0..input.bodies.len())
+        .map(|b| {
+            let o = b * 7;
+            // A body whose block is not in the buffer (a hand-built or stale
+            // input; the codec rejects it on the wire) has no solved value to
+            // keep, so report it moved rather than indexing off the end.
+            if o + 7 > params_solved.len() || o + 7 > input.params_initial.len() {
+                return 1;
+            }
+            let dt = ((params_solved[o] - input.params_initial[o]).powi(2)
+                + (params_solved[o + 1] - input.params_initial[o + 1]).powi(2)
+                + (params_solved[o + 2] - input.params_initial[o + 2]).powi(2))
+            .sqrt();
+            let angle = pose_angle(
+                &params_solved[o + 3..o + 7],
+                &input.params_initial[o + 3..o + 7],
+            );
+            u8::from(dt > tol || angle > POSE_KEEP_ANGLE)
+        })
+        .collect()
+}
+
 /// Run the mate solver: build a Problem, call solve_lm, compute status, build output.
 pub fn solve_mate(input: &MateInput) -> MateOutput {
     solve_mate_impl(input, DENSE_CELL_BUDGET, false)
@@ -1477,6 +1515,9 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
             overall_status: MateStatus::Overconstrained.to_u8(),
             mate_residuals: Vec::new(),
             limit_flags: Vec::new(),
+            // The seed was echoed, so nothing moved. The host still gets one
+            // byte per body, exactly as a solved reply carries.
+            moved: vec![0u8; input.bodies.len()],
             diagnostics: MateDiagnostics {
                 // Infinity reads as "no convergence measurement exists", which
                 // is exactly the truth for a solve that never ran.
@@ -1603,11 +1644,13 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
         block_start += count;
     }
 
+    let moved = moved_bodies(input, &params_solved, problem.geometry_scale());
     MateOutput {
         params_solved,
         overall_status: status.to_u8(),
         mate_residuals,
         limit_flags,
+        moved,
         diagnostics: MateDiagnostics {
             residual_norm: lm_result.residual_norm,
             rank,

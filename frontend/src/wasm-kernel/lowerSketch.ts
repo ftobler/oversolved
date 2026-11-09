@@ -24,6 +24,7 @@ import {
   Sel,
 } from './codec'
 import { fitPointIndex } from '@/types/vertexKeys'
+import { DOC_GRID } from '@/utils/yamlMutations/helpers'
 
 const ENTITY_SIZES: Record<string, number> = { line: 4, circle: 3, arc: 5, point: 2, ellipse: 5, spline: 8 }
 const KIND_CODE: Record<string, number> = {
@@ -286,6 +287,10 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     params,
     pinnedMask: pinnedMaskFor(layout, sk.pinnedEntityIds ?? [], params.length),
     equalityPins: [],
+    // The document's storage grid, so the solver's moved report matches what
+    // the write-back can actually represent. Blind-side constant: the crate
+    // never hard-codes it.
+    seedQuantum: DOC_GRID,
     constraints,
     options: {
       dragMode: opts?.dragMode ?? false,

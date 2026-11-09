@@ -61,6 +61,11 @@ export interface SketchResult {
    *  at pick time (tilted circle -> ellipse, partial ellipse -> spline): the
    *  resolved kind, so the doc entity can adopt it and its params stay matched. */
   resolved_kinds?: Record<string, string>
+  /** Entity ids the cold solve moved by at least half the document's storage
+   *  grid. The write-back keeps the authored `initial` array by reference for
+   *  every entity absent here. Always present on a cold solve (possibly
+   *  empty); the drag path commits through a mutation, not this report. */
+  entity_moved?: string[]
   /** Entity ids of projected entities whose source query could not be resolved
    *  this solve; they were dropped so the rest of the sketch could build. */
   projection_errors?: string[]
@@ -464,11 +469,15 @@ export function solveSketch(
   const geometry: Record<string, number[]> = {}
   const features: Record<string, { status: string }> = {}
   const richGeom: Record<string, Record<string, unknown>> = {}
+  // Entity ids the solver reported moved, in layout order. The write-back reads
+  // this set to decide which `initial` arrays to keep by reference.
+  const entityMoved: string[] = []
   // Solved positions of materialized point entities, so the topology can lean on
   // them instead of re-emitting an inferred crossing at the same spot (slice 4).
   const pointPositions: [number, number][] = []
   for (let i = 0; i < layout.length; i++) {
     const ent = layout[i]
+    if ((out.entityMoved[i >> 3] >> (i & 7)) & 1) entityMoved.push(ent.id)
     const params = out.paramsSolved.slice(ent.offset, ent.offset + ent.size)
     if (ent.id === ORIGIN_ID) continue
     if (Math.abs(params[0]) > 1e-12 || params.length > 1) {
@@ -529,6 +538,7 @@ export function solveSketch(
   return {
     status,
     geometry,
+    entity_moved: entityMoved,
     features,
     originLocal,
     topology,

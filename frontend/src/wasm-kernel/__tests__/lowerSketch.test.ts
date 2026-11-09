@@ -1,6 +1,23 @@
 import { describe, it, expect } from 'vitest'
 import { lowerSketch, pinnedMaskFor, type EntityLayout } from '../lowerSketch'
 import { Kind, Role, Sel } from '../codec'
+import { DOC_GRID, round } from '@/utils/yamlMutations/helpers'
+
+describe('lowerSketch storage quantum', () => {
+  it('sends the grid the document mutators round to, so the moved report matches storage', () => {
+    const { input } = lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'e1', kind: 'line' }],
+      initial: { e1: [0, 0, 1, 0] },
+      constraints: [],
+    })
+    expect(input.seedQuantum).toBe(DOC_GRID)
+    // The two spellings must stay one grid: a value halfway between two stored
+    // values rounds to one of them, and a quantum elsewhere would report a move
+    // the document cannot write.
+    expect(round(2 * DOC_GRID + DOC_GRID / 2)).toBe(3 * DOC_GRID)
+  })
+})
 
 describe('lowerSketch ellipse entity', () => {
   it('lays out an ellipse as 5 params with kind code 4', () => {

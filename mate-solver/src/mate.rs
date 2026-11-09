@@ -58,7 +58,7 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MATE_MAGIC_OUT ("MTR4")
+//!   u32  magic = MATE_MAGIC_OUT ("MTR5")
 //!   u32  n_params
 //!   u8   overall_status
 //! params_solved: n_params x f64
@@ -66,6 +66,9 @@
 //!                 weighted residual block, in input mate order)
 //! limit_flags:    n_mates x u8 (LIMIT_MIN_HIT / LIMIT_MAX_HIT per input mate;
 //!                 0 for a mate with no limits or a dropped mate)
+//! moved:          n_bodies x u8 (1 when the solve moved that body by more than
+//!                 `tolerance::pose_keep_tol` / `POSE_KEEP_ANGLE` from its seed;
+//!                 a fixed body is always 0 because it is echoed verbatim)
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
 //! ```
 
@@ -76,7 +79,7 @@ use crate::codec::{finite, CodecError, Reader, Writer};
 // buffers separately and never read each other's bytes, so the naming
 // asymmetry is deliberate and not a rename target.
 pub const MATE_MAGIC: u32 = 0x3653_544D; // "MTS6" in LE
-pub const MATE_MAGIC_OUT: u32 = 0x3452_544D; // "MTR4" in LE
+pub const MATE_MAGIC_OUT: u32 = 0x3552_544D; // "MTR5" in LE
 
 /// Output limit report, one byte per input mate: the joint's coordinate sits at
 /// (or past) the authored minimum / maximum. A solved pose resting on a stop
@@ -373,6 +376,11 @@ pub struct MateOutput {
     /// when the joint coordinate sits at or past that bound at the reported
     /// pose. A dropped mate keeps a 0 slot so the positional fold stays aligned.
     pub limit_flags: Vec<u8>,
+    /// One byte per body: 1 when the solve moved that body by more than
+    /// `tolerance::pose_keep_tol(scale)` in translation or `POSE_KEEP_ANGLE` in
+    /// rotation. The host's write-back keeps the seed for a 0, so an unchanged
+    /// re-solve cannot churn every part's document entry.
+    pub moved: Vec<u8>,
     pub diagnostics: MateDiagnostics,
 }
 
@@ -627,6 +635,10 @@ pub fn encode_mate_output(out: &MateOutput) -> Vec<u8> {
     for &f in &out.limit_flags {
         w.u8(f);
     }
+    debug_assert_eq!(out.moved.len(), out.params_solved.len() / 7);
+    for &m in &out.moved {
+        w.u8(m);
+    }
     w.f64(out.diagnostics.residual_norm);
     w.u32(out.diagnostics.rank);
     w.u32(out.diagnostics.dof);
@@ -656,6 +668,7 @@ pub(crate) fn decode_mate_output(buf: &[u8]) -> Result<MateOutput, CodecError> {
         mate_residuals.push(r.f64()?);
     }
     let limit_flags = r.take(n_mates)?.to_vec();
+    let moved = r.take(n_params / 7)?.to_vec();
     let residual_norm = r.f64()?;
     let rank = r.u32()?;
     let dof = r.u32()?;
@@ -666,6 +679,7 @@ pub(crate) fn decode_mate_output(buf: &[u8]) -> Result<MateOutput, CodecError> {
         overall_status,
         mate_residuals,
         limit_flags,
+        moved,
         diagnostics: MateDiagnostics {
             residual_norm,
             rank,

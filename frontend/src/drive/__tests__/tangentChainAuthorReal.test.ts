@@ -57,7 +57,7 @@ function at(a: Arc, deg: number): [number, number] {
 // The authored through point: the exact arc midpoint. The Rust chain test
 // pushes it 10 percent of the chord along the bulge to force a real solve; here
 // the point is exact so the write-back fixed point is what gets exercised.
-function through(a: Arc): [number, number] {
+function midpoint(a: Arc): [number, number] {
   return at(a, (a.a0 + a.a1) / 2)
 }
 
@@ -65,34 +65,40 @@ const m = (mutation: Record<string, unknown>): ScriptStep => ({ mutation } as Sc
 
 // The stored start point of each authored arc is named by the key the reply
 // reports: a1 stores P2 at start, a2 P2, a3 P3, a4 P5.
-function chainSteps(): ScriptStep[] {
-  const p2 = at(ARCS[0], ARCS[0].a0)
-  const p3 = at(ARCS[1], ARCS[1].a1)
-  const p4 = at(ARCS[2], ARCS[2].a1)
-  const p1 = at(ARCS[0], ARCS[0].a1)
-  const p5 = at(ARCS[3], ARCS[3].a0)
+function scaledArcs(scale: number): Arc[] {
+  return ARCS.map(a => ({ c: [a.c[0] * scale, a.c[1] * scale], r: a.r * scale, a0: a.a0, a1: a.a1 }))
+}
+
+function chainSteps(scale = 1): ScriptStep[] {
+  const arcs = scaledArcs(scale)
+  const p1 = at(arcs[0], arcs[0].a1)
+  const p2 = at(arcs[0], arcs[0].a0)
+  const p3 = at(arcs[1], arcs[1].a1)
+  const p4 = at(arcs[2], arcs[2].a1)
+  const p5 = at(arcs[3], arcs[3].a0)
+  const throughOf = (a: Arc) => midpoint(a)
   return [
     m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' }),
-    m({ type: 'add_entity', featureId: 'sk1', kind: 'line', params: [-4, 0, ...p1], entityId: 'l1' }),
-    m({ type: 'add_entity', featureId: 'sk1', kind: 'line', params: [...p5, 4, 0], entityId: 'l2' }),
+    m({ type: 'add_entity', featureId: 'sk1', kind: 'line', params: [-4 * scale, 0, ...p1], entityId: 'l1' }),
+    m({ type: 'add_entity', featureId: 'sk1', kind: 'line', params: [...p5, 4 * scale, 0], entityId: 'l2' }),
     m({
       type: 'add_three_point_arc', featureId: 'sk1',
-      start: p1, through: through(ARCS[0]), end: p2,
+      start: p1, through: throughOf(arcs[0]), end: p2,
       startRef: 'vertex:sk1:l1:end', entityId: 'a1',
     }),
     m({
       type: 'add_three_point_arc', featureId: 'sk1',
-      start: p2, through: through(ARCS[1]), end: p3,
+      start: p2, through: throughOf(arcs[1]), end: p3,
       startRef: 'vertex:sk1:a1:start', entityId: 'a2',
     }),
     m({
       type: 'add_three_point_arc', featureId: 'sk1',
-      start: p3, through: through(ARCS[2]), end: p4,
+      start: p3, through: throughOf(arcs[2]), end: p4,
       startRef: 'vertex:sk1:a2:end', entityId: 'a3',
     }),
     m({
       type: 'add_three_point_arc', featureId: 'sk1',
-      start: p4, through: through(ARCS[3]), end: p5,
+      start: p4, through: throughOf(arcs[3]), end: p5,
       startRef: 'vertex:sk1:a3:end', endRef: 'vertex:sk1:l2:start', entityId: 'a4',
     }),
     m({ type: 'add_constraint', featureId: 'sk1', kind: 'fixed', targets: ['entity:sk1:l1'] }),
@@ -119,39 +125,59 @@ function arcPoint(params: number[], deg: number): [number, number] {
   return [params[0] + params[2] * Math.cos(t), params[1] + params[2] * Math.sin(t)]
 }
 
+async function authorAndInspect(scale: number, docId: string): Promise<{
+  first: Awaited<ReturnType<typeof runHeadless>>
+  inspected: Awaited<ReturnType<typeof runHeadless>>
+}> {
+  const first = await runHeadless({
+    doc: emptyDriveDoc(),
+    steps: chainSteps(scale),
+    docId,
+  })
+  expect(first.outcome.ok).toBe(true)
+  expect(first.features).toEqual([])
+
+  const arcs = scaledArcs(scale)
+  const sketch = first.doc!.features!.find(f => f.id === 'sk1') as SketchFeature
+  for (let i = 0; i < arcs.length; i++) {
+    const exact = arcs[i]
+    const params = arcParams(sketch, `a${i + 1}`)
+    for (const [key, deg] of [['start', exact.a0], ['end', exact.a1]] as const) {
+      const got = arcPoint(params, deg)
+      const want = at(exact, deg)
+      // The write-back rounds each param to the 1e-6 document grid, so an
+      // endpoint can move by one grid step per component; allow the
+      // Euclidean sum of two steps.
+      expect(
+        Math.hypot(got[0] - want[0], got[1] - want[1]),
+        `a${i + 1} ${key}: got ${got} want ${want}`,
+      ).toBeLessThan(2e-6)
+    }
+  }
+
+  const inspected = await runHeadless({
+    doc: first.doc as PartDoc,
+    steps: [],
+    docId: `${docId}-inspect`,
+  })
+  expect(inspected.ok).toBe(true)
+  return { first, inspected }
+}
+
 describe.skipIf(!ready)('a tangent chain authored through mutations (real OCC + Rust solver)', () => {
   it('solves every arc and stays a fixed point on inspection', async () => {
-    const first = await runHeadless({
-      doc: emptyDriveDoc(),
-      steps: chainSteps(),
-      docId: 'tangent-chain-author',
-    })
-    expect(first.outcome.ok).toBe(true)
-    expect(first.features).toEqual([])
+    const { first, inspected } = await authorAndInspect(1, 'tangent-chain-author')
+    expect(docHashOf(inspected.doc as PartDoc)).toBe(docHashOf(first.doc as PartDoc))
+  }, 240_000)
 
-    const sketch = first.doc!.features!.find(f => f.id === 'sk1') as SketchFeature
-    for (let i = 0; i < ARCS.length; i++) {
-      const exact = ARCS[i]
-      const params = arcParams(sketch, `a${i + 1}`)
-      for (const [key, deg] of [['start', exact.a0], ['end', exact.a1]] as const) {
-        const got = arcPoint(params, deg)
-        const want = at(exact, deg)
-        // The write-back rounds each param to the 1e-6 document grid, so an
-        // endpoint can move by one grid step per component; allow the
-        // Euclidean sum of two steps.
-        expect(
-          Math.hypot(got[0] - want[0], got[1] - want[1]),
-          `a${i + 1} ${key}: got ${got} want ${want}`,
-        ).toBeLessThan(2e-6)
-      }
-    }
-
-    const inspected = await runHeadless({
-      doc: first.doc as PartDoc,
-      steps: [],
-      docId: 'tangent-chain-inspect',
-    })
-    expect(inspected.ok).toBe(true)
+  // The scale ~1 case the retired f32 envelope hid: a 1e-6 grid step breaks the
+  // tangency rows' 1e-7 verdict at this size, so the LM moves the seed on every
+  // cold solve. The solver reports that move, the write-back rounds it to the
+  // grid, and the next inspection must land on the same bytes. Before the
+  // solver-owned report the frontend envelope absorbed it; without either, a
+  // no-op inspection would have re-spelled the document.
+  it('is still a fixed point when the whole chain is scaled to about one unit', async () => {
+    const { first, inspected } = await authorAndInspect(0.125, 'tangent-chain-small')
     expect(docHashOf(inspected.doc as PartDoc)).toBe(docHashOf(first.doc as PartDoc))
   }, 240_000)
 })

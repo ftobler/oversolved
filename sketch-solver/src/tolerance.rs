@@ -29,6 +29,9 @@
 //!     arc/ellipse angle columns are radial lengths per degree. `RANK_TOL`
 //!     states the radius range where the absolute floor is still sound, and
 //!     why the mate crate uses a relative cutoff instead.
+//!   - `seed_keep_tol`: half the host's storage quantum, a fact about the
+//!     document grid rather than the sketch. Its doc states the crossing with
+//!     the relative verdict width (scale 5 at the six-decimal grid).
 //!   - `REDUNDANT_ROW_REL`: already relative, but to the row's own norm rather
 //!     than to a length: a share of the row a later row may re-use before it
 //!     counts as a driver.
@@ -104,6 +107,28 @@ pub const VERDICT_RESOLUTIONS: f64 = 1e8;
 /// blow-up) never reads as satisfied; the caller checks that.
 pub fn verdict_tol(scale: f64) -> f64 {
     VERDICT_RESOLUTIONS * resolution(scale)
+}
+
+/// How far a solved param may sit from its seed and still count as the seed
+/// the document already stores: half of the host's storage quantum, i.e. a
+/// move below one grid step. Deliberately ABSOLUTE, because it is a fact about
+/// the storage grid, not about the sketch's size: a document always stores six
+/// decimals of a document unit, so a difference smaller than half a step
+/// cannot be written at all.
+///
+/// The host passes the quantum on the wire (`Input::seed_quantum`) rather than
+/// hard-coding it here, so the solver stays blind to the document format; zero
+/// disables the report and the caller treats every entity as moved.
+///
+/// The two rules cross at scale 5: `verdict_tol(5) == seed_keep_tol(1e-6)`.
+/// Below that scale the grid is wider than the verdict (a 6dp seed cannot
+/// satisfy a small sketch's tolerance), above it the verdict is wider than the
+/// grid. That is the same shape of caveat `TOL_TOPOLOGY_MERGE` carries: two
+/// thresholds with different derivations live side by side and are not
+/// interchangeable. Returning the seed is never the answer here; the solver
+/// reports the move and keeps returning the true solved params.
+pub fn seed_keep_tol(seed_quantum: f64) -> f64 {
+    0.5 * seed_quantum
 }
 
 /// Singular values above this count toward the rank. Deliberately absolute and
@@ -328,6 +353,25 @@ mod tests {
         // Both track the curve's own size, not the sketch's.
         assert!(tangent_gap_tol(2.0 * r, 0.0) > tangent_gap_tol(r, 0.0));
         assert!(tangent_collapse_tol(2.0 * r) > tangent_collapse_tol(r));
+    }
+
+    #[test]
+    fn the_seed_keep_width_is_half_the_storage_step() {
+        // A move below one grid step cannot be written, so half a step is the
+        // write-back's "the document already holds this" line.
+        assert_eq!(seed_keep_tol(1e-6), 5e-7);
+        // Absolute on purpose: the storage grid does not grow with the sketch.
+        assert_eq!(seed_keep_tol(1e-6), 0.5e-6);
+        // Zero (and anything non-positive) disables the report by yielding a
+        // width nothing can pass.
+        assert_eq!(seed_keep_tol(0.0), 0.0);
+        assert!(seed_keep_tol(-1e-6) < 0.0);
+        // The stated crossing with the relative verdict width: at the 6dp grid
+        // they meet at scale 5, below which the grid is wider and above which
+        // the verdict is.
+        assert!((seed_keep_tol(1e-6) - verdict_tol(5.0)).abs() <= f64::EPSILON * 2.0);
+        assert!(seed_keep_tol(1e-6) > verdict_tol(1.0));
+        assert!(seed_keep_tol(1e-6) < verdict_tol(100.0));
     }
 
     #[test]

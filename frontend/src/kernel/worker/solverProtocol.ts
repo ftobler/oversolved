@@ -215,6 +215,10 @@ export interface AssemblySolveOkResponse {
   ok: true
   payload: {
     transforms: Record<string, Transform3D>
+    /** Handles whose pose the solve moved from its seed. Optional only so
+     *  test doubles and older reply shapes can omit it; the current worker
+     *  always sets it. */
+    movedParts?: string[]
     bodies: Record<string, MeshPayload[]>
     anchors: Record<string, Record<string, AnchorPose>>
     /** Authoring-only: part handle -> anchor id -> the raw descriptor that id

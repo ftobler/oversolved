@@ -156,6 +156,7 @@ fn mate_output_round_trips() {
         overall_status: MateStatus::FullyConstrained.to_u8(),
         mate_residuals: vec![1.5e-7, 2.0e-6],
         limit_flags: vec![0, 0],
+        moved: vec![0, 1],
         diagnostics: MateDiagnostics {
             residual_norm: 1e-9,
             rank: 13,
@@ -169,6 +170,7 @@ fn mate_output_round_trips() {
     assert_eq!(decoded.diagnostics.iters, 5);
     assert_eq!(decoded.mate_residuals, vec![1.5e-7, 2.0e-6]);
     assert_eq!(decoded.limit_flags, vec![0, 0]);
+    assert_eq!(decoded.moved, vec![0, 1]);
 }
 
 #[test]
@@ -188,6 +190,7 @@ fn mate_output_bad_magic_rejected() {
         overall_status: 0,
         mate_residuals: vec![],
         limit_flags: vec![],
+        moved: vec![0],
         diagnostics: MateDiagnostics::default(),
     };
     let mut bytes = encode_mate_output(&out);

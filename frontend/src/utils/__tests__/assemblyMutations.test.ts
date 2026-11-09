@@ -230,7 +230,7 @@ describe('setInstanceVisible / setInstanceFixed', () => {
     const next = setInstanceFixedFromSolved(doc, a.handle, true, {
       [a.handle]: poseA,
       [b.handle]: poseB,
-    })
+    }, new Set([a.handle, b.handle]))
     const map = Object.fromEntries(instances(next).map(i => [i.handle, i]))
     // Both seeds are updated to their solved poses; only A's flag flips.
     expect(map[a.handle].transform).toEqual(poseA)
@@ -269,7 +269,7 @@ describe('setInstanceVisible / setInstanceFixed', () => {
     const next = setInstanceFixedFromSolved(doc, b.handle, true, {
       [a.handle]: divergent,
       [b.handle]: poseB,
-    })
+    }, new Set([a.handle, b.handle]))
     const map = Object.fromEntries(instances(next).map(i => [i.handle, i]))
     expect(map[a.handle].fixed).toBe(true)
     expect(map[a.handle].transform).toEqual(seedA)  // fixed seed untouched
@@ -280,31 +280,30 @@ describe('setInstanceVisible / setInstanceFixed', () => {
     expect(instances(doc)[0].transform).toEqual(seedA)
   })
 
-  // The toggled instance itself must still receive the solved transform even
-  // when it was already fixed: un-fixing (or re-fixing) it has to freeze the
-  // pose on screen into the seed, not leave a stale one behind.
-  it('setInstanceFixedFromSolved still bakes the toggled instance when it is fixed', () => {
+  // The toggled instance itself still receives a solved pose the solver
+  // reported as moved, even when it was already fixed: re-fixing it freezes the
+  // pose on screen into the seed rather than leaving the stale one behind.
+  it('setInstanceFixedFromSolved bakes the toggled instance when the solve moved it', () => {
     let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
     doc = setInstanceFixed(doc, instances(doc)[0].handle, true)
     const a = instances(doc)[0]
     const divergent = { tx: 7, ty: 8, tz: 9, qx: 0, qy: 0, qz: 0, qw: 1 }
 
-    const next = setInstanceFixedFromSolved(doc, a.handle, true, { [a.handle]: divergent })
+    const next = setInstanceFixedFromSolved(doc, a.handle, true, { [a.handle]: divergent }, new Set([a.handle]))
     const inst = instances(next)[0]
     expect(inst.fixed).toBe(true)
     expect(inst.transform).toEqual(divergent)
   })
 
-  // Same f32-rounding rule as bakeSolvedTransforms: a solve that only re-rounds
-  // the seed must not be written while flipping the flag, or the fix toggle
-  // ratchets the pose like the drag bake used to.
-  it('setInstanceFixedFromSolved leaves a rounding-only solved pose untouched', () => {
+  // An unmoved instance keeps its seed by reference while flipping the flag,
+  // so the fix toggle cannot ratchet the pose the way the old drag bake did.
+  it('setInstanceFixedFromSolved leaves an unmoved solved pose untouched', () => {
     const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
     const handle = instances(doc)[0].handle
     const seed = instances(doc)[0].transform
     const rounding = { tx: 1e-8, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
 
-    const next = setInstanceFixedFromSolved(doc, handle, true, { [handle]: rounding })
+    const next = setInstanceFixedFromSolved(doc, handle, true, { [handle]: rounding }, new Set())
     const inst = instances(next)[0]
     expect(inst.fixed).toBe(true)
     expect(inst.transform).toBe(seed)
@@ -318,7 +317,7 @@ describe('setInstanceVisible / setInstanceFixed', () => {
     doc = appendPartInstance(doc, 'doc-B', 1)
     const [a, b] = instances(doc)
 
-    const next = setInstanceFixedFromSolved(doc, a.handle, false, { [b.handle]: { ...b.transform } })
+    const next = setInstanceFixedFromSolved(doc, a.handle, false, { [b.handle]: { ...b.transform } }, new Set())
 
     expect(next.features![0]).toBe(doc.features![0])
     expect(next.features![1]).toBe(doc.features![1])
@@ -381,7 +380,7 @@ describe('bakeSolvedTransforms', () => {
     const poseA = { tx: 5, ty: -2, tz: 3, qx: 0, qy: 0, qz: 0, qw: 1 }
     const poseB = { tx: 9, ty: 8, tz: 7, qx: 0, qy: 0, qz: 0, qw: 1 }
 
-    const next = bakeSolvedTransforms(doc, { [a.handle]: poseA, [b.handle]: poseB })
+    const next = bakeSolvedTransforms(doc, { [a.handle]: poseA, [b.handle]: poseB }, new Set([a.handle, b.handle]))
     const map = Object.fromEntries(instances(next).map(i => [i.handle, i]))
     expect(map[a.handle].transform).toEqual(poseA)
     expect(map[b.handle].transform).toEqual(poseB)
@@ -407,7 +406,7 @@ describe('bakeSolvedTransforms', () => {
     const drifted = { tx: 0.0001, ty: 0, tz: 0, qx: 0.01, qy: 0, qz: 0, qw: 0.99995 }
     const poseB = { tx: 9, ty: 8, tz: 7, qx: 0, qy: 0, qz: 0, qw: 1 }
 
-    const next = bakeSolvedTransforms(doc, { [a.handle]: drifted, [b.handle]: poseB })
+    const next = bakeSolvedTransforms(doc, { [a.handle]: drifted, [b.handle]: poseB }, new Set([a.handle, b.handle]))
     const map = Object.fromEntries(instances(next).map(i => [i.handle, i]))
     expect(map[a.handle].transform).toEqual(a.transform)  // fixed: untouched
     expect(map[b.handle].transform).toEqual(poseB)        // free: baked
@@ -416,22 +415,21 @@ describe('bakeSolvedTransforms', () => {
   it('keeps the seed for a part missing from the solved map', () => {
     const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
     const seed = instances(doc)[0].transform
-    const next = bakeSolvedTransforms(doc, {})
+    const next = bakeSolvedTransforms(doc, {}, new Set())
     expect(instances(next)[0].transform).toEqual(seed)
   })
 
-  // A document authored under the rev 2 f32 wire holds seeds a few f32 ulps
-  // off the f64 solve. Baking that legacy rounding persists it, and each commit
-  // re-rounds, so the DOF walks and every part churns its document diff. A
-  // rounding-only delta must be skipped; a real move must still bake.
-  it('skips a solved pose that differs from the seed only by legacy f32 rounding', () => {
+  // A solve that echoed the seed reports the part unmoved: its feature (and
+  // instance) object must survive by reference, or the bake churns every
+  // part's document entry on every commit. A real move still bakes.
+  it('skips an instance the solve did not report moved', () => {
     let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
     doc = appendPartInstance(doc, 'doc-B', 1)
     const [a, b] = instances(doc)
     const moved = { tx: 0.001, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
     const rounding = { tx: 1e-8, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
 
-    const next = bakeSolvedTransforms(doc, { [a.handle]: moved, [b.handle]: rounding })
+    const next = bakeSolvedTransforms(doc, { [a.handle]: moved, [b.handle]: rounding }, new Set([a.handle]))
     const map = Object.fromEntries(instances(next).map(i => [i.handle, i]))
     expect(map[a.handle].transform).toEqual(moved)
     // Untouched by reference: the feature (and its instance) is the same object.

@@ -1,7 +1,7 @@
 use super::*;
 use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 use crate::test_util::*;
-use crate::{EqualityPin, Kind, Options, Status};
+use crate::{EqualityPin, Kind, Options, Output, Status};
 
 #[test]
 fn stale_entity_ref_solves_instead_of_panicking() {
@@ -1791,4 +1791,155 @@ fn the_finite_difference_step_keeps_the_rank_and_verdict_at_every_scale() {
             out.diagnostics.residual_norm
         );
     }
+}
+
+// ─── The moved report: what the write-back keeps ───
+
+fn moved(out: &Output, entity: usize) -> bool {
+    (out.entity_moved[entity / 8] >> (entity % 8)) & 1 == 1
+}
+
+/// A fully constrained 0.123457 x 0.05 rectangle whose seed sits on the
+/// document's 6dp grid. The authored length is supplied separately, so a seed
+/// can be off the true solution by less than the write-back's half-step line
+/// while still breaking the sketch's verdict: at this size `verdict_tol(scale)`
+/// is ~1.3e-8, so a 3e-7 grid error really does make the LM move the seed.
+fn grid_rectangle(authored_length: f64) -> Input {
+    let stored = 0.123457;
+    let w = 0.05;
+    let entities = vec![line(0), line(4), line(8), line(12)];
+    let params = vec![
+        0.0, 0.0, stored, 0.0, // l0
+        stored, 0.0, stored, w, // l1
+        stored, w, 0.0, w, // l2
+        0.0, w, 0.0, 0.0, // l3
+    ];
+    let mut constraints = vec![
+        c_target(ConstraintKind::Fixed, 0, PointSelector::Start),
+        c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent),
+        c_target(ConstraintKind::Vertical, 1, PointSelector::Absent),
+        c_target(ConstraintKind::Horizontal, 2, PointSelector::Absent),
+        c_target(ConstraintKind::Vertical, 3, PointSelector::Absent),
+    ];
+    for (a, b) in [(0u32, 1u32), (1, 2), (2, 3), (3, 0)] {
+        constraints.push(cons(
+            ConstraintKind::Coincident,
+            ab(e_ref(a, PointSelector::End), e_ref(b, PointSelector::Start)),
+        ));
+    }
+    let mut long = c_target(ConstraintKind::Length, 0, PointSelector::Absent);
+    long.value = Some(authored_length);
+    constraints.push(long);
+    let mut wide = c_target(ConstraintKind::Length, 1, PointSelector::Absent);
+    wide.value = Some(w);
+    constraints.push(wide);
+    let mut inp = input(entities, params, constraints);
+    inp.seed_quantum = 1e-6;
+    inp
+}
+
+#[test]
+fn an_unchanged_grid_seed_reports_every_entity_unmoved() {
+    let inp = grid_rectangle(0.1234567);
+    // Precondition: the stored seed is off the authored length by 3e-7, above
+    // the sketch's verdict width, so this is the "grid breaks the verdict"
+    // case and the LM really moves the seed.
+    let problem = crate::residuals::Problem::new(&inp);
+    let residual = problem
+        .residuals(&inp.params_initial)
+        .iter()
+        .map(|v| v * v)
+        .sum::<f64>()
+        .sqrt();
+    assert!(
+        residual > crate::tolerance::verdict_tol(problem.scale()),
+        "seed residual {residual:e} does not clear the verdict"
+    );
+
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+    assert_eq!(
+        out.entity_moved,
+        vec![0],
+        "a move under half a grid step must not be reported"
+    );
+    assert_ne!(
+        out.params_solved, inp.params_initial,
+        "the solve did not move the seed, so the case has no teeth"
+    );
+}
+
+#[test]
+fn a_driven_edit_reports_the_entities_it_moved() {
+    // One grid step wider than the stored seed: the right-hand side moves and
+    // the free point (bit 4) stays exactly where it was seeded.
+    let mut inp = grid_rectangle(0.123458);
+    inp.entities.push(point(16));
+    inp.params_initial.extend([5.0, 5.0]);
+
+    let out = solve_sketch(&inp);
+    assert!(moved(&out, 0), "the dimensioned line did not report");
+    assert!(moved(&out, 1), "the right vertical moved with the width");
+    assert!(!moved(&out, 3), "the left vertical stayed put");
+    assert!(!moved(&out, 4), "an unconstrained point was reported moved");
+    assert!((out.params_solved[2] - 0.123458).abs() < 1e-9);
+}
+
+#[test]
+fn the_half_step_boundary_is_strict() {
+    // Two params pinned by equality to 0.49 and 0.51 grid steps: the first is
+    // a move the stored grid cannot represent, the second is one it can.
+    let inp = Input {
+        entities: vec![point(0), point(2)],
+        params_initial: vec![0.0; 4],
+        pinned_mask: Vec::new(),
+        equality_pins: vec![
+            EqualityPin {
+                param_index: 0,
+                target: 0.49e-6,
+            },
+            EqualityPin {
+                param_index: 2,
+                target: 0.51e-6,
+            },
+        ],
+        constraints: Vec::new(),
+        seed_quantum: 1e-6,
+        options: Options::default(),
+    };
+    let out = solve_sketch(&inp);
+    // The precondition, so a solve that missed the pins cannot pass by luck.
+    assert!((out.params_solved[0] - 0.49e-6).abs() < 1e-9);
+    assert!((out.params_solved[2] - 0.51e-6).abs() < 1e-9);
+    assert!(!moved(&out, 0), "0.49 of a step is not writable");
+    assert!(moved(&out, 1), "0.51 of a step is writable");
+}
+
+#[test]
+fn a_disabled_quantum_reports_every_entity_moved() {
+    let mut inp = grid_rectangle(0.123457);
+    inp.seed_quantum = 0.0;
+    let out = solve_sketch(&inp);
+    assert_eq!(
+        out.entity_moved,
+        vec![0b0000_1111],
+        "no storage grid means the conservative report"
+    );
+}
+
+#[test]
+fn the_drag_fast_path_carries_no_moved_report() {
+    let mut inp = grid_rectangle(0.1234567);
+    inp.options = Options {
+        drag_mode: true,
+        drag_anchor_id: 0,
+        skip_status_pass: true,
+    };
+    let out = solve_sketch(&inp);
+    assert!(out.entity_moved.is_empty());
+    // The other per-entity arrays stay empty on the same path, which is what
+    // the host's count guards read.
+    assert!(out.entity_status.is_empty());
+    assert!(out.constraint_flags.is_empty());
+    assert!(out.constraint_miss.is_empty());
 }

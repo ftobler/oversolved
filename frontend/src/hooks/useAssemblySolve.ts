@@ -324,6 +324,7 @@ export function useAssemblySolve(
         const edgeCurves = toEdgeCurves(payloadBodies)
         useAssemblyStore.getState().setDragSolveResult({
           transforms,
+          movedParts: res.payload.movedParts ? new Set(res.payload.movedParts) : undefined,
           bodies,
           edgeCurves,
           solveStatus: liveStatus(res.payload.status),
@@ -334,6 +335,7 @@ export function useAssemblySolve(
       const anchors = buildAnchorTable(res.payload.anchors)
       useAssemblyStore.getState().setSolveResult({
         transforms: res.payload.transforms,
+        movedParts: res.payload.movedParts ? new Set(res.payload.movedParts) : undefined,
         bodies: toBodyResults(res.payload.bodies),
         edgeCurves: toEdgeCurves(res.payload.bodies),
         entityMateRefs: buildEntityMateRefs(res.payload.bodies, res.payload.anchorDescriptors),

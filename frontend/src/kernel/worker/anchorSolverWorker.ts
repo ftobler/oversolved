@@ -208,6 +208,7 @@ export async function handleSolveAssembly(
       ok: true,
       payload: {
         transforms: result.transforms,
+        movedParts: result.movedParts,
         bodies: result.bodies,
         anchors: result.anchors,
         anchorDescriptors: result.anchorDescriptors,

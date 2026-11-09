@@ -422,6 +422,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
     return {
       doc: docBox.current,
       transforms: last?.transforms ?? {},
+      moved: new Set(last?.movedParts ?? []),
       knownPartIds: new Set(binding.keys()),
       mutateSession: applyEdit,
       mutateOneShot: applyEdit,
@@ -504,13 +505,13 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
       // The authored seed stays: only the flag is written, so a pose the
       // last solve diverged to never lands in the document. The editor
       // path keeps baking; this is the headless escape hatch for exactly
-      // that case. Empty transforms route the flag through the guarded
-      // setter (assemblyOperations' rationale for the editor cells): an
-      // absent `fixed` means false, so re-setting an already-correct flag
-      // is absorbed as a no-op instead of materializing a permanent
-      // `fixed: false` key and charging a dead undo entry.
+      // that case. Empty transforms and an empty moved set route the flag
+      // through the guarded setter (assemblyOperations' rationale for the
+      // editor cells): an absent `fixed` means false, so re-setting an
+      // already-correct flag is absorbed as a no-op instead of materializing a
+      // permanent `fixed: false` key and charging a dead undo entry.
       const { handle, fixed } = mutation
-      applyEdit(ASSEMBLY_UNDO_LABELS.fixUnfixPart, doc => setInstanceFixedFromSolved(doc, handle, fixed, {}))
+      applyEdit(ASSEMBLY_UNDO_LABELS.fixUnfixPart, doc => setInstanceFixedFromSolved(doc, handle, fixed, {}, new Set()))
       poseKept = 'seed'
     } else {
       runAssemblyOperation(validated.operation, input as never, host())

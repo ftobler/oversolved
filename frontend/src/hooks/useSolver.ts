@@ -85,6 +85,7 @@ export function useSolver(
   const applySolveResult = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number): PartDoc => {
     const result = data.result as Record<string, {
       geometry?: Record<string, number[]>
+      entity_moved?: string[]
       resolved_kinds?: Record<string, string>
       status?: string
       features?: Record<string, { status?: string }>
@@ -123,7 +124,12 @@ export function useSolver(
         // A failed solve still renders below, but it must not move the
         // document: `initial` holds the last satisfied solve.
         if (shouldBakeSketchGeometry(feature)) {
-          applyGeometryToFeature(cloned, id, feature.geometry)
+          // The solver's per-entity moved report: an entity it did not move
+          // keeps the authored array by reference. A payload without one (an
+          // older cached result) has no report, so every entity has to pass the
+          // exact no-op test on its own.
+          const moved = Array.isArray(feature.entity_moved) ? new Set(feature.entity_moved) : undefined
+          applyGeometryToFeature(cloned, id, feature.geometry, moved)
         }
         // A projection can resolve to a different kind than was declared at pick
         // time (a tilted circle -> ellipse, a partial ellipse -> spline). The
@@ -268,10 +274,9 @@ export function useSolver(
     //
     // The compare is exact, so the write-back must not manufacture a change out
     // of an unchanged re-solve. applyGeometryToFeature keeps the authored
-    // `initial` arrays by reference whenever the solved values agree within the
-    // f32 envelope, and rounds a fresh map to the mutators' precision only when
-    // the solve really moved the geometry. So identity swaps here exactly when
-    // there was a real change.
+    // `initial` arrays by reference for every entity the solver did not move,
+    // and rounds a fresh array only when the write would change the stored
+    // bytes. So identity swaps here exactly when there was a real change.
     if (!(docRef.current !== null && JSON.stringify(cloned) === JSON.stringify(docRef.current))) {
       setDoc(cloned)
       docRef.current = cloned

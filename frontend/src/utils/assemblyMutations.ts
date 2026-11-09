@@ -8,7 +8,7 @@ import type {
 } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations/helpers'
 import { EMPTY_MATE_REF, MATE_KIND_LABELS } from '@/utils/mateKinds'
-import { IDENTITY_TRANSFORM, quatFromEulerXyz, quatToEulerXyz, transformApproxEqual } from '@/utils/transform3d'
+import { IDENTITY_TRANSFORM, quatFromEulerXyz, quatToEulerXyz } from '@/utils/transform3d'
 
 export { IDENTITY_TRANSFORM }
 
@@ -238,16 +238,19 @@ export function setInstanceFixed(doc: AssemblyDoc, handle: string, fixed: boolea
 // restart the mate solver from those stale seeds and relax the whole assembly
 // off its current configuration.
 //
-// So we bake the current solved pose of every instance into its seed
-// (`transforms`, keyed by handle) and set the toggled part's flag. The caller
-// does not re-solve on the toggle itself (nothing needs to move); the next real
-// solve then starts from the exact current, already mate-satisfying
-// configuration and holds it.
+// So we bake the current solved pose of every instance the solve moved into its
+// seed (`transforms`, keyed by handle; `moved` names the handles the solver
+// actually changed) and set the toggled part's flag. The caller does not
+// re-solve on the toggle itself (nothing needs to move); the next real solve
+// then starts from the exact current, already mate-satisfying configuration and
+// holds it. An absent `moved` means no report reached this call: every pose is
+// written, the pre-report behaviour.
 export function setInstanceFixedFromSolved(
   doc: AssemblyDoc,
   handle: string,
   fixed: boolean,
   transforms: Record<string, Transform3D>,
+  moved?: ReadonlySet<string>,
 ): AssemblyDoc {
   return {
     ...doc,
@@ -260,12 +263,10 @@ export function setInstanceFixedFromSolved(
       // the exception -- freezing its current pose is what this call is for.
       if (inst.fixed && inst.handle !== handle) return f
       const solved = transforms[inst.handle]
-      // Only write a pose that actually differs from the seed. A document
-      // authored under the rev 2 f32 wire holds seeds a few f32 ulps off the
-      // f64 solve (see `transformApproxEqual`); baking that legacy rounding
-      // persists it and the next commit re-rounds, walking the part by roughly
-      // one f32 ulp per commit and putting every part in every diff.
-      const moved = solved !== undefined && !transformApproxEqual(solved, inst.transform)
+      // Only a pose the solve reported as moved is written. The solver's own
+      // rung (mate-solver/src/tolerance.rs) already absorbed the re-solve
+      // noise, so this is a set membership test, not a float comparison.
+      const didMove = solved !== undefined && (moved === undefined || moved.has(inst.handle))
       const isTarget = inst.handle === handle
       // An absent `fixed` means false: re-setting false is a no-op, not a
       // change. Treating it as one charged a dead undo entry and materialized a
@@ -273,10 +274,10 @@ export function setInstanceFixedFromSolved(
       const flagChanged = isTarget && (inst.fixed ?? false) !== fixed
       // Nothing to write: keep the existing feature object by reference, so a
       // toggle that touches one instance cannot churn the identity of the rest.
-      if (!moved && !flagChanged) return f
+      if (!didMove && !flagChanged) return f
       const instance: PartInstance = {
         ...inst,
-        transform: moved ? { ...solved } : inst.transform,
+        transform: didMove ? { ...solved } : inst.transform,
       }
       const nextFixed = flagChanged ? fixed : inst.fixed
       if (nextFixed === undefined) delete instance.fixed
@@ -286,8 +287,8 @@ export function setInstanceFixedFromSolved(
   }
 }
 
-// Freeze every instance's current solved pose into its seed transform, mirroring
-// what setInstanceFixedFromSolved bakes but without touching any `fixed` flag.
+// Freeze the instances the solve moved into their seeds, mirroring what
+// setInstanceFixedFromSolved bakes but without touching any `fixed` flag.
 //
 // The doc's seeds go stale between solves: only a dragged part's seed is written
 // back on pointer-up, so every other part is drawn at its solved pose while its
@@ -298,9 +299,15 @@ export function setInstanceFixedFromSolved(
 // first makes the next solve start from the current, already mate-satisfying
 // poses and only relax the freed DOF. A part with no solved pose (never solved)
 // keeps its own seed rather than losing it.
+//
+// `moved` is the solver's per-part report: only those handles are written, so a
+// re-solve that agreed with a seed cannot re-spell it in the document. An
+// absent set means no report was available and every part is written, which is
+// the pre-report behaviour.
 export function bakeSolvedTransforms(
   doc: AssemblyDoc,
   transforms: Record<string, Transform3D>,
+  moved?: ReadonlySet<string>,
 ): AssemblyDoc {
   return {
     ...doc,
@@ -314,10 +321,7 @@ export function bakeSolvedTransforms(
       if (f.instance.fixed) return f
       const solved = transforms[f.instance.handle]
       if (!solved) return f
-      // A solve whose pose agrees with the seed within the legacy f32 envelope
-      // moved nothing: that rounding must not be baked in, or the free DOF
-      // walks one ulp per commit and every part churns in every document diff.
-      if (transformApproxEqual(solved, f.instance.transform)) return f
+      if (moved !== undefined && !moved.has(f.instance.handle)) return f
       return { ...f, instance: { ...f.instance, transform: { ...solved } } }
     }),
   }

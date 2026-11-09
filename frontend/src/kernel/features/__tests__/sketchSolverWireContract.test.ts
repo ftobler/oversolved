@@ -46,6 +46,7 @@ function outputOf(over: Partial<SolverOutput> = {}): SolverOutput {
     overallStatus: 1,
     constraintFlags: [],
     constraintMiss: [],
+    entityMoved: [],
     diagnostics: { residualNorm: 0, rank: 2, dof: 0, iters: 3, ms: 0.1 },
     ...over,
   }

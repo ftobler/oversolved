@@ -39,10 +39,13 @@ import { setIdSource } from '@/utils/yamlMutations'
 
 /** The most solves one headless flush may spend on the settle: the first on the
  *  requested document, then one per pass whose write-back installed fresh
- *  sketch geometry. One extra pass normally suffices (the stored seeds are
- *  already inside the solver's envelope), and a cap hit is a precision caveat
- *  reported as a note, never a failed step. */
-export const SETTLE_PASSES = 3
+ *  sketch geometry. The write-back now keeps a move only when it is at least
+ *  half a storage step (the solver's own report), so an underconstrained sketch
+ *  whose stored seed is a few grid steps off its solve advances by one step per
+ *  pass instead of being swallowed whole by a float envelope; the closed outline
+ *  fixture needs five. A cap hit is a precision caveat reported as a note,
+ *  never a failed step. */
+export const SETTLE_PASSES = 5
 
 export interface HeadlessPartOptions {
   doc: PartDoc

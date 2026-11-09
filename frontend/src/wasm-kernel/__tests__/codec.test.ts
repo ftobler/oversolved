@@ -4,8 +4,8 @@
 // on the sketch solver's flat buffers (see codec.ts and sketch-solver/src/codec.rs),
 // so these pin that the current revision is written and accepted and that
 // buffers stamped with superseded revisions (1: pre-sign, 2: f32 scalars, 3:
-// no per-constraint verdicts) are refused instead of decoded with shifted
-// offsets.
+// no per-constraint verdicts, SKG4/SKR4: no storage quantum / moved report) are
+// refused instead of decoded with shifted offsets.
 
 import { describe, it, expect } from 'vitest'
 import {
@@ -16,8 +16,9 @@ import { loadSolver } from '../loadSolver'
 
 const solveBytes = loadSolver()
 
-const MAGIC_IN = 0x34474b53  // "SKG4"
-const MAGIC_OUT = 0x34524b53  // "SKR4"
+const MAGIC_IN = 0x35474b53  // "SKG5"
+const MAGIC_OUT = 0x35524b53  // "SKR5"
+const MAGIC_OUT_SKR4 = 0x34524b53  // "SKR4" (no entity_moved)
 const MAGIC_OUT_REV3 = 0x33524b53  // "SKR3" (no per-constraint verdicts)
 const MAGIC_OUT_REV2 = 0x32524b53  // "SKR2" (f32 layout)
 const MAGIC_OUT_REV1 = 0x53474b52
@@ -29,6 +30,7 @@ function emptyInput(): FlatInput {
     pinnedMask: [],
     equalityPins: [],
     constraints: [],
+    seedQuantum: 1e-6,
     options: { dragMode: false, dragAnchorId: 0, skipStatusPass: true },
   }
 }
@@ -39,15 +41,16 @@ function emptyInput(): FlatInput {
  * of landing on the same all-zero output. Mirrors the Rust output_round_trips
  * fixture (sketch-solver/src/codec.rs).
  */
-function outputBytes(magic: number): Uint8Array {
+function outputBytes(magic: number, entityMoved = [0b0000_0011]): Uint8Array {
   const params = [1.5, 2.25]
   const entityStatus = [0, 1]
   const vertexFreedom = [0, 1, 1, 0]
   const constraintFlags = [1, 0, 2]
   const constraintMiss = [0.5, 0, 0.125]
-  const size = 4 + 4 + 4 + 4 + 4 + 1
+  const size = 4 + 4 + 4 + 4 + 4 + 4 + 1
     + params.length * 8 + entityStatus.length + vertexFreedom.length * 8
     + constraintFlags.length + constraintMiss.length * 8
+    + entityMoved.length
     + 8 + 4 + 4 + 4 + 8
   const buf = new ArrayBuffer(size)
   const dv = new DataView(buf)
@@ -60,12 +63,14 @@ function outputBytes(magic: number): Uint8Array {
   u32(entityStatus.length)  // nStatus
   u32(vertexFreedom.length)  // vertexFreedom length
   u32(constraintFlags.length)  // per-constraint verdict count
+  u32(entityMoved.length)  // entity_moved byte count
   u8(1)  // overallStatus: underconstrained
   for (const p of params) f64(p)
   for (const s of entityStatus) u8(s)
   for (const v of vertexFreedom) f64(v)
   for (const f of constraintFlags) u8(f)
   for (const m of constraintMiss) f64(m)
+  for (const m of entityMoved) u8(m)
   f64(1.25)  // residualNorm
   u32(5)  // rank
   u32(1)  // dof
@@ -92,6 +97,7 @@ describe('sketch wire magic', () => {
     expect(out.entityStatus).toEqual([0, 1])
     expect(out.constraintFlags).toEqual([1, 0, 2])
     expect(out.constraintMiss).toEqual([0.5, 0, 0.125])
+    expect(out.entityMoved).toEqual([0b0000_0011])
     expect(out.overallStatus).toBe(1)
     expect(out.diagnostics.residualNorm).toBe(1.25)
     expect(out.diagnostics.rank).toBe(5)
@@ -106,6 +112,12 @@ describe('sketch wire magic', () => {
     expect(() => decodeOutput(outputBytes(MAGIC_OUT_REV3))).toThrow('bad output magic')
   })
 
+  it('decodeOutput rejects the rev 4 (SKR4) output magic', () => {
+    // No entity_moved block: the diagnostics would start where this decoder
+    // reads the moved bytes.
+    expect(() => decodeOutput(outputBytes(MAGIC_OUT_SKR4))).toThrow('bad output magic')
+  })
+
   it('decodeOutput rejects the rev 2 (f32) output magic', () => {
     expect(() => decodeOutput(outputBytes(MAGIC_OUT_REV2))).toThrow('bad output magic')
   })
@@ -115,10 +127,40 @@ describe('sketch wire magic', () => {
   })
 })
 
-// The end-to-end boundary proof the deleted tests/node/smoke.mjs used to carry:
-// a hand-built flat Input (no lowerSketch) round-trips through the real wasm
-// and comes back solved. Kept beside the layout guards so the byte contract and
-// the real solver are pinned in one place.
+describe.skipIf(!solveBytes)('sketch wire stale input magic', () => {
+  it('rejects a SKG4 buffer, whose header has no storage quantum', () => {
+    const bytes = encodeInput(emptyInput())
+    bytes.set([0x53, 0x4b, 0x47, 0x34], 0)  // "SKG4"
+    expect(() => solveBytes!(bytes)).toThrow()
+  })
+})
+
+describe.skipIf(!solveBytes)('sketch wire storage quantum', () => {
+  it('round-trips a fixed input through the real solver with the quantum on the header', () => {
+    // A hand-built flat Input (no lowerSketch): the quantum sits in the header
+    // and the output carries the moved report. A one-grid-step seed at scale 1
+    // is the case the report exists for.
+    const input: FlatInput = {
+      entities: [{ kind: Kind.Line, flags: 0, offset: 0, count: 4 }],
+      params: [0.2, -0.1, 9.5, 0.8],
+      pinnedMask: [],
+      equalityPins: [],
+      constraints: [
+        { kind: ConstraintKindCode.fixed, refs: [{ role: Role.target, ref: { kind: 'entity', index: 0, point: Sel.start } }], xy: [0, 0] },
+        { kind: ConstraintKindCode.horizontal, refs: [{ role: Role.target, ref: { kind: 'entity', index: 0, point: Sel.absent } }] },
+        { kind: ConstraintKindCode.length, refs: [{ role: Role.target, ref: { kind: 'entity', index: 0, point: Sel.absent } }], value: 10 },
+      ],
+      seedQuantum: 1e-6,
+      options: { dragMode: false, dragAnchorId: 0, skipStatusPass: false },
+    }
+    const out = decodeOutput(solveBytes!(encodeInput(input)))
+    expect(out.overallStatus).toBe(Status.fully_constrained)
+    expect(out.paramsSolved).toHaveLength(4)
+    // The seed was 0.5 off the authored length, so the line is reported moved.
+    expect(out.entityMoved).toEqual([0b0000_0001])
+  })
+})
+
 describe.skipIf(!solveBytes)('sketch wire real-wasm round-trip', () => {
   it('solves a fixed, horizontal, length-10 line from a raw flat input', () => {
     const input: FlatInput = {
@@ -131,6 +173,7 @@ describe.skipIf(!solveBytes)('sketch wire real-wasm round-trip', () => {
         { kind: ConstraintKindCode.horizontal, refs: [{ role: Role.target, ref: { kind: 'entity', index: 0, point: Sel.absent } }] },
         { kind: ConstraintKindCode.length, refs: [{ role: Role.target, ref: { kind: 'entity', index: 0, point: Sel.absent } }], value: 10 },
       ],
+      seedQuantum: 1e-6,
       // The deleted smoke.mjs left this false (full status pass); keep that so
       // the folded test still exercises the entity-status/vertex-freedom path.
       options: { dragMode: false, dragAnchorId: 0, skipStatusPass: false },
@@ -146,5 +189,7 @@ describe.skipIf(!solveBytes)('sketch wire real-wasm round-trip', () => {
     // Rev 4: one verdict byte and one miss per constraint sent, all clean.
     expect(out.constraintFlags).toEqual([0, 0, 0])
     expect(out.constraintMiss).toEqual([0, 0, 0])
+    // The seed was 0.5 off the authored length, so the one entity is moved.
+    expect(out.entityMoved).toEqual([1])
   })
 })

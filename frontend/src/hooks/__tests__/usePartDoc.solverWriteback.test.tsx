@@ -154,8 +154,8 @@ function makePartialDeleteDoc(): PartDoc {
 const renameTo = (label: string): Mutation =>
   ({ type: 'rename_feature', featureId: 'sk1', label }) as Mutation
 
-// The solved params arrive as float32 (wasm-kernel/codec.ts), so the wire says
-// 3.1415927410125732 where the mutator's round() persists 3.141593.
+// The solver reports which entities it moved; an undriven sketch reports none,
+// so the authored spelling survives whatever digits the wire carried.
 const F32_PI = Math.fround(Math.PI)
 
 // A sketch under the feature whose edit session suppresses per-action entries,
@@ -174,20 +174,19 @@ function makeSketchThenExtrudeDoc(initial: number[]): PartDoc {
 function sketchResponse(): Record<string, unknown> {
   return {
     solve_ms: 0,
-    result: { sk1: { status: 'ok', geometry: { l1: [0, 0, F32_PI, 0] } } },
+    result: { sk1: { status: 'ok', geometry: { l1: [0, 0, F32_PI, 0] }, entity_moved: [] } },
     bodies: {},
     _build_state: null,
   }
 }
 
-// A solve in the band where the f32 quantum flips the mutators' 6dp grid: the
-// wire carries 25.700000762939453 for an authored 25.7, and round() turns that
-// into 25.700001. Every suite below 4 saw no mismatch, which is why the
-// rounding-only write-back looked complete.
+// The rev 2 band where the wire carries a different spelling of the authored
+// number: an undriven solve reports the entity unmoved, so the stored digits
+// stay and the doc is not re-spelled.
 function bandResponse(): Record<string, unknown> {
   return {
     solve_ms: 0,
-    result: { sk1: { status: 'ok', geometry: { l1: [0, 0, Math.fround(25.7), 0] } } },
+    result: { sk1: { status: 'ok', geometry: { l1: [0, 0, Math.fround(25.7), 0] }, entity_moved: [] } },
     bodies: {},
     _build_state: null,
   }
@@ -486,10 +485,10 @@ describe('solver write-back and a session that edited nothing', () => {
 
   // The other half of the same coin: the authored initial carried more
   // precision than the document stores (hand written YAML, an import, a solve
-  // that resolved a projection differently). It agrees with the solved value
-  // inside the f32 envelope, so the write-back keeps the authored spelling
-  // rather than re-spelling it on the mutators' grid -- and what is left is
-  // still not a user edit, so it must not mint a step.
+  // that resolved a projection differently). The solver reports the entity
+  // unmoved, so the write-back keeps the authored spelling rather than
+  // re-spelling it on the mutators' grid -- and what is left is still not a
+  // user edit, so it must not mint a step.
   it('a solve over an over-precise authored initial is not a user edit', async () => {
     docRef.current = makeSketchThenExtrudeDoc([0, 0, Math.PI, 0])
     mockSolveViaWorker.mockResolvedValue(sketchResponse())

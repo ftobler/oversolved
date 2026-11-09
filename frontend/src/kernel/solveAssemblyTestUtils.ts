@@ -141,18 +141,22 @@ export function makeEchoSolver(): (input: Uint8Array) => Uint8Array {
       params.push(view.getFloat64(paramsOffset + i * 8, true))
     }
 
-    // Build output: magic(4) + n_params(4) + status(1) + params(nParams*8) + diagnostics(28)
-    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + 28  // +4 for the n_mates header
+    // Build output: magic(4) + n_params(4) + status(1) + params(nParams*8)
+    // + n_mates(4) + moved(nBodies) + diagnostics(28)
+    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + nBodies + 28
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
-    out.setUint32(pos, 0x3452544D, true); pos += 4  // MATE_MAGIC_OUT
+    out.setUint32(pos, 0x3552544D, true); pos += 4  // MATE_MAGIC_OUT (MTR5)
     out.setUint32(pos, nParams, true); pos += 4
     out.setUint8(pos, 0); pos += 1  // fully constrained
     for (let i = 0; i < nParams; i++) {
       out.setFloat64(pos, params[i], true); pos += 8
     }
     out.setUint32(pos, 0, true); pos += 4  // n_mates
+    // The echo solver moved nothing: every body's moved byte is 0.
+    for (let i = 0; i < nBodies; i++) out.setUint8(pos + i, 0)
+    pos += nBodies
     out.setFloat64(pos, 0.0, true); pos += 8  // residual_norm
     out.setUint32(pos, 13, true); pos += 4  // rank
     out.setUint32(pos, 1, true); pos += 4  // dof
@@ -192,17 +196,20 @@ export function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Arr
       params[7] += dx
     }
 
-    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + 28  // +4 for the n_mates header
+    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + nBodies + 28
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
-    out.setUint32(pos, 0x3452544D, true); pos += 4
+    out.setUint32(pos, 0x3552544D, true); pos += 4
     out.setUint32(pos, nParams, true); pos += 4
     out.setUint8(pos, 0); pos += 1
     for (let i = 0; i < nParams; i++) {
       out.setFloat64(pos, params[i], true); pos += 8
     }
     out.setUint32(pos, 0, true); pos += 4  // n_mates
+    // Body 1 is the one this stand-in moved.
+    for (let i = 0; i < nBodies; i++) out.setUint8(pos + i, i === 1 && dx !== 0 ? 1 : 0)
+    pos += nBodies
     out.setFloat64(pos, 0.0, true); pos += 8
     out.setUint32(pos, 13, true); pos += 4
     out.setUint32(pos, 1, true); pos += 4
@@ -231,17 +238,20 @@ export function makeScaledQwSolver(bodyIndex: number, scale: number): (input: Ui
     }
     for (let c = 3; c < 7; c++) params[bodyIndex * 7 + c] *= scale
 
-    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + 28  // +4 for the n_mates header
+    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + nBodies + 28
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
-    out.setUint32(pos, 0x3452544D, true); pos += 4
+    out.setUint32(pos, 0x3552544D, true); pos += 4
     out.setUint32(pos, nParams, true); pos += 4
     out.setUint8(pos, 0); pos += 1
     for (let i = 0; i < nParams; i++) {
       out.setFloat64(pos, params[i], true); pos += 8
     }
     out.setUint32(pos, 0, true); pos += 4  // n_mates
+    // Only the scaled body's pose is meant to have changed.
+    for (let i = 0; i < nBodies; i++) out.setUint8(pos + i, i === bodyIndex && scale !== 1 ? 1 : 0)
+    pos += nBodies
     out.setFloat64(pos, 0.0, true); pos += 8
     out.setUint32(pos, 13, true); pos += 4
     out.setUint32(pos, 1, true); pos += 4
