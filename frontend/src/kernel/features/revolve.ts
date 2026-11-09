@@ -15,7 +15,7 @@ import { collectExtrudeLoops } from './faceProfile'
 import { samePlane, sketchToWorld2d, worldToSketch2d, type PlaneLike } from './shared/planes'
 import { dot, sub as sub3 } from '@/utils/vec3'
 import { surfaceEntityIds } from './shared/bodyRef'
-import { profileAreaReport } from './shared/profileLoops'
+import { openJointHint, profileAreaReport } from './shared/profileLoops'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { revolveFace, revolveProfileWithLineage } from '../occ/prismLineage'
 import { carryFaceNames, emptyShapeNames, mergeShapeNames } from '../occ/bodyNames'
@@ -291,6 +291,13 @@ export function solveRevolve(
     )
     areaTotal += report.total
     areaBuilt += report.built
+    if (report.total === 0) {
+      const hint = openJointHint(
+        (topo.edges as Dict[]) ?? [],
+        (topo.unmet_contacts as Dict[]) ?? [],
+      )
+      if (hint !== null && !unbuildableReasons.includes(hint)) unbuildableReasons.push(hint)
+    }
     for (const reason of report.reasons) {
       if (!unbuildableReasons.includes(reason)) unbuildableReasons.push(reason)
     }

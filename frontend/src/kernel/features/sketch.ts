@@ -30,7 +30,8 @@ import {
 import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags } from '@/registry'
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
-import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, type TopologyBytes } from '../topologyDecorate'
+import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, type TopologyBytes, type WireContact } from '../topologyDecorate'
+import { declaredContacts } from './shared/declaredContacts'
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadSolverWasm, loadTopologyWasm, resetSolverWasm } from '@/wasm-kernel/solverWasm'
@@ -130,9 +131,10 @@ function runSolverBytes(bytes: SolveBytes, input: FlatInput): SolverOutput {
 function runTopology(
   richGeom: Parameters<typeof solveTopology>[0],
   featureId: string,
+  contacts: WireContact[],
 ): ReturnType<typeof solveTopology> {
   try {
-    return solveTopology(richGeom, featureId, topologyBytes)
+    return solveTopology(richGeom, featureId, topologyBytes, contacts)
   } catch (e) {
     if (isKernelTrap(e)) sketchTrapPending = true
     throw e
@@ -493,8 +495,14 @@ export function solveSketch(
   // Topology + plane transform: what postRegister registers as _topo_/_pt_ so
   // downstream features can resolve this sketch's profile. A crossing already
   // owned by a materialized point yields to that point's identity.
+  //
+  // The author's coincident/tangent rows ride along as declared contacts so
+  // the builder welds what the solver only approximately met. An
+  // overconstrained solve lowers none (its geometry is a compromise and those
+  // rows are exactly what failed).
+  const declared = declaredContacts(sketch, layout, status)
   const topology = stampAreaBuildability(reconcileMaterializedContacts(
-    runTopology(richGeom, featureId),
+    runTopology(richGeom, featureId, declared),
     pointPositions,
   ))
   const plane_transform = frameToPlaneTransform(plane as Frame3D)

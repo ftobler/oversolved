@@ -38,6 +38,7 @@ use crate::radians;
 
 mod build;
 mod chains;
+mod contacts;
 mod holes;
 mod intersect;
 mod trace;
@@ -51,6 +52,7 @@ use build::{
     tag_entities,
 };
 use chains::{authored_chains, split_chains, FaceMeta};
+use contacts::End;
 use holes::split_hole_faces;
 use intersect::classify;
 use trace::{
@@ -265,6 +267,60 @@ impl TryFrom<InputEntity> for TopoEntity {
     }
 }
 
+// ─── Declared contacts (the author's constraints, lowered) ───
+
+/// One operand of a declared contact. `point` is `Some("start" | "end")` only
+/// for an entity ENDPOINT; a bare ref (`None`) names the whole curve as a
+/// locus, which is how a point-on-curve coincident and every tangent operand
+/// arrive.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ContactRef {
+    pub entity: String,
+    pub point: Option<String>,
+}
+
+/// What the author declared between the two operands.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ContactKind {
+    /// A vertex-vertex coincident: the two endpoints are ONE vertex whatever
+    /// the solver's realised gap, up to the sketch's verdict width.
+    #[default]
+    Join,
+    /// A point-on-curve coincident: the endpoint is split onto the host curve
+    /// at the foot of its closest approach (the T-junction).
+    On,
+    /// A tangent. `join` is true when a Join already ties the two curves at
+    /// their shared endpoint (the contact is AT the joint), false for a free
+    /// tangency.
+    Tangent { join: bool },
+}
+
+/// One declared contact lowered from the document's constraints. The area
+/// builder reads these INSTEAD of trusting the solver's numerics: the solver
+/// satisfies a coincidence to its own width, which at a large sketch is wider
+/// than the builder's absolute merge, and a converged tangency is zero or two
+/// intersections, never one.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Contact {
+    /// The authored constraint id, so an unmet contact can be named in the
+    /// feature's error instead of an anonymous gap.
+    pub id: String,
+    pub kind: ContactKind,
+    pub a: ContactRef,
+    pub b: ContactRef,
+}
+
+/// A declared contact the geometry did not actually meet: the realised gap
+/// exceeds the sketch's verdict width, so the builder refuses to weld it and
+/// reports it instead of papering over the miss.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnmetContact {
+    pub id: String,
+    pub a: Vec2,
+    pub b: Vec2,
+    pub gap: f64,
+}
+
 // ─── Output (structural; no query strings) ───
 
 #[derive(Clone, Debug)]
@@ -307,6 +363,11 @@ pub struct TopologyOut {
     // compile, so the dead-code lint has to be relaxed there.
     #[cfg_attr(not(any(test, feature = "fuzz")), allow(dead_code))]
     pub void_regions: Vec<SurfaceOut>,
+    /// Declared contacts the realised geometry did not meet (the gap exceeded
+    /// the sketch's verdict width). They are NOT welded, so the loop they were
+    /// meant to close stays open; the downstream error names them instead of
+    /// the anonymous "nearest open ends" pair.
+    pub unmet_contacts: Vec<UnmetContact>,
 }
 
 // ─── small helpers ───
@@ -486,24 +547,41 @@ fn collapse_seam_splits(spl: &mut Vec<Split>) {
 
 // ─── Main entry point ───
 
-pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
+pub fn detect_topology(geometry: &[(String, InputEntity)], contacts: &[Contact]) -> TopologyOut {
     // Construction entities are split off here and rejoin only in the crossing
     // pass below, so every stage that builds real geometry sees exactly the list
     // it saw when `classify` dropped them outright.
     let (cls, con) = classify(geometry).split_construction();
+    let mut contact_plan = contacts::plan(geometry, &cls, contacts);
 
     let mut verts = Verts::new();
     let mut splits: HashMap<String, Vec<Split>> = HashMap::new();
     let mut arc_a0: HashMap<String, f64> = HashMap::new();
+    // The vertex each declared endpoint was registered at, so an `on` contact
+    // can weld its host split to that same vertex.
+    let mut end_vids: HashMap<contacts::EndKey, String> = HashMap::new();
 
     for (eid, e) in &cls.lines {
         let TopoEntity::Line { start, end, .. } = *e else {
             continue;
         };
-        splits.insert(
-            eid.clone(),
-            vec![(0.0, verts.vid(start)), (1.0, verts.vid(end))],
+        let vs = verts.vid(contact_plan.pos(eid, End::Start, start));
+        let ve = verts.vid(contact_plan.pos(eid, End::End, end));
+        end_vids.insert(
+            contacts::EndKey {
+                eid: eid.clone(),
+                end: End::Start,
+            },
+            vs.clone(),
         );
+        end_vids.insert(
+            contacts::EndKey {
+                eid: eid.clone(),
+                end: End::End,
+            },
+            ve.clone(),
+        );
+        splits.insert(eid.clone(), vec![(0.0, vs), (1.0, ve)]);
     }
 
     for (eid, _) in &cls.circles {
@@ -513,7 +591,8 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     // Seed arc vertex registration with line-endpoint data so coincident arc/line
     // endpoints share vertex ids, then merge new arc vertices back.
     let mut arc_verts = verts.clone();
-    let (a0_from_norm, arc_splits, arcs) = init_arc_splits(&cls.arcs, &mut arc_verts);
+    let (a0_from_norm, arc_splits, arcs) =
+        init_arc_splits(&cls.arcs, &mut arc_verts, &contact_plan);
     for (k, v) in a0_from_norm {
         arc_a0.insert(k, v);
     }
@@ -523,15 +602,47 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     // `arc_verts` started as a copy of `verts` and only ever appended to it,
     // so it already is the merged pool.
     verts = arc_verts;
+    for (eid, e) in &arcs {
+        let TopoEntity::Arc { start, end, .. } = *e else {
+            continue;
+        };
+        end_vids.insert(
+            contacts::EndKey {
+                eid: eid.clone(),
+                end: End::Start,
+            },
+            verts.vid(contact_plan.pos(eid, End::Start, start)),
+        );
+        end_vids.insert(
+            contacts::EndKey {
+                eid: eid.clone(),
+                end: End::End,
+            },
+            verts.vid(contact_plan.pos(eid, End::End, end)),
+        );
+    }
 
     for (eid, e) in &cls.splines {
         let TopoEntity::Spline { start, end, .. } = *e else {
             continue;
         };
-        splits.insert(
-            eid.clone(),
-            vec![(0.0, verts.vid(start)), (1.0, verts.vid(end))],
+        let vs = verts.vid(contact_plan.pos(eid, End::Start, start));
+        let ve = verts.vid(contact_plan.pos(eid, End::End, end));
+        end_vids.insert(
+            contacts::EndKey {
+                eid: eid.clone(),
+                end: End::Start,
+            },
+            vs.clone(),
         );
+        end_vids.insert(
+            contacts::EndKey {
+                eid: eid.clone(),
+                end: End::End,
+            },
+            ve.clone(),
+        );
+        splits.insert(eid.clone(), vec![(0.0, vs), (1.0, ve)]);
     }
 
     // A fit spline's split parameter is piece-space: `piece + t`, so a run
@@ -543,17 +654,55 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         };
         let start = curve.eval(curve.knots()[0]);
         let end = curve.eval(curve.knots()[curve.point_count() - 1]);
+        let vs = verts.vid(contact_plan.pos(eid, End::Start, start));
+        let ve = verts.vid(contact_plan.pos(eid, End::End, end));
+        end_vids.insert(
+            contacts::EndKey {
+                eid: eid.clone(),
+                end: End::Start,
+            },
+            vs.clone(),
+        );
+        end_vids.insert(
+            contacts::EndKey {
+                eid: eid.clone(),
+                end: End::End,
+            },
+            ve.clone(),
+        );
         splits.insert(
             eid.clone(),
-            vec![
-                (0.0, verts.vid(start)),
-                (curve.piece_count() as f64, verts.vid(end)),
-            ],
+            vec![(0.0, vs), (curve.piece_count() as f64, ve)],
         );
     }
 
     for (eid, _) in &cls.ellipses {
         splits.insert(eid.clone(), vec![]);
+    }
+
+    // A declared point-on-curve contact splits its host at the foot and welds
+    // the endpoint's vertex there. It runs after every endpoint is registered,
+    // before the pairwise passes, so no intersection can mint a competing
+    // vertex first.
+    for on in &contact_plan.ons {
+        let Some(vid) = end_vids.get(&on.endpoint) else {
+            continue;
+        };
+        let Some(spl) = splits.get_mut(&on.host) else {
+            continue;
+        };
+        let mut p = on.param;
+        if let Some(a0) = arc_a0.get(&on.host) {
+            p = norm_arc_param(p, *a0);
+        }
+        // Weld, not just add: if the host already has a split at this foot (its
+        // own endpoint, or a contact seeded earlier) the declared endpoint takes
+        // that vertex's identity.
+        if let Some(existing) = spl.iter_mut().find(|(s, _)| (s - p).abs() < SPLIT_EPS) {
+            existing.1 = vid.clone();
+        } else {
+            spl.push((p, vid.clone()));
+        }
     }
 
     let endpoint_vids = verts.keys();
@@ -569,11 +718,11 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     elist.extend(cls.lines.iter().cloned());
     elist.extend(cls.circles.iter().cloned());
     elist.extend(arcs.iter().cloned());
-    find_all_intersections(&elist, &mut splits, &mut verts, &arc_a0);
+    find_all_intersections(&elist, &mut splits, &mut verts, &arc_a0, &mut contact_plan);
 
     // Second pass: every pair involving an ellipse or a spline.
     let tagged = tag_entities(&cls, &arcs);
-    add_curve_intersections(&tagged, &mut splits, &mut verts, &arc_a0);
+    add_curve_intersections(&tagged, &mut splits, &mut verts, &arc_a0, &mut contact_plan);
 
     if !con.is_empty() {
         let c_arcs = con.arcs.clone();
@@ -667,5 +816,6 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         surfaces,
         hole_regions,
         void_regions,
+        unmet_contacts: contact_plan.unmet,
     }
 }

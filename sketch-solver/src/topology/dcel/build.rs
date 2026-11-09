@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
-use super::super::curve_intersect::{bezier_self_crossing, intersect_curves, Curve};
+use super::super::curve_intersect::{bezier_self_crossing, closest_hit, intersect_curves, Curve};
 use super::super::curve_split::{ellipse_point_at, subdivide_bezier, BezierCtrl};
 use super::super::profile_loops::{EdgeGeom, Vec2};
 use super::super::{
     TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE, TOL_TOPOLOGY_SPLIT as SPLIT_EPS, TWO_PI,
 };
+use super::contacts::{ContactPlan, End, TangentMode};
 use super::intersect::{collinear_overlap, intersect, Classified};
 use super::{
     angle_in_arc, arc_is_full_turn, arc_tangent, dedup, degrees, has_param, norm_arc_param, Split,
@@ -13,6 +14,7 @@ use super::{
 };
 use crate::fit_spline::FitSpline;
 use crate::radians;
+use crate::tolerance::tangent_gap_tol;
 
 // ─── Half-edge geometry constructors ───
 
@@ -266,6 +268,7 @@ pub(super) type HalfEdge = (String, String, EdgeGeom);
 pub(super) fn init_arc_splits(
     arcs_in: &[(String, TopoEntity)],
     arc_verts: &mut Verts,
+    contact_plan: &ContactPlan,
 ) -> (
     HashMap<String, f64>,
     HashMap<String, Vec<Split>>,
@@ -291,11 +294,52 @@ pub(super) fn init_arc_splits(
         arc_a0.insert(eid.clone(), a0);
         splits.insert(
             eid.clone(),
-            vec![(a0, arc_verts.vid(*start)), (a1, arc_verts.vid(*end))],
+            vec![
+                (a0, arc_verts.vid(contact_plan.pos(eid, End::Start, *start))),
+                (a1, arc_verts.vid(contact_plan.pos(eid, End::End, *end))),
+            ],
         );
     }
 
     (arc_a0, splits, arcs)
+}
+
+/// Characteristic radius of one entity, for the tangency gap budget. A fit
+/// spline takes its first piece, the same stand-in `to_curve` uses.
+fn entity_scale(e: &TopoEntity) -> f64 {
+    super::super::curve_intersect::curve_scale(&to_curve(e))
+}
+
+/// The pair's gap budget: relative to the smaller characteristic radius, the
+/// same rule the intersection passes apply to a near-tangency. A line has no
+/// radius of its own, so it contributes nothing and the other operand's scale
+/// sets the budget (the pair is only as ambiguous as the curved carrier).
+fn pair_gap_budget(a: &TopoEntity, b: &TopoEntity) -> f64 {
+    let sa = entity_scale(a);
+    let sb = entity_scale(b);
+    let scale = if sa <= 0.0 {
+        sb
+    } else if sb <= 0.0 {
+        sa
+    } else {
+        sa.min(sb)
+    };
+    tangent_gap_tol(scale, MERGE)
+}
+
+fn near(a: Vec2, b: Vec2, tol: f64) -> bool {
+    (a[0] - b[0]).hypot(a[1] - b[1]) <= tol
+}
+
+/// A circle's split convention anchors at +-pi (`register_hit` maps an angle
+/// above pi to the negative side); the closest-approach search returns
+/// `[0, 2pi)`, so fold it into the same convention.
+fn circle_param(e: &TopoEntity, t: f64) -> f64 {
+    if matches!(e, TopoEntity::Circle { .. }) && t > std::f64::consts::PI {
+        t - TWO_PI
+    } else {
+        t
+    }
 }
 
 pub(super) fn find_all_intersections(
@@ -303,6 +347,7 @@ pub(super) fn find_all_intersections(
     splits: &mut HashMap<String, Vec<Split>>,
     verts: &mut Verts,
     arc_a0: &HashMap<String, f64>,
+    contact_plan: &mut ContactPlan,
 ) {
     for i in 0..elist.len() {
         let (eid_a, ea) = &elist[i];
@@ -313,6 +358,33 @@ pub(super) fn find_all_intersections(
                 && matches!(eb, TopoEntity::Line { .. })
             {
                 results = collinear_overlap(ea, eb);
+            }
+            // A declared tangency replaces whatever the closed form found for
+            // this pair: one contact at the joint, or one at the foot of the
+            // closest approach. Without it a converged tangency is zero or two
+            // intersections, and the two-root case slices a sliver.
+            if let Some(rule) = contact_plan.tangent(eid_a, eid_b) {
+                let rule = rule.clone();
+                match rule.mode {
+                    TangentMode::Free => match closest_hit(&to_curve(ea), &to_curve(eb)) {
+                        Some((hit, gap)) if gap <= contact_plan.cap => {
+                            results = vec![(
+                                circle_param(ea, hit.t_a),
+                                circle_param(eb, hit.t_b),
+                                hit.point,
+                            )];
+                        }
+                        Some((hit, gap)) => {
+                            contact_plan.record_unmet(&rule.id, hit.point, hit.point, gap);
+                            results.clear();
+                        }
+                        None => results.clear(),
+                    },
+                    TangentMode::Join => {
+                        let budget = pair_gap_budget(ea, eb);
+                        results.retain(|(_, _, pt)| !near(*pt, rule.joint, budget));
+                    }
+                }
             }
             for (mut pa, mut pb, pt) in results {
                 let v = verts.vid(pt);
@@ -664,6 +736,7 @@ pub(super) fn add_curve_intersections(
     splits: &mut HashMap<String, Vec<Split>>,
     verts: &mut Verts,
     arc_a0: &HashMap<String, f64>,
+    contact_plan: &mut ContactPlan,
 ) {
     for i in 0..tagged.len() {
         for j in (i + 1)..tagged.len() {
@@ -685,9 +758,56 @@ pub(super) fn add_curve_intersections(
             }
             let curves_a = curves_of(&a.e);
             let curves_b = curves_of(&b.e);
+            let rule = contact_plan.tangent(&a.eid, &b.eid).cloned();
+            let mut join_joint = None;
+            if let Some(rule) = &rule {
+                match rule.mode {
+                    TangentMode::Free => {
+                        // Exactly one contact: the global foot of closest
+                        // approach over every piece pair, replacing the pair or
+                        // miss the numeric paths found.
+                        let mut best: Option<(
+                            usize,
+                            usize,
+                            super::super::curve_intersect::Hit,
+                            f64,
+                        )> = None;
+                        for (pa, ca) in &curves_a {
+                            for (pb, cb) in &curves_b {
+                                if let Some((hit, gap)) = closest_hit(ca, cb) {
+                                    if best.as_ref().is_none_or(|(_, _, _, g)| gap < *g) {
+                                        best = Some((*pa, *pb, hit, gap));
+                                    }
+                                }
+                            }
+                        }
+                        match best {
+                            Some((pa, pb, hit, gap)) if gap <= contact_plan.cap => {
+                                let v = verts.vid(hit.point);
+                                register_hit(a, pa, hit.t_a, &v, splits, arc_a0);
+                                register_hit(b, pb, hit.t_b, &v, splits, arc_a0);
+                            }
+                            Some((_, _, hit, gap)) => {
+                                contact_plan.record_unmet(&rule.id, hit.point, hit.point, gap);
+                            }
+                            None => {}
+                        }
+                        continue;
+                    }
+                    TangentMode::Join => {
+                        let budget = pair_gap_budget(&a.e, &b.e);
+                        join_joint = Some((rule.joint, budget));
+                    }
+                }
+            }
             for (piece_a, ca) in &curves_a {
                 for (piece_b, cb) in &curves_b {
                     for h in intersect_curves(ca, cb) {
+                        if let Some((joint, budget)) = join_joint {
+                            if near(h.point, joint, budget) {
+                                continue;
+                            }
+                        }
                         let v = verts.vid(h.point);
                         register_hit(a, *piece_a, h.t_a, &v, splits, arc_a0);
                         register_hit(b, *piece_b, h.t_b, &v, splits, arc_a0);

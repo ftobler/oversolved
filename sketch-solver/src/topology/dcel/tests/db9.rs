@@ -73,8 +73,8 @@ fn the_db9_outline_is_one_face_at_the_origin_and_at_the_report_offset() {
     // back at the other end of the authored sweep (a 270 degree complement that
     // closed the whole circle). One face, the same 8 edges and the same area at
     // both placements is the contract.
-    let at_origin = detect_topology(&db9(0.0, 0.0));
-    let at_offset = detect_topology(&db9(91.0, 225.0));
+    let at_origin = detect_topology(&db9(0.0, 0.0), &[]);
+    let at_offset = detect_topology(&db9(91.0, 225.0), &[]);
     for (name, t) in [("origin", &at_origin), ("offset", &at_offset)] {
         assert_eq!(t.surfaces.len(), 1, "{name}: expected one face");
         assert_eq!(
@@ -134,7 +134,7 @@ fn a_line_tangent_to_an_arc_makes_one_contact_even_when_the_coordinates_are_larg
                 super_arc(center, radius, at_deg, at_deg + 90.0),
             ),
         ];
-        let t = detect_topology(&geom);
+        let t = detect_topology(&geom, &[]);
         let arc_edges: Vec<_> = t.edges.iter().filter(|e| e.entity_id == "arc").collect();
         assert_eq!(
             arc_edges.len(),

@@ -434,7 +434,7 @@ fn oracle_accepts_hand_fixtures() {
         .map(|(n, g)| (n.to_string(), g))
         .chain(json);
     for (name, geom) in fixtures {
-        let out = detect_topology(&geom);
+        let out = detect_topology(&geom, &[]);
         for v in texts(&check_topology(&geom, &out)) {
             failures.push(format!("{name}: {v}"));
         }
@@ -501,7 +501,7 @@ fn probe_tangent_fixture() {
             line([3.340658664703369, 12.2], [7.9340643882751465, 5.225]),
         ),
     ];
-    let out = detect_topology(&geom);
+    let out = detect_topology(&geom, &[]);
     let chords = chord_tol_for(22.0);
     let _ = &chords;
     eprintln!("chord tol {chords:?}");
@@ -563,7 +563,7 @@ fn a_sub_cell_corner_gap_is_not_a_lost_area() {
         };
         // Under MERGE: one fused contour, one face, and the oracle accepts it.
         let closed = square(MERGE / 2.0);
-        let out = detect_topology(&closed);
+        let out = detect_topology(&closed, &[]);
         assert_eq!(
             out.surfaces.len(),
             1,
@@ -581,7 +581,7 @@ fn a_sub_cell_corner_gap_is_not_a_lost_area() {
         let wide: &[f64] = if scale < 2.0 { &[0.8, 2.0] } else { &[21.0] };
         for gap in [MERGE, 2.0 * MERGE].iter().chain(wide.iter()).copied() {
             let geom = square(gap);
-            let out = detect_topology(&geom);
+            let out = detect_topology(&geom, &[]);
             assert!(
                 out.surfaces.is_empty(),
                 "scale {scale} gap {gap:e}: a gap at or over MERGE leaves the chain open"
@@ -607,7 +607,7 @@ fn a_sub_cell_channel_between_two_arcs_is_not_a_lost_area() {
         ("a0".into(), arc([3.5, 2.5], 2.5, -90.0, 90.0)),
         ("a1".into(), arc([3.5, 1.0], 1.5, -90.0, 0.0)),
     ];
-    let out = detect_topology(&geom);
+    let out = detect_topology(&geom, &[]);
     assert!(out.surfaces.is_empty(), "the open arcs bound no face");
     let v = texts(&check_topology(&geom, &out));
     assert!(v.is_empty(), "false lost area: {v:?}");
@@ -638,7 +638,7 @@ fn a_t_junction_opening_closes_only_inside_the_intersector_window() {
     // oracle must agree (the seal keeps the pocket bounded and judged).
     for gap in [window / 4.0, window / 2.0] {
         let geom = t_junction_pocket(gap);
-        let out = detect_topology(&geom);
+        let out = detect_topology(&geom, &[]);
         assert_eq!(
             out.surfaces.len(),
             1,
@@ -650,7 +650,7 @@ fn a_t_junction_opening_closes_only_inside_the_intersector_window() {
     // The seal must keep judging, not merely stay silent: with the face
     // dropped, a window gap is a lost area again.
     let geom = t_junction_pocket(window / 4.0);
-    let mut out = detect_topology(&geom);
+    let mut out = detect_topology(&geom, &[]);
     out.surfaces.clear();
     let v = texts(&check_topology(&geom, &out));
     assert!(
@@ -666,7 +666,7 @@ fn a_t_junction_opening_closes_only_inside_the_intersector_window() {
             "gap {gap:e} is in the probe range"
         );
         let geom = t_junction_pocket(gap);
-        let out = detect_topology(&geom);
+        let out = detect_topology(&geom, &[]);
         assert!(
             out.surfaces.is_empty(),
             "gap {gap:e}: the builder leaves the T junctions open"
@@ -678,7 +678,7 @@ fn a_t_junction_opening_closes_only_inside_the_intersector_window() {
     // the behaviour that was already correct.
     for gap in [MERGE, 2.0 * MERGE] {
         let geom = t_junction_pocket(gap);
-        let out = detect_topology(&geom);
+        let out = detect_topology(&geom, &[]);
         assert!(
             out.surfaces.is_empty(),
             "gap {gap:e}: open at MERGE and beyond"
@@ -703,7 +703,7 @@ fn a_spline_end_on_a_line_interior_does_not_fuse() {
             ("top".into(), line([0.0, 100.0], [40.0, 100.0])),
             ("right".into(), line([40.0, 100.0], [40.0, gap])),
         ];
-        let out = detect_topology(&geom);
+        let out = detect_topology(&geom, &[]);
         assert!(
             out.surfaces.is_empty(),
             "gap {gap:e}: the spline end does not fuse"
@@ -745,7 +745,7 @@ fn the_verified_lost_areas_are_now_covered() {
 fn oracle_rejects_a_mutilated_topology() {
     // Drop a face: its region is then bounded but in no face.
     let geom = square(2.0);
-    let mut out = detect_topology(&geom);
+    let mut out = detect_topology(&geom, &[]);
     out.surfaces.clear();
     let v = check_topology(&geom, &out);
     assert!(
@@ -754,7 +754,7 @@ fn oracle_rejects_a_mutilated_topology() {
     );
 
     // Reverse one cycle: the loop stops closing vertex-to-vertex.
-    let mut out = detect_topology(&geom);
+    let mut out = detect_topology(&geom, &[]);
     out.surfaces[0].boundary.reverse();
     let v = check_topology(&geom, &out);
     assert!(
@@ -768,7 +768,7 @@ fn oracle_rejects_a_mutilated_topology() {
         ("outer".into(), circle([0.0, 0.0], 2.0)),
         ("inner".into(), circle([0.0, 0.0], 1.0)),
     ];
-    let mut out = detect_topology(&geom);
+    let mut out = detect_topology(&geom, &[]);
     let outer = out
         .surfaces
         .iter()
@@ -794,7 +794,7 @@ fn a_self_crossing_spline_keeps_the_oracle_clean() {
         "s0".into(),
         spline_open([0.0, 0.0], [4.0, 3.0], [-4.0, 3.0], [1.0, 0.0]),
     )];
-    let out = detect_topology(&geom);
+    let out = detect_topology(&geom, &[]);
     assert_eq!(out.surfaces.len(), 1, "the lobe is the one face");
     let violations = texts(&check_topology(&geom, &out));
     assert!(violations.is_empty(), "{violations:?}");
@@ -812,7 +812,7 @@ fn a_line_across_a_washer_keeps_two_c_shapes() {
         ("inner".into(), circle([0.0, 0.0], 1.0)),
         ("slice".into(), line([-3.0, 0.0], [3.0, 0.0])),
     ];
-    let out = detect_topology(&geom);
+    let out = detect_topology(&geom, &[]);
     assert_eq!(out.surfaces.len(), 2, "the two ring halves");
     assert_eq!(out.hole_regions.len(), 2, "the two bore halves");
     for s in &out.surfaces {
@@ -831,7 +831,7 @@ fn a_standalone_closed_loop_is_a_face_not_a_half_edge_break() {
         "s0".into(),
         spline_closed([0.0, 0.0], [1.0, 2.0], [-1.0, 2.0]),
     )];
-    let out = detect_topology(&geom);
+    let out = detect_topology(&geom, &[]);
     assert_eq!(out.surfaces.len(), 1);
     let violations = texts(&check_topology(&geom, &out));
     assert!(violations.is_empty(), "{violations:?}");

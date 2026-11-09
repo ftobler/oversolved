@@ -1210,7 +1210,7 @@ fn the_db9_loop_holds_at_every_offset() {
     // a motif draw without re-rolling every seed, so the shrunk loop carries an
     // offset dimension here instead.
     let base_input = db9_loop();
-    let base = detect_topology(&base_input);
+    let base = detect_topology(&base_input, &[]);
     assert_eq!(base.surfaces.len(), 1, "origin: one face");
     assert_eq!(base.surfaces[0].boundary.len(), 8, "origin: 8 edges");
     let base_area = face_areas(&base)[0];
@@ -1234,7 +1234,7 @@ fn the_db9_loop_holds_at_every_offset() {
                 p[1] += dy;
             }
         }
-        let t = detect_topology(&moved);
+        let t = detect_topology(&moved, &[]);
         assert_eq!(
             t.surfaces.len(),
             1,
@@ -1356,4 +1356,57 @@ fn fit_spline_motifs_pass_every_invariant() {
             violations.iter().map(|v| v.render()).collect::<Vec<_>>()
         );
     }
+}
+
+#[test]
+fn declared_contacts_survive_a_cap_jitter() {
+    // A rectangle whose four joints are declared and whose entities are nudged
+    // by up to a quarter of the sketch's verdict width. The unjittered loop
+    // closes at the absolute merge; the nudged one closes only because the
+    // declared joins are welded out to the verdict width.
+    let mut checked = 0;
+    for seed in 0..48u32 {
+        let (base, moved, contacts) = declared_loop_case(seed);
+        let at = |id: &str, start: bool| -> [f64; 2] {
+            let e = &moved.iter().find(|(eid, _)| eid == id).unwrap().1;
+            if start {
+                e.start.unwrap()
+            } else {
+                e.end.unwrap()
+            }
+        };
+        let joints = [
+            (at("a", false), at("b", true)),
+            (at("b", false), at("c", true)),
+            (at("c", false), at("d", true)),
+            (at("d", false), at("a", true)),
+        ];
+        let opened = joints
+            .iter()
+            .any(|(p, q)| (p[0] - q[0]).hypot(p[1] - q[1]) > MERGE);
+        if !opened {
+            continue;
+        }
+        checked += 1;
+        let plain = face_summaries(&detect_topology(&base, &[]));
+        let out = detect_topology(&moved, &contacts);
+        let declared = face_summaries(&out);
+        let violations = compare_face_multisets(
+            "declared",
+            "declared join jitter",
+            &plain,
+            &declared,
+            1e-6,
+            1e-6,
+            1e-3,
+            1e-3,
+        );
+        assert!(violations.is_empty(), "seed {seed}: {violations:?}");
+        let oracle = check_topology_with_contacts(&moved, &contacts, &out);
+        assert!(oracle.is_empty(), "seed {seed}: oracle {oracle:?}");
+    }
+    assert!(
+        checked >= 24,
+        "the sweep really exercised joints opened past the merge: {checked}"
+    );
 }

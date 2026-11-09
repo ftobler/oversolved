@@ -25,6 +25,27 @@ export interface TopologyDict {
   vertices: Record<string, { x: number; y: number }>
   edges: Record<string, unknown>[]
   surfaces: Record<string, unknown>[]
+  /** Declared contacts the realised geometry did not meet, carried only when
+   *  there is at least one so the frozen parity fixtures stay key-exact. */
+  unmet_contacts?: UnmetContact[]
+}
+
+/** A declared contact the builder refused to weld: its realised gap exceeded
+ *  the sketch's verdict width. `a`/`b` are the two authored points. */
+export interface UnmetContact {
+  id: string
+  a: number[]
+  b: number[]
+  gap: number
+}
+
+/** One declared contact on the wire, as `declaredContacts` lowers it. */
+export interface WireContact {
+  id: string
+  kind: 'join' | 'on' | 'tangent'
+  a: { entity: string; point?: string }
+  b: { entity: string; point?: string }
+  join?: boolean
 }
 
 // Bytes-in/bytes-out shape of the Rust `detect_topology_bytes` entry point. The
@@ -38,6 +59,7 @@ interface StructuralTopology {
   vertices: Record<string, { x: number; y: number }>
   edges: Record<string, unknown>[]
   surfaces: Record<string, unknown>[]
+  unmet_contacts?: UnmetContact[]
 }
 
 // ─── line-division classifiers (TS-side) ───
@@ -196,16 +218,27 @@ export function reconcileMaterializedContacts(
   return { ...topology, intersection_points: kept }
 }
 
-/** Serialize richGeom as the ordered `[[eid, geom], ...]` payload Rust expects. */
-function encodeTopologyInput(richGeom: Record<string, Record<string, unknown>>): Uint8Array {
+/**
+ * Serialize richGeom as the ordered `[[eid, geom], ...]` payload Rust expects.
+ *
+ * Contacts ride beside the entity array in an object form. The bare array stays
+ * the encoding when there are none, so every pre-contact caller (and every
+ * frozen fixture) keeps its exact bytes.
+ */
+function encodeTopologyInput(
+  richGeom: Record<string, Record<string, unknown>>,
+  contacts: WireContact[],
+): Uint8Array {
   const entries = Object.entries(richGeom)
-  return new TextEncoder().encode(JSON.stringify(entries))
+  const payload = contacts.length === 0 ? entries : { entities: entries, contacts }
+  return new TextEncoder().encode(JSON.stringify(payload))
 }
 
 /**
- * Run the Rust area builder over `richGeom` and decorate the result. The area
- * builder lives entirely in Rust/WASM now; `topologyBytes` must be wired (browser
- * via `initSketchSolver`, node harness via `setSketchTopology`). It is only null
+ * Run the Rust area builder over `richGeom` (plus the author's declared
+ * contacts) and decorate the result. The area builder lives entirely in
+ * Rust/WASM now; `topologyBytes` must be wired (browser via
+ * `initSketchSolver`, node harness via `setSketchTopology`). It is only null
  * on a fresh checkout with no `just wasm` build, where `solveSketch` already
  * throws on the missing solver before reaching here.
  */
@@ -213,11 +246,16 @@ export function solveTopology(
   richGeom: Record<string, Record<string, unknown>>,
   featureId: string,
   topologyBytes: TopologyBytes | null,
+  contacts: WireContact[] = [],
 ): TopologyDict {
   if (!topologyBytes) {
     throw new Error("topology: Rust area builder not initialised (run `just wasm`)")
   }
-  const outBytes = topologyBytes(encodeTopologyInput(richGeom))
+  const outBytes = topologyBytes(encodeTopologyInput(richGeom, contacts))
   const structural = JSON.parse(new TextDecoder().decode(outBytes)) as StructuralTopology
-  return decorateTopology(structural, featureId)
+  const decorated = decorateTopology(structural, featureId)
+  // Conditional so the frozen Python-parity fixtures (key-exact) are unchanged
+  // for an ordinary sketch with no unmet declared contact.
+  const unmet = structural.unmet_contacts ?? []
+  return unmet.length ? { ...decorated, unmet_contacts: unmet } : decorated
 }

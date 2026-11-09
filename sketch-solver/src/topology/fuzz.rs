@@ -19,10 +19,10 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use super::dcel::{detect_topology, InputEntity};
+use super::dcel::{detect_topology, Contact, ContactKind, ContactRef, InputEntity};
 use super::oracle::{
-    check_determinism_against, check_topology, compare_face_multisets, face_summaries,
-    jitter_input, Violation,
+    check_determinism_against, check_topology, check_topology_with_contacts,
+    compare_face_multisets, face_summaries, jitter_input, Violation,
 };
 use super::TOL_TOPOLOGY_MERGE as MERGE;
 use crate::radians;
@@ -876,6 +876,73 @@ pub(crate) fn minimise(
     current
 }
 
+// ─── Declared contacts ───
+
+/// A generated rectangle loop, the same loop with every entity nudged by up to
+/// a quarter of the sketch's verdict width, and the four declared joins that
+/// tie the moved corners. The declared-contacts fuzz compares the two runs:
+/// the unjittered loop closes at `TOL_TOPOLOGY_MERGE`, the moved one only
+/// closes because the declared joins are honoured out to the verdict width.
+///
+/// Returns `(base, moved, contacts)`. `base` carries no contacts.
+pub(crate) type DeclaredLoop = (
+    Vec<(String, InputEntity)>,
+    Vec<(String, InputEntity)>,
+    Vec<Contact>,
+);
+
+pub(crate) fn declared_loop_case(seed: u32) -> DeclaredLoop {
+    let mut rnd = Prng::new(seed ^ 0x00d0_5eed);
+    // Only scales whose verdict width clears the absolute merge are meaningful;
+    // a tiny sketch's whole cap is below the merge and the jitter proves
+    // nothing.
+    let scale = if rnd.chance(0.7) { 1500.0 } else { 100.0 };
+    let w = scale * (0.6 + 0.8 * rnd.next_f64());
+    let h = scale * (0.6 + 0.8 * rnd.next_f64());
+    let base = vec![
+        ("a".to_string(), line([0.0, 0.0], [w, 0.0])),
+        ("b".to_string(), line([w, 0.0], [w, h])),
+        ("c".to_string(), line([w, h], [0.0, h])),
+        ("d".to_string(), line([0.0, h], [0.0, 0.0])),
+    ];
+    let span = w.hypot(h);
+    let cap = crate::tolerance::verdict_tol(span);
+    // Retract each end ALONG its own line, up to a quarter of the cap. The two
+    // ends of a declared joint then sit up to half a cap apart without the
+    // segments crossing each other near the corner (a sideways jitter can make
+    // adjacent sides self-intersect, which is a different defect).
+    let mut moved = base.clone();
+    for (_, e) in &mut moved {
+        let (s, t) = (e.start.unwrap(), e.end.unwrap());
+        let len = (t[0] - s[0]).hypot(t[1] - s[1]).max(1e-12);
+        let ux = (t[0] - s[0]) / len;
+        let uy = (t[1] - s[1]) / len;
+        let retract_s = 0.25 * cap * rnd.next_f64();
+        let retract_e = 0.25 * cap * rnd.next_f64();
+        e.start = Some([s[0] + ux * retract_s, s[1] + uy * retract_s]);
+        e.end = Some([t[0] - ux * retract_e, t[1] - uy * retract_e]);
+    }
+    let make_join = |id: &str, a: &str, a_end: &str, b: &str, b_end: &str| Contact {
+        id: id.to_string(),
+        kind: ContactKind::Join,
+        a: ContactRef {
+            entity: a.to_string(),
+            point: Some(a_end.to_string()),
+        },
+        b: ContactRef {
+            entity: b.to_string(),
+            point: Some(b_end.to_string()),
+        },
+    };
+    let contacts = vec![
+        make_join("j1", "a", "end", "b", "start"),
+        make_join("j2", "b", "end", "c", "start"),
+        make_join("j3", "c", "end", "d", "start"),
+        make_join("j4", "d", "end", "a", "start"),
+    ];
+    (base, moved, contacts)
+}
+
 // ─── One seed's full check ───
 
 /// Every invariant check for one generated sketch: the oracle, determinism, a
@@ -884,7 +951,7 @@ pub(crate) fn minimise(
 pub(crate) fn check_generated(entities: &[(String, InputEntity)], seed: u32) -> Vec<Violation> {
     // Every check is measured against this one base run, so a seed costs four
     // builds of the sketch rather than the six a per-check helper would.
-    let out = detect_topology(entities);
+    let out = detect_topology(entities, &[]);
     let mut violations = check_topology(entities, &out);
     violations.extend(check_determinism_against(entities, &out));
     let base = face_summaries(&out);
@@ -897,7 +964,7 @@ pub(crate) fn check_generated(entities: &[(String, InputEntity)], seed: u32) -> 
         perm.swap(i, j);
     }
     let permuted: Vec<(String, InputEntity)> = perm.iter().map(|&i| entities[i].clone()).collect();
-    let permuted_faces = face_summaries(&detect_topology(&permuted));
+    let permuted_faces = face_summaries(&detect_topology(&permuted, &[]));
     violations.extend(compare_face_multisets(
         "order",
         "entity permutation",
@@ -917,7 +984,7 @@ pub(crate) fn check_generated(entities: &[(String, InputEntity)], seed: u32) -> 
         })
         .collect();
     let jittered = jitter_input(entities, &deltas);
-    let jittered_faces = face_summaries(&detect_topology(&jittered));
+    let jittered_faces = face_summaries(&detect_topology(&jittered, &[]));
     violations.extend(compare_face_multisets(
         "stability",
         "vertex jitter",

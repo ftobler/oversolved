@@ -168,7 +168,7 @@ fn conic_residual(curve: &Curve) -> Option<Box<dyn Fn(Vec2) -> f64>> {
 /// radius, so half its control-polygon bounding-box diagonal stands in; a line
 /// contributes 0, leaving the caller's absolute floor (its caller pairs it with
 /// a curve that does have a scale).
-fn curve_scale(curve: &Curve) -> f64 {
+pub(crate) fn curve_scale(curve: &Curve) -> f64 {
     match *curve {
         Curve::Circle { r, .. } => r.abs(),
         Curve::Ellipse { a, b, .. } => a.abs().min(b.abs()),
@@ -866,6 +866,117 @@ pub fn bezier_self_crossing(c: &BzCtrl) -> Option<SelfCross> {
         t_hi,
         point: [0.5 * (pa[0] + pb[0]), 0.5 * (pa[1] + pb[1])],
     })
+}
+
+// ─── closest approach (the declared free tangent's one contact) ───
+
+/// The parameter domain of a carrier: a line/Bezier runs over `[0, 1]`, a
+/// circle/ellipse over one full turn.
+fn domain_of(c: &Curve) -> (f64, f64) {
+    match *c {
+        Curve::Line { .. } | Curve::Bezier { .. } => (0.0, 1.0),
+        Curve::Circle { .. } | Curve::Ellipse { .. } => (0.0, TWO_PI),
+    }
+}
+
+fn eval_at(c: &Curve, t: f64) -> Vec2 {
+    match *c {
+        Curve::Line { p0, p1 } => {
+            let t = t.clamp(0.0, 1.0);
+            [p0[0] + t * (p1[0] - p0[0]), p0[1] + t * (p1[1] - p0[1])]
+        }
+        Curve::Circle { c: center, r } => [center[0] + r * t.cos(), center[1] + r * t.sin()],
+        Curve::Ellipse {
+            c: center,
+            a,
+            b,
+            theta,
+        } => {
+            let cr = radians(theta).cos();
+            let sr = radians(theta).sin();
+            ellipse_point_at(center, a, b, cr, sr, t)
+        }
+        Curve::Bezier { p0, c1, c2, p3 } => bezier_point(p0, c1, c2, p3, t.clamp(0.0, 1.0)),
+    }
+}
+
+fn wrap_domain(c: &Curve, t: f64) -> f64 {
+    match *c {
+        Curve::Circle { .. } | Curve::Ellipse { .. } => pymod(t, TWO_PI),
+        _ => t.clamp(0.0, 1.0),
+    }
+}
+
+fn ternary(c: &Curve, other: Vec2, lo: f64, hi: f64, periodic: bool) -> f64 {
+    let dist = |t: f64| {
+        let t = if periodic {
+            wrap_domain(c, t)
+        } else {
+            t.clamp(0.0, 1.0)
+        };
+        let p = eval_at(c, t);
+        (p[0] - other[0]).hypot(p[1] - other[1])
+    };
+    let (mut a, mut b) = (lo, hi);
+    for _ in 0..32 {
+        let m1 = a + (b - a) / 3.0;
+        let m2 = b - (b - a) / 3.0;
+        if dist(m1) <= dist(m2) {
+            b = m2;
+        } else {
+            a = m1;
+        }
+    }
+    0.5 * (a + b)
+}
+
+/// The foot of closest approach between two carriers, with the parameter on
+/// each and the realised gap. This is the free tangency's one contact: the
+/// solver's converged tangent is otherwise zero or two intersections, and
+/// either reading is wrong for a declared contact.
+///
+/// A coarse grid finds the global minimum (a pair can have several near
+/// approaches), then alternating ternary refinements slide each parameter onto
+/// the foot. Deterministic, no RNG; the scan only has to locate the basin.
+pub(crate) fn closest_hit(a: &Curve, b: &Curve) -> Option<(Hit, f64)> {
+    const N: usize = 96;
+    let (a0, a1) = domain_of(a);
+    let (b0, b1) = domain_of(b);
+    let periodic_a = matches!(a, Curve::Circle { .. } | Curve::Ellipse { .. });
+    let periodic_b = matches!(b, Curve::Circle { .. } | Curve::Ellipse { .. });
+    let mut best: Option<(f64, f64, f64)> = None;
+    for i in 0..=N {
+        let ta = a0 + (a1 - a0) * i as f64 / N as f64;
+        let pa = eval_at(a, ta);
+        for j in 0..=N {
+            let tb = b0 + (b1 - b0) * j as f64 / N as f64;
+            let pb = eval_at(b, tb);
+            let d = (pa[0] - pb[0]).hypot(pa[1] - pb[1]);
+            if best.is_none_or(|(_, _, bd)| d < bd) {
+                best = Some((ta, tb, d));
+            }
+        }
+    }
+    let (mut ta, mut tb, _) = best?;
+    let step_a = (a1 - a0) / N as f64;
+    let step_b = (b1 - b0) / N as f64;
+    for _ in 0..16 {
+        let pa = eval_at(a, ta);
+        tb = wrap_domain(b, ternary(b, pa, tb - step_b, tb + step_b, periodic_b));
+        let pb = eval_at(b, tb);
+        ta = wrap_domain(a, ternary(a, pb, ta - step_a, ta + step_a, periodic_a));
+    }
+    let pa = eval_at(a, ta);
+    let pb = eval_at(b, tb);
+    let gap = (pa[0] - pb[0]).hypot(pa[1] - pb[1]);
+    Some((
+        Hit {
+            point: [(pa[0] + pb[0]) * 0.5, (pa[1] + pb[1]) * 0.5],
+            t_a: ta,
+            t_b: tb,
+        },
+        gap,
+    ))
 }
 
 // ─── public entry point ───

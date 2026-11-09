@@ -282,7 +282,7 @@ fn projected_long_arcs_keep_their_authored_sweep() {
     // their authored params. Collapsing every arc to its <=180 complement
     // instead closed the same endpoints on the far side, inside the body's
     // cutouts, and published a region that does not exist.
-    let t = detect_topology(&ghost_area_arcs());
+    let t = detect_topology(&ghost_area_arcs(), &[]);
     assert_eq!(
         t.surfaces.len(),
         1,

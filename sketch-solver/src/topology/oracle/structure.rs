@@ -31,6 +31,7 @@ pub(crate) fn side_ends(s: &Side<'_>) -> Option<(Vec2, Vec2)> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn check_loop(
     label: &str,
     loop_edges: &[BoundaryEdge],
@@ -38,6 +39,7 @@ pub(crate) fn check_loop(
     input_ids: &BTreeSet<String>,
     construction_ids: &BTreeSet<String>,
     chord_tol: f64,
+    declared: &[(Vec2, Vec2)],
     out: &mut Vec<Violation>,
 ) {
     if loop_edges.is_empty() {
@@ -83,7 +85,22 @@ pub(crate) fn check_loop(
                 ) {
                     let d0 = (p0[0] - s[0]).hypot(p0[1] - s[1]);
                     let d1 = (p1[0] - e[0]).hypot(p1[1] - e[1]);
-                    if d0 > MERGE || d1 > MERGE {
+                    // A declared contact welds two authored endpoints into one
+                    // vertex, so the side's own geometry may sit anywhere up to
+                    // that contact's realised gap from the merged position.
+                    let slack = |p: Vec2| {
+                        let mut extra = 0.0_f64;
+                        for (a, b) in declared {
+                            let gap = (a[0] - b[0]).hypot(a[1] - b[1]);
+                            let near_a = (p[0] - a[0]).hypot(p[1] - a[1]) <= MERGE;
+                            let near_b = (p[0] - b[0]).hypot(p[1] - b[1]) <= MERGE;
+                            if near_a || near_b {
+                                extra = extra.max(gap);
+                            }
+                        }
+                        MERGE + extra
+                    };
+                    if d0 > slack(*p0) || d1 > slack(*p1) {
                         out.push(Violation::new(
                             "structure",
                             format!(
@@ -433,7 +450,7 @@ pub(crate) fn hole_wiring_violations(out: &TopologyOut) -> Vec<Violation> {
     violations
 }
 
-pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
+pub(crate) fn euler_violations(out: &TopologyOut, declared: &[(Vec2, Vec2)]) -> Vec<Violation> {
     let verts: BTreeMap<String, Vec2> = out.vertices.iter().map(|(k, v)| (k.clone(), *v)).collect();
     let nearest = |p: Vec2| -> Option<String> {
         verts
@@ -442,6 +459,29 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
             .map(|(k, v)| (k.clone(), (v[0] - p[0]).hypot(v[1] - p[1])))
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(k, _)| k)
+    };
+    // A declared contact's welded side sits up to its gap from the merged
+    // vertex, so a bare `nearest` cannot see the vertex. Resolve through the
+    // declared pair: an edge endpoint at one end of the pair belongs to the
+    // vertex at the other end (the pair is the same authored identity rule the
+    // builder applied).
+    let resolve = |p: Vec2| -> Option<String> {
+        if let Some(v) = nearest(p) {
+            return Some(v);
+        }
+        for (a, b) in declared {
+            if (p[0] - a[0]).hypot(p[1] - a[1]) <= MERGE {
+                if let Some(v) = nearest(*b) {
+                    return Some(v);
+                }
+            }
+            if (p[0] - b[0]).hypot(p[1] - b[1]) <= MERGE {
+                if let Some(v) = nearest(*a) {
+                    return Some(v);
+                }
+            }
+        }
+        None
     };
 
     let mut used: BTreeSet<String> = BTreeSet::new();
@@ -474,7 +514,7 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
         let Some((s, t)) = ends else {
             continue;
         };
-        match (nearest(s), nearest(t)) {
+        match (resolve(s), resolve(t)) {
             (Some(a), Some(b)) => {
                 used.insert(a.clone());
                 used.insert(b.clone());

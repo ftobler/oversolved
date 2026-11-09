@@ -377,10 +377,18 @@ export function profileAreaReport(
  * The area builder merges endpoints only within TOL_TOPOLOGY_MERGE, so two ends
  * a hand-typed coordinate apart (an arc end computed to four digits) never
  * join and the sketch yields no area. The bare "no closed profile found" gives
- * no hint where; this names the gap. Returns null when every endpoint pairs up
- * or there are fewer than two free ends.
+ * no hint where; this names the gap.
+ *
+ * `unmet` is the topology's `unmet_contacts` list: a declared contact the
+ * builder refused to weld because its realised gap exceeded the sketch's
+ * verdict width. When one of those sits on the open ends, the authored
+ * constraint id is named, which is the sentence the user can act on ("the
+ * coincident I made is not actually met").
+ *
+ * Returns null when every endpoint pairs up or there are fewer than two free
+ * ends.
  */
-export function openJointHint(edges: Dict[]): string | null {
+export function openJointHint(edges: Dict[], unmet: Dict[] = []): string | null {
   const ends: number[][] = []
   for (const e of edges) {
     const s = e.start as number[] | undefined
@@ -399,8 +407,17 @@ export function openJointHint(edges: Dict[]): string | null {
   }
   if (best === null) return null
   const f = (p: number[]): string => `(${+p[0].toFixed(6)}, ${+p[1].toFixed(6)})`
-  return (
+  let hint =
     `the sketch has no closed area; its nearest open ends ${f(best.a)} and ${f(best.b)} ` +
     `are ${+best.gap.toPrecision(3)} apart and join only within ${TOL_TOPOLOGY_MERGE}`
-  )
+  const near = (p: unknown, q: number[]): boolean =>
+    Array.isArray(p) && Math.hypot(p[0] - q[0], p[1] - q[1]) <= TOL_TOPOLOGY_MERGE
+  for (const c of unmet) {
+    if (near(c.a, best.a) || near(c.a, best.b) || near(c.b, best.a) || near(c.b, best.b)) {
+      const gap = typeof c.gap === 'number' ? +c.gap.toPrecision(3) : '?'
+      hint += `; declared contact ${String(c.id)} is not met: gap ${gap}`
+      break
+    }
+  }
+  return hint
 }
