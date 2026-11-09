@@ -88,6 +88,10 @@ from the returned queries. The committed recipes use exact initial sketch
 geometry with no constraints: the translation is a direct model, not a
 dimensioned design.
 
+A source `shell(kind="arc")` (CadQuery's default) or `offset(..., kind=Kind.ARC)`
+(build123d's default) maps to `join: "arc"`; `kind="intersection"` maps to the
+sharp default.
+
 ## 3. Compare and iterate
 
 The runner emits CadQuery's own frame (XY plane, extrusion along +Z), and

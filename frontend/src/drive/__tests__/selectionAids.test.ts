@@ -140,6 +140,46 @@ describe('resolveSelectionAids', () => {
     expect(resolved.code).toBe('invalid-ref')
   })
 
+  it('names the selector shape when a predicate sits where the selector belongs', () => {
+    const resolved = resolveSelectionAids(
+      { type: 'add_shell', featureId: 'sh1', faces: [{ selector: { type: 'flatface' } }] },
+      twoBodies(),
+    )
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) return
+    expect(resolved.code).toBe('invalid-ref')
+    expect(resolved.message).toContain('add_shell faces[0]: selector has unknown key "type"')
+    expect(resolved.message).toContain('a selector is {from?, kind, where}')
+    expect(resolved.message).toContain('"type" is a predicate')
+    expect(resolved.message).toContain('{selector: {kind: "face", where: {type: "flatface"}}}')
+  })
+
+  it('keeps the plain unknown-key message for a key that is not a predicate', () => {
+    const resolved = resolveSelectionAids(
+      { type: 'add_shell', featureId: 'sh1', faces: [{ selector: { kind: 'face', bogus: 1 } }] },
+      twoBodies(),
+    )
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) return
+    expect(resolved.code).toBe('invalid-ref')
+    expect(resolved.message).toBe('add_shell faces[0]: selector has unknown key "bogus"')
+  })
+
+  it('names the selector shape for a predicate key in a fillet or chamfer edge list', () => {
+    for (const type of ['add_fillet', 'add_chamfer'] as const) {
+      const resolved = resolveSelectionAids(
+        { type, featureId: 'f1', edges: [{ selector: { seam: false } }] },
+        bodiesWithEdges(),
+      )
+      expect(resolved.ok, type).toBe(false)
+      if (resolved.ok) continue
+      expect(resolved.code).toBe('invalid-ref')
+      expect(resolved.message).toContain(`${type} edges[0]: selector has unknown key "seam"`)
+      expect(resolved.message).toContain('"seam" is a predicate')
+      expect(resolved.message).toContain('kind: "edge"')
+    }
+  })
+
   it('expands every shell face selector and keeps the string entries', () => {
     const bodies = twoBodies()
     const existing = q('body_a', ['@u|f_1'], 'flatface')

@@ -10,7 +10,9 @@
 // answer is the query `select` would have returned.
 
 import type { BodyResult } from '@/types/cad'
-import { selectByPredicate, SelectorError, validateSelector, type SelectKind, type Selector } from '@/kernel/select'
+import {
+  PREDICATE_KEYS, selectByPredicate, SelectorError, validateSelector, type SelectKind, type Selector,
+} from '@/kernel/select'
 
 export type SelectionAidResolution =
   | { ok: true; mutation: unknown }
@@ -39,6 +41,23 @@ function selectorOf(value: unknown): Selector | null {
 
 function pickOf(value: unknown): boolean {
   return isRecord(value) && Object.keys(value).length === 1 && isRecord(value.selector)
+}
+
+const UNKNOWN_SELECTOR_KEY = /has unknown key "([^"]+)"/
+
+/**
+ * A predicate key placed at the selector's top level is a real practice-round
+ * mistake: `{selector: {type: "flatface"}}`. The kernel names the unknown key
+ * but not the shape, so add the shape and the corrected spelling. The predicate
+ * list is the grammar's own PREDICATE_KEYS, so a new predicate cannot drift.
+ */
+function selectorShapeHint(message: string, kind: SelectKind): string {
+  const key = UNKNOWN_SELECTOR_KEY.exec(message)?.[1]
+  // The list is a const tuple, so a string membership check needs the widening.
+  if (key === undefined || !(PREDICATE_KEYS as readonly string[]).includes(key)) return message
+  const sample = key === 'type' ? (kind === 'face' ? '"flatface"' : '"line"') : '...'
+  return `${message}; a selector is {from?, kind, where} and "${key}" is a predicate, so it goes under "where": ` +
+    `{selector: {kind: "${kind}", where: {${key}: ${sample}}}}`
 }
 
 /**
@@ -87,7 +106,9 @@ function resolvePick(
   try {
     selector = selectorOf(value)
   } catch (e) {
-    if (e instanceof SelectorError) return { ok: false, code: 'invalid-ref', message: `${label}: ${e.message}` }
+    if (e instanceof SelectorError) {
+      return { ok: false, code: 'invalid-ref', message: `${label}: ${selectorShapeHint(e.message, kind)}` }
+    }
     throw e
   }
   if (selector === null) {

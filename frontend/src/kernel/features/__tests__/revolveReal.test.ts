@@ -9,9 +9,14 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { SharedHarness } from '../../occ/sharedHarness'
+import { DisposeScope } from '../../occ/disposeScope'
+import { volumeOf } from '../../occ/volume'
 import { makeAncestryQuery } from '../../query'
 import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import type { BuildResponse } from '../../builder'
+import type { Body } from '../../types3d'
+import type { OccShape } from '../../occ/occTypes'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
@@ -76,6 +81,17 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
       harness.run({ ...spec, features: [axisSketch(), ...spec.features] }),
     res: harness.res.bind(harness),
     body: harness.body.bind(harness),
+  }
+
+  function volumeAt(r: BuildResponse, featureId: string, bodyId: string): number {
+    const checkpoint = r._build_state!.checkpoints[featureId]
+    const body = (checkpoint.body_store_snapshot as Record<string, Body>)[bodyId]
+    const scope = new DisposeScope()
+    try {
+      return volumeOf(oc!, scope, harness.table.get<OccShape>(body.shape!))
+    } finally {
+      scope.dispose()
+    }
   }
 
   beforeAll(() => {
@@ -420,5 +436,65 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     expect(dir[1]).toBeCloseTo(0, 4)
     expect(dir[2]).toBeCloseTo(0, 4)
     expect(handle.unit_scale as number).toBeCloseTo((2 * Math.PI) / 180, 6)
+  })
+
+  // A line drawn along the axis splits a closed curve into two areas that each
+  // only touch the line, so the axis guard sees no crossing. This is the idiom
+  // that makes a sphere from a circle and a spheroid from an ellipse; pin it so
+  // an area-builder change cannot quietly turn it back into a refusal.
+  it('revolves a circle split by its diameter line into a sphere', () => {
+    const result = h.run({
+      version: 1, kind: 'part',
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', label: 'Sphere', plane: '@builtin_plane_front',
+          entities: [{ id: 'c', kind: 'circle' }, { id: 'diam', kind: 'line' }],
+          initial: { c: [0, 0, 10], diam: [0, -10, 0, 10] },
+          constraints: [],
+        },
+        { id: 'rev1', kind: 'revolve', label: 'Revolve',
+          sketch: '$sk1', angle: 360, axis: '@sk1/diam', operation: 'new' },
+      ],
+    })
+    expect(h.res(result, 'rev1').status).toBe('ok')
+    expect(volumeAt(result, 'rev1', 'body_rev1')).toBeCloseTo((4 / 3) * Math.PI * 1000, 2)
+  })
+
+  it('revolves an ellipse split by its minor-axis line into a spheroid', () => {
+    const result = h.run({
+      version: 1, kind: 'part',
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', label: 'Spheroid', plane: '@builtin_plane_front',
+          entities: [{ id: 'e', kind: 'ellipse' }, { id: 'minor', kind: 'line' }],
+          initial: { e: [0, 0, 37, 34, 0], minor: [0, -34, 0, 34] },
+          constraints: [],
+        },
+        { id: 'rev1', kind: 'revolve', label: 'Revolve',
+          sketch: '$sk1', angle: 360, axis: '@sk1/minor', operation: 'new' },
+      ],
+    })
+    expect(h.res(result, 'rev1').status).toBe('ok')
+    expect(volumeAt(result, 'rev1', 'body_rev1')).toBeCloseTo((4 / 3) * Math.PI * 37 * 37 * 34, 1)
+  })
+
+  it('still refuses an axis line that crosses a circle without splitting it', () => {
+    const result = h.run({
+      version: 1, kind: 'part',
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', label: 'Crossed', plane: '@builtin_plane_front',
+          entities: [{ id: 'c', kind: 'circle' }, { id: 'ax', kind: 'line' }],
+          // The segment stops short of the circle boundary, so it neither
+          // crosses nor splits it: the one area still straddles the axis.
+          initial: { c: [0, 0, 10], ax: [3, -5, 3, 5] },
+          constraints: [],
+        },
+        { id: 'rev1', kind: 'revolve', label: 'Revolve',
+          sketch: '$sk1', angle: 360, axis: '@sk1/ax', operation: 'new' },
+      ],
+    })
+    expect(h.res(result, 'rev1').status).toBe('exception')
+    expect(String(h.res(result, 'rev1').exception)).toMatch(/crosses profile area sk1/)
   })
 })

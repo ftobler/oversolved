@@ -140,7 +140,8 @@ const PROFILE_LOOPS_NOTE =
 // one-ref-per-curve rule is stated because a slot needs four refs, not one.
 const PROFILE_REF_NOTE =
   'A profile or path ref is a whole sketch as `$<sketchId>` or `@<sketchId>`, one curve as ' +
-  '`entity:<sketchId>:<entityId>`, or a `?` area query from `select`; a sweep takes one ref per curve ' +
+  '`entity:<sketchId>:<entityId>`, or a `?` area query a viewport click stored (`select` does not produce ' +
+  'sketch areas; a headless client names a whole sketch or one closed curve); a sweep takes one ref per curve ' +
   '(four for a slotted loop, one `add_sweep_profile` per curve) and one path ref per curve, while extrude ' +
   'and revolve take one closed curve per ref. `vertex:<sketchId>:<entityId>:<vertexKey>` names the same ' +
   'entity as `entity:`, and `@<sketchId>/<entityId>` or `@<bodyId>/face/<n>` is a face-profile pick ' +
@@ -402,7 +403,8 @@ const REVOLVE_AXIS_NOTE =
   '`axis` is required and is a feature-level ref, not the profile\'s sketch-local $ form: name a sketch entity as ' +
   '@<sketchId>/<entityId> (a line, or a circle/arc whose center sits on the axis), or an edge query from `select`. ' +
   'A $<sketchId> ref does not resolve in `axis`. The axis may touch the profile boundary but must not cut through ' +
-  'its interior.'
+  'its interior. Interior means one area\'s: a line drawn along the axis splits a closed curve into two areas that ' +
+  'each touch it, so a full circle or ellipse plus its diameter line revolves into a sphere or spheroid.'
 
 // Plane refs are exact on purpose: a case-insensitive bare-name match could
 // shadow a user plane whose id differs only by case. The boundary refuses an
@@ -670,12 +672,19 @@ const CIRCULAR_AXIS_NOTE =
   'and `axis_direction` (VEC3, non-zero). A resolved `axis` overrides the pair; `axis_direction` alone rotates about ' +
   'the world origin, and `axis_origin` alone uses +Z.'
 
+// The selector is the `select` tool's grammar, and its shape is not repeated in
+// the tool schema's field notes, so a client that puts a predicate where the
+// selector belongs (a practice round did) needs the shape spelled out here.
+const SELECTOR_SHAPE_NOTE =
+  'A selector is `{from?, kind, where}`: `from` names a body (default: every body), `kind` is edge, face or ' +
+  'vertex, and `where` holds the predicates, e.g. `{type: "flatface"}` or `{parallel: [0, 0, 1]}`.'
+
 // The fillet and chamfer edge list is a pick list like a shell's faces, so each
 // entry takes the same two spellings.
 const EDGE_PICK_LIST_NOTE =
   'Each `edges` entry is an edge query from `select`, or `{selector: <a select selector>}`: a selector expands to ' +
-  'one entry per edge it matches, so one entry can name several edges. The headless drive resolves a selector ' +
-  'against the settled solve before the add applies; the document stores only query strings.'
+  'one entry per edge it matches, so one entry can name several edges. ' + SELECTOR_SHAPE_NOTE + ' The headless ' +
+  'drive resolves a selector against the settled solve before the add applies; the document stores only query strings.'
 
 const FILLET_BULK_NOTE =
   'One call may carry the whole pick: `edges` appends the query strings `select` returned, and `radius` sets the ' +
@@ -718,8 +727,8 @@ const SHELL_BULK_NOTE =
 // the same two spellings.
 const SHELL_FACES_NOTE =
   'Each `faces` entry is a face query from `select`, or `{selector: <a select selector>}`: a selector expands to ' +
-  'one entry per face it matches, so one entry can open several faces. The headless drive resolves a selector ' +
-  'against the settled solve before the shell applies; the document stores only query strings.'
+  'one entry per face it matches, so one entry can open several faces. ' + SELECTOR_SHAPE_NOTE + ' The headless ' +
+  'drive resolves a selector against the settled solve before the shell applies; the document stores only query strings.'
 
 const fieldOf = (label: string, type: FieldSetterType) =>
   str(`The ${label} field to set. Valid fields: ${(setterFieldNames(type) ?? []).join(', ')}.`)
@@ -1189,7 +1198,7 @@ export const MUTATION_CATALOG = {
     note: FILLET_BULK_NOTE,
     fields: {
       ...featureAddFields(),
-      edges: optArr('Edge queries from `select`, or `{selector}` entries such as `edges: [{selector: ...}]` the drive resolves; the same array the document stores as fillet.edges.'),
+      edges: optArr('Edge queries from `select`, or `{selector}` entries such as `edges: [{selector: ...}]` the drive resolves; the same array the document stores as fillet.edges. ' + SELECTOR_SHAPE_NOTE),
       radius: optScalar('A positive number or an expression string; defaults to 1 when omitted.'),
     },
   },
@@ -1198,7 +1207,7 @@ export const MUTATION_CATALOG = {
     note: CHAMFER_BULK_NOTE,
     fields: {
       ...featureAddFields(),
-      edges: optArr('Edge queries from `select`, or `{selector}` entries such as `edges: [{selector: ...}]` the drive resolves; the same array the document stores as chamfer.edges.'),
+      edges: optArr('Edge queries from `select`, or `{selector}` entries such as `edges: [{selector: ...}]` the drive resolves; the same array the document stores as chamfer.edges. ' + SELECTOR_SHAPE_NOTE),
       distance: optScalar('A positive number or an expression string; defaults to 1 when omitted.'),
     },
   },
@@ -1233,7 +1242,7 @@ export const MUTATION_CATALOG = {
       ...featureAddFields(),
       faces: optArr(
         'Face queries from `select` to remove (the openings), or `{selector}` entries the drive resolves; ' +
-        'the same array the document stores as shell.faces. ' +
+        'the same array the document stores as shell.faces. ' + SELECTOR_SHAPE_NOTE + ' ' +
         'May be empty when `source_body` names a body for a closed hollow.',
       ),
       thickness: optScalar('A positive number or an expression string; defaults to 1 when omitted.'),
