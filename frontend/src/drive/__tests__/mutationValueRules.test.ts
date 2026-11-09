@@ -1532,3 +1532,108 @@ describe('import_dxf takes exactly one of content or file', () => {
     expect(refusal({ type: 'import_dxf', featureId: 'sk1', content: bad }).message).toContain('INSERT')
   })
 })
+
+describe('extrude taper refusals', () => {
+  function extrudeDoc(extrude: Record<string, unknown>): PartDoc {
+    return seedBuiltins({
+      version: 1, kind: 'part',
+      features: [{
+        id: 'ex1', kind: 'extrude',
+        extrude: { sketch: '@sk1', distance: 10, ...extrude },
+      }],
+    })
+  }
+
+  it('refuses a taper magnitude of 90 degrees or more', () => {
+    for (const taper of [90, -90, 95]) {
+      const error = refusal({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, taper })
+      expect(error.message, String(taper)).toContain('|taper| < 90')
+    }
+  })
+
+  it('refuses a taper with direction symmetric on the add', () => {
+    const error = refusal({
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5,
+      taper: 10, direction: 'symmetric',
+    })
+    expect(error.message).toContain('taper')
+    expect(error.message).toContain('direction symmetric')
+  })
+
+  it('refuses a taper with up_to and through_all on the add', () => {
+    for (const termination of ['up_to', 'through_all']) {
+      const error = refusal({
+        type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5,
+        taper: 10, termination,
+      })
+      expect(error.message, termination).toContain('taper')
+      expect(error.message, termination).toContain(termination)
+    }
+  })
+
+  it('refuses setting a taper on a symmetric, up_to or through_all extrude', () => {
+    const symmetric = refusal(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'taper', value: 10 },
+      extrudeDoc({ direction: 'symmetric' }),
+    )
+    expect(symmetric.message).toContain('direction is symmetric')
+    for (const termination of ['up_to', 'through_all']) {
+      const error = refusal(
+        { type: 'set_extrude_field', featureId: 'ex1', field: 'taper', value: 10 },
+        extrudeDoc({ termination }),
+      )
+      expect(error.message, termination).toContain(termination)
+      expect(error.message, termination).toContain('blind')
+    }
+  })
+
+  it('refuses switching direction or termination under an authored taper', () => {
+    const direction = refusal(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'direction', value: 'symmetric' },
+      extrudeDoc({ taper: 15 }),
+    )
+    expect(direction.message).toContain('symmetric')
+    expect(direction.message).toContain('taper')
+    for (const termination of ['up_to', 'through_all']) {
+      const error = refusal(
+        { type: 'set_extrude_field', featureId: 'ex1', field: 'termination', value: termination },
+        extrudeDoc({ taper: 15 }),
+      )
+      expect(error.message, termination).toContain('taper')
+      expect(error.message, termination).toContain(termination)
+    }
+  })
+
+  it('accepts a taper on a blind normal extrude and clears it', () => {
+    expect(validateMutation(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'taper', value: 15 },
+      { doc: extrudeDoc({}) },
+    )).toMatchObject({ ok: true })
+    expect(validateMutation(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'taper', value: null },
+      { doc: extrudeDoc({ taper: 15 }) },
+    )).toMatchObject({ ok: true })
+  })
+
+  it('round-trips the setter and the inline add through the drive', async () => {
+    const setter = await runHeadless({
+      doc: extrudeDoc({}),
+      steps: [{ mutation: { type: 'set_extrude_field', featureId: 'ex1', field: 'taper', value: 15 } }],
+    })
+    const edited = setter.doc?.features?.find(feature => feature.id === 'ex1')
+    if (edited?.kind !== 'extrude') throw new Error('the setter step stored no extrude')
+    expect(edited.extrude.taper).toBe(15)
+
+    const added = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [{
+        mutation: {
+          type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk1', distance: 10, taper: 15,
+        },
+      }],
+    })
+    const inline = added.doc?.features?.find(feature => feature.id === 'ex2')
+    if (inline?.kind !== 'extrude') throw new Error('the add step stored no extrude')
+    expect(inline.extrude.taper).toBe(15)
+  })
+})

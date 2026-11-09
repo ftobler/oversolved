@@ -222,7 +222,7 @@ export function applyAddExtrude(
   label: string | undefined,
   sketchQuery: string,
   distance: number,
-  inline: Pick<ExtrudeFeatureDef, 'direction' | 'operation' | 'merge_target'> & {
+  inline: Pick<ExtrudeFeatureDef, 'direction' | 'operation' | 'merge_target' | 'taper'> & {
     // The setter's applier deletes the key on null or an empty string; the
     // inline add has no key yet, so the same inputs simply write no key.
     termination?: ExtrudeFeatureDef['termination'] | null | ''
@@ -248,6 +248,7 @@ export function applyAddExtrude(
       distance: round(distance),
       direction: inline.direction ?? 'normal',
       // Absent keys stay absent, so a plain add writes the document it always did.
+      ...(inline.taper !== undefined && { taper: inline.taper }),
       ...(termination !== undefined && { termination }),
       ...(upTo !== undefined && { up_to: upTo }),
       ...(inline.operation !== undefined && { operation: inline.operation }),

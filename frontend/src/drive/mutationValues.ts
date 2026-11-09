@@ -1186,10 +1186,56 @@ function clearsOnEmpty(type: Mutation['type'], field: unknown, value: unknown): 
   return typeof field === 'string' && value === '' && (EMPTY_REF_CLEARS[type]?.has(field) ?? false)
 }
 
+/** A taper is a number or an expression string; only the numeric form's bound
+ *  can be judged here. An expression is evaluated at solve time, where the
+ *  kernel applies the same |taper| < 90 rule. */
+function taperValueProblem(value: unknown, label: string): string | null {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value === 'string') return null
+  if (!isFiniteNumber(value)) {
+    return `${label} must be a finite number or a non-empty expression string, got ${json(value)}`
+  }
+  if (Math.abs(value) >= 90) return `${label} must satisfy |taper| < 90 degrees, got ${json(value)}`
+  return null
+}
+
+/** Whether a taper value asks for a draft. An expression may evaluate to 0, but
+ *  the drive boundary cannot know that, so it is treated as set. */
+function taperIsSet(value: unknown): boolean {
+  if (value === undefined || value === null || value === '') return false
+  return !(typeof value === 'number' && value === 0)
+}
+
+/** The stored extrude sub-definition of the feature a setter names, or null when
+ *  the caller has no document (or the feature is not an extrude). */
+function storedExtrudeDef(raw: RawStep, ctx: ValueContext): RawStep | null {
+  if (ctx.doc === null) return null
+  const feature = (ctx.doc.features ?? []).find(entry => entry.id === raw.featureId)
+  if (feature === undefined || feature.kind !== 'extrude') return null
+  const sub = (feature as { extrude?: unknown }).extrude
+  return isRecord(sub) ? sub : null
+}
+
 function addExtrude(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const problem = profileRefProblem(raw.sketchQuery, 'sketchQuery')
   if (problem !== null) return invalid(problem)
   if (!isFiniteNumber(raw.distance)) return invalid(`distance must be a finite number, got ${json(raw.distance)}`)
+  const taperProblemText = taperValueProblem(raw.taper, 'taper')
+  if (taperProblemText !== null) return invalid(taperProblemText)
+  if (taperIsSet(raw.taper)) {
+    const direction = (raw.direction as string | undefined) ?? 'normal'
+    if (direction === 'symmetric') {
+      return invalid(
+        'add_extrude field "taper": direction symmetric is not supported with a taper; use normal or reverse',
+      )
+    }
+    const termination = (raw.termination as string | undefined) ?? 'blind'
+    if (termination === 'up_to' || termination === 'through_all') {
+      return invalid(
+        `add_extrude field "taper": termination ${termination} is not supported with a taper; use termination blind`,
+      )
+    }
+  }
   // through_all sizes its tool from the live bodies, so it is a cut termination:
   // a long additive or intersecting tool is not the operation the term
   // describes. Refused at the boundary so the bad step never touches the
@@ -1634,7 +1680,43 @@ function fieldValue(raw: RawStep, ctx: ValueContext): ValueViolation | null {
 // EMPTY_REF_CLEARS says which, and every other field takes the schema check.
 function setExtrudeField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   if (clearsOnEmpty(raw.type as Mutation['type'], raw.field as string, raw.value)) return null
-  return fieldValue(raw, ctx)
+  const generic = fieldValue(raw, ctx)
+  if (generic !== null) return generic
+  const field = raw.field
+  if (typeof field !== 'string') return null
+  const stored = storedExtrudeDef(raw, ctx)
+  if (field === 'taper') {
+    const problem = taperValueProblem(raw.value, 'set_extrude_field field "taper"')
+    if (problem !== null) return invalid(problem)
+    if (stored === null || !taperIsSet(raw.value)) return null
+    const direction = (stored.direction as string | undefined) ?? 'normal'
+    if (direction === 'symmetric') {
+      return invalid(
+        'set_extrude_field field "taper": direction is symmetric; taper needs direction normal or reverse',
+      )
+    }
+    const termination = (stored.termination as string | undefined) ?? 'blind'
+    if (termination === 'up_to' || termination === 'through_all') {
+      return invalid(
+        `set_extrude_field field "taper": termination is ${termination}; taper needs termination blind`,
+      )
+    }
+    return null
+  }
+  if (stored === null || !taperIsSet(stored.taper)) return null
+  if (field === 'direction' && raw.value === 'symmetric') {
+    return invalid(
+      'set_extrude_field field "direction": symmetric cannot be used while taper is set; ' +
+        'clear taper or use normal/reverse',
+    )
+  }
+  if (field === 'termination' && (raw.value === 'up_to' || raw.value === 'through_all')) {
+    return invalid(
+      `set_extrude_field field "termination": ${json(raw.value)} cannot be used while taper is set; ` +
+        'clear taper or use termination blind',
+    )
+  }
+  return null
 }
 
 // A hole's `target` is a pick the solve can derive instead: with no target the

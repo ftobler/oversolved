@@ -232,6 +232,7 @@ onto a workplane, and the drawing's local coordinates are the sketch's own.
   extrude:
     sketch: "@sk1"              # or list of refs
     distance: 10.0              # required; the legacy `depth` spelling is read as an alias
+    taper: 0                    # degrees, + narrows / - widens; absent or 0 is a straight prism
     direction: normal           # normal | reverse | symmetric
     operation: new              # new | add | cut
     termination: blind          # blind | up_to | through_all
@@ -275,6 +276,18 @@ measurement and the cut to one body. It needs a body to cut through, and
 `reverse` sweep the measured length from the profile plane, and `symmetric`
 straddles the plane. A document that stores `through_all` needs a build that
 knows it (the format moves forward only).
+
+`taper` is the draft angle in degrees along the sweep: positive narrows the
+profile as it travels, negative widens it, and every lateral wall drafts with it,
+holes included and material-consistent (a washer with a positive taper leans the
+outer wall in and the hole wall out, so the wall thins toward the top). It is a
+number or an expression string, like `distance`. A taper needs
+`termination: blind` and `direction: normal` or `reverse`; symmetric, up_to and
+through_all are refused by name. A taper that would collapse the profile before
+`distance` is refused with the height it would collapse at, as in
+`extrude: taper 45 collapses the profile after 5.000 of 10; shorten the distance
+or reduce the taper`. Absent or 0 is the straight prism the feature has always
+built.
 
 ### revolve
 

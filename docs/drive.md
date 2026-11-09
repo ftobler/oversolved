@@ -836,7 +836,11 @@ banner on stdout, so a client config must use the direct node invocation.
   reach, so `distance` is ignored and `merge_target` narrows the reach to one
   body. `direction: symmetric` cuts through all material on both sides of the
   profile plane; `normal` and `reverse` cut one side, ahead of the plane along
-  the sweep direction. `add_plane`'s `definition` carries the same shape the part-document
+  the sweep direction. An extrude `taper` is the draft angle in degrees:
+  positive narrows, negative widens, every lateral wall drafts (holes included),
+  and it needs `termination: blind` with `direction: normal` or `reverse`;
+  symmetric, up_to and through_all are refused, as is a taper that collapses the
+  profile before `distance`. `add_plane`'s `definition` carries the same shape the part-document
   schema serves (its `mode` enum includes `offset`, and the common offset plane is
   `{mode:"offset", plane:"@builtin_plane_top", offset:43}`). A multisection
   sweep is one `add_sweep_profile` per section and `multisection: true` in the

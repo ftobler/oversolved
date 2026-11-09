@@ -634,7 +634,13 @@ const EXTRUDE_ADD_NOTE =
 // (sprocket, ppp0103 F2, ppp0105 F3).
 const EXTRUDE_FIELDS_NOTE =
   '`direction: symmetric` takes `distance` as the TOTAL length, half on each side of the sketch plane ' +
-  '(distance 10 spans -5..+5); `normal` and `reverse` take it whole on one side. `merge_target`: ' + MERGE_TARGET_NOTE +
+  '(distance 10 spans -5..+5); `normal` and `reverse` take it whole on one side. `taper` is the draft ' +
+  'angle in degrees: positive narrows the profile as it travels, negative widens it, and every lateral ' +
+  'wall drafts with it, holes included and material-consistent (on a washer a positive taper leans the ' +
+  'outer wall in and the hole wall out, so the wall thins toward the top). A taper needs `termination: ' +
+  'blind` and `direction: normal` or `reverse`; symmetric, up_to and through_all are refused. A taper ' +
+  'that collapses the profile before `distance` is refused with the height it would collapse at. ' +
+  '`merge_target`: ' + MERGE_TARGET_NOTE +
   ' ' + EXTRUDE_UP_TO_NOTE + ' ' + EXTRUDE_THROUGH_ALL_NOTE
 
 // Construction lines divide the sketch's pickable pieces but must not divide the
@@ -1097,6 +1103,7 @@ export const MUTATION_CATALOG = {
       ...featureAddFields(),
       sketchQuery: sketchQuery(),
       distance: num(),
+      taper: optScalar('Degrees of draft along the extrude direction: positive narrows the profile, negative widens it, and every lateral wall (holes included) drafts. Needs termination blind and direction normal or reverse; an angle that collapses the profile before `distance` is refused with the height it would collapse at (the key the document stores as extrude.taper).'),
       direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as extrude.direction).'),
       termination: optNullableStr('blind | up_to | through_all; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance`; `through_all` is a cut sized from the bodies it can reach, so `distance` is ignored and `merge_target` narrows the reach, with `direction: symmetric` cutting both sides of the plane and normal/reverse cutting one (the key the document stores as extrude.termination). A null value clears it, so the add writes no key.'),
       up_to: optNullableStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, a planar body face (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback), a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`) (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it.'),

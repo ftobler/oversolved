@@ -112,6 +112,14 @@ sketch y, extrude with `direction: reverse`, and negate an offset. A centroid or
 fails while volume and area pass is the expected sign of a frame mismatch; the
 row says so, and it is not a geometry difference.
 
+CadQuery's `extrude(..., taper=)` and build123d's `extrude(amount, taper=)` map
+one-to-one to `extrude.taper`: the number is degrees, positive narrows along the
+extrusion direction and negative widens it. Oversolved applies the same draft to
+every lateral wall, holes included, so a washer's hole wall leans the opposite
+way from its outer wall. The angle is refused with `termination: up_to` or
+`through_all` and with `direction: symmetric`; a taper that collapses the
+profile before the distance is refused with the height it would collapse at.
+
 Measure the recipe against the reference over MCP:
 
 ```jsonc

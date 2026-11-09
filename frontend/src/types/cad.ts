@@ -24,6 +24,10 @@ export type ExtrudeTermination = 'blind' | 'up_to' | 'through_all'
 export type ExtrudeFeatureDef = {
   sketch: string | string[]
   distance: NumberOrExpr
+  // Degrees of draft along the sweep: positive narrows the profile, negative
+  // widens it, and every lateral wall (holes included) drafts with it. Absent
+  // or 0 is the straight prism.
+  taper?: NumberOrExpr
   direction?: ExtrudeDirection
   // 'blind' (default) extrudes by `distance`; 'up_to' terminates at the element
   // referenced by `up_to` (a plane, point, or planar face); 'through_all' is a
@@ -1353,7 +1357,7 @@ export type Mutation =
   | { type: 'rename_feature'; featureId: string; label: string }
   | { type: 'toggle_sketch_plane_visibility' }
   | { type: 'toggle_plane_visibility' }
-  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number; direction?: ExtrudeDirection; termination?: ExtrudeTermination | null; up_to?: string | null; operation?: ExtrudeOperation; merge_target?: string } & FeatureInsertion)
+  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number; taper?: NumberOrExpr; direction?: ExtrudeDirection; termination?: ExtrudeTermination | null; up_to?: string | null; operation?: ExtrudeOperation; merge_target?: string } & FeatureInsertion)
   | { type: 'set_extrude_field'; featureId: string; field: keyof ExtrudeFeatureDef; value: unknown }
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
