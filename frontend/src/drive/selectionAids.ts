@@ -43,7 +43,9 @@ function pickOf(value: unknown): boolean {
   return isRecord(value) && Object.keys(value).length === 1 && isRecord(value.selector)
 }
 
-const UNKNOWN_SELECTOR_KEY = /has unknown key "([^"]+)"/
+// Anchored at the selector root: a nested predicate's own unknown key is a
+// different mistake and must keep its plain message.
+const UNKNOWN_SELECTOR_KEY = /^selector has unknown key "([^"]+)"/
 
 /**
  * A predicate key placed at the selector's top level is a real practice-round

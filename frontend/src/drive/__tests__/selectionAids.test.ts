@@ -165,6 +165,25 @@ describe('resolveSelectionAids', () => {
     expect(resolved.message).toBe('add_shell faces[0]: selector has unknown key "bogus"')
   })
 
+  it('keeps the plain message for a nested key that happens to be a predicate', () => {
+    // The key is predicate-shaped but sits inside `within`, not at the selector
+    // root, so the shape hint would send the author to the wrong level.
+    const resolved = resolveSelectionAids(
+      {
+        type: 'add_shell', featureId: 'sh1',
+        faces: [{
+          selector: { kind: 'face', where: { within: { axis: 'z', min: 0, type: 'x' } } },
+        }],
+      },
+      twoBodies(),
+    )
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) return
+    expect(resolved.code).toBe('invalid-ref')
+    expect(resolved.message).toContain('selector.where.within has unknown key "type"')
+    expect(resolved.message).not.toContain('a selector is {from?, kind, where}')
+  })
+
   it('names the selector shape for a predicate key in a fillet or chamfer edge list', () => {
     for (const type of ['add_fillet', 'add_chamfer'] as const) {
       const resolved = resolveSelectionAids(

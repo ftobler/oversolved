@@ -852,8 +852,8 @@ banner on stdout, so a client config must use the direct node invocation.
   path ref is a whole sketch
   (`$<sketchId>` or `@<sketchId>`), one curve (`entity:<sketchId>:<entityId>`),
   or a `?` area query a viewport click stored (`select` does not produce sketch
-  areas; a headless client names a whole sketch or one closed curve); a sweep
-  takes one `entity:` ref per curve
+  areas; a headless client names a whole sketch or one curve, closed for a
+  profile); a sweep takes one `entity:` ref per curve
   (a slotted loop needs its two lines and two arcs as four refs, one
   `add_sweep_profile` per curve) and one path ref per curve, while extrude and
   revolve take one closed curve per ref. `vertex:` refs name the same entity as

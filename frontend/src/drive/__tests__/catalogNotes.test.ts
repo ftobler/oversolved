@@ -214,6 +214,9 @@ describe('profile refs and the multisection limits', () => {
       expect(note, where).toContain('`@<sketchId>`')
       expect(note, where).toContain('`entity:<sketchId>:<entityId>`')
       expect(note, where).toContain('`?` area query')
+      // The same note serves a profile and a sweep path; only a profile needs
+      // the curve closed, so the note must not call every one-curve ref closed.
+      expect(note, where).toContain('one curve, closed for a profile')
     }
     expect(mutationInfoOf('add_sweep').fields.sketchQuery.note!).toContain('one ref per curve')
   })
