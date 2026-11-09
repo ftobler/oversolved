@@ -817,8 +817,11 @@ banner on stdout, so a client config must use the direct node invocation.
   lists the params slot order of every entity kind from the entity registry
   (`line [x1, y1, x2, y2]`, `circle [cx, cy, r]`,
   `arc [cx, cy, r, a0_deg, a1_deg]`, and so on, with arc and ellipse angles in
-  degrees and arcs sweeping counter-clockwise), `import_dxf` takes the ASCII DXF
-  text inline (`content`) or the id of a DXF entry in the run's `files` map
+  degrees and arcs sweeping counter-clockwise). An `add_entity` end that meets a
+  neighbour does so only by coordinate, so it is not constrained to it; a line
+  that closes a profile onto an existing end should pin it instead, with
+  `add_entity_with_constraint` or an explicit `coincident`. `import_dxf` takes the
+  ASCII DXF text inline (`content`) or the id of a DXF entry in the run's `files` map
   (`file`; give exactly one of the two), parses it with the same module the sketch
   toolbar's file picker uses, and appends the supported entities to one sketch
   as one undo entry; its row note lists the supported entity kinds, the
@@ -976,9 +979,17 @@ banner on stdout, so a client config must use the direct node invocation.
   `fillet_corners` takes `radius` and a non-empty `corners` list of
   `{a, aVertex, b, bVertex, side?}` naming two line entities of one sketch and
   the endpoints that meet, trims each endpoint to its tangent point and adds one
-  tangent arc per corner; an arc or projected side, a mixed construction corner,
+  tangent arc per corner; each joint it leaves is a coincident on the trimmed
+  endpoint and the arc end, plus a tangent between each side and the arc; an arc
+  or projected side, a mixed construction corner,
   a `fixed`/dimension on a trimmed endpoint, or a radius that would consume a
   side is refused by name, and one step is one undo entry;
+  `apply_offset` takes `sourceIds` and a signed `distance` and clones each
+  source; a connected chain (coincident or coordinate-joined) is refitted corner
+  to corner, every rebuilt joint carrying a coincident on the two copy vertices,
+  a sharp joint mitred on the offset curves, and a tangent joint keeping the
+  coincident plus a `tangent` between the two curves; a sharp joint whose offset
+  curves do not meet stays open;
   `pattern_entities` takes `sourceIds` and a `mode`: `linear` (`count`,
   `pitch`, `direction`), `grid` (`count`, `count2`, `pitch`, `pitch2`,
   `direction`, `direction2`), `rotate` (`count`, `angle_deg`, `center`) or

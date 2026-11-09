@@ -339,7 +339,7 @@ describe('applyAddOffset connectivity', () => {
     expect(cloneCoincidents).toHaveLength(0)  // gap, no reconnection
   })
 
-  it('line+arc tangent join carries over as a tangent between the clones', () => {
+  it('tangent line/arc joint carries coincident then tangent between the clones', () => {
     const doc = sketchDoc()
     // A line meeting an arc at a fillet corner: line.end coincident arc.start.
     // Degree slots: [-90, 0] puts the arc start exactly at (10, 0) = line.end.
@@ -349,17 +349,97 @@ describe('applyAddOffset connectivity', () => {
     applyAddOffset(doc, 'sk', ['ln', 'ar'], 2)
 
     const f = feat(doc)
-    const cloneIds = f.entities!.map((e) => e.id).filter((id) => !['ln', 'ar'].includes(id))
-    expect(cloneIds).toHaveLength(2)
-    const cloneSet = new Set(cloneIds)
-    const tangents = f.constraints!.filter(
-      (c) =>
-        c.kind === 'tangent' &&
-        cloneSet.has((c.a as string).slice(1)) &&
-        cloneSet.has((c.b as string).slice(1)),
+    const sourceIds = ['ln', 'ar']
+    const clones = f.entities!.map((e) => e.id).filter((id) => !sourceIds.includes(id))
+    expect(clones).toHaveLength(2)
+    const cloneLn = cloneOfSource(f, 'ln')
+    const cloneAr = cloneOfSource(f, 'ar')
+
+    // One coincident on the two clone vertices, then the tangent, the order the
+    // fillet path writes them so both authors produce one shape.
+    const cloneSet = new Set(clones)
+    const coins = f.constraints!.filter(
+      (c) => c.kind === 'coincident' && parseVertexRef(c.a, cloneSet) && parseVertexRef(c.b, cloneSet),
     )
+    const tangents = f.constraints!.filter(
+      (c) => c.kind === 'tangent' &&
+        cloneSet.has((c.a as string).slice(1)) && cloneSet.has((c.b as string).slice(1)),
+    )
+    expect(coins).toHaveLength(1)
     expect(tangents).toHaveLength(1)
-    expect(cloneCoincidents(f, ['ln', 'ar'])).toHaveLength(0)
+    expect([coins[0].a, coins[0].b]).toEqual([`$${cloneLn}end`, `$${cloneAr}start`])
+    expect([tangents[0].a, tangents[0].b]).toEqual([`$${cloneLn}`, `$${cloneAr}`])
+    expect(f.constraints!.indexOf(coins[0])).toBeLessThan(f.constraints!.indexOf(tangents[0]))
+
+    // The seeds coincide exactly: neither the clone end nor the clone start
+    // carries a residual the solver would have to close.
+    const lineEnd = f.initial![cloneLn].slice(2, 4)
+    const arcStart = endpointVertices('arc', f.initial![cloneAr])
+      .find((v) => v.vertexKey === 'start')!.point
+    expect(lineEnd).toEqual(arcStart)
+  })
+
+  it('tangent arc/arc joint carries coincident then tangent between the clones', () => {
+    const doc = sketchDoc()
+    // Internally tangent arcs at (0, 10): aa runs CCW to it, bb leaves it with
+    // the same tangent (-1, 0).
+    applyAddEntity(doc, 'sk', 'arc', [0, 0, 10, 0, 90], 'aa')
+    applyAddEntity(doc, 'sk', 'arc', [0, 5, 5, 90, 180], 'bb')
+    applyAddConstraint(doc, 'sk', 'coincident', ['vertex:sk:aa:end', 'vertex:sk:bb:start'])
+    applyAddOffset(doc, 'sk', ['aa', 'bb'], 1)
+
+    const f = feat(doc)
+    const cloneAA = cloneOfSource(f, 'aa')
+    const cloneBB = cloneOfSource(f, 'bb')
+    const cloneSet = new Set([cloneAA, cloneBB])
+    const coins = f.constraints!.filter(
+      (c) => c.kind === 'coincident' && parseVertexRef(c.a, cloneSet) && parseVertexRef(c.b, cloneSet),
+    )
+    const tangents = f.constraints!.filter(
+      (c) => c.kind === 'tangent' &&
+        cloneSet.has((c.a as string).slice(1)) && cloneSet.has((c.b as string).slice(1)),
+    )
+    expect(coins).toHaveLength(1)
+    expect(tangents).toHaveLength(1)
+    expect([coins[0].a, coins[0].b]).toEqual([`$${cloneAA}end`, `$${cloneBB}start`])
+    expect(f.constraints!.indexOf(coins[0])).toBeLessThan(f.constraints!.indexOf(tangents[0]))
+
+    const endA = endpointVertices('arc', f.initial![cloneAA])
+      .find((v) => v.vertexKey === 'end')!.point
+    const startB = endpointVertices('arc', f.initial![cloneBB])
+      .find((v) => v.vertexKey === 'start')!.point
+    expect(Math.hypot(endA[0] - startB[0], endA[1] - startB[1])).toBeLessThanOrEqual(1e-6)
+  })
+
+  it('coordinate-only tangent line/arc joint gets the same coincident and tangent', () => {
+    const doc = sketchDoc()
+    // The source only implies the joint: the line end and arc start agree by
+    // coordinate, with no coincident to copy.
+    applyAddEntity(doc, 'sk', 'line', [0, 0, 10, 0], 'ln')
+    applyAddEntity(doc, 'sk', 'arc', [10, 5, 5, -90, 0], 'ar')
+    expect(feat(doc).constraints).toHaveLength(0)
+    applyAddOffset(doc, 'sk', ['ln', 'ar'], 2)
+
+    const f = feat(doc)
+    const cloneLn = cloneOfSource(f, 'ln')
+    const cloneAr = cloneOfSource(f, 'ar')
+    const cloneSet = new Set([cloneLn, cloneAr])
+    const coins = f.constraints!.filter(
+      (c) => c.kind === 'coincident' && parseVertexRef(c.a, cloneSet) && parseVertexRef(c.b, cloneSet),
+    )
+    const tangents = f.constraints!.filter(
+      (c) => c.kind === 'tangent' &&
+        cloneSet.has((c.a as string).slice(1)) && cloneSet.has((c.b as string).slice(1)),
+    )
+    expect(coins).toHaveLength(1)
+    expect(tangents).toHaveLength(1)
+    expect([coins[0].a, coins[0].b]).toEqual([`$${cloneLn}end`, `$${cloneAr}start`])
+    expect(f.constraints!.indexOf(coins[0])).toBeLessThan(f.constraints!.indexOf(tangents[0]))
+
+    const lineEnd = f.initial![cloneLn].slice(2, 4)
+    const arcStart = endpointVertices('arc', f.initial![cloneAr])
+      .find((v) => v.vertexKey === 'start')!.point
+    expect(lineEnd).toEqual(arcStart)
   })
 
   it('sharp line/arc corner miters on the offset curve: no tangent, one coincident', () => {

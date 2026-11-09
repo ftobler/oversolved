@@ -3,13 +3,16 @@
 // the corners disjointed; this module finds the joints of the selection (an
 // explicit `coincident`, or endpoints the area builder welds by coordinate) and
 // tells the caller how to reconnect the clones (miter the meeting point of two
-// offset curves, carry a genuinely tangent joint over as a tangent). Whether a
-// joint is tangent is decided from the SOURCE tangents, never from the kind
-// alone: a sharp arc corner joined with a `tangent` drags the source geometry.
+// offset curves, declare a genuinely tangent joint with a coincident + tangent).
+// Whether a joint is tangent is decided from the SOURCE tangents, never from the
+// kind alone: a sharp arc corner joined with a `tangent` drags the source
+// geometry.
 // Node-unit-testable.
 
 import { resolveVertexRef } from '@/types/vertexRef'
 import { TOL_MOVE_FACE_TANGENT, TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
+import { ANCHORED_KINDS } from '@/kernel/profileLoops'
+import { round } from '@/utils/yamlMutations/helpers'
 
 export interface VertexRef {
   entityId: string
@@ -231,6 +234,49 @@ export function tangentCorner(
   const ub = endpointTangent(b.kind, b.params, b.vertexKey)
   if (!ua || !ub) return false
   return Math.abs(ua[0] * ub[1] - ua[1] * ub[0]) <= tol
+}
+
+/** One clone endpoint of an offset joint, named so the snap can decide which
+ *  side is free to move. */
+export interface CloneVertexRef {
+  cloneId: string
+  kind: string
+  vertexKey: string
+}
+
+/** Move the free endpoint of a tangent offset joint onto the anchored one, the
+ *  same rule the profile handoff welds a merged joint by (`snapLoopJoints` in
+ *  `kernel/occ/prismProfile.ts`): an arc endpoint is pinned to its own seeded
+ *  curve and wins, a line endpoint is free and moves onto it. Two anchored ends
+ *  (arc/arc) have nothing free to move, so their seeds keep their own
+ *  positions.
+ *
+ *  In exact arithmetic both seeds already sit on the same offset joint, but
+ *  each stored number is rounded to the document grid on its own, which leaves
+ *  up to a grid step between the two. Writing the line onto the arc removes
+ *  that gap, so the coincident the caller authors next starts at the seed
+ *  instead of asking the solver to close it. Returns whether a vertex moved. */
+export function snapTangentJoint(
+  initial: Readonly<Record<string, number[]>>,
+  a: CloneVertexRef,
+  b: CloneVertexRef,
+): boolean {
+  const anchoredA = ANCHORED_KINDS.has(a.kind)
+  const anchoredB = ANCHORED_KINDS.has(b.kind)
+  if (anchoredA && anchoredB) return false
+  const [keeper, moved] = anchoredB ? [b, a] : [a, b]
+  // The anchored side is an arc, so the free side is a line: only it has
+  // coordinates that can take the joint value as written.
+  if (moved.kind !== 'line') return false
+  const keeperParams = initial[keeper.cloneId]
+  const movedParams = initial[moved.cloneId]
+  if (!keeperParams || !movedParams) return false
+  const point = vertexPoint(keeper.kind, keeperParams, keeper.vertexKey)
+  const indices = lineVertexIndices(moved.vertexKey)
+  if (!point || !indices) return false
+  movedParams[indices[0]] = round(point[0])
+  movedParams[indices[1]] = round(point[1])
+  return true
 }
 
 /** Intersections of the infinite line through `[x0, y0, x1, y1]` with a circle.

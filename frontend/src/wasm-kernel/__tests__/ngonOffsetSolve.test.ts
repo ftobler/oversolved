@@ -14,9 +14,10 @@ import { loadSolver } from '../loadSolver'
 import { lowerSketch } from '../lowerSketch'
 import { encodeInput, decodeOutput } from '../codec'
 import { partDocToSketches } from '../partDocToSketches'
-import { applyAddNgon, applyAddOffset, applyAddEntity, applyAddRect, applyDeleteElements } from '@/utils/yamlMutations'
+import { applyAddNgon, applyAddOffset, applyAddEntity, applyAddRect, applyDeleteElements, applyMoveEntity } from '@/utils/yamlMutations'
 import { endpointVertices } from '@/utils/geometry/offsetProfile'
 import { featureAt, sketchAt } from '@/testing/featureAccess'
+import { CONSTRAINT_FLAG, Status } from '../codec'
 
 const entities0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').entities!
 
@@ -278,5 +279,115 @@ describe.skipIf(!bytes)('connected-profile offset stays a closed profile after s
         .map((q) => Math.hypot(q[0] - p[0], q[1] - p[1])))
       expect(nearest).toBeLessThan(1e-3)
     }
+  })
+})
+
+// A fillet-style chain (line, arc, line) offset on one side. Each tangent joint
+// now carries a coincident on the two clone vertices as well as the tangent, so
+// the contact is DECLARED instead of implied by the seeds. The solver must read
+// that pair as a direction row pinned at the contact (the contact-pinned
+// tangency of bug-tangent-chain-overconstrained), not as a row that collapses
+// the rank and reports the chain overconstrained.
+describe.skipIf(!bytes)('a tangent offset joint declares its contact', () => {
+  // The LEFT_TURN chain of openChainOffsetSolve: both joints are genuinely
+  // tangent in the sources (the bend is a fillet the recipe would have added).
+  const CHAIN: Array<[string, string, number[]]> = [
+    ['l1', 'line', [0, 0, -7, 0]],
+    ['a1', 'arc', [-7, -3, 3, 90, 180]],
+    ['l2', 'line', [-10, -3, -10, -10]],
+  ]
+  const sourceIds = CHAIN.map(([id]) => id)
+
+  function build(): PartDoc {
+    const doc = emptySketch()
+    for (const [id, kind, params] of CHAIN) applyAddEntity(doc, 'sk', kind, [...params], id)
+    return doc
+  }
+
+  function cloneOf(doc: PartDoc, sourceId: string): string {
+    const f = sketchAt(doc)
+    const relation = f.constraints!.find(
+      (c) => (c.kind === 'parallel' || c.kind === 'concentric') && c.a === '$' + sourceId,
+    )!
+    return (relation.b as string).slice(1)
+  }
+
+  // Solve and keep the per-constraint verdicts, which the plain helper drops.
+  function solveWithVerdicts(doc: PartDoc) {
+    const { sketches } = partDocToSketches(doc.features)
+    expect(sketches).toHaveLength(1)
+    const { input, layout, constraintIds } = lowerSketch(sketches[0].sketch)
+    const out = decodeOutput(bytes!(encodeInput(input)))
+    const solved: Record<string, number[]> = {}
+    for (const l of layout) solved[l.id] = out.paramsSolved.slice(l.offset, l.offset + l.size)
+    return { solved, out, constraintIds }
+  }
+
+  function cloneJointRows(doc: PartDoc, kind: 'coincident' | 'tangent') {
+    const f = sketchAt(doc)
+    const clones = new Set(sourceIds.map((id) => cloneOf(doc, id)))
+    return f.constraints!.filter((c) => {
+      if (c.kind !== kind) return false
+      const refs = [c.a, c.b].filter((r): r is string => typeof r === 'string' && r.startsWith('$'))
+      if (refs.length !== 2) return false
+      // A tangent names the clones bare; a coincident names their vertices.
+      return refs.every((r) => [...clones].some((id) => r.slice(1).startsWith(id)))
+    })
+  }
+
+  it('the joints carry coincident + tangent and solve without a degraded verdict', () => {
+    const doc = build()
+    const f = sketchAt(doc)
+    const authored = Object.fromEntries(CHAIN.map(([id]) => [id, [...f.initial![id]]]))
+    applyAddOffset(doc, 'sk', sourceIds, 1)
+
+    expect(cloneJointRows(doc, 'coincident')).toHaveLength(2)
+    expect(cloneJointRows(doc, 'tangent')).toHaveLength(2)
+
+    const { solved, out, constraintIds } = solveWithVerdicts(doc)
+    expect(out.overallStatus).not.toBe(Status.overconstrained)
+    for (const row of [...cloneJointRows(doc, 'coincident'), ...cloneJointRows(doc, 'tangent')]) {
+      const index = constraintIds.indexOf(row.id)
+      expect(index, row.kind).toBeGreaterThanOrEqual(0)
+      expect(out.constraintFlags[index] & CONSTRAINT_FLAG.redundant, row.kind).toBe(0)
+    }
+
+    // The seed already satisfies both rows, so the least-change solve moves no
+    // source at all.
+    for (const [id] of CHAIN) expect(solved[id]).toEqual(authored[id])
+
+    // Each joint is one point: the clone line end sits on the clone arc end.
+    const cloneL1 = cloneOf(doc, 'l1'), cloneA1 = cloneOf(doc, 'a1'), cloneL2 = cloneOf(doc, 'l2')
+    const joint = (lineId: string, lineKey: 'start' | 'end', arcKey: 'start' | 'end') => {
+      const line = solved[lineId]
+      const linePoint: [number, number] = lineKey === 'start' ? [line[0], line[1]] : [line[2], line[3]]
+      const arcPoint = endpointVertices('arc', solved[cloneA1])
+        .find((v) => v.vertexKey === arcKey)!.point
+      return Math.hypot(linePoint[0] - arcPoint[0], linePoint[1] - arcPoint[1])
+    }
+    expect(joint(cloneL1, 'end', 'start')).toBeLessThan(1e-12)
+    expect(joint(cloneL2, 'start', 'end')).toBeLessThan(1e-12)
+  })
+
+  it('a small source-arc move keeps every clone joint coincident', () => {
+    const doc = build()
+    applyAddOffset(doc, 'sk', sourceIds, 1)
+    const cloneL1 = cloneOf(doc, 'l1'), cloneA1 = cloneOf(doc, 'a1'), cloneL2 = cloneOf(doc, 'l2')
+
+    // A tangent alone leaves the contact implied, so this nudge used to let the
+    // joint open by the nudge. The coincident holds it at one point.
+    applyMoveEntity(doc, 'sk', 'a1', [0.01, -0.005])
+    const { solved } = solveWithVerdicts(doc)
+
+    expect(solved[cloneA1][0]).toBeCloseTo(solved['a1'][0], 9)
+    expect(solved[cloneA1][1]).toBeCloseTo(solved['a1'][1], 9)
+    const arcStart = endpointVertices('arc', solved[cloneA1])
+      .find((v) => v.vertexKey === 'start')!.point
+    const arcEnd = endpointVertices('arc', solved[cloneA1])
+      .find((v) => v.vertexKey === 'end')!.point
+    expect(Math.hypot(solved[cloneL1][2] - arcStart[0], solved[cloneL1][3] - arcStart[1]))
+      .toBeLessThan(1e-9)
+    expect(Math.hypot(solved[cloneL2][0] - arcEnd[0], solved[cloneL2][1] - arcEnd[1]))
+      .toBeLessThan(1e-9)
   })
 })
