@@ -22,7 +22,14 @@ export const roundTo = (v: number, quantum: number) => {
   return r === 0 ? 0 : r  // + 0 folds the -0
 }
 
-/** The document's stored number precision. */
+/** The document's stored number precision: one step of the storage grid. Also
+ *  the quantum the sketch solver reports as `seed_quantum`, so the write-back
+ *  and the solver agree on what "the document already holds this" means. */
+export const DOC_GRID = 1e-6
+
+/** The document's stored number precision. `roundTo` takes the reciprocal of
+ *  `DOC_GRID`; both spellings are literals so neither carries a division's
+ *  rounding into every persisted number. */
 export const round = (v: number) => roundTo(v, 1e6)
 
 /** Boundary gate for every coordinate tuple a mutation persists. round(NaN) is

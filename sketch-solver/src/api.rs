@@ -89,6 +89,7 @@ mod tests {
             pinned_mask: Vec::new(),
             equality_pins: Vec::new(),
             constraints: vec![fixed_start, horizontal, length],
+            seed_quantum: 0.0,
             options: Options::default(),
         };
 
@@ -135,6 +136,7 @@ mod tests {
             pinned_mask: Vec::new(),
             equality_pins: Vec::new(),
             constraints: vec![stale, horizontal],
+            seed_quantum: 0.0,
             options: Options::default(),
         };
 

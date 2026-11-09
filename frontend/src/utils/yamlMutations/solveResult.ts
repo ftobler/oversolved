@@ -1,5 +1,4 @@
 import type { PartDoc, PartConstraint } from '@/types/cad'
-import { approxF32Equal } from '../transform3d'
 import { CONSTRAINT_REF_FIELDS, refMatchesEntity, round } from './helpers'
 
 function constraintReferencesAny(c: PartConstraint, removed: Set<string>): boolean {
@@ -24,20 +23,13 @@ function constraintReferencesAny(c: PartConstraint, removed: Set<string>): boole
 }
 
 // The write-back has to keep the authored geometry recognisable to every
-// consumer that compares doc content. The worker hands back the solved params
-// decoded as f64 (wasm-kernel/codec.ts decodeOutput, rev 3), while the mutation
-// writers persist round(v, 6) (helpers.ts, seeds and feature numbers alike), so
-// the two writers still differ in digits -- and a document authored under the
-// rev 2 f32 wire carries values in the f32 band above ~4: round(f32(25.7)) is 25.700001, round(f32(63.4)) is
-// 63.400002 and f32(100.000001) is 100 outright. A re-solve that moved nothing
-// would then read as a change everywhere content is compared: useSolver's save
-// identity guard mints a fresh doc object (so a save overlapping it stops
-// clearing dirty), findFirstDirty's checkpoint hash goes stale (rebuilding the
-// feature and everything after it), and docDiffersForSession manufactures a
-// user edit out of a solve. So when the solved geometry agrees with what the
-// feature already carries within the legacy f32 envelope, the authored spelling
-// is KEPT -- the digits the user's mutator wrote, not a fresh spelling of the
-// same geometry.
+// consumer that compares doc content. The solver decides what it moved (its
+// `entity_moved` report, with the tolerance knowledge living in the crate), so
+// this module only asks a second, exact question per component: would writing
+// the solved value change the stored bytes? `round(v) === e || v === e` is that
+// question, not a tolerance. It covers the two cases the solver's report cannot:
+// a projected entity, whose doc value is a rounded cache of a freshly re-derived
+// projection, and a value that already sits on the document grid.
 //
 // The map is rebuilt with new arrays rather than rounded in place: it belongs to
 // the solve result record, which the caller still renders from
@@ -51,34 +43,17 @@ function roundGeometry(geometry: Record<string, number[]>): Record<string, numbe
   return rounded
 }
 
-// LEGACY: rev 2 f32 wire compatibility for the sketch write-back.
-// Whether the freshly solved geometry says the same thing as the one already in
-// the document: same entity ids, same arity per entity, every component inside
-// the legacy f32 envelope of the matching component. The compare is per
-// component and per entity, because a solve that moved one entity of ten moved
-// something -- and a different id set (a projected dimension, an added entity,
-// one the solve dropped) is a shape change no amount of matching values can
-// stand in for.
-function sameGeometryWithinF32(
-  existing: Record<string, number[]>,
-  solved: Record<string, number[]>,
-): boolean {
-  const existingIds = Object.keys(existing)
-  if (existingIds.length !== Object.keys(solved).length) return false
-  for (const id of existingIds) {
-    const before = existing[id]
-    const after = solved[id]
-    if (after === undefined || before.length !== after.length) return false
-    for (let i = 0; i < before.length; i++) {
-      if (!approxF32Equal(before[i], after[i])) return false
-    }
-  }
-  return true
-}
-
 // Solved geometry adoption is the ONLY write-back the generic solve owns. The
 // superfluous/projection_error flags and resolved kinds are solve-time facts and
 // live in solveResults, so undo never fights an invisible re-delete.
+//
+// `moved` is the solver's per-entity report: an entity absent from it was not
+// moved by more than half a storage step, so the authored array is kept by
+// reference. A projected entity is never kept that way even when the solver
+// reports it unmoved (a projection is pinned, so it always is): its doc value
+// is a rounded cache that the fresh projection may legitimately outgrow. An
+// absent set means no report reached this call; every entity then has to pass
+// the exact no-op test on its own.
 //
 // Returns whether it installed a fresh `initial`. The headless flush uses that
 // as its settle signal: the install is the solve rounded to the document grid,
@@ -89,17 +64,41 @@ export function applyGeometryToFeature(
   doc: PartDoc,
   featureId: string,
   geometry: Record<string, number[]>,
+  moved?: ReadonlySet<string>,
 ): boolean {
   const featureDef = (doc.features ?? []).find(f => f.id === featureId)
   if (featureDef?.kind !== 'sketch') return false
   const existing = featureDef.initial
-  // Keep the arrays the doc already holds, by reference: they may be shared with
-  // the pre-solve doc the caller compares this clone against, so they must not
-  // be rebuilt or rounded in place here. Only a solve that moved the geometry
-  // outside the legacy f32 envelope -- or changed which entities exist --
-  // installs a fresh map, rounded to the precision the mutators write.
-  if (existing && sameGeometryWithinF32(existing, geometry)) return false
-  featureDef.initial = roundGeometry(geometry)
+  // The id set is shape, not movement: an added, dropped or newly projected
+  // entity installs the whole map, exactly as before.
+  if (existing === undefined || Object.keys(existing).length !== Object.keys(geometry).length
+    || Object.keys(geometry).some(id => existing[id] === undefined)) {
+    featureDef.initial = roundGeometry(geometry)
+    return true
+  }
+  // Projections are pinned, so the solver never reports them moved; their doc
+  // value is still a rounded cache of a re-derived one, so they always take the
+  // exact no-op test instead of the reference keep.
+  const projections = new Set(
+    (featureDef.entities ?? []).filter(e => e.source != null).map(e => e.id),
+  )
+  const next: Record<string, number[]> = {}
+  let installed = false
+  for (const [id, after] of Object.entries(geometry)) {
+    const before = existing[id]
+    const keepByReport = before.length === after.length
+      && moved !== undefined && !moved.has(id) && !projections.has(id)
+    const sameBytes = before.length === after.length
+      && after.every((v, i) => round(v) === before[i] || v === before[i])
+    if (keepByReport || sameBytes) {
+      next[id] = before
+    } else {
+      next[id] = after.map(v => round(v))
+      installed = true
+    }
+  }
+  if (!installed) return false
+  featureDef.initial = next
   return true
 }
 

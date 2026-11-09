@@ -54,10 +54,19 @@ export function applySolveToDoc(doc: PartDoc, response: SolveResponseLike): Solv
   const cloned: PartDoc = structuredClone(doc)
   const movedFeatureIds: string[] = []
   for (const [id, feature] of Object.entries(response.result ?? {})) {
-    const row = feature as { geometry?: Record<string, number[]>; status?: string } | null
+    const row = feature as {
+      geometry?: Record<string, number[]>
+      entity_moved?: string[]
+      status?: string
+    } | null
     const geometry = row?.geometry
-    if (geometry && shouldBakeSketchGeometry(row) && applyGeometryToFeature(cloned, id, geometry)) {
-      movedFeatureIds.push(id)
+    if (geometry && shouldBakeSketchGeometry(row)) {
+      // The solver names what it moved; an absent report means every entity
+      // takes the exact no-op test instead of the reference keep.
+      const moved = Array.isArray(row.entity_moved) ? new Set(row.entity_moved) : undefined
+      if (applyGeometryToFeature(cloned, id, geometry, moved)) {
+        movedFeatureIds.push(id)
+      }
     }
   }
   if (response.bodies) {

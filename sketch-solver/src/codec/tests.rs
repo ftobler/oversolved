@@ -62,6 +62,7 @@ fn sample_input() -> Input {
             target: 2.5,
         }],
         constraints,
+        seed_quantum: 1e-6,
         options: Options {
             drag_mode: true,
             drag_anchor_id: 1,
@@ -84,6 +85,8 @@ fn input_round_trips() {
     assert_eq!(decoded.constraints.len(), 4);
     assert!(decoded.options.drag_mode);
     assert_eq!(decoded.options.drag_anchor_id, 1);
+    // Bit-exact, not merely close: the grid value is forwarded verbatim.
+    assert_eq!(decoded.seed_quantum.to_bits(), input.seed_quantum.to_bits());
 
     // Re-encoding the decode is byte-identical: the layout is canonical.
     assert_eq!(encode_input(&decoded), bytes);
@@ -125,9 +128,11 @@ fn f64_scalars_round_trip_bit_exact() {
                 ..Default::default()
             },
         ],
+        seed_quantum: 1234.567,
         options: Options::default(),
     };
     let decoded = decode_input(&encode_input(&input)).expect("decode");
+    assert_eq!(decoded.seed_quantum.to_bits(), 1234.567_f64.to_bits());
     for (got, want) in decoded.params_initial.iter().zip(&input.params_initial) {
         assert_eq!(got.to_bits(), want.to_bits(), "{got} != {want}");
     }
@@ -162,6 +167,7 @@ fn output_floats_round_trip_bit_exact() {
         // comparison below is bit-exact, since f64 equality cannot tell
         // -0.0 from 0.0).
         constraint_miss: vec![1.5, 0.25, -0.0],
+        entity_moved: vec![0b0000_0010],
         diagnostics: Diagnostics::default(),
     };
     let decoded = decode_output(&encode_output(&out)).unwrap();
@@ -177,6 +183,7 @@ fn output_floats_round_trip_bit_exact() {
     for (got, want) in decoded.constraint_miss.iter().zip(&out.constraint_miss) {
         assert_eq!(got.to_bits(), want.to_bits());
     }
+    assert_eq!(decoded.entity_moved, out.entity_moved);
 }
 
 #[test]
@@ -231,6 +238,7 @@ fn sign_selector_round_trips() {
                 ..Default::default()
             },
         ],
+        seed_quantum: 0.0,
         options: Options::default(),
     };
     let decoded = decode_input(&encode_input(&input)).expect("decode");
@@ -251,6 +259,7 @@ fn output_round_trips() {
         vertex_freedom: vec![0.0, 1.0, 1.0, 0.0],
         constraint_flags: vec![crate::CONSTRAINT_FLAG_REDUNDANT, 0],
         constraint_miss: vec![0.0, 0.375],
+        entity_moved: vec![0b0000_0001],
         diagnostics: Diagnostics {
             residual_norm: 1.25e-9,
             rank: 5,
@@ -265,6 +274,7 @@ fn output_round_trips() {
     assert_eq!(decoded.vertex_freedom, out.vertex_freedom);
     assert_eq!(decoded.constraint_flags, out.constraint_flags);
     assert_eq!(decoded.constraint_miss, out.constraint_miss);
+    assert_eq!(decoded.entity_moved, out.entity_moved);
     assert_eq!(decoded.diagnostics.rank, 5);
     assert_eq!(decoded.diagnostics.iters, 7);
     assert!((decoded.diagnostics.residual_norm - 1.25e-9).abs() < 1e-18);
@@ -278,6 +288,7 @@ fn ellipse_entity_round_trips() {
         pinned_mask: vec![0],
         equality_pins: Vec::new(),
         constraints: Vec::new(),
+        seed_quantum: 0.0,
         options: Options::default(),
     };
     let decoded = decode_input(&encode_input(&input)).expect("decode");
@@ -296,6 +307,7 @@ fn spline_entity_round_trips() {
         pinned_mask: vec![0],
         equality_pins: Vec::new(),
         constraints: Vec::new(),
+        seed_quantum: 0.0,
         options: Options::default(),
     };
     let decoded = decode_input(&encode_input(&input)).expect("decode");
@@ -396,6 +408,7 @@ fn rev1_output_magic_rejected() {
         vertex_freedom: Vec::new(),
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
+        entity_moved: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
@@ -412,6 +425,7 @@ fn rev2_output_magic_rejected() {
         vertex_freedom: Vec::new(),
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
+        entity_moved: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
@@ -431,6 +445,7 @@ fn rev3_output_magic_rejected() {
         vertex_freedom: Vec::new(),
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
+        entity_moved: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
@@ -438,10 +453,31 @@ fn rev3_output_magic_rejected() {
     assert!(matches!(decode_output(&bytes), Err(CodecError::BadMagic)));
 }
 
+#[test]
+fn rev4_output_magic_is_rejected() {
+    // The rev 4 output put the diagnostics straight after the constraint miss
+    // block; this decoder reads the `entity_moved` bytes from that first
+    // diagnostic f64. The magic must refuse it instead.
+    let out = Output {
+        params_solved: vec![1.0],
+        entity_status: vec![0],
+        overall_status: 0,
+        vertex_freedom: Vec::new(),
+        constraint_flags: Vec::new(),
+        constraint_miss: Vec::new(),
+        entity_moved: vec![0],
+        diagnostics: Diagnostics::default(),
+    };
+    let mut bytes = encode_output(&out);
+    bytes[..4].copy_from_slice(&MAGIC_OUT_SKR4.to_le_bytes());
+    assert!(matches!(decode_output(&bytes), Err(CodecError::BadMagic)));
+}
+
 // The fixed-size input header (see module docs): magic, four counts, two
-// u8 flags, and the drag anchor. The first entity/constraint record starts
-// right after it, which is what the corruption offsets below rely on.
-const HEADER_LEN: usize = 26;
+// u8 flags, the drag anchor and the storage quantum. The first entity or
+// constraint record starts right after it, which is what the corruption
+// offsets below rely on.
+const HEADER_LEN: usize = 34;
 
 fn one_entity_input() -> Input {
     Input {
@@ -450,6 +486,7 @@ fn one_entity_input() -> Input {
         pinned_mask: Vec::new(),
         equality_pins: Vec::new(),
         constraints: Vec::new(),
+        seed_quantum: 0.0,
         options: Options::default(),
     }
 }
@@ -471,6 +508,7 @@ fn one_entity_ref_constraint_input() -> Input {
             )],
             ..Default::default()
         }],
+        seed_quantum: 0.0,
         options: Options::default(),
     }
 }
@@ -567,6 +605,7 @@ fn bad_axis_rejected() {
             axis: Some(Axis::X),
             ..Default::default()
         }],
+        seed_quantum: 0.0,
         options: Options::default(),
     };
     let mut bytes = encode_input(&input);
@@ -650,6 +689,14 @@ fn nonfinite_external_coord_rejected() {
 }
 
 #[test]
+fn nonfinite_seed_quantum_rejected() {
+    // A NaN quantum makes every `< tol` comparison false, which would read as
+    // "every entity moved"; Infinity reads as "nothing moved". Neither is a
+    // report the host asked for, so the wire refuses it like every other float.
+    assert_nonfinite_rejected("seed_quantum", |input, v| input.seed_quantum = v);
+}
+
+#[test]
 fn output_bad_magic_rejected() {
     let out = Output {
         params_solved: vec![1.0],
@@ -658,6 +705,7 @@ fn output_bad_magic_rejected() {
         vertex_freedom: Vec::new(),
         constraint_flags: Vec::new(),
         constraint_miss: Vec::new(),
+        entity_moved: Vec::new(),
         diagnostics: Diagnostics::default(),
     };
     let mut bytes = encode_output(&out);
@@ -674,6 +722,7 @@ fn truncated_output_is_unexpected_eof() {
         vertex_freedom: vec![1.0],
         constraint_flags: vec![1, 0],
         constraint_miss: vec![0.5, 0.25],
+        entity_moved: vec![0b0000_0011],
         diagnostics: Diagnostics::default(),
     };
     let bytes = encode_output(&out);
@@ -713,8 +762,8 @@ fn fit_input(points: usize, flags: u8) -> Input {
 /// Patch the first entity record's flags and count bytes (the header is 26
 /// bytes and the record is `kind, flags, offset, count`).
 fn patch_entity_record(bytes: &mut [u8], flags: u8, count: u32) {
-    bytes[26 + 1] = flags;
-    bytes[26 + 6..26 + 10].copy_from_slice(&count.to_le_bytes());
+    bytes[34 + 1] = flags;
+    bytes[34 + 6..34 + 10].copy_from_slice(&count.to_le_bytes());
 }
 
 #[test]
@@ -806,5 +855,16 @@ fn a_stale_rev_4_input_magic_is_rejected() {
     let input = fit_input(2, 0);
     let mut bytes = encode_input(&input);
     bytes[0..4].copy_from_slice(&MAGIC_REV4.to_le_bytes());
+    assert_eq!(decode_input(&bytes).unwrap_err(), CodecError::BadMagic);
+}
+
+#[test]
+fn a_stale_skg4_input_magic_is_rejected() {
+    // The previous magic's buffer has no `seed_quantum`: decoding it as this
+    // layout would read the first param's bytes as the quantum and shift every
+    // later offset by eight. The magic is the only handshake, so it must refuse.
+    let input = fit_input(2, 0);
+    let mut bytes = encode_input(&input);
+    bytes[0..4].copy_from_slice(&MAGIC_SKG4.to_le_bytes());
     assert_eq!(decode_input(&bytes).unwrap_err(), CodecError::BadMagic);
 }

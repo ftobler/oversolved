@@ -83,6 +83,11 @@ export interface AssemblyEditorData {
   // field so no consumer re-derives failure from a partial signal.
   solveStatus: AssemblySolveStatus | null
   transforms: Record<string, Transform3D>
+  /** Handles whose solved pose moved from the seed the last solve started
+   *  from. The bake writes only these; a solve that echoes a part's seed
+   *  leaves it out. A fixed part is never here. Undefined means no report
+   *  reached the store (a legacy payload), so the bake writes every pose. */
+  movedParts?: ReadonlySet<string>
   bodies: Record<string, BodyResult>
   // Analytic edges of the solved bodies, keyed by the same body id.
   edgeCurves: Record<string, EdgeCurve[]>
@@ -177,6 +182,7 @@ export function createDefaultAssemblyEditorData(): AssemblyEditorData {
     mates: [],
     solveStatus: null,
     transforms: {},
+    movedParts: undefined,
     bodies: {},
     edgeCurves: {},
     entityMateRefs: {},
@@ -213,7 +219,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData =
  *  pick geometry) cannot be added to the solve and forgotten at the store. */
 export type AssemblySolveResult = Pick<
   AssemblyEditorData,
-  'transforms' | 'bodies' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
+  'transforms' | 'movedParts' | 'bodies' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
 >
 
 /**
@@ -270,7 +276,7 @@ const STORE_OWNED_FIELDS = [
   'editingSubject',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
   'entitySelection', 'hoveredEntity',
-  'solveStatus',
+  'solveStatus', 'movedParts',
   'undoStack', 'redoStack',
 ] as const
 
@@ -329,7 +335,7 @@ interface AssemblyEditorState extends AssemblyEditorData {
    * drag has none) and does not clear the grabbed part's own entries, which the
    * caller drops so it keeps rendering from its drag offset.
    */
-  setDragSolveResult: (result: Pick<AssemblyEditorData, 'transforms' | 'bodies' | 'edgeCurves' | 'solveStatus'>) => void
+  setDragSolveResult: (result: Pick<AssemblyEditorData, 'transforms' | 'movedParts' | 'bodies' | 'edgeCurves' | 'solveStatus'>) => void
   // Resolve an ordered hit list into the candidate set, aiming its first entry.
   setPickFromHits: (hits: readonly EntityHit[]) => void
   // A Ctrl+click: re-aim, or advance the cycle when it lands on the same set.
@@ -485,6 +491,13 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
 
   setDragSolveResult: (result) => set((prev) => ({
     transforms: { ...prev.transforms, ...result.transforms },
+    // Union with the committed solve's set: a live tick reports only the
+    // followers it re-posed, and a part that moved on an earlier tick still
+    // differs from its document seed at commit time. An absent set (a legacy
+    // or test reply) leaves the previous report alone.
+    ...(result.movedParts !== undefined && {
+      movedParts: new Set([...(prev.movedParts ?? []), ...result.movedParts]),
+    }),
     bodies: { ...prev.bodies, ...result.bodies },
     edgeCurves: { ...prev.edgeCurves, ...result.edgeCurves },
     solveStatus: result.solveStatus,
@@ -554,6 +567,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     }, {
       doc,
       transforms: get().settledPoses(),
+      moved: get().movedParts,
       mutateSession: callbacks.mutateDocSession,
       mutateOneShot: callbacks.mutateDoc,
       requestSolve: callbacks.requestSolve,
@@ -706,7 +720,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // relax the whole assembly off the pose the drag just previewed. Baking
     // first (commitManipulation then overwrites the grabbed part) keeps the
     // seeds in step with the screen, the same discipline the fix toggle uses.
-    callbacks.mutateDoc(ASSEMBLY_UNDO_LABELS.movePart, d => commitManipulation(bakeSolvedTransforms(d, solved), manipulation, solvedGrab).doc)
+    callbacks.mutateDoc(ASSEMBLY_UNDO_LABELS.movePart, d => commitManipulation(bakeSolvedTransforms(d, solved, get().movedParts), manipulation, solvedGrab).doc)
     callbacks.requestSolve()  // one cold solve per pointer-up; no per-frame mate solve
   },
 
@@ -742,6 +756,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const host = {
       doc,
       transforms: get().settledPoses(),
+      moved: get().movedParts,
       mutateSession: callbacks.mutateDocSession,
       mutateOneShot: callbacks.mutateDoc,
       requestSolve: callbacks.requestSolve,

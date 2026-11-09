@@ -46,7 +46,7 @@ describe('mate wire format', () => {
     // fixture, so a stale fixture cannot hide a constant that moved on one side.
     expect(fixture.rev).toBe(6)
     expect(fixture.magic).toBe(0x3653544D)
-    expect(fixture.magic_out).toBe(0x3452544D)
+    expect(fixture.magic_out).toBe(0x3552544D)
     // One empty body, no mates: header 20 + bodies 4 + params 56 + mask 1 = 81 bytes
     const params = new Float64Array(7)
     const fixedMask = new Uint8Array([0])

@@ -14,7 +14,7 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MAGIC ("SKG4", little-endian on the wire)
+//!   u32  magic = MAGIC ("SKG5", little-endian on the wire)
 //!   u32  n_entities
 //!   u32  n_params            // f64 count of params_initial
 //!   u32  n_constraints
@@ -22,6 +22,7 @@
 //!   u8   drag_mode (0/1)
 //!   u8   skip_status_pass (0/1)
 //!   u32  drag_anchor_id
+//!   f64  seed_quantum        // host storage grid in doc units; 0 disables the moved report
 //! entities:       n_entities x { u8 kind, u8 flags, u32 param_offset, u32 param_count }
 //! params_initial: n_params x f64
 //! pinned_mask:    ceil(n_params / 8) bytes (LSB-first within each byte)
@@ -50,39 +51,37 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MAGIC_OUT ("SKR4", little-endian on the wire)
+//!   u32  magic = MAGIC_OUT ("SKR5", little-endian on the wire)
 //!   u32  n_params
 //!   u32  n_entities_status   // 0 on the drag fast path or when skip_status_pass
 //!   u32  vertex_freedom_len  // f64 count; also 0 on the drag fast path
 //!   u32  n_constraints_status // per-constraint verdict count; 0 on the drag fast path
+//!   u32  n_entity_moved      // byte count of entity_moved; 0 on the drag fast path
 //!   u8   overall_status
 //! params_solved:  n_params x f64
 //! entity_status:  n_entities_status x u8
 //! vertex_freedom: vertex_freedom_len x f64
 //! constraint_flags: n_constraints_status x u8
 //! constraint_miss:  n_constraints_status x f64
+//! entity_moved:   n_entity_moved bytes (one bit per entity, LSB-first)
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
 //! ```
-
-use solver_core::bytes::{Eof, Reader, Writer};
-
-use crate::constraints::{Axis, Constraint, PointSelector, Ref, RefRole};
-use crate::{Diagnostics, Entity, EqualityPin, Input, Kind, Options, Output};
-
-// Rev 4 of the wire layout: the output gained the per-constraint verdicts
-// (`constraint_flags` + `constraint_miss`) and their header count. Rev 5 (this
-// one) makes the entity record variable-size: the `fit_spline` kind carries
-// `2 N + 2 h` params, so the record grew a flags byte and a param count. Rev 3
-// switched every scalar from f32 to f64; the layout had already evolved once
-// (the has_sign flag bit + trailing sign f32 per constraint record, commit
-// 9f81d31f) without moving these values, so a stale js/wasm pairing decoded
-// shifted offsets instead of failing loudly. The magic IS the version handshake
-// for a buffer that is built and consumed within one process: bump BOTH sides
-// of the boundary (this file and frontend/src/wasm-kernel/codec.ts) on any
-// layout change. Invalidating old cached payloads is acceptable and safe
-// post-wave-1: bundle-cache reads of stale buffers degrade to cold rebuilds.
-pub const MAGIC: u32 = 0x3447_4B53; // "SKG4" in LE memory order
-pub const MAGIC_OUT: u32 = 0x3452_4B53; // "SKR4" in LE memory order
+//!
+//! The `SKG5` input adds the header's `seed_quantum` and the `SKR5` output adds
+//! the `entity_moved` bitmask, so the write-back asks the solver which entities
+//! it moved instead of applying a float envelope of its own. Before that,
+//! `SKG4` made the entity record variable-size: the `fit_spline` kind carries
+//! `2 N + 2 h` params, so the record grew a flags byte and a param count. Rev 3
+//! switched every scalar from f32 to f64; the layout had already evolved once
+//! (the has_sign flag bit + trailing sign f32 per constraint record, commit
+//! 9f81d31f) without moving these values, so a stale js/wasm pairing decoded
+//! shifted offsets instead of failing loudly. The magic IS the version handshake
+//! for a buffer that is built and consumed within one process: bump BOTH sides
+//! of the boundary (this file and frontend/src/wasm-kernel/codec.ts) on any
+//! layout change. Invalidating old cached payloads is acceptable and safe
+//! post-wave-1: bundle-cache reads of stale buffers degrade to cold rebuilds.
+pub const MAGIC: u32 = 0x3547_4B53; // "SKG5" in LE memory order
+pub const MAGIC_OUT: u32 = 0x3552_4B53; // "SKR5" in LE memory order
 
 /// The rev 1 and rev 2 values (and rev 3, whose output lacked the
 /// per-constraint verdicts). Kept only so tests can assert a stale pairing
@@ -99,10 +98,22 @@ pub const MAGIC_OUT_REV2: u32 = 0x3252_4B53;
 #[cfg(test)]
 pub const MAGIC_OUT_REV3: u32 = 0x3352_4B53;
 /// The input magic the rev 3 and rev 4 builders wrote (`0x3347_4B53`, "SKG3").
-/// Rev 5 bumped it to [`MAGIC`] when the entity record became variable-size, so
-/// an old buffer is refused by the magic check instead of misdecoded.
 #[cfg(test)]
 pub const MAGIC_REV4: u32 = 0x3347_4B53;
+/// The "SKG4" input magic, whose variable-size entity record is unchanged. A
+/// buffer stamped with it is refused because it has no `seed_quantum`: the
+/// solver would decode the first param's bytes as one.
+#[cfg(test)]
+pub const MAGIC_SKG4: u32 = 0x3447_4B53;
+/// The "SKR4" output magic, refused because its diagnostics start eight bytes
+/// earlier than the `entity_moved`-carrying layout's.
+#[cfg(test)]
+pub const MAGIC_OUT_SKR4: u32 = 0x3452_4B53;
+
+use solver_core::bytes::{Eof, Reader, Writer};
+
+use crate::constraints::{Axis, Constraint, PointSelector, Ref, RefRole};
+use crate::{Diagnostics, Entity, EqualityPin, Input, Kind, Options, Output};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CodecError {
@@ -163,6 +174,7 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
     let drag_mode = r.u8()? != 0;
     let skip_status_pass = r.u8()? != 0;
     let drag_anchor_id = r.u32()?;
+    let seed_quantum = finite(r.f64()?)?;
 
     // Record widths for the pre-allocation caps below: entity = kind + flags +
     // offset + count, param = f64, pin = index + target, constraint = kind +
@@ -230,6 +242,7 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
         pinned_mask,
         equality_pins,
         constraints,
+        seed_quantum,
         options: Options {
             drag_mode,
             drag_anchor_id,
@@ -308,6 +321,7 @@ pub(crate) fn encode_input(input: &Input) -> Vec<u8> {
     w.u8(input.options.drag_mode as u8);
     w.u8(input.options.skip_status_pass as u8);
     w.u32(input.options.drag_anchor_id);
+    w.f64(input.seed_quantum);
 
     for e in &input.entities {
         w.u8(e.kind.to_u8());
@@ -393,6 +407,7 @@ pub fn encode_output(out: &Output) -> Vec<u8> {
     w.u32(out.entity_status.len() as u32);
     w.u32(out.vertex_freedom.len() as u32);
     w.u32(out.constraint_flags.len() as u32);
+    w.u32(out.entity_moved.len() as u32);
     w.u8(out.overall_status);
     for &p in &out.params_solved {
         w.f64(p);
@@ -408,6 +423,9 @@ pub fn encode_output(out: &Output) -> Vec<u8> {
     }
     for &m in &out.constraint_miss {
         w.f64(m);
+    }
+    for &b in &out.entity_moved {
+        w.u8(b);
     }
     w.f64(out.diagnostics.residual_norm);
     w.u32(out.diagnostics.rank);
@@ -426,6 +444,7 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
     let n_status = r.u32()? as usize;
     let vf_len = r.u32()? as usize;
     let n_constraint_status = r.u32()? as usize;
+    let n_moved = r.u32()? as usize;
     let overall_status = r.u8()?;
     let mut params_solved = Vec::with_capacity(r.capacity_for(n_params, 8));
     for _ in 0..n_params {
@@ -447,6 +466,7 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
     for _ in 0..n_constraint_status {
         constraint_miss.push(r.f64()?);
     }
+    let entity_moved = r.take(n_moved)?.to_vec();
     let residual_norm = r.f64()?;
     let rank = r.u32()?;
     let dof = r.u32()?;
@@ -459,6 +479,7 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
         vertex_freedom,
         constraint_flags,
         constraint_miss,
+        entity_moved,
         diagnostics: Diagnostics {
             residual_norm,
             rank,

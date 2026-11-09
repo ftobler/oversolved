@@ -3,8 +3,10 @@
 # the mate record's stride or magic MUST be made in the same commit as the
 # mirror (mate-solver/src/mate.rs and frontend/src/kernel/solveAssembly.ts) and
 # MUST bump `magic` one rev. `magic` and `magic_out` are u32 values spelled in
-# little-endian bytes; `record_bytes` is the per-mate stride.
+# little-endian bytes; `record_bytes` is the per-mate stride. `magic_out` is the
+# output handshake and moves independently of the input record: MTR5 adds the
+# per-body `moved` bytes between the limit flags and the diagnostics.
 rev=6
 magic=0x3653544D
-magic_out=0x3452544D
+magic_out=0x3552544D
 record_bytes=228

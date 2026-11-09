@@ -6,7 +6,9 @@
 //! scalar TS" boundary).
 
 use crate::residuals::Problem;
-use crate::tolerance::{verdict_tol, FREE_COMPONENT_TOL, RANK_TOL, REDUNDANT_ROW_REL};
+use crate::tolerance::{
+    seed_keep_tol, verdict_tol, FREE_COMPONENT_TOL, RANK_TOL, REDUNDANT_ROW_REL,
+};
 use crate::{Diagnostics, Input, Output, Status, CONSTRAINT_FLAG_REDUNDANT};
 use nalgebra::DMatrix;
 use solver_core::lm::{
@@ -110,6 +112,10 @@ pub fn solve_sketch(input: &Input) -> Output {
             // 60 Hz. The caller's count guard expects these empty.
             constraint_flags: Vec::new(),
             constraint_miss: Vec::new(),
+            // A drag commit goes through a mutation, not the write-back, so it
+            // reads no moved report; keep it empty like the other per-entity
+            // arrays.
+            entity_moved: Vec::new(),
             diagnostics: Diagnostics {
                 residual_norm: clean.residual_norm,
                 rank: 0,
@@ -202,6 +208,7 @@ pub fn solve_sketch(input: &Input) -> Output {
         (es, vf)
     };
 
+    let entity_moved = entity_moved(input, &problem.x0, &params_solved);
     Output {
         params_solved,
         entity_status,
@@ -209,6 +216,7 @@ pub fn solve_sketch(input: &Input) -> Output {
         vertex_freedom,
         constraint_flags,
         constraint_miss,
+        entity_moved,
         diagnostics: Diagnostics {
             residual_norm: result.residual_norm,
             rank: rank as u32,
@@ -453,6 +461,43 @@ impl Spectrum {
             null_sv: free.iter().map(|&i| sv[i]).collect(),
         }
     }
+}
+
+/// Per-entity moved report: one bit per entity, LSB-first, set when the cold
+/// solve moved that entity by at least half the host's storage quantum. The
+/// frontend uses it to keep the document's authored `initial` arrays for
+/// entities the solve did not actually move, without a float envelope of its
+/// own (see `tolerance::seed_keep_tol` for why the width is absolute).
+///
+/// A zero (or negative, or non-finite) quantum disables the report: with no
+/// storage grid to compare against, the conservative answer is that every
+/// entity moved, so the caller installs the solved geometry exactly as it did
+/// before this report existed. An entity whose block does not fit the param
+/// buffer is also reported moved: no solved value backs it, so no keep is
+/// sound. Only stale wire data reaches that branch; the codec and `Problem`
+/// already drop it.
+fn entity_moved(input: &Input, x0: &[f64], x: &[f64]) -> Vec<u8> {
+    let n = input.entities.len();
+    let mut mask = vec![0u8; n.div_ceil(8)];
+    let tol = seed_keep_tol(input.seed_quantum);
+    if tol.is_nan() || tol <= 0.0 {
+        for (ei, _) in input.entities.iter().enumerate() {
+            mask[ei / 8] |= 1 << (ei % 8);
+        }
+        return mask;
+    }
+    for (ei, e) in input.entities.iter().enumerate() {
+        let end = e.param_offset.checked_add(e.param_count);
+        let unmoved = end.is_some_and(|end| {
+            end <= x0.len()
+                && end <= x.len()
+                && (e.param_offset..end).all(|i| (x[i] - x0[i]).abs() < tol)
+        });
+        if !unmoved {
+            mask[ei / 8] |= 1 << (ei % 8);
+        }
+    }
+    mask
 }
 
 /// Per-entity status. An entity is underconstrained exactly when one of its

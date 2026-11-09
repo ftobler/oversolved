@@ -126,6 +126,13 @@ export interface AssemblySolveStatus {
 
 export interface AssemblyBuildResponse {
   transforms: Record<string, Transform3D>
+  /** Handles whose solved pose moved from the seed they were solved from (the
+   *  solver's per-body report, plus a seed `seedAssembly` had to replace). The
+   *  bake writes only these back, so an unchanged re-solve cannot churn every
+   *  part's document entry. A fixed part is never here. Optional only so test
+   *  doubles and older reply shapes can omit it; `solveAssembly` always sets
+   *  it. */
+  movedParts?: string[]
   bodies: Record<string, MeshPayload[]>
   /** Part handle -> anchor id -> its pose. Assembly built-ins are not here: they
    *  are static and the main thread folds them in (utils/anchorGizmos.ts). */
@@ -176,9 +183,11 @@ const ANCHOR_KIND_TO_U8: Record<string, number> = {
 // for the output layout) in the same commit as the mirror on the Rust side.
 // Spelled in little-endian bytes (`MATE_MAGIC.to_le_bytes()` reads "MTS6"); the
 // record gained the two limit fields and the output gained the per-mate limit
-// flags, and both magics bumped with them.
+// flags, and both magics bumped with them. MTR5 adds the per-body `moved` bytes
+// between the limit flags and the diagnostics, so the host's bake asks the
+// solver which parts it moved instead of applying a float envelope.
 const MATE_MAGIC = 0x3653_544D  // "MTS6" in LE
-const MATE_MAGIC_OUT = 0x3452_544D  // "MTR4" in LE
+const MATE_MAGIC_OUT = 0x3552_544D  // "MTR5" in LE
 const BPB = 7  // params per body (tx,ty,tz,qx,qy,qz,qw) = 7 f64s = 56 bytes
 
 // ─── Quaternion math for transform application ───
@@ -385,6 +394,10 @@ interface DecodedMateOutput {
   overallStatus: number
   mateResiduals: Float64Array
   limitFlags: Uint8Array
+  /** One byte per body: 1 when the solve moved that body by more than the
+   *  crate's keep rung (`pose_keep_tol` in translation, `POSE_KEEP_ANGLE` in
+   *  rotation). A fixed body always reads 0: the solver echoes its seed. */
+  moved: Uint8Array
   residualNorm: number
   rank: number
   dof: number
@@ -426,12 +439,19 @@ export function decodeMateOutput(buf: Uint8Array, expectedParams: number): Decod
   for (let i = 0; i < nMates; i++) {
     limitFlags[i] = r.getUint8(pos); pos += 1
   }
+  // One byte per body: the solver's moved report (MTR5). nParams / 7 is the
+  // body count the params count already fixed, so no separate header count.
+  const nBodies = nParams / BPB
+  const moved = new Uint8Array(nBodies)
+  for (let i = 0; i < nBodies; i++) {
+    moved[i] = r.getUint8(pos); pos += 1
+  }
   const residualNorm = r.getFloat64(pos, true); pos += 8
   const rank = r.getUint32(pos, true); pos += 4
   const dof = r.getUint32(pos, true); pos += 4
   const iters = r.getUint32(pos, true); pos += 4
   const ms = r.getFloat64(pos, true); pos += 8
-  return { paramsSolved, overallStatus, mateResiduals, limitFlags, residualNorm, rank, dof, iters, ms }
+  return { paramsSolved, overallStatus, mateResiduals, limitFlags, moved, residualNorm, rank, dof, iters, ms }
 }
 
 // Codes are indices into MATE_STATUS_NAME. Throwing on an out-of-range code keeps a
@@ -798,6 +818,10 @@ export async function solveAssembly(
   }
 
   const transforms: Record<string, Transform3D> = {}
+  // The handles whose pose the solve moved relative to the seed the DOCUMENT
+  // holds. Empty in every branch that echoes the placed transform, because a
+  // solve that did not run moved nothing.
+  const movedParts: string[] = []
   // Seeds only: the solver starts from the closed-form placement, the document
   // keeps its authored poses. A part is echoed from `part.transform` whenever
   // the solve does not run, so nothing downstream reads the seeded copy.
@@ -865,6 +889,25 @@ export async function solveAssembly(
             decoded.paramsSolved[bodyIndex * BPB + 6],
           ],
         )
+      }
+      // Which parts the bake should write. The solver reports moved relative
+      // to the seed IT was handed, which is `seeded`: `seedAssembly` may have
+      // replaced an authored seed that did not satisfy its placing mate. That
+      // replacement is itself a real move of the document, so a body whose
+      // seeded bytes differ from the authored ones counts too. Comparing
+      // bytes, not an envelope: the two arrays share one origin.
+      for (const part of parts) {
+        const bodyIndex = handleToIndex.get(part.handle)
+        if (bodyIndex === undefined || part.fixed) continue
+        const seedOffset = bodyIndex * BPB
+        let replaced = false
+        for (let k = 0; k < BPB; k++) {
+          if (seeded[seedOffset + k] !== paramsInitial[seedOffset + k]) {
+            replaced = true
+            break
+          }
+        }
+        if (decoded.moved[bodyIndex] !== 0 || replaced) movedParts.push(part.handle)
       }
       status = {
         verdict: mateVerdict(decoded.overallStatus),
@@ -970,5 +1013,5 @@ export async function solveAssembly(
     transformedBodies[part.handle] = transformed
   }
 
-  return { transforms, bodies: transformedBodies, anchors: posedAnchors, anchorDescriptors, status }
+  return { transforms, movedParts, bodies: transformedBodies, anchors: posedAnchors, anchorDescriptors, status }
 }

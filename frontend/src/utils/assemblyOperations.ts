@@ -90,8 +90,14 @@ export interface AssemblyOperationDef<I> {
   readonly undo: AssemblyUndoPolicy
   readonly solve: AssemblySolvePolicy
   // Pure. Receives the doc AFTER the bake cell has been applied, plus the
-  // solved poses that bake used, which the fixed-flag write needs for itself.
-  readonly apply: (doc: AssemblyDoc, input: I, transforms: Record<string, Transform3D>) => AssemblyDoc
+  // solved poses that bake used, which the fixed-flag write needs for itself,
+  // and the handles the solve reported as moved (absent when no report exists).
+  readonly apply: (
+    doc: AssemblyDoc,
+    input: I,
+    transforms: Record<string, Transform3D>,
+    moved?: ReadonlySet<string>,
+  ) => AssemblyDoc
 }
 
 // The origin and the planes share one operation and one tree eye. The label is
@@ -159,13 +165,13 @@ export const ASSEMBLY_OPERATIONS: {
     // current view is already correct; baking keeps the seeds in step for the
     // next real solve. The editor checkbox folds into the session's step.
     id: 'set_part_fixed', label: ASSEMBLY_UNDO_LABELS.fixUnfixPart, bake: true, undo: 'fold', solve: 'skip',
-    apply: (doc, input, transforms) => setInstanceFixedFromSolved(doc, input.handle, input.fixed, transforms),
+    apply: (doc, input, transforms, moved) => setInstanceFixedFromSolved(doc, input.handle, input.fixed, transforms, moved),
   },
   set_part_fixed_oneshot: {
     // The options-menu toggle is a structural op: its own step even while an
     // editor session is open.
     id: 'set_part_fixed_oneshot', label: ASSEMBLY_UNDO_LABELS.fixUnfixPart, bake: true, undo: 'one-shot', solve: 'skip',
-    apply: (doc, input, transforms) => setInstanceFixedFromSolved(doc, input.handle, input.fixed, transforms),
+    apply: (doc, input, transforms, moved) => setInstanceFixedFromSolved(doc, input.handle, input.fixed, transforms, moved),
   },
   set_part_position: {
     id: 'set_part_position', label: ASSEMBLY_UNDO_LABELS.setPosition, bake: true, undo: 'fold', solve: 'solve',
@@ -243,7 +249,7 @@ export interface AssemblyOperationPlan {
 export function planAssemblyOperation<K extends AssemblyOperationId>(
   id: K,
   input: AssemblyOperationInputs[K],
-  ctx: { doc: AssemblyDoc | null; transforms: Record<string, Transform3D>; knownPartIds?: ReadonlySet<string> },
+  ctx: { doc: AssemblyDoc | null; transforms: Record<string, Transform3D>; moved?: ReadonlySet<string>; knownPartIds?: ReadonlySet<string> },
 ): AssemblyOperationPlan | null {
   if (!ctx.doc) return null
   const def = ASSEMBLY_OPERATIONS[id] as AssemblyOperationDef<AssemblyOperationInputs[K]>
@@ -255,8 +261,8 @@ export function planAssemblyOperation<K extends AssemblyOperationId>(
   }
   const pre = ctx.doc
   const label = typeof def.label === 'function' ? def.label(pre, input) : def.label
-  const baked = def.bake ? bakeSolvedTransforms(pre, ctx.transforms) : pre
-  const doc = def.apply(baked, input, ctx.transforms)
+  const baked = def.bake ? bakeSolvedTransforms(pre, ctx.transforms, ctx.moved) : pre
+  const doc = def.apply(baked, input, ctx.transforms, ctx.moved)
   // Measure the change against the BAKED doc, not the pre-op one: a bake:true
   // operation whose value is already what it sets only differs in the seeds, so
   // comparing against `pre` would push an undo step whose whole diff is the
@@ -271,6 +277,9 @@ export function planAssemblyOperation<K extends AssemblyOperationId>(
 export interface AssemblyOperationContext {
   doc: AssemblyDoc | null
   transforms: Record<string, Transform3D>
+  /** Handles the last solve moved. Absent means no report was available, in
+   *  which case the bake writes every solved pose. */
+  moved?: ReadonlySet<string>
   // I8's live-part set: the ids `add_part` is allowed to reference. Optional so
   // an unscoped caller (the store's delete path) needs no workspace.
   knownPartIds?: ReadonlySet<string>

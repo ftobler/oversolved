@@ -12,6 +12,7 @@ mod jacobian_fd;
 mod limits;
 mod manifold;
 mod roll_scale;
+mod seed_moved;
 mod seeding;
 mod solve_constraints;
 mod solve_kinds;

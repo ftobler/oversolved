@@ -154,7 +154,7 @@ describe.skipIf(!ready)('a headless reply measures the stored document (real OCC
     expect(reply.bbox).toEqual(measured!.measures.bbox)
   }, 240_000)
 
-  it('T3: steps: [] on the reply hash is a fixed point for the hash and the numbers', async () => {
+  it('T3: a reply describes the solved document and that document is a fixed point', async () => {
     const open = await openOutline('settle-t3-open')
     const second = await runHeadless({
       doc: open,
@@ -173,9 +173,29 @@ describe.skipIf(!ready)('a headless reply measures the stored document (real OCC
       featureDeltas: 'all',
     })
     expect(inspected.ok).toBe(true)
-    expect(docHashOf(inspected.doc as PartDoc)).toBe(docHashOf(stored))
+    const inspectedDoc = inspected.doc as PartDoc
+    // The reply's numbers are the settle's, so they must describe the document
+    // it hands back, exactly.
+    const measured = await measureHeadless(inspectedDoc, { docId: 'settle-t3-measure' })
+    expect(measured).not.toBeNull()
     const again = ex1Row(inspected)
-    expect(again.volume).toBe(authored.volume)
-    expect(again.bbox).toEqual(authored.bbox)
+    expect(again.volume).toBe(measured!.measures.volume)
+    expect(again.bbox).toEqual(measured!.measures.bbox)
+
+    // The stored seed for the underconstrained arc is one grid step off the
+    // solve, so the first inspection is allowed to write that move ONCE (the
+    // solver's half-step report; the old f32 envelope silently kept it). What
+    // must hold is that the written document is then stable.
+    const stable = await runHeadless({
+      doc: inspectedDoc,
+      steps: [],
+      docId: 'settle-t3-stable',
+      featureDeltas: 'all',
+    })
+    expect(stable.ok).toBe(true)
+    expect(docHashOf(stable.doc as PartDoc)).toBe(docHashOf(inspectedDoc))
+    const settled = ex1Row(stable)
+    expect(settled.volume).toBe(authored.volume)
+    expect(settled.bbox).toEqual(authored.bbox)
   }, 240_000)
 })

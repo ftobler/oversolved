@@ -21,6 +21,11 @@
 //!     SVD) is emitted as the seed for the frontend drag math, which does not
 //!     consume it yet (see `solve::vertex_freedom`); the wire field stays so
 //!     the layout does not churn.
+//!   - `entity_moved` (one bit per entity) says whether the solve moved that
+//!     entity by at least half the host's storage quantum. It is the one
+//!     tolerance decision the write-back delegates here, and the only reason
+//!     `Input::seed_quantum` crosses the wire; the crate still never hard-codes
+//!     the document's grid.
 //!   - `skip_status_pass` is the drag-mode escape hatch (no per-entity SVD).
 
 pub mod api;
@@ -180,6 +185,12 @@ pub struct Input {
     pub pinned_mask: Vec<u8>,
     pub equality_pins: Vec<EqualityPin>,
     pub constraints: Vec<Constraint>,
+    /// The host's storage grid in document units (zero disables the moved
+    /// report). The crate stays blind to where a seed was stored: it only asks
+    /// whether the solve moved an entity by more than half of this step, the
+    /// smallest difference the grid can represent. See
+    /// `tolerance::seed_keep_tol`.
+    pub seed_quantum: f64,
     pub options: Options,
 }
 
@@ -272,6 +283,11 @@ pub struct Output {
     /// width is an invariant the repo greps for (no f32 on either codec), and
     /// the extra bytes are bounded by the constraint count.
     pub constraint_miss: Vec<f64>,
+    /// One bit per entity (LSB-first within each byte, `ceil(n / 8)` bytes): 1
+    /// when the solve moved the entity by at least half the host's storage
+    /// quantum. Empty on the drag fast path, whose commits go through a
+    /// mutation rather than the write-back. See `solve::entity_moved`.
+    pub entity_moved: Vec<u8>,
     pub diagnostics: Diagnostics,
 }
 

@@ -417,6 +417,7 @@ fn check_big_jac_problem(
         pinned_mask,
         equality_pins,
         constraints,
+        seed_quantum: 0.0,
         options: Options::default(),
     };
     let p = Problem::new(&inp);

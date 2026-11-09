@@ -121,56 +121,93 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     expect(feat.initial!.p1).not.toBe(geometry.p1)
   })
 
-  // The band the f32 quantum actually bites in: round(f32(25.7)) is 25.700001,
-  // round(f32(47.3)) is 47.299999, round(f32(63.4)) is 63.400002, and
-  // f32(100.000001) is 100 outright. The suites that only ever used values
-  // below 4 saw no mismatch, which is why the rounding-only write-back looked
-  // complete: it still minted a fresh doc object (a stale checkpoint hash, a
-  // phantom session diff, a save that stops clearing dirty) for a solve that
-  // moved nothing. Rounding alone cannot close that, because the wire value
-  // and the authored value are two spellings of one geometry.
-  const F32_BAND = [25.7, 47.3, 63.4, 100.000001]
+  // The solver decides what moved and reports it; the doc decides what is
+  // already stored. The authored spelling is therefore irrelevant: an unmoved
+  // entity keeps its array by reference whatever digits it carries. The rev 2
+  // f32 band (round(f32(25.7)) is 25.700001) is just one spelling among them.
+  const SPELLINGS = [25.700001, Math.fround(25.7), Math.PI, 47.299999, 100.000001]
 
-  it.each(F32_BAND)('keeps the authored spelling of %s when the solve re-derives it as f32', (v) => {
+  it.each(SPELLINGS)('keeps the authored array for an unmoved entity spelled %s', (v) => {
     const doc = makeDoc()
     const feat = sk1(doc)
     feat.initial = { line1: [0, 0, v, 0] }
     const before = feat.initial
-    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(v), 0] })
-    // Kept by reference: the pre-solve array survives the write-back, so the
-    // doc still compares equal to its pre-solve self and no downstream reader
-    // sees a change.
+    // A value a hair off the seed: the solver says it did not move, so the
+    // difference is below its half-step report and must not be written.
+    expect(applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, v + 1e-9, 0] }, new Set())).toBe(false)
     expect(feat.initial).toBe(before)
     expect(feat.initial!.line1[2]).toBe(v)
   })
 
-  it('keeps an over-precise authored value rather than re-spelling it on the 6dp grid', () => {
-    // Hand-written YAML, an import, or an older build's write-back can carry
-    // more digits than the mutators write. Agreeing with the solve inside the
-    // envelope, the authored spelling is the one that stays.
-    const doc = makeDoc()
-    const feat = sk1(doc)
-    feat.initial = { line1: [0, 0, Math.PI, 0] }
-    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(Math.PI), 0] })
-    expect(feat.initial!.line1[2]).toBe(Math.PI)
-  })
-
-  it('installs the solved geometry when a component moved beyond the envelope', () => {
+  it('installs round(v) for an entity the solve reported moved', () => {
     const doc = makeDoc()
     const feat = sk1(doc)
     feat.initial = { line1: [0, 0, 25.7, 0] }
-    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(30), 0] })
+    const geometry = { line1: [0, 0, 30.0000004, 0] }
+    expect(applyGeometryToFeature(doc, 'sk1', geometry, new Set(['line1']))).toBe(true)
     expect(feat.initial!.line1).toEqual([0, 0, 30, 0])
+    // A copy on the document grid, never an alias of the solve result's array.
+    expect(feat.initial!.line1).not.toBe(geometry.line1)
   })
 
-  it('installs when any single component of any single entity moved', () => {
-    // The keep is per component AND per entity: one entity outside the envelope
-    // installs the whole map, so a half-matching solve is never half-installed.
+  it('is a no-op for a moved entity whose rounded value is what the doc stores', () => {
+    // A move the storage grid cannot tell from the seed: writing it would
+    // change no stored bytes, so the array stays the doc's.
     const doc = makeDoc()
     const feat = sk1(doc)
-    feat.initial = { line1: [0, 0, 25, 0], proj1: [1, 1] }
-    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, 25, 0], proj1: [5, 1] })
-    expect(feat.initial).toEqual({ line1: [0, 0, 25, 0], proj1: [5, 1] })
+    feat.initial = { line1: [0, 0, 25.7, 0] }
+    const before = feat.initial
+    expect(applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, 25.7000001, 0] }, new Set(['line1']))).toBe(false)
+    expect(feat.initial).toBe(before)
+  })
+
+  it('keeps a projected entity whose fresh projection rounds to the stored cache', () => {
+    // A projection is pinned, so the solver always reports it unmoved. Its doc
+    // value is a rounded cache of a freshly re-derived projection, so the
+    // exact no-op test decides, and rounding to the same cache writes nothing.
+    const doc = makeDoc()
+    const feat = sk1(doc)
+    feat.initial = { proj1: [1.000001, 2.000001] }
+    const before = feat.initial
+    expect(applyGeometryToFeature(doc, 'sk1', { proj1: [1.0000009, 2.0000011] }, new Set())).toBe(false)
+    expect(feat.initial).toBe(before)
+  })
+
+  it('installs a projected entity whose fresh projection outgrows the stored cache', () => {
+    const doc = makeDoc()
+    const feat = sk1(doc)
+    feat.initial = { proj1: [1, 2] }
+    expect(applyGeometryToFeature(doc, 'sk1', { proj1: [1.000002, 2] }, new Set())).toBe(true)
+    expect(feat.initial!.proj1).toEqual([1.000002, 2])
+  })
+
+  it('keeps an over-precise untouched entity by reference while a sibling moves', () => {
+    // The new half of the write-back: a solve that moves one entity installs
+    // only that entity's rounded array, not a freshly re-spelled map.
+    const doc = makeDoc()
+    const feat = sk1(doc)
+    const kept = [0, 0, Math.PI, 0]
+    feat.initial = { line1: kept, proj1: [1, 1] }
+    expect(applyGeometryToFeature(doc, 'sk1', {
+      line1: [0, 0, Math.PI + 1e-9, 0],
+      proj1: [5, 1],
+    }, new Set(['proj1']))).toBe(true)
+    expect(feat.initial!.line1).toBe(kept)
+    expect(feat.initial!.line1[2]).toBe(Math.PI)
+    expect(feat.initial!.proj1).toEqual([5, 1])
+  })
+
+  it('leaves a rev 2 f32 seed untouched on an undriven re-solve', () => {
+    // The named regression the retired envelope existed for: an authoring
+    // build wrote Math.fround(25.7), i.e. 25.700000762939453. Nothing drives
+    // it, so the solver reports it unmoved and the stored spelling survives.
+    const doc = makeDoc()
+    const feat = sk1(doc)
+    const seed = [0, 0, Math.fround(25.7), 0]
+    feat.initial = { line1: seed }
+    expect(applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, 25.700000762939453, 0] }, new Set())).toBe(false)
+    expect(feat.initial!.line1).toBe(seed)
+    expect(feat.initial!.line1[2]).toBe(Math.fround(25.7))
   })
 
   it('installs when the entity id set changed, even with every shared component matching', () => {
@@ -179,7 +216,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     const doc = makeDoc()
     const feat = sk1(doc)
     feat.initial = { line1: [0, 0, 25.7, 0] }
-    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(25.7), 0], proj1: [1, 1] })
+    expect(applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, 25.7, 0], proj1: [1, 1] }, new Set())).toBe(true)
     expect(Object.keys(feat.initial!)).toEqual(['line1', 'proj1'])
   })
 
@@ -187,17 +224,17 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     const doc = makeDoc()
     const feat = sk1(doc)
     feat.initial = { line1: [0, 0, 25.7, 0], proj1: [1, 1] }
-    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(25.7), 0] })
+    expect(applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, 25.7, 0] }, new Set())).toBe(true)
     expect(Object.keys(feat.initial!)).toEqual(['line1'])
   })
 
   it('installs when an entity came back with a different arity', () => {
     // A point lowering to a line (2 params to 4) is a different entity, not a
-    // moved one, so a length mismatch can never read as "within tolerance".
+    // moved one, so a length mismatch can never read as "already stored".
     const doc = makeDoc()
     const feat = sk1(doc)
     feat.initial = { line1: [0, 0] }
-    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(25.7), 0] })
+    expect(applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, 25.700001, 0] }, new Set())).toBe(true)
     expect(feat.initial!.line1).toEqual([0, 0, 25.700001, 0])
   })
 
@@ -206,7 +243,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     const feat = sk1(doc)
     feat.initial = {}
     const before = feat.initial
-    applyGeometryToFeature(doc, 'sk1', {})
+    expect(applyGeometryToFeature(doc, 'sk1', {}, new Set())).toBe(false)
     expect(feat.initial).toBe(before)
   })
 
@@ -217,15 +254,15 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     const feat = sk1(doc)
     feat.initial = { line1: [0, 0, 25.7, 0] }
     const before = feat.initial
-    expect(applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(25.7), 0] })).toBe(false)
+    expect(applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(25.7), 0] }, new Set())).toBe(false)
     expect(feat.initial).toBe(before)
   })
 
-  it('reports true when a component moved beyond the envelope', () => {
+  it('reports true when a component moved', () => {
     const doc = makeDoc()
     const feat = sk1(doc)
     feat.initial = { line1: [0, 0, 25.7, 0] }
-    expect(applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, 30, 0] })).toBe(true)
+    expect(applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, 30, 0] }, new Set(['line1']))).toBe(true)
   })
 
   it('reports true when the entity id set changed', () => {
@@ -233,14 +270,14 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     const feat = sk1(doc)
     feat.initial = { line1: [0, 0, 25.7, 0] }
     expect(applyGeometryToFeature(doc, 'sk1', {
-      line1: [0, 0, Math.fround(25.7), 0],
+      line1: [0, 0, 25.7, 0],
       proj1: [1, 1],
-    })).toBe(true)
+    }, new Set())).toBe(true)
   })
 
   it('reports false for a non-sketch feature', () => {
     const doc = makeDoc()
-    expect(applyGeometryToFeature(doc, 'ex1', { x: [1] })).toBe(false)
+    expect(applyGeometryToFeature(doc, 'ex1', { x: [1] }, new Set())).toBe(false)
   })
 })
 

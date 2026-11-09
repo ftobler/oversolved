@@ -74,16 +74,18 @@ export const CONSTRAINT_FLAG = {
   redundant: 1 << 0,
 } as const
 
-// Rev 5 of the wire layout. The entity record gained a flags byte and a param
-// count, because `fit_spline` is variable-size (`2 N + 2 h`); rev 4's output
-// (per-constraint verdicts) is unchanged. The magic IS the version handshake:
-// the layout evolved before (has_sign flag + trailing sign f32) without moving
-// these, so a stale js/wasm pairing decoded shifted offsets instead of failing.
-// Bump BOTH sides (these two and sketch-solver/src/codec.rs) on any layout
-// change. Invalidating stale cached payloads is acceptable and safe
-// post-wave-1: bundle-cache reads degrade to cold rebuilds.
-const MAGIC_IN = 0x34474b53  // "SKG4", little-endian on the wire
-const MAGIC_OUT = 0x34524b53  // "SKR4"
+// Rev 6 of the wire layout. `SKG5` adds the header's storage quantum; `SKR5`
+// adds the per-entity moved bitmask before the diagnostics. The entity record
+// itself is unchanged since `SKG4`, which made it variable-size (`fit_spline`
+// carries `2 N + 2 h` params), and rev 4's per-constraint verdicts are
+// unchanged too. The magic IS the version handshake: the layout evolved before
+// (has_sign flag + trailing sign f32) without moving these, so a stale js/wasm
+// pairing decoded shifted offsets instead of failing. Bump BOTH sides (these
+// two and sketch-solver/src/codec.rs) on any layout change. Invalidating stale
+// cached payloads is acceptable and safe post-wave-1: bundle-cache reads
+// degrade to cold rebuilds.
+const MAGIC_IN = 0x35474b53  // "SKG5", little-endian on the wire
+const MAGIC_OUT = 0x35524b53  // "SKR5"
 
 export interface FlatEntity {
   kind: number
@@ -115,6 +117,9 @@ export interface FlatInput {
   pinnedMask: number[]
   equalityPins: Array<{ index: number; target: number }>
   constraints: FlatConstraint[]
+  /** The host's storage grid in document units (the same `DOC_GRID` the sketch
+   *  mutators round to). `0` disables the solver's moved report. */
+  seedQuantum?: number
   options: { dragMode: boolean; dragAnchorId: number; skipStatusPass: boolean }
 }
 
@@ -133,6 +138,10 @@ export interface SolverOutput {
   /** Per-constraint miss as a fraction of the sketch scale, parallel to
    *  `constraintFlags`. All zeros on a satisfied cold solve; empty on drag. */
   constraintMiss: number[]
+  /** Packed entity_moved bitmask (LSB-first, ceil(n_entities / 8) bytes): a
+   *  set bit means the solve moved that entity by at least half the storage
+   *  quantum. Empty on the drag fast path. */
+  entityMoved: number[]
   diagnostics: { residualNorm: number; rank: number; dof: number; iters: number; ms: number }
 }
 
@@ -194,6 +203,7 @@ export function encodeInput(input: FlatInput): Uint8Array {
   w.u8(input.options.dragMode ? 1 : 0)
   w.u8(input.options.skipStatusPass ? 1 : 0)
   w.u32(input.options.dragAnchorId)
+  w.f64(input.seedQuantum ?? 0)
 
   for (const e of input.entities) {
     w.u8(e.kind)
@@ -250,6 +260,7 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
   const nStatus = r.u32()
   const vfLen = r.u32()
   const nConstraintStatus = r.u32()
+  const nMoved = r.u32()
   const overallStatus = r.u8()
 
   const paramsSolved: number[] = []
@@ -264,6 +275,8 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
   for (let i = 0; i < nConstraintStatus; i++) constraintFlags.push(r.u8())
   const constraintMiss: number[] = []
   for (let i = 0; i < nConstraintStatus; i++) constraintMiss.push(r.f64())
+  const entityMoved: number[] = []
+  for (let i = 0; i < nMoved; i++) entityMoved.push(r.u8())
 
   const residualNorm = r.f64()
   const rank = r.u32()
@@ -277,6 +290,7 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
     overallStatus,
     constraintFlags,
     constraintMiss,
+    entityMoved,
     diagnostics: { residualNorm, rank, dof, iters, ms },
   }
 }

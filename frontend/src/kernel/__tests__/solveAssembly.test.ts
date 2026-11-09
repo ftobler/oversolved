@@ -25,7 +25,7 @@ describe('solveAssembly', () => {
     await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(0, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(0, 0, 0), fixed: true },
       { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
@@ -46,8 +46,32 @@ describe('solveAssembly', () => {
     expect(result.bodies).toHaveProperty('p2')
     expect(result.status.mates).toHaveProperty('m1')
     expect(result.status.mates['m1'].stale).toBe(false)
+    // The echo solver talks only about its seed, but the closed-form placement
+    // moved p2 onto p1 before it ran: that replacement is the document's move.
+    expect(result.movedParts).toEqual(['p2'])
     // No relay calls (both cache hits)
     expect(relay.requestPartDoc).not.toHaveBeenCalled()
+  })
+
+  it('reports the parts the solver itself moved, not the ones it echoed', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform(), fixed: true },
+      { handle: 'p2', doc_id: 'doc-b', transform: identityTransform() },
+    ]
+    const mates = [
+      { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+    ]
+    // The seed already satisfies the mate, so `seedAssembly` keeps it and the
+    // solver's own per-body report is the only source of a move.
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeTranslateSolver(0.25))
+
+    expect(result.movedParts).toEqual(['p2'])
   })
 
   it('encodes a fixed mate angle authored in degrees as radians on the wire', async () => {

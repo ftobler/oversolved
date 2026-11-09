@@ -36,3 +36,38 @@ pub(crate) const RESIDUAL_REL_TOL: f64 = 1e-4;
 /// `1 - cos(theta)` near a solution, so this width bounds the misalignment it
 /// can hide at about 0.8 degrees, the same reading it had at unit scale.
 pub(crate) const RESIDUAL_ANGLE_TOL: f64 = 1e-4;
+
+/// How far a solved pose may sit from the seed it was solved from and still
+/// count as "the document already holds this": a fraction of the drawing's
+/// characteristic length, the same model `RESIDUAL_REL_TOL` uses (the scale is
+/// floored at 1, so this is never smaller than the absolute floor).
+///
+/// Assembly seeds carry no storage grid, unlike sketch params, so the width is
+/// relative to the drawing rather than absolute. Measured on the re-solve of
+/// the three-body assembly (one fixed, one rotating, one sliding) from its own
+/// solved poses at scales 1, 100 and 2000: the second solve returned the
+/// first's bytes exactly, 0 drift at every scale. What matters more is the
+/// driver's dead band: a seed perturbed by less than `GTOL` (1e-10 absolute on
+/// these unit-direction rows) is left untouched, and one perturbed further is
+/// snapped back by the whole perturbation. `1e-9 * scale` is ten times that
+/// band at unit scale and grows with the drawing, so a solve that acts always
+/// moves further than this rung. The bound is deliberately generous, because
+/// the bake's cost is asymmetric: keeping a pose a hair off the seed is
+/// invisible, while writing one every re-solve walks every part in every
+/// document diff.
+pub(crate) const POSE_KEEP_REL_TOL: f64 = 1e-9;
+
+/// The rotation angle, in radians, below which a solved pose is the seed's:
+/// the rotational twin of [`POSE_KEEP_REL_TOL`]. Absolute because a radian does
+/// not grow with the drawing (the same reasoning as [`RESIDUAL_ANGLE_TOL`]).
+/// The re-solve above measured 0 rad of drift; the driver's GTOL bounds the
+/// rotations it can leave alone at ~1e-10 rad, so this rung is a thousand
+/// times above the noise and still far below anything visible.
+pub(crate) const POSE_KEEP_ANGLE: f64 = 1e-7;
+
+/// The translation width that still reads as "the solve did not move this
+/// part", in drawing units. `scale` is the crate's characteristic length,
+/// floored at 1 by `MateProblem::geometry_scale`.
+pub(crate) fn pose_keep_tol(scale: f64) -> f64 {
+    POSE_KEEP_REL_TOL * scale
+}

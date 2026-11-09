@@ -37,19 +37,17 @@ function makeDoc(initial?: Record<string, number[]>): PartDoc {
   }
 }
 
-// Solved params reach the main thread as f64 now (wasm-kernel/codec.ts
-// decodeOutput, rev 3), but documents authored under the rev 2 f32 wire carry
-// spellings like 3.1415927410125732 where the sketch mutator persisted
-// round(3.1415927...) = 3.141593. Same geometry, different digits, and a doc
-// compare that reads the difference as a change. The suite keeps exercising
-// that legacy band.
+// The solver reports which entities it moved; the doc keeps the authored
+// spelling for every one it did not. `F32_PI` and `F32_THIRD` are the rev 2
+// wire spellings the old envelope used to absorb, kept here as one spelling
+// among the moved-set cases.
 const F32_PI = Math.fround(Math.PI)
 const F32_THIRD = Math.fround(1 / 3)
 
-function response(geom: Record<string, number[]>): Record<string, unknown> {
+function response(geom: Record<string, number[]>, entityMoved: string[] = []): Record<string, unknown> {
   return {
     solve_ms: 0,
-    result: { sk1: { status: 'ok', geometry: geom } },
+    result: { sk1: { status: 'ok', geometry: geom, entity_moved: entityMoved } },
     bodies: {},
     _build_state: null,
   }
@@ -110,12 +108,13 @@ describe('solver write-back preserves doc identity on unchanged geometry', () =>
     )
     const before = docRef.current
 
+    // The solver names no moved entity, so the authored arrays stay.
     mockSolveViaWorker.mockResolvedValue(response({ l1: [0, 0, F32_PI, 0], l2: [0, 5, F32_THIRD, 5] }))
     await act(async () => { await result.current.reSolve(docRef.current!) })
 
-    // Unrounded, the f32 digits differ from the 6dp ones the mutator wrote, the
-    // compare fails, and the re-solve mints a fresh doc object -- which is what
-    // defeats a save that overlaps it.
+    // Unrounded, the solved digits differ from the 6dp ones the mutator wrote,
+    // the compare fails, and the re-solve mints a fresh doc object -- which is
+    // what defeats a save that overlaps it.
     expect(setDoc).not.toHaveBeenCalled()
     expect(docRef.current).toBe(before)
   })
@@ -138,14 +137,12 @@ describe('solver write-back preserves doc identity on unchanged geometry', () =>
     expect(initial.l1[2]).not.toBe(F32_PI)
   })
 
-  // The legacy band where the f32 quantum is wider than the mutators' 6dp grid,
-  // so rounding a rev 2 wire value does NOT recover the authored number: 25.7
-  // solved to 25.700000762939453, which rounds to 25.700001, and 63.4 to
-  // 63.400002. Rounding alone therefore still minted a fresh doc object here,
-  // which is what defeated a save overlapping the re-solve.
-  const F32_BAND = [[25.7, 25.700001], [47.3, 47.299999], [63.4, 63.400002], [100.000001, 100]] as const
+  // The rev 2 band the old envelope existed for. The solver reports the entity
+  // unmoved (nothing drives it), so the authored spelling is kept whatever the
+  // wire's digits are: rounding alone could not recover 25.7 from 25.700001.
+  const REV2_BAND = [[25.7, 25.700001], [47.3, 47.299999], [63.4, 63.400002], [100.000001, 100]] as const
 
-  it.each(F32_BAND)('keeps docRef identity when the solve re-derives %s as f32', async (authored) => {
+  it.each(REV2_BAND)('keeps docRef identity when an undriven %s re-solves to its rev 2 spelling', async (authored) => {
     const docRef: { current: PartDoc | null } = {
       current: makeDoc({ l1: [0, 0, authored, 0], l2: [0, 5, authored, 5] }),
     }
@@ -158,7 +155,7 @@ describe('solver write-back preserves doc identity on unchanged geometry', () =>
     mockSolveViaWorker.mockResolvedValue(response({
       l1: [0, 0, Math.fround(authored), 0],
       l2: [0, 5, Math.fround(authored), 5],
-    }))
+    }, []))
     await act(async () => { await result.current.reSolve(docRef.current!) })
 
     // The write-back keeps the authored spelling, so the clone it compared is
@@ -169,9 +166,9 @@ describe('solver write-back preserves doc identity on unchanged geometry', () =>
     expect(initial.l1[2]).toBe(authored)
   })
 
-  it('still swaps identity when the solve moves a band-sized coordinate', async () => {
-    // The control for the keep: within the envelope the doc is preserved, but a
-    // real move at the same magnitude still installs and swaps identity.
+  it('still swaps identity when the solve reports the coordinate moved', async () => {
+    // The control for the keep: an unmoved entity is preserved, but a solve
+    // that names it moved installs the rounded value and swaps identity.
     const docRef: { current: PartDoc | null } = { current: makeDoc({ l1: [0, 0, 25.7, 0] }) }
     const setDoc = vi.fn((d: PartDoc | null | ((prev: PartDoc | null) => PartDoc | null)) => {
       docRef.current = typeof d === 'function' ? d(docRef.current) : d
@@ -181,7 +178,7 @@ describe('solver write-back preserves doc identity on unchanged geometry', () =>
     )
     const before = docRef.current
 
-    mockSolveViaWorker.mockResolvedValue(response({ l1: [0, 0, 26.4, 0] }))
+    mockSolveViaWorker.mockResolvedValue(response({ l1: [0, 0, 26.4, 0] }, ['l1']))
     await act(async () => { await result.current.reSolve(docRef.current!) })
 
     expect(setDoc).toHaveBeenCalledTimes(1)

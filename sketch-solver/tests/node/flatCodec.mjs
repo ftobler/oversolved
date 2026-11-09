@@ -5,8 +5,8 @@
 // constraints.rs/codec.rs: the vitest wasm-kernel suite owns boundary
 // coverage, so drift here only affects the ungated Node scripts.
 
-export const MAGIC_IN = 0x3447_4b53 // "SKG4": rev 5, variable-size entity records
-export const MAGIC_OUT = 0x3452_4b53 // "SKR4": adds the per-constraint verdicts
+export const MAGIC_IN = 0x3547_4b53 // "SKG5": adds the header's storage quantum
+export const MAGIC_OUT = 0x3552_4b53 // "SKR5": adds the per-entity moved bitmask
 
 export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4, Spline: 5, FitSpline: 6 }
 export const CKind = {
@@ -81,6 +81,7 @@ export function encodeInput(input) {
   w.u8(input.dragMode ? 1 : 0)
   w.u8(input.skipStatusPass ? 1 : 0)
   w.u32(input.dragAnchorId ?? 0)
+  w.f64(input.seedQuantum ?? 0)
   for (const e of input.entities) {
     w.u8(e.kind)
     w.u8(e.flags ?? 0)
@@ -145,6 +146,7 @@ export function decodeOutput(buf) {
   const nStatus = u32()
   const vfLen = u32()
   const nConstraintStatus = u32()
+  const nMoved = u32()
   const overallStatus = u8()
   const params = []
   for (let i = 0; i < nParams; i++) params.push(f64())
@@ -157,10 +159,12 @@ export function decodeOutput(buf) {
   for (let i = 0; i < nConstraintStatus; i++) constraintFlags.push(u8())
   const constraintMiss = []
   for (let i = 0; i < nConstraintStatus; i++) constraintMiss.push(f64())
+  const entityMoved = []
+  for (let i = 0; i < nMoved; i++) entityMoved.push(u8())
   const residualNorm = f64()
   const rank = u32()
   const dof = u32()
   const iters = u32()
   const ms = f64()
-  return { overallStatus, params, entityStatus, constraintFlags, constraintMiss, residualNorm, rank, dof, iters, ms }
+  return { overallStatus, params, entityStatus, constraintFlags, constraintMiss, entityMoved, residualNorm, rank, dof, iters, ms }
 }
