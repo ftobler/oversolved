@@ -981,10 +981,19 @@ export function runChain(oc: OccModule, recipe: Recipe, options: ChainRunOptions
  * caught: the dimension moved and the stored reference went red.
  *
  * `reportUnreached` additionally reports picks the perturbed chain never
- * reached because an earlier step refused. The caller sets it for base runs
- * that completed, where a reference that cannot even be tested is not a green
- * reference; on a base run that already refused, the refusal is the reported
- * finding and only resolution failures at reached steps are new information.
+ * reached because an earlier *pick* went stale. The caller sets it for base
+ * runs that completed, where a reference that cannot even be tested because a
+ * sibling reference died is not a green reference; on a base run that already
+ * refused, the refusal is the reported finding and only resolution failures at
+ * reached steps are new information.
+ *
+ * A feature that refuses on geometry after its own pick resolved is not a
+ * naming failure: the reference was tested, and the picks after it are
+ * untested because the perturbed body could not build, which the sweep already
+ * counts as a refusal. Reporting those as stale picks conflated the two, and
+ * made the result depend on an OCC validity knife edge (the same body can
+ * build or refuse with the same input but a different allocation layout). Only
+ * a stale pick at an earlier step is a reason to call later picks unreached.
  */
 export function runPersistenceCheck(
   oc: OccModule,
@@ -1008,13 +1017,19 @@ export function runPersistenceCheck(
   try {
     const stale = [...live.run.stalePicks]
     const reportUnreached = options.reportUnreached ?? false
+    // A generic feature refusal (a fillet radius pre-check, a fuse soundness
+    // gate, an invalid shell) leaves later picks untested because the perturbed
+    // body could not build, not because a reference went dead. Only when the
+    // chain stopped on a stale pick does an unreached later pick add naming
+    // information; otherwise it is the geometry outcome in disguise.
+    const stoppedOnStalePick = stale.length > 0
     const reached = new Set(live.run.reports.filter((report) => report.status !== 'refused').map((report) => report.step))
     for (const pick of picks) {
       // A step that already reported its stale pick above needs no second
       // entry: the resolution failure is the finding, and the refusal is its
       // consequence, not a separate one.
-      if (reportUnreached && !reached.has(pick.step) && !stale.some((s) => s.step === pick.step)) {
-        stale.push({ step: pick.step, message: `the perturbed chain did not reach the pick step (${live.run.refusals[0]?.message ?? 'refused earlier'})` })
+      if (reportUnreached && stoppedOnStalePick && !reached.has(pick.step) && !stale.some((s) => s.step === pick.step)) {
+        stale.push({ step: pick.step, message: 'the perturbed chain did not reach the pick step (a stale pick stopped the chain earlier)' })
       }
     }
     return stale

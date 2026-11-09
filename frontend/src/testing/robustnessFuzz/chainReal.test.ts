@@ -127,12 +127,17 @@ const KNOWN_HANGS: readonly { seed: number; phase: ChainPhase; step: number; kin
 // than an unreached chain), then on 2026-11-05 after the short-array per-copy
 // fuse moved seed 1476's start-body edge UUID: its perturbed chamfer now
 // reaches the pick and reports the re-mint instead of refusing before it.
-// Three kinds share the pin: a re-mint (the reference goes dead under the
-// +2.5 mm growth), an unreached pick (the perturbed chain refused at an
-// earlier step, so the reference cannot even be tested, reported only for a
-// completed base run), and the refused fuse, chamfer or fillet variant of it.
-// The rate holds at about 1 in 50 built references, so a wider range keeps
-// surfacing new seeds: the class awaits its own naming fix (backlog.md).
+// Then on 2026-11-09 the table dropped seed 1100 step 2 and seed 1131 steps 3
+// and 4: those were generic feature refusals (a fillet radius pre-check, an
+// unsound fuse), not dead references. The check now reports an unreached pick
+// only when a stale pick stopped the perturbed chain, so a geometry refusal
+// cannot masquerade as a naming failure (the shell's validity knife edge
+// follows the allocation layout; see backlog.md).
+// Two kinds share the pin: a re-mint (the reference goes dead under the +2.5 mm
+// growth) and an unreached pick (a stale pick at an earlier step stopped the
+// perturbed chain, so the reference cannot even be tested). The rate holds at
+// about 1 in 50 built references, so a wider range keeps surfacing new seeds:
+// the class awaits its own naming fix (backlog.md).
 type PickPin = { seed: number; step: number; match: string; note: string }
 
 const PICK_REMINT_EDGE = 'edge query'
@@ -146,7 +151,7 @@ const KNOWN_STALE_PICKS: readonly PickPin[] = [
     match: PICK_REMINT_EDGE,
     note: 'revolve-start edge @u|e_9310... re-mints under a +2.5 mm growth; the built step reference goes dead while the chain later refuses',
   },
-  { seed: 145, step: 4, match: PICK_UNREACHED, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 145, step: 4, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 156, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   {
     seed: 186,
@@ -161,30 +166,27 @@ const KNOWN_STALE_PICKS: readonly PickPin[] = [
     note: 'revolve-start face @u|u_9403... re-mints under a +2.5 mm growth; the built step reference goes dead while the chain later refuses',
   },
   { seed: 227, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 227, step: 3, match: PICK_UNREACHED, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 227, step: 3, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 263, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 366, step: 4, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
   { seed: 388, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 529, step: 5, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
   { seed: 561, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 578, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 578, step: 5, match: PICK_UNREACHED, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 578, step: 5, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 682, step: 3, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
   { seed: 709, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 709, step: 2, match: PICK_UNREACHED, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 709, step: 2, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 710, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 727, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 753, step: 2, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
   { seed: 853, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 893, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 893, step: 4, match: PICK_UNREACHED, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 893, step: 4, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 951, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 976, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1065, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1100, step: 2, match: PICK_UNREACHED, note: 'unreached: the perturbed fillet refused on invalid geometry' },
   { seed: 1117, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1131, step: 3, match: PICK_UNREACHED, note: 'unreached: the perturbed fuse refused as unsound' },
-  { seed: 1131, step: 4, match: PICK_UNREACHED, note: 'unreached: the perturbed fuse refused as unsound' },
   { seed: 1189, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1190, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1323, step: 2, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
@@ -363,6 +365,33 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
     expect(untrackedBuilds).toBe(0)
     expect(recordedPicks).toBeGreaterThan(0)
     expect(refusals).toBeLessThanOrEqual(Math.ceil(SEEDS * 0.75))
+  })
+
+  // The 2026-11-09 re-triage: a perturbed chain that stops on a feature
+  // refusal must not report the later picks as dead references. Seed 1131's
+  // perturbed fuse is unsound and seed 1100's perturbed fillet fails its
+  // radius pre-check, both deterministic geometry refusals after a completed
+  // base run. Seed 145's perturbed edge re-mints, which is a real stale pick,
+  // so its later hole pick still reports as unreached. The shell knife edge
+  // that exposed the difference (seed 990) follows the allocation layout and
+  // cannot pin the rule itself.
+  it('reports an unreached pick only when a stale pick stopped the chain', { timeout: 600_000 }, async () => {
+    const cases: readonly { seed: number; steps: number[] }[] = [
+      { seed: 1100, steps: [] },
+      { seed: 1131, steps: [] },
+      { seed: 145, steps: [3, 4] },
+    ]
+    for (const { seed, steps } of cases) {
+      const guarded = await runChainWithTimeout(generateRecipe(seed), { timeoutMs: REPLAY_TIMEOUT_MS })
+      expect(guarded.status, `seed ${seed} did not finish`).toBe('done')
+      if (guarded.status !== 'done') continue
+      // Guard against a vacuous []: the persistence replay only runs for a
+      // completed base chain that recorded a pick, so pin those first.
+      expect(guarded.replay.run.violations, `seed ${seed}`).toEqual([])
+      expect(guarded.replay.run.completed, `seed ${seed}`).toBe(true)
+      expect(guarded.replay.run.picks.length, `seed ${seed}`).toBeGreaterThan(0)
+      expect(guarded.replay.stale.map((s) => s.step), `seed ${seed}`).toEqual(steps)
+    }
   })
 
   // The 2026-11-04 fuzz failure: batching the fuzz's three-copy arrays moved a
