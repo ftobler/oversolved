@@ -877,10 +877,13 @@ export function solveExtrude(
       ...(operation === 'cut' && sweep !== null && { oppositeProbe: oppositeCutProbe(oc, scope, toolShape, sweep, direction) }),
     })
   } catch (e) {
+    // An up-to/next cut whose tool stops exactly on the stop surface (offset 0)
+    // removes no material by construction; the same holds for the surface
+    // mode's air-side pairing. Report the no-change warning rather than the
+    // miss error a blind cut earns, because the stop is the authored geometry.
     const missed =
       upToMode &&
       operation === 'cut' &&
-      (upToStart === 'surface' || upToOffset !== 0) &&
       e instanceof Error &&
       /cut does not intersect any target body/.test(e.message)
     if (!missed) throw e
@@ -892,6 +895,21 @@ export function solveExtrude(
     }
   }
   Object.assign(result, opResult)
+  // The surface slab sits exactly between the stop and its offset, so its sign
+  // against the material is the pairing rule: an add with a negative (into the
+  // material) slab and a cut with a positive (into the air) slab add or remove
+  // nothing. The body operation may still see a topology change where the slab
+  // lies flush with the surface, so name the no-op here as well.
+  if (
+    upToStart === 'surface' &&
+    ((operation === 'add' && upToOffset < 0) || (operation === 'cut' && upToOffset > 0)) &&
+    !String(result.solver_warning ?? '').includes('no geometry change')
+  ) {
+    const noChange = 'extrude: operation produced no geometry change'
+    result.solver_warning = result.solver_warning === undefined
+      ? noChange
+      : `${result.solver_warning}; ${noChange}`
+  }
 
   // The body operation may have written its own warning (a no-op cut/add).
   // Compose rather than assign so the up-to fallback is not lost.

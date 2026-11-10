@@ -555,6 +555,43 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
         },
         repoReturning(target), store,
       )).toThrow(/symmetric/)
+      expect(() => solveExtrude(
+        occ2, scope, table,
+        {
+          id: 'x4',
+          extrude: {
+            sketch: loop, operation: 'new', direction: 'symmetric', termination: 'up_to_next',
+          },
+        },
+        repoReturning(target), store,
+      )).toThrow(/symmetric/)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('reports no geometry change for a surface add inside material (test 15f)', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const store: Record<string, Body> = {}
+      const sideIndex = cylinderBody(scope, table, store)
+      const before = volumeOfBody(scope, table, store, 'body_cyl')
+      const loop = plinthLoop(scope, table, store, 0, -5, 5, 5, 25)
+      const result = solveExtrude(
+        occ2, scope, table,
+        {
+          id: 'ex_add_inside',
+          extrude: {
+            sketch: loop, operation: 'add', merge_target: 'body_cyl',
+            termination: 'up_to', up_to: 'face_q', up_to_start: 'surface', up_to_offset: -0.5,
+          },
+        },
+        repoReturning({ type: 'face', body_id: 'body_cyl', face_index: sideIndex }), store,
+      )
+      expect(result.status).toBe('ok')
+      expect(result.solver_warning).toContain('no geometry change')
+      expect(volumeOfBody(scope, table, store, 'body_cyl')).toBeCloseTo(before, 4)
     } finally {
       scope.dispose()
     }
@@ -655,6 +692,33 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
       // With no offset the tool ends on the face: a zero-thickness removal.
       const cutAt = scope.track(booleanWithHistory(occ2, scope, box, toolAt(0), 'cut').shape)
       expect(volumeOf(occ2, scope, cutAt)).toBeCloseTo(before, 4)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('reports no geometry change for a zero-offset up_to_next cut (test 12)', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const store: Record<string, Body> = {}
+      putBody(scope, table, store, 'body_box', makeBoxAt(occ2, scope, [-20, 0, -20], 40, 10, 40))
+      const before = volumeOfBody(scope, table, store, 'body_box')
+      const loop = plinthLoop(scope, table, store, 20, -5, 5, -5, 5, false)
+      const result = solveExtrude(
+        occ2, scope, table,
+        {
+          id: 'ex_next_at',
+          extrude: {
+            sketch: loop, operation: 'cut', merge_target: 'body_box', direction: 'reverse',
+            termination: 'up_to_next',
+          },
+        },
+        repoReturning(null), store,
+      )
+      expect(result.status).toBe('ok')
+      expect(result.solver_warning).toContain('no geometry change')
+      expect(volumeOfBody(scope, table, store, 'body_box')).toBeCloseTo(before, 6)
     } finally {
       scope.dispose()
     }
