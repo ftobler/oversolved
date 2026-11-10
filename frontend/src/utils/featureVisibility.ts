@@ -65,6 +65,10 @@ export interface EditVisibility {
   // re-pick) needs them drawn: a hidden plane has no geometry to click. Derived
   // here, never written, so the field closing puts them straight back.
   planePickArmed?: boolean
+  // Sketch-class ids the relation hint asks to draw even though consumption
+  // hides them: selecting a feature marks and draws the sketch it uses. A hint
+  // is not a document write and yields to an explicit eye hide.
+  hinted?: Iterable<string>
 }
 
 /**
@@ -85,6 +89,15 @@ export function visibleFeatureIds(features: PartFeature[], edit: EditVisibility 
     }
   }
   for (const id of edit.forcedVisible ?? []) out.add(id)
+  // A hinted sketch yields the consumption hide: its lines sit inside the body
+  // it built and the user is pointing at that body's feature. The eye still
+  // wins -- a feature the user hid is not brought back by selecting something
+  // else -- because an explicit hide is the user's own decision.
+  const byId = new Map(features.map(f => [f.id, f] as const))
+  for (const id of edit.hinted ?? []) {
+    const feature = byId.get(id)
+    if (feature && isSketchClassFeature(feature) && feature.visible !== false) out.add(id)
+  }
   const edited = edit.editingFeatureId ? features.find(f => f.id === edit.editingFeatureId) : undefined
   if (edited) for (const id of consumedSketchIds(edited, features)) out.add(id)
   return out

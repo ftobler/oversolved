@@ -571,6 +571,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       mesh={b.mesh}
       edges={b.edges}
       edgeQueries={b.edgeQueries}
+      edgeCreatedBy={b.edgeCreatedBy}
       vertices={b.vertices}
       vertexQueries={b.vertexQueries}
       visible={b.visible}

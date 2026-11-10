@@ -13,6 +13,9 @@ export interface BodyRenderItem {
   mesh: NonNullable<BodyResult['mesh']>
   edges: EdgeData[]
   edgeQueries?: string[]
+  // Per-edge creating feature, for the viewport's relation hint (Body3D reads
+  // it to tint the wireframe of a selected feature).
+  edgeCreatedBy?: string[]
   vertices?: [number, number, number][]
   vertexQueries?: string[]
   visible: boolean
@@ -77,6 +80,7 @@ export function getBodiesToRender(
       mesh: body.mesh,
       edges: body.edges ?? [],
       edgeQueries: body.edge_queries,
+      edgeCreatedBy: body.edge_created_by,
       vertices: body.vertices,
       vertexQueries: body.vertex_queries,
       visible: bodyVisible && !isBodyHiddenByFeature(createdBy, features, visibleFeatures),

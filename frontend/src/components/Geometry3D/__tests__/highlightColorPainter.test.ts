@@ -21,6 +21,7 @@ const PALETTE: HighlightPalette = {
   base: [0.25, 0.5, 0.75],
   selected: [1, 0, 0],
   hovered: [0, 1, 0],
+  hinted: [0, 0, 1],
 }
 
 /** The colour buffer the old whole-buffer rebuild would have produced. */
@@ -30,13 +31,15 @@ function reference(
   selected: readonly boolean[] | null,
   hovered: readonly boolean[] | null,
   palette: HighlightPalette,
+  hinted: readonly boolean[] | null = null,
 ): Float32Array {
   const colors = new Float32Array(vertexCount * 3)
   for (let f = 0; f < colors.length; f += 3) {
     colors[f] = palette.base[0]; colors[f + 1] = palette.base[1]; colors[f + 2] = palette.base[2]
   }
   for (let i = 0; i < runs.count; i++) {
-    const rgb = selected?.[i] ? palette.selected : hovered?.[i] ? palette.hovered : palette.base
+    const rgb = selected?.[i] ? palette.selected : hovered?.[i] ? palette.hovered
+      : hinted?.[i] ? palette.hinted : palette.base
     runs.eachRun(i, (start, count) => {
       for (let v = start; v < start + count; v++) {
         colors[v * 3] = rgb[0]; colors[v * 3 + 1] = rgb[1]; colors[v * 3 + 2] = rgb[2]
@@ -180,6 +183,49 @@ describe('HighlightColorPainter', () => {
     const covered = new Set<number>()
     for (const r of result.ranges) for (let f = r.start; f < r.start + r.count; f++) covered.add(f)
     for (let f = 0; f < colors.length; f++) expect(covered.has(f)).toBe(true)
+  })
+
+  it('paints a hint, lifts it to hover, and drops it back to base', () => {
+    const colors = new Float32Array(TRI_COUNT * 9)
+    const painter = new HighlightColorPainter(colors, CONTIGUOUS)
+
+    painter.apply(null, null, PALETTE, flags(FACES, 3, 4))
+    expect(painter.stateAt(4)).toBe('hinted')
+    expect(colors).toEqual(reference(CONTIGUOUS, TRI_COUNT * 3, null, null, PALETTE, flags(FACES, 3, 4)))
+
+    const hovered = painter.apply(null, flags(FACES, 4), PALETTE, flags(FACES, 3))
+    expect(hovered.repainted).toBe(1)
+    expect(painter.stateAt(4)).toBe('hovered')
+    expect(colors).toEqual(reference(CONTIGUOUS, TRI_COUNT * 3, null, flags(FACES, 4), PALETTE, flags(FACES, 3)))
+
+    const cleared = painter.apply(null, null, PALETTE, null)
+    expect(cleared.repainted).toBe(2)
+    expect(painter.stateAt(3)).toBe('base')
+    expect(painter.stateAt(4)).toBe('base')
+    expect(colors).toEqual(reference(CONTIGUOUS, TRI_COUNT * 3, null, null, PALETTE))
+  })
+
+  it('a hinted primitive under a selected one stays selected', () => {
+    const colors = new Float32Array(TRI_COUNT * 9)
+    const painter = new HighlightColorPainter(colors, CONTIGUOUS)
+    painter.apply(null, null, PALETTE)
+
+    painter.apply(flags(FACES, 2), null, PALETTE, flags(FACES, 2, 3))
+
+    expect(painter.stateAt(2)).toBe('selected')
+    expect(painter.stateAt(3)).toBe('hinted')
+  })
+
+  it('a palette change with a hint active repaints the hint colour', () => {
+    const colors = new Float32Array(TRI_COUNT * 9)
+    const painter = new HighlightColorPainter(colors, CONTIGUOUS)
+    painter.apply(null, null, PALETTE, flags(FACES, 1))
+
+    const moved: HighlightPalette = { ...PALETTE, hinted: [0.5, 0.5, 1] }
+    const result = painter.apply(null, null, moved, flags(FACES, 1))
+
+    expect(result.full).toBe(true)
+    expect(colors).toEqual(reference(CONTIGUOUS, TRI_COUNT * 3, null, null, moved, flags(FACES, 1)))
   })
 })
 

@@ -1248,6 +1248,22 @@
   outline: 1px solid #1e3a4a;
 }
 
+/* The relation hint: a selected row marks the rows it relates to (a face's
+   creator, a feature's sketch, an assembly part's mates) in the hint colour
+   family rather than borrowing the hover look. It is weaker than .selected on
+   purpose; the companion below keeps a row that is both reading as selected. */
+.feature-item.related {
+  background: #122028;
+  color: #cfeaf7;
+  outline: 1px solid #2f6f85;
+}
+
+.feature-item.selected.related {
+  background: #1a1a2a;
+  color: white;
+  outline: 1px solid #1e3a4a;
+}
+
 .plane-editor {
   width: 100%;
   display: flex;

@@ -25,6 +25,7 @@ import { highlightState } from './constants'
 const BASE = 1
 const SELECTED = 2
 const HOVERED = 3
+const HINTED = 4
 
 /**
  * Above this many ranges the per-range `bufferSubData` overhead beats one full
@@ -40,6 +41,7 @@ export interface HighlightPalette {
   base: RGB
   selected: RGB
   hovered: RGB
+  hinted: RGB
 }
 
 /**
@@ -135,14 +137,15 @@ export class HighlightColorPainter {
   }
 
   /**
-   * Bring the buffer in line with `selected` / `hovered` (indexed by primitive;
-   * null means "none"). Selection outranks hover, matching the overlay
-   * precedence. Returns what needs uploading.
+   * Bring the buffer in line with `selected` / `hovered` / `hinted` (indexed by
+   * primitive; null means "none"). Selection outranks hover, hover outranks the
+   * hint, matching the overlay precedence. Returns what needs uploading.
    */
   apply(
     selected: readonly boolean[] | null,
     hovered: readonly boolean[] | null,
     palette: HighlightPalette,
+    hinted: readonly boolean[] | null = null,
   ): PaintResult {
     const repaintAll = this.palette === null || !samePalette(this.palette, palette)
     this.palette = palette
@@ -155,7 +158,7 @@ export class HighlightColorPainter {
       // highlighted ones on top.
       this.fill(palette.base)
       for (let i = 0; i < count; i++) {
-        const next = stateOf(i, selected, hovered)
+        const next = stateOf(i, selected, hovered, hinted)
         this.state[i] = next
         if (next !== BASE) this.paint(i, colorFor(next, palette), null)
       }
@@ -166,7 +169,7 @@ export class HighlightColorPainter {
     let repainted = 0
     let overflow = false
     for (let i = 0; i < count; i++) {
-      const next = stateOf(i, selected, hovered)
+      const next = stateOf(i, selected, hovered, hinted)
       if (this.state[i] === next) continue
       this.state[i] = next
       this.paint(i, colorFor(next, palette), overflow ? null : ranges)
@@ -178,10 +181,11 @@ export class HighlightColorPainter {
   }
 
   // Test/diagnostic accessor: the paint state of one primitive.
-  stateAt(index: number): 'unpainted' | 'base' | 'selected' | 'hovered' {
+  stateAt(index: number): 'unpainted' | 'base' | 'selected' | 'hovered' | 'hinted' {
     const state = this.state[index]
     if (state === SELECTED) return 'selected'
     if (state === HOVERED) return 'hovered'
+    if (state === HINTED) return 'hinted'
     if (state === BASE) return 'base'
     return 'unpainted'
   }
@@ -233,16 +237,23 @@ function stateOf(
   index: number,
   selected: readonly boolean[] | null,
   hovered: readonly boolean[] | null,
+  hinted: readonly boolean[] | null,
 ): number {
-  const state = highlightState(selected?.[index] === true, hovered?.[index] === true)
+  const state = highlightState(
+    selected?.[index] === true,
+    hovered?.[index] === true,
+    hinted?.[index] === true,
+  )
   if (state === 'selected') return SELECTED
   if (state === 'hovered') return HOVERED
+  if (state === 'hinted') return HINTED
   return BASE
 }
 
 function colorFor(state: number, palette: HighlightPalette): RGB {
   if (state === SELECTED) return palette.selected
   if (state === HOVERED) return palette.hovered
+  if (state === HINTED) return palette.hinted
   return palette.base
 }
 
@@ -251,7 +262,8 @@ function sameRGB(a: RGB, b: RGB): boolean {
 }
 
 function samePalette(a: HighlightPalette, b: HighlightPalette): boolean {
-  return sameRGB(a.base, b.base) && sameRGB(a.selected, b.selected) && sameRGB(a.hovered, b.hovered)
+  return sameRGB(a.base, b.base) && sameRGB(a.selected, b.selected)
+    && sameRGB(a.hovered, b.hovered) && sameRGB(a.hinted, b.hinted)
 }
 
 /**

@@ -25,6 +25,13 @@ describe('highlightState precedence', () => {
   it('nothing highlighted is null', () => {
     expect(highlightState(false, false)).toBeNull()
   })
+
+  it('the hint is the weakest state', () => {
+    expect(highlightState(false, false, true)).toBe('hinted')
+    expect(highlightState(false, true, true)).toBe('hovered')
+    expect(highlightState(true, false, true)).toBe('selected')
+    expect(highlightState(true, true, true)).toBe('selected')
+  })
 })
 
 describe('entityRenderLayer follows the same precedence', () => {
@@ -45,6 +52,18 @@ describe('entityRenderLayer follows the same precedence', () => {
       depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT,
     })
     expect(entityRenderLayer({ isEditing: true, selected: true, hovered: true })).toEqual({
+      depthTest: false, renderOrder: RENDER_ORDER_EDITING,
+    })
+  })
+
+  it('a hinted sketch line sits at the edit layer, but a hover lifts it above', () => {
+    expect(entityRenderLayer({ hinted: true })).toEqual({
+      depthTest: false, renderOrder: RENDER_ORDER_EDITING,
+    })
+    expect(entityRenderLayer({ hinted: true, hovered: true })).toEqual({
+      depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT,
+    })
+    expect(entityRenderLayer({ hinted: true, selected: true })).toEqual({
       depthTest: false, renderOrder: RENDER_ORDER_EDITING,
     })
   })

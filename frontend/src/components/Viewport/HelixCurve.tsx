@@ -4,8 +4,9 @@ import type { EdgeDataSpline } from '@/types/cad'
 import { useEdgeIdRegistration } from '@/picking'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import {
-  COLOR_HOVER, COLOR_INACTIVE, COLOR_PROJECTED, COLOR_SELECTED, COLOR_SOLVED, entityRenderLayer, highlightState,
+  COLOR_HINT, COLOR_HOVER, COLOR_INACTIVE, COLOR_PROJECTED, COLOR_SELECTED, COLOR_SOLVED, entityRenderLayer, highlightState,
 } from '@/components/Geometry3D/constants'
+import { useHintedFeatureIds } from '@/hooks/useRelationHint'
 
 // A helix is a reference curve, not a body: it renders from the solve result's
 // sampled polyline and registers on the reference-edge ID layer under its own
@@ -35,6 +36,9 @@ export default function HelixCurve({
   // one here.
   const hovered = useSketchEditorStore(s => s.hoveredSelectionId === selectionId)
   const selected = useSketchEditorStore(s => s.normalSelection.has(selectionId))
+  // A selected sweep draws its helix path in the hint colour, the same as the
+  // profile sketch lines; the sketch-class helix would otherwise stay grey.
+  const hinted = useHintedFeatureIds().has(featureId)
 
   // Identity-stable registration payloads: useEdgeIdRegistration's effect keys
   // on `edges` and `edgeQueries`, so a fresh array every render (a hover flip
@@ -57,11 +61,12 @@ export default function HelixCurve({
   if (!visible || curve.points.length < 2) return null
   const start = curve.points[0]
 
-  const state = highlightState(selected, hovered)
+  const state = highlightState(selected, hovered, hinted)
   const color = state === 'selected' ? COLOR_SELECTED
     : state === 'hovered' ? COLOR_HOVER
+    : state === 'hinted' ? COLOR_HINT
     : isEditing ? COLOR_SOLVED : COLOR_INACTIVE
-  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
+  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered, hinted })
 
   return (
     <group>

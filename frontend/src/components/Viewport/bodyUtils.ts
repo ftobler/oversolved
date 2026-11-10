@@ -171,6 +171,7 @@ export function getPreviewBodies(
       mesh: body.mesh,
       edges: body.edges ?? [],
       edgeQueries: body.edge_queries,
+      edgeCreatedBy: body.edge_created_by,
       vertices: body.vertices,
       vertexQueries: body.vertex_queries,
       // The edited feature is forced visible while its editor is open

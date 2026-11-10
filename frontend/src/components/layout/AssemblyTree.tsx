@@ -5,8 +5,9 @@ import { mateFailure, partFailure, assemblyVerdict } from '@/utils/core/assembly
 import { markNameClass } from '@/utils/core/statusMark'
 import { StatusMessage } from '@/components/shared/StatusMessage'
 import type { AssemblyBuiltinListItem } from '@/utils/assemblyRender'
-import { relatedMateIds, relatedPartHandles } from '@/utils/assemblyTreeHighlight'
 import { readSelection, type AssemblySubject } from '@/utils/assemblySelection'
+import { hintDrivers, relatedHints } from '@/picking/relationHint'
+import { ASSEMBLY_RULES, buildAssemblyRelationCtx } from '@/registry/relationRuleRegistry'
 import { MATE_KIND_LABELS } from '@/utils/mateKinds'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
 import RightClickMenu, { type ContextMenuItem } from '@/components/dialogs/RightClickMenu'
@@ -145,14 +146,19 @@ export function AssemblyTree({
   }
 
   // Cross-highlight: a selected part row lights up the mates that reference it,
-  // and a selected mate row lights up the two parts it mates. Symmetric and
-  // pane-crossing only -- the row that is actually selected never also carries
-  // .related, since each function only looks at the other pane's selection.
-  // Both halves come from the one subject accessor.
-  const view = readSelection(subject ?? null, EMPTY_ENTITIES)
-  const selectedPartHandle = view.parts.size > 0 ? [...view.parts][0] : null
-  const highlightedMateIds = useMemo(() => relatedMateIds(mates, selectedPartHandle), [mates, selectedPartHandle])
-  const highlightedPartHandles = useMemo(() => relatedPartHandles(mates, view.mate), [mates, view.mate])
+  // and a selected mate row lights up the parts it mates. Every selected part
+  // and the selected mate are drivers (the subject union keeps one of each at
+  // most), so widening the subject to a multi-part set needs no change here.
+  // Both panes read the same rule table and the same tree answer.
+  const view = useMemo(() => readSelection(subject ?? null, EMPTY_ENTITIES), [subject])
+  const drivers = useMemo(
+    () => (view.mate === null ? [...view.parts] : [...view.parts, view.mate]),
+    [view],
+  )
+  const relatedIds = useMemo(
+    () => relatedHints(hintDrivers(drivers), ASSEMBLY_RULES, buildAssemblyRelationCtx(mates)).tree,
+    [drivers, mates],
+  )
 
   // The same display name each mate row shows (stored label, or the bare kind
   // label for a legacy mate), so the verdict banner names the mates the user
@@ -225,8 +231,8 @@ export function AssemblyTree({
           {instances.map(inst => {
             const visible = inst.visible !== false
             const label = labelFor?.(inst.handle) || inst.doc_id
-            const selected = selectedPartHandle === inst.handle
-            const related = highlightedPartHandles.has(inst.handle)
+            const selected = view.parts.has(inst.handle)
+            const related = relatedIds.has(inst.handle)
             const editing = editingInstanceHandle === inst.handle
             const failMark = partFailure(inst.handle, status ?? null)
             const menuItems: ContextMenuItem[] = [
@@ -395,7 +401,7 @@ export function AssemblyTree({
             // look, a model cause reddens the name with its own message.
             const bareStale = mateMark.cause === 'stale'
             const selected = view.mate === id
-            const related = highlightedMateIds.has(id)
+            const related = relatedIds.has(id)
             const editing = editingMateId === id
             const menuItems: ContextMenuItem[] = [
               { label: 'Rename', icon: iconRenameIcon, onClick: () => onRequestRenameMate(id, name) },

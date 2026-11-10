@@ -35,6 +35,12 @@ export const COLOR_ERROR_DEEP = '#b71c1c'
 export const COLOR_INACTIVE = '#3a4048'
 export const COLOR_HOVER = '#ffffff'
 export const COLOR_SELECTED = '#ff9800'
+// The relation hint: a third, weaker state meaning "this is related to what you
+// selected". Cyan is the vocabulary the assembly cross-highlight already used for
+// its `.related` rows, so the tree and the viewport now speak one colour. It has
+// to stay clear of hover white, selection orange, the pink removal mark and the
+// default body green; `hintColorsAreDistinct` pins that distance.
+export const COLOR_HINT = '#4fc3f7'
 export const COLOR_CONSTRAINT_HOVER = '#fff176'  // entity highlighted because a constraint on it is hovered
 export const COLOR_PREVIEW = '#aaaaaa'
 export const COLOR_PREVIEW_EDGE = '#bb5be1'  // pink edge-only preview overlay (shared with the doomed-body mark)
@@ -50,16 +56,31 @@ export const RENDER_ORDER_HIGHLIGHT = 999
 export const EDGE_HIGHLIGHT_LINE_WIDTH = 3
 
 export const HOVER_BLEND = 0.4  // how much white to blend into the body color on hover (0 = body color, 1 = white)
+// How far a hinted face's fill moves from the body colour toward COLOR_HINT.
+// Faces keep the body's identity and only read as related; thin sketch lines use
+// the full hint colour because a 0.3 blend on a 1px line is invisible.
+export const HINT_BLEND = 0.45
+
+/** Returns a hex color that blends `baseColor` toward `targetColor` by `factor`. */
+export function blendToward(baseColor: string, targetColor: string, factor: number): string {
+  const [r, g, b] = hexChannels(baseColor)
+  const [tr, tg, tb] = hexChannels(targetColor)
+  const mix = (from: number, to: number) => Math.round(from + (to - from) * factor)
+  return `#${toHex(mix(r, tr))}${toHex(mix(g, tg))}${toHex(mix(b, tb))}`
+}
 
 /** Returns a hex color that blends `baseColor` with white by `factor`. */
 export function blendWhite(baseColor: string, factor: number = HOVER_BLEND): string {
-  const r = parseInt(baseColor.slice(1, 3), 16)
-  const g = parseInt(baseColor.slice(3, 5), 16)
-  const b = parseInt(baseColor.slice(5, 7), 16)
-  const br = Math.min(255, Math.round(r + (255 - r) * factor))
-  const bg = Math.min(255, Math.round(g + (255 - g) * factor))
-  const bb = Math.min(255, Math.round(b + (255 - b) * factor))
-  return `#${br.toString(16).padStart(2, '0')}${bg.toString(16).padStart(2, '0')}${bb.toString(16).padStart(2, '0')}`
+  return blendToward(baseColor, '#ffffff', factor)
+}
+
+function hexChannels(color: string): [number, number, number] {
+  const n = parseInt(color.slice(1), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+function toHex(channel: number): string {
+  return Math.max(0, Math.min(255, channel)).toString(16).padStart(2, '0')
 }
 
 export function normalizeHexColor(color: string | undefined): string | null {

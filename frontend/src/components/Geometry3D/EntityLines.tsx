@@ -8,7 +8,8 @@ import { sampleArc, sampleArcCCW, sampleEllipse, sampleBezier, ellipseAxisPoints
 import { DashedLine } from '@/components/Geometry3D/dimensions'
 import { fitSplinePolyline } from '@/utils/geometry/fitSpline'
 import { VertexDot, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer, highlightState } from '@/components/Geometry3D/constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_HINT, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer, highlightState } from '@/components/Geometry3D/constants'
+import { useHintedFeatureIds } from '@/hooks/useRelationHint'
 
 interface EntityItemProps {
   entity: Entity
@@ -17,10 +18,11 @@ interface EntityItemProps {
   baseColor: string
   lineWidth?: number
   isEditing?: boolean
+  hinted?: boolean
   suppressedVertexIds?: Set<string>
 }
 
-export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1, isEditing = false, suppressedVertexIds }: EntityItemProps) {
+export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth = 1, isEditing = false, hinted = false, suppressedVertexIds }: EntityItemProps) {
   const entId = `entity:${featureId}:${entityId}`
 
   // Store reads for selection display and hover.
@@ -34,14 +36,16 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
 
   const e = entity
   const construction = 'construction' in e && e.construction
-  const state = highlightState(selected, hovered)
+  const state = highlightState(selected, hovered, hinted)
   const color = state === 'selected' ? COLOR_SELECTED
     : state === 'hovered' ? COLOR_HOVER
-    : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
+    : constraintHovered ? COLOR_CONSTRAINT_HOVER
+    : state === 'hinted' ? COLOR_HINT
+    : baseColor
   const lw = hovered ? lineWidth + 1 : lineWidth
   // Single z-ordering decision for this entity. Explicit values (never undefined)
   // so hover/select/deselect each fully reset the layer instead of sticking.
-  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
+  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered, hinted })
 
   if ('start' in e && 'end' in e && 'radius' in e) {
     const arc = e as Arc
@@ -174,6 +178,10 @@ interface EntityLinesProps {
 
 export function EntityLines({ sketch, featureId, color, lineWidth = 1, isEditing = false, constraints }: EntityLinesProps) {
   const getColor = typeof color === 'function' ? color : () => color
+  // A consumed sketch is hidden, but while its consumer row is selected the
+  // viewport draws it in the hint colour anyway (utils/featureVisibility put it
+  // back on screen). One hook read, one boolean for every entity of the sketch.
+  const hinted = useHintedFeatureIds().has(featureId)
   // Coincident-bonded partners collapse to one drawn handle. Constraint-backed
   // only: points that merely overlap stay separate. Pick registration hides the
   // same ids so selection/hover lands on the surviving leader.
@@ -186,7 +194,7 @@ export function EntityLines({ sketch, featureId, color, lineWidth = 1, isEditing
       {Object.entries(sketch)
         .filter(([, entity]) => !(entity as PointEntity).projected)
         .map(([id, entity]) => (
-          <EntityItem key={id} entity={entity as Entity} entityId={id} featureId={featureId} baseColor={getColor(id)} lineWidth={lineWidth} isEditing={isEditing} suppressedVertexIds={suppressedVertexIds} />
+          <EntityItem key={id} entity={entity as Entity} entityId={id} featureId={featureId} baseColor={getColor(id)} lineWidth={lineWidth} isEditing={isEditing} hinted={hinted} suppressedVertexIds={suppressedVertexIds} />
         ))}
     </>
   )

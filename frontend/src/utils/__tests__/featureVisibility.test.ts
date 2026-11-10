@@ -97,6 +97,30 @@ describe('visibleFeatureIds', () => {
     const features: PartFeature[] = [{ id: 'Front', kind: 'plane' }]
     expect(visibleFeatureIds(features, { planePickArmed: false }).has('Front')).toBe(true)
   })
+
+  // Selecting a consuming feature draws its sketch for the length of that
+  // selection: the hint yields the consumption hide without writing the doc.
+  it('draws a consumed sketch while the relation hint names it', () => {
+    const features = [sketch('sk1'), extrude('ex1', [area('sk1')])]
+    expect(visibleFeatureIds(features, { hinted: ['sk1'] }).has('sk1')).toBe(true)
+    expect(visibleFeatureIds(features, { hinted: ['ex1'] }).has('sk1')).toBe(false)
+  })
+
+  it('an explicit eye hide outranks the hint', () => {
+    const features = [sketch('sk1', { visible: false }), extrude('ex1', [area('sk1')])]
+    expect(visibleFeatureIds(features, { hinted: ['sk1'] }).has('sk1')).toBe(false)
+  })
+
+  it('the hint does not lift a solid feature the eye hid', () => {
+    const features: PartFeature[] = [
+      sketch('sk1'),
+      { ...extrude('ex1', [area('sk1')]), visible: false },
+    ]
+    // The hinted set carries the driver feature too (it is the viewport face
+    // key); only a sketch-class id may enter the render list through it, and an
+    // explicit eye hide always wins.
+    expect(visibleFeatureIds(features, { hinted: ['ex1'] }).has('ex1')).toBe(false)
+  })
 })
 
 describe('visibleFeatureIds treats a helix as sketch-class', () => {

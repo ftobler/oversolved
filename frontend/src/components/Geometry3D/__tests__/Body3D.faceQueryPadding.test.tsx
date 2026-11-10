@@ -117,7 +117,7 @@ describe('face HighlightIndex and painter agree on one primitive count', () => {
     const index = new HighlightIndex('ex1/body_ex1', FACE_LAYER_NAME, resolved)
     const colors = new Float32Array(faceCount(mesh.faces) * 9)
     const painter = new HighlightColorPainter(colors, faceRuns(resolved.length, trianglesOf))
-    const palette: HighlightPalette = { base: [0, 0, 0], selected: [1, 0, 0], hovered: [0, 1, 0] }
+    const palette: HighlightPalette = { base: [0, 0, 0], selected: [1, 0, 0], hovered: [0, 1, 0], hinted: [0, 0, 1] }
 
     const selected = index.compute({
       queries: new Set(['@body_ex1/face/2']),

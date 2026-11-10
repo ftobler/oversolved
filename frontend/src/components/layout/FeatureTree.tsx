@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { featureFailure } from '@/utils/core/featureFailure'
 import { markNameClass } from '@/utils/core/statusMark'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -14,6 +14,7 @@ import { getFeatureIcon } from '@/components/layout/featureIcons'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { domHandleProps } from '@/picking'
+import { usePartRelationHints } from '@/hooks/useRelationHint'
 
 // The features list is one of the part editor's floating cards now: it sizes to
 // its content under a max-height and scrolls internally, with the open feature's
@@ -33,6 +34,9 @@ export function FeatureTree() {
   const validation = usePartEditorStore(s => s.validation)
 
   const selection = useSketchEditorStore(s => s.normalSelection)
+  // The relation hint the selection drives. One derivation shared with every
+  // viewport body, so a marked row and the tinted faces can never disagree.
+  const relatedIds = usePartRelationHints().tree
 
   const {
     onToggleSelect,
@@ -130,6 +134,18 @@ export function FeatureTree() {
     if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' })
   }, [editingFeatureId])
 
+  // A face picked in the viewport can name a row above the list's scroll window.
+  // Pull the first related row into view so the feedback is not off screen, but
+  // only when the relation content changes: a re-solve while a row is selected
+  // must not steal the scroll from the row being edited. `nearest` leaves a
+  // visible row where it is.
+  const relatedKey = useMemo(() => [...relatedIds].sort().join('\n'), [relatedIds])
+  useEffect(() => {
+    if (relatedKey === '' || editingFeatureId !== null) return
+    const row = listRef.current?.querySelector<HTMLElement>('.feature-item.related')
+    if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' })
+  }, [relatedKey, editingFeatureId])
+
   return (
     <div className="sidebar-top glass-panel">
       <div className="sidebar-header">
@@ -165,7 +181,7 @@ export function FeatureTree() {
               />
             )}
             <li
-              className={`feature-item ${index >= effectiveRollback ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(selectionId) ? 'selected' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${dropTargetIndex === index ? 'drop-target-top' : ''} ${dropTargetIndex === index + 1 ? 'drop-target-bottom' : ''}`}
+              className={`feature-item ${index >= effectiveRollback ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(selectionId) ? 'selected' : ''} ${relatedIds.has(selectionId) ? 'related' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${dropTargetIndex === index ? 'drop-target-top' : ''} ${dropTargetIndex === index + 1 ? 'drop-target-bottom' : ''}`}
               role="option"
               tabIndex={0}
               aria-selected={selection.has(selectionId)}

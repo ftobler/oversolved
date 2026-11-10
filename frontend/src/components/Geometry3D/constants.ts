@@ -14,6 +14,9 @@ import {
   COLOR_INACTIVE,
   COLOR_HOVER,
   COLOR_SELECTED,
+  COLOR_HINT,
+  HINT_BLEND,
+  blendToward,
   COLOR_CONSTRAINT_HOVER,
   COLOR_PREVIEW,
   COLOR_PROJECTED,
@@ -37,6 +40,9 @@ export {
   COLOR_SELECTED,
   HOVER_BLEND,
   blendWhite,
+  blendToward,
+  COLOR_HINT,
+  HINT_BLEND,
   COLOR_CONSTRAINT_HOVER,
   COLOR_PREVIEW,
   COLOR_PREVIEW_EDGE,
@@ -49,18 +55,21 @@ export {
 } from '@/utils/core/partColors'
 
 // ─── highlight precedence ───
-// The one question every highlight painter asks: which of the two live states
+// The one question every highlight painter asks: which of the three live states
 // claims this primitive? Selection outranks hover, because a click is the
 // durable answer to "what am I acting on" and the hover under the cursor is
-// only the next candidate. Every painter (sketch lines, dots, helix, planes,
+// only the next candidate. The relation hint is the weakest: it answers "this
+// is related to what you selected", not "this is what you selected", so a hover
+// or selection always wins. Every painter (sketch lines, dots, helix, planes,
 // sketch areas, B-rep outlines and the vertex/colour buffers) calls this, so a
 // primitive that is both selected and hovered reads the same everywhere: one
 // colour, one render layer.
-export type HighlightState = 'selected' | 'hovered' | null
+export type HighlightState = 'selected' | 'hovered' | 'hinted' | null
 
-export function highlightState(selected: boolean, hovered: boolean): HighlightState {
+export function highlightState(selected: boolean, hovered: boolean, hinted = false): HighlightState {
   if (selected) return 'selected'
   if (hovered) return 'hovered'
+  if (hinted) return 'hinted'
   return null
 }
 
@@ -101,15 +110,20 @@ export interface EntityLayerState {
   isEditing?: boolean
   selected?: boolean
   hovered?: boolean
+  hinted?: boolean
 }
 
 export function entityRenderLayer(
-  { isEditing = false, selected = false, hovered = false }: EntityLayerState,
+  { isEditing = false, selected = false, hovered = false, hinted = false }: EntityLayerState,
 ): { depthTest: boolean; renderOrder: number } {
-  const state = highlightState(selected, hovered)
+  const state = highlightState(selected, hovered, hinted)
   if (state === 'selected') return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
   if (state === 'hovered') return { depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT }
-  if (isEditing) return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
+  // A hinted sketch line is drawn by the hint rather than by its own visibility:
+  // the consumption rule hides the sketch but the line still sits inside the
+  // body it built, so it needs the edit layer to be seen at all. Hinted B-rep
+  // faces are not lifted: they stay depth-tested.
+  if (isEditing || state === 'hinted') return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
   return { depthTest: true, renderOrder: RENDER_ORDER_DEFAULT }
 }
 
@@ -192,7 +206,7 @@ const SCENE_COLORS_AGAINST_REMOVED = [
   COLOR_BODY_DEFAULT, COLOR_BODY_SELECTED, COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL,
   COLOR_ERROR, COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_INACTIVE,
   COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER,
-  COLOR_PREVIEW, COLOR_PROJECTED, COLOR_SNAP,
+  COLOR_HINT, COLOR_PREVIEW, COLOR_PROJECTED, COLOR_SNAP,
 ] as const
 
 export const REMOVED_COLOR_MIN_DISTANCE = 50
@@ -202,17 +216,42 @@ function rgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
-/** Smallest RGB distance from COLOR_BODY_REMOVED to any other scene colour. */
-export function bodyRemovedColorIsDistinct(): { nearest: string; distance: number } {
-  const [r, g, b] = rgb(COLOR_BODY_REMOVED)
+function nearestRival(color: string, rivals: readonly string[]): { nearest: string; distance: number } {
+  const [r, g, b] = rgb(color)
   let nearest = ''
   let distance = Infinity
-  for (const other of SCENE_COLORS_AGAINST_REMOVED) {
+  for (const other of rivals) {
     const [r2, g2, b2] = rgb(other)
     const d = Math.hypot(r - r2, g - g2, b - b2)
     if (d < distance) { distance = d; nearest = other }
   }
   return { nearest, distance }
+}
+
+/** Smallest RGB distance from COLOR_BODY_REMOVED to any other scene colour. */
+export function bodyRemovedColorIsDistinct(): { nearest: string; distance: number } {
+  return nearestRival(COLOR_BODY_REMOVED, SCENE_COLORS_AGAINST_REMOVED)
+}
+
+// The colours a hint must never be mistaken for: the two stronger highlights,
+// the removal mark, and the default body fill. The hinted face colour is the
+// body colour blended toward COLOR_HINT, which is the one value the viewport
+// actually paints; the line colour is COLOR_HINT at full strength.
+export const HINT_COLOR_MIN_DISTANCE = 40
+
+const HINT_RIVALS = [COLOR_HOVER, COLOR_SELECTED, COLOR_BODY_REMOVED, COLOR_BODY_DEFAULT] as const
+
+/** How far the hinted face fill and the hinted line colour sit from every
+ *  stronger highlight and from the default body. Shared constants, not
+ *  screenshots: R3F tone-mapping is not what the tree's CSS reads either. */
+export function hintColorsAreDistinct(): {
+  face: { nearest: string; distance: number }
+  line: { nearest: string; distance: number }
+} {
+  return {
+    face: nearestRival(blendToward(COLOR_BODY_DEFAULT, COLOR_HINT, HINT_BLEND), HINT_RIVALS),
+    line: nearestRival(COLOR_HINT, HINT_RIVALS),
+  }
 }
 
 // Hit detection & collision geometry

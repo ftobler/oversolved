@@ -5,7 +5,9 @@ import { describe, it, expect } from 'vitest'
 import {
   bodySurfaceLook,
   bodyRemovedColorIsDistinct,
+  hintColorsAreDistinct,
   REMOVED_COLOR_MIN_DISTANCE,
+  HINT_COLOR_MIN_DISTANCE,
   COLOR_BODY_DEFAULT,
   COLOR_BODY_SELECTED,
   COLOR_BODY_REMOVED,
@@ -78,6 +80,16 @@ describe('bodySurfaceLook colour precedence', () => {
     const [r, g, b] = [...COLOR_ERROR.slice(1).match(/../g)!].map(h => parseInt(h, 16))
     const [r2, g2, b2] = [...COLOR_BODY_REMOVED.slice(1).match(/../g)!].map(h => parseInt(h, 16))
     expect(Math.hypot(r - r2, g - g2, b - b2)).toBeGreaterThanOrEqual(REMOVED_COLOR_MIN_DISTANCE)
+  })
+})
+
+describe('relation hint colours', () => {
+  it('the hinted face fill and line colour are distinct from every stronger claim', () => {
+    const { face, line } = hintColorsAreDistinct()
+    expect(face.distance, `hint face too close to ${face.nearest}`)
+      .toBeGreaterThanOrEqual(HINT_COLOR_MIN_DISTANCE)
+    expect(line.distance, `hint line too close to ${line.nearest}`)
+      .toBeGreaterThanOrEqual(HINT_COLOR_MIN_DISTANCE)
   })
 })
 

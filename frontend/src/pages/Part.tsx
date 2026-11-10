@@ -9,6 +9,7 @@ import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { wouldOverconstrain } from '@/kernel/features/constraintProbe'
 import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
 import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, type PendingConstraint } from '@/stores/sketchEditorStore'
+import { usePartRelationHints } from '@/hooks/useRelationHint'
 import { useEditorState, editorState } from '@/hooks/useEditorState'
 import { syncRollbackFromDoc } from '@/stores/editorState'
 import { usePartDoc } from '@/hooks/usePartDoc'
@@ -484,15 +485,18 @@ export default function Part() {
   }, [registerUndoTeardown, tearDownEditorState])
 
   // The whole rule (consumed sketches hidden, the open editor's own geometry
-  // forced back on screen, the planes drawn while a plane field is armed) lives
-  // in visibleFeatureIds so it is tested without the page or the viewport.
+  // forced back on screen, the planes drawn while a plane field is armed, and a
+  // consumed sketch the relation hint asks to draw) lives in visibleFeatureIds
+  // so it is tested without the page or the viewport.
+  const relationHints = usePartRelationHints()
   const visibleFeaturesWithEdit = useMemo(
     () => visibleFeatureIds(features, {
       editingFeatureId,
       forcedVisible: editForcedVisible,
       planePickArmed: planeSelectionFeatureId !== null,
+      hinted: relationHints.viewport,
     }),
-    [features, editForcedVisible, editingFeatureId, planeSelectionFeatureId]
+    [features, editForcedVisible, editingFeatureId, planeSelectionFeatureId, relationHints]
   )
 
   const effectiveVisibleBodies = useMemo(

@@ -1,6 +1,7 @@
 // Cross-highlight between the two panes: selecting a part row marks the mate
 // rows that reference it, and selecting a mate row marks the two part rows it
-// mates, both in the .related class (the hover look), distinct from .selected.
+// mates, both in the .related class (the relation hint look), distinct from
+// .selected.
 
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'

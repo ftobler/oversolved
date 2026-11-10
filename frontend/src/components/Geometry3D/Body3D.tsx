@@ -8,8 +8,8 @@ import {
   COLOR_BODY_DEFAULT,
   COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL, COLOR_BODY_REMOVED,
   bodySurfaceLook,
-  COLOR_SELECTED, COLOR_HOVER,
-  blendWhite,
+  COLOR_SELECTED, COLOR_HOVER, COLOR_HINT,
+  blendWhite, blendToward, HINT_BLEND,
   POINT_VIS_PIXELS,
   DEFAULT_PART_ROUGHNESS,
   RENDER_ORDER_DEFAULT,
@@ -47,6 +47,8 @@ import {
 } from '@/viewport/useSection'
 import { HighlightIndex, type ActiveHighlight } from '@/picking/selectionHighlight'
 import { selectActiveFrom, hoverActiveFrom, EMPTY_CLAIM_MAP } from '@/picking/highlightActive'
+import { HintIndex, edgeCreatorsOf, faceCreatorsOf } from '@/picking/relationHint'
+import { useHintedFeatureIds } from '@/hooks/useRelationHint'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { buildEdgeMaterial } from '@/components/Geometry3D/edgeLineMaterial'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
@@ -77,6 +79,10 @@ interface Body3DProps {
   mesh: Mesh3D
   edges?: EdgeData[]
   edgeQueries?: string[]
+  // Per-edge creating feature, aligned with `edgeQueries`. The wireframe hint
+  // reads it; a body decoded before the field existed falls back to the query
+  // lineage.
+  edgeCreatedBy?: string[]
   vertices?: [number, number, number][]
   vertexQueries?: string[]
   visible?: boolean
@@ -100,7 +106,7 @@ interface Body3DProps {
   threadSites?: ThreadSiteIndex | null
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true, capBand = 0, threadSites = null }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, edgeCreatedBy, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true, capBand = 0, threadSites = null }: Body3DProps) {
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible && showFaces })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible && showEdges })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
@@ -109,6 +115,10 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const selectedPicks = useSketchEditorStore(s => s.selectedPicks)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
+  // The feature/sketch ids a selected tree row relates to. Every body reads the
+  // same derived set through the one hook, so two bodies cannot disagree about
+  // which of their faces a row tints.
+  const hintedFeatureIds = useHintedFeatureIds()
 
   // The curvature row needs an attribute on the geometry, so it is read here
   // rather than at render time only. The auto range is published by the
@@ -243,6 +253,51 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   const faceHoverFlags = useMemo(
     () => faceHighlightIndex?.compute(hoverActive) ?? null,
     [faceHighlightIndex, hoverActive],
+  )
+
+  // The creator of each face, aligned with the same resolved face list the
+  // selection HighlightIndex and the paint runs use. `face_created_by` wins; an
+  // older body recovers the creator from the query lineage, then falls back to
+  // the body's own creator (picking/relationHint).
+  const faceCreators = useMemo(
+    () => faceCreatorsOf(mesh, featureId, faceQueriesResolved?.length ?? 0),
+    [mesh, featureId, faceQueriesResolved],
+  )
+
+  const faceHintIndex = useMemo(
+    () => (faceQueriesResolved ? new HintIndex(faceCreators) : null),
+    [faceQueriesResolved, faceCreators],
+  )
+
+  // A doomed body paints no hint: its removal look is one look for every
+  // removal. A body with no hinted creator gets the shared all-false array, so
+  // its memos stay identity-stable while another body is hinted.
+  const faceHintFlags = useMemo(
+    () => (!interactive || doomed ? null : faceHintIndex?.compute(hintedFeatureIds) ?? null),
+    [interactive, doomed, faceHintIndex, hintedFeatureIds],
+  )
+
+  // The wireframe hint mirrors the face one; an edge-only body (shading off)
+  // still shows which feature made its edges. The legacy per-triangle face path
+  // carries no B-rep face creators, so it gets no face hint -- there is no
+  // feature attribution to paint.
+  const edgeCreators = useMemo(
+    () => edgeCreatorsOf({
+      id: bodyId,
+      created_by: featureId,
+      modified_by: [],
+      edges,
+      edge_queries: edgeQueries,
+      edge_created_by: edgeCreatedBy,
+    }),
+    [bodyId, featureId, edges, edgeQueries, edgeCreatedBy],
+  )
+
+  const edgeHintIndex = useMemo(() => new HintIndex(edgeCreators), [edgeCreators])
+
+  const edgeHintFlags = useMemo(
+    () => (!interactive || doomed ? null : edgeHintIndex.compute(hintedFeatureIds)),
+    [interactive, doomed, edgeHintIndex, hintedFeatureIds],
   )
 
   // Resolved query per vertex, mirroring edges: the same padded list the vertex
@@ -498,19 +553,21 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     [legacyFaceHighlightIndex, hoverActive],
   )
 
-  // The palettes. Only these three colours can move a primitive, and only a
+  // The palettes. Only these four colours can move a primitive, and only a
   // change to one of them forces the painter to rewrite the whole buffer -- which
   // is why the body's own selection colour lives here and not in the flags.
   const facePalette = useMemo<HighlightPalette>(() => ({
     base: paletteRGB(bodyColor),
     selected: paletteRGB(COLOR_SELECTED),
     hovered: paletteRGB(blendWhite(bodyColor)),
+    hinted: paletteRGB(blendToward(bodyColor, COLOR_HINT, HINT_BLEND)),
   }), [bodyColor])
 
   const edgePalette = useMemo<HighlightPalette>(() => ({
     base: paletteRGB(edgeColor),
     selected: paletteRGB(COLOR_SELECTED),
     hovered: paletteRGB(COLOR_HOVER),
+    hinted: paletteRGB(COLOR_HINT),
   }), [edgeColor])
 
   // Face and edge colours are painted IN PLACE on the attribute the geometry was
@@ -528,6 +585,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
       : facePaintTarget.brep ? faceSelectionFlags : (legacyFaceSelectionFlags ?? null),
     hovered: !interactive ? null
       : facePaintTarget.brep ? faceHoverFlags : (legacyFaceHoverFlags ?? null),
+    hinted: facePaintTarget.brep ? faceHintFlags : null,
     palette: facePalette,
   })
 
@@ -540,6 +598,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     // key, then query): two edges sharing a query must not co-highlight.
     selected: interactive ? edgeSelectionFlags : null,
     hovered: interactive ? edgeHoverFlags : null,
+    hinted: interactive ? edgeHintFlags : null,
     palette: edgePalette,
   })
 

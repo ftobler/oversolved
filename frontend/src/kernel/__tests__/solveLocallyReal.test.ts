@@ -12,6 +12,7 @@ import { loadOcc } from '../occ/loadOcc'
 import { HandleTable } from '../occ/handleTable'
 import { DisposeScope } from '../occ/disposeScope'
 import { extractBrepMetadata, tessellateBodies } from '../solveLocally'
+import { creatorOfQuery } from '@/picking/relationHint'
 import type { OccModule } from '../occ/occTypes'
 import type { OccHandle } from '../occ/handleTable'
 import type { Body } from '../types3d'
@@ -165,6 +166,33 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
     expect(Array.isArray(entry.vertices)).toBe(true)
     expect(entry.vertex_queries).toBeDefined()
     expect(Array.isArray(entry.vertex_queries)).toBe(true)
+
+    table.release(handle)
+    scope.dispose()
+    table.assertNoLeaks()
+  })
+
+  it('publishes the per-face and per-edge creator aligned with the queries', () => {
+    const table = new HandleTable()
+    const scope = new DisposeScope()
+    const handle = boxShape(scope, table, 10, 10, 10, 'f1')
+    const result = tessellateBodies(occ, table, { body_box: makeBody('body_box', 'f1', handle) })
+    const entry = result.body_box as {
+      mesh: { face_queries?: string[]; face_created_by?: string[] }
+      edge_queries?: string[]
+      edge_created_by?: string[]
+    }
+
+    expect(entry.mesh.face_created_by).toHaveLength(entry.mesh.face_queries?.length ?? -1)
+    for (let i = 0; i < (entry.mesh.face_created_by?.length ?? 0); i++) {
+      expect(entry.mesh.face_created_by?.[i]).toBe('f1')
+      expect(creatorOfQuery(entry.mesh.face_queries?.[i])).toBe('f1')
+    }
+    expect(entry.edge_created_by).toHaveLength(entry.edge_queries?.length ?? -1)
+    for (let i = 0; i < (entry.edge_created_by?.length ?? 0); i++) {
+      expect(entry.edge_created_by?.[i]).toBe('f1')
+      expect(creatorOfQuery(entry.edge_queries?.[i])).toBe('f1')
+    }
 
     table.release(handle)
     scope.dispose()

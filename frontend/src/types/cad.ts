@@ -345,6 +345,10 @@ export interface Mesh3D {
   face_data?: FaceData[]
   triangle_to_face?: number[]
   face_queries?: string[]
+  // Per-face creating feature, aligned with `face_queries` / `face_data`. The
+  // relation hint tints the faces a selected feature made and recovers this from
+  // the query lineage when an older body predates the field.
+  face_created_by?: string[]
   // Per-face boundary edge ancestry queries, aligned with `face_queries`.
   face_edge_queries?: string[][]
   // Per-face seam edge queries: an edge the face meets twice (a full cylinder's
@@ -408,6 +412,9 @@ export interface BodyResult {
   mesh_error?: string
   edges?: EdgeData[]
   edge_queries?: string[]
+  // Per-edge creating feature, aligned with `edge_queries`; the wireframe hint
+  // reads it and falls back to the query lineage when absent.
+  edge_created_by?: string[]
   vertices?: [number, number, number][]
   vertex_queries?: string[]
 }
