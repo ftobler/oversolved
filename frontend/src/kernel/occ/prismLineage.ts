@@ -446,9 +446,19 @@ export function prefixLineageMaps(maps: LineageMaps, prefix: string): void {
  * seam (and the outer walls keep their arc-endpoint-pinned seams, identical to
  * the legacy build), so a downstream add-fuse that prisms this body's swept
  * top face merges cleanly -- the original defect repaired at the body's source.
- * Returns the canonical profile face, or null when the round-trip cannot
- * produce one safely (the caller then keeps the legacy multi-face body).
+ * Returns the canonical profile face; `disjoint` when the groups' straight
+ * prisms do not tile one connected region, and `failed` when the round trip
+ * cannot produce a face safely. The caller treats a taper on `failed`
+ * differently from disjoint groups: a disconnected multi-body profile may draft
+ * each group, but an adjacent profile the merge could not rebuild must not fall
+ * back to per-group frustums (their inner walls lean apart and only touch at the
+ * base).
  */
+type MergedProfileResult =
+  | { kind: 'merged'; face: OccShape }
+  | { kind: 'disjoint' }
+  | { kind: 'failed' }
+
 function tryCanonicalMergedProfile(
   oc: OccModule,
   scope: DisposeScope,
@@ -456,7 +466,7 @@ function tryCanonicalMergedProfile(
   plane: PlaneLike,
   directionVec: Vec3,
   distance: number,
-): OccShape | null {
+): MergedProfileResult {
   try {
     const faces = groups.map(([outer, holes]) =>
       scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane)),
@@ -495,7 +505,7 @@ function tryCanonicalMergedProfile(
     // disjoint groups (e.g. two non-adjacent rects) the fuse stays a
     // compound of N solids -- the legacy path must keep them as the
     // multi-body output the caller splits apart; bailing here preserves it.
-    if (countSolids(oc, scope, solid) !== 1) { scope.release(solid); return null }
+    if (countSolids(oc, scope, solid) !== 1) { scope.release(solid); return { kind: 'disjoint' } }
     try {
       const cleaned = cleanWithHistory(oc, scope, solid).shape
       scope.track(cleaned)
@@ -507,7 +517,7 @@ function tryCanonicalMergedProfile(
       // diagnostics pinned was the periodic-cylinder face merge (now avoided
       // here because this solid is the build target, never the add tool). Any
       // other throw means we cannot get a canonical cap cleanly -> bail.
-      return null
+      return { kind: 'failed' }
     }
     // Find the ENTRANCE cap: a planar face whose normal is anti-parallel to
     // `directionVec` and whose centroid lies on the resolved profile plane
@@ -541,17 +551,17 @@ function tryCanonicalMergedProfile(
       entrance = f
       break
     }
-    if (entrance === null) { scope.release(solid); return null }
+    if (entrance === null) { scope.release(solid); return { kind: 'failed' } }
     // The rebuilt body was only the source of the entrance cap face; its
     // shapes are no longer referenced, so drop it instead of letting a dead
     // solid ride the scope to the end of the build.
     const out = canonicalizeFaceCircles(oc, scope, entrance)
     scope.release(entrance)  // the returned face is the caller's copy; the original can go
     scope.release(solid)
-    return out
+    return { kind: 'merged', face: out }
   } catch (e) {
     swallowUnlessTrap(e)
-    return null
+    return { kind: 'failed' }
   }
 }
 
@@ -775,10 +785,16 @@ export function extrudeProfileWithLineage(
   // same merged face and then one draft prism rather than per-group frustums
   // (adjacent groups' inner walls lean apart and would not fuse).
   const merged = tryCanonicalMergedProfile(oc, scope, groups, plane, directionVec, distance)
-  if (merged !== null) {
+  if (merged.kind === 'merged') {
     const lineageLoops = groups.flatMap(([outer, holes]) => [outer, ...holes])
     return prismFaceWithLineage(
-      oc, scope, merged, lineageLoops, plane, directionVec, distance, tokenPrefix, createdBy, sketchId, taperRad,
+      oc, scope, merged.face, lineageLoops, plane, directionVec, distance, tokenPrefix, createdBy, sketchId, taperRad,
+    )
+  }
+  if (taperRad !== 0 && merged.kind !== 'disjoint') {
+    throw new Error(
+      'extrude: a taper on a multi-group profile needs one connected region; ' +
+        'join the groups into one profile or remove the taper',
     )
   }
 

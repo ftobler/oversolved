@@ -602,7 +602,7 @@ export function solveExtrude(
     // through-all cut has no authored end, so there is no honest frame to
     // register at the ignored distance.
     if (termination !== 'through_all' && firstSurfaces !== undefined && firstPtData !== undefined) {
-      registerTopFace(globalRepo, featureId, firstPtData, firstSurfaces, effectiveDistance)
+      registerTopFace(globalRepo, featureId, firstPtData, firstSurfaces, effectiveDistance, taperDeg)
     }
     const length = cutPlane !== null ? UP_TO_REACH : effectiveDistance
     const sweepDir = cutPlane !== null

@@ -13,6 +13,7 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { canonicalFaces } from '../../occ/bodyNames'
 import { volumeOf } from '../../occ/booleans'
 import { shapeBbox } from '../../occ/faceBounds'
+import { faceArea, faceNormal } from '../../occ/primitives'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import { sketchLoopsToFace } from '../../occ/prismLineage'
 import type { PlaneLike } from '../shared/planes'
@@ -45,6 +46,20 @@ function circleSketch(id: string, plane: string, circles: { id: string; at: numb
   }
 }
 
+/** A counter-clockwise L: a concave profile whose inward offset can overrun its
+ *  thin arm. */
+function lSketch(id: string, plane: string): Dict {
+  const pts = [[0, 0], [20, 0], [20, 5], [5, 5], [5, 20], [0, 20]]
+  const entities = pts.map((_p, i) => ({ id: `${id}${i}`, kind: 'line' }))
+  const initial: Record<string, number[]> = {}
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i]
+    const b = pts[(i + 1) % pts.length]
+    initial[`${id}${i}`] = [a[0], a[1], b[0], b[1]]
+  }
+  return { id, kind: 'sketch', plane, entities, initial, constraints: [] }
+}
+
 function extrude(id: string, sketch: string | string[], opts: Dict = {}): Dict {
   return {
     id, kind: 'extrude',
@@ -69,6 +84,7 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
     faces: number
     edges: number
     bbox: number[]
+    valid: boolean
     mesh: Dict
   }
 
@@ -83,6 +99,7 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
         faces: canonicalFaces(oc!, scope, shape).length,
         edges: ((h.body(result, bodyId).edges as unknown[]) ?? []).length,
         bbox: shapeBbox(oc!, scope, shape),
+        valid: scope.track(new oc!.BRepCheck_Analyzer(shape, true)).IsValid_2(),
         mesh: (h.body(result, bodyId).mesh as Dict) ?? {},
       }
     } finally {
@@ -174,6 +191,17 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
       frustumVolume(Math.PI * 16, Math.PI * holeTop ** 2, 5)
     expect(g.volume).toBeCloseTo(expected, 3)
     expect(g.faces).toBe(4)
+    const faceData = (g.mesh.face_data as { normal: number[]; surface_type?: string }[]) ?? []
+    const queries = (g.mesh.face_queries as string[]) ?? []
+    const holeWall = faceData.findIndex(
+      (f, i) => f.surface_type !== 'flatface' && queries[i]?.includes('@sk1/hole'),
+    )
+    expect(holeWall, 'the hole wall keeps its @sk1/hole lineage').toBeGreaterThanOrEqual(0)
+    const cap = faceData.findIndex(
+      (f, i) => f.surface_type === 'flatface' && Math.abs(f.normal[1]) > 0.9 &&
+        queries[i]?.includes('@sk1/hole') && queries[i]?.includes('@sk1/outer'),
+    )
+    expect(cap, 'a tapered cap carries the whole-profile cap ancestry').toBeGreaterThanOrEqual(0)
   })
 
   it('reverse direction: same volume, swept to the other side', () => {
@@ -183,6 +211,33 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
     expect(g.volume).toBeCloseTo(TAPER_15_VOLUME, 4)
     expect(g.bbox[1]).toBeCloseTo(-10, 1)
     expect(g.bbox[4]).toBeCloseTo(0, 1)
+  })
+
+  it('negative distance drafts along the actual sweep and still checks collapse', () => {
+    const result = h.run({
+      features: [
+        rectSketch('sk1', '@builtin_plane_top', -SQ / 2, -SQ / 2, SQ / 2, SQ / 2),
+        extrude('ex1', '@sk1', { distance: -10, taper: 15 }),
+      ],
+    })
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const g = gauges(result, 'ex1', 'body_ex1')
+    expect(g.volume).toBeCloseTo(TAPER_15_VOLUME, 4)
+    expect(g.bbox[1]).toBeCloseTo(-10, 1)
+    expect(g.bbox[4]).toBeCloseTo(0, 1)
+    const top = topVertices(g, -10)
+    expect(Math.max(...top.map((v) => v[0]))).toBeCloseTo(6.320508, 5)
+
+    const collapsed = h.run({
+      features: [
+        rectSketch('sk1', '@builtin_plane_top', -5, -5, 5, 5),
+        extrude('ex1', '@sk1', { distance: -10, taper: 45 }),
+      ],
+    })
+    expect(h.res(collapsed, 'ex1').status).toBe('exception')
+    expect(String(h.res(collapsed, 'ex1').exception)).toMatch(
+      /taper 45 collapses the profile after 5\.000 of 10/,
+    )
   })
 
   it('cut: a tapered pocket removes the prismatoid volume', () => {
@@ -255,6 +310,67 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
     expect(g.volume).toBeCloseTo(expected, 3)
   })
 
+  it('disjoint multi-group groups taper as separate bodies through the fallback', () => {
+    const result = h.run({
+      features: [
+        rectSketch('skA', '@builtin_plane_top', -10, -3, -4, 3),
+        rectSketch('skB', '@builtin_plane_top', 4, -3, 10, 3),
+        extrude('ex1', ['@skA', '@skB'], { distance: 5, taper: 10 }),
+      ],
+    })
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const bodies = Object.keys(result.bodies ?? {}).sort()
+    expect(bodies).toEqual(['body_ex1', 'body_ex1_1'])
+    const offset = 5 * Math.tan((10 * Math.PI) / 180)
+    const expected = (5 / 6) * (
+      6 * 6 + 4 * ((6 - offset) * (6 - offset)) + (6 - 2 * offset) * (6 - 2 * offset)
+    )
+    for (const bodyId of bodies) {
+      const g = gauges(result, 'ex1', bodyId)
+      expect(g.volume, bodyId).toBeCloseTo(expected, 3)
+      expect(g.valid, bodyId).toBe(true)
+    }
+  })
+
+  it('a concave L profile drafts as a valid solid and refuses a collapse', () => {
+    const valid = h.run({
+      features: [
+        lSketch('sk1', '@builtin_plane_top'),
+        extrude('ex1', '@sk1', { distance: 5, taper: 10 }),
+      ],
+    })
+    expect(h.res(valid, 'ex1').status).toBe('ok')
+    const g = gauges(valid, 'ex1', 'body_ex1')
+    expect(g.valid).toBe(true)
+    // The L area is 175; a narrowing draft must sit below the straight prism
+    // and still enclose the (smaller) top face.
+    expect(g.volume).toBeLessThan(175 * 5)
+    expect(g.volume).toBeGreaterThan(0)
+
+    const collapsed = h.run({
+      features: [
+        lSketch('sk1', '@builtin_plane_top'),
+        extrude('ex1', '@sk1', { distance: 20, taper: 45 }),
+      ],
+    })
+    expect(h.res(collapsed, 'ex1').status).toBe('exception')
+    expect(String(h.res(collapsed, 'ex1').exception)).toMatch(/taper 45 collapses the profile/)
+  })
+
+  it('registers a usable top face for a tapered end', () => {
+    const result = h.run({
+      features: [
+        rectSketch('sk1', '@builtin_plane_top', -SQ / 2, -SQ / 2, SQ / 2, SQ / 2),
+        extrude('ex1', '@sk1', { distance: 10, taper: 15 }),
+        rectSketch('sk2', '@ex1/top_face', -3, -3, 3, 3),
+        extrude('ex2', '@sk2', { distance: 2 }),
+      ],
+    })
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'ex2').status).toBe('ok')
+    expect(result.bodies).toHaveProperty('body_ex2')
+  })
+
   it('refuses a taper that collapses the profile before the distance', () => {
     const result = h.run({
       features: [
@@ -302,14 +418,22 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
     expect(gauges(zero, 'ex1', 'body_ex1').volume).toBeCloseTo(3240, 4)
   })
 
-  it('a fillet on a tapered lateral edge survives a taper edit', () => {
+  it('a sloped lateral face query survives a taper edit', () => {
     const first = h.run(squareTaperSpec(15))
     expect(h.res(first, 'ex1').status).toBe('ok')
-    const edgeQueries = (h.body(first, 'body_ex1').edge_queries as string[]) ?? []
-    // A lateral edge carries the sketch entity ancestry; a cap-rim edge would
-    // too, so strip the cap-only ones by requiring two different sketch ids.
-    const lateral = edgeQueries.find((q) => q.startsWith('?') && (q.match(/@sk1\//g) ?? []).length >= 1)
-    expect(lateral).toBeDefined()
+    const mesh = h.body(first, 'body_ex1').mesh as {
+      face_data: { normal: number[]; surface_type?: string }[]
+      face_queries: string[]
+    }
+    // A lateral face's normal is tilted by the draft; the caps are the only
+    // faces whose normal is the plane normal. Pick one sloped face and keep its
+    // own construction query.
+    const lateralIndex = mesh.face_data.findIndex(
+      (f) => f.surface_type !== 'flatface' && Math.abs(f.normal[1]) < 0.9,
+    )
+    expect(lateralIndex).toBeGreaterThanOrEqual(0)
+    const lateral = mesh.face_queries[lateralIndex]
+    expect(lateral).toMatch(/@sk1\/sk1[b r t l]/)
     const withFillet = (taper: number): Dict => ({
       features: [
         rectSketch('sk1', '@builtin_plane_top', -SQ / 2, -SQ / 2, SQ / 2, SQ / 2),
@@ -382,7 +506,21 @@ describe.skipIf(!oc)('LocOpe_DPrism spike (real OCC)', () => {
       expect(builder.IsDone()).toBe(true)
       const solid = scope.track(builder.Shape())
       expect(solid).toBeDefined()
+      // `height` is the lateral edge length: the axial height is height*cos(15)
+      // = 10, and the +15 degree draft narrows the top face.
+      const bbox = shapeBbox(occ, scope, solid)
+      expect(bbox[5]).toBeCloseTo(10, 3)
       const E = occ.TopAbs_ShapeEnum
+      const profileArea = faceArea(occ, scope, face)
+      let topFace: OccShape | null = null
+      const fexp = scope.track(new occ.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
+      for (; fexp.More(); fexp.Next()) {
+        const raw = scope.track(fexp.Current())
+        const f = scope.track(occ.TopoDS.Face_1(raw))
+        if (faceNormal(occ, scope, f)[2] > 0.9) { topFace = f; break }
+      }
+      expect(topFace).not.toBeNull()
+      expect(faceArea(occ, scope, topFace!)).toBeLessThan(profileArea)
       const exp = scope.track(new occ.TopExp_Explorer_2(face, E.TopAbs_EDGE, E.TopAbs_SHAPE))
       let edges = 0
       for (; exp.More(); exp.Next()) {

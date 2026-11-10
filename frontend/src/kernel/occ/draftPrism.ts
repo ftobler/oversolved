@@ -93,6 +93,21 @@ function reversedWire(oc: OccModule, scope: DisposeScope, wire: OccShape): OccSh
   return scope.track(oc.TopoDS.Wire_1(reversed))
 }
 
+/** Whether an offset wire still bounds a valid planar face. A self-intersecting
+ *  inward offset can keep its edges while no longer enclosing a face, which is
+ *  exactly the collapse the named refusal must catch. */
+function offsetWireMakesFace(oc: OccModule, scope: DisposeScope, wire: OccShape): boolean {
+  try {
+    const typed = scope.track(oc.TopoDS.Wire_1(wire))
+    const builder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(typed, true))
+    if (!builder.IsDone()) return false
+    const face = scope.track(builder.Face())
+    return scope.track(new oc.BRepCheck_Analyzer(face, true)).IsValid_2()
+  } catch {
+    return false
+  }
+}
+
 /** Offset a planar wire in its own plane, or null when it collapsed. OCC's
  *  collapsed result is a wire with no edges rather than an exception. */
 function offsetWire(
@@ -122,7 +137,7 @@ function offsetWire(
   } catch {
     return null
   }
-  if (isNullShape(out) || countEdges(oc, scope, out) === 0) {
+  if (isNullShape(out) || countEdges(oc, scope, out) === 0 || !offsetWireMakesFace(oc, scope, out)) {
     scope.release(out)
     return null
   }
@@ -269,7 +284,9 @@ function inwardLimit(
 }
 
 function compact(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(3)
+  // Radians-to-degrees round trips are rarely exactly integral even when the
+  // authored number was; round first so 15.000 prints as "15", not "15.000".
+  return String(Number(n.toFixed(6)))
 }
 
 /**
@@ -302,7 +319,10 @@ export function draftPrismBuilder(
   taperRad: number,
 ): OccPrismBuilder {
   const { outer, holes } = faceWires(oc, scope, face)
-  const amount = distance * Math.tan(taperRad)
+  // The offset is about the actual sweep length. A negative distance sweeps the
+  // other way; the draft still narrows along that sweep, so the magnitude is
+  // what the offset and the collapse probe use.
+  const amount = Math.abs(distance) * Math.tan(taperRad)
   const tan = Math.abs(Math.tan(taperRad))
   // A positive taper moves the outer wire inward and every hole wire outward;
   // reversing the hole wire keeps that one sign rule. The plan's
@@ -337,7 +357,7 @@ export function draftPrismBuilder(
     const deg = compact((taperRad * 180) / Math.PI)
     throw new Error(
       `extrude: taper ${deg} collapses the profile after ${collapseHeight.toFixed(3)} of ` +
-        `${compact(distance)}; shorten the distance or reduce the taper`,
+        `${compact(Math.abs(distance))}; shorten the distance or reduce the taper`,
     )
   }
 

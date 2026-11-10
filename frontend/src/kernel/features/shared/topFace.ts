@@ -12,6 +12,11 @@ type Dict = Record<string, unknown>
  * sketches/queries can reference them (mirrors `_register_top_face`). The top
  * centroid is the area-weighted loop centroid lifted to the sketch plane and
  * pushed by `distance` along the normal.
+ *
+ * A tapered end's rim is the offset boundary, not the authored one, so there is
+ * no un-offset `edge0` to register there: the face/plane is still the honest
+ * top, but the synthetic edge is skipped rather than naming an edge that does
+ * not exist on the body.
  */
 export function registerTopFace(
   globalRepo: Repository,
@@ -19,6 +24,7 @@ export function registerTopFace(
   pt: PlaneLike,
   surfaces: Dict[],
   distance: number,
+  taperDeg = 0,
 ): void {
   const origin = pt.origin
   const xAxis = pt.x_axis
@@ -53,7 +59,7 @@ export function registerTopFace(
     y_axis: [...yAxis],
   })
 
-  if (surfaces.length && (surfaces[0].boundary as Dict[])?.length) {
+  if (taperDeg === 0 && surfaces.length && (surfaces[0].boundary as Dict[])?.length) {
     const edge = (surfaces[0].boundary as Dict[])[0]
     if ('start' in edge && 'end' in edge) {
       const s2d = edge.start as number[]

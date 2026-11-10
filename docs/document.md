@@ -287,7 +287,10 @@ through_all are refused by name. A taper that would collapse the profile before
 `distance` is refused with the height it would collapse at, as in
 `extrude: taper 45 collapses the profile after 5.000 of 10; shorten the distance
 or reduce the taper`. Absent or 0 is the straight prism the feature has always
-built.
+built. In the editor, switching `direction` to symmetric or `termination` away
+from blind clears an authored `taper` in the same edit, so the now-hidden field
+cannot strand the feature; a hand-authored document that keeps both is refused
+by the kernel.
 
 ### revolve
 
