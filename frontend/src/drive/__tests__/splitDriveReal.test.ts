@@ -12,6 +12,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 import type { ScriptStep } from '../scriptRunner'
 
 function occInstalled(): boolean {
@@ -46,7 +47,7 @@ describe.skipIf(!ready)('the Ex021 split script (real OCC + Rust solver)', () =>
   it('builds the holed block and keeps the top half in one run', async () => {
     const result = await runHeadless({ doc: emptyDriveDoc(), steps: ex021Steps() })
     expect(result.outcome.ok).toBe(true)
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     for (const step of result.outcome.steps) expect(step.ok, `${step.id}: ${step.error?.message ?? ''}`).toBe(true)
     expect(result.bodies).toEqual(['body_ex1'])
 

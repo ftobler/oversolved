@@ -24,14 +24,20 @@ const solveBytes = loadSolver()
 const solveMate = loadPkgNodeExport<(input: Uint8Array) => Uint8Array>('solve_mate_bytes', PKG_MATE)
 const describeReal = oc && solveBytes && solveMate ? describe : describe.skip
 
-function rectSketch(sketchId: string, w: number, h: number) {
+function rectSketch(sketchId: string, w: number, h: number, x0 = 0) {
+  const shift = (quad: number[]) => [quad[0] + x0, quad[1], quad[2] + x0, quad[3]]
   return {
     id: sketchId, kind: 'sketch' as const, label: 'Rectangle', plane: '@builtin_plane_front',
     entities: [
       { id: 'bottom', kind: 'line' as const }, { id: 'right', kind: 'line' as const },
       { id: 'top', kind: 'line' as const }, { id: 'left', kind: 'line' as const },
     ],
-    initial: { bottom: [0, 0, w, 0], right: [w, 0, w, h], top: [w, h, 0, h], left: [0, h, 0, 0] },
+    initial: {
+      bottom: shift([0, 0, w, 0]), right: shift([w, 0, w, h]),
+      top: shift([w, h, 0, h]), left: shift([0, h, 0, 0]),
+    },
+    // Fully constrained: the dimensions plus the signed distance from the
+    // origin, so an assembly part reports no sketch warning row.
     constraints: [
       { id: 'c1', kind: 'coincident' as const, a: { entity: 'bottom', point: 'end' as const }, b: { entity: 'right', point: 'start' as const } },
       { id: 'c2', kind: 'coincident' as const, a: { entity: 'right', point: 'end' as const }, b: { entity: 'top', point: 'start' as const } },
@@ -43,15 +49,22 @@ function rectSketch(sketchId: string, w: number, h: number) {
       { id: 'c8', kind: 'vertical' as const, target: { entity: 'left' } },
       { id: 'c9', kind: 'length' as const, target: { entity: 'bottom' }, value: w },
       { id: 'c10', kind: 'length' as const, target: { entity: 'left' }, value: h },
+      { id: 'c11', kind: 'point_distance_x' as const, a: { entity: 'bottom', point: 'start' as const }, b: '@builtin_origin', value: x0, sign: -1 },
+      { id: 'c12', kind: 'point_distance_y' as const, a: { entity: 'bottom', point: 'start' as const }, b: '@builtin_origin', value: 0, sign: -1 },
     ],
   }
 }
 
-function circleSketch(sketchId: string, radius: number) {
+function circleSketch(sketchId: string, radius: number, cx = 0, cy = 0) {
   return {
     id: sketchId, kind: 'sketch' as const, label: 'Circle', plane: '@builtin_plane_front',
     entities: [{ id: 'c1', kind: 'circle' as const }],
-    initial: { c1: [0, 0, radius] },
+    initial: { c1: [cx, cy, radius] },
+    constraints: [
+      { id: 'c1', kind: 'radius' as const, target: { entity: 'c1' }, value: radius },
+      { id: 'c2', kind: 'point_distance_x' as const, a: { entity: 'c1', point: 'center' as const }, b: '@builtin_origin', value: cx, sign: -1 },
+      { id: 'c3', kind: 'point_distance_y' as const, a: { entity: 'c1', point: 'center' as const }, b: '@builtin_origin', value: cy, sign: -1 },
+    ],
   }
 }
 
@@ -87,17 +100,7 @@ function emptyPart(): PartDoc {
 
 /** A rectangle sketch offset along x, so several posts can share a plane. */
 function rectSketchAt(sketchId: string, x0: number, w: number, h: number) {
-  const base = rectSketch(sketchId, w, h)
-  const shift = (quad: number[]) => [quad[0] + x0, quad[1], quad[2] + x0, quad[3]]
-  return {
-    ...base,
-    initial: {
-      bottom: shift(base.initial.bottom),
-      right: shift(base.initial.right),
-      top: shift(base.initial.top),
-      left: shift(base.initial.left),
-    },
-  }
+  return rectSketch(sketchId, w, h, x0)
 }
 
 /**
@@ -152,11 +155,7 @@ function binding(pin: PartDoc = pinDoc()): Map<string, PartDoc> {
 
 /** A circle sketch at any centre of the Front plane, for a bore in a plate. */
 function circleSketchAt(sketchId: string, cx: number, cy: number, radius: number) {
-  return {
-    id: sketchId, kind: 'sketch' as const, label: 'Bore', plane: '@builtin_plane_front',
-    entities: [{ id: 'c1', kind: 'circle' as const }],
-    initial: { c1: [cx, cy, radius] },
-  }
+  return circleSketch(sketchId, radius, cx, cy)
 }
 
 /** A 100 x 100 x 10 flange plate with one 6 mm bore through its centre. */

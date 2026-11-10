@@ -17,6 +17,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 import { featureById } from '@/testing/featureAccess'
 import { outlineSignedArea } from '@/testing/outlineArea'
 
@@ -48,7 +49,7 @@ function storedArea(doc: PartDoc, sketchId: string): number {
 async function solved(steps: ScriptStep[]): Promise<{ volume: number; doc: PartDoc }> {
   const run = await runHeadless({ doc: emptyDriveDoc(), steps })
   expect(run.ok).toBe(true)
-  expect(run.features).toEqual([])
+  expect(nonSketchProblems(run.features)).toEqual([])
   const measured = await measureHeadless(run.doc!)
   expect(measured?.ok).toBe(true)
   return { volume: measured!.measures.volume, doc: run.doc! }

@@ -13,6 +13,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -50,7 +51,7 @@ describe.skipIf(!ready)('sketch created ids chain a run (real OCC + Rust solver)
     ]
     const result = await runHeadless({ doc: emptyDriveDoc(), steps })
     expect(result.ok).toBe(true)
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     expect(result.outcome.steps[1].createdIds).toEqual(['b', 'r', 't', 'l'])
     expect(result.outcome.steps[1].constraints).toBe(8)
     expect(result.part.solveOutcomes().rev1.status).toBe('ok')

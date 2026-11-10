@@ -19,6 +19,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -88,7 +89,7 @@ describe.skipIf(!ready)('sweep profile refs (real OCC + Rust solver)', () => {
         }),
       ],
     })
-    expect(run.features).toEqual([])
+    expect(nonSketchProblems(run.features)).toEqual([])
     // A whole-sketch pick would add the r4 disc too; the pick owns pi*2^2*10.
     const measured = await measureHeadless(run.doc as PartDoc)
     expect(Math.abs((measured?.measures.volume ?? 0) - Math.PI * 4 * 10)).toBeLessThan(0.5)
@@ -154,7 +155,7 @@ describe.skipIf(!ready)('sweep profile refs (real OCC + Rust solver)', () => {
         field('set_sweep_field', 'swInner', 'multisection', true),
       ],
     })
-    expect(run.features).toEqual([])
+    expect(nonSketchProblems(run.features)).toEqual([])
     const tube = Math.PI * (R * R - r * r) * L
     const rod = Math.PI * 4 * L
     const cut = row(run, 'swInner')

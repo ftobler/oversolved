@@ -60,7 +60,7 @@ returns the query strings a click would store:
 ```jsonc
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run","arguments":{"steps":[
   {"mutation":{"type":"add_sketch","featureId":"sk1","plane":"@builtin_plane_front"}},
-  {"mutation":{"type":"add_rect","featureId":"sk1","p0":[0,0],"p1":[20,14]}},
+  {"mutation":{"type":"add_rect","featureId":"sk1","p0":[0,0],"p1":[20,14],"p0Ref":"@builtin_origin","dimensions":true}},
   {"mutation":{"type":"add_extrude","featureId":"ex1","sketchQuery":"$sk1","distance":10,"operation":"new"}}
 ]}}}
 // result.docHash is the handle for call 2.
@@ -84,9 +84,10 @@ cases:
 
 The selector is only an authoring aid; its query output is what the document
 stores, exactly as if each element had been clicked. Write the recipe by hand
-from the returned queries. The committed recipes use exact initial sketch
-geometry with no constraints: the translation is a direct model, not a
-dimensioned design.
+from the returned queries. Committed recipes follow the sketch constraint law:
+dimension the sketch and anchor it to projected geometry or the origin, so the
+design is a model rather than a pile of coordinates. The source's coordinates
+pick the dimension values; an example is a guide, not a 1:1 port.
 
 A source `shell(kind="arc")` (CadQuery's default) or `offset(..., kind=Kind.ARC)`
 (build123d's default) maps to `join: "arc"`; `kind="intersection"` maps to the

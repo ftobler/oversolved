@@ -18,6 +18,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -64,7 +65,7 @@ describe.skipIf(!ready)('mirror_entities extrudes to the symmetric volume (real 
   it('the sketch after the mirror carries the clones and one shared seam edge', async () => {
     const built = await mirroredHalf()
     expect(built.ok).toBe(true)
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
 
     const initial = sketchEntities(built.doc!)
     const lines = Object.entries(initial)
@@ -82,7 +83,7 @@ describe.skipIf(!ready)('mirror_entities extrudes to the symmetric volume (real 
     const measured = await measureHeadless(built.doc!)
     expect(measured).not.toBeNull()
     expect(measured!.ok).toBe(true)
-    expect(measured!.features).toEqual([])
+    expect(nonSketchProblems(measured!.features)).toEqual([])
     expect(measured!.measures.volume).toBeCloseTo(120, 6)
     const { bbox, centroid } = measured!.measures
     expect(bbox).not.toBeNull()
@@ -111,7 +112,7 @@ describe.skipIf(!ready)('mirror_entities extrudes to the symmetric volume (real 
     ]
     const built = await runHeadless({ doc: emptyDriveDoc(), steps })
     expect(built.ok).toBe(true)
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     const measured = await measureHeadless(built.doc!)
     expect(measured!.measures.volume).toBeCloseTo(120, 6)
     expect(measured!.measures.centroid![0]).toBeCloseTo(0, 6)

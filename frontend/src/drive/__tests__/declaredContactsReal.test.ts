@@ -22,6 +22,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -125,7 +126,7 @@ describe.skipIf(!ready)('declared contacts at the real kernel', () => {
     for (const s of [1000, 10_000, 100_000]) {
       const solved = await runHeadless({ doc: emptyDriveDoc(), steps: profileSteps(s) })
       expect(solved.ok).toBe(true)
-      expect(solved.features).toEqual([])
+      expect(nonSketchProblems(solved.features)).toEqual([])
       const gaps = jointGaps(solved.doc!, ROUNDED_CORNER_JOINTS)
       const gap = Math.max(...gaps.map((g) => g.gap))
       doc = solved.doc
@@ -141,12 +142,12 @@ describe.skipIf(!ready)('declared contacts at the real kernel', () => {
       steps: [m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: scale, operation: 'new' })],
     })
     expect(built.ok).toBe(true)
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
 
     const measured = await measureHeadless(built.doc!)
     expect(measured).not.toBeNull()
     expect(measured!.ok).toBe(true)
-    expect(measured!.features).toEqual([])
+    expect(nonSketchProblems(measured!.features)).toEqual([])
     // One body: a second would mean the open joint split the profile.
     expect(measured!.measures.bodies).toBe(1)
     const expected = AREA_PER_UNIT * scale ** 3

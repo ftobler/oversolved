@@ -15,6 +15,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -47,7 +48,7 @@ function toothSteps(flankParams: number[]): ScriptStep[] {
 
 async function build(flankParams: number[]) {
   const built = await runHeadless({ doc: emptyDriveDoc(), steps: toothSteps(flankParams) })
-  expect(built.features).toEqual([])
+  expect(nonSketchProblems(built.features)).toEqual([])
   expect(built.bodies).toHaveLength(1)
   return { built, volume: (await measureHeadless(built.doc!))!.measures.volume }
 }

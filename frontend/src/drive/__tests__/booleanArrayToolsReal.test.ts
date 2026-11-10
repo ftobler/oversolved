@@ -17,6 +17,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -70,13 +71,13 @@ describe.skipIf(!ready)('boolean tools naming a body pattern (real OCC + Rust so
         m({ type: 'add_boolean', featureId: 'bo1', operation: 'subtract', target: 'body_ex1', tools: ['@ca1'] }),
       ],
     })
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     const six = await measureHeadless(built.doc as PartDoc)
     expect(six!.measures.bodies).toBe(1)
     expect(six!.measures.volume).toBeCloseTo(PLATE - 6 * SLOT, 3)
 
     const raised = await runHeadless({ doc: built.doc as PartDoc, steps: [ca('count', 8)] })
-    expect(raised.features).toEqual([])
+    expect(nonSketchProblems(raised.features)).toEqual([])
     const eight = await measureHeadless(raised.doc as PartDoc)
     expect(eight!.measures.bodies).toBe(1)
     expect(eight!.measures.volume).toBeCloseTo(PLATE - 8 * SLOT, 3)

@@ -14,6 +14,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 import type { ScriptStep } from '../scriptRunner'
 
 function occInstalled(): boolean {
@@ -91,7 +92,7 @@ describe.skipIf(!ready)('precision audit probes (real OCC + Rust solver)', () =>
       if (k === 0) {
         // Exact coaxial: one lateral face, no shoulder to fillet.
         expect(cylinders).toHaveLength(1)
-        expect(result.features).toEqual([])
+        expect(nonSketchProblems(result.features)).toEqual([])
         return
       }
       // Any representable difference keeps two faces, even one grid step.
@@ -149,7 +150,7 @@ describe.skipIf(!ready)('precision audit probes (real OCC + Rust solver)', () =>
       ],
       docId: 'precision-near-tangent-base',
     })
-    expect(base.features).toEqual([])
+    expect(nonSketchProblems(base.features)).toEqual([])
     const doc = base.doc as PartDoc
     const verticals = (await selectHeadless(doc, { kind: 'edge', where: { parallel: [0, 0, 1] } }))!.queries
     expect(verticals).toHaveLength(2)

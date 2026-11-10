@@ -14,6 +14,7 @@
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { runHeadless, measureHeadless, selectHeadless, emptyDriveDoc } from '../headlessOps'
+import { nonSketchProblems } from './buildProblems'
 import type { ScriptStep } from '../scriptRunner'
 import type { Selector } from '@/kernel/select'
 import type { PartDoc } from '@/types/cad'
@@ -43,9 +44,13 @@ const ready = oc && solveBytes
 
 const m = (mutation: Record<string, unknown>): ScriptStep => ({ mutation } as ScriptStep)
 
+// These fixtures are free profile geometry re-created from practice and bug
+// reports (PPP0103 and the MCAD boxes). The underconstrained-sketch warning is
+// the law's own subject and has dedicated tests; here it must not mask the
+// feature failure the case is about, so only non-warning rows are asserted.
 async function build(steps: ScriptStep[]): Promise<PartDoc> {
   const result = await runHeadless({ doc: emptyDriveDoc(), steps })
-  expect(result.features).toEqual([])
+  expect(nonSketchProblems(result.features)).toEqual([])
   return result.doc as PartDoc
 }
 

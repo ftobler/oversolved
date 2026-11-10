@@ -15,9 +15,15 @@ echo "claimed: ${#claimed[@]}  reported: ${#reports[@]}"
 # count is the one that says how much of the replay set exists.
 metas=("$repo/scratch/mcp-practice/scripts"/*/meta.json)
 failed=0
-((${#metas[@]})) && failed="$(grep -l '"replay": *"failed"' "${metas[@]}" | wc -l)"
+((${#metas[@]})) && failed="$(grep -l '"replay": *"failed"' "${metas[@]}" | wc -l || true)"
 echo "scripts kept: ${#metas[@]}  replay failed: $failed"
 ((${#reports[@]})) || exit 0
+
+# The sketch constraint law makes an unconstrained sketch a finding; this is
+# the count that says how often the law cost or caught something.
+unconstrained=0
+((${#reports[@]})) && unconstrained="$(grep -l 'sketch / could not fully constrain' "${reports[@]}" | wc -l || true)"
+echo "reports with an unconstrained-sketch finding: $unconstrained"
 
 echo
 echo "outcomes:"

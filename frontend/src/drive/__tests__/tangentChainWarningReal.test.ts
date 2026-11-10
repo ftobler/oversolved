@@ -27,6 +27,7 @@ import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -50,7 +51,7 @@ const m = (mutation: Record<string, unknown>): ScriptStep => ({ mutation } as Sc
 
 async function build(steps: ScriptStep[]): Promise<PartDoc> {
   const result = await runHeadless({ doc: emptyDriveDoc(), steps })
-  expect(result.features).toEqual([])
+  expect(nonSketchProblems(result.features)).toEqual([])
   return result.doc as PartDoc
 }
 
@@ -104,7 +105,7 @@ describe.skipIf(!ready)('fillet/chamfer tangent-chain note (real OCC + Rust solv
     // The chain is a note, not a problem: no `features` row and no summary
     // suffix. The volume contribution is still visible as a delta row.
     expect(single.problem).toBeUndefined()
-    expect(single.result.features).toEqual([])
+    expect(nonSketchProblems(single.result.features)).toEqual([])
     expect(single.result.notes).toEqual([{ ids: ['fi2'], text: chainNote }])
     const row = single.result.featureDeltas?.find(row => row.id === 'fi2')
     expect(row).toBeDefined()
@@ -131,7 +132,7 @@ describe.skipIf(!ready)('fillet/chamfer tangent-chain note (real OCC + Rust solv
     const single = await apply(one, { type: 'add_chamfer', featureId: 'ch2', edges: [(await topLoop(one))[0]], distance: 0.1 })
     const chainNote = 'chamfer: the picked edges continue along the tangent chain, so 8 edges were chamfered (7 of them not picked)'
     expect(single.problem).toBeUndefined()
-    expect(single.result.features).toEqual([])
+    expect(nonSketchProblems(single.result.features)).toEqual([])
     expect(single.result.notes).toEqual([{ ids: ['ch2'], text: chainNote }])
     expect(single.result.featureDeltas?.find(row => row.id === 'ch2')?.volumeDelta).toBeLessThan(0)
 

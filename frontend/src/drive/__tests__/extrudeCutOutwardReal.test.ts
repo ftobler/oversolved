@@ -16,6 +16,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -65,7 +66,7 @@ describe.skipIf(!ready)('an outward face-sketch cut names direction: reverse', (
 
   it('the reversed cut removes pi r^2 * 5', async () => {
     const result = await cutOnTopFace('reverse')
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     // The delta row names the body the cut went into, with its own volume.
     const row = result.featureDeltas!.find(delta => delta.id === 'cut1')!
     expect(row.body).toBe('body_ex1')

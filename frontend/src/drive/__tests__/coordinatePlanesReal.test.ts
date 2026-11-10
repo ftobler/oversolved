@@ -17,6 +17,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 import type { ScriptStep } from '../scriptRunner'
 
 function occInstalled(): boolean {
@@ -97,7 +98,7 @@ describe.skipIf(!ready)('vertex picks and origin_rotation planes through the hea
       })],
     })
     expect(run.ok).toBe(true)
-    expect(run.features).toEqual([])
+    expect(nonSketchProblems(run.features)).toEqual([])
     const frame = run.frames?.pl1
     expect(frame, 'the plane frame is in the reply').toBeDefined()
     close(frame!.origin, CORNER)
@@ -122,7 +123,7 @@ describe.skipIf(!ready)('vertex picks and origin_rotation planes through the hea
       ],
     })
     expect(run.ok).toBe(true)
-    expect(run.features, 'the tilted chain solves clean').toEqual([])
+    expect(nonSketchProblems(run.features), 'the tilted chain solves clean').toEqual([])
     const frame = run.frames?.sk2
     expect(frame, 'the sketch frame is in the reply').toBeDefined()
     close(frame!.origin, [20, 10, -15])
@@ -147,7 +148,7 @@ describe.skipIf(!ready)('vertex picks and origin_rotation planes through the hea
       ],
     })
     expect(run.ok).toBe(true)
-    expect(run.features, 'the expression angle solves clean').toEqual([])
+    expect(nonSketchProblems(run.features), 'the expression angle solves clean').toEqual([])
     const frame = run.frames?.pl3
     expect(frame, 'the plane frame is in the reply').toBeDefined()
     // tilt = 60 degrees about +Z swings the world XY axes; the frame could only

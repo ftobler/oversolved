@@ -13,6 +13,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -57,6 +58,6 @@ describe.skipIf(!ready)('hole drill sites that overlap (real OCC + Rust solver)'
 
   it('stays quiet for sites clear of each other', async () => {
     const result = await runHeadless({ doc: emptyDriveDoc(), steps: steps([10, 0]) })
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
   }, 120_000)
 })

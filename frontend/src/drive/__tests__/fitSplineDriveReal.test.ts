@@ -13,6 +13,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 import { loadPartDoc } from '@/persistence/docSchema'
 import type { PartDoc } from '@/types/cad'
 
@@ -48,7 +49,7 @@ const ex010Steps: ScriptStep[] = [
 describe.skipIf(!ready)('fit_spline drive round trip (real kernel)', () => {
   it('builds Ex010, selects both spline edges and reloads to the same volume', async () => {
     const built = await runHeadless({ doc: emptyDriveDoc(), steps: ex010Steps })
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     const measure = await measureHeadless(built.doc!)
     // The analytic extrusion (profile area 3.785059288899729 times the 0.5
     // height). CadQuery's 1.8925830470835936 is the default rule's 2.8e-5-high
@@ -82,7 +83,7 @@ describe.skipIf(!ready)('fit_spline drive round trip (real kernel)', () => {
       { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 1, operation: 'new' } },
     ]
     const built = await runHeadless({ doc: emptyDriveDoc(), steps })
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     const measure = await measureHeadless(built.doc!)
     // CadQuery 2.8.0 with scale=True.
     expect(measure!.measures.volume).toBeCloseTo(5.074999999999999, 5)
@@ -128,8 +129,8 @@ describe.skipIf(!ready)('fit_spline drive round trip (real kernel)', () => {
     ])
     const a = await runHeadless({ doc: emptyDriveDoc(), steps: byTangents })
     const b = await runHeadless({ doc: emptyDriveDoc(), steps: byHandles })
-    expect(a.features).toEqual([])
-    expect(b.features).toEqual([])
+    expect(nonSketchProblems(a.features)).toEqual([])
+    expect(nonSketchProblems(b.features)).toEqual([])
     const stored = (doc: unknown): number[] => {
       const sketch = (doc as PartDoc).features!.find(f => f.id === 'sk1') as { initial?: Record<string, number[]> }
       return sketch.initial!.sp
@@ -160,7 +161,7 @@ describe.skipIf(!ready)('fit_spline sweep path (real kernel)', () => {
       { mutation: { type: 'add_sweep', featureId: 'sw1', sketchQuery: '$sk_prof', pathQuery: '$sk_path' } },
     ]
     const built = await runHeadless({ doc: emptyDriveDoc(), steps })
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     const measure = await measureHeadless(built.doc!)
     // CadQuery 2.8.0: 1.4226384594837815; the sweep mode may differ slightly.
     expect(measure!.measures.volume).toBeCloseTo(1.4226384594837815, 3)
@@ -195,8 +196,8 @@ describe.skipIf(!ready)('fit_spline sweep path (real kernel)', () => {
   it('gives the same volume when the fit-spline path is walked backward', async () => {
     const forward = await runHeadless({ doc: emptyDriveDoc(), steps: chainPath(false) })
     const backward = await runHeadless({ doc: emptyDriveDoc(), steps: chainPath(true) })
-    expect(forward.features).toEqual([])
-    expect(backward.features).toEqual([])
+    expect(nonSketchProblems(forward.features)).toEqual([])
+    expect(nonSketchProblems(backward.features)).toEqual([])
     const forwardVolume = (await measureHeadless(forward.doc!))!.measures.volume
     const backwardVolume = (await measureHeadless(backward.doc!))!.measures.volume
     expect(backwardVolume).toBeCloseTo(forwardVolume, 6)

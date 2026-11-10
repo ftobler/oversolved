@@ -20,6 +20,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 import { analyticHoleRemoval } from '@/kernel/occ/__tests__/splineTrimBody'
 
 function occInstalled(): boolean {
@@ -76,7 +77,7 @@ describe.skipIf(!ready)('the spline-trimmed hole\'s featureDeltas row (real OCC)
   it('reports the analytic removal, not the integrator\'s error', async () => {
     const built = await runHeadless({ doc: emptyDriveDoc(), steps: splineTrimSteps(), featureDeltas: 'all' })
     expect(built.ok).toBe(true)
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     const hole = row(built, 'ho1')
     expect(hole.status).toBe('ok')
     const removed = -hole.volumeDelta

@@ -15,6 +15,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -54,7 +55,7 @@ describe.skipIf(!ready)('docs/translate.md named-plane table (real OCC + Rust so
           { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 3, direction, operation: 'new' } },
         ],
       })
-      expect(result.features).toEqual([])
+      expect(nonSketchProblems(result.features)).toEqual([])
       const measured = await measureHeadless(result.doc as PartDoc)
       measured!.measures.bbox!.forEach((value, i) => expect(value, `bbox[${i}]`).toBeCloseTo(bbox[i], 6))
     }, 120_000)

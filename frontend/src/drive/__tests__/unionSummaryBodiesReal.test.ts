@@ -38,11 +38,15 @@ const ready = oc && solveBytes
 const m = (mutation: Record<string, unknown>): ScriptStep => ({ mutation } as ScriptStep)
 const field = (type: string, featureId: string, f: string, value: unknown) => m({ type, featureId, field: f, value })
 
-// A box on Front, extruded `new`, from x0..x0+40.
+// A box on Front, extruded `new`, from x0..x0+40. Fully constrained: the
+// dimensions plus the origin-anchored signed distances, so no sketch warning
+// joins the summary this case reads.
 function box(n: number, x0: number): ScriptStep[] {
   return [
     m({ type: 'add_sketch', featureId: `skb${n}`, plane: '@builtin_plane_front' }),
-    m({ type: 'add_rect', featureId: `skb${n}`, p0: [x0, 0], p1: [x0 + 40, 30] }),
+    m({ type: 'add_rect', featureId: `skb${n}`, p0: [x0, 0], p1: [x0 + 40, 30], entityIds: ['b', 'r', 't', 'l'], dimensions: true }),
+    m({ type: 'add_constraint', featureId: `skb${n}`, kind: 'point_distance_x', targets: [`vertex:skb${n}:b:start`, '@builtin_origin'], value: x0, sign: -1 }),
+    m({ type: 'add_constraint', featureId: `skb${n}`, kind: 'point_distance_y', targets: [`vertex:skb${n}:b:start`, '@builtin_origin'], value: 0, sign: -1 }),
     m({ type: 'add_extrude', featureId: `ex${n}`, sketchQuery: `$skb${n}`, distance: 20 }),
     field('set_extrude_field', `ex${n}`, 'direction', 'symmetric'),
     field('set_extrude_field', `ex${n}`, 'operation', 'new'),
@@ -53,7 +57,9 @@ function box(n: number, x0: number): ScriptStep[] {
 function cut(n: number, cx: number, target: string): ScriptStep[] {
   return [
     m({ type: 'add_sketch', featureId: `skc${n}`, plane: '@builtin_plane_front' }),
-    m({ type: 'add_entity', featureId: `skc${n}`, kind: 'circle', params: [cx, 15, 5] }),
+    m({ type: 'add_entity', featureId: `skc${n}`, kind: 'circle', params: [cx, 15, 5], entityId: 'c1', dimensions: true }),
+    m({ type: 'add_constraint', featureId: `skc${n}`, kind: 'point_distance_x', targets: [`vertex:skc${n}:c1:center`, '@builtin_origin'], value: cx, sign: -1 }),
+    m({ type: 'add_constraint', featureId: `skc${n}`, kind: 'point_distance_y', targets: [`vertex:skc${n}:c1:center`, '@builtin_origin'], value: 15, sign: -1 }),
     m({ type: 'add_extrude', featureId: `cut${n}`, sketchQuery: `$skc${n}`, distance: 40 }),
     field('set_extrude_field', `cut${n}`, 'direction', 'symmetric'),
     field('set_extrude_field', `cut${n}`, 'operation', 'cut'),

@@ -20,6 +20,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -70,7 +71,7 @@ async function topFace(doc: PartDoc): Promise<string> {
 // into that sketch, so the body and the plane are the same throughout.
 async function topSketchDoc(): Promise<PartDoc> {
   const plate = await buildPlate()
-  expect(plate.features).toEqual([])
+  expect(nonSketchProblems(plate.features)).toEqual([])
   const sketched = await runHeadless({
     doc: plate.doc!,
     steps: [{ mutation: { type: 'add_sketch', featureId: 'sk2', plane: await topFace(plate.doc!) } }],
@@ -117,7 +118,7 @@ describe.skipIf(!ready)('toggle_construction on a point (real kernel)', () => {
         { mutation: { type: 'add_hole', featureId: 'h1', sketch: '@sk2', diameter: 0.125, depth_mode: 'through_all' } },
       ],
     })
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     const before = (await measureHeadless(built.doc!))!.measures.volume
     expect(before).toBeCloseTo(PLATE_VOLUME - ONE_BORE, 6)
 
@@ -134,7 +135,7 @@ describe.skipIf(!ready)('toggle_construction on a point (real kernel)', () => {
       doc: flagged.doc!,
       steps: [{ mutation: { type: 'toggle_construction', targets: ['entity:sk2:p1'] } }],
     })
-    expect(cleared.features).toEqual([])
+    expect(nonSketchProblems(cleared.features)).toEqual([])
     const after = (await measureHeadless(cleared.doc!))!.measures.volume
     expect(after).toBeCloseTo(before, 6)
   }, 180_000)
@@ -159,7 +160,7 @@ describe.skipIf(!ready)('toggle_construction on a point (real kernel)', () => {
     ]
     const built = await runHeadless({ doc: rect.doc!, steps })
     expect(built.ok).toBe(true)
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
 
     const measured = await measureHeadless(built.doc!)
     expect(measured!.ok).toBe(true)

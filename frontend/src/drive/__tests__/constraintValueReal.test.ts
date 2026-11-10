@@ -17,6 +17,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 import type { ScriptStep } from '../scriptRunner'
 
 function occInstalled(): boolean {
@@ -80,7 +81,7 @@ describe.skipIf(!ready)('a dimension value is stored on the 1e-6 grid (real OCC 
     })
     expect(result.ok).toBe(true)
     expect(result.doc?.length_unit).toBe('inch')
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     expect(storedDiameter(result.doc!)).toBe(0.3125)
 
     const extrude = result.featureDeltas?.find(row => row.id === 'ex1')
@@ -98,7 +99,7 @@ describe.skipIf(!ready)('a dimension value is stored on the 1e-6 grid (real OCC 
     })
     expect(result.ok).toBe(true)
     expect(result.doc?.length_unit).toBeUndefined()
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     expect(storedDiameter(result.doc!)).toBe(2.0625)
 
     const extrude = result.featureDeltas?.find(row => row.id === 'ex1')
@@ -118,7 +119,7 @@ describe.skipIf(!ready)('a dimension value is stored on the 1e-6 grid (real OCC 
       ],
     })
     expect(result.ok).toBe(true)
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     // The solve writes the baked params into `initial`; the angle is the
     // grid-only regression guard for the storage change.
     const sketch = result.doc?.features?.find(feature => feature.id === 'sk1')

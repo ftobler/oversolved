@@ -127,7 +127,7 @@ A script is an array (or `{ steps: [...] }`) of steps:
     { "command": "set_tool_rect" },
     { "command": "undo", "continueOnError": true },
     { "mutation": { "type": "add_sketch", "featureId": "sk1", "label": "Rectangle" } },
-    { "mutation": { "type": "add_rect", "featureId": "sk1", "p0": [0, 0], "p1": [10, 10] } }
+    { "mutation": { "type": "add_rect", "featureId": "sk1", "p0": [0, 0], "p1": [10, 10], "p0Ref": "@builtin_origin", "dimensions": true } }
   ]
 }
 ```
@@ -617,8 +617,18 @@ banner on stdout, so a client config must use the direct node invocation.
   exception or warning text; it is always present and empty for a clean build.
   The one-line `summary` repeats it as a `; problems: <id> (<kind>) <status>:
   <message>` suffix, so a client that reads only the summary still sees it.
-  Sketch verdicts (`fully_constrained`, `underconstrained`) are normal states
-  and are not listed; an `overconstrained` sketch is. A feature with no verdict
+  A fully constrained sketch is a state and is not listed. An underconstrained
+  sketch is a warning row: status `underconstrained`, message
+  `Underconstrained: N degree(s) of freedom.` plus up to five free entity ids,
+  and its `featureDeltas` row carries the same `dof`. It never makes a run or a
+  measure `ok` false, and it is the one problem row an export tolerates (see
+  below). `fixed` makes a sketch read fully constrained but carries no design
+  intent: dimension against projected geometry (`add_projected_entity`) or
+  `@builtin_origin` instead, and reserve `fixed` for deliberately frozen
+  geometry such as an imported DXF. An `overconstrained` sketch is a real
+  failure and is listed; the tree and the open editor add the number of
+  conflicting constraints. A feature
+  with no verdict
   at all after the settle is listed with status `missing` and message `no verdict
   from the solve`, and makes `ok` false: an empty solve result must never read
   as a clean build. A kernel fault (a WASM trap that repeated on the reloaded
@@ -629,14 +639,18 @@ banner on stdout, so a client config must use the direct node invocation.
   a `run` with `steps: []` is how to ask that document for its verdicts.
   `export` is the one reply whose `ok` is stricter than a run's: the file is
   the answer, so any feature in `features` (failed, partial or warned) makes it
-  `ok: false` even though the bytes are still written; a note does not change
+  `ok: false` even though the bytes are still written; the one carve-out is an
+  underconstrained sketch, whose warning row leaves `ok` true because the file
+  is sound; a note does not change
   that verdict. An assembly export
   carries `solve`, `mates`, `parts`, `instances` and `summary` like a measure,
   and is `ok: false` when the solve did not run or a mate or bound part reported
   a problem: the file then holds seed or best-effort poses, and the reply says
-  so instead of presenting them as the solved assembly. A `body` that names no
-  live body is a tool error naming the live ids (`ExportSelectionError`), not
-  an internal error.
+  so instead of presenting them as the solved assembly. A bound part whose only
+  rows are underconstrained-sketch warnings still appears in `parts` (the
+  yellow law) but does not make the assembly export `ok: false`. A `body` that
+  names no live body is a tool error naming the live ids
+  (`ExportSelectionError`), not an internal error.
   `featureDeltas` answers "what did this step contribute": one row per feature
   this call changed, in log order, with `id`, `kind`, `status`, the cumulative
   `volume` and `bbox` after it (the total over every live body, not one body's),
@@ -661,9 +675,11 @@ banner on stdout, so a client config must use the direct node invocation.
   checkpoint still sets the baseline for the next built feature, so a later
   delta describes the real part. A feature that built with a warning keeps its
   row and carries the kernel's `warning` text, so a partial tool list's volume
-  is visible without a second measure; the row-coverage rule is the same as for
-  an unwarned build (changed, new, or touched), so an untouched warned feature
-  still appears only under `featureDeltas: "all"`. Pass `featureDeltas: "all"`
+  is visible without a second measure; the row-coverage rule is otherwise the
+  same as for an unwarned build (changed, new, or touched), and one extra rule
+  covers the sketch law: a warned sketch the steps touched is listed even when
+  its checkpoint did not move, so the shrunk `dof` reads in the same call. An
+  untouched warned feature still appears only under `featureDeltas: "all"`. Pass `featureDeltas: "all"`
   to list every built feature, which is how an empty `steps: []` call inspects
   the whole history.
   The list is null when the final solve exposed
@@ -1226,7 +1242,7 @@ previous reply; the full document never crosses the wire by default:
 // 1. Build a 40 x 30 sketch on Top and extrude 10 along +Y.
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run","arguments":{"steps":[
   {"mutation":{"type":"add_sketch","featureId":"sk1","label":"Rectangle","plane":"@builtin_plane_top"}},
-  {"mutation":{"type":"add_rect","featureId":"sk1","p0":[0,0],"p1":[40,30]}},
+  {"mutation":{"type":"add_rect","featureId":"sk1","p0":[0,0],"p1":[40,30],"p0Ref":"@builtin_origin","dimensions":true}},
   {"mutation":{"type":"add_extrude","featureId":"ex1","label":"Extrude","sketchQuery":"$sk1","distance":10,"operation":"new"}}
 ]}}}
 // {"ok":true,"docHash":"<hash1>","summary":"features: sk1 (sketch), ex1 (extrude); bodies: ...",...}
