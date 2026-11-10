@@ -247,7 +247,7 @@ describe('createMcpServer', () => {
       families: Record<string, Array<{ type: string; summary: string; fields: unknown }>>
       examples: Array<{ name: string; steps: unknown[] }>
     }
-    expect(payload.examples.map(example => example.name)).toEqual(['box', 'filleted-box', 'tapered-block', 'emboss-on-cylinder'])
+    expect(payload.examples.map(example => example.name)).toEqual(['box', 'filleted-box', 'tapered-block', 'projection', 'emboss-on-cylinder'])
     expect(payload.families.sketch.some(entry => entry.type === 'add_sketch')).toBe(true)
     expect(payload.families.features.some(entry => entry.type === 'add_fillet')).toBe(true)
 

@@ -911,6 +911,7 @@ export const MUTATION_CATALOG = {
       kind: str('Entity kind: line, circle, arc, ellipse, spline, fit_spline or point. A fit_spline takes its flat fit points plus optional tangents/tangentScale.'),
       params: arr(ENTITY_PARAMS_NOTE),
       entityId: optStr(),
+      dimensions: optBool('Add the size dimension for a kind that has one: a line\'s length, a circle\'s or arc\'s radius. Other kinds ignore it.'),
       tangents: optArr(FIT_SPLINE_TANGENTS_NOTE),
       tangentScale: optBool(FIT_SPLINE_TANGENT_SCALE_NOTE),
     },
@@ -983,6 +984,7 @@ export const MUTATION_CATALOG = {
       p1: point(),
       p0Ref: nullableStr(),
       p1Ref: nullableStr(),
+      dimensions: optBool('Add length constraints for the width and height from the authored points. With p0Ref on the origin or a projection the rectangle is fully constrained.'),
       entityIds: optArr('Optional authored ids for the four lines, in bottom, right, top, left order. '
         + 'The list must hold exactly 4 ids, each unused in the sketch.'),
     },
@@ -1001,6 +1003,7 @@ export const MUTATION_CATALOG = {
       corner: point(),
       centerRef: nullableStr(),
       cornerRef: nullableStr(),
+      dimensions: optBool('Add length constraints for the width and height. With centerRef on the origin or a projection the rectangle is fully constrained.'),
       entityIds: optArr('Optional authored ids for the four lines then the centre point (5 ids); '
         + 'the lines are in bottom, right, top, left order, each id unused in the sketch.'),
     },
@@ -1016,6 +1019,7 @@ export const MUTATION_CATALOG = {
       sides: num(),
       centerRef: nullableStr(),
       cornerRef: nullableStr(),
+      dimensions: optBool('Add the circumradius and pin one side horizontal. With centerRef on the origin or a projection the n-gon is fully constrained.'),
       entityIds: optArr('Optional authored ids for the n lines in chain order then the construction '
         + 'circumcircle (sides + 1 ids), each unused in the sketch.'),
     },

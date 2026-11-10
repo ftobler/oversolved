@@ -129,6 +129,7 @@ export function applyAddRect(
   p0Ref?: string | null,
   p1Ref?: string | null,
   entityIds?: readonly string[],
+  dimensions?: boolean,
 ): void {
   const [x0, y0] = p0
   const [x1, y1] = p1
@@ -147,7 +148,14 @@ export function applyAddRect(
   if (!feature) return
 
   // _applyRectLines starts lA at (x0, y0) and lC at the diagonal (x1, y1).
-  const [lA, , lC] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1, authored)
+  const [lA, lB, lC] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1, authored)
+  // The rect's lines fix its shape only; `dimensions` adds the size so an
+  // anchor ref closes the last two DOF in the same step. Both corner refs
+  // already pin all four DOF, so adding them then would overconstrain.
+  if (dimensions === true && !(p0Ref && p1Ref)) {
+    applyAddConstraint(doc, featureId, 'length', [`entity:${featureId}:${lA}`], round(Math.abs(x1 - x0)))
+    applyAddConstraint(doc, featureId, 'length', [`entity:${featureId}:${lB}`], round(Math.abs(y1 - y0)))
+  }
   _pinSnappedVertices(doc, featureId, [
     [`vertex:${featureId}:${lA}:start`, p0Ref],
     [`vertex:${featureId}:${lC}:start`, p1Ref],
@@ -162,6 +170,7 @@ export function applyAddCenterRect(
   centerRef?: string | null,
   cornerRef?: string | null,
   entityIds?: readonly string[],
+  dimensions?: boolean,
 ): void {
   const [cx, cy] = center
   // 4 corners of the rectangle (symmetric around center); (x1, y1) is the click.
@@ -181,7 +190,7 @@ export function applyAddCenterRect(
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
 
-  const [lA, , lC] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1, authored?.slice(0, 4))
+  const [lA, lB, lC] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1, authored?.slice(0, 4))
 
   // Create point entity at center
   const pointId = authored?.[4] ?? mintEntityId(feature.entities)
@@ -199,6 +208,14 @@ export function applyAddCenterRect(
     `vertex:${featureId}:${lC}:start`,
     `vertex:${featureId}:${pointId}:xy`,
   ])
+
+  // The centre point and midpoint fix nothing about size; `dimensions` adds the
+  // width and height, leaving only the centre anchor for the caller. Both refs
+  // already pin the whole rect, so adding them then would overconstrain.
+  if (dimensions === true && !(centerRef && cornerRef)) {
+    applyAddConstraint(doc, featureId, 'length', [`entity:${featureId}:${lA}`], round(Math.abs(x1 - x0)))
+    applyAddConstraint(doc, featureId, 'length', [`entity:${featureId}:${lB}`], round(Math.abs(y1 - y0)))
+  }
 
   // The clicked corner is (x1, y1), where lC starts.
   _pinSnappedVertices(doc, featureId, [
@@ -223,6 +240,7 @@ export function applyAddNgon(
   cornerRef?: string | null,
   centerRef?: string | null,
   entityIds?: readonly string[],
+  dimensions?: boolean,
 ): void {
   const n = Math.max(3, Math.floor(sides))
   const [cx, cy] = center
@@ -290,6 +308,15 @@ export function applyAddNgon(
     [`vertex:${featureId}:${circleId}:center`, centerRef],
     [`vertex:${featureId}:${lineIds[0]}:start`, cornerRef],
   ])
+
+  // The regularity constraint fixes the shape, not the size or the rotation.
+  // `dimensions` adds the circumradius and pins one side horizontal, so a
+  // centre-anchored n-gon reaches fully constrained. A pinned corner already
+  // fixes scale and rotation, so the pins are skipped to avoid overconstraint.
+  if (dimensions === true && !cornerRef) {
+    applyAddConstraint(doc, featureId, 'radius', [`entity:${featureId}:${circleId}`], round(radius))
+    applyAddConstraint(doc, featureId, 'horizontal', [`entity:${featureId}:${lineIds[0]}`])
+  }
 }
 
 /** Which stored arc vertex key holds each given point of a three-point arc.

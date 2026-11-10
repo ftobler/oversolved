@@ -111,6 +111,22 @@ describe('featureDeltaRows', () => {
     expect(rows[0]).toMatchObject({ id: 'fi1', warning: 'one edge was skipped' })
   })
 
+  it('changed mode lists a touched warned sketch so its shrink reads in one call', () => {
+    const warning = 'Underconstrained: 2 degrees of freedom. Free: l1, l2.'
+    const outcomes: Record<string, FeatureOutcome> = {
+      ...CLEAN,
+      sk1: { status: 'underconstrained', dof: 2, warning },
+    }
+    // The sketch's own checkpoint did not move, but the step touched it (it
+    // added a constraint); the row carries the remaining DOF.
+    const rows = featureDeltaRows(DOC, MEASURES, outcomes, {
+      baseline: MEASURES,
+      touched: new Set(['sk1']),
+      mode: 'changed',
+    })
+    expect(rows).toEqual([expect.objectContaining({ id: 'sk1', status: 'underconstrained', dof: 2, warning })])
+  })
+
   it('carries a hole\'s resolved drill side on its row, and no side elsewhere', () => {
     // A through hole under `normal` may have drilled `reverse`; the row says so
     // without anyone measuring cylinder faces to find which way it went.

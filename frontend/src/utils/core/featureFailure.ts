@@ -10,28 +10,40 @@
  * kind argument: reading the result for every kind is the whole point.
  *
  * `status !== 'ok'` is NOT the rule, and that is what the kind list was papering
- * over. Two statuses are not failures:
+ * over. Three statuses are not failures:
  *   - a sketch's `status` is its CONSTRAINT state (`fully_constrained` /
  *     `underconstrained` / `overconstrained`, kernel/features/sketch.ts), never
  *     `'ok'` -- the naive test reddens every sketch in the document;
  *   - `'suppressed'` (kernel/builder.ts) is the user switching a feature off,
  *     which used to render as red AND struck through at the same time.
- * Both are excluded by name, the sketch words imported from the codec that
- * produces them so the two cannot drift. Anything else unrecognised counts as a
- * failure, so a status word invented later shows up rather than disappearing --
- * `'error'` (extrude/revolve "no closed profile") is already such a word.
+ * The two satisfiable sketch words are a state, so they are excluded by name,
+ * the words imported from the codec that produces them so the two cannot drift.
+ * An underconstrained sketch still gets a mark -- yellow, through the kernel's
+ * `solver_warning` -- because free geometry is a build warning; it is not a
+ * failure, and it never fails an export. `overconstrained` is a genuinely
+ * failed solve (the geometry is a compromise), so it falls to the error branch.
+ * Anything else unrecognised counts as a failure, so a status word invented
+ * later shows up rather than disappearing -- `'error'` (extrude/revolve "no
+ * closed profile") is already such a word.
  */
 import { isBodyFeatureResult } from '@/types/cad'
-import { STATUS_NAME } from '@/wasm-kernel/codec'
+import { STATUS_NAME, Status } from '@/wasm-kernel/codec'
 import { NO_MARK, type StatusMark } from './statusMark'
 
-/** Statuses that report a state rather than a pass/fail. */
-const NON_FAILURE_STATUSES: ReadonlySet<string> = new Set<string>([...STATUS_NAME, 'suppressed'])
+/** Statuses that report a satisfiable state rather than a pass/fail. */
+const NON_FAILURE_STATUSES: ReadonlySet<string> = new Set<string>([
+  STATUS_NAME[Status.fully_constrained],
+  STATUS_NAME[Status.underconstrained],
+  'suppressed',
+])
 
 // Shown when the kernel marked a feature but gave no words: a mark the user
 // can see must always say something, in the tree tooltip and in the editor.
 const DEFAULT_ERROR = 'The feature failed to build.'
 const DEFAULT_WARNING = 'Only part of the feature was applied.'
+// The drive's `defaultMessage` uses the same words for an overconstrained
+// sketch, and the plan's law is that both boundaries say one thing.
+const DEFAULT_OVERRICONSTRAINED = 'the sketch is overconstrained'
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined)
 
@@ -79,8 +91,12 @@ export function featureFailure(
   const solverWarning = str(r.solver_warning)
 
   if (!statusFailed && !meshError) {
-    // A good solve is unmarked unless the kernel noted a fallback on it.
-    return solverWarning ? { failed: true, level: 'warning', message: solverWarning } : NO_MARK
+    // A good solve is unmarked unless the kernel noted a fallback on it. An
+    // underconstrained sketch is the one warning that has not failed: the
+    // geometry is sound, it just still has freedom.
+    if (!solverWarning) return NO_MARK
+    const underconstrained = status === STATUS_NAME[Status.underconstrained]
+    return { failed: !underconstrained, level: 'warning', message: solverWarning }
   }
 
   // Only the kernel's own 'partial' status is a warning; anything else that
@@ -89,6 +105,19 @@ export function featureFailure(
   if (status === 'partial' && !meshError) {
     const notes = [exception, solverWarning].filter((m): m is string => m !== undefined)
     return { failed: true, level: 'warning', message: notes.length > 0 ? notes.join('; ') : DEFAULT_WARNING }
+  }
+  // An overconstrained sketch is the verdict the tree used to hide entirely.
+  // Its result carries the culprit constraints the solve could not satisfy, so
+  // the message names how many are in conflict instead of a generic line.
+  if (status === 'overconstrained') {
+    const constraints = (result as { constraints?: Record<string, { culprit?: unknown }> }).constraints
+    const culprits = constraints === undefined
+      ? 0
+      : Object.values(constraints).filter(c => c?.culprit === true).length
+    const which = culprits > 0
+      ? ` (${culprits} conflicting constraint${culprits === 1 ? '' : 's'})`
+      : ''
+    return { failed: true, level: 'error', message: `${DEFAULT_OVERRICONSTRAINED}${which}` }
   }
   return {
     failed: true,

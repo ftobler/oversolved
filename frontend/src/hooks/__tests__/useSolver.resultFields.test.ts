@@ -76,6 +76,16 @@ describe('applySolveResult -- fields the feature tree reads', () => {
     expect(result.current.solveResults['ex1'].value).toBeUndefined()
   })
 
+  it('keeps an underconstrained sketch warning and its DOF', async () => {
+    // This row is what featureFailure reads to paint the yellow tree mark: if
+    // the seam drops it the app shows nothing while the MCP reply shows yellow.
+    const result = setupHook()
+    const warning = 'Underconstrained: 4 degrees of freedom. Free: l1, l2, l3, l4.'
+    await solveWith(result, { sk1: { status: 'underconstrained', geometry: {}, solver_warning: warning, dof: 4 } })
+    expect(result.current.solveResults['sk1'].solver_warning).toBe(warning)
+    expect(result.current.solveResults['sk1'].dof).toBe(4)
+  })
+
   it('keeps the per-pick lists the pick chips mark', async () => {
     // PickField strikes through `unresolved_*` and reddens `failed_*`; dropped
     // here, a partial fillet showed a healthy chip in the app while every

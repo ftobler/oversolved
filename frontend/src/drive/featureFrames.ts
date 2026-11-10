@@ -209,8 +209,8 @@ export function frameConflicts(
         ids: [first.id, sketch.id],
         text: `${first.id} and ${sketch.id} share the face query "${first.plane}"; ${what}, `
           + `so a feature between them changed that face and ${sketch.id}'s coordinates sit in a `
-          + `different frame. Sketch on a plane offset from the first sketch, or move ${sketch.id} `
-          + 'above that feature',
+          + `different frame. Dimension ${sketch.id} against projected edges of the face (the numbers then `
+          + 'survive the drift, though this frame note may persist), or sketch on a plane offset from the first sketch',
       })
     }
   }

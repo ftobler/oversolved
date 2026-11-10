@@ -46,6 +46,10 @@ type Dict = Record<string, unknown>
 export interface SketchResult {
   [key: string]: unknown
   status: string
+  /** Remaining degrees of freedom from the solver's diagnostics. The MCP delta
+   *  row repeats this count, and the underconstrained warning states it; the
+   *  tree and editor read the warning text. */
+  dof?: number
   geometry?: Record<string, number[]>
   features?: Record<string, { status: string }>
   /** Per-constraint solve facts, keyed by doc constraint id: the render block,
@@ -423,6 +427,22 @@ export function culpritConstraintIndices(miss: number[]): Set<number> {
   return culprits
 }
 
+/**
+ * The build warning an underconstrained sketch reports. The wording matches the
+ * assembly's own underconstrained verdict (utils/core/assemblyStatus.ts) so the
+ * two editors speak the same language, and the free entity ids let an author
+ * (or a hovering user) find the geometry still holding DOF. A sketch's DOF
+ * count can exceed its free entity count (a point owns two), so the head states
+ * the solver's number and the tail names entities.
+ */
+export function underconstrainedWarning(dof: number, freeIds: readonly string[]): string {
+  const head = `Underconstrained: ${dof} degree${dof === 1 ? '' : 's'} of freedom.`
+  if (freeIds.length === 0) return head
+  const shown = freeIds.slice(0, 5)
+  const rest = freeIds.length - shown.length
+  return `${head} Free: ${shown.join(', ')}${rest > 0 ? ` and ${rest} more` : ''}.`
+}
+
 export function solveSketch(
   feature: Dict,
   globalRepo: Repository,
@@ -470,6 +490,9 @@ export function solveSketch(
   // topology detection.
   const geometry: Record<string, number[]> = {}
   const features: Record<string, { status: string }> = {}
+  // Free entities, in layout order, for the underconstrained warning. The
+  // origin is not an authored entity and never belongs in the list.
+  const freeIds: string[] = []
   const richGeom: Record<string, Record<string, unknown>> = {}
   // Entity ids the solver reported moved, in layout order. The write-back reads
   // this set to decide which `initial` arrays to keep by reference.
@@ -486,6 +509,7 @@ export function solveSketch(
       geometry[ent.id] = [...params]
     }
     features[ent.id] = { status: STATUS_NAME[out.entityStatus[i]] }
+    if (STATUS_NAME[out.entityStatus[i]] === 'underconstrained') freeIds.push(ent.id)
     // Construction geometry solves like anything else but must bound no area,
     // so the flag rides along to the area builder, which skips those entities.
     richGeom[ent.id] = { ...enrichSketchEntity(ent.kind, params, ent.flags), ...(ent.construction ? { construction: true } : {}) }
@@ -545,6 +569,10 @@ export function solveSketch(
 
   return {
     status,
+    dof: out.diagnostics.dof,
+    // Only the cold solve carries a status pass. The drag path builds its own
+    // result without this field, so a soft solve can never invent a warning.
+    ...(status === 'underconstrained' ? { solver_warning: underconstrainedWarning(out.diagnostics.dof, freeIds) } : {}),
     geometry,
     entity_moved: entityMoved,
     features,
