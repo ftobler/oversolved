@@ -325,7 +325,6 @@ export function applyBodyOperation(
       }
       scope.track(newShape)
       assertPositiveVolume(oc, scope, newShape, 'the fused result', opName)
-      nearCoaxial = nearCoaxialCylinderWarning(oc, scope, newShape)
       // An explicit target asks for a fuse, but a copy that does not touch it is
       // a separate part, a regular outcome. Let resplitBody mint the island as
       // its own body and keep the target id on the target material, identified
@@ -344,6 +343,9 @@ export function applyBodyOperation(
         const toolN = countSolids(oc, scope, toolShape)
         if (countSolids(oc, scope, newShape) >= oldN + toolN) continue
       }
+      // Only a shape that will actually replace the body is worth warning
+      // about; a disjoint default-add attempt is discarded above.
+      nearCoaxial = nearCoaxialCylinderWarning(oc, scope, newShape)
       const targetNames = readBodyNames(oc, scope, oldShape, existingBody)
       const names = transferBooleanNames(oc, scope, {
         bodyShape: newShape,

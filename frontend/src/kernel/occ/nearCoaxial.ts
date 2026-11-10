@@ -22,7 +22,8 @@ import { exploreFaces } from './edgeModifier'
 import { faceSurfaceFrame } from './primitives'
 
 /** The largest radius/axis difference still read as a near-miss, as a share of
- *  the larger radius (the plan's 1e-4 x r). */
+ *  the larger radius. Anchoring on the larger one keeps the band symmetric for
+ *  a pair; for the near-miss regime the two radii are almost equal anyway. */
 const NEAR_COAXIAL_REL = 1e-4
 /** The smallest difference a fuse can keep: half the document grid step, so a
  *  f64 read of a one-step (1e-6) difference cannot fall under the floor. */
