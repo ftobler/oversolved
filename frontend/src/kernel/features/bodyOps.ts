@@ -19,6 +19,7 @@ import type { HandleTable } from '../occ/handleTable'
 import { resolveMergeTargets } from './shared/bodyResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
 import { booleanWithDiff, countSolids, shapesIntersect, volumeOf } from '../occ/booleans'
+import { nearCoaxialCylinderWarning } from '../occ/nearCoaxial'
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody, solidHoldingFaces } from './bodySplit'
 import { readBodyNames } from '../occ/bodyNames'
@@ -301,6 +302,8 @@ export function applyBodyOperation(
   let fused = false
   let fusedBodyId: string | null = null
   let fusedIds: string[] = []
+  // Read on the fused shell, where the two faces the boolean kept still exist.
+  let nearCoaxial: string | null = null
   if (!needNewBody) {
     for (const bid of targetIds) {
       const existingBody = bodyStore[bid]
@@ -340,6 +343,9 @@ export function applyBodyOperation(
         const toolN = countSolids(oc, scope, toolShape)
         if (countSolids(oc, scope, newShape) >= oldN + toolN) continue
       }
+      // Only a shape that will actually replace the body is worth warning
+      // about; a disjoint default-add attempt is discarded above.
+      nearCoaxial = nearCoaxialCylinderWarning(oc, scope, newShape)
       const targetNames = readBodyNames(oc, scope, oldShape, existingBody)
       const names = transferBooleanNames(oc, scope, {
         bodyShape: newShape,
@@ -379,6 +385,11 @@ export function applyBodyOperation(
     const fusedBody = fusedBodyId !== null ? bodyStore[fusedBodyId] : undefined
     if (fusedBody && brepDiffIsEmpty(fusedBody.brep_diff)) {
       result.solver_warning = `${opName}: operation produced no geometry change`
+    }
+    if (nearCoaxial !== null) {
+      result.solver_warning = result.solver_warning === undefined
+        ? nearCoaxial
+        : `${result.solver_warning}; ${nearCoaxial}`
     }
     return result
   }

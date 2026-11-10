@@ -31,6 +31,7 @@ import {
   chamferWidthDiagnosis,
   edgeLabel,
   filletWidthDiagnosis,
+  nearTangentCornerDiagnosis,
   tangentChainDiagnosis,
 } from './edgeFailureDiagnosis'
 import { tangentChain } from './tangentChain'
@@ -605,9 +606,19 @@ function applyEdgeFeature(
       // blend), others at none (ppp0103's half-boss arc), and only a build
       // tells which.
       const diagnosis = failureDiagnosis?.(oldShape, topoEdges) ?? null
-      const chain = diagnosis === null ? tangentChainDiagnosis(oc, scope, oldShape, topoEdges) : null
-      const reason = withHint(res.reason ?? 'unknown failure')
-      modifierFailures.push(`${bid}: ${diagnosis ?? (chain === null ? reason : `${reason}; ${chain}`)}`)
+      // A near-tangent corner names a cause when no measured width does; the
+      // unpicked-chain note follows only when neither explains the refusal.
+      const corner = diagnosis === null ? nearTangentCornerDiagnosis(oc, scope, oldShape, topoEdges) : null
+      const chain = diagnosis === null && corner === null
+        ? tangentChainDiagnosis(oc, scope, oldShape, topoEdges)
+        : null
+      const note = corner ?? chain
+      // A note names a cause, so it replaces the generic "try smaller" hint
+      // instead of following it; only a bare refusal keeps the hint.
+      const reason = note === null
+        ? withHint(res.reason ?? 'unknown failure')
+        : (res.reason ?? 'unknown failure')
+      modifierFailures.push(`${bid}: ${diagnosis ?? (note === null ? reason : `${reason}; ${note}`)}`)
       failed.push(...qlist.filter((q) => resolvedQueries.has(q)))
       continue
     }
@@ -625,8 +636,12 @@ function applyEdgeFeature(
         const q = queryOf.get(edge)
         if (q !== undefined) failed.push(q)
         if (edge === undefined) continue
+        // The batch's picks, not this one edge, are what the chain note must
+        // count: a partner the user picked is not "unpicked" because the
+        // kernel skipped this edge (practice F3).
         const why = failureDiagnosis?.(oldShape, [edge])
-          ?? tangentChainDiagnosis(oc, scope, oldShape, [edge])
+          ?? nearTangentCornerDiagnosis(oc, scope, oldShape, [edge])
+          ?? tangentChainDiagnosis(oc, scope, oldShape, [edge], topoEdges)
           ?? 'refused by the kernel even alone; try a smaller radius/distance'
         refusedEdges.push(`edges[${q === undefined ? '?' : edges.indexOf(q)}] (${edgeLabel(oc, scope, edge)}): ${why}`)
       }
