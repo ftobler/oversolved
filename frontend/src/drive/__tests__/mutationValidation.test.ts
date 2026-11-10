@@ -76,6 +76,15 @@ describe('validateMutation', () => {
     expect(result.error.message).toContain('distance')
   })
 
+  it('refuses a taper that is neither a number nor an expression string', () => {
+    const result = validateMutation({
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, taper: {},
+    })
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    if (result.ok) throw new Error('unreachable')
+    expect(result.error.message).toContain('taper')
+  })
+
   it('refuses a lone edges selector object, since edges is a list field', () => {
     // The supported spelling is the one-entry list; a lone object is refused by
     // the catalog's array field type before any value rule or resolver sees it.

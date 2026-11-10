@@ -14,6 +14,7 @@ import {
   migrate,
   MAX_ARRAY_CELLS,
   MAX_ARRAY_COUNT,
+  MAX_EXPRESSION_LENGTH,
   MAX_FEATURES,
 } from '@/persistence/docSchema'
 import {
@@ -397,5 +398,93 @@ describe('hostile sizes are capped before the builder', () => {
       features: [{ id: 'a1', kind: 'pattern', pattern: { source_body: '@b1', count_x: 10, count_y: 5 } }],
     })
     expect(result.ok).toBe(true)
+  })
+
+  it('loads an extrude taper and keeps it on the re-serialised document', () => {
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [
+        { id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front', entities: [], constraints: [] },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 10, taper: 15 } },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const extrude = (result.doc.features![1] as { extrude: { taper?: number } }).extrude
+    expect(extrude.taper).toBe(15)
+    const serialised = JSON.parse(JSON.stringify(result.doc)) as {
+      features: Array<{ extrude: { taper?: number } }>
+    }
+    expect(serialised.features[1].extrude.taper).toBe(15)
+  })
+
+  it('leaves an unauthored taper absent', () => {
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [
+        { id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front', entities: [], constraints: [] },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 10 } },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const extrude = (result.doc.features![1] as { extrude: Record<string, unknown> }).extrude
+    expect('taper' in extrude).toBe(false)
+  })
+
+  it('rejects a taper that is not a number or an expression string', () => {
+    for (const taper of [{}, [1], true]) {
+      const result = loadPartDoc({
+        version: CURRENT_DOC_VERSION,
+        kind: 'part',
+        features: [
+          { id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front', entities: [], constraints: [] },
+          { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 10, taper } },
+        ],
+      })
+      expect(result.ok, JSON.stringify(taper)).toBe(false)
+      if (result.ok) continue
+      expect(result.error.field).toBe('features[1].extrude.taper')
+      expect(result.error.message).toContain('number or an expression string')
+    }
+  })
+
+  it('rejects a taper expression longer than the cap', () => {
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [
+        { id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front', entities: [], constraints: [] },
+        {
+          id: 'ex1', kind: 'extrude',
+          extrude: { sketch: '@sk1', distance: 10, taper: '1'.repeat(MAX_EXPRESSION_LENGTH + 1) },
+        },
+      ],
+    })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.field).toBe('features[1].extrude.taper')
+    expect(result.error.message).toContain(String(MAX_EXPRESSION_LENGTH))
+  })
+
+  it('treats an empty taper as absent, not zero', () => {
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [
+        { id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front', entities: [], constraints: [] },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 10, taper: '' } },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const extrude = (result.doc.features![1] as { extrude: Record<string, unknown> }).extrude
+    expect('taper' in extrude).toBe(false)
+    const serialised = JSON.parse(JSON.stringify(result.doc)) as {
+      features: Array<{ extrude: Record<string, unknown> }>
+    }
+    expect('taper' in serialised.features[1].extrude).toBe(false)
   })
 })

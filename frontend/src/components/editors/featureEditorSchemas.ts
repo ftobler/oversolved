@@ -38,6 +38,11 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
       // An absent termination is the blind default, so the distance stays for
       // a document that never wrote the key.
       showWhen: (d) => (d.termination ?? 'blind') === 'blind', validate: positive },
+    { type: 'number', key: 'taper', label: 'Taper (deg)', default: 0,
+      // A draft is only defined for a one-sided blind sweep: symmetric splits
+      // the distance and the other terminations size their own tool.
+      showWhen: (d) => (d.termination ?? 'blind') === 'blind' && d.direction !== 'symmetric',
+      validate: between(-90, 90) },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',

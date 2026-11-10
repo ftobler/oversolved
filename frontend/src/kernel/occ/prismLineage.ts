@@ -52,6 +52,7 @@ import {
   type SplitChild,
 } from '../constructionName'
 import { sketchLoopsToFace, canonicalizeFaceCircles } from './prismProfile'
+import { draftPrismBuilder } from './draftPrism'
 import { entityForEdges, derivePrismEdgeNames } from './prismEdgeNaming'
 import { swallowUnlessTrap } from '../errors'
 
@@ -445,9 +446,19 @@ export function prefixLineageMaps(maps: LineageMaps, prefix: string): void {
  * seam (and the outer walls keep their arc-endpoint-pinned seams, identical to
  * the legacy build), so a downstream add-fuse that prisms this body's swept
  * top face merges cleanly -- the original defect repaired at the body's source.
- * Returns the canonical profile face, or null when the round-trip cannot
- * produce one safely (the caller then keeps the legacy multi-face body).
+ * Returns the canonical profile face; `disjoint` when the groups' straight
+ * prisms do not tile one connected region, and `failed` when the round trip
+ * cannot produce a face safely. The caller treats a taper on `failed`
+ * differently from disjoint groups: a disconnected multi-body profile may draft
+ * each group, but an adjacent profile the merge could not rebuild must not fall
+ * back to per-group frustums (their inner walls lean apart and only touch at the
+ * base).
  */
+type MergedProfileResult =
+  | { kind: 'merged'; face: OccShape }
+  | { kind: 'disjoint' }
+  | { kind: 'failed' }
+
 function tryCanonicalMergedProfile(
   oc: OccModule,
   scope: DisposeScope,
@@ -455,7 +466,7 @@ function tryCanonicalMergedProfile(
   plane: PlaneLike,
   directionVec: Vec3,
   distance: number,
-): OccShape | null {
+): MergedProfileResult {
   try {
     const faces = groups.map(([outer, holes]) =>
       scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane)),
@@ -494,7 +505,7 @@ function tryCanonicalMergedProfile(
     // disjoint groups (e.g. two non-adjacent rects) the fuse stays a
     // compound of N solids -- the legacy path must keep them as the
     // multi-body output the caller splits apart; bailing here preserves it.
-    if (countSolids(oc, scope, solid) !== 1) { scope.release(solid); return null }
+    if (countSolids(oc, scope, solid) !== 1) { scope.release(solid); return { kind: 'disjoint' } }
     try {
       const cleaned = cleanWithHistory(oc, scope, solid).shape
       scope.track(cleaned)
@@ -506,7 +517,7 @@ function tryCanonicalMergedProfile(
       // diagnostics pinned was the periodic-cylinder face merge (now avoided
       // here because this solid is the build target, never the add tool). Any
       // other throw means we cannot get a canonical cap cleanly -> bail.
-      return null
+      return { kind: 'failed' }
     }
     // Find the ENTRANCE cap: a planar face whose normal is anti-parallel to
     // `directionVec` and whose centroid lies on the resolved profile plane
@@ -540,17 +551,17 @@ function tryCanonicalMergedProfile(
       entrance = f
       break
     }
-    if (entrance === null) { scope.release(solid); return null }
+    if (entrance === null) { scope.release(solid); return { kind: 'failed' } }
     // The rebuilt body was only the source of the entrance cap face; its
     // shapes are no longer referenced, so drop it instead of letting a dead
     // solid ride the scope to the end of the build.
     const out = canonicalizeFaceCircles(oc, scope, entrance)
     scope.release(entrance)  // the returned face is the caller's copy; the original can go
     scope.release(solid)
-    return out
+    return { kind: 'merged', face: out }
   } catch (e) {
     swallowUnlessTrap(e)
-    return null
+    return { kind: 'failed' }
   }
 }
 
@@ -571,21 +582,24 @@ function prismFaceWithLineage(
   tokenPrefix: string,
   createdBy: string,
   sketchId: string,
+  taperRad = 0,
 ): LineageResult {
-  const builder = scope.track(
-    new oc.BRepPrimAPI_MakePrism_1(
-      profileFace,
-      scope.track(
-        new oc.gp_Vec_4(
-          directionVec[0] * distance,
-          directionVec[1] * distance,
-          directionVec[2] * distance,
+  const builder = taperRad === 0
+    ? scope.track(
+        new oc.BRepPrimAPI_MakePrism_1(
+          profileFace,
+          scope.track(
+            new oc.gp_Vec_4(
+              directionVec[0] * distance,
+              directionVec[1] * distance,
+              directionVec[2] * distance,
+            ),
+          ),
+          true,
+          true,
         ),
-      ),
-      true,
-      true,
-    ),
-  ) as OccPrismBuilder
+      ) as OccPrismBuilder
+    : draftPrismBuilder(oc, scope, profileFace, directionVec, distance, taperRad)
   if (!builder.IsDone()) throw new Error('prism builder did not complete')
   const solid = builder.Shape()
   // The profile face is read one last time here; afterwards the solid keeps
@@ -672,26 +686,29 @@ function perGroupPrismWithLineage(
   tokenPrefix: string,
   createdBy: string,
   sketchId: string,
+  taperRad = 0,
 ): LineageResult {
   const fuse = namedFuse(oc, scope)
 
   for (let groupIdx = 0; groupIdx < groups.length; groupIdx++) {
     const [outer, holes] = groups[groupIdx]
     const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
-    const builder = scope.track(
-      new oc.BRepPrimAPI_MakePrism_1(
-        face,
-        scope.track(
-          new oc.gp_Vec_4(
-            directionVec[0] * distance,
-            directionVec[1] * distance,
-            directionVec[2] * distance,
+    const builder = taperRad === 0
+      ? scope.track(
+          new oc.BRepPrimAPI_MakePrism_1(
+            face,
+            scope.track(
+              new oc.gp_Vec_4(
+                directionVec[0] * distance,
+                directionVec[1] * distance,
+                directionVec[2] * distance,
+              ),
+            ),
+            true,
+            true,
           ),
-        ),
-        true,
-        true,
-      ),
-    ) as OccPrismBuilder
+        ) as OccPrismBuilder
+      : draftPrismBuilder(oc, scope, face, directionVec, distance, taperRad)
     if (!builder.IsDone()) throw new Error('prism builder did not complete')
     const part = builder.Shape()
     // Each group's prism and each fuse output is consumed by the next fuse
@@ -744,6 +761,7 @@ export function extrudeProfileWithLineage(
   distance: number,
   sketchId = '',
   createdBy = '',
+  taperDeg = 0,
 ): LineageResult {
   // Classification reads the traced pieces (a tangent hole is recognised by the
   // arcs it shares with its neighbours), so fuse only after the groups exist.
@@ -752,20 +770,37 @@ export function extrudeProfileWithLineage(
   )
   if (groups.length === 0) throw new Error('no loops to extrude')
   const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
+  const taperRad = (taperDeg * Math.PI) / 180
 
   if (groups.length === 1) {
     const [outer, holes] = groups[0]
     const face = sketchLoopsToFace(oc, scope, [outer, ...holes], plane)
-    return prismFaceWithLineage(oc, scope, face, [outer, ...holes], plane, directionVec, distance, tokenPrefix, createdBy, sketchId)
+    return prismFaceWithLineage(
+      oc, scope, face, [outer, ...holes], plane, directionVec, distance, tokenPrefix, createdBy, sketchId, taperRad,
+    )
   }
 
+  // The canonical merged-profile round trip returns the union face itself; a
+  // draft changes only the prism built from it, so the tapered path can use the
+  // same merged face and then one draft prism rather than per-group frustums
+  // (adjacent groups' inner walls lean apart and would not fuse).
   const merged = tryCanonicalMergedProfile(oc, scope, groups, plane, directionVec, distance)
-  if (merged !== null) {
+  if (merged.kind === 'merged') {
     const lineageLoops = groups.flatMap(([outer, holes]) => [outer, ...holes])
-    return prismFaceWithLineage(oc, scope, merged, lineageLoops, plane, directionVec, distance, tokenPrefix, createdBy, sketchId)
+    return prismFaceWithLineage(
+      oc, scope, merged.face, lineageLoops, plane, directionVec, distance, tokenPrefix, createdBy, sketchId, taperRad,
+    )
+  }
+  if (taperRad !== 0 && merged.kind !== 'disjoint') {
+    throw new Error(
+      'extrude: a taper on a multi-group profile needs one connected region; ' +
+        'join the groups into one profile or remove the taper',
+    )
   }
 
-  return perGroupPrismWithLineage(oc, scope, groups, plane, directionVec, distance, tokenPrefix, createdBy, sketchId)
+  return perGroupPrismWithLineage(
+    oc, scope, groups, plane, directionVec, distance, tokenPrefix, createdBy, sketchId, taperRad,
+  )
 }
 
 // ─── revolve (the revolve leaf's brep producer) ───

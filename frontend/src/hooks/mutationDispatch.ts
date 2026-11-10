@@ -221,6 +221,7 @@ export const mutationHandlers: MutationHandlers = {
     applyTogglePlaneVisibility(next),
   add_extrude: (next, m) =>
     applyAddExtrude(next, m.featureId, m.label, m.sketchQuery, m.distance, {
+      taper: m.taper,
       direction: m.direction,
       termination: m.termination,
       up_to: m.up_to,

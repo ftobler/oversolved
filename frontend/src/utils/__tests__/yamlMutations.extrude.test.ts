@@ -73,6 +73,18 @@ describe('add_extrude', () => {
       expect(extrude0(doc), String(clear)).not.toHaveProperty('up_to')
     }
   })
+
+  it('treats an empty taper as no key and rounds a numeric taper', () => {
+    const empty = structuredClone(baseDoc)
+    applyAddExtrude(empty, 'ex1', undefined, '$sk1', 10, { taper: '' })
+    expect(extrude0(empty)).not.toHaveProperty('taper')
+    const rounded = structuredClone(baseDoc)
+    applyAddExtrude(rounded, 'ex1', undefined, '$sk1', 10, { taper: 15.123456789 })
+    expect(extrude0(rounded).taper).toBe(15.123457)
+    const expression = structuredClone(baseDoc)
+    applyAddExtrude(expression, 'ex1', undefined, '$sk1', 10, { taper: 'ang' })
+    expect(extrude0(expression).taper).toBe('ang')
+  })
 })
 
 describe('normalizeRefList', () => {
@@ -272,6 +284,40 @@ describe('set_extrude_direction', () => {
     applySetExtrudeField(doc, 'ex1', 'direction', 'symmetric')
     expect(doc).toEqual(before)
     expect(doc.features![0]).not.toHaveProperty('extrude')
+  })
+})
+
+describe('set_extrude_direction and termination clear an invisible taper', () => {
+  const tapered = (): PartDoc => ({
+    features: [{
+      id: 'ex1', kind: 'extrude',
+      extrude: { sketch: '$sk1', distance: 10, direction: 'normal', taper: 15 },
+    }],
+  })
+
+  it('drops taper when direction becomes symmetric', () => {
+    const doc = tapered()
+    applySetExtrudeField(doc, 'ex1', 'direction', 'symmetric')
+    expect(extrude0(doc).direction).toBe('symmetric')
+    expect(extrude0(doc)).not.toHaveProperty('taper')
+  })
+
+  it('drops taper when termination becomes up_to or through_all', () => {
+    for (const termination of ['up_to', 'through_all'] as const) {
+      const doc = tapered()
+      applySetExtrudeField(doc, 'ex1', 'termination', termination)
+      expect(extrude0(doc).termination, termination).toBe(termination)
+      expect(extrude0(doc), termination).not.toHaveProperty('taper')
+    }
+  })
+
+  it('keeps taper for a reverse or normal direction and a blind termination', () => {
+    const reverse = tapered()
+    applySetExtrudeField(reverse, 'ex1', 'direction', 'reverse')
+    expect(extrude0(reverse).taper).toBe(15)
+    const blind = tapered()
+    applySetExtrudeField(blind, 'ex1', 'termination', 'blind')
+    expect(extrude0(blind).taper).toBe(15)
   })
 })
 
