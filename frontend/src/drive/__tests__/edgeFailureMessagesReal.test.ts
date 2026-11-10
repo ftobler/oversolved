@@ -128,6 +128,33 @@ describe.skipIf(!ready)('edge modifier and shell failure messages (real OCC + Ru
     }
   }, 120_000)
 
+  it('counts a picked chain partner as picked, not unpicked', async () => {
+    // F3: the arc's tangent partners are in the same batch, so a skipped-edge
+    // note must not call them unpicked. Before the fix this said "2 unpicked"
+    // even though both were picked.
+    const doc = await build(PPP0103)
+    const arc = await pick(doc, { kind: 'edge', where: { and: [{ within: { axis: 'y', min: 47.4 } }, { type: 'arc' }] } })
+    const circle = await pick(doc, { kind: 'edge', where: { and: [{ within: { axis: 'y', max: -56.4 } }, { type: 'circle' }] } })
+    const topLines = await pick(doc, {
+      kind: 'edge',
+      where: { and: [{ within: { axis: 'y', min: 47.4 } }, { parallel: [1, 0, 0] }, { type: 'line' }] },
+    })
+    expect(arc).toHaveLength(1)
+    expect(topLines.length).toBeGreaterThan(0)
+
+    const { problem } = await apply(doc, {
+      type: 'add_fillet', featureId: 'fi1', edges: [...arc, ...circle, ...topLines], radius: 0.5,
+    })
+    expect(problem?.status).toBe('partial')
+    const start = problem!.message.indexOf('edges[0]')
+    expect(start).toBeGreaterThanOrEqual(0)
+    const next = problem!.message.indexOf('; edges[', start + 1)
+    const arcEntry = problem!.message.slice(start, next === -1 ? undefined : next)
+    expect(arcEntry).toContain('refused by the kernel even alone')
+    expect(arcEntry).not.toContain('unpicked edge(s)')
+    expect(problem!.message).not.toContain('into 2 unpicked')
+  }, 120_000)
+
   it('names the one edge of a batch that cannot fit, and builds the rest', async () => {
     // A 2 mm plate under a 10 mm block: r 3 fits the block's top edges but not
     // the plate's rim, whose side face is 2 mm tall.

@@ -23,6 +23,7 @@ import type { Repository } from '../query'
 import { resolveBody } from './shared/bodyResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
 import { booleanWithDiff, volumeOf, shapesIntersect, BooleanSoundnessError } from '../occ/booleans'
+import { nearCoaxialCylinderWarning } from '../occ/nearCoaxial'
 import { offsetSolid, OffsetError } from '../occ/offsetShape'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { resplitBody } from './bodySplit'
@@ -367,6 +368,13 @@ export function solveBoolean(
 
   targetBody.modified_by.push(featureId)
   targetBody.brep_diff = lastDiff
+
+  // A union can keep two near-coaxial cylinder faces with a microscopic
+  // shoulder; name it before a later fillet at the junction refuses opaquely.
+  if (op === 'fuse' && foldedAny) {
+    const nearCoaxial = nearCoaxialCylinderWarning(oc, scope, resultShape)
+    if (nearCoaxial !== null) warn(nearCoaxial)
+  }
 
   // Mirror the implicit cut/add warning: a boolean that consumed a tool but left
   // the target's brep_diff untouched produced no real geometry change.
