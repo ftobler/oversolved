@@ -50,6 +50,7 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     expect(example).toBeDefined()
     const result = await exampleRun(example!.steps)
     expect(result.ok).toBe(true)
+    expect(result.features).toEqual([])
     const measure = await measureHeadless(result.doc!)
     expect(measure).not.toBeNull()
     expect(measure!.measures.volume).toBeCloseTo(12000, 6)
@@ -61,10 +62,23 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     expect(example).toBeDefined()
     const result = await exampleRun(example!.steps)
     expect(result.ok).toBe(true)
+    expect(result.features).toEqual([])
     const measure = await measureHeadless(result.doc!)
     expect(measure).not.toBeNull()
     expect(measure!.measures.volume).toBeCloseTo(11922.743, 3)
     expect(measure!.measures.area).toBeCloseTo(3733.044, 3)
+  }, 120_000)
+
+  it('builds the projection example fully constrained from a projected face edge', async () => {
+    const example = MUTATION_EXAMPLES.find(entry => entry.name === 'projection')
+    expect(example).toBeDefined()
+    const result = await exampleRun(example!.steps)
+    expect(result.ok).toBe(true)
+    expect(result.features).toEqual([])
+    const measure = await measureHeadless(result.doc!)
+    expect(measure).not.toBeNull()
+    expect(measure!.measures.volume).toBeCloseTo(13000, 3)
+    expect(measure!.measures.bodies).toBe(1)
   }, 120_000)
 
   it('builds the emboss-on-cylinder example the user\'s way', async () => {
@@ -72,11 +86,23 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     expect(example).toBeDefined()
     const result = await exampleRun(example!.steps)
     expect(result.ok).toBe(true)
+    expect(result.features).toEqual([])
     const measure = await measureHeadless(result.doc!)
     expect(measure).not.toBeNull()
     // pi * 20^2 * 30 + the 0.5 raised footprint (101.04521).
     expect(measure!.measures.volume).toBeCloseTo(37800.157, 2)
     expect(measure!.measures.bodies).toBe(1)
+  }, 120_000)
+
+  it('builds the tapered-block example fully constrained', async () => {
+    const example = MUTATION_EXAMPLES.find(entry => entry.name === 'tapered-block')
+    expect(example).toBeDefined()
+    const result = await exampleRun(example!.steps)
+    expect(result.ok).toBe(true)
+    expect(result.features).toEqual([])
+    const measure = await measureHeadless(result.doc!)
+    expect(measure).not.toBeNull()
+    expect(measure!.measures.volume).toBeCloseTo(2371.112, 3)
   }, 120_000)
 
   it('keeps a fillet on the emboss edge across an up_to_offset edit', async () => {

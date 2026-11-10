@@ -133,7 +133,7 @@ describe('frameConflicts', () => {
     expect(notes[0].ids).toEqual(['sk8', 'sk9'])
     expect(notes[0].text).toContain('sk8 and sk9 share the face query "?body_ex1:flatface"')
     expect(notes[0].text).toContain('their resolved origins differ by 0.348 mm')
-    expect(notes[0].text).toContain("move sk9 above that feature")
+    expect(notes[0].text).toContain("Dimension sk9 against projected edges of the face")
   })
 
   it('says nothing when both sketches resolved the same frame', () => {

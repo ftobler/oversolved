@@ -22,7 +22,7 @@ import { selectByPredicate, validateSelector, type SelectResult } from '@/kernel
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import { createHeadlessPart, type HeadlessCheckpoint, type HeadlessPart } from '@/drive/headlessPart'
-import { featureProblems, featureNotes, readSolveOutcomes, MISSING_VERDICT_STATUS, type FeatureNote, type FeatureProblem } from '@/drive/featureOutcome'
+import { featureProblems, featureNotes, readSolveOutcomes, blocksExport, MISSING_VERDICT_STATUS, type FeatureNote, type FeatureProblem } from '@/drive/featureOutcome'
 import { featureDeltaRows, touchedFeatureIds, type FeatureDelta } from '@/drive/featureDeltas'
 import { featureFrames, frameConflicts, type FeatureFrameMap } from '@/drive/featureFrames'
 import { featureCurves, type FeatureCurveMap } from '@/drive/featureCurves'
@@ -382,10 +382,11 @@ export interface HeadlessExport {
   // enter `ok`: they describe geometry the file holds, so a chain note leaves
   // the export clean.
   notes: FeatureNote[]
-  // An export's ok is stricter than a run's: the file is the answer, so any
+  // An export's ok is stricter than a run's: the file is the answer, so a
   // failed, partial or warned feature makes it a different model than the
-  // document describes. It stays separate from the file itself: the caller
-  // still gets the bytes, and the reply says they are not the whole story.
+  // document describes. The underconstrained-sketch warning is the one
+  // carve-out: the file is sound. It stays separate from the file itself: the
+  // caller still gets the bytes, and the reply says they are not the whole story.
   ok: boolean
 }
 
@@ -398,12 +399,14 @@ export async function exportHeadless(doc: PartDoc, opts: HeadlessExportOptions):
   const features = featureProblems(doc, outcomes)
   const frames = featureFrames(doc, outcome.response.result)
   // No file is not a successful export: ok names the outcome the caller acts
-  // on, and callers keep their own bytes guard for the message.
+  // on, and callers keep their own bytes guard for the message. An
+  // underconstrained sketch is the one tolerated row (see blocksExport): its
+  // warning is reported, but it does not turn a sound file into a failed one.
   return {
     bytes: outcome.bytes,
     features,
     notes: featureNotes(doc, outcomes, frameConflicts(doc, frames)),
-    ok: outcome.bytes !== null && features.length === 0,
+    ok: outcome.bytes !== null && !features.some(blocksExport),
   }
 }
 
@@ -658,10 +661,13 @@ export async function exportAssemblyHeadless(
   const bytes = await exportAssemblyLocally(assemblySpecs(doc, parts, response.transforms), exportOpts, files)
   return {
     bytes,
+    // A part's underconstrained sketch is a warning row in `parts` but the file
+    // is sound, so only a part error or a blocking feature row fails the export
+    // (the same carve-out a part export makes).
     ok: bytes !== null
       && !solveFailed(response.status)
       && state.mates.length === 0
-      && state.parts.length === 0,
+      && !state.parts.some(part => part.error !== undefined || part.features.some(blocksExport)),
     ...state,
   }
 }

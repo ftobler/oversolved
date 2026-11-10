@@ -36,6 +36,9 @@ export interface FeatureDelta {
   bboxDelta: number[] | null
   // A hole's drill side as the kernel resolved it (FeatureOutcome.direction).
   direction?: 'normal' | 'reverse'
+  // A sketch's remaining degrees of freedom, so an author sees the count shrink
+  // as constraints land without a separate measure. Only a sketch result has it.
+  dof?: number
   // A body this feature changed and that body's own volume after it. The name
   // is the feature's own reported body when that one changed, otherwise the
   // one body whose measure moved; a rigid transform or mirror still names its
@@ -181,7 +184,11 @@ export function featureDeltaRows(
       const kind = typeof feature.kind === 'string' ? feature.kind : 'unknown'
       const volumeDelta = measure.volume - previousVolume
       const bboxDelta = subtractBbox(measure.bbox, previousBbox)
-      if (mode === 'all' || includeRow(id, kind, measure, volumeDelta, bboxDelta)) {
+      // A warned reference feature the steps touched is worth a row even though
+      // it has no volume: an author who just added a constraint to an
+      // underconstrained sketch reads its shrunk `dof` without a second call.
+      const warnedTouched = outcome.warning !== undefined && touched.has(id)
+      if (mode === 'all' || warnedTouched || includeRow(id, kind, measure, volumeDelta, bboxDelta)) {
         const solid = isSolidProducingKind(kind)
         const bodyId = solid ? outcome.bodyId : undefined
         const changed = solid && measure.bodies !== undefined
@@ -197,6 +204,7 @@ export function featureDeltaRows(
           bboxDelta,
           ...(outcome.warning !== undefined && { warning: outcome.warning }),
           ...(outcome.direction !== undefined && { direction: outcome.direction }),
+          ...(outcome.dof !== undefined && { dof: outcome.dof }),
           ...(solid ? bodyFields(kind, bodyId, measure.bodies, changed) : {}),
         })
       }

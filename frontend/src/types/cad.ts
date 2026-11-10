@@ -1262,6 +1262,9 @@ export interface SketchData {
   // A fallback or no-op the kernel took on an otherwise good solve, read by
   // featureFailure as a warning.
   solver_warning?: string
+  // A sketch's remaining degrees of freedom; its underconstrained warning
+  // states the same count.
+  dof?: number
   // Informational text about geometry the solve did build (a blend's tangent
   // chain); it is not a failure and the tree shows no mark for it.
   solver_note?: string
@@ -1324,7 +1327,7 @@ export type Mutation =
   | { type: 'set_constraint_pos'; featureId: string; constraintId: string; pos: Point }
   | { type: 'set_constraint_sign'; featureId: string; constraintId: string; sign: number }
   | { type: 'delete'; targets: string[] }
-  | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
+  | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string; dimensions?: boolean; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
   | { type: 'import_dxf'; featureId: string; content?: string; file?: string }
   // Lettering expanded once into authored line/spline outlines; no text kind
   // is stored. origin/size/angle/align place the run (utils/geometry/textExpand.ts).
@@ -1339,9 +1342,9 @@ export type Mutation =
   // circumcircle's center. `entityIds` authors the whole id block (rect: the
   // four lines; center rect: four lines then the centre point; n-gon: the n
   // lines then the circumcircle) so a step can name a line in its own script.
-  | { type: 'add_rect'; featureId: string; p0: Point; p1: Point; p0Ref?: string | null; p1Ref?: string | null; entityIds?: string[] }
-  | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point; centerRef?: string | null; cornerRef?: string | null; entityIds?: string[] }
-  | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number; centerRef?: string | null; cornerRef?: string | null; entityIds?: string[] }
+  | { type: 'add_rect'; featureId: string; p0: Point; p1: Point; p0Ref?: string | null; p1Ref?: string | null; entityIds?: string[]; dimensions?: boolean }
+  | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point; centerRef?: string | null; cornerRef?: string | null; entityIds?: string[]; dimensions?: boolean }
+  | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number; centerRef?: string | null; cornerRef?: string | null; entityIds?: string[]; dimensions?: boolean }
   // The app's arc tool emits this too. The argument order is CadQuery's
   // threePointArc(start, through, end); the tool's click order is start, end,
   // bulge, so its bulge click is `through`. The through point picks which side

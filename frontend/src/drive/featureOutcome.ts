@@ -7,6 +7,7 @@
 
 import type { BuildResponse, PartDoc } from '@/types/cad'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
+import { STATUS_NAME, Status } from '@/wasm-kernel/codec'
 
 /** What the last solve said about one feature. */
 export interface FeatureOutcome {
@@ -35,6 +36,10 @@ export interface FeatureOutcome {
   // The body the feature built or changed (the kernel's `body_id`), e.g. the
   // merge_target an extrude cut went into.
   bodyId?: string
+  // A sketch's remaining degrees of freedom. An underconstrained sketch reads
+  // this count in its warning; the delta row repeats it so an author sees the
+  // number shrink as constraints land.
+  dof?: number
 }
 
 /** A feature the solve did not finish cleanly, in feature log order. */
@@ -98,6 +103,18 @@ export function isBuiltOutcome(outcome: FeatureOutcome): boolean {
 }
 
 /**
+ * Whether a problem row must fail an export. An underconstrained sketch is the
+ * one warning the law tolerates in a file: the geometry exists and the build is
+ * sound, the sketch just still has freedom, and refusing to export would make
+ * the yellow mark a hard error by the back door. Everything else the problem
+ * list carries -- a partial or failed sibling, an overconstrained sketch, a
+ * missing verdict -- still fails it.
+ */
+export function blocksExport(problem: FeatureProblem): boolean {
+  return !(problem.status === STATUS_NAME[Status.underconstrained] && problem.kind === 'sketch')
+}
+
+/**
  * The per-feature outcomes in a solve response. A feature without a string
  * status (null, a geometry-only row) is left out, matching the old
  * solveStatuses contract: the map only carries real verdicts.
@@ -110,7 +127,7 @@ export function readSolveOutcomes(
     if (typeof feature !== 'object' || feature === null) continue
     const row = feature as {
       status?: unknown; exception?: unknown; solver_warning?: unknown; solver_note?: unknown
-      resolved_warning?: unknown; direction?: unknown; body_id?: unknown
+      resolved_warning?: unknown; direction?: unknown; body_id?: unknown; dof?: unknown
     }
     if (typeof row.status !== 'string') continue
     const exception = typeof row.exception === 'string' && row.exception !== '' ? row.exception : undefined
@@ -123,6 +140,7 @@ export function readSolveOutcomes(
     // is not one and is dropped rather than echoed.
     const direction = row.direction === 'normal' || row.direction === 'reverse' ? row.direction : undefined
     const bodyId = typeof row.body_id === 'string' && row.body_id !== '' ? row.body_id : undefined
+    const dof = typeof row.dof === 'number' && Number.isFinite(row.dof) ? row.dof : undefined
     outcomes[id] = {
       status: row.status,
       ...(exception !== undefined && { exception }),
@@ -131,6 +149,7 @@ export function readSolveOutcomes(
       ...(resolvedWarning !== undefined && { resolvedWarning }),
       ...(direction !== undefined && { direction }),
       ...(bodyId !== undefined && { bodyId }),
+      ...(dof !== undefined && { dof }),
     }
   }
   return outcomes

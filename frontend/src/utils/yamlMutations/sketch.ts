@@ -433,6 +433,7 @@ export function applyAddEntity(
   params: number[],
   entityId?: string,
   fit?: FitSplineAddOptions,
+  dimensions?: boolean,
 ): void {
   // A fit spline's params are the fit points, not a fixed layout, so its writer
   // lives beside the insert/delete/handle editors that share the ref rules.
@@ -452,6 +453,27 @@ export function applyAddEntity(
   const eid = mintEntityId(feature.entities, entityId)
   feature.entities.push({ id: eid, kind })
   feature.initial[eid] = params.map(round)
+  // The size is the one DOF a single entity author can close here; position and
+  // rotation still need an anchor or a neighbour (add_constraint).
+  if (dimensions === true) applyEntityDimension(doc, featureId, kind, eid, feature.initial[eid])
+}
+
+/** Add the size dimension `dimensions: true` authors for a single entity, when
+ *  the kind has one the solver can drive: a line's length, a circle's or arc's
+ *  radius. Splines, ellipses and points have no such value. */
+function applyEntityDimension(
+  doc: PartDoc,
+  featureId: string,
+  kind: string,
+  entityId: string,
+  params: readonly number[],
+): void {
+  const ref = `entity:${featureId}:${entityId}`
+  if (kind === 'line') {
+    applyAddConstraint(doc, featureId, 'length', [ref], round(Math.hypot(params[2] - params[0], params[3] - params[1])))
+  } else if (kind === 'circle' || kind === 'arc') {
+    applyAddConstraint(doc, featureId, 'radius', [ref], round(params[2]))
+  }
 }
 
 export function applyAddProjectedEntity(

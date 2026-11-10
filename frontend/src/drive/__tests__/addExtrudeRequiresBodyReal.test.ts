@@ -17,6 +17,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -79,7 +80,7 @@ describe.skipIf(!ready)('an additive extrude that reaches no body (real OCC + Ru
       ],
     })
     expect(result.ok).toBe(true)
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     const measured = await measureHeadless(result.doc as PartDoc)
     expect(measured!.measures.volume).toBeCloseTo(12, 6)
   }, 120_000)

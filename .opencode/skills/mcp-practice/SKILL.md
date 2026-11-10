@@ -62,6 +62,12 @@ Otherwise write down in one or two sentences what part you are going to
 build and which simplifications you take (fewer holes, no thread, one
 instance of an array...).
 
+The example is the red thread, not a spec. Translate it into Oversolved
+convention: sketches are fully constrained, anchored to projected geometry
+where earlier geometry exists and otherwise to the origin, even when that takes
+more steps than the source. The source's coordinate choice stays; it is what
+the dimension values are.
+
 ## 3. Model it through MCP
 
 Before your first `run`, read `docs/drive.md` (section "MCP Server"), the
@@ -74,6 +80,12 @@ instructions.
 - Read `features` in every reply: a non-empty list is a finding (a feature failed, only partly
   applied, or warned while `ok` stayed true), so record its id, kind, status and message.
   `measure` returns the same list when you want the document's verdicts without a run.
+- Every sketch must reach `fully_constrained` before the run is `built`. An
+  underconstrained row left in the final document is itself a finding (kind
+  `mcp-friction`, key `sketch / could not fully constrain`, with why) and makes
+  the outcome `partial`. Use `add_projected_entity` plus snap refs whenever a
+  sketch relates to existing geometry, and record every projection failure or
+  awkwardness as a finding. `fixed` is not allowed except on imported geometry.
 - `compare` against a reference only if one is cheap to get (a CadQuery
   example run through `frontend/scripts/cadqueryReference.py`, see
   `docs/translate.md`; CadQuery is in `.venv`). Optional.
@@ -175,7 +187,8 @@ What the example builds and what you chose to build.
 
 ## Notes
 Anything else: what worked well, what took many attempts, what you would
-want the tool to tell you.
+want the tool to tell you. State the constraint and projection count, or
+"all sketches fully constrained".
 ```
 
 Kinds:

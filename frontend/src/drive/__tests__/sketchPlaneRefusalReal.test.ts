@@ -85,7 +85,7 @@ describe.skipIf(!ready)('sketch plane refusal (real OCC + Rust solver)', () => {
     expect(reordered.features).toEqual([])
     const ids = reordered.doc!.features!.map(feature => feature.id)
     expect(ids.indexOf('pl1')).toBe(ids.indexOf('sk2') - 1)
-    expect(reordered.part.solveOutcomes().sk2.status).toBe('underconstrained')
+    expect(reordered.part.solveOutcomes().sk2.status).toBe('fully_constrained')
     // It built on pl1 (Top offset 5), not on the Front default.
     expect(reordered.frames!.sk2.origin).toEqual([0, 5, 0])
   }, 120_000)
@@ -134,7 +134,9 @@ describe.skipIf(!ready)('sketch plane refusal (real OCC + Rust solver)', () => {
 
     const onFace = await runHeadless({ doc, docId: 'face-sketch', steps: [] })
     expect(onFace.features).toEqual([])
-    expect(onFace.part.solveOutcomes().sk2.status).toBe('underconstrained')
+    // The clone carries the box sketch's dimensions and origin anchor, so the
+    // face sketch is fully constrained from the start.
+    expect(onFace.part.solveOutcomes().sk2.status).toBe('fully_constrained')
 
     // The sketch stays in the log after its face's body is deleted; it must red
     // rather than quietly draw on Front.

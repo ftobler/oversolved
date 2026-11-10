@@ -23,6 +23,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -85,8 +86,8 @@ describe.skipIf(!ready)('one deferred solve per run (real OCC + Rust solver)', (
     expect(once.outcome.ok).toBe(true)
     expect(once.solve.generation).toBe(1)
     expect(singles.solve.generation).toBe(1)
-    expect(once.features).toEqual([])
-    expect(singles.features).toEqual([])
+    expect(nonSketchProblems(once.features)).toEqual([])
+    expect(nonSketchProblems(singles.features)).toEqual([])
     expect(singles.featureDeltas).toEqual(once.featureDeltas)
     expect(singles.frames).toEqual(once.frames)
 
@@ -187,8 +188,8 @@ describe.skipIf(!ready)('one deferred solve per run (real OCC + Rust solver)', (
       doc = call.outcome.doc as PartDoc
     }
     expect(singlesOutcome?.ok).toBe(true)
-    expect(once.outcome.features).toEqual([])
-    expect(singlesOutcome!.features).toEqual([])
+    expect(nonSketchProblems(once.outcome.features)).toEqual([])
+    expect(nonSketchProblems(singlesOutcome!.features)).toEqual([])
 
     const contactOf = (checkpoint: PartDoc | null): number[] | undefined => {
       const sketch = checkpoint?.features?.find(feature => feature.id === 'sk1')
@@ -225,8 +226,8 @@ describe.skipIf(!ready)('one deferred solve per run (real OCC + Rust solver)', (
     ]
     const once = await runWhole(steps, 'batch-mirror')
     const singles = await runOnePerCall(steps, 'batch-mirror-singles')
-    expect(once.features).toEqual([])
-    expect(singles.features).toEqual([])
+    expect(nonSketchProblems(once.features)).toEqual([])
+    expect(nonSketchProblems(singles.features)).toEqual([])
 
     const geometry = (doc: PartDoc | null): Record<string, number[]> => {
       const sketch = doc?.features?.find(feature => feature.id === 'sk1')

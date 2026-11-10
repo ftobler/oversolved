@@ -158,7 +158,7 @@ export const mutationHandlers: MutationHandlers = {
   add_entity: (next, m) =>
     applyAddEntity(next, m.featureId, m.kind, m.params, m.entityId, {
       tangents: m.tangents, tangentScale: m.tangentScale,
-    }),
+    }, m.dimensions),
   import_dxf: (next, m) =>
     // The headless runner resolves a `file` id into `content` before the
     // session sees it; the empty fallback keeps a direct caller on the
@@ -177,11 +177,11 @@ export const mutationHandlers: MutationHandlers = {
   add_projected_entity: (next, m) =>
     applyAddProjectedEntity(next, m.featureId, m.kind, m.source, m.entityId),
   add_rect: (next, m) =>
-    applyAddRect(next, m.featureId, m.p0, m.p1, m.p0Ref, m.p1Ref, m.entityIds),
+    applyAddRect(next, m.featureId, m.p0, m.p1, m.p0Ref, m.p1Ref, m.entityIds, m.dimensions),
   add_center_rect: (next, m) =>
-    applyAddCenterRect(next, m.featureId, m.center, m.corner, m.centerRef, m.cornerRef, m.entityIds),
+    applyAddCenterRect(next, m.featureId, m.center, m.corner, m.centerRef, m.cornerRef, m.entityIds, m.dimensions),
   add_ngon: (next, m) =>
-    applyAddNgon(next, m.featureId, m.center, m.corner, m.sides, m.cornerRef, m.centerRef, m.entityIds),
+    applyAddNgon(next, m.featureId, m.center, m.corner, m.sides, m.cornerRef, m.centerRef, m.entityIds, m.dimensions),
   add_three_point_arc: (next, m) =>
     applyAddThreePointArc(next, m.featureId, m.start, m.through, m.end, m.startRef, m.endRef, m.entityId),
   apply_offset: (next, m) =>

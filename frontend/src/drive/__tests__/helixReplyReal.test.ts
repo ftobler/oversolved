@@ -19,6 +19,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -86,7 +87,7 @@ describe.skipIf(!ready)('helix placement in the drive reply (real OCC + Rust sol
   it('reports the rounded start, end and climb axis on the run reply', async () => {
     const run = await helixRun()
     expect(run.ok).toBe(true)
-    expect(run.features).toEqual([])
+    expect(nonSketchProblems(run.features)).toEqual([])
     const curve = run.curves!.hx1
     // The face's own axis is the climb direction under the default `normal`.
     // OCC reports this cylinder's surface axis as -Z, so the helix climbs down
@@ -126,7 +127,7 @@ describe.skipIf(!ready)('helix placement in the drive reply (real OCC + Rust sol
       steps: [m({ type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_front' })],
     })
     expect(chained.ok).toBe(true)
-    expect(chained.features).toEqual([])
+    expect(nonSketchProblems(chained.features)).toEqual([])
     // The chained call touched the new sketch, never the helix: a touched-only
     // map would hide the start exactly when the sweep that follows needs it.
     expect(chained.curves!.hx1).toEqual(run.curves!.hx1)
@@ -158,7 +159,7 @@ describe.skipIf(!ready)('helix placement in the drive reply (real OCC + Rust sol
       ],
     })
     expect(chained.ok).toBe(true)
-    expect(chained.features).toEqual([])
+    expect(nonSketchProblems(chained.features)).toEqual([])
     // The sweep defaults to `add`, so it grows the cylinder body rather than
     // minting body_sw1; the volume is the proof that it actually swept.
     expect(chained.bodies).toEqual(['body_ex1'])

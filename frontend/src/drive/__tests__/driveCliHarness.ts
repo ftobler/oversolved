@@ -74,7 +74,7 @@ export function expectBbox(actual: unknown, expected: number[]): void {
 export const BOX_SCRIPT = {
   steps: [
     { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Rectangle', plane: '@builtin_plane_front' } },
-    { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] } },
+    { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10], p0Ref: '@builtin_origin', dimensions: true } },
     { mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Extrude', sketchQuery: '$sk1', distance: 5, operation: 'new' } },
   ],
 }
@@ -85,7 +85,7 @@ export const BOX_SCRIPT = {
 export const SESSION_BOX_SCRIPT = {
   steps: [
     { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Rectangle', plane: '@builtin_plane_top' } },
-    { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [40, 30] } },
+    { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [40, 30], p0Ref: '@builtin_origin', dimensions: true } },
     { mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Extrude', sketchQuery: '$sk1', distance: 10, operation: 'new' } },
   ],
 }
@@ -109,11 +109,45 @@ export const RESOLVED_WARNING_SCRIPT = {
       { n: 3, x0: 10 },
     ].flatMap(({ n, x0 }) => [
       { mutation: { type: 'add_sketch', featureId: `sk${n}`, plane: '@builtin_plane_front' } },
-      { mutation: { type: 'add_rect', featureId: `sk${n}`, p0: [x0, 0], p1: [x0 + 2, 2] } },
+      {
+        mutation: {
+          type: 'add_rect', featureId: `sk${n}`, p0: [x0, 0], p1: [x0 + 2, 2],
+          entityIds: ['b', 'r', 't', 'l'], dimensions: true,
+        },
+      },
+      {
+        mutation: {
+          type: 'add_constraint', featureId: `sk${n}`, kind: 'point_distance_x',
+          targets: [`vertex:sk${n}:b:start`, '@builtin_origin'], value: x0, sign: -1,
+        },
+      },
+      {
+        mutation: {
+          type: 'add_constraint', featureId: `sk${n}`, kind: 'point_distance_y',
+          targets: [`vertex:sk${n}:b:start`, '@builtin_origin'], value: 0, sign: -1,
+        },
+      },
       { mutation: { type: 'add_extrude', featureId: `ex${n}`, sketchQuery: `$sk${n}`, distance: 3, operation: 'new' } },
     ]),
     { mutation: { type: 'add_sketch', featureId: 'sk4', plane: '@builtin_plane_front' } },
-    { mutation: { type: 'add_rect', featureId: 'sk4', p0: [1, 0], p1: [11, 2] } },
+    {
+      mutation: {
+        type: 'add_rect', featureId: 'sk4', p0: [1, 0], p1: [11, 2],
+        entityIds: ['b', 'r', 't', 'l'], dimensions: true,
+      },
+    },
+    {
+      mutation: {
+        type: 'add_constraint', featureId: 'sk4', kind: 'point_distance_x',
+        targets: ['vertex:sk4:b:start', '@builtin_origin'], value: 1, sign: -1,
+      },
+    },
+    {
+      mutation: {
+        type: 'add_constraint', featureId: 'sk4', kind: 'point_distance_y',
+        targets: ['vertex:sk4:b:start', '@builtin_origin'], value: 0, sign: -1,
+      },
+    },
     { mutation: { type: 'add_extrude', featureId: 'ex4', sketchQuery: '$sk4', distance: 3 } },
     { mutation: { type: 'add_boolean', featureId: 'bo1', operation: 'union', target: 'body_ex1', tools: ['body_ex2', 'body_ex3'] } },
   ],

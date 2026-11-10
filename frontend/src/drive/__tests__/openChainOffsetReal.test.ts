@@ -19,6 +19,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -67,7 +68,7 @@ async function bendThenOffset(twin: Twin): Promise<HeadlessRunResult> {
     ],
   })
   expect(outlined.ok).toBe(true)
-  expect(outlined.features).toEqual([])
+  expect(nonSketchProblems(outlined.features)).toEqual([])
   const arcId = sketchOf(outlined.doc!).entities!.find(entity => entity.kind === 'arc')!.id
 
   const steps: ScriptStep[] = [
@@ -84,7 +85,7 @@ describe.skipIf(!ready)('open-chain offset closes both mirror twins into the sam
     it(`${name}: the chain offsets inside, the caps close it, volume ${VOLUME}`, async () => {
       const built = await bendThenOffset(twin)
       expect(built.ok).toBe(true)
-      expect(built.features).toEqual([])
+      expect(nonSketchProblems(built.features)).toEqual([])
 
       // One r2 arc copy beside the authored r3 fillet, and the chain is the same
       // three entities on each side.
@@ -95,7 +96,7 @@ describe.skipIf(!ready)('open-chain offset closes both mirror twins into the sam
       const measured = await measureHeadless(built.doc!)
       expect(measured).not.toBeNull()
       expect(measured!.ok).toBe(true)
-      expect(measured!.features).toEqual([])
+      expect(nonSketchProblems(measured!.features)).toEqual([])
       expect(measured!.measures.volume).toBeCloseTo(VOLUME, 9)
     }, 240_000)
   }

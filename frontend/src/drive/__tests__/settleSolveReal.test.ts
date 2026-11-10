@@ -25,6 +25,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -123,7 +124,7 @@ describe.skipIf(!ready)('a headless reply measures the stored document (real OCC
       featureDeltas: 'all',
     })
     expect(second.outcome.ok).toBe(true)
-    expect(second.features).toEqual([])
+    expect(nonSketchProblems(second.features)).toEqual([])
 
     const measured = await measureHeadless(second.doc as PartDoc, { docId: 'settle-t1-measure' })
     expect(measured).not.toBeNull()
@@ -143,7 +144,7 @@ describe.skipIf(!ready)('a headless reply measures the stored document (real OCC
       featureDeltas: 'all',
     })
     expect(second.outcome.ok).toBe(true)
-    expect(second.features).toEqual([])
+    expect(nonSketchProblems(second.features)).toEqual([])
     // The extra dimensions remove the free motion the first pass was keeping.
     expect(second.part.solveOutcomes().sk1.status).toBe('fully_constrained')
 

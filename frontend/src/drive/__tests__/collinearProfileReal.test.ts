@@ -25,6 +25,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -86,7 +87,7 @@ async function iBeamProfile(): Promise<PartDoc> {
     ],
   })
   expect(built.ok).toBe(true)
-  expect(built.features).toEqual([])
+  expect(nonSketchProblems(built.features)).toEqual([])
   return built.doc!
 }
 
@@ -113,7 +114,7 @@ describe.skipIf(!ready)('collinear profile runs (real kernel)', () => {
     const measured = await measureHeadless(doc)
     expect(measured).not.toBeNull()
     expect(measured!.ok).toBe(true)
-    expect(measured!.features).toEqual([])
+    expect(nonSketchProblems(measured!.features)).toEqual([])
     expect(measured!.measures.volume).toBeCloseTo(I_BEAM_VOLUME, 3)
     expect(measured!.measures.faces).toBe(14)
     expect(measured!.measures.edges).toBe(36)
@@ -130,7 +131,7 @@ describe.skipIf(!ready)('collinear profile runs (real kernel)', () => {
   it('a rectangle split by a construction line extrudes to a 6-face box, and the unsplit top edge takes one fillet pick', async () => {
     const built = await runHeadless({ doc: emptyDriveDoc(), steps: crossedRectangleSteps() })
     expect(built.ok).toBe(true)
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     const measured = await measureHeadless(built.doc!)
     expect(measured!.measures.volume).toBeCloseTo(4, 6)
     expect(measured!.measures.faces).toBe(6)
@@ -165,7 +166,7 @@ describe.skipIf(!ready)('collinear profile runs (real kernel)', () => {
       ],
     })
     expect(built.ok).toBe(true)
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     const measured = await measureHeadless(built.doc!)
     expect(measured!.measures.faces).toBe(3)
     // Two circular rims plus the cylinder's seam edge.

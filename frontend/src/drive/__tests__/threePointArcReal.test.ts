@@ -14,6 +14,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -66,7 +67,7 @@ describe.skipIf(!ready)('add_three_point_arc (real OCC + Rust solver)', () => {
 
     const measured = await measureHeadless(result.doc!)
     expect(measured).not.toBeNull()
-    expect(measured!.features).toEqual([])
+    expect(nonSketchProblems(measured!.features)).toEqual([])
     const volume = measured!.measures.volume
     expect(Math.abs(volume - Math.PI / 2) / (Math.PI / 2)).toBeLessThan(1e-9)
   }, 240_000)

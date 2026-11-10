@@ -18,6 +18,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 import type { ScriptStep } from '../scriptRunner'
 
 function occInstalled(): boolean {
@@ -199,7 +200,7 @@ async function cupDoc(): Promise<PartDoc> {
     ],
   })
   expect(solid.ok).toBe(true)
-  expect(solid.features).toEqual([])
+  expect(nonSketchProblems(solid.features)).toEqual([])
   // The cup's open top is the max face along the revolve axis (world +Y).
   const top = (await selectHeadless(solid.doc as PartDoc, {
     kind: 'face',
@@ -214,7 +215,7 @@ async function cupDoc(): Promise<PartDoc> {
     })],
   })
   expect(shelled.ok).toBe(true)
-  expect(shelled.features).toEqual([])
+  expect(nonSketchProblems(shelled.features)).toEqual([])
   return shelled.doc as PartDoc
 }
 

@@ -18,6 +18,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -80,7 +81,7 @@ describe.skipIf(!ready)('a touch warning resolved by a later union (real OCC + R
   it('leaves the problem list once one union fused every named body', async () => {
     const result = await runHeadless({ doc: emptyDriveDoc(), steps: [...posts(), ...union(['body_ex2', 'body_ex3'])] })
     expect(result.ok).toBe(true)
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     expect(result.part.solveOutcomes().ex4?.resolvedWarning).toBe(original)
     expect(result.part.solveOutcomes().ex4?.warning).toBeUndefined()
   }, 120_000)

@@ -15,6 +15,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -216,7 +217,7 @@ describe.skipIf(!ready)('feature frames (real OCC + Rust solver)', () => {
       ],
     })
     expect(bore.ok).toBe(true)
-    expect(bore.features).toEqual([])
+    expect(nonSketchProblems(bore.features)).toEqual([])
     expect(bore.notes).toHaveLength(1)
     expect(bore.notes[0].ids).toEqual(['sk2', 'sk3'])
     expect(bore.notes[0].text).toContain(`sk2 and sk3 share the face query "${faces[0]}"`)

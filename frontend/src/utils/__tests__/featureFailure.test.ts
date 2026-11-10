@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { featureFailure } from '@/utils/core/featureFailure'
-import { STATUS_NAME } from '@/wasm-kernel/codec'
+import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 
 describe('featureFailure', () => {
   it('reports no failure for a healthy result', () => {
@@ -35,12 +35,52 @@ describe('featureFailure', () => {
     }
   })
 
-  it('treats a sketch constraint status as a state, not a failure', () => {
+  it('treats a satisfiable sketch constraint status as a state, not a failure', () => {
     // A sketch NEVER returns 'ok' -- its status is its constraint level, so the
     // naive `status !== 'ok'` test reddened every sketch in the document.
-    for (const status of STATUS_NAME) {
+    for (const status of ['fully_constrained', 'underconstrained']) {
       expect(featureFailure('sk1', { sk1: { status } }, {}).failed, status).toBe(false)
     }
+  })
+
+  it('marks an underconstrained sketch as a yellow warning with its DOF count', () => {
+    // Free geometry is not good practice, so the row is yellow, but the sketch
+    // still built: this is a warning, never the red of a failed feature and
+    // never a failed export.
+    const message = 'Underconstrained: 4 degrees of freedom. Free: l1, l2, l3, l4.'
+    expect(featureFailure('sk1', { sk1: { status: 'underconstrained', solver_warning: message } }, {}))
+      .toEqual({ failed: false, level: 'warning', message })
+  })
+
+  it('leaves a fully constrained sketch unmarked', () => {
+    expect(featureFailure('sk1', { sk1: { status: 'fully_constrained', dof: 0 } }, {}))
+      .toEqual({ failed: false, level: null, message: '' })
+  })
+
+  it('marks an overconstrained sketch as a hard error', () => {
+    expect(featureFailure('sk1', { sk1: { status: 'overconstrained' } }, {}))
+      .toEqual({ failed: true, level: 'error', message: 'the sketch is overconstrained' })
+    // The culprit constraints the solve could not satisfy make the message
+    // specific; a count is all a tree tooltip needs.
+    expect(featureFailure('sk1', {
+      sk1: {
+        status: 'overconstrained',
+        constraints: { c1: { culprit: true }, c2: { culprit: true }, c3: {} },
+      },
+    }, {}).message).toBe('the sketch is overconstrained (2 conflicting constraints)')
+  })
+
+  it('words an underconstrained sketch and assembly the same', () => {
+    // The two editors read different solvers but must speak one language; a
+    // user seeing the same count should not have to learn two sentences.
+    const sketch = featureFailure('sk1', {
+      sk1: { status: 'underconstrained', solver_warning: 'Underconstrained: 4 degrees of freedom. Free: l1, l2.' },
+    }, {}).message
+    const assembly = assemblyVerdict({
+      verdict: 'underconstrained', dof: 4, mates: {}, parts: {},
+    } as never).message
+    expect(sketch.startsWith(assembly)).toBe(true)
+    expect(assembly).toBe('Underconstrained: 4 degrees of freedom.')
   })
 
   it('treats a suppressed feature as switched off, not failed', () => {

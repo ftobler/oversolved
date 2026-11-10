@@ -31,13 +31,14 @@ const stripTypes = nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 6)
 
 const PLATE_STEPS = [
   { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Plate', plane: '@builtin_plane_front' } },
-  { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [100, 60] } },
+  { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [100, 60], p0Ref: '@builtin_origin', dimensions: true } },
   { mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Plate', sketchQuery: '$sk1', distance: 10, operation: 'new' } },
 ]
 
 const PIN_STEPS = [
   { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Pin', plane: '@builtin_plane_front' } },
-  { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'circle', params: [0, 0, 5] } },
+  { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'circle', params: [0, 0, 5], entityId: 'c1', dimensions: true } },
+  { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:c1:center', '@builtin_origin'] } },
   { mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Pin', sketchQuery: '$sk1', distance: 20, operation: 'new' } },
 ]
 

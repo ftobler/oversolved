@@ -19,6 +19,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -66,7 +67,7 @@ function plateAndFloatingFin(): ScriptStep[] {
 describe.skipIf(!ready)('featureDeltas body selection (real OCC + Rust solver)', () => {
   it('reports a disjoint add array as changedBodyCount, never the untouched source', async () => {
     const base = await runHeadless({ doc: emptyDriveDoc(), steps: plateAndFloatingFin() })
-    expect(base.features).toEqual([])
+    expect(nonSketchProblems(base.features)).toEqual([])
     expect(base.bodies).toEqual(['body_ex1', 'body_ex2'])
 
     // The 2 x 2 grid skips the seed cell, so the source keeps its body and
@@ -80,7 +81,7 @@ describe.skipIf(!ready)('featureDeltas body selection (real OCC + Rust solver)',
         direction_x: [1, 0, 0], direction_y: [0, 1, 0],
       })],
     })
-    expect(arrayed.features).toEqual([])
+    expect(nonSketchProblems(arrayed.features)).toEqual([])
     expect(arrayed.bodies).toEqual(['body_ex1', 'body_ex2', 'body_ex2_1', 'body_ex2_2', 'body_ex2_3'])
 
     const arrayRow = row(arrayed, 'ar1')
@@ -106,7 +107,7 @@ describe.skipIf(!ready)('featureDeltas body selection (real OCC + Rust solver)',
         m({ type: 'add_boolean', featureId: 'bo1', operation: 'union', target: 'body_ex1', tools: ['body_ex2'] }),
       ],
     })
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     expect(built.bodies).toEqual(['body_ex1'])
     // Two 24000 boxes overlapping over 20 x 30 x 20.
     const unionRow = row(built, 'bo1')
@@ -163,7 +164,7 @@ describe.skipIf(!ready)('featureDeltas body selection (real OCC + Rust solver)',
       ],
     })
     expect(base.ok).toBe(true)
-    expect(base.features).toEqual([])
+    expect(nonSketchProblems(base.features)).toEqual([])
     expect(base.bodies).toEqual(['body_ex1'])
     const baseVolume = row(base, 'ex1').volume
 
@@ -185,7 +186,7 @@ describe.skipIf(!ready)('featureDeltas body selection (real OCC + Rust solver)',
       })],
     })
     expect(filleted.ok).toBe(true)
-    expect(filleted.features).toEqual([])
+    expect(nonSketchProblems(filleted.features)).toEqual([])
     expect(filleted.bodies).toEqual(['body_ex1'])
     const filletRow = row(filleted, 'fi1')
     expect(filletRow.body).toBe('body_ex1')
@@ -207,7 +208,7 @@ describe.skipIf(!ready)('featureDeltas body selection (real OCC + Rust solver)',
         field('set_extrude_field', 'cut1', 'operation', 'cut'),
       ],
     })
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     expect(built.bodies).toEqual(['body_ex1', 'body_ex1_1'])
 
     const splitRow = row(built, 'cut1')

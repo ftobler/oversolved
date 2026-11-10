@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import {
+  blocksExport,
   featureNotes,
   featureProblems,
   formatFeatureProblem,
@@ -83,9 +84,44 @@ describe('readSolveOutcomes', () => {
     })
   })
 
+  it('keeps a sketch\'s DOF count, and drops a non-finite one', () => {
+    expect(readSolveOutcomes({
+      sk1: { status: 'underconstrained', dof: 4 },
+      sk2: { status: 'fully_constrained', dof: 0 },
+      sk3: { status: 'underconstrained', dof: 'four' },
+    })).toEqual({
+      sk1: { status: 'underconstrained', dof: 4 },
+      sk2: { status: 'fully_constrained', dof: 0 },
+      sk3: { status: 'underconstrained' },
+    })
+  })
+
   it('is empty for a missing result', () => {
     expect(readSolveOutcomes(undefined)).toEqual({})
     expect(readSolveOutcomes(null)).toEqual({})
+  })
+})
+
+describe('blocksExport', () => {
+  // An underconstrained sketch is the one problem row a file may carry: the
+  // geometry is sound and the warning is an authoring nudge, not a broken file.
+  it('tolerates only an underconstrained sketch', () => {
+    expect(blocksExport({ id: 'sk1', kind: 'sketch', status: 'underconstrained', message: 'Underconstrained: 4 degrees of freedom.' }))
+      .toBe(false)
+  })
+
+  it('still blocks every other problem row', () => {
+    const blocked: Array<[string, string]> = [
+      ['sketch', 'overconstrained'],
+      ['sketch', 'missing'],
+      ['fillet', 'partial'],
+      ['fillet', 'exception'],
+      ['extrude', 'error'],
+      ['hole', 'underconstrained'],
+    ]
+    for (const [kind, status] of blocked) {
+      expect(blocksExport({ id: 'x1', kind, status, message: '' }), `${kind} ${status}`).toBe(true)
+    }
   })
 })
 
@@ -121,6 +157,24 @@ describe('featureProblems', () => {
       { id: 'sk2', kind: 'sketch', status: 'overconstrained', message: 'the sketch is overconstrained' },
       { id: 'ex1', kind: 'extrude', status: 'error', message: 'extrude: no closed profile found' },
     ])
+  })
+
+  it('lists an underconstrained sketch when the kernel attached its warning', () => {
+    // The kernel now puts the yellow law on the sketch result, so the row
+    // appears in the problem list with the kernel's own text.
+    expect(featureProblems(problemDoc(), {
+      ...outcomes,
+      sk1: {
+        status: 'underconstrained',
+        dof: 4,
+        warning: 'Underconstrained: 4 degrees of freedom. Free: l1, l2, l3, l4.',
+      },
+    })).toContainEqual({
+      id: 'sk1',
+      kind: 'sketch',
+      status: 'underconstrained',
+      message: 'Underconstrained: 4 degrees of freedom. Free: l1, l2, l3, l4.',
+    })
   })
 
   it('reports a feature the solve did not reach as a missing verdict', () => {

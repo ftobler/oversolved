@@ -11,6 +11,7 @@ import type { PartDoc } from '@/types/cad'
 import { runHeadless, measureHeadless, seedBuiltins } from '../headlessOps'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 import { HOLE_ALL_SITES_MISS, HOLE_ON_LINE_SKETCH } from './featureFixtures'
+import { nonSketchProblems } from './buildProblems'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
@@ -41,14 +42,36 @@ function emptyDoc(): PartDoc {
 const ready = oc && solveBytes
 
 describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', () => {
-  it('reports an empty list for a clean box, and does not list an underconstrained sketch', async () => {
+  it('reports an empty list for a clean box whose sketch is fully constrained', async () => {
     const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
     const result = await runHeadless({ doc: emptyDoc(), steps: box.steps })
     expect(result.ok).toBe(true)
-    expect(result.features).toEqual([])
-    // The box's sketch IS underconstrained: a normal sketch state, not a
-    // problem, so the list above must stay empty while the outcome exists.
-    expect(result.part.solveOutcomes().sk1?.status).toBe('underconstrained')
+    expect(nonSketchProblems(result.features)).toEqual([])
+    // The example obeys the sketch constraint law: dimensioned and anchored,
+    // so there is no underconstrained warning row to explain away.
+    expect(result.part.solveOutcomes().sk1?.status).toBe('fully_constrained')
+    expect(result.part.solveOutcomes().sk1?.dof).toBe(0)
+  }, 120_000)
+
+  it('lists an underconstrained sketch as a warning row without flipping ok', async () => {
+    // A free rectangle has 4 DOF; it is the law's yellow case, not a failure.
+    const free: PartDoc = seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'sk1', kind: 'sketch', label: 'Free', plane: '@builtin_plane_front' },
+      ],
+    } as PartDoc)
+    const result = await runHeadless({
+      doc: free,
+      steps: [{ mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [40, 30] } }],
+    })
+    expect(result.ok).toBe(true)
+    const problem = result.features.find(feature => feature.id === 'sk1')
+    expect(problem).toMatchObject({ kind: 'sketch', status: 'underconstrained' })
+    expect(problem!.message).toMatch(/^Underconstrained: 4 degrees of freedom\. Free: /)
+    const row = result.featureDeltas?.find(delta => delta.id === 'sk1')
+    expect(row?.dof).toBe(4)
   }, 120_000)
 
   it('lists a failed hole with its kernel message and does not flip ok', async () => {
@@ -95,7 +118,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
       ],
     })
     expect(result.ok).toBe(true)
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     const hole = result.doc?.features?.find(feature => feature.id === 'h1')
     if (hole?.kind !== 'hole') throw new Error('unreachable')
     expect(hole.hole).not.toHaveProperty('depth')
@@ -138,7 +161,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
       steps: [{ mutation: { type: 'reorder_features', featureId: 'width', toIndex: 2 } }],
     })
     expect(reordered.ok).toBe(true)
-    expect(reordered.features).toEqual([])
+    expect(nonSketchProblems(reordered.features)).toEqual([])
     expect(reordered.part.solveOutcomes().ex1.status).toBe('ok')
   }, 120_000)
 
@@ -158,7 +181,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
       ],
     })
     expect(result.ok).toBe(true)
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     expect(result.part.solveOutcomes().rev1.status).toBe('ok')
   }, 120_000)
 
@@ -184,7 +207,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
       ],
     })
     expect(result.ok).toBe(true)
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     expect(result.part.solveOutcomes().rev1.status).toBe('ok')
     const cut = result.doc?.features?.find(feature => feature.id === 'rev1')
     expect(cut).toMatchObject({ kind: 'revolve', revolve: { operation: 'cut', direction: 'reverse' } })
@@ -212,7 +235,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
       ],
     })
     expect(moved.ok).toBe(true)
-    expect(moved.features).toEqual([])
+    expect(nonSketchProblems(moved.features)).toEqual([])
     const after = await measureHeadless(moved.doc!)
     if (before === null || after === null) throw new Error('measure returned no row')
     if (before.measures.centroid === null || after.measures.centroid === null) throw new Error('measure returned no centroid')
@@ -264,7 +287,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(result.ok).toBe(true)
     // The step is accepted and the reply is clean: distance is stored because
     // the row requires it, but the solve sizes the cut from the 10 mm box.
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     const row = result.featureDeltas?.find(entry => entry.id === 'ex2')
     expect(row?.volumeDelta).toBeCloseTo(-25 * 10, 6)
     expect(row?.bodyVolume).toBeCloseTo(12000 - 25 * 10, 6)
@@ -293,7 +316,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
       ],
     })
     expect(result.ok).toBe(true)
-    expect(result.features).toEqual([])
+    expect(nonSketchProblems(result.features)).toEqual([])
     const row = result.featureDeltas?.find(entry => entry.id === 'ex2')
     expect(row?.volumeDelta).toBeCloseTo(-Math.PI * 25 * 10, 3)
     expect(row?.bodyVolume).toBeCloseTo(4000 - Math.PI * 25 * 10, 3)
@@ -325,7 +348,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
       expect(step.error?.message, String(operation)).toContain('through_all')
       expect(step.error?.message, String(operation)).toContain('cut')
       // The refused step never landed, so the solve reports no feature problem.
-      expect(result.features).toEqual([])
+      expect(nonSketchProblems(result.features)).toEqual([])
       expect(result.doc?.features?.some(feature => feature.id === 'ex2')).toBe(false)
     }
   }, 120_000)
@@ -353,7 +376,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(problem?.message).toContain('through_all')
     expect(problem?.message).toContain('merge_target')
     // The rest of the log still solved: only the through-all row is a problem.
-    expect(result.features.map(feature => feature.id)).toEqual(['ex1'])
+    expect(nonSketchProblems(result.features).map(feature => feature.id)).toEqual(['ex1'])
     expect(result.bodies).toContain('body_ex2')
   }, 120_000)
 
@@ -383,7 +406,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(inspected.outcome.steps).toEqual([])
     expect(inspected.solve.generation).toBeGreaterThan(0)
     expect(typeof inspected.docHash).toBe('string')
-    expect(inspected.features).toEqual([])
+    expect(nonSketchProblems(inspected.features)).toEqual([])
   }, 120_000)
 
   it('measure returns the same feature list as run', async () => {

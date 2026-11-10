@@ -22,6 +22,7 @@ import type { Selector } from '@/kernel/select'
 import { emptyDriveAssemblyDoc, setMateSolver, type AssemblyScriptStep } from '../headlessAssembly'
 import { emptyDriveDoc, exportAssemblyHeadless, exportHeadless, runAssemblyHeadless, runHeadless, selectHeadless } from '../headlessOps'
 import { HOLE_ON_LINE_SKETCH } from './featureFixtures'
+import { nonSketchProblems } from './buildProblems'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -41,7 +42,7 @@ async function pick(doc: PartDoc, selector: Selector): Promise<string[]> {
 
 const BOX: ScriptStep[] = [
   m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' }),
-  m({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] }),
+  m({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10], p0Ref: '@builtin_origin', dimensions: true }),
   m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, operation: 'new' }),
 ]
 
@@ -51,11 +52,11 @@ const BOX: ScriptStep[] = [
 async function partialFilletDoc(): Promise<PartDoc> {
   const doc = await build([
     m({ type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' }),
-    m({ type: 'add_rect', featureId: 'sk1', p0: [-20, -20], p1: [20, 20] }),
+    m({ type: 'add_center_rect', featureId: 'sk1', center: [0, 0], corner: [20, 20], centerRef: '@builtin_origin', dimensions: true }),
     m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 2, operation: 'new' }),
     m({ type: 'add_plane', featureId: 'pl1', definition: { mode: 'offset', plane: '@builtin_plane_top', offset: 2 } }),
     m({ type: 'add_sketch', featureId: 'sk2', plane: '@pl1' }),
-    m({ type: 'add_rect', featureId: 'sk2', p0: [-5, -5], p1: [5, 5] }),
+    m({ type: 'add_center_rect', featureId: 'sk2', center: [0, 0], corner: [5, 5], centerRef: '@builtin_origin', dimensions: true }),
     m({ type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 10 }),
   ])
   const block = await pick(doc, {
@@ -181,6 +182,41 @@ describeReal('export honesty (real OCC + Rust solvers)', () => {
     expect(exported!.bytes!.byteLength).toBeGreaterThan(0)
   }, 180_000)
 
+  it('exports ok true when an underconstrained sketch is the only problem row', async () => {
+    // The law's carve-out: the yellow sketch is reported, but the file is the
+    // sound model the document describes, so the export is not a failure.
+    const doc = await build([
+      ...BOX,
+      m({ type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_top' }),
+      m({ type: 'add_rect', featureId: 'sk2', p0: [0, 0], p1: [5, 5] }),
+    ])
+    const exported = await exportHeadless(doc, { format: 'step' })
+    expect(exported).not.toBeNull()
+    expect(exported!.ok).toBe(true)
+    expect(exported!.features).toContainEqual(expect.objectContaining({
+      id: 'sk2',
+      kind: 'sketch',
+      status: 'underconstrained',
+    }))
+    expect(exported!.bytes!.byteLength).toBeGreaterThan(0)
+  }, 180_000)
+
+  it('exports ok false when an underconstrained sketch rides with a partial fillet', async () => {
+    // One document with both rows: the carve-out must drop only the sketch
+    // warning, not the partial feature beside it.
+    const built = await runHeadless({
+      doc: await partialFilletDoc(),
+      steps: [
+        m({ type: 'add_sketch', featureId: 'sk_free', plane: '@builtin_plane_front' }),
+        m({ type: 'add_rect', featureId: 'sk_free', p0: [0, 0], p1: [5, 5] }),
+      ],
+    })
+    const exported = await exportHeadless(built.doc as PartDoc, { format: 'step' })
+    expect(exported!.ok).toBe(false)
+    expect(exported!.features).toContainEqual(expect.objectContaining({ id: 'fi1', status: 'partial' }))
+    expect(exported!.features).toContainEqual(expect.objectContaining({ id: 'sk_free', status: 'underconstrained' }))
+  }, 180_000)
+
   it('reports a failed hole in features and ok false, and still writes the solid it built', async () => {
     const doc = await build(HOLE_ON_LINE_SKETCH)
     const exported = await exportHeadless(doc, { format: 'step' })
@@ -265,7 +301,9 @@ describeReal('export honesty (real OCC + Rust solvers)', () => {
     const exported = await exportHeadless(doc, { format: 'step' })
     expect(exported).not.toBeNull()
     expect(exported!.bytes).toBeNull()
-    expect(exported!.features).toEqual([])
+    // The sketch warning is the tolerated row; the failure here is no solid.
+    expect(nonSketchProblems(exported!.features)).toEqual([])
+    expect(exported!.features).toContainEqual(expect.objectContaining({ kind: 'sketch', status: 'underconstrained' }))
     expect(exported!.ok).toBe(false)
   }, 180_000)
 
@@ -275,7 +313,12 @@ describeReal('export honesty (real OCC + Rust solvers)', () => {
     expect(exported).not.toBeNull()
     expect(exported!.ok).toBe(true)
     expect(exported!.mates).toEqual([])
-    expect(exported!.parts).toEqual([])
+    // A part's underconstrained sketch rides its part row as the tolerated
+    // warning; it must not make the assembly export fail.
+    expect(exported!.parts.flatMap(part => nonSketchProblems(part.features))).toEqual([])
+    expect(exported!.parts.flatMap(part => part.features)).toContainEqual(
+      expect.objectContaining({ kind: 'sketch', status: 'underconstrained' }),
+    )
     expect(exported!.solve.verdict).not.toBe('failed')
     expect(exported!.bytes!.byteLength).toBeGreaterThan(0)
   }, 180_000)

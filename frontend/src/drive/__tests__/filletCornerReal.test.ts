@@ -17,6 +17,7 @@ import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { featureById } from '@/testing/featureAccess'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -82,10 +83,10 @@ describe.skipIf(!ready)('fillet_corners extrudes to the analytic volume (real ke
   it('the pillow plate is (80*60 - (4-pi)*25)*10 and matches the hand-authored plate', async () => {
     const rounded = await run([...rectSteps(80, 60), filletStep(5), extrude(10)])
     expect(rounded.ok).toBe(true)
-    expect(rounded.features).toEqual([])
+    expect(nonSketchProblems(rounded.features)).toEqual([])
     const measuredRounded = await measureHeadless(rounded.doc!)
     expect(measuredRounded?.ok).toBe(true)
-    expect(measuredRounded!.features).toEqual([])
+    expect(nonSketchProblems(measuredRounded!.features)).toEqual([])
     expect(measuredRounded!.measures.volume).toBeCloseTo((80 * 60 - (4 - Math.PI) * 25) * 10, 6)
     expect(measuredRounded!.measures.volume).toBeCloseTo(47785.39816339745, 6)
 
@@ -139,7 +140,7 @@ describe.skipIf(!ready)('fillet_corners extrudes to the analytic volume (real ke
   it('the playing_cards plan is (71.5*96.9 - (4-pi)*4.233^2)*2', async () => {
     const built = await run([...rectSteps(71.5, 96.9), filletStep(4.233), extrude(2)])
     expect(built.ok).toBe(true)
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     const measured = await measureHeadless(built.doc!)
     expect(measured?.ok).toBe(true)
     expect(measured!.measures.volume).toBeCloseTo(
@@ -172,7 +173,7 @@ describe.skipIf(!ready)('fillet_corners extrudes to the analytic volume (real ke
     // the probe behavior are identical.
     const built = await run(steps)
     expect(built.ok).toBe(true)
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
     const sketch = sketchOf(built.doc!)
     const arcs = (sketch.entities ?? []).filter(entity => entity.kind === 'arc')
     expect(arcs).toHaveLength(2)

@@ -111,6 +111,7 @@ export function useSolver(
       thread?: import('@/types/cad').ThreadDisplayData
       solve_ms?: number
       projection_errors?: string[]
+      dof?: number
     }>
 
     const cloned: PartDoc = structuredClone(d)
@@ -176,6 +177,11 @@ export function useSolver(
           ...(feature.originLocal && { originLocal: feature.originLocal }),
           ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
           ...(feature.projection_errors?.length && { projection_errors: feature.projection_errors }),
+          // The sketch's constraint law: the tree and the open editor read this
+          // row through featureFailure, so dropping the warning here left the
+          // app unmarked while the MCP reply showed yellow.
+          ...(feature.solver_warning !== undefined && { solver_warning: feature.solver_warning }),
+          ...(feature.dof !== undefined && { dof: feature.dof }),
         }
       } else if (feature.plane) {
         const planeRaw = feature.plane as { x_axis: number[]; y_axis: number[]; normal: number[]; origin: number[] }

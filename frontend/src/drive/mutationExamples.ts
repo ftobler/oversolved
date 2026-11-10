@@ -24,15 +24,20 @@ export interface MutationExample {
 
 const BOX_STEPS: ScriptStep[] = [
   { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Rectangle', plane: '@builtin_plane_top' } },
-  { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [40, 30] } },
+  {
+    mutation: {
+      type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [40, 30],
+      p0Ref: '@builtin_origin', dimensions: true,
+    },
+  },
   { mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Extrude', sketchQuery: '$sk1', distance: 10, operation: 'new' } },
 ]
 
 const FILLET_EDGES = [
-  '?15,4,9,15,15,7,7;@u|e_6ddfceb870f533ac@ex1@body_ex1@sk1/wpDmL7SEsv-KsSIG@sk1/psisuKhJcA9qlM7R@cls_xn@cls_zn:straightedge',
-  '?15,4,9,15,15,7,7;@u|e_9ba9c623b91560c8@ex1@body_ex1@sk1/AtLTm0UUpgaCvFNX@sk1/psisuKhJcA9qlM7R@cls_xn@cls_zp:straightedge',
-  '?15,4,9,15,15,7,7;@u|e_a9370bedf7a8472f@ex1@body_ex1@sk1/t9jRiDKgS8t4ZLOW@sk1/wpDmL7SEsv-KsSIG@cls_xp@cls_zn:straightedge',
-  '?15,4,9,15,15,7,7;@u|e_4e92a62a1bdae811@ex1@body_ex1@sk1/AtLTm0UUpgaCvFNX@sk1/t9jRiDKgS8t4ZLOW@cls_xp@cls_zp:straightedge',
+  '?15,4,9,15,15,7,7;@u|e_24cea39158504826@ex1@body_ex1@sk1/eKPSVl164lTIlYEW@sk1/usUy8mnQpMYZgmKh@cls_xn@cls_zn:straightedge',
+  '?15,4,9,15,15,7,7;@u|e_0690305d0af3e858@ex1@body_ex1@sk1/Xkck0RRPy6V4_iVJ@sk1/usUy8mnQpMYZgmKh@cls_xn@cls_zp:straightedge',
+  '?15,4,9,15,15,7,7;@u|e_b3ae1e70492e31eb@ex1@body_ex1@sk1/FTWh9huZRvo1rGJ6@sk1/eKPSVl164lTIlYEW@cls_xp@cls_zn:straightedge',
+  '?15,4,9,15,15,7,7;@u|e_8b99a2435cb5d089@ex1@body_ex1@sk1/Xkck0RRPy6V4_iVJ@sk1/FTWh9huZRvo1rGJ6@cls_xp@cls_zp:straightedge',
 ]
 
 const FILLET_STEPS: ScriptStep[] = [
@@ -42,11 +47,46 @@ const FILLET_STEPS: ScriptStep[] = [
 
 const TAPERED_BLOCK_STEPS: ScriptStep[] = [
   { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Rectangle', plane: '@builtin_plane_top' } },
-  { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [18, 18] } },
+  {
+    mutation: {
+      type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [18, 18],
+      p0Ref: '@builtin_origin', dimensions: true,
+    },
+  },
   {
     mutation: {
       type: 'add_extrude', featureId: 'ex1', label: 'Extrude',
       sketchQuery: '$sk1', distance: 10, taper: 15, operation: 'new',
+    },
+  },
+]
+
+// The projection path: the box's +Y face, one of its edges projected into the
+// sketch, and a rectangle whose corner is anchored to that projected vertex.
+// The sketch's numbers depend on the projection, not on the face centroid, so
+// the law's normal face-sketch drift cannot reinterpret them.
+const TOP_FACE = '?15,4,9,15,15,15,15,7;@u|u_42825f874782e937@ex1@body_ex1@sk1/FTWh9huZRvo1rGJ6@sk1/Xkck0RRPy6V4_iVJ@sk1/eKPSVl164lTIlYEW@sk1/usUy8mnQpMYZgmKh@cls_yp:flatface'
+const TOP_EDGE = '?15,4,9,15,7,7;@u|e_37a33df87b666c99@ex1@body_ex1@sk1/Xkck0RRPy6V4_iVJ@cls_yp@cls_zp:straightedge'
+
+const PROJECTION_STEPS: ScriptStep[] = [
+  ...BOX_STEPS,
+  { mutation: { type: 'add_sketch', featureId: 'sk2', label: 'Boss', plane: TOP_FACE } },
+  {
+    mutation: {
+      type: 'add_projected_entity', featureId: 'sk2', kind: 'line',
+      source: TOP_EDGE, entityId: 'pe1',
+    },
+  },
+  {
+    mutation: {
+      type: 'add_rect', featureId: 'sk2', p0: [0, 0], p1: [20, 10],
+      p0Ref: 'vertex:sk2:pe1:start', dimensions: true,
+    },
+  },
+  {
+    mutation: {
+      type: 'add_extrude', featureId: 'ex2', label: 'Boss',
+      sketchQuery: '$sk2', distance: 5, operation: 'add',
     },
   },
 ]
@@ -57,7 +97,18 @@ const TAPERED_BLOCK_STEPS: ScriptStep[] = [
 // first); the real test pins the query and the volume.
 const EMBOSS_ON_CYLINDER_STEPS: ScriptStep[] = [
   { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Circle', plane: '@builtin_plane_front' } },
-  { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'circle', params: [0, 0, 20] } },
+  {
+    mutation: {
+      type: 'add_entity', featureId: 'sk1', kind: 'circle', params: [0, 0, 20],
+      entityId: 'c1', dimensions: true,
+    },
+  },
+  {
+    mutation: {
+      type: 'add_constraint', featureId: 'sk1', kind: 'coincident',
+      targets: ['vertex:sk1:c1:center', '@builtin_origin'],
+    },
+  },
   {
     mutation: {
       type: 'add_extrude', featureId: 'ex1', label: 'Cylinder',
@@ -65,7 +116,24 @@ const EMBOSS_ON_CYLINDER_STEPS: ScriptStep[] = [
     },
   },
   { mutation: { type: 'add_sketch', featureId: 'sk2', label: 'Footprint', plane: '@builtin_plane_top' } },
-  { mutation: { type: 'add_rect', featureId: 'sk2', p0: [-5, -25], p1: [5, -5] } },
+  {
+    mutation: {
+      type: 'add_rect', featureId: 'sk2', p0: [-5, -25], p1: [5, -5],
+      entityIds: ['r1', 'r2', 'r3', 'r4'], dimensions: true,
+    },
+  },
+  {
+    mutation: {
+      type: 'add_constraint', featureId: 'sk2', kind: 'point_distance_x',
+      targets: ['vertex:sk2:r1:start', '@builtin_origin'], value: 5, sign: 1,
+    },
+  },
+  {
+    mutation: {
+      type: 'add_constraint', featureId: 'sk2', kind: 'point_distance_y',
+      targets: ['vertex:sk2:r1:start', '@builtin_origin'], value: 25, sign: 1,
+    },
+  },
   {
     mutation: {
       type: 'add_extrude', featureId: 'ex2', label: 'Emboss',
@@ -90,6 +158,11 @@ export const MUTATION_EXAMPLES: readonly MutationExample[] = [
     name: 'tapered-block',
     summary: 'An 18 x 18 sketch on Top extruded 10 with taper 15: 2371.112 mm3.',
     steps: TAPERED_BLOCK_STEPS,
+  },
+  {
+    name: 'projection',
+    summary: 'A 20 x 10 boss on the box top, its corner anchored to a projected face edge: 13000 mm3.',
+    steps: PROJECTION_STEPS,
   },
   {
     name: 'emboss-on-cylinder',

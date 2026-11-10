@@ -18,6 +18,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -153,7 +154,7 @@ describe.skipIf(!ready)('sweep multisection (real OCC + Rust solver)', () => {
   it('builds the handle once the field is set', async () => {
     const base = await author()
     const run = await runHeadless({ doc: base.doc as PartDoc, steps: [MULTISECTION] })
-    expect(run.features).toEqual([])
+    expect(nonSketchProblems(run.features)).toEqual([])
     // The reply already measured the changed feature, so the test does not pay
     // for a second full measurement pass over every checkpoint.
     const swept = run.featureDeltas?.find((row) => row.id === 'sw')

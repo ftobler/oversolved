@@ -25,6 +25,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { nonSketchProblems } from './buildProblems'
 
 function occInstalled(): boolean {
   try {
@@ -75,7 +76,7 @@ async function outline(scale: number): Promise<{ doc: PartDoc; arcId: string }> 
     ],
   })
   expect(outlined.ok).toBe(true)
-  expect(outlined.features).toEqual([])
+  expect(nonSketchProblems(outlined.features)).toEqual([])
   const arcId = sketchOf(outlined.doc!).entities!.find((entity) => entity.kind === 'arc')!.id
   return { doc: outlined.doc!, arcId }
 }
@@ -91,7 +92,7 @@ async function strip(scale: number, nudge?: [number, number]): Promise<HeadlessR
     ],
   })
   expect(offset.ok).toBe(true)
-  expect(offset.features).toEqual([])
+  expect(nonSketchProblems(offset.features)).toEqual([])
   const cloneL1 = cloneOfSource(offset.doc!, 'l1')
   const cloneL2 = cloneOfSource(offset.doc!, 'l2')
 
@@ -123,12 +124,12 @@ describe.skipIf(!ready)('the hanger strip closes at both scales', () => {
     it(`at ${scale} mm: one body, volume ${(AREA_PER_UNIT * scale ** 3).toFixed(3)}`, async () => {
       const built = await strip(scale)
       expect(built.ok).toBe(true)
-      expect(built.features).toEqual([])
+      expect(nonSketchProblems(built.features)).toEqual([])
 
       const measured = await measureHeadless(built.doc!)
       expect(measured).not.toBeNull()
       expect(measured!.ok).toBe(true)
-      expect(measured!.features).toEqual([])
+      expect(nonSketchProblems(measured!.features)).toEqual([])
       // One body: a second body would mean the profile did not close or split.
       expect(measured!.measures.bodies).toBe(1)
       const expected = AREA_PER_UNIT * scale ** 3
@@ -143,7 +144,7 @@ describe.skipIf(!ready)('the hanger strip closes at both scales', () => {
   it('a small source-arc nudge still fills one body', async () => {
     const built = await strip(1, [0.01, -0.005])
     expect(built.ok).toBe(true)
-    expect(built.features).toEqual([])
+    expect(nonSketchProblems(built.features)).toEqual([])
 
     const f = sketchOf(built.doc!)
     const concentric = f.constraints!.find((c) => c.kind === 'concentric')!
@@ -162,7 +163,7 @@ describe.skipIf(!ready)('the hanger strip closes at both scales', () => {
     const measured = await measureHeadless(built.doc!)
     expect(measured).not.toBeNull()
     expect(measured!.ok).toBe(true)
-    expect(measured!.features).toEqual([])
+    expect(nonSketchProblems(measured!.features)).toEqual([])
     expect(measured!.measures.bodies).toBe(1)
     expect(measured!.measures.volume).toBeGreaterThan(0)
   }, 240_000)
