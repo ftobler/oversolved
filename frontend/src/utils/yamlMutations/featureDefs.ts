@@ -108,7 +108,15 @@ function setSubFeatureField(featureId: string, kind: string, sub: Record<string,
 
 export function applySetExtrudeField(doc: PartDoc, featureId: string, field: keyof ExtrudeFeatureDef, value: unknown): void {
   const feature = findFeature(doc, featureId)
-  setSubFeatureField(featureId, 'extrude', feature?.kind === 'extrude' ? feature.extrude : undefined, field, value, 'applySetExtrudeField')
+  const sub = feature?.kind === 'extrude' ? feature.extrude : undefined
+  if (!setSubFeatureField(featureId, 'extrude', sub, field, value, 'applySetExtrudeField')) return
+  // The editor hides Taper once the termination is no longer blind or the
+  // direction is symmetric, so the same mutation must clear a taper that would
+  // otherwise be invisible and turn the feature red through the kernel's
+  // cross-field refusal.
+  if (sub === undefined) return
+  if (field === 'direction' && value === 'symmetric') delete sub.taper
+  if (field === 'termination' && (value === 'up_to' || value === 'through_all')) delete sub.taper
 }
 
 export function applySetRevolveField(doc: PartDoc, featureId: string, field: keyof RevolveFeatureDef, value: unknown): void {
@@ -239,6 +247,11 @@ export function applyAddExtrude(
   }
   const termination = inline.termination === null || inline.termination === '' ? undefined : inline.termination
   const upTo = inline.up_to === null || inline.up_to === '' ? undefined : inline.up_to
+  // An empty taper is the clear, not a zero angle, and a numeric taper crosses
+  // the same stored-number rounding boundary as distance.
+  const taperRaw = inline.taper as NumberOrExpr | null | undefined
+  const taper = taperRaw === null || taperRaw === '' ? undefined : taperRaw
+  const storedTaper = typeof taper === 'number' ? round(taper) : taper
   const feature: PartFeature = {
     id: featureId,
     kind: 'extrude',
@@ -248,7 +261,7 @@ export function applyAddExtrude(
       distance: round(distance),
       direction: inline.direction ?? 'normal',
       // Absent keys stay absent, so a plain add writes the document it always did.
-      ...(inline.taper !== undefined && { taper: inline.taper }),
+      ...(storedTaper !== undefined && { taper: storedTaper }),
       ...(termination !== undefined && { termination }),
       ...(upTo !== undefined && { up_to: upTo }),
       ...(inline.operation !== undefined && { operation: inline.operation }),

@@ -680,6 +680,10 @@ function checkInitial(value: unknown, field: string): void {
 function checkExtrude(sub: DocRecord, field: string): void {
   checkOptional(sub, 'sketch', field, checkRefOrRefList)
   checkOptional(sub, 'distance', field, checkExpr)
+  // An empty taper is the documented clear, not a zero angle: drop it so the
+  // loaded document reads exactly like one that never authored the key.
+  if (sub.taper === '') delete sub.taper
+  else checkOptional(sub, 'taper', field, checkExpr)
   checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, DIRECTIONS))
   checkOptional(sub, 'termination', field, (v, f) => checkEnum(v, f, ['blind', 'up_to', 'through_all']))
   checkOptional(sub, 'up_to', field, checkRef)

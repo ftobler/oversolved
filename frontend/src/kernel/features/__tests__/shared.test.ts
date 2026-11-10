@@ -682,6 +682,20 @@ describe('registerTopFace parity', () => {
       expectClose(got, expected)
     })
   }
+
+  it('omits the synthetic top edge for a tapered end', () => {
+    const plane: PlaneLike = {
+      origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1],
+    }
+    const surfaces = [{ boundary: [{ start: [0, 0], end: [10, 0] }] }]
+    const straight = new Repository()
+    registerTopFace(straight, 'ex1', plane, surfaces, 10)
+    expect(straight.elements.has('ex1/top_face/edge0')).toBe(true)
+    const tapered = new Repository()
+    registerTopFace(tapered, 'ex1', plane, surfaces, 10, 15)
+    expect(tapered.elements.has('ex1/top_face')).toBe(true)
+    expect(tapered.elements.has('ex1/top_face/edge0')).toBe(false)
+  })
 })
 
 function repoWith(
