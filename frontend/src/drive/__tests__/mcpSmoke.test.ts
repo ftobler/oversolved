@@ -560,13 +560,20 @@ describe.skipIf(driveUnavailable)('MCP server (real OCC + Rust solver)', () => {
     // the state the accepted prefix holds, then serve the next call on a fresh
     // worker.
     const client = spawnMcp({
-      // Roomy enough that a kernel boot under a loaded full suite (counted
-      // against the budget) never trips it before the first feature mark.
+      // Roomy enough that the OCC load under a loaded full suite never trips
+      // it before the first feature mark; the worker boot is warmed below.
       OVERSOLVED_MCP_SOLVE_BUDGET_MS: '10000',
       OVERSOLVED_MCP_TEST_HANG_FEATURE: 'ex_stuck',
     })
     try {
       await client.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'cliSmoke', version: '0' } })
+      // Warm the worker first. A fresh worker's boot counts against the budget
+      // and posts no checkpoint, so on a loaded runner (seen on Node 22) a cold
+      // boot alone could spend the 10 s and answer with the bare timeout this
+      // test is not about. Warm, the steps settle at once and the stall lands
+      // in the final flush, after every checkpoint is posted.
+      const warm = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
+      expect(warm.ok).toBe(true)
       const stuckSteps = BOX_SCRIPT.steps.map(step =>
         step.mutation.type === 'add_extrude' ? { mutation: { ...step.mutation, featureId: 'ex_stuck' } } : step)
       const outFile = path.join(TMP_DIR, 'mcp-stall-prefix.yaml')
