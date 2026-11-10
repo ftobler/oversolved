@@ -7,7 +7,7 @@
 // null when it cannot name a cause, so the caller keeps the kernel's reason.
 
 import type { DisposeScope } from '../occ/disposeScope'
-import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
+import type { OccModule, OccOrientedShape, OccShape, OccSubShape } from '../occ/occTypes'
 import { canonicalEdges, canonicalVertices } from '../occ/bodyNames'
 import { exploreEdges, exploreFaces } from '../occ/edgeModifier'
 import { endTangents } from './tangentChain'
@@ -164,18 +164,108 @@ export function tangentNeighbourCount(
   return count
 }
 
+/**
+ * The chain note for the edges a build refused. `edges` is what to diagnose;
+ * `picked` is the whole pick set the build saw, and defaults to `edges` for
+ * the all-in-one call. A refused edge's batch often picked its chain partners
+ * even though the kernel skipped this one, so counting against `edges` alone
+ * claimed "unpicked" edges the user had in fact picked (the practice F3
+ * message). The skipped-edge caller passes the batch's resolved picks here.
+ */
 export function tangentChainDiagnosis(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
   edges: OccShape[],
+  picked: OccShape[] = edges,
 ): string | null {
   for (const edge of edges) {
-    const n = tangentNeighbourCount(oc, scope, shape, edge, edges)
+    const n = tangentNeighbourCount(oc, scope, shape, edge, picked)
     if (n > 0) {
       return `the picked edge continues tangentially into ${n} unpicked edge(s) of the same chain; ` +
         'if a smaller value fails too, pick the whole tangent chain or blend the profile in the sketch'
     }
+  }
+  return null
+}
+
+/** How close to parallel two face normals must be before their shared edge is
+ *  called a near-tangent corner. Below one degree the surfaces meet as a G1
+ *  joint, so a rolling-ball blend has no corner to sit on. */
+const NEAR_TANGENT_DEG = 1
+
+const dot3 = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+/** The outward surface normal of `face` at the midpoint of `edge`, read from
+ *  the edge's pcurve on that face so a curved face is sampled where it meets
+ *  the edge rather than at its own UV midpoint. Null when the pcurve or the
+ *  surface derivatives are degenerate; a failed read is no diagnosis. */
+function faceNormalAtEdge(
+  oc: OccModule,
+  scope: DisposeScope,
+  face: OccShape,
+  edge: OccShape,
+): Vec3 | null {
+  try {
+    const c2d = scope.track(new oc.BRepAdaptor_Curve2d_2(edge, face))
+    const t = (c2d.FirstParameter() + c2d.LastParameter()) / 2
+    const uv = scope.track(c2d.Value(t))
+    const u = uv.X()
+    const v = uv.Y()
+    const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+    const p = scope.track(new oc.gp_Pnt_1())
+    const du = scope.track(new oc.gp_Vec_1())
+    const dv = scope.track(new oc.gp_Vec_1())
+    adaptor.D1(u, v, p, du, dv)
+    const n: Vec3 = [
+      du.Y() * dv.Z() - du.Z() * dv.Y(),
+      du.Z() * dv.X() - du.X() * dv.Z(),
+      du.X() * dv.Y() - du.Y() * dv.X(),
+    ]
+    const len = Math.hypot(n[0], n[1], n[2])
+    if (!(len > 1e-12)) return null
+    const unit = n.map(c => c / len) as Vec3
+    const reversed = (face as OccOrientedShape).Orientation_1().value
+      === oc.TopAbs_Orientation.TopAbs_REVERSED.value
+    return reversed ? [-unit[0], -unit[1], -unit[2]] : unit
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A picked edge whose two adjacent faces meet almost tangentially. OCC refuses
+ * to roll a blend along such a joint at every radius because there is no corner
+ * for the ball to sit in; the kernel's own verdict is the bare `build_failed`.
+ * The practice F2 shape (a boss cylinder exactly swallowing a tube wall) and a
+ * chord 0.5 mrad off a circle's tangent both end here. The angle is measured on
+ * the pre-modifier shape, where the picked edge and both faces still exist.
+ */
+export function nearTangentCornerDiagnosis(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  edges: OccShape[],
+): string | null {
+  const faces = exploreFaces(oc, scope, shape)
+  for (const edge of edges) {
+    const adjacent = faces.filter(face => faceHasEdge(oc, scope, face, edge))
+    if (adjacent.length !== 2) continue
+    const [a, b] = adjacent
+    if ((a as OccSubShape).IsSame(b as OccSubShape)) continue
+    const na = faceNormalAtEdge(oc, scope, a, edge)
+    const nb = faceNormalAtEdge(oc, scope, b, edge)
+    if (na === null || nb === null) continue
+    const deg = (Math.acos(Math.min(1, Math.max(-1, dot3(na, nb)))) * 180) / Math.PI
+    if (deg > NEAR_TANGENT_DEG) continue
+    const curve = scope.track(new oc.BRepAdaptor_Curve_2(edge))
+    const p = curve.Value((curve.FirstParameter() + curve.LastParameter()) / 2)
+    const at = [p.X(), p.Y(), p.Z()].map(c => Number(c.toFixed(3)) + 0)
+    p.delete()
+    const angle = deg < 0.01 ? '< 0.01' : String(Number(deg.toPrecision(3)))
+    return `the picked edge meets an adjacent face at a near-tangent corner ` +
+      `(${angle} deg at [${at.join(', ')}]); a fillet needs a real corner to round, ` +
+      'so rebuild the joint or blend it in the sketch'
   }
   return null
 }

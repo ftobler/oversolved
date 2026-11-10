@@ -1943,3 +1943,217 @@ fn the_drag_fast_path_carries_no_moved_report() {
     assert!(out.constraint_flags.is_empty());
     assert!(out.constraint_miss.is_empty());
 }
+
+/// The precision audit's outline: two R arcs about the origin, two r lobes,
+/// joined by four external tangent lines, all seeded 1e-3 off. The tangency of
+/// each line to the arc it touches is the row that a wrong convergence stop
+/// would leave short.
+fn tangent_outline() -> (Input, [f64; 3]) {
+    let absent = PointSelector::Absent;
+    let (r, lr, d): (f64, f64, f64) = (20.0, 8.0, 30.0);
+    let nx = (r - lr) / d;
+    let ny = (1.0 - nx * nx).sqrt();
+    let theta = ny.atan2(nx).to_degrees();
+    let on_big = |sx: f64, sy: f64| [r * sx, r * sy];
+    let on_lobe = |cx: f64, sy: f64| [cx + cx.signum() * lr * nx, lr * sy];
+
+    let big_top = [0.0, 0.0, r, theta, 180.0 - theta];
+    let left_lobe = [-d, 0.0, lr, 180.0 - theta, 180.0 + theta];
+    let big_bottom = [0.0, 0.0, r, 180.0 + theta, 360.0 - theta];
+    let right_lobe = [d, 0.0, lr, -theta, theta];
+    let big_top_start = on_big(nx, ny);
+    let big_top_end = on_big(-nx, ny);
+    let left_start = on_lobe(-d, 1.0);
+    let left_end = on_lobe(-d, -1.0);
+    let big_bottom_start = on_big(-nx, -ny);
+    let big_bottom_end = on_big(nx, -ny);
+    let right_start = on_lobe(d, -1.0);
+    let right_end = on_lobe(d, 1.0);
+
+    let mut exact = Vec::new();
+    exact.extend(big_top);
+    exact.extend([big_top_end[0], big_top_end[1], left_start[0], left_start[1]]);
+    exact.extend(left_lobe);
+    exact.extend([
+        left_end[0],
+        left_end[1],
+        big_bottom_start[0],
+        big_bottom_start[1],
+    ]);
+    exact.extend(big_bottom);
+    exact.extend([
+        big_bottom_end[0],
+        big_bottom_end[1],
+        right_start[0],
+        right_start[1],
+    ]);
+    exact.extend(right_lobe);
+    exact.extend([
+        right_end[0],
+        right_end[1],
+        big_top_start[0],
+        big_top_start[1],
+    ]);
+    // A 1e-3 seed error on every param: well inside the LM's basin, well
+    // outside every tolerance this test asserts.
+    let seeded = exact.iter().map(|v| v + 1e-3).collect();
+
+    let entities = vec![
+        ent(Kind::Arc, 0),
+        line(5),
+        ent(Kind::Arc, 9),
+        line(14),
+        ent(Kind::Arc, 18),
+        line(23),
+        ent(Kind::Arc, 27),
+        line(32),
+    ];
+    let joint = |a: u32, pa: PointSelector, b: u32, pb: PointSelector| {
+        cons(ConstraintKind::Coincident, ab(e_ref(a, pa), e_ref(b, pb)))
+    };
+    let tangent = |a: u32, b: u32| {
+        cons(
+            ConstraintKind::Tangent,
+            ab(e_ref(a, absent), e_ref(b, absent)),
+        )
+    };
+    let mut radius_top = c_target(ConstraintKind::Radius, 0, absent);
+    radius_top.value = Some(r);
+    let mut radius_bottom = c_target(ConstraintKind::Radius, 4, absent);
+    radius_bottom.value = Some(r);
+    let mut centre_top = c_target(ConstraintKind::Fixed, 0, PointSelector::Center);
+    centre_top.xy = Some((0.0, 0.0));
+    let mut centre_bottom = c_target(ConstraintKind::Fixed, 4, PointSelector::Center);
+    centre_bottom.xy = Some((0.0, 0.0));
+
+    let constraints = vec![
+        joint(0, PointSelector::End, 1, PointSelector::Start),
+        joint(1, PointSelector::End, 2, PointSelector::Start),
+        joint(2, PointSelector::End, 3, PointSelector::Start),
+        joint(3, PointSelector::End, 4, PointSelector::Start),
+        joint(4, PointSelector::End, 5, PointSelector::Start),
+        joint(5, PointSelector::End, 6, PointSelector::Start),
+        joint(6, PointSelector::End, 7, PointSelector::Start),
+        joint(7, PointSelector::End, 0, PointSelector::Start),
+        tangent(1, 0),
+        tangent(1, 2),
+        tangent(3, 2),
+        tangent(3, 4),
+        tangent(5, 4),
+        tangent(5, 6),
+        tangent(7, 6),
+        tangent(7, 0),
+        radius_top,
+        radius_bottom,
+        centre_top,
+        centre_bottom,
+    ];
+    (input(entities, seeded, constraints), [r, lr, d])
+}
+
+/// Distance from `p` to the infinite line through `a` and `b`.
+fn point_line_distance(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
+    let d = [b[0] - a[0], b[1] - a[1]];
+    let len = (d[0] * d[0] + d[1] * d[1]).sqrt();
+    let q = [p[0] - a[0], p[1] - a[1]];
+    (q[0] * d[1] - q[1] * d[0]).abs() / len
+}
+
+#[test]
+fn tangent_outline_from_a_millimetre_off_seed_lands_exactly() {
+    let (inp, [r, lr, d]) = tangent_outline();
+    let out = solve_sketch(&inp);
+    assert_ne!(
+        out.overall_status,
+        Status::Overconstrained.to_u8(),
+        "norm {}",
+        out.diagnostics.residual_norm
+    );
+    let (big_top, left_lobe, big_bottom, right_lobe) = (0, 9, 18, 27);
+    let line_offsets = [5usize, 14, 23, 32];
+    // The scale the verdict reads: the seed's bounding-box diagonal.
+    let scale = (2.0 * (d + lr)).hypot(2.0 * r);
+    let tol = 1e-9 * scale;
+
+    let params = &out.params_solved;
+    // The big arcs are pinned to the origin at exactly R.
+    for (cx, cy, cr) in [(0, 1, 2), (18, 19, 20)] {
+        assert!(params[cx].abs() < tol, "centre x {}", params[cx]);
+        assert!(params[cy].abs() < tol, "centre y {}", params[cy]);
+        assert!(
+            (params[cr] - r).abs() <= 1e-12 * r,
+            "radius {} want {r}",
+            params[cr]
+        );
+    }
+    let arc_end = |off: usize, deg: f64| arc_point(&params[off..off + 5], deg);
+
+    // Every coincidence: the two named points of each joint.
+    let joints = [
+        (
+            arc_end(big_top, params[big_top + 4]),
+            line_offsets[0],
+            0usize,
+        ),
+        (
+            arc_end(left_lobe, params[left_lobe + 3]),
+            line_offsets[0],
+            2,
+        ),
+        (
+            arc_end(left_lobe, params[left_lobe + 4]),
+            line_offsets[1],
+            0,
+        ),
+        (
+            arc_end(big_bottom, params[big_bottom + 3]),
+            line_offsets[1],
+            2,
+        ),
+        (
+            arc_end(big_bottom, params[big_bottom + 4]),
+            line_offsets[2],
+            0,
+        ),
+        (
+            arc_end(right_lobe, params[right_lobe + 3]),
+            line_offsets[2],
+            2,
+        ),
+        (
+            arc_end(right_lobe, params[right_lobe + 4]),
+            line_offsets[3],
+            0,
+        ),
+        (arc_end(big_top, params[big_top + 3]), line_offsets[3], 2),
+    ];
+    for (point, line_off, end) in joints {
+        let got = if end == 0 {
+            [params[line_off], params[line_off + 1]]
+        } else {
+            [params[line_off + 2], params[line_off + 3]]
+        };
+        let gap = (point[0] - got[0]).hypot(point[1] - got[1]);
+        assert!(gap < tol, "joint gap {gap} want < {tol}");
+    }
+
+    // Every line's distance from each arc centre it touches equals that
+    // arc's radius: the tangency residual the convergence must clear.
+    let tangencies = [
+        (0usize, line_offsets[0]),
+        (left_lobe, line_offsets[0]),
+        (left_lobe, line_offsets[1]),
+        (big_bottom, line_offsets[1]),
+        (big_bottom, line_offsets[2]),
+        (right_lobe, line_offsets[2]),
+        (right_lobe, line_offsets[3]),
+        (big_top, line_offsets[3]),
+    ];
+    for (arc_off, line_off) in tangencies {
+        let centre = [params[arc_off], params[arc_off + 1]];
+        let a = [params[line_off], params[line_off + 1]];
+        let b = [params[line_off + 2], params[line_off + 3]];
+        let miss = (point_line_distance(centre, a, b) - params[arc_off + 2]).abs();
+        assert!(miss < tol, "tangency miss {miss} want < {tol}");
+    }
+}
