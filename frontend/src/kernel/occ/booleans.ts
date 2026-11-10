@@ -394,6 +394,63 @@ export function booleanWithHistoryMany(
 }
 
 /**
+ * Split `targetShape` by face or solid tools (BRepAlgoAPI_Splitter) and carry
+ * the target's face lineage across the split. A splitter has no boolean
+ * classification: every output face either `Modified` from one target face or
+ * is that face unchanged, so the origin table is one pass over the target's
+ * faces. Tool-face lineage is deliberately not collected: an up-to trim keeps
+ * the target's names and names the new cut boundary off its neighbours.
+ *
+ * The result is UNTRACKED (the caller owns it), exactly like booleanWithHistory;
+ * the origin handles are tracked in `scope`.
+ */
+export function splitWithHistory(
+  oc: OccModule,
+  scope: DisposeScope,
+  targetShape: OccShape,
+  toolShapes: readonly OccShape[],
+): { shape: OccShape; faceOrigin: FaceOrigin[] } {
+  const E = oc.TopAbs_ShapeEnum
+  const splitter = scope.track(new oc.BRepAlgoAPI_Splitter_1())
+  const args = scope.track(new oc.TopTools_ListOfShape_1())
+  args.Append_1(targetShape)
+  const tools = scope.track(new oc.TopTools_ListOfShape_1())
+  for (const toolShape of toolShapes) tools.Append_1(toolShape)
+  splitter.SetArguments(args)
+  splitter.SetTools(tools)
+  splitter.SetToFillHistory(true)
+  splitter.Build()
+  if (!splitter.IsDone()) throw new Error('split did not complete')
+  const result = scope.track(splitter.Shape())
+  if (!splitter.HasHistory()) {
+    scope.detach(result)
+    return { shape: result, faceOrigin: [] }
+  }
+  const history = scope.track(splitter.History()).get()
+  const targetFaces = explore(oc, scope, targetShape, E.TopAbs_FACE)
+  const resultFaces = explore(oc, scope, result, E.TopAbs_FACE)
+  const pairsByOutput = new SubShapeMultiIndex<FaceOrigin>()
+  for (const source of targetFaces) {
+    const mods = history.IsRemoved(source) ? [] : (drainList(scope, history.Modified(source)) as OccSubShape[])
+    if (mods.length > 0) {
+      for (const output of mods) pairsByOutput.add(output, { output, source, fromTool: false })
+      continue
+    }
+    // An untouched face keeps its identity, but the input handle is not a
+    // sub-shape of the result; find the result face that is IsSame to it.
+    const output = resultFaces.find((f) => f.IsSame(source))
+    if (output !== undefined) pairsByOutput.add(output, { output, source, fromTool: false })
+  }
+  const faceOrigin: FaceOrigin[] = []
+  for (const output of resultFaces) {
+    const origin = pairsByOutput.get(output)[0]
+    if (origin !== undefined) faceOrigin.push(origin)
+  }
+  scope.detach(result)
+  return { shape: result, faceOrigin }
+}
+
+/**
  * ShapeUpgrade_UnifySameDomain (cadquery Shape.clean) with exposed history
  * (mirrors `ocp_clean_with_history`). `unifyFaces` gates the face merge; pass
  * false to keep only the edge merge when the face merge is unsafe (imported STEP

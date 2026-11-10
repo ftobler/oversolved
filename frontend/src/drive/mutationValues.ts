@@ -1206,6 +1206,32 @@ function taperIsSet(value: unknown): boolean {
   return !(typeof value === 'number' && value === 0)
 }
 
+/** Why an up_to ref cannot be an emboss surface: a datum plane or a sketch
+ *  point has no material side. A body face query is left to the kernel, which
+ *  can see whether it resolved to a planar body face (allowed) or a datum
+ *  plane (refused). */
+function upToSurfaceTargetProblem(upTo: unknown, doc: unknown): string | null {
+  if (typeof upTo !== 'string' || upTo === '') return null
+  if (upTo.startsWith('@builtin_plane_')) {
+    return 'a datum plane has no surface to emboss on; pick a body face or use up_to_next'
+  }
+  if (/^@[^/]+\/[^/]+\/xy$/.test(upTo)) {
+    return 'a sketch point has no surface to emboss on; pick a body face or use up_to_next'
+  }
+  const id = upTo.startsWith('@') ? upTo.slice(1) : upTo
+  const features = (doc as { features?: { id?: string; kind?: string }[] } | null)?.features
+  const feature = features?.find(entry => entry.id === id)
+  if (feature?.kind === 'plane') {
+    return 'a construction plane has no surface to emboss on; pick a body face or use up_to_next'
+  }
+  return null
+}
+
+/** True when the stored extrude authored the surface emboss mode. */
+function familySurfaceOn(stored: RawStep | null): boolean {
+  return stored !== null && stored.up_to_start === 'surface'
+}
+
 /** The stored extrude sub-definition of the feature a setter names, or null when
  *  the caller has no document (or the feature is not an extrude). */
 function storedExtrudeDef(raw: RawStep, ctx: ValueContext): RawStep | null {
@@ -1230,10 +1256,37 @@ function addExtrude(raw: RawStep, ctx: ValueContext): ValueViolation | null {
       )
     }
     const termination = (raw.termination as string | undefined) ?? 'blind'
-    if (termination === 'up_to' || termination === 'through_all') {
+    if (termination === 'up_to' || termination === 'up_to_next' || termination === 'through_all') {
       return invalid(
         `add_extrude field "taper": termination ${termination} is not supported with a taper; use termination blind`,
       )
+    }
+  }
+  const upToStart = (raw.up_to_start as string | undefined) ?? 'sketch'
+  if (upToStart === 'surface') {
+    const termination = (raw.termination as string | undefined) ?? 'blind'
+    if (termination !== 'up_to' && termination !== 'up_to_next') {
+      return invalid(
+        'add_extrude fields "up_to_start" and "termination": up_to_start surface needs termination ' +
+          '"up_to" or "up_to_next"',
+      )
+    }
+    const offset = raw.up_to_offset
+    if (offset === undefined || offset === null || offset === '' ||
+        (typeof offset === 'number' && (offset === 0 || !Number.isFinite(offset)))) {
+      return invalid(
+        'add_extrude fields "up_to_start" and "up_to_offset": up_to_start surface needs a non-zero, ' +
+          'finite up_to_offset (the emboss height)',
+      )
+    }
+    if (raw.direction === 'symmetric') {
+      return invalid(
+        'add_extrude fields "up_to_start" and "direction": up_to_start surface cannot use direction symmetric',
+      )
+    }
+    const targetProblem = upToSurfaceTargetProblem(raw.up_to, ctx.doc)
+    if (targetProblem !== null) {
+      return invalid(`add_extrude fields "up_to_start" and "up_to": ${targetProblem}`)
     }
   }
   // through_all sizes its tool from the live bodies, so it is a cut termination:
@@ -1696,12 +1749,61 @@ function setExtrudeField(raw: RawStep, ctx: ValueContext): ValueViolation | null
       )
     }
     const termination = (stored.termination as string | undefined) ?? 'blind'
-    if (termination === 'up_to' || termination === 'through_all') {
+    if (termination === 'up_to' || termination === 'up_to_next' || termination === 'through_all') {
       return invalid(
         `set_extrude_field field "taper": termination is ${termination}; taper needs termination blind`,
       )
     }
     return null
+  }
+  if (field === 'up_to_start' && raw.value === 'surface') {
+    if (stored === null) return invalid('set_extrude_field field "up_to_start": no extrude to read')
+    const termination = (stored.termination as string | undefined) ?? 'blind'
+    if (termination !== 'up_to' && termination !== 'up_to_next') {
+      return invalid(
+        'set_extrude_field fields "up_to_start" and "termination": up_to_start surface needs termination ' +
+          '"up_to" or "up_to_next"',
+      )
+    }
+    const offset = stored.up_to_offset
+    if (offset === undefined || offset === null || offset === '' ||
+        (typeof offset === 'number' && (offset === 0 || !Number.isFinite(offset)))) {
+      return invalid(
+        'set_extrude_field fields "up_to_start" and "up_to_offset": up_to_start surface needs a ' +
+          'non-zero, finite up_to_offset (the emboss height)',
+      )
+    }
+    if (((stored.direction as string | undefined) ?? 'normal') === 'symmetric') {
+      return invalid(
+        'set_extrude_field fields "up_to_start" and "direction": up_to_start surface cannot use direction symmetric',
+      )
+    }
+    if (taperIsSet(stored.taper)) {
+      return invalid(
+        'set_extrude_field fields "up_to_start" and "taper": up_to_start surface cannot use a taper',
+      )
+    }
+    const targetProblem = upToSurfaceTargetProblem(stored.up_to, ctx.doc)
+    if (targetProblem !== null) {
+      return invalid(`set_extrude_field fields "up_to_start" and "up_to": ${targetProblem}`)
+    }
+    return null
+  }
+  if (field === 'up_to' && familySurfaceOn(stored)) {
+    const targetProblem = upToSurfaceTargetProblem(raw.value, ctx.doc)
+    if (targetProblem !== null) {
+      return invalid(`set_extrude_field fields "up_to" and "up_to_start": ${targetProblem}`)
+    }
+  }
+  if (familySurfaceOn(stored) && field === 'up_to_offset' && (raw.value === 0 || raw.value === '')) {
+    return invalid(
+      'set_extrude_field fields "up_to_offset" and "up_to_start": up_to_start surface needs a non-zero offset',
+    )
+  }
+  if (familySurfaceOn(stored) && field === 'direction' && raw.value === 'symmetric') {
+    return invalid(
+      'set_extrude_field fields "direction" and "up_to_start": up_to_start surface cannot use direction symmetric',
+    )
   }
   if (stored === null || !taperIsSet(stored.taper)) return null
   if (field === 'direction' && raw.value === 'symmetric') {
@@ -1710,7 +1812,7 @@ function setExtrudeField(raw: RawStep, ctx: ValueContext): ValueViolation | null
         'clear taper or use normal/reverse',
     )
   }
-  if (field === 'termination' && (raw.value === 'up_to' || raw.value === 'through_all')) {
+  if (field === 'termination' && (raw.value === 'up_to' || raw.value === 'up_to_next' || raw.value === 'through_all')) {
     return invalid(
       `set_extrude_field field "termination": ${json(raw.value)} cannot be used while taper is set; ` +
         'clear taper or use termination blind',

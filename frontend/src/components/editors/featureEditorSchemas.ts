@@ -28,12 +28,26 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
       options: [
         { value: 'blind', label: 'Blind' },
         { value: 'up_to', label: 'Up to' },
+        { value: 'up_to_next', label: 'Up to next' },
         { value: 'through_all', label: 'Through all' },
       ] },
     { type: 'pick', key: 'up_to', label: 'Up to',
       showWhen: (d) => d.termination === 'up_to',
       transform: stripSelectionWrapper, removeValue: undefined,
       emptyText: '(pick plane, point, or face)' },
+    // The offset is the stop surface's own offset: positive past the target's
+    // material, negative into it. Shown for both up-to modes; a plain blind
+    // extrude reads none.
+    { type: 'number', key: 'up_to_offset', label: 'Offset', default: 0, unit: 'mm',
+      showWhen: (d) => d.termination === 'up_to' || d.termination === 'up_to_next',
+      validate: finite },
+    // The user's emboss flow: sketch in front of the surface, up to it, tick
+    // this and type the signed amount. It builds only the slab between the
+    // surface and its offset.
+    { type: 'checkbox', key: 'up_to_start', label: 'Emboss from surface',
+      showWhen: (d) => d.termination === 'up_to' || d.termination === 'up_to_next',
+      isChecked: (d) => d.up_to_start === 'surface',
+      getMutation: (checked) => ({ field: 'up_to_start', value: checked ? 'surface' : null }) },
     { type: 'number', key: 'distance', label: 'Distance', default: 10,
       // An absent termination is the blind default, so the distance stays for
       // a document that never wrote the key.

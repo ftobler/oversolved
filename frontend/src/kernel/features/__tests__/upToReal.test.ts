@@ -458,10 +458,10 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     }
   })
 
-  it('throws when the up_to target body face is not planar', () => {
-    // v1 supports planar terminators only; a cylindrical target face must fail
-    // loud by name rather than be treated as an unresolved pick and quietly
-    // extrude the blind distance.
+  it('refuses a curved up_to face the profile never reaches', () => {
+    // A curved target is supported now, but this one sits beside the profile:
+    // the split cannot cut it through, so the coverage refusal names the fix
+    // rather than treating the pick as unresolved.
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
@@ -484,7 +484,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
           repoReturning({ type: 'face', body_id: 'body_cyl', face_index: sideIdx }),
           bodyStore,
         ),
-      ).toThrow(/target face is not planar/)
+      ).toThrow(/does not cover the profile/)
     } finally {
       scope.dispose()
     }

@@ -235,8 +235,10 @@ onto a workplane, and the drawing's local coordinates are the sketch's own.
     taper: 0                    # degrees, + narrows / - widens; absent or 0 is a straight prism
     direction: normal           # normal | reverse | symmetric
     operation: new              # new | add | cut
-    termination: blind          # blind | up_to | through_all
-    up_to: "@body_ex1/face/0"   # up_to only: a plane, a planar face, a vertex query, or a sketch point ref
+    termination: blind          # blind | up_to | up_to_next | through_all
+    up_to: "@body_ex1/face/0"   # up_to only: a plane, any face, a vertex query, or a sketch point ref
+    up_to_offset: 0             # up_to/up_to_next: material-signed stop offset (expression allowed)
+    up_to_start: sketch         # sketch | surface; surface is the emboss/deboss slab
     merge_target: "@body_ex1"   # optional: the body the result fuses into
 ```
 
@@ -265,8 +267,45 @@ query target that does not resolve, or meets several elements, falls back to the
 blind distance with a solver warning; an up_to with no `up_to` target does so
 too. A `@<bodyId>/face/<n>` ref that no longer names a face (the body is gone,
 the index is out of range, or the remap fails) fails the feature instead, since
-that spelling is a persisted pick rather than a query. A non-planar face target
-and `direction: symmetric` are refused.
+that spelling is a persisted pick rather than a query. A face target may be
+planar or curved: a curved face is split at the first crossing, so a tool that
+enters and leaves a cylinder stops at the near wall. The face must cover the
+whole profile; a face smaller than the footprint, or shorter than the swept
+profile, first retries on its untrimmed surface extended over the tool (with
+`up_to: the face did not cover the profile; trimmed at its extended surface` in
+the feature note), and is refused if that cannot cut the profile through.
+`direction: symmetric` is refused.
+
+`up_to_next` stops each profile region at the first body it meets, so one
+footprint can end on a dished ceiling made of several faces without picking
+one. `merge_target` narrows the candidates to one body, and with no target every
+body is a candidate. The authored direction decides the sweep (there is no
+auto-flip), and `up_to` is ignored. A profile that starts inside material, or a
+region that meets no body, is refused by name instead of built to a 10 m reach.
+
+`up_to_offset` (a number or expression, default 0) moves the stop surface of
+`up_to` or `up_to_next` by a material-signed distance: positive is outward of
+the target body's material, negative is into it. It is a true surface offset
+along the target's normal, not a translation along the extrude, so an emboss
+raised 0.5 on a cylinder stays 0.5 thick everywhere. A target with no material
+(a datum plane or a sketch point) has no outward side: positive is past it along
+the extrude direction, negative short of it. The sign does not depend on which
+side the sketch is on.
+
+`up_to_start: surface` builds only the slab between the stop surface and its
+offset, clipped to the profile footprint swept along the extrude: the
+emboss/deboss mode, and the sketch may sit in front of the surface, behind it,
+or anywhere along the direction. It needs a face target (an `up_to` face or
+`up_to_next`) and a non-zero `up_to_offset`, and is refused with `direction:
+symmetric` or a taper. The two useful pairings are `operation: add` with a
+positive offset (raised) and `operation: cut` with a negative offset (sunk);
+the other pairings are legal and change nothing, with the usual no-change
+warning. Recipes: emboss by h is a sketch on a plane in front of the curved
+surface, `add`, `termination: up_to` the face, `up_to_start: surface`,
+`up_to_offset: h`; deboss by h is the same with `cut` and a negative offset.
+Without `up_to_start: surface`, a sketch behind the surface (inside the body)
+with `add`, `up_to` and a positive offset gives the same emboss, and a sketch in
+front with `cut` and a negative offset the same deboss.
 
 `through_all` is a cut that is sized from the live bodies instead of from
 `distance`, which it ignores: a part that later grows is still cut through. With
@@ -282,9 +321,9 @@ profile as it travels, negative widens it, and every lateral wall drafts with it
 holes included and material-consistent (a washer with a positive taper leans the
 outer wall in and the hole wall out, so the wall thins toward the top). It is a
 number or an expression string, like `distance`. A taper needs
-`termination: blind` and `direction: normal` or `reverse`; symmetric, up_to and
-through_all are refused by name. A taper that would collapse the profile before
-`distance` is refused with the height it would collapse at, as in
+`termination: blind` and `direction: normal` or `reverse`; symmetric, up_to,
+up_to_next and through_all are refused by name. A taper that would collapse the
+profile before `distance` is refused with the height it would collapse at, as in
 `extrude: taper 45 collapses the profile after 5.000 of 10; shorten the distance
 or reduce the taper`. Absent or 0 is the straight prism the feature has always
 built. In the editor, switching `direction` to symmetric or `termination` away

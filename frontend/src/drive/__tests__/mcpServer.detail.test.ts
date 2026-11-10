@@ -322,7 +322,7 @@ describe('mutations type and detail filters', () => {
     expect(Object.keys(result.payload.families!).sort()).toEqual(['features', 'sketch'])
     expect(result.payload.families!.sketch!.map(row => row.type)).toEqual(['add_rect'])
     expect(result.payload.families!.features!.map(row => row.type)).toEqual(['add_hole'])
-    expect(result.payload.examples!.map(example => example.name)).toEqual(['box', 'filleted-box', 'tapered-block'])
+    expect(result.payload.examples!.map(example => example.name)).toEqual(['box', 'filleted-box', 'tapered-block', 'emboss-on-cylinder'])
   })
 
   it('an unknown type names the closest known type and its family', () => {

@@ -335,9 +335,9 @@ function resolveSource(
         'pattern an add or a cut, not a feature that starts a new body',
     )
   }
-  if (kind === 'extrude' && (sub.termination as string) === 'up_to') {
+  if (kind === 'extrude' && ((sub.termination as string) === 'up_to' || (sub.termination as string) === 'up_to_next')) {
     throw new Error(
-      `pattern: the source feature '${sourceId}' terminates up_to, so its tool is trimmed once and the trim ` +
+      `pattern: the source feature '${sourceId}' terminates ${sub.termination}, so its tool is trimmed once and the trim ` +
         'would travel with every copy; pattern a blind or through_all extrude instead',
     )
   }

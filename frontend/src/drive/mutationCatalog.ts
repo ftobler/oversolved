@@ -580,18 +580,54 @@ const MERGE_TARGET_NOTE =
 
 // Up-to was documented in the document schema and the document guide but not in
 // the mutation catalog, so a client authored the key it had to infer (Ex100).
-// The spelling list follows resolveUpToPlane: only absolute/query refs resolve.
+// The spelling list follows resolveUpToTarget: only absolute/query refs resolve.
 const EXTRUDE_UP_TO_NOTE =
   '`termination: up_to` ends the extrude at the element `up_to` names instead of at `distance`: ' +
   '`@builtin_plane_front`/`@<planeId>` for a plane (`@<planeId>` is the spelling `add_sketch.plane` takes); ' +
-  'a planar body face (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback); ' +
-  'a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`). ' +
+  'any body face, planar or curved (a face query from `select`, or the viewport\'s ' +
+  '`@<bodyId>/face/<n>` fallback); a `select` vertex query, or a sketch point ref ' +
+  '(`@<sketchId>/<entityId>/xy`). A curved face is trimmed by splitting the over-length tool at the face, ' +
+  'so it stops at the first crossing (a tool that enters and leaves a cylinder stops at the near wall). ' +
+  'The face must cover the whole profile; when it is too small or too short the trim retries on the ' +
+  'face\'s untrimmed surface extended over the tool and reports `up_to: the face did not cover the ' +
+  'profile; trimmed at its extended surface` in `solver_note`. A face that still cannot cut the profile ' +
+  'through is refused: `target face does not cover the profile (the extrude passes beside it)`. ' +
   'A query target that does not resolve or matches several elements falls back to `distance` with a warning ' +
   '(`used blind distance`); an up_to with no `up_to` target does so too, with `up_to has no target; used blind distance`. ' +
   'A `@<bodyId>/face/<n>` ref that no longer names a face (the body is gone, the index is out of range, or the ' +
   'remap fails) fails the feature instead of falling back: that ref is a persisted pick. ' +
-  'A non-planar face is refused, and so is `up_to` with `direction: symmetric`. `up_to` is read only when ' +
-  '`termination` is `up_to`; otherwise it is ignored.'
+  '`direction: symmetric` is refused, and so is a taper. `up_to` is read only when `termination` is `up_to`; ' +
+  'otherwise it is ignored.'
+
+const EXTRUDE_UP_TO_NEXT_NOTE =
+  '`termination: up_to_next` stops each profile region at the first body it meets, so a footprint can span a ' +
+  'dished ceiling made of several faces with no face picking. `merge_target` narrows the candidates to one ' +
+  'body; with no target every body is a candidate. A profile that starts inside material, or a region that ' +
+  'meets no body, is refused by name instead of built to a 10 m reach. It uses the authored direction (no ' +
+  'auto-flip) and does not read `up_to`; a given `up_to` is ignored.'
+
+const EXTRUDE_UP_TO_OFFSET_NOTE =
+  '`up_to_offset` (number or expression, default 0) moves the stop surface of `up_to` or `up_to_next` by a ' +
+  'material-signed distance: positive is outward of the target body\'s material, negative is into it. ' +
+  'It is a true surface offset along the target\'s normal, not a translation along the extrude, so an ' +
+  'emboss raised 0.5 on a cylinder stays 0.5 thick everywhere. A target with no material (a datum plane or ' +
+  'a sketch point) has no outward side: positive is past it along the extrude direction, negative short of ' +
+  'it. The sign does not depend on which side the sketch is on: a sketch in front extruding into the ' +
+  'surface and a sketch inside extruding out both stop outward with positive and inward with negative.'
+
+const EXTRUDE_UP_TO_START_NOTE =
+  '`up_to_start: surface` builds only the slab between the stop surface and its offset, clipped to the ' +
+  'profile footprint swept along the extrude: the emboss/deboss mode. The sketch can sit in front of the ' +
+  'surface, behind it, or anywhere along the direction. `up_to_offset` must be non-zero and names the slab ' +
+  'height. It needs a face target (`up_to` on a face, or `up_to_next`): a datum plane or point has no ' +
+  'surface. It is refused with `direction: symmetric` and with a taper. The two useful pairings are ' +
+  '`operation: add` with a positive offset (an emboss, raised) and `operation: cut` with a negative offset ' +
+  '(a deboss, sunk); the other pairings are legal and change nothing, with the usual no-change warning. ' +
+  'Recipes: emboss by h is a sketch on a plane in front of the curved surface, `add`, `termination: up_to` ' +
+  'the face, `up_to_start: surface`, `up_to_offset: h`; deboss by h is the same with `cut` and a negative ' +
+  'offset (minus h). Without `up_to_start: surface`, a sketch behind the surface (inside the body) with ' +
+  '`add`, `up_to` and a positive offset gives the same emboss, and a sketch in front with `cut` and a ' +
+  'negative offset the same deboss.'
 
 // A through-all cut used to be a guessed blind distance (CadQuery cutThruAll,
 // the kcl 80-20 rail); a part that later grows past the guess silently stops
@@ -641,10 +677,11 @@ const EXTRUDE_FIELDS_NOTE =
   'angle in degrees: positive narrows the profile as it travels, negative widens it, and every lateral ' +
   'wall drafts with it, holes included and material-consistent (on a washer a positive taper leans the ' +
   'outer wall in and the hole wall out, so the wall thins toward the top). A taper needs `termination: ' +
-  'blind` and `direction: normal` or `reverse`; symmetric, up_to and through_all are refused. A taper ' +
+  'blind` and `direction: normal` or `reverse`; symmetric, up_to, up_to_next and through_all are refused. A taper ' +
   'that collapses the profile before `distance` is refused with the height it would collapse at. ' +
   '`merge_target`: ' + MERGE_TARGET_NOTE +
-  ' ' + EXTRUDE_UP_TO_NOTE + ' ' + EXTRUDE_THROUGH_ALL_NOTE
+  ' ' + EXTRUDE_UP_TO_NOTE + ' ' + EXTRUDE_UP_TO_NEXT_NOTE + ' ' + EXTRUDE_UP_TO_OFFSET_NOTE +
+  ' ' + EXTRUDE_UP_TO_START_NOTE + ' ' + EXTRUDE_THROUGH_ALL_NOTE
 
 // Construction lines divide the sketch's pickable pieces but must not divide the
 // solid: the profile fuses collinear pieces before the wire is built.
@@ -653,9 +690,9 @@ const COLLINEAR_PROFILE_NOTE =
   'lateral face; the sketch keeps its pieces and its area division.'
 
 const EXTRUDE_INLINE_NOTE =
-  'One call may carry the whole extrude: `direction`, `termination`, `up_to`, `operation` and `merge_target` set ' +
-  'the same keys `set_extrude_field` does. ' + EXTRUDE_FIELDS_NOTE + ' ' + EXTRUDE_ADD_NOTE + ' ' +
-  COLLINEAR_PROFILE_NOTE
+  'One call may carry the whole extrude: `direction`, `termination`, `up_to`, `up_to_offset`, `up_to_start`, ' +
+  '`operation` and `merge_target` set the same keys `set_extrude_field` does. ' + EXTRUDE_FIELDS_NOTE + ' ' +
+  EXTRUDE_ADD_NOTE + ' ' + COLLINEAR_PROFILE_NOTE
 
 // The boolean refuses to solve without a target and a tool, so the catalog
 // names them up front (Case_Seam_Lip F5).
@@ -1115,8 +1152,10 @@ export const MUTATION_CATALOG = {
       distance: num(),
       taper: optScalar('Degrees of draft along the extrude direction: positive narrows the profile, negative widens it, and every lateral wall (holes included) drafts. Needs termination blind and direction normal or reverse; an angle that collapses the profile before `distance` is refused with the height it would collapse at (the key the document stores as extrude.taper).'),
       direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as extrude.direction).'),
-      termination: optNullableStr('blind | up_to | through_all; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance`; `through_all` is a cut sized from the bodies it can reach, so `distance` is ignored and `merge_target` narrows the reach, with `direction: symmetric` cutting both sides of the plane and normal/reverse cutting one (the key the document stores as extrude.termination). A null value clears it, so the add writes no key.'),
-      up_to: optNullableStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, a planar body face (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback), a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`) (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it.'),
+      termination: optNullableStr('blind | up_to | up_to_next | through_all; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance`; `up_to_next` stops at the first body it meets; `through_all` is a cut sized from the bodies it can reach, so `distance` is ignored and `merge_target` narrows the reach, with `direction: symmetric` cutting both sides of the plane and normal/reverse cutting one (the key the document stores as extrude.termination). A null value clears it, so the add writes no key.'),
+      up_to: optNullableStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, any body face planar or curved (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback), a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`) (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it.'),
+      up_to_offset: optNullableScalar('Material-signed distance moved on the stop surface of `up_to` or `up_to_next`: positive outward of the target body\'s material, negative into it; a datum plane or point has no material side, so positive is past it along the extrude. It is a true surface offset along the target normal. Default 0. (the key the document stores as extrude.up_to_offset)'),
+      up_to_start: optNullableStr('sketch | surface; absent is sketch. `surface` builds only the slab between the stop surface and its offset, clipped to the profile footprint: the emboss/deboss mode, needing a face target and a non-zero up_to_offset; refused with direction symmetric and a taper (the key the document stores as extrude.up_to_start).'),
       operation: optStr('add | cut | new; absent means add (the key the document stores as extrude.operation).'),
       merge_target: optStr(MERGE_TARGET_NOTE),
     },

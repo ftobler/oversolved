@@ -74,6 +74,27 @@ describe('add_extrude', () => {
     }
   })
 
+  it('carries the up-to offset and surface mode inline, writing no default keys', () => {
+    const doc: PartDoc = structuredClone(baseDoc)
+    applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10, {
+      termination: 'up_to', up_to: '@f1', up_to_offset: 0.5, up_to_start: 'surface',
+    })
+    expect(extrude0(doc)).toMatchObject({ up_to_offset: 0.5, up_to_start: 'surface' })
+    const plain: PartDoc = structuredClone(baseDoc)
+    applyAddExtrude(plain, 'ex1', undefined, '$sk1', 10, { up_to_offset: 0, up_to_start: 'sketch' })
+    expect(extrude0(plain)).not.toHaveProperty('up_to_offset')
+    expect(extrude0(plain)).not.toHaveProperty('up_to_start')
+  })
+
+  it('clears the surface toggle when the termination leaves the up-to modes', () => {
+    const doc: PartDoc = structuredClone(baseDoc)
+    applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10, {
+      termination: 'up_to', up_to: '@f1', up_to_offset: 0.5, up_to_start: 'surface',
+    })
+    applySetExtrudeField(doc, 'ex1', 'termination', 'blind')
+    expect(extrude0(doc)).not.toHaveProperty('up_to_start')
+  })
+
   it('treats an empty taper as no key and rounds a numeric taper', () => {
     const empty = structuredClone(baseDoc)
     applyAddExtrude(empty, 'ex1', undefined, '$sk1', 10, { taper: '' })

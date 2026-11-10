@@ -129,7 +129,7 @@ describe('extrude taper notes', () => {
       expect(note, type).toContain('negative widens')
       expect(note, type).toContain('holes included')
       expect(note, type).toContain('`termination:')
-      expect(note, type).toContain('symmetric, up_to and through_all are refused')
+      expect(note, type).toContain('symmetric, up_to, up_to_next and through_all are refused')
       expect(note, type).toContain('collapses the profile')
     }
   })
@@ -166,7 +166,7 @@ describe('through-all termination on both extrude rows', () => {
 
   it('lists through_all on the inline add field', () => {
     const note = mutationInfoOf('add_extrude').fields.termination.note!
-    expect(note).toContain('blind | up_to | through_all')
+    expect(note).toContain('blind | up_to | up_to_next | through_all')
     expect(note).toContain('`distance` is ignored')
     expect(note).toContain('`merge_target` narrows the reach')
     expect(note).toContain('`direction: symmetric` cutting both sides')

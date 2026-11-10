@@ -274,6 +274,56 @@ describe('termination select', () => {
     expect(screen.queryByRole('textbox', { name: 'Distance' })).toBeNull()
     expect(screen.getByText('(pick plane, point, or face)')).toBeInTheDocument()
   })
+
+  it('switches to up_to_next and shows the offset and emboss controls', () => {
+    const onMutation = vi.fn()
+    renderSidebar({
+      features: [extrudeFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+    }, { onMutation })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Termination' }), { target: { value: 'up_to_next' } })
+    expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
+      type: 'set_extrude_field', featureId: 'ex1', field: 'termination', value: 'up_to_next',
+    })
+  })
+
+  it('shows Offset and Emboss from surface for either up-to mode', () => {
+    for (const termination of ['up_to', 'up_to_next'] as const) {
+      const feature: PartFeature = {
+        id: 'ex1', kind: 'extrude',
+        extrude: { sketch: '$sk1', distance: 10, termination },
+      }
+      const { unmount } = renderSidebar({
+        features: [feature],
+        visibleFeatures: new Set(['ex1']),
+        editingFeatureId: 'ex1',
+      })
+      expect(screen.getByRole('textbox', { name: 'Offset' })).toBeInTheDocument()
+      expect(screen.getByRole('checkbox', { name: 'Emboss from surface' })).toBeInTheDocument()
+      expect(screen.queryByRole('textbox', { name: 'Distance' })).toBeNull()
+      unmount()
+    }
+  })
+
+  it('writes the surface toggle as surface and clears it with null', () => {
+    const onMutation = vi.fn()
+    const feature: PartFeature = {
+      id: 'ex1', kind: 'extrude',
+      extrude: { sketch: '$sk1', distance: 10, termination: 'up_to', up_to_start: 'surface', up_to_offset: 0.5 },
+    }
+    renderSidebar({
+      features: [feature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+    }, { onMutation })
+    const toggle = screen.getByRole('checkbox', { name: 'Emboss from surface' })
+    expect(toggle).toBeChecked()
+    fireEvent.click(toggle)
+    expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
+      type: 'set_extrude_field', featureId: 'ex1', field: 'up_to_start', value: null,
+    })
+  })
 })
 
 // 5: merge target PickChip visibility and interaction

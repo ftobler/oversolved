@@ -33,7 +33,16 @@ import { makeTranslationTrsf, transformCopy } from '../occ/transforms'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
 import { draftPrismBuilder } from '../occ/draftPrism'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
-import { resolveUpToPlane, orientToTarget, trimAtPlane, UP_TO_REACH, type CutPlane } from './upTo'
+import { resolveUpToTarget, orientToTarget, trimAtPlane, UP_TO_REACH, type CutPlane, type UpToTarget } from './upTo'
+import {
+  embossAtNext,
+  offsetFace,
+  orientToFace,
+  surfaceSlab,
+  trimAtFace,
+  trimAtNext,
+  type NextCandidate,
+} from './upToSurface'
 import { deriveEdgeNames, nameNeighboursAndDeriveEdges } from '../occ/constructionLineage'
 import {
   canonicalFaces, canonicalIndex, carryFaceNames, emptyShapeNames, mergeShapeNames,
@@ -149,6 +158,59 @@ function unitDirection(v: number[]): Vec3 {
   const length = Math.hypot(v[0], v[1], v[2])
   if (!(length > 1e-12)) throw new Error('extrude: through_all needs a sweep direction')
   return [v[0] / length, v[1] / length, v[2] / length]
+}
+
+/**
+ * Move a planar up_to cut by the offset. A body face has a material side, so
+ * the shift follows its outward normal; a datum plane or point has no side, so
+ * positive is "past the target along the (oriented) extrude direction".
+ */
+function shiftCut(cut: CutPlane, dir: Vec3, offset: number): CutPlane {
+  if (offset === 0) return cut
+  const n = cut.outward ?? dir
+  return {
+    ...cut,
+    origin: [
+      cut.origin[0] + n[0] * offset,
+      cut.origin[1] + n[1] * offset,
+      cut.origin[2] + n[2] * offset,
+    ],
+  }
+}
+
+/** The bodies an up_to_next tool may stop at: merge_target when set, else all. */
+function nextCandidates(
+  table: HandleTable,
+  bodyStore: Record<string, Body>,
+  mergeTarget: string | null,
+): NextCandidate[] {
+  const ids = mergeTarget ? resolveBodyIds(mergeTarget, bodyStore) : Object.keys(bodyStore).sort()
+  const out: NextCandidate[] = []
+  for (const id of ids) {
+    const body = bodyStore[id]
+    if (body === undefined || body.shape === null) continue
+    out.push({
+      id,
+      shape: table.get<OccShape>(body.shape),
+      imported: body.imported === true,
+    })
+  }
+  if (mergeTarget && out.length === 0) {
+    throw new Error(`extrude up_to_next: merge_target '${mergeTarget}' does not name a live body`)
+  }
+  return out
+}
+
+/** The face a `up_to_start: surface` run embosses on. A planar body face keeps
+ *  its face in the plane target; a datum plane or point has none, and the run
+ *  is refused by name rather than building an empty tool. */
+function surfaceFace(target: UpToTarget): OccShape {
+  if (target.kind === 'face') return target.face
+  if (target.cut.face !== undefined) return target.cut.face
+  throw new Error(
+    'extrude up_to: up_to_start surface needs a face target; ' +
+      'a datum plane or point has no surface to emboss on',
+  )
 }
 
 /** The reach a through-all cut needs, measured from the profile plane: the
@@ -420,13 +482,31 @@ export function solveExtrude(
     }
   }
 
-  // Up-to termination: resolve the cut plane once, using a representative extrude
+  // Up-to termination: resolve the target once, using a representative extrude
   // direction so a point target can take the extrude direction as its normal.
   const termination = (sub.termination as string) ?? 'blind'
-  if (taperDeg !== 0 && (termination === 'up_to' || termination === 'through_all')) {
+  if (termination !== 'blind' && termination !== 'up_to' && termination !== 'up_to_next' && termination !== 'through_all') {
+    throw new Error(`extrude: unknown termination ${JSON.stringify(termination)}`)
+  }
+  if (taperDeg !== 0 && (termination === 'up_to' || termination === 'up_to_next' || termination === 'through_all')) {
     throw new Error(
       `extrude: taper is not supported with termination ${termination}; use termination blind`,
     )
+  }
+  const upToOffsetRaw = sub.up_to_offset
+  const upToOffset = upToOffsetRaw === undefined || upToOffsetRaw === null ? 0 : Number(upToOffsetRaw)
+  if (!Number.isFinite(upToOffset)) {
+    throw new Error(`extrude: up_to_offset must be a finite number, got ${JSON.stringify(upToOffsetRaw)}`)
+  }
+  const upToStart = (sub.up_to_start as string | undefined) ?? 'sketch'
+  if (upToStart !== 'sketch' && upToStart !== 'surface') {
+    throw new Error(`extrude: unknown up_to_start ${JSON.stringify(upToStart)}; use sketch or surface`)
+  }
+  if (upToStart === 'surface' && termination !== 'up_to' && termination !== 'up_to_next') {
+    throw new Error('extrude: up_to_start surface is read only with termination up_to or up_to_next')
+  }
+  if (upToStart === 'surface' && upToOffset === 0) {
+    throw new Error('extrude: up_to_start surface needs a non-zero up_to_offset (the emboss height)')
   }
   // A through-all tool is sized from the bodies it cuts, which is meaningless
   // for a tool that adds material or intersects it. The pattern leaf's internal
@@ -441,36 +521,40 @@ export function solveExtrude(
   }
   const upToRef = (sub.up_to as string) ?? ''
   const usingFaces = cqFaces.length > 0 && allLoops.length === 0
+  const upToMode = termination === 'up_to' || termination === 'up_to_next'
+  if (upToMode && direction === 'symmetric') {
+    throw new Error(`extrude ${termination}: symmetric direction is not supported`)
+  }
   // One BRepAdaptor_Surface + BRepLProp_SLProps for the whole solve. Lazy, not
   // eager: faceNormal throws when the UV-midpoint normal is undefined (see
   // `faceNormal` in occ/primitives.ts), and only the branches that reach it
   // today may throw.
   let faceNormal0: Vec3 | null = null
   const profileNormal = (): Vec3 => (faceNormal0 ??= faceNormal(oc, scope, cqFaces[0]))
-  let cutPlane: CutPlane | null = null
+  let upToTarget: UpToTarget | null = null
   // The up-to fallback note is held until after the body operation runs, so a
   // body-op warning cannot overwrite it (applyBodyOperation assigns its own).
   let upToWarning: string | undefined
+  // A solved curved target may have had to extend the face over the profile;
+  // the note names that, and is written to solver_note on success.
+  let upToNote: string | undefined
   if (termination === 'up_to' && upToRef) {
-    if (direction === 'symmetric') {
-      throw new Error('extrude up_to: symmetric direction is not supported')
-    }
     const probeDir: Vec3 = usingFaces
       ? (direction === 'reverse'
           ? (profileNormal().map((n) => -n) as Vec3)
           : (profileNormal() as Vec3))
       : (resolveDirection((firstPt?.normal as number[]) ?? [0, 0, 1], firstPt as PlaneLike, direction, distance)[0] as Vec3)
     try {
-      cutPlane = resolveUpToPlane(oc, scope, table, upToRef, probeDir, globalRepo, bodyStore)
+      upToTarget = resolveUpToTarget(oc, scope, table, upToRef, probeDir, globalRepo, bodyStore)
     } catch (e) {
       // Ambiguity degrades to blind distance with a warning naming it; every
-      // other error (non-planar target, kernel failures) stays a loud feature
-      // failure exactly as before.
+      // other error (a body/remap failure, a kernel failure) stays a loud
+      // feature failure exactly as before.
       if (!(e instanceof AmbiguousQueryError)) throw e
       upToWarning =
         `extrude: up_to target '${upToRef}' matched several elements (${e instanceof Error ? e.message : String(e)}); used blind distance`
     }
-    if (cutPlane === null && upToWarning === undefined) {
+    if (upToTarget === null && upToWarning === undefined) {
       upToWarning = `extrude: up_to target '${upToRef}' did not resolve; used blind distance`
     }
   } else if (termination === 'up_to') {
@@ -540,19 +624,66 @@ export function solveExtrude(
       names.faceNames = carryFaceNames(r.faceOrigin, names.faceNames, names.faceNames)
       return r.shape
     }
-    if (cutPlane !== null) {
-      const nominal = (direction === 'reverse' ? reverseVec : faceNormalVec) as Vec3
-      const dirVec = orientToTarget(cutPlane, faceCentroid(oc, scope, cqFaces[0]), nominal)
+    const nominal = (direction === 'reverse' ? reverseVec : faceNormalVec) as Vec3
+    if (upToTarget !== null || termination === 'up_to_next') {
+      const target = upToTarget
+      const profileOrigin = faceCentroid(oc, scope, cqFaces[0])
+      let dirVec: Vec3
+      let targetFace: OccShape | null = null
+      if (termination === 'up_to_next') {
+        // up_to_next uses the authored direction: the body it meets decides
+        // where it stops, not a picked element that could flip the sweep.
+        dirVec = nominal
+      } else if (upToStart === 'surface') {
+        targetFace = surfaceFace(target!)
+        dirVec = orientToFace(oc, scope, targetFace, profileOrigin, nominal)
+      } else if (target!.kind === 'face') {
+        targetFace = target!.face
+        dirVec = orientToFace(oc, scope, targetFace, profileOrigin, nominal)
+      } else {
+        dirVec = orientToTarget(target!.cut, profileOrigin, nominal)
+      }
       const tool = fuseChain(
         scope,
         scope.track(prism(cqFaces[0], dirVec, UP_TO_REACH, true)),
         cqFaces.slice(1).map((f) => scope.track(prism(f, dirVec, UP_TO_REACH, false))),
         fuse,
       )
-      // The trim's Common consumes the over-length prism.
-      const trimmed = trimAtPlane(oc, scope, tool, cutPlane, dirVec)
-      toolShape = scope.track(trimmed.shape)
-      names.faceNames = carryFaceNames(trimmed.faceOrigin, names.faceNames, null)
+      if (termination === 'up_to_next') {
+        const candidates = nextCandidates(table, bodyStore, mergeTarget)
+        if (upToStart === 'surface') {
+          const slab = embossAtNext(oc, scope, tool, candidates, dirVec, profileOrigin, upToOffset)
+          toolShape = scope.track(slab.shape)
+          names.faceNames = carryFaceNames(slab.faceOrigin, names.faceNames, null)
+          if (slab.note !== undefined) upToNote = slab.note
+        } else {
+          const trimmed = trimAtNext(oc, scope, tool, candidates, dirVec, profileOrigin, upToOffset)
+          toolShape = scope.track(trimmed.shape)
+          names.faceNames = carryFaceNames(trimmed.faceOrigin, names.faceNames, null)
+        }
+      } else if (upToStart === 'surface') {
+        const slab = surfaceSlab(oc, scope, tool, [targetFace!], dirVec, upToOffset)
+        toolShape = scope.track(slab.shape)
+        names.faceNames = carryFaceNames(slab.faceOrigin, names.faceNames, null)
+        if (slab.note !== undefined) upToNote = slab.note
+      } else if (target!.kind === 'face') {
+        let trimTarget: OccShape = target!.face
+        if (upToOffset !== 0) trimTarget = scope.track(offsetFace(oc, scope, target!.face, upToOffset))
+        try {
+          const trimmed = trimAtFace(oc, scope, tool, trimTarget, dirVec)
+          toolShape = scope.track(trimmed.shape)
+          names.faceNames = carryFaceNames(trimmed.faceOrigin, names.faceNames, null)
+          if (trimmed.extended) upToNote = 'up_to: the face did not cover the profile; trimmed at its extended surface'
+        } finally {
+          if (trimTarget !== target!.face) scope.release(trimTarget)
+        }
+      } else {
+        const cut = shiftCut(target!.cut, dirVec, upToOffset)
+        const trimmed = trimAtPlane(oc, scope, tool, cut, dirVec)
+        toolShape = scope.track(trimmed.shape)
+        names.faceNames = carryFaceNames(trimmed.faceOrigin, names.faceNames, null)
+      }
+      // The trim consumes the over-length prism.
       scope.release(tool)
     } else if (direction === 'symmetric') {
       const half = sweepDistance / 2.0
@@ -597,17 +728,37 @@ export function solveExtrude(
       direction,
       sweepDistance,
     )
-    // Register the top face with the effective distance (after direction
-    // resolution) so reverse/symmetric extrudes place it correctly. A
-    // through-all cut has no authored end, so there is no honest frame to
-    // register at the ignored distance.
-    if (termination !== 'through_all' && firstSurfaces !== undefined && firstPtData !== undefined) {
+    // A planar up_to keeps the old top-face registration at the blind distance;
+    // a curved face or a next stop has no honest flat frame to register.
+    if (
+      (termination === 'blind' || (termination === 'up_to' && upToTarget?.kind === 'plane' && upToStart !== 'surface')) &&
+      firstSurfaces !== undefined && firstPtData !== undefined
+    ) {
       registerTopFace(globalRepo, featureId, firstPtData, firstSurfaces, effectiveDistance, taperDeg)
     }
-    const length = cutPlane !== null ? UP_TO_REACH : effectiveDistance
-    const sweepDir = cutPlane !== null
-      ? orientToTarget(cutPlane, effectivePlane.origin, directionVec as Vec3)
-      : (directionVec as Vec3)
+    // The ray and the inside classifier use the profile itself, not the sketch
+    // plane's frame origin: a plane placed away from its drawing would decide
+    // the side from a point the profile never occupies.
+    const profileOrigin =
+      firstPt !== null && allLoops.length > 0
+        ? sketchToWorld2d(loopCentroid(allLoops[0]), firstPt)
+        : effectivePlane.origin
+    let targetFace: OccShape | null = null
+    let sweepDir: Vec3 = directionVec as Vec3
+    if (upToTarget !== null || termination === 'up_to_next') {
+      if (termination === 'up_to_next') {
+        sweepDir = directionVec as Vec3
+      } else if (upToStart === 'surface') {
+        targetFace = surfaceFace(upToTarget!)
+        sweepDir = orientToFace(oc, scope, targetFace, profileOrigin, directionVec as Vec3)
+      } else if (upToTarget!.kind === 'face') {
+        targetFace = upToTarget!.face
+        sweepDir = orientToFace(oc, scope, targetFace, profileOrigin, directionVec as Vec3)
+      } else {
+        sweepDir = orientToTarget(upToTarget!.cut, profileOrigin, directionVec as Vec3)
+      }
+    }
+    const length = upToTarget !== null || termination === 'up_to_next' ? UP_TO_REACH : effectiveDistance
     const lineage = extrudeProfileWithLineage(
       oc,
       scope,
@@ -624,14 +775,42 @@ export function solveExtrude(
     // frees at dispose instead of living for the worker session.
     const swept = scope.track(lineage.solid)
     mergeShapeNames(names, lineage)
-    if (cutPlane !== null) {
-      // The trim's Common consumes the over-length sweep. Its face history
-      // carries the sweep's names onto the trimmed faces, and the edges are
-      // derived again on the trimmed solid.
-      const trimmed = trimAtPlane(oc, scope, swept, cutPlane, sweepDir)
-      toolShape = scope.track(trimmed.shape)
+    if (upToTarget !== null || termination === 'up_to_next') {
+      if (termination === 'up_to_next') {
+        const candidates = nextCandidates(table, bodyStore, mergeTarget)
+        if (upToStart === 'surface') {
+          const slab = embossAtNext(oc, scope, swept, candidates, sweepDir, profileOrigin as Vec3, upToOffset)
+          toolShape = scope.track(slab.shape)
+          names.faceNames = carryFaceNames(slab.faceOrigin, names.faceNames, null)
+          if (slab.note !== undefined) upToNote = slab.note
+        } else {
+          const trimmed = trimAtNext(oc, scope, swept, candidates, sweepDir, profileOrigin as Vec3, upToOffset)
+          toolShape = scope.track(trimmed.shape)
+          names.faceNames = carryFaceNames(trimmed.faceOrigin, names.faceNames, null)
+        }
+      } else if (upToStart === 'surface') {
+        const slab = surfaceSlab(oc, scope, swept, [targetFace!], sweepDir, upToOffset)
+        toolShape = scope.track(slab.shape)
+        names.faceNames = carryFaceNames(slab.faceOrigin, names.faceNames, null)
+        if (slab.note !== undefined) upToNote = slab.note
+      } else if (upToTarget!.kind === 'face') {
+        let trimTarget: OccShape = upToTarget!.face
+        if (upToOffset !== 0) trimTarget = scope.track(offsetFace(oc, scope, upToTarget!.face, upToOffset))
+        try {
+          const trimmed = trimAtFace(oc, scope, swept, trimTarget, sweepDir)
+          toolShape = scope.track(trimmed.shape)
+          names.faceNames = carryFaceNames(trimmed.faceOrigin, names.faceNames, null)
+          if (trimmed.extended) upToNote = 'up_to: the face did not cover the profile; trimmed at its extended surface'
+        } finally {
+          if (trimTarget !== upToTarget!.face) scope.release(trimTarget)
+        }
+      } else {
+        const cut = shiftCut(upToTarget!.cut, sweepDir, upToOffset)
+        const trimmed = trimAtPlane(oc, scope, swept, cut, sweepDir)
+        toolShape = scope.track(trimmed.shape)
+        names.faceNames = carryFaceNames(trimmed.faceOrigin, names.faceNames, null)
+      }
       scope.release(swept)
-      names.faceNames = carryFaceNames(trimmed.faceOrigin, names.faceNames, null)
       const edges = deriveEdgeNames(oc, scope, toolShape, names.faceNames, names.faceAncestry)
       names.edgeNames = edges.edgeNames
       Object.assign(names.edgeAncestry, edges.edgeAncestry)
@@ -667,27 +846,51 @@ export function solveExtrude(
     }
   }
 
-  const opResult = applyBodyOperation(oc, scope, table, {
-    toolShape,
-    bodyStore,
-    operation,
-    mergeTarget,
-    bodyId,
-    featureId,
-    sketchId: firstSketchId,
-    opName: 'extrude',
-    profileQueries,
-    faceNames: names.faceNames,
-    edgeNames: names.edgeNames,
-    faceAncestry: names.faceAncestry,
-    edgeAncestry: names.edgeAncestry,
-    capAncestry: names.capAncestry,
-    // An add extends the part; a profile that reaches no existing body is a
-    // misplaced sketch, not a second part. `operation: new` is the way to start
-    // one, and it is the only way (an add mints nothing).
-    addRequiresExisting: operation === 'add',
-    ...(operation === 'cut' && sweep !== null && { oppositeProbe: oppositeCutProbe(oc, scope, toolShape, sweep, direction) }),
-  })
+  // The emboss/deboss slab has two legal no-op pairings: a cut of a slab that
+  // sits in air, and an add of one inside material. The body operation reports
+  // the add's no-change itself (it fuses to an empty diff), but a cut that
+  // misses every body is normally an authoring error. In surface mode it is one
+  // of the documented pairings, so it reports the same no-change warning
+  // instead of turning the feature red. Only that exact miss is converted; a
+  // kernel failure still throws.
+  let opResult
+  try {
+    opResult = applyBodyOperation(oc, scope, table, {
+      toolShape,
+      bodyStore,
+      operation,
+      mergeTarget,
+      bodyId,
+      featureId,
+      sketchId: firstSketchId,
+      opName: 'extrude',
+      profileQueries,
+      faceNames: names.faceNames,
+      edgeNames: names.edgeNames,
+      faceAncestry: names.faceAncestry,
+      edgeAncestry: names.edgeAncestry,
+      capAncestry: names.capAncestry,
+      // An add extends the part; a profile that reaches no existing body is a
+      // misplaced sketch, not a second part. `operation: new` is the way to start
+      // one, and it is the only way (an add mints nothing).
+      addRequiresExisting: operation === 'add',
+      ...(operation === 'cut' && sweep !== null && { oppositeProbe: oppositeCutProbe(oc, scope, toolShape, sweep, direction) }),
+    })
+  } catch (e) {
+    const missed =
+      upToMode &&
+      operation === 'cut' &&
+      (upToStart === 'surface' || upToOffset !== 0) &&
+      e instanceof Error &&
+      /cut does not intersect any target body/.test(e.message)
+    if (!missed) throw e
+    opResult = {
+      status: 'ok',
+      body_id: mergeTarget ?? Object.keys(bodyStore).sort()[0] ?? bodyId,
+      body_ids: [],
+      solver_warning: 'extrude: operation produced no geometry change',
+    }
+  }
   Object.assign(result, opResult)
 
   // The body operation may have written its own warning (a no-op cut/add).
@@ -697,6 +900,7 @@ export function solveExtrude(
       ? upToWarning
       : `${upToWarning}; ${result.solver_warning}`
   }
+  if (upToNote !== undefined) result.solver_note = upToNote
 
   // An add with no explicit merge target fuses into the FIRST body it connects
   // to and then stops. When the new solid also reaches another body, that body

@@ -379,6 +379,24 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
       ],
     })
     expect(String(h.res(upTo, 'pt1').exception)).toContain('terminates up_to')
+
+    const next = h.run({
+      features: [
+        rectSketch('sk', 20, 20),
+        extrude('ex', '$sk', 5),
+        rectSketch('sk2', 4, 4, 2, 2),
+        {
+          id: 'up',
+          kind: 'extrude',
+          extrude: {
+            sketch: '@sk2', distance: 10, direction: 'normal', operation: 'cut',
+            termination: 'up_to_next',
+          },
+        },
+        pattern('pt1', 'up', linear({})),
+      ],
+    })
+    expect(String(h.res(next, 'pt1').exception)).toContain('terminates up_to_next')
   })
 
   it('asks for target_body when the source touched more than one body', () => {

@@ -19,7 +19,7 @@ export type SelectionDomain = 'sketch_2d' | 'body_3d' | 'plane_3d' | 'mixed'
 
 export type ExtrudeDirection = 'normal' | 'reverse' | 'symmetric'
 export type ExtrudeOperation = 'add' | 'cut' | 'new'
-export type ExtrudeTermination = 'blind' | 'up_to' | 'through_all'
+export type ExtrudeTermination = 'blind' | 'up_to' | 'up_to_next' | 'through_all'
 
 export type ExtrudeFeatureDef = {
   sketch: string | string[]
@@ -30,10 +30,18 @@ export type ExtrudeFeatureDef = {
   taper?: NumberOrExpr
   direction?: ExtrudeDirection
   // 'blind' (default) extrudes by `distance`; 'up_to' terminates at the element
-  // referenced by `up_to` (a plane, point, or planar face); 'through_all' is a
-  // cut sized from the live bodies, so `distance` is ignored.
+  // referenced by `up_to` (a plane, point, or any face); 'up_to_next' stops at
+  // the first body it meets; 'through_all' is a cut sized from the live bodies,
+  // so `distance` is ignored.
   termination?: ExtrudeTermination
   up_to?: string
+  // Material-signed stop offset for up_to and up_to_next: positive is outward
+  // of the target's material (past a datum plane/point along the sweep).
+  up_to_offset?: NumberOrExpr
+  // 'surface' builds the slab between the stop surface and its offset instead
+  // of the solid from the profile to the stop: the emboss/deboss mode. Absent
+  // is 'sketch'.
+  up_to_start?: 'sketch' | 'surface'
   operation?: ExtrudeOperation
   merge_target?: string
 }
@@ -1357,7 +1365,7 @@ export type Mutation =
   | { type: 'rename_feature'; featureId: string; label: string }
   | { type: 'toggle_sketch_plane_visibility' }
   | { type: 'toggle_plane_visibility' }
-  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number; taper?: NumberOrExpr; direction?: ExtrudeDirection; termination?: ExtrudeTermination | null; up_to?: string | null; operation?: ExtrudeOperation; merge_target?: string } & FeatureInsertion)
+  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number; taper?: NumberOrExpr; direction?: ExtrudeDirection; termination?: ExtrudeTermination | null; up_to?: string | null; up_to_offset?: NumberOrExpr | null; up_to_start?: ExtrudeFeatureDef['up_to_start'] | null; operation?: ExtrudeOperation; merge_target?: string } & FeatureInsertion)
   | { type: 'set_extrude_field'; featureId: string; field: keyof ExtrudeFeatureDef; value: unknown }
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }

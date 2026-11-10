@@ -1637,3 +1637,149 @@ describe('extrude taper refusals', () => {
     expect(inline.extrude.taper).toBe(15)
   })
 })
+
+describe('extrude up_to_next and the surface emboss', () => {
+  function extrudeDoc(extrude: Record<string, unknown>): PartDoc {
+    return seedBuiltins({
+      version: 1, kind: 'part',
+      features: [{
+        id: 'ex1', kind: 'extrude',
+        extrude: { sketch: '@sk1', distance: 10, ...extrude },
+      }],
+    })
+  }
+
+  it('accepts up_to_next with or without an up_to that it ignores', () => {
+    for (const upTo of [undefined, '@builtin_plane_top']) {
+      expect(validateMutation({
+        type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk1', distance: 10,
+        termination: 'up_to_next', ...(upTo === undefined ? {} : { up_to: upTo }),
+      })).toMatchObject({ ok: true })
+    }
+  })
+
+  it('accepts a numeric or expression up_to_offset and refuses a non-finite one', () => {
+    expect(validateMutation({
+      type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk1', distance: 10,
+      termination: 'up_to', up_to_offset: 'wall/2',
+    })).toMatchObject({ ok: true })
+    const error = refusal({
+      type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk1', distance: 10,
+      termination: 'up_to', up_to_offset: Number.POSITIVE_INFINITY,
+    })
+    expect(error.message).toContain('up_to_offset')
+  })
+
+  it('refuses surface mode without a non-zero offset, a face mode or one-sided work', () => {
+    const zero = refusal({
+      type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk1', distance: 10,
+      termination: 'up_to', up_to_start: 'surface', up_to_offset: 0,
+    })
+    expect(zero.message).toContain('up_to_start')
+    expect(zero.message).toContain('up_to_offset')
+
+    const blind = refusal({
+      type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk1', distance: 10,
+      termination: 'blind', up_to_start: 'surface', up_to_offset: 0.5,
+    })
+    expect(blind.message).toContain('up_to_start')
+    expect(blind.message).toContain('termination')
+
+    const symmetric = refusal({
+      type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk1', distance: 10,
+      termination: 'up_to', up_to_start: 'surface', up_to_offset: 0.5, direction: 'symmetric',
+    })
+    expect(symmetric.message).toContain('up_to_start')
+    expect(symmetric.message).toContain('direction')
+
+    const tapered = refusal({
+      type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk1', distance: 10,
+      termination: 'up_to', up_to_start: 'surface', up_to_offset: 0.5, taper: 10,
+    })
+    expect(tapered.message).toContain('taper')
+
+    const datum = refusal({
+      type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk1', distance: 10,
+      termination: 'up_to', up_to_start: 'surface', up_to_offset: 0.5,
+      up_to: '@builtin_plane_top',
+    })
+    expect(datum.message).toContain('up_to_start')
+    expect(datum.message).toContain('datum plane')
+  })
+
+  it('refuses a taper with up_to_next on the add and on a termination switch', () => {
+    const added = refusal({
+      type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk1', distance: 10,
+      taper: 10, termination: 'up_to_next',
+    })
+    expect(added.message).toContain('up_to_next')
+    const switched = refusal(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'termination', value: 'up_to_next' },
+      extrudeDoc({ taper: 15 }),
+    )
+    expect(switched.message).toContain('up_to_next')
+    const authored = refusal(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'taper', value: 10 },
+      extrudeDoc({ termination: 'up_to_next' }),
+    )
+    expect(authored.message).toContain('up_to_next')
+  })
+
+  it('holds the surface toggle to the stored offset, direction and taper', () => {
+    const ok = validateMutation(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'up_to_start', value: 'surface' },
+      { doc: extrudeDoc({ termination: 'up_to', up_to: '@pl1', up_to_offset: 0.5 }) },
+    )
+    expect(ok).toMatchObject({ ok: true })
+
+    const noOffset = refusal(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'up_to_start', value: 'surface' },
+      extrudeDoc({ termination: 'up_to', up_to: '@pl1' }),
+    )
+    expect(noOffset.message).toContain('up_to_offset')
+
+    const zeroOffset = refusal(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'up_to_offset', value: 0 },
+      extrudeDoc({ termination: 'up_to', up_to: '@pl1', up_to_start: 'surface', up_to_offset: 0.5 }),
+    )
+    expect(zeroOffset.message).toContain('up_to_start')
+
+    const symmetric = refusal(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'direction', value: 'symmetric' },
+      extrudeDoc({ termination: 'up_to', up_to: '@pl1', up_to_start: 'surface', up_to_offset: 0.5 }),
+    )
+    expect(symmetric.message).toContain('up_to_start')
+
+    const datum = refusal(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'up_to', value: '@builtin_plane_top' },
+      extrudeDoc({ termination: 'up_to', up_to: '@pl1', up_to_start: 'surface', up_to_offset: 0.5 }),
+    )
+    expect(datum.message).toContain('up_to_start')
+    expect(datum.message).toContain('datum plane')
+  })
+
+  it('round-trips up_to_next and the surface fields through the drive', async () => {
+    const added = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [{
+        mutation: {
+          type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk1', distance: 1,
+          termination: 'up_to_next', up_to_offset: 0.5, up_to_start: 'surface',
+        },
+      }],
+    })
+    const feature = added.doc?.features?.find(f => f.id === 'ex2')
+    if (feature?.kind !== 'extrude') throw new Error('the add step stored no extrude')
+    expect(feature.extrude.termination).toBe('up_to_next')
+    expect(feature.extrude.up_to_offset).toBe(0.5)
+    expect(feature.extrude.up_to_start).toBe('surface')
+
+    const cleared = await runHeadless({
+      doc: added.doc!,
+      steps: [{ mutation: { type: 'set_extrude_field', featureId: 'ex2', field: 'up_to_start', value: null } }],
+    })
+    const edited = cleared.doc?.features?.find(f => f.id === 'ex2')
+    if (edited?.kind !== 'extrude') throw new Error('the setter step stored no extrude')
+    expect(edited.extrude.up_to_start).toBeUndefined()
+  })
+})

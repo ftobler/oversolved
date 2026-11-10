@@ -308,9 +308,30 @@ export interface OccBooleanOp extends OccDisposable {
 export interface OccSplitter extends OccDisposable {
   SetArguments(args: OccListOfShape): void
   SetTools(tools: OccListOfShape): void
+  SetToFillHistory(fill: boolean): void
   Build(): void
   IsDone(): boolean
+  HasHistory(): boolean
+  History(): OccHistoryHandle
   Shape(): OccShape
+}
+
+/**
+ * IntCurvesFace_ShapeIntersector: cast a line against a shape and read the
+ * hits in order. `Perform_1` is the gp_Lin form (3 args: line, PInf, PSup);
+ * the `_2` form takes a Handle_Adaptor3d_HCurve, which is how the build
+ * names the two overloads. `WParameter(i)` is the signed parameter on the
+ * line, i.e. the distance from its origin, and `Face(i)` the hit face.
+ * There is no gp_Lin reader after the fact, so keep the line alive until the
+ * hits are read.
+ */
+export interface OccShapeIntersector extends OccDisposable {
+  Load(shape: OccShape, tolerance: number): void
+  Perform_1(line: OccDisposable, pInf: number, pSup: number): void
+  IsDone(): boolean
+  NbPnt(): number
+  WParameter(index: number): number
+  Face(index: number): OccShape
 }
 
 /** One BRepOffset_Interval: the edge-convexity the analyse classified. */
@@ -726,6 +747,10 @@ export interface OccModule extends OccBaseModule {
 
   // ─── shape construction ───
   gp_Dir_4: new (x: number, y: number, z: number) => OccXYZ
+  // gp_Lin(location, direction): the infinite line the shape intersector
+  // casts. `_1` is the no-arg ctor; `_2` the gp_Ax1 form.
+  gp_Lin_3: new (location: OccPnt, direction: OccXYZ) => OccDisposable
+  IntCurvesFace_ShapeIntersector: new () => OccShapeIntersector
   gp_Ax2_3: new (origin: OccPnt, normal: OccXYZ) => OccDisposable
   // gp_Ax2(location, N, Vx): the 3-arg form used to orient a circle.
   gp_Ax2_2: new (origin: OccPnt, normal: OccXYZ, xDir: OccXYZ) => OccDisposable

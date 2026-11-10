@@ -67,6 +67,55 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     expect(measure!.measures.area).toBeCloseTo(3733.044, 3)
   }, 120_000)
 
+  it('builds the emboss-on-cylinder example the user\'s way', async () => {
+    const example = MUTATION_EXAMPLES.find(entry => entry.name === 'emboss-on-cylinder')
+    expect(example).toBeDefined()
+    const result = await exampleRun(example!.steps)
+    expect(result.ok).toBe(true)
+    const measure = await measureHeadless(result.doc!)
+    expect(measure).not.toBeNull()
+    // pi * 20^2 * 30 + the 0.5 raised footprint (101.04521).
+    expect(measure!.measures.volume).toBeCloseTo(37800.157, 2)
+    expect(measure!.measures.bodies).toBe(1)
+  }, 120_000)
+
+  it('keeps a fillet on the emboss edge across an up_to_offset edit', async () => {
+    const example = MUTATION_EXAMPLES.find(entry => entry.name === 'emboss-on-cylinder')!
+    const built = await exampleRun(example.steps)
+    expect(built.ok).toBe(true)
+    // The emboss's outer wall meets the footprint end caps in two R20.5 arcs.
+    const picked = await selectHeadless(built.doc!, { kind: 'edge', where: { radius: 20.5 } })
+    expect(picked).not.toBeNull()
+    expect(picked!.queries.length).toBeGreaterThan(0)
+    const filleted = await runHeadless({
+      doc: built.doc!,
+      steps: [{
+        mutation: {
+          type: 'add_fillet', featureId: 'fi1', edges: picked!.queries, radius: 0.2,
+        },
+      }],
+    })
+    expect(filleted.ok).toBe(true)
+    expect(filleted.features?.some((problem) => problem.id === 'fi1')).toBe(false)
+
+    // Moving the slab from 0.5 to 0.8 rebuilds the split and the booleans; the
+    // fillet's carried edge queries must still name the same outer edge.
+    const edited = await runHeadless({
+      doc: filleted.doc!,
+      steps: [{
+        mutation: {
+          type: 'set_extrude_field', featureId: 'ex2', field: 'up_to_offset', value: 0.8,
+        },
+      }],
+    })
+    expect(edited.ok).toBe(true)
+    expect(edited.features?.some((problem) => problem.id === 'fi1')).toBe(false)
+    const measure = await measureHeadless(edited.doc!)
+    expect(measure).not.toBeNull()
+    // pi * 400 * 30 + the 0.8 slab (161.67) minus the two 0.2 fillet corners.
+    expect(measure!.measures.volume).toBeGreaterThan(37800)
+  }, 180_000)
+
   it('lists only live bodies in the run summary after a boolean consumes a tool', async () => {
     const steps: ScriptStep[] = [
       { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_front' } },

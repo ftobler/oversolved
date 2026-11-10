@@ -51,6 +51,30 @@ const TAPERED_BLOCK_STEPS: ScriptStep[] = [
   },
 ]
 
+// The user's emboss workflow: a cylinder, a footprint on a plane in front of
+// its curved wall, and `add` up to that wall with a +0.5 surface slab. Face 2 of
+// the sorted cylinder is the lateral face (the two discs are flat, so they sort
+// first); the real test pins the query and the volume.
+const EMBOSS_ON_CYLINDER_STEPS: ScriptStep[] = [
+  { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Circle', plane: '@builtin_plane_front' } },
+  { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'circle', params: [0, 0, 20] } },
+  {
+    mutation: {
+      type: 'add_extrude', featureId: 'ex1', label: 'Cylinder',
+      sketchQuery: '$sk1', distance: 30, operation: 'new',
+    },
+  },
+  { mutation: { type: 'add_sketch', featureId: 'sk2', label: 'Footprint', plane: '@builtin_plane_top' } },
+  { mutation: { type: 'add_rect', featureId: 'sk2', p0: [-5, -25], p1: [5, -5] } },
+  {
+    mutation: {
+      type: 'add_extrude', featureId: 'ex2', label: 'Emboss',
+      sketchQuery: '$sk2', distance: 1, operation: 'add', termination: 'up_to',
+      up_to: '@body_ex1/face/2', up_to_start: 'surface', up_to_offset: 0.5,
+    },
+  },
+]
+
 export const MUTATION_EXAMPLES: readonly MutationExample[] = [
   {
     name: 'box',
@@ -66,5 +90,10 @@ export const MUTATION_EXAMPLES: readonly MutationExample[] = [
     name: 'tapered-block',
     summary: 'An 18 x 18 sketch on Top extruded 10 with taper 15: 2371.112 mm3.',
     steps: TAPERED_BLOCK_STEPS,
+  },
+  {
+    name: 'emboss-on-cylinder',
+    summary: 'A 0.5 raised footprint on a 20 mm cylinder wall, up_to the curved face with up_to_start surface: 37800.157 mm3.',
+    steps: EMBOSS_ON_CYLINDER_STEPS,
   },
 ]

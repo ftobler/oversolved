@@ -685,8 +685,10 @@ function checkExtrude(sub: DocRecord, field: string): void {
   if (sub.taper === '') delete sub.taper
   else checkOptional(sub, 'taper', field, checkExpr)
   checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, DIRECTIONS))
-  checkOptional(sub, 'termination', field, (v, f) => checkEnum(v, f, ['blind', 'up_to', 'through_all']))
+  checkOptional(sub, 'termination', field, (v, f) => checkEnum(v, f, ['blind', 'up_to', 'up_to_next', 'through_all']))
   checkOptional(sub, 'up_to', field, checkRef)
+  checkOptional(sub, 'up_to_offset', field, checkExpr)
+  checkOptional(sub, 'up_to_start', field, (v, f) => checkEnum(v, f, ['sketch', 'surface']))
   checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, OPERATIONS))
   checkOptional(sub, 'merge_target', field, checkRef)
 }

@@ -120,9 +120,15 @@ CadQuery's `extrude(..., taper=)` and build123d's `extrude(amount, taper=)` map
 one-to-one to `extrude.taper`: the number is degrees, positive narrows along the
 extrusion direction and negative widens it. Oversolved applies the same draft to
 every lateral wall, holes included, so a washer's hole wall leans the opposite
-way from its outer wall. The angle is refused with `termination: up_to` or
+way from its outer wall. The angle is refused with `termination: up_to`, `up_to_next` or
 `through_all` and with `direction: symmetric`; a taper that collapses the
 profile before the distance is refused with the height it would collapse at.
+
+CadQuery `Workplane.until` / build123d `Until.NEXT` maps to
+`termination: up_to_next`; `until=` a face maps to `termination: up_to` with
+that face as `up_to` (a curved face is accepted). A build123d extrude with
+`mode=Mode.ADD` at a curved surface plus a signed offset maps to `up_to` (or
+`up_to_next`), `up_to_start: surface` and `up_to_offset`.
 
 Measure the recipe against the reference over MCP:
 

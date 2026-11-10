@@ -116,7 +116,11 @@ export function applySetExtrudeField(doc: PartDoc, featureId: string, field: key
   // cross-field refusal.
   if (sub === undefined) return
   if (field === 'direction' && value === 'symmetric') delete sub.taper
-  if (field === 'termination' && (value === 'up_to' || value === 'through_all')) delete sub.taper
+  if (field === 'termination' && (value === 'up_to' || value === 'up_to_next' || value === 'through_all')) delete sub.taper
+  // The emboss toggle is hidden outside the two up-to modes, and the kernel
+  // refuses a stored surface mode there; clear it with the termination so a
+  // hidden field cannot strand the feature.
+  if (field === 'termination' && value !== 'up_to' && value !== 'up_to_next') delete sub.up_to_start
 }
 
 export function applySetRevolveField(doc: PartDoc, featureId: string, field: keyof RevolveFeatureDef, value: unknown): void {
@@ -235,6 +239,8 @@ export function applyAddExtrude(
     // inline add has no key yet, so the same inputs simply write no key.
     termination?: ExtrudeFeatureDef['termination'] | null | ''
     up_to?: string | null
+    up_to_offset?: ExtrudeFeatureDef['up_to_offset'] | null
+    up_to_start?: ExtrudeFeatureDef['up_to_start'] | null
   } = {},
 ): void {
   // The distance crosses the same rounding boundary as every stored feature
@@ -247,6 +253,13 @@ export function applyAddExtrude(
   }
   const termination = inline.termination === null || inline.termination === '' ? undefined : inline.termination
   const upTo = inline.up_to === null || inline.up_to === '' ? undefined : inline.up_to
+  // A zero offset is the clear, like an empty up_to: the key is only written
+  // when the author asked for a moved stop.
+  const upToOffset = inline.up_to_offset === null ? undefined : inline.up_to_offset
+  const storedUpToOffset = typeof upToOffset === 'number'
+    ? (upToOffset === 0 ? undefined : round(upToOffset))
+    : (upToOffset === '' ? undefined : upToOffset)
+  const upToStart = inline.up_to_start === 'surface' ? 'surface' : undefined
   // An empty taper is the clear, not a zero angle, and a numeric taper crosses
   // the same stored-number rounding boundary as distance.
   const taperRaw = inline.taper as NumberOrExpr | null | undefined
@@ -264,6 +277,8 @@ export function applyAddExtrude(
       ...(storedTaper !== undefined && { taper: storedTaper }),
       ...(termination !== undefined && { termination }),
       ...(upTo !== undefined && { up_to: upTo }),
+      ...(storedUpToOffset !== undefined && { up_to_offset: storedUpToOffset }),
+      ...(upToStart !== undefined && { up_to_start: upToStart }),
       ...(inline.operation !== undefined && { operation: inline.operation }),
       ...(inline.merge_target !== undefined && { merge_target: inline.merge_target }),
     },

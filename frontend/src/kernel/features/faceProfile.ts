@@ -270,6 +270,35 @@ export function resolveFaceProfile(
 }
 
 /**
+ * Resolve a topo-fallback `@<body>/face/<idx>` ref to its OCC face and body id,
+ * through the body's shape and the same remap the pick uses. The frame reader
+ * below and the up-to curved target share this so one spelling cannot resolve
+ * two different faces.
+ */
+export function resolveFaceSlashFace(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  ref: string,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+): { face: OccShape; bodyId: string } {
+  const slash = SLASH_FACE.exec(ref)
+  if (slash === null) throw new Error(`not a slash face ref: ${ref}`)
+  const refId = slash[1]
+  let faceIndex = parseInt(slash[2], 10)
+  const body = findBodyForRef(bodyStore, refId)
+  if (body === null) throw new Error(`No body found for '${refId}'`)
+  const shape = bodyShape(table, body)
+  // Same one-traversal-per-pick deal as resolveFaceProfile's slash branch: the
+  // remap and the final pick both index the same sorted list (M45).
+  const faces = sortedFacesOf(oc, scope, shape)
+  faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, bodyStore, body, faces, ref)
+  if (faceIndex >= faces.length) throw new Error(`face_index ${faceIndex} out of range`)
+  return { face: faces[faceIndex], bodyId: body.id }
+}
+
+/**
  * Resolve a topo-fallback `@<body>/face/<idx>` ref to the face's 3D frame via
  * the body's OCC shape. Shared by the extrude-on-face profile path and the
  * on_face plane mode so a plane built from the same pick a user sees resolves
@@ -284,19 +313,8 @@ export function resolveFaceSlashFrame(
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
 ): Frame3D {
-  const slash = SLASH_FACE.exec(ref)
-  if (slash === null) throw new Error(`not a slash face ref: ${ref}`)
-  const refId = slash[1]
-  let faceIndex = parseInt(slash[2], 10)
-  const body = findBodyForRef(bodyStore, refId)
-  if (body === null) throw new Error(`No body found for '${refId}'`)
-  const shape = bodyShape(table, body)
-  // Same one-traversal-per-pick deal as resolveFaceProfile's slash branch: the
-  // remap and the final pick both index the same sorted list (M45).
-  const faces = sortedFacesOf(oc, scope, shape)
-  faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, bodyStore, body, faces, ref)
-  if (faceIndex >= faces.length) throw new Error(`face_index ${faceIndex} out of range`)
-  return computeFaceDatumFrame(oc, scope, faces[faceIndex])
+  const { face } = resolveFaceSlashFace(oc, scope, table, ref, globalRepo, bodyStore)
+  return computeFaceDatumFrame(oc, scope, face)
 }
 
 interface ExtrudeLoops {

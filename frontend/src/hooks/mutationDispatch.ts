@@ -225,6 +225,8 @@ export const mutationHandlers: MutationHandlers = {
       direction: m.direction,
       termination: m.termination,
       up_to: m.up_to,
+      up_to_offset: m.up_to_offset,
+      up_to_start: m.up_to_start,
       operation: m.operation,
       merge_target: m.merge_target,
     }),

@@ -1,9 +1,10 @@
 // Pure tests for up-to terminator resolution + distance (feature: extrude-up-to).
 // The plane / point branches of resolveUpToPlane do not touch OCC, so oc/scope/
-// table are unused here and passed as null. The body-face branch's two OCC reads
-// (extractOccFace, computeFacePlane) are stood in so its success and non-planar
-// outcomes are pinned without the opencascade.js artifact; trimAtPlane's cap-face
-// guard is driven through a fake oc that reports a not-done builder.
+// table are unused here and passed as null. The body-face branch's OCC reads
+// (extractOccFace, faceSurfaceType, faceNormal, computeFacePlane) are stood in
+// so its planar success and curved outcomes are pinned without the
+// opencascade.js artifact; trimAtPlane's cap-face guard is driven through a fake
+// oc that reports a not-done builder.
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { resolveUpToPlane, upToDistance, orientToTarget, trimAtPlane, type CutPlane } from '../upTo'
@@ -23,9 +24,17 @@ vi.mock('../../occ/faceLoops', async (importOriginal) => {
 })
 import { extractOccFace, computeFacePlane } from '../../occ/faceLoops'
 
+vi.mock('../../occ/primitives', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../occ/primitives')>()
+  return { ...actual, faceSurfaceType: vi.fn(), faceNormal: vi.fn() }
+})
+import { faceSurfaceType, faceNormal } from '../../occ/primitives'
+
 afterEach(() => {
   vi.mocked(extractOccFace).mockReset()
   vi.mocked(computeFacePlane).mockReset()
+  vi.mocked(faceSurfaceType).mockReset()
+  vi.mocked(faceNormal).mockReset()
 })
 
 function repoReturning(entry: unknown): Repository {
@@ -138,25 +147,29 @@ describe('resolveUpToPlane', () => {
     // come back normalized, not as raw OCC units.
     const table = { get: () => ({}) } as unknown as HandleTable
     const bodyStore = { body_b: { shape: 7 } } as unknown as Record<string, Body>
+    const face = { fake: 'face' } as unknown as OccShape
+    vi.mocked(extractOccFace).mockReturnValue(face)
+    vi.mocked(faceSurfaceType).mockReturnValue('flatface')
+    vi.mocked(faceNormal).mockReturnValue([0, 0, 1])
     vi.mocked(computeFacePlane).mockReturnValue({
       origin: [1, 2, 10], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 4],
     })
     const cut = resolveUpToPlane(noOcc, noScope, table, 'q', [0, 0, 1], repoReturning({ body_id: 'body_b', face_index: 2 }), bodyStore)
-    expect(cut).toEqual({ origin: [1, 2, 10], normal: [0, 0, 1] })
+    expect(cut).toEqual({ origin: [1, 2, 10], normal: [0, 0, 1], outward: [0, 0, 1], face })
     // The body shape must be resolved through the handle table and the picked
     // face index handed to extractOccFace, or the plane would come from the
     // wrong face regardless of the normal normalization.
     expect(vi.mocked(extractOccFace)).toHaveBeenCalledWith(noOcc, noScope, {}, 2)
   })
 
-  it('throws for a non-planar body face instead of falling back to the blind distance', () => {
-    // A curved face cannot define a cutting plane; reporting it as an unresolved
-    // pick would quietly extrude the blind distance. The failure must be named.
+  it('throws for a curved body face through the planar-only resolver', () => {
+    // A curved face is a resolved up_to target now, but resolveUpToPlane is the
+    // planar-only spelling its v1 callers use. Reporting it as an unresolved
+    // pick would quietly extrude the blind distance, so the refusal is named.
     const table = { get: () => ({}) } as unknown as HandleTable
     const bodyStore = { body_b: { shape: 7 } } as unknown as Record<string, Body>
-    vi.mocked(computeFacePlane).mockImplementation(() => {
-      throw new Error('Only flat faces can be used as extrude profiles')
-    })
+    vi.mocked(extractOccFace).mockReturnValue({ fake: 'face' } as unknown as OccShape)
+    vi.mocked(faceSurfaceType).mockReturnValue('cylinderface')
     expect(() =>
       resolveUpToPlane(noOcc, noScope, table, 'q', [0, 0, 1], repoReturning({ body_id: 'body_b', face_index: 3 }), bodyStore),
     ).toThrow(/target face is not planar/)
