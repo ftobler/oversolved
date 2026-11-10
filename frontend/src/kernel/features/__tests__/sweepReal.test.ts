@@ -656,7 +656,8 @@ function solveSeeded(repo: Repository): SeededBuild {
   }
 }
 
-describe('sweep profile off its plane, carried from the path start (Ex023)', () => {
+// Seeded repos, so only OCC gates it; CI has no OCC binary and must skip.
+describe.skipIf(!oc)('sweep profile off its plane, carried from the path start (Ex023)', () => {
   // A Top fit_spline through sketch (0,-1), (1,-2), (2,-4): world (0,0,1),
   // (1,0,2), (2,0,4). It starts 1 above the z=0 plane, moving away from it.
   const PATH_POINTS: [number, number][] = [[0, -1], [1, -2], [2, -4]]
