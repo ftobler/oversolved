@@ -832,9 +832,9 @@ banner on stdout, so a client config must use the direct node invocation.
 - `mutations` is the discovery path for the script vocabulary: `commands` act
   on the current selection, while mutation steps author geometry with explicit
   feature and entity ids. Each visible entry carries its fields and a summary,
-  and the examples are four scripts (`box`, `filleted-box`, `tapered-block`,
-  `emboss-on-cylinder`); the catalog tests build `box`, `filleted-box` and
-  `emboss-on-cylinder` through the real kernel. The catalog is generated where
+  and the examples are five scripts (`box`, `filleted-box`, `tapered-block`,
+  `projection`, `emboss-on-cylinder`); the catalog tests build all five through
+  the real kernel. The catalog is generated where
   it can be: `add_entity`
   lists the params slot order of every entity kind from the entity registry
   (`line [x1, y1, x2, y2]`, `circle [cx, cy, r]`,

@@ -1050,7 +1050,7 @@ export function createMcpServer(ops: McpCadOps): McpServer {
               + '@builtin_plane_front, @builtin_plane_top, @builtin_plane_right, a bare seeded name (Front, Top, '
               + 'Right) or @<planeId>; an unmatched plane is an error naming the valid planes. '
               + 'Sketches should be fully constrained: dimension against projected geometry (add_projected_entity) '
-              + 'or @builtin_origin, and read dof on the sketch\'s delta row. An underconstrained sketch is a yellow '
+              + 'or @builtin_origin, and read dof on the sketch\'s delta row while it warns. An underconstrained sketch is a yellow '
               + 'build warning in the tree and a features row here, but it never fails a run or an export. `fixed` '
               + 'is for deliberately frozen geometry only. A face sketch dimensioned to its projected edges is '
               + 'immune to the face-centroid origin, which an unconstrained one is not. '
