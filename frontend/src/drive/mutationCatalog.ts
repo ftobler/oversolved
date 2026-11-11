@@ -333,7 +333,7 @@ const HOLE_FIELD_NOTE =
   '$<sketchId> form; a $ ref is refused here. ' +
   'The sketch\'s non-construction points are drilled, each at the feature `diameter`. ' +
   'A circle is a profile, not a drill site: a whole-sketch pick ignores it, and a circle picked alone is refused. ' +
-  'A circles-only or construction-points-only sketch with no drillable point is refused, naming the extrude-cut alternative. ' +
+  'A circles-only or construction-points-only sketch that holds a circle, with no drillable point, is refused with the extrude-cut alternative. ' +
   'To cut a drawn circle, use `add_extrude` with `operation: cut` (`termination: through_all` for a through bore). ' +
   'Construction points are reference geometry, so a whole-sketch pick skips a point an author flags construction; ' +
   'line endpoints are not drill sites, while add_center_rect\'s helper centre point is an ordinary point and does drill. ' +
