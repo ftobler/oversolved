@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { HOLE_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import type { PickFieldDef } from '@/components/editors/widgets/fieldTypes'
+import { makeAncestryQuery } from '@/kernel/query'
 import type { HoleFeature, HoleFeatureDef, PartFeature } from '@/types/cad'
 
 function makeFeature(overrides: Partial<HoleFeatureDef> = {}): HoleFeature {
@@ -156,7 +157,11 @@ describe('HoleEditor (via FeatureEditor)', () => {
       id: 'sk1',
       kind: 'sketch',
       plane: '@builtin_plane_front',
-      entities: [{ id: 'p1', kind: 'point' }, { id: 'c1', kind: 'circle' }],
+      entities: [
+        { id: 'p1', kind: 'point' },
+        { id: 'c1', kind: 'circle' },
+        { id: 'cc', kind: 'circle', construction: true },
+      ],
     } as PartFeature
 
     it('refuses a circle entity and names the extrude cut', () => {
@@ -168,9 +173,29 @@ describe('HoleEditor (via FeatureEditor)', () => {
         .toContain('extrude cut')
     })
 
+    it('tells a construction circle to clear its flag first', () => {
+      expect(sketchField.validatePick!('entity:sk1:cc', [sketch]))
+        .toContain("clear the circle's construction flag, then cut it with an extrude cut")
+    })
+
+    it('refuses an area pick naming a lone circle', () => {
+      // The area form is the other way a circle reaches the chip; it must not
+      // survive until the solve only because it is not an entity: id.
+      const query = makeAncestryQuery(['@sk1/c1', 'surface:0', '@sk1'], 'flatface')
+      expect(sketchField.validatePick!(query, [sketch]))
+        .toContain('circle, which is not a drill site')
+      const construction = makeAncestryQuery(['@sk1/cc', 'surface:0', '@sk1'], 'flatface')
+      expect(sketchField.validatePick!(construction, [sketch]))
+        .toContain("clear the circle's construction flag")
+    })
+
     it('accepts a point and a whole-sketch ref', () => {
       expect(sketchField.validatePick!('entity:sk1:p1', [sketch])).toBeNull()
       expect(sketchField.validatePick!('@sk1', [sketch])).toBeNull()
+      // A multi-entity area names no single drill site, so it keeps the
+      // whole-sketch meaning and is accepted for the solve to narrow.
+      const rectangle = makeAncestryQuery(['@sk1/p1', '@sk1/c1', 'surface:0', '@sk1'], 'flatface')
+      expect(sketchField.validatePick!(rectangle, [sketch])).toBeNull()
       // Without the feature list the rule has nothing to look the id up in and
       // lets the pick through, like the build-order guard.
       expect(sketchField.validatePick!('entity:sk1:c1')).toBeNull()

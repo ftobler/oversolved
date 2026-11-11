@@ -25,7 +25,7 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
 import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './shared/bodyRef'
-import { circleDrillSiteReason, noPointDrillSiteReason } from './shared/drillSite'
+import { circleDrillSiteReason, constructionOnlyPointsReason, noPointDrillSiteReason, type SketchCircleKind } from './shared/drillSite'
 import { resolveBody } from './shared/bodyResolution'
 import { mergeBrepDiff } from './shared/brepDiff'
 import { stripRefSigil } from '@/utils/refSigil'
@@ -191,11 +191,19 @@ function drillSite(
  * Construction points are reference geometry (a point an author flags
  * construction), never a drill site: a whole-sketch pick skips them, and a pick
  * that names one is refused rather than silently drilling or skipping it. A
- * circle picked alone is refused with the extrude-cut remedy, construction or
- * not, because toggling its flag would not make it a drill site. Line endpoints
- * are not drill sites either, while add_center_rect's helper centre point is an
- * ordinary point entity and does drill.
+ * circle picked alone is refused: a real one with the extrude-cut remedy, a
+ * construction one with the instruction to clear its flag first, because
+ * profiles exclude construction geometry. Line endpoints are not drill sites
+ * either, while add_center_rect's helper centre point is an ordinary point
+ * entity and does drill.
  */
+
+/** What the sketch's circles offer when no point can be drilled. */
+function circleKindOf(entities: Dict[]): SketchCircleKind {
+  if (entities.some((e) => e.kind === 'circle' && e.construction !== true)) return 'real'
+  return entities.some((e) => e.kind === 'circle') ? 'construction' : 'none'
+}
+
 function drilledEntities(
   entities: Dict[],
   sketchId: string,
@@ -205,24 +213,18 @@ function drilledEntities(
     const candidates = entities.filter((e) => e.kind === 'point')
     const sites = candidates.filter((e) => e.construction !== true)
     if (sites.length === 0) {
+      const circle = circleKindOf(entities)
       if (candidates.length > 0) {
-        throw new Error(
-          `hole: sketch '${sketchId}' has only construction points; ` +
-          'construction geometry is reference only, so add a non-construction point, ' +
-          'or clear the point\'s construction flag to drill it',
-        )
+        throw new Error('hole: ' + constructionOnlyPointsReason(sketchId, circle))
       }
-      throw new Error('hole: ' + noPointDrillSiteReason(
-        sketchId,
-        entities.some((e) => e.kind === 'circle' && e.construction !== true),
-      ))
+      throw new Error('hole: ' + noPointDrillSiteReason(sketchId, circle))
     }
     return sites
   }
   const picked = entities.find((e) => e.id === entityId)
   if (picked === undefined) throw new Error(`hole: sketch '${sketchId}' has no entity '${entityId}'`)
   if (picked.kind === 'circle') {
-    throw new Error('hole: ' + circleDrillSiteReason(sketchId, entityId))
+    throw new Error('hole: ' + circleDrillSiteReason(sketchId, entityId, picked.construction === true))
   }
   if (picked.kind === 'point') {
     if (picked.construction === true) {

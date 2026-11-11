@@ -3,7 +3,7 @@ import {
   normalizeRefList,
 } from '@/utils/yamlMutations'
 import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations, DRILL_POINT_ANGLE } from '@/kernel/threadTable'
-import { parseSketchEntityRef } from '@/kernel/features/shared/bodyRef'
+import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
 import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
 import type { PartFeature, ThreadSpec } from '@/types/cad'
 import { resolveBodyPickRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
@@ -267,16 +267,22 @@ const THREAD_DEPTH_FALLBACK = 10
  * The hole sketch pick's own rule: a point is a drill site, a whole-sketch ref
  * drills the points in it, but a picked circle is a profile. Refusing it here
  * keeps the solve from receiving a ref it can only reject, and names the
- * extrude cut that removes the same cylinder.
+ * extrude cut that removes the same cylinder (after clearing the flag when the
+ * circle is construction). A `?` area pick that narrows to one circle is the
+ * same gesture as a curve pick, so it is refused here too.
  */
 function holeSketchPickRefusal(selectionId: string, features?: readonly PartFeature[]): string | null {
-  const picked = parseSketchEntityRef(selectionId)
-  if (picked === null || features === undefined) return null
+  if (features === undefined) return null
+  const sketchIds = new Set(features.filter((feature) => feature.kind === 'sketch').map((feature) => feature.id))
+  const picked = pickedSketchEntity(selectionId, sketchIds)
+  if (picked === null) return null
   const sketch = features.find((feature) => feature.id === picked.sketchId)
   const entity = sketch?.kind === 'sketch'
-    ? sketch.entities?.find((candidate) => candidate.id === picked.eid)
+    ? sketch.entities?.find((candidate) => candidate.id === picked.entityId)
     : undefined
-  return entity?.kind === 'circle' ? circleDrillSiteReason(picked.sketchId, picked.eid) : null
+  return entity?.kind === 'circle'
+    ? circleDrillSiteReason(picked.sketchId, picked.entityId, entity.construction === true)
+    : null
 }
 
 export const HOLE_SCHEMA: FeatureEditorSchema = {

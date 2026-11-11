@@ -31,7 +31,7 @@ import { textFieldsProblem } from '@/utils/geometry/textExpand'
 import { planAddText, type AddTextFields } from '@/utils/yamlMutations/sketchText'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
-import { parseSketchEntityRef } from '@/kernel/features/shared/bodyRef'
+import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
 import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
 
 export type ValueViolationCode = 'invalid-mutation' | 'unknown-target'
@@ -1586,15 +1586,17 @@ function addHelix(raw: RawStep): ValueViolation | null {
 // to that field's schema definition: an unknown enum spelling (a `style` typo)
 // is refused here, at the boundary, rather than solved into a silent fallback.
 // The sketch pick gets one check the schema cannot make: it names an entity of
-// a document sketch, and a circle is not a drill site.
+// a document sketch, and a circle is not a drill site. A `?` area pick that
+// narrows to one circle is the same pick as the curve itself.
 function holeSketchCircleProblem(value: unknown, ctx: ValueContext, label: string): string | null {
   if (typeof value !== 'string' || ctx.doc === null) return null
-  const picked = parseSketchEntityRef(value)
+  const sketchIds = new Set((ctx.doc.features ?? []).filter(feature => feature.kind === 'sketch').map(feature => feature.id))
+  const picked = pickedSketchEntity(value, sketchIds)
   if (picked === null) return null
   const sketch = sketchOf(ctx.doc, picked.sketchId)
-  const entity = sketch?.entities?.find(candidate => candidate.id === picked.eid)
+  const entity = sketch?.entities?.find(candidate => candidate.id === picked.entityId)
   return entity?.kind === 'circle'
-    ? `${label}: ${circleDrillSiteReason(picked.sketchId, picked.eid)}`
+    ? `${label}: ${circleDrillSiteReason(picked.sketchId, picked.entityId, entity.construction === true)}`
     : null
 }
 
