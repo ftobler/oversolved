@@ -112,6 +112,8 @@ describe.skipIf(!ready)('one bore, two lanes (real OCC + Rust solver)', () => {
   it('the hole and the extrude cut agree, each in its own lane', async () => {
     const hole = await measureHeadless((await runHeadless({ doc: emptyDriveDoc(), steps: HOLE_STEPS })).doc as PartDoc)
     const cut = await measureHeadless((await runHeadless({ doc: emptyDriveDoc(), steps: CIRCLE_CUT_STEPS })).doc as PartDoc)
+    expect(hole).not.toBeNull()
+    expect(cut).not.toBeNull()
     expect(hole!.measures.volume).toBeCloseTo(cut!.measures.volume, 6)
   }, 240_000)
 })
