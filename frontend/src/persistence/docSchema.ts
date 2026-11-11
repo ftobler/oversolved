@@ -18,7 +18,7 @@ import { evalExpr } from '@/kernel/evalExpr'
 import { threadEntry } from '@/kernel/threadTable'
 import { isLengthUnit } from '@/utils/lengthUnit'
 import { normalizeMateLimitDeg } from '@/utils/mateKinds'
-import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams } from '@/utils/yamlMigrations'
+import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams, migrateProjectionConstraints } from '@/utils/yamlMigrations'
 
 // The version the ladder migrates to. A document carrying `version` 5 or newer
 // skips every step; anything older (including an unstamped document, reads as 0)
@@ -30,7 +30,7 @@ import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBod
 // (-180, 180] roll coordinate.
 // The historic heals target 2 deliberately: the version stamps predate them, so
 // a document stamped 1 can still carry the stale shapes they fix.
-export const CURRENT_DOC_VERSION = 5
+export const CURRENT_DOC_VERSION = 6
 
 // Caps. Chosen far above what a real document holds while well below what would
 // hang a solve: an entity list of 10k is already far past a hand-authored
@@ -106,6 +106,7 @@ interface MigrationStep {
 // touches and skips anything that does not have the shape it heals: a garbage
 // document just reaches the validator untouched and is rejected there.
 const MIGRATION_STEPS: MigrationStep[] = [
+  { id: 'projection-constraint', to: 6, apply: stepProjectionConstraint },
   // The rotating-limit normalization. It is idempotent, so unlike the offset
   // flip it does not stamp: an unstamped document simply finds nothing to
   // rewrite on its next load.
@@ -173,6 +174,11 @@ function stepDropDeadAxisConstraints(doc: DocRecord): number {
 function stepPluralBodyPicks(doc: DocRecord): number {
   const part = migratablePartDoc(doc)
   return part ? migrateLegacyBodyPicks(part) : 0
+}
+
+function stepProjectionConstraint(doc: DocRecord): number {
+  const part = migratablePartDoc(doc)
+  return part ? migrateProjectionConstraints(part) : 0
 }
 
 function stepCanonicalFeatureParams(doc: DocRecord): number {
@@ -578,7 +584,6 @@ function checkEntity(value: unknown, field: string): void {
   checkId(entity.id, `${field}.id`)
   checkString(entity.kind, `${field}.kind`)
   checkOptional(entity, 'construction', field, checkBoolean)
-  checkOptional(entity, 'source', field, checkString)
   if (entity.handles !== undefined) {
     // Handles exist only on a fit_spline: a line or spline carrying the field
     // would be a writer bug the loader must not silently accept.
@@ -665,6 +670,10 @@ function checkConstraint(value: unknown, field: string): void {
     if (list.length !== 2) fail(f, `must have 2 components, got ${list.length}`)
     eachEntry(list, f, checkFiniteNumber)
   })
+  checkOptional(constraint, 'source', field, checkString)
+  if (constraint.kind === 'projection' && constraint.source === undefined) {
+    fail(`${field}.source`, `is required for a projection constraint`)
+  }
 }
 
 function checkInitial(value: unknown, field: string): void {

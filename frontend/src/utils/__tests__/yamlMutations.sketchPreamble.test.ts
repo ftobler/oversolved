@@ -116,15 +116,15 @@ describe('sketch preamble: container materialization is per mutation', () => {
     expect(Object.keys(sketch(doc).entities![0])).toEqual(['id', 'kind'])
   })
 
-  it('applyAddProjectedEntity creates entities only', () => {
+  it('applyAddProjectedEntity creates an entity and a projection constraint', () => {
     const doc = bareDoc()
     applyAddProjectedEntity(doc, 'Sketch1', 'line', '@some/edge/0')
     expect(sketch(doc).entities).toHaveLength(1)
-    expect(sketch(doc).entities![0].source).toBe('@some/edge/0')
-    expect(Object.keys(sketch(doc).entities![0])).toEqual(['id', 'kind', 'source'])
+    expect(Object.keys(sketch(doc).entities![0])).toEqual(['id', 'kind'])
+    expect(sketch(doc).constraints).toHaveLength(1)
+    expect(sketch(doc).constraints![0].kind).toBe('projection')
     // A projection carries no seed geometry, so `initial` must stay untouched.
     expect(sketch(doc).initial).toBeUndefined()
-    expect(sketch(doc).constraints).toBeUndefined()
   })
 
   it('applyAddConstraint creates constraints only', () => {

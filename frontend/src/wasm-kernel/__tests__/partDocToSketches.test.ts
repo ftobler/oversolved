@@ -85,15 +85,8 @@ describe('partDocToSketches', () => {
     expect(ids).toEqual(['keep'])
   })
 
-  it('skips projection and center_rect sketches', () => {
+  it('skips center_rect sketches', () => {
     const features: PartFeature[] = [
-      {
-        id: 'proj',
-        kind: 'sketch',
-        entities: [{ id: 'l1', kind: 'line', source: '@sketch0/line1' }],
-        initial: {},
-        constraints: [],
-      },
       {
         id: 'sugar',
         kind: 'sketch',
@@ -104,7 +97,7 @@ describe('partDocToSketches', () => {
     ]
     const { sketches, skipped } = partDocToSketches(features)
     expect(sketches).toHaveLength(0)
-    expect(skipped.map((s) => s.featureId).sort()).toEqual(['proj', 'sugar'])
+    expect(skipped.map((s) => s.featureId).sort()).toEqual(['sugar'])
   })
 
   it('resolves @builtin_origin to external_xy:[0,0]', () => {

@@ -513,13 +513,15 @@ export interface PartConstraint {
   // center for radius/diameter, vertex for angle).  When absent the renderer
   // uses a default offset derived from sketch extent.
   pos?: [number, number]
+  // `projection` constraint only: the source pick query string (absolute `@...`
+  // or ancestry `?...`) the held entity is projected from.
+  source?: string
 }
 
 export interface PartEntityDef {
   id: string
   kind: string
   construction?: boolean
-  source?: string  // for projected entities: reference to source entity (e.g. "@sketch0/line1")
   // `fit_spline` only: which end handles the initial params carry.
   handles?: 'start' | 'end' | 'both'
 }
@@ -935,74 +937,7 @@ export interface FitSpline {
   construction?: boolean
 }
 
-// Projected entity variants, read-only reference geometry from another sketch
-export interface ProjectedLineSegment extends LineSegment {
-  projected: true
-  source: string
-}
-
-export interface ProjectedCircle extends Circle {
-  projected: true
-  source: string
-}
-
-export interface ProjectedArc extends Arc {
-  projected: true
-  source: string
-}
-
-export interface ProjectedPointEntity extends PointEntity {
-  projected: true
-  source: string
-}
-
-export interface ProjectedEllipse extends Ellipse {
-  projected: true
-  source: string
-}
-
-export interface ProjectedSpline extends Spline {
-  projected: true
-  source: string
-}
-
-export type ProjectedEntity =
-  | ProjectedLineSegment
-  | ProjectedCircle
-  | ProjectedArc
-  | ProjectedPointEntity
-  | ProjectedEllipse
-  | ProjectedSpline
-
-export type Entity = LineSegment | Circle | Arc | PointEntity | Ellipse | Spline | FitSpline | ProjectedEntity
-
-export function isProjectedEntity(e: Entity): e is ProjectedEntity {
-  return 'projected' in e && (e as ProjectedEntity).projected === true
-}
-
-export function isProjectedLine(e: Entity): e is ProjectedLineSegment {
-  return isProjectedEntity(e) && 'start' in e && !('radius' in e)
-}
-
-export function isProjectedCircle(e: Entity): e is ProjectedCircle {
-  return isProjectedEntity(e) && 'center' in e && 'radius' in e && !('angle_start' in e)
-}
-
-export function isProjectedArc(e: Entity): e is ProjectedArc {
-  return isProjectedEntity(e) && 'angle_start' in e
-}
-
-export function isProjectedEllipse(e: Entity): e is ProjectedEllipse {
-  return isProjectedEntity(e) && 'center' in e && 'a' in e
-}
-
-export function isProjectedPoint(e: Entity): e is ProjectedPointEntity {
-  return isProjectedEntity(e) && 'x' in e
-}
-
-export function isProjectedSpline(e: Entity): e is ProjectedSpline {
-  return isProjectedEntity(e) && 'p1' in e
-}
+export type Entity = LineSegment | Circle | Arc | PointEntity | Ellipse | Spline | FitSpline
 
 export type EntityKind = 'line' | 'arc' | 'circle' | 'ellipse' | 'spline' | 'fit_spline' | 'point'
 
@@ -1342,7 +1277,7 @@ export type Mutation =
   | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string; entityId?: string; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
   | { type: 'insert_fit_point'; featureId: string; entityId: string; index: number; point: Point }
   | { type: 'set_fit_spline_handle'; featureId: string; entityId: string; end: 'start' | 'end'; handle: Point | null }
-  | { type: 'add_projected_entity'; featureId: string; kind: string; source: string; entityId?: string }
+  | { type: 'add_projected_entity'; featureId: string; kind: string; source: string; entityId?: string; constraintId?: string }
   // The optional refs name what a click snapped onto (a `vertex:` ref, or an
   // `entity:` ref for a point on that curve); the writer pins the matching corner
   // to it with a coincident. The n-gon's center ref pins the construction
@@ -1456,4 +1391,4 @@ export type Mutation =
   // User-invoked cleanup: removes dangling projected entities and superfluous
   // constraints flagged by the last solve. The payload is a per-feature plan
   // derived from solveResults at command time, so the handler stays pure.
-  | { type: 'remove_dangling_content'; features: Record<string, { entities: string[]; constraints: string[] }> }
+  | { type: 'remove_dangling_content'; features: Record<string, { projections: string[]; constraints: string[] }> }

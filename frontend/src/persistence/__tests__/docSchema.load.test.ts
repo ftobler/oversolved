@@ -20,7 +20,7 @@ import {
 import {
   ALL_HISTORICAL_ASSEMBLY_DOCS,
   ALL_HISTORICAL_PART_DOCS,
-  CURRENT_V5_PART,
+  CURRENT_V6_PART,
   LEGACY_V0_PART,
   LEGACY_V1_PART,
 } from '@/persistence/__fixtures__/historicalDocs'
@@ -122,7 +122,7 @@ describe('the version gate', () => {
   })
 
   it('the current-version fixture is stamped at CURRENT_DOC_VERSION', () => {
-    const result = loadPartDocText(CURRENT_V5_PART.text, { name: CURRENT_V5_PART.name })
+    const result = loadPartDocText(CURRENT_V6_PART.text, { name: CURRENT_V6_PART.name })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(docVersion(result.doc)).toBe(CURRENT_DOC_VERSION)

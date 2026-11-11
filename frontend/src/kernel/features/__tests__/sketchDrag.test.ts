@@ -269,7 +269,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(ctx).not.toBeNull()
     const ids = ctx!.layout.map((l) => l.id)
     expect(ids).toContain('P1')  // source stripped, params reused from initial
-    expect(ids).not.toContain('P2')  // no resolved params: dropped
+    expect(ids).toContain('P2')  // unresolved: stays pinned at default params
     const p1 = ctx!.layout.find((l) => l.id === 'P1')!
     expect(ctx!.params0.slice(p1.offset, p1.offset + 2)).toEqual([3, 4])
   })

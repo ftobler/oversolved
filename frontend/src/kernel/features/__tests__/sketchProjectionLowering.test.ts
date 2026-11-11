@@ -47,7 +47,7 @@ describe.skipIf(!solveBytes)('solveSketch projected-entity lowering', () => {
       constraints: [],
     } as unknown as PartFeature
     const result = solveSketch(feature as unknown as Record<string, unknown>, repo, {})
-    expect(result.projection_errors).toEqual(['P1'])
+    expect(result.projection_errors).toEqual(['proj_P1'])
     expect(result.geometry?.L1).toEqual([0, 0, 4, 0])
   })
 

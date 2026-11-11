@@ -146,9 +146,9 @@ describe('solveSketch projection lowering', () => {
     // The drawn circle solved and renders.
     expect(out.geometry?.drawn).toBeDefined()
     expect(out.geometry?.drawn?.[2]).toBeCloseTo(4)
-    // The stale projection was dropped (no geometry) and reported.
-    expect(out.geometry?.stale).toBeUndefined()
-    expect(out.projection_errors).toContain('stale')
+    // The stale projection stays pinned at its cached/default params and is reported.
+    expect(out.geometry?.stale).toBeDefined()
+    expect(out.projection_errors).toContain('proj_stale')
   })
 
   it('runs a line body (not its endpoint) through the document origin on an offset plane', () => {

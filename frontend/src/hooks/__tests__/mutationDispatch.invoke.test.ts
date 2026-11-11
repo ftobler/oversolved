@@ -128,12 +128,14 @@ describe('mutationHandlers forward sketch mutations', () => {
     expect(sketch1(doc).entities!.length).toBe(before + 1)
   })
 
-  it('add_projected_entity appends a source-carrying entity', () => {
+  it('add_projected_entity appends an entity and a projection constraint', () => {
     const doc = sketchDoc()
     mutationHandlers.add_projected_entity(doc, {
       type: 'add_projected_entity', featureId: 'S1', kind: 'line', source: '@ex1/edge/1',
     })
-    expect(sketch1(doc).entities!.some(e => e.source === '@ex1/edge/1')).toBe(true)
+    const f = sketch1(doc)
+    expect(f.entities!.some(e => e.id !== undefined)).toBe(true)
+    expect(f.constraints!.some(c => c.kind === 'projection' && c.source === '@ex1/edge/1')).toBe(true)
   })
 
   it('add_rect / add_center_rect / add_ngon add geometry', () => {
@@ -518,17 +520,19 @@ describe('mutationHandlers forward doc-level + part-style mutations', () => {
 
   it('remove_dangling_content removes the flagged entities and constraints', () => {
     const doc = sketchDoc()
-    // Only source-carrying (projected) entities are eligible for removal.
-    sketch1(doc).entities!.push({ id: 'proj', kind: 'line', source: '?edge;x' })
+    // Only projection constraints are eligible for removal.
+    sketch1(doc).entities!.push({ id: 'proj', kind: 'line' })
+    sketch1(doc).constraints!.push({ id: 'proj_p', kind: 'projection', target: '$proj', source: '?edge;x' })
     mutationHandlers.remove_dangling_content(doc, {
       type: 'remove_dangling_content',
       features: {
-        S1: { entities: ['proj'], constraints: ['k1'] },
+        S1: { projections: ['proj_p'], constraints: ['k1'] },
       },
     })
     const f = sketch1(doc)
-    expect(f.entities!.some(e => e.id === 'proj')).toBe(false)
+    expect(f.entities!.some(e => e.id === 'proj')).toBe(true)
     expect(f.entities!.some(e => e.id === 'l1')).toBe(true)
+    expect(f.constraints!.some(c => c.id === 'proj_p')).toBe(false)
     expect(f.constraints!.some(c => c.id === 'k1')).toBe(false)
   })
 

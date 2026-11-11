@@ -95,6 +95,7 @@ function operandSource(ref: string, sourceIds: readonly string[]): { sourceId: s
 function carryTemplates(constraints: readonly PartConstraint[], sourceIds: readonly string[]): CarryTemplate[] {
   const out: CarryTemplate[] = []
   for (const c of constraints) {
+    if (c.kind === 'projection') continue
     const operandFields = CONSTRAINT_REF_FIELDS.filter(f => typeof c[f] === 'string')
     if (operandFields.length === 0) {
       // A refs-only sugar constraint (ngon) has no single-ref operand to map;
@@ -223,12 +224,7 @@ export function planPatternEntities(doc: PartDoc, step: PatternEntitiesStep): Pa
         code: 'unknown-target',
       }
     }
-    if (def.source !== undefined) {
-      return {
-        reason: `source id ${JSON.stringify(id)} names a projected entity; projected geometry re-projects from its source and is not copied`,
-        code: 'invalid',
-      }
-    }
+
     const block = source.initial?.[id] ?? []
     const params: number[][] = []
     for (const t of transforms) {

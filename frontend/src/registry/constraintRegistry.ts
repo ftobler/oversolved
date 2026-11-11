@@ -259,6 +259,17 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     symbolIcon: 'constraint-colinear',
     showInToolbar: false,
   },
+  {
+    kind: 'projection',
+    label: 'Projection',
+    description: 'Holds an entity to the projected shape and position of its source pick. Deleting the constraint frees the entity.',
+    category: 'geometric',
+    hasValue: false,
+    refPattern: 'target',
+    renderKind: 'symbol_projection',
+    symbolIcon: 'constraint-projection',
+    showInToolbar: false,
+  },
 
   // ─── Dimensional constraints ───
   // These are normally applied via the "Dimension" tool, which auto-detects

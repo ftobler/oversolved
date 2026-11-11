@@ -4,10 +4,10 @@ import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, PartE
 import { useSketchEditorStore, type VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 
 // Vertex/point rendering
-import { VertexDot, VertexHighlight, ProjectedOriginPoint } from '@/components/Geometry3D/VertexDots'
+import { VertexDot, VertexHighlight } from '@/components/Geometry3D/VertexDots'
 
 // Entity geometry rendering
-import { EntityLines, ProjectedEntities } from '@/components/Geometry3D/EntityLines'
+import { EntityLines } from '@/components/Geometry3D/EntityLines'
 import { sketchExtent } from '@/utils/geometry/drawGeometry'
 
 // Constraint display
@@ -225,14 +225,19 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     if (!isEditing) return
     // The corner map is built from authored params, the same blocks the applier
     // trims, not from the solved display geometry.
-    const defs: Array<Pick<PartEntityDef, 'id' | 'kind' | 'construction' | 'source'>> =
+    const defs: Array<Pick<PartEntityDef, 'id' | 'kind' | 'construction'>> =
       featureDef?.entities ?? entities ?? []
+    const projectionTargets = new Set(
+      (featureDef?.constraints ?? [])
+        .filter(c => c.kind === 'projection' && typeof c.target === 'string')
+        .map(c => String(c.target).replace(/^\$/, '')),
+    )
     const sides = defs.map(entity => ({
       id: entity.id,
       kind: entity.kind,
       params: featureDef?.initial?.[entity.id] ?? [],
       construction: entity.construction === true,
-      source: entity.source,
+      heldByProjection: projectionTargets.has(entity.id),
     }))
     setFilletCornerMap(buildFilletCornerMap(featureId, sides, featureDef?.constraints ?? []))
     return () => setFilletCornerMap({})
@@ -296,7 +301,6 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && !stale && <TopologySurfaces topology={topology} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} isEditing={isEditing} constraints={featureDef?.constraints} />
-      <ProjectedEntities sketch={displaySketch} featureId={featureId} isEditing={isEditing} />
       {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} />}
       {isEditing && !stale && <InferredContactMarkers candidates={inferredCandidates} />}
       {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} topology={stale ? undefined : topology} />}
@@ -309,8 +313,8 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
 }
 
 // Re-export components for external use if needed
-export { VertexDot, VertexHighlight, ProjectedOriginPoint }
-export { EntityLines, ProjectedEntities }
+export { VertexDot, VertexHighlight }
+export { EntityLines }
 export { ConstraintOverlays }
 export { TopologySurfaces }
 export { DragPlane, DragSnapIndicator }

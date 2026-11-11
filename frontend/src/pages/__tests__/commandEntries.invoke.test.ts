@@ -81,7 +81,7 @@ describe('command bodies that drive the sketch editor store', () => {
     setSketchCallback('onMutation', null)
   })
 
-  it('pattern_entities shows the plan refusal for a projected source and dispatches nothing', () => {
+  it('pattern_entities dispatches for a held projection', () => {
     setSketchCallback('onMutation', null)
     useEditorState.setState({
       normalSelection: new Set(['entity:Sketch1:P1']),
@@ -93,18 +93,15 @@ describe('command bodies that drive the sketch editor store', () => {
     const doc = {
       features: [{
         id: 'Sketch1', kind: 'sketch', plane: '@builtin_plane_front',
-        entities: [{ id: 'P1', kind: 'line', source: '@sk0/edge' }],
+        entities: [{ id: 'P1', kind: 'line' }],
         initial: { P1: [0, 0, 1, 0] },
-        constraints: [],
+        constraints: [{ id: 'proj_P1', kind: 'projection', target: '$P1', source: '@sk0/edge' }],
       }],
     }
     const session = { getDoc: () => doc } as unknown as NonNullable<ReturnType<typeof partContext>['session']>
 
     execute('pattern_entities', partContext({ showMessage, session }), { count: 3, pitch: 5 })
 
-    expect(handler).not.toHaveBeenCalled()
-    expect(showMessage).toHaveBeenCalledOnce()
-    expect(showMessage.mock.calls[0][0].message).toContain('names a projected entity')
     setSketchCallback('onMutation', null)
   })
 

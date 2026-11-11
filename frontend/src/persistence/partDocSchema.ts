@@ -88,7 +88,6 @@ const ENTITY_SCHEMA: JsonSchema = {
     id: { type: 'string', minLength: 1 },
     kind: { type: 'string' },
     construction: { type: 'boolean' },
-    source: { type: 'string' },
     // Fit splines only: which end handles the entity stores. The params carry
     // the handle points themselves (D2), so the field is a layout selector.
     handles: { enum: ['start', 'end', 'both'] },
@@ -106,8 +105,15 @@ const CONSTRAINT_SCHEMA: JsonSchema = {
   properties: {
     id: { type: 'string', minLength: 1 },
     kind: { type: 'string' },
+    source: { type: 'string' },
   },
   additionalProperties: true,
+  allOf: [
+    {
+      if: { properties: { kind: { const: 'projection' } } },
+      then: { required: ['source'] },
+    },
+  ],
 }
 
 const PLANE_DEF: JsonSchema = {

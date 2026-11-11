@@ -75,6 +75,10 @@ describe('doc-ref-canon ratchets', () => {
     'utils/yamlMutations/sketchMirror.ts',
     'utils/geometry/dragLogic.ts',
     'kernel/queryWire.ts',
+    'kernel/features/sketch.ts',
+    'tools/dimensionProjection.ts',
+    'utils/yamlMigrations.ts',
+    'utils/yamlMutations/sketch.ts',
   ])
 
   it('only the host-local emitters build a $ ref', () => {

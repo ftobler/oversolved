@@ -972,8 +972,8 @@ export const MUTATION_CATALOG = {
     },
   },
   add_projected_entity: {
-    summary: 'Project a body edge into a sketch as an entity.',
-    fields: { featureId: str(), kind: str(), source: str('The source edge ref.'), entityId: optStr() },
+    summary: 'Project a body edge into a sketch as an entity held by a projection constraint.',
+    fields: { featureId: str(), kind: str(), source: str('The source edge ref.'), entityId: optStr(), constraintId: optStr() },
   },
   add_rect: {
     summary: 'Add an axis-aligned rectangle with its lines and constraints; '

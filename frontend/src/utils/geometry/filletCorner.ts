@@ -48,7 +48,7 @@ export interface FilletCornerSide {
   kind: string
   params: readonly number[]
   construction?: boolean
-  source?: string
+  heldByProjection?: boolean
 }
 
 export interface FilletGeometry {
@@ -213,8 +213,8 @@ export function planFilletGeometry(
       if (side === undefined) {
         return { reason: `${where}: side "${id}" names no entity in the sketch`, missingId: id }
       }
-      if (side.source !== undefined) {
-        return { reason: `${where}: side "${id}" is projected geometry and is not a hand-authored profile side` }
+      if (side.heldByProjection) {
+        return { reason: `${where}: side "${id}" is held by projection constraint; delete the constraint to fillet it` }
       }
       if (side.kind !== 'line') {
         const already = side.kind === 'arc' || side.kind === 'circle'

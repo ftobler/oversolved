@@ -72,7 +72,7 @@ describe('unflattenGeometry construction flag', () => {
 describe('unflattenGeometry params and input edge cases', () => {
   it('consults the registry default for the normalized kind when params are missing', () => {
     vi.mocked(getDefaultParams).mockReturnValueOnce([11, 22, 33, 44])
-    const s = unflattenGeometry(undefined, [{ id: 'L', kind: 'projected_line' }])
+    const s = unflattenGeometry(undefined, [{ id: 'L', kind: 'line' }])
     expect(s).toEqual({ L: { start: [11, 22], end: [33, 44] } })
     expect(getDefaultParams).toHaveBeenCalledWith('line')
   })

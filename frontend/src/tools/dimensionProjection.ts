@@ -8,7 +8,7 @@
 // that projection. Picking the same body element twice reuses the projection
 // already in the sketch instead of stacking duplicates.
 import type { DimensionPick } from '@/registry'
-import type { Entity, Mutation, Sketch } from '@/types/cad'
+import type { Mutation, Sketch } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
 import { parseSelectionId } from '@/utils/query/selectionId'
 
@@ -29,16 +29,55 @@ export function projectedKindForEdge(sourceKind: string | null | undefined): str
   return sourceKind && PROJECTABLE_CURVE_KINDS.has(sourceKind) ? sourceKind : 'line'
 }
 
-function isProjectedFrom(entity: Entity, source: string): boolean {
-  const e = entity as { projected?: boolean; source?: string }
-  return e.projected === true && e.source === source
+interface ProjectionConstraintLike {
+  kind?: string
+  target?: unknown
+  source?: unknown
 }
 
-/** Entity id of an existing projection of `source` in `sketch`, else null. */
-export function findProjectionOf(sketch: Sketch | null, source: string): string | null {
-  if (!sketch) return null
-  for (const [id, entity] of Object.entries(sketch)) {
-    if (isProjectedFrom(entity, source)) return id
+/** Collect projection constraints from a variety of inputs. */
+function projectionConstraintsOf(input: unknown): ProjectionConstraintLike[] {
+  if (Array.isArray(input)) {
+    // Could be an array of constraints or a sketch entry list; treat as
+    // constraints only if entries look like constraints.
+    if (input.length > 0 && input[0] && typeof input[0] === 'object' && 'kind' in (input[0] as object)) {
+      return input as ProjectionConstraintLike[]
+    }
+    return []
+  }
+  if (input && typeof input === 'object') {
+    const obj = input as { [key: string]: unknown }
+    if (Array.isArray(obj.constraints)) return obj.constraints as ProjectionConstraintLike[]
+    // Legacy sketch map: synthesise constraints from projected/source entities.
+    const out: ProjectionConstraintLike[] = []
+    for (const [id, entity] of Object.entries(obj)) {
+      const e = entity as { projected?: boolean; source?: string } | null
+      if (e && e.projected === true && typeof e.source === 'string') {
+        out.push({ kind: 'projection', target: `$${id}`, source: e.source })
+      }
+    }
+    return out
+  }
+  return []
+}
+
+/** Entity id of an existing projection of `source`, else null. */
+export function findProjectionOf(input: unknown, source: string): string | null {
+  if (input === null || input === undefined) return null
+  const constraints = projectionConstraintsOf(input)
+  for (const c of constraints) {
+    if (c.kind === 'projection' && c.source === source && typeof c.target === 'string') {
+      return String(c.target).replace(/^\$/, '')
+    }
+  }
+  // Legacy sketch map fallback (already handled by synthesised constraints
+  // above, but keep a direct scan for safety).
+  if (!Array.isArray(input) && input && typeof input === 'object' && !Array.isArray((input as { [key: string]: unknown }).constraints)) {
+    const obj = input as { [key: string]: unknown }
+    for (const [id, entity] of Object.entries(obj)) {
+      const e = entity as { projected?: boolean; source?: string } | null
+      if (e && e.projected === true && e.source === source) return id
+    }
   }
   return null
 }
@@ -129,16 +168,42 @@ function ownEntityId(target: string, featureId: string): string | null {
  */
 export function refreshProjectedPickKinds(
   picks: readonly DimensionPick[],
-  sketch: Sketch | null,
+  sketchOrConstraints: unknown,
   featureId: string,
+  constraintsArg?: unknown,
 ): readonly DimensionPick[] {
-  if (!sketch) return picks
+  // Resolve the held entity id set.
+  const held = new Set<string>()
+  const constraints = constraintsArg !== undefined
+    ? projectionConstraintsOf(constraintsArg)
+    : projectionConstraintsOf(sketchOrConstraints)
+  for (const c of constraints) {
+    if (c.kind === 'projection' && typeof c.target === 'string') held.add(String(c.target).replace(/^\$/, ''))
+  }
+  // Legacy fallback: if no constraints provided, treat projected entities as held.
+  if (constraints.length === 0 && sketchOrConstraints && typeof sketchOrConstraints === 'object' && !Array.isArray(sketchOrConstraints)) {
+    const obj = sketchOrConstraints as { [key: string]: unknown }
+    if (!Array.isArray(obj.constraints)) {
+      for (const [id, entity] of Object.entries(obj)) {
+        const e = entity as { projected?: boolean } | null
+        if (e && e.projected === true) held.add(id)
+      }
+    }
+  }
+
+  if (held.size === 0 && !(sketchOrConstraints && typeof sketchOrConstraints === 'object')) return picks
+
+  const sketchMap = (sketchOrConstraints && typeof sketchOrConstraints === 'object' && !Array.isArray(sketchOrConstraints) && !Array.isArray((sketchOrConstraints as { [key: string]: unknown }).constraints))
+    ? (sketchOrConstraints as { [key: string]: unknown })
+    : null
+
   return picks.map(pick => {
     if (pick.isVertex) return pick
     const id = ownEntityId(pick.target, featureId)
-    const entity = id !== null ? sketch[id] : undefined
-    if (!entity || (entity as { projected?: boolean }).projected !== true) return pick
-    const kind = getEntityKind(entity)
+    if (id === null || !held.has(id)) return pick
+    const entity = sketchMap ? (sketchMap[id] as { kind?: string } | undefined) : undefined
+    const kind = entity ? getEntityKind(entity as never) : undefined
+    if (!kind) return pick
     return kind === pick.entityKind ? pick : { ...pick, entityKind: kind }
   })
 }

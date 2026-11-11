@@ -33,9 +33,10 @@ function makeDocWithProjection(): PartDoc {
       kind: 'sketch',
       entities: [
         { id: 'line1', kind: 'line' },
-        { id: 'proj1', kind: 'line', source: '?edge;line' },
+        { id: 'proj1', kind: 'line' },
       ],
       constraints: [
+        { id: 'proj_proj1', kind: 'projection', target: '$proj1', source: '?edge;line' },
         { id: 'c_keep', kind: 'horizontal', target: '$line1' },
         { id: 'c_super', kind: 'coincident', a: '$line1end', b: '$proj1start' },
       ],
@@ -87,7 +88,7 @@ describe('useSolver solve-path purity', () => {
   it('solves exactly once when projection_errors are present (no cleanup re-solve)', async () => {
     const { result } = setupHook()
 
-    mockSolveViaWorker.mockResolvedValueOnce(buildResponse(['proj1']))
+    mockSolveViaWorker.mockResolvedValueOnce(buildResponse(['proj_proj1']))
 
     await act(async () => { await result.current.reSolve(makeDocWithProjection()) })
 
@@ -98,11 +99,11 @@ describe('useSolver solve-path purity', () => {
   it('keeps the flagged projection errors in solveResults, not deleted from the doc', async () => {
     const { result, setDoc } = setupHook()
 
-    mockSolveViaWorker.mockResolvedValueOnce(buildResponse(['proj1']))
+    mockSolveViaWorker.mockResolvedValueOnce(buildResponse(['proj_proj1']))
 
     await act(async () => { await result.current.reSolve(makeDocWithProjection()) })
 
-    expect(result.current.solveResults.sk1.projection_errors).toEqual(['proj1'])
+    expect(result.current.solveResults.sk1.projection_errors).toEqual(['proj_proj1'])
     const savedDoc = setDoc.mock.calls[0][0] as PartDoc
     const feat = featureAt(savedDoc, 0, 'sketch')
     expect(feat.entities!.map(e => e.id)).toEqual(['line1', 'proj1'])
@@ -118,7 +119,7 @@ describe('useSolver solve-path purity', () => {
     expect(result.current.solveResults.sk1.constraints!.c_super.superfluous).toBe(true)
     const savedDoc = setDoc.mock.calls[0][0] as PartDoc
     const feat = featureAt(savedDoc, 0, 'sketch')
-    expect(feat.constraints!.map(c => c.id)).toEqual(['c_keep', 'c_super'])
+    expect(feat.constraints!.map(c => c.id)).toEqual(['proj_proj1', 'c_keep', 'c_super'])
   })
 
   it('does not carry projection_errors when the response has none', async () => {
@@ -134,7 +135,7 @@ describe('useSolver solve-path purity', () => {
   it('does not set the dirty flag (a clean doc saved after a rebuild stays clean)', async () => {
     const { result } = setupHook()
 
-    mockSolveViaWorker.mockResolvedValueOnce(buildResponse(['proj1']))
+    mockSolveViaWorker.mockResolvedValueOnce(buildResponse(['proj_proj1']))
 
     await act(async () => { await result.current.reSolve(makeDocWithProjection()) })
 

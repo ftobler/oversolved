@@ -179,7 +179,7 @@ describe('EntityLines container', () => {
     'p1': POINT,
   } as unknown as Sketch
 
-  it('skips projected entities (they are drawn by ProjectedEntities)', () => {
+  it('renders projected entities through EntityItem', () => {
     render(
       <EntityLines
         sketch={SKETCH}
@@ -189,8 +189,8 @@ describe('EntityLines container', () => {
         isEditing={true}
       />,
     )
-    // Only the plain line and point render here; the projected line does not.
-    expect(MockLine).toHaveBeenCalledTimes(1)
+    // Both the plain line and the projected line render here now.
+    expect(MockLine).toHaveBeenCalledTimes(2)
   })
 
   it('resolves per-entity color through the function form', () => {

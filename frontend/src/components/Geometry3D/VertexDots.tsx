@@ -2,7 +2,7 @@ import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, COLOR_INACTIVE, entityRenderLayer, highlightState } from '@/components/Geometry3D/constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, entityRenderLayer, highlightState } from '@/components/Geometry3D/constants'
 
 /** 10-gon dot with constant pixel radius regardless of zoom.
  *  If billboard=true the dot always faces the camera.
@@ -70,31 +70,3 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   )
 }
 
-/** Dot marker at constant pixel size for a projected reference point. Drawn like
- *  a sketch point (same size and grow-on-hover as VertexDot) so a projection
- *  reads as a point of the sketch, only in the projected colour.
- *
- *  As of 267.5 the ID buffer dispatcher handles all picking; this component
- *  is visual-only, no R3F event props. */
-export function ProjectedOriginPoint({ x, y, featureId, entityId, isEditing = false }: { x: number; y: number; featureId: string; entityId: string; isEditing?: boolean }) {
-  // A point entity has no segment, so it never resolves through the sketchEntity
-  // layer: buildSketchVertices registers it as `vertex:<fid>:<eid>:xy` and the
-  // dispatcher writes hoveredVertexId / normalSelection with that key. Tracking
-  // the entity id here left the dot permanently in its base colour.
-  const vertId = `vertex:${featureId}:${entityId}:xy`
-  const selected = useSketchEditorStore(s => s.normalSelection.has(vertId))
-  const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(`${entityId}:xy`))
-  const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
-
-  // Hover state is driven by the ID-buffer dispatcher.
-  const hovered = hoveredVertexId === vertId
-
-  const state = highlightState(selected, hovered)
-  const color = state === 'selected' ? COLOR_SELECTED
-    : state === 'hovered' ? COLOR_HOVER
-    : constraintHovered ? COLOR_CONSTRAINT_HOVER : (isEditing ? COLOR_PROJECTED : COLOR_INACTIVE)
-  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
-  return (
-    <Dot x={x} y={y} px={hovered ? 7 : 5} color={color} billboard renderOrder={renderOrder} depthTest={depthTest} />
-  )
-}

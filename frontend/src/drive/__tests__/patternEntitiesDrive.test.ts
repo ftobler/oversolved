@@ -65,21 +65,6 @@ describe('pattern_entities session history', () => {
     expect(capped.steps[0].error?.message).toContain('count 201 is above the cap of 200 instances')
     expect(docHashOf(part.getDoc()!)).toBe(before)
 
-    // A projected entity is authored straight into the document: the drive's
-    // add_projected_entity needs a solved body edge, which this suite has not.
-    const doc = part.getDoc()!
-    const withProjection = structuredClone(doc)
-    const sketch = sketchOf(withProjection)
-    sketch.entities!.push({ id: 'p1', kind: 'line', source: '@sk0/edge' })
-    sketch.initial!.p1 = [0, 1, 1, 1]
-    const projected = createHeadlessPart({ doc: withProjection })
-    const projectedHash = docHashOf(projected.getDoc()!)
-    const refused = await projected.run([
-      { mutation: { type: 'pattern_entities', featureId: 'sk1', sourceIds: ['p1'], mode: 'linear', count: 2, pitch: 2 } },
-    ])
-    expect(refused.ok).toBe(false)
-    expect(refused.steps[0].error?.message).toContain('names a projected entity')
-    expect(docHashOf(projected.getDoc()!)).toBe(projectedHash)
   })
 })
 

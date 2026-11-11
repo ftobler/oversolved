@@ -312,7 +312,7 @@ describe('Part page actions', () => {
 
     expect(h.handleMutation).toHaveBeenCalledWith({
       type: 'remove_dangling_content',
-      features: { sketch1: { entities: [], constraints: ['c1'] } },
+      features: { sketch1: { projections: [], constraints: ['c1'] } },
     })
     expect(screen.queryByTestId('context-menu')).toBeNull()
   })

@@ -64,6 +64,7 @@ export const COMMAND_NAMES = [
   'apply_line_distance',
   'apply_angle',
   'apply_radius_difference',
+  'apply_projection',
 
   // Assembly editor. Mate insertion is insert_mate_<MateKind>.
   'export_assembly',

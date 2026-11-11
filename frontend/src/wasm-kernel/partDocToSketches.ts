@@ -204,6 +204,7 @@ function expandDockConstraint(c: PartConstraint, feature: SketchFeature): PartCo
 function expandSugarConstraints(feature: SketchFeature): PartConstraint[] {
   const out: PartConstraint[] = []
   for (const c of feature.constraints ?? []) {
+    if (c.kind === 'projection') continue
     if (c.kind === 'ngon') out.push(...lowerNgonConstraint(c))
     else if (c.kind === 'dock') out.push(...expandDockConstraint(c, feature))
     else out.push(c)
@@ -231,10 +232,6 @@ export function partDocToSketches(
     if (feature.kind !== 'sketch') continue
     const entities = feature.entities ?? []
 
-    if (entities.some((e) => e.source)) {
-      skipped.push({ featureId: feature.id, reason: 'projection (needs phase-2 lowering)' })
-      continue
-    }
     if (entities.some((e) => e.kind === 'center_rect')) {
       skipped.push({ featureId: feature.id, reason: 'center_rect sugar (not expanded)' })
       continue

@@ -1,8 +1,7 @@
 import type {
   Sketch, Constraints, Point,
   PartEntityDef, SketchFeature, PartConstraint, ConstraintRender,
-  LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, FitSpline,
-  ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity, ProjectedEllipse, ProjectedSpline,
+  LineSegment, Circle, Arc, PointEntity, Ellipse, Spline, FitSpline, Entity,
 } from '@/types/cad'
 import { getDefaultParams } from '@/registry'
 import { getEntityKind } from '@/types/cad'
@@ -15,16 +14,6 @@ import { resolveVertexRef } from '@/types/vertexRef'
 import { fitPointIndex } from '@/types/vertexKeys'
 
 type ResolvedRef = { entity: string; point?: string } | null | undefined
-
-// Legacy projected_* kinds normalize to their base geometric kind; projection
-// is signalled by the entity's `source`, not by the kind. Tolerated on read so
-// documents saved before the kind-collapse keep loading.
-const BASE_KIND: Readonly<Record<string, string>> = {
-  projected_line: 'line',
-  projected_circle: 'circle',
-  projected_arc: 'arc',
-  projected_point: 'point',
-}
 
 interface ResolvedConstraint {
   id: string
@@ -54,29 +43,22 @@ export function unflattenGeometry(
 
   for (const entityDef of entities) {
     const { id } = entityDef
-    // Projection is a metadata flag carried by `source`, not a distinct kind.
-    // Legacy docs may still use projected_* kinds; normalize them to base kinds.
-    const kind = BASE_KIND[entityDef.kind] ?? entityDef.kind
-    const source = entityDef.source
-    const projected = source != null && source !== ''
+    const kind = entityDef.kind
     const construction = entityDef.construction === true
     const params = data[id] || getDefaultParams(kind)
-    const projTag = projected ? { projected: true as const, source: source as string } : null
 
     if (kind === 'line') {
       result[id] = {
         start: [params[0] || 0, params[1] || 0],
         end: [params[2] || 0, params[3] || 0],
         ...(construction && { construction: true }),
-        ...(projTag ?? {}),
-      } as LineSegment | ProjectedLineSegment
+      } as LineSegment
     } else if (kind === 'circle') {
       result[id] = {
         center: [params[0] || 0, params[1] || 0],
         radius: params[2] || 0,
         ...(construction && { construction: true }),
-        ...(projTag ?? {}),
-      } as Circle | ProjectedCircle
+      } as Circle
     } else if (kind === 'arc') {
       const cx = params[0] || 0, cy = params[1] || 0, r = params[2] || 0, a0 = params[3] || 0, a1 = params[4] || 0
       result[id] = {
@@ -87,8 +69,7 @@ export function unflattenGeometry(
         start: [cx + r * Math.cos((a0 * Math.PI) / 180), cy + r * Math.sin((a0 * Math.PI) / 180)],
         end: [cx + r * Math.cos((a1 * Math.PI) / 180), cy + r * Math.sin((a1 * Math.PI) / 180)],
         ...(construction && { construction: true }),
-        ...(projTag ?? {}),
-      } as Arc | ProjectedArc
+      } as Arc
     } else if (kind === 'ellipse') {
       result[id] = {
         center: [params[0] || 0, params[1] || 0],
@@ -96,8 +77,7 @@ export function unflattenGeometry(
         b: params[3] || 0,
         theta: params[4] || 0,
         ...(construction && { construction: true }),
-        ...(projTag ?? {}),
-      } as Ellipse | ProjectedEllipse
+      } as Ellipse
     } else if (kind === 'spline') {
       result[id] = {
         p1: [params[0] || 0, params[1] || 0],
@@ -105,8 +85,7 @@ export function unflattenGeometry(
         p3: [params[4] || 0, params[5] || 0],
         p4: [params[6] || 0, params[7] || 0],
         ...(construction && { construction: true }),
-        ...(projTag ?? {}),
-      } as Spline | ProjectedSpline
+      } as Spline
     } else if (kind === 'fit_spline') {
       // The flat block is the fit points then the optional handles (D2), the
       // same order the document and the solver use; `handles` says how many.
@@ -126,15 +105,13 @@ export function unflattenGeometry(
       result[id] = {
         ...fit,
         ...(construction && { construction: true }),
-        ...(projTag ?? {}),
       } as FitSpline
     } else if (kind === 'point') {
       result[id] = {
         x: params[0] || 0,
         y: params[1] || 0,
         ...(construction && { construction: true }),
-        ...(projTag ?? {}),
-      } as PointEntity | ProjectedPointEntity
+      } as PointEntity
     }
   }
   return result
@@ -156,22 +133,22 @@ export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string 
 
   const kind = getEntityKind(entity)
   if (kind === 'arc') {
-    const arc = entity as Arc | ProjectedArc
+    const arc = entity as Arc
     if (pt === 'center') return [...arc.center] as [number, number]
     return pt !== 'end' ? arc.start : arc.end
   } else if (kind === 'line') {
-    const line = entity as LineSegment | ProjectedLineSegment
+    const line = entity as LineSegment
     return pt === 'end' ? line.end : line.start
   } else if (kind === 'circle') {
-    return (entity as Circle | ProjectedCircle).center
+    return (entity as Circle).center
   } else if (kind === 'ellipse') {
-    const el = entity as Ellipse | ProjectedEllipse
+    const el = entity as Ellipse
     if (pt === 'major1' || pt === 'major2' || pt === 'minor1' || pt === 'minor2') {
       return ellipseAxisPoints(el.center[0], el.center[1], el.a, el.b, el.theta)[pt]
     }
     return [...el.center] as [number, number]
   } else if (kind === 'spline') {
-    const sp = entity as Spline | ProjectedSpline
+    const sp = entity as Spline
     if (pt === 'end') return [...sp.p4] as [number, number]
     if (pt === 'c1') return [...sp.p2] as [number, number]
     if (pt === 'c2') return [...sp.p3] as [number, number]
@@ -186,7 +163,7 @@ export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string 
     if (k !== null && k < fs.points.length) return [...fs.points[k]] as [number, number]
     return [...fs.points[0]] as [number, number]
   } else {
-    const p = entity as PointEntity | ProjectedPointEntity
+    const p = entity as PointEntity
     return [p.x, p.y]
   }
 }
@@ -594,6 +571,21 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
       entity: eid,
       ...(resolved.target?.point != null && { point: resolved.target.point }),
     }
+  }
+
+  if (kind === 'projection') {
+    const eid = resolved.target?.entity
+    if (!eid) return { kind: 'unknown' }
+    const e = sketch[eid] as Entity | undefined
+    if (!e) return { kind: 'unknown' }
+    let at: Point
+    if ('center' in e) at = (e as { center: [number, number] }).center
+    else if ('start' in e && 'end' in e) {
+      const le = e as LineSegment
+      at = [(le.start[0] + le.end[0]) / 2, (le.start[1] + le.end[1]) / 2]
+    } else if ('p1' in e) at = (e as Spline).p1
+    else at = [(e as PointEntity).x, (e as PointEntity).y]
+    return { kind: 'symbol_projection', at, entity: eid }
   }
 
   if (kind === 'tangent') {

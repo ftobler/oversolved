@@ -923,11 +923,7 @@ function mirrorEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null 
     if (id === raw.line) {
       return invalid(`mirror_entities line ${json(raw.line)} must not also be a sourceId; the axis is not mirrored`)
     }
-    if (entity.source !== undefined) {
-      return invalid(
-        `mirror_entities source id ${json(id)} names a projected entity; projected geometry re-projects from its source and is not mirrored`,
-      )
-    }
+
   }
   // A source that mirrors to itself is its own image and adds nothing; a step
   // whose every source does so would apply as a silent no-op.

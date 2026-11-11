@@ -230,7 +230,7 @@ type SliceReadableMutation =
   // read as the single part_style entry it names
   | { bodyId: string }
   // read as the features its own cleanup plan names
-  | { features: Record<string, { entities: string[]; constraints: string[] }> }
+  | { features: Record<string, { projections: string[]; constraints: string[] }> }
   // names no target of its own: the rollback mirror writes doc.rollback, which
   // every slice carries
   | { type: 'set_rollback' }

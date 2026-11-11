@@ -293,3 +293,13 @@ def constraint_unknown(ctx):
     ctx.arc(0.5, 0.5, 0.375, 0, 2 * math.pi)
     stroke(ctx, 1.5)
     _question_mark(ctx, 0.5, 0.5, 0.375)
+
+
+@icon("frontend/src/assets/icons/constraint-projection.svg")
+def constraint_projection(ctx):
+    # A held projection: a short segment with a pin dot at its midpoint.
+    ctx.move_to(0.2, 0.5)
+    ctx.line_to(0.8, 0.5)
+    stroke(ctx, 2)
+    ctx.arc(0.5, 0.5, 0.08, 0, 2 * math.pi)
+    ctx.fill()

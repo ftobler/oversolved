@@ -363,14 +363,14 @@ export default function Part() {
   // solve flagged nothing, so it never pushes a dead undo entry.
   const handleRemoveDanglingContent = useCallback(() => {
     if (!docRef.current) return
-    const perFeature: Record<string, { entities: string[]; constraints: string[] }> = {}
+    const perFeature: Record<string, { projections: string[]; constraints: string[] }> = {}
     for (const [featureId, data] of Object.entries(solveResults)) {
-      const entities = data.projection_errors ?? []
+      const projections = data.projection_errors ?? []
       const constraints = Object.entries(data.constraints ?? {})
         .filter(([, c]) => c.superfluous)
         .map(([cid]) => cid)
-      if (entities.length > 0 || constraints.length > 0) {
-        perFeature[featureId] = { entities, constraints }
+      if (projections.length > 0 || constraints.length > 0) {
+        perFeature[featureId] = { projections, constraints }
       }
     }
     if (Object.keys(perFeature).length === 0) return
