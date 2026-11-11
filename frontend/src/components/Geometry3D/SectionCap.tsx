@@ -36,7 +36,11 @@ export default function SectionCap({ geometry, color, enabled, band = 0 }: Secti
 
   // The fill wears the body's current colour; a part colour edit repaints the
   // cap without rebuilding the stencil materials.
-  useEffect(() => { fillMaterial.color.set(color) }, [fillMaterial, color])
+  useEffect(() => {
+    fillMaterial.color.set(color)
+    const uniforms = (fillMaterial as unknown as { uniforms?: { uColor?: { value: THREE.Color } } }).uniforms
+    uniforms?.uColor?.value.set(color)
+  }, [fillMaterial, color])
 
   useEffect(() => () => {
     backMaterial.dispose()

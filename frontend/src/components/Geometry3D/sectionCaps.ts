@@ -102,10 +102,27 @@ export function resetSectionCapStripeTextureForTest(): void {
   sectionCapStripeTexture = null
 }
 
-export function buildSectionCapFillMaterial(color: string): THREE.MeshBasicMaterial {
-  const material = new THREE.MeshBasicMaterial({
-    color,
-    map: getSectionCapStripeTexture(),
+export function buildSectionCapFillMaterial(color: string): THREE.ShaderMaterial {
+  const materialColor = new THREE.Color(color)
+  const material = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: materialColor.clone() } },
+    vertexShader: `
+      #include <clipping_planes_pars_vertex>
+      void main() {
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        #include <clipping_planes_vertex>
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      #include <clipping_planes_pars_fragment>
+      void main() {
+        #include <clipping_planes_fragment>
+        float sectionStripe = step(0.5, fract((gl_FragCoord.x + gl_FragCoord.y) / 24.0));
+        vec3 col = mix(uColor * 0.35, uColor, sectionStripe);
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `,
     // The quad's facing is not meaningful: the stencil count, not the winding,
     // decides where it paints, and a single-sided quad could be culled from the
     // kept side of the cut.
@@ -118,19 +135,11 @@ export function buildSectionCapFillMaterial(color: string): THREE.MeshBasicMater
     stencilFail: THREE.ReplaceStencilOp,
     stencilZFail: THREE.ReplaceStencilOp,
     stencilZPass: THREE.ReplaceStencilOp,
+    transparent: false,
   })
-  // Screen-space diagonal hatch: stripes stay a constant pixel width and stay
-  // aligned to the view no matter how the section plane (or the camera) moves,
-  // instead of being baked into the cap's object-space UVs. `diffuse` is the
-  // part colour uniform, so a colour edit repaints the stripes with no recompile.
-  material.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <dithering_fragment>',
-      `  float __sectionStripe = step(0.5, fract((gl_FragCoord.x + gl_FragCoord.y) / 24.0));\n` +
-      `  gl_FragColor.rgb = mix(diffuse * 0.35, diffuse, __sectionStripe);\n` +
-      `#include <dithering_fragment>`,
-    )
-  }
+  // Keep a `color` property for callers/tests that read the part colour off the
+  // material, mirroring MeshBasicMaterial's interface.
+  ;(material as unknown as { color: THREE.Color }).color = materialColor
   return material
 }
 
