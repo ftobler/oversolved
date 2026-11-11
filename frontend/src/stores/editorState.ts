@@ -670,7 +670,12 @@ export const editorState = createStore<EditorState>((set, get) => ({
     if (picked.length === 0) return null
     // The redundancy probe and the mutation both see the canonical order, so a
     // point-first line_distance is tested (and stored) as line-first.
-    const targets = canonicalLineDistanceTargets(kind, picked, t => entityKindMap[t])
+    const targets = canonicalLineDistanceTargets(kind, picked, t => {
+      if (t.startsWith('vertex:') || t.startsWith('@builtin_')) return 'point'
+      if (!t.startsWith('entity:')) return undefined
+      const ek = entityKindMap[t]
+      return ek === 'line' || ek === 'point' ? ek : undefined
+    })
 
     // Reject operand kinds the constraint cannot represent before authoring it.
     // A parallel between two arcs (or a concentric on a line) otherwise lands in
@@ -961,7 +966,11 @@ export const editorState = createStore<EditorState>((set, get) => ({
     const targets = canonicalLineDistanceTargets(
       constraintKind,
       dimensionTargets(dimensionPicks),
-      t => pickKinds.get(t),
+      t => {
+        if (t.startsWith('vertex:') || t.startsWith('@builtin_')) return 'point'
+        const ek = pickKinds.get(t)
+        return ek === 'line' || ek === 'point' ? ek : undefined
+      },
     )
 
     // Snapshot the placement anchor BEFORE clearing -- the cursorWorld field

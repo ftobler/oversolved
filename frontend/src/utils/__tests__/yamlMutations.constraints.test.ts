@@ -71,6 +71,20 @@ describe('applyAddConstraint', () => {
     expect(added!.sign).toBe(-1)
   })
 
+  it('canonicalises a stored local point ref and a point entity first', () => {
+    const localDoc = makeSampleDoc()
+    applyAddConstraint(localDoc, 'Sketch1', 'line_distance', ['$pt1xy', '$line1'], 5)
+    const local = constraints0(localDoc).find(c => c.id.startsWith('c_line_distance'))
+    expect(local!.a).toBe('$line1')
+    expect(local!.b).toBe('$pt1xy')
+
+    const entityDoc = makeSampleDoc()
+    applyAddConstraint(entityDoc, 'Sketch1', 'line_distance', ['entity:Sketch1:pt1', 'entity:Sketch1:line1'], 5)
+    const entity = constraints0(entityDoc).find(c => c.id.startsWith('c_line_distance'))
+    expect(entity!.a).toBe('$line1')
+    expect(entity!.b).toBe('$pt1')
+  })
+
   it('also canonicalises a builtin point first in a line_distance', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'line_distance', ['@builtin_origin', 'entity:Sketch1:line1'], 5)
