@@ -58,9 +58,27 @@ describe('bug report draft store', () => {
     expect(useBugReportStore.getState().sets[1].name).toBe('set2')
     expect(useBugReportStore.getState().description).toBe('see #set1')
 
-    expect(useBugReportStore.getState().renameSet(first.id, 'not allowed')).toBe('use letters, digits, - and _')
+    expect(useBugReportStore.getState().renameSet(first.id, 'not allowed')).toBe('use letters, digits, - and _ only (no spaces)')
     expect(useBugReportStore.getState().sets[0].name).toBe('set1')
     expect(useBugReportStore.getState().description).toBe('see #set1')
+  })
+
+  it('accepts Unicode letters and combining marks in a set name', () => {
+    const id = useBugReportStore.getState().addSet()
+    expect(useBugReportStore.getState().renameSet(id, 'Gehäuse')).toBeNull()
+    expect(useBugReportStore.getState().sets[0].name).toBe('Gehäuse')
+    expect(useBugReportStore.getState().renameSet(id, '面')).toBeNull()
+    expect(useBugReportStore.getState().sets[0].name).toBe('面')
+    expect(useBugReportStore.getState().renameSet(id, 'Geha\u0308use')).toBeNull()
+    expect(useBugReportStore.getState().sets[0].name).toBe('Geha\u0308use')
+  })
+
+  it('refuses a name with a space or no characters', () => {
+    const id = useBugReportStore.getState().addSet()
+    const refusal = 'use letters, digits, - and _ only (no spaces)'
+    expect(useBugReportStore.getState().renameSet(id, 'not allowed')).toBe(refusal)
+    expect(useBugReportStore.getState().renameSet(id, '')).toBe(refusal)
+    expect(useBugReportStore.getState().sets[0].name).toBe('set1')
   })
 
   it('rewrites references when a set is renamed', () => {
@@ -69,6 +87,14 @@ describe('bug report draft store', () => {
     useBugReportStore.getState().setText({ description: 'look at #set1 and #set10' })
     expect(useBugReportStore.getState().renameSet(id, 'before')).toBeNull()
     expect(useBugReportStore.getState().description).toBe('look at #before and #set10')
+  })
+
+  it('rewrites only whole Unicode references on rename', () => {
+    const id = useBugReportStore.getState().addSet()
+    useBugReportStore.getState().renameSet(id, 'Gehäuse')
+    useBugReportStore.getState().setText({ description: 'look at #Gehäuse and #Gehäuse2' })
+    expect(useBugReportStore.getState().renameSet(id, '面')).toBeNull()
+    expect(useBugReportStore.getState().description).toBe('look at #面 and #Gehäuse2')
   })
 
   it('seeds a selection set from a non-empty selection', () => {

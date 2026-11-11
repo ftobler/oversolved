@@ -10,7 +10,7 @@
 // the user pastes it into an issue tracker or a chat. The bulky attachments stay
 // fenced JSON inside it so they remain machine-readable for whoever triages.
 
-import { linkReferences, selectionSetAnchor } from '@/utils/core/reportReferences'
+import { linkReferences, selectionSetAnchors } from '@/utils/core/reportReferences'
 
 export type BugReport = Record<string, unknown>
 
@@ -57,12 +57,19 @@ function selectionSetName(set: unknown, index: number): string {
   return typeof name === 'string' && name.trim() ? name : `set${index + 1}`
 }
 
+// The name is validated to letters, digits, marks, `_` and `-`, but a report
+// built elsewhere still must not inject markup into the raw heading.
+function escapeHeadingText(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 function renderSelectionSets(sets: unknown[], description: string | null): string[] {
   const names = sets.map(selectionSetName)
+  const anchors = selectionSetAnchors(names)
   const sections: string[] = []
-  // The description goes first and links into the sections below it; each
-  // section carries an explicit anchor because a heading's auto anchor also
-  // includes the pick count.
+  // The description goes first and links into the sections below it. Each
+  // heading carries its own id because a Markdown auto anchor is renderer
+  // specific and would otherwise follow the pick count.
   if (description && description.trim()) {
     sections.push(linkReferences(description.trim(), names))
   }
@@ -71,8 +78,8 @@ function renderSelectionSets(sets: unknown[], description: string | null): strin
     const picks = Array.isArray((raw as { picks?: unknown })?.picks)
       ? (raw as { picks: RenderedPick[] }).picks
       : []
-    sections.push(`<a id="${selectionSetAnchor(name)}"></a>`)
-    sections.push(`## Selection set #${name} (${picks.length} picks)`)
+    sections.push(`<h2 id="${anchors[i]}">Selection set: ${escapeHeadingText(name)}</h2>`)
+    sections.push(`${picks.length} ${picks.length === 1 ? 'pick' : 'picks'}`)
     for (const pick of picks) {
       sections.push(`- ${pickLabel(pick)} - ${pickOrigin(pick)}`)
     }

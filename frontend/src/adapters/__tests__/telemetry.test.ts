@@ -153,12 +153,50 @@ describe('telemetry adapter', () => {
         }],
       })
       expect(md).toContain('see [#before](#selection-set-before) and #missing')
-      expect(md).toContain('<a id="selection-set-before"></a>')
-      expect(md).toContain('## Selection set #before (2 picks)')
+      expect(md).toContain('<h2 id="selection-set-before">Selection set: before</h2>')
+      expect(md).toContain('2 picks')
+      expect(md).not.toContain('<a id=')
       expect(md).toContain('- Face of extrude1 - picked after fillet1')
       expect(md).toContain('- Edge of extrude1 - picked with the bar at 3')
       expect(md).toContain('## Rollback\n\nBar position: 5')
       expect(md).not.toContain('[#missing]')
+    })
+
+    it('puts the pick count on a normal line below the heading', () => {
+      const md = formatBugReportMarkdown({
+        title: 'boom',
+        selectionSets: [{ name: 'one', picks: [{ query: 'q1', label: 'Face' }] }],
+      })
+      expect(md).toContain('<h2 id="selection-set-one">Selection set: one</h2>\n\n1 pick\n')
+      expect(md).not.toContain('(1 pick)')
+    })
+
+    it('slugifies a Unicode set name into a stable heading id', () => {
+      const md = formatBugReportMarkdown({
+        title: 'boom',
+        description: 'see #Gehäuse',
+        selectionSets: [{ name: 'Gehäuse', picks: [] }],
+      })
+      expect(md).toContain('[#Gehäuse](#selection-set-gehäuse)')
+      expect(md).toContain('<h2 id="selection-set-gehäuse">Selection set: Gehäuse</h2>')
+      expect(md).toContain('0 picks')
+    })
+
+    // Two names can slug alike; the link must still land on the heading whose
+    // name it wrote, not on whichever set happens to share the slug.
+    it('keeps colliding set names on distinct heading ids', () => {
+      const md = formatBugReportMarkdown({
+        title: 'boom',
+        description: 'see #Foo and #foo',
+        selectionSets: [
+          { name: 'Foo', picks: [] },
+          { name: 'foo', picks: [] },
+        ],
+      })
+      expect(md).toContain('[#Foo](#selection-set-foo)')
+      expect(md).toContain('[#foo](#selection-set-foo-2)')
+      expect(md).toContain('<h2 id="selection-set-foo">Selection set: Foo</h2>')
+      expect(md).toContain('<h2 id="selection-set-foo-2">Selection set: foo</h2>')
     })
 
     it('keeps a shapeless selectionSets attachment rather than dropping it', () => {
