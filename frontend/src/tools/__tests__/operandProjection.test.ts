@@ -39,7 +39,9 @@ describe('planProjectedOperand', () => {
     expect(second.target).toBe(first.target)
   })
 
-  it('reuses an origin already projected in the solved sketch', () => {
+  it('reuses a legacy v5 projected entity (entity carries projected/source)', () => {
+    // Nothing writes this shape any more; the legacy document path must still
+    // reuse it rather than stack a duplicate.
     const sketch = {
       P1: { x: 0, y: 0, projected: true, source: ORIGIN },
     } as unknown as Sketch
@@ -53,11 +55,24 @@ describe('planProjectedOperand', () => {
     // on the missing entity, and fall back to the declared point kind.
     const { mutations, target, kind } = plan({
       sketch: {},
-      projections: [{ id: 'proj_P1', kind: 'projection', target: '$P1', source: ORIGIN }],
+      recorded: [{ source: ORIGIN, entityId: 'P1', kind: 'point' }],
     })
     expect(mutations).toEqual([])
     expect(target).toBe('vertex:S1:P1:xy')
     expect(kind).toBe('point')
+  })
+
+  it('keeps the declared kind of an unsolved recorded circular edge', () => {
+    // A headless reuse has no solved entity to read: the document entity kind
+    // must win over the pick-time hint, or a circle degrades to a line.
+    const { mutations, target, kind } = plan({
+      query: EDGE_Q, isVertexPick: false, sourceKind: null,
+      sketch: {},
+      recorded: [{ source: EDGE_Q, entityId: 'E1', kind: 'circle' }],
+    })
+    expect(mutations).toEqual([])
+    expect(target).toBe('entity:S1:E1')
+    expect(kind).toBe('circle')
   })
 
   it('declares a B-rep edge projection with the edge curve kind', () => {

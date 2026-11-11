@@ -107,16 +107,23 @@ export interface PlannedProjection {
   kind?: string
 }
 
+/** A projection already recorded on the document feature: its source pick, the
+ *  held entity and that entity's declared kind. */
+export interface RecordedProjection {
+  source?: string
+  entityId: string
+  kind: string | null
+}
+
 export interface ProjectedOperandPlanInput {
   query: string
   featureId: string
   // The active sketch as last solved, used to find an existing projection.
   sketch: Sketch | null
-  /** The live document feature's constraints. The solved map carries geometry
-   *  only, so a projection recorded on the feature (its `source`) is matched
-   *  here; without it a second pick of the same source would stack a duplicate
-   *  before the next solve. */
-  projections?: readonly ProjectionConstraintLike[]
+  /** The document feature's recorded projections. The solved map carries
+   *  geometry only, so this is how a projection whose solve has not landed is
+   *  matched, including its declared entity kind. */
+  recorded?: readonly RecordedProjection[]
   /** Projections already planned in this act. A projection created by an
    *  earlier operand is not in `sketch` until its solve lands, so it is matched
    *  here instead -- otherwise two operands on one body edge would project it
@@ -167,36 +174,35 @@ export function classifyBrepOperand(id: string): { isVertex: boolean } | null {
   return null
 }
 
-/** Entity id of a recorded projection constraint of `source`, else null. */
-function recordedProjectionOf(
-  constraints: readonly ProjectionConstraintLike[] | undefined,
-  source: string,
-): string | null {
-  for (const c of constraints ?? []) {
-    if (c.kind === 'projection' && c.source === source && typeof c.target === 'string') {
-      return String(c.target).replace(/^\$/, '')
-    }
-  }
-  return null
-}
-
 /** An entity already projected from `query`, from either lookup, else null. */
 function findExistingProjection(
   query: string,
   sketch: Sketch | null,
-  projections: readonly ProjectionConstraintLike[] | undefined,
+  recorded: readonly RecordedProjection[] | undefined,
   pending: readonly PlannedProjection[],
   isVertexPick: boolean,
   sourceKind: string | null | undefined,
 ): { entityId: string; kind: string } | null {
-  const solvedId = recordedProjectionOf(projections, query) ?? findProjectionOf(sketch, query)
+  const recordedHit = (recorded ?? []).find(p => p.source === query)
+  if (recordedHit) {
+    const entity = sketch?.[recordedHit.entityId]
+    // A projection can be newer than the solved geometry (the user acted again
+    // before the solve landed). Prefer the kind the document entity declares;
+    // only a document that cannot name it falls back to the pick-time kind.
+    const kind = entity
+      ? getEntityKind(entity)
+      : recordedHit.kind ?? (isVertexPick ? 'point' : projectedKindForEdge(sourceKind))
+    return { entityId: recordedHit.entityId, kind }
+  }
+
+  // Legacy v5 documents carry `projected: true` + `source` on the entity
+  // itself; nothing writes that shape any more. It is read here only so an old
+  // document still reuses its projection instead of stacking a duplicate.
+  const solvedId = findProjectionOf(sketch, query)
   // The solved sketch wins: the lowerer may have promoted the kind the pick
   // was made with (a tilted circle projects as an ellipse).
   if (solvedId !== null) {
     const entity = sketch?.[solvedId]
-    // A projection constraint can be newer than the solved geometry (the user
-    // acted again before the solve landed); the declared kind is the best
-    // answer then, and the next solve reconciles it.
     return entity
       ? { entityId: solvedId, kind: getEntityKind(entity) }
       : { entityId: solvedId, kind: isVertexPick ? 'point' : projectedKindForEdge(sourceKind) }
@@ -216,9 +222,9 @@ function findExistingProjection(
  * sketch vertices for a distance or coincident.
  */
 export function planProjectedOperand(input: ProjectedOperandPlanInput): ProjectedOperandPlan {
-  const { query, featureId, sketch, projections, pending = [], isVertexPick, sourceKind, newEntityId } = input
+  const { query, featureId, sketch, recorded, pending = [], isVertexPick, sourceKind, newEntityId } = input
 
-  const existing = findExistingProjection(query, sketch, projections, pending, isVertexPick, sourceKind)
+  const existing = findExistingProjection(query, sketch, recorded, pending, isVertexPick, sourceKind)
   const kind = existing?.kind
     ?? (isVertexPick ? 'point' : projectedKindForEdge(sourceKind))
   const entityId = existing?.entityId ?? newEntityId()

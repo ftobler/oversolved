@@ -8,8 +8,9 @@
 // single owner: the store imports it, and helpers import it, but there is still
 // exactly one module-level instance for the app lifetime. It was the private
 // `_sketchCbs` const before the store was split; the contract is unchanged.
-import type { Mutation, PartConstraint, Sketch } from '@/types/cad'
+import type { Mutation, Sketch } from '@/types/cad'
 import type { DimensionPick } from '@/registry'
+import type { RecordedProjection } from '@/tools/operandProjection'
 import type { ProjectionPrelude } from '@/kernel/features/constraintProbe'
 import type { DialogState } from './sketchEditorTypes'
 import { devOnly } from './stateInvariants'
@@ -20,10 +21,11 @@ export const sketchCallbacks: {
   onRebuild: (() => void) | null
   onExitSketch: (() => void) | null
   getSketch: ((featureId: string) => Sketch | null) | null
-  // The live document feature's constraints. The solved map carries geometry
-  // only, so this is how the projection planner reuses a `projection` that is
-  // recorded but not in the solved entity map yet.
-  getProjectionConstraints: ((featureId: string) => readonly PartConstraint[] | null) | null
+  // The document feature's recorded projections (source, held entity and that
+  // entity's declared kind). The solved map carries geometry only, so this is
+  // how the projection planner reuses a `projection` whose solve has not
+  // landed yet.
+  getProjectedSources: ((featureId: string) => readonly RecordedProjection[] | null) | null
   // Curve kind of a B-rep edge query. The dimension tool reads it from the
   // hover; the constraint command has no hover, so the page supplies it from
   // the body dispatch tables. Absent in a headless store use, where an edge
@@ -32,10 +34,11 @@ export const sketchCallbacks: {
   beginBrepProjection: (() => void) | null
   cancelBrepProjection: (() => void) | null
   // The authoring gate for a new constraint: true when the add would make the
-  // constraint set redundant, so the store refuses it instead of dispatching.
+  // constraint set redundant, null when the mutation layer would drop it (the
+  // caller emits nothing, planned projections included), false to author.
   // Registered by Part.tsx (it owns the doc and the solver probe); a headless
   // store use has no port and allows every add.
-  checkRedundantAdd: ((pending: PendingConstraint) => boolean) | null
+  checkRedundantAdd: ((pending: PendingConstraint) => boolean | null) | null
   // Surfaces an authoring refusal the store itself decides on, so it reaches
   // the user through the same message dialog as a command rejection. Null in a
   // headless store use, where there is no dialog to show.
@@ -51,7 +54,7 @@ export const sketchCallbacks: {
   onRebuild: null,
   onExitSketch: null,
   getSketch: null,
-  getProjectionConstraints: null,
+  getProjectedSources: null,
   resolveEdgeKind: null,
   beginBrepProjection: null,
   cancelBrepProjection: null,
@@ -93,10 +96,10 @@ export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => void)
 export function setSketchCallback(key: 'onMutationBatch', cb: ((ms: Mutation[]) => void) | null): void
 export function setSketchCallback(key: 'onRebuild' | 'onExitSketch', cb: (() => void) | null): void
 export function setSketchCallback(key: 'getSketch', cb: ((featureId: string) => Sketch | null) | null): void
-export function setSketchCallback(key: 'getProjectionConstraints', cb: ((featureId: string) => readonly PartConstraint[] | null) | null): void
+export function setSketchCallback(key: 'getProjectedSources', cb: ((featureId: string) => readonly RecordedProjection[] | null) | null): void
 export function setSketchCallback(key: 'resolveEdgeKind', cb: ((query: string) => string | null) | null): void
 export function setSketchCallback(key: 'beginBrepProjection' | 'cancelBrepProjection', cb: (() => void) | null): void
-export function setSketchCallback(key: 'checkRedundantAdd', cb: ((pending: PendingConstraint) => boolean) | null): void
+export function setSketchCallback(key: 'checkRedundantAdd', cb: ((pending: PendingConstraint) => boolean | null) | null): void
 export function setSketchCallback(key: 'showMessage', cb: ((payload: SketchMessage) => void) | null): void
 export function setSketchCallback(key: 'openDialog', cb: ((dialog: DialogState) => void) | null): void
 export function setSketchCallback(key: 'closeDialog', cb: (() => void) | null): void
@@ -117,7 +120,7 @@ const SESSION_CALLBACK_KEYS = [
   'onRebuild',
   'onExitSketch',
   'getSketch',
-  'getProjectionConstraints',
+  'getProjectedSources',
   'resolveEdgeKind',
   'beginBrepProjection',
   'cancelBrepProjection',

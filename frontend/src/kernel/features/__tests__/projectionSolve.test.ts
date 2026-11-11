@@ -10,6 +10,7 @@ import {
   prepareDragContext, solveSketchDrag,
 } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { worldToSketch2d } from '../shared/planes'
 import type { Repository } from '../../query'
 import type { Body } from '../../types3d'
 import type { SketchFeature } from '@/types/cad'
@@ -246,7 +247,12 @@ describe('solveSketch projects the document origin as a point', () => {
 
   function repoOf(entries: Dict): Repository {
     return {
-      query: (q: string) => (q in entries ? entries[q] : null),
+      // Repository keys strip the ref sigil: `@builtin_origin` reads the
+      // `builtin_origin` element, exactly as production registers it.
+      query: (q: string) => {
+        const key = q.startsWith('@') ? q.slice(1) : q
+        return key in entries ? entries[key] : null
+      },
       elements: new Map(Object.entries(entries)),
     } as unknown as Repository
   }
@@ -260,19 +266,21 @@ describe('solveSketch projects the document origin as a point', () => {
 
   it('lands at the document origin on Front, an offset plane and a face sketch', () => {
     if (!solveBytes) return
+    const frontPlane = { origin: [0, 0, 0], normal: [0, 0, 1], x_axis: [1, 0, 0], y_axis: [0, 1, 0] }
     const offsetPlane = { origin: [5, 5, 10], normal: [0, 0, 1], x_axis: [1, 0, 0], y_axis: [0, 1, 0] }
     // The +Z face of the Ex002 block: x +Y, y -X, centroid 5 above the origin.
     const facePlane = { origin: [0, 0, 5], normal: [0, 0, 1], x_axis: [0, 1, 0], y_axis: [-1, 0, 0] }
     const cases = [
-      { plane: '@builtin_plane_front', entries: { '@builtin_origin': originPoint }, expected: [0, 0] },
-      { plane: 'op1', entries: { '@builtin_origin': originPoint, op1: offsetPlane }, expected: [-5, -5] },
-      { plane: '?face', entries: { '@builtin_origin': originPoint, '?face': facePlane }, expected: [0, 0] },
+      { plane: '@builtin_plane_front', model: frontPlane, entries: { builtin_origin: originPoint } },
+      { plane: 'op1', model: offsetPlane, entries: { builtin_origin: originPoint, op1: offsetPlane } },
+      { plane: '?face', model: facePlane, entries: { builtin_origin: originPoint, '?face': facePlane } },
     ]
     for (const c of cases) {
       const out = solveSketch(originFeature(c.plane), repoOf(c.entries), {} as Record<string, Body>)
+      const expected = worldToSketch2d([0, 0, 0], c.model)
       expect(out.projection_errors ?? []).toEqual([])
-      expect(out.geometry?.p0?.[0]).toBeCloseTo(c.expected[0])
-      expect(out.geometry?.p0?.[1]).toBeCloseTo(c.expected[1])
+      expect(out.geometry?.p0?.[0]).toBeCloseTo(expected[0])
+      expect(out.geometry?.p0?.[1]).toBeCloseTo(expected[1])
     }
   })
 
@@ -289,7 +297,7 @@ describe('solveSketch projects the document origin as a point', () => {
         { id: 'c_dia', kind: 'diameter', target: '$c0', value: 6 },
       ],
     }
-    const out = solveSketch(feature, repoOf({ '@builtin_origin': originPoint, '?face': facePlane }), {} as Record<string, Body>)
+    const out = solveSketch(feature, repoOf({ builtin_origin: originPoint, '?face': facePlane }), {} as Record<string, Body>)
     expect(out.status).toBe('fully_constrained')
     expect(out.geometry?.c0?.[0]).toBeCloseTo(0)
     expect(out.geometry?.c0?.[1]).toBeCloseTo(0)
