@@ -233,10 +233,10 @@ describe('ViewOptionsButton document unit', () => {
     render(<ViewOptionsButton lengthUnit="mm" onSetLengthUnit={onSetLengthUnit} />)
     open()
 
-    expect(screen.getByRole('button', { name: 'mm' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'in' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'millimetres' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'inches' })).toHaveAttribute('aria-pressed', 'false')
 
-    fireEvent.click(screen.getByRole('button', { name: 'in' }))
+    fireEvent.click(screen.getByRole('button', { name: 'inches' }))
     expect(onSetLengthUnit).toHaveBeenCalledTimes(1)
     expect(onSetLengthUnit).toHaveBeenCalledWith('inch')
   })
@@ -246,8 +246,8 @@ describe('ViewOptionsButton document unit', () => {
     render(<ViewOptionsButton lengthUnit="inch" onSetLengthUnit={onSetLengthUnit} />)
     open()
 
-    expect(screen.getByRole('button', { name: 'in' })).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(screen.getByRole('button', { name: 'in' }))
+    expect(screen.getByRole('button', { name: 'inches' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'inches' }))
     expect(onSetLengthUnit).not.toHaveBeenCalled()
   })
 

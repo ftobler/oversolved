@@ -45,7 +45,7 @@ export interface ViewOptionsButtonProps {
   // The part document's unit, and the page's set_length_unit dispatch. Unlike
   // every other row this is a document edit, so the page owns both halves: the
   // card only reflects the unit and asks for a change. Absent in the assembly,
-  // which has no document unit of its own, so the section is hidden there.
+  // which has no document unit of its own, so the unit row is hidden there.
   lengthUnit?: LengthUnit
   onSetLengthUnit?: (unit: LengthUnit) => void
 }
@@ -218,6 +218,9 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
                       type="button"
                       className={`view-options-segment-btn${chosen ? ' active' : ''}`}
                       aria-pressed={chosen}
+                      // The visible label is the short suffix; the accessible
+                      // name spells the unit out so "in" is not read as a word.
+                      aria-label={LENGTH_UNIT_NAME[unit]}
                       title={`Document lengths in ${LENGTH_UNIT_NAME[unit]}`}
                       // The document already reads this unit: asking again
                       // would spend an undo entry on nothing.
