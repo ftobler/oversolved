@@ -8,8 +8,9 @@
 // single owner: the store imports it, and helpers import it, but there is still
 // exactly one module-level instance for the app lifetime. It was the private
 // `_sketchCbs` const before the store was split; the contract is unchanged.
-import type { Mutation, Sketch } from '@/types/cad'
+import type { Mutation, PartConstraint, Sketch } from '@/types/cad'
 import type { DimensionPick } from '@/registry'
+import type { ProjectionPrelude } from '@/kernel/features/constraintProbe'
 import type { DialogState } from './sketchEditorTypes'
 import { devOnly } from './stateInvariants'
 
@@ -19,6 +20,15 @@ export const sketchCallbacks: {
   onRebuild: (() => void) | null
   onExitSketch: (() => void) | null
   getSketch: ((featureId: string) => Sketch | null) | null
+  // The live document feature's constraints. The solved map carries geometry
+  // only, so this is how the projection planner reuses a `projection` that is
+  // recorded but not in the solved entity map yet.
+  getProjectionConstraints: ((featureId: string) => readonly PartConstraint[] | null) | null
+  // Curve kind of a B-rep edge query. The dimension tool reads it from the
+  // hover; the constraint command has no hover, so the page supplies it from
+  // the body dispatch tables. Absent in a headless store use, where an edge
+  // projects with the line default.
+  resolveEdgeKind: ((query: string) => string | null) | null
   beginBrepProjection: (() => void) | null
   cancelBrepProjection: (() => void) | null
   // The authoring gate for a new constraint: true when the add would make the
@@ -41,6 +51,8 @@ export const sketchCallbacks: {
   onRebuild: null,
   onExitSketch: null,
   getSketch: null,
+  getProjectionConstraints: null,
+  resolveEdgeKind: null,
   beginBrepProjection: null,
   cancelBrepProjection: null,
   checkRedundantAdd: null,
@@ -61,6 +73,9 @@ export interface PendingConstraint {
   value?: number
   pos?: [number, number]
   sign?: number
+  /** The projections the add depends on, applied to the probe's draft copy
+   *  first so a target that does not exist in the document yet resolves. */
+  prelude?: readonly ProjectionPrelude[]
 }
 
 /** One user-facing message the store can raise without a command context. */
@@ -78,6 +93,8 @@ export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => void)
 export function setSketchCallback(key: 'onMutationBatch', cb: ((ms: Mutation[]) => void) | null): void
 export function setSketchCallback(key: 'onRebuild' | 'onExitSketch', cb: (() => void) | null): void
 export function setSketchCallback(key: 'getSketch', cb: ((featureId: string) => Sketch | null) | null): void
+export function setSketchCallback(key: 'getProjectionConstraints', cb: ((featureId: string) => readonly PartConstraint[] | null) | null): void
+export function setSketchCallback(key: 'resolveEdgeKind', cb: ((query: string) => string | null) | null): void
 export function setSketchCallback(key: 'beginBrepProjection' | 'cancelBrepProjection', cb: (() => void) | null): void
 export function setSketchCallback(key: 'checkRedundantAdd', cb: ((pending: PendingConstraint) => boolean) | null): void
 export function setSketchCallback(key: 'showMessage', cb: ((payload: SketchMessage) => void) | null): void
@@ -100,6 +117,8 @@ const SESSION_CALLBACK_KEYS = [
   'onRebuild',
   'onExitSketch',
   'getSketch',
+  'getProjectionConstraints',
+  'resolveEdgeKind',
   'beginBrepProjection',
   'cancelBrepProjection',
   'checkRedundantAdd',

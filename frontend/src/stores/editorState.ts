@@ -12,14 +12,14 @@
 // hooks/useEditorState.ts, and the historical name `useSketchEditorStore` is a
 // re-export of that binding from stores/sketchEditorStore.ts.
 import { createStore } from 'zustand/vanilla'
-import type { FilletCorner, PartDoc, PartStyleEntry, SelectionDomain } from '@/types/cad'
+import type { FilletCorner, Mutation, PartDoc, PartStyleEntry, SelectionDomain } from '@/types/cad'
 import type { DimensionPick } from '@/registry'
 import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND } from '@/registry'
 import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints, computeDimensionSign, computeAnglePlacementIsSupplement } from '@/utils/geometry/dimensionNaturalValue'
 import { deriveSelectionDomain, devOnly, testMode, failLoud } from './stateInvariants'
 import { isDrawingTool } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
-import { planBrepDimensionPick, refreshProjectedPickKinds } from '@/tools/dimensionProjection'
+import { planBrepDimensionPick, planProjectedOperand, classifyBrepOperand, refreshProjectedPickKinds, type PlannedProjection, type ProjectedEntityMutation } from '@/tools/operandProjection'
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
 import { randomId, canonicalLineDistanceTargets, isPointLikeEntityKind, pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
@@ -668,14 +668,52 @@ export const editorState = createStore<EditorState>((set, get) => ({
     if (selection.size === 0 || !activeFeatureId) return null
     const picked = [...selection].filter(t =>
       t.startsWith('entity:') || t.startsWith('vertex:') || t.startsWith('constraint:') || t.startsWith('@builtin_') || t.startsWith('dock:') || t.startsWith('isect:')
+      // A B-rep vertex/edge pick is a constraint operand too; it is projected
+      // into the sketch below rather than dropped by the sketch-only filter.
+      || classifyBrepOperand(t) !== null
     )
     if (picked.length === 0) return null
+
+    // A constraint can only name sketch operands. The origin and a B-rep
+    // vertex/edge are projected into the active sketch and the constraint names
+    // the projection: the sketch keeps a visible, deletable entity instead of a
+    // hidden external reference. The projected targets replace their operands
+    // in place, so operand order survives (line_distance reads line first).
+    const sketch = sketchCallbacks.getSketch?.(activeFeatureId) ?? null
+    const recorded = sketchCallbacks.getProjectionConstraints?.(activeFeatureId) ?? undefined
+    const planned: PlannedProjection[] = []
+    const projections: ProjectedEntityMutation[] = []
+    const kindByTarget = new Map<string, string>()
+    const resolved = picked.map(t => {
+      const brep = t === '@builtin_origin' ? { isVertex: true } : classifyBrepOperand(t)
+      if (brep === null) return t
+      const plan = planProjectedOperand({
+        query: t,
+        featureId: activeFeatureId,
+        sketch,
+        projections: recorded,
+        pending: planned,
+        isVertexPick: brep.isVertex,
+        sourceKind: brep.isVertex ? null : sketchCallbacks.resolveEdgeKind?.(t) ?? null,
+        newEntityId: () => randomId(12),
+      })
+      projections.push(...plan.mutations)
+      planned.push(plan)
+      kindByTarget.set(plan.target, plan.kind)
+      return plan.target
+    })
+
+    // A projected target is not in entityKindMap yet; the plan's kind stands in
+    // for the operator checks below.
+    const kindOf = (target: string): string | undefined =>
+      entityKindMap[target] ?? kindByTarget.get(target)
+
     // The redundancy probe and the mutation both see the canonical order, so a
     // point-first line_distance is tested (and stored) as line-first.
-    const targets = canonicalLineDistanceTargets(kind, picked, t => {
+    const targets = canonicalLineDistanceTargets(kind, resolved, t => {
       if (t.startsWith('vertex:') || t === '@builtin_origin') return 'point'
       if (!t.startsWith('entity:')) return undefined
-      const ek = entityKindMap[t]
+      const ek = kindOf(t)
       return ek === 'line' ? 'line' : isPointLikeEntityKind(ek) ? 'point' : undefined
     })
 
@@ -692,7 +730,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
       const groups = def.entityKindGroups
       const kinds = targets
         .filter(t => t.startsWith('entity:'))
-        .map(t => entityKindMap[t])
+        .map(t => kindOf(t))
         .filter((k): k is string => k !== undefined)
       const allOk = groups.some(g => kinds.every(k => g.includes(k)))
       if (!allOk) {
@@ -704,7 +742,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
       if (targets.length === 1) {
         const entityTargets = targets.filter(t => t.startsWith('entity:'))
         if (entityTargets.length === 1) {
-          const ek = entityKindMap[entityTargets[0]]
+          const ek = kindOf(entityTargets[0])
           if (ek !== undefined && ek !== 'line') {
             return `${label} applies to a line; the selected entity is a ${ek}.`
           }
@@ -726,12 +764,27 @@ export const editorState = createStore<EditorState>((set, get) => ({
     // overconstrain" of most CAD. The port runs the real solver on a draft copy
     // (Part.tsx owns the doc and the probe), so no mutation is created when the
     // add is refused; existing redundancy in a document is a solve fact, not an
-    // error, and is flagged there instead.
-    if (sketchCallbacks.checkRedundantAdd?.({ featureId: activeFeatureId, kind, targets })) {
+    // error, and is flagged there instead. The planned projections ride along as
+    // a prelude, or the probe sees a target that does not exist yet.
+    const pending: PendingConstraint = { featureId: activeFeatureId, kind, targets }
+    if (projections.length > 0) pending.prelude = projections
+    if (sketchCallbacks.checkRedundantAdd?.(pending)) {
       return overconstrainReason(kind)
     }
 
-    onMutation({ type: 'add_constraint', featureId: activeFeatureId, kind, targets })
+    const constraint: Mutation = { type: 'add_constraint', featureId: activeFeatureId, kind, targets }
+    if (projections.length === 0) {
+      onMutation(constraint)
+    } else if (sketchCallbacks.onMutationBatch) {
+      // Projection + constraint as one undo entry; a refused add above emitted
+      // nothing, so no orphan projection is ever left in the sketch.
+      sketchCallbacks.onMutationBatch([...projections, constraint])
+    } else {
+      // A headless port set without the batch seam: still one document act, two
+      // history entries. The editor build always registers onMutationBatch.
+      for (const m of projections) onMutation(m)
+      onMutation(constraint)
+    }
     return null
   },
 

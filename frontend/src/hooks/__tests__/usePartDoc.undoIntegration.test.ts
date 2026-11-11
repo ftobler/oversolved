@@ -937,6 +937,30 @@ describe('usePartDoc undo/redo integration', () => {
     expect(sketchEntitiesOf()).toHaveLength(0)
   })
 
+  it('a projected origin and its constraint are one undo step', () => {
+    docRef.current = makeSketchDoc()
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    act(() => {
+      result.current.commitMutationGroup([
+        { type: 'add_projected_entity', featureId: 'sk1', kind: 'point', source: '@builtin_origin', entityId: 'po' },
+        { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:po:xy', '@builtin_origin'] },
+      ] as Mutation[])
+    })
+
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(sketchEntitiesOf().map(e => e.id)).toEqual(['po'])
+    // The projection constraint and the coincident.
+    expect(sketchConstraintsOf().map(c => c.kind)).toEqual(['projection', 'coincident'])
+
+    act(() => { result.current.handleUndo() })
+
+    // One undo removes the projection entity, its projection constraint and the
+    // coincident together.
+    expect(sketchEntitiesOf()).toHaveLength(0)
+    expect(sketchConstraintsOf()).toHaveLength(0)
+  })
+
   it('deleting N selected features is one undo step', () => {
     docRef.current = {
       version: 1,

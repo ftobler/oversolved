@@ -76,7 +76,7 @@ describe('doc-ref-canon ratchets', () => {
     'utils/geometry/dragLogic.ts',
     'kernel/queryWire.ts',
     'kernel/features/sketch.ts',
-    'tools/dimensionProjection.ts',
+    'tools/operandProjection.ts',
     'utils/yamlMigrations.ts',
     'utils/yamlMutations/sketch.ts',
   ])

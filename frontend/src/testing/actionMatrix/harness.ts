@@ -88,7 +88,7 @@ export function installTarget(spec: PartDoc, target: MatrixTarget): void {
     }
   }
   useEditorState.setState({
-    normalSelection: target.kind === 'none' ? new Set<string>() : new Set<string>([target.id]),
+    normalSelection: target.kind === 'none' ? new Set<string>() : new Set<string>(target.selection ?? [target.id]),
     selectedPicks: new Map(),
     chipOwnedSelection: new Set(),
     activeFeatureId: target.featureId,
@@ -140,6 +140,10 @@ export function createMatrixHarness(spec: PartDoc, solver: MatrixSolver): Matrix
   setSketchCallback('getSketch', featureId => {
     const feature = cell.current?.features?.find(f => f.id === featureId)
     return feature?.kind === 'sketch' ? feature as unknown as Sketch : null
+  })
+  setSketchCallback('getProjectionConstraints', featureId => {
+    const feature = cell.current?.features?.find(f => f.id === featureId)
+    return feature?.kind === 'sketch' ? feature.constraints ?? [] : null
   })
   setSketchCallback('beginBrepProjection', () => { session.begin('brep') })
   setSketchCallback('cancelBrepProjection', () => {

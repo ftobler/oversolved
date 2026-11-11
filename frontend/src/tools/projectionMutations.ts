@@ -8,7 +8,7 @@ import type { Mutation } from '@/types/cad'
 import { parseQuery, emitWire, absolute } from '@/utils/query'
 import { isWholeBodySelectionId } from '@/utils/query/selectionId'
 import { isFaceRestriction, isEdgeRestriction } from '@/kernel/occ/primitives'
-import { projectedKindForEdge, PROJECTABLE_CURVE_KINDS } from '@/tools/dimensionProjection'
+import { projectedKindForEdge, PROJECTABLE_CURVE_KINDS } from '@/tools/operandProjection'
 
 /** Everything the pure lowering needs from the outside world, injected so the
  *  click path can answer from hover state and the selection path from the

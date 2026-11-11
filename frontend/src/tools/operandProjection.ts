@@ -1,16 +1,19 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 //
-// Dimensioning against B-rep geometry. A dimension constraint can only name
-// sketch elements, so a body edge / vertex the user picks with the dimension
-// tool is first materialised as a projected entity in the active sketch (the
-// same `add_projected_entity` the project tool emits); the pick then targets
-// that projection. Picking the same body element twice reuses the projection
-// already in the sketch instead of stacking duplicates.
+// Constraint and dimension operands against B-rep geometry. A sketch constraint
+// can only name sketch elements, so a body edge / vertex (or the document
+// origin) the user picks is first materialised as a projected entity in the
+// active sketch (the same `add_projected_entity` the project tool emits); the
+// constraint or dimension then targets that projection. Picking the same body
+// element twice reuses the projection already in the sketch or planned earlier
+// in the same act instead of stacking duplicates.
 import type { DimensionPick } from '@/registry'
 import type { Mutation, Sketch } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
+import { parseQuery } from '@/utils/query'
 import { parseSelectionId } from '@/utils/query/selectionId'
+import { isEdgeRestriction, isVertexRestriction } from '@/kernel/occ/primitives'
 
 /** Base curve entity kinds a projected body edge can lower to; anything else is
  *  a line. A vertex projects as 'point', which is not a curve and is handled by
@@ -29,7 +32,8 @@ export function projectedKindForEdge(sourceKind: string | null | undefined): str
   return sourceKind && PROJECTABLE_CURVE_KINDS.has(sourceKind) ? sourceKind : 'line'
 }
 
-interface ProjectionConstraintLike {
+export interface ProjectionConstraintLike {
+  id?: string
   kind?: string
   target?: unknown
   source?: unknown
@@ -84,21 +88,40 @@ export function findProjectionOf(input: unknown, source: string): string | null 
 
 export interface BrepDimensionPlan {
   // Empty when an existing projection of the same source is reused.
-  mutations: Mutation[]
+  mutations: ProjectedEntityMutation[]
   pick: DimensionPick
 }
 
-export interface BrepDimensionPlanInput {
-  // The B-rep ancestry query under the cursor (an edge or a vertex).
+export type ProjectedEntityMutation = Extract<Mutation, { type: 'add_projected_entity' }>
+
+/** One projection already planned earlier in the same act, or a pending
+ *  dimension pick. The source is absent on a plain sketch pick, which the
+ *  planner never matches. */
+export interface PlannedProjection {
+  source?: string
+  target: string
+  isVertex: boolean
+  entityKind?: string | null
+  // A ProjectedOperandPlan carries the plan kind here; a dimension pick carries
+  // entityKind instead.
+  kind?: string
+}
+
+export interface ProjectedOperandPlanInput {
   query: string
   featureId: string
   // The active sketch as last solved, used to find an existing projection.
   sketch: Sketch | null
-  /** Picks already made in this dimension gesture. A projection created by an
-   *  earlier pick is not in `sketch` until its solve lands, so it is matched
-   *  here instead -- otherwise clicking one body edge twice (the same-entity
-   *  path to a length dim) would project it twice and read as two lines. */
-  picks?: readonly DimensionPick[]
+  /** The live document feature's constraints. The solved map carries geometry
+   *  only, so a projection recorded on the feature (its `source`) is matched
+   *  here; without it a second pick of the same source would stack a duplicate
+   *  before the next solve. */
+  projections?: readonly ProjectionConstraintLike[]
+  /** Projections already planned in this act. A projection created by an
+   *  earlier operand is not in `sketch` until its solve lands, so it is matched
+   *  here instead -- otherwise two operands on one body edge would project it
+   *  twice and read as two lines. */
+  pending?: readonly PlannedProjection[]
   // True when the query came from the B-rep vertex layer.
   isVertexPick: boolean
   // Curve kind of the picked edge, when the body reported one.
@@ -106,45 +129,125 @@ export interface BrepDimensionPlanInput {
   newEntityId: () => string
 }
 
+export interface ProjectedOperandPlan {
+  // Empty when an existing projection of the same source is reused.
+  mutations: ProjectedEntityMutation[]
+  // The operand that was planned, so the caller can feed the plan straight back
+  // in as `pending` for the next operand of the same act.
+  source: string
+  target: string
+  // The resolved (or pick-time) projected kind. `point` targets the projection's
+  // xy vertex; a curve targets the entity.
+  kind: string
+  isVertex: boolean
+}
+
+export interface BrepDimensionPlanInput extends ProjectedOperandPlanInput {
+  // The dimension gesture names its earlier picks here; they are the same
+  // shape as a planned projection.
+  picks?: readonly DimensionPick[]
+}
+
+/** Classify an ancestry B-rep pick as a vertex or edge operand, else null. A
+ *  face or plane names no single sketch operand and is deliberately not
+ *  projectable here. Only the `?` ancestry form is a viewport B-rep pick; the
+ *  topo fallback `@body/kind/index` form is not accepted, matching the project
+ *  and dimension paths. */
+export function classifyBrepOperand(id: string): { isVertex: boolean } | null {
+  if (!id.startsWith('?')) return null
+  try {
+    const q = parseQuery(id)
+    if (q.kind !== 'ancestry') return null
+    if (isVertexRestriction(q.typeRestriction)) return { isVertex: true }
+    if (isEdgeRestriction(q.typeRestriction)) return { isVertex: false }
+  } catch {
+    // Not a query shape this planner accepts (a malformed id must not throw a
+    // click path); the caller keeps it as a plain operand.
+  }
+  return null
+}
+
+/** Entity id of a recorded projection constraint of `source`, else null. */
+function recordedProjectionOf(
+  constraints: readonly ProjectionConstraintLike[] | undefined,
+  source: string,
+): string | null {
+  for (const c of constraints ?? []) {
+    if (c.kind === 'projection' && c.source === source && typeof c.target === 'string') {
+      return String(c.target).replace(/^\$/, '')
+    }
+  }
+  return null
+}
+
 /** An entity already projected from `query`, from either lookup, else null. */
 function findExistingProjection(
   query: string,
   sketch: Sketch | null,
-  picks: readonly DimensionPick[],
+  projections: readonly ProjectionConstraintLike[] | undefined,
+  pending: readonly PlannedProjection[],
+  isVertexPick: boolean,
+  sourceKind: string | null | undefined,
 ): { entityId: string; kind: string } | null {
-  const solvedId = findProjectionOf(sketch, query)
+  const solvedId = recordedProjectionOf(projections, query) ?? findProjectionOf(sketch, query)
   // The solved sketch wins: the lowerer may have promoted the kind the pick
   // was made with (a tilted circle projects as an ellipse).
-  if (solvedId !== null) return { entityId: solvedId, kind: getEntityKind(sketch![solvedId]) }
+  if (solvedId !== null) {
+    const entity = sketch?.[solvedId]
+    // A projection constraint can be newer than the solved geometry (the user
+    // acted again before the solve landed); the declared kind is the best
+    // answer then, and the next solve reconciles it.
+    return entity
+      ? { entityId: solvedId, kind: getEntityKind(entity) }
+      : { entityId: solvedId, kind: isVertexPick ? 'point' : projectedKindForEdge(sourceKind) }
+  }
 
-  const pending = picks.find(p => p.source === query)
-  if (!pending) return null
-  const sel = parseSelectionId(pending.target)
+  const earlier = pending.find(p => p.source === query)
+  if (!earlier) return null
+  const sel = parseSelectionId(earlier.target)
   if (sel.kind !== 'entity' && sel.kind !== 'vertex') return null
-  return { entityId: sel.eid, kind: pending.isVertex ? 'point' : pending.entityKind ?? 'line' }
+  return { entityId: sel.eid, kind: earlier.isVertex ? 'point' : earlier.kind ?? earlier.entityKind ?? 'line' }
 }
 
 /**
- * Turn a B-rep pick into the projection to create (if any) plus the dimension
- * pick that targets it. The projected point of a vertex pick is dimensioned
- * through its `xy` vertex, so it pairs with sketch vertices for a distance dim.
+ * Turn a non-sketch operand (the document origin, a B-rep vertex/edge) into the
+ * projection to create (if any) plus the target ref a constraint should name.
+ * A projected point is targeted through its `xy` vertex, so it pairs with
+ * sketch vertices for a distance or coincident.
  */
-export function planBrepDimensionPick(input: BrepDimensionPlanInput): BrepDimensionPlan {
-  const { query, featureId, sketch, picks = [], isVertexPick, sourceKind, newEntityId } = input
+export function planProjectedOperand(input: ProjectedOperandPlanInput): ProjectedOperandPlan {
+  const { query, featureId, sketch, projections, pending = [], isVertexPick, sourceKind, newEntityId } = input
 
-  const existing = findExistingProjection(query, sketch, picks)
+  const existing = findExistingProjection(query, sketch, projections, pending, isVertexPick, sourceKind)
   const kind = existing?.kind
     ?? (isVertexPick ? 'point' : projectedKindForEdge(sourceKind))
   const entityId = existing?.entityId ?? newEntityId()
 
-  const mutations: Mutation[] = existing
+  const mutations: ProjectedEntityMutation[] = existing
     ? []
     : [{ type: 'add_projected_entity', featureId, kind, source: query, entityId }]
 
-  const pick: DimensionPick = kind === 'point'
-    ? { isVertex: true, target: `vertex:${featureId}:${entityId}:xy`, entityKind: null, source: query }
-    : { isVertex: false, target: `entity:${featureId}:${entityId}`, entityKind: kind, source: query }
+  const isVertex = kind === 'point'
+  const target = isVertex
+    ? `vertex:${featureId}:${entityId}:xy`
+    : `entity:${featureId}:${entityId}`
 
+  return { mutations, source: query, target, kind, isVertex }
+}
+
+/**
+ * Turn a B-rep pick into the projection to create (if any) plus the dimension
+ * pick that targets it. The dimension path wraps the shared planner's answer,
+ * so the click path and the constraint command cannot disagree about reuse.
+ */
+export function planBrepDimensionPick(input: BrepDimensionPlanInput): BrepDimensionPlan {
+  const { mutations, target, kind, isVertex } = planProjectedOperand({
+    ...input,
+    pending: input.picks,
+  })
+  const pick: DimensionPick = isVertex
+    ? { isVertex: true, target, entityKind: null, source: input.query }
+    : { isVertex: false, target, entityKind: kind, source: input.query }
   return { mutations, pick }
 }
 

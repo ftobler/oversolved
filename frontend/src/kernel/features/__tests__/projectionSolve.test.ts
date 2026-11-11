@@ -234,6 +234,69 @@ describe('solveSketch projection lowering', () => {
   })
 })
 
+describe('solveSketch projects the document origin as a point', () => {
+  beforeEach(() => {
+    resetSketchSolver()
+    if (solveBytes) setSketchSolver(solveBytes)
+  })
+
+  // The origin is registered as `{external_xy: [0,0]}` with no sketch, so the
+  // lowerer lifts it to the document origin rather than the sketch plane's 0,0.
+  const originPoint = { external_xy: [0, 0] }
+
+  function repoOf(entries: Dict): Repository {
+    return {
+      query: (q: string) => (q in entries ? entries[q] : null),
+      elements: new Map(Object.entries(entries)),
+    } as unknown as Repository
+  }
+
+  const originFeature = (plane: string): Dict => ({
+    id: 'sk1', kind: 'sketch', plane,
+    entities: [{ id: 'p0', kind: 'point' }],
+    initial: {},
+    constraints: [{ id: 'proj_p0', kind: 'projection', target: '$p0', source: '@builtin_origin' }],
+  })
+
+  it('lands at the document origin on Front, an offset plane and a face sketch', () => {
+    if (!solveBytes) return
+    const offsetPlane = { origin: [5, 5, 10], normal: [0, 0, 1], x_axis: [1, 0, 0], y_axis: [0, 1, 0] }
+    // The +Z face of the Ex002 block: x +Y, y -X, centroid 5 above the origin.
+    const facePlane = { origin: [0, 0, 5], normal: [0, 0, 1], x_axis: [0, 1, 0], y_axis: [-1, 0, 0] }
+    const cases = [
+      { plane: '@builtin_plane_front', entries: { '@builtin_origin': originPoint }, expected: [0, 0] },
+      { plane: 'op1', entries: { '@builtin_origin': originPoint, op1: offsetPlane }, expected: [-5, -5] },
+      { plane: '?face', entries: { '@builtin_origin': originPoint, '?face': facePlane }, expected: [0, 0] },
+    ]
+    for (const c of cases) {
+      const out = solveSketch(originFeature(c.plane), repoOf(c.entries), {} as Record<string, Body>)
+      expect(out.projection_errors ?? []).toEqual([])
+      expect(out.geometry?.p0?.[0]).toBeCloseTo(c.expected[0])
+      expect(out.geometry?.p0?.[1]).toBeCloseTo(c.expected[1])
+    }
+  })
+
+  it('fully constrains the Ex002 hole: centre coincident with the projected origin, plus a diameter', () => {
+    if (!solveBytes) return
+    const facePlane = { origin: [0, 0, 5], normal: [0, 0, 1], x_axis: [0, 1, 0], y_axis: [-1, 0, 0] }
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '?face',
+      entities: [{ id: 'c0', kind: 'circle' }, { id: 'p0', kind: 'point' }],
+      initial: { c0: [3, 4, 3] },
+      constraints: [
+        { id: 'proj_p0', kind: 'projection', target: '$p0', source: '@builtin_origin' },
+        { id: 'c_co', kind: 'coincident', a: { entity: 'c0', point: 'center' }, b: { entity: 'p0', point: 'xy' } },
+        { id: 'c_dia', kind: 'diameter', target: '$c0', value: 6 },
+      ],
+    }
+    const out = solveSketch(feature, repoOf({ '@builtin_origin': originPoint, '?face': facePlane }), {} as Record<string, Body>)
+    expect(out.status).toBe('fully_constrained')
+    expect(out.geometry?.c0?.[0]).toBeCloseTo(0)
+    expect(out.geometry?.c0?.[1]).toBeCloseTo(0)
+    expect(out.geometry?.c0?.[2]).toBeCloseTo(3)
+  })
+})
+
 describe('solveSketch pins projected entities (fix-projected-entities-pinned)', () => {
   beforeEach(() => {
     resetSketchSolver()

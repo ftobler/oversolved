@@ -844,7 +844,12 @@ banner on stdout, so a client config must use the direct node invocation.
   degrees and arcs sweeping counter-clockwise). An `add_entity` end that meets a
   neighbour does so only by coordinate, so it is not constrained to it; a line
   that closes a profile onto an existing end should pin it instead, with
-  `add_entity_with_constraint` or an explicit `coincident`. `import_dxf` takes the
+  `add_entity_with_constraint` or an explicit `coincident`. `add_constraint` is a
+  plain doc op: it still accepts `@builtin_origin` for old documents, but to
+  leave a visible, deletable entity in the sketch, project the operand first
+  with `add_projected_entity` (kind `point` for the origin) and name the
+  projection as the target. A bare `@builtin_origin` solves but leaves nothing
+  in the sketch. `import_dxf` takes the
   ASCII DXF text inline (`content`) or the id of a DXF entry in the run's `files` map
   (`file`; give exactly one of the two), parses it with the same module the sketch
   toolbar's file picker uses, and appends the supported entities to one sketch
