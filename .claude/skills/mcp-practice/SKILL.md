@@ -90,8 +90,10 @@ instructions.
   example run through `frontend/scripts/cadqueryReference.py`, see
   `docs/translate.md`; CadQuery is in `.venv`). Optional.
 - At the end, `run` with `returnDoc: true` and save the document as
-  `bugreports/mcp-practice/<slug>/doc.yaml` (or `.json`). Save intermediate
-  documents that show a bug as `bugreports/mcp-practice/<slug>/bug-<n>.yaml`.
+  `bugreports/mcp-practice/<slug>/<slug>.yaml` (or `.json`). Save intermediate
+  documents that show a bug as `bugreports/mcp-practice/<slug>/<slug>.bug-<n>.yaml`.
+  The file is named after the slug, not `doc`, so documents imported from
+  several runs keep telling apart which example they came from.
 - Keep track of the `run` calls in the `docHash` chain that led to the final
   document, with their steps as sent: section 4 needs them.
 
