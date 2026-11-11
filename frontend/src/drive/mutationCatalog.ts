@@ -334,7 +334,7 @@ const HOLE_FIELD_NOTE =
   'The sketch\'s non-construction points are drilled, each at the feature `diameter`. ' +
   'A circle is a profile, not a drill site: a whole-sketch pick ignores it, and a circle picked alone is refused. ' +
   'To cut a drawn circle, use `add_extrude` with `operation: cut` (`termination: through_all` for a through bore). ' +
-  'Construction points are reference geometry, so a whole-sketch pick skips them (or a point an author flags construction); ' +
+  'Construction points are reference geometry, so a whole-sketch pick skips a point an author flags construction; ' +
   'line endpoints are not drill sites, while add_center_rect\'s helper centre point is an ordinary point and does drill. ' +
   'A single point picked alone drills only that one, and a picked construction point is refused. ' +
   '`style` widens the mouth: `counterbore` reads `cb_diameter` and `cb_depth`, `countersink` reads `cb_diameter` and `cs_angle` (degrees, default 90); absent means `simple`. ' +
