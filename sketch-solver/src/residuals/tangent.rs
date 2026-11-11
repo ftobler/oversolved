@@ -178,8 +178,9 @@ impl Problem<'_> {
             } else {
                 let (cx, cy) = (arc_ep[0], arc_ep[1]);
                 let num = (cx - line_ep[0]) * line_dir[1] - (cy - line_ep[1]) * line_dir[0];
-                // |num| kinks only at a zero centre distance, which meets the
-                // target only at radius 0: not a valid circle, so no fix here.
+                // |num| kinks only at a zero centre distance, where the residual
+                // is satisfied only when the radius is 0: not a valid circle, so
+                // no fix here.
                 r.push(num.abs() - arc_ep[2]);
             }
         } else if self.kind_of(arc_idx) == Kind::Ellipse {

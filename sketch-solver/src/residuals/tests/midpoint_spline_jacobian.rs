@@ -392,7 +392,8 @@ fn radius_difference_dimension() {
     let r = p.residuals(&x);
     assert_eq!(r.len(), 1);
     assert!((r[0] - (-1.0)).abs() < 1e-12, "radius diff: {}", r[0]);
-    // The finite-difference Jacobian is well-defined away from rA == rB.
+    // The analytic row (`jac_radius_difference`) is well-defined away from
+    // rA == rB, and its signum keeps a zero gap full rank.
     let analytic = p.jacobian(&x, n);
     assert_eq!(analytic.nrows(), 1);
 }

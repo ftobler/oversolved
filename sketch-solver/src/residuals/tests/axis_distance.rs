@@ -100,6 +100,62 @@ fn the_axis_derivative_matches_finite_difference_away_from_zero() {
     }
 }
 
+#[test]
+fn the_axis_derivative_matches_finite_difference_with_the_entity_in_the_a_slot() {
+    // The entity may be either operand. In the A slot the row carries the
+    // negated point Jacobian, and an arc end or an ellipse axis endpoint reads
+    // the angle/axis columns the identity arms never touch, so this pins the
+    // mirror of the analytic row.
+    let cases = [
+        (
+            Kind::Arc,
+            [0.0, 0.0, 2.0, 10.0, 95.0],
+            PointSelector::End,
+            ConstraintKind::PointDistanceX,
+        ),
+        (
+            Kind::Arc,
+            [0.0, 0.0, 2.0, 10.0, 95.0],
+            PointSelector::Start,
+            ConstraintKind::PointDistanceY,
+        ),
+        (
+            Kind::Ellipse,
+            [0.0, 0.0, 2.0, 1.0, 20.0],
+            PointSelector::Major,
+            ConstraintKind::PointDistanceX,
+        ),
+        (
+            Kind::Ellipse,
+            [0.0, 0.0, 2.0, 1.0, 20.0],
+            PointSelector::Minor,
+            ConstraintKind::PointDistanceY,
+        ),
+    ];
+    for (entity_kind, params, selector, dim_kind) in cases {
+        let constraint = Constraint {
+            kind_code: dim_kind.to_u8(),
+            refs: ab(e_ref(0, selector), Ref::External { x: 4.0, y: 3.0 }),
+            value: Some(1.5),
+            ..Default::default()
+        };
+        let inp = input(vec![ent(entity_kind, 0)], params.to_vec(), vec![constraint]);
+        let p = Problem::new(&inp);
+        let x = p.x0.clone();
+        let n = x.len();
+        let analytic = p.jacobian(&x, n);
+        let fd = solver_core::lm::fd_jacobian(&|xx: &[f64]| p.residuals(xx), &x, 1);
+        for col in 0..n {
+            assert!(
+                (analytic[(0, col)] - fd[(0, col)]).abs() < 1e-5,
+                "{entity_kind:?} {selector:?} {dim_kind:?}: col {col} analytic {} fd {}",
+                analytic[(0, col)],
+                fd[(0, col)],
+            );
+        }
+    }
+}
+
 fn two_circles(ra: f64, rb: f64, value: f64) -> Input {
     input(
         vec![ent(Kind::Circle, 0), ent(Kind::Circle, 3)],
