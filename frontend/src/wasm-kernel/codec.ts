@@ -78,7 +78,7 @@ export const CONSTRAINT_FLAG = {
   dropped: 1 << 1,
 } as const
 
-// Rev 7 of the wire layout. `SKG6`/`SKR6` carry the dropped verdict bit: the
+// Rev 6 of the wire layout. `SKG6`/`SKR6` carry the dropped verdict bit: the
 // byte layout is unchanged but the meaning of `constraint_flags` grew, and an
 // older solver would read a dropped constraint as unflagged. `SKG5` added the
 // header's storage quantum; `SKR5` added the per-entity moved bitmask before
