@@ -376,6 +376,18 @@ describe('computeConstraintRender (dimensions against @builtin_origin)', () => {
     expect(r.entity).toBe('PT')
   })
 
+  it('point_distance_y renders with the origin in the b slot', () => {
+    const r = computeConstraintRender(
+      originDist('point_distance_y', '$PT', '@builtin_origin'),
+      makeSketch(),
+      { originLocal: FACE_ORIGIN },
+    ) as DimLinearRender
+    expect(r.kind).toBe('dim_linear')
+    expect(r.p1).toEqual([6, 1])
+    expect(r.p2).toEqual([6, -2])
+    expect(r.entity).toBe('PT')
+  })
+
   it('point_distance renders the euclidean distance from the origin', () => {
     const r = computeConstraintRender(
       originDist('point_distance', '@builtin_origin', '$PT'),
@@ -386,6 +398,18 @@ describe('computeConstraintRender (dimensions against @builtin_origin)', () => {
     expect(r.dimKind).toBe('point_distance')
     expect(r.p1).toEqual([5, -2])
     expect(r.p2).toEqual([7, 1])
+    expect(r.entity).toBe('PT')
+  })
+
+  it('point_distance renders with the origin in the b slot', () => {
+    const r = computeConstraintRender(
+      originDist('point_distance', '$PT', '@builtin_origin'),
+      makeSketch(),
+      { originLocal: FACE_ORIGIN },
+    ) as DimLinearRender
+    expect(r.kind).toBe('dim_linear')
+    expect(r.p1).toEqual([7, 1])
+    expect(r.p2).toEqual([5, -2])
     expect(r.entity).toBe('PT')
   })
 
@@ -427,5 +451,31 @@ describe('computeConstraintRender (dimensions against @builtin_origin)', () => {
     const render = map[c.id].render as DimLinearRender
     expect(render.kind).toBe('dim_linear')
     expect(render.dimKind).toBe('point_distance_x')
+  })
+})
+
+describe('computeConstraintRender (invalid origin operands stay selectable)', () => {
+  // These documents should not exist, but an old or hand-edited one can name
+  // the origin where a line/arc is required. The tile must still draw at the
+  // real operand and never list the origin as an entity.
+  it('colinear anchors on the resolvable operand, not the generic fallback tile', () => {
+    const r = computeConstraintRender(
+      { id: 'C', kind: 'colinear', a: '@builtin_origin', target: '$H1' },
+      makeSketch(),
+    ) as SymbolRender
+    expect(r.kind).toBe('symbol_colinear')
+    expect(r.at).toEqual([0, 0])
+    expect(r.entity).toBe('H1')
+    expect(r.entities).toEqual(['H1'])
+  })
+
+  it('tangent keeps the origin out of its selectable entity list', () => {
+    const r = computeConstraintRender(
+      { id: 'T', kind: 'tangent', a: '$circ1', b: '@builtin_origin' },
+      makeSketch(),
+    ) as SymbolRender
+    expect(r.kind).toBe('symbol_tangent')
+    expect(r.entity).toBe('circ1')
+    expect(r.entities).toEqual(['circ1'])
   })
 })

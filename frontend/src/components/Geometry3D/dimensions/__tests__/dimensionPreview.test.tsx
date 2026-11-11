@@ -74,6 +74,7 @@ beforeEach(() => {
     activeTool: 'dimension',
     dimensionPicks: PICKS,
     dimensionCursorWorld: null,
+    activeOriginLocal: [0, 0],
   })
 })
 
@@ -202,5 +203,28 @@ describe('DimensionPreview point_distance mode switching', () => {
 
   it('keeps the euclidean kind when the cursor sits on the anchor', () => {
     expect(renderPointDistance([5, 0]).kind).toBe('point_distance')
+  })
+})
+
+describe('DimensionPreview origin threading', () => {
+  it('reads the active sketch origin from the store for the ghost dimension', () => {
+    // Geometry3D publishes the solve result's originLocal here while editing.
+    // Both the measured value and the ghost render must see the same point the
+    // commit path (finalizeDimensionPlacement) reads.
+    useEditorState.setState({
+    activeOriginLocal: [5, -2],
+    dimensionPicks: [
+        { isVertex: true, target: '@builtin_origin' },
+        { isVertex: true, target: 'vertex:S1:PT:xy' },
+      ],
+    dimensionCursorWorld: null,
+  })
+    spies.resolveDimension.mockReturnValue({ constraintKind: 'point_distance' })
+    spies.dimensionTargets.mockReturnValue(['@builtin_origin', 'vertex:S1:PT:xy'])
+    spies.computeConstraintRender.mockReturnValue({ kind: 'dim_linear', p1: [5, -2], p2: [7, 1], normal: [0, 1], value: 3 })
+    renderPreview()
+
+    expect(spies.computeNaturalDimensionValue.mock.calls.at(-1)![4]).toEqual([5, -2])
+    expect(spies.computeConstraintRender.mock.calls.at(-1)![2]).toEqual({ originLocal: [5, -2] })
   })
 })

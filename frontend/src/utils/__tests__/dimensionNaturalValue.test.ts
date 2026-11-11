@@ -233,6 +233,19 @@ describe('computeDimensionSign', () => {
     expect(computeDimensionSign('line_distance', ['vertex:S1:P3', 'entity:S1:L1'], sk, FID)).toBe(-1)
   })
 
+  it('point_distance_x: an origin operand signs against the local origin', () => {
+    const sk = makeSketch()  // P1 (2,0); the face origin is (5,-2)
+    // P1 is 3 to the -x side of the face origin, so a dimension from the
+    // origin to P1 must pin the negative side and stop the solver flipping it.
+    // Before the origin was threaded this render was unknown and the sign null.
+    expect(computeDimensionSign(
+      'point_distance_x', ['@builtin_origin', 'vertex:S1:P1'], sk, FID, [5, -2],
+    )).toBe(-1)
+    expect(computeDimensionSign(
+      'point_distance_x', ['vertex:S1:P1', '@builtin_origin'], sk, FID, [5, -2],
+    )).toBe(1)
+  })
+
   it('returns null for non-directional dimension kinds', () => {
     const sk = makeSketch()
     expect(computeDimensionSign('length', ['entity:S1:L1'], sk, FID)).toBeNull()
