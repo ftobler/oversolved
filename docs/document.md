@@ -40,10 +40,15 @@ A stored number is a number **in the document's length unit**. `length_unit` is
 `mm` or `inch`; absent means `mm`, which is the canonical spelling and keeps
 every document written before the field byte-identical. The unit never rewrites
 a value: changing it *reinterprets* the numbers (the same `0.5` becomes half an
-inch instead of half a millimetre, and the part is 25.4x bigger physically), the
-one `set_length_unit` mutation does that as one undo entry, and the unit row in
-the part export dialog dispatches it (applied once the download succeeds, so a
-cancel leaves the document alone). The scale lives at the file boundary: STEP and STL
+inch instead of half a millimetre, and the part is 25.4x bigger physically), and
+one `set_length_unit` mutation does that as one undo entry. Two controls dispatch
+it. The view options menu's unit row switches immediately and is undoable, and it
+also works while a feature or sketch edit is open: the session owns the undo
+boundary, so the write is not deferred and undo can take it back. The export
+dialog's unit row applies with the download, so a cancel or a failed export
+leaves the document alone (and the dialog refuses to open during an edit). The
+menu row is part-editor only, because an assembly document has no unit of its
+own. The scale lives at the file boundary: STEP and STL
 are written in millimetres, so an inch document's shape is scaled by 25.4 on
 export (`kernel/solveLocally.ts` `serialiseShape`) and the file carries the
 millimetres every consumer expects. Measure readouts and the feature editor's
