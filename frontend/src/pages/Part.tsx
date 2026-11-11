@@ -987,13 +987,20 @@ export default function Part() {
     setSketchCallback('getSketch', (featureId: string) => {
       return solveResults?.[featureId]?.solved ?? null
     })
+    // The projection planner needs the document feature's projection
+    // constraints: the solved map carries geometry only, so a source projected
+    // but not yet solved would otherwise be stacked again.
+    setSketchCallback('getProjectionConstraints', (featureId: string) => {
+      const feature = docRef.current?.features?.find((f) => f.id === featureId)
+      return feature?.kind === 'sketch' ? feature.constraints ?? [] : null
+    })
     // The constraint command projects a picked body edge by its curve kind; the
     // dimension tool reads the same fact from the hover instead.
     setSketchCallback('resolveEdgeKind', (query: string) => findEdgeKindForQuery(query) ?? null)
     return () => {
       clearSketchCallbacks()
     }
-  }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, checkRedundantAdd, showMessage, solveResults])
+  }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, checkRedundantAdd, showMessage, solveResults, docRef])
 
   // The sketch editor store is module-level and survives a Part unmount, so a
   // remounted Part (WorkspacePage keys it by entry) would otherwise inherit the

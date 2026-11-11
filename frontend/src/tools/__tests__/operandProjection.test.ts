@@ -48,6 +48,18 @@ describe('planProjectedOperand', () => {
     expect(target).toBe('vertex:S1:P1:xy')
   })
 
+  it('reuses a recorded projection whose entity has not solved yet', () => {
+    // The constraint can land before the next solve: reuse it without throwing
+    // on the missing entity, and fall back to the declared point kind.
+    const { mutations, target, kind } = plan({
+      sketch: {},
+      projections: [{ id: 'proj_P1', kind: 'projection', target: '$P1', source: ORIGIN }],
+    })
+    expect(mutations).toEqual([])
+    expect(target).toBe('vertex:S1:P1:xy')
+    expect(kind).toBe('point')
+  })
+
   it('declares a B-rep edge projection with the edge curve kind', () => {
     const { mutations, target, kind, isVertex } = plan({
       query: EDGE_Q, isVertexPick: false, sourceKind: 'circle',

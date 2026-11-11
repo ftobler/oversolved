@@ -306,9 +306,12 @@ describe('sketchEditorStore', () => {
       const batch = vi.fn()
       setSketchCallback('onMutation', handler)
       setSketchCallback('onMutationBatch', batch)
-      setSketchCallback('getSketch', () => ({
-        P1: { x: 0, y: 0, projected: true, source: '@builtin_origin' },
-      }) as never)
+      setSketchCallback('getSketch', () => ({ P1: { x: 0, y: 0 } }) as never)
+      // The production port reads the document feature's constraints; the
+      // solved map carries geometry only.
+      setSketchCallback('getProjectionConstraints', () => ([
+        { id: 'proj_P1', kind: 'projection', target: '$P1', source: '@builtin_origin' },
+      ] as never))
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:c1:center')
       useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
@@ -365,6 +368,28 @@ describe('sketchEditorStore', () => {
         type: 'add_projected_entity', featureId: 'S1', kind: 'point', source: bodyVertex,
       })
       expect(group[1].targets[1]).toBe(`vertex:S1:${group[0].entityId}:xy`)
+    })
+
+    it('projects a B-rep edge with its curve kind for the operand-kind check', () => {
+      const handler = vi.fn()
+      const batch = vi.fn()
+      const bodyEdge = emitWire(ancestry(['@b1'], 'edge'))
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('onMutationBatch', batch)
+      setSketchCallback('resolveEdgeKind', () => 'circle')
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().setEntityKindMap({ 'entity:S1:C1': 'circle' })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:C1')
+      useSketchEditorStore.getState().toggleNormalSelection(bodyEdge)
+
+      useSketchEditorStore.getState().applyConstraint('concentric')
+
+      expect(batch).toHaveBeenCalledOnce()
+      const group = batch.mock.calls[0][0]
+      expect(group[0]).toMatchObject({
+        type: 'add_projected_entity', featureId: 'S1', kind: 'circle', source: bodyEdge,
+      })
+      expect(group[1].targets).toEqual(['entity:S1:C1', `entity:S1:${group[0].entityId}`])
     })
 
     it('asks the redundancy gate with the pending add and authors on a false answer', () => {

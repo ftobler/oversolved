@@ -680,6 +680,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
     // hidden external reference. The projected targets replace their operands
     // in place, so operand order survives (line_distance reads line first).
     const sketch = sketchCallbacks.getSketch?.(activeFeatureId) ?? null
+    const recorded = sketchCallbacks.getProjectionConstraints?.(activeFeatureId) ?? undefined
     const planned: PlannedProjection[] = []
     const projections: ProjectedEntityMutation[] = []
     const kindByTarget = new Map<string, string>()
@@ -690,6 +691,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
         query: t,
         featureId: activeFeatureId,
         sketch,
+        projections: recorded,
         pending: planned,
         isVertexPick: brep.isVertex,
         sourceKind: brep.isVertex ? null : sketchCallbacks.resolveEdgeKind?.(t) ?? null,

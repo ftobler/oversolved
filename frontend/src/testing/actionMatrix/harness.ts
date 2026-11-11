@@ -141,6 +141,10 @@ export function createMatrixHarness(spec: PartDoc, solver: MatrixSolver): Matrix
     const feature = cell.current?.features?.find(f => f.id === featureId)
     return feature?.kind === 'sketch' ? feature as unknown as Sketch : null
   })
+  setSketchCallback('getProjectionConstraints', featureId => {
+    const feature = cell.current?.features?.find(f => f.id === featureId)
+    return feature?.kind === 'sketch' ? feature.constraints ?? [] : null
+  })
   setSketchCallback('beginBrepProjection', () => { session.begin('brep') })
   setSketchCallback('cancelBrepProjection', () => {
     const brep = session.transactions().find(txn => txn.kind === 'brep')
