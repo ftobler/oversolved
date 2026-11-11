@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors, anchorIdFor, anchorKindHasAxis, anchorByDescriptor, ANCHOR_TIE_EPSILON_SQ, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint, PART_FRAME_ANCHORS, partFrameAnchorId } from '../partBundle'
-import type { Anchor, AnchorKind } from '../partBundle'
+import { toEdgeCurve, toBodyMesh, toPartBundle, scaleBundleToMillimetres, extractBodyAnchors, anchorIdFor, anchorKindHasAxis, anchorByDescriptor, ANCHOR_TIE_EPSILON_SQ, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint, PART_FRAME_ANCHORS, partFrameAnchorId } from '../partBundle'
+import type { Anchor, AnchorKind, PartBundle } from '../partBundle'
 import type { EdgeData, BodyResult, FaceData, MateAnchorDescriptor } from '../../types/cad'
 import { initGlobalRepo } from '../query'
 import { resolvePlaneRef } from '../features/shared/planes'
@@ -464,6 +464,62 @@ describe('toPartBundle', () => {
     expect(new Set(ids).size).toBe(2)
     const base = anchorIdFor('@u|f:0,0,0|0,0,1', 'plane')
     expect(ids.sort()).toEqual([base, `${base}_2`].sort())
+  })
+})
+
+describe('scaleBundleToMillimetres', () => {
+  // The assembly frame is millimetres, but a part stores its numbers in its own
+  // unit. An inch part enters the assembly scaled by 25.4: positions and lengths
+  // scale, axes and directions do not.
+  function sampleBundle(): PartBundle {
+    return {
+      doc_id: 'doc', content_hash: 'h', schema: BUNDLE_SCHEMA,
+      bodies: [{
+        mesh: {
+          vertices: new Float32Array([0, 0, 0, 1, 2, 3]),
+          indices: new Uint32Array([0, 1, 0]),
+          faceIdsPerTriangle: new Uint32Array([0]),
+        },
+        edges: [{
+          id: 'e1', kind: 'circle',
+          point: [1, 0, 0], axis: [0, 0, 1], radius: 0.5,
+          endpoints: [[1.5, 0, 0], [1.5, 0, 0]],
+          x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI * 2,
+        }],
+        entityAnchors: { faces: [['a1']], edges: [], vertices: [] },
+      }],
+      anchors: {
+        a1: { kind: 'plane', point: [1, 2, 3], axis: [0, 0, 1], geom_hash: '@u|f', created_by: 'ex1' },
+      },
+    }
+  }
+
+  it('scales mesh vertices, edge positions and radii, and anchor points', () => {
+    const bundle = scaleBundleToMillimetres(sampleBundle(), 25.4)
+
+    const vertices = Array.from(bundle.bodies[0].mesh.vertices)
+    // The bundle's mesh arrays are f32.
+    ;[0, 0, 0, 25.4, 50.8, 76.2].forEach((value, i) => expect(vertices[i]).toBeCloseTo(value, 5))
+    const edge = bundle.bodies[0].edges[0]
+    ;[25.4, 0, 0].forEach((value, i) => expect(edge.point[i]).toBeCloseTo(value, 9))
+    expect(edge.radius).toBeCloseTo(12.7, 9)
+    for (const endpoint of edge.endpoints) {
+      ;[38.1, 0, 0].forEach((value, i) => expect(endpoint[i]).toBeCloseTo(value, 9))
+    }
+    // Directions are unit vectors, not lengths.
+    expect(edge.axis).toEqual([0, 0, 1])
+    expect(edge.x_axis).toEqual([1, 0, 0])
+
+    ;[25.4, 50.8, 76.2].forEach((value, i) => expect(bundle.anchors.a1.point[i]).toBeCloseTo(value, 9))
+    expect(bundle.anchors.a1.axis).toEqual([0, 0, 1])
+    expect(bundle.bodies[0].entityAnchors).toEqual({ faces: [['a1']], edges: [], vertices: [] })
+  })
+
+  it('leaves a millimetre bundle untouched at factor 1', () => {
+    const before = sampleBundle()
+    const after = scaleBundleToMillimetres(before, 1)
+    expect(after).toBe(before)
+    expect(Array.from(after.bodies[0].mesh.vertices)).toEqual([0, 0, 0, 1, 2, 3])
   })
 })
 

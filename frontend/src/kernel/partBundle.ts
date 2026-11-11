@@ -103,10 +103,12 @@ export interface PartBundle {
  * end of the face, or outside it) to the face's own axial midpoint, so a cached
  * schema-1 bundle would hand an already-solved assembly its old end-anchored
  * pose. Schema 3 adds the part's own frame anchors (`PART_FRAME_ANCHORS`), so a
- * cached schema-2 bundle would leave every frame mate stale forever. See
- * `bundleCache.bundleCacheGet`.
+ * cached schema-2 bundle would leave every frame mate stale forever. Schema 4
+ * makes every position in the bundle a millimetre: the assembly frame has no
+ * unit, and an inch part is scaled at build, so a cached schema-3 inch bundle
+ * carries geometry 25.4 times too small. See `bundleCache.bundleCacheGet`.
  */
-export const BUNDLE_SCHEMA = 3
+export const BUNDLE_SCHEMA = 4
 
 // Bumped whenever geometry-producing code changes at an unchanged BUNDLE_SCHEMA
 // (a tessellation tweak, a boolean-op fix, a builder behavior change). The
@@ -418,6 +420,39 @@ export function toPartBundle(
     }
   }
   return { doc_id, content_hash, schema: BUNDLE_SCHEMA, bodies, anchors: allAnchors }
+}
+
+function scaleVec(v: Vec3, factor: number): Vec3 {
+  return [v[0] * factor, v[1] * factor, v[2] * factor]
+}
+
+/**
+ * Re-express a freshly built bundle in the assembly's millimetre frame. An
+ * assembly document has no length unit, so its mate offsets and instance
+ * transforms are millimetres; a part's stored numbers are in its own unit, and
+ * an inch part enters at 25.4 times its stored size. Positions and lengths
+ * scale; axes and normals are already unit vectors and stay as they are.
+ *
+ * Mutates the bundle it is given: it comes straight from `toPartBundle`, and
+ * copying every mesh a second time would double the build's allocation.
+ */
+export function scaleBundleToMillimetres(bundle: PartBundle, factor: number): PartBundle {
+  if (factor === 1) return bundle
+  for (const body of bundle.bodies) {
+    const vertices = body.mesh.vertices
+    for (let i = 0; i < vertices.length; i++) vertices[i] *= factor
+    for (const edge of body.edges) {
+      edge.point = scaleVec(edge.point, factor)
+      edge.endpoints = [scaleVec(edge.endpoints[0], factor), scaleVec(edge.endpoints[1], factor)]
+      if (edge.radius !== undefined) edge.radius *= factor
+      if (edge.minor_radius !== undefined) edge.minor_radius *= factor
+      if (edge.points !== undefined) edge.points = edge.points.map(p => scaleVec(p, factor))
+    }
+  }
+  for (const anchor of Object.values(bundle.anchors)) {
+    anchor.point = scaleVec(anchor.point, factor)
+  }
+  return bundle
 }
 
 // ─── Anchor extraction ───

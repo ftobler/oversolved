@@ -33,7 +33,8 @@ import { partSpecs, mateSpecs } from '@/utils/assemblySolveInput'
 import { solveAssembly, type AssemblyBuildResponse } from '@/kernel/solveAssembly'
 import { solveLocally } from '@/kernel/solveLocally'
 import { KernelFault } from '@/kernel/errors'
-import { toPartBundle, type Anchor, type PartBundle } from '@/kernel/partBundle'
+import { scaleBundleToMillimetres, toPartBundle, type Anchor, type PartBundle } from '@/kernel/partBundle'
+import { partToAssemblyScale } from '@/utils/lengthUnit'
 import { markFeatureStart } from '@/kernel/featureProgress'
 import { partSolvePayload } from '@/drive/solveWriteBack'
 import { docHashOf } from '@/drive/docHash'
@@ -273,7 +274,10 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
         ...(opts.files ? { files: opts.files } : {}),
       })
       if (!response) throw new Error('local solver unavailable (OCC.js is not provisioned)')
-      const bundle = toPartBundle(docId, docHashOf(partDoc), response.bodies as Record<string, BodyResult>)
+      const bundle = scaleBundleToMillimetres(
+        toPartBundle(docId, docHashOf(partDoc), response.bodies as Record<string, BodyResult>),
+        partToAssemblyScale(partDoc),
+      )
       const entry = remember(key, {
         bundle,
         index: buildPartAnchorIndex(bundle, response.bodies as Record<string, BodyResult>),

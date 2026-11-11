@@ -28,7 +28,7 @@ import { measureBodies, type Bbox6, type MeasureRecord } from './occ/measure'
 import { volumeForMeasure } from './occ/volume'
 import { shapeBbox } from './occ/faceBounds'
 import { canonicalFaces, pickableEdgeCount } from './occ/bodyNames'
-import { MM_PER_LENGTH_UNIT, lengthUnitOf } from '@/utils/lengthUnit'
+import { MM_PER_LENGTH_UNIT, lengthUnitOf, partToAssemblyScale } from '@/utils/lengthUnit'
 import type { OccHandle } from './occ/handleTable'
 import type { OccModule, OccShape } from './occ/occTypes'
 import type { Body, BuildState } from './types3d'
@@ -975,11 +975,17 @@ function placeAssemblyParts(
       }
       if (key !== null) built.set(key, bodies)
     }
+    // The assembly frame is millimetres, so an inch part's B-rep is scaled to
+    // millimetres before the rigid placement. The scale is the right factor,
+    // so it acts on the local point first (see makeRigidTrsf's multiply order).
+    const placement = makeRigidTrsf(oc, scope, instance.transform)
+    const unitScale = partToAssemblyScale(instance.spec)
+    if (unitScale !== 1) placement.Multiply(makeScaleTrsf(oc, scope, [0, 0, 0], unitScale))
     for (const body of bodies) {
       placed.push({
         handle: instance.handle,
         bodyId: body.bodyId,
-        shape: scope.track(transformCopy(oc, scope, body.shape, makeRigidTrsf(oc, scope, instance.transform))),
+        shape: scope.track(transformCopy(oc, scope, body.shape, placement)),
       })
     }
   }

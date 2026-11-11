@@ -21,6 +21,17 @@ export function isLengthUnit(value: unknown): value is LengthUnit {
 }
 
 /**
+ * The factor a part document's geometry takes when it enters an assembly. An
+ * assembly document has no length unit and keeps the millimetre frame, so its
+ * mate offsets and instance transforms are millimetres; a part's stored numbers
+ * are in its own unit. The factor is 1 for a millimetre part and 25.4 for an
+ * inch part.
+ */
+export function partToAssemblyScale(doc: { length_unit?: unknown } | null | undefined): number {
+  return MM_PER_LENGTH_UNIT[lengthUnitOf(doc?.length_unit)]
+}
+
+/**
  * The unit a raw document or solve spec carries. Absent is millimetres, which is
  * the format's default and what every document written before the field means.
  * A malformed value also reads as millimetres here; the loader is what refuses
