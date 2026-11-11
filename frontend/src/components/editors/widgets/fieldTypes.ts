@@ -1,4 +1,4 @@
-import type { Mutation } from '@/types/cad'
+import type { Mutation, PartFeature } from '@/types/cad'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- editor schema values are a heterogeneous bag and are intentionally untyped
 export type SchemaData = Record<string, any>
@@ -62,7 +62,7 @@ export interface PickFieldDef extends BaseFieldDef {
   // the document's own rows, for a rule that must look an entity's kind up (the
   // hole's sketch pick refusing a circle); a caller without it gets a rule that
   // can only judge the id's shape.
-  validatePick?: (selectionId: string, features?: readonly import('@/types/cad').PartFeature[]) => string | null
+  validatePick?: (selectionId: string, features?: readonly PartFeature[]) => string | null
   addMutationType?: string
   addValueKey?: string
   removeMutationType?: string
