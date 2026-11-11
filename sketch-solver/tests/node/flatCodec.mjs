@@ -5,8 +5,8 @@
 // constraints.rs/codec.rs: the vitest wasm-kernel suite owns boundary
 // coverage, so drift here only affects the ungated Node scripts.
 
-export const MAGIC_IN = 0x3547_4b53 // "SKG5": adds the header's storage quantum
-export const MAGIC_OUT = 0x3552_4b53 // "SKR5": adds the per-entity moved bitmask
+export const MAGIC_IN = 0x3647_4b53 // "SKG6": adds the dropped constraint verdict bit
+export const MAGIC_OUT = 0x3652_4b53 // "SKR6": same layout, new verdict meaning
 
 export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4, Spline: 5, FitSpline: 6 }
 export const CKind = {
