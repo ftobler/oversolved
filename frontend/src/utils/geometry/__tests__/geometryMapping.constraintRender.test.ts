@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { computeConstraintRender } from '@/utils/geometry/geometryMapping'
-import type { Sketch, PartConstraint, SymbolRender, DimLinearRender } from '@/types/cad'
+import { computeConstraintRender, deriveConstraints } from '@/utils/geometry/geometryMapping'
+import type { Sketch, PartConstraint, SymbolRender, DimLinearRender, SketchFeature } from '@/types/cad'
 
 // Coverage for the per-kind branches of computeConstraintRenderCore that the
 // other geometryMapping suites did not exercise: the symbol_* relational
@@ -324,5 +324,108 @@ describe('computeConstraintRender (directional linear dims tag their dimKind)', 
       { id: 'e', kind: 'radius_difference', a: '$circ1', b: '$circ2', value: 1 }, sk,
     ) as DimLinearRender
     expect(rd.dimKind).toBe('radius_difference')
+  })
+})
+
+describe('computeConstraintRender (dimensions against @builtin_origin)', () => {
+  // The origin is not a sketch entity, so it arrives through the render context
+  // in the sketch's local frame. On a builtin plane that is [0,0]; on a face or
+  // an offset plane it is nonzero and only the caller knows it.
+  const FACE_ORIGIN: [number, number] = [5, -2]
+
+  const originDist = (kind: string, a: string, b: string): PartConstraint => ({
+    id: 'D', kind, a, b, value: 3,
+  })
+
+  it('point_distance_x renders the origin end and anchors on the sketch operand', () => {
+    const r = computeConstraintRender(
+      originDist('point_distance_x', '@builtin_origin', '$PT'),
+      makeSketch(),
+      { originLocal: FACE_ORIGIN },
+    ) as DimLinearRender
+    expect(r.kind).toBe('dim_linear')
+    expect(r.dimKind).toBe('point_distance_x')
+    expect(r.p1).toEqual([5, -0.5])
+    expect(r.p2).toEqual([7, -0.5])
+    // The origin is not an entity; pick and hover key on the other operand.
+    expect(r.entity).toBe('PT')
+  })
+
+  it('point_distance_x renders with the origin in the b slot', () => {
+    const r = computeConstraintRender(
+      originDist('point_distance_x', '$PT', '@builtin_origin'),
+      makeSketch(),
+      { originLocal: FACE_ORIGIN },
+    ) as DimLinearRender
+    expect(r.kind).toBe('dim_linear')
+    expect(r.p1).toEqual([7, -0.5])
+    expect(r.p2).toEqual([5, -0.5])
+    expect(r.entity).toBe('PT')
+  })
+
+  it('point_distance_y renders the origin end', () => {
+    const r = computeConstraintRender(
+      originDist('point_distance_y', '@builtin_origin', '$PT'),
+      makeSketch(),
+      { originLocal: FACE_ORIGIN },
+    ) as DimLinearRender
+    expect(r.kind).toBe('dim_linear')
+    expect(r.dimKind).toBe('point_distance_y')
+    expect(r.p1).toEqual([6, -2])
+    expect(r.p2).toEqual([6, 1])
+    expect(r.entity).toBe('PT')
+  })
+
+  it('point_distance renders the euclidean distance from the origin', () => {
+    const r = computeConstraintRender(
+      originDist('point_distance', '@builtin_origin', '$PT'),
+      makeSketch(),
+      { originLocal: FACE_ORIGIN },
+    ) as DimLinearRender
+    expect(r.kind).toBe('dim_linear')
+    expect(r.dimKind).toBe('point_distance')
+    expect(r.p1).toEqual([5, -2])
+    expect(r.p2).toEqual([7, 1])
+    expect(r.entity).toBe('PT')
+  })
+
+  it('line_distance accepts the origin as the point operand in either slot', () => {
+    const pointFirst = computeConstraintRender(
+      originDist('line_distance', '@builtin_origin', '$H1'),
+      makeSketch(),
+      { originLocal: FACE_ORIGIN },
+    ) as DimLinearRender
+    const lineFirst = computeConstraintRender(
+      originDist('line_distance', '$H1', '@builtin_origin'),
+      makeSketch(),
+      { originLocal: FACE_ORIGIN },
+    ) as DimLinearRender
+    for (const r of [pointFirst, lineFirst]) {
+      expect(r.kind).toBe('dim_linear')
+      expect(r.dimKind).toBe('line_distance')
+      expect(r.p1).toEqual([5, 0])
+      expect(r.p2).toEqual([5, -2])
+      expect(r.entity).toBe('H1')
+    }
+  })
+
+  it('defaults the origin to [0,0] for a builtin plane', () => {
+    const r = computeConstraintRender(
+      originDist('point_distance_x', '@builtin_origin', '$PT'),
+      makeSketch(),
+    ) as DimLinearRender
+    expect(r.kind).toBe('dim_linear')
+    expect(r.p1).toEqual([0, 0.5])
+    expect(r.p2).toEqual([7, 0.5])
+  })
+
+  it('deriveConstraints keeps the id and kind with an origin operand', () => {
+    const c = originDist('point_distance_x', '@builtin_origin', '$PT')
+    const feature = { id: 'sk1', kind: 'sketch', constraints: [c] } as unknown as SketchFeature
+    const map = deriveConstraints(feature, makeSketch(), { originLocal: FACE_ORIGIN })
+    expect(Object.keys(map)).toEqual([c.id])
+    const render = map[c.id].render as DimLinearRender
+    expect(render.kind).toBe('dim_linear')
+    expect(render.dimKind).toBe('point_distance_x')
   })
 })

@@ -92,6 +92,22 @@ describe('computeNaturalDimensionValue', () => {
       'length', ['entity:S1:NX'], sk, FID,
     )).toBeNull()
   })
+
+  it('point_distance_x from @builtin_origin measures the offset from the local origin', () => {
+    const sk = makeSketch()
+    // P1 sits at x=2; the document origin is at x=5 on this face, so the
+    // dialog pre-fills 3 rather than the distance from the plane's own origin.
+    expect(computeNaturalDimensionValue(
+      'point_distance_x', ['@builtin_origin', 'vertex:S1:P1'], sk, FID, [5, -2],
+    )).toBe(3)
+  })
+
+  it('point_distance_x from @builtin_origin defaults to a builtin plane origin', () => {
+    const sk = makeSketch()
+    expect(computeNaturalDimensionValue(
+      'point_distance_x', ['@builtin_origin', 'vertex:S1:P1'], sk, FID,
+    )).toBe(2)
+  })
 })
 
 describe('resolveDimPoints', () => {
@@ -107,6 +123,15 @@ describe('resolveDimPoints', () => {
     expect(pts).not.toBeNull()
     const [pa, pb] = pts!
     expect(new Set([pa.join(','), pb.join(',')])).toEqual(new Set(['2,0', '5,4']))
+  })
+
+  it('resolves a point_distance against the local origin so the placement click can orient it', () => {
+    const sk = makeSketch()
+    // The dimension tool reads these endpoints to pick the X/Y/euclidean variant
+    // from the placement direction; the origin end must be its local point.
+    expect(resolveDimPoints(
+      'point_distance', ['@builtin_origin', 'vertex:S1:P1'], sk, FID, [5, -2],
+    )).toEqual([[5, -2], [2, 0]])
   })
 
   it('returns null when the render is not a two-point linear dim (e.g. angle)', () => {

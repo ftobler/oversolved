@@ -2,12 +2,20 @@
 // Importable in a plain vitest test.
 
 import type {
-  PartConstraint, Sketch,
+  PartConstraint, Point, Sketch,
   DimLinearRender, DimRadiusRender, DimDiameterRender, DimAngleRender,
 } from '@/types/cad'
 import { parseTarget } from '@/utils/yamlMutations/helpers'
 import { computeConstraintRender } from '@/utils/geometry/geometryMapping'
+import type { ConstraintRenderContext } from '@/utils/geometry/geometryMapping'
 import { computeAngleDimension } from '@/utils/geometry/angleDimensionLogic'
+
+/** The render context for a dimension authored in the active sketch: its
+ *  document origin in the sketch's local frame, which the render needs to place
+ *  an `@builtin_origin` operand. Absent means a builtin plane ([0,0]). */
+function renderCtx(originLocal?: Point): ConstraintRenderContext {
+  return originLocal ? { originLocal } : {}
+}
 
 /**
  * Compute the natural measurement for a freshly-placed dimension so the value-
@@ -29,13 +37,14 @@ export function resolveDimPoints(
   targets: readonly string[],
   sketch: Sketch,
   featureId: string,
+  originLocal?: Point,
 ): [[number, number], [number, number]] | null {
   if (targets.length < 2) return null
   const c: PartConstraint = { id: '__resolve__', kind }
   const refs = targets.map(t => parseTarget(t, featureId))
   c.a = refs[0]
   c.b = refs[1]
-  const render = computeConstraintRender(c, sketch) as
+  const render = computeConstraintRender(c, sketch, renderCtx(originLocal)) as
     DimLinearRender | DimRadiusRender | DimDiameterRender | DimAngleRender | { kind: 'unknown' | string }
   if (render.kind === 'dim_linear' || render.kind === 'dim_radius' || render.kind === 'dim_diameter') {
     const r = render as DimLinearRender | DimRadiusRender | DimDiameterRender
@@ -49,6 +58,7 @@ export function computeNaturalDimensionValue(
   targets: readonly string[],
   sketch: Sketch,
   featureId: string,
+  originLocal?: Point,
 ): number | null {
   const c: PartConstraint = { id: '__preview__', kind }
   const refs = targets.map(t => parseTarget(t, featureId))
@@ -64,7 +74,7 @@ export function computeNaturalDimensionValue(
   // string-literal kinds of the dim variants, so TS won't narrow on `kind`
   // alone. The geometryMapping branch we hit for length / radius / diameter /
   // distance / angle definitely returns the matching shape.
-  const render = computeConstraintRender(c, sketch) as
+  const render = computeConstraintRender(c, sketch, renderCtx(originLocal)) as
     DimLinearRender | DimRadiusRender | DimDiameterRender | DimAngleRender | { kind: 'unknown' | string }
   if (render.kind === 'dim_linear' || render.kind === 'dim_radius' || render.kind === 'dim_diameter') {
     const r = render as DimLinearRender | DimRadiusRender | DimDiameterRender
@@ -105,12 +115,13 @@ export function computeDimensionSign(
   targets: readonly string[],
   sketch: Sketch,
   featureId: string,
+  originLocal?: Point,
 ): number | null {
   const c: PartConstraint = { id: '__sign__', kind }
   const refs = targets.map(t => parseTarget(t, featureId))
   c.a = refs[0]
   c.b = refs[1]
-  return dimensionSignFromConstraint(c, sketch)
+  return dimensionSignFromConstraint(c, sketch, originLocal)
 }
 
 /**
@@ -121,21 +132,22 @@ export function computeDimensionSign(
 export function dimensionSignFromConstraint(
   c: PartConstraint,
   sketch: Sketch,
+  originLocal?: Point,
 ): number | null {
   if (c.kind === 'point_distance_x' || c.kind === 'point_distance_y') {
-    const render = computeConstraintRender(c, sketch) as DimLinearRender | { kind: string }
+    const render = computeConstraintRender(c, sketch, renderCtx(originLocal)) as DimLinearRender | { kind: string }
     if (render.kind !== 'dim_linear') return null
     const r = render as DimLinearRender
     return linearDimensionSign(c.kind, r.p1, r.p2)
   }
   if (c.kind === 'line_distance') {
-    const render = computeConstraintRender(c, sketch) as DimLinearRender | { kind: string }
+    const render = computeConstraintRender(c, sketch, renderCtx(originLocal)) as DimLinearRender | { kind: string }
     if (render.kind !== 'dim_linear') return null
     const r = render as DimLinearRender
     return lineDistanceSign(r.p1, r.p2, r.normal)
   }
   if (c.kind === 'angle') {
-    const render = computeConstraintRender(c, sketch) as DimAngleRender | { kind: string }
+    const render = computeConstraintRender(c, sketch, renderCtx(originLocal)) as DimAngleRender | { kind: string }
     if (render.kind !== 'dim_angle') return null
     const r = render as DimAngleRender
     return angleDimensionSign(r.p1, r.p2, r.p3, r.p4)
@@ -205,6 +217,7 @@ export function computeAnchorRelativePos(
   sketch: Sketch,
   featureId: string,
   world: readonly [number, number],
+  originLocal?: Point,
 ): [number, number] | null {
   const c: PartConstraint = { id: '__preview__', kind }
   const refs = targets.map(t => parseTarget(t, featureId))
@@ -215,7 +228,7 @@ export function computeAnchorRelativePos(
     c.b = refs[1]
   }
 
-  const render = computeConstraintRender(c, sketch) as
+  const render = computeConstraintRender(c, sketch, renderCtx(originLocal)) as
     DimLinearRender | DimRadiusRender | DimDiameterRender | DimAngleRender | { kind: 'unknown' | string }
 
   if (render.kind === 'dim_radius') {
@@ -248,11 +261,12 @@ export function computeAnglePlacementIsSupplement(
   sketch: Sketch,
   featureId: string,
   world: readonly [number, number] | null,
+  originLocal?: Point,
 ): boolean {
   if (!world) return false
   const refs = targets.map(t => parseTarget(t, featureId))
   const c: PartConstraint = { id: '__supplement__', kind: 'angle', a: refs[0], b: refs[1] }
-  const render = computeConstraintRender(c, sketch) as DimAngleRender | { kind: string }
+  const render = computeConstraintRender(c, sketch, renderCtx(originLocal)) as DimAngleRender | { kind: string }
   if (render.kind !== 'dim_angle') return false
   const r = render as DimAngleRender
   const base = computeAngleDimension(r.p1, r.p2, r.p3, r.p4)

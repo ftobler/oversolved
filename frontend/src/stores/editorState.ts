@@ -942,7 +942,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
   setDimensionCursorWorld: (p) => set({ dimensionCursorWorld: p }),
 
   finalizeDimensionPlacement: (clientPos) => {
-    const { activeFeatureId, dimensionCursorWorld } = get()
+    const { activeFeatureId, dimensionCursorWorld, activeOriginLocal } = get()
     if (!activeFeatureId || get().dimensionPicks.length === 0) return
     const sketch = sketchCallbacks.getSketch?.(activeFeatureId) ?? null
     // A projection picked before its solve landed carries the kind it was
@@ -987,7 +987,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
     //   - balanced / no drag → point_distance (euclidean distance)
     // Once placed the type stays (future label drags only move `pos`).
     if (constraintKind === 'point_distance' && placementWorld && sketch && targets.length >= 2) {
-      const pts = resolveDimPoints(constraintKind, targets, sketch, featureId)
+      const pts = resolveDimPoints(constraintKind, targets, sketch, featureId, activeOriginLocal)
       if (pts) {
         const [pa, pb] = pts
         const anchorX = (pa[0] + pb[0]) / 2
@@ -1011,7 +1011,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
     // (e.g. tests without getSketch registered) or the geometry can't be
     // resolved.
     const naturalValue = sketch
-      ? computeNaturalDimensionValue(constraintKind, targets, sketch, featureId)
+      ? computeNaturalDimensionValue(constraintKind, targets, sketch, featureId, activeOriginLocal)
       : null
     // An angle label placed in a supplement quadrant shows (and edits against)
     // 180 - theta. The constraint still stores theta, but the dialog must
@@ -1019,7 +1019,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
     // live preview label. The transform is its own inverse (used both to
     // display and to encode back). Mirrors AngleDimension's encodeValue hook.
     const isSupplement = (constraintKind === 'angle' && sketch)
-      ? computeAnglePlacementIsSupplement(targets, sketch, featureId, placementWorld)
+      ? computeAnglePlacementIsSupplement(targets, sketch, featureId, placementWorld, activeOriginLocal)
       : false
     const toDisplay = (v: number) => isSupplement ? 180 - v : v
     const displayedNatural = naturalValue !== null ? toDisplay(naturalValue) : null
@@ -1062,13 +1062,13 @@ export const editorState = createStore<EditorState>((set, get) => ({
         // which interpret pos as an anchor-relative offset, render it at the
         // requested world point.
         const pos = (placementWorld && sketch)
-          ? computeAnchorRelativePos(constraintKind, targets, sketch, featureId, placementWorld)
+          ? computeAnchorRelativePos(constraintKind, targets, sketch, featureId, placementWorld, activeOriginLocal)
           : null
         // Pin the side/handedness the user drew so the solver cannot mirror the
         // geometry to the other (equally valid) solution. Directional dims only;
         // null for length/radius/diameter/euclidean distance.
         const sign = sketch
-          ? computeDimensionSign(constraintKind, targets, sketch, featureId)
+          ? computeDimensionSign(constraintKind, targets, sketch, featureId, activeOriginLocal)
           : null
         // The same authoring gate applyConstraint runs, now with the value the
         // dialog collected: without it a duplicate dimension could never be

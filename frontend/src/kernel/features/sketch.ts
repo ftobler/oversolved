@@ -602,7 +602,7 @@ export function solveSketch(
     ? (pf.entities ?? []).map((e) => ({ ...e, kind: resolvedKinds[e.id] ?? e.kind }))
     : pf.entities
   const solvedSketch = unflattenGeometry(geometry, renderEntities)
-  const rendered = deriveConstraints(pf, solvedSketch)
+  const rendered = deriveConstraints(pf, solvedSketch, { originLocal })
   const wireIndexById = new Map<string, number>()
   constraintIds.forEach((cid, i) => { if (cid !== null) wireIndexById.set(cid, i) })
   // Redundancy is only ever measured on a satisfied solve: the solver's walk

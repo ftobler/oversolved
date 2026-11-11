@@ -104,7 +104,7 @@ export function sketchForRender(
     : unflattenGeometry(featureDef.initial || {}, featureDef.entities)
   const constraints = solveResult?.constraints
     ? solveResult.constraints
-    : deriveConstraints(featureDef, sketch)
+    : deriveConstraints(featureDef, sketch, { originLocal: solveResult?.originLocal })
   return { sketch, constraints }
 }
 
