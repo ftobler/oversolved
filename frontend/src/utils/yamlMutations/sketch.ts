@@ -3,7 +3,7 @@ import { entityVertexIndices, entityCoordPairs } from '@/registry'
 import {
   warn, round, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
   resolveSketch, mintEntityId, CONSTRAINT_REF_FIELDS, refMatchesEntity,
-  canonicalLineDistanceTargets,
+  canonicalLineDistanceTargets, isPointLikeEntityKind,
 } from './helpers'
 import { resolveVertexRef } from '@/types/vertexRef'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
@@ -241,15 +241,15 @@ export function applyAddConstraint(
   const entityIds = new Set((feature.entities ?? []).map(e => e.id))
   const kindById = new Map((feature.entities ?? []).map(e => [e.id, e.kind]))
   targets = canonicalLineDistanceTargets(kind, targets, (t) => {
-    if (t.startsWith('vertex:') || t.startsWith('@builtin_')) return 'point'
+    if (t.startsWith('vertex:') || t === '@builtin_origin') return 'point'
     if (t.startsWith('entity:')) {
       const ek = kindById.get(t.split(':')[2])
-      return ek === 'line' || ek === 'point' ? ek : undefined
+      return ek === 'line' ? 'line' : isPointLikeEntityKind(ek) ? 'point' : undefined
     }
     const ref = resolveVertexRef(entityIds, t)
     if (!ref) return undefined
     const ek = kindById.get(ref.entity)
-    if (ref.point !== undefined || ek === 'point') return 'point'
+    if (ref.point !== undefined || isPointLikeEntityKind(ek)) return 'point'
     return ek === 'line' ? 'line' : undefined
   })
   const cid = uniqueConstraintId(feature.constraints, kind)

@@ -22,7 +22,7 @@ import { getToolPickConfig } from '@/registry/toolPickConfig'
 import { planBrepDimensionPick, refreshProjectedPickKinds } from '@/tools/dimensionProjection'
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
-import { randomId, canonicalLineDistanceTargets } from '@/utils/yamlMutations/helpers'
+import { randomId, canonicalLineDistanceTargets, isPointLikeEntityKind } from '@/utils/yamlMutations/helpers'
 import type { DialogState, FilletCornerMap, SketchEditorState } from './sketchEditorTypes'
 import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectionEntityId, CANNOT_APPLY_TITLE, type PendingConstraint } from './sketchEditorCallbacks'
 import { samePoint, validateWithRepair, prunePickClaims } from './sketchEditorHelpers'
@@ -671,10 +671,10 @@ export const editorState = createStore<EditorState>((set, get) => ({
     // The redundancy probe and the mutation both see the canonical order, so a
     // point-first line_distance is tested (and stored) as line-first.
     const targets = canonicalLineDistanceTargets(kind, picked, t => {
-      if (t.startsWith('vertex:') || t.startsWith('@builtin_')) return 'point'
+      if (t.startsWith('vertex:') || t === '@builtin_origin') return 'point'
       if (!t.startsWith('entity:')) return undefined
       const ek = entityKindMap[t]
-      return ek === 'line' || ek === 'point' ? ek : undefined
+      return ek === 'line' ? 'line' : isPointLikeEntityKind(ek) ? 'point' : undefined
     })
 
     // Reject operand kinds the constraint cannot represent before authoring it.
@@ -967,9 +967,9 @@ export const editorState = createStore<EditorState>((set, get) => ({
       constraintKind,
       dimensionTargets(dimensionPicks),
       t => {
-        if (t.startsWith('vertex:') || t.startsWith('@builtin_')) return 'point'
+        if (t.startsWith('vertex:') || t === '@builtin_origin') return 'point'
         const ek = pickKinds.get(t)
-        return ek === 'line' || ek === 'point' ? ek : undefined
+        return ek === 'line' ? 'line' : isPointLikeEntityKind(ek) ? 'point' : undefined
       },
     )
 

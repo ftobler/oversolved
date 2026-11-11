@@ -38,15 +38,17 @@ export const round = (v: number) => roundTo(v, 1e6)
  *  enters the document, or it survives into the YAML and every later solve. */
 export const allFinite = (vs: readonly number[]) => vs.every(v => Number.isFinite(v))
 
-/** What one half of a `line_distance` pair is, for the operand-order fix. */
+/** What one half of a `line_distance` pair is, for the operand-order fix. The
+ *  solver resolves the non-line side through `point()`, so a circle, arc or
+ *  ellipse is the point side too. */
 export type DistanceOperand = 'point' | 'line'
 
 /**
- * Canonical operand order for a `line_distance`: a point in `a` and a line in
- * `b` swaps to line-first. The solver and the renderer both read `a` as the
- * line, so the point-first spelling was accepted, stored and then dropped.
- * Two lines stay in pick order (the parallel line-line form), and so does any
- * pair the classifier cannot read.
+ * Canonical operand order for a `line_distance`: anything point-like in `a`
+ * with a line in `b` swaps to line-first. The solver and the renderer both read
+ * `a` as the line and `b` through `point()`, so the point-first spelling was
+ * accepted, stored and then dropped. Two lines stay in pick order (the
+ * parallel line-line form), and so does any pair the classifier cannot read.
  *
  * `operand` resolves a target spelling to the side it names, for both the
  * explicit `vertex:`/`entity:` forms and a stored local `$` ref. The signed
@@ -62,6 +64,13 @@ export function canonicalLineDistanceTargets(
   const [a, b] = targets
   if (operand(a) !== 'point' || operand(b) !== 'line') return [...targets]
   return [b, a, ...targets.slice(2)]
+}
+
+/** Entity kinds that the solver resolves through `point()` in a line-distance
+ *  point slot. A line is the line side; everything else with a point reading is
+ *  point-like here. */
+export function isPointLikeEntityKind(kind: string | undefined): boolean {
+  return kind === 'point' || kind === 'circle' || kind === 'arc' || kind === 'ellipse'
 }
 
 export function findFeature(doc: PartDoc, featureId: string): PartFeature | undefined {

@@ -93,6 +93,16 @@ describe('applyAddConstraint', () => {
     expect(added!.b).toBe('@builtin_origin')
   })
 
+  it('canonicalises a curve-first line_distance', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'line_distance', ['entity:Sketch1:circ1', 'entity:Sketch1:line1'], 5)
+    const added = constraints0(doc).find(c => c.id.startsWith('c_line_distance'))
+    // The solver reads the non-line side through point(), so a circle is the
+    // point side and the line belongs in `a`.
+    expect(added!.a).toBe('$line1')
+    expect(added!.b).toBe('$circ1')
+  })
+
   it('keeps the two-line line_distance in pick order', () => {
     const doc = makeSampleDoc()
     entities0(doc).push({ id: 'line2', kind: 'line' })

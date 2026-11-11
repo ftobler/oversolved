@@ -23,11 +23,13 @@ function partDoc(version: number, constraints: Array<Record<string, unknown>>) {
           { id: 'l1', kind: 'line' },
           { id: 'l2', kind: 'line' },
           { id: 'p1', kind: 'point' },
+          { id: 'c1', kind: 'circle' },
         ],
         initial: {
           l1: [0, 0, 10, 0],
           l2: [0, 5, 10, 5],
           p1: [3, 4],
+          c1: [3, 4, 2],
         },
         constraints,
       },
@@ -50,6 +52,28 @@ describe('line_distance operand-order migration', () => {
     expect(c.sign).toBe(-1)
   })
 
+  it('moves a curve out of the line slot', () => {
+    const result = loadPartDoc(partDoc(6, [
+      { id: 'd1', kind: 'line_distance', a: '$c1', b: '$l1', value: 4 },
+    ]))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const c = constraintsOf(result.doc)[0]
+    expect(c.a).toBe('$l1')
+    expect(c.b).toBe('$c1')
+  })
+
+  it('moves a pre-resolved external point out of the line slot', () => {
+    const result = loadPartDoc(partDoc(6, [
+      { id: 'd1', kind: 'line_distance', a: { external_xy: [3, 4] }, b: '$l1', value: 4 },
+    ]))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const c = constraintsOf(result.doc)[0]
+    expect(c.a).toBe('$l1')
+    expect(c.b).toEqual({ external_xy: [3, 4] })
+  })
+
   it('also moves a builtin point out of the line slot', () => {
     const result = loadPartDoc(partDoc(6, [
       { id: 'd1', kind: 'line_distance', a: '@builtin_origin', b: '$l1', value: 0 },
@@ -59,6 +83,22 @@ describe('line_distance operand-order migration', () => {
     const c = constraintsOf(result.doc)[0]
     expect(c.a).toBe('$l1')
     expect(c.b).toBe('@builtin_origin')
+  })
+
+  it('is idempotent: reloading the migrated document applies nothing', () => {
+    const first = loadPartDoc(partDoc(6, [
+      { id: 'd1', kind: 'line_distance', a: '$p1xy', b: '$l1', value: 4 },
+    ]))
+    expect(first.ok).toBe(true)
+    if (!first.ok) return
+    expect(first.migrations).toContain('line-distance-operand-order')
+    const second = loadPartDoc(structuredClone(first.doc))
+    expect(second.ok).toBe(true)
+    if (!second.ok) return
+    expect(second.migrations).toEqual([])
+    const c = constraintsOf(second.doc)[0]
+    expect(c.a).toBe('$l1')
+    expect(c.b).toBe('$p1xy')
   })
 
   it('leaves the two-line form and a current document alone', () => {
