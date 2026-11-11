@@ -94,6 +94,24 @@ describe('Part editor chrome', () => {
     expect(hud.firstElementChild).toBe(slot)
   })
 
+  it('switches the document unit from the view options as one undo entry', async () => {
+    await renderPageLoaded()
+    fireEvent.click(screen.getByRole('button', { name: 'View options' }))
+
+    expect(screen.getByRole('button', { name: 'mm' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'in' })).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(screen.getByRole('button', { name: 'in' }))
+    await waitFor(() => expect(usePartEditorStore.getState().doc?.length_unit).toBe('inch'))
+    expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
+
+    // The row now reads the new unit, and asking for it again is not a second
+    // history step.
+    expect(screen.getByRole('button', { name: 'in' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'in' }))
+    expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
+  })
+
   it('floats the feature and parts lists inside the viewport stage', async () => {
     await renderPageLoaded()
     const stage = document.querySelector('.viewport-stage')!
