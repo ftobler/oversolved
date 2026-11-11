@@ -103,7 +103,7 @@ export function resetSectionCapStripeTextureForTest(): void {
 }
 
 export function buildSectionCapFillMaterial(color: string): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({
+  const material = new THREE.MeshBasicMaterial({
     color,
     map: getSectionCapStripeTexture(),
     // The quad's facing is not meaningful: the stencil count, not the winding,
@@ -119,6 +119,19 @@ export function buildSectionCapFillMaterial(color: string): THREE.MeshBasicMater
     stencilZFail: THREE.ReplaceStencilOp,
     stencilZPass: THREE.ReplaceStencilOp,
   })
+  // Screen-space diagonal hatch: stripes stay a constant pixel width and stay
+  // aligned to the view no matter how the section plane (or the camera) moves,
+  // instead of being baked into the cap's object-space UVs. `diffuse` is the
+  // part colour uniform, so a colour edit repaints the stripes with no recompile.
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <dithering_fragment>',
+      `  float __sectionStripe = step(0.5, fract((gl_FragCoord.x + gl_FragCoord.y) / 24.0));\n` +
+      `  gl_FragColor.rgb = mix(diffuse * 0.35, diffuse, __sectionStripe);\n` +
+      `#include <dithering_fragment>`,
+    )
+  }
+  return material
 }
 
 const scratchPoint = new THREE.Vector3()
