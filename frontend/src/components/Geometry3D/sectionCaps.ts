@@ -119,7 +119,7 @@ export function buildSectionCapFillMaterial(color: string): THREE.ShaderMaterial
       void main() {
         #include <clipping_planes_fragment>
         float sectionStripe = step(0.5, fract((gl_FragCoord.x + gl_FragCoord.y) / 24.0));
-        vec3 col = mix(uColor * 0.35, uColor, sectionStripe);
+        vec3 col = mix(uColor * 0.45, uColor * 1.15, sectionStripe);
         gl_FragColor = vec4(col, 1.0);
       }
     `,
