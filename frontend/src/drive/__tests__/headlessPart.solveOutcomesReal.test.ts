@@ -40,10 +40,11 @@ function emptyDoc(): PartDoc {
 }
 
 // The reported document, minimal: a plate, a boss built from a circle, and a
-// hole whose whole-sketch pick names a sketch that holds no point or circle.
-// The bug report's own sk3 carried a circle, which the kernel now drills; the
-// refusals that still matter are a sketch with no drill site and a real
-// exception, so the shared fixture puts a line in that sketch.
+// hole whose whole-sketch pick names a sketch that holds no point. The bug
+// report's own sk3 carried a circle, which the kernel now refuses because a
+// hole drills points only; the refusals that still matter are a sketch with no
+// drill site and a real exception, so the shared fixture puts a line in that
+// sketch.
 describe.skipIf(!oc || !solveBytes)('headlessPart solveOutcomes (real OCC + Rust solver)', () => {
   it('keeps the exception status and message of a feature that failed', async () => {
     const part = createHeadlessPart({ doc: emptyDoc() })
