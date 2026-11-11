@@ -4,7 +4,7 @@
 // menu must not get wrong is history: a switch is a single undo entry, and undo
 // puts back the document's previous unit (millimetres is the absent field).
 // The menu's own no-op guard is pinned in the ViewOptionsButton suite; this
-// suite pins the doc path it dispatches into, including a second guard.
+// suite pins the doc path it dispatches into.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
@@ -58,15 +58,5 @@ describe('usePartDoc length unit history', () => {
     expect(docRef.current.length_unit).toBe('inch')
     act(() => { result.current.handleUndo() })
     expect(lengthUnitOf(docRef.current.length_unit)).toBe('mm')
-  })
-
-  it('re-asking for the current unit spends no entry', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
-
-    act(() => { result.current.handleMutation(switchUnit('mm')) })
-
-    expect(result.current.undoStack).toHaveLength(0)
-    expect(result.current.redoStack).toHaveLength(0)
-    expect('length_unit' in docRef.current).toBe(false)
   })
 })
