@@ -8,6 +8,7 @@ import { render, cleanup, screen, waitFor, fireEvent, within, act } from '@testi
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { type ReactNode } from 'react'
 import Part from '@/pages/Part'
+import { backendBundle } from '@/adapters/backend'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useBugReportStore } from '@/stores/bugReportStore'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
@@ -92,6 +93,37 @@ describe('Part editor chrome', () => {
     // handed-in slots, and the option slot comes first.
     const hud = screen.getByTestId('viewport-hud')
     expect(hud.firstElementChild).toBe(slot)
+  })
+
+  it('hides the unit row until the document has loaded', () => {
+    // Hold the load open: the first frame must not show a unit the page does
+    // not own yet, because the row would dispatch into an absent document.
+    vi.spyOn(backendBundle.documents, 'load').mockReturnValue(new Promise<never>(() => {}))
+    renderPage()
+    expect(usePartEditorStore.getState().doc).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'View options' }))
+    expect(screen.getByRole('menu', { name: 'View options' })).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Length unit' })).toBeNull()
+    // The browser-local rows still render while the document loads.
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Shading' })).toBeInTheDocument()
+  })
+
+  it('switches the document unit from the view options as one undo entry', async () => {    await renderPageLoaded()
+    fireEvent.click(screen.getByRole('button', { name: 'View options' }))
+
+    expect(screen.getByRole('button', { name: 'millimetres' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'inches' })).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(screen.getByRole('button', { name: 'inches' }))
+    await waitFor(() => expect(usePartEditorStore.getState().doc?.length_unit).toBe('inch'))
+    expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
+
+    // The row now reads the new unit, and asking for it again is not a second
+    // history step.
+    expect(screen.getByRole('button', { name: 'inches' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'inches' }))
+    expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
   })
 
   it('floats the feature and parts lists inside the viewport stage', async () => {

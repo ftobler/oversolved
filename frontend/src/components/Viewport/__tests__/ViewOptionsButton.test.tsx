@@ -227,6 +227,41 @@ describe('ViewOptionsButton viewer rows', () => {
   })
 })
 
+describe('ViewOptionsButton document unit', () => {
+  it('reflects the document unit and asks for one change when the other is chosen', () => {
+    const onSetLengthUnit = vi.fn()
+    render(<ViewOptionsButton lengthUnit="mm" onSetLengthUnit={onSetLengthUnit} />)
+    open()
+
+    expect(screen.getByRole('button', { name: 'millimetres' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'inches' })).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(screen.getByRole('button', { name: 'inches' }))
+    expect(onSetLengthUnit).toHaveBeenCalledTimes(1)
+    expect(onSetLengthUnit).toHaveBeenCalledWith('inch')
+  })
+
+  it('emits nothing when the current unit is chosen again', () => {
+    const onSetLengthUnit = vi.fn()
+    render(<ViewOptionsButton lengthUnit="inch" onSetLengthUnit={onSetLengthUnit} />)
+    open()
+
+    expect(screen.getByRole('button', { name: 'inches' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'inches' }))
+    expect(onSetLengthUnit).not.toHaveBeenCalled()
+  })
+
+  it('hides the unit when the page offers no document unit', () => {
+    render(<ViewOptionsButton allowSectionPick={false} />)
+    open()
+
+    expect(screen.queryByText('Document')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Length unit' })).toBeNull()
+    // The viewer rows around it are still there.
+    expect(row('Shading')).toBeInTheDocument()
+  })
+})
+
 describe('ViewOptionsButton Section', () => {
   it('toggles the section and hides the sub-rows while it is off', () => {
     render(<ViewOptionsButton />)

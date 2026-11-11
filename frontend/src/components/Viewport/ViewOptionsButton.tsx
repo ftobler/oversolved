@@ -7,15 +7,19 @@
 // one meaning for the eye across the app: the feature tree's eye says what is
 // SHOWN, and so does this one, opening the rows that decide it.
 //
-// Two kinds of row, deliberately unlike each other (the card groups the second
+// Three kinds of row, deliberately unlike each other (the card groups the last
 // kind under the View, Camera, Section and Debug headings):
-//   Show   - document visibility. Rows dispatch through the part page, so they
-//            record undo and agree with the keyboard toggles.
-//   Viewer - browser preferences. No undo, no document write. Shading and
-//            Edges are the drawn layers, Brightness is the global exposure,
-//            Zebra and Curvature replace the body material, Camera decides
-//            whether an orbit turns about the cursor point, and Debug holds
-//            the ID-buffer overlay.
+//   Document - the part's length unit. A segmented row that dispatches the
+//              page's set_length_unit mutation, so it records one undo entry
+//              and undo restores the previous unit. Hidden where the page has
+//              no document, which is also why the assembly never shows it.
+//   Show     - document visibility. Rows dispatch through the part page, so they
+//              record undo and agree with the keyboard toggles.
+//   Viewer   - browser preferences. No undo, no document write. Shading and
+//              Edges are the drawn layers, Brightness is the global exposure,
+//              Zebra and Curvature replace the body material, Camera decides
+//              whether an orbit turns about the cursor point, and Debug holds
+//              the ID-buffer overlay.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import iconEyeIcon from '@/assets/icons/icon-eye.svg'
 import {
@@ -28,6 +32,8 @@ import type { CurvatureKind } from '@/adapters/preferences'
 import { MAX_BRIGHTNESS, MAX_ZEBRA_STRIPES, MIN_BRIGHTNESS, MIN_ZEBRA_STRIPES } from '@/adapters/preferences'
 import type { ShowGroup, ShowGroupState } from '@/components/Viewport/viewOptionsShow'
 import { SHOW_GROUPS } from '@/components/Viewport/viewOptionsShow'
+import { LENGTH_UNIT_LABEL, LENGTH_UNIT_NAME } from '@/utils/lengthUnit'
+import type { LengthUnit } from '@/types/cad'
 import '@/components/layout/Glass.css'
 import '@/components/Viewport/ViewOptions.css'
 
@@ -40,7 +46,15 @@ export interface ViewOptionsButtonProps {
   // can (it owns the body face registry); the assembly cannot, so it offers the
   // builtin planes and says so rather than arming a pick nothing consumes.
   allowSectionPick?: boolean
+  // The part document's unit, and the page's set_length_unit dispatch. Unlike
+  // every other row this is a document edit, so the page owns both halves: the
+  // card only reflects the unit and asks for a change. Absent in the assembly,
+  // which has no document unit of its own, so the unit row is hidden there.
+  lengthUnit?: LengthUnit
+  onSetLengthUnit?: (unit: LengthUnit) => void
 }
+
+const LENGTH_UNITS: readonly LengthUnit[] = ['mm', 'inch']
 
 const SHOW_LABELS: Record<ShowGroup, string> = {
   planes: 'Planes',
@@ -81,7 +95,7 @@ function formatRange(range: [number, number]): string {
   return `${fmt(range[0])} .. ${fmt(range[1])} 1/mm`
 }
 
-export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick = true }: ViewOptionsButtonProps) {
+export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick = true, lengthUnit, onSetLengthUnit }: ViewOptionsButtonProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -196,6 +210,36 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
 
       {open && (
         <div className="view-options-popover glass-panel" role="menu" aria-label="View options" onKeyDown={onCardKeyDown}>
+          {lengthUnit !== undefined && onSetLengthUnit && (
+            <>
+              <div className="view-options-heading">Document</div>
+              <div className="view-options-segment" role="group" aria-label="Length unit">
+                {LENGTH_UNITS.map(unit => {
+                  const chosen = lengthUnit === unit
+                  return (
+                    <button
+                      key={unit}
+                      type="button"
+                      className={`view-options-segment-btn${chosen ? ' active' : ''}`}
+                      aria-pressed={chosen}
+                      // The visible label is the short suffix; the accessible
+                      // name spells the unit out so "in" is not read as a word.
+                      aria-label={LENGTH_UNIT_NAME[unit]}
+                      title={`Document lengths in ${LENGTH_UNIT_NAME[unit]}`}
+                      // The document already reads this unit: asking again
+                      // would spend an undo entry on nothing.
+                      onClick={() => { if (!chosen) onSetLengthUnit(unit) }}
+                      data-view-row
+                    >
+                      {LENGTH_UNIT_LABEL[unit]}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="view-options-divider" />
+            </>
+          )}
+
           {show && (
             <>
               <div className="view-options-heading">Show</div>
