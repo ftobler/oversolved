@@ -178,6 +178,8 @@ impl Problem<'_> {
             } else {
                 let (cx, cy) = (arc_ep[0], arc_ep[1]);
                 let num = (cx - line_ep[0]) * line_dir[1] - (cy - line_ep[1]) * line_dir[0];
+                // |num| kinks only at a zero centre distance, which meets the
+                // target only at radius 0: not a valid circle, so no fix here.
                 r.push(num.abs() - arc_ep[2]);
             }
         } else if self.kind_of(arc_idx) == Kind::Ellipse {
@@ -194,6 +196,7 @@ impl Problem<'_> {
             let n_v = -n[0] * st + n[1] * ct;
             let support = ((a * n_u).powi(2) + (b * n_v).powi(2)).sqrt();
             let dist = (cx - line_ep[0]) * n[0] + (cy - line_ep[1]) * n[1];
+            // Same abs kink, at a zero distance, which pins no valid ellipse.
             r.push(dist.abs() - support);
         }
     }
