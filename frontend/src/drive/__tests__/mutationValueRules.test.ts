@@ -948,6 +948,55 @@ describe('finding 8: hole field values', () => {
   })
 })
 
+describe('a circle is not a hole drill site', () => {
+  function sketchWithPointAndCircle(): PartDoc {
+    return seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'p1', kind: 'point' }, { id: 'c1', kind: 'circle' }],
+        initial: { p1: [0, 0], c1: [0, 0, 3] },
+        constraints: [],
+      }],
+    })
+  }
+
+  it('refuses an entity or vertex add_hole sketch ref naming a circle, naming the extrude cut', () => {
+    const doc = sketchWithPointAndCircle()
+    for (const sketch of ['entity:sk1:c1', 'vertex:sk1:c1:center']) {
+      const error = refusal({ type: 'add_hole', featureId: 'ho1', sketch, diameter: 4, depth_mode: 'through_all' }, doc)
+      expect(error.code, sketch).toBe('invalid-mutation')
+      expect(error.message, sketch).toContain("'c1' of sketch sk1 is a circle, which is not a drill site")
+      expect(error.message, sketch).toContain('extrude cut')
+    }
+  })
+
+  it('refuses the same circle through the sketch setter', () => {
+    const error = refusal({
+      type: 'set_hole_field', featureId: 'ho1', field: 'sketch', value: 'entity:sk1:c1',
+    }, sketchWithPointAndCircle())
+    expect(error.message).toContain('extrude cut')
+  })
+
+  it('accepts a point pick, a whole-sketch ref and a doc-unaware check', () => {
+    // A whole-sketch ref is legal: the kernel drills its points and ignores its
+    // circles. With no document the boundary only knows the ref's shape.
+    const doc = sketchWithPointAndCircle()
+    expect(validateMutation({
+      type: 'add_hole', featureId: 'ho1', sketch: 'entity:sk1:p1', diameter: 4, depth_mode: 'through_all',
+    }, { doc })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_hole', featureId: 'ho1', sketch: '@sk1', diameter: 4, depth_mode: 'through_all',
+    }, { doc })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_hole', featureId: 'ho1', sketch: 'entity:sk1:c1', diameter: 4, depth_mode: 'through_all',
+    })).toMatchObject({ ok: true })
+  })
+})
+
 // Batch B docs finding: the note promised "an empty value clears any other
 // field" while the boundary refused it for `target` (a ref) and for every enum.
 // The rule is now one sentence: an empty string clears only the optional ref

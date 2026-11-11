@@ -128,7 +128,7 @@ describe.skipIf(!ready)('toggle_construction on a point (real kernel)', () => {
     })
     const problem = flagged.features.find(feature => feature.id === 'h1')
     expect(problem?.message).toMatch(
-      /has only construction points and circles.*clear a point's or circle's construction flag/,
+      /has only construction points.*clear the point's construction flag/,
     )
 
     const cleared = await runHeadless({

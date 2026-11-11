@@ -4,8 +4,9 @@
 // analytic: the bore removes pi r^2 h, a counterbore adds the annulus
 // pi (R^2 - r^2) d over its step depth, and a countersink adds the frustum
 // between the bore and the mouth radius less the bore cylinder that the
-// frustum already covers. Point and circle sites are both exercised because a
-// circle overrides the feature diameter. The full-document case proves the
+// frustum already covers. A point is the only drill site, so the feature
+// `diameter` sets the bore; a circle beside the point is a profile and must not
+// widen the bore or the mouth. The full-document case proves the
 // new cutter faces keep resolving through an upstream dimension edit.
 //
 // Skips when OCC.js or the Rust solver is absent.
@@ -83,10 +84,13 @@ function runHole(
 }
 
 const pointSite = (repo: Repository) => repo.register('sk/p1/xy', { external_xy: [10, 10] })
-const circleSite = (repo: Repository) =>
-  repo.register('sk/c1', { external_params: [10, 10, 2], kind: 'circle', sketch_id: 'sk' })
+// A circle concentric with the point: a profile, never a drill site.
+const pointAndCircleSite = (repo: Repository) => {
+  pointSite(repo)
+  repo.register('sk/c1', { external_params: [10, 10, 6], kind: 'circle', sketch_id: 'sk' })
+}
 const pointEntity = [{ id: 'p1', kind: 'point' }]
-const circleEntity = [{ id: 'c1', kind: 'circle' }]
+const pointAndCircleEntities = [{ id: 'p1', kind: 'point' }, { id: 'c1', kind: 'circle' }]
 
 describe.skipIf(!oc)('hole counterbore and countersink (real OCC)', () => {
   it('a blind counterbore removes the bore plus the step annulus', () => {
@@ -106,13 +110,15 @@ describe.skipIf(!oc)('hole counterbore and countersink (real OCC)', () => {
     expect(volume).toBeCloseTo(BOX - counterboreRemoved(2, 10, 4, 3), 4)
   })
 
-  it('a circle site drills its own diameter through the counterbore', () => {
-    // The circle's radius 2 wins over the feature diameter 10, so the bore and
-    // the step keep the same analytic volume as the point case.
+  it('a circle beside the point does not change the counterbore bore or mouth', () => {
+    // The r6 circle is a profile, not a drill site, so the point's 4 mm
+    // diameter sets the bore and the mouth check sees r2, not r6: the cut keeps
+    // the same analytic volume as the plain point case.
     const { volume, result } = runHole({
-      diameter: 10, depth: 8, style: 'counterbore', cb_diameter: 8, cb_depth: 3,
-    }, circleSite, circleEntity)
+      diameter: 4, depth: 8, style: 'counterbore', cb_diameter: 8, cb_depth: 3,
+    }, pointAndCircleSite, pointAndCircleEntities)
     expect(result.status).toBe('ok')
+    expect(result.hole_count).toBe(1)
     expect(volume).toBeCloseTo(BOX - counterboreRemoved(2, 8, 4, 3), 4)
   })
 
@@ -220,9 +226,11 @@ describe.skipIf(!oc)('hole drill-point tip (real OCC)', () => {
     expect(volume).toBeCloseTo(BOX - (Math.PI * 4 * 8 + drillPointVolume(2, 90)), 4)
   })
 
-  it('a circle site gets the point of its own radius', () => {
-    const { volume } = runHole({ diameter: 10, depth: 8, tip: 'drill_point' }, circleSite, circleEntity)
-    expect(volume).toBeCloseTo(BOX - (Math.PI * 4 * 8 + drillPointVolume(2, 118)), 4)
+  it('the drill point follows the feature diameter', () => {
+    // The point names the position; the 6 mm feature diameter sets both the
+    // 8 mm-deep bore and the cone under it.
+    const { volume } = runHole({ diameter: 6, depth: 8, tip: 'drill_point' }, pointSite, pointEntity)
+    expect(volume).toBeCloseTo(BOX - (Math.PI * 9 * 8 + drillPointVolume(3, 118)), 4)
   })
 
   it('a flat tip and an absent tip cut the same flat floor', () => {

@@ -139,9 +139,10 @@ describe.skipIf(!oc || !solveBytes)('a clean-merged face keeps the target name (
     })
   }
 
-  // A hole at a circle an extrude already cut with the same radius, drilled
-  // deeper: the new bore wall is coaxial with the existing one and the clean
-  // folds them into one cylinder, which must keep the existing bore's uuid.
+  // A hole at a point beside the circle an extrude already cut with the same
+  // radius, drilled deeper: the new bore wall is coaxial with the existing one
+  // and the clean folds them into one cylinder, which must keep the existing
+  // bore's uuid. The circle is the extrude's profile; the hole drills the point.
   it('a bore merged into an existing coaxial bore of the same radius', () => {
     const bored: Spec = { features: [
       rectSketch('sk1', 10, 10),
@@ -150,11 +151,15 @@ describe.skipIf(!oc || !solveBytes)('a clean-merged face keeps the target name (
         id: 'skc', kind: 'sketch', label: 'Circle', plane: '@builtin_plane_front',
         entities: [{ id: 'c1', kind: 'circle' }], initial: { c1: [5, 5, 1] }, constraints: [],
       },
+      {
+        id: 'skp', kind: 'sketch', label: 'Bore point', plane: '@builtin_plane_front',
+        entities: [{ id: 'p1', kind: 'point' }], initial: { p1: [5, 5] }, constraints: [],
+      },
       { id: 'ex2', kind: 'extrude', sketch: '$skc', distance: 2, direction: 'normal', operation: 'cut' },
     ] }
     const drilled: Spec = { features: [
       ...bored.features,
-      { id: 'hole1', kind: 'hole', hole: { sketch: 'entity:skc:c1', diameter: 2, depth: 6, target: 'body_ex1' } },
+      { id: 'hole1', kind: 'hole', hole: { sketch: 'entity:skp:p1', diameter: 2, depth: 6, target: 'body_ex1' } },
     ] }
     const before = mesh(bored)
     const bores = before.face_queries.flatMap((q, i) => (parseAncestry(q)[1] === 'cylinderface' ? [before.face_uuids[i]] : []))
