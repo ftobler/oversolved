@@ -218,6 +218,7 @@ describe('batch B: the empty clear and the profile fill rule', () => {
       const note = mutationInfoOf(type).note!
       expect(note).toContain('non-construction points are drilled')
       expect(note).toContain('A circle is a profile, not a drill site')
+      expect(note).toContain('circles-only or construction-points-only sketch')
       expect(note).toContain('operation: cut')
     }
     expect(mutationInfoOf('add_hole').fields.target.note).toContain('An empty string means absent')

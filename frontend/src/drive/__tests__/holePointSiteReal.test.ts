@@ -4,6 +4,10 @@
 // `diameter`; a circle is a profile, and cutting it is an extrude `cut`
 // (`through_all` for a through bore). Both remove the same cylinder, so the
 // measured volumes must agree. Real OCC + Rust solver.
+//
+// This is the lane-equivalence guard: it would also pass on the old
+// circle-site code, so the red-first proof for the rule lives in hole.test.ts,
+// holeReal.test.ts, holeCounterboreReal.test.ts and the drive value test.
 
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
@@ -99,6 +103,7 @@ describe.skipIf(!ready)('one bore, two lanes (real OCC + Rust solver)', () => {
     const built = await runHeadless({ doc: emptyDriveDoc(), steps: HOLE_STEPS })
     expect(nonSketchProblems(built.features)).toEqual([])
     const measured = await measureHeadless(built.doc as PartDoc)
+    expect(measured).not.toBeNull()
     expect(measured!.measures.volume).toBeCloseTo(PLATE - BORE, 2)
   }, 120_000)
 
@@ -106,6 +111,7 @@ describe.skipIf(!ready)('one bore, two lanes (real OCC + Rust solver)', () => {
     const built = await runHeadless({ doc: emptyDriveDoc(), steps: CIRCLE_CUT_STEPS })
     expect(nonSketchProblems(built.features)).toEqual([])
     const measured = await measureHeadless(built.doc as PartDoc)
+    expect(measured).not.toBeNull()
     expect(measured!.measures.volume).toBeCloseTo(PLATE - BORE, 2)
   }, 120_000)
 
