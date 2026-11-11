@@ -20,6 +20,7 @@
 
 import type { Sketch, SketchFeature, Entity, Constraints } from '@/types/cad'
 import type { Repository } from '../query'
+import { getPoint3d } from '../query'
 import type { Body } from '../types3d'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
 import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSketch'
@@ -271,7 +272,13 @@ function lowerProjectionConstraints(
       } else if (source) {
         const resolvedSrc = globalRepo.query(source, null) as Dict | null
         if (resolvedSrc) {
-          const data3d = resolve3dGeometry(resolvedSrc)
+          // A registry point carries 2D external_xy and needs its owning sketch
+          // frame to become 3D; the builtin origin has no sketch and lifts to
+          // the document origin. Without this the origin projection resolved
+          // nothing and the entity stayed at the stale/default point.
+          const data3d = 'external_xy' in resolvedSrc
+            ? { kindH: 'point' as const, data: { point: getPoint3d(resolvedSrc, globalRepo) } }
+            : resolve3dGeometry(resolvedSrc)
           if (data3d) {
             const projected = projectTo2d(data3d, plane as PlaneFrame)
             if (projected) {

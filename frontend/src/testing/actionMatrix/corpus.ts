@@ -16,6 +16,10 @@ import type { PartDoc, PartFeature } from '@/types/cad'
 export interface CorpusDoc {
   label: string
   spec: PartDoc
+  /** Synthetic targets that name a multi-operand selection the one-target
+   *  enumeration cannot express. They are swept after the cap, so a small doc
+   *  still covers them without displacing an ordinary target. */
+  extraTargets?: readonly MatrixTarget[]
 }
 
 // The PR-gate slice: the doc-shaped fixtures (real bug-report documents) plus
@@ -79,7 +83,44 @@ export function corpusDocs(): CorpusDoc[] {
   const helixFixture = loadPartDoc(bossWithHelix, { name: 'fixture:boss_with_helix' })
   if (!helixFixture.ok) throw new Error(`action-matrix fixture failed to load: ${helixFixture.error.field} ${helixFixture.error.message}`)
   docs.push({ label: 'fixture:boss_with_helix', spec: helixFixture.doc })
+  // One synthetic pair target pins the constraint command's click path: the
+  // origin plus a free sketch point, which projects the origin and authors the
+  // coincident. box_with_hole's `pts` sketch is one unconstrained point, so the
+  // add is a real driver rather than a redundant refusal.
+  const boxWithHole = docs.find(entry => entry.label === 'box_with_hole')
+  if (boxWithHole) {
+    const pair = originPairTarget(boxWithHole.spec)
+    if (pair) boxWithHole.extraTargets = [pair]
+  }
   return docs
+}
+
+/** The point key a sketch entity exposes to a constraint, or null when it has
+ *  no projectable point. */
+function pointKeyOf(kind: string): string | null {
+  if (kind === 'line') return 'start'
+  if (kind === 'point') return 'xy'
+  if (kind === 'circle' || kind === 'arc' || kind === 'ellipse') return 'center'
+  return null
+}
+
+/** The origin plus the first sketch point, as one selection. */
+function originPairTarget(doc: PartDoc): MatrixTarget | null {
+  for (const feature of doc.features ?? []) {
+    if (feature.kind !== 'sketch') continue
+    for (const entity of feature.entities ?? []) {
+      const point = pointKeyOf(entity.kind)
+      if (point === null) continue
+      const vertex = `vertex:${feature.id}:${entity.id}:${point}`
+      return {
+        id: `@builtin_origin+${vertex}`,
+        kind: 'vertex',
+        featureId: feature.id,
+        selection: ['@builtin_origin', vertex],
+      }
+    }
+  }
+  return null
 }
 
 export type MatrixTargetKind = 'none' | 'feature' | 'entity' | 'vertex' | 'constraint'
@@ -93,6 +134,9 @@ export interface MatrixTarget {
   // an entity/vertex/constraint selection only exists while its sketch (or
   // feature) editor is open, and the store methods gate on that id.
   featureId: string | null
+  // The full selection for a synthetic multi-operand target. Absent means the
+  // single `id` above, which is every enumerated target.
+  selection?: readonly string[]
 }
 
 // Round-robin across kinds so a capped sweep still covers every target class
@@ -133,7 +177,11 @@ export function enumerateTargets(doc: PartDoc): MatrixTarget[] {
 
 // The hidden "none" target is always swept: it pins every command's behavior
 // on an empty selection. maxTargets === null sweeps the whole document.
-export function targetsForSweep(doc: PartDoc, maxTargets: number | null): MatrixTarget[] {
-  const targets = enumerateTargets(doc)
-  return maxTargets === null ? targets : targets.slice(0, maxTargets)
+export function targetsForSweep(doc: CorpusDoc, maxTargets: number | null): MatrixTarget[] {
+  const targets = enumerateTargets(doc.spec)
+  const capped = maxTargets === null ? targets : targets.slice(0, maxTargets)
+  // Synthetic pair targets are never capped: they pin a multi-operand path the
+  // ordinary one-target enumeration cannot name, and displacing ordinary
+  // targets to make room would silently shrink the baseline's coverage.
+  return [...capped, ...(doc.extraTargets ?? [])]
 }

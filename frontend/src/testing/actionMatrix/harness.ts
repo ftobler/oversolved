@@ -88,7 +88,7 @@ export function installTarget(spec: PartDoc, target: MatrixTarget): void {
     }
   }
   useEditorState.setState({
-    normalSelection: target.kind === 'none' ? new Set<string>() : new Set<string>([target.id]),
+    normalSelection: target.kind === 'none' ? new Set<string>() : new Set<string>(target.selection ?? [target.id]),
     selectedPicks: new Map(),
     chipOwnedSelection: new Set(),
     activeFeatureId: target.featureId,

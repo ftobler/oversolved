@@ -6,6 +6,7 @@ import { randomId } from '@/utils/yamlMutations'
 import { isWholeBodySelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
+import { findEdgeKindForQuery } from '@/picking/bodyDispatchCallbacks'
 import { wouldOverconstrain } from '@/kernel/features/constraintProbe'
 import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
 import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, type PendingConstraint } from '@/stores/sketchEditorStore'
@@ -986,6 +987,9 @@ export default function Part() {
     setSketchCallback('getSketch', (featureId: string) => {
       return solveResults?.[featureId]?.solved ?? null
     })
+    // The constraint command projects a picked body edge by its curve kind; the
+    // dimension tool reads the same fact from the hover instead.
+    setSketchCallback('resolveEdgeKind', (query: string) => findEdgeKindForQuery(query) ?? null)
     return () => {
       clearSketchCallbacks()
     }

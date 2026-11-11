@@ -315,18 +315,23 @@ describe('sketchEditorStore', () => {
       })
     })
 
-    it('applyConstraint includes @builtin_origin in targets for coincident constraint', () => {
+    it('applyConstraint projects @builtin_origin instead of storing an external ref', () => {
       const handler = vi.fn()
+      const batch = vi.fn()
       setSketchCallback('onMutation', handler)
+      setSketchCallback('onMutationBatch', batch)
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
       useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
       useSketchEditorStore.getState().applyConstraint('coincident')
-      expect(handler).toHaveBeenCalledWith({
+      expect(batch).toHaveBeenCalledOnce()
+      const [projection, constraint] = batch.mock.calls[0][0]
+      expect(projection).toMatchObject({ type: 'add_projected_entity', source: '@builtin_origin', kind: 'point' })
+      expect(constraint).toEqual({
         type: 'add_constraint',
         featureId: 'S1',
         kind: 'coincident',
-        targets: expect.arrayContaining(['vertex:S1:L1:start', '@builtin_origin']),
+        targets: ['vertex:S1:L1:start', `vertex:S1:${projection.entityId}:xy`],
       })
     })
 

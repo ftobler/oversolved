@@ -244,6 +244,14 @@ const VERTEX_REF_NOTE =
   + 'center/major1/major2/minor1/minor2 on an ellipse, start/c1/c2/end on a spline, '
   + 'start/fit<k>/end/c1/c2 on a fit_spline, and xy on a point. Builtin refs such as @builtin_origin are also accepted.'
 
+// A constraint is a plain doc op and still accepts `@builtin_origin`, so old
+// documents and headless authors keep working. The UI command path projects the
+// operand instead, which is what leaves something visible in the sketch.
+const CONSTRAINT_PROJECTION_NOTE =
+  ' To constrain against the part origin or a body vertex/edge, add_projected_entity it first '
+  + '(kind "point" for `@builtin_origin`, with the body query as the source) and name the projection as the target. '
+  + 'A bare `@builtin_origin` still solves but leaves nothing in the sketch, so it cannot be seen or deleted.'
+
 // Every `set_<kind>_field` names one feature kind; the kind's schema
 // sub-definition is the one list of fields it may set. The Record makes a new
 // setter mutation fail `tsc -b` until it is mapped, and the catalog test names
@@ -873,7 +881,7 @@ export const MUTATION_CATALOG = {
   },
   add_constraint: {
     summary: 'Add a sketch constraint over entity refs.',
-    note: VERTEX_REF_NOTE,
+    note: VERTEX_REF_NOTE + CONSTRAINT_PROJECTION_NOTE,
     fields: {
       featureId: str(),
       kind: str(CONSTRAINT_KIND_NOTE),

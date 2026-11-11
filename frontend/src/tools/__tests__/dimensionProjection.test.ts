@@ -5,7 +5,7 @@ import {
   findProjectionOf,
   planBrepDimensionPick,
   refreshProjectedPickKinds,
-} from '@/tools/dimensionProjection'
+} from '@/tools/operandProjection'
 
 const EDGE_Q = '?body:b1/edge:3'
 const VERTEX_Q = '?body:b1/vertex:7'

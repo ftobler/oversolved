@@ -115,7 +115,7 @@ export function checkSweepCoverage(
 
   const liveTargets = new Set<string>()
   for (const doc of sweep.docs) {
-    for (const target of targetsForSweep(doc.spec, sweep.maxTargetsPerDoc)) {
+    for (const target of targetsForSweep(doc, sweep.maxTargetsPerDoc)) {
       liveTargets.add(`${doc.label}\u0000${target.id}`)
     }
   }
@@ -138,7 +138,7 @@ export function expectedBaselineRows(
 ): MatrixRow[] {
   const allowed = new Set<string>()
   for (const doc of sweep.docs) {
-    for (const target of targetsForSweep(doc.spec, sweep.maxTargetsPerDoc)) {
+    for (const target of targetsForSweep(doc, sweep.maxTargetsPerDoc)) {
       allowed.add(`${doc.label}\u0000${target.id}`)
     }
   }
@@ -157,7 +157,7 @@ export async function runMatrix(sweep: MatrixSweep, options: MatrixRunOptions): 
   let lastYield = performance.now()
   for (const doc of sweep.docs) {
     await options.onDocStart?.(doc)
-    const targets = targetsForSweep(doc.spec, sweep.maxTargetsPerDoc)
+    const targets = targetsForSweep(doc, sweep.maxTargetsPerDoc)
     for (const target of targets) {
       for (const command of PART_COMMANDS) {
         rows.push(await runMatrixEntry(doc, target, command, options))

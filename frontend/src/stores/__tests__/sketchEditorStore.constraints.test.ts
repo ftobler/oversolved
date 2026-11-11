@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, type PendingConstraint } from '@/stores/sketchEditorStore'
 import { installSketchStoreSetup } from './helpers/sketchEditorStoreTestSetup'
 import { useEditorState } from '@/hooks/useEditorState'
+import { ancestry, emitWire } from '@/utils/query'
 
 describe('sketchEditorStore', () => {
   installSketchStoreSetup()
@@ -270,6 +271,100 @@ describe('sketchEditorStore', () => {
       expect(reason).toMatch(/would overconstrain/i)
       expect(reason).toMatch(/length/i)
       expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('projects the origin and authors the coincident as one undo group', () => {
+      const handler = vi.fn()
+      const batch = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('onMutationBatch', batch)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:c1:center')
+      useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
+
+      expect(useSketchEditorStore.getState().applyConstraint('coincident')).toBeNull()
+
+      expect(handler).not.toHaveBeenCalled()
+      expect(batch).toHaveBeenCalledOnce()
+      const group = batch.mock.calls[0][0]
+      expect(group).toHaveLength(2)
+      expect(group[0]).toMatchObject({
+        type: 'add_projected_entity', featureId: 'S1', kind: 'point', source: '@builtin_origin',
+      })
+      const projectionId = group[0].entityId
+      expect(projectionId).toBeTruthy()
+      expect(group[1]).toEqual({
+        type: 'add_constraint',
+        featureId: 'S1',
+        kind: 'coincident',
+        targets: ['vertex:S1:c1:center', `vertex:S1:${projectionId}:xy`],
+      })
+    })
+
+    it('reuses a projected origin already in the sketch and adds only the constraint', () => {
+      const handler = vi.fn()
+      const batch = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('onMutationBatch', batch)
+      setSketchCallback('getSketch', () => ({
+        P1: { x: 0, y: 0, projected: true, source: '@builtin_origin' },
+      }) as never)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:c1:center')
+      useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
+
+      useSketchEditorStore.getState().applyConstraint('coincident')
+
+      expect(batch).not.toHaveBeenCalled()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'S1',
+        kind: 'coincident',
+        targets: ['vertex:S1:c1:center', 'vertex:S1:P1:xy'],
+      })
+    })
+
+    it('refuses a redundant add without emitting its projection (no orphan entity)', () => {
+      const handler = vi.fn()
+      const batch = vi.fn()
+      const gate = vi.fn<(pending: PendingConstraint) => boolean>(() => true)
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('onMutationBatch', batch)
+      setSketchCallback('checkRedundantAdd', gate)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:c1:center')
+      useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
+
+      const reason = useSketchEditorStore.getState().applyConstraint('coincident')
+
+      expect(reason).toMatch(/would overconstrain/i)
+      // The probe sees the projection as a prelude so a not-yet-existing target
+      // is resolvable, and the refusal still leaves the document untouched.
+      const pending = gate.mock.calls[0]?.[0]
+      expect(pending?.prelude).toHaveLength(1)
+      expect(pending?.prelude?.[0]).toMatchObject({ type: 'add_projected_entity' })
+      expect(batch).not.toHaveBeenCalled()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('projects a B-rep vertex picked from the body instead of dropping it', () => {
+      const handler = vi.fn()
+      const batch = vi.fn()
+      const bodyVertex = emitWire(ancestry(['@b1'], 'vertex'))
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('onMutationBatch', batch)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
+      useSketchEditorStore.getState().toggleNormalSelection(bodyVertex)
+
+      useSketchEditorStore.getState().applyConstraint('coincident')
+
+      expect(batch).toHaveBeenCalledOnce()
+      const group = batch.mock.calls[0][0]
+      expect(group[0]).toMatchObject({
+        type: 'add_projected_entity', featureId: 'S1', kind: 'point', source: bodyVertex,
+      })
+      expect(group[1].targets[1]).toBe(`vertex:S1:${group[0].entityId}:xy`)
     })
 
     it('asks the redundancy gate with the pending add and authors on a false answer', () => {

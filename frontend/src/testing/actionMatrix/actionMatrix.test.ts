@@ -14,7 +14,7 @@ import { okResult, type SessionFailure } from '@/session/result'
 import { noParams } from '@/utils/core/commandSpec'
 import type { PartCommandSpec } from '@/pages/commandEntries'
 import { compareMatrix, toBaselineRows, type MatrixBaselineFile, type MatrixRow } from './baseline'
-import { corpusDocs, SMOKE_DOC_LABELS, SMOKE_MAX_TARGETS, type CorpusDoc } from './corpus'
+import { corpusDocs, SMOKE_DOC_LABELS, SMOKE_MAX_TARGETS, targetsForSweep, type CorpusDoc } from './corpus'
 import {
   classifyEntry,
   checkSweepCoverage,
@@ -75,6 +75,21 @@ describe('the action-matrix comparator', () => {
 
   it('subset mode ignores baseline rows outside the replayed slice', () => {
     expect(compareMatrix(rows, rows.slice(0, 1), { subset: true })).toEqual([])
+  })
+})
+
+describe('the synthetic origin-pair target', () => {
+  it('is swept past the target cap on its corpus document', () => {
+    const doc = corpusDocs().find(entry => entry.label === 'box_with_hole')
+    expect(doc).toBeDefined()
+    const targets = targetsForSweep(doc!, 1)
+    // The cap keeps the ordinary first target, and the pair is appended rather
+    // than displacing it.
+    expect(targets[0].id).toBe('<none>')
+    const pair = targets.find(target => target.selection !== undefined)
+    expect(pair).toBeDefined()
+    expect(pair!.selection![0]).toBe('@builtin_origin')
+    expect(pair!.selection![1]).toMatch(/^vertex:/)
   })
 })
 
