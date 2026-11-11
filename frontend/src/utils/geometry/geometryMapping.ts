@@ -15,6 +15,18 @@ import { fitPointIndex } from '@/types/vertexKeys'
 
 type ResolvedRef = { entity: string; point?: string } | null | undefined
 
+/** The origin query is not a sketch entity: the solver lowers it to the
+ *  sketch-local document origin, and the renderer resolves it the same way
+ *  through `ConstraintRenderContext` rather than adding a fake map entry. */
+const ORIGIN_REF = '@builtin_origin'
+
+/** Optional render inputs that live outside the sketch map. `originLocal` is
+ *  the document origin (0,0,0) in this sketch's local 2D frame; it defaults to
+ *  [0,0], which is exact for the builtin planes. */
+export interface ConstraintRenderContext {
+  originLocal?: Point
+}
+
 interface ResolvedConstraint {
   id: string
   kind: string
@@ -168,13 +180,41 @@ export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string 
   }
 }
 
+// Resolve a constraint ref to {entity, point?}. The origin is kept as a ref so
+// the dimension branches can place it; every other string goes through the
+// shared vertex-ref reader, which only knows sketch map ids.
+function normalizeRef(q: string | undefined, knownIds: ReadonlySet<string>): ResolvedRef {
+  if (typeof q !== 'string') return q
+  if (q === ORIGIN_REF) return { entity: ORIGIN_REF }
+  return resolveQueryRef(q, knownIds)
+}
+
+// The single point reader for a constraint operand: the context origin for
+// `@builtin_origin`, the sketch map otherwise. A dimension against the origin
+// is drawn against this point exactly like one against a sketch entity.
+function operandPoint(sketch: Sketch, ref: ResolvedRef, ctx: ConstraintRenderContext): Point | null {
+  if (!ref) return null
+  if (ref.entity === ORIGIN_REF) return ctx.originLocal ? [...ctx.originLocal] : [0, 0]
+  return geomPoint(sketch, ref)
+}
+
+// Sketch entity ids for a render's `entity`/`entities`: the origin is not a map
+// member, so pick, hover and selection must key on the real operand instead.
+function entityIds(...refs: ResolvedRef[]): string[] {
+  return refs.map(r => r?.entity).filter((e): e is string => !!e && e !== ORIGIN_REF)
+}
+
 // Public entry point. Delegates to the per-kind core renderer, then guarantees
 // a selectable glyph: when the core can't build a specific render (an unknown
 // or hand-edited shape, e.g. a parallel between two circles) we anchor a generic
 // `symbol_unknown` tile at the first resolvable operand so the constraint stays
 // visible and deletable rather than silently vanishing from the canvas.
-export function computeConstraintRender(constraint: PartConstraint, sketch: Sketch): ConstraintRender {
-  const render = computeConstraintRenderCore(constraint, sketch)
+export function computeConstraintRender(
+  constraint: PartConstraint,
+  sketch: Sketch,
+  ctx: ConstraintRenderContext = {},
+): ConstraintRender {
+  const render = computeConstraintRenderCore(constraint, sketch, ctx)
   if (render.kind !== 'unknown') return render
   return fallbackConstraintGlyph(constraint, sketch)
 }
@@ -184,13 +224,13 @@ export function computeConstraintRender(constraint: PartConstraint, sketch: Sket
 // in which case there is genuinely nowhere to put a tile.
 function fallbackConstraintGlyph(constraint: PartConstraint, sketch: Sketch): ConstraintRender {
   const knownIds = new Set(Object.keys(sketch))
-  const normalize = (q: string | undefined): ResolvedRef => typeof q === 'string' ? resolveQueryRef(q, knownIds) : q
+  const normalize = (q: string | undefined): ResolvedRef => normalizeRef(q, knownIds)
   const refs = [
     constraint.a, constraint.b, constraint.target,
     constraint.line, constraint.arc, constraint.point,
     constraint.point_a, constraint.point_b,
   ].map(normalize).filter((r): r is { entity: string; point?: string } => !!r)
-  const entities = [...new Set(refs.map(r => r.entity))]
+  const entities = [...new Set(entityIds(...refs))]
   for (const ref of refs) {
     const at = geomPoint(sketch, ref)
     if (at) return { kind: 'symbol_unknown', at, entity: ref.entity, entities }
@@ -204,12 +244,13 @@ function pointDistanceAxisRender(
   dimKind: 'point_distance_x' | 'point_distance_y',
   resolved: ResolvedConstraint,
   sketch: Sketch,
+  ctx: ConstraintRenderContext,
 ): ConstraintRender {
-  const eid = resolved.a?.entity
-  const eid2 = resolved.b?.entity
-  if (!eid || !eid2 || !resolved.a || !resolved.b) return { kind: 'unknown' }
-  const pa = geomPoint(sketch, resolved.a)
-  const pb = geomPoint(sketch, resolved.b)
+  if (!resolved.a || !resolved.b) return { kind: 'unknown' }
+  const eid = entityIds(resolved.a, resolved.b)[0]
+  if (!eid) return { kind: 'unknown' }
+  const pa = operandPoint(sketch, resolved.a, ctx)
+  const pb = operandPoint(sketch, resolved.b, ctx)
   if (!pa || !pb) return { kind: 'unknown' }
   const isX = dimKind === 'point_distance_x'
   const mid = isX ? (pa[1] + pb[1]) / 2 : (pa[0] + pb[0]) / 2
@@ -227,10 +268,14 @@ function pointDistanceAxisRender(
   }
 }
 
-function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch): ConstraintRender {
+function computeConstraintRenderCore(
+  constraint: PartConstraint,
+  sketch: Sketch,
+  ctx: ConstraintRenderContext,
+): ConstraintRender {
   // Normalize refs: convert query strings to {entity, point?} objects.
   const knownIds = new Set(Object.keys(sketch))
-  const normalize = (q: string | undefined): ResolvedRef => typeof q === 'string' ? resolveQueryRef(q, knownIds) : q
+  const normalize = (q: string | undefined): ResolvedRef => normalizeRef(q, knownIds)
   const resolved: ResolvedConstraint = {
     ...constraint,
     target:  normalize(constraint.target),
@@ -252,7 +297,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
       const pb = geomPoint(sketch, resolved.b)
       if (!pa || !pb) return { kind: 'unknown' }
       const at: Point = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2]
-      return { kind: sym, at, entity: resolved.a.entity, entities: [resolved.a.entity, resolved.b.entity] }
+      return { kind: sym, at, entity: resolved.a.entity, entities: entityIds(resolved.a, resolved.b) }
     }
     const eid = resolved.target?.entity
     if (!eid) return { kind: 'unknown' }
@@ -321,7 +366,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     // one slot unresolvable in this sketch; the other operand still gives a valid
     // glyph position, so it renders as a coincident rather than the generic unknown
     // tile. See bugreports/strange_residual_constraint_20260622_200230.md.
-    const entities = [resolved.a?.entity, resolved.b?.entity, resolved.target?.entity].filter(Boolean) as string[]
+    const entities = entityIds(resolved.a, resolved.b, resolved.target)
     for (const ref of [resolved.a, resolved.b, resolved.target]) {
       if (!ref) continue
       const pt = geomPoint(sketch, ref)
@@ -336,7 +381,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     if (!eid) return { kind: 'unknown' }
     const ea = sketch[eid] as Arc | LineSegment
     const eb = eid2 ? sketch[eid2] as Arc | LineSegment : undefined
-    const entities = [eid, eid2].filter(Boolean) as string[]
+    const entities = entityIds(resolved.a, resolved.b)
     // geomPoint resolves the anchor for both arcs and circles: it returns an
     // arc's start/end (honoring the resolved center key) and a circle's center.
     // The old Arc cast read `.start` off a circle, which is undefined and dropped
@@ -359,7 +404,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     const ea = sketch[eid] as LineSegment | Arc
     if (!ea || !('start' in ea) || !('end' in ea)) return { kind: 'unknown' }
     const at: Point = [(ea.start[0] + ea.end[0]) / 2, (ea.start[1] + ea.end[1]) / 2]
-    return { kind: 'symbol_parallel', at, entity: eid, entities: [resolved.a?.entity, resolved.b?.entity].filter(Boolean) as string[] }
+    return { kind: 'symbol_parallel', at, entity: eid, entities: entityIds(resolved.a, resolved.b) }
   }
 
   if (kind === 'angle') {
@@ -422,16 +467,16 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
       kind: 'symbol_equal',
       at,
       entity: eid,
-      entities: [eid, eid2],
+      entities: entityIds(resolved.a, resolved.b),
     }
   }
 
   if (kind === 'point_distance') {
-    const eid = resolved.a?.entity
-    const eid2 = resolved.b?.entity
-    if (!eid || !eid2 || !resolved.a || !resolved.b) return { kind: 'unknown' }
-    const pa = geomPoint(sketch, resolved.a)
-    const pb = geomPoint(sketch, resolved.b)
+    if (!resolved.a || !resolved.b) return { kind: 'unknown' }
+    const eid = entityIds(resolved.a, resolved.b)[0]
+    if (!eid) return { kind: 'unknown' }
+    const pa = operandPoint(sketch, resolved.a, ctx)
+    const pb = operandPoint(sketch, resolved.b, ctx)
     if (!pa || !pb) return { kind: 'unknown' }
     const dx = pb[0] - pa[0]
     const dy = pb[1] - pa[1]
@@ -450,7 +495,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
   }
 
   if (kind === 'point_distance_x' || kind === 'point_distance_y') {
-    return pointDistanceAxisRender(kind, resolved, sketch)
+    return pointDistanceAxisRender(kind, resolved, sketch, ctx)
   }
 
   if (kind === 'line_distance') {
@@ -475,7 +520,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     }
     if (!ea || !lineRef?.entity || !otherRef) return { kind: 'unknown' }
     const eid = lineRef.entity
-    const pb = geomPoint(sketch, otherRef)
+    const pb = operandPoint(sketch, otherRef, ctx)
     if (!pb) return { kind: 'unknown' }
     const dx = ea.end[0] - ea.start[0]
     const dy = ea.end[1] - ea.start[1]
@@ -544,16 +589,15 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     // Without this branch it fell through to the generic `symbol_unknown`
     // glyph, which read as a stray constraint nobody asked for.
     if (!line && resolved.point_a && resolved.point_b && resolved.point) {
-      const pa = geomPoint(sketch, resolved.point_a)
-      const pb = geomPoint(sketch, resolved.point_b)
+      const pa = operandPoint(sketch, resolved.point_a, ctx)
+      const pb = operandPoint(sketch, resolved.point_b, ctx)
       if (!pa || !pb) return { kind: 'unknown' }
-      const entities = [resolved.point.entity, resolved.point_a.entity, resolved.point_b.entity]
-        .filter((e): e is string => !!e)
+      const entities = [...new Set(entityIds(resolved.point, resolved.point_a, resolved.point_b))]
       return {
         kind: 'symbol_midpoint',
         at: [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2],
-        entity: resolved.point.entity,
-        entities: [...new Set(entities)],
+        entity: entities[0],
+        entities,
       }
     }
     if (!line) return { kind: 'unknown' }
@@ -576,7 +620,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     const e = sketch[eid] as Circle | Arc | PointEntity
     if (!e) return { kind: 'unknown' }
     const center = 'center' in e ? e.center : [e.x, e.y] as Point
-    return { kind: 'symbol_concentric', at: center, entity: eid, entities: [eid, resolved.b?.entity].filter(Boolean) as string[] }
+    return { kind: 'symbol_concentric', at: center, entity: eid, entities: entityIds(resolved.a, resolved.b) }
   }
 
   if (kind === 'fixed') {
@@ -658,7 +702,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
       kind: 'symbol_colinear',
       at: pt,
       entity: eid,
-      entities: [resolved.a?.entity, resolved.b?.entity, resolved.target?.entity].filter(Boolean) as string[],
+      entities: entityIds(resolved.a, resolved.b, resolved.target),
     }
   }
 
@@ -687,11 +731,15 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
   return { kind: 'unknown' }
 }
 
-export function deriveConstraints(feature: SketchFeature, sketch: Sketch): Constraints {
+export function deriveConstraints(
+  feature: SketchFeature,
+  sketch: Sketch,
+  ctx: ConstraintRenderContext = {},
+): Constraints {
   if (!feature.constraints) return {}
   const result: Constraints = {}
   for (const c of feature.constraints) {
-    const render = computeConstraintRender(c, sketch)
+    const render = computeConstraintRender(c, sketch, ctx)
     if (render.kind === 'unknown') continue
     result[c.id] = { render, residual: 0 }
   }

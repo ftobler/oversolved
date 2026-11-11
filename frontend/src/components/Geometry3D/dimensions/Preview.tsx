@@ -31,6 +31,9 @@ export function DimensionPreview({
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const dimensionPicks = useSketchEditorStore(s => s.dimensionPicks)
   const cursorWorld = useSketchEditorStore(s => s.dimensionCursorWorld)
+  // The active sketch's document origin in its local frame, published by
+  // Geometry3D while editing; the origin operand of a dim is placed by it.
+  const originLocal = useSketchEditorStore(s => s.activeOriginLocal)
 
   // Resolve memo. Recomputes whenever picks / cursor / sketch change.
   const synth = useMemo(() => {
@@ -44,7 +47,7 @@ export function DimensionPreview({
     // Mirror the mode-switching logic from finalizeDimensionPlacement so the
     // preview shows the correct dimension type as the user positions the cursor.
     if (kind === 'point_distance' && cursorWorld && targets.length >= 2) {
-      const pts = resolveDimPoints(kind, targets, sketch, featureId)
+      const pts = resolveDimPoints(kind, targets, sketch, featureId, originLocal)
       if (pts) {
         const [pa, pb] = pts
         const anchorX = (pa[0] + pb[0]) / 2
@@ -59,7 +62,7 @@ export function DimensionPreview({
       }
     }
 
-    const value = computeNaturalDimensionValue(kind, targets, sketch, featureId) ?? 0
+    const value = computeNaturalDimensionValue(kind, targets, sketch, featureId, originLocal) ?? 0
 
     // Build a fake PartConstraint to feed through computeConstraintRender.
     const refs = targets.map(t => parseTarget(t, featureId))
@@ -74,13 +77,13 @@ export function DimensionPreview({
     // Anchor-relative pos so the ghost label tracks the cursor. Shares the
     // commit-time math so preview and committed dim place the label identically.
     if (cursorWorld) {
-      const pos = computeAnchorRelativePos(kind, targets, sketch, featureId, cursorWorld)
+      const pos = computeAnchorRelativePos(kind, targets, sketch, featureId, cursorWorld, originLocal)
       if (pos) c.pos = pos
     }
 
-    const render = computeConstraintRender(c, sketch)
+    const render = computeConstraintRender(c, sketch, { originLocal })
     return { kind, render }
-  }, [activeTool, dimensionPicks, cursorWorld, sketch, featureId])
+  }, [activeTool, dimensionPicks, cursorWorld, sketch, featureId, originLocal])
 
   if (featureId !== activeFeatureId) return null
   if (!synth) return null
