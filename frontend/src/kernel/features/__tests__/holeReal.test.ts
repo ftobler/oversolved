@@ -303,25 +303,24 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       }
     }
 
-    it('a picked circle drills its OWN diameter, not the field\'s', () => {
-      // The circle names both the position and the size of the hole the user
-      // drew, and the size wins: the same pick through an extrude cut removes
-      // exactly that cylinder, and a hole that came out at the field's 10 would
-      // disagree with the r=3 circle still sitting in the sketch.
+    it('a picked point drills at the feature diameter, not at a circle beside it', () => {
+      // The point names a position only, so the feature's 6 mm diameter sets the
+      // bore. The r=3 circle beside it is a profile, not a drill site: it is not
+      // drilled, and the one hole is the point's.
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
-        repo.register('sk/ci', { external_params: [10, 10, 3], kind: 'circle', sketch_id: 'sk' })
-        repo.register('sk/p1/xy', { external_xy: [3, 3] })
+        repo.register('sk/ci', { external_params: [3, 3, 3], kind: 'circle', sketch_id: 'sk' })
+        repo.register('sk/p1/xy', { external_xy: [10, 10] })
         const bodyStore = boxTarget(occ, scope, table)
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
-          hole: { sketch: 'entity:sk:ci', diameter: 10, depth: 5, target: 'body_t' },
+          hole: { sketch: 'entity:sk:p1', diameter: 6, depth: 5, target: 'body_t' },
         }, repo, bodyStore, { sk: { entities: [{ id: 'ci', kind: 'circle' }, { id: 'p1', kind: 'point' }] } })
         expect(result.status).toBe('ok')
-        // One hole: the point beside the circle is not part of this pick.
+        // One hole: the circle beside the point is not part of this pick.
         expect(result.hole_count).toBe(1)
         const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
         expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * 3 * 3 * 5, 2)
@@ -354,12 +353,10 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       }
     })
 
-    it('a whole-sketch pick drills every non-construction point and circle at the right size', () => {
-      // The whole-sketch meaning is every drill site in it: the two circles at
-      // their own radii and the point at the feature's diameter, in the sketch's
-      // entity order. The cosmetic thread reports one helix per site, so its
-      // radii pin each site's size and the order they were drilled in. The sites
-      // are spaced apart so no two bores overlap and the volume is a clean sum.
+    it('a whole-sketch pick drills every non-construction point at the feature diameter and ignores circles', () => {
+      // A whole-sketch pick drills points only: the two circles beside the point
+      // are profiles, not sites. The cosmetic thread reports one helix per site,
+      // so its radius pins the bore the feature diameter produced.
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
@@ -379,22 +376,23 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
           sk: { entities: [{ id: 'c1', kind: 'circle' }, { id: 'p1', kind: 'point' }, { id: 'c2', kind: 'circle' }] },
         })
         expect(result.status).toBe('ok')
-        expect(result.hole_count).toBe(3)
+        expect(result.hole_count).toBe(1)
         const sites = (result.thread as { sites: Array<{ radius: number }> }).sites
-        expect(sites.map((s) => s.radius)).toEqual([2, 5, 3])
+        expect(sites.map((s) => s.radius)).toEqual([5])
         const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
-        expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * (2 * 2 + 5 * 5 + 3 * 3) * 5, 2)
+        expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * 5 * 5 * 5, 2)
       } finally {
         scope.dispose()
       }
     })
 
-    it('a whole-sketch pick skips construction points and circles', () => {
+    it('a whole-sketch pick skips construction points and a construction circle', () => {
       // A construction-flagged point (a document can carry one, and the toggle
-      // can now set or clear it) and an n-gon's construction circumcircle are
-      // reference geometry, so the whole-sketch meaning must not drill them. Both sit on
-      // the body and would remove material if they were sites, so the volume
-      // pins that only the real point was drilled.
+      // can now set or clear it) and a construction circle are never drill
+      // sites: the first is reference geometry, the second a profile. Both sit
+      // on the body and would remove material if they were sites, so the volume
+      // pins that only the real point was drilled. (A real circle is the case
+      // above.)
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
@@ -423,10 +421,11 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       }
     })
 
-    it('a construction circle does not widen the bore at its point', () => {
-      // A construction circle concentric with a real point would drill the same
-      // spot at its own larger radius if it were a site, replacing the bore with
-      // a wider one. It is skipped, so the point keeps the feature diameter.
+    it('a circle does not widen the bore at its point', () => {
+      // A circle concentric with a real point would drill the same spot at its
+      // own larger radius if it were a site, replacing the bore with a wider
+      // one. It is a profile, not a site, so the point keeps the feature
+      // diameter whether or not the circle is construction.
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
@@ -439,7 +438,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 4, depth: 5, target: 'body_t' },
         }, repo, bodyStore, {
-          sk: { entities: [{ id: 'cc', kind: 'circle', construction: true }, { id: 'p1', kind: 'point' }] },
+          sk: { entities: [{ id: 'cc', kind: 'circle' }, { id: 'p1', kind: 'point' }] },
         })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
@@ -450,11 +449,11 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       }
     })
 
-    it('a construction circle does not set off the counterbore mouth-size check', () => {
-      // The widened mouth must be wider than every bore it drills. If the
-      // construction circle were a site, its r6 would beat the cb r4 and throw
-      // before any cut; skipped, the point's r2 bore takes the counterbore,
-      // which removes the bore plus the wider step annulus.
+    it('a real circle beside the point does not set off the counterbore mouth-size check', () => {
+      // The widened mouth must be wider than every bore it drills. If the r6
+      // circle were a site, it would beat the cb r4 and throw before any cut;
+      // ignored, the point's r2 bore takes the counterbore, which removes the
+      // bore plus the wider step annulus.
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
@@ -470,7 +469,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
             style: 'counterbore', cb_diameter: 8, cb_depth: 2,
           },
         }, repo, bodyStore, {
-          sk: { entities: [{ id: 'cc', kind: 'circle', construction: true }, { id: 'p1', kind: 'point' }] },
+          sk: { entities: [{ id: 'cc', kind: 'circle' }, { id: 'p1', kind: 'point' }] },
         })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
@@ -525,16 +524,16 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
     })
 
     it('a through-all bore on a cup bottom face pierces the boss (candleStand)', () => {
-      // The candleStand practice report's cup: an r4 x 7 boss with a circle
-      // r2 drill site on its bottom face and depth_mode through_all. The hole
-      // once removed nothing while reporting ok; the edge-sampled span must
-      // size the cutter clean through the 7 mm boss (pi*2^2*7 removed).
+      // The candleStand practice report's cup: an r4 x 7 boss with a drill point
+      // on its bottom face and depth_mode through_all. The hole once removed
+      // nothing while reporting ok; the edge-sampled span must size the cutter
+      // clean through the 7 mm boss (pi*2^2*7 removed).
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('_pt_sk', { origin: [0, 43, 0], x_axis: [1, 0, 0], y_axis: [0, 0, 1], normal: [0, 1, 0] })
-        repo.register('sk/c1', { external_params: [0, 0, 2], kind: 'circle', sketch_id: 'sk' })
+        repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const cup = makeCylinder(occ, scope, [0, 43, 0], [0, 1, 0], 4, 7)
         const bodyStore: Record<string, Body> = {
           body_cup: {
@@ -548,7 +547,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const result = solveHole(occ, scope, table, {
           id: 'hoCup',
           hole: { sketch: '@sk', diameter: 4, depth_mode: 'through_all', depth: 20, direction: 'normal', target: 'body_cup' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'c1', kind: 'circle' }] } })
+        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
         const after = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_cup.shape!))

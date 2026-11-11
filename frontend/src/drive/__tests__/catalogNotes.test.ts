@@ -213,11 +213,16 @@ describe('batch B: the empty clear and the profile fill rule', () => {
       .toContain('it is the clear of no field of this kind')
   })
 
-  it('says an all-circle hole sketch never reads diameter', () => {
+  it('says a hole drills points and a circle is a profile', () => {
     for (const type of ['add_hole', 'set_hole_field'] as const) {
-      expect(mutationInfoOf(type).note!, type).toContain('all circles never reads `diameter`')
+      const note = mutationInfoOf(type).note!
+      expect(note).toContain('non-construction points are drilled')
+      expect(note).toContain('A circle is a profile, not a drill site')
+      expect(note).toContain('circles-only or construction-points-only sketch')
+      expect(note).toContain('operation: cut')
     }
     expect(mutationInfoOf('add_hole').fields.target.note).toContain('An empty string means absent')
+    expect(mutationInfoOf('add_hole').fields.sketch.note).toContain('A circle is a profile, not a drill site')
   })
 
   it('states the even/odd fill rule on every profile field', () => {

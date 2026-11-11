@@ -33,6 +33,8 @@ import { pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
+import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
+import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
 
 export type ValueViolationCode = 'invalid-mutation' | 'unknown-target'
 
@@ -1604,6 +1606,21 @@ function addHelix(raw: RawStep): ValueViolation | null {
 // `add_hole` carries the same fields a setter sets, so each present one is held
 // to that field's schema definition: an unknown enum spelling (a `style` typo)
 // is refused here, at the boundary, rather than solved into a silent fallback.
+// The sketch pick gets one check the schema cannot make: it names an entity of
+// a document sketch, and a circle is not a drill site. A `?` area pick that
+// narrows to one circle is the same pick as the curve itself.
+function holeSketchCircleProblem(value: unknown, ctx: ValueContext, label: string): string | null {
+  if (typeof value !== 'string' || ctx.doc === null) return null
+  const sketchIds = new Set((ctx.doc.features ?? []).filter(feature => feature.kind === 'sketch').map(feature => feature.id))
+  const picked = pickedSketchEntity(value, sketchIds)
+  if (picked === null) return null
+  const sketch = sketchOf(ctx.doc, picked.sketchId)
+  const entity = sketch?.entities?.find(candidate => candidate.id === picked.entityId)
+  return entity?.kind === 'circle'
+    ? `${label}: ${circleDrillSiteReason(picked.sketchId, picked.entityId, entity.construction === true)}`
+    : null
+}
+
 function addHole(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   for (const field of featureFieldNames('hole')) {
     const value = raw[field]
@@ -1614,7 +1631,8 @@ function addHole(raw: RawStep, ctx: ValueContext): ValueViolation | null {
     const problem = fieldValueProblem(value, schema, `add_hole field ${json(field)}`)
     if (problem !== null) return invalid(problem)
   }
-  return null
+  const sketchProblem = holeSketchCircleProblem(raw.sketch, ctx, 'add_hole field "sketch"')
+  return sketchProblem === null ? null : invalid(sketchProblem)
 }
 
 // A split's inline fields: `bodies` is a pick list, `plane` goes through the
@@ -1843,7 +1861,11 @@ function setExtrudeField(raw: RawStep, ctx: ValueContext): ValueViolation | null
 // the note promises rather than a refused reference.
 function setHoleField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   if (clearsOnEmpty(raw.type as Mutation['type'], raw.field as string, raw.value)) return null
-  return fieldValue(raw, ctx)
+  const generic = fieldValue(raw, ctx)
+  if (generic !== null) return generic
+  if (raw.field !== 'sketch') return null
+  const problem = holeSketchCircleProblem(raw.value, ctx, 'set_hole_field field "sketch"')
+  return problem === null ? null : invalid(problem)
 }
 
 /** The plane feature's stored definition, or null when the caller has no

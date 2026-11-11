@@ -23,7 +23,7 @@ import { applySetHoleField } from '@/utils/yamlMutations/featureDefs'
 import { FIELD_SETTER_KIND } from '../mutationCatalog'
 import { EMPTY_REF_CLEARS } from '../mutationValues'
 import { sketchAt } from '@/testing/featureAccess'
-import { Repository } from '@/kernel/query'
+import { Repository, makeAncestryQuery } from '@/kernel/query'
 import { collectExtrudeLoops } from '@/kernel/features/faceProfile'
 
 function seededDoc(): PartDoc {
@@ -987,6 +987,76 @@ describe('finding 8: hole field values', () => {
       .toContain('diameterx')
     expect(validateMutation({
       type: 'set_hole_field', featureId: 'ho1', field: 'sketch', value: '@sk1',
+    })).toMatchObject({ ok: true })
+  })
+})
+
+describe('a circle is not a hole drill site', () => {
+  function sketchWithPointAndCircle(): PartDoc {
+    return seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [
+          { id: 'p1', kind: 'point' },
+          { id: 'c1', kind: 'circle' },
+          { id: 'cc', kind: 'circle', construction: true },
+        ],
+        initial: { p1: [0, 0], c1: [0, 0, 3], cc: [0, 0, 5] },
+        constraints: [],
+      }],
+    })
+  }
+
+  it('refuses an entity or vertex add_hole sketch ref naming a circle, naming the extrude cut', () => {
+    const doc = sketchWithPointAndCircle()
+    for (const sketch of ['entity:sk1:c1', 'vertex:sk1:c1:center']) {
+      const error = refusal({ type: 'add_hole', featureId: 'ho1', sketch, diameter: 4, depth_mode: 'through_all' }, doc)
+      expect(error.code, sketch).toBe('invalid-mutation')
+      expect(error.message, sketch).toContain("'c1' of sketch sk1 is a circle, which is not a drill site")
+      expect(error.message, sketch).toContain('extrude cut')
+    }
+  })
+
+  it('refuses an area pick naming a lone circle at the step', () => {
+    // The area form reaches the boundary as a `?` query, not an entity: ref; it
+    // must be narrowed the same way the kernel narrows it.
+    const query = makeAncestryQuery(['@sk1/c1', 'surface:0', '@sk1'], 'flatface')
+    const error = refusal({ type: 'add_hole', featureId: 'ho1', sketch: query, diameter: 4, depth_mode: 'through_all' }, sketchWithPointAndCircle())
+    expect(error.message).toContain("'c1' of sketch sk1 is a circle, which is not a drill site")
+    expect(error.message).toContain('extrude cut')
+  })
+
+  it('tells a construction circle to clear its flag before the extrude cut', () => {
+    const error = refusal({
+      type: 'add_hole', featureId: 'ho1', sketch: 'entity:sk1:cc', diameter: 4, depth_mode: 'through_all',
+    }, sketchWithPointAndCircle())
+    expect(error.message).toContain('is a construction circle, which is not a drill site')
+    expect(error.message).toContain("clear the circle's construction flag, then cut it with an extrude cut")
+  })
+
+  it('refuses the same circle through the sketch setter', () => {
+    const error = refusal({
+      type: 'set_hole_field', featureId: 'ho1', field: 'sketch', value: 'entity:sk1:c1',
+    }, sketchWithPointAndCircle())
+    expect(error.message).toContain('extrude cut')
+  })
+
+  it('accepts a point pick, a whole-sketch ref and a doc-unaware check', () => {
+    // A whole-sketch ref is legal: the kernel drills its points and ignores its
+    // circles. With no document the boundary only knows the ref's shape.
+    const doc = sketchWithPointAndCircle()
+    expect(validateMutation({
+      type: 'add_hole', featureId: 'ho1', sketch: 'entity:sk1:p1', diameter: 4, depth_mode: 'through_all',
+    }, { doc })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_hole', featureId: 'ho1', sketch: '@sk1', diameter: 4, depth_mode: 'through_all',
+    }, { doc })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_hole', featureId: 'ho1', sketch: 'entity:sk1:c1', diameter: 4, depth_mode: 'through_all',
     })).toMatchObject({ ok: true })
   })
 })

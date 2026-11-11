@@ -164,13 +164,13 @@ describe('runReply', () => {
       id: 'h1',
       kind: 'hole',
       status: 'exception',
-      message: "hole: sketch 'sk3' has no point or circle entities",
+      message: "hole: sketch 'sk3' has no point entities; the hole needs a point in its sketch to drill",
     }
     const failed = runReply({ ...source, features: [problem] }, false, documents)
     expect(failed.ok).toBe(true)
     expect(failed.features).toEqual([problem])
     expect(failed.summary).toBe(
-      "features: sk1 (sketch); bodies: body_ex1; problems: h1 (hole) exception: hole: sketch 'sk3' has no point or circle entities",
+      "features: sk1 (sketch); bodies: body_ex1; problems: h1 (hole) exception: hole: sketch 'sk3' has no point entities; the hole needs a point in its sketch to drill",
     )
   })
 

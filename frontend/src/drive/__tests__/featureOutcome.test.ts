@@ -150,7 +150,7 @@ function problemDoc(): PartDoc {
 describe('featureProblems', () => {
   const outcomes: Record<string, FeatureOutcome> = {
     sk1: { status: 'underconstrained' },
-    h1: { status: 'exception', exception: "hole: sketch 'sk3' has no point or circle entities" },
+    h1: { status: 'exception', exception: "hole: sketch 'sk3' has no point entities; the hole needs a point in its sketch to drill" },
     f1: { status: 'ok', warning: 'fillet: the radius was clamped' },
     sk2: { status: 'overconstrained' },
     ex1: { status: 'error', exception: 'extrude: no closed profile found' },
@@ -159,7 +159,7 @@ describe('featureProblems', () => {
 
   it('lists only the problems, in feature log order, with kind and message', () => {
     expect(featureProblems(problemDoc(), outcomes)).toEqual([
-      { id: 'h1', kind: 'hole', status: 'exception', message: "hole: sketch 'sk3' has no point or circle entities" },
+      { id: 'h1', kind: 'hole', status: 'exception', message: "hole: sketch 'sk3' has no point entities; the hole needs a point in its sketch to drill" },
       { id: 'f1', kind: 'fillet', status: 'ok', message: 'fillet: the radius was clamped' },
       { id: 'sk2', kind: 'sketch', status: 'overconstrained', message: 'the sketch is overconstrained' },
       { id: 'ex1', kind: 'extrude', status: 'error', message: 'extrude: no closed profile found' },

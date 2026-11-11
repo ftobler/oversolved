@@ -285,15 +285,16 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
     }
   })
 
-  // A circle names its own drill site and diameter; its bore is named from it.
-  it('blind hole drilled at a picked circle', () => {
+  // A point drills the hole and its bore is named from that site; the feature
+  // diameter supplies the size.
+  it('blind hole drilled at a picked point', () => {
     const spec: Spec = { features: [
       ...box().features,
       {
-        id: 'skh', kind: 'sketch', label: 'Drill circle', plane: '@builtin_plane_front',
-        entities: [{ id: 'c1', kind: 'circle' }], initial: { c1: [5, 5, 1.5] }, constraints: [],
+        id: 'skh', kind: 'sketch', label: 'Drill point', plane: '@builtin_plane_front',
+        entities: [{ id: 'p1', kind: 'point' }], initial: { p1: [5, 5] }, constraints: [],
       },
-      { id: 'hole1', kind: 'hole', hole: { sketch: 'entity:skh:c1', diameter: 2, depth: 3, target: 'body_ex1' } },
+      { id: 'hole1', kind: 'hole', hole: { sketch: 'entity:skh:p1', diameter: 2, depth: 3, target: 'body_ex1' } },
     ] }
     expectSelfResolution(spec, 'body_ex1')
     const faces = holeFaceQueries(spec, 'hole1')
@@ -301,7 +302,7 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
     expect(faces.flatface).toHaveLength(1)
     for (const q of [...faces.cylinderface, ...faces.flatface]) {
       expect(q).toContain('@u|')
-      expect(parseAncestry(q)[0], q).toContain('@skh/c1')
+      expect(parseAncestry(q)[0], q).toContain('@skh/p1')
     }
   })
 

@@ -331,11 +331,13 @@ const HOLE_FIELD_NOTE =
   '`depth_mode` is blind or through_all. `sketch` is a feature-level ref, so spell it ' +
   '@<sketchId> (or a narrower entity:/vertex:/? pick from the viewport), not the profile consumers\' ' +
   '$<sketchId> form; a $ ref is refused here. ' +
-  'The sketch\'s non-construction points and circles are drilled: a circle at its own radius, a point at the feature `diameter`. ' +
-  'A circle names its own size, so a sketch whose drill sites are all circles never reads `diameter`, though the document still requires the field and a point site added later does use it. ' +
-  'Construction points and circles are reference geometry, so a whole-sketch pick skips them (an n-gon\'s circumcircle, or a point or circle an author flags construction); ' +
+  'The sketch\'s non-construction points are drilled, each at the feature `diameter`. ' +
+  'A circle is a profile, not a drill site: a whole-sketch pick ignores it, and a circle picked alone is refused. ' +
+  'A circles-only or construction-points-only sketch that holds a circle, with no drillable point, is refused with the extrude-cut alternative. ' +
+  'To cut a drawn circle, use `add_extrude` with `operation: cut` (`termination: through_all` for a through bore). ' +
+  'Construction points are reference geometry, so a whole-sketch pick skips a point an author flags construction; ' +
   'line endpoints are not drill sites, while add_center_rect\'s helper centre point is an ordinary point and does drill. ' +
-  'A single point or circle picked alone drills only that one, and a picked construction one is refused. ' +
+  'A single point picked alone drills only that one, and a picked construction point is refused. ' +
   '`style` widens the mouth: `counterbore` reads `cb_diameter` and `cb_depth`, `countersink` reads `cb_diameter` and `cs_angle` (degrees, default 90); absent means `simple`. ' +
   'The widened mouth is one field, `cb_diameter`, under both styles: there is no `cs_diameter` (`cs_angle` is the only `cs_` field). ' +
   '`tip` is a blind hole\'s bottom: `flat` (absent) or `drill_point`, a cone of included angle `tip_angle` (degrees, default 118) ' +
@@ -355,7 +357,7 @@ const holeAddFields = () => {
   const thread = properties.thread
   return {
     ...featureAddFields(),
-    sketch: optStr('The sketch to drill, as "@<sketchId>" (or a point/circle pick).'),
+    sketch: optStr('The sketch to drill, as "@<sketchId>" (or a point pick). A circle is a profile, not a drill site.'),
     diameter: optScalar(),
     depth_mode: optStr('blind | through_all.'),
     depth: optScalar(),

@@ -948,11 +948,12 @@ banner on stdout, so a client config must use the direct node invocation.
   named in a warning. `reverse` is obeyed as written at every site. The run
   reply's `featureDeltas` row carries the resolved `direction`.
   `hole.sketch` is spelled `@<sketchId>` (or a narrower
-  viewport pick), not the profile consumers' `$<sketchId>` form, and a circle
-  drills at its own radius while a point uses the feature `diameter`; a sketch
-  whose drill sites are all circles never reads `diameter`, though the document
-  still requires the field and a point site added later does use it;
-  construction points and circles are skipped by a whole-sketch pick, and
+  viewport pick), not the profile consumers' `$<sketchId>` form. A hole drills
+  the sketch's points, each at the feature `diameter`: a circle is a profile,
+  not a drill site, so a whole-sketch pick ignores it and a circle picked alone
+  is refused with the remedy; cut a drawn circle with `add_extrude`
+  `operation: cut` (`termination: through_all` for a through bore).
+  Construction points are skipped by a whole-sketch pick, and
   picking one alone is refused by name;
   `add_center_rect` takes the half-diagonal corner (center `[0,0]` with corner
   `[1,1]` is 2x2) and leaves a centre point entity; `add_rect` creates its line

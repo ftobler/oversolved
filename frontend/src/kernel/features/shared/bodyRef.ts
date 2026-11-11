@@ -84,3 +84,46 @@ export function soleEntityInQuery(query: string, sketchId: string): string | nul
   const named = [...new Set(ids.filter((i) => i.startsWith(prefix)))]
   return named.length === 1 ? named[0].slice(prefix.length) : null
 }
+
+/**
+ * Sketch a `?...` ancestry query names when the caller knows the document's
+ * sketch rows rather than the plane registry: the first token whose feature id
+ * is a known sketch. The editor and the drive value boundary have the document,
+ * not `_pt_` planes, so they narrow a circle area pick through this.
+ */
+export function sketchIdFromAncestry(query: string, sketchIds: ReadonlySet<string>): string | null {
+  if (!query.startsWith('?')) return null
+  let ids: string[]
+  try {
+    ;[ids] = parseAncestry(query)
+  } catch {
+    return null
+  }
+  for (const id of ids) {
+    if (!id.startsWith('@')) continue
+    const token = id.slice(1)
+    const slash = token.indexOf('/')
+    const candidate = slash >= 0 ? token.slice(0, slash) : token
+    if (sketchIds.has(candidate)) return candidate
+  }
+  return null
+}
+
+/**
+ * The sketch and one entity a pick names, resolved against the document's
+ * sketch ids. `entity:`/`vertex:` name it directly; a `?` area narrows only
+ * when the region is bounded by exactly one entity of one sketch. Null keeps
+ * the whole-sketch meaning (or an unresolvable pick) for the caller.
+ */
+export function pickedSketchEntity(
+  ref: string,
+  sketchIds: ReadonlySet<string>,
+): { sketchId: string; entityId: string } | null {
+  const direct = parseSketchEntityRef(ref)
+  if (direct !== null) return { sketchId: direct.sketchId, entityId: direct.eid }
+  if (!ref.startsWith('?')) return null
+  const sketchId = sketchIdFromAncestry(ref, sketchIds)
+  if (sketchId === null) return null
+  const entityId = soleEntityInQuery(ref, sketchId)
+  return entityId === null ? null : { sketchId, entityId }
+}
