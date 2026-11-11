@@ -184,7 +184,7 @@ export const useBugReportStore = create<BugReportState>((set, get) => ({
     const state = get()
     const target = state.sets.find(s => s.id === id)
     if (!target) return null
-    if (!SET_NAME_PATTERN.test(name)) return 'use letters, digits, - and _'
+    if (!SET_NAME_PATTERN.test(name)) return 'use letters, digits, - and _ only (no spaces)'
     if (state.sets.some(s => s.id !== id && s.name === name)) return 'name already used'
     if (target.name === name) return null
     const oldName = target.name
