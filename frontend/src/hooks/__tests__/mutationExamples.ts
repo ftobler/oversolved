@@ -200,9 +200,12 @@ const deleteFacePopulatedDoc = (): PartDoc => makeDoc({
 const danglingDoc = (): PartDoc => makeDoc(makeSketch('sk1', {
   entities: [
     { id: 'l1', kind: 'line' },
-    { id: 'proj1', kind: 'line', source: '?edge;x' },
+    { id: 'proj1', kind: 'line' },
   ],
-  constraints: [{ id: 'c_super', kind: 'horizontal', target: '$l1' }],
+  constraints: [
+    { id: 'proj_proj1', kind: 'projection', target: '$proj1', source: '?edge;x' },
+    { id: 'c_super', kind: 'horizontal', target: '$l1' },
+  ],
 }))
 
 // ─── The registry ───
@@ -689,7 +692,7 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   // cleanup: removes the projected entity and its superfluous constraint
   remove_dangling_content: {
     makeDoc: danglingDoc,
-    mutation: { type: 'remove_dangling_content', features: { sk1: { entities: ['proj1'], constraints: ['c_super'] } } },
+    mutation: { type: 'remove_dangling_content', features: { sk1: { projections: ['proj_proj1'], constraints: ['c_super'] } } },
   },
 
   // label-only carriers: the entry they label is the whole effect

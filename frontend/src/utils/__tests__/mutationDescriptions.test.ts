@@ -119,7 +119,7 @@ const SAMPLES: { [K in Mutation['type']]: Extract<Mutation, { type: K }> } = {
   set_length_unit: { type: 'set_length_unit', unit: 'inch' },
   edit_session: { type: 'edit_session', featureId: 'sk1' },
   preview_commit: { type: 'preview_commit', description: 'change sketch' },
-  remove_dangling_content: { type: 'remove_dangling_content', features: { sk1: { entities: [], constraints: [] } } },
+  remove_dangling_content: { type: 'remove_dangling_content', features: { sk1: { projections: [], constraints: [] } } },
 }
 
 const EXPECTED: Record<Mutation['type'], string> = {

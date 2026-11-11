@@ -100,12 +100,17 @@ export function planFilletCorners(
     }
   }
 
+  const heldByProjection = new Set(
+    (feature.constraints ?? [])
+      .filter(c => c.kind === 'projection' && typeof c.target === 'string')
+      .map(c => String(c.target).replace(/^\$/, '')),
+  )
   const sides: FilletCornerSide[] = entities.map(entity => ({
     id: entity.id,
     kind: entity.kind,
     params: initial[entity.id] ?? [],
     construction: entity.construction === true,
-    source: entity.source,
+    heldByProjection: heldByProjection.has(entity.id),
   }))
   const geometry = planFilletGeometry(sides, corners, radius)
   if ('reason' in geometry) {

@@ -123,9 +123,10 @@ function danglingDoc(): PartDoc {
       kind: 'sketch',
       entities: [
         { id: 'l1', kind: 'line' },
-        { id: 'proj1', kind: 'line', source: '?edge;x' },
+        { id: 'proj1', kind: 'line' },
       ],
       constraints: [
+        { id: 'proj_proj1', kind: 'projection', target: '$proj1', source: '?edge;x' },
         { id: 'c_super', kind: 'horizontal', target: '$l1' },
         { id: 'c_on_proj', kind: 'coincident', target: '$proj1' },
       ],
@@ -326,8 +327,8 @@ describe('idempotent no-op guard', () => {
       result.current.handleMutation({
         type: 'remove_dangling_content',
         features: {
-          ghost: { entities: ['e1'], constraints: ['c1'] },
-          sk1: { entities: [], constraints: [] },
+          ghost: { projections: ['e1'], constraints: ['c1'] },
+          sk1: { projections: [], constraints: [] },
         },
       })
     })
@@ -348,7 +349,7 @@ describe('idempotent no-op guard', () => {
     act(() => {
       result.current.handleMutation({
         type: 'remove_dangling_content',
-        features: { sk1: { entities: ['l1'], constraints: [] } },
+        features: { sk1: { projections: ['l1'], constraints: [] } },
       })
     })
 
@@ -370,8 +371,8 @@ describe('idempotent no-op guard', () => {
       result.current.handleMutation({
         type: 'remove_dangling_content',
         features: {
-          ghost: { entities: ['e1'], constraints: [] },
-          sk1: { entities: ['proj1'], constraints: [] },
+          ghost: { projections: ['e1'], constraints: [] },
+          sk1: { projections: ['proj_proj1'], constraints: [] },
         },
       })
     })
@@ -380,10 +381,9 @@ describe('idempotent no-op guard', () => {
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
     expect(reSolve).toHaveBeenCalledTimes(1)
     const feature = docRef.current!.features![0] as { entities: { id: string }[]; constraints: { id: string }[] }
-    expect(feature.entities.map(e => e.id)).toEqual(['l1'])
-    // The constraint that referenced the removed projection goes with it, so
-    // the doc is not left holding a dangling ref.
-    expect(feature.constraints.map(c => c.id)).toEqual(['c_super'])
+    // The entity stays; the projection constraint is removed.
+    expect(feature.entities.map(e => e.id)).toEqual(['l1', 'proj1'])
+    expect(feature.constraints.map(c => c.id)).toEqual(['c_super', 'c_on_proj'])
   })
 
   // A reorder's slice is the feature ID order alone (it never touches content),

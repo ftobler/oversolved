@@ -214,10 +214,7 @@ export function applyMirrorEntities(
       warn('mirror_entities: source id names no entity in the sketch', { featureId, id })
       continue
     }
-    if (def.source !== undefined) {
-      warn('mirror_entities: projected entities are not mirrored', { featureId, id })
-      continue
-    }
+
     const params = mirrorEntityParams(def.kind, feature.initial[id] ?? [], axis, def.handles)
     if (params === null) {
       warn('mirror_entities: entity block cannot be mirrored', { featureId, id, kind: def.kind })

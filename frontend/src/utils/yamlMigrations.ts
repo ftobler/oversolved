@@ -1,4 +1,4 @@
-import type { PartDoc } from '@/types/cad'
+import type { PartDoc, PartEntityDef } from '@/types/cad'
 import { VERTEX_POINT_KEY_SUFFIXES } from '@/types/vertexKeys'
 import { featureRefId } from '@/kernel/query'
 import { FEATURE_DEF_SUBKEY, nestedFeatureParams } from '@/kernel/features/shared/featureParams'
@@ -188,3 +188,60 @@ export function canonicalizeFeatureParams(doc: PartDoc): number {
   }
   return moved
 }
+
+// Migrate v5 (and older) projection-as-entity-source documents to v6's
+// projection-constraint model: an entity carrying `source` becomes a plain
+// entity plus a `projection` constraint holding it. Legacy `projected_*` kinds
+// are folded to their base kind. A `$<id>` source (copy another entity of the
+// same sketch) has no emitter/successor: it is stripped and the entity keeps
+// its cached params, counted in the return value.
+const BASE_KIND_MIGRATION: Readonly<Record<string, string>> = {
+  projected_line: 'line',
+  projected_circle: 'circle',
+  projected_arc: 'arc',
+  projected_point: 'point',
+  projected_ellipse: 'ellipse',
+  projected_spline: 'spline',
+}
+
+export function migrateProjectionConstraints(doc: PartDoc): number {
+  let rewritten = 0
+  for (const feature of doc.features ?? []) {
+    if (feature.kind !== 'sketch') continue
+    const entities = feature.entities ?? []
+    const constraints = feature.constraints ?? []
+    const existingIds = new Set(constraints.map((c) => c.id))
+    for (const ent of entities) {
+      if (BASE_KIND_MIGRATION[ent.kind]) {
+        ent.kind = BASE_KIND_MIGRATION[ent.kind]
+        rewritten += 1
+      }
+    }
+    for (const ent of entities) {
+      const entRec = ent as PartEntityDef & { source?: unknown }
+      const source = entRec.source
+      if (source === undefined || source === null || source === '') continue
+      delete entRec.source
+      if (typeof source === 'string' && source.startsWith('$')) {
+        rewritten += 1
+        continue
+      }
+      let cid = `proj_${ent.id}`
+      if (existingIds.has(cid)) {
+        let i = 2
+        while (existingIds.has(`${cid}_${i}`)) i++
+        cid = `${cid}_${i}`
+      }
+      existingIds.add(cid)
+      if (!feature.constraints) feature.constraints = constraints
+      constraints.push({ id: cid, kind: 'projection', target: `$${ent.id}`, source: String(source) })
+      rewritten += 1
+    }
+  }
+  return rewritten
+}
+
+// Aliases covering plausible import names for the same migration.
+export const migrateProjectionConstraint = migrateProjectionConstraints
+export const stepProjectionConstraint = migrateProjectionConstraints
+export const migrateProjectedEntitiesToProjectionConstraints = migrateProjectionConstraints

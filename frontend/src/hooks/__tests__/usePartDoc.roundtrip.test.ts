@@ -249,9 +249,12 @@ const danglingDoc = (): PartDoc => ({
     id: 'sk1', kind: 'sketch',
     entities: [
       { id: 'l1', kind: 'line' },
-      { id: 'proj1', kind: 'line', source: '?edge;x' },
+      { id: 'proj1', kind: 'line' },
     ],
-    constraints: [{ id: 'c_super', kind: 'horizontal', target: '$l1' }],
+    constraints: [
+      { id: 'proj_proj1', kind: 'projection', target: '$proj1', source: '?edge;x' },
+      { id: 'c_super', kind: 'horizontal', target: '$l1' },
+    ],
   }],
 } as unknown as PartDoc)
 
@@ -378,7 +381,7 @@ const ROUND_TRIPS: RoundTripCase[] = [
   { name: 'import add_import_step', makeDoc: emptyDoc, mutation: { type: 'add_import_step', featureId: 'imp1', fileId: 'file-1', label: 'part' } as Mutation },
 
   // dangling content cleanup: removes the projected entity and its constraint
-  { name: 'cleanup remove_dangling_content', makeDoc: danglingDoc, mutation: { type: 'remove_dangling_content', features: { sk1: { entities: ['proj1'], constraints: ['c_super'] } } } as Mutation },
+  { name: 'cleanup remove_dangling_content', makeDoc: danglingDoc, mutation: { type: 'remove_dangling_content', features: { sk1: { projections: ['proj_proj1'], constraints: ['c_super'] } } } as Mutation },
 ]
 
 describe.each(ROUND_TRIPS)('round-trip: $name', ({ makeDoc, mutation }) => {

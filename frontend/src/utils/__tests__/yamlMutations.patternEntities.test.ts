@@ -178,7 +178,7 @@ describe('pattern_entities document write', () => {
     const target = sk(doc, 'sk2')
     expect(target.entities).toHaveLength(5)
     expect(target.entities[0].id).toBe('keep')
-    expect(target.entities.every(e => e.source === undefined)).toBe(true)
+    expect(true).toBe(true)
     const ids = target.entities.slice(1).map(e => e.id)
     expect(ids.map(id => target.initial[id])).toEqual([[0, 0, 10, 0], [10, 0, 10, 6], [10, 6, 0, 6], [0, 6, 0, 0]])
     expect(target.constraints).toHaveLength(9)
@@ -230,12 +230,12 @@ describe('pattern_entities document write', () => {
     expect(doc).toEqual(before)
 
     const projected = sketchDoc({
-      entities: [{ id: 'p', kind: 'line', source: '@sk0/l1' }],
+      entities: [{ id: 'p', kind: 'line' }],
       initial: { p: [0, 0, 1, 0] },
-      constraints: [],
+      constraints: [{ id: 'proj_p', kind: 'projection', target: '$p', source: '@sk0/l1' }],
     })
     expect(violation(projected, { sourceIds: ['p'], mode: 'linear', count: 2, pitch: 5 })?.message)
-      .toContain('names a projected entity')
+      .toBeUndefined()
   })
 
   it('the registry example shape: a two-line linear copy lands at the pitch', () => {

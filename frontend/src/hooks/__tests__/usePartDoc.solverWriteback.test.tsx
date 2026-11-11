@@ -91,9 +91,10 @@ function makeProjectionDoc(): PartDoc {
       kind: 'sketch',
       entities: [
         { id: 'line1', kind: 'line' },
-        { id: 'proj1', kind: 'line', source: '?edge;line' },
+        { id: 'proj1', kind: 'line' },
       ],
       constraints: [
+        { id: 'proj_proj1', kind: 'projection', target: '$proj1', source: '?edge;line' },
         { id: 'c_ref', kind: 'coincident', a: '$line1end', b: '$proj1start' },
       ],
       initial: {},
@@ -108,7 +109,7 @@ function projectionResponse(): Record<string, unknown> {
       sk1: {
         status: 'ok',
         geometry: { line1: [0, 0, 1, 0] },
-        projection_errors: ['proj1'],
+        projection_errors: ['proj_proj1'],
       },
     },
     bodies: {},
@@ -229,7 +230,7 @@ describe('solver write-back undo round-trip', () => {
 
     // The explicit cleanup command removes it, one undo entry.
     act(() => {
-      result.current.handleMutation({ type: 'remove_dangling_content', features: { sk1: { entities: [], constraints: ['c_super'] } } })
+      result.current.handleMutation({ type: 'remove_dangling_content', features: { sk1: { projections: [], constraints: ['c_super'] } } })
     })
     await flush()
     expect(constraintsOf(docRef.current).map(c => c.id)).toEqual(['c_keep'])
@@ -256,14 +257,16 @@ describe('solver write-back undo round-trip', () => {
     act(() => { result.current.handleMutation(renameTo('edited')) })
     await flush()
     expect(entitiesOf(docRef.current).map(e => e.id)).toEqual(['line1', 'proj1'])
-    expect(result.current.solveResults.sk1?.projection_errors).toEqual(['proj1'])
+    expect(result.current.solveResults.sk1?.projection_errors).toEqual(['proj_proj1'])
 
     // Cleanup removes the projected entity and its referencing constraint.
     act(() => {
-      result.current.handleMutation({ type: 'remove_dangling_content', features: { sk1: { entities: ['proj1'], constraints: [] } } })
+      result.current.handleMutation({ type: 'remove_dangling_content', features: { sk1: { projections: ['proj_proj1'], constraints: [] } } })
     })
     await flush()
-    expect(entitiesOf(docRef.current).map(e => e.id)).toEqual(['line1'])
+    // Entity stays; the projection constraint is removed.
+    expect(constraintsOf(docRef.current).some(c => c.id === 'proj_proj1')).toBe(false)
+    expect(entitiesOf(docRef.current).map(e => e.id)).toEqual(['line1', 'proj1'])
     expect(result.current.undoStack).toHaveLength(2)
 
     act(() => { result.current.handleUndo() })

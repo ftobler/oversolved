@@ -114,7 +114,6 @@ describe.skipIf(!ready)('pattern_entities extrudes to the hand-authored solid (r
     ])
     const sk2 = featureById(built.doc, 'sk2', 'sketch')
     expect(sk2.entities).toHaveLength(8)
-    expect(sk2.entities!.every(e => e.source === undefined)).toBe(true)
     expect(sk2.constraints).toHaveLength(8)
     expect(built.volume).toBeCloseTo((71.5 * 96.9 - (4 - Math.PI) * 4.233 ** 2) * 2, 6)
     expect(built.volume).toBeCloseTo(13825.937618174597, 6)

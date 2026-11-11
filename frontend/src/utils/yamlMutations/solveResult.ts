@@ -1,26 +1,5 @@
-import type { PartDoc, PartConstraint } from '@/types/cad'
-import { CONSTRAINT_REF_FIELDS, refMatchesEntity, round } from './helpers'
-
-function constraintReferencesAny(c: PartConstraint, removed: Set<string>): boolean {
-  for (const key of CONSTRAINT_REF_FIELDS) {
-    const raw = c[key]
-    if (typeof raw === 'string') {
-      for (const eid of removed) {
-        if (refMatchesEntity(raw, eid)) return true
-      }
-    }
-  }
-  if (c.refs) {
-    for (const raw of c.refs) {
-      if (typeof raw === 'string') {
-        for (const eid of removed) {
-          if (refMatchesEntity(raw, eid)) return true
-        }
-      }
-    }
-  }
-  return false
-}
+import type { PartDoc } from '@/types/cad'
+import { round } from './helpers'
 
 // The write-back has to keep the authored geometry recognisable to every
 // consumer that compares doc content. The solver decides what it moved (its
@@ -76,11 +55,12 @@ export function applyGeometryToFeature(
     featureDef.initial = roundGeometry(geometry)
     return true
   }
-  // Projections are pinned, so the solver never reports them moved; their doc
-  // value is still a rounded cache of a re-derived one, so they always take the
-  // exact no-op test instead of the reference keep.
+  // Held entities (targets of projection constraints) are pinned, so the solver
+  // never reports them moved; their doc value is still a rounded cache of a
+  // re-derived one, so they always take the exact no-op test instead.
   const projections = new Set(
-    (featureDef.entities ?? []).filter(e => e.source != null).map(e => e.id),
+    (featureDef.constraints ?? []).filter(c => c.kind === 'projection' && typeof c.target === 'string')
+      .map(c => String(c.target).replace(/^\$/, '')),
   )
   const next: Record<string, number[]> = {}
   let installed = false
@@ -124,24 +104,16 @@ export function shouldBakeSketchGeometry(
 // source is a plain sketch entity and is kept). Undo restores the whole doc.
 export function applyRemoveDanglingContent(
   doc: PartDoc,
-  perFeature: Record<string, { entities: string[]; constraints: string[] }>,
+  perFeature: Record<string, { projections: string[]; constraints: string[] }>,
 ): void {
-  for (const [featureId, { entities, constraints }] of Object.entries(perFeature)) {
+  for (const [featureId, { projections, constraints }] of Object.entries(perFeature)) {
     const feature = (doc.features ?? []).find(f => f.id === featureId)
     if (feature?.kind !== 'sketch') continue
-    const flagged = new Set(entities)
-    const toRemove = new Set(
-      (feature.entities ?? [])
-        .filter(e => e.source != null && flagged.has(e.id))
-        .map(e => e.id),
-    )
-    if (feature.entities && toRemove.size > 0) {
-      feature.entities = feature.entities.filter(e => !toRemove.has(e.id))
-    }
+    const flagged = new Set(projections)
     if (feature.constraints) {
       const superfluous = new Set(constraints)
       feature.constraints = feature.constraints.filter(
-        c => !superfluous.has(c.id) && !constraintReferencesAny(c, toRemove),
+        c => !(superfluous.has(c.id)) && !(flagged.has(c.id) && c.kind === 'projection'),
       )
     }
   }
@@ -150,15 +122,15 @@ export function applyRemoveDanglingContent(
 // Whether a cleanup plan would actually remove anything from the doc. The
 // command is derived from the last solve's flags; the doc may have changed
 // since, and an all-absent plan must not push a dead undo entry. Mirrors the
-// handler's eligibility rules (source-carrying entities, listed constraints).
+// handler's eligibility rules (projection constraints, listed constraints).
 export function hasDanglingContentInDoc(
   doc: PartDoc,
-  perFeature: Record<string, { entities: string[]; constraints: string[] }>,
+  perFeature: Record<string, { projections: string[]; constraints: string[] }>,
 ): boolean {
-  for (const [featureId, { entities, constraints }] of Object.entries(perFeature)) {
+  for (const [featureId, { projections, constraints }] of Object.entries(perFeature)) {
     const feature = (doc.features ?? []).find(f => f.id === featureId)
     if (feature?.kind !== 'sketch') continue
-    if (entities.some(eid => (feature.entities ?? []).some(e => e.id === eid && e.source != null))) return true
+    if (projections.some(cid => (feature.constraints ?? []).some(c => c.id === cid && c.kind === 'projection'))) return true
     if (constraints.some(cid => (feature.constraints ?? []).some(c => c.id === cid))) return true
   }
   return false

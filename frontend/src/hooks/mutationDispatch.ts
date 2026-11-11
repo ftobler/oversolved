@@ -175,7 +175,7 @@ export const mutationHandlers: MutationHandlers = {
   set_fit_spline_handle: (next, m) =>
     applySetFitSplineHandle(next, m.featureId, m.entityId, m.end, m.handle),
   add_projected_entity: (next, m) =>
-    applyAddProjectedEntity(next, m.featureId, m.kind, m.source, m.entityId),
+    applyAddProjectedEntity(next, m.featureId, m.kind, m.source, m.entityId, m.constraintId),
   add_rect: (next, m) =>
     applyAddRect(next, m.featureId, m.p0, m.p1, m.p0Ref, m.p1Ref, m.entityIds, m.dimensions),
   add_center_rect: (next, m) =>

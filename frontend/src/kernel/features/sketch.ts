@@ -27,7 +27,7 @@ import {
   encodeInput, decodeOutput, STATUS_NAME, Status, CONSTRAINT_FLAG,
   type FlatInput, type SolverOutput,
 } from '@/wasm-kernel/codec'
-import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags } from '@/registry'
+import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags, getDefaultParams } from '@/registry'
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, type TopologyBytes, type WireContact } from '../topologyDecorate'
@@ -212,7 +212,7 @@ export function resetSketchSolverAfterTrap(): void {
  * rest of the sketch still builds). Mirrors Python's
  * ``_project_source_to_params`` + ``_resolve_source_geometry``.
  */
-function lowerProjectedEntities(
+function lowerProjectionConstraints(
   feature: Dict,
   plane: ReturnType<typeof resolveSketchPlane>,
   globalRepo: Repository,
@@ -223,70 +223,83 @@ function lowerProjectedEntities(
   pinnedIds: string[]
 } {
   const entities = (feature.entities as Array<Dict>) ?? []
-  const hasProjections = entities.some((e) => e.source)
+  const constraints = [...((feature.constraints as Array<Dict>) ?? [])]
+  // Legacy v5 (and raw) docs may still carry `source` on the entity instead of
+  // a `projection` constraint. Fold those into projection constraints here so
+  // the solve path matches the migrated document model.
+  const existingTargets = new Set(
+    constraints.filter((c) => c.kind === 'projection' && typeof c.target === 'string').map((c) => c.target as string),
+  )
+  for (const ent of entities) {
+    const src = (ent as { source?: unknown }).source
+    if (src && typeof src === 'string' && !existingTargets.has(`$${ent.id}`)) {
+      constraints.push({ id: `proj_${ent.id}`, kind: 'projection', target: `$${ent.id}`, source: src })
+      existingTargets.add(`$${ent.id}`)
+    }
+  }
+  const projections = constraints.filter((c) => c.kind === 'projection')
   const resolvedKinds: Record<string, string> = {}
   const projectionErrors: string[] = []
   const pinnedIds: string[] = []
 
-  if (!hasProjections || entities.length === 0) {
+  if (projections.length === 0) {
     return { loweredFeature: feature, resolvedKinds, projectionErrors, pinnedIds }
   }
 
-  // Resolved params land in `initial` (keyed by entity id) -- the same place
-  // lowerSketch reads seed params from. The source query is re-resolved on
-  // every solve, so projected geometry tracks the source B-rep (parametric
-  // associativity); a projected entity carries no params in the doc itself.
   const initial: Record<string, number[]> = { ...((feature.initial as Record<string, number[]>) ?? {}) }
-  const loweredEntities: Array<Dict> = []
-  for (const ent of entities) {
-    const source = ent.source
-    if (!source) { loweredEntities.push(ent); continue }
-    const entId = ent.id as string
-    let lowered: Dict | null = null
+  const seenTargets = new Set<string>()
+  for (const pc of projections) {
+    const cid = pc.id as string
+    const targetRef = typeof pc.target === 'string' ? pc.target : ''
+    const targetId = targetRef.startsWith('$') ? targetRef.slice(1) : targetRef
+    if (!targetId) { projectionErrors.push(cid); continue }
+    // Duplicate projection on one entity: the later constraint is the error.
+    if (seenTargets.has(targetId)) { projectionErrors.push(cid); continue }
+    seenTargets.add(targetId)
+    const source = typeof pc.source === 'string' ? pc.source : ''
+    const ent = entities.find((e) => e.id === targetId)
+    const declaredKind = (ent?.kind as string) ?? 'point'
+    let resolved = false
     try {
-      const sourceStr = typeof source === 'string' ? source : ''
-      if (sourceStr.startsWith('$')) {
-        const sourceEid = sourceStr.slice(1)
+      if (source.startsWith('$')) {
+        const sourceEid = source.slice(1)
         const srcParams = initial[sourceEid]
         if (srcParams) {
-          initial[entId] = [...srcParams]
-          lowered = { ...ent, source: undefined }
+          initial[targetId] = [...srcParams]
+          resolved = true
         }
-      } else {
-        const resolved = globalRepo.query(sourceStr, null) as Dict | null
-        if (resolved) {
-          const data3d = resolve3dGeometry(resolved)
+      } else if (source) {
+        const resolvedSrc = globalRepo.query(source, null) as Dict | null
+        if (resolvedSrc) {
+          const data3d = resolve3dGeometry(resolvedSrc)
           if (data3d) {
-            const declaredKind = (ent.kind as string) ?? 'point'
             const projected = projectTo2d(data3d, plane as PlaneFrame)
             if (projected) {
-              initial[entId] = projected.params
-              // A tilted circle lowers to an ellipse, a partial ellipse to a
-              // spline: the resolved kind wins, and is surfaced so the doc
-              // entity adopts it (its param count must match the geometry).
-              if (projected.kind !== declaredKind) resolvedKinds[entId] = projected.kind
-              lowered = { ...ent, source: undefined, kind: projected.kind }
+              initial[targetId] = projected.params
+              if (projected.kind !== declaredKind) resolvedKinds[targetId] = projected.kind
+              // Adopt resolved kind on the doc entity while the constraint holds.
+              if (ent) ent.kind = projected.kind
+              resolved = true
             }
           }
         }
       }
     } catch (e) {
       swallowUnlessTrap(e)
-      // fall through to the unresolved path below
     }
-    if (lowered) {
-      loweredEntities.push(lowered)
-      pinnedIds.push(entId)
-    } else {
-      // Unresolvable projection: drop it rather than leaving a `source` that
-      // would make partDocToSketches skip (and the whole sketch throw). The
-      // rest of the sketch -- including the user's own geometry -- still solves.
-      projectionErrors.push(entId)
+    // Whether resolved or not, the entity stays in the solve and is pinned:
+    // resolved -> at the freshly projected params; unresolved -> at its cached
+    // (last projected) params, or default params if it never had any. The
+    // projection constraint id is reported as an error only when unresolved.
+    if (initial[targetId] === undefined) {
+      initial[targetId] = [...(getDefaultParams ? getDefaultParams(declaredKind) : [])]
     }
+    pinnedIds.push(targetId)
+    if (!resolved) projectionErrors.push(cid)
   }
 
   return {
-    loweredFeature: { ...feature, entities: loweredEntities, initial },
+    loweredFeature: { ...feature, constraints, initial },
     resolvedKinds,
     projectionErrors,
     pinnedIds,
@@ -462,7 +475,7 @@ export function solveSketch(
     { sketchId: featureId, featuresById },
   )
   const { loweredFeature, resolvedKinds, projectionErrors, pinnedIds } =
-    lowerProjectedEntities(feature, plane, globalRepo)
+    lowerProjectionConstraints(feature, plane, globalRepo)
 
   // ─── Lower the live PartDoc feature to SketchInput ───
   // Express the document origin (0,0,0) in this sketch's local 2D frame so a
@@ -586,6 +599,29 @@ export function solveSketch(
   }
 }
 
+// ─── Shared projection pin helper ───
+
+/** Collect the entity ids held by `projection` constraints so the solve, the
+ *  redundancy probe and the drag preview pin exactly the same set. Entities
+ *  no longer carry a `source`; the constraint's `target` names the held
+ *  entity. */
+export function pinProjectionTargets(feature: SketchFeature): { loweredFeature: SketchFeature; pinnedIds: string[] } {
+  const pinned = new Set<string>()
+  const constraints = feature.constraints ?? []
+  for (const c of constraints) {
+    if (c.kind !== 'projection') continue
+    const t = typeof c.target === 'string' ? c.target : ''
+    const id = t.startsWith('$') ? t.slice(1) : t
+    if (id) pinned.add(id)
+  }
+  // Legacy v5: entities carrying `source` are held.
+  for (const e of feature.entities ?? []) {
+    const src = (e as { source?: unknown }).source
+    if (src && typeof src === 'string') pinned.add(e.id)
+  }
+  return { loweredFeature: feature, pinnedIds: [...pinned] }
+}
+
 // ─── Authoring probe ───
 
 /**
@@ -610,18 +646,7 @@ export function solveSketch(
 export function probeRedundantConstraint(feature: SketchFeature, draftId: string): boolean | null {
   if (!solverBytes) return null
   try {
-    const entities = feature.entities ?? []
-    let loweredFeature = feature
-    const pinnedIds: string[] = []
-    if (entities.some((e) => e.source)) {
-      const initial = feature.initial ?? {}
-      const kept: typeof entities = []
-      for (const ent of entities) {
-        if (!ent.source) { kept.push(ent); continue }
-        if (initial[ent.id]) { kept.push({ ...ent, source: undefined }); pinnedIds.push(ent.id) }
-      }
-      loweredFeature = { ...feature, entities: kept }
-    }
+    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature)
     const extract = partDocToSketches([loweredFeature], [0, 0], pinnedIds)
     if (extract.skipped.length || !extract.sketches.length) return null
     const { input, constraintIds } = lowerSketch(extract.sketches[0].sketch, { skipStatusPass: true })
@@ -723,21 +748,7 @@ export function prepareDragContext(
   originLocal: [number, number] = [0, 0],
 ): DragContext | null {
   try {
-    const entities = feature.entities ?? []
-    let loweredFeature = feature
-    // Projected entities kept this drag (their last resolved params survive in
-    // `initial`); pinned in the lowered solve so a drag preview never unsticks
-    // them, mirroring the hard solve (solveSketch).
-    const pinnedIds: string[] = []
-    if (entities.some((e) => e.source)) {
-      const initial = feature.initial ?? {}
-      const kept: typeof entities = []
-      for (const ent of entities) {
-        if (!ent.source) { kept.push(ent); continue }
-        if (initial[ent.id]) { kept.push({ ...ent, source: undefined }); pinnedIds.push(ent.id) }
-      }
-      loweredFeature = { ...feature, entities: kept }
-    }
+    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature)
 
     // originLocal expresses the document origin (0,0,0) in this sketch's local
     // 2D frame so a `@builtin_origin` coincident pins to the actual document

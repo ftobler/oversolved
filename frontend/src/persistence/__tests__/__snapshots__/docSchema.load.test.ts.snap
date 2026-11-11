@@ -189,7 +189,7 @@ exports[`golden documents load and migrate > loads current v3 part: stamped one 
 
 exports[`golden documents load and migrate > loads current v3 part: stamped one behind the ladder, nothing to migrate 2`] = `[]`;
 
-exports[`golden documents load and migrate > loads current v5 part: stamped at the ladder current version, nothing to migrate 1`] = `
+exports[`golden documents load and migrate > loads current v6 part: stamped at the ladder current version, nothing to migrate 1`] = `
 {
   "features": [
     {
@@ -224,11 +224,11 @@ exports[`golden documents load and migrate > loads current v5 part: stamped at t
     },
   ],
   "kind": "part",
-  "version": 5,
+  "version": 6,
 }
 `;
 
-exports[`golden documents load and migrate > loads current v5 part: stamped at the ladder current version, nothing to migrate 2`] = `[]`;
+exports[`golden documents load and migrate > loads current v6 part: stamped at the ladder current version, nothing to migrate 2`] = `[]`;
 
 exports[`golden documents load and migrate > loads legacy part: pre-versioning heals: dead axis constraint, singular body picks, stale inline payload 1`] = `
 {
@@ -443,7 +443,7 @@ exports[`golden documents load and migrate > loads legacy v3 assembly offsets: f
     },
   ],
   "kind": "assembly",
-  "version": 5,
+  "version": 6,
 }
 `;
 

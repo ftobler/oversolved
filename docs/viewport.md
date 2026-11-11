@@ -32,7 +32,7 @@ Top-level `forwardRef` component exposing `ViewportHandle`: `captureScreenshotFo
 
 ### Geometry3D Package (`src/components/Geometry3D/`)
 
-Composes: sketch topology surfaces/edges, entity lines, projected entities, vertex dots, constraint overlays, drag plane/indicators, draw preview/plane, and Body3D.
+Composes: sketch topology surfaces/edges, entity lines, vertex dots, constraint overlays (including the projection glyph), drag plane/indicators, draw preview/plane, and Body3D.
 
 ## Layer Architecture
 

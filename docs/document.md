@@ -80,7 +80,7 @@ under the derived id `step_<file id>`.
 ## Document Structure
 
 ```yaml
-version: 5
+version: 6
 kind: part
 
 features:
@@ -168,7 +168,7 @@ just dragged) that is never stored in the document.
 
 A `fit_spline` is the interpolating spline (CadQuery `spline(points, tangents)`): the document stores the fit points and, when the user authored end tangents, the two absolute handle points. The `handles` field is `start`, `end` or `both` and says which handle pair follows the points; absent means no handles. The curve is derived (clamped C2 cubic, chord parameters); the handles are the first piece's second control point and the last piece's third. Vertex keys are `start`, `fit1`..`fitN-2` (interior points), `end`, and `c1`/`c2` for the handles; `fit<k>` is positional, so inserting or deleting a point renumbers every later ref in the same mutation. The Bezier `spline` above is unchanged.
 
-Projection is not a kind: any base-kind entity (`line`/`circle`/`arc`/`point`) that carries a `source` field is projected from a 3D source and gets an automatic `fixed` constraint pinning it. Legacy `projected_*` kinds are still accepted on read and normalized to their base kind. Any entity can set `construction: true`.
+Projection is held by a `projection` constraint: a base-kind entity (`line`/`circle`/`arc`/`point`/...) paired with `{kind: projection, target: $<entityId>, source: <query>}` is projected from a 3D source and pinned to its projected shape and position. Deleting the constraint leaves the entity free at its last projected params. Legacy v5 documents that carried `source` on the entity are migrated to this form. Any entity can set `construction: true`.
 
 Mirroring a selection (`mirror_entities`) writes plain authored entities: the copies are ordinary rows with their own ids, and there is no stored mirror relation, so moving the originals later does not move them. A constraint is carried over only when every one of its operands is a mirrored source or the axis line; a constraint that reaches anything else stays with the originals alone. A source whose mirror is itself (a seam edge on the axis, a line across it) gets no copy; it serves both halves, and its constraints to the other sources carry onto the copies. In the sketch editor the selection holds the sources and the axis: a lone selected line is the axis, and when the sources include lines the axis is the one selected construction line.
 
@@ -900,6 +900,7 @@ entity) and `{"external_xy": [x, y]}`. The app writes the string form.
 | `concentric` | Center-delta x and y |
 | `radius_difference` | Difference of two radii minus value |
 | `fixed` | Params pinned to initial |
+| `projection` | Holds an entity to its projected source shape and position |
 | `colinear` | Point on the infinite line through a line |
 | `ngon` | Sugar: regular polygon over `refs` (member lines), optionally pinned to the `circle` circumcircle; lowered to equal_length, angle and coincident rows |
 | `dock` | Sugar: `point` pinned to the implied contact of the `host` constraint (today a tangent's foot); lowered to coincident rows, and floats when the host is deleted |

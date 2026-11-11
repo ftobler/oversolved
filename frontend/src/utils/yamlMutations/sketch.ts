@@ -482,10 +482,24 @@ export function applyAddProjectedEntity(
   kind: string,
   source: string,
   entityId?: string,
+  constraintId?: string,
 ): void {
-  const feature = resolveSketch(doc, featureId, 'entities')
+  const feature = resolveSketch(doc, featureId, 'entities', 'constraints')
   if (!feature) return
-  feature.entities.push({ id: mintEntityId(feature.entities, entityId), kind, source })
+  const eid = mintEntityId(feature.entities, entityId)
+  // Refuse a second projection on the same entity.
+  if ((feature.constraints ?? []).some((c) => c.kind === 'projection' && c.target === `$${eid}`)) return
+  if (!feature.constraints) feature.constraints = []
+  // Mint a unique constraint id, honouring an explicit name.
+  const existingCids = new Set((feature.constraints ?? []).map((c) => c.id))
+  let cid = constraintId ?? `proj_${eid}`
+  if (existingCids.has(cid)) {
+    let i = 2
+    while (existingCids.has(`${cid}_${i}`)) i++
+    cid = `${cid}_${i}`
+  }
+  feature.entities.push({ id: eid, kind })
+  feature.constraints.push({ id: cid, kind: 'projection', target: `$${eid}`, source })
 }
 
 export function applyAddEntityWithConstraint(

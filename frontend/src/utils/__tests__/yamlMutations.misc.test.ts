@@ -141,13 +141,14 @@ describe('applyAddEntity', () => {
 })
 
 describe('applyAddProjectedEntity', () => {
-  it('adds a projected entity with source', () => {
+  it('adds a projected entity with a projection constraint', () => {
     const doc = makeSketchDoc()
     applyAddProjectedEntity(doc, 'Sketch1', 'line', '@otherSketch/edge/0')
     expect(entities0(doc)).toHaveLength(3)
     const added = entities0(doc)[2]
     expect(added.kind).toBe('line')
-    expect(added.source).toBe('@otherSketch/edge/0')
+    const constraints = (doc.features?.[0] as { constraints?: { kind: string; source?: string }[] })?.constraints ?? []
+    expect(constraints.some(c => c.kind === 'projection' && c.source === '@otherSketch/edge/0')).toBe(true)
   })
 
   it('honours a caller-supplied entity id', () => {

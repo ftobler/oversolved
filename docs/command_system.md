@@ -99,7 +99,7 @@ Snap rules for drag; measurement rules for on-canvas display.
 
 ### Command Tables (`commandEntries.ts`, `assemblyCommandEntries.ts`)
 
-`PART_COMMAND_SPECS` (the sketch/part editor, 54 specs) and
+`PART_COMMAND_SPECS` (the sketch/part editor, 55 specs) and
 `ASSEMBLY_COMMAND_SPECS` (the assembly editor, 29 specs) are the single source
 of truth for which commands each editor registers. Both are static data: every
 body reads its inputs from the `CommandContext` it is handed, so the table is
@@ -286,6 +286,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | `apply_point_distance` | Apply Point Distance | - | yes | sketch/part |
 | `apply_point_distance_x` | Apply Horizontal Point Distance | - | yes | sketch/part |
 | `apply_point_distance_y` | Apply Vertical Point Distance | - | yes | sketch/part |
+| `apply_projection` | Apply Projection | - | yes | sketch/part |
 | `apply_radius` | Apply Radius | - | yes | sketch/part |
 | `apply_radius_difference` | Apply Radius Difference | - | yes | sketch/part |
 | `apply_tangent` | Apply Tangent | `t` | yes | sketch/part |
