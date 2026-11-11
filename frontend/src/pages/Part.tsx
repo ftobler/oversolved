@@ -1444,7 +1444,12 @@ export default function Part() {
             <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} lengthUnit={lengthUnitOf(doc?.length_unit)} />
           }
           viewportViewOptions={
-            <ViewOptionsButton show={viewShowStates} onToggleShow={handleToggleShowGroup} />
+            <ViewOptionsButton
+              show={viewShowStates}
+              onToggleShow={handleToggleShowGroup}
+              lengthUnit={lengthUnitOf(doc?.length_unit)}
+              onSetLengthUnit={handleSetLengthUnit}
+            />
           }
           rightPanel={
             <PartDebugPanel debugOpen={debugOpen} />

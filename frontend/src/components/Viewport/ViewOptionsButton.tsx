@@ -28,6 +28,8 @@ import type { CurvatureKind } from '@/adapters/preferences'
 import { MAX_BRIGHTNESS, MAX_ZEBRA_STRIPES, MIN_BRIGHTNESS, MIN_ZEBRA_STRIPES } from '@/adapters/preferences'
 import type { ShowGroup, ShowGroupState } from '@/components/Viewport/viewOptionsShow'
 import { SHOW_GROUPS } from '@/components/Viewport/viewOptionsShow'
+import { LENGTH_UNIT_LABEL, LENGTH_UNIT_NAME } from '@/utils/lengthUnit'
+import type { LengthUnit } from '@/types/cad'
 import '@/components/layout/Glass.css'
 import '@/components/Viewport/ViewOptions.css'
 
@@ -40,7 +42,15 @@ export interface ViewOptionsButtonProps {
   // can (it owns the body face registry); the assembly cannot, so it offers the
   // builtin planes and says so rather than arming a pick nothing consumes.
   allowSectionPick?: boolean
+  // The part document's unit, and the page's set_length_unit dispatch. Unlike
+  // every other row this is a document edit, so the page owns both halves: the
+  // card only reflects the unit and asks for a change. Absent in the assembly,
+  // which has no document unit of its own, so the section is hidden there.
+  lengthUnit?: LengthUnit
+  onSetLengthUnit?: (unit: LengthUnit) => void
 }
+
+const LENGTH_UNITS: readonly LengthUnit[] = ['mm', 'inch']
 
 const SHOW_LABELS: Record<ShowGroup, string> = {
   planes: 'Planes',
@@ -81,7 +91,7 @@ function formatRange(range: [number, number]): string {
   return `${fmt(range[0])} .. ${fmt(range[1])} 1/mm`
 }
 
-export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick = true }: ViewOptionsButtonProps) {
+export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick = true, lengthUnit, onSetLengthUnit }: ViewOptionsButtonProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -196,6 +206,33 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
 
       {open && (
         <div className="view-options-popover glass-panel" role="menu" aria-label="View options" onKeyDown={onCardKeyDown}>
+          {lengthUnit !== undefined && onSetLengthUnit && (
+            <>
+              <div className="view-options-heading">Document</div>
+              <div className="view-options-segment" role="group" aria-label="Length unit">
+                {LENGTH_UNITS.map(unit => {
+                  const chosen = lengthUnit === unit
+                  return (
+                    <button
+                      key={unit}
+                      type="button"
+                      className={`view-options-segment-btn${chosen ? ' active' : ''}`}
+                      aria-pressed={chosen}
+                      title={`Document lengths in ${LENGTH_UNIT_NAME[unit]}`}
+                      // The document already reads this unit: asking again
+                      // would spend an undo entry on nothing.
+                      onClick={() => { if (!chosen) onSetLengthUnit(unit) }}
+                      data-view-row
+                    >
+                      {LENGTH_UNIT_LABEL[unit]}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="view-options-divider" />
+            </>
+          )}
+
           {show && (
             <>
               <div className="view-options-heading">Show</div>
