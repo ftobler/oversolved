@@ -23,6 +23,8 @@ import { planBrepDimensionPick, refreshProjectedPickKinds } from '@/tools/dimens
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
 import { randomId, pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
+import { dimensionValueRule } from '@/utils/core/dimensionValueRules'
+import { isConstraintKindName } from '@/wasm-kernel/codec'
 import type { DialogState, FilletCornerMap, SketchEditorState } from './sketchEditorTypes'
 import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectionEntityId, CANNOT_APPLY_TITLE, type PendingConstraint } from './sketchEditorCallbacks'
 import { samePoint, validateWithRepair, prunePickClaims } from './sketchEditorHelpers'
@@ -1017,7 +1019,12 @@ export const editorState = createStore<EditorState>((set, get) => ({
       // A plain number, not an expression: onConfirm commits parseFloat.
       validate: (input) => {
         const val = parseFloat(input)
-        return refusalText('Value', isNaN(val) ? cannotEvaluate(input) : positive(val))
+        if (isNaN(val)) return refusalText('Value', cannotEvaluate(input))
+        // The rule follows the dimension kind: zero is a real constraint for
+        // the axis distances and the radial gap, and a coincident hint for a
+        // euclidean point_distance.
+        const rule = isConstraintKindName(constraintKind) ? dimensionValueRule(constraintKind) : positive
+        return refusalText('Value', rule(val))
       },
       onConfirm: (input) => {
         // Accepting the rounded default unchanged commits the exact measured
@@ -1051,11 +1058,14 @@ export const editorState = createStore<EditorState>((set, get) => ({
         // gesture's projections are scratch work, so a refusal cleans them up
         // like any other abort instead of leaving them in the doc.
         // A zero euclidean distance asks for two coincident points: the one
-        // row has no direction there and would remove no degree of freedom, so
-        // refuse it with the coincident hint rather than author the kink. The
+        // row has no direction there and would remove no degree of freedom.
+        // The dialog's validate already refuses it with the coincident hint;
+        // this is the belt for a confirm path that bypasses the shell. The
         // gesture's projections are scratch work and are cleaned up like any
         // other aborted authoring.
-        const zeroProblem = pointDistanceZeroProblem(constraintKind, value)
+        const zeroProblem = isConstraintKindName(constraintKind)
+          ? pointDistanceZeroProblem(constraintKind, value)
+          : null
         if (zeroProblem !== null) {
           sketchCallbacks.showMessage?.({
             title: CANNOT_APPLY_TITLE,

@@ -212,6 +212,14 @@ describe('value rules cover the catalog', () => {
 
   it('names coincident for a zero euclidean distance and allows a zero axis one', () => {
     const doc = pointDistanceDoc()
+    // The add path is shape-only: it refuses without a live document, so this
+    // unit test covers the drive refusal the real-kernel suite also pins.
+    const add = refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'point_distance',
+      targets: ['$p1', '$p2'], value: 0,
+    })
+    expect(add.code).toBe('invalid-mutation')
+    expect(add.message).toContain('coincident')
     expect(refusal({
       type: 'set_constraint_value', featureId: 'sk1', constraintId: 'c_dist', value: 0,
     }, doc).message).toContain('coincident')

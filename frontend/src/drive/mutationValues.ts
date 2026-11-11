@@ -30,6 +30,7 @@ import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
 import { textFieldsProblem } from '@/utils/geometry/textExpand'
 import { planAddText, type AddTextFields } from '@/utils/yamlMutations/sketchText'
 import { pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
+import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 
@@ -581,7 +582,7 @@ function addConstraint(raw: RawStep): ValueViolation | null {
   // A zero point_distance is a coincident, not a dimension: the applier refuses
   // it too, and this names the reason in the step reply instead of an ok that
   // changed nothing.
-  if (isFiniteNumber(raw.value) && typeof kind === 'string') {
+  if (isFiniteNumber(raw.value) && typeof kind === 'string' && isConstraintKindName(kind)) {
     const zero = pointDistanceZeroProblem(kind, raw.value)
     if (zero !== null) return invalid(zero)
   }
@@ -595,7 +596,7 @@ function setConstraintValue(raw: RawStep, ctx: ValueContext): ValueViolation | n
   if (typeof raw.featureId !== 'string' || typeof raw.constraintId !== 'string') return null
   const constraint = sketchOf(ctx.doc, raw.featureId)?.constraints
     ?.find(c => c.id === raw.constraintId)
-  if (constraint === undefined) return null
+  if (constraint === undefined || !isConstraintKindName(constraint.kind)) return null
   const zero = pointDistanceZeroProblem(constraint.kind, raw.value)
   return zero === null ? null : invalid(zero)
 }

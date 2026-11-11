@@ -6,6 +6,7 @@ import {
   pointDistanceZeroProblem,
 } from './helpers'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
+import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { fitPointIndex } from '@/types/vertexKeys'
 import { hidePlanesIfFirstBoundSketch } from './featureAdmin'
@@ -224,7 +225,7 @@ export function applyAddConstraint(
   if (!feature) return
   // Checked before any target is materialized: a refused zero dimension must
   // not leave a promoted point behind.
-  const zeroProblem = pointDistanceZeroProblem(kind, value)
+  const zeroProblem = isConstraintKindName(kind) ? pointDistanceZeroProblem(kind, value) : null
   if (zeroProblem !== null) {
     warn(`applyAddConstraint: ${zeroProblem}`, { featureId, kind, value })
     return
@@ -400,7 +401,7 @@ export function applySetConstraintValue(
   }
   const c = feature.constraints.find(c => c.id === constraintId)
   if (!c) return
-  const zeroProblem = pointDistanceZeroProblem(c.kind, value)
+  const zeroProblem = isConstraintKindName(c.kind) ? pointDistanceZeroProblem(c.kind, value) : null
   if (zeroProblem !== null) {
     warn(`applySetConstraintValue: ${zeroProblem}`, { featureId, constraintId, value })
     return

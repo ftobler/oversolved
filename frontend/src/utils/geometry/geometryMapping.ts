@@ -439,6 +439,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     const normal: Point = n > 0 ? [-dy / n, dx / n] : [0, 1]
     return {
       kind: 'dim_linear',
+      dimKind: 'point_distance',
       p1: pa,
       p2: pb,
       value: resolved.value || 0,
@@ -509,6 +510,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     const rOuter = Math.max(ea.radius, eb.radius)
     return {
       kind: 'dim_linear',
+      dimKind: 'radius_difference',
       p1: [cx + rInner, cy],
       p2: [cx + rOuter, cy],
       value: resolved.value ?? Math.abs(ea.radius - eb.radius),

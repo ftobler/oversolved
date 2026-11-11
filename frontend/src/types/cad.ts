@@ -972,10 +972,11 @@ export interface DimLinearRender {
   p2: Point
   normal: Point
   value: number
-  // Originating constraint kind, present only for the directional linear dims
-  // (point_distance_x / point_distance_y / line_distance). The render `kind` is
-  // always 'dim_linear', so the renderer reads this to know whether the dim has
-  // an orientation side (and which sign convention) for the "Flip side" button.
+  // Originating constraint kind. The renderer reads it to know whether the dim
+  // has an orientation side (and which sign convention) for the "Flip side"
+  // button, and the edit dialog reads it to pick its value rule: a zero axis
+  // distance or radial gap is a legal constraint, a zero euclidean distance is
+  // a coincident. Length leaves it unset (the positive default).
   dimKind?: string
   entity?: string
   // Label offset in sketch space relative to midpoint(p1, p2).
