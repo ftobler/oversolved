@@ -3,7 +3,9 @@ import {
   normalizeRefList,
 } from '@/utils/yamlMutations'
 import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations, DRILL_POINT_ANGLE } from '@/kernel/threadTable'
-import type { ThreadSpec } from '@/types/cad'
+import { parseSketchEntityRef } from '@/kernel/features/shared/bodyRef'
+import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
+import type { PartFeature, ThreadSpec } from '@/types/cad'
 import { resolveBodyPickRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
 import { stripSelectionWrapper } from '@/utils/query/selectionId'
 import { positive, nonNegative, finite, between } from '@/utils/core/valueRules'
@@ -261,12 +263,28 @@ export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
 // unchecked: it stores no depth to copy, so any positive value is a start.
 const THREAD_DEPTH_FALLBACK = 10
 
+/**
+ * The hole sketch pick's own rule: a point is a drill site, a whole-sketch ref
+ * drills the points in it, but a picked circle is a profile. Refusing it here
+ * keeps the solve from receiving a ref it can only reject, and names the
+ * extrude cut that removes the same cylinder.
+ */
+function holeSketchPickRefusal(selectionId: string, features?: readonly PartFeature[]): string | null {
+  const picked = parseSketchEntityRef(selectionId)
+  if (picked === null || features === undefined) return null
+  const sketch = features.find((feature) => feature.id === picked.sketchId)
+  const entity = sketch?.kind === 'sketch'
+    ? sketch.entities?.find((candidate) => candidate.id === picked.eid)
+    : undefined
+  return entity?.kind === 'circle' ? circleDrillSiteReason(picked.sketchId, picked.eid) : null
+}
+
 export const HOLE_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_hole',
   subKey: 'hole',
   defaults: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal', style: 'simple' },
   fields: [
-    { type: 'pick', key: 'sketch', label: 'Sketch', transform: stripSelectionWrapper },
+    { type: 'pick', key: 'sketch', label: 'Sketch', transform: stripSelectionWrapper, validatePick: holeSketchPickRefusal },
     { type: 'number', key: 'diameter', label: 'Diameter', default: 10, validate: positive, unit: 'mm' },
     { type: 'select', key: 'depth_mode', label: 'Depth mode', default: 'blind',
       options: [{ value: 'blind', label: 'Blind' }, { value: 'through_all', label: 'Through All' }] },

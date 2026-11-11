@@ -3,10 +3,12 @@
 // + cylinder primitive.
 //
 // The ref is a pick chip's raw value, so it names either a whole sketch (every
-// non-construction point and circle in it) or ONE picked entity -- a point, or
-// a circle that carries its own radius. A circle drills at its own radius either
-// way; a point takes the feature's `diameter`. Construction points and circles
-// are skipped by a whole-sketch pick and refused when picked alone.
+// non-construction POINT in it) or ONE picked entity. A hole drills points only:
+// a point names a position and takes the feature's `diameter`. A circle is a
+// profile and not a drill site, so a whole-sketch pick ignores it and a pick
+// that names one alone is refused with the extrude-cut alternative (the same
+// cylinder through `add_extrude` with `operation: cut`). Construction points are
+// skipped by a whole-sketch pick and refused when picked alone.
 // parseHoleSketchRef / drilledEntities / drillSite below are that rule; a pick that names no
 // drill site is refused there by name.
 //
@@ -23,6 +25,7 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
 import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './shared/bodyRef'
+import { circleDrillSiteReason, noPointDrillSiteReason } from './shared/drillSite'
 import { resolveBody } from './shared/bodyResolution'
 import { mergeBrepDiff } from './shared/brepDiff'
 import { stripRefSigil } from '@/utils/refSigil'
@@ -159,50 +162,38 @@ function parseHoleSketchRef(
 }
 
 /**
- * Where one entity puts a drill and how wide, or null when the solver left it
- * without geometry (the caller counts those as skipped).
+ * Where one point puts a drill, or null when the solver left it without
+ * geometry (the caller counts those as skipped).
  *
- * A point entity is the classic hole site: it names a position and nothing else,
- * so the feature's own diameter applies. A CIRCLE names both -- position and
- * size -- and its size wins, whether the pick named it alone or took it in with
- * the whole sketch, because the hole it asks for is the hole the user drew and
- * can see; the same pick through an extrude cut removes exactly that cylinder,
- * and a hole that came out at the feature's diameter instead would disagree with
- * the circle still sitting in the sketch. Nothing else is a drill site: a line,
- * an arc or a spline names no enclosed circle, so those are refused rather than
- * reduced to some point on them.
+ * A point entity names a position and nothing else, so the feature's own
+ * diameter is the bore. Nothing else reaches here: a circle is a profile (the
+ * caller refuses it with the extrude-cut remedy), and a line, an arc or a
+ * spline names no point either.
  */
 function drillSite(
   globalRepo: Repository,
   sketchId: string,
   entity: Dict,
-  featureRadius: number,
-): { xy: number[]; radius: number } | null {
+): { xy: number[] } | null {
   const eid = entity.id as string
-  if (entity.kind === 'circle') {
-    const solved = globalRepo.elements.get(sketchId + '/' + eid) as Dict | undefined
-    const params = solved?.external_params as number[] | undefined
-    if (params === undefined || params.length < 3 || !(params[2] > 0)) return null
-    return { xy: [params[0], params[1]], radius: params[2] }
-  }
   const xyEntry = globalRepo.elements.get(sketchId + '/' + eid + '/xy') as Dict | undefined
   if (xyEntry === undefined) return null
-  return { xy: xyEntry.external_xy as number[], radius: featureRadius }
+  return { xy: xyEntry.external_xy as number[] }
 }
 
 /**
  * The entities this hole drills. A pick that named one entity drills that one
  * and nothing else -- a user who clicked a single point does not expect the
  * other points in the sketch to be drilled too. A pick that named the sketch
- * drills every non-construction point and circle in it, in the sketch's entity
- * order; each point takes the feature's diameter and each circle its own radius
- * (drillSite).
+ * drills every non-construction point in it, in the sketch's entity order; a
+ * circle is a profile and is ignored, because cutting it is an extrude cut.
  *
- * Construction points and circles are reference geometry (an n-gon's
- * circumcircle, or a point or circle an author flags construction), never a
- * drill site: a whole-sketch pick skips them, and a pick that names one is
- * refused rather than silently drilling or skipping it. Line endpoints are not
- * drill sites either, while add_center_rect's helper centre point is an
+ * Construction points are reference geometry (a point an author flags
+ * construction), never a drill site: a whole-sketch pick skips them, and a pick
+ * that names one is refused rather than silently drilling or skipping it. A
+ * circle picked alone is refused with the extrude-cut remedy, construction or
+ * not, because toggling its flag would not make it a drill site. Line endpoints
+ * are not drill sites either, while add_center_rect's helper centre point is an
  * ordinary point entity and does drill.
  */
 function drilledEntities(
@@ -211,41 +202,41 @@ function drilledEntities(
   entityId: string | null,
 ): Dict[] {
   if (entityId === null) {
-    const candidates = entities.filter((e) => e.kind === 'point' || e.kind === 'circle')
+    const candidates = entities.filter((e) => e.kind === 'point')
     const sites = candidates.filter((e) => e.construction !== true)
     if (sites.length === 0) {
       if (candidates.length > 0) {
         throw new Error(
-          `hole: sketch '${sketchId}' has only construction points and circles; ` +
-          'construction geometry is reference only, so add a non-construction point or circle, ' +
-          'or clear a point\'s or circle\'s construction flag to drill it',
+          `hole: sketch '${sketchId}' has only construction points; ` +
+          'construction geometry is reference only, so add a non-construction point, ' +
+          'or clear the point\'s construction flag to drill it',
         )
       }
-      throw new Error(
-        `hole: sketch '${sketchId}' has no point or circle entities; the hole needs a point or circle in its sketch`,
-      )
+      throw new Error('hole: ' + noPointDrillSiteReason(
+        sketchId,
+        entities.some((e) => e.kind === 'circle' && e.construction !== true),
+      ))
     }
     return sites
   }
   const picked = entities.find((e) => e.id === entityId)
   if (picked === undefined) throw new Error(`hole: sketch '${sketchId}' has no entity '${entityId}'`)
-  const isSiteKind = picked.kind === 'point' || picked.kind === 'circle'
-  if (picked.construction === true && isSiteKind) {
-    // Both kinds carry the same remedy: toggle_construction clears a point's
-    // flag exactly as it clears a circle's.
-    throw new Error(
-      `hole: '${entityId}' of sketch ${sketchId} is a construction ${picked.kind}, which names no drill site; ` +
-      'construction geometry is reference only; toggle its construction off to drill it, ' +
-      'or pick a non-construction point or circle, or the sketch itself',
-    )
+  if (picked.kind === 'circle') {
+    throw new Error('hole: ' + circleDrillSiteReason(sketchId, entityId))
   }
-  if (!isSiteKind) {
-    throw new Error(
-      `hole: '${entityId}' of sketch ${sketchId} is a ${picked.kind}, which names no drill site; ` +
-      'pick a sketch point or a circle, or the sketch itself',
-    )
+  if (picked.kind === 'point') {
+    if (picked.construction === true) {
+      throw new Error(
+        `hole: '${entityId}' of sketch ${sketchId} is a construction point, which names no drill site; ` +
+        'construction geometry is reference only; toggle its construction off to drill it, or pick the sketch itself',
+      )
+    }
+    return [picked]
   }
-  return [picked]
+  throw new Error(
+    `hole: '${entityId}' of sketch ${sketchId} is a ${picked.kind}, which names no drill site; ` +
+    'pick a sketch point, or the sketch itself',
+  )
 }
 
 /**
@@ -757,7 +748,7 @@ export function solveHole(
   const overlappingSites: string[] = []
   for (const entity of drilled) {
     const eid = entity.id as string
-    const site = drillSite(globalRepo, sketchId, entity, radius)
+    const site = drillSite(globalRepo, sketchId, entity)
     if (site === null) {
       skippedCount++
       skippedEntityIds.push(eid)
@@ -765,29 +756,29 @@ export function solveHole(
     }
     const [x2d, y2d] = site.xy
     for (const earlier of siteDiscs) {
-      if (Math.hypot(earlier.xy[0] - x2d, earlier.xy[1] - y2d) < earlier.radius + site.radius - TOL_LENGTH_SLACK) {
+      if (Math.hypot(earlier.xy[0] - x2d, earlier.xy[1] - y2d) < earlier.radius + radius - TOL_LENGTH_SLACK) {
         overlappingSites.push(`${earlier.id}, ${eid}`)
       }
     }
-    siteDiscs.push({ id: eid, xy: [x2d, y2d], radius: site.radius })
+    siteDiscs.push({ id: eid, xy: [x2d, y2d], radius })
     const center3d: Vec3 = [
       origin[0] + x2d * xAxis[0] + y2d * yAxis[0],
       origin[1] + x2d * xAxis[1] + y2d * yAxis[1],
       origin[2] + x2d * xAxis[2] + y2d * yAxis[2],
     ]
 
-    // A circle site carries its own radius, so the widened-mouth geometry is
-    // checked against THAT bore, not the feature `diameter` a point would use.
-    if (style !== 'simple' && cbRadius <= site.radius) {
+    // Every site drills at the feature `diameter`; a point carries no size of
+    // its own.
+    if (style !== 'simple' && cbRadius <= radius) {
       throw new Error(
-        `hole: the ${style} mouth diameter ${cbDiameter} must be larger than the bore diameter ${site.radius * 2}`,
+        `hole: the ${style} mouth diameter ${cbDiameter} must be larger than the bore diameter ${radius * 2}`,
       )
     }
     let countersinkDepth = 0
     if (style === 'countersink') {
       // The cone runs from the wide mouth radius down to the bore radius; the
       // included angle fixes how deep that transition sits.
-      countersinkDepth = (cbRadius - site.radius) / Math.tan((csAngle * Math.PI) / 360.0)
+      countersinkDepth = (cbRadius - radius) / Math.tan((csAngle * Math.PI) / 360.0)
       if (!Number.isFinite(countersinkDepth) || countersinkDepth <= 0) {
         throw new Error(`hole: the countersink angle ${csAngle} gives no countersink depth`)
       }
@@ -797,10 +788,9 @@ export function solveHole(
         )
       }
     }
-    // The point's height follows the site's own bore, so a circle site wider
-    // than the feature diameter gets the longer cone a wider drill leaves.
-    const tipHeight = pointed ? site.radius / Math.tan((tipAngle * Math.PI) / 360.0) : 0
-    sites.push({ eid, radius: site.radius, center3d, countersinkDepth, tipHeight })
+    // A drill point's height follows the bore, which is the feature diameter.
+    const tipHeight = pointed ? radius / Math.tan((tipAngle * Math.PI) / 360.0) : 0
+    sites.push({ eid, radius, center3d, countersinkDepth, tipHeight })
   }
 
   // The body the sites drill: the authored target settled above, or the body

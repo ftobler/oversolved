@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { HOLE_SCHEMA } from '@/components/editors/featureEditorSchemas'
-import type { HoleFeature, HoleFeatureDef } from '@/types/cad'
+import type { PickFieldDef } from '@/components/editors/widgets/fieldTypes'
+import type { HoleFeature, HoleFeatureDef, PartFeature } from '@/types/cad'
 
 function makeFeature(overrides: Partial<HoleFeatureDef> = {}): HoleFeature {
   return {
@@ -145,6 +146,35 @@ describe('HoleEditor (via FeatureEditor)', () => {
     render(<FeatureEditor feature={feature} onMutation={vi.fn()} schema={HOLE_SCHEMA} />)
     expect(screen.queryByDisplayValue('Drill point')).toBeNull()
     expect(screen.queryByDisplayValue('118')).toBeNull()
+  })
+
+  describe('sketch pick rule', () => {
+    const sketchField = HOLE_SCHEMA.fields.find(
+      (field): field is PickFieldDef => field.type === 'pick' && field.key === 'sketch',
+    )!
+    const sketch = {
+      id: 'sk1',
+      kind: 'sketch',
+      plane: '@builtin_plane_front',
+      entities: [{ id: 'p1', kind: 'point' }, { id: 'c1', kind: 'circle' }],
+    } as PartFeature
+
+    it('refuses a circle entity and names the extrude cut', () => {
+      // A circle is a profile, not a drill site: a pick that lands on one must
+      // say so instead of writing a ref the solve can only refuse.
+      expect(sketchField.validatePick!('entity:sk1:c1', [sketch]))
+        .toContain('circle, which is not a drill site')
+      expect(sketchField.validatePick!('entity:sk1:c1', [sketch]))
+        .toContain('extrude cut')
+    })
+
+    it('accepts a point and a whole-sketch ref', () => {
+      expect(sketchField.validatePick!('entity:sk1:p1', [sketch])).toBeNull()
+      expect(sketchField.validatePick!('@sk1', [sketch])).toBeNull()
+      // Without the feature list the rule has nothing to look the id up in and
+      // lets the pick through, like the build-order guard.
+      expect(sketchField.validatePick!('entity:sk1:c1')).toBeNull()
+    })
   })
 
   describe('thread depth', () => {

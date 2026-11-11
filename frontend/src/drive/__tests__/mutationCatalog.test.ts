@@ -142,8 +142,9 @@ describe('mutation catalog', () => {
       // feature-level, unlike the profile consumers' `$<sketchId>` form.
       expect(info.note).toContain('@<sketchId>')
       expect(info.note).toContain('$<sketchId>')
-      expect(info.note).toContain('points and circles')
-      expect(info.note).toContain('own radius')
+      expect(info.note).toContain('non-construction points are drilled')
+      expect(info.note).toContain('A circle is a profile, not a drill site')
+      expect(info.note).toContain('operation: cut')
       expect(info.note).toContain('empty value clears')
     }
   })

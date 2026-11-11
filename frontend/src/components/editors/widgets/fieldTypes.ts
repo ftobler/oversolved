@@ -58,8 +58,11 @@ export interface PickFieldDef extends BaseFieldDef {
   transform?: (selectionId: string) => string
   // The field's own pick rule: null accepts the element; a string is the reason
   // to refuse it, and the text the user sees. The reason travels with the rule,
-  // so a refusal cannot misstate what the field accepts.
-  validatePick?: (selectionId: string) => string | null
+  // so a refusal cannot misstate what the field accepts. The feature list is
+  // the document's own rows, for a rule that must look an entity's kind up (the
+  // hole's sketch pick refusing a circle); a caller without it gets a rule that
+  // can only judge the id's shape.
+  validatePick?: (selectionId: string, features?: readonly import('@/types/cad').PartFeature[]) => string | null
   addMutationType?: string
   addValueKey?: string
   removeMutationType?: string

@@ -534,18 +534,18 @@ body and is not expanded.
     thread_depth: 15.0           # optional: how deep the thread is tapped (absent: the whole bore)
 ```
 
-The `sketch` pick drills every non-construction point and circle in the sketch:
-a point at the feature `diameter`, a circle at its own radius. A circle names
-its own size, so a sketch whose drill sites are all circles never reads
-`diameter`, though the document still requires the field and a point site added
-later does use it. Construction
+The `sketch` pick drills every non-construction point in the sketch, each at
+the feature `diameter`. A circle is a profile, not a drill site: a whole-sketch
+pick ignores it, and a pick that names one alone is refused with the
+extrude-cut remedy. To cut a drawn circle, use an extrude with `operation: cut`
+(`termination: through_all` for a through bore). Construction
 geometry is reference only and is skipped by a whole-sketch pick: an n-gon's
-circumcircle, or a point or circle an author flags construction. Line endpoints
+circumcircle, or a point an author flags construction. Line endpoints
 are not drill sites, while `add_center_rect`'s helper centre point is an
-ordinary point entity and does drill. A pick that names one point or circle
+ordinary point entity and does drill. A pick that names one point
 (`entity:<sk>:<eid>`, `vertex:<sk>:<eid>:<sub>`, or a single-entity area query)
 drills only that one; a line, arc or spline names no drill site and is refused
-by name, and so is a construction point or circle named on its own.
+by name, and so is a construction point named on its own.
 
 `style` widens the mouth in the same one cut. A `counterbore` reads
 `cb_diameter` (wider than the bore) and `cb_depth` (the flat-bottomed step, less
@@ -563,8 +563,8 @@ included angle `tip_angle` (default 118, the general-purpose drill point).
 (and the same cosmetic thread length) under either tip. A `through_all` hole
 has no bottom and ignores both fields.
 
-A cosmetic thread adds no geometry: the bore keeps its drilled size (the authored
-`diameter` for a point, the circle's own radius for a circle) and the solve
+A cosmetic thread adds no geometry: the bore keeps its drilled size (the
+authored `diameter`) and the solve
 reports the thread's metadata plus one tapped run per drilled bore, which the
 viewport shades as helical ridges on the bore wall below the widened mouth. The
 pair is checked against the thread table at load time when the table carries

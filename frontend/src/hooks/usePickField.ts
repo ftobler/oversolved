@@ -63,7 +63,7 @@ export function usePickField(
     multi?: boolean
     onUnpick?: (selectionId: string) => void
     features?: readonly { id: string }[]
-    validatePick?: (selectionId: string) => string | null
+    validatePick?: (selectionId: string, features?: readonly import('@/types/cad').PartFeature[]) => string | null
   },
 ): { isPicking: boolean; toggle: () => void; activate: () => void; refusal: StatusMark } {
   const multi = opts?.multi ?? false
@@ -111,7 +111,12 @@ export function usePickField(
       // which is what the user is told. A refused pick de-highlights with
       // nothing added and keeps the field open, like the build-order refusal
       // above; a box dragging in several bad picks reports the first reason.
-      const fieldRefusal = validatePick ? validatePick(id) : null
+      // The pick chip is the only caller and passes the document's features, so
+      // a rule that looks an entity up (the hole's sketch pick) can see them;
+      // the build-order guard above needs only ids.
+      const fieldRefusal = validatePick
+        ? validatePick(id, features as readonly import('@/types/cad').PartFeature[] | undefined)
+        : null
       if (fieldRefusal !== null) {
         refusedWith ??= fieldRefusal
         if (!multi) {
