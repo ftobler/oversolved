@@ -478,3 +478,58 @@ describe('constraint dimension value stored precision', () => {
     expect('value' in added!).toBe(false)
   })
 })
+
+describe('point_distance value 0', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+
+  afterEach(() => {
+    warnSpy.mockRestore()
+  })
+
+  const zeroDoc = (): PartDoc => ({
+    version: 1,
+    kind: 'part',
+    features: [{
+      id: 'Sketch1',
+      kind: 'sketch',
+      initial: { pt1: [0, 0], pt2: [1, 0] },
+      entities: [{ id: 'pt1', kind: 'point' }, { id: 'pt2', kind: 'point' }],
+      constraints: [{ id: 'c_dist', kind: 'point_distance', a: '$pt1', b: '$pt2', value: 5 }],
+    }],
+  })
+
+  // A zero euclidean distance asks for two coincident points: two equations
+  // that one row cannot express, so authoring it would leave the DOF free.
+  it('refuses to author a zero euclidean point_distance and names coincident', () => {
+    const doc = zeroDoc()
+    applyAddConstraint(doc, 'Sketch1', 'point_distance', ['entity:Sketch1:pt1', 'entity:Sketch1:pt2'], 0)
+    expect(constraints0(doc).filter(c => c.kind === 'point_distance')).toHaveLength(1)
+    expect(warnSpy.mock.calls.flat().join(' ')).toContain('coincident')
+  })
+
+  it('refuses a value that rounds to zero on the document grid', () => {
+    const doc = zeroDoc()
+    applyAddConstraint(doc, 'Sketch1', 'point_distance', ['entity:Sketch1:pt1', 'entity:Sketch1:pt2'], 1e-9)
+    expect(constraints0(doc).filter(c => c.kind === 'point_distance')).toHaveLength(1)
+  })
+
+  it('refuses to set an existing point_distance to zero and keeps the old value', () => {
+    const doc = zeroDoc()
+    applySetConstraintValue(doc, 'Sketch1', 'c_dist', 0)
+    expect(constraints0(doc).find(c => c.id === 'c_dist')!.value).toBe(5)
+    expect(warnSpy.mock.calls.flat().join(' ')).toContain('coincident')
+  })
+
+  // The axis kinds keep an analytic row at the kink, so their zero stays
+  // authorable.
+  it('still authors a zero point_distance_x', () => {
+    const doc = zeroDoc()
+    applyAddConstraint(doc, 'Sketch1', 'point_distance_x', ['entity:Sketch1:pt1', 'entity:Sketch1:pt2'], 0)
+    expect(constraints0(doc).some(c => c.kind === 'point_distance_x' && c.value === 0)).toBe(true)
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+})

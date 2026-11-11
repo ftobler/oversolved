@@ -664,6 +664,36 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', null)
     })
 
+    it('a zero euclidean distance is refused at confirm with the coincident hint', () => {
+      // A zero measured distance is a coincident, not a dimension: the row has
+      // no direction there, so the dialog refuses it instead of authoring a
+      // constraint that would remove no degree of freedom.
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      const messages = vi.fn()
+      setSketchCallback('showMessage', messages)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [0, 0] },
+      } as never))
+      useEditorState.setState({
+    dimensionPicks: [
+          { isVertex: true, target: 'vertex:S1:L1:start' },
+          { isVertex: true, target: 'vertex:S1:L1:end' },
+        ],
+    dimensionCursorWorld: [0, 0],
+  })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      useSketchUiStore.getState().pendingDialog!.onConfirm('0')
+
+      expect(handler).not.toHaveBeenCalled()
+      expect(messages).toHaveBeenCalledWith({
+        title: 'Cannot apply constraint',
+        message: expect.stringContaining('coincident'),
+        variant: 'error',
+      })
+      setSketchCallback('getSketch', null)
+    })
+
     it('finalizeDimensionPlacement: two vertices with no clear direction stays point_distance', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)

@@ -115,7 +115,7 @@ describe('computeConstraintRender (line_distance extension-line segments)', () =
     const c: PartConstraint = {
       id: 'PD1', kind: 'point_distance',
       a: '$PT', b: '$PT',
-      value: 0,
+      value: 5,
     }
     const r = computeConstraintRender(c, sketch)
     expect(r.kind).toBe('dim_linear')

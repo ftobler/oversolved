@@ -38,6 +38,17 @@ export const round = (v: number) => roundTo(v, 1e6)
  *  enters the document, or it survives into the YAML and every later solve. */
 export const allFinite = (vs: readonly number[]) => vs.every(v => Number.isFinite(v))
 
+/** A `point_distance` of 0 asks for two coincident points: two equations that
+ *  one euclidean row cannot express, since the row has no direction at a zero
+ *  distance and would remove no degree of freedom. Refused where the value is
+ *  authored (applier, drive rule, dimension dialog) rather than persisted as a
+ *  kink; the coincident constraint is the authorable form of the same intent. */
+export function pointDistanceZeroProblem(kind: string, value: number | undefined): string | null {
+  if (kind !== 'point_distance' || value === undefined) return null
+  if (!Number.isFinite(value) || round(value) !== 0) return null
+  return 'point_distance value 0 is a coincident, not a dimension; use the coincident constraint between the two points'
+}
+
 export function findFeature(doc: PartDoc, featureId: string): PartFeature | undefined {
   return doc.features?.find(f => f.id === featureId)
 }

@@ -29,6 +29,7 @@ import { MAX_FIT_POINTS } from '@/utils/geometry/fitSpline'
 import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
 import { textFieldsProblem } from '@/utils/geometry/textExpand'
 import { planAddText, type AddTextFields } from '@/utils/yamlMutations/sketchText'
+import { pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 
@@ -577,7 +578,26 @@ function addConstraint(raw: RawStep): ValueViolation | null {
     const problem = finitePointProblem(raw.pos, 'pos')
     if (problem !== null) return invalid(problem)
   }
+  // A zero point_distance is a coincident, not a dimension: the applier refuses
+  // it too, and this names the reason in the step reply instead of an ok that
+  // changed nothing.
+  if (isFiniteNumber(raw.value) && typeof kind === 'string') {
+    const zero = pointDistanceZeroProblem(kind, raw.value)
+    if (zero !== null) return invalid(zero)
+  }
   return null
+}
+
+// The zero refusal needs the constraint's kind, which only the live document
+// names, so a shape-only caller cannot judge it here.
+function setConstraintValue(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  if (!isFiniteNumber(raw.value) || ctx.doc === null) return null
+  if (typeof raw.featureId !== 'string' || typeof raw.constraintId !== 'string') return null
+  const constraint = sketchOf(ctx.doc, raw.featureId)?.constraints
+    ?.find(c => c.id === raw.constraintId)
+  if (constraint === undefined) return null
+  const zero = pointDistanceZeroProblem(constraint.kind, raw.value)
+  return zero === null ? null : invalid(zero)
 }
 
 function setConstraintPos(raw: RawStep): ValueViolation | null {
@@ -1874,7 +1894,7 @@ export const MUTATION_VALUE_RULES = {
   move_entity: moveEntity,
   resize_circle: resizeCircle,
   add_constraint: addConstraint,
-  set_constraint_value: 'none',
+  set_constraint_value: setConstraintValue,
   set_constraint_pos: setConstraintPos,
   set_constraint_sign: 'none',
   delete: deleteRule,

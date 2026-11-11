@@ -22,7 +22,7 @@ import { getToolPickConfig } from '@/registry/toolPickConfig'
 import { planBrepDimensionPick, refreshProjectedPickKinds } from '@/tools/dimensionProjection'
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
-import { randomId } from '@/utils/yamlMutations/helpers'
+import { randomId, pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
 import type { DialogState, FilletCornerMap, SketchEditorState } from './sketchEditorTypes'
 import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectionEntityId, CANNOT_APPLY_TITLE, type PendingConstraint } from './sketchEditorCallbacks'
 import { samePoint, validateWithRepair, prunePickClaims } from './sketchEditorHelpers'
@@ -1050,6 +1050,21 @@ export const editorState = createStore<EditorState>((set, get) => ({
         // rides the same cannot-apply message as a command rejection, and the
         // gesture's projections are scratch work, so a refusal cleans them up
         // like any other abort instead of leaving them in the doc.
+        // A zero euclidean distance asks for two coincident points: the one
+        // row has no direction there and would remove no degree of freedom, so
+        // refuse it with the coincident hint rather than author the kink. The
+        // gesture's projections are scratch work and are cleaned up like any
+        // other aborted authoring.
+        const zeroProblem = pointDistanceZeroProblem(constraintKind, value)
+        if (zeroProblem !== null) {
+          sketchCallbacks.showMessage?.({
+            title: CANNOT_APPLY_TITLE,
+            message: zeroProblem,
+            variant: 'error',
+          })
+          get().cancelBrepProjectionGesture()
+          return
+        }
         const pending: PendingConstraint = {
           featureId, kind: constraintKind, targets, value,
           ...(pos && { pos }),
