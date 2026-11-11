@@ -250,7 +250,7 @@ const VERTEX_REF_NOTE =
 const CONSTRAINT_PROJECTION_NOTE =
   ' To constrain against the part origin or a body vertex/edge, add_projected_entity it first '
   + '(kind "point" for `@builtin_origin`, with the body query as the source) and name the projection as the target. '
-  + 'A bare `@builtin_origin` still solves but leaves nothing in the sketch, so it cannot be seen or deleted.'
+  + 'A bare `@builtin_origin` still solves but creates no entity, so there is nothing to select or delete.'
 
 // Every `set_<kind>_field` names one feature kind; the kind's schema
 // sub-definition is the one list of fields it may set. The Record makes a new

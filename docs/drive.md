@@ -848,8 +848,8 @@ banner on stdout, so a client config must use the direct node invocation.
   plain doc op: it still accepts `@builtin_origin` for old documents, but to
   leave a visible, deletable entity in the sketch, project the operand first
   with `add_projected_entity` (kind `point` for the origin) and name the
-  projection as the target. A bare `@builtin_origin` solves but leaves nothing
-  in the sketch. `import_dxf` takes the
+  projection as the target. A bare `@builtin_origin` solves but creates no
+  entity, so there is nothing to select or delete. `import_dxf` takes the
   ASCII DXF text inline (`content`) or the id of a DXF entry in the run's `files` map
   (`file`; give exactly one of the two), parses it with the same module the sketch
   toolbar's file picker uses, and appends the supported entities to one sketch
