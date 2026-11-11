@@ -67,8 +67,11 @@
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
 //! ```
 //!
-//! The `SKG5` input adds the header's `seed_quantum` and the `SKR5` output adds
-//! the `entity_moved` bitmask, so the write-back asks the solver which entities
+//! The `SKG6`/`SKR6` pair carries the `CONSTRAINT_FLAG_DROPPED` verdict bit:
+//! the layout is unchanged, but an older solver would silently read a dropped
+//! constraint as unflagged, so the magic handshake moves with the meaning.
+//! Before that, `SKG5` added the header's `seed_quantum` and `SKR5` added the
+//! `entity_moved` bitmask, so the write-back asks the solver which entities
 //! it moved instead of applying a float envelope of its own. Before that,
 //! `SKG4` made the entity record variable-size: the `fit_spline` kind carries
 //! `2 N + 2 h` params, so the record grew a flags byte and a param count. Rev 3
@@ -80,8 +83,8 @@
 //! of the boundary (this file and frontend/src/wasm-kernel/codec.ts) on any
 //! layout change. Invalidating old cached payloads is acceptable and safe
 //! post-wave-1: bundle-cache reads of stale buffers degrade to cold rebuilds.
-pub const MAGIC: u32 = 0x3547_4B53; // "SKG5" in LE memory order
-pub const MAGIC_OUT: u32 = 0x3552_4B53; // "SKR5" in LE memory order
+pub const MAGIC: u32 = 0x3647_4B53; // "SKG6" in LE memory order
+pub const MAGIC_OUT: u32 = 0x3652_4B53; // "SKR6" in LE memory order
 
 /// The rev 1 and rev 2 values (and rev 3, whose output lacked the
 /// per-constraint verdicts). Kept only so tests can assert a stale pairing
@@ -109,6 +112,13 @@ pub const MAGIC_SKG4: u32 = 0x3447_4B53;
 /// earlier than the `entity_moved`-carrying layout's.
 #[cfg(test)]
 pub const MAGIC_OUT_SKR4: u32 = 0x3452_4B53;
+/// The rev 5 pair. The layout matches, but that solver never set the dropped
+/// verdict bit, so a buffer stamped with it cannot be trusted to report a
+/// filtered constraint.
+#[cfg(test)]
+pub const MAGIC_SKG5: u32 = 0x3547_4B53;
+#[cfg(test)]
+pub const MAGIC_OUT_SKR5: u32 = 0x3552_4B53;
 
 use solver_core::bytes::{Eof, Reader, Writer};
 

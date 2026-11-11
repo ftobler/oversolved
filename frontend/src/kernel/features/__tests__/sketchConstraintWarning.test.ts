@@ -182,6 +182,38 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     expect(out.dof).toBe(0)
   })
 
+  it('reports a dropped constraint on an otherwise fully constrained sketch', () => {
+    const feature = emptySketch('Hole')
+    const doc = docOf(feature)
+    applyAddEntity(doc, 'sk1', 'circle', [0, 0, 5], 'c1', undefined, true)
+    applyAddConstraint(doc, 'sk1', 'coincident', ['vertex:sk1:c1:center', '@builtin_origin'])
+    // A Length names a line; on a circle centre the solver has no slot to read,
+    // so it drops the row. The sketch is still fully constrained by the
+    // diameter and the centre pin, and the drop is still a warning.
+    applyAddConstraint(doc, 'sk1', 'length', ['vertex:sk1:c1:center'], 3)
+
+    const out = solve(feature)
+    expect(out.status).toBe('fully_constrained')
+    expect(out.solver_warning).toMatch(
+      /^constraint c_length_\S+ \(length\) names operands it cannot use \(operand kind\) and was ignored$/,
+    )
+  })
+
+  it('keeps the underconstrained and dropped warnings together', () => {
+    const feature = emptySketch()
+    const doc = docOf(feature)
+    applyAddRect(doc, 'sk1', [0, 0], [40, 30], null, null, ['l1', 'l2', 'l3', 'l4'])
+    // A Length on a point entity is unreadable; the rectangle still needs its
+    // size and anchor, so both facts ride the same field.
+    applyAddEntity(doc, 'sk1', 'point', [5, 5], 'p1')
+    applyAddConstraint(doc, 'sk1', 'length', ['vertex:sk1:p1:xy'], 1)
+
+    const out = solve(feature)
+    expect(out.status).toBe('underconstrained')
+    expect(out.solver_warning).toContain('Underconstrained:')
+    expect(out.solver_warning).toContain('names operands it cannot use')
+  })
+
   it('never puts the warning on a drag solve', () => {
     const feature = emptySketch()
     applyAddRect(docOf(feature), 'sk1', [0, 0], [40, 30], null, null, ['l1', 'l2', 'l3', 'l4'])

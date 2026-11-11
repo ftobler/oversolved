@@ -393,6 +393,16 @@ fn rev2_input_magic_rejected() {
 }
 
 #[test]
+fn rev5_input_magic_rejected() {
+    // Same layout, older meaning: that solver never set the dropped verdict
+    // bit, so accepting it would hide exactly the constraint this revision
+    // exists to report.
+    let mut bytes = encode_input(&sample_input());
+    bytes[..4].copy_from_slice(&MAGIC_SKG5.to_le_bytes());
+    assert!(matches!(decode_input(&bytes), Err(CodecError::BadMagic)));
+}
+
+#[test]
 fn current_input_magic_accepted() {
     let bytes = encode_input(&sample_input());
     assert_eq!(&bytes[..4], &MAGIC.to_le_bytes());
@@ -470,6 +480,25 @@ fn rev4_output_magic_is_rejected() {
     };
     let mut bytes = encode_output(&out);
     bytes[..4].copy_from_slice(&MAGIC_OUT_SKR4.to_le_bytes());
+    assert!(matches!(decode_output(&bytes), Err(CodecError::BadMagic)));
+}
+
+#[test]
+fn rev5_output_magic_is_rejected() {
+    // Same byte layout as rev 5, but its constraint flags never carry the
+    // dropped bit; the magic is the only handshake that can tell the host so.
+    let out = Output {
+        params_solved: vec![1.0],
+        entity_status: vec![0],
+        overall_status: 0,
+        vertex_freedom: Vec::new(),
+        constraint_flags: Vec::new(),
+        constraint_miss: Vec::new(),
+        entity_moved: vec![0],
+        diagnostics: Diagnostics::default(),
+    };
+    let mut bytes = encode_output(&out);
+    bytes[..4].copy_from_slice(&MAGIC_OUT_SKR5.to_le_bytes());
     assert!(matches!(decode_output(&bytes), Err(CodecError::BadMagic)));
 }
 

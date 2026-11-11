@@ -4,8 +4,9 @@
 // on the sketch solver's flat buffers (see codec.ts and sketch-solver/src/codec.rs),
 // so these pin that the current revision is written and accepted and that
 // buffers stamped with superseded revisions (1: pre-sign, 2: f32 scalars, 3:
-// no per-constraint verdicts, SKG4/SKR4: no storage quantum / moved report) are
-// refused instead of decoded with shifted offsets.
+// no per-constraint verdicts, SKG4/SKR4: no storage quantum / moved report,
+// SKG5/SKR5: no dropped verdict bit) are refused instead of decoded with
+// shifted offsets or misread verdicts.
 
 import { describe, it, expect } from 'vitest'
 import {
@@ -16,8 +17,9 @@ import { loadSolver } from '../loadSolver'
 
 const solveBytes = loadSolver()
 
-const MAGIC_IN = 0x35474b53  // "SKG5"
-const MAGIC_OUT = 0x35524b53  // "SKR5"
+const MAGIC_IN = 0x36474b53  // "SKG6"
+const MAGIC_OUT = 0x36524b53  // "SKR6"
+const MAGIC_OUT_SKR5 = 0x35524b53  // "SKR5" (no dropped verdict bit)
 const MAGIC_OUT_SKR4 = 0x34524b53  // "SKR4" (no entity_moved)
 const MAGIC_OUT_REV3 = 0x33524b53  // "SKR3" (no per-constraint verdicts)
 const MAGIC_OUT_REV2 = 0x32524b53  // "SKR2" (f32 layout)
@@ -112,6 +114,12 @@ describe('sketch wire magic', () => {
     expect(() => decodeOutput(outputBytes(MAGIC_OUT_REV3))).toThrow('bad output magic')
   })
 
+  it('decodeOutput rejects the rev 5 (SKR5) output magic', () => {
+    // Same layout, older verdict meaning: that solver never set the dropped
+    // bit, so accepting it would hide a filtered constraint.
+    expect(() => decodeOutput(outputBytes(MAGIC_OUT_SKR5))).toThrow('bad output magic')
+  })
+
   it('decodeOutput rejects the rev 4 (SKR4) output magic', () => {
     // No entity_moved block: the diagnostics would start where this decoder
     // reads the moved bytes.
@@ -131,6 +139,12 @@ describe.skipIf(!solveBytes)('sketch wire stale input magic', () => {
   it('rejects a SKG4 buffer, whose header has no storage quantum', () => {
     const bytes = encodeInput(emptyInput())
     bytes.set([0x53, 0x4b, 0x47, 0x34], 0)  // "SKG4"
+    expect(() => solveBytes!(bytes)).toThrow()
+  })
+
+  it('rejects a SKG5 buffer, whose solver cannot report a dropped constraint', () => {
+    const bytes = encodeInput(emptyInput())
+    bytes.set([0x53, 0x4b, 0x47, 0x35], 0)  // "SKG5"
     expect(() => solveBytes!(bytes)).toThrow()
   })
 })
