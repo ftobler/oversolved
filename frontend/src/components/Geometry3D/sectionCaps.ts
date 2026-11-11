@@ -102,10 +102,15 @@ export function resetSectionCapStripeTextureForTest(): void {
   sectionCapStripeTexture = null
 }
 
-export function buildSectionCapFillMaterial(color: string): THREE.ShaderMaterial {
-  const materialColor = new THREE.Color(color)
+// The uColor uniform is the one home of the part colour, typed so a colour
+// edit writes it directly instead of through a mirrored `color` property.
+export type SectionCapFillMaterial = THREE.ShaderMaterial & {
+  uniforms: { uColor: THREE.IUniform<THREE.Color> }
+}
+
+export function buildSectionCapFillMaterial(color: string): SectionCapFillMaterial {
   const material = new THREE.ShaderMaterial({
-    uniforms: { uColor: { value: materialColor.clone() } },
+    uniforms: { uColor: { value: new THREE.Color(color) } },
     vertexShader: `
       #include <clipping_planes_pars_vertex>
       void main() {
@@ -137,10 +142,7 @@ export function buildSectionCapFillMaterial(color: string): THREE.ShaderMaterial
     stencilZPass: THREE.ReplaceStencilOp,
     transparent: false,
   })
-  // Keep a `color` property for callers/tests that read the part colour off the
-  // material, mirroring MeshBasicMaterial's interface.
-  ;(material as unknown as { color: THREE.Color }).color = materialColor
-  return material
+  return material as SectionCapFillMaterial
 }
 
 const scratchPoint = new THREE.Vector3()

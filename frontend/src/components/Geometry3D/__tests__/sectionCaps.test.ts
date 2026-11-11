@@ -37,7 +37,7 @@ describe('section cap materials', () => {
 
   it('fills only where the count is non-zero, then resets the stencil', () => {
     const fill = buildSectionCapFillMaterial('#88cc88')
-    expect(fill.color.getHexString()).toBe('88cc88')
+    expect(fill.uniforms.uColor.value.getHexString()).toBe('88cc88')
     expect(fill.stencilFunc).toBe(THREE.NotEqualStencilFunc)
     expect(fill.stencilFail).toBe(THREE.ReplaceStencilOp)
     expect(fill.stencilZPass).toBe(THREE.ReplaceStencilOp)
