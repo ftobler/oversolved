@@ -1447,7 +1447,7 @@ export default function Part() {
             <ViewOptionsButton
               show={viewShowStates}
               onToggleShow={handleToggleShowGroup}
-              lengthUnit={lengthUnitOf(doc?.length_unit)}
+              lengthUnit={doc ? lengthUnitOf(doc.length_unit) : undefined}
               onSetLengthUnit={handleSetLengthUnit}
             />
           }
