@@ -534,8 +534,8 @@ the feature `diameter`. A circle is a profile, not a drill site: a whole-sketch
 pick ignores it, and a pick that names one alone is refused with the
 extrude-cut remedy. To cut a drawn circle, use an extrude with `operation: cut`
 (`termination: through_all` for a through bore). A circles-only or
-construction-points-only sketch with no drillable point is refused, naming the
-extrude-cut alternative. Construction
+construction-points-only sketch that holds a circle, with no drillable point,
+is refused with the extrude-cut alternative. Construction
 geometry is reference only and is skipped by a whole-sketch pick: an n-gon's
 circumcircle, or a point an author flags construction. Line endpoints
 are not drill sites, while `add_center_rect`'s helper centre point is an
