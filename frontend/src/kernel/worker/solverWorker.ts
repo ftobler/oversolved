@@ -489,25 +489,36 @@ export function relayFeatureProgress(
  */
 export function preloadWorkerWasm(
   loaders: { occ: () => Promise<unknown>; sketch: () => Promise<unknown> } = { occ: preloadOcc, sketch: loadSolverWasm },
-): void {
+): Promise<void> {
   // The catch guards an unexpected rejection only; the loaders resolve null on
-  // failure. Without it a throw would surface as an unhandled rejection.
-  loaders.occ().catch((e: unknown) => { console.error('[solverWorker] OCC preload failed:', e) })
-  loaders.sketch().catch((e: unknown) => { console.error('[solverWorker] sketch wasm preload failed:', e) })
+  // failure. Without it a throw would surface as an unhandled rejection. We
+  // settle only after both loaders have settled (success or failure) so the
+  // caller can post the kernelReady broadcast at the right moment.
+  const occP = loaders.occ().catch((e: unknown) => { console.error('[solverWorker] OCC preload failed:', e) })
+  const sketchP = loaders.sketch().catch((e: unknown) => { console.error('[solverWorker] sketch wasm preload failed:', e) })
+  return Promise.all([occP, sketchP]).then(() => undefined)
 }
 
-if (inWorker()) {
+export function bootstrapSolverWorker(ctx: WorkerCtx): void {
   // Install the DOM-free OCC loader: the main-thread loadOccWeb uses
   // document/window, which do not exist here.
   setOccLoader(loadOccWorker, resetOccWorker)
-  const ctx = globalThis as unknown as WorkerCtx
   const actor = new WorkerActor()
   // Subscribe before the preload starts so the main thread sees the download
   // from its first byte.
   relayOccLoadProgress((message, transfer) => { ctx.postMessage(message, transfer) })
   relayFeatureProgress((message, transfer) => { ctx.postMessage(message, transfer) })
-  preloadWorkerWasm()
+  // Post the kernelReady broadcast only once both wasm loaders have settled,
+  // so a failure still counts as "finished" and the splash can resolve.
+  preloadWorkerWasm().then(() => {
+    ctx.postMessage({ kind: 'kernelReady' }, [])
+  })
   ctx.onmessage = (e) => {
     handleWorkerMessage(e.data, (res, transfer) => { ctx.postMessage(res, transfer) }, actor)
   }
+}
+
+if (inWorker()) {
+  const ctx = globalThis as unknown as WorkerCtx
+  bootstrapSolverWorker(ctx)
 }
