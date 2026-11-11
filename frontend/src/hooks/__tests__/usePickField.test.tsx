@@ -10,6 +10,7 @@ import { act, render, fireEvent } from '@testing-library/react'
 import { usePickField } from '@/hooks/usePickField'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
+import type { PartFeature } from '@/types/cad'
 
 beforeEach(() => {
   useEditorState.setState({
@@ -29,7 +30,7 @@ function mountPickField(
   opts?: {
     multi?: boolean
     onUnpick?: (id: string) => void
-    features?: readonly { id: string }[]
+    features?: readonly PartFeature[]
     validatePick?: (id: string) => string | null
   },
 ) {
@@ -241,10 +242,10 @@ describe('usePickField  -  auto-close (multi vs single)', () => {
     // middle to prove a rejected id is skipped without aborting the loop, so
     // the two earlier sketch picks still land.
     const onPick = vi.fn()
-    const features = [
+    const features: PartFeature[] = [
       { id: 'sk1', kind: 'sketch' },
       { id: 'sk2', kind: 'sketch' },
-      { id: 'ex1', kind: 'extrude' },
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
     ]
     act(() => {
       useSketchEditorStore.getState().setActivePickField({ featureId: 'ex1', field: 'edges', multi: true })
@@ -267,9 +268,9 @@ describe('usePickField  -  auto-close (multi vs single)', () => {
     // straight for valid geometry, so unlike an accepted single pick the field
     // stays armed.
     const onPick = vi.fn()
-    const features = [
+    const features: PartFeature[] = [
       { id: 'sk1', kind: 'sketch' },
-      { id: 'ex1', kind: 'extrude' },
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
     ]
     act(() => {
       useSketchEditorStore.getState().setActivePickField({ featureId: 'ex1', field: 'edges' })
@@ -370,7 +371,10 @@ describe('usePickField  -  refusal reason', () => {
 
   it('the reason is scoped to the field: switching fields or disarming hides it', () => {
     const onPick = vi.fn()
-    const features = [{ id: 'sk1' }, { id: 'ex1' }]
+    const features: PartFeature[] = [
+      { id: 'sk1', kind: 'sketch' },
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+    ]
     act(() => {
       useSketchEditorStore.getState().setActivePickField({ featureId: 'ex1', field: 'edges' })
     })
