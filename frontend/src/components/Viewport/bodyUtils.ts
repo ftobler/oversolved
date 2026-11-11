@@ -93,7 +93,10 @@ export function getGhostBodiesToRender(
  * a solve has landed, else the authored `initial` geometry unflattened into the
  * UI shape with its constraints derived from the feature. A sketch that has not
  * solved yet therefore still draws, and still shows the constraints the user
- * authored, instead of rendering empty.
+ * authored, instead of rendering empty. The fallback derives with the solve
+ * result's `originLocal`; before the first solve there is none, so a face
+ * sketch's origin dimension uses the plane-local `[0,0]` default until the
+ * solve lands.
  */
 export function sketchForRender(
   solveResult: SketchData | undefined,

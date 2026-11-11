@@ -247,6 +247,7 @@ function pointDistanceAxisRender(
   ctx: ConstraintRenderContext,
 ): ConstraintRender {
   if (!resolved.a || !resolved.b) return { kind: 'unknown' }
+  // The origin is not a map member, so the pick entity is the sketch operand.
   const eid = entityIds(resolved.a, resolved.b)[0]
   if (!eid) return { kind: 'unknown' }
   const pa = operandPoint(sketch, resolved.a, ctx)
@@ -473,6 +474,7 @@ function computeConstraintRenderCore(
 
   if (kind === 'point_distance') {
     if (!resolved.a || !resolved.b) return { kind: 'unknown' }
+    // The origin is not a map member, so the pick entity is the sketch operand.
     const eid = entityIds(resolved.a, resolved.b)[0]
     if (!eid) return { kind: 'unknown' }
     const pa = operandPoint(sketch, resolved.a, ctx)
@@ -688,20 +690,24 @@ function computeConstraintRenderCore(
     } else {
       pt = arcGeom.center
     }
-    return { kind: 'symbol_tangent', at: pt, entity: arcEid, entities: [lineEid, arcEid].filter(Boolean) as string[] }
+    // The line side can name the origin in an old two-slot spelling; it is not
+    // an entity, so keep it out of the selectable set.
+    const lineRef: ResolvedRef = lineEid ? { entity: lineEid } : undefined
+    return { kind: 'symbol_tangent', at: pt, entity: arcEid, entities: entityIds(lineRef, arc) }
   }
 
   if (kind === 'colinear') {
-    const eid = resolved.a?.entity || resolved.target?.entity
-    if (!eid) return { kind: 'unknown' }
-    const colinearRef = resolved.a ?? resolved.target
-    if (!colinearRef) return { kind: 'unknown' }
-    const pt = geomPoint(sketch, colinearRef)
-    if (!pt) return { kind: 'unknown' }
+    // A colinear through the origin is invalid, but an old document can still
+    // carry one. Anchor on the first operand that resolves so the tile shows at
+    // the real entity instead of degrading to the generic fallback glyph.
+    const candidates = [resolved.a, resolved.target]
+      .filter((r): r is { entity: string; point?: string } => !!r)
+    const anchor = candidates.find(r => geomPoint(sketch, r) !== null)
+    if (!anchor) return { kind: 'unknown' }
     return {
       kind: 'symbol_colinear',
-      at: pt,
-      entity: eid,
+      at: geomPoint(sketch, anchor)!,
+      entity: anchor.entity,
       entities: entityIds(resolved.a, resolved.b, resolved.target),
     }
   }
