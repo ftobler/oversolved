@@ -43,6 +43,15 @@ describe('computeNaturalDimensionValue', () => {
     expect(computeNaturalDimensionValue('diameter', ['entity:S1:C1'], sk, FID)).toBe(14)
   })
 
+  it('line_distance: the point-first order reads the same dimension', () => {
+    const sk = makeSketch()
+    // P2 (5,4) onto L1 (horizontal y=0) -> distance 4, whichever side of the
+    // pair the pick landed on.
+    expect(computeNaturalDimensionValue(
+      'line_distance', ['vertex:S1:P2', 'entity:S1:L1'], sk, FID,
+    )).toBe(4)
+  })
+
   it('point_distance: distance between two points', () => {
     const sk = makeSketch()
     // P1 (2,0), P2 (5,4) -> hypot(3,4) = 5
@@ -189,6 +198,14 @@ describe('computeDimensionSign', () => {
     const sk = makeSketch()  // L1 horizontal (y=0); P2 above (y=4), P3 below (y=-4)
     expect(computeDimensionSign('line_distance', ['entity:S1:L1', 'vertex:S1:P2'], sk, FID)).toBe(1)
     expect(computeDimensionSign('line_distance', ['entity:S1:L1', 'vertex:S1:P3'], sk, FID)).toBe(-1)
+  })
+
+  it('line_distance: a point-first pick measures and signs the same side', () => {
+    const sk = makeSketch()
+    // Point-first is the order a mixed click can produce. The canonicaliser
+    // stores line-first, so the sign must already read the same here.
+    expect(computeDimensionSign('line_distance', ['vertex:S1:P2', 'entity:S1:L1'], sk, FID)).toBe(1)
+    expect(computeDimensionSign('line_distance', ['vertex:S1:P3', 'entity:S1:L1'], sk, FID)).toBe(-1)
   })
 
   it('returns null for non-directional dimension kinds', () => {

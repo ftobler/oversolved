@@ -9,7 +9,9 @@ use crate::residuals::Problem;
 use crate::tolerance::{
     seed_keep_tol, verdict_tol, FREE_COMPONENT_TOL, RANK_TOL, REDUNDANT_ROW_REL,
 };
-use crate::{Diagnostics, Input, Output, Status, CONSTRAINT_FLAG_REDUNDANT};
+use crate::{
+    Diagnostics, Input, Output, Status, CONSTRAINT_FLAG_DROPPED, CONSTRAINT_FLAG_REDUNDANT,
+};
 use nalgebra::DMatrix;
 use solver_core::lm::{
     solve_lm, solve_lm_sparse, solve_lm_sparse_anchored, solve_lm_sparse_proximal,
@@ -178,7 +180,7 @@ pub fn solve_sketch(input: &Input) -> Output {
     // variant was measured at 5.9 s for 200 lines), the miss is a row-norm
     // ratio. `skip_status_pass` does not gate them: it skips the per-ENTITY
     // pass, which is a different cost class.
-    let (constraint_flags, constraint_miss) = if status == Status::Overconstrained {
+    let (mut constraint_flags, constraint_miss) = if status == Status::Overconstrained {
         (
             vec![0u8; input.constraints.len()],
             constraint_miss(
@@ -195,6 +197,7 @@ pub fn solve_sketch(input: &Input) -> Output {
             vec![0f64; input.constraints.len()],
         )
     };
+    mark_dropped_constraints(&problem, &mut constraint_flags);
 
     let (entity_status, vertex_freedom) = if input.options.skip_status_pass {
         (Vec::new(), Vec::new())
@@ -260,6 +263,27 @@ fn drag_reg_weights(input: &Input, n: usize) -> Vec<f64> {
         }
     }
     weights
+}
+
+/// Flag every input constraint the `Problem` build did not keep.
+///
+/// The survivors filter is the crate's "drop, do not panic" contract: a stale
+/// ref or an operand whose kind cannot supply the slots its builder reads would
+/// index off the end, so the whole constraint is removed before any row exists.
+/// A dropped constraint is a fact the host must report, not a silent absence,
+/// so the wire says which input positions never reached the residual stack.
+fn mark_dropped_constraints(problem: &Problem, flags: &mut [u8]) {
+    let mut survived = vec![false; flags.len()];
+    for &wire in problem.constraint_wire_indices() {
+        if let Some(flag) = survived.get_mut(wire) {
+            *flag = true;
+        }
+    }
+    for (wire, kept) in survived.into_iter().enumerate() {
+        if !kept {
+            flags[wire] |= CONSTRAINT_FLAG_DROPPED;
+        }
+    }
 }
 
 /// Incremental rank walk over the constraint rows in authoring order.

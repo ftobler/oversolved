@@ -80,7 +80,7 @@ under the derived id `step_<file id>`.
 ## Document Structure
 
 ```yaml
-version: 6
+version: 7
 kind: part
 
 features:
@@ -89,7 +89,7 @@ features:
 ```
 
 Top-level fields: `version` (int, the migration-ladder stamp; the ladder target
-is `CURRENT_DOC_VERSION = 5` in `persistence/docSchema.ts`, and a missing or
+is `CURRENT_DOC_VERSION = 7` in `persistence/docSchema.ts`, and a missing or
 older stamp runs the steps that bring it up), `kind` (string, `"part"`),
 `rollback` (int, an index into `features`; absent means the end of the stack,
 and a rolled-back document reopens where the user left it), `length_unit`

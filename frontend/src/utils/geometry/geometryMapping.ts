@@ -453,11 +453,28 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
   }
 
   if (kind === 'line_distance') {
-    const eid = resolved.a?.entity
-    if (!eid || !resolved.b) return { kind: 'unknown' }
-    const ea = sketch[eid] as LineSegment | Arc
-    if (!ea || !('start' in ea) || !('end' in ea)) return { kind: 'unknown' }
-    const pb = geomPoint(sketch, resolved.b)
+    // The solver reads `a` as the line, but documents authored before the
+    // operand-order fix (and hand-written ones) may carry the point first. The
+    // renderer accepts either, so an old dimension keeps drawing instead of
+    // vanishing until the loader migration has run.
+    const lineOf = (ref: ResolvedRef) => {
+      if (!ref) return null
+      const entity = sketch[ref.entity]
+      if (!entity) return null
+      const ek = getEntityKind(entity)
+      return ek === 'line' || ek === 'arc' ? entity as LineSegment | Arc : null
+    }
+    let lineRef = resolved.a
+    let otherRef = resolved.b
+    let ea = lineOf(lineRef)
+    if (!ea) {
+      lineRef = resolved.b
+      otherRef = resolved.a
+      ea = lineOf(lineRef)
+    }
+    if (!ea || !lineRef?.entity || !otherRef) return { kind: 'unknown' }
+    const eid = lineRef.entity
+    const pb = geomPoint(sketch, otherRef)
     if (!pb) return { kind: 'unknown' }
     const dx = ea.end[0] - ea.start[0]
     const dy = ea.end[1] - ea.start[1]
@@ -472,7 +489,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     // whether to draw each extension line and where it touches the entity.
     const ext1Line: [number, number, number, number] = [ea.start[0], ea.start[1], ea.end[0], ea.end[1]]
     let ext2Line: [number, number, number, number] | undefined
-    const ebEid = resolved.b.entity
+    const ebEid = otherRef.entity
     if (ebEid) {
       const eb = sketch[ebEid] as LineSegment | Arc | undefined
       if (eb && 'start' in eb && 'end' in eb) {

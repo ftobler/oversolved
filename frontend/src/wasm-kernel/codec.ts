@@ -72,20 +72,27 @@ export const CONSTRAINT_FLAG = {
   /** Every Jacobian row of the constraint already lies in the span of the
    *  earlier constraints': a measurement, not a driver. */
   redundant: 1 << 0,
+  /** The constraint never reached the residual stack: a stale ref or an
+   *  operand kind its builder cannot read. The sketch reports it instead of
+   *  letting it vanish. */
+  dropped: 1 << 1,
 } as const
 
-// Rev 6 of the wire layout. `SKG5` adds the header's storage quantum; `SKR5`
-// adds the per-entity moved bitmask before the diagnostics. The entity record
-// itself is unchanged since `SKG4`, which made it variable-size (`fit_spline`
-// carries `2 N + 2 h` params), and rev 4's per-constraint verdicts are
-// unchanged too. The magic IS the version handshake: the layout evolved before
-// (has_sign flag + trailing sign f32) without moving these, so a stale js/wasm
-// pairing decoded shifted offsets instead of failing. Bump BOTH sides (these
-// two and sketch-solver/src/codec.rs) on any layout change. Invalidating stale
-// cached payloads is acceptable and safe post-wave-1: bundle-cache reads
-// degrade to cold rebuilds.
-const MAGIC_IN = 0x35474b53  // "SKG5", little-endian on the wire
-const MAGIC_OUT = 0x35524b53  // "SKR5"
+// Rev 6 of the wire layout. `SKG6`/`SKR6` carry the dropped verdict bit: the
+// byte layout is unchanged but the meaning of `constraint_flags` grew, and an
+// older solver would read a dropped constraint as unflagged. `SKG5` added the
+// header's storage quantum; `SKR5` added the per-entity moved bitmask before
+// the diagnostics. The entity record itself is unchanged since `SKG4`, which
+// made it variable-size (`fit_spline` carries `2 N + 2 h` params), and rev 4's
+// per-constraint verdicts are otherwise unchanged too. The magic IS the
+// version handshake: the layout evolved before (has_sign flag + trailing sign
+// f32) without moving these, so a stale js/wasm pairing decoded shifted
+// offsets instead of failing. Bump BOTH sides (these two and
+// sketch-solver/src/codec.rs) on any layout or verdict-semantics change.
+// Invalidating stale cached payloads is acceptable and safe post-wave-1:
+// bundle-cache reads degrade to cold rebuilds.
+const MAGIC_IN = 0x36474b53  // "SKG6", little-endian on the wire
+const MAGIC_OUT = 0x36524b53  // "SKR6"
 
 export interface FlatEntity {
   kind: number

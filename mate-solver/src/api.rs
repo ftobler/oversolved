@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn solve_mate_bytes_rejects_sketch_magic() {
-        // The sketch input magic ("SKG4" in LE, sketch-solver/src/codec.rs
+        // The sketch input magic ("SKG6" in LE, sketch-solver/src/codec.rs
         // MAGIC), spelled out rather than imported: the crates are deliberately
         // independent, and this guard is about the byte value on the wire. If
         // the sketch crate ever changes its magic, the two formats stay

@@ -1,8 +1,9 @@
 import type { PartDoc, PartEntityDef } from '@/types/cad'
 import { VERTEX_POINT_KEY_SUFFIXES } from '@/types/vertexKeys'
+import { resolveVertexRef } from '@/types/vertexRef'
 import { featureRefId } from '@/kernel/query'
 import { FEATURE_DEF_SUBKEY, nestedFeatureParams } from '@/kernel/features/shared/featureParams'
-import { warn } from './yamlMutations/helpers'
+import { warn, isPointLikeEntityKind } from './yamlMutations/helpers'
 
 // The load-time migration steps, in the order the ladder applies them. Both
 // predate any trustworthy version stamp (a document written with `version: 1`
@@ -85,6 +86,47 @@ export function dropDeadAxisConstraints(doc: PartDoc): number {
     removed += before - feature.constraints.length
   }
   return removed
+}
+
+/** A pre-resolved external point operand (`{external_xy: [x, y]}`), which the
+ *  lowering reads through `point()` like a vertex. */
+function isExternalXyRef(ref: unknown): boolean {
+  return typeof ref === 'object' && ref !== null && Array.isArray((ref as { external_xy?: unknown }).external_xy)
+}
+
+/**
+ * Rewrite an authored point-first `line_distance` to line-first.
+ *
+ * The solver and the renderer both read operand `a` as the line and the other
+ * side through `point()`. Documents written before the authoring fix carry
+ * `a: $point, b: $line` (a vertex, `@builtin_origin`, `{external_xy}` or a
+ * whole circle/arc/ellipse), which the solver dropped without a trace;
+ * swapping the two refs makes the old dimension start constraining exactly as
+ * the author drew it. The signed `value` keeps its meaning because the side is
+ * measured from the same line, and the two-line form is left alone. Idempotent.
+ */
+export function migrateLineDistanceOperandOrder(doc: PartDoc): number {
+  let rewritten = 0
+  for (const feature of doc.features ?? []) {
+    if (feature.kind !== 'sketch' || !feature.constraints) continue
+    const ids = new Set((feature.entities ?? []).map(e => e.id))
+    const kindById = new Map((feature.entities ?? []).map(e => [e.id, e.kind]))
+    for (const c of feature.constraints) {
+      if (c.kind !== 'line_distance' || c.a === undefined || c.b === undefined) continue
+      const a = resolveVertexRef(ids, c.a)
+      const b = resolveVertexRef(ids, c.b)
+      const aIsPoint = isExternalXyRef(c.a)
+        || c.a === '@builtin_origin'
+        || (a !== null && (a.point !== undefined || isPointLikeEntityKind(kindById.get(a.entity))))
+      const bIsLine = b !== null && b.point === undefined && kindById.get(b.entity) === 'line'
+      if (!aIsPoint || !bIsLine) continue
+      const tmp = c.a
+      c.a = c.b
+      c.b = tmp
+      rewritten += 1
+    }
+  }
+  return rewritten
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

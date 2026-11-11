@@ -344,6 +344,51 @@ fn wrong_kind_payload_solves_instead_of_panicking() {
     assert_eq!(out.diagnostics.residual_norm, 0.0);
 }
 
+/// Every constraint the survivors filter removes must say so on the wire.
+/// Before this, a point-first line_distance (the Ex002 trigger) and a Length
+/// on a point were accepted, stored and then silently absent: the sketch could
+/// report a clean residual while the author's dimension did nothing.
+#[test]
+fn dropped_constraints_are_flagged_on_the_wire() {
+    let absent = PointSelector::Absent;
+    let inp = input(
+        vec![
+            ent(Kind::Point, 0),
+            ent(Kind::Line, 2),
+            ent(Kind::Circle, 6),
+        ],
+        vec![0.0, 5.0, 0.0, 0.0, 10.0, 0.0, 3.0, 3.0, 2.0],
+        vec![
+            // A length has no slot on a point target.
+            cons_v(ConstraintKind::Length, vec![target(0, absent)], 3.0),
+            // A point in the line role: the reported inert spelling.
+            cons_v(
+                ConstraintKind::LineDistance,
+                ab(e_ref(0, PointSelector::Xy), e_ref(1, absent)),
+                5.0,
+            ),
+            // The same distance, line first, is the form the builder reads.
+            cons_v(
+                ConstraintKind::LineDistance,
+                ab(e_ref(1, absent), e_ref(0, PointSelector::Xy)),
+                5.0,
+            ),
+            // A radius names a curve; a point has no radius slot.
+            cons_v(ConstraintKind::Radius, vec![target(0, absent)], 1.0),
+            // A stale entity index the host never revoked.
+            cons(ConstraintKind::Horizontal, vec![target(9, absent)]),
+        ],
+    );
+    let out = solve_sketch(&inp);
+    let dropped = crate::CONSTRAINT_FLAG_DROPPED;
+    assert_eq!(out.constraint_flags.len(), 5);
+    assert_eq!(out.constraint_flags[0], dropped);
+    assert_eq!(out.constraint_flags[1], dropped);
+    assert_eq!(out.constraint_flags[2] & dropped, 0);
+    assert_eq!(out.constraint_flags[3], dropped);
+    assert_eq!(out.constraint_flags[4], dropped);
+}
+
 #[test]
 fn equality_pin_past_the_param_buffer_is_dropped() {
     let mut inp = input(vec![ent(Kind::Point, 0)], vec![1.0, 2.0], vec![]);

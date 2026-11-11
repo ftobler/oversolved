@@ -103,15 +103,19 @@ export function isBuiltOutcome(outcome: FeatureOutcome): boolean {
 }
 
 /**
- * Whether a problem row must fail an export. An underconstrained sketch is the
- * one warning the law tolerates in a file: the geometry exists and the build is
- * sound, the sketch just still has freedom, and refusing to export would make
- * the yellow mark a hard error by the back door. Everything else the problem
- * list carries -- a partial or failed sibling, an overconstrained sketch, a
- * missing verdict -- still fails it.
+ * Whether a problem row must fail an export. A sketch build warning is
+ * tolerated in a file: an underconstrained sketch still has sound geometry, and
+ * a fully constrained sketch carrying an ignored-constraint warning is a
+ * complete sketch with one dead row. Refusing either would make a yellow build
+ * mark a hard export error by the back door. An overconstrained sketch is a
+ * failed solve, and every other row the problem list carries -- a partial or
+ * failed sibling, a missing verdict -- still fails it.
  */
 export function blocksExport(problem: FeatureProblem): boolean {
-  return !(problem.status === STATUS_NAME[Status.underconstrained] && problem.kind === 'sketch')
+  const toleratedSketch = problem.kind === 'sketch'
+    && (problem.status === STATUS_NAME[Status.underconstrained]
+      || problem.status === STATUS_NAME[Status.fully_constrained])
+  return !toleratedSketch
 }
 
 /**

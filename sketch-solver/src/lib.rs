@@ -258,6 +258,13 @@ pub struct Diagnostics {
 /// constraint, matching "the constraint I just added".
 pub const CONSTRAINT_FLAG_REDUNDANT: u8 = 1 << 0;
 
+/// The constraint never reached the residual stack: a stale entity reference,
+/// a reference whose params overrun the buffer, or an operand whose kind has no
+/// slot the builder reads (a Length on a Point). Such a constraint used to
+/// vanish with no trace, so a sketch could report a clean residual while one of
+/// its authored constraints did nothing. The flag lets the host name it.
+pub const CONSTRAINT_FLAG_DROPPED: u8 = 1 << 1;
+
 #[derive(Debug, Clone, Default)]
 pub struct Output {
     pub params_solved: Vec<f64>,
@@ -270,8 +277,10 @@ pub struct Output {
     /// when `skip_status_pass` is set.
     pub vertex_freedom: Vec<f64>,
     /// Per-constraint verdict bits (`CONSTRAINT_FLAG_*`), index-aligned with
-    /// `Input::constraints` (dropped constraints included, flagged 0). Empty on
-    /// the drag fast path: the walk is for cold solves, the drag budget is not.
+    /// `Input::constraints`. A dropped constraint is flagged
+    /// `CONSTRAINT_FLAG_DROPPED` so the host can report it instead of losing it.
+    /// Empty on the drag fast path: the walk is for cold solves, the drag
+    /// budget is not.
     pub constraint_flags: Vec<u8>,
     /// Per-constraint miss as a fraction of the sketch scale, index-aligned with
     /// `Input::constraints` and with `constraint_flags` (the wire carries one

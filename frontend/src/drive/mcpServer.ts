@@ -575,8 +575,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'A feature that failed, only partly applied, or '
       + 'warned, and an assembly whose solve did not run or whose mates or bound parts reported a problem, make '
       + 'the reply ok false with the file still written: the bytes are not the clean model the document describes. '
-      + 'The one carve-out is an underconstrained sketch: it stays a warning row in features (or in a bound part\'s '
-      + 'features), but the file is sound, so it does not make ok false. '
+      + 'The carve-out is a sketch warning row (underconstrained, or fully constrained with an ignored constraint): '
+      + 'it stays in features (or in a bound part\'s features), but the file is sound, so it does not make ok false. '
       + 'A part export names length_unit (the document) and file_unit: "mm" (the bytes, since STEP and STL are '
       + 'written in millimetres). '
       + 'An unknown body id is a tool error naming the live body ids.',

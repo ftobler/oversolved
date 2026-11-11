@@ -24,8 +24,8 @@ import type { Body } from '../types3d'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
 import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSketch'
 import {
-  encodeInput, decodeOutput, STATUS_NAME, Status, CONSTRAINT_FLAG,
-  type FlatInput, type SolverOutput,
+  encodeInput, decodeOutput, STATUS_NAME, Status, CONSTRAINT_FLAG, ConstraintKindCode,
+  type FlatConstraint, type FlatInput, type SolverOutput,
 } from '@/wasm-kernel/codec'
 import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags, getDefaultParams } from '@/registry'
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
@@ -456,6 +456,53 @@ export function underconstrainedWarning(dof: number, freeIds: readonly string[])
   return `${head} Free: ${shown.join(', ')}${rest > 0 ? ` and ${rest} more` : ''}.`
 }
 
+/** Wire kind code -> the document's kind name, for a dropped constraint whose
+ *  authored id no longer names a readable def. */
+const CONSTRAINT_KIND_NAME: Readonly<Record<number, string>> = Object.fromEntries(
+  Object.entries(ConstraintKindCode).map(([name, code]) => [code, name]),
+)
+
+/** Why the solver's survivors filter removed a constraint. The wire flag says
+ *  only that it was dropped; the flat payload and the entity layout on this
+ *  side hold enough to distinguish a stale ref from an unreadable operand. */
+function droppedConstraintReason(input: FlatInput, layout: EntityLayout[], index: number): string {
+  const c: FlatConstraint | undefined = input.constraints[index]
+  for (const { ref } of c?.refs ?? []) {
+    if (ref.kind === 'entity' && layout[ref.index] === undefined) return 'stale reference'
+  }
+  return 'operand kind'
+}
+
+/** The one warning sentence for a constraint ignored by either the live-doc
+ *  lowering or the solver's survivors filter. */
+function ignoredConstraintWarning(id: string, kind: string, reason: string): string {
+  return `constraint ${id} (${kind}) names operands it cannot use (${reason}) and was ignored.`
+}
+
+/**
+ * One warning per authored constraint the solver dropped. A constraint naming
+ * operands it cannot use (a point in the line slot, a Length on a point, a
+ * stale ref) used to disappear without a trace; the dropped verdict bit makes
+ * it a build warning the tree and the drive reply can name.
+ */
+export function droppedConstraintWarnings(
+  out: SolverOutput,
+  input: FlatInput,
+  layout: EntityLayout[],
+  constraintIds: ReadonlyArray<string | null>,
+  authoredKindById: ReadonlyMap<string, string>,
+): string[] {
+  const warnings: string[] = []
+  for (let i = 0; i < out.constraintFlags.length; i++) {
+    if ((out.constraintFlags[i] & CONSTRAINT_FLAG.dropped) === 0) continue
+    const cid = constraintIds[i]
+    if (cid === null || cid === undefined) continue
+    const kind = authoredKindById.get(cid) ?? CONSTRAINT_KIND_NAME[input.constraints[i]?.kind ?? -1] ?? 'constraint'
+    warnings.push(ignoredConstraintWarning(cid, kind, droppedConstraintReason(input, layout, i)))
+  }
+  return warnings
+}
+
 export function solveSketch(
   feature: Dict,
   globalRepo: Repository,
@@ -492,7 +539,7 @@ export function solveSketch(
     throw new Error(`sketch '${featureId}': no lowerable sketch found`)
   }
 
-  const { sketch } = extract.sketches[0]
+  const { sketch, droppedConstraints } = extract.sketches[0]
   const { input, layout, constraintIds } = lowerSketch(sketch)
   const out = runSolverBytes(solverBytes, input)
   assertSolverOutputMatchesLayout(out, layout, featureId, input.options.skipStatusPass)
@@ -580,12 +627,23 @@ export function solveSketch(
     }
   }
 
+  // Only the cold solve carries a status pass. The drag path builds its own
+  // result without this field, so a soft solve can never invent a warning. A
+  // dropped constraint is a warning on any solve status, including a fully
+  // constrained sketch that would otherwise read clean.
+  const warnings: string[] = status === 'underconstrained'
+    ? [underconstrainedWarning(out.diagnostics.dof, freeIds)]
+    : []
+  const authoredKindById = new Map<string, string>((pf.constraints ?? []).map(c => [c.id, c.kind]))
+  warnings.push(...droppedConstraintWarnings(out, input, layout, constraintIds, authoredKindById))
+  // The live-document lowering drops an unresolvable ref before the wire, so
+  // the solver cannot flag it; name those constraints on the same warning.
+  warnings.push(...droppedConstraints.map(d => ignoredConstraintWarning(d.id, d.kind, d.reason)))
+
   return {
     status,
     dof: out.diagnostics.dof,
-    // Only the cold solve carries a status pass. The drag path builds its own
-    // result without this field, so a soft solve can never invent a warning.
-    ...(status === 'underconstrained' ? { solver_warning: underconstrainedWarning(out.diagnostics.dof, freeIds) } : {}),
+    ...(warnings.length ? { solver_warning: warnings.join(' ') } : {}),
     geometry,
     entity_moved: entityMoved,
     features,

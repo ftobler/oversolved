@@ -617,11 +617,13 @@ banner on stdout, so a client config must use the direct node invocation.
   exception or warning text; it is always present and empty for a clean build.
   The one-line `summary` repeats it as a `; problems: <id> (<kind>) <status>:
   <message>` suffix, so a client that reads only the summary still sees it.
-  A fully constrained sketch is a state and is not listed. An underconstrained
-  sketch is a warning row: status `underconstrained`, message
+  A fully constrained sketch is a state and is not listed unless it carries a
+  build warning, such as an ignored constraint; that row keeps status
+  `fully_constrained` and carries the warning text. An underconstrained sketch
+  is a warning row: status `underconstrained`, message
   `Underconstrained: N degree(s) of freedom.` plus up to five free entity ids,
-  and its `featureDeltas` row carries the same `dof`. It never makes a run or a
-  measure `ok` false, and it is the one problem row an export tolerates (see
+  and its `featureDeltas` row carries the same `dof`. Neither makes a run or a
+  measure `ok` false, and both are sketch warning rows an export tolerates (see
   below). `fixed` makes a sketch read fully constrained but carries no design
   intent: dimension against projected geometry (`add_projected_entity`; deleting the projection constraint frees the entity) or
   `@builtin_origin` instead, and reserve `fixed` for deliberately frozen
@@ -639,10 +641,10 @@ banner on stdout, so a client config must use the direct node invocation.
   a `run` with `steps: []` is how to ask that document for its verdicts.
   `export` is the one reply whose `ok` is stricter than a run's: the file is
   the answer, so any feature in `features` (failed, partial or warned) makes it
-  `ok: false` even though the bytes are still written; the one carve-out is an
-  underconstrained sketch, whose warning row leaves `ok` true because the file
-  is sound; a note does not change
-  that verdict. An assembly export
+  `ok: false` even though the bytes are still written; the carve-out is a
+  sketch warning row (underconstrained, or fully constrained with an ignored
+  constraint), which leaves `ok` true because the file is sound; a note does
+  not change that verdict. An assembly export
   carries `solve`, `mates`, `parts`, `instances` and `summary` like a measure,
   and is `ok: false` when the solve did not run or a mate or bound part reported
   a problem: the file then holds seed or best-effort poses, and the reply says

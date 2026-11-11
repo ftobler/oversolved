@@ -3,7 +3,9 @@ import { entityVertexIndices, entityCoordPairs } from '@/registry'
 import {
   warn, round, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
   resolveSketch, mintEntityId, CONSTRAINT_REF_FIELDS, refMatchesEntity,
+  canonicalLineDistanceTargets, isPointLikeEntityKind,
 } from './helpers'
+import { resolveVertexRef } from '@/types/vertexRef'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { fitPointIndex } from '@/types/vertexKeys'
@@ -232,6 +234,24 @@ export function applyAddConstraint(
     return
   }
   targets = resolved
+  // The solver reads `a` as the line for line_distance; a point-first pick was
+  // stored inert. Canonicalise here as well as in the editor path, so a drive
+  // or MCP mutation cannot author the dropped spelling either, whether it names
+  // the operands explicitly or as stored `$` refs.
+  const entityIds = new Set((feature.entities ?? []).map(e => e.id))
+  const kindById = new Map((feature.entities ?? []).map(e => [e.id, e.kind]))
+  targets = canonicalLineDistanceTargets(kind, targets, (t) => {
+    if (t.startsWith('vertex:') || t === '@builtin_origin') return 'point'
+    if (t.startsWith('entity:')) {
+      const ek = kindById.get(t.split(':')[2])
+      return ek === 'line' ? 'line' : isPointLikeEntityKind(ek) ? 'point' : undefined
+    }
+    const ref = resolveVertexRef(entityIds, t)
+    if (!ref) return undefined
+    const ek = kindById.get(ref.entity)
+    if (ref.point !== undefined || isPointLikeEntityKind(ek)) return 'point'
+    return ek === 'line' ? 'line' : undefined
+  })
   const cid = uniqueConstraintId(feature.constraints, kind)
   const c: PartConstraint = { id: cid, kind }
   const pt = (t: string) => parseTarget(t, featureId)
