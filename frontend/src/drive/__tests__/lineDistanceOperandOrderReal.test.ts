@@ -14,7 +14,7 @@ import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc, SketchFeature } from '@/types/cad'
 import type { EdgeGeometry } from '@/kernel/select'
-import { runHeadless, emptyDriveDoc, selectHeadless } from '../headlessOps'
+import { runHeadless, emptyDriveDoc, selectHeadless, exportHeadless } from '../headlessOps'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
@@ -150,6 +150,38 @@ describe.skipIf(!ready)('line_distance operand order (real OCC + Rust solver)', 
     expect(doc.features?.some(f => f.id === 'ex1')).toBe(true)
   }, 120_000)
 
+  it('reports a stale ref and still exports the otherwise complete part', async () => {
+    const built = await runHeadless({ doc: emptyDriveDoc(), steps: BOX })
+    expect(built.ok).toBe(true)
+    const doc = built.doc as PartDoc
+    const added = await runHeadless({
+      doc,
+      steps: [
+        m({ type: 'add_sketch', featureId: 'sk2', label: 'Hole', plane: '@builtin_plane_front' }),
+        m({ type: 'add_entity', featureId: 'sk2', kind: 'circle', params: [0, 0, 5], entityId: 'c1' }),
+        m({ type: 'add_constraint', featureId: 'sk2', kind: 'diameter', targets: ['entity:sk2:c1'], value: 10 }),
+        m({ type: 'add_constraint', featureId: 'sk2', kind: 'coincident', targets: ['vertex:sk2:c1:center', '@builtin_origin'] }),
+      ],
+    })
+    expect(added.ok).toBe(true)
+    // A ref the sketch no longer has: partDocToSketches drops it before the
+    // wire, so the warning has to come from the lowering side.
+    sketchOf(added.doc as PartDoc, 'sk2').constraints!.push({
+      id: 'c_missing', kind: 'coincident', a: '$ghost', b: '$c1center',
+    })
+    const result = await runHeadless({ doc: added.doc as PartDoc, steps: [] })
+    expect(result.ok).toBe(true)
+    const problem = result.features.find(feature => feature.id === 'sk2')
+    expect(problem).toBeDefined()
+    expect(problem!.status).toBe('fully_constrained')
+    expect(problem!.message).toContain('constraint c_missing (coincident) names operands it cannot use (stale reference) and was ignored')
+
+    // A build warning on a complete sketch is not an export failure.
+    const exported = await exportHeadless(result.doc as PartDoc, { format: 'step' })
+    expect(exported!.ok).toBe(true)
+    expect(exported!.bytes!.byteLength).toBeGreaterThan(0)
+  }, 120_000)
+
   it('reports an unreadable constraint as a sketch warning instead of hiding it', async () => {
     // A Length on a circle centre: well-formed refs, no slot the length
     // builder can read. The sketch is otherwise fully constrained, so the
@@ -169,7 +201,7 @@ describe.skipIf(!ready)('line_distance operand order (real OCC + Rust solver)', 
     expect(problem).toBeDefined()
     expect(problem!.status).toBe('fully_constrained')
     expect(problem!.message).toMatch(
-      /^constraint c_length_\S+ \(length\) names operands it cannot use \(operand kind\) and was ignored$/,
+      /^constraint c_length_\S+ \(length\) names operands it cannot use \(operand kind\) and was ignored\.$/,
     )
   }, 120_000)
 })

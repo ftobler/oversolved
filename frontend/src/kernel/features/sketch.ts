@@ -473,6 +473,12 @@ function droppedConstraintReason(input: FlatInput, layout: EntityLayout[], index
   return 'operand kind'
 }
 
+/** The one warning sentence for a constraint ignored by either the live-doc
+ *  lowering or the solver's survivors filter. */
+function ignoredConstraintWarning(id: string, kind: string, reason: string): string {
+  return `constraint ${id} (${kind}) names operands it cannot use (${reason}) and was ignored.`
+}
+
 /**
  * One warning per authored constraint the solver dropped. A constraint naming
  * operands it cannot use (a point in the line slot, a Length on a point, a
@@ -492,10 +498,7 @@ export function droppedConstraintWarnings(
     const cid = constraintIds[i]
     if (cid === null || cid === undefined) continue
     const kind = authoredKindById.get(cid) ?? CONSTRAINT_KIND_NAME[input.constraints[i]?.kind ?? -1] ?? 'constraint'
-    warnings.push(
-      `constraint ${cid} (${kind}) names operands it cannot use `
-      + `(${droppedConstraintReason(input, layout, i)}) and was ignored`,
-    )
+    warnings.push(ignoredConstraintWarning(cid, kind, droppedConstraintReason(input, layout, i)))
   }
   return warnings
 }
@@ -536,7 +539,7 @@ export function solveSketch(
     throw new Error(`sketch '${featureId}': no lowerable sketch found`)
   }
 
-  const { sketch } = extract.sketches[0]
+  const { sketch, droppedConstraints } = extract.sketches[0]
   const { input, layout, constraintIds } = lowerSketch(sketch)
   const out = runSolverBytes(solverBytes, input)
   assertSolverOutputMatchesLayout(out, layout, featureId, input.options.skipStatusPass)
@@ -633,11 +636,14 @@ export function solveSketch(
     : []
   const authoredKindById = new Map<string, string>((pf.constraints ?? []).map(c => [c.id, c.kind]))
   warnings.push(...droppedConstraintWarnings(out, input, layout, constraintIds, authoredKindById))
+  // The live-document lowering drops an unresolvable ref before the wire, so
+  // the solver cannot flag it; name those constraints on the same warning.
+  warnings.push(...droppedConstraints.map(d => ignoredConstraintWarning(d.id, d.kind, d.reason)))
 
   return {
     status,
     dof: out.diagnostics.dof,
-    ...(warnings.length ? { solver_warning: warnings.join('; ') } : {}),
+    ...(warnings.length ? { solver_warning: warnings.join(' ') } : {}),
     geometry,
     entity_moved: entityMoved,
     features,

@@ -19,9 +19,21 @@ import type { PartConstraint, PartFeature, SketchFeature } from '@/types/cad'
 import { resolveVertexRef } from '@/types/vertexRef'
 import type { SketchInput } from './lowerSketch'
 
+/** A constraint the live-document lowering could not turn into a solver row.
+ *  An unresolved ref used to vanish here, before the wire, so no verdict could
+ *  name it; the sketch warning path reports these instead. */
+export interface DroppedConstraint {
+  id: string
+  kind: string
+  reason: string
+}
+
 export interface ExtractedSketch {
   featureId: string
   sketch: SketchInput
+  /** Constraints dropped during lowering, with the reason the sketch warning
+   *  names. The solver never sees these, so it cannot flag them. */
+  droppedConstraints: DroppedConstraint[]
 }
 
 export interface SkippedSketch {
@@ -74,13 +86,17 @@ function lowerConstraint(
   c: PartConstraint,
   entityIds: Set<string>,
   originLocal: [number, number],
+  dropped: DroppedConstraint[],
 ): Record<string, unknown> | null {
   const out: Record<string, unknown> = { id: c.id, kind: c.kind }
   for (const key of REF_KEYS) {
     const raw = c[key]
     if (raw == null) continue
     const resolved = resolveLocal(raw, entityIds, originLocal)
-    if (!resolved) return null
+    if (!resolved) {
+      dropped.push({ id: c.id, kind: c.kind, reason: 'stale reference' })
+      return null
+    }
     out[key] = resolved
   }
   // A present-but-non-numeric scalar is corrupt: passing it through (or
@@ -239,8 +255,9 @@ export function partDocToSketches(
 
     const entityIds = new Set(entities.map((e) => e.id))
     const constraints: Array<Record<string, unknown>> = []
+    const droppedConstraints: DroppedConstraint[] = []
     for (const c of expandSugarConstraints(feature)) {
-      const lowered = lowerConstraint(c, entityIds, originLocal)
+      const lowered = lowerConstraint(c, entityIds, originLocal, droppedConstraints)
       if (lowered) constraints.push(lowered)
     }
 
@@ -252,7 +269,7 @@ export function partDocToSketches(
       constraints,
       pinnedEntityIds,
     }
-    sketches.push({ featureId: feature.id, sketch })
+    sketches.push({ featureId: feature.id, sketch, droppedConstraints })
   }
 
   return { sketches, skipped }

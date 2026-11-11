@@ -103,11 +103,18 @@ describe('readSolveOutcomes', () => {
 })
 
 describe('blocksExport', () => {
-  // An underconstrained sketch is the one problem row a file may carry: the
-  // geometry is sound and the warning is an authoring nudge, not a broken file.
-  it('tolerates only an underconstrained sketch', () => {
+  // A sketch build warning is tolerated: the geometry is sound and the warning
+  // is an authoring nudge, not a broken file.
+  it('tolerates an underconstrained sketch', () => {
     expect(blocksExport({ id: 'sk1', kind: 'sketch', status: 'underconstrained', message: 'Underconstrained: 4 degrees of freedom.' }))
       .toBe(false)
+  })
+
+  it('tolerates a fully constrained sketch carrying an ignored-constraint warning', () => {
+    expect(blocksExport({
+      id: 'sk1', kind: 'sketch', status: 'fully_constrained',
+      message: 'constraint c_len (length) names operands it cannot use (operand kind) and was ignored.',
+    })).toBe(false)
   })
 
   it('still blocks every other problem row', () => {

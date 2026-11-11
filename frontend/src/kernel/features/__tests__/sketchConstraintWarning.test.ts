@@ -195,7 +195,23 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     const out = solve(feature)
     expect(out.status).toBe('fully_constrained')
     expect(out.solver_warning).toMatch(
-      /^constraint c_length_\S+ \(length\) names operands it cannot use \(operand kind\) and was ignored$/,
+      /^constraint c_length_\S+ \(length\) names operands it cannot use \(operand kind\) and was ignored\.$/,
+    )
+  })
+
+  it('reports a constraint the live-doc lowering dropped for a stale ref', () => {
+    const feature = emptySketch('Hole')
+    const doc = docOf(feature)
+    applyAddEntity(doc, 'sk1', 'circle', [0, 0, 5], 'c1', undefined, true)
+    applyAddConstraint(doc, 'sk1', 'coincident', ['vertex:sk1:c1:center', '@builtin_origin'])
+    // A ref to an entity the sketch no longer has: partDocToSketches drops the
+    // constraint before the wire, so the solver cannot flag it.
+    feature.constraints!.push({ id: 'c_missing', kind: 'coincident', a: '$ghost', b: '$c1center' })
+
+    const out = solve(feature)
+    expect(out.status).toBe('fully_constrained')
+    expect(out.solver_warning).toMatch(
+      /^constraint c_missing \(coincident\) names operands it cannot use \(stale reference\) and was ignored\.$/,
     )
   })
 
