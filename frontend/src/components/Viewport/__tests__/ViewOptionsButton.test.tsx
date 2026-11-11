@@ -251,7 +251,7 @@ describe('ViewOptionsButton document unit', () => {
     expect(onSetLengthUnit).not.toHaveBeenCalled()
   })
 
-  it('hides the unit in the assembly, which owns no document unit', () => {
+  it('hides the unit when the page offers no document unit', () => {
     render(<ViewOptionsButton allowSectionPick={false} />)
     open()
 
