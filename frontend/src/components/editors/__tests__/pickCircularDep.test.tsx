@@ -8,9 +8,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import type { FeatureEditorSchema } from '@/components/editors/FeatureEditor'
-import { MOVE_FACE_SCHEMA, FILLET_SCHEMA } from '@/components/editors/featureEditorSchemas'
+import { MOVE_FACE_SCHEMA, FILLET_SCHEMA, HOLE_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { ToastProvider } from '@/contexts/ToastContext'
+import { makeAncestryQuery } from '@/kernel/query'
 import type { PartFeature } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
@@ -107,6 +108,50 @@ function expectRefusalInDialog(text: string) {
 }
 
 const FILLET = { id: 'fi1', kind: 'fillet', fillet: { edges: [], radius: 1 } } as unknown as PartFeature
+
+// A hole after the sketch it drills, so the build-order guard lets the sketch
+// pick through and the field's own circle rule is the one under test.
+const HOLE_FEATURES: PartFeature[] = [
+  {
+    id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+    entities: [{ id: 'p1', kind: 'point' }, { id: 'c1', kind: 'circle' }],
+  },
+  { id: 'h1', kind: 'hole', hole: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20 } },
+]
+const HOLE = HOLE_FEATURES[1]
+
+/** The field's own refusal, shown in the dialog row and not as a toast. */
+function refusalText(): string {
+  const el = document.querySelector('.status-message')
+  expect(el).not.toBeNull()
+  expect(el!.closest('.feature-field-row')!.querySelector('.feature-pick-chip.picking')).not.toBeNull()
+  return el!.textContent ?? ''
+}
+
+describe('the hole sketch field refuses a circle before it is written', () => {
+  it('refuses a curve pick naming a circle', () => {
+    const onMutation = vi.fn()
+    renderArmed(HOLE, HOLE_SCHEMA, onMutation, HOLE_FEATURES)
+
+    pick('entity:sk1:c1')
+
+    expect(onMutation).not.toHaveBeenCalled()
+    expect(refusalText()).toContain("'c1' of sketch sk1 is a circle, which is not a drill site")
+    expect(refusalText()).toContain('cut the circle with an extrude cut')
+  })
+
+  it('refuses an area pick naming a lone circle', () => {
+    // The area form is the second way a viewport click names a circle; it used
+    // to survive until the solve.
+    const onMutation = vi.fn()
+    renderArmed(HOLE, HOLE_SCHEMA, onMutation, HOLE_FEATURES)
+
+    pick(makeAncestryQuery(['@sk1/c1', 'surface:0', '@sk1'], 'flatface'))
+
+    expect(onMutation).not.toHaveBeenCalled()
+    expect(refusalText()).toContain("'c1' of sketch sk1 is a circle, which is not a drill site")
+  })
+})
 
 describe('rejected-pick feedback', () => {
   it('a validatePick refusal shows the field reason and dispatches no mutation', () => {
