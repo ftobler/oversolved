@@ -15,6 +15,7 @@ describe('sketchEditorStore', () => {
     dimensionPicks: [],
     pendingBrepProjectionIds: [],
     normalSelection: new Set(),
+    activeOriginLocal: [0, 0],
   })
   useSketchUiStore.setState({
     pendingDialog: null,
@@ -497,6 +498,33 @@ describe('sketchEditorStore', () => {
   })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
       expect(useSketchUiStore.getState().pendingDialog!.defaultValue).toBe('10')
+      setSketchCallback('getSketch', null)
+    })
+
+    it('finalizeDimensionPlacement measures an origin dimension from the live sketch origin', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        PT: { x: 7, y: 1 },
+      } as never))
+      useEditorState.setState({
+    activeOriginLocal: [5, -2],
+    dimensionPicks: [
+          { isVertex: true, target: '@builtin_origin' },
+          { isVertex: true, target: 'vertex:S1:PT:xy' },
+        ],
+  })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchUiStore.getState().pendingDialog!
+      // PT (7,1) to the face origin (5,-2): hypot(2,3), not hypot(7,1) from the
+      // plane's local origin. The preview reads this same store field.
+      expect(dialog.defaultValue).toBe((Math.hypot(2, 3)).toFixed(2))
+      dialog.onConfirm(dialog.defaultValue!)
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+        kind: 'point_distance',
+        targets: ['@builtin_origin', 'vertex:S1:PT:xy'],
+        value: Math.hypot(2, 3),
+      }))
       setSketchCallback('getSketch', null)
     })
 

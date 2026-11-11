@@ -3,7 +3,7 @@ import {
   getBodiesToRender, getGhostBodiesToRender, getPreviewBodies, computeEffectiveVisibleBodies,
   sketchForRender, snapSketchesFor,
 } from '@/components/Viewport/bodyUtils'
-import type { Feature, BodyResult, PartStyleEntry, Sketch, SketchFeature, SketchData } from '@/types/cad'
+import type { Feature, BodyResult, PartStyleEntry, Sketch, SketchFeature, SketchData, DimLinearRender } from '@/types/cad'
 import type { BodyRenderItem } from '@/utils/bodyRender'
 import { BODY_SNAP_FEAT_PREFIX } from '@/utils/geometry/bodySnapProjection'
 
@@ -31,6 +31,29 @@ describe('sketchForRender', () => {
   it('still yields constraints when the solve supplied none', () => {
     const result = sketchForRender({ solved: {} } as SketchData, feature)
     expect(result.constraints).toEqual({})
+  })
+
+  it('derives an origin dimension on the pre-solve fallback with the solve origin', () => {
+    // Reachable branch: sketch.ts omits `constraints` when every render is
+    // unknown, so the viewport falls back here with the solved sketch and the
+    // solve's originLocal. Before the origin was threaded, this dimension drew
+    // the generic unrenderable tile.
+    const faceFeature: SketchFeature = {
+      id: 'S1',
+      kind: 'sketch',
+      entities: [{ id: 'PT', kind: 'point' }],
+      initial: { PT: [7, 1] },
+      constraints: [
+        { id: 'dx', kind: 'point_distance_x', a: '@builtin_origin', b: '$PTxy' },
+      ],
+    }
+    const result = sketchForRender(
+      { solved: { PT: { x: 7, y: 1 } }, originLocal: [5, -2] } as unknown as SketchData,
+      faceFeature,
+    )
+    const render = result.constraints.dx.render as DimLinearRender
+    expect(render.kind).toBe('dim_linear')
+    expect(render.p1[0]).toBe(5)
   })
 })
 
