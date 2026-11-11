@@ -54,6 +54,46 @@ describe('applyAddConstraint', () => {
     expect(added!.b).toEqual('$circ1')
   })
 
+  it('stores a point-first line_distance line-first, keeping the value and sign', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(
+      doc, 'Sketch1', 'line_distance',
+      ['vertex:Sketch1:pt1:xy', 'entity:Sketch1:line1'], 5, undefined, -1,
+    )
+    const added = constraints0(doc).find(c => c.id.startsWith('c_line_distance'))
+    expect(added).toBeDefined()
+    // The solver and the renderer read `a` as the line; the pick order the
+    // author used must not decide whether the row exists.
+    expect(added!.a).toBe('$line1')
+    expect(added!.b).toBe('$pt1xy')
+    // A point/line swap must not flip the side: the same line measures it.
+    expect(added!.value).toBe(5)
+    expect(added!.sign).toBe(-1)
+  })
+
+  it('also canonicalises a builtin point first in a line_distance', () => {
+    const doc = makeSampleDoc()
+    applyAddConstraint(doc, 'Sketch1', 'line_distance', ['@builtin_origin', 'entity:Sketch1:line1'], 5)
+    const added = constraints0(doc).find(c => c.id.startsWith('c_line_distance'))
+    expect(added!.a).toBe('$line1')
+    expect(added!.b).toBe('@builtin_origin')
+  })
+
+  it('keeps the two-line line_distance in pick order', () => {
+    const doc = makeSampleDoc()
+    entities0(doc).push({ id: 'line2', kind: 'line' })
+    initial0(doc).line2 = [0, 5, 10, 5]
+    applyAddConstraint(
+      doc, 'Sketch1', 'line_distance',
+      ['entity:Sketch1:line2', 'entity:Sketch1:line1'], 5,
+    )
+    const added = constraints0(doc).find(c => c.id.startsWith('c_line_distance'))
+    // Only a vertex/builtin point in `a` with a line in `b` is repositioned;
+    // the parallel line-line form is not a point-to-line dimension.
+    expect(added!.a).toBe('$line2')
+    expect(added!.b).toBe('$line1')
+  })
+
   it('adds constraint with vertex point reference', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'coincident', ['vertex:Sketch1:line1:end', 'vertex:Sketch1:circ1:center'])

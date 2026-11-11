@@ -38,6 +38,29 @@ export const round = (v: number) => roundTo(v, 1e6)
  *  enters the document, or it survives into the YAML and every later solve. */
 export const allFinite = (vs: readonly number[]) => vs.every(v => Number.isFinite(v))
 
+/**
+ * Canonical operand order for a `line_distance`: a point in `a` and a line in
+ * `b` swaps to line-first. The solver and the renderer both read `a` as the
+ * line, so the point-first spelling was accepted, stored and then dropped.
+ * Two lines stay in pick order (the parallel line-line form), and so does any
+ * pair the canonicaliser cannot classify.
+ *
+ * `entityKind` resolves an `entity:` target's kind; a `vertex:` or builtin
+ * point target is the point side. The signed `value` is not touched: the
+ * perpendicular side is measured from the same line either way.
+ */
+export function canonicalLineDistanceTargets(
+  kind: string,
+  targets: readonly string[],
+  entityKind: (target: string) => string | undefined,
+): string[] {
+  if (kind !== 'line_distance' || targets.length < 2) return [...targets]
+  const [a, b] = targets
+  const aIsPoint = a.startsWith('vertex:') || a.startsWith('@builtin_')
+  if (!aIsPoint || !b.startsWith('entity:') || entityKind(b) !== 'line') return [...targets]
+  return [b, a, ...targets.slice(2)]
+}
+
 export function findFeature(doc: PartDoc, featureId: string): PartFeature | undefined {
   return doc.features?.find(f => f.id === featureId)
 }

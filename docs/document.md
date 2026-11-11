@@ -80,7 +80,7 @@ under the derived id `step_<file id>`.
 ## Document Structure
 
 ```yaml
-version: 6
+version: 7
 kind: part
 
 features:

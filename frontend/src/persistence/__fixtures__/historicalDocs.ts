@@ -157,13 +157,13 @@ features:
 }
 
 // The stamp at the ladder current version: the ladder must leave such a
-// document alone. The literal 5 is cross-checked against CURRENT_DOC_VERSION in
+// document alone. The literal version is cross-checked against CURRENT_DOC_VERSION in
 // the load suite, so bumping the loader's version without adding a fixture for
 // the new stamp fails loudly instead of silently never exercising the gate.
-export const CURRENT_V6_PART: HistoricalDocument = {
-  name: 'current v6 part',
+export const CURRENT_V7_PART: HistoricalDocument = {
+  name: 'current v7 part',
   note: 'stamped at the ladder current version, nothing to migrate',
-  text: `version: 6
+  text: `version: 7
 kind: part
 features:
   - id: Origin
@@ -269,7 +269,7 @@ export const ALL_HISTORICAL_PART_DOCS: HistoricalDocument[] = [
   CURRENT_PART,
   CURRENT_V2_PART,
   CURRENT_V3_PART,
-  CURRENT_V6_PART,
+  CURRENT_V7_PART,
 ]
 
 export const ALL_HISTORICAL_ASSEMBLY_DOCS: HistoricalDocument[] = [

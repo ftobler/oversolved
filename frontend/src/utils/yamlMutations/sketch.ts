@@ -3,6 +3,7 @@ import { entityVertexIndices, entityCoordPairs } from '@/registry'
 import {
   warn, round, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
   resolveSketch, mintEntityId, CONSTRAINT_REF_FIELDS, refMatchesEntity,
+  canonicalLineDistanceTargets,
 } from './helpers'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
@@ -232,6 +233,14 @@ export function applyAddConstraint(
     return
   }
   targets = resolved
+  // The solver reads `a` as the line for line_distance; a point-first pick was
+  // stored inert. Canonicalise here as well as in the editor path, so a drive
+  // or MCP mutation cannot author the dropped spelling either.
+  targets = canonicalLineDistanceTargets(kind, targets, (t) => {
+    if (!t.startsWith('entity:')) return undefined
+    const eid = t.split(':')[2]
+    return feature.entities?.find(e => e.id === eid)?.kind
+  })
   const cid = uniqueConstraintId(feature.constraints, kind)
   const c: PartConstraint = { id: cid, kind }
   const pt = (t: string) => parseTarget(t, featureId)

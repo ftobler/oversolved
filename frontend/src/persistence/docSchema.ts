@@ -18,19 +18,20 @@ import { evalExpr } from '@/kernel/evalExpr'
 import { threadEntry } from '@/kernel/threadTable'
 import { isLengthUnit } from '@/utils/lengthUnit'
 import { normalizeMateLimitDeg } from '@/utils/mateKinds'
-import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams, migrateProjectionConstraints } from '@/utils/yamlMigrations'
+import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
 
-// The version the ladder migrates to. A document carrying `version` 5 or newer
+// The version the ladder migrates to. A document carrying `version` 7 or newer
 // skips every step; anything older (including an unstamped document, reads as 0)
 // runs the steps whose target version it is behind. The step at 3 canonicalizes
 // the two spellings the format used to tolerate (feature refs `$id` -> `@id`,
 // flat params -> nested); the step at 4 flips stored fixed-mate offsets to the
 // plus convention and stamps the document it changed (see the step's own note);
 // the step at 5 folds authored rotating joint limits into the solver's signed
-// (-180, 180] roll coordinate.
+// (-180, 180] roll coordinate; the step at 7 puts a stored point-first
+// `line_distance` back in the line-first order the solver reads.
 // The historic heals target 2 deliberately: the version stamps predate them, so
 // a document stamped 1 can still carry the stale shapes they fix.
-export const CURRENT_DOC_VERSION = 6
+export const CURRENT_DOC_VERSION = 7
 
 // Caps. Chosen far above what a real document holds while well below what would
 // hang a solve: an entity list of 10k is already far past a hand-authored
@@ -106,6 +107,7 @@ interface MigrationStep {
 // touches and skips anything that does not have the shape it heals: a garbage
 // document just reaches the validator untouched and is rejected there.
 const MIGRATION_STEPS: MigrationStep[] = [
+  { id: 'line-distance-operand-order', to: 7, apply: stepLineDistanceOperandOrder },
   { id: 'projection-constraint', to: 6, apply: stepProjectionConstraint },
   // The rotating-limit normalization. It is idempotent, so unlike the offset
   // flip it does not stamp: an unstamped document simply finds nothing to
@@ -174,6 +176,11 @@ function stepDropDeadAxisConstraints(doc: DocRecord): number {
 function stepPluralBodyPicks(doc: DocRecord): number {
   const part = migratablePartDoc(doc)
   return part ? migrateLegacyBodyPicks(part) : 0
+}
+
+function stepLineDistanceOperandOrder(doc: DocRecord): number {
+  const part = migratablePartDoc(doc)
+  return part ? migrateLineDistanceOperandOrder(part) : 0
 }
 
 function stepProjectionConstraint(doc: DocRecord): number {

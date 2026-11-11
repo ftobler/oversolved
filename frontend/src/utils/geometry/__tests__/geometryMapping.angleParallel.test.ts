@@ -96,6 +96,24 @@ describe('computeConstraintRender (line_distance extension-line segments)', () =
     expect(dim.ext2_line).toBeUndefined()
   })
 
+  it('a point-first line_distance renders exactly like the line-first form', () => {
+    const sketch = makeSketch()
+    const lineFirst: PartConstraint = {
+      id: 'D1', kind: 'line_distance',
+      a: '$H1', b: '$PT',
+      value: 3,
+    }
+    const pointFirst: PartConstraint = {
+      id: 'D2', kind: 'line_distance',
+      a: '$PT', b: '$H1',
+      value: 3,
+    }
+    // A document authored before the operand fix still draws: the renderer
+    // reads the line side whichever slot it occupies.
+    expect(computeConstraintRender(pointFirst, sketch))
+      .toEqual(computeConstraintRender(lineFirst, sketch))
+  })
+
   it('length does not emit ext1_line / ext2_line', () => {
     const sketch = makeSketch()
     const c: PartConstraint = {

@@ -22,7 +22,7 @@ import { getToolPickConfig } from '@/registry/toolPickConfig'
 import { planBrepDimensionPick, refreshProjectedPickKinds } from '@/tools/dimensionProjection'
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
-import { randomId } from '@/utils/yamlMutations/helpers'
+import { randomId, canonicalLineDistanceTargets } from '@/utils/yamlMutations/helpers'
 import type { DialogState, FilletCornerMap, SketchEditorState } from './sketchEditorTypes'
 import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectionEntityId, CANNOT_APPLY_TITLE, type PendingConstraint } from './sketchEditorCallbacks'
 import { samePoint, validateWithRepair, prunePickClaims } from './sketchEditorHelpers'
@@ -664,10 +664,13 @@ export const editorState = createStore<EditorState>((set, get) => ({
     const onMutation = requireMutation('applyConstraint')
     if (!onMutation) return null
     if (selection.size === 0 || !activeFeatureId) return null
-    const targets = [...selection].filter(t =>
+    const picked = [...selection].filter(t =>
       t.startsWith('entity:') || t.startsWith('vertex:') || t.startsWith('constraint:') || t.startsWith('@builtin_') || t.startsWith('dock:') || t.startsWith('isect:')
     )
-    if (targets.length === 0) return null
+    if (picked.length === 0) return null
+    // The redundancy probe and the mutation both see the canonical order, so a
+    // point-first line_distance is tested (and stored) as line-first.
+    const targets = canonicalLineDistanceTargets(kind, picked, t => entityKindMap[t])
 
     // Reject operand kinds the constraint cannot represent before authoring it.
     // A parallel between two arcs (or a concentric on a line) otherwise lands in
@@ -948,10 +951,18 @@ export const editorState = createStore<EditorState>((set, get) => ({
     }
     const onMutation = requireMutation('finalizeDimensionPlacement')
     if (!onMutation) return
-    // The dim self-deduplicates if a same entity was clicked twice.
-    const targets = dimensionTargets(dimensionPicks)
     const featureId = activeFeatureId
     let constraintKind = resolved.constraintKind
+    // Canonicalise before the natural value, the sign and the placement all
+    // read the render: a point-first line_distance otherwise resolved no value
+    // at all. Two-line picks keep their order.
+    const pickKinds = new Map(dimensionPicks.map(p => [p.target, p.entityKind ?? undefined]))
+    // The dim self-deduplicates if a same entity was clicked twice.
+    const targets = canonicalLineDistanceTargets(
+      constraintKind,
+      dimensionTargets(dimensionPicks),
+      t => pickKinds.get(t),
+    )
 
     // Snapshot the placement anchor BEFORE clearing -- the cursorWorld field
     // is cleared on tool exit but we want the dispatched pos to point at where

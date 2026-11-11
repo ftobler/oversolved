@@ -1,5 +1,6 @@
 import type { PartDoc, PartEntityDef } from '@/types/cad'
 import { VERTEX_POINT_KEY_SUFFIXES } from '@/types/vertexKeys'
+import { resolveVertexRef } from '@/types/vertexRef'
 import { featureRefId } from '@/kernel/query'
 import { FEATURE_DEF_SUBKEY, nestedFeatureParams } from '@/kernel/features/shared/featureParams'
 import { warn } from './yamlMutations/helpers'
@@ -85,6 +86,39 @@ export function dropDeadAxisConstraints(doc: PartDoc): number {
     removed += before - feature.constraints.length
   }
   return removed
+}
+
+/**
+ * Rewrite an authored point-first `line_distance` to line-first.
+ *
+ * The solver and the renderer both read operand `a` as the line. Documents
+ * written before the authoring fix carry `a: $point, b: $line`, which the
+ * solver dropped without a trace; swapping the two refs makes the old
+ * dimension start constraining exactly as the author drew it. The signed
+ * `value` keeps its meaning because the side is measured from the same line,
+ * and the two-line form is left alone. Idempotent.
+ */
+export function migrateLineDistanceOperandOrder(doc: PartDoc): number {
+  let rewritten = 0
+  for (const feature of doc.features ?? []) {
+    if (feature.kind !== 'sketch' || !feature.constraints) continue
+    const ids = new Set((feature.entities ?? []).map(e => e.id))
+    const kindById = new Map((feature.entities ?? []).map(e => [e.id, e.kind]))
+    for (const c of feature.constraints) {
+      if (c.kind !== 'line_distance' || c.a === undefined || c.b === undefined) continue
+      const a = resolveVertexRef(ids, c.a)
+      const b = resolveVertexRef(ids, c.b)
+      const aIsPoint = (typeof c.a === 'string' && c.a.startsWith('@builtin_'))
+        || (a !== null && (a.point !== undefined || kindById.get(a.entity) === 'point'))
+      const bIsLine = b !== null && b.point === undefined && kindById.get(b.entity) === 'line'
+      if (!aIsPoint || !bIsLine) continue
+      const tmp = c.a
+      c.a = c.b
+      c.b = tmp
+      rewritten += 1
+    }
+  }
+  return rewritten
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
