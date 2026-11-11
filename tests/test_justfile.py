@@ -82,6 +82,30 @@ def test_rust_recipe_runs_every_ci_rust_gate() -> None:
     assert "just rust &&" in recipe_body("default"), "`just` no longer runs `just rust`"
 
 
+def test_worktree_copies_the_solver_wasm_instead_of_linking_it() -> None:
+    """A worktree owns its solver build; only the dependencies are shared.
+
+    The WASM outputs were symlinked to the main tree, so a branch's `just wasm`
+    replaced the solver every other tree's gates ran against. The copy list
+    must name every output `just wasm` writes, and the link list none of them.
+    """
+    justfile = (ROOT / "justfile").read_text()
+    body = justfile[justfile.index("worktree topic:"):].split("\n\n", 1)[0]
+    link_line = next(line for line in body.splitlines() if "for dep in" in line)
+    copy_line = next(line for line in body.splitlines() if "for out in" in line)
+    outputs = (
+        "sketch-solver/pkg ", "sketch-solver/pkg-node", "mate-solver/pkg ",
+        "mate-solver/pkg-node", "frontend/public/wasm",
+    )
+    for out in outputs:
+        assert out in copy_line + " ", f"`just worktree` no longer copies {out.strip()}"
+        assert out.strip() not in link_line, f"`just worktree` links the build output {out.strip()}"
+    # `just wasm` resolves wasm-pack under the tree's own tmp/, so the tool
+    # must be linked or a worktree cannot rebuild its copy at all.
+    assert "tmp/tools" in link_line
+    assert "wasm_pack := justfile_directory()" in justfile
+
+
 def test_fuzz_recipe_is_the_full_main_gate_suite() -> None:
     """`just fuzz` is the local aggregate of the main-gate suite.
 

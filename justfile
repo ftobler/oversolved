@@ -9,7 +9,7 @@
 #   fuzz       fuzz (the full main-gate suite), fuzz-session, action-matrix,
 #              fuzz-geometry, fuzz-sketch
 #   assets     wasm, icons
-#   setup      install (install-npm, install-wasm, install-occ)
+#   setup      install (install-npm, install-wasm, install-occ), worktree
 #   cleanup    clean, deepclean
 #
 # `just fuzz` is the one command for the full main-gate suite locally; the CI
@@ -344,6 +344,47 @@ install-wasm:
 install-occ:
     mkdir -p ../tmp
     { npm run occ:install && npm run occ:provision; } 2>&1 | tee ../tmp/occ_install.log
+
+# A worktree shares what no branch writes and copies what a branch builds. The
+# dependencies are symlinked to the main tree: .venv, node_modules, the
+# wasm-pack tool under tmp/tools and the vendored OCC build. The solver WASM
+# (both crates' pkg and pkg-node, and frontend/public/wasm) is copied instead:
+# it is the output of the branch's own Rust, and while it was a shared symlink
+# one worktree's `just wasm` swapped the solver under every other tree's gates.
+# The copy is the main tree's last build, a seed that lets the gates run at
+# once; a branch that changes Rust rebuilds its own copy with `just wasm`.
+# Cargo's target/ is not seeded, so each worktree compiles in isolation. A
+# re-run never replaces an output already present, link or copy, so it cannot
+# clobber a branch's own build.
+
+# Create .worktrees/<topic> on feature/<topic> from dev, deps linked, WASM copied.
+worktree topic:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The main tree, also when this runs from inside another worktree.
+    root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+    wt="$root/.worktrees/{{topic}}"
+    if [ ! -d "$wt" ]; then
+        git -C "$root" worktree add -b "feature/{{topic}}" "$wt" dev
+    fi
+    mkdir -p "$wt/tmp"
+    for dep in .venv frontend/node_modules frontend/public/occ tmp/tools; do
+        if [ ! -e "$root/$dep" ]; then
+            echo "missing $root/$dep: run \`just install\` in the main tree first" >&2
+            exit 1
+        fi
+        ln -sfn "$root/$dep" "$wt/$dep"
+    done
+    for out in sketch-solver/pkg sketch-solver/pkg-node mate-solver/pkg mate-solver/pkg-node frontend/public/wasm; do
+        if [ ! -d "$root/$out" ]; then
+            echo "missing $root/$out: run \`just wasm\` in the main tree first" >&2
+            exit 1
+        fi
+        if [ ! -e "$wt/$out" ] && [ ! -L "$wt/$out" ]; then
+            cp -a "$root/$out" "$wt/$out"
+        fi
+    done
+    echo "$wt"
 
 
 # ─── cleanup ───

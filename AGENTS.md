@@ -216,7 +216,9 @@ which stalls unattended work. Each rule below comes from a logged rejection.
   config, hooks), is unverifiable; run git as its own call with `git -C`.
 - Keep a call to one purpose. A long `;`-chain fails as a whole if any part
   trips a rule, and the readable description no longer matches it.
-- Worktree setup (symlinking `.venv`, `node_modules`, `occ`, `wasm`) goes
-  through `bash tmp/setup_worktree.sh <topic>`, not an ad-hoc variable-laden
-  one-liner. Variables inside a script file are fine; only the command line
-  is checked.
+- Worktree setup goes through `just worktree <topic>`, not an ad-hoc
+  variable-laden one-liner. It symlinks the dependencies (`.venv`,
+  `node_modules`, `occ`, the wasm-pack tool) and copies the solver WASM, so a
+  branch's `just wasm` rebuilds only its own copy and never the solver other
+  trees test against. Variables inside a recipe are fine; only the command
+  line is checked.
