@@ -98,17 +98,17 @@ describe('Part editor chrome', () => {
     await renderPageLoaded()
     fireEvent.click(screen.getByRole('button', { name: 'View options' }))
 
-    expect(screen.getByRole('button', { name: 'mm' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'in' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'millimetres' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'inches' })).toHaveAttribute('aria-pressed', 'false')
 
-    fireEvent.click(screen.getByRole('button', { name: 'in' }))
+    fireEvent.click(screen.getByRole('button', { name: 'inches' }))
     await waitFor(() => expect(usePartEditorStore.getState().doc?.length_unit).toBe('inch'))
     expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
 
     // The row now reads the new unit, and asking for it again is not a second
     // history step.
-    expect(screen.getByRole('button', { name: 'in' })).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(screen.getByRole('button', { name: 'in' }))
+    expect(screen.getByRole('button', { name: 'inches' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'inches' }))
     expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
   })
 
