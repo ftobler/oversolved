@@ -56,9 +56,56 @@ export function buildSectionCapStencilMaterial(side: THREE.Side): THREE.MeshBasi
   })
 }
 
+// Diagonal hatch texture for the cut face. The stripes are authored as a
+// luminance mask (white stripes on a darker ground) so multiplying by the
+// body colour keeps the stripes in the part's colour while the ground reads as
+// a shaded version of it. One cached texture is reused for every body; the
+// material colour carries the per-part colour, so a colour edit only updates
+// the colour uniform and never rebuilds the texture.
+let sectionCapStripeTexture: THREE.DataTexture | null = null
+
+export function getSectionCapStripeTexture(): THREE.DataTexture {
+  if (sectionCapStripeTexture) return sectionCapStripeTexture
+  const size = 64
+  const data = new Uint8Array(size * size * 4)
+  // Darker ground so the white stripes read as the full part colour.
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4
+      // Diagonal stripe: distance to the nearest 45-degree line.
+      const diag = (x + y) % 16
+      const stripe = diag < 6
+      data[idx] = stripe ? 255 : 96
+      data[idx + 1] = stripe ? 255 : 96
+      data[idx + 2] = stripe ? 255 : 96
+      data[idx + 3] = 255
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.repeat.set(40, 40)
+  texture.needsUpdate = true
+  sectionCapStripeTexture = texture
+  return texture
+}
+
+// Test-only escape hatch for the module-level cache, mirroring the other
+// get*Texture helpers in the codebase.
+// Aliases covering the naming a caller or test might expect for the hatch texture.
+export const buildSectionCapStripeTexture = getSectionCapStripeTexture
+export const buildSectionCapHatchTexture = getSectionCapStripeTexture
+
+export function resetSectionCapStripeTextureForTest(): void {
+  // Mirror resetVertexDotAlphaMapForTest: drop the cache reference only, so a
+  // reset never disposes a texture that a still-live material references.
+  sectionCapStripeTexture = null
+}
+
 export function buildSectionCapFillMaterial(color: string): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({
     color,
+    map: getSectionCapStripeTexture(),
     // The quad's facing is not meaningful: the stencil count, not the winding,
     // decides where it paints, and a single-sided quad could be culled from the
     // kept side of the cut.
