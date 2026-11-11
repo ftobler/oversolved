@@ -42,6 +42,7 @@ import type {
 import type { MateSpec } from '../solveAssembly'
 import type { PartBundle } from '../partBundle'
 import { extractErrorMessage } from '../errors'
+import { markAnchorStarted, markAnchorReady } from './kernelReady'
 
 /** Minimal Worker surface used here; lets tests inject a fake. */
 export interface AnchorSolverWorkerLike {
@@ -221,6 +222,10 @@ export function relayReplyTransferables(subKind: AnchorRelayRequest['subKind'], 
 
 function onMessage(e: { data: AssemblyWorkerResponse }): void {
   const msg = e.data
+  if (msg.kind === 'anchorReady') {
+    markAnchorReady()
+    return
+  }
   if (msg.kind === 'asr_relay') {
     // Tie the reply to the worker that asked. The module `worker` is read at
     // resolve time, and after a crash + respawn it can name a new generation;
@@ -332,7 +337,9 @@ function ensureWorker(): AnchorSolverWorkerLike | null {
  * assembly open. Idempotent: a live worker is kept.
  */
 export function warmAnchorSolverWorker(): void {
-  ensureWorker()
+  markAnchorStarted()
+  const w = ensureWorker()
+  if (!w) markAnchorReady()
 }
 
 /**

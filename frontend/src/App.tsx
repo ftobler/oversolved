@@ -1,5 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import DisclaimerDialog from '@/components/dialogs/DisclaimerDialog'
+import SplashScreen from '@/components/SplashScreen'
+import { useKernelReady } from '@/kernel/worker/kernelReady'
 import Workspaces from '@/pages/Workspaces'
 import WorkspacePage from '@/pages/WorkspacePage'
 import Docs from '@/pages/Docs'
@@ -9,11 +11,14 @@ import CrashReports from '@/pages/CrashReports'
 import '@/components/shared/buttons.css'
 
 function App() {
+  const kernelReady = useKernelReady()
   return (
     <>
       {/* Route-independent: the welcome/disclaimer popup must greet a visitor
           no matter which page they land on. */}
       <DisclaimerDialog />
+      <SplashScreen />
+      {kernelReady && (
       <Routes>
         {/* The workspace grid is the app: every visit lands on it, reading this
             browser's IndexedDB. There is no session and nothing to sign in to,
@@ -43,6 +48,7 @@ function App() {
         <Route path="/help" element={<Navigate to="/docs" replace />} />
         <Route path="/help/registry" element={<Navigate to="/docs/registry" replace />} />
       </Routes>
+      )}
     </>
   )
 }

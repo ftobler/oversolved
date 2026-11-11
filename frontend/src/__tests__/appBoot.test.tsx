@@ -9,6 +9,8 @@ import { ToastProvider } from '@/contexts/ToastContext'
 import { resetDbConnection } from '@/stores/documentStore/idb'
 import { resetPreviewDbConnection } from '@/stores/previewStore'
 import { getWorkspaceStore } from '@/workspace/store'
+import { resetKernelReady, markSolverStarted, markAnchorStarted } from '@/kernel/worker/kernelReady'
+import { resetOccLoadProgress } from '@/kernel/occ/loadProgress'
 import App from '@/App'
 
 // Boot smoke test: the whole app, from the route table down, with nothing
@@ -26,6 +28,8 @@ describe('app boot', () => {
     resetDbConnection()
     resetPreviewDbConnection()
     localStorage.clear()
+    resetKernelReady()
+    resetOccLoadProgress()
   })
 
   // StrictMode, like main.tsx: it double-invokes effects and setState updaters,
@@ -86,4 +90,15 @@ describe('app boot', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Registry', level: 1 })).toBeInTheDocument())
   })
+  it('shows the splash and defers the workspace tile when the kernel is warming', async () => {
+    await getWorkspaceStore().create('Bracket', { docKind: 'part' })
+    markSolverStarted()
+    markAnchorStarted()
+
+    boot('/workspaces')
+
+    expect(screen.getByTestId('splash-screen')).toBeInTheDocument()
+    expect(screen.queryByText('Bracket')).not.toBeInTheDocument()
+  })
+
 })

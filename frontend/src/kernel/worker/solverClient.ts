@@ -58,6 +58,7 @@ import type {
 import type { PartBundle } from '../partBundle'
 import { solveTimeoutMessage } from '../featureProgress'
 import { applyOccLoadProgress, resetOccLoadProgress } from '../occ/loadProgress'
+import { markSolverStarted, markSolverReady } from './kernelReady'
 
 /** Minimal Worker surface used here; lets tests inject a fake. */
 export interface SolverWorkerLike {
@@ -122,6 +123,10 @@ function defaultFactory(): SolverWorkerLike | null {
 
 let workerFactory: () => SolverWorkerLike | null = defaultFactory
 let worker: SolverWorkerLike | null = null
+// Readiness tracking for the splash gate: OCC load finished (ready/failed) and
+// the worker's sketch wasm preload finished (kernelReady broadcast).
+let occFinished = false
+let kernelReadyReceived = false
 let nextId = 1
 // Solve and export share the id counter, so an id lives in exactly one entry.
 const pending = new Map<number, Pending>()
@@ -144,6 +149,9 @@ function isOccProgress(res: SolverWorkerMessage): res is OccProgressMessage {
 function isFeatureProgress(res: SolverWorkerMessage): res is FeatureProgressMessage {
   return 'kind' in res && res.kind === 'featureProgress'
 }
+function isKernelReadyMsg(res: SolverWorkerMessage): res is { kind: 'kernelReady' } {
+  return 'kind' in res && res.kind === 'kernelReady'
+}
 
 // The watchdog bounds the gap between feature marks, not the whole request: a
 // long document of quick features is honest work. Re-arm every in-flight timer.
@@ -161,6 +169,15 @@ function onMessage(e: { data: SolverWorkerMessage }): void {
   // Apply the snapshot and return before the pending lookup.
   if (isOccProgress(res)) {
     applyOccLoadProgress(res.progress)
+    if (res.progress.phase === 'ready' || res.progress.phase === 'failed') {
+      occFinished = true
+      if (kernelReadyReceived) markSolverReady()
+    }
+    return
+  }
+  if (isKernelReadyMsg(res)) {
+    kernelReadyReceived = true
+    if (occFinished) markSolverReady()
     return
   }
   if (isFeatureProgress(res)) {
@@ -198,6 +215,8 @@ function dropWorker(err: Error): void {
   // The dropped Worker took its OCC load state with it; a new one restarts the
   // load and reports from zero.
   resetOccLoadProgress()
+  occFinished = false
+  kernelReadyReceived = false
 }
 
 function onError(event: unknown): void {
@@ -250,7 +269,9 @@ function ensureWorker(): SolverWorkerLike | null {
  * Worker is kept. A Worker dropped later respawns on the next request as usual.
  */
 export function warmSolverWorker(): void {
-  ensureWorker()
+  markSolverStarted()
+  const w = ensureWorker()
+  if (!w) markSolverReady()
 }
 
 /**
@@ -411,6 +432,9 @@ export function setSolverWorkerForTest(
   workerFactory = factory ?? defaultFactory
   // A fresh worker (or a fresh test) has no cached bytes.
   clearWorkerFileIds()
+  occFinished = false
+  kernelReadyReceived = false
+  resetOccLoadProgress()
 }
 
 /** @internal test-only: override the watchdog ceiling (ms). */

@@ -296,13 +296,23 @@ export function handleWorkerMessage(
   }
 }
 
-if (inWorker()) {
-  // Init the mate solver WASM eagerly but don't block the first message.
-  initAnchorSolver()
+export function bootstrapAnchorSolverWorker(ctx: WorkerCtx): void {
+  // Init the mate solver WASM eagerly but don't block the first message. Post
+  // the anchorReady broadcast once it has settled (success or failure) so the
+  // splash gate can resolve even when the mate solver fails to load.
+  initAnchorSolver().then(() => {
+    ctx.postMessage({ kind: 'anchorReady' })
+  }).catch(() => {
+    ctx.postMessage({ kind: 'anchorReady' })
+  })
 
-  const ctx = globalThis as unknown as WorkerCtx
   const actor = new WorkerActor()
   ctx.onmessage = (e) => {
     handleWorkerMessage(e.data, (msg) => { ctx.postMessage(msg) }, actor)
   }
+}
+
+if (inWorker()) {
+  const ctx = globalThis as unknown as WorkerCtx
+  bootstrapAnchorSolverWorker(ctx)
 }

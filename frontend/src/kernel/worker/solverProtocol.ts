@@ -172,9 +172,17 @@ export interface FeatureProgressMessage {
   featureId: string
 }
 
+/**
+ * Broadcast once the solver worker has finished preloading its wasm (OCC + the
+ * sketch solver). Carries no request id: it is a state broadcast, not a reply.
+ */
+export interface KernelReadyMessage {
+  kind: 'kernelReady'
+}
+
 /** Every message the solver Worker sends to the main thread. */
 export type SolverWorkerMessage =
-  | SolveResponse | ExportResponse | BundleResponse | OccProgressMessage | FeatureProgressMessage
+  | SolveResponse | ExportResponse | BundleResponse | OccProgressMessage | FeatureProgressMessage | KernelReadyMessage
 
 // ─── assembly protocol ───
 // Messages between the main thread and the Rust-only anchor solver worker.
@@ -282,5 +290,13 @@ export type AnchorRelayResponse = AnchorRelayOkResponse | AnchorRelayErrResponse
 /** Every message the anchor solver worker receives from the main thread. */
 export type AssemblyWorkerRequest = SolveAssemblyRequest | AnchorRelayOkResponse | AnchorRelayErrResponse
 
+/**
+ * Broadcast once the anchor worker has finished `initAnchorSolver` (success or
+ * failure). Carries no request id: it is a state broadcast, not a reply.
+ */
+export interface AnchorReadyMessage {
+  kind: 'anchorReady'
+}
+
 /** Every message the anchor solver worker sends to the main thread. */
-export type AssemblyWorkerResponse = AssemblySolveResponse | AnchorRelayRequest
+export type AssemblyWorkerResponse = AssemblySolveResponse | AnchorRelayRequest | AnchorReadyMessage

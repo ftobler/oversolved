@@ -1,0 +1,29 @@
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  color: #fff;
+}
+
+.splash-screen-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.splash-screen-title {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 500;
+}
+
+.splash-screen-status {
+  margin: 0;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
