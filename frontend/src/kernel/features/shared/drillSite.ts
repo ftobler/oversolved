@@ -6,7 +6,7 @@
 export type SketchCircleKind = 'none' | 'real' | 'construction'
 
 /**
- * The remedy for a non-construction circle: cut it with an extrude. Constructor
+ * The remedy for a non-construction circle: cut it with an extrude. Construction
  * geometry is excluded from profiles, so a construction circle needs its flag
  * cleared first; the two cases speak differently because the steps differ.
  */
