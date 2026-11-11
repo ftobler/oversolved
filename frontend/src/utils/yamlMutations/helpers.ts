@@ -1,4 +1,5 @@
 import type { PartDoc, PartFeature, PartConstraint, PartEntityDef, PartTarget, SketchFeature } from '@/types/cad'
+import type { ConstraintKindName } from '@/wasm-kernel/codec'
 import { fitPointIndex, isVertexPointKey } from '@/types/vertexKeys'
 import { selectionToQuery, parseSelectionId, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { emitWire } from '@/utils/query'
@@ -71,6 +72,17 @@ export function canonicalLineDistanceTargets(
  *  point-like here. */
 export function isPointLikeEntityKind(kind: string | undefined): boolean {
   return kind === 'point' || kind === 'circle' || kind === 'arc' || kind === 'ellipse'
+}
+
+/** A `point_distance` of 0 asks for two coincident points: two equations that
+ *  one euclidean row cannot express, since the row has no direction at a zero
+ *  distance and would remove no degree of freedom. Refused where the value is
+ *  authored (applier, drive rule, dimension dialog) rather than persisted as a
+ *  kink; the coincident constraint is the authorable form of the same intent. */
+export function pointDistanceZeroProblem(kind: ConstraintKindName, value: number | undefined): string | null {
+  if (kind !== 'point_distance' || value === undefined) return null
+  if (!Number.isFinite(value) || round(value) !== 0) return null
+  return 'point_distance value 0 is a coincident, not a dimension; use the coincident constraint between the two points'
 }
 
 export function findFeature(doc: PartDoc, featureId: string): PartFeature | undefined {

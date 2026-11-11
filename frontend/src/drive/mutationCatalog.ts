@@ -475,7 +475,8 @@ const MIRROR_INLINE_NOTE =
 // note named `distance`, a kind the validator refuses (mountPlate F1).
 const CONSTRAINT_KIND_NOTE =
   `The constraint kind, one of: ${[...CONSTRAINT_BY_KIND.keys()].join(', ')}. A line's dimension is ` +
-  '`length`; two points take `point_distance`. `line_distance` takes a line and a point in either order ' +
+  '`length`; two points take `point_distance`, and a zero `point_distance` is refused: coincident ' +
+  'points are a `coincident` constraint, not a dimension. `line_distance` takes a line and a point in either order ' +
   '(the document stores the line first, the order the solver reads).'
 
 // The reply-size rule shared by the sketch copy sugar: `scriptRunner.ts` names
@@ -884,7 +885,11 @@ export const MUTATION_CATALOG = {
   },
   set_constraint_value: {
     summary: 'Set a dimension constraint value.',
-    fields: { featureId: str(), constraintId: str(), value: num() },
+    fields: {
+      featureId: str(),
+      constraintId: str(),
+      value: num('A `point_distance` value of 0 is refused; coincident points are a `coincident` constraint.'),
+    },
   },
   set_constraint_pos: {
     summary: 'Move a dimension label.',

@@ -664,6 +664,76 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', null)
     })
 
+    it('a zero euclidean distance is refused by validate with the coincident hint', () => {
+      // A zero measured distance is a coincident, not a dimension: the row has
+      // no direction there, so the dialog's validate refuses it before confirm
+      // and the user reads why. The onConfirm belt must also author nothing.
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      const messages = vi.fn()
+      setSketchCallback('showMessage', messages)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [0, 0] },
+      } as never))
+      useEditorState.setState({
+    dimensionPicks: [
+          { isVertex: true, target: 'vertex:S1:L1:start' },
+          { isVertex: true, target: 'vertex:S1:L1:end' },
+        ],
+    dimensionCursorWorld: [0, 0],
+  })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchUiStore.getState().pendingDialog!
+
+      expect(dialog.validate!('0')).toContain('coincident')
+      expect(dialog.validate!('10')).toBeNull()
+      dialog.onConfirm('0')
+
+      expect(handler).not.toHaveBeenCalled()
+      expect(messages).toHaveBeenCalledWith({
+        title: 'Cannot apply constraint',
+        message: expect.stringContaining('coincident'),
+        variant: 'error',
+      })
+      setSketchCallback('getSketch', null)
+    })
+
+    it('the placement validate accepts zero for the zero-legal dimension kinds', () => {
+      // The axis distances are authored here (a vertical or horizontal drag
+      // switches the kind) and the radial gap comes from two curve picks. Their
+      // analytic rows make 0 a real constraint, so the dialog must not refuse it.
+      setSketchCallback('onMutation', vi.fn())
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useEditorState.setState({
+    dimensionPicks: [
+          { isVertex: true, target: 'vertex:S1:L1:start' },
+          { isVertex: true, target: 'vertex:S1:L1:end' },
+        ],
+    dimensionCursorWorld: [5, 7],
+  })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      let dialog = useSketchUiStore.getState().pendingDialog!
+      expect(dialog.validate!('0')).toBeNull()
+      expect(dialog.validate!('-1')).toBe('Value refused: must be 0 or more')
+      useSketchUiStore.setState({ pendingDialog: null })
+
+      useEditorState.setState({
+    dimensionPicks: [
+          { isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' },
+          { isVertex: false, target: 'entity:S1:C2', entityKind: 'circle' },
+        ],
+    dimensionCursorWorld: null,
+  })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      dialog = useSketchUiStore.getState().pendingDialog!
+      expect(dialog.validate!('0')).toBeNull()
+      expect(dialog.validate!('-1')).toBe('Value refused: must be 0 or more')
+      useSketchUiStore.setState({ pendingDialog: null })
+      setSketchCallback('getSketch', null)
+    })
+
     it('finalizeDimensionPlacement: two vertices with no clear direction stays point_distance', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)

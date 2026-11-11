@@ -4,9 +4,11 @@ import {
   warn, round, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
   resolveSketch, mintEntityId, CONSTRAINT_REF_FIELDS, refMatchesEntity,
   canonicalLineDistanceTargets, isPointLikeEntityKind,
+  pointDistanceZeroProblem,
 } from './helpers'
 import { resolveVertexRef } from '@/types/vertexRef'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
+import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { fitPointIndex } from '@/types/vertexKeys'
 import { hidePlanesIfFirstBoundSketch } from './featureAdmin'
@@ -223,6 +225,13 @@ export function applyAddConstraint(
 ): void {
   const feature = resolveSketch(doc, featureId, 'constraints')
   if (!feature) return
+  // Checked before any target is materialized: a refused zero dimension must
+  // not leave a promoted point behind.
+  const zeroProblem = isConstraintKindName(kind) ? pointDistanceZeroProblem(kind, value) : null
+  if (zeroProblem !== null) {
+    warn(`applyAddConstraint: ${zeroProblem}`, { featureId, kind, value })
+    return
+  }
   // Materialize-on-reference: an inferred-point handle target (`dock:`/`isect:`)
   // promotes to a real point before the constraint is built, so the rest of this
   // function never sees one. A null return means a dock handle named a contact
@@ -411,7 +420,13 @@ export function applySetConstraintValue(
     return
   }
   const c = feature.constraints.find(c => c.id === constraintId)
-  if (c) c.value = round(value)
+  if (!c) return
+  const zeroProblem = isConstraintKindName(c.kind) ? pointDistanceZeroProblem(c.kind, value) : null
+  if (zeroProblem !== null) {
+    warn(`applySetConstraintValue: ${zeroProblem}`, { featureId, constraintId, value })
+    return
+  }
+  c.value = round(value)
 }
 
 export function applySetConstraintPos(

@@ -219,7 +219,7 @@ describe('computeConstraintRender - linear normal', () => {
   it('point_distance renders along the two points, with the coincident fallback', () => {
     const r = computeConstraintRender({ id: 'D', kind: 'point_distance', a: '$P1', b: '$P2', value: 5 }, sketch) as DimLinearRender
     expect(r).toEqual({
-      kind: 'dim_linear', p1: [0, 0], p2: [3, 4], value: 5, normal: [-4 / 5, 3 / 5], entity: 'P1',
+      kind: 'dim_linear', dimKind: 'point_distance', p1: [0, 0], p2: [3, 4], value: 5, normal: [-4 / 5, 3 / 5], entity: 'P1',
     })
     const coincident = computeConstraintRender({ id: 'D', kind: 'point_distance', a: '$SAME', b: '$SAME2' }, sketch) as DimLinearRender
     expect(coincident.normal).toEqual([0, 1])

@@ -8,7 +8,7 @@
 
 export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4, Spline: 5, FitSpline: 6 } as const
 
-export const ConstraintKindCode: Record<string, number> = {
+const CONSTRAINT_CODE_BY_KIND = {
   horizontal: 0,
   vertical: 1,
   length: 2,
@@ -28,6 +28,20 @@ export const ConstraintKindCode: Record<string, number> = {
   radius_difference: 16,
   point_distance_x: 17,
   point_distance_y: 18,
+} as const
+
+/** The sketch constraint kind names, from the wire table the solver decodes, so
+ *  a kind the solver cannot receive is not a name this type accepts. */
+export type ConstraintKindName = keyof typeof CONSTRAINT_CODE_BY_KIND
+
+// The open view of the table: a document's kind string is not narrowed at
+// decode time, and an unknown kind stays the caller's decode error rather than
+// an index the compiler refuses.
+export const ConstraintKindCode: Record<string, number> = CONSTRAINT_CODE_BY_KIND
+
+/** True when a document string names a solver constraint kind. */
+export function isConstraintKindName(value: string): value is ConstraintKindName {
+  return Object.hasOwn(CONSTRAINT_CODE_BY_KIND, value)
 }
 
 export const Role = {

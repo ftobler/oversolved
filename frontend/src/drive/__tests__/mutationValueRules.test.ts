@@ -44,6 +44,23 @@ function sketchDoc(): PartDoc {
   })
 }
 
+// A euclidean point_distance is only wrong at value 0, which the rule can only
+// judge against the live document: the constraint's kind lives there.
+function pointDistanceDoc(): PartDoc {
+  return seedBuiltins({
+    version: 1,
+    kind: 'part',
+    features: [{
+      id: 'sk1',
+      kind: 'sketch',
+      plane: '@builtin_plane_front',
+      entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }],
+      initial: { p1: [0, 0], p2: [5, 0] },
+      constraints: [{ id: 'c_dist', kind: 'point_distance', a: '$p1', b: '$p2', value: 5 }],
+    }],
+  })
+}
+
 function refusal(raw: unknown, doc: PartDoc | null = null, fileIds?: ReadonlySet<string>) {
   const result = validateMutation(raw, { doc, ...(fileIds === undefined ? {} : { fileIds }) })
   if (result.ok) throw new Error(`expected a refusal, got ok for ${JSON.stringify(raw)}`)
@@ -56,12 +73,14 @@ describe('value rules cover the catalog', () => {
   })
 
   // One wrong value per rule, so a rule that silently stops refusing fails
-  // here. A row that says 'none' must have no sample: the applier owns it.
-  const WRONG_VALUE_CASES: Array<[Mutation['type'], Record<string, unknown>]> = [
+  // here. A row that says 'none' must have no sample: the applier owns it. A
+  // doc-aware rule takes the live document as the case's third entry.
+  const WRONG_VALUE_CASES: Array<[Mutation['type'], Record<string, unknown>, PartDoc?]> = [
     ['move_entity', { type: 'move_entity', featureId: 'sk1', entityId: 'l1', delta: [1] }],
     ['resize_circle', { type: 'resize_circle', featureId: 'sk1', entityId: 'c1', radius: 0 }],
     ['add_constraint', { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['$a start'] }],
     ['set_constraint_pos', { type: 'set_constraint_pos', featureId: 'sk1', constraintId: 'c1', pos: [0] }],
+    ['set_constraint_value', { type: 'set_constraint_value', featureId: 'sk1', constraintId: 'c_dist', value: 0 }, pointDistanceDoc()],
     ['delete', { type: 'delete', targets: ['sk1/l1'] }],
     ['add_entity', { type: 'add_entity', featureId: 'sk1', kind: 'arc', params: [0, 0, 1, 0, 90, 180] }],
     ['insert_fit_point', { type: 'insert_fit_point', featureId: 'sk1', entityId: 'sp1', index: -1, point: [0, 0] }],
@@ -184,11 +203,35 @@ describe('value rules cover the catalog', () => {
     expect(missing).toEqual([])
   })
 
-  it.each(WRONG_VALUE_CASES)('%s refuses its wrong value with a naming message', (type, mutation) => {
-    const error = refusal(mutation)
+  it.each(WRONG_VALUE_CASES)('%s refuses its wrong value with a naming message', (type, mutation, doc) => {
+    const error = refusal(mutation, doc ?? null)
     expect(['invalid-mutation', 'unknown-target']).toContain(error.code)
     expect(error.message.length).toBeGreaterThan(20)
     expect(error.message).not.toBe(`mutation type "${type}" is invalid`)
+  })
+
+  it('names coincident for a zero euclidean distance and allows a zero axis one', () => {
+    const doc = pointDistanceDoc()
+    // The add path is shape-only: it refuses without a live document, so this
+    // unit test covers the drive refusal the real-kernel suite also pins.
+    const add = refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'point_distance',
+      targets: ['$p1', '$p2'], value: 0,
+    })
+    expect(add.code).toBe('invalid-mutation')
+    expect(add.message).toContain('coincident')
+    expect(refusal({
+      type: 'set_constraint_value', featureId: 'sk1', constraintId: 'c_dist', value: 0,
+    }, doc).message).toContain('coincident')
+    expect(validateMutation({
+      type: 'set_constraint_value', featureId: 'sk1', constraintId: 'c_dist', value: 2,
+    }, { doc })).toMatchObject({ ok: true })
+    // The axis kinds keep an analytic row at the kink, so their zero is a
+    // dimension the solver can drive.
+    expect(validateMutation({
+      type: 'add_constraint', featureId: 'sk1', kind: 'point_distance_x',
+      targets: ['$p1', '$p2'], value: 0,
+    }, { doc })).toMatchObject({ ok: true })
   })
 
   // The empty-clear table is a decision, not a list: a field it names is cleared

@@ -60,7 +60,8 @@ impl Problem<'_> {
     /// Dimension between two circles/arcs (typically concentric): the gap
     /// |rA - rB| equals the target value. Absolute so it is independent of which
     /// operand was selected first, and the dimension value the user types is the
-    /// positive radial gap. The Jacobian uses the finite-difference fallback.
+    /// positive radial gap. The Jacobian is the analytic row
+    /// `jac_radius_difference` in `jacobian.rs`.
     pub(super) fn r_radius_difference(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
         let (
             Some(Ref::Entity { index: a_idx, .. }),

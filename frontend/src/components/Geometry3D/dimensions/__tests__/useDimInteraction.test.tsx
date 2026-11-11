@@ -143,6 +143,32 @@ describe('useDimInteraction click / double-click', () => {
     expect(validate('-5')).toBeNull()
   })
 
+  it('validate accepts zero for the zero-legal dimension kinds only', () => {
+    // The axis distances and the radial gap keep a real solver row at zero, so
+    // the label editor must let the user type it; other dimensions keep the
+    // strictly positive bound.
+    for (const kind of ['point_distance_x', 'point_distance_y', 'radius_difference'] as const) {
+      const { result } = renderHook(() =>
+        useDimInteraction('c1', 10, INTERACTION, true, undefined, undefined, kind))
+      act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
+      const validate = useSketchUiStore.getState().pendingDialog!.validate!
+      expect(validate('0'), kind).toBeNull()
+      expect(validate('-1'), kind).toBe('Value refused: must be 0 or more')
+      useSketchUiStore.setState({ pendingDialog: null })
+    }
+  })
+
+  it('validate refuses a zero euclidean point_distance with the coincident hint', () => {
+    const { result } = renderHook(() =>
+      useDimInteraction('c1', 10, INTERACTION, true, undefined, undefined, 'point_distance'))
+    act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
+    const validate = useSketchUiStore.getState().pendingDialog!.validate!
+
+    expect(validate('0')).toContain('coincident')
+    expect(validate('-1')).toBe('Value refused: must be greater than 0')
+    expect(validate('10')).toBeNull()
+  })
+
   it('dispatches the evaluated edited value with set_constraint_value', () => {
     const onMutation = vi.fn()
     setSketchCallback('onMutation', onMutation)

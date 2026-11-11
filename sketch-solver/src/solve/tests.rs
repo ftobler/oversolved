@@ -2157,3 +2157,240 @@ fn tangent_outline_from_a_millimetre_off_seed_lands_exactly() {
         assert!(miss < tol, "tangency miss {miss} want < {tol}");
     }
 }
+
+fn axis_distance(kind: ConstraintKind, b: Ref, value: f64, sign: Option<f64>) -> Constraint {
+    Constraint {
+        kind_code: kind.to_u8(),
+        refs: ab(Ref::External { x: 0.0, y: 0.0 }, b),
+        value: Some(value),
+        sign,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn an_unsigned_zero_axis_distance_is_fully_constrained() {
+    // The minimal repro: point (0, 1.5) against the fixed origin, x distance
+    // 0 unsigned and y distance 1.5 signed. The zero row's central difference
+    // of |x| used to be empty, so the sketch read one free DOF and the zero
+    // dimension read redundant.
+    let inp = input(
+        vec![point(0)],
+        vec![0.0, 1.5],
+        vec![
+            axis_distance(
+                ConstraintKind::PointDistanceX,
+                e_ref(0, PointSelector::Xy),
+                0.0,
+                None,
+            ),
+            axis_distance(
+                ConstraintKind::PointDistanceY,
+                e_ref(0, PointSelector::Xy),
+                1.5,
+                Some(1.0),
+            ),
+        ],
+    );
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+    assert_eq!(out.diagnostics.dof, 0);
+    assert!(
+        out.constraint_flags.iter().all(|&f| f == 0),
+        "the zero dimension was blamed: {:?}",
+        out.constraint_flags
+    );
+}
+
+#[test]
+fn an_unsigned_zero_axis_distance_converges_from_an_off_zero_seed() {
+    // The same sketch seeded at x = 0.3. With an empty row the |x| kink gave
+    // the solve no gradient to follow; the row now walks the point to zero.
+    let inp = input(
+        vec![point(0)],
+        vec![0.3, 1.5],
+        vec![
+            axis_distance(
+                ConstraintKind::PointDistanceX,
+                e_ref(0, PointSelector::Xy),
+                0.0,
+                None,
+            ),
+            axis_distance(
+                ConstraintKind::PointDistanceY,
+                e_ref(0, PointSelector::Xy),
+                1.5,
+                Some(1.0),
+            ),
+        ],
+    );
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+    let p = &out.params_solved;
+    assert!(p[0].abs() < 1e-6, "x did not converge to zero: {p:?}");
+    assert!((p[1] - 1.5).abs() < 1e-6, "y moved off 1.5: {p:?}");
+}
+
+#[test]
+fn the_ex006_plate_is_fully_constrained_without_a_redundant_row() {
+    // The practice run's plate (Ex006): an outer circle on the origin, a square
+    // whose midpoint-defined centre and a hole are each dimensioned with one
+    // signed and one unsigned axis distance. The unsigned zeros are the two
+    // rows the finite difference used to empty, costing 2 DOF and flagging both
+    // constraints redundant.
+    let origin = Ref::External { x: 0.0, y: 0.0 };
+    let mut radius_outer = c_target(ConstraintKind::Radius, 0, PointSelector::Absent);
+    radius_outer.value = Some(3.0);
+    let mut radius_hole = c_target(ConstraintKind::Radius, 6, PointSelector::Absent);
+    radius_hole.value = Some(0.25);
+    let mut length1 = c_target(ConstraintKind::Length, 1, PointSelector::Absent);
+    length1.value = Some(0.5);
+    let mut length2 = c_target(ConstraintKind::Length, 2, PointSelector::Absent);
+    length2.value = Some(0.5);
+    let midpoint = Constraint {
+        kind_code: ConstraintKind::Midpoint.to_u8(),
+        refs: vec![
+            (RefRole::PointA, e_ref(1, PointSelector::Start)),
+            (RefRole::PointB, e_ref(3, PointSelector::Start)),
+            (RefRole::Point, e_ref(5, PointSelector::Xy)),
+        ],
+        ..Default::default()
+    };
+
+    let inp = input(
+        vec![
+            ent(Kind::Circle, 0),
+            line(3),
+            line(7),
+            line(11),
+            line(15),
+            point(19),
+            ent(Kind::Circle, 21),
+        ],
+        vec![
+            0.0, 0.0, 3.0, // outer circle
+            1.25, -0.25, 1.75, -0.25, // sq1
+            1.75, -0.25, 1.75, 0.25, // sq2
+            1.75, 0.25, 1.25, 0.25, // sq3
+            1.25, 0.25, 1.25, -0.25, // sq4
+            1.5, 0.0, // sqc
+            0.0, 1.5, 0.25, // hole
+        ],
+        vec![
+            radius_outer,
+            cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(0, PointSelector::Center), origin),
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(1, PointSelector::End), e_ref(2, PointSelector::Start)),
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(2, PointSelector::End), e_ref(3, PointSelector::Start)),
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(3, PointSelector::End), e_ref(4, PointSelector::Start)),
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(4, PointSelector::End), e_ref(1, PointSelector::Start)),
+            ),
+            cons(
+                ConstraintKind::EqualLength,
+                ab(
+                    e_ref(1, PointSelector::Absent),
+                    e_ref(3, PointSelector::Absent),
+                ),
+            ),
+            cons(
+                ConstraintKind::EqualLength,
+                ab(
+                    e_ref(2, PointSelector::Absent),
+                    e_ref(4, PointSelector::Absent),
+                ),
+            ),
+            c_target(ConstraintKind::Horizontal, 1, PointSelector::Absent),
+            c_target(ConstraintKind::Vertical, 2, PointSelector::Absent),
+            midpoint,
+            length1,
+            length2,
+            axis_distance(
+                ConstraintKind::PointDistanceX,
+                e_ref(5, PointSelector::Xy),
+                1.5,
+                Some(1.0),
+            ),
+            axis_distance(
+                ConstraintKind::PointDistanceY,
+                e_ref(5, PointSelector::Xy),
+                0.0,
+                None,
+            ),
+            radius_hole,
+            axis_distance(
+                ConstraintKind::PointDistanceX,
+                e_ref(6, PointSelector::Center),
+                0.0,
+                None,
+            ),
+            axis_distance(
+                ConstraintKind::PointDistanceY,
+                e_ref(6, PointSelector::Center),
+                1.5,
+                Some(1.0),
+            ),
+        ],
+    );
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+    assert_eq!(out.diagnostics.dof, 0, "the plate kept free DOF");
+    assert!(
+        out.constraint_flags.iter().all(|&f| f == 0),
+        "a plate constraint reads redundant: {:?}",
+        out.constraint_flags
+    );
+}
+
+#[test]
+fn a_zero_radius_difference_pins_the_second_radius() {
+    // Both circles seeded at radius 1, concentric, one radius fixed by the
+    // lower circle: a gap of 0 must pin the upper radius too. The finite
+    // difference of |ra - rb| at the zero gap used to be empty, leaving the
+    // radius free and the dimension redundant.
+    let fixed_a = c_target(ConstraintKind::Fixed, 0, PointSelector::Absent);
+    let gap = Constraint {
+        kind_code: ConstraintKind::RadiusDifference.to_u8(),
+        refs: ab(
+            e_ref(0, PointSelector::Absent),
+            e_ref(1, PointSelector::Absent),
+        ),
+        value: Some(0.0),
+        ..Default::default()
+    };
+    let inp = input(
+        vec![ent(Kind::Circle, 0), ent(Kind::Circle, 3)],
+        vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+        vec![
+            fixed_a,
+            cons(
+                ConstraintKind::Concentric,
+                ab(
+                    e_ref(0, PointSelector::Absent),
+                    e_ref(1, PointSelector::Absent),
+                ),
+            ),
+            gap,
+        ],
+    );
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+    assert_eq!(out.diagnostics.dof, 0);
+    assert!(
+        out.constraint_flags.iter().all(|&f| f == 0),
+        "the zero gap reads redundant: {:?}",
+        out.constraint_flags
+    );
+}

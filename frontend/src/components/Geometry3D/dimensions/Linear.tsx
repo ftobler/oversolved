@@ -19,9 +19,10 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
   // Directional distances (point_distance_x / point_distance_y / line_distance)
   // carry an orientation sign; the edit dialog offers a Flip side button that
   // swaps it. The render `kind` is always 'dim_linear', so the originating
-  // constraint kind arrives as `dimKind`; euclidean point_distance and length
-  // leave it unset and have no side. The current side is read from the rendered
-  // geometry per kind, so flipping is just negating it.
+  // constraint kind arrives as `dimKind`. Directional extras use it for the
+  // side; the edit dialog uses it for the value rule (a zero axis distance or
+  // radial gap is a legal constraint). Length leaves it unset and keeps the
+  // strictly positive default.
   const dimKind = dim.dimKind
   const isDirectional = dimKind === 'point_distance_x' || dimKind === 'point_distance_y' || dimKind === 'line_distance'
   const onFlip = useCallback(() => {
@@ -34,7 +35,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
     })
   }, [interaction, cid, dimKind, dim.p1, dim.p2, dim.normal])
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
-    useDimInteraction(cid, dim.value, interaction, true, isDirectional ? onFlip : undefined)
+    useDimInteraction(cid, dim.value, interaction, true, isDirectional ? onFlip : undefined, undefined, dimKind)
   const activeDragPos = useActiveLabelDrag(cid)
 
   const [x1, y1] = dim.p1, [x2, y2] = dim.p2

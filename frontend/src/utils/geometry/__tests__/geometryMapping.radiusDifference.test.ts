@@ -21,6 +21,9 @@ describe('computeConstraintRender (radius_difference)', () => {
     const c: PartConstraint = { id: 'RD1', kind: 'radius_difference', a: '$C1', b: '$C2' }
     const r = computeConstraintRender(c, sketch) as DimLinearRender
     expect(r.kind).toBe('dim_linear')
+    // The origin kind tags the render so the edit dialog applies the radial
+    // gap's own value rule (zero is a legal gap).
+    expect(r.dimKind).toBe('radius_difference')
     // Inner radius 2, outer radius 5, along +x from the shared center.
     expect(r.p1).toEqual([2, 0])
     expect(r.p2).toEqual([5, 0])

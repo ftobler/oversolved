@@ -3,6 +3,8 @@ import { useSketchEditorStore, useSketchUiStore, getSketchCallback } from '@/sto
 import { evalExpr } from '@/kernel/evalExpr'
 import { refusalText } from '@/utils/core/statusMark'
 import { expressionRefusal, positive } from '@/utils/core/valueRules'
+import { dimensionValueRule } from '@/utils/core/dimensionValueRules'
+import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { COLOR_CONSTRAINT, COLOR_CONSTRAINT_DIM } from '@/utils/geometry/sketchHelpers'
 import { COLOR_SELECTED, COLOR_ERROR_DEEP, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
@@ -48,6 +50,10 @@ export function useDimInteraction(
   // stored on the constraint. Identity by default; angle dims placed in a
   // supplement quadrant pass `v => 180 - v` so editing 180-theta stores theta.
   encodeValue?: (displayed: number) => number,
+  // The originating constraint kind. It selects the edit dialog's value rule:
+  // a zero axis distance or radial gap is a real constraint, while a zero
+  // euclidean point_distance is a coincident and is refused with that hint.
+  constraintKind?: string,
 ) {
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
   const drag = useSketchEditorStore(s => s.drag)
@@ -90,11 +96,16 @@ export function useDimInteraction(
     if (consumeClick()) return
     if (!interaction) return
     ev.stopPropagation()
+    const rule = !validatePositive
+      ? undefined
+      : constraintKind !== undefined && isConstraintKindName(constraintKind)
+        ? dimensionValueRule(constraintKind)
+        : positive
     useSketchUiStore.getState().openDialog({
       position: [ev.clientX, ev.clientY],
       label: interaction.promptLabel,
       defaultValue: String(value),
-      validate: (input) => refusalText('Value', expressionRefusal(input, validatePositive ? positive : undefined)),
+      validate: (input) => refusalText('Value', expressionRefusal(input, rule)),
       onConfirm: (input) => {
         const edited = evalExpr(input)
         const stored = encodeValue ? encodeValue(edited) : edited
@@ -102,7 +113,7 @@ export function useDimInteraction(
       },
       ...(onFlip && { extraAction: { label: 'Flip side', onClick: onFlip } }),
     })
-  }, [interaction, cid, value, validatePositive, consumeClick, onFlip, encodeValue])
+  }, [interaction, cid, value, validatePositive, constraintKind, consumeClick, onFlip, encodeValue])
   // Called at the start of each pointer-down so a fresh drag begins with the flag clear.
   const resetDragMoved = reset
 

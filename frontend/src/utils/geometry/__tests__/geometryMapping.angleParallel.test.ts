@@ -130,6 +130,8 @@ describe('computeConstraintRender (line_distance extension-line segments)', () =
 
   it('point_distance does not emit ext1_line / ext2_line', () => {
     const sketch = makeSketch()
+    // A hand-written or imported zero euclidean distance still renders: the
+    // applier refuses to author one, but the renderer has no value rule.
     const c: PartConstraint = {
       id: 'PD1', kind: 'point_distance',
       a: '$PT', b: '$PT',

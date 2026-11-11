@@ -392,6 +392,9 @@ impl Problem<'_> {
             ConstraintKind::Concentric => self.jac_concentric(c, rows),
             ConstraintKind::EqualLength => self.jac_equal_length(c, x, rows),
             ConstraintKind::PointDistance => self.jac_point_distance(c, x, rows),
+            ConstraintKind::PointDistanceX => self.jac_point_distance_axis(c, x, rows, 0),
+            ConstraintKind::PointDistanceY => self.jac_point_distance_axis(c, x, rows, 1),
+            ConstraintKind::RadiusDifference => self.jac_radius_difference(c, x, rows),
             ConstraintKind::Coincident => self.jac_coincident(c, x, xp, rows),
             ConstraintKind::Fixed => self.jac_fixed(c, x, rows),
             // Direction-normalizing / atan2 residuals: finite-difference fallback.
@@ -399,10 +402,7 @@ impl Problem<'_> {
             | ConstraintKind::Normal
             | ConstraintKind::Angle
             | ConstraintKind::Tangent
-            | ConstraintKind::Midpoint
-            | ConstraintKind::RadiusDifference
-            | ConstraintKind::PointDistanceX
-            | ConstraintKind::PointDistanceY => rows.extend(self.fd_constraint_rows(c, x, xp)),
+            | ConstraintKind::Midpoint => rows.extend(self.fd_constraint_rows(c, x, xp)),
         }
     }
 
@@ -600,6 +600,9 @@ impl Problem<'_> {
         let uy = pb[1] - pa[1];
         let d = (ux * ux + uy * uy).sqrt();
         let mut row = RowBuf::new();
+        // A zero euclidean distance is a coincident, which one row cannot
+        // express: the mutation layer refuses value 0 instead of authoring
+        // this kink.
         if d > 0.0 {
             for (i, dpx, dpy) in self.point_jac(x, a) {
                 row.add(i, (-ux / d) * dpx + (-uy / d) * dpy);
@@ -608,6 +611,67 @@ impl Problem<'_> {
                 row.add(i, (ux / d) * dpx + (uy / d) * dpy);
             }
         }
+        rows.push(row.finish());
+    }
+
+    /// Analytic row for one axis of the point-to-point dimension. `axis` is 0
+    /// for x and 1 for y, the same component `r_point_distance_axis` measures.
+    ///
+    /// The unsigned residual is `|d| - value`: its slope is the sign of `d`,
+    /// and at the kink `d == 0` any non-zero slope is full rank, so +1 is
+    /// taken (the signed default elsewhere). The old finite difference read
+    /// (|h| - |-h|) / 2h = 0 there and left an empty row, which cost the
+    /// sketch the degree of freedom the zero dimension should remove and made
+    /// the dimension read redundant.
+    fn jac_point_distance_axis(
+        &self,
+        c: &Constraint,
+        x: &[f64],
+        rows: &mut Vec<SparseRow>,
+        axis: usize,
+    ) {
+        let (Some(a), Some(b)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
+            return;
+        };
+        if c.value.is_none() {
+            return;
+        }
+        let d = self.point(x, b)[axis] - self.point(x, a)[axis];
+        // A signed residual is `d - sign * value`: the orientation scales the
+        // target, so its slope stays +1 whichever side was authored.
+        let slope = if c.sign.is_some() || d == 0.0 {
+            1.0
+        } else {
+            d.signum()
+        };
+        let mut row = RowBuf::new();
+        for (i, dpx, dpy) in self.point_jac(x, a) {
+            row.add(i, -slope * if axis == 0 { dpx } else { dpy });
+        }
+        for (i, dpx, dpy) in self.point_jac(x, b) {
+            row.add(i, slope * if axis == 0 { dpx } else { dpy });
+        }
+        rows.push(row.finish());
+    }
+
+    /// Analytic row for the radial gap. `r_radius_difference` measures
+    /// `|ra - rb| - value`, whose slope is the sign of the gap; the gap of
+    /// zero is the same kink as the axis distance, and +1 there keeps the row
+    /// full rank so a zero gap still ties the two radii together.
+    fn jac_radius_difference(&self, c: &Constraint, x: &[f64], rows: &mut Vec<SparseRow>) {
+        let (Some(Ref::Entity { index: ai, .. }), Some(Ref::Entity { index: bi, .. })) =
+            (c.ref_for(RefRole::A), c.ref_for(RefRole::B))
+        else {
+            return;
+        };
+        if c.value.is_none() || !is_curve(self.kind_of(ai)) || !is_curve(self.kind_of(bi)) {
+            return;
+        }
+        let gap = self.params(x, ai)[2] - self.params(x, bi)[2];
+        let slope = if gap == 0.0 { 1.0 } else { gap.signum() };
+        let mut row = RowBuf::new();
+        row.add(self.offset_of(ai) + 2, slope);
+        row.add(self.offset_of(bi) + 2, -slope);
         rows.push(row.finish());
     }
 
