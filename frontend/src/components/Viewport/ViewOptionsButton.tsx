@@ -7,15 +7,19 @@
 // one meaning for the eye across the app: the feature tree's eye says what is
 // SHOWN, and so does this one, opening the rows that decide it.
 //
-// Two kinds of row, deliberately unlike each other (the card groups the second
+// Three kinds of row, deliberately unlike each other (the card groups the last
 // kind under the View, Camera, Section and Debug headings):
-//   Show   - document visibility. Rows dispatch through the part page, so they
-//            record undo and agree with the keyboard toggles.
-//   Viewer - browser preferences. No undo, no document write. Shading and
-//            Edges are the drawn layers, Brightness is the global exposure,
-//            Zebra and Curvature replace the body material, Camera decides
-//            whether an orbit turns about the cursor point, and Debug holds
-//            the ID-buffer overlay.
+//   Document - the part's length unit. A segmented row that dispatches the
+//              page's set_length_unit mutation, so it records one undo entry
+//              and undo restores the previous unit. Hidden where the page has
+//              no document, which is also why the assembly never shows it.
+//   Show     - document visibility. Rows dispatch through the part page, so they
+//              record undo and agree with the keyboard toggles.
+//   Viewer   - browser preferences. No undo, no document write. Shading and
+//              Edges are the drawn layers, Brightness is the global exposure,
+//              Zebra and Curvature replace the body material, Camera decides
+//              whether an orbit turns about the cursor point, and Debug holds
+//              the ID-buffer overlay.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import iconEyeIcon from '@/assets/icons/icon-eye.svg'
 import {
