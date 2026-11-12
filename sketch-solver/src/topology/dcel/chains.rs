@@ -200,7 +200,18 @@ fn geom_len(geom: &EdgeGeom) -> f64 {
             } else {
                 (a1 - a0).rem_euclid(std::f64::consts::TAU)
             };
-            radius * sweep
+            // The length of a curve is a magnitude. A solved arc can reach the
+            // topology with a negative radius (the degenerate collapse the
+            // stale-length bug produced), and a negative edge weight makes the
+            // shortest-path walk below non-terminating: its parent chain can
+            // cycle and the worker never returns. `abs` keeps the weight a
+            // length; a non-finite radius or angle contributes no length at all.
+            let len = radius.abs() * sweep;
+            if len.is_finite() {
+                len
+            } else {
+                0.0
+            }
         }
         // Only lines and arcs reach here.
         _ => 0.0,
@@ -377,18 +388,30 @@ fn shortest_directed_path(
 
     let mut dist = vec![f64::INFINITY; adj.len()];
     let mut parent: Vec<Option<(usize, usize)>> = vec![None; adj.len()];
+    let mut settled = vec![false; adj.len()];
     let mut queue: BinaryHeap<Reverse<(u64, usize)>> = BinaryHeap::new();
     dist[u] = 0.0;
     queue.push(Reverse((0u64, u)));
     while let Some(Reverse((d_bits, cur))) = queue.pop() {
         let d = f64::from_bits(d_bits);
-        if d > dist[cur] {
+        // Settle each node once. A malformed vertex (a negative arc length used
+        // to reach here) makes the weighting non-metric, and re-relaxing a
+        // settled node can hand it a parent that leads back into itself: the
+        // parent walk then never reaches `u`. Settling also keeps a valid graph
+        // exact, because every weight is a length.
+        if settled[cur] || d > dist[cur] {
             continue;
         }
+        settled[cur] = true;
         if cur == v {
             let mut path: Vec<usize> = Vec::new();
             let mut cur = v;
             while cur != u {
+                // Defence in depth: the settle rule is the fix, this bound keeps
+                // any future weighting bug from wedging the worker.
+                if path.len() > adj.len() {
+                    return None;
+                }
                 let (prev, edge) = parent[cur]?;
                 path.push(edge);
                 cur = prev;
@@ -397,7 +420,7 @@ fn shortest_directed_path(
             return Some(path);
         }
         for &(edge, next) in &adj[cur] {
-            if edge == skip {
+            if edge == skip || settled[next] {
                 continue;
             }
             let nd = d + edges[edge].len;
@@ -432,18 +455,26 @@ fn shortest_path(
     }
     let mut dist = vec![f64::INFINITY; adj.len()];
     let mut parent: Vec<Option<(usize, usize)>> = vec![None; adj.len()];
+    let mut settled = vec![false; adj.len()];
     let mut queue: BinaryHeap<Reverse<(u64, usize)>> = BinaryHeap::new();
     dist[u] = 0.0;
     queue.push(Reverse((0u64, u)));
     while let Some(Reverse((d_bits, cur))) = queue.pop() {
         let d = f64::from_bits(d_bits);
-        if d > dist[cur] {
+        // Same settle rule as `shortest_path`: a re-relaxed node's parent chain
+        // can cycle when the weighting is not a metric, and the walk below has
+        // no other termination proof.
+        if settled[cur] || d > dist[cur] {
             continue;
         }
+        settled[cur] = true;
         if cur == v {
             let mut path: Vec<usize> = Vec::new();
             let mut cur = v;
             while cur != u {
+                if path.len() > adj.len() {
+                    return None;
+                }
                 let (prev, he) = parent[cur]?;
                 path.push(he);
                 cur = prev;
@@ -452,7 +483,7 @@ fn shortest_path(
             return Some(path);
         }
         for &(piece, next, he) in &adj[cur] {
-            if piece == skip {
+            if piece == skip || settled[next] {
                 continue;
             }
             let nd = d + weights[piece];

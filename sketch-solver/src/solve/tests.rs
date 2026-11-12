@@ -2394,3 +2394,47 @@ fn a_zero_radius_difference_pins_the_second_radius() {
         out.constraint_flags
     );
 }
+
+// A radius is a magnitude in the document. The solver's parameter is signed,
+// and a free circle in a degenerate basin can be driven through zero and out
+// the other side; that answer is not a sketch the area builder or OCC can use.
+// The gate must call it unsatisfied, and the culprit walk must not claim the
+// force-free circle is just underconstrained.
+#[test]
+fn a_negative_solved_radius_is_overconstrained_not_underconstrained() {
+    let inp = input(vec![ent(Kind::Circle, 0)], vec![0.0, 0.0, -1.0], vec![]);
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::Overconstrained.to_u8());
+    assert!(out.params_solved[2] <= 0.0);
+}
+
+#[test]
+fn a_positive_solved_radius_stays_underconstrained() {
+    let inp = input(vec![ent(Kind::Circle, 0)], vec![0.0, 0.0, 5.0], vec![]);
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+}
+
+#[test]
+fn a_negative_radius_in_a_drag_frame_is_not_a_committable_frame() {
+    let mut inp = input(vec![ent(Kind::Circle, 0)], vec![0.0, 0.0, -1.0], vec![]);
+    inp.options.drag_mode = true;
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::Overconstrained.to_u8());
+}
+
+#[test]
+fn a_degenerate_arc_names_every_constraint_that_touches_it() {
+    let radius = c_target(ConstraintKind::Radius, 0, PointSelector::Absent);
+    let inp = input(
+        vec![ent(Kind::Arc, 0)],
+        vec![0.0, 0.0, 0.0, 0.0, 90.0],
+        vec![radius],
+    );
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::Overconstrained.to_u8());
+    assert!(
+        out.constraint_miss[0] > 0.0,
+        "the radius constraint that touches the degenerate arc must be a culprit"
+    );
+}

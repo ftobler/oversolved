@@ -20,6 +20,7 @@ import {
   solveSketchDrag,
 } from '../sketch'
 import * as solverWasm from '@/wasm-kernel/solverWasm'
+import { isKernelTrap } from '../../errors'
 import { Repository } from '../../query'
 import type { SketchFeature } from '@/types/cad'
 
@@ -60,6 +61,29 @@ describe('initSketchSolver', () => {
 })
 
 describe('solveSketch lowering refusals', () => {
+  it('reports a solver error as a plain failure, not a kernel fault', () => {
+    // The wasm boundary's guarded entry returns the panic text as a plain
+    // error where the build can unwind; the leaf must carry that out as a
+    // feature failure (the builder records it red), never as a trap that
+    // discards the module and reloads it.
+    setSketchSolver(() => {
+      throw new Error('sketch solve panicked: boom')
+    })
+    const feature = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'l1', kind: 'line' }], initial: { l1: [0, 0, 10, 0] },
+    }
+    let thrown: unknown
+    try {
+      solveSketch(feature, new Repository(), {})
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown).toBeInstanceOf(Error)
+    expect((thrown as Error).message).toContain('panicked')
+    expect(isKernelTrap(thrown)).toBe(false)
+  })
+
   it('names the unexpanded center_rect sugar when a sketch contains it', () => {
     setSketchSolver(() => new Uint8Array(0))
     const feature = {

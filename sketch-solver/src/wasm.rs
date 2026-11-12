@@ -2,6 +2,11 @@
 //! `api::solve_bytes` directly. Kept deliberately thin: the contract, codec,
 //! and numerics all live in plain-Rust modules so native `cargo test` exercises
 //! the same code the browser runs.
+//!
+//! Both entries call the `api::*_guarded` forms. Those catch a panic where the
+//! build unwinds and return it as a plain `JsError`; wasm32-unknown-unknown is
+//! compiled with `panic = "abort"`, so on the shipping target the guard is a
+//! pass-through and a code defect still traps (see `api::catch_panic`).
 
 use wasm_bindgen::prelude::*;
 
@@ -13,7 +18,7 @@ use wasm_bindgen::prelude::*;
 /// over/underconstrained reported inside it.
 #[wasm_bindgen]
 pub fn solve_sketch_bytes(input: &[u8]) -> Result<Vec<u8>, JsError> {
-    crate::api::solve_bytes(input).map_err(|e| JsError::new(&format!("decode error: {e:?}")))
+    crate::api::solve_bytes_guarded(input).map_err(|e| JsError::new(&e))
 }
 
 /// Run the area builder over an ordered `richGeom` payload and judge the result
@@ -38,6 +43,5 @@ pub fn detect_topology_bytes(input: &[u8]) -> Result<Vec<u8>, JsError> {
     // "codec error", not "decode error": the topology encoder can also refuse
     // the output (non-finite computed coordinates), so this failure is not
     // necessarily about the buffer the host sent.
-    crate::api::detect_topology_bytes(input)
-        .map_err(|e| JsError::new(&format!("topology codec error: {e:?}")))
+    crate::api::detect_topology_bytes_guarded(input).map_err(|e| JsError::new(&e))
 }

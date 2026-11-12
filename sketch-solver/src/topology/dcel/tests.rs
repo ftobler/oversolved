@@ -2,6 +2,7 @@ use crate::radians;
 use crate::tolerance::tangent_gap_tol;
 use crate::topology::dcel::{angle_in_arc, degrees, detect_topology, InputEntity, TopoEntity};
 use crate::topology::profile_loops::EdgeGeom;
+use crate::topology::Vec2;
 use crate::topology::TOL_TOPOLOGY_MERGE as MERGE;
 
 use self::helpers::*;
@@ -51,6 +52,60 @@ fn circle_with_closed_slot(circle_center: [f64; 2], left_arc: bool) -> Vec<(Stri
         geom.push(("a2".into(), line([0.0, 2.5], [0.0, -2.5])));
     }
     geom
+}
+
+#[test]
+fn a_negative_radius_arc_does_not_wedge_the_chain_walk() {
+    // The enclosure practice run's fillet_corners left stale side lengths on a
+    // trimmed rectangle; the solver answered by collapsing an arc through zero
+    // and out the other side, so the area builder received a negative radius.
+    // The drawn-loop walk weights a piece by its curve length, and a negative
+    // weight made its shortest-path parent chain cycle: the worker never
+    // returned. The radius magnitude is what a length means, and the walk
+    // settles each node, so the builder must return a verdict.
+    let arc_at = |center: Vec2, r: f64, a0: f64, a1: f64, start: Vec2, end: Vec2| InputEntity {
+        center: Some(center),
+        radius: Some(r),
+        angle_start: Some(a0),
+        angle_end: Some(a1),
+        start: Some(start),
+        end: Some(end),
+        ..Default::default()
+    };
+    let mut geom = vec![
+        ("b".into(), line([3.0, 0.0], [57.0, 0.0])),
+        ("r".into(), line([60.0, 3.0], [60.0, 37.0])),
+        ("t".into(), line([57.0, 40.0], [3.0, 40.0])),
+        ("l".into(), line([0.0, 37.0], [0.0, 3.0])),
+        (
+            "a1".into(),
+            arc_at([3.0, 3.0], 3.0, 180.0, 270.0, [0.0, 3.0], [3.0, 0.0]),
+        ),
+        (
+            "a2".into(),
+            arc_at([57.0, 3.0], -3.0, 270.0, 360.0, [57.0, 0.0], [60.0, 3.0]),
+        ),
+        (
+            "a3".into(),
+            arc_at([57.0, 37.0], 3.0, 0.0, 90.0, [60.0, 37.0], [57.0, 40.0]),
+        ),
+        (
+            "a4".into(),
+            arc_at([3.0, 37.0], 3.0, 90.0, 180.0, [3.0, 40.0], [0.0, 37.0]),
+        ),
+    ];
+    let t = detect_topology(&geom, &[]);
+    assert!(
+        !t.vertices.is_empty(),
+        "the degenerate outline still has registered vertices"
+    );
+
+    // The same loop with the radius positive is the shape the step meant to
+    // leave: one filled area. The negative case must not be worse than a
+    // defined answer.
+    geom[5].1.radius = Some(3.0);
+    let t = detect_topology(&geom, &[]);
+    assert_eq!(t.surfaces.len(), 1, "the rounded rectangle is one area");
 }
 
 #[test]

@@ -14,6 +14,61 @@ use crate::topology::codec::{
 };
 use crate::topology::detect_topology;
 
+/// Human text for a panic payload, for the boundary error.
+#[cfg(panic = "unwind")]
+fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(text) = payload.downcast_ref::<&str>() {
+        (*text).to_string()
+    } else if let Some(text) = payload.downcast_ref::<String>() {
+        text.clone()
+    } else {
+        "unknown panic payload".to_string()
+    }
+}
+
+/// Run a boundary call, turning a panic into a named error where the build can
+/// unwind.
+///
+/// `wasm32-unknown-unknown` is compiled with `panic = "abort"` (the target's
+/// default and the only supported strategy on stable), so this is a
+/// pass-through on the shipping target: there is no unwinding to catch, and a
+/// panic still traps the module. The crate's part of that contract is therefore
+/// input validation plus never panicking on a reachable path (see the topology
+/// chain walk and the degenerate-radius gate in `solve`). The guard is real for
+/// native/headless builds and any future unwind-enabled target, where it turns
+/// a panic into the same plain error a malformed buffer produces, so a sketch
+/// reads as a red feature instead of a kernel fault.
+fn catch_panic<T>(what: &str, f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    #[cfg(panic = "unwind")]
+    {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+            Ok(result) => result,
+            Err(payload) => Err(format!("{what} panicked: {}", panic_message(payload))),
+        }
+    }
+    #[cfg(not(panic = "unwind"))]
+    {
+        // No unwinding exists to catch; keep the parameter meaningful so the
+        // abort build compiles without an unused-variable warning.
+        let _ = what;
+        f()
+    }
+}
+
+/// [`solve_bytes`] with the boundary guard above wrapping it.
+pub fn solve_bytes_guarded(input: &[u8]) -> Result<Vec<u8>, String> {
+    catch_panic("sketch solve", || {
+        solve_bytes(input).map_err(|e| format!("decode error: {e:?}"))
+    })
+}
+
+/// [`detect_topology_bytes`] with the boundary guard above wrapping it.
+pub fn detect_topology_bytes_guarded(input: &[u8]) -> Result<Vec<u8>, String> {
+    catch_panic("sketch topology", || {
+        detect_topology_bytes(input).map_err(|e| format!("topology codec error: {e:?}"))
+    })
+}
+
 /// Decode a flat `Input` buffer, solve, and encode the flat `Output` buffer.
 ///
 /// Errors are limited to malformed input (a host bug, since the host built the
@@ -151,6 +206,28 @@ mod tests {
     #[test]
     fn solve_bytes_rejects_garbage() {
         assert!(solve_bytes(&[0, 1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn the_guarded_boundary_reports_a_decode_failure_as_a_plain_error() {
+        // The wasm wrappers call the guarded forms. A malformed buffer must
+        // produce the same named error they throw, not a trap (or a panic).
+        let err = solve_bytes_guarded(&[0, 1, 2, 3]).expect_err("garbage must be refused");
+        assert!(err.contains("decode error"), "{err}");
+        let err =
+            detect_topology_bytes_guarded(&[0, 1, 2, 3]).expect_err("garbage must be refused");
+        assert!(err.contains("topology codec error"), "{err}");
+    }
+
+    #[cfg(panic = "unwind")]
+    #[test]
+    fn the_guarded_boundary_turns_a_panic_into_a_plain_error() {
+        // Only a build that unwinds can catch. The native test gate runs with
+        // the default unwind strategy, so this pins the guard the wasm target
+        // cannot provide (see `catch_panic`).
+        let err = catch_panic::<()>("probe", || panic!("boom")).expect_err("panic must be caught");
+        assert!(err.contains("probe panicked"), "{err}");
+        assert!(err.contains("boom"), "{err}");
     }
 
     // detect_topology_bytes is the topology twin of solve_bytes and the exact

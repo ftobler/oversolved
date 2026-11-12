@@ -5,12 +5,13 @@
 //! solved params back into the doc stay in the TS builder (the "what stays
 //! scalar TS" boundary).
 
+use crate::constraints::Ref;
 use crate::residuals::Problem;
 use crate::tolerance::{
     seed_keep_tol, verdict_tol, FREE_COMPONENT_TOL, RANK_TOL, REDUNDANT_ROW_REL,
 };
 use crate::{
-    Diagnostics, Input, Output, Status, CONSTRAINT_FLAG_DROPPED, CONSTRAINT_FLAG_REDUNDANT,
+    Diagnostics, Input, Kind, Output, Status, CONSTRAINT_FLAG_DROPPED, CONSTRAINT_FLAG_REDUNDANT,
 };
 use nalgebra::DMatrix;
 use solver_core::lm::{
@@ -104,6 +105,14 @@ pub fn solve_sketch(input: &Input) -> Output {
         };
 
         let params_solved = x_final;
+        // The drag path answers with a frame; degenerate solved geometry (an
+        // arc radius driven through zero) is not a frame the caller may commit,
+        // so it takes the same red verdict as a cold solve.
+        let status = if invalid_geometry(input, &params_solved).is_empty() {
+            status
+        } else {
+            Status::Overconstrained
+        };
 
         return Output {
             params_solved,
@@ -173,6 +182,21 @@ pub fn solve_sketch(input: &Input) -> Output {
     // to the document's "CCW from a0 to a1" reading, so put it back.
     problem.rebase_arc_branches(&mut params_solved);
 
+    // A solved radius is a magnitude. The solver's radius parameter is signed,
+    // and a degenerate basin can drive an arc (or circle) through zero and out
+    // the other side: the classic answer to the stale-length fillet. That
+    // output is not a sketch the rest of the pipeline can use (a negative radius
+    // has no OCC circle, and the area builder used to read a negative curve
+    // length), so it is an unsatisfied solve, not a valid underconstrained one.
+    // Every constraint that touches the degenerate entity is named, which is the
+    // only causal information the residual stack has.
+    let invalid = invalid_geometry(input, &params_solved);
+    let status = if invalid.is_empty() {
+        status
+    } else {
+        Status::Overconstrained
+    };
+
     // Per-constraint verdicts: a satisfied cold solve marks redundancy, an
     // unsatisfied one reports the per-constraint miss so the UI can localise
     // the conflict. Both are cold-path work with no SVD: the redundancy walk is
@@ -181,16 +205,15 @@ pub fn solve_sketch(input: &Input) -> Output {
     // ratio. `skip_status_pass` does not gate them: it skips the per-ENTITY
     // pass, which is a different cost class.
     let (mut constraint_flags, constraint_miss) = if status == Status::Overconstrained {
-        (
-            vec![0u8; input.constraints.len()],
-            constraint_miss(
-                &problem,
-                &params_solved,
-                &jac,
-                problem.scale(),
-                input.constraints.len(),
-            ),
-        )
+        let mut miss = constraint_miss(
+            &problem,
+            &params_solved,
+            &jac,
+            problem.scale(),
+            input.constraints.len(),
+        );
+        flag_invalid_geometry(&problem, &invalid, &mut miss);
+        (vec![0u8; input.constraints.len()], miss)
     } else {
         (
             redundancy_flags(&problem, &params_solved, &jac, input.constraints.len()),
@@ -282,6 +305,59 @@ fn mark_dropped_constraints(problem: &Problem, flags: &mut [u8]) {
     for (wire, kept) in survived.into_iter().enumerate() {
         if !kept {
             flags[wire] |= CONSTRAINT_FLAG_DROPPED;
+        }
+    }
+}
+
+/// Indices of entities whose solved params are not usable geometry: any
+/// non-finite value, or a circle/arc radius that is not strictly positive. The
+/// radius is the one signed field the residual stack can drive through zero
+/// (a line's direction is a difference, an ellipse's axes are floored in the
+/// conic residual), and the document's radius convention is a magnitude.
+fn invalid_geometry(input: &Input, x: &[f64]) -> Vec<usize> {
+    let mut bad = Vec::new();
+    for (index, entity) in input.entities.iter().enumerate() {
+        if !input.entity_params_in_range(index) {
+            continue;
+        }
+        let end = entity.param_offset + entity.param_count;
+        let params = &x[entity.param_offset..end];
+        if params.iter().any(|v| !v.is_finite()) {
+            bad.push(index);
+            continue;
+        }
+        if matches!(entity.kind, Kind::Circle | Kind::Arc) && params[2] <= 0.0 {
+            bad.push(index);
+        }
+    }
+    bad
+}
+
+/// Give every constraint that touches an invalid entity a non-zero miss, so the
+/// host's culprit selection names the geometry the solve could not keep. The
+/// residual stack itself is satisfied there (that is why the radius escaped),
+/// so without this the UI would show an overconstrained sketch with no cause.
+fn flag_invalid_geometry(problem: &Problem, invalid: &[usize], miss: &mut [f64]) {
+    if invalid.is_empty() {
+        return;
+    }
+    let mut bad = vec![false; invalid.iter().max().map_or(0, |m| m + 1)];
+    for &index in invalid {
+        if let Some(slot) = bad.get_mut(index) {
+            *slot = true;
+        }
+    }
+    let wire = problem.constraint_wire_indices();
+    for (ci, constraint) in problem.constraints().iter().enumerate() {
+        let touches = constraint.refs.iter().any(|(_, r)| match r {
+            Ref::Entity { index, .. } => bad.get(*index as usize).copied().unwrap_or(false),
+            Ref::External { .. } => false,
+        });
+        if !touches {
+            continue;
+        }
+        if let Some(slot) = wire.get(ci).and_then(|&w| miss.get_mut(w)) {
+            *slot = slot.max(1.0);
         }
     }
 }
