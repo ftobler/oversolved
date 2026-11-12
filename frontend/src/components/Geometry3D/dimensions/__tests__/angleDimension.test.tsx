@@ -46,6 +46,7 @@ vi.mock('../useDimDispatchRegistration', () => ({
 
 import { AngleDimension } from '../Angle'
 import { useEditorState } from '@/hooks/useEditorState'
+import { RENDER_ORDER_EDITING } from '@/utils/core/partColors'
 
 type Dim = React.ComponentProps<typeof AngleDimension>['dim']
 type Interaction = NonNullable<React.ComponentProps<typeof AngleDimension>['interaction']>
@@ -135,6 +136,18 @@ describe('AngleDimension arc and arrows', () => {
     expect(witnesses[1].start[1]).toBeCloseTo(5, 6)
     expect(witnesses[1].end[0]).toBeCloseTo(0, 6)
     expect(witnesses[1].end[1]).toBeCloseTo(3, 6)
+  })
+})
+
+describe('AngleDimension render layer', () => {
+  it('puts the arc on the sketch edit layer', () => {
+    render(<AngleDimension cid="c1" dim={RIGHT_ANGLE} />)
+
+    expect(spies.Line).toHaveBeenCalled()
+    for (const [props] of spies.Line.mock.calls) {
+      expect(props.depthTest).toBe(false)
+      expect(props.renderOrder).toBe(RENDER_ORDER_EDITING)
+    }
   })
 })
 

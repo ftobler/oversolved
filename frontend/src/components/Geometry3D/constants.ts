@@ -127,6 +127,18 @@ export function entityRenderLayer(
   return { depthTest: true, renderOrder: RENDER_ORDER_DEFAULT }
 }
 
+// ─── dimension render layering ───
+// Dimensions only exist on the sketch being edited, so they ride the same
+// overlay layer as the sketch's own entities. depthTest: false alone is not
+// "on top": three sorts the opaque pass by renderOrder and only breaks a tie on
+// material.id, so a dimension whose material was created before a body's (the
+// shape every body remount during a solve produces) is drawn first and the body
+// paints over it. The explicit renderOrder outranks the body whatever the
+// material creation order happened to be.
+export function dimensionRenderLayer(): { depthTest: false; renderOrder: number } {
+  return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
+}
+
 // ─── body surface look ───
 // The one place that decides how a solid body is drawn. Three inputs can each
 // claim the surface, so the precedence has to be stated somewhere rather than

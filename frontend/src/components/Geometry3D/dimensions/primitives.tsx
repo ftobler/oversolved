@@ -4,11 +4,13 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Line2 } from 'three-stdlib'
 import { p2w, ARROW_SHAPE } from '@/utils/geometry/sketchHelpers'
+import { dimensionRenderLayer } from '@/components/Geometry3D/constants'
 
 // Filled triangle arrowhead with constant pixel size regardless of zoom.
 export function Arrowhead({ tip, from, color }: { tip: [number, number]; from: [number, number]; color: string }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
+  const layer = dimensionRenderLayer()
   const angle = Math.atan2(tip[1] - from[1], tip[0] - from[0])
   useFrame(() => {
     if (meshRef.current) {
@@ -17,9 +19,9 @@ export function Arrowhead({ tip, from, color }: { tip: [number, number]; from: [
     }
   })
   return (
-    <mesh ref={meshRef} position={[tip[0], tip[1], 0]} rotation={[0, 0, angle]}>
+    <mesh ref={meshRef} position={[tip[0], tip[1], 0]} rotation={[0, 0, angle]} renderOrder={layer.renderOrder}>
       <shapeGeometry args={[ARROW_SHAPE]} />
-      <meshBasicMaterial color={color} side={THREE.DoubleSide} depthTest={false} />
+      <meshBasicMaterial color={color} side={THREE.DoubleSide} depthTest={layer.depthTest} />
     </mesh>
   )
 }
@@ -40,7 +42,7 @@ export function ArrowTail({ origin, dir, color }: { origin: [number, number]; di
   })
   const len = 25 * p2w(camera)
   return (
-    <Line ref={lineRef} points={[[origin[0], origin[1], 0], [origin[0] + dir[0] * len, origin[1] + dir[1] * len, 0]]} color={color} lineWidth={1} depthTest={false} />
+    <Line ref={lineRef} points={[[origin[0], origin[1], 0], [origin[0] + dir[0] * len, origin[1] + dir[1] * len, 0]]} color={color} lineWidth={1} {...dimensionRenderLayer()} />
   )
 }
 
@@ -71,7 +73,7 @@ export function ExtensionLine({ start, end, color, overshootPx = EXTENSION_OVERS
     attr.setXYZ(1, pts[1][0], pts[1][1], 0)
     attr.needsUpdate = true
   })
-  return <Line ref={lineRef} points={compute(p2w(camera))} color={color} lineWidth={1} depthTest={false} />
+  return <Line ref={lineRef} points={compute(p2w(camera))} color={color} lineWidth={1} {...dimensionRenderLayer()} />
 }
 
 // Line with dash/gap sizes in pixels, constant regardless of zoom.

@@ -37,6 +37,7 @@ vi.mock('@/picking/useDimensionLabelIdRegistration', () => ({
 
 import { RadiusDimension, DiameterDimension } from '../Radial'
 import { useEditorState } from '@/hooks/useEditorState'
+import { RENDER_ORDER_EDITING } from '@/utils/core/partColors'
 
 type RadiusDim = React.ComponentProps<typeof RadiusDimension>['dim']
 type DiameterDim = React.ComponentProps<typeof DiameterDimension>['dim']
@@ -138,6 +139,28 @@ describe('RadiusDimension label text', () => {
 
     render(<RadiusDimension cid="c1" dim={{ kind: 'dim_radius', p1: [0, 0], p2: [5.5, 0], value: 5.5 }} />)
     expect(spies.Label.mock.calls.at(-1)![0].label).toBe('R5.50')
+  })
+})
+
+describe('radial dimension render layer', () => {
+  const RADIUS: RadiusDim = { kind: 'dim_radius', p1: [0, 0], p2: [10, 0], value: 10 }
+  const DIAMETER: DiameterDim = { kind: 'dim_diameter', p1: [-10, 0], p2: [10, 0], value: 20 }
+
+  it('puts every radius and diameter line on the sketch edit layer', () => {
+    // Inside and outside arrangements for both dimension kinds: four Line tags
+    // in total, each one asserted rather than the first call alone.
+    render(<RadiusDimension cid="c1" dim={RADIUS} />)
+    render(<RadiusDimension cid="c1" dim={{ ...RADIUS, pos: [20, 0] }} />)
+    render(<DiameterDimension cid="c1" dim={DIAMETER} />)
+    render(<DiameterDimension cid="c1" dim={{ ...DIAMETER, pos: [20, 0] }} />)
+
+    // Both arrangements for both kinds: four renders and five Line calls (the
+    // outside diameter adds its leader line).
+    expect(spies.Line.mock.calls.length).toBe(5)
+    for (const [props] of spies.Line.mock.calls) {
+      expect(props.depthTest).toBe(false)
+      expect(props.renderOrder).toBe(RENDER_ORDER_EDITING)
+    }
   })
 })
 

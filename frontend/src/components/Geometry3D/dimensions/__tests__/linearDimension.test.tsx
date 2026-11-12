@@ -48,6 +48,7 @@ vi.mock('../useDimDispatchRegistration', () => ({
 
 import { LinearDimension } from '../Linear'
 import { useEditorState } from '@/hooks/useEditorState'
+import { RENDER_ORDER_EDITING } from '@/utils/core/partColors'
 
 type Dim = React.ComponentProps<typeof LinearDimension>['dim']
 type Interaction = NonNullable<React.ComponentProps<typeof LinearDimension>['interaction']>
@@ -211,6 +212,21 @@ describe('LinearDimension label text', () => {
     spies.Label.mockClear()
     renderDim({ value: 10.5 })
     expect(spies.Label.mock.calls[0][0].label).toBe('10.50')
+  })
+})
+
+describe('LinearDimension render layer', () => {
+  it('puts every dimension line on the sketch edit layer', () => {
+    // Cover all three arrangements: inside, outside near d1, outside near d2.
+    renderDim()
+    renderDim({ pos: [-10, 0] })
+    renderDim({ pos: [10, 0] })
+
+    expect(spies.Line).toHaveBeenCalled()
+    for (const [props] of spies.Line.mock.calls) {
+      expect(props.depthTest).toBe(false)
+      expect(props.renderOrder).toBe(RENDER_ORDER_EDITING)
+    }
   })
 })
 

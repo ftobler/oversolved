@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { RENDER_ORDER_DEFAULT, RENDER_ORDER_EDITING, RENDER_ORDER_HIGHLIGHT } from '@/utils/core/partColors'
 import * as geomConstants from '@/components/Geometry3D/constants'
-import { entityRenderLayer } from '@/components/Geometry3D/constants'
+import { entityRenderLayer, dimensionRenderLayer } from '@/components/Geometry3D/constants'
 
 describe('render order constants', () => {
   it('defines RENDER_ORDER_DEFAULT as 0', () => {
@@ -66,5 +66,15 @@ describe('entityRenderLayer policy', () => {
       expect(typeof layer.depthTest).toBe('boolean')
       expect(typeof layer.renderOrder).toBe('number')
     }
+  })
+})
+
+describe('dimensionRenderLayer policy', () => {
+  it('draws dimensions on the sketch edit layer with depth testing off', () => {
+    expect(dimensionRenderLayer()).toEqual({ depthTest: false, renderOrder: RENDER_ORDER_EDITING })
+  })
+
+  it('sits strictly above the body layer, so a remounted body cannot sort over it', () => {
+    expect(dimensionRenderLayer().renderOrder).toBeGreaterThan(RENDER_ORDER_DEFAULT)
   })
 })

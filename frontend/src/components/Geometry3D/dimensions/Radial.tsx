@@ -1,5 +1,6 @@
 import { Line } from '@react-three/drei'
 import { isPointInsideRadius } from '@/utils/geometry/dimensionRenderLayout'
+import { dimensionRenderLayer } from '@/components/Geometry3D/constants'
 import { Arrowhead, ArrowTail } from './primitives'
 import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown, useDimLabelRegistration } from './useDimInteraction'
 import { DimensionLabel } from './DimensionLabel'
@@ -68,14 +69,14 @@ export function RadiusDimension({ cid, dim, interaction, planeTransform }: {
       {isInside ? (
         // Inside: line from center to edge, arrow at edge pointing outward.
         <>
-          <Line points={[[cx, cy, 0], [tipX, tipY, 0]]} color={color} lineWidth={1} depthTest={false} />
+          <Line points={[[cx, cy, 0], [tipX, tipY, 0]]} color={color} lineWidth={1} {...dimensionRenderLayer()} />
           <Arrowhead tip={[tipX, tipY]} from={[cx, cy]} color={color} />
         </>
       ) : (
         // Outside: line extends from center through edge all the way to label,
         // arrow at edge is inverted (points inward toward center).
         <>
-          <Line points={[[cx, cy, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} depthTest={false} />
+          <Line points={[[cx, cy, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} {...dimensionRenderLayer()} />
           <Arrowhead tip={[tipX, tipY]} from={[labelX, labelY]} color={color} />
           {(() => { const td = Math.hypot(tipX - cx, tipY - cy) || 1; return <ArrowTail origin={[tipX, tipY]} dir={[(tipX - cx) / td, (tipY - cy) / td]} color={color} /> })()}
         </>
@@ -141,7 +142,7 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
 
   return (
     <group key={cid}>
-      <Line points={[[ep1x, ep1y, 0], [ep2x, ep2y, 0]]} color={color} lineWidth={1} depthTest={false} />
+      <Line points={[[ep1x, ep1y, 0], [ep2x, ep2y, 0]]} color={color} lineWidth={1} {...dimensionRenderLayer()} />
       {isInside ? (
         // Inside circle: arrows at endpoints pointing outward.
         // |<--X--o---->|
@@ -157,7 +158,7 @@ export function DiameterDimension({ cid, dim, interaction, planeTransform }: {
           <ArrowTail origin={[ep1x, ep1y]} dir={[-udirX, -udirY]} color={color} />
           <Arrowhead tip={[ep2x, ep2y]} from={[ep2x + udirX, ep2y + udirY]} color={color} />
           <ArrowTail origin={[ep2x, ep2y]} dir={[udirX, udirY]} color={color} />
-          <Line points={[[ep1x, ep1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} depthTest={false} />
+          <Line points={[[ep1x, ep1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} {...dimensionRenderLayer()} />
         </>
       )}
       <DimensionLabel
