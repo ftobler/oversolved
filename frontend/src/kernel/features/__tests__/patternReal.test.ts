@@ -7,7 +7,7 @@
 //
 // Skips when OCC.js or the sketch solver is absent.
 
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { SharedHarness } from '../../occ/sharedHarness'
 import { DisposeScope } from '../../occ/disposeScope'
@@ -18,9 +18,21 @@ import { parseAncestry } from '../../query'
 import { volumeOf } from '../../occ/volume'
 import { canonicalFaces } from '../../occ/bodyNames'
 import { shapeBndBox } from '../../occ/primitives'
+import { markFeatureProgress } from '../../featureProgress'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
 import type { Body } from '../../types3d'
+
+// The mark is recorded, not redirected: the real functions still run, so the
+// builder's own bookkeeping is unchanged for every other case in this file.
+vi.mock('../../featureProgress', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../featureProgress')>()
+  return {
+    ...actual,
+    markFeatureStart: vi.fn(actual.markFeatureStart),
+    markFeatureProgress: vi.fn(actual.markFeatureProgress),
+  }
+})
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -162,6 +174,27 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     expectUniqueFaceUuids(r, 'pt1')
   })
 
+  it('heartbeats between the batch phases, after the copy transforms', () => {
+    // A long pattern runs one batch boolean, a clean, a validation and the
+    // compose as separate phases. Each must re-arm the host's stall timer, or
+    // the sum reads as one stalled kernel call. The cut-miss classification
+    // comes from the batch history, so the per-copy Common probe (and its
+    // per-copy mark) is only paid by the per-copy fallback.
+    const count = 4
+    vi.mocked(markFeatureProgress).mockClear()
+    h.run(slottedPlate())
+    const baselineMarks = vi.mocked(markFeatureProgress).mock.calls.length
+    vi.mocked(markFeatureProgress).mockClear()
+    const r = h.run(slottedPlate(pattern('pt1', 'ex_slot', linear({ count, pitch: 8 }))))
+    expect(h.res(r, 'pt1').status).toBe('ok')
+    const patternMarks = vi.mocked(markFeatureProgress).mock.calls.length - baselineMarks
+    // One sound batch is six phase marks: raw, clean, validation, compose,
+    // cavity fold, soundness check. The pattern's own mark is `markFeatureStart`
+    // before the batch, so every one of these lands after the last copy
+    // transform.
+    expect(patternMarks).toBeGreaterThanOrEqual(6)
+  })
+
   it('infers the feature subject on a pattern authored before the subject field', () => {
     // Old rows carry source_feature and no subject. Reading the source they
     // actually name keeps them solving without rewriting the document.
@@ -292,6 +325,32 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     expect(String(res.exception)).toContain('copy 3')
     // The three holes that landed: x 2..4, 14..16, 26..28.
     expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(3000 - 3 * 20, 6)
+  })
+
+  it('reports a copy that only touches the body as a miss, not a hit', () => {
+    // The copy's 4 x 4 slot starts exactly on the plate's right face (x = 40):
+    // it shares a patch with the target but removes nothing. The batch history
+    // sees no output face from the tool, the same answer the old Common probe
+    // gave (a face-only Common has no solid), so the copy is named and the
+    // pattern is partial.
+    const r = h.run({
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 5),
+        rectSketch('sk_slot', 4, 4, 6, 6),
+        extrude('ex_slot', '$sk_slot', 10, 'cut'),
+        pattern('pt1', 'ex_slot', linear({ count: 2, pitch: 34 })),
+      ],
+    })
+    const res = h.res(r, 'pt1')
+    // Its only copy is the touching one, so nothing applied: the same exception
+    // the old probe path raised when its hit set came out empty.
+    expect(res.status).toBe('exception')
+    expect(String(res.exception)).toContain('pattern: no copy was applied')
+    expect(String(res.exception)).toContain('copy 1: cut does not intersect any target body')
+    // The touching tool is in the batch now, so pin that it did not split the
+    // plate's right face on contact: 6 plate faces plus the 4 slot walls.
+    expect(faceCountAt(r, 'pt1', 'body_ex_plate')).toBe(10)
   })
 
   it('fails when no copy can be applied', () => {

@@ -9,7 +9,7 @@
 import { extractErrorMessage, isKernelTrap } from './errors'
 import { clearConsumedBodyAncestry, setCurrentFeatureId } from './query'
 import { BUILTIN_PLANE_RESULTS } from './solverConstants'
-import { markFeatureStart } from './featureProgress'
+import { markFeatureStart, clearFeatureProgress } from './featureProgress'
 import type { Body, FeatureCheckpoint, BuildState } from './types3d'
 import {
   type BuildDeps,
@@ -708,6 +708,9 @@ export function build(
     }
   }
 
+  // The build is over: a heartbeat from a later direct kernel call must not
+  // name a feature this build already finished.
+  clearFeatureProgress()
   return response
 }
 

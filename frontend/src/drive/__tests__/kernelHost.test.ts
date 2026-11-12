@@ -115,6 +115,38 @@ describe('createKernelHost', () => {
     await expect(p).resolves.toBe('done')
   })
 
+  it('a repeated feature id still re-arms the stall budget (phase heartbeats)', async () => {
+    // A long feature re-emits its own mark between kernel phases: the host must
+    // treat the same id arriving again as liveness, not as one feature whose
+    // clock never restarts.
+    vi.useFakeTimers()
+    const { host, created } = setup(30_000)
+    const p = host.call('run', {})
+    await vi.waitFor(() => expect(created[0]?.posted).toHaveLength(1))
+    created[0].send({ kind: 'progress', featureId: 'paa' })
+    for (let i = 0; i < 6; i++) {
+      await vi.advanceTimersByTimeAsync(10_000)
+      created[0].send({ kind: 'progress', featureId: 'paa' })
+    }
+    expect(created[0].terminated).toBe(false)
+    created[0].send({ kind: 'reply', id: created[0].last().id, ok: true, value: 'done' })
+    await expect(p).resolves.toBe('done')
+  })
+
+  it('a silent feature past the budget still times out naming it', async () => {
+    // The other half of the heartbeat rule: no mark between two kernel calls
+    // means the one call in flight is spinning, and the worker is killed.
+    vi.useFakeTimers()
+    const { host, created } = setup(30_000)
+    const p = host.call('run', {})
+    await vi.waitFor(() => expect(created[0]?.posted).toHaveLength(1))
+    created[0].send({ kind: 'progress', featureId: 'paa' })
+    const settled = expect(p).rejects.toThrow('solve timed out after 30 s in feature paa')
+    await vi.advanceTimersByTimeAsync(30_001)
+    await settled
+    expect(created[0].terminated).toBe(true)
+  })
+
   it('a stall before any mark times out without a feature name', async () => {
     vi.useFakeTimers()
     const { host } = setup(1000)

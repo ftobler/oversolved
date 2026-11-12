@@ -31,11 +31,11 @@ import {
   readSourceFaceRows, rebuildNamesForTransformedCopy, transformCopyWithMapping, type NameMaps,
 } from '../occ/transformLineage'
 import { emptyShapeNames, mergeShapeNames, readBodyNames } from '../occ/bodyNames'
-import { booleanWithDiffMany, countSolids, shapesIntersect } from '../occ/booleans'
+import { booleanWithDiffMany, countSolids, shapesIntersect, toolsThatShaped } from '../occ/booleans'
 import { transferBooleanNames } from './booleanLineage'
 import { resplitBody, solidHoldingFaces } from './bodySplit'
 import { brepDiffIsEmpty } from './shared/brepDiff'
-import { markFeatureStart } from '../featureProgress'
+import { markFeatureStart, markFeatureProgress } from '../featureProgress'
 import { resolveFeatureExpressions } from '../featureExpressions'
 import { solveExtrude } from './extrude'
 import { solveRevolve } from './revolve'
@@ -515,15 +515,21 @@ function solveFeaturePattern(
       }
     }
 
-    // A missed cut leaves the solid count unchanged, so a probe is the only
-    // reliable miss signal before the batch. Add copies are never misses: a
-    // disjoint one is a regular island, and the batch fallback below lets the
-    // per-copy path mint it.
-    let selected = copies
-    if (operation === 'cut') {
+    // A missed cut leaves the solid count unchanged, so a miss needs a signal.
+    // The batch answers it from its own face history: a copy that removes
+    // nothing contributes no tool face, so `toolsThatShaped` names the hit set
+    // after the fact. The old per-copy Common probe cost 44 ms a copy (about
+    // 14 s of the 325-hole pattern), so it is now paid only by the per-copy
+    // fallback, which has no batch history to read. Add copies are never
+    // misses: a disjoint one is a regular island, and the batch fallback below
+    // lets the per-copy path mint it.
+    const probeCutHits = (): CopyInstance[] => {
       const targetShape = table.get<OccShape>(target.shape!)
       const hits: CopyInstance[] = []
       for (const [copyNo, group] of groupByCopy(copies)) {
+        // One heartbeat per copy: the probe is a full Common each, so this loop
+        // alone is a long pass at high counts.
+        markFeatureProgress()
         const overlapping = group.filter((copy) => shapesIntersect(oc, targetShape, copy.shape))
         if (overlapping.length === 0) {
           failures.push(`copy ${copyNo}: cut does not intersect any target body - nothing to remove`)
@@ -531,16 +537,18 @@ function solveFeaturePattern(
           hits.push(...overlapping)
         }
       }
-      selected = hits
+      return hits
     }
+    let selected = copies
 
     // The old per-copy path, kept for the two shapes a batch cannot report per
     // copy: a copy that consumes the target, and a union that leaves islands.
     const applyIndividually = (): PatternResult => {
+      const attempted = operation === 'cut' ? probeCutHits() : selected
       let appliedCopies = 0
       const live = new Set<string>([targetId])
       let consumed = false
-      for (const [copyNo, group] of groupByCopy(selected)) {
+      for (const [copyNo, group] of groupByCopy(attempted)) {
         if (consumed) break
         markFeatureStart(featureId)
         let copyApplied = false
@@ -605,10 +613,6 @@ function solveFeaturePattern(
       return result
     }
 
-    if (selected.length === 0) {
-      throw new Error(`pattern: no copy was applied; ${failures[0] ?? 'nothing to apply'}`)
-    }
-
     // One boolean over every copy. A throw, a consumed target, or a result that
     // gained solids (the island case) falls back to the per-copy path so the
     // warning and the refusal stay exactly as they were.
@@ -630,6 +634,27 @@ function solveFeaturePattern(
     const oldSolids = countSolids(oc, scope, targetShape)
     const newSolids = countSolids(oc, scope, newShape)
     if (newSolids === 0 || newSolids > oldSolids) return applyIndividually()
+
+    // The batch's history is the cut-miss classification: a copy whose tool
+    // left no face of its own removed nothing. Failures name the copy the same
+    // way the probe did, and the batch result is unchanged (a disjoint tool is
+    // a no-op in the cut).
+    if (operation === 'cut') {
+      const shaped = toolsThatShaped(oc, scope, selected.map((copy) => copy.shape), batched.faceOrigin)
+      const applied = new Set<number>()
+      selected.forEach((copy, index) => {
+        if (shaped.has(index)) applied.add(copy.copy)
+      })
+      for (const copyNo of groupByCopy(copies).keys()) {
+        if (!applied.has(copyNo)) {
+          failures.push(`copy ${copyNo}: cut does not intersect any target body - nothing to remove`)
+        }
+      }
+      if (applied.size === 0) {
+        throw new Error(`pattern: no copy was applied; ${failures[0] ?? 'nothing to apply'}`)
+      }
+      selected = copies.filter((copy) => applied.has(copy.copy))
+    }
 
     const toolNames = mergeCopyNames(selected)
     const names = transferBooleanNames(oc, scope, {

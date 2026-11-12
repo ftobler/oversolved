@@ -7,6 +7,10 @@
 // analytic volumes where the original capture's document is not in the repo.
 //
 // Skips when OCC.js or the sketch solver is absent.
+//
+// The 325-hole repro (the build123d fast_grid_holes plate) is opt-in with
+// PATTERN_COST=1: its solve is one synchronous build of about a minute, and
+// the suite's event-loop watchdog fails a test that holds the fork for 30 s.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
@@ -19,6 +23,7 @@ import { setOccLoader } from '../../solveLocally'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { SOLVE_STALL_BUDGET_MS } from '../../solverConstants'
+import { applyAddNgon } from '@/utils/yamlMutations/sketchSugar'
 import { yieldToEventLoop } from '@/testing/yieldToEventLoop'
 import { emptyDriveDoc, exportHeadless, measureHeadless, runHeadless } from '@/drive/headlessOps'
 import type { OccModule, OccShape } from '../../occ/occTypes'
@@ -158,6 +163,79 @@ describe.skipIf(!oc || !solveBytes)('many-instance pattern and array solve cost 
     expect(solveMs(r, 'pt1')).toBeLessThan(SOLVE_STALL_BUDGET_MS)
     expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(70 * 30 * 3 - 13 * 4 * Math.PI * 3, 4)
   }, 120_000)
+
+  // The build123d fast_grid_holes plate, as its captured document has it: a
+  // 500 x 600 x 1 plate centred on the origin and a vertex-on-x r9 hex
+  // through-cut with its centre at (-207.846097, -245). The pattern reuses the
+  // source's own application, so 13 x 25 makes 325 holes and the volume is the
+  // plate minus 325 hex prisms. The full source grid needs 25 staggered columns
+  // (625 holes); that case is below.
+  const HEX_VOLUME = (3 * Math.sqrt(3) / 2) * 9 * 9
+  const HEX_CENTRE: [number, number] = [-207.846097, -245]
+  const GRID_PATTERN: Dict = {
+    mode: 'rectangular',
+    count_x: 13, pitch_x: 34.64101615137755, direction_x: [1, 0, 0],
+    count_y: 25, pitch_y: 20, direction_y: [0, 1, 0],
+  }
+  // The solve is one synchronous build and the suite's event-loop watchdog
+  // fails a test that holds the fork for 30 s or more. At 325 copies the solve
+  // is about a minute, so the repro runs opt-in, the way the timing benches do:
+  //
+  //   cd frontend && PATTERN_COST=1 npx vitest run src/kernel/features/__tests__/patternCostReal.test.ts
+  //
+  // Add CI=1 to let the suite's watchdog warn instead of failing the fork.
+  const costEnabled = !!process.env.PATTERN_COST
+
+  function gridPlate(patternFields: Dict): Dict {
+    const doc: Dict = {
+      version: 1,
+      kind: 'part',
+      features: [
+        rectSketch('sk_plate', -250, -300, 500, 600),
+        extrude('ex_plate', '$sk_plate', 1),
+        {
+          id: 'sk_hex', kind: 'sketch', label: 'Hexagon', plane: '@builtin_plane_front',
+          entities: [], initial: {}, constraints: [],
+        },
+      ],
+    }
+    // The n-gon sugar: six lines plus the regularity constraint and, with
+    // `dimensions`, a circumradius and a horizontal side, so the seed is fully
+    // constrained except for translation (this test's subject is the pattern,
+    // not the seed's position). The corner sits on +x: vertex-on-x, like the
+    // source.
+    applyAddNgon(
+      doc as unknown as PartDoc, 'sk_hex',
+      HEX_CENTRE, [HEX_CENTRE[0] + 9, HEX_CENTRE[1]], 6, null, null, undefined, true,
+    )
+    ;(doc.features as Dict[]).push(
+      extrude('ex_hex', '$sk_hex', 2, 'cut'),
+      featurePattern('paa', 'ex_hex', patternFields),
+    )
+    return doc
+  }
+
+  it.runIf(costEnabled)('325 hex holes in a 1 mm plate solve as one batch and remove exactly 325 holes', () => {
+    const r = h.run(gridPlate(GRID_PATTERN))
+    expect(h.res(r, 'paa').status).toBe('ok')
+    expect(h.res(r, 'paa').body_ids).toEqual(['body_ex_plate'])
+    const expected = 500 * 600 * 1 - 325 * HEX_VOLUME
+    expect(Math.abs(volumeAt(r, 'paa', 'body_ex_plate') - expected))
+      .toBeLessThan(1e-6 * expected)
+    // The stall budget bounds the gap between progress marks, not the whole
+    // feature: the probe pass, the batch boolean, the clean and the single
+    // BRepCheck each re-arm it. The total is logged for the cost history and
+    // only sanity-capped here.
+    const solve = solveMs(r, 'paa')
+    console.log(`[pattern cost] 325 hex holes: solve ${solve.toFixed(0)} ms`)
+    expect(solve).toBeLessThan(2 * SOLVE_STALL_BUDGET_MS)
+  }, 300_000)
+
+  // The full source layout: the even columns (13 x 25) plus the odd ones
+  // (12 x 25, offset half a pitch) make 625 holes. It is one more batch of the
+  // same shape, but one whole-body BRepCheck of its result measures 92 s, so
+  // this stays a todo until that check is affordable (Part D's gate).
+  it.todo('625 hex holes (13 x 25 plus 12 x 25 staggered) stay one body at the analytic volume (blocked: a 92 s whole-body BRepCheck)')
 
   it('a 5 x 5 array of touching bodies fuses inside the budget', () => {
     // 10 mm cubes at pitch 10: every copy shares a face with its neighbour, the

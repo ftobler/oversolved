@@ -16,9 +16,25 @@ import { SharedHarness } from '../sharedHarness'
 import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { parseAncestry } from '../../query'
-import { DisposeScope } from '../disposeScope'
-import { makeBox, makeBoxAt, makeCylinderWithFaces } from '../primitives'
-import { booleanWithDiff, booleanWithHistory, cleanWithHistory, composeOriginThroughClean } from '../booleans'
+import { DisposeScope, drainList } from '../disposeScope'
+import { HandleTable } from '../handleTable'
+import { buildExtrudedProfile } from '../shapes'
+import { canonicalEdges } from '../bodyNames'
+import {
+  makeBox, makeBoxAt, makeCylinder, makeCylinderWithFaces,
+} from '../primitives'
+import {
+  booleanWithDiff,
+  booleanWithHistory,
+  booleanWithHistoryMany,
+  cleanWithHistory,
+  composeDiffThroughClean,
+  composeOriginThroughClean,
+  type FaceOrigin,
+} from '../booleans'
+import type { BrepDiff } from '../../types3d'
+import type { OccHistory, OccModule, OccShape, OccSubShape } from '../occTypes'
+import type { Vec3 } from '../primitives'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -170,5 +186,239 @@ describe.skipIf(!oc || !solveBytes)('a clean-merged face keeps the target name (
     // The bores merged: still one cylinder face, and it is the existing one.
     expect(afterBores, 'the bores merged into one face').toHaveLength(1)
     expect(afterBores[0]).toBe(bores[0])
+  })
+})
+
+// The compose pass used to answer "which cleaned sub-shapes are IsSame to this
+// query" with a `filter(IsSame)` over the whole cleaned pool: one embind
+// crossing per (query, pool occurrence), which is quadratic in a large boolean
+// (37.8 s of a 325-hole pattern solve). It now runs over an identity index that
+// keeps every occurrence. The oracle below is the old filter form, kept here so
+// the rewrite stays byte-identical in naming: the same handles, in the same
+// order, duplicates and all.
+describe.skipIf(!oc)('compose through clean matches the old IsSame filter (real OCC)', () => {
+  let occ: OccModule
+  if (oc) occ = oc
+
+  function explorePool(scope: DisposeScope, shape: OccShape, kind: unknown): OccSubShape[] {
+    const E = occ.TopAbs_ShapeEnum
+    const exp = scope.track(new occ.TopExp_Explorer_2(shape, kind as never, E.TopAbs_SHAPE))
+    const out: OccSubShape[] = []
+    for (; exp.More(); exp.Next()) out.push(scope.track(exp.Current()) as OccSubShape)
+    return out
+  }
+
+  function oracleComposeDiff(
+    scope: DisposeScope,
+    diff: BrepDiff,
+    cleanHistory: OccHistory,
+    cleaned: OccShape,
+  ): BrepDiff {
+    const E = occ.TopAbs_ShapeEnum
+    const cleanedFaces = explorePool(scope, cleaned, E.TopAbs_FACE)
+    const cleanedEdges = explorePool(scope, cleaned, E.TopAbs_EDGE)
+    const mapOne = (s: OccSubShape, pool: OccSubShape[]): OccSubShape[] => {
+      if (cleanHistory.IsRemoved(s)) return []
+      const mods = drainList(scope, cleanHistory.Modified(s)) as OccSubShape[]
+      if (mods.length === 0) {
+        const passthrough = pool.filter((p) => p.IsSame(s))
+        return passthrough.length ? passthrough : [s]
+      }
+      const out: OccSubShape[] = []
+      for (const m of mods) {
+        const matched = pool.filter((p) => p.IsSame(m))
+        out.push(...(matched.length ? matched : [m]))
+      }
+      return out
+    }
+    const mapList = (items: unknown[], pool: OccSubShape[]): OccSubShape[] => {
+      const result: OccSubShape[] = []
+      const seen = new Set<OccSubShape>()
+      for (const s of items as OccSubShape[]) {
+        for (const m of mapOne(s, pool)) {
+          if (!seen.has(m)) {
+            seen.add(m)
+            result.push(m)
+          }
+        }
+      }
+      return result
+    }
+    return {
+      new_faces: mapList(diff.new_faces, cleanedFaces),
+      inherited_faces: mapList(diff.inherited_faces, cleanedFaces),
+      new_edges: mapList(diff.new_edges, cleanedEdges),
+      inherited_edges: mapList(diff.inherited_edges, cleanedEdges),
+      modified_input_faces: [...diff.modified_input_faces],
+      deleted_input_faces: [...diff.deleted_input_faces],
+      modified_input_edges: [...diff.modified_input_edges],
+      deleted_input_edges: [...diff.deleted_input_edges],
+    }
+  }
+
+  function oracleComposeOrigin(
+    scope: DisposeScope,
+    origin: FaceOrigin[],
+    cleanHistory: OccHistory,
+    cleaned: OccShape,
+  ): FaceOrigin[] {
+    const cleanedFaces = explorePool(scope, cleaned, occ.TopAbs_ShapeEnum.TopAbs_FACE)
+    const candidates = new Map<OccSubShape, FaceOrigin[]>()
+    const push = (output: OccSubShape, o: FaceOrigin): void => {
+      const seen = candidates.get(output)
+      if (seen === undefined) candidates.set(output, [o])
+      else seen.push(o)
+    }
+    for (const o of origin) {
+      if (cleanHistory.IsRemoved(o.output)) continue
+      const mods = drainList(scope, cleanHistory.Modified(o.output)) as OccSubShape[]
+      if (mods.length === 0) {
+        const passthrough = cleanedFaces.filter((p) => p.IsSame(o.output))
+        for (const p of passthrough.length ? passthrough : [o.output]) push(p, o)
+      } else {
+        for (const m of mods) {
+          const matched = cleanedFaces.filter((p) => p.IsSame(m))
+          for (const p of matched.length ? matched : [m]) push(p, o)
+        }
+      }
+    }
+    const out: FaceOrigin[] = []
+    for (const [output, sources] of candidates) {
+      const chosen = sources.find((s) => !s.fromTool) ?? sources[0]
+      out.push({ output, source: chosen.source, fromTool: chosen.fromTool })
+    }
+    return out
+  }
+
+  function expectSameOccurrences(got: readonly OccSubShape[], want: readonly OccSubShape[], label: string): void {
+    expect(got, `${label} length`).toHaveLength(want.length)
+    for (let i = 0; i < want.length; i++) {
+      expect(got[i].IsSame(want[i]), `${label}[${i}] is the same occurrence`).toBe(true)
+    }
+  }
+
+  function expectSameCompose(
+    raw: { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] },
+    history: OccHistory,
+    cleaned: OccShape,
+    onComposed?: (diff: BrepDiff, cleaned: OccShape, scope: DisposeScope) => void,
+  ): void {
+    const scope = new DisposeScope()
+    try {
+      const wantDiff = oracleComposeDiff(scope, raw.diff, history, cleaned)
+      const gotDiff = composeDiffThroughClean(occ, scope, raw.diff, history, cleaned)
+      for (const key of ['new_faces', 'inherited_faces', 'new_edges', 'inherited_edges'] as const) {
+        expectSameOccurrences(gotDiff[key] as OccSubShape[], wantDiff[key] as OccSubShape[], key)
+      }
+      // The input-side lists are carried as they are.
+      for (const key of ['modified_input_faces', 'deleted_input_faces', 'modified_input_edges', 'deleted_input_edges'] as const) {
+        expectSameOccurrences(gotDiff[key] as OccSubShape[], wantDiff[key] as OccSubShape[], key)
+      }
+      const wantOrigin = oracleComposeOrigin(scope, raw.faceOrigin, history, cleaned)
+      const gotOrigin = composeOriginThroughClean(occ, scope, raw.faceOrigin, history, cleaned)
+      expect(gotOrigin, 'faceOrigin length').toHaveLength(wantOrigin.length)
+      for (let i = 0; i < wantOrigin.length; i++) {
+        expect(gotOrigin[i].output.IsSame(wantOrigin[i].output), `faceOrigin[${i}] output`).toBe(true)
+        expect(gotOrigin[i].source.IsSame(wantOrigin[i].source), `faceOrigin[${i}] source`).toBe(true)
+        expect(gotOrigin[i].fromTool, `faceOrigin[${i}] side`).toBe(wantOrigin[i].fromTool)
+      }
+      // The returned handles live in this scope, so a case that reads them must
+      // do it here, before it is disposed.
+      onComposed?.(gotDiff, cleaned, scope)
+    } finally {
+      scope.dispose()
+    }
+  }
+
+  // Raw boolean plus clean, the two inputs of the compose pass.
+  function rawAndClean(
+    scope: DisposeScope,
+    target: OccShape,
+    tools: OccShape[],
+    op: 'cut' | 'fuse',
+  ): { raw: { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] }; history: OccHistory; cleaned: OccShape } {
+    const raw = booleanWithHistoryMany(occ, scope, target, tools, op)
+    scope.track(raw.shape)
+    const clean = cleanWithHistory(occ, scope, raw.shape)
+    scope.track(clean.shape)
+    return { raw, history: clean.history, cleaned: clean.shape }
+  }
+
+  it('a box fused with a box sharing a face', () => {
+    const scope = new DisposeScope()
+    try {
+      const left = scope.track(makeBox(occ, scope, 10, 10, 10))
+      const right = scope.track(makeBoxAt(occ, scope, [10, 0, 0], 10, 10, 10))
+      const { raw, history, cleaned } = rawAndClean(scope, left, [right], 'fuse')
+      expectSameCompose(raw, history, cleaned)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a plate cut by a 3 x 3 grid of hexes keeps every pool occurrence, duplicates included', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const plate = scope.track(makeBox(occ, scope, 100, 100, 1))
+      const tools: OccShape[] = []
+      for (let gy = 0; gy < 3; gy++) {
+        for (let gx = 0; gx < 3; gx++) {
+          const cx = 20 + gx * 30
+          const cy = 20 + gy * 30
+          // Vertex-on-x hexagon, circumradius 9, extruded through the plate.
+          const loop: Vec3[] = Array.from({ length: 6 }, (_, i) => {
+            const a = (Math.PI / 3) * i
+            return [cx + 9 * Math.cos(a), cy + 9 * Math.sin(a), -0.5] as Vec3
+          })
+          tools.push(table.get<OccShape>(buildExtrudedProfile(occ, table, {
+            loop, direction: [0, 0, 1], distance: 2,
+          })))
+        }
+      }
+      const { raw, history, cleaned } = rawAndClean(scope, plate, tools, 'cut')
+      expectSameCompose(raw, history, cleaned, (diff, cleanedShape, composeScope) => {
+        // The old comment's contract, pinned: a pool that lists an edge twice
+        // (every edge shared by two faces) contributes both occurrences to the
+        // composed diff rather than collapsing them by IsSame.
+        const E = occ.TopAbs_ShapeEnum
+        const pool = explorePool(composeScope, cleanedShape, E.TopAbs_EDGE)
+        const doubled = pool.find((e, i) => pool.some((p, j) => j > i && p.IsSame(e)))
+        expect(doubled, 'a cleaned edge the explorer lists twice').toBeDefined()
+        const composed = [...diff.new_edges, ...diff.inherited_edges] as OccSubShape[]
+        expect(composed.filter((e) => e.IsSame(doubled!))).toHaveLength(2)
+      })
+    } finally {
+      table.disposeAll()
+      scope.dispose()
+    }
+  })
+
+  it('a filleted box cut by a cylinder', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = scope.track(makeBox(occ, scope, 10, 10, 10))
+      const mk = scope.track(new occ.BRepFilletAPI_MakeFillet(box, occ.ChFi3d_FilletShape.ChFi3d_Rational))
+      const topEdge = canonicalEdges(occ, scope, box).find((e) => {
+        const exp = scope.track(new occ.TopExp_Explorer_2(
+          e as OccShape, occ.TopAbs_ShapeEnum.TopAbs_VERTEX, occ.TopAbs_ShapeEnum.TopAbs_SHAPE,
+        ))
+        const zs: number[] = []
+        for (; exp.More(); exp.Next()) {
+          const v = scope.track(occ.TopoDS.Vertex_1(scope.track(exp.Current())))
+          zs.push(scope.track(occ.BRep_Tool.Pnt(v)).Z())
+        }
+        return zs.length === 2 && zs.every((z) => Math.abs(z - 10) < 1e-6)
+      })
+      expect(topEdge, 'a top edge to fillet').toBeDefined()
+      mk.Add_2(2, topEdge as OccShape)
+      mk.Build()
+      const filleted = scope.track(mk.Shape())
+      const bore = scope.track(makeCylinder(occ, scope, [5, 5, -1], [0, 0, 1], 2, 12))
+      const { raw, history, cleaned } = rawAndClean(scope, filleted, [bore], 'cut')
+      expectSameCompose(raw, history, cleaned)
+    } finally {
+      scope.dispose()
+    }
   })
 })

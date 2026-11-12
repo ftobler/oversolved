@@ -25,6 +25,7 @@ import { foldCavitySolids } from './cavities'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { swallowUnlessTrap } from '../errors'
 import { OCC_CONFUSION } from '../solverConstants'
+import { markFeatureProgress } from '../featureProgress'
 
 // Re-exported for the callers that read a body's volume.
 export { volumeOf }
@@ -469,13 +470,34 @@ export function cleanWithHistory(
 }
 
 /**
+ * Every occurrence in `pool` keyed by its topological identity, in pool order.
+ *
+ * The mapOne fallbacks below used to answer "which cleaned sub-shapes are IsSame
+ * to this query" with `pool.filter(IsSame)`, which is one embind crossing per
+ * (query, pool occurrence): at 325 pattern holes the edge pool is about 6000
+ * occurrences and the new-edge list about 4000, so a single boolean paid on the
+ * order of 10^7 crossings (37.8 s of a 111.9 s solve). The index keeps every
+ * occurrence as its own value, so `get` returns exactly what `filter` did,
+ * duplicates and order included.
+ */
+function indexBySubShapeIdentity(pool: readonly OccSubShape[]): SubShapeMultiIndex<OccSubShape> {
+  const index = new SubShapeMultiIndex<OccSubShape>()
+  for (const p of pool) index.add(p, p)
+  return index
+}
+
+/**
  * Map a BrepDiff's sub-shape lists from the raw boolean result onto the cleaned
  * shape (mirrors `ocp_compose_diff_through_clean`). Faces/edges removed by the
  * unify step drop out; pass-through shapes are matched by IsSame against the
- * cleaned pool. The `*_input_*` lists are carried as-is (they reference inputs,
- * untouched by clean). Dedupes by IsSame.
+ * cleaned pool, which is identity-indexed with every occurrence kept. The
+ * `*_input_*` lists are carried as-is (they reference inputs, untouched by
+ * clean). Dedupes by wrapper identity.
+ *
+ * Exported for the compose-equivalence test, which holds a copy of the old
+ * filter form as its oracle.
  */
-function composeDiffThroughClean(
+export function composeDiffThroughClean(
   oc: OccModule,
   scope: DisposeScope,
   diff: BrepDiff,
@@ -485,17 +507,19 @@ function composeDiffThroughClean(
   const E = oc.TopAbs_ShapeEnum
   const cleanedFaces = explore(oc, scope, cleanedShape, E.TopAbs_FACE)
   const cleanedEdges = explore(oc, scope, cleanedShape, E.TopAbs_EDGE)
+  const faceIndex = indexBySubShapeIdentity(cleanedFaces)
+  const edgeIndex = indexBySubShapeIdentity(cleanedEdges)
 
-  const mapOne = (s: OccSubShape, pool: OccSubShape[]): OccSubShape[] => {
+  const mapOne = (s: OccSubShape, pool: SubShapeMultiIndex<OccSubShape>): OccSubShape[] => {
     if (cleanHistory.IsRemoved(s)) return []
     const mods = drainList(scope, cleanHistory.Modified(s)) as OccSubShape[]
     if (mods.length === 0) {
-      const passthrough = pool.filter((p) => p.IsSame(s))
-      return passthrough.length ? passthrough : [s]
+      const passthrough = pool.get(s)
+      return passthrough.length ? [...passthrough] : [s]
     }
     const out: OccSubShape[] = []
     for (const m of mods) {
-      const matched = pool.filter((p) => p.IsSame(m))
+      const matched = pool.get(m)
       out.push(...(matched.length ? matched : [m]))
     }
     return out
@@ -505,7 +529,7 @@ function composeDiffThroughClean(
   // IsSame): each TopExp occurrence is a distinct handle, so a box edge present
   // twice in the cleaned pool counts twice -- the same way the Python pipeline
   // counts it. Collapsing by IsSame here would halve every edge count.
-  const mapList = (items: unknown[], pool: OccSubShape[]): OccSubShape[] => {
+  const mapList = (items: unknown[], pool: SubShapeMultiIndex<OccSubShape>): OccSubShape[] => {
     const result: OccSubShape[] = []
     const seen = new Set<OccSubShape>()
     for (const s of items as OccSubShape[]) {
@@ -520,10 +544,10 @@ function composeDiffThroughClean(
   }
 
   return {
-    new_faces: mapList(diff.new_faces, cleanedFaces),
-    inherited_faces: mapList(diff.inherited_faces, cleanedFaces),
-    new_edges: mapList(diff.new_edges, cleanedEdges),
-    inherited_edges: mapList(diff.inherited_edges, cleanedEdges),
+    new_faces: mapList(diff.new_faces, faceIndex),
+    inherited_faces: mapList(diff.inherited_faces, faceIndex),
+    new_edges: mapList(diff.new_edges, edgeIndex),
+    inherited_edges: mapList(diff.inherited_edges, edgeIndex),
     modified_input_faces: [...diff.modified_input_faces],
     deleted_input_faces: [...diff.deleted_input_faces],
     modified_input_edges: [...diff.modified_input_edges],
@@ -573,6 +597,7 @@ export function composeOriginThroughClean(
   const cleanedFaces = explore(oc, scope, cleanedShape, E.TopAbs_FACE)
   // Cleaned outputs in first-seen order, each with every source that reached it.
   const candidates = new Map<OccSubShape, FaceOrigin[]>()
+  const faceIndex = indexBySubShapeIdentity(cleanedFaces)
   const push = (output: OccSubShape, o: FaceOrigin): void => {
     const seen = candidates.get(output)
     if (seen === undefined) candidates.set(output, [o])
@@ -582,11 +607,11 @@ export function composeOriginThroughClean(
     if (cleanHistory.IsRemoved(o.output)) continue
     const mods = drainList(scope, cleanHistory.Modified(o.output)) as OccSubShape[]
     if (mods.length === 0) {
-      const passthrough = cleanedFaces.filter((p) => p.IsSame(o.output))
+      const passthrough = faceIndex.get(o.output)
       for (const p of passthrough.length ? passthrough : [o.output]) push(p, o)
     } else {
       for (const m of mods) {
-        const matched = cleanedFaces.filter((p) => p.IsSame(m))
+        const matched = faceIndex.get(m)
         for (const p of matched.length ? matched : [m]) push(p, o)
       }
     }
@@ -634,6 +659,19 @@ export function shapeIsValid(oc: OccModule, scope: DisposeScope, shape: OccShape
 }
 
 /**
+ * One full boolean pipeline's result. `validated` is the handle a passing
+ * whole-shape BRepCheck named, or null when no check ran on this shape (a
+ * rejected or throwing clean falls back to the raw rebuild, and a cavity fold
+ * replaces the checked shape, both of which leave nothing to skip).
+ */
+interface BooleanAttempt {
+  shape: OccShape
+  diff: BrepDiff
+  faceOrigin: FaceOrigin[]
+  validated: OccShape | null
+}
+
+/**
  * Adopt a UnifySameDomain result only when it validates and preserved the
  * volume, the same guard canonicalSurfaces.ts runs before adopting its heal.
  * The robustness fuzz found a fuse whose tool cap welded into a coincident
@@ -642,8 +680,17 @@ export function shapeIsValid(oc: OccModule, scope: DisposeScope, shape: OccShape
  * its top face, after a cut and a blind hole); adopting it shipped a
  * BRepCheck-invalid body under an ok status. The pre-clean result is a sound
  * solid, so a rejected clean falls back exactly like a throwing one.
+ *
+ * The verdict carries the handle it validated so `booleanResultProblem` does not
+ * pay the same whole-shape BRepCheck again: on a 325-hole plate that analyzer
+ * call is the single most expensive phase of the solve (about 21 s).
  */
-function cleanShapeIsSound(oc: OccModule, scope: DisposeScope, before: OccShape, after: OccShape): boolean {
+function cleanShapeIsSound(
+  oc: OccModule,
+  scope: DisposeScope,
+  before: OccShape,
+  after: OccShape,
+): { sound: boolean; validated: OccShape | null } {
   try {
     // The same solid before and after a topology-only step: the default rule's
     // correlated read error cancels in the difference, and using the adaptive
@@ -651,15 +698,19 @@ function cleanShapeIsSound(oc: OccModule, scope: DisposeScope, before: OccShape,
     // perturbed rebuild (fuzz seed 235). See volumeOfDefault.
     const v0 = volumeOfDefault(oc, scope, before)
     const v1 = volumeOfDefault(oc, scope, after)
+    const volumeKept = Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0))
     // BRepCheck flags an open shell invalid for its very openness, and an open
     // shell is a supported body (L5), so only a closed input's result has to
     // validate; a shell is judged by the preserved volume alone.
-    if (isClosedByVolume(v0) && !shapeIsValid(oc, scope, after)) return false
-    return Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0))
+    if (isClosedByVolume(v0)) {
+      if (!shapeIsValid(oc, scope, after)) return { sound: false, validated: null }
+      return { sound: volumeKept, validated: volumeKept ? after : null }
+    }
+    return { sound: volumeKept, validated: null }
   } catch (e) {
     swallowUnlessTrap(e)
     // A guard that cannot run must not adopt the shape it cannot check.
-    return false
+    return { sound: false, validated: null }
   }
 }
 
@@ -681,6 +732,11 @@ export class BooleanSoundnessError extends Error {}
  * orientation, and the op's own material law (a union cannot be smaller than
  * either operand, a cut cannot grow, an intersection cannot exceed the smaller
  * one). Returns the problem description, or null when the result is sound.
+ *
+ * `alreadyValid` says the caller's adoption guard already ran the same analyzer
+ * on this very handle, so the validity check is skipped. The volume bounds still
+ * run every time: they are cheap next to BRepCheck and they are the guard the
+ * fuzz found last.
  */
 function booleanResultProblem(
   oc: OccModule,
@@ -689,6 +745,7 @@ function booleanResultProblem(
   tools: readonly OccShape[],
   op: BooleanOp,
   result: OccShape,
+  alreadyValid = false,
 ): string | null {
   try {
     // Read the default rule first and pay the adaptive re-read only when the
@@ -740,7 +797,7 @@ function booleanResultProblem(
     }
     // As in cleanShapeIsSound: a closed target's result has to validate, an
     // open-shell target (L5) has no closedness contract to enforce.
-    if (isClosedByVolume(vt) && !shapeIsValid(oc, scope, result)) {
+    if (isClosedByVolume(vt) && !alreadyValid && !shapeIsValid(oc, scope, result)) {
       return 'the result is not a valid solid (BRepCheck_Analyzer)'
     }
     const tolFinal = tolFor(vt, vsum)
@@ -767,16 +824,17 @@ function booleanResultProblem(
 
 /** `attempt` with any void OCC returned as a separate inside-out solid folded
  *  back into its enclosing solid (cavities.ts); the replaced shape joins the
- *  scope, since nobody else owns it. */
+ *  scope, since nobody else owns it. The fold rebuilds the solid, so whatever
+ *  the adoption guard validated no longer describes this shape. */
 function withFoldedCavities(
   oc: OccModule,
   scope: DisposeScope,
-  attempt: { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] },
-): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
+  attempt: BooleanAttempt,
+): BooleanAttempt {
   const folded = foldCavitySolids(oc, scope, attempt.shape)
   if (folded === attempt.shape) return attempt
   if (!scope.isTracked(attempt.shape)) scope.track(attempt.shape)
-  return { ...attempt, shape: folded }
+  return { ...attempt, shape: folded, validated: null }
 }
 
 /** One full boolean pipeline: raw boolean, cylinder canonicalization, clean. */
@@ -787,17 +845,23 @@ function composeBooleanAttempt(
   tools: readonly OccShape[],
   op: BooleanOp,
   unifyFaces: boolean,
-): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
+): BooleanAttempt {
   const pre = rawBooleanWithDiff(oc, scope, target, tools, op)
+  // The raw boolean is the longest kernel call of the pipeline; a heartbeat
+  // before the clean and the guard keeps its duration out of the next gap the
+  // host's stall budget measures.
+  markFeatureProgress()
   let rejected: OccShape | null = null
   try {
     const r = cleanWithHistory(oc, scope, pre.shape, unifyFaces)
-    if (cleanShapeIsSound(oc, scope, pre.shape, r.shape)) {
-      return {
-        shape: r.shape,
-        diff: composeDiffThroughClean(oc, scope, pre.diff, r.history, r.shape),
-        faceOrigin: composeOriginThroughClean(oc, scope, pre.faceOrigin, r.history, r.shape),
-      }
+    markFeatureProgress()
+    const verdict = cleanShapeIsSound(oc, scope, pre.shape, r.shape)
+    markFeatureProgress()
+    if (verdict.sound) {
+      const diff = composeDiffThroughClean(oc, scope, pre.diff, r.history, r.shape)
+      const faceOrigin = composeOriginThroughClean(oc, scope, pre.faceOrigin, r.history, r.shape)
+      markFeatureProgress()
+      return { shape: r.shape, diff, faceOrigin, validated: verdict.validated }
     }
     rejected = r.shape
   } catch (e) {
@@ -814,7 +878,46 @@ function composeBooleanAttempt(
   // The fallback cannot reuse `pre.shape`: the merge works in place, so a
   // rejected or half-applied clean may have left it -- and the pre-clean result
   // is only safely readable from the untouched operands. Rebuild it.
-  return rawBooleanWithDiff(oc, scope, target, tools, op)
+  return { ...rawBooleanWithDiff(oc, scope, target, tools, op), validated: null }
+}
+
+/**
+ * Which of `tools` contributed at least one output face, as indexes into
+ * `tools`, read from the boolean's own face history.
+ *
+ * A cut tool that removes nothing contributes no face of its own to the result:
+ * every output face at a position it would have cut comes from the target or
+ * from another tool. That is the same question the per-copy Common probe
+ * answers ("does this copy hit any material?"), without a boolean per copy. A
+ * tool that only touches a target face without removing material also answers
+ * false here, and so does the probe (shapesIntersect's docblock): touching is
+ * not a hit.
+ *
+ * One case the probe and this classification can disagree on: a cut whose new
+ * surface is entirely absorbed by an existing coplanar or coaxial face keeps
+ * that face's TARGET name (`composeOriginThroughClean` prefers the target
+ * source), so no tool face is reported. Such a copy still removed material and
+ * would be named a miss here; the probe reported a hit. It needs a cut that
+ * removes material without leaving a surface of its own.
+ */
+export function toolsThatShaped(
+  oc: OccModule,
+  scope: DisposeScope,
+  tools: readonly OccShape[],
+  faceOrigin: readonly FaceOrigin[],
+): Set<number> {
+  const E = oc.TopAbs_ShapeEnum
+  const toolOfFace = new SubShapeIndexMap()
+  tools.forEach((tool, index) => {
+    for (const face of explore(oc, scope, tool, E.TopAbs_FACE)) toolOfFace.set(face, index)
+  })
+  const shaped = new Set<number>()
+  for (const origin of faceOrigin) {
+    if (!origin.fromTool) continue
+    const index = toolOfFace.get(origin.source)
+    if (index >= 0) shaped.add(index)
+  }
+  return shaped
 }
 
 /**
@@ -860,8 +963,15 @@ export function booleanWithDiffMany(
   // the edge merge (always safe) still runs, at the cost of an extra seam face.
   const unifyFaces = opts.unifyFaces ?? true
   const attempt = withFoldedCavities(oc, scope, composeBooleanAttempt(oc, scope, target, tools, op, unifyFaces))
-  const problem = booleanResultProblem(oc, scope, target, tools, op, attempt.shape)
-  if (problem === null) return attempt
+  markFeatureProgress()
+  // The adoption guard ran the analyzer on this exact handle, so the soundness
+  // check must not run it a second time. A folded, rejected or raw-fallback
+  // attempt carries no validated handle and pays the check itself.
+  const problem = booleanResultProblem(
+    oc, scope, target, tools, op, attempt.shape, attempt.validated === attempt.shape,
+  )
+  markFeatureProgress()
+  if (problem === null) return { shape: attempt.shape, diff: attempt.diff, faceOrigin: attempt.faceOrigin }
   // A replaced attempt has no owner, so it joins the scope: the fallback result
   // composeBooleanAttempt returns may already be tracked, hence the check.
   if (!scope.isTracked(attempt.shape)) scope.track(attempt.shape)
@@ -874,8 +984,12 @@ export function booleanWithDiffMany(
   // here, after a result already failed the check.
   for (const tool of tools) shapesIntersect(oc, target, tool)
   const retry = withFoldedCavities(oc, scope, composeBooleanAttempt(oc, scope, target, tools, op, unifyFaces))
-  const retryProblem = booleanResultProblem(oc, scope, target, tools, op, retry.shape)
-  if (retryProblem === null) return retry
+  markFeatureProgress()
+  const retryProblem = booleanResultProblem(
+    oc, scope, target, tools, op, retry.shape, retry.validated === retry.shape,
+  )
+  markFeatureProgress()
+  if (retryProblem === null) return { shape: retry.shape, diff: retry.diff, faceOrigin: retry.faceOrigin }
   if (!scope.isTracked(retry.shape)) scope.track(retry.shape)
   throw new BooleanSoundnessError(
     `boolean ${op}: the kernel returned an unsound result (${retryProblem}). ` +
