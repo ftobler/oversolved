@@ -271,8 +271,9 @@ export function buildPatternTransforms(
     const invert = (sub.invert_axis as boolean) ?? false
     const axisDirection = invert ? resolvedDirection.map((c) => (c === 0 ? 0 : -c)) : resolvedDirection
     const trsfs: OccTrsf[] = []
-    // Source occupies the seed (0-degree) slot; sweep from step. A full 360
-    // wrap is already excluded because the last slot is count - 1, below count.
+    // Source occupies the seed (0-degree) slot; sweep from step. With the
+    // default step (360/count) the last slot is count - 1 and the sweep never
+    // wraps, but an explicit step_angle can land a copy back on the seed.
     for (let i = 1; i < count; i++) {
       trsfs.push(makeRotationTrsf(oc, scope, origin, axisDirection, ((step * i) * Math.PI) / 180))
     }
@@ -449,10 +450,6 @@ function solveFeaturePattern(
 
   // The source solved before this feature, so its own operation already sits in
   // the body; only the remaining instances are added here.
-  if (transforms.length === 0) {
-    return { status: 'ok', body_id: targetId, body_ids: [targetId], operation }
-  }
-
   const scratch: Record<string, Body> = {}
   // A through_all cut sizes its tool from the bodies its copies will cut, which
   // is this solve's real store rather than the empty scratch one. The forced
