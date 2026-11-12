@@ -158,8 +158,9 @@ const SWEEP_SKETCH_NOTE =
   'its holes). A single-profile sweep carries the profile from the path start ' +
   'as drawn, so a profile beside the path, or off its plane, keeps its offset in the moving frame; it ' +
   'must lie within its own size of a path crossing, or of the path start when the path never crosses ' +
-  'its plane, and the path start must leave the plane at 5 degrees or more. A profile lying along the ' +
-  'path is refused, not built.'
+  'its plane, and the path start must leave the plane at 5 degrees or more. A crossing inside the ' +
+  'profile\'s hole is on the profile too, not a miss: a pipe\'s centreline runs through its bore. A ' +
+  'profile lying along the path is refused, not built.'
 
 const sketchQuery = () => query('A profile ref. ' + PROFILE_REF_NOTE + ' ' + PROFILE_LOOPS_NOTE)
 const sweepSketchQuery = () => query('A profile ref. ' + PROFILE_REF_NOTE + ' ' + SWEEP_SKETCH_NOTE)

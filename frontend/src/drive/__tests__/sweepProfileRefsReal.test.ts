@@ -115,6 +115,35 @@ describe.skipIf(!ready)('sweep profile refs (real OCC + Rust solver)', () => {
     expect(Math.abs((row(run, 'sw').bodyVolume ?? 0) - tube)).toBeLessThan(0.5)
   }, 120_000)
 
+  it('sweeps a centred tube around a bend in an inch document', async () => {
+    // The practice-run pipe: an inch document, an annulus centred on the path
+    // start, and a line/tangent-arc/line path whose only crossing is the bore.
+    // The crossing is on the profile, so the tube builds with no problem row.
+    const run = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [
+        m({ type: 'set_length_unit', unit: 'inch' }),
+        m({ type: 'add_sketch', featureId: 'prof', plane: '@builtin_plane_top' }),
+        m({ type: 'add_entity', featureId: 'prof', kind: 'circle', params: [0, 0, 2], entityId: 'outer' }),
+        m({ type: 'add_entity', featureId: 'prof', kind: 'circle', params: [0, 0, 1.5], entityId: 'inner' }),
+        m({ type: 'add_constraint', featureId: 'prof', kind: 'fixed', targets: ['entity:prof:outer'] }),
+        m({ type: 'add_constraint', featureId: 'prof', kind: 'fixed', targets: ['entity:prof:inner'] }),
+        m({ type: 'add_sketch', featureId: 'path', plane: '@builtin_plane_front' }),
+        m({ type: 'add_entity', featureId: 'path', kind: 'line', params: [0, 0, 0, 3], entityId: 'l0' }),
+        m({ type: 'add_entity', featureId: 'path', kind: 'arc', params: [3, 3, 3, 90, 180], entityId: 'a0' }),
+        m({ type: 'add_entity', featureId: 'path', kind: 'line', params: [3, 6, 6, 6], entityId: 'l1' }),
+        m({ type: 'add_constraint', featureId: 'path', kind: 'fixed', targets: ['entity:path:l0'] }),
+        m({ type: 'add_constraint', featureId: 'path', kind: 'fixed', targets: ['entity:path:a0'] }),
+        m({ type: 'add_constraint', featureId: 'path', kind: 'fixed', targets: ['entity:path:l1'] }),
+        m({ type: 'add_sweep', featureId: 'sw', sketchQuery: '$prof', pathQuery: '$path', operation: 'new' }),
+      ],
+    })
+    expect(run.features).toEqual([])
+    const length = 3 + 1.5 * Math.PI + 3
+    const tube = Math.PI * (4 - 2.25) * length
+    expect(Math.abs((row(run, 'sw').bodyVolume ?? 0) - tube)).toBeLessThan(tube * 1e-4)
+  }, 120_000)
+
   it('passes a lone line at the boundary and lets the sweep leaf refuse it', async () => {
     const run = await runHeadless({
       doc: emptyDriveDoc(),

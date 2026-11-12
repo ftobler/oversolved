@@ -166,11 +166,29 @@ describe.skipIf(!oc)('sweep of a profile with holes (real OCC)', () => {
     expect(Object.keys(built.store)).toEqual(['body_sw1'])
   })
 
+  it('sweeps a centred annulus whose path starts in the bore', () => {
+    // The pipe set-up: the path starts at the profile centre and leaves along
+    // the plane normal, so its only crossing lies in the bore. The crossing is
+    // on the profile, so the body is the tube, not a displaced solid or a
+    // refusal.
+    const built = sweepProfile(
+      [circleLoop('outer', 2), circleLoop('inner', 1.5)],
+      straightPath(10, 0),
+    )
+    expect(built.error).toBeUndefined()
+    expect(built.status).toBe('ok')
+    const expected = Math.PI * (4 - 2.25) * 10
+    expect(Math.abs(built.volume! - expected)).toBeLessThan(expected * 1e-6)
+    expect(built.solids).toBe(1)
+    expect(built.faces).toBe(4)
+  })
+
   it('carries the hole around a bent path, mitres included', () => {
-    // The annulus is offset along the bend axis so the path crosses its wall
-    // (a centred annulus would put the crossing in the bore, which the placement
-    // rule refuses until the bore-crossing plan lands). Pappus: a rigid transport
-    // along the path gives area x path length, arc included.
+    // The annulus is offset along the bend axis so the path misses the bore at
+    // the station; a centred annulus travels the bend as a tube too, but this
+    // case keeps the wall crossing the ordinary way.
+    // Pappus: a rigid transport along the path gives area x path length, arc
+    // included.
     const built = sweepProfile(
       [circleLoop('outer', 2, 0, 1.75), circleLoop('inner', 1.5, 0, 1.75)],
       bentPath(3),

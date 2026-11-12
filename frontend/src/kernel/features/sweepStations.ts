@@ -382,15 +382,12 @@ export function findStation(
 
 /**
  * Why the one-profile form refused. Separate from `StationMiss` because the
- * band rule reports a gap to the loop instead of a centroid distance, and the
+ * one-profile form reports a gap to the loop instead of a station miss, and the
  * multisection text must not change.
  */
 export type ProfileMiss = {
   ok: false
   reason: 'not-on-path' | 'shallow-angle'
-  // A crossing landed inside a hole: its distance from the loop centroid, the
-  // refusal this placement has always given.
-  distance?: number
   // The crossing nearest the loop is this far outside its boundary.
   crossingGap?: number
   // The path never crosses the plane; its start is this far from the loop.
@@ -404,14 +401,15 @@ export type ProfilePlacement = { ok: true } | ProfileMiss
  * from the spine start, so a profile beside the path, or off its plane, is a
  * deliberate placement (a thread) and builds as drawn. The band is the outer
  * loop's own size: a crossing, or the start when the path never crosses, must
- * lie within it. A crossing inside a hole and a shallow crossing keep their own
- * refusals.
+ * lie within it. `_holes` is deliberately not read: MakePipeShell carries the
+ * holes, so a pipe's centreline running through its bore is on the profile. A
+ * shallow crossing keeps its own refusal.
  */
 export function profilePlacement(
   sampler: SpineSampler,
   plane: PlaneLike,
   outer: LoopEdge[],
-  holes: LoopEdge[][],
+  _holes: LoopEdge[][],
 ): ProfilePlacement {
   const { frame, crossings } = scanCrossings(sampler, plane, 0)
   const extent = loopExtent(outer)
@@ -429,14 +427,9 @@ export function profilePlacement(
   const best = nearestCrossing(crossings, outer, plane, frame.o)
   const local = worldToLocal(plane, frame.o, best.point)
   if (pointOnOrInLoop(outer, local)) {
-    if (holes.some((hole) => pointOnOrInLoop(hole, local))) {
-      const centroid = loopCentroid(outer)
-      return {
-        ok: false,
-        reason: 'not-on-path',
-        distance: Math.hypot(local[0] - centroid[0], local[1] - centroid[1]),
-      }
-    }
+    // A crossing in a hole is the pipe placement, not a miss: the profile is
+    // hollow there and MakePipeShell carries the bore along. The hole list is
+    // deliberately not tested here; only the slope still matters.
     if (crossingSlope(sampler, best, frame) < MIN_CROSSING_SIN_ONCE) {
       return { ok: false, reason: 'shallow-angle' }
     }
@@ -489,30 +482,25 @@ export function describeSectionMiss(outcome: StationMiss, ref: SectionRef): stri
   return `sweep: ${where} is not on the path: the path does not pass through it`
 }
 
-/** The one-profile form's refusal text, in the same words as its catalog note. */
+/** The one-profile form's refusal text, in the same words as its catalog note.
+ *  Gaps print as bare numbers: the kernel has no unit context, and the number
+ *  is in the document's length unit either way. */
 export function describeProfileMiss(outcome: ProfileMiss, pathRefs: string[]): string {
   if (outcome.reason === 'shallow-angle') {
     return 'sweep: the profile meets the path at a shallow angle; draw the profile square to the path'
   }
   const path = pathRefs.map((ref) => `'${ref}'`).join(', ')
-  const mm = (v: number): string => `${Number(v.toFixed(2))} mm`
+  const gap = (v: number): string => String(Number(v.toFixed(2)))
   if (outcome.startGap !== undefined) {
     return (
       'sweep: the profile is too far from the path: the path never crosses its plane and starts ' +
-      `${mm(outcome.startGap)} from it (the band is the profile's own size) (path ${path})`
+      `${gap(outcome.startGap)} from it (the band is the profile's own size) (path ${path})`
     )
   }
-  if (outcome.crossingGap !== undefined) {
-    return (
-      `sweep: the profile is too far from the path: the nearest crossing is ${mm(outcome.crossingGap)} ` +
-      `outside it (the band is the profile's own size) (path ${path})`
-    )
-  }
-  // The crossing landed inside a hole: the profile is not filled there, so this
-  // keeps the refusal the one-profile placement has always given.
+  // The only not-on-path miss left is a crossing beside the loop, past the band.
   return (
-    'sweep: the path does not pass through the profile: the nearest crossing is ' +
-    `${mm(outcome.distance ?? 0)} from its centroid (path ${path})`
+    `sweep: the profile is too far from the path: the nearest crossing is ${gap(outcome.crossingGap ?? 0)} ` +
+    `outside it (the band is the profile's own size) (path ${path})`
   )
 }
 

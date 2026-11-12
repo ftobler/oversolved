@@ -464,7 +464,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
       scope.dispose()
     }
     expect(message).toBe(
-      "sweep: the profile is too far from the path: the nearest crossing is 4 mm outside it " +
+      "sweep: the profile is too far from the path: the nearest crossing is 4 outside it " +
       "(the band is the profile's own size) (path '$path')",
     )
   })
@@ -537,7 +537,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     expect(onStart.body).toBeDefined()
     const moved = solve(6)
     expect(moved.error).toBe(
-      "sweep: the profile is too far from the path: the nearest crossing is 5 mm outside it " +
+      "sweep: the profile is too far from the path: the nearest crossing is 5 outside it " +
       "(the band is the profile's own size) (path '$path')",
     )
   })
@@ -710,7 +710,7 @@ describe.skipIf(!oc)('sweep profile off its plane, carried from the path start (
     const far = seedFitPathRepo(frontPlaneAt(0), [[0, -10], [1, -11], [2, -13]])
     const refused = solveSeeded(far)
     expect(refused.error).toBe(
-      "sweep: the profile is too far from the path: the path never crosses its plane and starts 10 mm from it " +
+      "sweep: the profile is too far from the path: the path never crosses its plane and starts 10 from it " +
       "(the band is the profile's own size) (path '$path')",
     )
   })

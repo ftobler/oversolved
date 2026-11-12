@@ -892,8 +892,9 @@ banner on stdout, so a client config must use the direct node invocation.
   the path, or off its plane, keeps its offset in the moving frame; it must lie
   within its own size of a path crossing, or of the path start when the path
   never crosses its plane, and the path start must leave the plane at 5 degrees
-  or more. A profile lying along the path is refused, not built. A profile or
-  path ref is a whole sketch
+  or more. A crossing inside the profile's hole is on the profile too, not a
+  miss: a pipe's centreline runs through its bore. A profile lying along the
+  path is refused, not built. A profile or path ref is a whole sketch
   (`$<sketchId>` or `@<sketchId>`), one curve (`entity:<sketchId>:<entityId>`),
   or a `?` area query a viewport click stored (`select` does not produce sketch
   areas; a headless client names a whole sketch or one curve, closed for a
