@@ -757,13 +757,18 @@ export function applyAddPattern(
     mode: 'linear',
     operation: 'add',
   }
+  // The add validates through the catalog, but a replayed journal payload can
+  // still carry a retired key. Only the fields the setter shares may land.
+  const accepted = Object.fromEntries(
+    Object.entries(inline).filter(([field]) => PATTERN_FIELDS.includes(field)),
+  ) as Partial<PatternFeatureDef>
   // The inline counts are judged before the merge rounds them.
-  const problem = inlineCountProblem(inline)
+  const problem = inlineCountProblem(accepted)
   if (problem !== null) {
     warn(`applyAddPattern: refusing ${problem.field}: ${problem.reason}`)
     return
   }
-  mergeInlineFields(pattern, inline)
+  mergeInlineFields(pattern, accepted as Partial<PatternFeatureDef>)
   // A feature subject inherits the source's own operation; keeping a body
   // operation on it would advertise a field the kernel ignores.
   if (pattern.subject === 'feature') {
@@ -774,7 +779,7 @@ export function applyAddPattern(
   // An explicit empty value cleared the key on purpose; seeding it back would
   // silently override the author's clear with the mode's default.
   const cleared = new Set(
-    Object.entries(inline)
+    Object.entries(accepted)
       .filter(([, value]) => value === undefined || value === null || value === '')
       .map(([key]) => key),
   )

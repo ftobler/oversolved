@@ -38,9 +38,16 @@ describe('Pattern mutations', () => {
       expect(featureAt(doc, 1, 'pattern').pattern.pitch).toBeUndefined()
     })
 
+    it('drops an unknown inline key such as the retired include_source', () => {
+      const doc = makeDoc()
+      applyAddPattern(doc, 'pt1', undefined, { count: 3, include_source: false } as never)
+      expect(pattern0(doc).count).toBe(3)
+      expect(pattern0(doc)).not.toHaveProperty('include_source')
+    })
+
     it('refuses an inline count the loader would refuse', () => {
       const doc = makeDoc()
-      for (const count of [0, 1, 2.5]) {
+      for (const count of [0, 1, 2.5, '1']) {
         applyAddPattern(doc, 'pt1', undefined, { count })
         expect(doc.features).toHaveLength(0)
       }
@@ -67,8 +74,10 @@ describe('Pattern mutations', () => {
       applyAddPattern(doc, 'pt1')
       applySetPatternField(doc, 'pt1', 'spacing' as never, 5)
       expect(pattern0(doc)).not.toHaveProperty('spacing')
-      applySetPatternField(doc, 'pt1', 'count', 1)
-      expect(pattern0(doc).count).toBe(2)
+      for (const count of [1, '1']) {
+        applySetPatternField(doc, 'pt1', 'count', count)
+        expect(pattern0(doc).count).toBe(2)
+      }
     })
 
     it('drops the retired include_source key on the next edit', () => {
