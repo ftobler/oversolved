@@ -152,9 +152,10 @@ const PROFILE_REF_NOTE =
 // extrude fill note above would be false here: a multisection classifies loops
 // by containment only and never unions crossing loops.
 const SWEEP_SKETCH_NOTE =
-  'A multisection sweep takes each outer loop a section sketch draws as one section; a loop nested ' +
-  'inside another is a hole and is refused; loops that cross each other are NOT unioned here, so draw ' +
-  'one closed outer loop per section. A single-profile sweep carries the profile from the path start ' +
+  'A multisection sweep takes each outer loop a section sketch draws as one section, and loops that ' +
+  'cross each other are NOT unioned here, so draw one closed outer loop per section. A loop nested ' +
+  'inside another is a hole, and only a multisection section refuses one (a one-profile sweep carries ' +
+  'its holes). A single-profile sweep carries the profile from the path start ' +
   'as drawn, so a profile beside the path, or off its plane, keeps its offset in the moving frame; it ' +
   'must lie within its own size of a path crossing, or of the path start when the path never crosses ' +
   'its plane, and the path start must leave the plane at 5 degrees or more. A profile lying along the ' +
@@ -684,6 +685,13 @@ const REVOLVE_INLINE_NOTE =
   '(add | cut | new) and `merge_target` set the same keys `set_revolve_field` does; with no `operation` ' +
   'a revolve adds to the body it touches. `merge_target`: ' + MERGE_TARGET_NOTE
 
+// The single-profile hole rule sits beside the multisection note because the
+// old text read as if the section refusal covered every sweep, which is how a
+// practice run misread it.
+const SWEEP_HOLE_NOTE =
+  'A one-profile sweep carries the profile\'s holes: an annulus sweeps to a tube, the bore wall ' +
+  'keeps the sketch entity it was drawn on, and only a multisection SECTION is refused with a hole.'
+
 // The product has no loft: a multisection sweep is justified because the path
 // pierces each section, where a loft has no defined surface between them. The
 // hole limit is named with the two-sweep workaround because the refusal alone
@@ -698,7 +706,8 @@ const SWEEP_MULTISECTION_NOTE =
 const SWEEP_INLINE_NOTE =
   'One call may carry the whole sweep: `transition` (mitre | round), `multisection`, `operation` ' +
   '(add | cut | new) and `merge_target` set the same keys `set_sweep_field` does; with no `operation` ' +
-  'a sweep adds to the body it touches. Sections on other planes are added with `add_sweep_profile`, ' +
+  'a sweep adds to the body it touches. ' + SWEEP_HOLE_NOTE + ' ' +
+  'Sections on other planes are added with `add_sweep_profile`, ' +
   'then `multisection: true` in the same add call; each section must be pierced by the path. ' +
   SWEEP_MULTISECTION_NOTE + ' `merge_target`: ' + MERGE_TARGET_NOTE
 
@@ -1249,7 +1258,7 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_sweep: {
-    summary: 'Sweep a profile sketch along a path sketch, optionally with its transition, multisection, operation and merge target.',
+    summary: 'Sweep a profile sketch along a path sketch, carrying the profile\'s holes, optionally with its transition, multisection, operation and merge target.',
     note: SWEEP_INLINE_NOTE,
     fields: {
       ...featureAddFields(),

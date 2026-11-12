@@ -35,7 +35,14 @@ import {
   type Vec3,
 } from './primitives'
 import { classifyLoops, fuseCollinearRuns, type LoopEdge } from '../profileLoops'
-import { booleanWithHistory, cleanWithHistory, composeOriginThroughClean, countSolids } from './booleans'
+import {
+  booleanWithHistory,
+  booleanWithHistoryMany,
+  cleanWithHistory,
+  composeOriginThroughClean,
+  countSolids,
+  shapeIsValid,
+} from './booleans'
 import {
   FaceEdgeTable,
   nameFacesFromNeighbours,
@@ -926,6 +933,11 @@ export function revolveProfileWithLineage(
  * return, so a caller that throws in its own gates or lineage pass does not
  * strand it. The caller detaches it on ITS successful return, which is where
  * the untracked-shape contract every producer keeps begins.
+ *
+ * `mode` is the transition mode that built the solid. The sweep reuses it for
+ * every hole loop: one spine plus one trihedron law is what keeps a hole wall
+ * parallel to the outer one, and a hole that fell back to a different mode
+ * would not be.
  */
 export function attemptPipeShellSweep(
   oc: OccModule,
@@ -937,7 +949,10 @@ export function attemptPipeShellSweep(
   // instead of the default CorrectedFrenet frame. A helix path uses the helix
   // axis so a radial profile keeps its relation to the axis (a thread).
   binormal: Vec3 | null = null,
-): { result: { solid: OccShape; pipeBuilder: OccPipeShellBuilder } | null; lastError: unknown } {
+): {
+  result: { solid: OccShape; pipeBuilder: OccPipeShellBuilder; mode: OccEnumValue } | null
+  lastError: unknown
+} {
   let lastError: unknown = null
   for (const mode of modes) {
     lastError = null
@@ -954,7 +969,7 @@ export function attemptPipeShellSweep(
         // Track it at creation: the callers' plausibility gates and lineage
         // pass can still throw, and this shape would be stranded there.
         const solid = scope.track(builder.Shape())
-        return { result: { solid, pipeBuilder: builder }, lastError: null }
+        return { result: { solid, pipeBuilder: builder, mode }, lastError: null }
       }
     } catch (e) {
       swallowUnlessTrap(e)
@@ -965,12 +980,71 @@ export function attemptPipeShellSweep(
 }
 
 /**
+ * The profile face's hole wires, tracked by `scope`, in explorer order. The
+ * outer wire is the one `BRepTools.OuterWire` names; every other wire bounds a
+ * hole and is swept into the pipe shell that cuts it out.
+ */
+function innerFaceWires(
+  oc: OccModule,
+  scope: DisposeScope,
+  face: OccShape,
+  outerWire: OccShape,
+): OccShape[] {
+  const E = oc.TopAbs_ShapeEnum
+  const out: OccShape[] = []
+  const exp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_WIRE, E.TopAbs_SHAPE))
+  for (; exp.More(); exp.Next()) {
+    const raw = scope.track(exp.Current())
+    const wire = scope.track(oc.TopoDS.Wire_1(raw))
+    if (!(wire as OccSubShape).IsSame(outerWire as OccSubShape)) out.push(wire)
+  }
+  return out
+}
+
+/** The sketch entity ids whose profile edges built `wire`, for a refusal that
+ *  names the hole the user drew instead of a loop ordinal. */
+function wireEntityIds(
+  oc: OccModule,
+  scope: DisposeScope,
+  wire: OccShape,
+  loops: LoopEdge[][],
+  plane: PlaneLike,
+): string[] {
+  const E = oc.TopAbs_ShapeEnum
+  const edges: OccShape[] = []
+  const exp = scope.track(new oc.TopExp_Explorer_2(wire, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+  for (; exp.More(); exp.Next()) {
+    edges.push(scope.track(oc.TopoDS.Edge_1(scope.track(exp.Current()))))
+  }
+  const ids = entityForEdges(oc, scope, edges, loops, plane)
+    .flatMap((entity) => {
+      if (entity === null) return []
+      const id = String(entity['id'] ?? '')
+      return id === '' ? [] : [id]
+    })
+  return [...new Set(ids)].sort()
+}
+
+/** The one refusal a hole loop that cannot be carried gets: named, never a
+ *  silently solid body. */
+function holeSweepFailure(ids: string[]): Error {
+  return new Error(
+    `sweep: the hole loop ${ids.length > 0 ? ids.join(', ') : '(unnamed)'} ` +
+    'could not be swept along the path',
+  )
+}
+
+/**
  * Sweep profile loops along a spine wire and return (solid + construction-name
- * maps) (mirrors `sweep_profile_with_lineage`). Only the profile's OUTER
- * boundary is swept (holes are not carried through the pipe shell, matching
- * Python); lineage still comes from MakePipeShell.Generated() over the face's
- * profile edges. The spine edges are pre-built world-space OCC edges. RightCorner
- * transition gives a clean mitre at sharp (C0) spine joints.
+ * maps) (mirrors `sweep_profile_with_lineage`). The profile's holes are carried
+ * too: each inner wire is swept with the same spine, transition mode and
+ * trihedron law as the outer one, and the inner solids are cut out of the outer
+ * one in a single boolean. Lineage comes from MakePipeShell.Generated() over
+ * each wire's profile edges, composed through the cut history so the bore wall
+ * keeps its sketch entity's name. The spine edges are pre-built world-space OCC
+ * edges. RightCorner transition gives a clean mitre at sharp (C0) spine joints.
+ * A hole whose shell does not build, or whose cut leaves an invalid solid,
+ * fails the feature by name instead of building the hole as material.
  * OWNERSHIP: the returned `solid` is UNTRACKED. The caller must `scope.track()`
  * it or hand it to a registrar (`applyBodyOperation`, `registerSplitBodies`),
  * and is responsible for releasing it. This is the same contract every
@@ -993,11 +1067,22 @@ export function sweepProfileWithLineage(
   const fusedLoops = loops.map(fuseCollinearRuns)
   const face = scope.track(sketchLoopsToFace(oc, scope, fusedLoops, plane))
   // The raw wire inputs are consumed by their heal pass; the healed wires are
-  // consumed by the pipe shell. All four would otherwise outlive the build.
+  // consumed by the pipe shell. All of them would otherwise outlive the build.
   const rawSpineWire = scope.track(makeWire(oc, scope, spineEdges))
   const spineWire = scope.track(healWire(oc, scope, rawSpineWire))
   const rawOuterWire = scope.track(oc.BRepTools.OuterWire(face))
   const outerWire = scope.track(healWire(oc, scope, rawOuterWire))
+  // Hole wires come off the face reversed (clockwise). MakePipeShell measures
+  // the swept solid from the wire's geometry, so the hole shell comes out
+  // positive either way (spiked as-is and reversed: the same tube), and healing
+  // it is the same pass the outer wire gets so its edges land on their sketch
+  // entities again.
+  const rawHoleWires = innerFaceWires(oc, scope, face, rawOuterWire)
+  const holeWires = rawHoleWires.map((raw) => {
+    const healed = scope.track(healWire(oc, scope, raw))
+    scope.release(raw)
+    return healed
+  })
   scope.release(rawSpineWire)
   scope.release(rawOuterWire)
 
@@ -1014,19 +1099,85 @@ export function sweepProfileWithLineage(
     throw new Error(`sweep: BRepOffsetAPI_MakePipeShell failed: ${msg}`)
   }
   if (result === null) throw new Error('sweep: could not build a solid from the swept shell')
-  const { solid, pipeBuilder } = result
-  // The shell builder holds its own handle to the spine wire.
-  scope.release(spineWire)
+  const { solid, pipeBuilder, mode } = result
 
   const lineage = buildPrismLineageMap(
     oc, scope, face, pipeBuilder, fusedLoops, plane, createdBy, sketchId, 0, outerWire,
   )
-  // The shell builder held its own handle to the outer wire; it must outlive
-  // the lineage call above, which explores its edges for the profile mapping.
+  if (holeWires.length === 0) {
+    // The shell builder holds its own handle to the spine wire.
+    scope.release(spineWire)
+    // The shell builder held its own handle to the outer wire; it must outlive
+    // the lineage call above, which explores its edges for the profile mapping.
+    scope.release(outerWire)
+    prefixLineageMaps(lineage, sketchId ? `@${sketchId}/` : '@')
+    scope.release(face)
+    // The solid rode the scope so a throw above could not strand it; ownership
+    // passes to the caller here, per the contract above.
+    return { solid: scope.detach(solid), ...lineage }
+  }
+
+  // The outer shell succeeded with `mode`, so try that mode first on every hole
+  // loop: the same spine plus the same trihedron law is what keeps the inner
+  // wall parallel to the outer one, and only then may a hole fall back.
+  const innerWireIds = (wire: OccShape): string[] =>
+    wireEntityIds(oc, scope, wire, fusedLoops, plane)
+  const holeModes = [mode, ...modes.filter((candidate) => candidate.value !== mode.value)]
+  const holeSolids: OccShape[] = []
+  const holeLineages: LineageMaps[] = []
+  for (const holeWire of holeWires) {
+    const attempt = attemptPipeShellSweep(oc, scope, spineWire, [holeWire], holeModes, binormal)
+    if (attempt.result === null) throw holeSweepFailure(innerWireIds(holeWire))
+    const inner = attempt.result
+    holeSolids.push(inner.solid)
+    // The group index keeps a hole's cap UUID out of the outer caps' name
+    // space. The hole caps are cut away, so their names are never carried.
+    holeLineages.push(buildPrismLineageMap(
+      oc, scope, face, inner.pipeBuilder, fusedLoops, plane, createdBy, sketchId,
+      holeSolids.length, holeWire,
+    ))
+  }
+  scope.release(spineWire)
+
+  const cut = booleanWithHistoryMany(oc, scope, solid, holeSolids, 'cut')
+  const cutSolid = scope.track(cut.shape)
+  for (const holeSolid of holeSolids) scope.release(holeSolid)
+  scope.release(solid)
+  // A cut that leaves an invalid solid is a hole the kernel could not carry: a
+  // self-intersecting inner wall can pass the tool's own BRepCheck and still
+  // poison the result. Never ship the outer body as if the hole were not there.
+  const holeIds = [...new Set(holeWires.flatMap((wire) => innerWireIds(wire)))].sort()
+  if (!shapeIsValid(oc, scope, cutSolid) || countSolids(oc, scope, cutSolid) !== 1) {
+    throw holeSweepFailure(holeIds)
+  }
+
+  // The outer and inner names both travel through the cut: a source face maps
+  // to the output face(s) the boolean says it became, so the caps become the
+  // annular caps and the bore keeps the hole entity's UUID. The inner names go
+  // in as `tool` names; carryFaceNames prefers the target's source otherwise.
+  const toolNames = new SubShapeMap<string>()
+  for (const inner of holeLineages) toolNames.assign(inner.faceNames)
+  const faceNames = carryFaceNames(cut.faceOrigin, lineage.faceNames, toolNames)
+  const faceAncestry = { ...lineage.faceAncestry }
+  const capAncestry = { ...lineage.capAncestry }
+  for (const inner of holeLineages) {
+    Object.assign(faceAncestry, inner.faceAncestry)
+    Object.assign(capAncestry, inner.capAncestry)
+  }
+  const table = FaceEdgeTable.read(oc, scope, cutSolid)
+  // A face the cut split or left out of the origin table is named off its
+  // named neighbours, exactly as the uncut prism path does.
+  nameFacesFromNeighbours(oc, scope, table, faceNames, faceAncestry)
+  // Edges are derived once, on the cut result: the per-shell edge names are
+  // keyed to the uncut shells and no longer describe this solid.
+  const { edgeNames, edgeAncestry } = createdBy
+    ? derivePrismEdgeNames(oc, scope, table, faceNames, faceAncestry, createdBy)
+    : { edgeNames: new SubShapeMap<string>(), edgeAncestry: {} }
+
   scope.release(outerWire)
-  prefixLineageMaps(lineage, sketchId ? `@${sketchId}/` : '@')
+  for (const holeWire of holeWires) scope.release(holeWire)
   scope.release(face)
-  // The solid rode the scope so a throw above could not strand it; ownership
-  // passes to the caller here, per the contract above.
-  return { solid: scope.detach(solid), ...lineage }
+  const out: LineageMaps = { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry }
+  prefixLineageMaps(out, sketchId ? `@${sketchId}/` : '@')
+  return { solid: scope.detach(cutSolid), ...out }
 }

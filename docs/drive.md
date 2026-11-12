@@ -887,7 +887,8 @@ banner on stdout, so a client config must use the direct node invocation.
   every section must be pierced by the path. Each section is one outer loop, so
   a section with a hole is refused, and loops that cross each other are NOT
   unioned in a section: draw one closed outer loop per section. A single-profile
-  sweep carries the profile from the path start as drawn, so a profile beside
+  sweep carries the profile's holes, so an annulus sweeps to a tube; it also
+  carries the profile from the path start as drawn, so a profile beside
   the path, or off its plane, keeps its offset in the moving frame; it must lie
   within its own size of a path crossing, or of the path start when the path
   never crosses its plane, and the path start must leave the plane at 5 degrees
@@ -904,7 +905,8 @@ banner on stdout, so a client config must use the direct node invocation.
   face profile, which a sweep refuses. A bare `$<helixId>` (or `@<helixId>`)
   names a helix as the path, the way to sweep a thread; it must stand alone as
   the only path ref and is refused with `multisection`. See `docs/document.md`,
-  helix. To sweep a shape that has a hole, sweep the outer loops in one `add`
+  helix. The two-sweep workaround is for a multisection section with a hole:
+  sweep the outer loops in one `add`
   feature and the inner loops in a second `cut` feature of the same path, with
   the cut naming its `merge_target` so it cannot reach an unrelated body. The
   blend between sections is not a loft:

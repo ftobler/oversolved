@@ -384,6 +384,14 @@ This is not a loft: the surface between sections is defined by the path (a loft
 has no defined surface between sections), a section the path does not pierce is
 refused, and without the path nothing is built.
 
+Without `multisection`, a profile with a hole (an annulus, a washer outline)
+builds a tube: each hole is swept as an inner shell along the same path and cut
+through the whole sweep, and the bore wall is named by the sketch entity of the
+inner loop. A hole the path's bend cannot carry fails the feature by name
+instead of building the profile as a solid. The multisection hole refusal and
+its two-sweep workaround do not apply to this form; they are for a section with
+a hole.
+
 ### fillet / chamfer
 
 ```yaml
