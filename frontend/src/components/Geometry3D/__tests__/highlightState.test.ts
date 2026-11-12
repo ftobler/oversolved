@@ -32,6 +32,13 @@ describe('highlightState precedence', () => {
     expect(highlightState(true, false, true)).toBe('selected')
     expect(highlightState(true, true, true)).toBe('selected')
   })
+
+  it('a failed pick is a hint below hover, and above the plain hint', () => {
+    expect(highlightState(false, false, false, true)).toBe('hinted-failed')
+    expect(highlightState(false, false, true, true)).toBe('hinted-failed')
+    expect(highlightState(false, true, false, true)).toBe('hovered')
+    expect(highlightState(true, false, false, true)).toBe('selected')
+  })
 })
 
 describe('entityRenderLayer follows the same precedence', () => {

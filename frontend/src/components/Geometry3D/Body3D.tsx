@@ -8,7 +8,7 @@ import {
   COLOR_BODY_DEFAULT,
   COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL, COLOR_BODY_REMOVED,
   bodySurfaceLook,
-  COLOR_SELECTED, COLOR_HOVER, COLOR_HINT,
+  COLOR_SELECTED, COLOR_HOVER, COLOR_HINT, COLOR_HINT_FAILED,
   blendWhite, blendToward, HINT_BLEND,
   POINT_VIS_PIXELS,
   DEFAULT_PART_ROUGHNESS,
@@ -47,10 +47,10 @@ import {
   useSectionActive,
   useSectionOwnedMaterialClipping,
 } from '@/viewport/useSection'
-import { HighlightIndex, type ActiveHighlight } from '@/picking/selectionHighlight'
+import { HighlightIndex, orFlags, type ActiveHighlight } from '@/picking/selectionHighlight'
 import { selectActiveFrom, hoverActiveFrom, EMPTY_CLAIM_MAP } from '@/picking/highlightActive'
 import { HintIndex, edgeCreatorsOf, faceCreatorsOf } from '@/picking/relationHint'
-import { useHintedFeatureIds } from '@/hooks/useRelationHint'
+import { usePartRelationHints } from '@/hooks/useRelationHint'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { buildEdgeMaterial } from '@/components/Geometry3D/edgeLineMaterial'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
@@ -141,10 +141,14 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const selectedPicks = useSketchEditorStore(s => s.selectedPicks)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
-  // The feature/sketch ids a selected tree row relates to. Every body reads the
-  // same derived set through the one hook, so two bodies cannot disagree about
-  // which of their faces a row tints.
-  const hintedFeatureIds = useHintedFeatureIds()
+  // The feature/sketch ids a selected tree row relates to, and the primitive
+  // queries a selected or edited modifier picked. Every body reads the same
+  // derived sets through the one hook, so two bodies cannot disagree about
+  // which of their faces a row tints or which picked edge it draws.
+  const relationHints = usePartRelationHints()
+  const hintedFeatureIds = relationHints.viewport
+  const pickedHintQueries = relationHints.picked
+  const failedPickHintQueries = relationHints.failedPicks
 
   // The curvature row needs an attribute on the geometry, so it is read here
   // rather than at render time only. The auto range is published by the
@@ -303,6 +307,22 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     [interactive, doomed, faceHintIndex, hintedFeatureIds],
   )
 
+  // The picked-primitive hint answers by query, exactly like the selection
+  // highlight: a pick names one primitive, not a creator's output. A pick the
+  // last solve refused is the failure tier of the same answer, so it goes to
+  // the separate colour the chips already use.
+  const facePickedHintFlags = useMemo(
+    () => (!interactive || doomed || !faceHighlightIndex ? null
+      : faceHighlightIndex.compute({ pickKeys: EMPTY_CLAIM_MAP, queries: pickedHintQueries })),
+    [interactive, doomed, faceHighlightIndex, pickedHintQueries],
+  )
+
+  const faceFailedPickHintFlags = useMemo(
+    () => (!interactive || doomed || !faceHighlightIndex ? null
+      : faceHighlightIndex.compute({ pickKeys: EMPTY_CLAIM_MAP, queries: failedPickHintQueries })),
+    [interactive, doomed, faceHighlightIndex, failedPickHintQueries],
+  )
+
   // The wireframe hint mirrors the face one; an edge-only body (shading off)
   // still shows which feature made its edges. The legacy per-triangle face path
   // carries no B-rep face creators, so it gets no face hint -- there is no
@@ -324,6 +344,18 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   const edgeHintFlags = useMemo(
     () => (!interactive || doomed ? null : edgeHintIndex.compute(hintedFeatureIds)),
     [interactive, doomed, edgeHintIndex, hintedFeatureIds],
+  )
+
+  const edgePickedHintFlags = useMemo(
+    () => (!interactive || doomed ? null
+      : edgeHighlightIndex.compute({ pickKeys: EMPTY_CLAIM_MAP, queries: pickedHintQueries })),
+    [interactive, doomed, edgeHighlightIndex, pickedHintQueries],
+  )
+
+  const edgeFailedPickHintFlags = useMemo(
+    () => (!interactive || doomed ? null
+      : edgeHighlightIndex.compute({ pickKeys: EMPTY_CLAIM_MAP, queries: failedPickHintQueries })),
+    [interactive, doomed, edgeHighlightIndex, failedPickHintQueries],
   )
 
   // Resolved query per vertex, mirroring edges: the same padded list the vertex
@@ -605,14 +637,16 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     [legacyFaceHighlightIndex, hoverActive],
   )
 
-  // The palettes. Only these four colours can move a primitive, and only a
+  // The palettes. Only these five colours can move a primitive, and only a
   // change to one of them forces the painter to rewrite the whole buffer -- which
-  // is why the body's own selection colour lives here and not in the flags.
+  // is why the body's own selection colour lives here and not in the flags. Two
+  // slots are hint tiers: the creator/pick hint and the refused-pick mark.
   const facePalette = useMemo<HighlightPalette>(() => ({
     base: paletteRGB(bodyColor),
     selected: paletteRGB(COLOR_SELECTED),
     hovered: paletteRGB(blendWhite(bodyColor)),
     hinted: paletteRGB(blendToward(bodyColor, COLOR_HINT, HINT_BLEND)),
+    hintedFailed: paletteRGB(blendToward(bodyColor, COLOR_HINT_FAILED, HINT_BLEND)),
   }), [bodyColor])
 
   const edgePalette = useMemo<HighlightPalette>(() => ({
@@ -620,7 +654,21 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     selected: paletteRGB(COLOR_SELECTED),
     hovered: paletteRGB(COLOR_HOVER),
     hinted: paletteRGB(COLOR_HINT),
+    hintedFailed: paletteRGB(COLOR_HINT_FAILED),
   }), [edgeColor])
+
+  // The two hint answers share one colour tier, so they reach the painter as one
+  // array. `orFlags` keeps the single-answer reference, which is what a body
+  // with only one kind of hint (most of them) hands the memo.
+  const faceHintPaintFlags = useMemo(
+    () => (facePaintTarget.brep ? orFlags(faceHintFlags, facePickedHintFlags) : null),
+    [facePaintTarget, faceHintFlags, facePickedHintFlags],
+  )
+
+  const edgeHintPaintFlags = useMemo(
+    () => orFlags(edgeHintFlags, edgePickedHintFlags),
+    [edgeHintFlags, edgePickedHintFlags],
+  )
 
   // Face and edge colours are painted IN PLACE on the attribute the geometry was
   // built with: only the primitives whose highlight state changed are rewritten,
@@ -637,7 +685,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
       : facePaintTarget.brep ? faceSelectionFlags : (legacyFaceSelectionFlags ?? null),
     hovered: !interactive ? null
       : facePaintTarget.brep ? faceHoverFlags : (legacyFaceHoverFlags ?? null),
-    hinted: facePaintTarget.brep ? faceHintFlags : null,
+    hinted: faceHintPaintFlags,
+    // A refused pick is painted on the B-rep face path only: the legacy
+    // per-triangle path exists for meshes with no face names, and a named pick
+    // cannot land on one.
+    hintedFailed: facePaintTarget.brep ? faceFailedPickHintFlags : null,
     palette: facePalette,
   })
 
@@ -650,7 +702,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     // key, then query): two edges sharing a query must not co-highlight.
     selected: interactive ? edgeSelectionFlags : null,
     hovered: interactive ? edgeHoverFlags : null,
-    hinted: interactive ? edgeHintFlags : null,
+    hinted: interactive ? edgeHintPaintFlags : null,
+    hintedFailed: interactive ? edgeFailedPickHintFlags : null,
     palette: edgePalette,
   })
 

@@ -24,6 +24,29 @@ const extrude = (id: string, sketch: string): PartFeature => ({
   extrude: { sketch, distance: 10, direction: 'normal' },
 })
 
+/** A named edge pick on a body, distinct per tag. */
+const pickEdge = (tag: string, body = 'body_ex1') =>
+  makeAncestryQuery(['@u|pick-' + tag, `@ex1`, `@${body}`], 'straightedge')
+/** A named face pick on a body, distinct per tag. */
+const pickFace = (tag: string, body = 'body_ex1') =>
+  makeAncestryQuery(['@u|pick-' + tag, `@ex1`, `@${body}`], 'flatface')
+
+const fillet = (id: string, edges: string[], radius = 1): PartFeature => ({
+  id,
+  kind: 'fillet',
+  fillet: { edges, radius },
+})
+const chamfer = (id: string, edges: string[]): PartFeature => ({
+  id,
+  kind: 'chamfer',
+  chamfer: { edges, distance: 1 },
+})
+const shell = (id: string, faces: string[]): PartFeature => ({
+  id,
+  kind: 'shell',
+  shell: { faces, thickness: 1 },
+})
+
 function body(id: string, createdBy: string, overrides: Partial<BodyResult> = {}): BodyResult {
   return { id, created_by: createdBy, modified_by: [], ...overrides }
 }
@@ -33,11 +56,12 @@ function partHints(
   features: PartFeature[],
   bodies: Record<string, BodyResult> = {},
   activeFeatureIds?: ReadonlySet<string>,
+  failedPicks: ReadonlySet<string> = new Set(),
 ) {
   return relatedHints(
     hintDrivers(selection),
     PART_RULES,
-    buildPartRelationCtx(features, bodies, activeFeatureIds),
+    buildPartRelationCtx(features, bodies, activeFeatureIds, failedPicks),
   )
 }
 
@@ -135,6 +159,111 @@ describe('feature->faces', () => {
   it('a rolled-back feature hints nothing', () => {
     const hints = partHints(['@ex1'], [extrude('ex1', '@sk1')], {}, new Set())
     expect(hints.viewport.size).toBe(0)
+  })
+})
+
+describe('feature->picked-edges', () => {
+  const q1 = pickEdge('one')
+  const q2 = pickEdge('two')
+  const q3 = pickEdge('other')
+  const features: PartFeature[] = [extrude('ex1', '@sk1'), fillet('fi1', [q1, q2])]
+  const bodyWith = (queries: string[], createdBy = 'ex1') => ({
+    body_ex1: body('body_ex1', createdBy, { edges: [], edge_queries: queries }),
+  })
+  const allPicks = bodyWith([q1, q2, q3])
+
+  it('a failed fillet draws every pick that still exists in the shown solve', () => {
+    const hints = partHints(['@fi1'], features, allPicks)
+    expect(hints.picked).toEqual(new Set([q1, q2]))
+    expect(hints.failedPicks.size).toBe(0)
+    // The rule is viewport-only: a pick never marks a tree row.
+    expect(hints.tree.size).toBe(0)
+  })
+
+  it('a pick the last solve refused goes to the failure colour', () => {
+    // A whole-feature refusal names no failed_edges (the kernel throws before it
+    // can), so this is the partial case: the kernel named the pick it skipped.
+    const hints = partHints(['@fi1'], features, allPicks, undefined, new Set([q2]))
+    expect(hints.picked).toEqual(new Set([q1]))
+    expect(hints.failedPicks).toEqual(new Set([q2]))
+  })
+
+  it('a built fillet consumed its picks: no pick hint, its created faces stay the answer', () => {
+    // The blend replaced both picked edges, so neither query exists any more.
+    // `feature->faces` is what a built feature shows, not this rule.
+    const hints = partHints(['@fi1'], features, bodyWith([q3], 'fi1'))
+    expect(hints.picked.size).toBe(0)
+    expect(hints.failedPicks.size).toBe(0)
+    expect(hints.viewport).toEqual(new Set(['fi1']))
+  })
+
+  it('a partial fillet draws only the pick that refused; the applied one is gone', () => {
+    const partial = bodyWith([q2, q3])
+    const hints = partHints(['@fi1'], features, partial, undefined, new Set([q2]))
+    expect(hints.picked.size).toBe(0)
+    expect(hints.failedPicks).toEqual(new Set([q2]))
+  })
+
+  it('a stale pick absent from every shown body draws nothing', () => {
+    const hints = partHints(['@fi1'], features, bodyWith([q3]))
+    expect(hints.picked.size).toBe(0)
+    expect(hints.failedPicks.size).toBe(0)
+  })
+
+  it('a rolled-back fillet hints nothing', () => {
+    const hints = partHints(['@fi1'], features, allPicks, new Set(['ex1']))
+    expect(hints.picked.size).toBe(0)
+  })
+
+  it('a chamfer row draws its picked edges the same way', () => {
+    const chamfers: PartFeature[] = [extrude('ex1', '@sk1'), chamfer('ch1', [q1])]
+    expect(partHints(['@ch1'], chamfers, allPicks).picked).toEqual(new Set([q1]))
+  })
+
+  it('a feature that picks no primitive draws no pick hint', () => {
+    expect(partHints(['@ex1'], features, allPicks).picked.size).toBe(0)
+  })
+
+  it('a single-string pick list from a hand-edited doc degrades to that one pick', () => {
+    const odd = { id: 'fi1', kind: 'fillet', fillet: { edges: q1, radius: 1 } } as unknown as PartFeature
+    expect(partHints(['@fi1'], [extrude('ex1', '@sk1'), odd], allPicks).picked).toEqual(new Set([q1]))
+  })
+})
+
+describe('feature->picked-faces', () => {
+  const f1 = pickFace('one')
+  const f2 = pickFace('two')
+  const f3 = pickFace('other')
+  const features: PartFeature[] = [extrude('ex1', '@sk1'), shell('sh1', [f1, f2])]
+  const bodyWith = (queries: string[]) => ({
+    body_ex1: body('body_ex1', 'ex1', {
+      mesh: { vertices: [], faces: [], face_queries: queries },
+    }),
+  })
+  const allFaces = bodyWith([f1, f2, f3])
+
+  it('a failed shell draws the open faces it still has', () => {
+    expect(partHints(['@sh1'], features, allFaces).picked).toEqual(new Set([f1, f2]))
+  })
+
+  it('a refused face pick uses the failure colour', () => {
+    const hints = partHints(['@sh1'], features, allFaces, undefined, new Set([f1]))
+    expect(hints.picked).toEqual(new Set([f2]))
+    expect(hints.failedPicks).toEqual(new Set([f1]))
+  })
+
+  it('a built shell consumed its openings: no face pick hint', () => {
+    expect(partHints(['@sh1'], features, bodyWith([f3])).picked.size).toBe(0)
+  })
+
+  it('move face and delete face rows draw their face picks', () => {
+    const movers: PartFeature[] = [
+      extrude('ex1', '@sk1'),
+      { id: 'mf1', kind: 'move_face', move_face: { faces: [f1], distance: 2 } },
+      { id: 'df1', kind: 'delete_face', delete_face: { faces: [f2] } },
+    ]
+    expect(partHints(['@mf1'], movers, allFaces).picked).toEqual(new Set([f1]))
+    expect(partHints(['@df1'], movers, allFaces).picked).toEqual(new Set([f2]))
   })
 })
 

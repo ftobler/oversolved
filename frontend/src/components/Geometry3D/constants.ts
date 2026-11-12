@@ -15,6 +15,7 @@ import {
   COLOR_HOVER,
   COLOR_SELECTED,
   COLOR_HINT,
+  COLOR_HINT_FAILED,
   HINT_BLEND,
   blendToward,
   COLOR_CONSTRAINT_HOVER,
@@ -42,6 +43,7 @@ export {
   blendWhite,
   blendToward,
   COLOR_HINT,
+  COLOR_HINT_FAILED,
   HINT_BLEND,
   COLOR_CONSTRAINT_HOVER,
   COLOR_PREVIEW,
@@ -55,20 +57,27 @@ export {
 } from '@/utils/core/partColors'
 
 // ─── highlight precedence ───
-// The one question every highlight painter asks: which of the three live states
-// claims this primitive? Selection outranks hover, because a click is the
-// durable answer to "what am I acting on" and the hover under the cursor is
-// only the next candidate. The relation hint is the weakest: it answers "this
-// is related to what you selected", not "this is what you selected", so a hover
-// or selection always wins. Every painter (sketch lines, dots, helix, planes,
-// sketch areas, B-rep outlines and the vertex/colour buffers) calls this, so a
-// primitive that is both selected and hovered reads the same everywhere: one
-// colour, one render layer.
-export type HighlightState = 'selected' | 'hovered' | 'hinted' | null
+// The one question every highlight painter asks: which of the live states claims
+// this primitive? Selection outranks hover, because a click is the durable answer
+// to "what am I acting on" and the hover under the cursor is only the next
+// candidate. The relation hint is the weakest: it answers "this is related to
+// what you selected", not "this is what you selected", so a hover or selection
+// always wins. The failure tier of the hint (a pick the solve refused) sits just
+// above the plain hint: it is still a hint, only a red one. Every painter (sketch
+// lines, dots, helix, planes, sketch areas, B-rep outlines and the vertex/colour
+// buffers) calls this, so a primitive that is both selected and hovered reads the
+// same everywhere: one colour, one render layer.
+export type HighlightState = 'selected' | 'hovered' | 'hinted-failed' | 'hinted' | null
 
-export function highlightState(selected: boolean, hovered: boolean, hinted = false): HighlightState {
+export function highlightState(
+  selected: boolean,
+  hovered: boolean,
+  hinted = false,
+  hintedFailed = false,
+): HighlightState {
   if (selected) return 'selected'
   if (hovered) return 'hovered'
+  if (hintedFailed) return 'hinted-failed'
   if (hinted) return 'hinted'
   return null
 }
@@ -123,7 +132,7 @@ export function entityRenderLayer(
   // the consumption rule hides the sketch but the line still sits inside the
   // body it built, so it needs the edit layer to be seen at all. Hinted B-rep
   // faces are not lifted: they stay depth-tested.
-  if (isEditing || state === 'hinted') return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
+  if (isEditing || state === 'hinted' || state === 'hinted-failed') return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
   return { depthTest: true, renderOrder: RENDER_ORDER_DEFAULT }
 }
 
@@ -251,7 +260,7 @@ export function bodyRemovedColorIsDistinct(): { nearest: string; distance: numbe
 // actually paints; the line colour is COLOR_HINT at full strength.
 export const HINT_COLOR_MIN_DISTANCE = 40
 
-const HINT_RIVALS = [COLOR_HOVER, COLOR_SELECTED, COLOR_BODY_REMOVED, COLOR_BODY_DEFAULT] as const
+const HINT_RIVALS = [COLOR_HOVER, COLOR_SELECTED, COLOR_BODY_REMOVED, COLOR_BODY_DEFAULT, COLOR_HINT_FAILED] as const
 
 /** How far the hinted face fill and the hinted line colour sit from every
  *  stronger highlight and from the default body. Shared constants, not
@@ -263,6 +272,26 @@ export function hintColorsAreDistinct(): {
   return {
     face: nearestRival(blendToward(COLOR_BODY_DEFAULT, COLOR_HINT, HINT_BLEND), HINT_RIVALS),
     line: nearestRival(COLOR_HINT, HINT_RIVALS),
+  }
+}
+
+// The failure tier keeps the same shape of guard, measured against the states
+// that outrank it plus the plain hint it sits beside. COLOR_ERROR is deliberately
+// absent: a refused pick and an overconstrained sketch entity are two marks for
+// "the solve could not do this", so they may share a red family.
+export const FAILED_HINT_COLOR_MIN_DISTANCE = 40
+
+const FAILED_HINT_RIVALS = [
+  COLOR_HOVER, COLOR_SELECTED, COLOR_HINT, COLOR_BODY_REMOVED, COLOR_BODY_DEFAULT,
+] as const
+
+export function failedHintColorsAreDistinct(): {
+  face: { nearest: string; distance: number }
+  line: { nearest: string; distance: number }
+} {
+  return {
+    face: nearestRival(blendToward(COLOR_BODY_DEFAULT, COLOR_HINT_FAILED, HINT_BLEND), FAILED_HINT_RIVALS),
+    line: nearestRival(COLOR_HINT_FAILED, FAILED_HINT_RIVALS),
   }
 }
 

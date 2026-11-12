@@ -100,6 +100,22 @@ export function computeHighlight(
 }
 
 /**
+ * OR two per-primitive flag arrays, for a body that answers two independent
+ * hint questions (the primitives a selected feature created, and the primitives
+ * a selected or edited modifier picked). Either input may be null ("nothing"),
+ * and one shared input reference is returned as-is when the other is null, so a
+ * body carrying only one kind of hint keeps a stable memo dependency.
+ */
+export function orFlags(
+  a: readonly boolean[] | null,
+  b: readonly boolean[] | null,
+): readonly boolean[] | null {
+  if (a === null) return b
+  if (b === null) return a
+  return a.map((on, i) => on || b[i] === true)
+}
+
+/**
  * Per-(body, layer) highlight cache.
  *
  * `computeHighlight` is pure and O(primitives); a heavy model calls it for every

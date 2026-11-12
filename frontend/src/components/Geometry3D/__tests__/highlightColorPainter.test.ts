@@ -22,6 +22,7 @@ const PALETTE: HighlightPalette = {
   selected: [1, 0, 0],
   hovered: [0, 1, 0],
   hinted: [0, 0, 1],
+  hintedFailed: [1, 1, 0],
 }
 
 /** The colour buffer the old whole-buffer rebuild would have produced. */
@@ -32,6 +33,7 @@ function reference(
   hovered: readonly boolean[] | null,
   palette: HighlightPalette,
   hinted: readonly boolean[] | null = null,
+  hintedFailed: readonly boolean[] | null = null,
 ): Float32Array {
   const colors = new Float32Array(vertexCount * 3)
   for (let f = 0; f < colors.length; f += 3) {
@@ -39,7 +41,8 @@ function reference(
   }
   for (let i = 0; i < runs.count; i++) {
     const rgb = selected?.[i] ? palette.selected : hovered?.[i] ? palette.hovered
-      : hinted?.[i] ? palette.hinted : palette.base
+      : hintedFailed?.[i] ? palette.hintedFailed
+        : hinted?.[i] ? palette.hinted : palette.base
     runs.eachRun(i, (start, count) => {
       for (let v = start; v < start + count; v++) {
         colors[v * 3] = rgb[0]; colors[v * 3 + 1] = rgb[1]; colors[v * 3 + 2] = rgb[2]
@@ -226,6 +229,43 @@ describe('HighlightColorPainter', () => {
 
     expect(result.full).toBe(true)
     expect(colors).toEqual(reference(CONTIGUOUS, TRI_COUNT * 3, null, null, moved, flags(FACES, 1)))
+  })
+
+  it('paints a refused pick in the failure hint colour, below hover and selection', () => {
+    const colors = new Float32Array(TRI_COUNT * 9)
+    const painter = new HighlightColorPainter(colors, CONTIGUOUS)
+
+    painter.apply(null, null, PALETTE, null, flags(FACES, 3, 4))
+    expect(painter.stateAt(3)).toBe('hinted-failed')
+    expect(colors).toEqual(
+      reference(CONTIGUOUS, TRI_COUNT * 3, null, null, PALETTE, null, flags(FACES, 3, 4)),
+    )
+
+    // A hover under the cursor outranks the mark; the same primitive returns to
+    // the failure colour when the pointer leaves.
+    painter.apply(null, flags(FACES, 4), PALETTE, null, flags(FACES, 3, 4))
+    expect(painter.stateAt(4)).toBe('hovered')
+    expect(painter.stateAt(3)).toBe('hinted-failed')
+    painter.apply(null, null, PALETTE, null, flags(FACES, 3, 4))
+    expect(painter.stateAt(4)).toBe('hinted-failed')
+
+    // Selection outranks both hint tiers.
+    painter.apply(flags(FACES, 3), null, PALETTE, null, flags(FACES, 3))
+    expect(painter.stateAt(3)).toBe('selected')
+  })
+
+  it('a failed-hint palette move repaints every marked primitive', () => {
+    const colors = new Float32Array(TRI_COUNT * 9)
+    const painter = new HighlightColorPainter(colors, CONTIGUOUS)
+    painter.apply(null, null, PALETTE, null, flags(FACES, 2))
+
+    const moved: HighlightPalette = { ...PALETTE, hintedFailed: [0.8, 0.2, 0.2] }
+    const result = painter.apply(null, null, moved, null, flags(FACES, 2))
+
+    expect(result.full).toBe(true)
+    expect(colors).toEqual(
+      reference(CONTIGUOUS, TRI_COUNT * 3, null, null, moved, null, flags(FACES, 2)),
+    )
   })
 })
 

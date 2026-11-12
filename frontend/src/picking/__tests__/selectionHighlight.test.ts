@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeHighlight, HighlightIndex, type ActiveHighlight } from '../selectionHighlight'
+import { computeHighlight, HighlightIndex, orFlags, type ActiveHighlight } from '../selectionHighlight'
 import { primitivePickKey } from '../pickKey'
 
 const BODY = 'extrude1/body0'
@@ -80,6 +80,19 @@ describe('computeHighlight', () => {
     const queries = ['R', 'Q', 'Q']
     const a = active(new Set(['Q']), new Map([['Q', new Set([pk(0)])]]))
     expect(computeHighlight(BODY, LAYER, queries, a)).toEqual([false, true, true])
+  })
+})
+
+describe('orFlags', () => {
+  it('ORs two answers per primitive', () => {
+    expect(orFlags([true, false, false], [false, true, false])).toEqual([true, true, false])
+  })
+
+  it('keeps the one answer by reference when the other is absent', () => {
+    const flags = [true, false]
+    expect(orFlags(flags, null)).toBe(flags)
+    expect(orFlags(null, flags)).toBe(flags)
+    expect(orFlags(null, null)).toBeNull()
   })
 })
 

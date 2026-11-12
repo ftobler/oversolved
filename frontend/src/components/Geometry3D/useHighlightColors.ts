@@ -14,8 +14,9 @@ import {
  * hover means a new GL buffer and a full re-upload of the body's colour data on
  * every pointer move, which is minutes-per-hover territory on an imported solid.
  *
- * `selected`, `hovered` and `hinted` are indexed by primitive (see `runs`); pass
- * null for "nothing", which is also how a non-interactive body renders flat.
+ * `selected`, `hovered`, `hinted` and `hintedFailed` are indexed by primitive
+ * (see `runs`); pass null for "nothing", which is also how a non-interactive
+ * body renders flat.
  */
 export function useHighlightColors(params: {
   geometry: THREE.BufferGeometry
@@ -23,9 +24,10 @@ export function useHighlightColors(params: {
   selected: readonly boolean[] | null
   hovered: readonly boolean[] | null
   hinted?: readonly boolean[] | null
+  hintedFailed?: readonly boolean[] | null
   palette: HighlightPalette
 }): void {
-  const { geometry, runs, selected, hovered, hinted = null, palette } = params
+  const { geometry, runs, selected, hovered, hinted = null, hintedFailed = null, palette } = params
 
   const painter = useMemo(() => {
     const array = colorAttribute(geometry)?.array
@@ -36,8 +38,8 @@ export function useHighlightColors(params: {
   useEffect(() => {
     const attribute = colorAttribute(geometry)
     if (!painter || !attribute) return
-    uploadPaint(attribute, painter.apply(selected, hovered, palette, hinted))
-  }, [painter, geometry, selected, hovered, hinted, palette])
+    uploadPaint(attribute, painter.apply(selected, hovered, palette, hinted, hintedFailed))
+  }, [painter, geometry, selected, hovered, hinted, hintedFailed, palette])
 }
 
 /** The geometry's colour attribute, or null when it has none (or an interleaved

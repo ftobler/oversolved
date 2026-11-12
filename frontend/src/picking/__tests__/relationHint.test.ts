@@ -146,6 +146,57 @@ describe('relatedHints core', () => {
   })
 })
 
+describe('relatedHints pick paint', () => {
+  const ctx = {
+    featureKinds: new Map([['a', 'feature'], ['b', 'feature']] as const),
+    failedPicks: new Set(['?two;e']),
+  }
+
+  const pickRule = (targets: Record<string, string[]>): RelationRuleLike<typeof ctx> => ({
+    id: 'a->picks', from: 'feature', to: 'edge', show: ['viewport'], enabled: true,
+    paint: 'pick', related: (driver) => targets[driver] ?? [],
+  })
+  const creatorRule = (targets: Record<string, string[]>): RelationRuleLike<typeof ctx> => ({
+    id: 'a->faces', from: 'feature', to: 'feature', show: ['viewport'], enabled: true,
+    related: (driver) => targets[driver] ?? [],
+  })
+
+  it('a pick-paint rule lands in the picked set, not among the creator ids', () => {
+    const hints = relatedHints(['@a'], [pickRule({ '@a': ['?one;e'] })], ctx)
+    expect(hints.picked).toEqual(new Set(['?one;e']))
+    expect(hints.viewport).toBe(EMPTY_RELATION_SET)
+  })
+
+  it('a target the ctx marks failed splits into the failure set', () => {
+    const hints = relatedHints(['@a'], [pickRule({ '@a': ['?one;e', '?two;e'] })], ctx)
+    expect(hints.picked).toEqual(new Set(['?one;e']))
+    expect(hints.failedPicks).toEqual(new Set(['?two;e']))
+  })
+
+  it('a focus id runs only the pick-paint rules', () => {
+    // The open editor's feature is acted on without being selected. It should
+    // show its own picks, not tint every face it created.
+    const hints = relatedHints(
+      [],
+      [pickRule({ '@a': ['?one;e'] }), creatorRule({ '@a': ['a'] })],
+      ctx,
+      ['@a'],
+    )
+    expect(hints.picked).toEqual(new Set(['?one;e']))
+    expect(hints.viewport).toBe(EMPTY_RELATION_SET)
+  })
+
+  it('focus and selection answers union', () => {
+    const hints = relatedHints(
+      ['@b'],
+      [pickRule({ '@a': ['?one;e'], '@b': ['?two;e'] })],
+      ctx,
+      ['@a'],
+    )
+    expect(hints.failedPicks).toEqual(new Set(['?two;e']))
+  })
+})
+
 describe('faceCreatorsOf', () => {
   it('prefers face_created_by when it is aligned', () => {
     const mesh = meshWith({

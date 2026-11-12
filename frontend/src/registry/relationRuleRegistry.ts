@@ -10,6 +10,7 @@ import type { BodyResult, MateFeature, PartFeature } from '@/types/cad'
 import { consumedSketchIds } from '@/utils/query/consumedSketches'
 import { featureRefId } from '@/utils/query'
 import {
+  EMPTY_RELATION_SET,
   buildCreatorIndex,
   featureKindFor,
   type RelationEditor,
@@ -40,12 +41,53 @@ export interface PartRelationCtx extends RelationKindCtx {
   consumersBySketch: ReadonlyMap<string, readonly string[]>
   // Features inside the rollback window. A rolled-back consumer hints nothing.
   activeFeatureIds: ReadonlySet<string>
+  // Whether the shown solve still publishes the primitive a query names. A pick
+  // hint read against the INPUT body, not the feature's output: a modifier that
+  // consumed the edge it was given has nothing left to draw, which is exactly
+  // how a built feature and a refused one differ.
+  publishesQuery: (query: string) => boolean
+  // Feature -> the primitive queries it picked as an edge/face modifier.
+  pickedQueriesOf: (featureId: string) => readonly string[]
+}
+
+/** A stored ref list, tolerant of the single-string spelling a hand-edited doc
+ *  can carry: the relation hint must degrade, not take the page down. */
+function refList(ref: readonly string[] | string | undefined): readonly string[] {
+  if (Array.isArray(ref)) return ref.filter((q): q is string => typeof q === 'string' && q !== '')
+  return typeof ref === 'string' && ref !== '' ? [ref] : []
+}
+
+/** The primitive picks a modifier stores: its input geometry, not its output. */
+function pickedPrimitiveQueries(feature: PartFeature): readonly string[] {
+  // Tolerant of a missing def for the same reason consumedSketches is: a
+  // hand-edited kind without its payload degrades to "picked nothing".
+  switch (feature.kind) {
+    case 'fillet': return refList(feature.fillet?.edges)
+    case 'chamfer': return refList(feature.chamfer?.edges)
+    case 'shell': return refList(feature.shell?.faces)
+    case 'move_face': return refList(feature.move_face?.faces)
+    case 'delete_face': return refList(feature.delete_face?.faces)
+    default: return []
+  }
+}
+
+/** Every query a shown body publishes for its own primitives. A pick that is
+ *  not here names geometry that no longer exists (consumed by this feature or
+ *  gone in a later one), so there is nothing to paint. */
+function publishedQueries(bodies: Readonly<Record<string, BodyResult>>): ReadonlySet<string> {
+  const out = new Set<string>()
+  for (const body of Object.values(bodies)) {
+    for (const q of body.edge_queries ?? []) if (q) out.add(q)
+    for (const q of body.mesh?.face_queries ?? []) if (q) out.add(q)
+  }
+  return out
 }
 
 export function buildPartRelationCtx(
   features: readonly PartFeature[],
   bodies: Readonly<Record<string, BodyResult>>,
   activeFeatureIds?: ReadonlySet<string>,
+  failedPicks: ReadonlySet<string> = EMPTY_RELATION_SET,
 ): PartRelationCtx {
   const featureById = new Map(features.map(f => [f.id, f] as const))
   const featureKinds = new Map<string, RelationKind>()
@@ -65,6 +107,12 @@ export function buildPartRelationCtx(
       consumers.add(feature.id)
     }
   }
+  const pickedByFeature = new Map<string, readonly string[]>()
+  for (const feature of features) {
+    const picks = pickedPrimitiveQueries(feature)
+    if (picks.length > 0) pickedByFeature.set(feature.id, picks)
+  }
+  const published = publishedQueries(bodies)
   return {
     featureById,
     featureKinds,
@@ -73,11 +121,23 @@ export function buildPartRelationCtx(
     consumedByFeature,
     consumersBySketch: new Map([...consumersBySketch].map(([id, set]) => [id, [...set]] as const)),
     activeFeatureIds: activeFeatureIds ?? new Set(features.map(f => f.id)),
+    publishesQuery: (query) => published.has(query),
+    pickedQueriesOf: (featureId) => pickedByFeature.get(featureId) ?? [],
+    failedPicks,
   }
 }
 
 const activeTarget = (id: string, ctx: PartRelationCtx): readonly string[] =>
   ctx.activeFeatureIds.has(id) ? [id] : []
+
+/** The modifier picks of `featureId` that the shown solve still publishes. A
+ *  rolled-back modifier hints nothing, and a pick its build consumed no longer
+ *  names geometry, so only a refused or still-pending pick is drawn. */
+const activePickedQueries = (featureId: string, ctx: PartRelationCtx): readonly string[] => {
+  const id = ctx.featureIdOf(featureId)
+  if (!ctx.activeFeatureIds.has(id)) return []
+  return ctx.pickedQueriesOf(id).filter((query) => ctx.publishesQuery(query))
+}
 
 // ─── assembly editor context ───
 
@@ -131,6 +191,28 @@ export const PART_RULES: readonly RelationRule<PartRelationCtx>[] = [
     enabled: true,
     description: 'A selected feature tints every face it created.',
     related: (featureId, ctx) => activeTarget(ctx.featureIdOf(featureId), ctx),
+  },
+  {
+    id: 'feature->picked-edges',
+    editor: 'part',
+    from: 'feature',
+    to: 'edge',
+    show: ['viewport'],
+    enabled: true,
+    paint: 'pick',
+    description: 'A selected edge modifier draws the edges it picked that the shown solve still publishes.',
+    related: activePickedQueries,
+  },
+  {
+    id: 'feature->picked-faces',
+    editor: 'part',
+    from: 'feature',
+    to: 'face',
+    show: ['viewport'],
+    enabled: true,
+    paint: 'pick',
+    description: 'A selected face modifier draws the faces it picked that the shown solve still publishes.',
+    related: activePickedQueries,
   },
   {
     id: 'feature->consumed-sketch',

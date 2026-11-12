@@ -41,6 +41,14 @@ export const COLOR_SELECTED = '#ff9800'
 // to stay clear of hover white, selection orange, the pink removal mark and the
 // default body green; `hintColorsAreDistinct` pins that distance.
 export const COLOR_HINT = '#4fc3f7'
+// The failure tier of the relation hint: a pick the modifier resolved but the
+// last solve refused. It is the same red the pick chip paints that value with
+// (`.feature-pick-chip-item.failed`), so the chip and the viewport name one
+// fault. It sits BELOW selection and hover: while a field is armed its picks
+// read as selection, and the mark is what an unarmed row or an open editor
+// shows. `failedHintColorsAreDistinct` pins its distance from the stronger
+// states and from the plain hint.
+export const COLOR_HINT_FAILED = '#f44336'
 export const COLOR_CONSTRAINT_HOVER = '#fff176'  // entity highlighted because a constraint on it is hovered
 export const COLOR_PREVIEW = '#aaaaaa'
 export const COLOR_PREVIEW_EDGE = '#bb5be1'  // pink edge-only preview overlay (shared with the doomed-body mark)

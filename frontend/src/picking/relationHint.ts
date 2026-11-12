@@ -1,8 +1,9 @@
 // The one relation-hint model: which selected thing a tree row or a viewport
 // primitive is related to.
 //
-// A hint is derived state. It is computed from the editor's selection on every
-// read, persists nothing, records no undo entry and never writes the selection.
+// A hint is derived state. It is computed from the editor's selection (and, for
+// the pick rules only, the feature whose editor is open) on every read,
+// persists nothing, records no undo entry and never writes the selection.
 // Three.js-free and React-free, so the whole model is tested without a viewport
 // or a mounted tree.
 //
@@ -25,6 +26,14 @@ export type RelationEditor = 'part' | 'assembly'
 export type RelationShow = 'tree' | 'viewport'
 
 /**
+ * How a rule's viewport targets are drawn. `creator` (the default) names a
+ * feature whose created primitives tint; `pick` names the query of one
+ * primitive the driver feature picked, so a modifier that created nothing can
+ * still show where it was meant to apply.
+ */
+export type RelationPaint = 'creator' | 'pick'
+
+/**
  * The structural half of a rule. The registry's `RelationRule` extends it with
  * an editor, a description and a test-facing identity; the executor needs only
  * these fields, which is what keeps the executor import-free of the registry.
@@ -35,6 +44,7 @@ export interface RelationRuleLike<Ctx> {
   to: RelationKind
   show: readonly RelationShow[]
   enabled: boolean
+  paint?: RelationPaint
   related(driverId: string, ctx: Ctx): Iterable<string>
 }
 
@@ -48,6 +58,10 @@ export interface RelationKindCtx {
   // confused with a feature reference.
   partHandles?: ReadonlySet<string>
   mateIds?: ReadonlySet<string>
+  // Pick queries the last solve resolved but refused. A `paint: 'pick'` rule
+  // splits its targets by this, so the viewport can paint the same ones its
+  // chip marks red.
+  failedPicks?: ReadonlySet<string>
 }
 
 /** Shared empty answer. Two callers that find no relation read the same object,
@@ -57,11 +71,19 @@ export const EMPTY_RELATION_SET: ReadonlySet<string> = new Set<string>()
 export interface RelationHints {
   tree: ReadonlySet<string>
   viewport: ReadonlySet<string>
+  // Primitives a driver picked that the shown solve still publishes, split by
+  // whether that solve refused the pick. A `paint: 'pick'` rule fills these
+  // instead of the creator ids, because a pick names one primitive, not a
+  // feature whose output on screen can be found by its creator.
+  picked: ReadonlySet<string>
+  failedPicks: ReadonlySet<string>
 }
 
 export const EMPTY_RELATION_HINTS: RelationHints = {
   tree: EMPTY_RELATION_SET,
   viewport: EMPTY_RELATION_SET,
+  picked: EMPTY_RELATION_SET,
+  failedPicks: EMPTY_RELATION_SET,
 }
 
 /**
@@ -114,45 +136,64 @@ export function hintDrivers(selection: Iterable<string>): readonly string[] {
  * itself. A driver CAN be marked by another selected driver's rule, which is
  * what keeps `.selected.related` (a party to a relation that is also selected)
  * meaningful.
+ *
+ * `focus` names a feature the editor is acting on without a selection, e.g. the
+ * one whose editor is open. Only `paint: 'pick'` rules run for it: an open
+ * editor should show the feature's own picks, not tint every face it created.
  */
 export function relatedHints<Ctx extends RelationKindCtx>(
   drivers: readonly string[],
   rules: readonly RelationRuleLike<Ctx>[],
   ctx: Ctx,
+  focus: readonly string[] = [],
 ): RelationHints {
-  if (drivers.length === 0) return EMPTY_RELATION_HINTS
+  if (drivers.length === 0 && focus.length === 0) return EMPTY_RELATION_HINTS
   const enabled = rules.filter(rule => rule.enabled)
   if (enabled.length === 0) return EMPTY_RELATION_HINTS
 
+  const failedPicks = ctx.failedPicks ?? EMPTY_RELATION_SET
   let tree: Set<string> | null = null
   let viewport: Set<string> | null = null
+  let picked: Set<string> | null = null
+  let failed: Set<string> | null = null
   const canonical = (id: string): string => featureRefId(id) ?? id
-  for (const driver of drivers) {
-    const kind = relationKindOf(driver, ctx)
-    if (kind === null) continue
-    for (const rule of enabled) {
-      if (rule.from !== kind) continue
-      for (const target of rule.related(driver, ctx)) {
-        if (!target) continue
-        const id = canonical(target)
-        // Tree rows are selected by their `@<feature>` spelling; an assembly
-        // handle or mate id is selected bare. The rule returns the canonical
-        // bare id and the executor applies the tree's one spelling. A selected
-        // row never marks itself; the viewport may still name its own driver,
-        // because a feature's own faces are the hint for that feature.
-        if (rule.show.includes('tree') && id !== canonical(driver)) {
-          const rowId = rule.to === 'feature' || rule.to === 'sketch' ? `@${id}` : id
-          ;(tree ??= new Set()).add(rowId)
+  for (const [group, isFocus] of [[drivers, false], [focus, true]] as const) {
+    for (const driver of group) {
+      const kind = relationKindOf(driver, ctx)
+      if (kind === null) continue
+      for (const rule of enabled) {
+        if (rule.from !== kind) continue
+        if (isFocus && rule.paint !== 'pick') continue
+        for (const target of rule.related(driver, ctx)) {
+          if (!target) continue
+          const id = canonical(target)
+          // Tree rows are selected by their `@<feature>` spelling; an assembly
+          // handle or mate id is selected bare. The rule returns the canonical
+          // bare id and the executor applies the tree's one spelling. A selected
+          // row never marks itself; the viewport may still name its own driver,
+          // because a feature's own faces are the hint for that feature.
+          if (rule.show.includes('tree') && id !== canonical(driver)) {
+            const rowId = rule.to === 'feature' || rule.to === 'sketch' ? `@${id}` : id
+            ;(tree ??= new Set()).add(rowId)
+          }
+          if (!rule.show.includes('viewport')) continue
+          if (rule.paint === 'pick') {
+            // The viewport keys primitives by their query, so a pick target is
+            // the answer itself and needs no creator lookup.
+            ;(failedPicks.has(id) ? (failed ??= new Set()) : (picked ??= new Set())).add(id)
+          } else {
+            // A feature may name itself: its own faces are the hint.
+            ;(viewport ??= new Set()).add(id)
+          }
         }
-        // The viewport keys primitives by the bare feature id the kernel
-        // records, so a feature may name itself: its own faces are the hint.
-        if (rule.show.includes('viewport')) (viewport ??= new Set()).add(id)
       }
     }
   }
   return {
     tree: tree ?? EMPTY_RELATION_SET,
     viewport: viewport ?? EMPTY_RELATION_SET,
+    picked: picked ?? EMPTY_RELATION_SET,
+    failedPicks: failed ?? EMPTY_RELATION_SET,
   }
 }
 

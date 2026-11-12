@@ -6,8 +6,10 @@ import {
   bodySurfaceLook,
   bodyRemovedColorIsDistinct,
   hintColorsAreDistinct,
+  failedHintColorsAreDistinct,
   REMOVED_COLOR_MIN_DISTANCE,
   HINT_COLOR_MIN_DISTANCE,
+  FAILED_HINT_COLOR_MIN_DISTANCE,
   COLOR_BODY_DEFAULT,
   COLOR_BODY_SELECTED,
   COLOR_BODY_REMOVED,
@@ -90,6 +92,14 @@ describe('relation hint colours', () => {
       .toBeGreaterThanOrEqual(HINT_COLOR_MIN_DISTANCE)
     expect(line.distance, `hint line too close to ${line.nearest}`)
       .toBeGreaterThanOrEqual(HINT_COLOR_MIN_DISTANCE)
+  })
+
+  it('the failed-pick mark is distinct from the three stronger states and the plain hint', () => {
+    const { face, line } = failedHintColorsAreDistinct()
+    expect(face.distance, `failed face too close to ${face.nearest}`)
+      .toBeGreaterThanOrEqual(FAILED_HINT_COLOR_MIN_DISTANCE)
+    expect(line.distance, `failed line too close to ${line.nearest}`)
+      .toBeGreaterThanOrEqual(FAILED_HINT_COLOR_MIN_DISTANCE)
   })
 })
 

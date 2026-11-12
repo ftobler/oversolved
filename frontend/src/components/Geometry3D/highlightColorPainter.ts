@@ -26,6 +26,7 @@ const BASE = 1
 const SELECTED = 2
 const HOVERED = 3
 const HINTED = 4
+const HINTED_FAILED = 5
 
 /**
  * Above this many ranges the per-range `bufferSubData` overhead beats one full
@@ -42,6 +43,10 @@ export interface HighlightPalette {
   selected: RGB
   hovered: RGB
   hinted: RGB
+  // The hint tier for a pick the last solve refused (the chips' red). It sits
+  // between hover and the plain hint in precedence: a refused pick still reads
+  // as a hint, only a red one.
+  hintedFailed: RGB
 }
 
 /**
@@ -137,15 +142,17 @@ export class HighlightColorPainter {
   }
 
   /**
-   * Bring the buffer in line with `selected` / `hovered` / `hinted` (indexed by
-   * primitive; null means "none"). Selection outranks hover, hover outranks the
-   * hint, matching the overlay precedence. Returns what needs uploading.
+   * Bring the buffer in line with `selected` / `hovered` / `hinted` /
+   * `hintedFailed` (indexed by primitive; null means "none"). Selection outranks
+   * hover, hover outranks both hint tiers, and a refused pick's mark outranks
+   * the plain hint, matching the overlay precedence.
    */
   apply(
     selected: readonly boolean[] | null,
     hovered: readonly boolean[] | null,
     palette: HighlightPalette,
     hinted: readonly boolean[] | null = null,
+    hintedFailed: readonly boolean[] | null = null,
   ): PaintResult {
     const repaintAll = this.palette === null || !samePalette(this.palette, palette)
     this.palette = palette
@@ -158,7 +165,7 @@ export class HighlightColorPainter {
       // highlighted ones on top.
       this.fill(palette.base)
       for (let i = 0; i < count; i++) {
-        const next = stateOf(i, selected, hovered, hinted)
+        const next = stateOf(i, selected, hovered, hinted, hintedFailed)
         this.state[i] = next
         if (next !== BASE) this.paint(i, colorFor(next, palette), null)
       }
@@ -169,7 +176,7 @@ export class HighlightColorPainter {
     let repainted = 0
     let overflow = false
     for (let i = 0; i < count; i++) {
-      const next = stateOf(i, selected, hovered, hinted)
+      const next = stateOf(i, selected, hovered, hinted, hintedFailed)
       if (this.state[i] === next) continue
       this.state[i] = next
       this.paint(i, colorFor(next, palette), overflow ? null : ranges)
@@ -181,10 +188,11 @@ export class HighlightColorPainter {
   }
 
   // Test/diagnostic accessor: the paint state of one primitive.
-  stateAt(index: number): 'unpainted' | 'base' | 'selected' | 'hovered' | 'hinted' {
+  stateAt(index: number): 'unpainted' | 'base' | 'selected' | 'hovered' | 'hinted' | 'hinted-failed' {
     const state = this.state[index]
     if (state === SELECTED) return 'selected'
     if (state === HOVERED) return 'hovered'
+    if (state === HINTED_FAILED) return 'hinted-failed'
     if (state === HINTED) return 'hinted'
     if (state === BASE) return 'base'
     return 'unpainted'
@@ -238,14 +246,17 @@ function stateOf(
   selected: readonly boolean[] | null,
   hovered: readonly boolean[] | null,
   hinted: readonly boolean[] | null,
+  hintedFailed: readonly boolean[] | null,
 ): number {
   const state = highlightState(
     selected?.[index] === true,
     hovered?.[index] === true,
     hinted?.[index] === true,
+    hintedFailed?.[index] === true,
   )
   if (state === 'selected') return SELECTED
   if (state === 'hovered') return HOVERED
+  if (state === 'hinted-failed') return HINTED_FAILED
   if (state === 'hinted') return HINTED
   return BASE
 }
@@ -253,6 +264,7 @@ function stateOf(
 function colorFor(state: number, palette: HighlightPalette): RGB {
   if (state === SELECTED) return palette.selected
   if (state === HOVERED) return palette.hovered
+  if (state === HINTED_FAILED) return palette.hintedFailed
   if (state === HINTED) return palette.hinted
   return palette.base
 }
@@ -264,6 +276,7 @@ function sameRGB(a: RGB, b: RGB): boolean {
 function samePalette(a: HighlightPalette, b: HighlightPalette): boolean {
   return sameRGB(a.base, b.base) && sameRGB(a.selected, b.selected)
     && sameRGB(a.hovered, b.hovered) && sameRGB(a.hinted, b.hinted)
+    && sameRGB(a.hintedFailed, b.hintedFailed)
 }
 
 /**

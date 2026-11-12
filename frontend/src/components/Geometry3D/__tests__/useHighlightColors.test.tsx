@@ -3,7 +3,7 @@ import { renderHook } from '@testing-library/react'
 import * as THREE from 'three'
 import { useHighlightColors, paletteRGB } from '@/components/Geometry3D/useHighlightColors'
 import { faceRuns, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
-import { COLOR_SELECTED, COLOR_HOVER, COLOR_HINT } from '@/components/Geometry3D/constants'
+import { COLOR_SELECTED, COLOR_HOVER, COLOR_HINT, COLOR_HINT_FAILED } from '@/components/Geometry3D/constants'
 
 /**
  * The wiring half of the incremental highlight: the geometry's colour attribute
@@ -24,6 +24,7 @@ const PALETTE: HighlightPalette = {
   selected: paletteRGB(COLOR_SELECTED),
   hovered: paletteRGB(COLOR_HOVER),
   hinted: paletteRGB(COLOR_HINT),
+  hintedFailed: paletteRGB(COLOR_HINT_FAILED),
 }
 
 function makeGeometry(): THREE.BufferGeometry {
