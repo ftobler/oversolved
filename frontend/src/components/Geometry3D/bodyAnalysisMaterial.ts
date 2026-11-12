@@ -264,14 +264,10 @@ export const AO_GLSL = `
 export class AoProgram implements BodyAnalysisPatch {
   readonly name = 'body-material'
   readonly uniforms: BodyAnalysisPatch['uniforms']
-  private readonly mixVertexColor: boolean
   private readonly ao: boolean
-  private readonly transparent: boolean
 
-  constructor(mixVertexColor: boolean = false, ao = true, transparent = false) {
-    this.mixVertexColor = mixVertexColor
-    this.ao = ao && !transparent
-    this.transparent = transparent
+  constructor(_mixVertexColor: boolean = false, ao = true, _transparent = false) {
+    this.ao = ao && !_transparent
     this.uniforms = { uStripeFrequency: { value: 0 } }
   }
 
@@ -478,6 +474,7 @@ export function useBodyAnalysisMaterial(
   const threaded = params.threaded ?? false
   const patch = useMemo<BodyAnalysisPatch | null>(
     () => selectBodyPatch(params),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [mode, mixVertexColor, threaded, params.ao, params.ambientOcclusion, params.ambient_occlusion, params.transparent, params.transmission, params.opacity, params.capturing, params.sectionEnabled, params.sectioned, params.shading, params.zebra, params.curvature, params.allowAmbientOcclusion],
   )
 
