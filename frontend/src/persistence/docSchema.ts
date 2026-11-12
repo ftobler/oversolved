@@ -18,6 +18,7 @@ import { evalExpr } from '@/kernel/evalExpr'
 import { threadEntry } from '@/kernel/threadTable'
 import { isLengthUnit } from '@/utils/lengthUnit'
 import { normalizeMateLimitDeg } from '@/utils/mateKinds'
+import { isDocumentConstraintKind } from '@/wasm-kernel/partDocToSketches'
 import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
 
 // The version the ladder migrates to. A document carrying `version` 7 or newer
@@ -663,6 +664,17 @@ function checkConstraint(value: unknown, field: string): void {
   const constraint = checkRecord(value, field)
   checkId(constraint.id, `${field}.id`)
   checkString(constraint.kind, `${field}.kind`)
+  // A kind neither the wire table nor a lowering names can never reach a
+  // residual: lowerSketch fails loud on one now, so the boundary refuses the
+  // document by field rather than letting a hand-edited kind fault a solve.
+  // This is also what keeps the solver-side throw a programming-error guard.
+  // Unlike an unknown feature kind (accepted below for forward compatibility),
+  // an unknown constraint kind cannot solve in this build at all: the wire
+  // table has no code for it, so refusing is the honest reading.
+  const kind = constraint.kind as string
+  if (!isDocumentConstraintKind(kind)) {
+    fail(`${field}.kind`, `is not a constraint kind the sketch lowering can read, got ${JSON.stringify(kind)}`)
+  }
   for (const key of ['value', 'x', 'y', 'sign']) {
     checkOptional(constraint, key, field, checkFiniteNumber)
   }

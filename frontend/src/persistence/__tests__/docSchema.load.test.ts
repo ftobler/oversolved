@@ -487,4 +487,48 @@ describe('hostile sizes are capped before the builder', () => {
     }
     expect('taper' in serialised.features[1].extrude).toBe(false)
   })
+
+  it('refuses a constraint kind no lowering or wire code names', () => {
+    // lowerSketch fails loud on a kind it cannot encode, and nothing lowers
+    // `perpendicular`, so a hand-edited kind must be refused here by field
+    // rather than fault a solve later.
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'l1', kind: 'line' }],
+        constraints: [{ id: 'c1', kind: 'perpendicular', a: '$l1' }],
+      }],
+    })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.field).toBe('features[0].constraints[0].kind')
+    expect(result.error.message).toContain('perpendicular')
+  })
+
+  it('accepts the document-only kinds the lowering handles', () => {
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [
+          { id: 'l1', kind: 'line' }, { id: 'l2', kind: 'line' }, { id: 'l3', kind: 'line' },
+          { id: 'p1', kind: 'point' },
+        ],
+        constraints: [
+          { id: 'c_colinear', kind: 'colinear', a: '$l1', b: '$l2' },
+          { id: 'c_projection', kind: 'projection', target: '$l3', source: '?1;@u|x' },
+          { id: 'c_ngon', kind: 'ngon', refs: ['$l1', '$l2', '$l3'] },
+          { id: 'c_dock', kind: 'dock', point: '$p1xy', host: 'c_ngon' },
+        ],
+      }],
+    })
+    expect(result.ok).toBe(true)
+  })
 })

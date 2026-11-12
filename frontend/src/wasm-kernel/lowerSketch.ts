@@ -15,6 +15,7 @@
 import {
   AxisCode,
   ConstraintKindCode,
+  isConstraintKindName,
   type FlatConstraint,
   type FlatInput,
   type FlatRef,
@@ -228,10 +229,19 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     return { kind: 'entity', index, point }
   }
 
-  const lowerConstraint = (c: Record<string, unknown>): FlatConstraint | null => {
+  const lowerConstraint = (c: Record<string, unknown>): FlatConstraint => {
     const kindName = c.kind as string
+    // Every document kind is turned into a wire kind by partDocToSketches before
+    // this runs, and the document boundary refuses an unknown kind by field, so
+    // a kind the wire table does not name here is a programming error. The old
+    // `return null` was a silent drop: `colinear` vanished this way with no
+    // dropped verdict, no warning and no residual.
+    // Own-property guard: a plain table inherits Object.prototype members, and
+    // an inherited function would pass a bare undefined check.
+    if (!isConstraintKindName(kindName)) {
+      throw new Error(`lowerSketch: unknown constraint kind '${kindName}'`)
+    }
     const kind = ConstraintKindCode[kindName]
-    if (kind === undefined) return null
     const refs: FlatConstraint['refs'] = []
     for (const [key, role] of REF_KEYS) {
       const val = c[key]
@@ -267,11 +277,8 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
   const constraints: FlatConstraint[] = []
   const constraintIds: Array<string | null> = []
   for (const c of sk.constraints) {
-    const lowered = lowerConstraint(c)
-    if (lowered) {
-      constraints.push(lowered)
-      constraintIds.push(typeof c.id === 'string' ? c.id : null)
-    }
+    constraints.push(lowerConstraint(c))
+    constraintIds.push(typeof c.id === 'string' ? c.id : null)
   }
 
   // Implicit origin pin, mirroring _solve_sketch's ORIGIN_FIX.

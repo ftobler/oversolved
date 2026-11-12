@@ -139,6 +139,31 @@ describe('lowerSketch fails loud on malformed refs', () => {
     expect(b.ref).toEqual({ kind: 'external', x: 3, y: -2 })
   })
 
+  it('throws naming an unknown constraint kind instead of dropping it silently', () => {
+    // `colinear` used to reach this layer and vanish through a `return null`:
+    // no dropped verdict, no warning, no residual. partDocToSketches now lowers
+    // every document kind first, so a kind that arrives here unknown is a
+    // programming error and must be loud.
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'l1', kind: 'line' }, { id: 'l2', kind: 'line' }],
+      initial: { l1: [0, 0, 10, 0], l2: [0, 1, 10, 1] },
+      constraints: [{ kind: 'colinear', a: { entity: 'l1' }, b: { entity: 'l2' } }],
+    })).toThrow("lowerSketch: unknown constraint kind 'colinear'")
+  })
+
+  it('rejects an inherited Object key as a constraint kind', () => {
+    // The kind table is a plain object, so 'toString' would resolve through the
+    // prototype to a function and pass a bare undefined check, then encode as
+    // whichever byte the coercion produced.
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'l1', kind: 'line' }],
+      initial: { l1: [0, 0, 10, 0] },
+      constraints: [{ kind: 'toString', a: { entity: 'l1' } }],
+    })).toThrow("lowerSketch: unknown constraint kind 'toString'")
+  })
+
   it('throws naming an unknown entity kind instead of laying it out as a zero-param Line', () => {
     // An unknown kind left size undefined: the layout arithmetic went NaN and
     // the kind byte encoded as 0, which the Rust decoder reads as a Line.
