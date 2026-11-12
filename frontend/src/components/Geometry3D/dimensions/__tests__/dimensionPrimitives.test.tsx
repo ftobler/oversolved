@@ -48,6 +48,7 @@ vi.mock('@react-three/drei', () => ({
 }))
 
 import { Arrowhead, ArrowTail, ExtensionLine, DashedLine } from '../primitives'
+import { RENDER_ORDER_EDITING } from '@/utils/core/partColors'
 
 function runLatestFrame() {
   frame.callbacks.at(-1)!()
@@ -145,6 +146,42 @@ describe('DashedLine', () => {
     expect(props.color).toBe('#abc')
     expect(props.lineWidth).toBe(2)
     expect(props.renderOrder).toBe(7)
+  })
+})
+
+describe('dimension render layer', () => {
+  it('ArrowTail draws on the sketch edit layer, not just depth-test free', () => {
+    render(<ArrowTail origin={[0, 0]} dir={[1, 0]} color="#0f0" />)
+
+    expect(LineSpy.mock.calls[0][0]).toMatchObject({
+      depthTest: false,
+      renderOrder: RENDER_ORDER_EDITING,
+    })
+  })
+
+  it('ExtensionLine draws on the sketch edit layer, not just depth-test free', () => {
+    render(<ExtensionLine start={[0, 0]} end={[0, 100]} color="#00f" />)
+
+    expect(LineSpy.mock.calls[0][0]).toMatchObject({
+      depthTest: false,
+      renderOrder: RENDER_ORDER_EDITING,
+    })
+  })
+
+  it('Arrowhead puts its mesh on the same layer and its material depth-test free', () => {
+    const { container } = render(<Arrowhead tip={[10, 0]} from={[0, 0]} color="#f00" />)
+
+    // renderOrder lives on the mesh (the object three sorts); depthTest lives
+    // on the material. Without the mesh order the shape is sorted by material
+    // id, which is exactly how it ended up under a remounted body.
+    expect(container.querySelector('mesh')!.getAttribute('renderOrder')).toBe(String(RENDER_ORDER_EDITING))
+    // React DOM drops a false value for an unknown attribute, so the material's
+    // depthTest is not in the markup; the props React handed the element are,
+    // and those are the props R3F would apply in a real scene.
+    const material = container.querySelector('meshbasicmaterial')!
+    const propsKey = Object.getOwnPropertyNames(material).find(k => k.startsWith('__reactProps'))!
+    const props = (material as unknown as Record<string, Record<string, unknown>>)[propsKey]
+    expect(props.depthTest).toBe(false)
   })
 })
 

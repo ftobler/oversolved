@@ -3,6 +3,7 @@ import { Line } from '@react-three/drei'
 import { getSketchCallback } from '@/stores/sketchEditorStore'
 import { angleDimensionSign } from '@/utils/geometry/dimensionNaturalValue'
 import { sampleArc } from '@/utils/geometry/sketchHelpers'
+import { dimensionRenderLayer } from '@/components/Geometry3D/constants'
 import { Arrowhead, ExtensionLine } from './primitives'
 import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown, useDimLabelRegistration } from './useDimInteraction'
 import { DimensionLabel } from './DimensionLabel'
@@ -96,7 +97,7 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
       {witnessBStart && <ExtensionLine start={witnessBStart} end={[arcEndPt[0], arcEndPt[1]]} color={color} />}
 
       {/* Arc spanning the angle */}
-      <Line points={arcPts} color={color} lineWidth={1} depthTest={false} />
+      <Line points={arcPts} color={color} lineWidth={1} {...dimensionRenderLayer()} />
 
       {/* Arrows tangent to the arc at its endpoints, pointing OUTWARD (away from
           the span). The label always lands inside its own wedge, so there is no

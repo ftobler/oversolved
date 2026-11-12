@@ -3,6 +3,7 @@ import { Line } from '@react-three/drei'
 import { getSketchCallback } from '@/stores/sketchEditorStore'
 import { linearDimensionSign, lineDistanceSign } from '@/utils/geometry/dimensionNaturalValue'
 import { computeLinearArrowLayout, evalExtensionLine } from '@/utils/geometry/dimensionRenderLayout'
+import { dimensionRenderLayer } from '@/components/Geometry3D/constants'
 import { Arrowhead, ArrowTail, ExtensionLine } from './primitives'
 import { useDimInteraction, useActiveLabelDrag, useDimLabelPointerDown, useDimLabelRegistration } from './useDimInteraction'
 import { DimensionLabel } from './DimensionLabel'
@@ -98,7 +99,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
     <group key={cid}>
       {!ext1.skip && <ExtensionLine start={[ext1.touchX, ext1.touchY]} end={[d1x, d1y]} color={color} />}
       {!ext2.skip && <ExtensionLine start={[ext2.touchX, ext2.touchY]} end={[d2x, d2y]} color={color} />}
-      <Line points={[[d1x, d1y, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} depthTest={false} />
+      <Line points={[[d1x, d1y, 0], [d2x, d2y, 0]]} color={color} lineWidth={1} {...dimensionRenderLayer()} />
       {isInside ? (
         // Inside: arrows at boundaries pointing outward.
         // |<---X--->|
@@ -114,7 +115,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
           <ArrowTail origin={[d1x, d1y]} dir={[-udirX, -udirY]} color={color} />
           <Arrowhead tip={[d2x, d2y]} from={[d2x + udirX, d2y + udirY]} color={color} />
           <ArrowTail origin={[d2x, d2y]} dir={[udirX, udirY]} color={color} />
-          <Line points={[[d1x, d1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} depthTest={false} />
+          <Line points={[[d1x, d1y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} {...dimensionRenderLayer()} />
         </>
       ) : (
         // Outside near d2: both arrows point inward (into the dimension line), leader from d2 to label.
@@ -125,7 +126,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
           <ArrowTail origin={[d1x, d1y]} dir={[-udirX, -udirY]} color={color} />
           <Arrowhead tip={[d2x, d2y]} from={[d2x + udirX, d2y + udirY]} color={color} />
           <ArrowTail origin={[d2x, d2y]} dir={[udirX, udirY]} color={color} />
-          <Line points={[[d2x, d2y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} depthTest={false} />
+          <Line points={[[d2x, d2y, 0], [labelX, labelY, 0]]} color={color} lineWidth={1} {...dimensionRenderLayer()} />
         </>
       )}
       <DimensionLabel
