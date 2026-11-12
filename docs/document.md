@@ -674,8 +674,11 @@ body.
 A body pattern always counts the source, and there is no include-source option.
 A document written before that rule may still carry `pattern.include_source`:
 the loader accepts it and the kernel ignores it, so an old file opens with the
-source as instance 0 and `count: 3` making two copies. The key is dropped the
-next time that pattern is edited; no document version migration rewrites it.
+source as instance 0 and `count: 3` making two copies. An old file whose pattern
+reads `count: 1`, or a 1x1 rectangular pair, also opens; the pattern is a red
+feature with the source-in-count refusal until its count is raised. The retired
+key is dropped the next time that pattern is edited; no document version
+migration rewrites it.
 
 #### Feature subject
 
@@ -709,7 +712,9 @@ standalone tool to repeat.
 For either subject, `count` is the total instance count and always includes the
 source: the source occupies instance 0 (and, for a feature subject, its own
 application already happened), so `count: 3` makes two copies and `count: 2`
-makes one. A count below 2 is refused because the count includes the source.
+makes one. The kernel refuses a count below 2 because the count includes the
+source; the loader still opens an old document with such a count so the pattern
+can be corrected.
 Rectangular mode always leaves the seed cell to the source, so it makes
 `count_x * count_y - 1` copies; 1xN is a legitimate row, while 1x1 is refused
 because it would make no copy. The body is the one the

@@ -518,18 +518,16 @@ function checkReferenceOperandList(value: unknown, field: string): void {
 }
 
 // A count that expands in the builder: an integer within the cap, or an
-// expression string. `min` is 2 for the one-axis count, because it includes the
-// source's own slot, and 1 for a rectangular axis (the pair check refuses 1x1).
-// An expression is evaluated here with no variable context as a best-effort
-// guard; a string whose value cannot be known yet (it names a document
-// variable) passes and is checked again when the solver resolves it.
-function checkCount(value: unknown, field: string, min: number): number | null {
+// expression string. The loader accepts a positive count, including the
+// legacy count 1 an old document may carry; the kernel refuses a count below 2
+// with the source-in-count message, so the file still opens and the pattern
+// feature goes red with a named reason. An expression is evaluated here with
+// no variable context as a best-effort guard; a string whose value cannot be
+// known yet (it names a document variable) passes and is checked again when the
+// solver resolves it.
+function checkCount(value: unknown, field: string): number | null {
   if (typeof value === 'number') {
-    if (!Number.isInteger(value) || value < min) {
-      fail(field, min === 2
-        ? `must be an integer >= 2 because the count includes the source, got ${value}`
-        : `must be an integer >= ${min}, got ${value}`)
-    }
+    checkInteger(value, field, 1)
     if (value > MAX_ARRAY_COUNT) fail(field, `must be at most ${MAX_ARRAY_COUNT}, got ${value}`)
     return value
   }
@@ -537,11 +535,7 @@ function checkCount(value: unknown, field: string, min: number): number | null {
     checkExpr(value, field)
     const resolved = evalExpr(value)
     if (Number.isFinite(resolved)) {
-      if (!Number.isInteger(resolved) || resolved < min) {
-        fail(field, min === 2
-          ? `evaluates to ${resolved}, but the count includes the source so it must be an integer >= 2`
-          : `evaluates to ${resolved}, expected an integer >= ${min}`)
-      }
+      if (!Number.isInteger(resolved) || resolved < 1) fail(field, `evaluates to ${resolved}, expected a positive integer`)
       if (resolved > MAX_ARRAY_COUNT) fail(field, `evaluates to ${resolved}, the limit is ${MAX_ARRAY_COUNT}`)
       return resolved
     }
@@ -788,18 +782,11 @@ function checkBooleanDef(sub: DocRecord, field: string): void {
   checkOptional(sub, 'clearance', field, checkExpr)
 }
 
-function checkCountPair(sub: DocRecord, field: string, requireCopy: boolean): void {
-  const x = sub.count_x === undefined ? null : checkCount(sub.count_x, `${field}.count_x`, 1)
-  const y = sub.count_y === undefined ? null : checkCount(sub.count_y, `${field}.count_y`, 1)
+function checkCountPair(sub: DocRecord, field: string): void {
+  const x = sub.count_x === undefined ? null : checkCount(sub.count_x, `${field}.count_x`)
+  const y = sub.count_y === undefined ? null : checkCount(sub.count_y, `${field}.count_y`)
   const cells = arrayCellsProblem(x, y)
   if (cells !== null) fail(`${field}.count_x`, cells)
-  // The seed cell belongs to the source, so a rectangular grid needs at least
-  // one other cell. 1xN is a legitimate row; 1x1 would copy nothing. Judge the
-  // pair only in rectangular mode, so a stale pair left by a mode switch does
-  // not fail an old document the kernel ignores those fields on.
-  if (requireCopy && x === 1 && y === 1) {
-    fail(`${field}.count_x`, 'count_x * count_y is 1, but the counts include the source, so 1x1 makes no new instance')
-  }
 }
 
 function arrayCellsProblem(x: number | null, y: number | null): string | null {
@@ -935,15 +922,13 @@ function checkPattern(sub: DocRecord, field: string): void {
   // it, and the next pattern edit drops it.
   checkOptional(sub, 'include_source', field, checkBoolean)
   checkOptional(sub, 'mode', field, (v, f) => checkEnum(v, f, ['linear', 'rectangular', 'circular']))
-  // count is the total instance count for one axis and includes the source, so
-  // it needs at least 2 when the mode reads it. The rectangular pair carries
-  // the cells cap the old array had and, in rectangular mode, must leave at
-  // least one non-seed cell. A mode switch used to leave the other family's
-  // fields behind, so the cap checks stay unconditional while the two new
-  // floors are judged only on the fields the mode reads.
-  const mode = (sub.mode as string | undefined) ?? 'linear'
-  if (sub.count !== undefined) checkCount(sub.count, `${field}.count`, mode === 'rectangular' ? 1 : 2)
-  checkCountPair(sub, field, mode === 'rectangular')
+  // count is the total instance count for one axis. The loader accepts the
+  // legacy count 1 and a 1x1 rectangular pair; the kernel refuses a count below
+  // 2 (and 1x1) with the source-in-count message, so an old document opens with
+  // a red pattern rather than failing the whole load. The rectangular pair
+  // carries the same cells cap the old array had.
+  if (sub.count !== undefined) checkCount(sub.count, `${field}.count`)
+  checkCountPair(sub, field)
   for (const key of ['pitch', 'pitch_x', 'pitch_y', 'step_angle']) {
     if (sub[key] !== undefined && sub[key] !== null) checkExpr(sub[key], `${field}.${key}`)
   }

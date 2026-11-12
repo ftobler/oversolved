@@ -39,7 +39,7 @@ describe('pattern document validation', () => {
   })
 
   it('refuses a count the loader would refuse', () => {
-    for (const count of [0, 1, -2, 2.5]) {
+    for (const count of [0, -2, 2.5]) {
       const result = loadPartDoc(doc({ subject: 'feature', source_feature: '@ex1', count }))
       expect(result.ok, String(count)).toBe(false)
       if (result.ok) continue
@@ -47,13 +47,13 @@ describe('pattern document validation', () => {
     }
   })
 
-  it('refuses a 1x1 rectangular grid but accepts a 1x2 row', () => {
+  it('accepts a legacy count 1 and a 1x1 grid, which the kernel refuses', () => {
+    // The loader keeps old documents open; the kernel names the source-in-count
+    // refusal when the pattern solves. See patternReal.test.ts for that half.
+    const legacy = loadPartDoc(doc({ subject: 'body', source_body: '@b1', count: 1 }))
+    expect(legacy.ok).toBe(true)
     const square = loadPartDoc(doc({ subject: 'body', mode: 'rectangular', count_x: 1, count_y: 1 }))
-    expect(square.ok).toBe(false)
-    if (!square.ok) {
-      expect(square.error.field).toBe('features[0].pattern.count_x')
-      expect(square.error.message).toContain('1x1')
-    }
+    expect(square.ok).toBe(true)
     expect(loadPartDoc(doc({ subject: 'body', mode: 'rectangular', count_x: 1, count_y: 2 })).ok).toBe(true)
   })
 
