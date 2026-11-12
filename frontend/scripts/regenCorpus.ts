@@ -299,6 +299,8 @@ async function buildProjectionCases(): Promise<void> {
 
 async function buildArrayCases(): Promise<ProjectionCase[]> {
   const out: ProjectionCase[] = []
+  // The checked-in fixtures keep the retired include_source key as legacy-load
+  // coverage; new specs do not author it.
 
   // Rectangular 3x2 of a 5x5x5 box; directions come from sketch lines so the
   // spec is self-contained and stable (the current array leaf requires them).
@@ -310,7 +312,7 @@ async function buildArrayCases(): Promise<ProjectionCase[]> {
       id: 'arr1', kind: 'pattern',
       pattern: {
         subject: 'body', mode: 'rectangular', source_body: '@ex1', count_x: 3, count_y: 2,
-        pitch_x: 5, pitch_y: 5, include_source: true, operation: 'add',
+        pitch_x: 5, pitch_y: 5, operation: 'add',
         direction_x_query: '@sk_dir/lx', direction_y_query: '@sk_dir/ly',
       },
     },
@@ -330,7 +332,7 @@ async function buildArrayCases(): Promise<ProjectionCase[]> {
     {
       id: 'arr1', kind: 'pattern',
       pattern: {
-        subject: 'body', mode: 'circular', source_body: '@ex1', count: 3, include_source: true, operation: 'add',
+        subject: 'body', mode: 'circular', source_body: '@ex1', count: 3, operation: 'add',
         axis: '@sk_axis/c1', invert_axis: false,
       },
     },

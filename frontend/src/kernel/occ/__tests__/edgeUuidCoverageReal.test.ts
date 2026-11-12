@@ -327,7 +327,7 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
         id: 'ca1', kind: 'pattern', pattern: {
           subject: 'body', mode: 'circular', source_body: '@body_ex1',
           count: 6, axis: '@builtin_plane_front',
-          include_source: true, operation: 'add',
+          operation: 'add',
         },
       },
     ] }, 'body_ex1')
@@ -388,7 +388,7 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
         id: 'ca1', kind: 'pattern', pattern: {
           subject: 'body', mode: 'circular', source_body: '@body_ex1',
           count: 4, axis: '@builtin_plane_front',
-          include_source: true, operation: 'new',
+          operation: 'new',
         },
       },
     ] })

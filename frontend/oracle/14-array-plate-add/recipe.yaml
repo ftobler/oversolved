@@ -125,7 +125,6 @@ features:
       source_body: "@body_ex1"
       mode: linear
       operation: add
-      include_source: true
       count: 3
       pitch: 30
       direction_query: "@sk1/bottom"

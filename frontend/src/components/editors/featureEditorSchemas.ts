@@ -448,15 +448,18 @@ export const SPLIT_SCHEMA: FeatureEditorSchema = {
 }
 
 // The other count of a rectangular array for the cells cap; a linear array has
-// one axis, so its hidden count_y never binds.
-function siblingCount(other: unknown, mode: unknown): number | null {
-  return mode === 'rectangular' && typeof other === 'number' ? other : null
+// one axis, so its hidden count_y never binds. A string is an expression the
+// shared rule evaluates when it can, so a literal 1x1 still refuses.
+function siblingCount(other: unknown, mode: unknown): number | string | null {
+  return mode === 'rectangular' && (typeof other === 'number' || typeof other === 'string')
+    ? other
+    : null
 }
 
 export const PATTERN_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_pattern',
   subKey: 'pattern',
-  defaults: { subject: 'body', mode: 'linear', operation: 'add', include_source: true, count: 2, pitch: 20 },
+  defaults: { subject: 'body', mode: 'linear', operation: 'add', count: 2, pitch: 20 },
   // Show a legacy feature pattern with its inferred subject, so its rows and
   // fields are the ones it actually solves with.
   normalize: (raw) => ({ ...raw, subject: patternSubject(raw) }),
@@ -478,16 +481,17 @@ export const PATTERN_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       showWhen: (d) => d.subject !== 'feature',
       options: [{ value: 'add', label: 'Add' }, { value: 'new', label: 'New' }] },
-    { type: 'checkbox', key: 'include_source', label: 'Include src', default: true,
-      showWhen: (d) => d.subject !== 'feature' },
     { type: 'select', key: 'mode', label: 'Mode', default: 'linear',
       options: [
         { value: 'linear', label: 'Linear' },
         { value: 'rectangular', label: 'Rectangular' },
         { value: 'circular', label: 'Circular' },
       ] },
-    // Count is the total on one axis: the source's own slot is instance 1.
-    { type: 'number', key: 'count', label: 'Count', default: 2, parse: 'int', validate: positive, min: 1,
+    // Count is the total on one axis and includes the source's own slot, so 2
+    // is the smallest value and makes one copy. The schema leaves the floor to
+    // validateWith so the source-in-count reason, not a bare numeric bound, is
+    // what the user sees.
+    { type: 'number', key: 'count', label: 'Count', default: 2, parse: 'int',
       max: MAX_ARRAY_COUNT, showWhen: (d) => d.mode !== 'rectangular',
       validateWith: (v) => arrayCountProblem('count', v) },
     { type: 'pick', key: 'direction_query', label: 'Direction', transform: resolveAxisQuery,
@@ -497,7 +501,7 @@ export const PATTERN_SCHEMA: FeatureEditorSchema = {
     { type: 'number', key: 'pitch', label: 'Pitch', default: 20, validate: nonNegative, min: 0,
       showWhen: (d) => d.mode === 'linear' },
     // Rectangular mode: one picked direction per axis. The seed cell (0,0) is
-    // the source slot and is never a copy.
+    // the source slot and is never a copy, so the pair needs another cell.
     { type: 'pick', key: 'direction_x_query', label: 'Direction X', transform: resolveAxisQuery,
       showWhen: (d) => d.mode === 'rectangular', emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert_x', label: 'Invert X', default: false,

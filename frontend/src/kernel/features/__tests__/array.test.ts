@@ -1,7 +1,7 @@
-// Pure-logic coverage for the array leaf's instance-count + offset arithmetic
+// Pure-logic coverage for the pattern leaf's instance-count + offset arithmetic
 // (buildArrayTransforms / buildCircularTransforms). The full solveArray path
 // needs live OCC and is exercised by transformGroupReal et al; here we drive
-// just the transform builders through a recording fake so the include_source
+// just the transform builders through a recording fake so the source-in-count
 // off-by-one, rectangular nesting, and 360/count step default are pinned down
 // without the gitignored 66 MB opencascade.js artifact.
 
@@ -14,7 +14,6 @@ import type { HandleTable } from '../../occ/handleTable'
 import type { Body } from '../../types3d'
 import { buildPatternTransforms, solvePattern } from '../pattern'
 import { bareBody } from '../shared/bodyResolution'
-import { emptyBrepDiff } from '../../types3d'
 
 type Dict = Record<string, unknown>
 
@@ -42,7 +41,7 @@ function buildArrayTransforms(
   repo: Repository,
   bodyStore: Record<string, Body> = {},
 ) {
-  return buildPatternTransforms(oc, scope, linearize(sub), repo, bodyStore, (sub.include_source as boolean) ?? true)
+  return buildPatternTransforms(oc, scope, linearize(sub), repo, bodyStore)
 }
 
 function buildCircularTransforms(
@@ -52,7 +51,7 @@ function buildCircularTransforms(
   repo: Repository,
   bodyStore: Record<string, Body> = {},
 ) {
-  return buildPatternTransforms(oc, scope, { ...sub, mode: 'circular' }, repo, bodyStore, (sub.include_source as boolean) ?? true)
+  return buildPatternTransforms(oc, scope, { ...sub, mode: 'circular' }, repo, bodyStore)
 }
 
 function solveArray(
@@ -176,14 +175,14 @@ function translations(trsfs: unknown[]): number[][] {
 }
 
 describe('buildArrayTransforms (linear)', () => {
-  it('emits count_x - 1 instances when the source is included', () => {
-    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 3, pitch_x: 10, include_source: true, direction_x_query: 'qx' }, xyRepo)
+  it('emits count - 1 instances because the count includes the source', () => {
+    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 3, pitch_x: 10, direction_x_query: 'qx' }, xyRepo)
     expect(translations(t)).toEqual([[10, 0, 0], [20, 0, 0]])
   })
 
-  it('emits count_x instances when the source is excluded', () => {
-    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 3, pitch_x: 10, include_source: false, direction_x_query: 'qx' }, xyRepo)
-    expect(translations(t)).toEqual([[10, 0, 0], [20, 0, 0], [30, 0, 0]])
+  it('emits one copy for count 2', () => {
+    const t = buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 10, direction_x_query: 'qx' }, xyRepo)
+    expect(translations(t)).toEqual([[10, 0, 0]])
   })
 
   it('resolves the direction from a picked edge query', () => {
@@ -255,19 +254,21 @@ describe('buildArrayTransforms (linear)', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5, direction_x_query: 'dangling' }, repo)).toThrow(/did not resolve/)
   })
 
-  it('throws instead of silently no-opping when count_x is 0', () => {
-    expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 0, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
-      .toThrow(/count must be a positive integer/)
+  it('refuses count 0 and 1 because the count includes the source', () => {
+    for (const count_x of [0, 1]) {
+      expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
+        .toThrow(/count includes the source/)
+    }
   })
 
   it('throws when count_x is negative', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: -1, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
-      .toThrow(/count must be a positive integer/)
+      .toThrow(/count includes the source/)
   })
 
   it('throws instead of silently truncating when count_x is fractional', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2.7, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
-      .toThrow(/count must be a positive integer/)
+      .toThrow(/count includes the source/)
   })
 
   it('throws when pitch_x is not finite', () => {
@@ -299,7 +300,7 @@ describe('buildArrayTransforms (rectangular)', () => {
     const t = buildArrayTransforms(
       makeFake(),
       scope,
-      { mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: 20, include_source: true, direction_x_query: 'qx', direction_y_query: 'qy' },
+      { mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: 20, direction_x_query: 'qx', direction_y_query: 'qy' },
       xyRepo,
     )
     // Full 2x2 lattice minus (0,0): (1,0), (0,1), (1,1)
@@ -312,29 +313,37 @@ describe('buildArrayTransforms (rectangular)', () => {
       scope,
       {
         mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: 20,
-        include_source: true, direction_x: [1, 0, 0], direction_y: [0, 0, -1],
+        direction_x: [1, 0, 0], direction_y: [0, 0, -1],
       },
       repo,
     )
     expect(translations(t)).toEqual([[10, 0, 0], [0, 0, -20], [10, 0, -20]])
   })
 
-  it('excludes the seed cell when the source is excluded', () => {
+  it('accepts a 1x2 row and emits its one copy', () => {
     const t = buildArrayTransforms(
       makeFake(),
       scope,
-      { mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: 20, include_source: false, direction_x_query: 'qx', direction_y_query: 'qy' },
+      { mode: 'rectangular', count_x: 1, count_y: 2, pitch_x: 10, pitch_y: 20, direction_x_query: 'qx', direction_y_query: 'qy' },
       xyRepo,
     )
-    // 2x2 lattice minus the seed (0,0): 3 copies, matching linear's no-seed rule.
-    expect(translations(t)).toEqual([[10, 0, 0], [0, 20, 0], [10, 20, 0]])
+    expect(translations(t)).toEqual([[0, 20, 0]])
   })
 
-  it('emits count_x * count_y - 1 instances for a 3x2 grid with include_source', () => {
+  it('refuses a 1x1 grid, which has no copy because the seed is the source', () => {
+    expect(() => buildArrayTransforms(
+      makeFake(),
+      scope,
+      { mode: 'rectangular', count_x: 1, count_y: 1, pitch_x: 10, pitch_y: 20, direction_x_query: 'qx', direction_y_query: 'qy' },
+      xyRepo,
+    )).toThrow(/1x1/)
+  })
+
+  it('emits count_x * count_y - 1 instances for a 3x2 grid', () => {
     const t = buildArrayTransforms(
       makeFake(),
       scope,
-      { mode: 'rectangular', count_x: 3, count_y: 2, pitch_x: 10, pitch_y: 20, include_source: true, direction_x_query: 'qx', direction_y_query: 'qy' },
+      { mode: 'rectangular', count_x: 3, count_y: 2, pitch_x: 10, pitch_y: 20, direction_x_query: 'qx', direction_y_query: 'qy' },
       xyRepo,
     )
     // 3x2 = 6 cells, minus (0,0) = 5 instances
@@ -406,57 +415,57 @@ describe('buildCircularTransforms', () => {
   // A picked axis is required; resolve @az to a +Z edge through the origin.
   const zRepo = dirRepo({ az: [0, 0, 1] })
 
-  it('defaults the step angle to 360 / count and includes the source', () => {
-    const t = buildCircularTransforms(makeFake(), scope, { count: 4, include_source: true, axis: 'az' }, zRepo, {})
+  it('defaults the step angle to 360 / count and keeps the source in the seed slot', () => {
+    const t = buildCircularTransforms(makeFake(), scope, { count: 4, axis: 'az' }, zRepo, {})
     const angles = rotations(t).map((r) => (r.angle * 180) / Math.PI)
-    // count 4, source included -> 3 copies at 90, 180, 270 degrees
+    // count 4 -> 3 copies at 90, 180, 270 degrees; the seed (0) is the source.
     expect(angles.map((a) => Math.round(a))).toEqual([90, 180, 270])
   })
 
-  it('excludes the seed and emits count - 1 copies across a full wrap', () => {
-    const t = buildCircularTransforms(makeFake(), scope, { count: 4, include_source: false, axis: 'az' }, zRepo, {})
+  it('emits one copy for count 2, sweeping from the first step', () => {
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, step_angle: 30, axis: 'az' }, zRepo, {})
     const angles = rotations(t).map((r) => Math.round((r.angle * 180) / Math.PI))
-    // Default step = 360/4 = 90. No source copy: sweep 90, 180, 270 and drop the
-    // full-360 wrap slot that would land back on the seed.
-    expect(angles).toEqual([90, 180, 270])
+    expect(angles).toEqual([30])
   })
 
   it('honours an explicit step_angle over the 360/count default', () => {
-    const t = buildCircularTransforms(makeFake(), scope, { count: 3, step_angle: 30, include_source: false, axis: 'az' }, zRepo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 3, step_angle: 30, axis: 'az' }, zRepo, {})
     const angles = rotations(t).map((r) => Math.round((r.angle * 180) / Math.PI))
-    // Partial sweep (90 total): copies at 30, 60, 90, never on the seed.
-    expect(angles).toEqual([30, 60, 90])
+    // count 3 -> two copies at 30 and 60, never on the seed.
+    expect(angles).toEqual([30, 60])
   })
 
   it('rotates about the picked axis through its origin', () => {
-    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'az' }, zRepo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, axis: 'az' }, zRepo, {})
     expect(rotations(t)[0].origin).toEqual([0, 0, 0])
     expect(rotations(t)[0].direction).toEqual([0, 0, 1])
   })
 
   it('resolves the axis from a picked planar face normal', () => {
     const faceRepo = dirRepo({}, { af: [0, 0, 2] })
-    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'af' }, faceRepo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, axis: 'af' }, faceRepo, {})
     expect(rotations(t)[0].direction).toEqual([0, 0, 1])
   })
 
   it('inverts the axis direction when invert_axis is set', () => {
-    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'az', invert_axis: true }, zRepo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, axis: 'az', invert_axis: true }, zRepo, {})
     expect(rotations(t)[0].direction).toEqual([0, 0, -1])
   })
-  it('throws instead of silently no-opping when count is 0', () => {
-    expect(() => buildCircularTransforms(makeFake(), scope, { count: 0, axis: 'az' }, zRepo, {}))
-      .toThrow(/count must be a positive integer/)
+  it('refuses count 0 and 1 because the count includes the source', () => {
+    for (const count of [0, 1]) {
+      expect(() => buildCircularTransforms(makeFake(), scope, { count, axis: 'az' }, zRepo, {}))
+        .toThrow(/count includes the source/)
+    }
   })
 
   it('throws when count is negative', () => {
     expect(() => buildCircularTransforms(makeFake(), scope, { count: -2, axis: 'az' }, zRepo, {}))
-      .toThrow(/count must be a positive integer/)
+      .toThrow(/count includes the source/)
   })
 
   it('throws instead of silently truncating when count is fractional', () => {
     expect(() => buildCircularTransforms(makeFake(), scope, { count: 2.7, axis: 'az' }, zRepo, {}))
-      .toThrow(/count must be a positive integer/)
+      .toThrow(/count includes the source/)
   })
 
   it('throws when step_angle is not finite', () => {
@@ -480,7 +489,7 @@ describe('buildCircularTransforms', () => {
       },
       elements: new Map(),
     } as unknown as Repository
-    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'ce' }, circleRepo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, axis: 'ce' }, circleRepo, {})
     expect(rotations(t)[0].origin).toEqual([5, 0, 0])
     expectCloseVec(rotations(t)[0].direction, [0, 1, 0])
   })
@@ -493,7 +502,7 @@ describe('buildCircularTransforms', () => {
       },
       elements: new Map(),
     } as unknown as Repository
-    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'cf' }, cylRepo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, axis: 'cf' }, cylRepo, {})
     expect(rotations(t)[0].origin).toEqual([10, 0, 0])
     expectCloseVec(rotations(t)[0].direction, [1, 0, 0])
   })
@@ -509,7 +518,7 @@ describe('buildCircularTransforms', () => {
       },
       elements: new Map(),
     } as unknown as Repository
-    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'ae' }, arcRepo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, axis: 'ae' }, arcRepo, {})
     expect(rotations(t)[0].origin).toEqual([0, 2, 0])
     expectCloseVec(rotations(t)[0].direction, [0, 0, 1])
   })
@@ -524,7 +533,7 @@ describe('buildCircularTransforms', () => {
         ['_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }],
       ]),
     } as unknown as Repository
-    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: '@sk/c1' }, sketchCircleRepo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, axis: '@sk/c1' }, sketchCircleRepo, {})
     // Centre [3, 0] lifted to [3, 0, 0] on XY plane; axis = normal [0, 0, 1].
     expect(rotations(t)[0].origin).toEqual([3, 0, 0])
     expectCloseVec(rotations(t)[0].direction, [0, 0, 1])
@@ -540,7 +549,7 @@ describe('buildCircularTransforms', () => {
         ['_pt_sk', { origin: [10, 0, 0], x_axis: [0, 1, 0], y_axis: [0, 0, 1], normal: [1, 0, 0] }],
       ]),
     } as unknown as Repository
-    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: '@sk/c1' }, sketchCircleRepo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, axis: '@sk/c1' }, sketchCircleRepo, {})
     // Centre [0, 0] on plane at origin [10,0,0] with x_axis [0,1,0] → [10, 0, 0].
     expect(rotations(t)[0].origin).toEqual([10, 0, 0])
     expectCloseVec(rotations(t)[0].direction, [1, 0, 0])
@@ -557,7 +566,7 @@ describe('buildCircularTransforms', () => {
       },
       elements: new Map(),
     } as unknown as Repository
-    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'ce' }, circEdgeRepo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, axis: 'ce' }, circEdgeRepo, {})
     expect(rotations(t)[0].origin).toEqual([0, 0, 0])
     expectCloseVec(rotations(t)[0].direction, [0, 0, 1])
   })
@@ -573,7 +582,7 @@ describe('buildCircularTransforms', () => {
       },
       elements: new Map(),
     } as unknown as Repository
-    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'se' }, straightEdgeRepo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, axis: 'se' }, straightEdgeRepo, {})
     expectCloseVec(rotations(t)[0].direction, [0, 0, 1])
   })
 
@@ -591,7 +600,7 @@ describe('buildCircularTransforms', () => {
     } as unknown as Repository
     // Without an axis field, it falls through to the planar-face normal branch
     // and should resolve to the face normal direction.
-    const t = buildCircularTransforms(makeFake(), scope, { count: 2, include_source: false, axis: 'cf' }, badCylRepo, {})
+    const t = buildCircularTransforms(makeFake(), scope, { count: 2, axis: 'cf' }, badCylRepo, {})
     expectCloseVec(rotations(t)[0].direction, [0, 0, 1])
   })
 })
@@ -624,41 +633,17 @@ describe('array source body diagnosis', () => {
   })
 })
 
-// A no-op array (include_source, zero transforms) never reaches a boolean, so
-// the hygiene path is drivable with the recording fake plus stub table.
-describe('array no-op hygiene', () => {
-  it('include_source with zero transforms leaves modified_by and brep_diff untouched', () => {
-    // count_x=1 with the source included copies nothing: pushing modified_by
-    // and nulling brep_diff raised a spurious dirty signal and destroyed the
-    // previous op's diff.
-    const body = { ...bareBody('body_ex1', 'ex1'), shape: 1 as never, modified_by: ['prev'], brep_diff: emptyBrepDiff() }
-    const table = { get: () => null } as unknown as HandleTable
-    const r = solveArray(
-      makeFake(), scope, table,
-      { id: 'ar9', array: { source_body: 'body_ex1', mode: 'linear', count_x: 1, pitch_x: 10, direction_x_query: 'qx' } },
-      xyRepo, { body_ex1: body },
-    )
-    expect(r).toEqual({ status: 'ok', body_id: 'body_ex1', body_ids: ['body_ex1'], operation: 'add' })
-    expect(body.modified_by).toEqual(['prev'])
-    expect(body.brep_diff).not.toBeNull()
-  })
-})
-
-// The new-path equivalent of the add-path no-op: with the identity instance
-// gone, `new` + include_source + count_x=1 has zero transforms and the source
-// body IS the array. The early return mirrors the add path so toggling
-// include_source on a one-count new array does not throw "produced no
-// instances".
-describe('array new-path count_x=1 no-op', () => {
-  it('new with count_x=1 and include_source returns the source as the array', () => {
+// A count of 1 no longer reaches a boolean at all: the count includes the
+// source, so the one-axis minimum is 2 for every subject and operation.
+describe('array source-in-count refusal through the leaf', () => {
+  it.each(['add', 'new'])('refuses count_x=1 for operation %s', (operation) => {
     const body = { ...bareBody('body_ex1', 'ex1'), shape: 1 as never }
     const table = { get: () => null } as unknown as HandleTable
-    const r = solveArray(
+    expect(() => solveArray(
       makeFake(), scope, table,
-      { id: 'ar9', array: { source_body: 'body_ex1', mode: 'linear', count_x: 1, pitch_x: 10, direction_x_query: 'qx', include_source: true, operation: 'new' } },
+      { id: 'ar9', array: { source_body: 'body_ex1', mode: 'linear', count_x: 1, pitch_x: 10, direction_x_query: 'qx', operation } },
       xyRepo, { body_ex1: body },
-    )
-    expect(r).toEqual({ status: 'ok', body_id: 'body_ex1', body_ids: ['body_ex1'], operation: 'new' })
+    )).toThrow(/count includes the source/)
   })
 })
 

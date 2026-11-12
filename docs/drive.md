@@ -1058,7 +1058,7 @@ banner on stdout, so a client config must use the direct node invocation.
   split into bodies named with `_1`, `_2`... suffixes. `add_pattern` and
   `add_mirror` take their whole payload inline: `add_pattern` takes every
   pattern field (`subject`, `source_body`, `source_feature`, `mode`,
-  `operation`, `include_source`, the one-axis `count`/`pitch`/`direction`
+  `operation`, the one-axis `count`/`pitch`/`direction`
   family, the rectangular `count_x`/`count_y`/`pitch_x`/`pitch_y`/`direction_x_query`/`direction_y_query`
   family, `step_angle`, `axis`/`axis_origin`/`axis_direction` and the invert
   flags), and `add_mirror` takes `body`, `plane`, `keep_original` and `merge`,
@@ -1067,13 +1067,17 @@ banner on stdout, so a client config must use the direct node invocation.
   a linear, rectangular or circular grid. `operation: add` unions each copy
   into the source body when they touch; a copy that does not touch is a new
   part, so a disjoint copy takes a `_1`, `_2`... sibling id. `operation: new`
-  keeps the source as instance 0 and mints one body per copy.
+  keeps the source as instance 0 and mints one body per copy. Both subjects
+  count the source: `count` is the total on one axis, so 2 makes one copy and
+  count 0 or 1 is refused because the count includes the source. Rectangular
+  mode leaves the seed cell to the source, so 1xN is a legitimate row and 1x1
+  is refused.
 - `add_pattern` with `subject: feature` repeats one earlier FEATURE's own add
   or cut inside the body it already shaped, so a repeated slot or boss needs no
   separate body and boolean. `source_feature` names an earlier `extrude`,
   `revolve` or `sweep` whose operation is `add` or `cut`. `count` is the TOTAL
   instance count, including the source's own application (count 2 adds one
-  copy, count 1 is a no-op). Linear mode reads `pitch` plus `direction` or
+  copy and count 1 is refused). Linear mode reads `pitch` plus `direction` or
   `direction_query`; rectangular mode reads the two `count_x`/`count_y` axes;
   circular mode reads `step_angle` (absent means `360/count`) plus `axis` or
   `axis_origin` + `axis_direction`. `target_body` names the body when the

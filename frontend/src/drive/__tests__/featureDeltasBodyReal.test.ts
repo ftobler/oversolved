@@ -76,7 +76,7 @@ describe.skipIf(!ready)('featureDeltas body selection (real OCC + Rust solver)',
       doc: base.doc as PartDoc,
       steps: [m({
         type: 'add_pattern', featureId: 'ar1', subject: 'body', source_body: 'body_ex2',
-        operation: 'add', include_source: true, mode: 'rectangular',
+        operation: 'add', mode: 'rectangular',
         count_x: 2, count_y: 2, pitch_x: 40, pitch_y: 40,
         direction_x: [1, 0, 0], direction_y: [0, 1, 0],
       })],

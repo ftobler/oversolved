@@ -786,7 +786,7 @@ function applyStep(
       id: step.id,
       pattern: {
         subject: 'body', source_body: step.target, mode: 'linear', count: step.count, pitch: step.pitch,
-        include_source: true, operation: 'add', direction_query: query,
+        operation: 'add', direction_query: query,
       },
     }, repoForLeaves, bodyStore)
     return { editedIds: result.body_ids }
@@ -801,7 +801,7 @@ function applyStep(
       id: step.id,
       pattern: {
         subject: 'body', source_body: step.target, mode: 'circular', count: step.count, step_angle: step.stepDeg,
-        include_source: true, operation: 'add', axis: query,
+        operation: 'add', axis: query,
       },
     }, repoForLeaves, bodyStore)
     return { editedIds: result.body_ids }

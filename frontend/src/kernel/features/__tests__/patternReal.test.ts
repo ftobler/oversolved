@@ -13,6 +13,7 @@ import { SharedHarness } from '../../occ/sharedHarness'
 import { DisposeScope } from '../../occ/disposeScope'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { loadPartDoc } from '@/persistence/docSchema'
 import { parseAncestry } from '../../query'
 import { volumeOf } from '../../occ/volume'
 import { canonicalFaces } from '../../occ/bodyNames'
@@ -446,12 +447,59 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 320, 6)
   })
 
-  it('is a no-op at count 1', () => {
-    const baseline = h.run(slottedPlate())
+  it('refuses count 1 because the count includes the source', () => {
     const r = h.run(slottedPlate(pattern('pt1', 'ex_slot', linear({ count: 1 }))))
+    expect(String(h.res(r, 'pt1').exception)).toContain('count includes the source')
+  })
+
+  it('opens a legacy count-1 document and lets the kernel refuse the pattern', () => {
+    // The loader keeps the old shape loadable; the feature goes red with the
+    // source-in-count reason instead of failing the whole file.
+    const loaded = loadPartDoc({
+      version: 1,
+      kind: 'part',
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 5),
+        {
+          id: 'pt1', kind: 'pattern',
+          pattern: {
+            subject: 'body', source_body: '@ex_plate', mode: 'linear', count: 1, pitch: 20,
+            direction: [1, 0, 0], operation: 'new',
+          },
+        },
+      ],
+    })
+    expect(loaded.ok).toBe(true)
+    if (!loaded.ok) return
+    const r = h.run(loaded.doc as unknown as Record<string, unknown>)
+    expect(String(h.res(r, 'pt1').exception)).toContain('count includes the source')
+  })
+
+  it('loads a legacy include_source: false body pattern and always counts the source', () => {
+    // Old files may still carry the retired flag. It loads, the kernel ignores
+    // it, and count 3 makes two copies with the source as instance 0.
+    const loaded = loadPartDoc({
+      version: 1,
+      kind: 'part',
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 5),
+        {
+          id: 'pt1', kind: 'pattern',
+          pattern: {
+            subject: 'body', source_body: '@ex_plate', mode: 'linear', count: 3, pitch: 80,
+            direction: [1, 0, 0], operation: 'new', include_source: false,
+          },
+        },
+      ],
+    })
+    expect(loaded.ok).toBe(true)
+    if (!loaded.ok) return
+    const r = h.run(loaded.doc as unknown as Record<string, unknown>)
     expect(h.res(r, 'pt1').status).toBe('ok')
-    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(
-      volumeAt(baseline, 'ex_slot', 'body_ex_plate'), 6,
-    )
+    // Two copies, plus the source that keeps body_ex_plate.
+    expect(h.res(r, 'pt1').body_ids).toHaveLength(2)
+    expect(Object.keys(snapshot(r, 'pt1'))).toHaveLength(3)
   })
 })

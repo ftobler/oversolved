@@ -250,7 +250,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
         occ, scope, table,
         { id: 'ar9', array: {
           source_body: 'body_b', mode: 'linear', count_x: countX, pitch_x: 20,
-          include_source: true, operation: 'add', direction_x_query: 'qx',
+          operation: 'add', direction_x_query: 'qx',
         } },
         repo, bodyStore,
       )

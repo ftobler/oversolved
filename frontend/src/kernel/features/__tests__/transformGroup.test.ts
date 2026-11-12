@@ -53,23 +53,27 @@ describe('array / circular_array guard paths', () => {
     ).toThrow(/source body is required/)
   })
 
-  it('array: count_x=0 with include_source=false raises', () => {
+  it('array: count 0 and 1 are refused because the count includes the source', () => {
     const store = { body_s: { ...nullBody('body_s'), shape: 1 as never } }
-    expect(() =>
-      solveArray(oc, scope, table, {
-        id: 'a', array: { source_body: 'body_s', mode: 'linear', count_x: 0, include_source: false },
-      }, repo, store),
-    ).toThrow(/count must be a positive integer/)
+    for (const count_x of [0, 1]) {
+      expect(() =>
+        solveArray(oc, scope, table, {
+          id: 'a', array: { source_body: 'body_s', mode: 'linear', count_x },
+        }, repo, store),
+      ).toThrow(/count includes the source/)
+    }
   })
 
-  it('circular_array: count=0 raises', () => {
-    // count=0 would divide by zero in step_angle; it must be refused by name.
+  it('circular_array: count 0 and 1 are refused because the count includes the source', () => {
+    // count=0 would divide by zero in step_angle; 1 would copy nothing.
     const store = { body_s: { ...nullBody('body_s'), shape: 1 as never } }
-    expect(() =>
-      solveCircularArray(oc, scope, table, {
-        id: 'c', circular_array: { source_body: 'body_s', count: 0 },
-      }, repo, store),
-    ).toThrow(/count must be a positive integer/)
+    for (const count of [0, 1]) {
+      expect(() =>
+        solveCircularArray(oc, scope, table, {
+          id: 'c', circular_array: { source_body: 'body_s', count },
+        }, repo, store),
+      ).toThrow(/count includes the source/)
+    }
   })
 
   it('circular_array: missing source body with available IDs in message', () => {

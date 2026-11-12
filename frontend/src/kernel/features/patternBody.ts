@@ -62,14 +62,13 @@ export function applyBodyPattern(
   table: HandleTable,
   body: Body,
   transforms: OccTrsf[],
-  includeSource: boolean,
   operation: string,
   featureId: string,
   bodyStore: Record<string, Body>,
 ): BodyPatternResult {
   if (body.shape === null) throw new Error('pattern: source body has no shape')
   const sourceShape = table.get<OccShape>(body.shape)
-  // Read on first use: the no-op returns below must not touch the shape.
+  // Read once: every copy shares the source's names.
   let sourceNamesRead: NameMaps | null = null
   const sourceNames = (): NameMaps => (sourceNamesRead ??= readBodyNames(oc, scope, sourceShape, body))
 
@@ -79,32 +78,22 @@ export function applyBodyPattern(
     // Every spawned body is an independent copy; remap construction UUIDs so
     // identical instances do not collide.
     const instances: { shape: OccShape; names: NameMaps }[] = []
-    // `include_source` needs no instance here: with operation 'new' the SOURCE
-    // BODY is instance 0. Copying it produced a second body coincident with the
-    // first -- two Parts rows for one visible solid. The transforms below are
-    // still numbered from 1 when include_source is set, so instance UUIDs keep
-    // their meaning across an edit that toggles the flag.
+    // With operation 'new' the SOURCE BODY is instance 0. Copying it produced a
+    // second body coincident with the first -- two Parts rows for one visible
+    // solid. The transforms below are therefore numbered from 1, so instance
+    // UUIDs keep their meaning as the count changes.
     // The source rows are identical for every instance, so they are read once
     // above the instance loop instead of re-explored and re-hashed per copy
-    // (M37 Change 2a). The count=1 no-op below never reads them.
-    const rows = transforms.length > 0
-      ? readSourceFaceRows(oc, scope, sourceShape, sourceNames().faceNames, sourceNames().faceAncestry)
-      : []
+    // (M37 Change 2a).
+    const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames().faceNames, sourceNames().faceAncestry)
     for (let i = 0; i < transforms.length; i++) {
-      const idx = includeSource ? i + 1 : i
+      const idx = i + 1
       const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
       const shape = scope.track(instShape)
       instances.push({
         shape,
         names: rebuildNamesForTransformedCopy(oc, scope, shape, rows, featureId, idx, builder),
       })
-    }
-    if (instances.length === 0) {
-      // A one-instance pattern with include_source: no transformed instances,
-      // and the source IS the pattern. A no-op, not an error -- mirror the add
-      // path's early return below so toggling include_source on a 1-count new
-      // pattern does not throw.
-      return { status: 'ok', body_id: body.id, body_ids: [body.id], operation: 'new' }
     }
     // One instance is normally one solid, so this normally mints exactly the
     // old `body_<feat>`, `body_<feat>_1`, ... run. Going through bodySplit is
@@ -122,40 +111,21 @@ export function applyBodyPattern(
   // operation === "add": fuse incrementally and rebuild construction names
   // after each union. The source instance keeps its original UUIDs; copied
   // instances get instance-specific UUIDs so the fused body has no collisions.
-  if (includeSource && transforms.length === 0) {
-    // include_source with zero instance transforms copies nothing: mutating
-    // modified_by or nulling brep_diff here faked a geometry change (spurious
-    // dirty signal) and destroyed the previous op's diff. Leave the body as-is.
-    return { status: 'ok', body_id: body.id, body_ids: [body.id], operation: 'add' }
-  }
   // Same one-read-per-instance-loop hoist as the new branch: the source rows
   // are identical for every instance (M37 Change 2a).
   const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames().faceNames, sourceNames().faceAncestry)
   const buildCopy = (i: number): { shape: OccShape; names: NameMaps } => {
-    const idx = includeSource ? i + 1 : i
+    const idx = i + 1
     const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
     const shape = scope.track(instShape)
     return { shape, names: rebuildNamesForTransformedCopy(oc, scope, shape, rows, featureId, idx, builder) }
   }
 
   // The source instance keeps its original UUIDs; copied instances get
-  // instance-specific UUIDs so the fused body has no collisions.
-  let fused: OccShape
-  let fusedNames: NameMaps
-  let firstCopy: number
-  if (includeSource) {
-    fused = sourceShape
-    fusedNames = sourceNames()
-    firstCopy = 0
-  } else {
-    if (transforms.length === 0) throw new Error('pattern produced no instances')
-    // No source slot: the first transformed copy is the fuse seed and replaces
-    // the body, exactly as this branch did before the batch.
-    const first = buildCopy(0)
-    fused = first.shape
-    fusedNames = first.names
-    firstCopy = 1
-  }
+  // instance-specific UUIDs so the fused body has no collisions. The source
+  // holds instance 0 and every transform is a copy, so the loop starts at 0.
+  let fused: OccShape = sourceShape
+  let fusedNames: NameMaps = sourceNames()
   let lastDiff: BrepDiff | null = null
   // The source body's own faces, tracked through every union by the boolean's
   // face origin. Whole-solid IsSame does not survive the clean pass on a
@@ -179,9 +149,8 @@ export function applyBodyPattern(
   // upstream resize (fuzz seed 235) and put UnifySameDomain on the
   // coincident-face spin (seed 535) as soon as the fuzz's three-copy arrays
   // switched to the batch.
-  const copyCount = transforms.length - firstCopy
-  const batchCopies = copyCount >= INSTANCE_FUSE_CHUNK
-  for (let start = firstCopy; start < transforms.length; start += INSTANCE_FUSE_CHUNK) {
+  const batchCopies = transforms.length >= INSTANCE_FUSE_CHUNK
+  for (let start = 0; start < transforms.length; start += INSTANCE_FUSE_CHUNK) {
     const end = Math.min(start + INSTANCE_FUSE_CHUNK, transforms.length)
     // Covers building this chunk's copies; each fuse below marks again.
     markFeatureStart(featureId)
@@ -196,20 +165,18 @@ export function applyBodyPattern(
         oc, scope, fused, group.map((copy) => copy.shape), 'fuse', { unifyFaces: !body.imported },
       )
       const nextFused = scope.track(r.shape)
-      if (includeSource) {
-        const next: OccShape[] = []
-        const seen = new SubShapeDedup()
-        const firstUnion = start === firstCopy && groupIndex === 0
-        for (const origin of r.faceOrigin) {
-          if (origin.fromTool) continue
-          const fromSource = firstUnion
-            || sourceFaces.some((sf) => (origin.source as OccSubShape).IsSame(sf as OccSubShape))
-          if (fromSource && seen.add(origin.output)) next.push(origin.output as OccShape)
-        }
-        // An empty set means the history could not narrate the source at all; keep
-        // the last usable set rather than turning a naming fallback into a throw.
-        if (next.length > 0) sourceFaces = next
+      const next: OccShape[] = []
+      const seen = new SubShapeDedup()
+      const firstUnion = start === 0 && groupIndex === 0
+      for (const origin of r.faceOrigin) {
+        if (origin.fromTool) continue
+        const fromSource = firstUnion
+          || sourceFaces.some((sf) => (origin.source as OccSubShape).IsSame(sf as OccSubShape))
+        if (fromSource && seen.add(origin.output)) next.push(origin.output as OccShape)
       }
+      // An empty set means the history could not narrate the source at all; keep
+      // the last usable set rather than turning a naming fallback into a throw.
+      if (next.length > 0) sourceFaces = next
       const names = transferBooleanNames(oc, scope, {
         bodyShape: nextFused,
         faceOrigin: r.faceOrigin,
@@ -235,11 +202,10 @@ export function applyBodyPattern(
       // them. Freeing an operand before that call is a use-after-free that reads
       // plausibly and fails nowhere.
       //
-      // The seed is the HandleTable-owned `sourceShape` when include_source is
-      // set. `DisposeScope.release()` deletes a foreign object it was never
-      // tracking, so releasing it would free the table's shape out from under
-      // every later feature.
-      const prevIsTableOwned = includeSource && start === firstCopy && groupIndex === 0
+      // The seed is the HandleTable-owned `sourceShape`. `DisposeScope.release()`
+      // deletes a foreign object it was never tracking, so releasing it would
+      // free the table's shape out from under every later feature.
+      const prevIsTableOwned = start === 0 && groupIndex === 0
       if (!prevIsTableOwned) scope.release(fused)
       for (const copy of group) scope.release(copy.shape)
       fused = nextFused

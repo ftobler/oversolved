@@ -22,7 +22,7 @@ function makeFeature(source_body = ''): PartFeature {
     id: 'pt1',
     kind: 'pattern',
     label: 'Pattern',
-    pattern: { subject: 'body', mode: 'circular', source_body, count: 4, operation: 'add', include_source: true },
+    pattern: { subject: 'body', mode: 'circular', source_body, count: 4, operation: 'add' },
   } as unknown as PartFeature
 }
 

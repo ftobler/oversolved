@@ -462,10 +462,11 @@ const PATTERN_NOTE =
   'copy into the source body when they intersect, while disjoint copies become separate bodies with `_1`, `_2`... ' +
   'siblings and `operation: new` mints one body per copy. `feature` reapplies one earlier extrude, revolve or ' +
   'sweep whose operation is add or cut, inside the body that feature shaped (`source_feature`; `target_body` ' +
-  'chooses the body when the source touched more than one). For a feature subject `count` is the TOTAL instance ' +
-  'count on one axis, the source\'s own slot included (count 2 adds one copy, count 1 is a no-op). A body subject ' +
-  'counts the same way when `include_source` is true; with `include_source: false` every counted slot is a copy. ' +
-  'Rectangular mode leaves the seed cell to the source. Linear mode reads `pitch` and ' +
+  'chooses the body when the source touched more than one). For either subject `count` is the TOTAL instance ' +
+  'count on one axis and always includes the source\'s own slot: 2 makes one new copy, and count 0 or 1 is ' +
+  'refused because the count includes the source. Rectangular mode counts its two axes in `count_x` and ' +
+  '`count_y`, always leaves the seed cell to the source, and needs at least one other cell, so 1x1 is refused ' +
+  'while 1xN is a legitimate row. Linear mode reads `pitch` and ' +
   '`direction` (or `direction_query`); rectangular mode reads `count_x`/`count_y`, `pitch_x`/`pitch_y` and one ' +
   'direction pair per axis; circular mode reads `step_angle` (absent means 360/count) and `axis` (or ' +
   '`axis_origin` + `axis_direction`). A copy that cannot apply is named: some applied and some not is a partial ' +
@@ -1392,7 +1393,6 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; defaults to body.'),
       source_body: optStr('Body subject: the body to copy, e.g. body_ex2.'),
       operation: optStr('Body subject: add | new; defaults to add.'),
-      include_source: optBool(),
       source_feature: optStr('Feature subject: the feature to repeat, e.g. @ex1: an extrude, revolve or sweep with operation add or cut.'),
       target_body: optStr('Feature subject: the body to apply to when the source feature touched more than one.'),
       mode: optStr('linear | rectangular | circular; defaults to linear.'),

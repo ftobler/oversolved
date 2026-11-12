@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc } from '@/types/cad'
+import type { PartDoc, PartFeature } from '@/types/cad'
 import { applyAddPattern, applySetPatternField } from '@/utils/yamlMutations'
 import { featureAt } from '@/testing/featureAccess'
+import { loadPartDoc } from '@/persistence/docSchema'
 
 const pattern0 = (doc: PartDoc) => featureAt(doc, 0, 'pattern').pattern
 
@@ -18,7 +19,7 @@ describe('Pattern mutations', () => {
         kind: 'pattern',
         label: 'Pattern',
         pattern: {
-          subject: 'body', mode: 'linear', operation: 'add', include_source: true,
+          subject: 'body', mode: 'linear', operation: 'add',
           count: 2, pitch: 20,
         },
       })
@@ -37,12 +38,19 @@ describe('Pattern mutations', () => {
       expect(featureAt(doc, 1, 'pattern').pattern.pitch).toBeUndefined()
     })
 
+    it('drops an unknown inline key such as the retired include_source', () => {
+      const doc = makeDoc()
+      applyAddPattern(doc, 'pt1', undefined, { count: 3, include_source: false } as never)
+      expect(pattern0(doc).count).toBe(3)
+      expect(pattern0(doc)).not.toHaveProperty('include_source')
+    })
+
     it('refuses an inline count the loader would refuse', () => {
       const doc = makeDoc()
-      applyAddPattern(doc, 'pt1', undefined, { count: 0 })
-      expect(doc.features).toHaveLength(0)
-      applyAddPattern(doc, 'pt2', undefined, { count: 2.5 })
-      expect(doc.features).toHaveLength(0)
+      for (const count of [0, 1, 2.5, '1']) {
+        applyAddPattern(doc, 'pt1', undefined, { count })
+        expect(doc.features).toHaveLength(0)
+      }
     })
   })
 
@@ -66,8 +74,58 @@ describe('Pattern mutations', () => {
       applyAddPattern(doc, 'pt1')
       applySetPatternField(doc, 'pt1', 'spacing' as never, 5)
       expect(pattern0(doc)).not.toHaveProperty('spacing')
-      applySetPatternField(doc, 'pt1', 'count', 0)
-      expect(pattern0(doc).count).toBe(2)
+      for (const count of [1, '1']) {
+        applySetPatternField(doc, 'pt1', 'count', count)
+        expect(pattern0(doc).count).toBe(2)
+      }
+    })
+
+    it('drops the retired include_source key on the next edit', () => {
+      const legacy = { subject: 'body', mode: 'linear', operation: 'add', count: 3, include_source: false }
+      const doc: PartDoc = {
+        features: [{ id: 'pt1', kind: 'pattern', pattern: legacy } as unknown as PartFeature],
+      }
+      applySetPatternField(doc, 'pt1', 'pitch', 25)
+      expect(pattern0(doc)).not.toHaveProperty('include_source')
+      expect(pattern0(doc).count).toBe(3)
+    })
+
+    it('raises a legacy count below 2 when a mode switch lands on it', () => {
+      // A rectangular pattern could carry the ignored one-axis count 1 from an
+      // earlier linear edit; switching to linear must not save a count the
+      // loader refuses.
+      const linearDoc: PartDoc = {
+        features: [{
+          id: 'pt1', kind: 'pattern',
+          pattern: { subject: 'body', mode: 'rectangular', count: 1, count_x: 2, count_y: 2 },
+        } as unknown as PartFeature],
+      }
+      applySetPatternField(linearDoc, 'pt1', 'mode', 'linear')
+      expect(pattern0(linearDoc).count).toBe(2)
+      expect(loadPartDoc(linearDoc).ok).toBe(true)
+
+      const circularDoc: PartDoc = {
+        features: [{
+          id: 'pt2', kind: 'pattern',
+          pattern: { subject: 'body', mode: 'linear', count: 1, pitch: 20 },
+        } as unknown as PartFeature],
+      }
+      applySetPatternField(circularDoc, 'pt2', 'mode', 'circular')
+      expect(pattern0(circularDoc).count).toBe(4)
+      expect(loadPartDoc(circularDoc).ok).toBe(true)
+    })
+
+    it('raises a stale 1x1 pair when a switch enters rectangular', () => {
+      const doc: PartDoc = {
+        features: [{
+          id: 'pt1', kind: 'pattern',
+          pattern: { subject: 'body', mode: 'linear', count: 2, count_x: 1, count_y: 1 },
+        } as unknown as PartFeature],
+      }
+      applySetPatternField(doc, 'pt1', 'mode', 'rectangular')
+      expect(pattern0(doc).count_x).toBe(1)
+      expect(pattern0(doc).count_y).toBe(2)
+      expect(loadPartDoc(doc).ok).toBe(true)
     })
 
     it('warns rather than throwing on a missing or wrong-kind feature', () => {

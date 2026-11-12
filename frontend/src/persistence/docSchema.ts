@@ -517,10 +517,14 @@ function checkReferenceOperandList(value: unknown, field: string): void {
   }
 }
 
-// A count that expands in the builder: a positive integer within the cap, or an
-// expression string. An expression is evaluated here with no variable context
-// as a best-effort guard; a string whose value cannot be known yet (it names a
-// document variable) passes and is checked again when the solver resolves it.
+// A count that expands in the builder: an integer within the cap, or an
+// expression string. The loader accepts a positive count, including the
+// legacy count 1 an old document may carry; the kernel refuses a count below 2
+// with the source-in-count message, so the file still opens and the pattern
+// feature goes red with a named reason. An expression is evaluated here with
+// no variable context as a best-effort guard; a string whose value cannot be
+// known yet (it names a document variable) passes and is checked again when the
+// solver resolves it.
 function checkCount(value: unknown, field: string): number | null {
   if (typeof value === 'number') {
     checkInteger(value, field, 1)
@@ -793,16 +797,33 @@ function arrayCellsProblem(x: number | null, y: number | null): string | null {
 /** The refusal the loader would give an array count, as a message or null. The
  *  editor, the setter mutations and the loader all decide through this, so a
  *  value one of them accepts never makes the document unloadable. `other` is the
- *  sibling count of a rectangular array, for the cells cap. */
+ *  sibling count of a rectangular array, for the cells cap and the 1x1 rule. A
+ *  string is an expression: a value that evaluates is judged, while one that
+ *  names a variable still unknown passes here and is checked when it resolves. */
 export function arrayCountProblem(
   field: 'count' | 'count_x' | 'count_y',
-  value: number,
-  other?: number | null,
+  value: number | string,
+  other?: number | string | null,
 ): string | null {
-  if (!Number.isInteger(value) || value < 1) return `must be an integer >= 1, got ${value}`
-  if (value > MAX_ARRAY_COUNT) return `must be at most ${MAX_ARRAY_COUNT}, got ${value}`
-  if (field === 'count') return null
-  return arrayCellsProblem(value, other ?? null)
+  const resolved = typeof value === 'string' ? evalExpr(value) : value
+  if (typeof resolved !== 'number' || !Number.isFinite(resolved)) return null
+  const sibling = typeof other === 'string' ? evalExpr(other) : other ?? null
+  const otherCount = typeof sibling === 'number' && Number.isFinite(sibling) ? sibling : null
+  if (field === 'count') {
+    if (!Number.isInteger(resolved) || resolved < 2) {
+      return `must be an integer >= 2: the count includes the source, so 2 makes one new instance, got ${resolved}`
+    }
+    if (resolved > MAX_ARRAY_COUNT) return `must be at most ${MAX_ARRAY_COUNT}, got ${resolved}`
+    return null
+  }
+  if (!Number.isInteger(resolved) || resolved < 1) return `must be an integer >= 1, got ${resolved}`
+  if (resolved > MAX_ARRAY_COUNT) return `must be at most ${MAX_ARRAY_COUNT}, got ${resolved}`
+  const cells = arrayCellsProblem(resolved, otherCount)
+  if (cells !== null) return cells
+  if (resolved === 1 && otherCount === 1) {
+    return 'count_x * count_y is 1, but the counts include the source, so 1x1 makes no new instance'
+  }
+  return null
 }
 
 function checkDeleteBody(sub: DocRecord, field: string): void {
@@ -896,10 +917,16 @@ function checkPattern(sub: DocRecord, field: string): void {
   checkOptional(sub, 'source_feature', field, checkRef)
   checkOptional(sub, 'target_body', field, checkRef)
   checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, ['add', 'new']))
+  // Legacy only: the source is always instance 0 now, but a document written
+  // before that change still carries the flag and must load. The kernel ignores
+  // it, and the next pattern edit drops it.
   checkOptional(sub, 'include_source', field, checkBoolean)
   checkOptional(sub, 'mode', field, (v, f) => checkEnum(v, f, ['linear', 'rectangular', 'circular']))
-  // count is the total instance count for one axis, so 1 is a legal no-op.
-  // The rectangular pair carries the same cells cap the old array had.
+  // count is the total instance count for one axis. The loader accepts the
+  // legacy count 1 and a 1x1 rectangular pair; the kernel refuses a count below
+  // 2 (and 1x1) with the source-in-count message, so an old document opens with
+  // a red pattern rather than failing the whole load. The rectangular pair
+  // carries the same cells cap the old array had.
   if (sub.count !== undefined) checkCount(sub.count, `${field}.count`)
   checkCountPair(sub, field)
   for (const key of ['pitch', 'pitch_x', 'pitch_y', 'step_angle']) {

@@ -629,8 +629,7 @@ or circular pattern is one authored feature.
     source_body: "@extrude1"     # required
     mode: linear                 # linear | rectangular | circular
     operation: add               # add | new
-    include_source: true         # keep the source as instance 0
-    count: 3                     # linear/circular: total instances, source included
+    count: 3                     # linear/circular: total instances, source included (at least 2)
     pitch: 20.0                  # linear: spacing along direction, document unit
     direction: [1, 0, 0]         # linear: or direction_query, a straight edge or planar face
     invert: false                # reverse the direction
@@ -641,7 +640,6 @@ or circular pattern is one authored feature.
     source_body: "@extrude1"
     mode: rectangular            # two axes instead of the one-axis fields
     operation: add
-    include_source: true
     count_x: 3
     pitch_x: 20.0
     direction_x: [1, 0, 0]       # or direction_x_query
@@ -657,7 +655,6 @@ or circular pattern is one authored feature.
     source_body: "@extrude1"
     mode: circular
     operation: add
-    include_source: true
     count: 4
     step_angle: 90.0             # optional; defaults to 360 / count
     axis: "@sk1/axisLine"        # query; or axis_origin + axis_direction
@@ -673,6 +670,15 @@ intersect. Disjoint copies stay separate bodies, taking the source id plus
 `_1`, `_2`... siblings (the `run` reply summary names the live ids). Use
 `operation: new` to keep the source as instance 0 and give every copy its own
 body.
+
+A body pattern always counts the source, and there is no include-source option.
+A document written before that rule may still carry `pattern.include_source`:
+the loader accepts it and the kernel ignores it, so an old file opens with the
+source as instance 0 and `count: 3` making two copies. An old file whose pattern
+reads `count: 1`, or a 1x1 rectangular pair, also opens; the pattern is a red
+feature with the source-in-count refusal until its count is raised. The retired
+key is dropped the next time that pattern is edited; no document version
+migration rewrites it.
 
 #### Feature subject
 
@@ -703,12 +709,15 @@ copy. The allowed source kinds are `extrude`, `revolve` and `sweep`; a hole
 pattern is the sketch's own multiple drill sites, and a fillet or shell has no
 standalone tool to repeat.
 
-For a feature subject, `count` is the total instance count: the source feature
-already applied once, so `count: 3` adds two copies and `count: 1` is a no-op.
-For a body subject, `count` includes the source only when `include_source` is
-true: with `include_source: false`, `count: 3` makes three copies and
-`count: 1` makes one. Rectangular mode always leaves the seed cell to the
-source, so it makes `count_x * count_y - 1` copies. The body is the one the
+For either subject, `count` is the total instance count and always includes the
+source: the source occupies instance 0 (and, for a feature subject, its own
+application already happened), so `count: 3` makes two copies and `count: 2`
+makes one. The kernel refuses a count below 2 because the count includes the
+source; the loader still opens an old document with such a count so the pattern
+can be corrected.
+Rectangular mode always leaves the seed cell to the source, so it makes
+`count_x * count_y - 1` copies; 1xN is a legitimate row, while 1x1 is refused
+because it would make no copy. The body is the one the
 source feature created or modified; when it touched more than one (a cut with
 no merge target reaches every body), the solver refuses with the list and
 `target_body` picks one. A copy that cannot apply is named: some applied is a

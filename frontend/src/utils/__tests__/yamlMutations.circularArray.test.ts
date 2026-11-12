@@ -25,7 +25,6 @@ describe('Pattern mutations (circular mode)', () => {
           mode: 'circular',
           count: 4,
           operation: 'add',
-          include_source: true,
         },
       })
     })
@@ -74,10 +73,12 @@ describe('Pattern mutations (circular mode)', () => {
       expect(pattern0(doc).operation).toBe('new')
     })
 
-    it('updates include_source field', () => {
+    it('does not revive the retired include_source field', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
       const doc = added()
-      applySetPatternField(doc, 'ca1', 'include_source', false)
-      expect(pattern0(doc).include_source).toBe(false)
+      applySetPatternField(doc, 'ca1', 'include_source' as never, false)
+      expect(pattern0(doc)).not.toHaveProperty('include_source')
+      warnSpy.mockRestore()
     })
 
     it('updates source_body field', () => {

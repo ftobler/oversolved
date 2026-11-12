@@ -47,6 +47,29 @@ describe('pattern document validation', () => {
     }
   })
 
+  it('accepts a legacy count 1 and a 1x1 grid, which the kernel refuses', () => {
+    // The loader keeps old documents open; the kernel names the source-in-count
+    // refusal when the pattern solves. See patternReal.test.ts for that half.
+    const legacy = loadPartDoc(doc({ subject: 'body', source_body: '@b1', count: 1 }))
+    expect(legacy.ok).toBe(true)
+    const square = loadPartDoc(doc({ subject: 'body', mode: 'rectangular', count_x: 1, count_y: 1 }))
+    expect(square.ok).toBe(true)
+    expect(loadPartDoc(doc({ subject: 'body', mode: 'rectangular', count_x: 1, count_y: 2 })).ok).toBe(true)
+  })
+
+  it('accepts the retired include_source key on an old document', () => {
+    // Load tolerance is deliberate: the kernel ignores the flag now, but a file
+    // saved before that change must still open.
+    const result = loadPartDoc(doc({
+      subject: 'body', source_body: '@b1', mode: 'linear', count: 3, include_source: false,
+    }))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect((result.doc.features as Record<string, unknown>[])[0].pattern).toMatchObject({
+      count: 3, include_source: false,
+    })
+  })
+
   it('refuses a non-string source and a malformed direction', () => {
     const source = loadPartDoc(doc({ subject: 'feature', source_feature: 5 }))
     expect(source.ok).toBe(false)
