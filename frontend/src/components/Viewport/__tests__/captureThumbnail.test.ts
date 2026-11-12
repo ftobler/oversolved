@@ -2,6 +2,8 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import * as THREE from 'three'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
+import { MsaaPresenter, attachPresenter, detachPresenter } from '@/components/Viewport/msaaPresenter'
+import { aoUniforms, isAoCapturing } from '@/components/Viewport/ambientOcclusion'
 import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
 // A minimal stand-in for THREE.WebGLRenderer: only the surface captureThumbnail
@@ -272,5 +274,69 @@ describe('captureThumbnail', () => {
 
     await expect(captureThumbnail(gl, {} as THREE.Scene, {} as THREE.Camera))
       .rejects.toThrow('Failed to load image')
+  })
+
+  // The capture runs through the same presenter as the on-screen frames, so
+  // the AO stage has to be skipped for the one-off draw: it is expensive and,
+  // worse, its half-resolution targets would be sized to the quarter canvas.
+  function makePresenterGl() {
+    const size = new THREE.Vector2(800, 600)
+    let current: THREE.WebGLRenderTarget | null = null
+    // The width is snapshotted: the presenter reuses one target and resizes it
+    // in place, so reading `target.width` after the frame would see the last
+    // size, not the one this draw used.
+    const calls: { target: THREE.WebGLRenderTarget | null; width: number }[] = []
+    const clearColor = new THREE.Color()
+    let clearAlpha = 0
+    const gl = {
+      getSize: (target: THREE.Vector2) => target.copy(size),
+      setSize: vi.fn((width: number, height: number) => { size.set(width, height) }),
+      getDrawingBufferSize: (target: THREE.Vector2) => target.copy(size),
+      getRenderTarget: () => current,
+      setRenderTarget: vi.fn((target: THREE.WebGLRenderTarget | null) => { current = target }),
+      render: vi.fn(() => {
+        calls.push({ target: current, width: current?.width ?? 0 })
+      }),
+      getClearColor: (target: THREE.Color) => target.copy(clearColor),
+      getClearAlpha: () => clearAlpha,
+      setClearColor: vi.fn((color: THREE.ColorRepresentation) => { clearColor.set(color) }),
+      setClearAlpha: vi.fn((alpha: number) => { clearAlpha = alpha }),
+      clear: vi.fn(),
+      autoClear: true,
+      extensions: { has: () => true },
+      toneMapping: THREE.ACESFilmicToneMapping,
+      toneMappingExposure: 1,
+      outputColorSpace: THREE.SRGBColorSpace,
+      localClippingEnabled: true,
+      domElement: { toDataURL: () => 'data:image/png;base64,AAAA' },
+    } as unknown as THREE.WebGLRenderer
+    return { gl, calls }
+  }
+
+  it('runs no AO stage for the capture frame and restores the flag', async () => {
+    stubImage(320, 200)
+    stubCanvas()
+    const { gl, calls } = makePresenterGl()
+    const presenter = new MsaaPresenter()
+    presenter.aoActive = true
+    presenter.modelExtent = 25.4
+    attachPresenter(gl, presenter)
+
+    await captureThumbnail(gl, new THREE.Scene(), new THREE.OrthographicCamera())
+
+    // The capture is the two-call path (scene, output) at the quarter size; the
+    // full-size repaint then runs the AO stage again, five calls.
+    expect(calls).toHaveLength(7)
+    expect(calls[0].width).toBe(200)
+    expect(calls[1].target).toBeNull()
+    // The repaint's first draw is the half-resolution AO G-buffer: the stage
+    // is back for the on-screen frame.
+    expect(calls[2].width).toBe(400)
+    expect(aoUniforms.tAO.value).toBe(presenter.aoPass!.aoTarget.texture)
+    expect(isAoCapturing()).toBe(false)
+    expect(useSectionStore.getState().capturing).toBe(false)
+
+    detachPresenter(gl, presenter)
+    presenter.dispose()
   })
 })

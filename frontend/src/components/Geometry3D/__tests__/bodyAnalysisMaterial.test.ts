@@ -8,6 +8,7 @@ import { renderHook } from '@testing-library/react'
 import * as THREE from 'three'
 import type { WebGLProgramParametersWithUniforms } from 'three'
 import {
+  AO_GLSL,
   CURVATURE_GLSL,
   CURVATURE_HIGHLIGHT_GLSL,
   ZEBRA_GLSL,
@@ -20,7 +21,9 @@ import {
   useBodyAnalysisMaterial,
   type BodyAnalysisMode,
   type BodyAnalysisParams,
+  type BodyAnalysisPatch,
 } from '@/components/Geometry3D/bodyAnalysisMaterial'
+import { aoUniforms } from '@/components/Viewport/ambientOcclusion'
 
 function applyPatch(patch: ReturnType<typeof makeZebraPatch>) {
   const shader = {
@@ -34,6 +37,17 @@ function applyPatch(patch: ReturnType<typeof makeZebraPatch>) {
 
 const zebraParams: BodyAnalysisParams = {
   mode: 'zebra',
+  mixVertexColor: true,
+  baseColor: '#112233',
+  zebraStripes: 12,
+  curvatureKind: 'mean',
+  curvatureRange: [-1, 1],
+}
+
+// The plain body: no analysis mode, no threads. Every AO test starts here and
+// adds the one flag under test, so a cache key can only move because of it.
+const plainParams: BodyAnalysisParams = {
+  mode: 'none',
   mixVertexColor: true,
   baseColor: '#112233',
   zebraStripes: 12,
@@ -269,9 +283,9 @@ describe('thread shading patch', () => {
 
   it('compiles as its own program, distinct from plain, zebra and curvature', () => {
     const keys = ['zebra', 'curvature', 'none'].map(mode =>
-      selectBodyPatch(mode as BodyAnalysisMode, true, true)?.customProgramCacheKey() ?? '')
+      selectBodyPatch({ ...plainParams, mode: mode as BodyAnalysisMode, threaded: true })?.customProgramCacheKey() ?? '')
     expect(keys).toEqual(['zebra-vc', 'curvature-vc', 'thread'])
-    expect(selectBodyPatch('none', true, false)).toBeNull()
+    expect(selectBodyPatch({ ...plainParams })).toBeNull()
   })
 
   it('gives way to an analysis mode, which must show the true surface, and comes back after it', () => {
@@ -289,5 +303,100 @@ describe('thread shading patch', () => {
     expect(material.customProgramCacheKey()).toBe('thread')
     rerender({ params: { ...plainThreaded, threaded: false } })
     expect(material.customProgramCacheKey()).toBe('')
+  })
+})
+
+// AO is a patch on the same material, exactly like zebra: the caller resolves
+// the flag (isAoActive) and the program only decides how to sample it. Only
+// the strength is live, through the shared uniform.
+function applyBodyParams(params: BodyAnalysisParams) {
+  const material = new THREE.MeshPhysicalMaterial()
+  const ref = { current: material as THREE.Material | null }
+  let patch: BodyAnalysisPatch | null = null
+  renderHook(({ p }) => { patch = useBodyAnalysisMaterial(ref, p); return patch }, { initialProps: { p: params } })
+  const shader = {
+    vertexShader: THREE.ShaderLib.physical.vertexShader,
+    fragmentShader: THREE.ShaderLib.physical.fragmentShader,
+    uniforms: {} as Record<string, { value: unknown }>,
+  }
+  material.onBeforeCompile(shader as unknown as WebGLProgramParametersWithUniforms, {} as never)
+  return { material, shader, patch: patch! }
+}
+
+describe('ambient occlusion patch', () => {
+  it('multiplies only the indirect terms by the sampled occlusion', () => {
+    const { shader } = applyBodyParams({ ...plainParams, ao: true })
+
+    expect(shader.fragmentShader).toContain(AO_GLSL)
+    expect(shader.fragmentShader).toContain('texture2D( tAO')
+    expect(AO_GLSL).toContain('reflectedLight.indirectDiffuse')
+    expect(AO_GLSL).toContain('reflectedLight.indirectSpecular')
+    // Direct light and every overlay (selection, hover, edges) are untouched:
+    // AO is indirect light only.
+    expect(AO_GLSL).not.toContain('reflectedLight.directDiffuse')
+    expect(AO_GLSL).not.toContain('reflectedLight.directSpecular')
+    expect(shader.uniforms.tAO).toBe(aoUniforms.tAO)
+    expect(shader.uniforms.uAoResolution).toBe(aoUniforms.uResolution)
+    expect(shader.uniforms.uAoStrength).toBe(aoUniforms.uAoStrength)
+  })
+
+  it('leaves the shader untouched when AO is off', () => {
+    const { shader } = applyBodyParams({ ...plainParams, ao: false })
+    expect(shader.fragmentShader).not.toContain('tAO')
+    expect(shader.uniforms.tAO).toBeUndefined()
+  })
+
+  it('gives every program its own key, and an analysis mode never gains AO', () => {
+    const key = (params: Partial<BodyAnalysisParams>) =>
+      selectBodyPatch({ ...plainParams, ...params })?.customProgramCacheKey() ?? ''
+
+    expect([
+      key({}),
+      key({ ao: true }),
+      key({ threaded: true }),
+      key({ threaded: true, ao: true }),
+      key({ mode: 'zebra' }),
+    ]).toEqual(['', 'ao', 'thread', 'thread+ao', 'zebra-vc'])
+    expect(key({ mode: 'zebra', ao: true })).toBe('zebra-vc')
+    expect(key({ mode: 'curvature', ao: true })).toBe('curvature-vc')
+  })
+
+  it('never samples occlusion on a transparent body', () => {
+    expect(selectBodyPatch({ ...plainParams, ao: true, transparent: true })).toBeNull()
+    const threaded = selectBodyPatch({ ...plainParams, ao: true, transparent: true, threaded: true })
+    expect(threaded?.customProgramCacheKey()).toBe('thread')
+  })
+
+  it('moves the strength through the shared uniform without recompiling', () => {
+    const material = new THREE.MeshPhysicalMaterial()
+    const ref = { current: material as THREE.Material | null }
+    const { rerender } = renderHook(({ p }) => useBodyAnalysisMaterial(ref, p), {
+      initialProps: { p: { ...plainParams, ao: true, aoStrength: 0.4 } as BodyAnalysisParams },
+    })
+    expect(aoUniforms.uAoStrength.value).toBe(0.4)
+    const version = material.version
+    const compiled = material.onBeforeCompile
+
+    rerender({ p: { ...plainParams, ao: true, aoStrength: 0.9 } })
+
+    expect(aoUniforms.uAoStrength.value).toBe(0.9)
+    expect(material.version).toBe(version)
+    expect(material.onBeforeCompile).toBe(compiled)
+  })
+
+  it('recompiles the same material instance when AO toggles', () => {
+    const material = new THREE.MeshPhysicalMaterial()
+    const ref = { current: material as THREE.Material | null }
+    const { rerender } = renderHook(({ p }) => useBodyAnalysisMaterial(ref, p), {
+      initialProps: { p: { ...plainParams, ao: true } as BodyAnalysisParams },
+    })
+    expect(material.customProgramCacheKey()).toBe('ao')
+    const version = material.version
+
+    rerender({ p: { ...plainParams, ao: false } })
+
+    expect(material.customProgramCacheKey()).toBe('')
+    expect(material.version).toBeGreaterThan(version)
+    expect(ref.current).toBe(material)
   })
 })
