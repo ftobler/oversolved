@@ -28,7 +28,7 @@ import {
   resolveVertexQueries,
 } from '@/components/Geometry3D/bodyGeometry'
 import { analysisMaterialName, useBodyAnalysisMaterial } from '@/components/Geometry3D/bodyAnalysisMaterial'
-import { AO_OCCLUDER_LAYER } from '@/components/Viewport/ambientOcclusion'
+import { applyAoOccluder, isAoActive } from '@/components/Viewport/ambientOcclusion'
 import { curvatureForMesh, effectiveCurvatureRange } from '@/components/Geometry3D/curvature'
 import { buildThreadAttributes, type ThreadSiteIndex } from '@/components/Geometry3D/threadShading'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
@@ -427,15 +427,16 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // the intent readable.
   const analysisMode = !showFaces ? 'none' : curvature ? 'curvature' : zebra ? 'zebra' : 'none'
   const bodyMaterialRef = useRef<THREE.MeshPhysicalMaterial>(null)
-  const bodyMeshRef = useRef<THREE.Mesh>(null)
   const sectionActive = useSectionActive()
-  useEffect(() => {
-    const mesh = bodyMeshRef.current
-    if (!mesh?.layers) return
-    const opaque = surface.transparency === 0 && surface.transmission === 0
-    if (opaque) mesh.layers.enable(AO_OCCLUDER_LAYER)
-    else mesh.layers.disable(AO_OCCLUDER_LAYER)
-  }, [surface.transparency, surface.transmission])
+  // A callback ref rather than an effect: the face mesh is unmounted by the
+  // Shading row, and an effect keyed on transparency alone would leave every
+  // remounted mesh out of the AO pre-pass. The identity follows the surface, so
+  // a body that turns to glass while mounted is re-applied too.
+  const occluder = surface.transparency === 0 && surface.transmission === 0
+  const attachFaceMesh = useCallback((mesh: THREE.Mesh | null) => {
+    if (!mesh) return
+    applyAoOccluder(mesh.layers, occluder)
+  }, [occluder])
 
   useBodyAnalysisMaterial(bodyMaterialRef, {
     mode: analysisMode,
@@ -447,21 +448,16 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     curvatureKind,
     curvatureRange: effectiveCurvatureRange(curvatureManualRange, curvatureAutoRange),
     threaded: threadAttributes !== null,
-    ao: ambientOcclusion,
-    ambientOcclusion: ambientOcclusion,
-    ambient_occlusion: ambientOcclusion,
-    ao_strength: aoStrength,
-    aoStrength: aoStrength,
+    ao: isAoActive({
+      option: ambientOcclusion,
+      shading: showFaces,
+      zebra,
+      curvature,
+      section: sectionActive,
+      capturing: sectionCapturing,
+    }),
+    aoStrength,
     transparent: surface.transparency > 0 || surface.transmission > 0,
-    transmission: surface.transmission,
-    opacity: 1 - surface.transparency,
-    sectionEnabled: sectionActive,
-    sectioned: sectionActive,
-    capturing: sectionCapturing,
-    shading: showFaces,
-    zebra,
-    curvature,
-    allowAmbientOcclusion: true,
   })
 
   // The section clips the body's faces and edges, not the reference geometry
@@ -674,7 +670,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     <group visible={visible} userData={{ featureId }}>
       {showFaces && (
         <mesh
-          ref={bodyMeshRef}
+          ref={attachFaceMesh}
           geometry={geometry}
           userData={{ orbitPivot: true }}
         >
