@@ -267,8 +267,10 @@ pub struct Constraint {
     /// `point_distance_y`, `line_distance`, `angle`). When `Some(s)` the
     /// residual constrains the *signed* measure to `s * value`, so `s` (`+1.0`
     /// or `-1.0`) picks which side / handedness while the user-facing `value`
-    /// stays non-negative. `None` keeps the legacy side-agnostic (absolute)
-    /// residual, so existing constraints without a sign are unchanged.
+    /// stays non-negative. `None` keeps the kind's unsigned residual for
+    /// `point_distance_x`/`_y` and `angle`; `line_distance` is the exception and
+    /// keeps its legacy signed residual with the factor defaulting to +1, so an
+    /// absent sign there means the left side of the line as drawn.
     pub sign: Option<f64>,
 }
 

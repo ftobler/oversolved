@@ -356,10 +356,12 @@ export function applyAddConstraint(
   // non-finite one would poison every later solve, so each is gated here exactly
   // like applySetConstraintValue/Pos. The finiteness gate alone is not enough to
   // match the set path: value and pos are rounded to the same precision there,
-  // or the same value would serialize differently depending on the write path.
+  // and sign is normalized to its unit magnitude, or the same constraint would
+  // serialize differently depending on the write path. A raw magnitude would
+  // also scale the dimension (`d - 5 * value`) or zero it on 0.
   if (storedValue !== undefined && Number.isFinite(storedValue)) c.value = round(storedValue)
   if (storedPos !== undefined && Number.isFinite(storedPos[0]) && Number.isFinite(storedPos[1])) c.pos = [round(storedPos[0]), round(storedPos[1])]
-  if (sign !== undefined && Number.isFinite(sign)) c.sign = sign
+  if (sign !== undefined && Number.isFinite(sign)) c.sign = sign < 0 ? -1 : 1
   feature.constraints.push(c)
 }
 
