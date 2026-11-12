@@ -848,6 +848,65 @@ export interface FaceEdgeQueryData {
   face_seam_queries: string[][]
 }
 
+/** One face's boundary walk, reduced to sorted-edge indices. */
+interface FaceEdgeWalk {
+  shape: OccShape
+  // Edges the walk meets the first time, in walk order.
+  first: number[]
+  // Edges the walk meets again: this face's own seams.
+  second: number[]
+}
+
+/**
+ * Every face of a solid in the same flat-before-curved order
+ * `solidToMesh`/`readShapeFaceMetadata` use, with its boundary edges resolved
+ * to positions in `sortedEdges`. The one walk behind both
+ * `solidToFaceEdgeQueries` (which maps the indices to queries) and
+ * `seamEdgeIndices` (which keeps the second visits), so the seam list a body
+ * draws from and the `face_seam_queries` the selector reads can never disagree.
+ */
+function faceEdgeWalks(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+  edgeIndex: SubShapeIndexMap,
+): FaceEdgeWalk[] {
+  // Faces in the same sorted order solidToMesh/readShapeFaceMetadata use.
+  const E = oc.TopAbs_ShapeEnum
+  const fexp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
+  const faces: { shape: OccShape; sortKey: number[] }[] = []
+  for (; fexp.More(); fexp.Next()) {
+    const face = scope.track(oc.TopoDS.Face_1(fexp.Current()))
+    const item: FaceSortItem = {
+      centroid: faceCentroid(oc, scope, face),
+      normal: faceNormal(oc, scope, face),
+      surfaceType: faceSurfaceType(oc, scope, face),
+    }
+    faces.push({ shape: face, sortKey: faceSortKey(item) })
+  }
+  faces.sort((a, b) => compareFaceSortKeys(a.sortKey, b.sortKey))
+
+  return faces.map(({ shape }) => {
+    const seen = new SubShapeDedup()
+    const first: number[] = []
+    const second: number[] = []
+    const eexp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+    for (; eexp.More(); eexp.Next()) {
+      const edge = scope.track(oc.TopoDS.Edge_1(eexp.Current())) as OccSubShape
+      const idx = edgeIndex.get(edge)
+      if (idx < 0) continue
+      // The face meets this edge again: it is this face's seam. A second visit
+      // can only be the same face on both sides of a closed surface.
+      if (!seen.add(edge)) {
+        second.push(idx)
+        continue
+      }
+      first.push(idx)
+    }
+    return { shape, first, second }
+  })
+}
+
 /**
  * For each face of a solid (in the same flat-before-curved order as
  * `solidToMesh().face_queries`), the ancestry queries of its boundary edges.
@@ -878,44 +937,118 @@ export function solidToFaceEdgeQueries(
     const edgeIndex = new SubShapeIndexMap()
     sortedEdges.forEach((e, i) => edgeIndex.set(e, i))
 
-    // Faces in the same sorted order solidToMesh/readShapeFaceMetadata use.
-    const E = oc.TopAbs_ShapeEnum
-    const fexp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
-    const faces: { shape: OccShape; sortKey: number[] }[] = []
-    for (; fexp.More(); fexp.Next()) {
-      const face = scope.track(oc.TopoDS.Face_1(fexp.Current()))
-      const item: FaceSortItem = {
-        centroid: faceCentroid(oc, scope, face),
-        normal: faceNormal(oc, scope, face),
-        surfaceType: faceSurfaceType(oc, scope, face),
-      }
-      faces.push({ shape: face, sortKey: faceSortKey(item) })
-    }
-    faces.sort((a, b) => compareFaceSortKeys(a.sortKey, b.sortKey))
-
     const faceEdgeQueries: string[][] = []
     const faceSeamQueries: string[][] = []
-    for (const { shape } of faces) {
-      const seen = new SubShapeDedup()
+    for (const { first, second } of faceEdgeWalks(oc, scope, solid, edgeIndex)) {
       const queries: string[] = []
       const seams: string[] = []
-      const eexp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-      for (; eexp.More(); eexp.Next()) {
-        const edge = scope.track(oc.TopoDS.Edge_1(eexp.Current())) as OccSubShape
-        const idx = edgeIndex.get(edge)
-        const query = idx >= 0 ? edgeQueries[idx] : ''
-        if (!seen.add(edge)) {
-          // The face meets this edge again: it is this face's seam. A second
-          // visit can only be the same face on both sides of a closed surface.
-          if (query && !seams.includes(query)) seams.push(query)
-          continue
-        }
+      for (const idx of first) {
+        const query = edgeQueries[idx]
         if (query) queries.push(query)
+      }
+      for (const idx of second) {
+        const query = edgeQueries[idx]
+        if (query && !seams.includes(query)) seams.push(query)
       }
       faceEdgeQueries.push(queries)
       faceSeamQueries.push(seams)
     }
     return { face_edge_queries: faceEdgeQueries, face_seam_queries: faceSeamQueries }
+  } finally {
+    scope.dispose()
+  }
+}
+
+/** The two sparse index lists a body result carries for the viewport. */
+export interface HiddenSubShapeIndices {
+  // Indices into the sorted `edges` array.
+  hidden_edges: number[]
+  // Indices into the canonical `vertices` array.
+  hidden_vertices: number[]
+}
+
+/**
+ * The indices (into `sortedEdges`, the same order `solidToEdges` emits) of a
+ * solid's seam edges: every edge some face meets twice in its own boundary
+ * walk, i.e. `BRep_Tool::IsClosed(edge, face)`. A periodic face closes on
+ * itself along one such edge; it is kernel bookkeeping, not authored geometry,
+ * so the viewport neither draws nor picks it. Naming, `select`, measure and
+ * export keep seeing it: this list is display-only.
+ */
+export function seamEdgeIndices(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+  sortedEdges: readonly OccSubShape[],
+): number[] {
+  const edgeIndex = new SubShapeIndexMap()
+  sortedEdges.forEach((e, i) => edgeIndex.set(e, i))
+  const hidden = new Set<number>()
+  for (const walk of faceEdgeWalks(oc, scope, solid, edgeIndex)) {
+    for (const idx of walk.second) hidden.add(idx)
+  }
+  return [...hidden].sort((a, b) => a - b)
+}
+
+/**
+ * The indices (into the canonical vertex order `readSolidVertices` walks) of
+ * vertices that end no visible open edge. A vertex is vouched for only by an
+ * edge the viewport draws that has two distinct end vertices:
+ *
+ * - a full circle's single vertex ends a closed edge, so it is hidden,
+ * - a seam's two ends sit on closed rim circles, so they are hidden,
+ * - a sphere's/torus's poles and seam vertices are hidden,
+ * - every prism corner and every arc or line end is kept.
+ *
+ * Deliberately broader than "on a seam": the dot on a flat hole rim is the same
+ * artifact, a closed edge's vertex with no seam edge anywhere in the body.
+ */
+export function seamVertexIndices(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+  sortedEdges: readonly OccSubShape[],
+  hiddenEdges: readonly number[],
+): number[] {
+  const vertices = canonicalVertices(oc, scope, solid)
+  const vertexIndex = canonicalIndex(vertices)
+  const hidden = new Set(hiddenEdges)
+  const kept = new Set<number>()
+  sortedEdges.forEach((edge, i) => {
+    if (hidden.has(i)) return
+    // `canonicalVertices` dedups by IsSame, so a closed edge yields its one
+    // vertex once and cannot vouch for an end it does not have.
+    const ends = canonicalVertices(oc, scope, edge)
+    if (ends.length !== 2) return
+    for (const end of ends) {
+      const at = vertexIndex.get(end)
+      if (at >= 0) kept.add(at)
+    }
+  })
+  const out: number[] = []
+  for (let i = 0; i < vertices.length; i++) if (!kept.has(i)) out.push(i)
+  return out
+}
+
+/**
+ * Classify one solid for the viewport: the seam edges and the vertices that end
+ * no visible open edge. Absent lists mean "hide nothing", so an older cached
+ * result or a producer that does not classify still renders in full.
+ */
+export function hiddenSubShapeIndices(
+  oc: OccModule,
+  table: HandleTable,
+  handle: OccHandle,
+): HiddenSubShapeIndices {
+  const solid = table.get(handle)
+  const scope = new DisposeScope()
+  try {
+    const sortedEdges = sortedUniqueEdges(oc, scope, solid)
+    const hiddenEdges = seamEdgeIndices(oc, scope, solid, sortedEdges)
+    return {
+      hidden_edges: hiddenEdges,
+      hidden_vertices: seamVertexIndices(oc, scope, solid, sortedEdges, hiddenEdges),
+    }
   } finally {
     scope.dispose()
   }

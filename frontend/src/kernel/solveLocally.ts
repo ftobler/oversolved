@@ -18,7 +18,7 @@ import { loadOccWeb, resetOccWeb } from './occ/loadOccWeb'
 import { memoizedLoad } from './occ/memoizedLoad'
 import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
-import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, readShapeFaceMetadata } from './occ/tessellation'
+import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, hiddenSubShapeIndices, readShapeFaceMetadata } from './occ/tessellation'
 import type { TessMesh } from './occ/tessellation'
 import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
 import { copyShape, makeScaleTrsf, makeRigidTrsf, transformCopy } from './occ/transforms'
@@ -243,6 +243,10 @@ export function tessellateBodies(
       // The edges each face meets twice, so the selector can tell a seam from
       // an open shell's free edge (both are listed by one face only).
       mesh.face_seam_queries = faceEdgeData.face_seam_queries
+      // The same walk again, kept as sparse display indices: the viewport skips
+      // these seams and the vertices that end no visible open edge. The arrays
+      // above are untouched, so every name and query stays byte-identical.
+      const hidden = hiddenSubShapeIndices(oc, table, body.shape)
       out[bodyId] = {
         mesh,
         edges: edgeResult.edges,
@@ -253,6 +257,8 @@ export function tessellateBodies(
         vertex_queries: vertexResult.vertex_queries,
         vertex_uuids: vertexResult.vertex_uuids,
         vertex_created_by: vertexResult.vertex_created_by,
+        hidden_edges: hidden.hidden_edges,
+        hidden_vertices: hidden.hidden_vertices,
         created_by: body.created_by ?? '',
         modified_by: body.modified_by ?? [],
       }

@@ -224,8 +224,31 @@ describe('toBodyMesh', () => {
     expect(result.edges).toEqual([])
   })
 
-  it('converts edges from the body into EdgeCurves', () => {
+  it('carries the sparse hidden lists and owns its copy of each', () => {
     const body: BodyResult = {
+      id: 'body_seam',
+      created_by: 'cyl1',
+      modified_by: [],
+      mesh: { vertices: [], faces: [] },
+      edges: [
+        { kind: 'line', start: [0, 0, 0], end: [0, 0, 10] },
+        { kind: 'circle', center: [0, 0, 0], radius: 5, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: 2 * Math.PI },
+      ],
+      edge_queries: ['?seam', '?rim'],
+      hidden_edges: [0],
+      hidden_vertices: [0, 1],
+    }
+    const result = toBodyMesh(body)
+    expect(result.hiddenEdges).toEqual([0])
+    expect(result.hiddenVertices).toEqual([0, 1])
+    // A bundle is transferred to the anchor worker, so it must own its arrays.
+    body.hidden_edges!.push(1)
+    body.hidden_vertices!.push(2)
+    expect(result.hiddenEdges).toEqual([0])
+    expect(result.hiddenVertices).toEqual([0, 1])
+  })
+
+  it('converts edges from the body into EdgeCurves', () => {    const body: BodyResult = {
       id: 'body_2',
       created_by: 'ex2',
       modified_by: [],

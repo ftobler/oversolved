@@ -419,6 +419,14 @@ export interface BodyResult {
   edge_created_by?: string[]
   vertices?: [number, number, number][]
   vertex_queries?: string[]
+  // Indices into `edges` the viewport neither draws nor picks: a periodic
+  // face's own seam (`BRep_Tool::IsClosed(edge, face)`). Kernel bookkeeping,
+  // not authored geometry; naming, queries, select, measure and export are
+  // untouched. Absent means "hide nothing" (an older cached result).
+  hidden_edges?: number[]
+  // Indices into `vertices` likewise: a vertex that ends no visible open edge
+  // (the one vertex of a full circle, the ends of a seam, a sphere pole).
+  hidden_vertices?: number[]
 }
 
 export interface RebuildValidation {

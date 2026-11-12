@@ -20,7 +20,7 @@ import type { BuildState } from '../types3d'
 import { initGlobalRepo } from '../query'
 import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
-import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries } from '../occ/tessellation'
+import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, hiddenSubShapeIndices } from '../occ/tessellation'
 import { extractBrepMetadata } from '../solveLocally'
 import { copyShape } from '../occ/transforms'
 import { assertOneSolidPerBody } from '../features/bodySplit'
@@ -124,6 +124,9 @@ export class SharedHarness {
             const faceEdgeData = solidToFaceEdgeQueries(this.oc, table, body.shape, edgeResult.edge_queries)
             mesh.face_edge_queries = faceEdgeData.face_edge_queries
             mesh.face_seam_queries = faceEdgeData.face_seam_queries
+            // Production's sparse display indices, so a harness-driven render
+            // payload hides the same seams the real worker does.
+            const hidden = hiddenSubShapeIndices(this.oc, table, body.shape)
             out[body.id] = {
               mesh,
               edges: edgeResult.edges,
@@ -134,6 +137,8 @@ export class SharedHarness {
               vertex_queries: vertexResult.vertex_queries,
               vertex_uuids: vertexResult.vertex_uuids,
               vertex_created_by: vertexResult.vertex_created_by,
+              hidden_edges: hidden.hidden_edges,
+              hidden_vertices: hidden.hidden_vertices,
               // Mirror production tessellateBodies: the per-body creator and
               // modifier tags are part of the render payload, not just inputs.
               created_by: body.created_by ?? '',

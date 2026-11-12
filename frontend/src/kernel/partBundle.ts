@@ -80,6 +80,15 @@ export interface BodyMesh {
     faceIdsPerTriangle: Uint32Array
   }
   edges: EdgeCurve[]
+  // The body's sparse display-only indices (BodyResult.hidden_edges /
+  // hidden_vertices): a periodic face's own seam and the vertices that end no
+  // visible open edge. `edges` and the anchor slots stay unfiltered, so the
+  // positional joins (`edges[i]`, `entityAnchors.vertices[i]`) and every mate
+  // already authored on one keep working; only the viewport and the ID layers
+  // skip them. Optional so a bundle cached before the lists existed renders in
+  // full (the schema bump rebuilds those anyway).
+  hiddenEdges?: number[]
+  hiddenVertices?: number[]
   // Optional so a bundle cached before entityAnchors existed still solves; it
   // just offers no mate picks until its part is rebuilt at a new rev.
   entityAnchors?: EntityAnchorIndex
@@ -106,9 +115,11 @@ export interface PartBundle {
  * cached schema-2 bundle would leave every frame mate stale forever. Schema 4
  * makes every position in the bundle a millimetre: the assembly frame has no
  * unit, and an inch part is scaled at build, so a cached schema-3 inch bundle
- * carries geometry 25.4 times too small. See `bundleCache.bundleCacheGet`.
+ * carries geometry 25.4 times too small. Schema 5 adds the sparse
+ * `hiddenEdges`/`hiddenVertices` display lists, so a cached schema-4 bundle
+ * would keep drawing and picking every seam. See `bundleCache.bundleCacheGet`.
  */
-export const BUNDLE_SCHEMA = 4
+export const BUNDLE_SCHEMA = 5
 
 // Bumped whenever geometry-producing code changes at an unchanged BUNDLE_SCHEMA
 // (a tessellation tweak, a boolean-op fix, a builder behavior change). The
@@ -378,6 +389,10 @@ export function toBodyMesh(bodyResult: BodyResult): BodyMesh {
   return {
     mesh: { vertices, indices, faceIdsPerTriangle },
     edges,
+    // Copied, so the bundle owns them: it is transferred to the anchor worker
+    // and an engine-owned array would detach the producer's result.
+    hiddenEdges: bodyResult.hidden_edges ? [...bodyResult.hidden_edges] : undefined,
+    hiddenVertices: bodyResult.hidden_vertices ? [...bodyResult.hidden_vertices] : undefined,
   }
 }
 

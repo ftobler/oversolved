@@ -199,6 +199,15 @@ describe('bundleCache', () => {
     expect(await bundleCacheHas('docA', 'h1')).toBe(false)
   })
 
+  it('the previous schema 4 reads back as a miss, so cached bundles rebuild with the hidden seam lists', async () => {
+    // Schema 5 added `hiddenEdges` / `hiddenVertices`. A schema-4 record would
+    // keep drawing and picking every seam until its part's content hash moved.
+    expect(BUNDLE_SCHEMA).toBeGreaterThan(4)
+    await bundleCachePut({ ...fixtureBundle('docA', 'h1'), schema: 4 })
+    expect(await bundleCacheGet('docA', 'h1')).toBeUndefined()
+    expect(await bundleCacheHas('docA', 'h1')).toBe(false)
+  })
+
   it('a record built by different code reads back as a miss; a matching fingerprint is a hit', async () => {
     await bundleCachePut(fixtureBundle('docA', 'h1'))
     expect(await bundleCacheGet('docA', 'h1')).toBeDefined()
