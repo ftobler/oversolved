@@ -542,11 +542,20 @@ const FILLET_CORNERS_NOTE =
   'leave a segment on it. Both sides must be lines of the same sketch; an arc, circle, spline, ellipse or ' +
   'projected side is refused, as is a corner whose sides already meet tangentially. The material side is ' +
   'probed from the whole sketch profile unless `side` names it; a mixed construction/normal corner is ' +
-  'refused, and the arc is construction only when both sides are. The coincident joint between the two ' +
-  'trimmed endpoints is consumed. A second coincident, a tangent between the sides, or a `fixed` or ' +
-  'dimension that anchors a trimmed endpoint is refused by constraint id. Arc params are ' +
-  '`[cx, cy, r, a0_deg, a1_deg]` and keep the CCW sweep. The step reply reports one new arc id per ' +
-  'corner in `corners` order.' + CREATED_IDS_REPLY_NOTE
+  'refused, and the arc is construction only when both sides are. ' +
+  'A `length` dimension on a trimmed side measured the whole side, so it is replaced rather than left ' +
+  'stale: when the two perpendicular sides span exactly that value, the step writes the overall ' +
+  '`line_distance` between them (the rectangle keeps the size the user typed); otherwise it rewrites the ' +
+  'length to the remaining straight run. The step reply names both ids in `replacedConstraints`. An ' +
+  '`equal_length` whose two sides the trim leaves unequal becomes a `parallel` (or is dropped when they ' +
+  'were not parallel). The corner angle the joint coincident carried is restated: the matching ' +
+  'horizontal/vertical on the free side when the other side already names the axis, else an `angle` at ' +
+  'the measured direction angle. Every arc gets a `radius` dimension at the step radius, so a fully ' +
+  'constrained sketch stays fully constrained (the arcs introduce no free radius degree of freedom). ' +
+  'The coincident joint between the two trimmed endpoints is consumed. A second coincident, a tangent ' +
+  'between the sides, or a `fixed` or dimension that anchors a trimmed endpoint is refused by constraint ' +
+  'id. Arc params are `[cx, cy, r, a0_deg, a1_deg]` and keep the CCW sweep. The step reply reports one ' +
+  'new arc id per corner in `corners` order.' + CREATED_IDS_REPLY_NOTE
 
 // The run's end caps: an authored line meets its neighbour only by coordinate,
 // so a solve that nudges either one leaves the profile open. add_entity stays

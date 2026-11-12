@@ -556,6 +556,15 @@ describe('practice doc cases: fit_spline magnitude and helix sweep path', () => 
       expect(note, type).toContain('`createdCount`')
     }
   })
+
+  it('states what fillet_corners does to a side dimension and the constraint set', () => {
+    const note = mutationInfoOf('fillet_corners').note!
+    expect(note).toContain('`length` dimension on a trimmed side')
+    expect(note).toContain('remaining straight run')
+    expect(note).toContain('`replacedConstraints`')
+    expect(note).toContain('`radius` dimension')
+    expect(note).toContain('stays fully constrained')
+  })
 })
 
 // The 2026-11-08 practice run had to guess an arc's endpoint keys: both notes

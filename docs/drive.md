@@ -1023,7 +1023,14 @@ banner on stdout, so a client config must use the direct node invocation.
   `{a, aVertex, b, bVertex, side?}` naming two line entities of one sketch and
   the endpoints that meet, trims each endpoint to its tangent point and adds one
   tangent arc per corner; each joint it leaves is a coincident on the trimmed
-  endpoint and the arc end, plus a tangent between each side and the arc; an arc
+  endpoint and the arc end, plus a tangent between each side and the arc; a
+  trimmed side's `length` dimension is replaced (the overall `line_distance`
+  between the perpendicular sides when they span that value, else the remaining
+  straight run), the corner angle is restated by the matching
+  horizontal/vertical or an `angle`, every arc gets its `radius` dimension, so a
+  fully constrained sketch stays fully constrained; an `equal_length` the trim
+  leaves unequal becomes a `parallel` (or is dropped when the pair was not
+  parallel); an arc
   or projected side, a mixed construction corner,
   a `fixed`/dimension on a trimmed endpoint, or a radius that would consume a
   side is refused by name, and one step is one undo entry;
@@ -1372,7 +1379,9 @@ authors `flip: true` by hand is equally valid.
   `constraints: <count>`; the constraint ids stay readable from the document
   resource. `mirror_entities` reports its copy ids in source order,
   `pattern_entities` instance by instance in `sourceIds` order and
-  `fillet_corners` one arc id per corner, each with `constraints: <count>`.
+  `fillet_corners` one arc id per corner, each with `constraints: <count>`; a
+  `fillet_corners` step that replaces a stale side length also reports
+  `replacedConstraints: [{ from: <old length id>, to: <new dimension id> }]`.
   An `import_dxf` or `add_text` step reports `createdIds: []` and
   `createdCount: <entities>` instead, because one step can add hundreds of
   entities; a sketch copy step that creates more than 200 ids reports them the

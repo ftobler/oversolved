@@ -281,8 +281,45 @@ function createdIdsBetween(before: PartDoc, after: PartDoc): string[] {
   return created
 }
 
-function dragAnchorFor(m: Mutation): { featureId: string; entityId: string } | undefined {
-  return m.type === 'move_vertex' || m.type === 'move_vertex_with_constraint'
+/**
+ * The dimensional constraints a step replaced, old id to new id. Only a compact
+ * sugar step can do this today: fillet_corners consumes the `length` a trimmed
+ * side no longer satisfies and authors the dimension that keeps the size. The
+ * reply names both ids because the old one is gone from the document and the
+ * caller may need to carry a label or a selection across the step.
+ */
+function replacedDimensions(before: PartDoc, after: PartDoc): Array<{ from: string; to: string }> | undefined {
+  const pairs: Array<{ from: string; to: string }> = []
+  for (const feature of after.features ?? []) {
+    if (feature.kind !== 'sketch') continue
+    const beforeFeature = before.features?.find(f => f.id === feature.id)
+    if (beforeFeature?.kind !== 'sketch') continue
+    const afterConstraints = feature.constraints ?? []
+    const beforeConstraints = beforeFeature.constraints ?? []
+    const afterIds = new Set(afterConstraints.map(c => c.id))
+    const beforeIds = new Set(beforeConstraints.map(c => c.id))
+    const removed = beforeConstraints.filter(
+      c => c.kind === 'length' && typeof c.value === 'number' && !afterIds.has(c.id),
+    )
+    const added = afterConstraints.filter(
+      c => isDimensionKind(c.kind) && typeof c.value === 'number' && !beforeIds.has(c.id),
+    )
+    const used = new Set<number>()
+    for (const old of removed) {
+      // The overall-size rewrite keeps the value on another kind; the
+      // straight-run rewrite keeps the kind and changes the value.
+      let index = added.findIndex((c, i) =>
+        !used.has(i) && c.kind !== 'length' && Math.abs(c.value! - old.value!) < 1e-9)
+      if (index < 0) index = added.findIndex((c, i) => !used.has(i) && c.kind === 'length')
+      if (index < 0) continue
+      used.add(index)
+      pairs.push({ from: old.id, to: added[index].id })
+    }
+  }
+  return pairs.length > 0 ? pairs : undefined
+}
+
+function dragAnchorFor(m: Mutation): { featureId: string; entityId: string } | undefined {  return m.type === 'move_vertex' || m.type === 'move_vertex_with_constraint'
     || m.type === 'move_entity' || m.type === 'resize_circle'
     ? { featureId: m.featureId, entityId: m.entityId }
     : undefined
@@ -792,7 +829,7 @@ export class DocSession {
       }
     }
     const ids = created.filter(id => !createdConstraintIds.has(id))
-    return okResult(ids, created.length - ids.length)
+    return okResult(ids, created.length - ids.length, undefined, replacedDimensions(before, after))
   }
 
   private solveAfterMutation(doc: PartDoc, mutations: Mutation[], restorable: Record<string, SketchData> | null): void {

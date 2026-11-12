@@ -84,6 +84,9 @@ export interface ScriptStepOutcome {
   error?: { code: string; message: string }
   // Present only when the step measured an orientation into the document.
   captured?: MateCapture
+  // Present when a step replaced a dimension: the old id and the new one that
+  // now carries the size. fillet_corners is the only producer today.
+  replacedConstraints?: Array<{ from: string; to: string }>
   // Present only on a fixed toggle, which always reports the pose it kept.
   poseKept?: KeptPose
   // Present only on an add_step_part step: the part it bound and instanced.
@@ -191,6 +194,7 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
     const poseKept = 'poseKept' in result ? result.poseKept : undefined
     const part = 'part' in result ? result.part : undefined
     const constraints = 'constraints' in result ? result.constraints : undefined
+    const replacedConstraints = 'replacedConstraints' in result ? result.replacedConstraints : undefined
     // A DXF import or a text run is the bulk case of the reply-size rule: one
     // step can add hundreds of entities, so the reply carries the count and
     // the document resource (or the run's docHash) serves the ids. A sketch
@@ -201,6 +205,7 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
       index, kind, id, ok: true, createdIds: counted ? [] : createdIds,
       ...(counted && { createdCount: createdIds.length }),
       ...(constraints !== undefined && { constraints }),
+      ...(replacedConstraints !== undefined && { replacedConstraints }),
       ...(captured !== undefined && { captured }),
       ...(poseKept !== undefined && { poseKept }),
       ...(part !== undefined && { part }),

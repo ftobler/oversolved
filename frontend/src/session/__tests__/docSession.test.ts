@@ -367,6 +367,52 @@ describe('created ids of the sketch copy sugar', () => {
     })
   })
 
+  it('fillet_corners reports the dimensions it replaced, old id to new id', () => {
+    const rect = makeSketch('sk1', {
+      entities: [
+        { id: 'b', kind: 'line' }, { id: 'r', kind: 'line' },
+        { id: 't', kind: 'line' }, { id: 'l', kind: 'line' },
+      ],
+      initial: {
+        b: [0, 0, 40, 0], r: [40, 0, 40, 30],
+        t: [40, 30, 0, 30], l: [0, 30, 0, 0],
+      },
+      constraints: [
+        { id: 'k1', kind: 'coincident', a: '$bend', b: '$rstart' },
+        { id: 'k2', kind: 'coincident', a: '$rend', b: '$tstart' },
+        { id: 'k3', kind: 'coincident', a: '$tend', b: '$lstart' },
+        { id: 'k4', kind: 'coincident', a: '$lend', b: '$bstart' },
+        { id: 'k5', kind: 'equal_length', a: '$b', b: '$t' },
+        { id: 'k6', kind: 'equal_length', a: '$r', b: '$l' },
+        { id: 'k7', kind: 'horizontal', target: '$b' },
+        { id: 'k8', kind: 'vertical', target: '$r' },
+        { id: 'len_b', kind: 'length', target: '$b', value: 40 },
+        { id: 'len_r', kind: 'length', target: '$r', value: 30 },
+      ],
+    })
+    const { session } = makeSession(makeDoc(rect))
+
+    const result = session.execute({
+      type: 'fillet_corners', featureId: 'sk1', radius: 3,
+      corners: [
+        { a: 'b', aVertex: 'start', b: 'l', bVertex: 'end', side: 'convex' },
+        { a: 'b', aVertex: 'end', b: 'r', bVertex: 'start', side: 'convex' },
+        { a: 'r', aVertex: 'end', b: 't', bVertex: 'start', side: 'convex' },
+        { a: 't', aVertex: 'end', b: 'l', bVertex: 'start', side: 'convex' },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const pairs = result.replacedConstraints ?? []
+    expect(pairs.map(p => p.from).sort()).toEqual(['len_b', 'len_r'])
+    const f = sketchAt(session.getDoc()!)
+    const byId = new Map((f.constraints ?? []).map(c => [c.id, c]))
+    const values = pairs.map(p => [byId.get(p.to)!.kind, byId.get(p.to)!.value]).sort()
+    expect(values).toEqual([['line_distance', 30], ['line_distance', 40]])
+    for (const pair of pairs) expect(byId.has(pair.from)).toBe(false)
+  })
+
   it('fillet_corners names one arc per corner and counts the new constraints', () => {
     const { session } = makeSession(makeDoc(makeSketch('sk1', {
       entities: [
