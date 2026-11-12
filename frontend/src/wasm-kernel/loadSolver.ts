@@ -14,7 +14,7 @@
  */
 
 import { loadPkgNodeExport, loadPkgNodeModuleFresh } from './loadPkgNode'
-import type { SketchSolverBundle, SolveBytes, TopologyBytes } from './wasmTypes'
+import type { SketchSolverBundle, SolveBytes } from './wasmTypes'
 
 export function loadSolver(): SolveBytes | null {
   return loadPkgNodeExport<SolveBytes>('solve_sketch_bytes')
@@ -32,8 +32,8 @@ export function loadSolver(): SolveBytes | null {
 export function loadSolverFresh(): SketchSolverBundle | null {
   const mod = loadPkgNodeModuleFresh()
   if (mod === null) return null
-  const solve = mod.solve_sketch_bytes as SolveBytes | undefined
+  const solve = mod.solve_sketch_bytes
   if (typeof solve !== 'function') return null
-  const topology = mod.detect_topology_bytes as TopologyBytes | undefined
+  const topology = mod.detect_topology_bytes
   return { solve, topology: typeof topology === 'function' ? topology : null }
 }

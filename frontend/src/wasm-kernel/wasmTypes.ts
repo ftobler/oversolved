@@ -23,3 +23,13 @@ export interface SketchSolverBundle {
   solve: SolveBytes
   topology: TopologyBytes | null
 }
+
+/**
+ * The named exports a fresh require of the sketch package's nodejs entry is
+ * read for. Declared rather than a loose record so a typo in an export name is
+ * a compile error, and both exports are known to belong to one instance.
+ */
+export interface SketchPkgNodeModule {
+  solve_sketch_bytes?: SolveBytes
+  detect_topology_bytes?: TopologyBytes
+}

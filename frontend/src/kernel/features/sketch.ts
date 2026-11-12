@@ -243,10 +243,12 @@ export function resetSketchSolverAfterTrap(): boolean {
   if (solverLoader !== null) {
     try {
       adoptSketchBundle(solverLoader())
-    } catch {
-      // A module load cannot be reading the trapped heap, so this is not a
-      // trap to rethrow: leaving the cells null lets the reload latch report
-      // the unrecovered kernel instead of a build that silently loses sketches.
+    } catch (e) {
+      // A module load cannot be reading the trapped heap, so no trap reaches
+      // here; swallowUnlessTrap keeps the audit's shape anyway. Leaving the
+      // cells null lets the reload latch report the unrecovered kernel instead
+      // of a build that silently loses sketches.
+      swallowUnlessTrap(e)
     }
     return isSketchSolverReady() && isSketchTopologyReady()
   }

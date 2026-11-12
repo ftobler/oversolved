@@ -14,6 +14,7 @@ import { createRequire } from 'node:module'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import type { SketchPkgNodeModule } from './wasmTypes'
 
 /** The wasm-pack packages, by crate directory and JS entry stem. */
 export const PKG_SKETCH = { dir: 'sketch-solver', stem: 'sketch_solver' } as const
@@ -56,16 +57,16 @@ export function loadPkgNodeExport<T>(name: string, pkg: PkgNodeTarget = PKG_SKET
  * exports that must come from ONE instance (the sketch solver and its area
  * builder share one).
  */
-export function loadPkgNodeModuleFresh(pkg: PkgNodeTarget = PKG_SKETCH): Record<string, unknown> | null {
+export function loadPkgNodeModuleFresh(): SketchPkgNodeModule | null {
   const requireFn = createRequire(import.meta.url)
-  const pkgPath = pkgNodePath(pkg)
+  const pkgPath = pkgNodePath(PKG_SKETCH)
   if (!existsSync(pkgPath)) return null
   // Cache keys are the resolved file name; on a symlinked tree that can differ
   // from pkgPath, so evict both spellings.
   delete requireFn.cache[requireFn.resolve(pkgPath)]
   delete requireFn.cache[pkgPath]
   try {
-    return requireFn(pkgPath) as Record<string, unknown>
+    return requireFn(pkgPath) as SketchPkgNodeModule
   } catch (e) {
     // Same ruling as loadExportOrNull: only an absent artifact is expected, a
     // broken one must surface rather than silently skip the whole suite.
