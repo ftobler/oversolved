@@ -24,6 +24,8 @@ import {
   getDefaultParams,
 } from '@/registry/entityRegistry'
 import { iconUrl } from '@/components/Toolbar/tools/toolUtils'
+import { isConstraintKindName } from '@/wasm-kernel/codec'
+import { LOWERED_KINDS } from '@/wasm-kernel/partDocToSketches'
 
 // ─── Constraint registry consistency ───
 
@@ -94,6 +96,16 @@ describe('constraintRegistry', () => {
       expect(isDimensionKind(c.kind)).toBe(c.category === 'dimensional')
     }
     expect(isDimensionKind('not_a_constraint')).toBe(false)
+  })
+
+  it('every registry kind reaches the solver as a wire code or a named lowering', () => {
+    // A kind with neither shipped inert: `colinear` was declared, drawable and
+    // authorable here while the wire table had no code for it and the lowering
+    // dropped it without a word. A new document kind must add one or the other.
+    const uncovered = CONSTRAINTS
+      .filter(c => !isConstraintKindName(c.kind) && !LOWERED_KINDS.has(c.kind))
+      .map(c => c.kind)
+    expect(uncovered).toEqual([])
   })
 })
 

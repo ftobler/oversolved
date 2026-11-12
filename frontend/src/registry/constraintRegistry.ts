@@ -14,7 +14,10 @@ import { narrowCommandName, type CommandName } from '@/utils/core/commandNames'
 // To add a new constraint:
 //   1. Add an entry to CONSTRAINTS below.
 //   2. Add render logic in utils/geometryMapping.ts  (computeConstraintRender).
-//   3. Add solver residual in the WASM kernel  (sketch solver).
+//   3. Add solver residual in the WASM kernel  (sketch solver), or a lowering
+//      in wasm-kernel/partDocToSketches.ts named in its LOWERED_KINDS set.
+//      registry.test.ts fails a kind that has neither, so a kind cannot ship
+//      inert the way colinear did.
 //   4. Optionally add an SVG icon in assets/icons/.
 
 // ─── Constraint definition ───
@@ -251,7 +254,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
   {
     kind: 'colinear',
     label: 'Colinear',
-    description: 'Forces a point to lie on the infinite line defined by a line segment.',
+    description: 'Forces two lines to be collinear (parallel and on one line), or a point to lie on the infinite line through a line segment.',
     category: 'geometric',
     hasValue: false,
     refPattern: 'a_b',

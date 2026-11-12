@@ -17,6 +17,8 @@
 
 import type { PartConstraint, PartFeature, SketchFeature } from '@/types/cad'
 import { resolveVertexRef } from '@/types/vertexRef'
+import { colinearShapeProblem, constraintOperandSide } from '@/utils/constraintOperands'
+import { isConstraintKindName } from './codec'
 import type { SketchInput } from './lowerSketch'
 
 /** A constraint the live-document lowering could not turn into a solver row.
@@ -87,6 +89,7 @@ function lowerConstraint(
   entityIds: Set<string>,
   originLocal: [number, number],
   dropped: DroppedConstraint[],
+  authoredKind: string,
 ): Record<string, unknown> | null {
   const out: Record<string, unknown> = { id: c.id, kind: c.kind }
   for (const key of REF_KEYS) {
@@ -94,7 +97,9 @@ function lowerConstraint(
     if (raw == null) continue
     const resolved = resolveLocal(raw, entityIds, originLocal)
     if (!resolved) {
-      dropped.push({ id: c.id, kind: c.kind, reason: 'stale reference' })
+      // Name the kind the document stores, not the wire kind a lowering may
+      // have substituted (`colinear` arrives here as `coincident`).
+      dropped.push({ id: c.id, kind: authoredKind, reason: 'stale reference' })
       return null
     }
     out[key] = resolved
@@ -213,19 +218,51 @@ function expandDockConstraint(c: PartConstraint, feature: SketchFeature): PartCo
   return []
 }
 
-/** Replace sugar constraints (`ngon`, `dock`) with their primitive expansions,
- *  leaving every other constraint untouched. Runs before the resolve loop so the
- *  solver only ever sees real constraint kinds. (Offset is not sugar at this
- *  layer: it is stored directly as parallel/concentric + an ordinary dimension.) */
-function expandSugarConstraints(feature: SketchFeature): PartConstraint[] {
+/** Replace sugar constraints (`ngon`, `dock`) with their primitive expansions
+ *  and lower `colinear` to the solver's `coincident`, leaving every other
+ *  constraint untouched. Runs before the resolve loop so the solver only ever
+ *  sees real constraint kinds. (Offset is not sugar at this layer: it is stored
+ *  directly as parallel/concentric + an ordinary dimension.)
+ *
+ *  `colinear` is a document kind with no wire code: the solver's coincident arm
+ *  already reads two bare lines as the collinear row pair and a point against a
+ *  line as point-on-line. Lowering here keeps the authored kind in the document
+ *  (tile, undo label, intent) while the solve gets the rows that kind always
+ *  meant. A pair with any other shape is dropped with the reason the sketch
+ *  warning names, rather than lowered to a row the author did not ask for.
+ */
+function expandSugarConstraints(feature: SketchFeature, dropped: DroppedConstraint[]): PartConstraint[] {
+  const entities = feature.entities ?? []
+  const entityIds = new Set(entities.map((e) => e.id))
+  const kindById = new Map(entities.map((e) => [e.id, e.kind]))
   const out: PartConstraint[] = []
   for (const c of feature.constraints ?? []) {
     if (c.kind === 'projection') continue
     if (c.kind === 'ngon') out.push(...lowerNgonConstraint(c))
     else if (c.kind === 'dock') out.push(...expandDockConstraint(c, feature))
-    else out.push(c)
+    else if (c.kind === 'colinear') {
+      const problem = colinearShapeProblem(c.a, c.b, (ref) => constraintOperandSide(ref, entityIds, kindById))
+      if (problem !== null) dropped.push({ id: c.id, kind: c.kind, reason: problem })
+      else out.push({ ...c, kind: 'coincident' })
+    } else out.push(c)
   }
   return out
+}
+
+/** The document constraint kinds that never reach the solver as themselves:
+ *  the sugar expanded here (`ngon`, `dock`), `projection` (resolved by the
+ *  sketch solve before this module runs) and `colinear` (lowered to
+ *  `coincident` above). Every other kind a document may carry must be a wire
+ *  kind. Exported so the registry test can prove a new kind is in one of the
+ *  two sets instead of shipping inert. */
+export const LOWERED_KINDS: ReadonlySet<string> = new Set(['colinear', 'projection', 'ngon', 'dock'])
+
+/** True when a constraint kind a document may carry can reach a residual:
+ *  either the wire table decodes it or a lowering turns it into one that does.
+ *  The document boundary reads this so a hand-edited unknown kind is refused
+ *  by field instead of faulting the solve. */
+export function isDocumentConstraintKind(kind: string): boolean {
+  return isConstraintKindName(kind) || LOWERED_KINDS.has(kind)
 }
 
 /**
@@ -254,10 +291,12 @@ export function partDocToSketches(
     }
 
     const entityIds = new Set(entities.map((e) => e.id))
+    const authoredKinds = new Map((feature.constraints ?? []).map((c) => [c.id, c.kind]))
     const constraints: Array<Record<string, unknown>> = []
     const droppedConstraints: DroppedConstraint[] = []
-    for (const c of expandSugarConstraints(feature)) {
-      const lowered = lowerConstraint(c, entityIds, originLocal, droppedConstraints)
+    for (const c of expandSugarConstraints(feature, droppedConstraints)) {
+      const authoredKind = authoredKinds.get(c.id) ?? c.kind
+      const lowered = lowerConstraint(c, entityIds, originLocal, droppedConstraints, authoredKind)
       if (lowered) constraints.push(lowered)
     }
 

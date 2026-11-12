@@ -407,6 +407,51 @@ describe('finding 5: add_constraint target spelling', () => {
   })
 })
 
+describe('colinear operand shapes', () => {
+  function colinearDoc(): PartDoc {
+    return seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [
+          { id: 'l1', kind: 'line' }, { id: 'l2', kind: 'line' }, { id: 'c1', kind: 'circle' },
+        ],
+        initial: { l1: [0, 0, 10, 0], l2: [0, 1, 10, 1], c1: [0, 0, 2] },
+      }],
+    })
+  }
+
+  it('accepts two lines and a point with a line', () => {
+    const doc = colinearDoc()
+    expect(validateMutation({
+      type: 'add_constraint', featureId: 'sk1', kind: 'colinear', targets: ['entity:sk1:l1', 'entity:sk1:l2'],
+    }, { doc })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_constraint', featureId: 'sk1', kind: 'colinear', targets: ['vertex:sk1:l1:start', 'entity:sk1:l2'],
+    }, { doc })).toMatchObject({ ok: true })
+  })
+
+  it('refuses a circle and a line, naming the accepted shapes', () => {
+    const error = refusal(
+      { type: 'add_constraint', featureId: 'sk1', kind: 'colinear', targets: ['entity:sk1:c1', 'entity:sk1:l1'] },
+      colinearDoc(),
+    )
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('two lines or a point and a line')
+  })
+
+  it('refuses a lone operand', () => {
+    const error = refusal(
+      { type: 'add_constraint', featureId: 'sk1', kind: 'colinear', targets: ['entity:sk1:l1'] },
+      colinearDoc(),
+    )
+    expect(error.message).toContain('two lines or a point and a line')
+  })
+})
+
 describe('finding: mirror_entities values', () => {
   it('refuses a non-line axis and a degenerate one, naming the line', () => {
     const doc = sketchDoc()

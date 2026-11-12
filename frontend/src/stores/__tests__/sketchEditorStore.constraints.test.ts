@@ -505,6 +505,43 @@ describe('sketchEditorStore', () => {
       expect(handler).not.toHaveBeenCalled()
     })
 
+    it('returns a rejection message for a colinear that is not two lines or a point and a line', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:L1': 'line',
+        'entity:Sketch1:C1': 'circle',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C1')
+
+      const reason = useSketchEditorStore.getState().applyConstraint('colinear')
+
+      expect(reason).toMatch(/two lines or a point and a line/)
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('authors a colinear of two lines', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:L1': 'line',
+        'entity:Sketch1:L2': 'line',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L2')
+
+      expect(useSketchEditorStore.getState().applyConstraint('colinear')).toBeNull()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'Sketch1',
+        kind: 'colinear',
+        targets: expect.arrayContaining(['entity:Sketch1:L1', 'entity:Sketch1:L2']),
+      })
+    })
+
     it('returns null (no toast) when there is nothing to act on', () => {
       setSketchCallback('onMutation', vi.fn())
       expect(useSketchEditorStore.getState().applyConstraint('horizontal')).toBeNull()

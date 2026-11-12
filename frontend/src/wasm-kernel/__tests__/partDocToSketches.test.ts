@@ -379,6 +379,109 @@ describe('partDocToSketches', () => {
     })
   })
 
+  it('lowers a two-line colinear to one coincident with the same refs and id', () => {
+    // The solver has no colinear kind. Its coincident arm reads two bare lines
+    // as the collinear row pair, so the lowering must hand it that rather than
+    // pass the kind through (where lowerSketch used to drop it silently).
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'l1', kind: 'line' }, { id: 'pb', kind: 'line' }],
+        initial: { l1: [2, 0.3, 5, 0.1], pb: [0, 0, 9, 0] },
+        constraints: [{ id: 'cl', kind: 'colinear', a: '$l1', b: '$pb' }],
+      },
+    ]
+    const { sketches, skipped } = partDocToSketches(features)
+    expect(skipped).toHaveLength(0)
+    expect(sketches[0].droppedConstraints).toEqual([])
+    expect(sketches[0].sketch.constraints).toEqual([
+      { id: 'cl', kind: 'coincident', a: { entity: 'l1' }, b: { entity: 'pb' } },
+    ])
+  })
+
+  it('lowers a colinear of a point and a line to the point-on-line coincident, either order', () => {
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'l1', kind: 'line' }, { id: 'p1', kind: 'point' }],
+        initial: { l1: [0, 0, 10, 0], p1: [3, 2] },
+        constraints: [
+          { id: 'cp', kind: 'colinear', a: '$p1xy', b: '$l1' },
+          { id: 'cl', kind: 'colinear', a: '$l1', b: '$p1xy' },
+        ],
+      },
+    ]
+    const cs = partDocToSketches(features).sketches[0].sketch.constraints
+    // The solver's coincident arm picks the point-on-line row from the operand
+    // shape, so the pick order the author used is kept as stored.
+    expect(cs).toEqual([
+      { id: 'cp', kind: 'coincident', a: { entity: 'p1', point: 'xy' }, b: { entity: 'l1' } },
+      { id: 'cl', kind: 'coincident', a: { entity: 'l1' }, b: { entity: 'p1', point: 'xy' } },
+    ])
+  })
+
+  it('accepts a line vertex as the point side of a colinear', () => {
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'l1', kind: 'line' }, { id: 'l2', kind: 'line' }],
+        initial: { l1: [0, 0, 10, 0], l2: [2, 2, 6, 4] },
+        constraints: [{ id: 'cv', kind: 'colinear', a: '$l1start', b: '$l2' }],
+      },
+    ]
+    const cs = partDocToSketches(features).sketches[0].sketch.constraints
+    expect(cs).toEqual([
+      { id: 'cv', kind: 'coincident', a: { entity: 'l1', point: 'start' }, b: { entity: 'l2' } },
+    ])
+  })
+
+  it('drops a colinear whose operands are not two lines or a point and a line', () => {
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [
+          { id: 'l1', kind: 'line' }, { id: 'c1', kind: 'circle' },
+          { id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' },
+        ],
+        initial: { l1: [0, 0, 10, 0], c1: [0, 0, 2], p1: [0, 0], p2: [1, 1] },
+        constraints: [
+          { id: 'circle_line', kind: 'colinear', a: '$c1', b: '$l1' },
+          { id: 'two_points', kind: 'colinear', a: '$p1xy', b: '$p2xy' },
+          { id: 'one_operand', kind: 'colinear', a: '$l1' },
+          { id: 'keep', kind: 'horizontal', target: '$l1' },
+        ],
+      },
+    ]
+    const { sketches } = partDocToSketches(features)
+    expect(sketches[0].sketch.constraints.map((c) => c.id)).toEqual(['keep'])
+    expect(sketches[0].droppedConstraints).toEqual([
+      { id: 'circle_line', kind: 'colinear', reason: 'colinear needs two lines or a point and a line' },
+      { id: 'two_points', kind: 'colinear', reason: 'colinear needs two lines or a point and a line' },
+      { id: 'one_operand', kind: 'colinear', reason: 'colinear needs two lines or a point and a line' },
+    ])
+  })
+
+  it('reports a colinear stale ref as a stale reference, not as a shape error', () => {
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'l1', kind: 'line' }],
+        initial: { l1: [0, 0, 10, 0] },
+        constraints: [{ id: 'cl', kind: 'colinear', a: '$ghost', b: '$l1' }],
+      },
+    ]
+    const { sketches } = partDocToSketches(features)
+    expect(sketches[0].sketch.constraints).toEqual([])
+    expect(sketches[0].droppedConstraints).toEqual([
+      { id: 'cl', kind: 'colinear', reason: 'stale reference' },
+    ])
+  })
+
   it('ignores non-sketch features', () => {
     const features: PartFeature[] = [
       { id: 'ex1', kind: 'extrude', extrude: undefined } as unknown as PartFeature,

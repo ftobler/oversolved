@@ -23,6 +23,7 @@ import { planBrepDimensionPick, planProjectedOperand, classifyBrepOperand, refre
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
 import { randomId, canonicalLineDistanceTargets, isPointLikeEntityKind, pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
+import { COLINEAR_SHAPE_REASON, colinearShapeProblem } from '@/utils/constraintOperands'
 import { dimensionValueRule } from '@/utils/core/dimensionValueRules'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import type { DialogState, FilletCornerMap, SketchEditorState } from './sketchEditorTypes'
@@ -765,6 +766,29 @@ export const editorState = createStore<EditorState>((set, get) => ({
       if (!validLinePoint && !validThreeVertex) {
         return 'Midpoint needs a line and a point, or three points.'
       }
+    }
+
+    // A colinear has no row as anything but two lines or a point and a line
+    // (partDocToSketches lowers it to the solver's coincident). Refusing the
+    // pick here answers the command with the reason instead of the applier's
+    // dev-only warn, which the user would never see.
+    if (kind === 'colinear') {
+      const operandSide = (ref: unknown) => {
+        if (typeof ref !== 'string') return 'unresolved'
+        if (ref === '@builtin_origin' || ref.startsWith('vertex:')) return 'point'
+        // A projected pick's kind rides in kindByTarget; before that lands it is
+        // unknown, and an unresolved operand is left to the applier.
+        if (!ref.startsWith('entity:')) return 'unresolved'
+        const ek = kindOf(ref)
+        if (ek === undefined) return 'unresolved'
+        if (ek === 'line') return 'line'
+        if (ek === 'point') return 'point'
+        return 'curve'
+      }
+      const problem = targets.length === 2
+        ? colinearShapeProblem(targets[0], targets[1], operandSide)
+        : COLINEAR_SHAPE_REASON
+      if (problem !== null) return `${label} needs two lines or a point and a line.`
     }
 
     // Refuse a constraint that would make the set redundant, the "this would

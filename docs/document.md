@@ -917,7 +917,7 @@ entity) and `{"external_xy": [x, y]}`. The app writes the string form.
 | `radius_difference` | Difference of two radii minus value |
 | `fixed` | Params pinned to initial |
 | `projection` | Holds an entity to its projected source shape and position |
-| `colinear` | Point on the infinite line through a line |
+| `colinear` | Two lines collinear (parallel and on one line), or a point on the infinite line through a line |
 | `ngon` | Sugar: regular polygon over `refs` (member lines), optionally pinned to the `circle` circumcircle; lowered to equal_length, angle and coincident rows |
 | `dock` | Sugar: `point` pinned to the implied contact of the `host` constraint (today a tangent's foot); lowered to coincident rows, and floats when the host is deleted |
 

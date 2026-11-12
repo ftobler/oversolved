@@ -7,6 +7,7 @@ import {
   pointDistanceZeroProblem,
 } from './helpers'
 import { resolveVertexRef } from '@/types/vertexRef'
+import { colinearShapeProblem, constraintOperandSide } from '@/utils/constraintOperands'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
@@ -294,6 +295,24 @@ export function applyAddConstraint(
     } else if (targets.length === 1) {
       c.target = pt(targets[0])
     }
+  } else if (kind === 'colinear') {
+    // A colinear is lowered to the solver's coincident (partDocToSketches): two
+    // lines read as the collinear row pair, a point and a line as point-on-line.
+    // Any other pick has no row and used to be stored, then dropped with no
+    // residual, so it is refused here like the axis and midpoint guards above.
+    if (targets.length !== 2) {
+      warn('applyAddConstraint: colinear needs two targets, got', targets)
+      return
+    }
+    const a = pt(targets[0])
+    const b = pt(targets[1])
+    const problem = colinearShapeProblem(a, b, (ref) => constraintOperandSide(ref, entityIds, kindById))
+    if (problem !== null) {
+      warn(`applyAddConstraint: ${problem}`, targets)
+      return
+    }
+    c.a = a
+    c.b = b
   } else {
     // Generic kinds need operands: coincident pairs two refs, everything else
     // at least one. An empty (or single-target coincident) pick used to fall

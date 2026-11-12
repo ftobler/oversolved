@@ -30,6 +30,7 @@ import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
 import { textFieldsProblem } from '@/utils/geometry/textExpand'
 import { planAddText, type AddTextFields } from '@/utils/yamlMutations/sketchText'
 import { pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
+import { COLINEAR_SHAPE_REASON, colinearShapeProblem, constraintOperandSide, type ConstraintOperandSide } from '@/utils/constraintOperands'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
@@ -539,6 +540,47 @@ function targetProblem(value: unknown, index: number): string | null {
 
 // ─── specific rules ───
 
+/** The side a step's target spelling names, for the colinear shape rule. The
+ *  inferred (`dock:`/`isect:`) and B-rep (`face:`/`edge:`) forms name no stored
+ *  sketch operand, so their shape is left to the applier's materialization. */
+function stepTargetSide(
+  target: unknown,
+  featureId: string,
+  entityIds: ReadonlySet<string>,
+  kindById: ReadonlyMap<string, string>,
+): ConstraintOperandSide {
+  if (typeof target !== 'string') return 'unresolved'
+  if (target === '@builtin_origin') return 'point'
+  if (target.startsWith('$')) return constraintOperandSide(target, entityIds, kindById)
+  const parts = target.split(':')
+  if (parts[0] === 'entity' && parts[1] === featureId) {
+    return constraintOperandSide({ entity: parts[2] }, entityIds, kindById)
+  }
+  if (parts[0] === 'vertex' && parts[1] === featureId) return 'point'
+  return 'unresolved'
+}
+
+/** `colinear` only has a row as two lines or a point and a line. The applier
+ *  refuses any other pick; this names the same rule in the step reply so a
+ *  drive or MCP caller does not learn it from an authored no-op. */
+function colinearProblem(raw: RawStep, ctx: ValueContext): string | null {
+  const targets = raw.targets
+  if (!Array.isArray(targets) || targets.length !== 2) return COLINEAR_SHAPE_REASON
+  const featureId = raw.featureId
+  // A shape-only caller has no document to read the operands' entity kinds
+  // from, so only the operand count can be judged there.
+  if (ctx.doc === null || typeof featureId !== 'string') return null
+  const sketch = sketchOf(ctx.doc, featureId)
+  if (sketch === undefined) return null
+  const entityIds = new Set((sketch.entities ?? []).map(e => e.id))
+  const kindById = new Map((sketch.entities ?? []).map(e => [e.id, e.kind]))
+  return colinearShapeProblem(
+    targets[0],
+    targets[1],
+    (target) => stepTargetSide(target, featureId, entityIds, kindById),
+  )
+}
+
 function moveEntity(raw: RawStep): ValueViolation | null {
   const problem = finitePointProblem(raw.delta, 'delta')
   return problem === null ? null : invalid(problem)
@@ -564,7 +606,7 @@ function resizeCircle(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return null
 }
 
-function addConstraint(raw: RawStep): ValueViolation | null {
+function addConstraint(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const kind = raw.kind
   if (typeof kind === 'string' && !CONSTRAINT_BY_KIND.has(kind)) {
     return invalid(
@@ -576,6 +618,10 @@ function addConstraint(raw: RawStep): ValueViolation | null {
   if (targets.length === 0) return invalid('targets must name at least one entity or vertex reference')
   for (let i = 0; i < targets.length; i++) {
     const problem = targetProblem(targets[i], i)
+    if (problem !== null) return invalid(problem)
+  }
+  if (kind === 'colinear') {
+    const problem = colinearProblem(raw, ctx)
     if (problem !== null) return invalid(problem)
   }
   if (raw.pos !== undefined) {

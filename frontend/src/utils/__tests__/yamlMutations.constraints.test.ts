@@ -340,6 +340,74 @@ describe('applyAddConstraint operand guards', () => {
   })
 })
 
+describe('applyAddConstraint colinear operands', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>
+
+  const colinearDoc = (): PartDoc => ({
+    version: 1,
+    kind: 'part',
+    features: [{
+      id: 'Sketch1',
+      kind: 'sketch',
+      initial: { line1: [0, 0, 10, 0], line2: [2, 2, 6, 4], circ1: [5, 5, 3], pt1: [1, 2], pt2: [3, 4] },
+      entities: [
+        { id: 'line1', kind: 'line' }, { id: 'line2', kind: 'line' }, { id: 'circ1', kind: 'circle' },
+        { id: 'pt1', kind: 'point' }, { id: 'pt2', kind: 'point' },
+      ],
+      constraints: [],
+    }],
+  })
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+
+  afterEach(() => {
+    warnSpy.mockRestore()
+  })
+
+  it('stores two lines as the a/b pair', () => {
+    const doc = colinearDoc()
+    applyAddConstraint(doc, 'Sketch1', 'colinear', ['entity:Sketch1:line1', 'entity:Sketch1:line2'])
+    const added = constraints0(doc).find(c => c.kind === 'colinear')
+    expect(added).toBeDefined()
+    expect(added!.a).toBe('$line1')
+    expect(added!.b).toBe('$line2')
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+
+  it('stores a point and a line in the picked order', () => {
+    const doc = colinearDoc()
+    applyAddConstraint(doc, 'Sketch1', 'colinear', ['vertex:Sketch1:line1:start', 'entity:Sketch1:line2'])
+    applyAddConstraint(doc, 'Sketch1', 'colinear', ['entity:Sketch1:line2', 'vertex:Sketch1:pt1:xy'])
+    const added = constraints0(doc).filter(c => c.kind === 'colinear')
+    expect(added.map(c => [c.a, c.b])).toEqual([
+      ['$line1start', '$line2'],
+      ['$line2', '$pt1xy'],
+    ])
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+
+  it('refuses a circle and a line, naming the accepted shapes', () => {
+    const doc = colinearDoc()
+    applyAddConstraint(doc, 'Sketch1', 'colinear', ['entity:Sketch1:circ1', 'entity:Sketch1:line1'])
+    expect(constraints0(doc).find(c => c.kind === 'colinear')).toBeUndefined()
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('colinear needs two lines or a point and a line'),
+      expect.anything(),
+    )
+  })
+
+  it('refuses two points and a lone operand', () => {
+    const doc = colinearDoc()
+    const countBefore = constraints0(doc).length
+    applyAddConstraint(doc, 'Sketch1', 'colinear', ['entity:Sketch1:pt1', 'entity:Sketch1:pt2'])
+    applyAddConstraint(doc, 'Sketch1', 'colinear', ['entity:Sketch1:line1'])
+    expect(constraints0(doc).length).toBe(countBefore)
+    expect(warnSpy).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('applySetConstraintPos', () => {
   it('sets pos on an existing constraint', () => {
     const doc = makeSampleDoc()

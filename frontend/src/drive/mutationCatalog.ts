@@ -488,7 +488,8 @@ const CONSTRAINT_KIND_NOTE =
   `The constraint kind, one of: ${[...CONSTRAINT_BY_KIND.keys()].join(', ')}. A line's dimension is ` +
   '`length`; two points take `point_distance`, and a zero `point_distance` is refused: coincident ' +
   'points are a `coincident` constraint, not a dimension. `line_distance` takes a line and a point in either order ' +
-  '(the document stores the line first, the order the solver reads).'
+  '(the document stores the line first, the order the solver reads). `colinear` takes two lines (parallel and on ' +
+  'one line) or a point and a line (the point on the line\'s infinite extension).'
 
 // The reply-size rule shared by the sketch copy sugar: `scriptRunner.ts` names
 // the ids up to the limit and reports a count past it.

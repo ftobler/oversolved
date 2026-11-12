@@ -215,6 +215,28 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     )
   })
 
+  it('reports a colinear the lowering dropped for a shape it cannot read', () => {
+    // A colinear between a circle and a line has no solver row. The applier
+    // refuses that pick now, but a hand-edited or older document can still
+    // carry one, and it must not vanish: the same warning channel names it.
+    const feature = emptySketch('Colinear')
+    const doc = docOf(feature)
+    applyAddEntity(doc, 'sk1', 'circle', [0, 0, 5], 'c1')
+    applyAddEntity(doc, 'sk1', 'line', [0, 0, 10, 0], 'l1')
+    applyAddConstraint(doc, 'sk1', 'coincident', ['vertex:sk1:c1:center', '@builtin_origin'])
+    applyAddConstraint(doc, 'sk1', 'diameter', ['entity:sk1:c1'], 10)
+    applyAddConstraint(doc, 'sk1', 'horizontal', ['entity:sk1:l1'])
+    applyAddConstraint(doc, 'sk1', 'coincident', ['vertex:sk1:l1:start', '@builtin_origin'])
+    applyAddConstraint(doc, 'sk1', 'length', ['entity:sk1:l1'], 10)
+    feature.constraints!.push({ id: 'c_colinear_bad', kind: 'colinear', a: '$c1', b: '$l1' })
+
+    const out = solve(feature)
+    expect(out.status).toBe('fully_constrained')
+    expect(out.solver_warning).toMatch(
+      /^constraint c_colinear_bad \(colinear\) names operands it cannot use \(colinear needs two lines or a point and a line\) and was ignored\.$/,
+    )
+  })
+
   it('keeps the underconstrained and dropped warnings together', () => {
     const feature = emptySketch()
     const doc = docOf(feature)
