@@ -13,3 +13,13 @@ export type SolveBytes = (input: Uint8Array) => Uint8Array
 
 /** The topology/area-builder entry point (`detect_topology_bytes`). */
 export type TopologyBytes = (input: Uint8Array) => Uint8Array
+
+/**
+ * The sketch solver and the area builder that shares its wasm instance, as one
+ * load hands them back. They must come from the SAME instance: `solve_sketch_bytes`
+ * and `detect_topology_bytes` are exports of one package and one heap.
+ */
+export interface SketchSolverBundle {
+  solve: SolveBytes
+  topology: TopologyBytes | null
+}

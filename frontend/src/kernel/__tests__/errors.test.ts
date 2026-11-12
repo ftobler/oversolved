@@ -160,10 +160,14 @@ describe('isKernelTrap', () => {
     expect(fault).toBeInstanceOf(Error)
     expect(fault.name).toBe('KernelFault')
     expect(fault.detail).toBe('memory access out of bounds')
+    expect(fault.reloaded).toBe(true)
     expect(fault.message).toBe('kernel fault: memory access out of bounds; the kernel was reloaded')
     // A fault raised because the reload did not happen must not claim it did.
-    expect(new KernelFault('the sketch solver could not be reloaded', false).message)
-      .toBe('kernel fault: the sketch solver could not be reloaded')
+    // The flag is what crosses the MCP thread, so the host respawns the worker
+    // without matching on this wording (drive/kernelHost.ts).
+    const unrecovered = new KernelFault('the sketch solver could not be reloaded', false)
+    expect(unrecovered.reloaded).toBe(false)
+    expect(unrecovered.message).toBe('kernel fault: the sketch solver could not be reloaded')
   })
 })
 

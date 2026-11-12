@@ -13,9 +13,9 @@
 // vanished row or a new command fails rather than being silently skipped.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { loadOcc } from '@/kernel/occ/loadOcc'
-import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { loadSolver, loadSolverFresh } from '@/wasm-kernel/loadSolver'
 import { setSolveLocalsForTest } from '@/kernel/solveLocally'
-import { setSketchSolver, resetSketchSolver } from '@/kernel/features/sketch'
+import { setSketchSolverLoader, resetSketchSolver } from '@/kernel/features/sketch'
 import { createRealSolveScheduler } from '@/hooks/__tests__/realSolveScheduler'
 import baselineFile from './baseline.json'
 import { compareMatrix, toBaselineRows, type MatrixBaselineFile } from './baseline'
@@ -50,8 +50,9 @@ function smokeSweep(): MatrixSweep {
 
 describe.skipIf(!oc || !solveBytes)('the action-matrix smoke gate (real kernel)', () => {
   beforeAll(() => {
-    resetSketchSolver()
-    setSketchSolver(solveBytes)
+    // The sweep runs many solves, so install the solver as a loader: a trap
+    // recovery must be able to replace the module, which injected bytes cannot.
+    setSketchSolverLoader(loadSolverFresh)
   })
 
   afterAll(() => {
@@ -82,10 +83,7 @@ describe.runIf(full)('the action-matrix full sweep', () => {
   const useReal = !!oc && !!solveBytes
 
   beforeAll(() => {
-    if (useReal) {
-      resetSketchSolver()
-      setSketchSolver(solveBytes)
-    }
+    if (useReal) setSketchSolverLoader(loadSolverFresh)
     console.log(`[action-matrix] full sweep over ${corpusDocs().length} documents with the ${useReal ? 'real kernel' : 'fake scheduler'}`)
   })
 

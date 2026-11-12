@@ -4,17 +4,18 @@
  * headless operations, posting a progress mark before every feature it solves.
  *
  * Replies are structured clones, so they carry data only: `run` drops the live
- * session (`part`), and an error crosses as its name and message (a KernelFault
- * keeps its name, which is what the server branches on).
+ * session (`part`), and an error crosses as its name and message plus, for a
+ * KernelFault, whether its modules were already replaced (the flag the host
+ * respawns on).
  */
 
-import { setOccLoader } from '@/kernel/solveLocally'
+import { setOccLoader, kernelReloadRequired } from '@/kernel/solveLocally'
 import { loadOcc, resetOcc } from '@/kernel/occ/loadOcc'
-import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { loadTopology } from '@/wasm-kernel/loadTopology'
+import { loadSolverFresh } from '@/wasm-kernel/loadSolver'
 import { loadPkgNodeExport, PKG_MATE } from '@/wasm-kernel/loadPkgNode'
-import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { setSketchSolverLoader } from '@/kernel/features/sketch'
 import { onFeatureStart } from '@/kernel/featureProgress'
+import { KernelFault } from '@/kernel/errors'
 import { setMateSolver } from '@/drive/headlessAssembly'
 import type { AssemblyDoc, PartDoc } from '@/types/cad'
 import type { Selector } from '@/kernel/select'
@@ -23,16 +24,19 @@ import type { ScriptStep } from '@/drive/scriptRunner'
 import { createDriveJournal } from '@/drive/journal'
 import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHeadless, runAssemblyHeadless, measureAssemblyHeadless, compareAssemblyHeadless, exportAssemblyHeadless } from '@/drive/headlessOps'
 import type { AssemblyScriptStep } from '@/drive/headlessAssembly'
-import type { KernelHostMessage, KernelRequest } from '@/drive/kernelHost'
+import type { KernelErrorShape, KernelFaultState, KernelHostMessage, KernelRequest } from '@/drive/kernelHost'
 
 /** The headless OCC loader, the nodejs solver builds and the mate solver;
  *  without them every solve reports the kernel unavailable. A missing mate
  *  package leaves the slot null, which the assembly reply reports as the
- *  `unavailable` verdict rather than a crash. */
+ *  `unavailable` verdict rather than a crash.
+ *
+ *  The sketch module is installed as a LOADER, not as bytes: a trap in its wasm
+ *  heap has to be replaced by a new module instance, and only a loader can
+ *  produce one (bug-headless-sketch-trap-reload). */
 export function bootHeadlessKernel(): void {
   setOccLoader(loadOcc, resetOcc)
-  setSketchSolver(loadSolver())
-  setSketchTopology(loadTopology())
+  setSketchSolverLoader(loadSolverFresh)
   setMateSolver(loadPkgNodeExport<(input: Uint8Array) => Uint8Array>('solve_mate_bytes', PKG_MATE))
 }
 
@@ -156,8 +160,10 @@ export function serveKernel(port: KernelPort): void {
   onFeatureStart((featureId) => port.postMessage({ kind: 'progress', featureId }))
   port.on('message', (req) => {
     const fail = (e: unknown): void => {
-      const error = e instanceof Error
-        ? { name: e.name, message: e.message }
+      // A fault carries whether its modules were replaced: the host respawns a
+      // worker on `reloaded: false` rather than matching the message text.
+      const error: KernelErrorShape = e instanceof Error
+        ? { name: e.name, message: e.message, ...(e instanceof KernelFault && { reloaded: e.reloaded }) }
         : { name: 'Error', message: String(e) }
       port.postMessage({ kind: 'reply', id: req.id, ok: false, error })
     }
@@ -166,7 +172,13 @@ export function serveKernel(port: KernelPort): void {
         // A reply that cannot be structured-cloned must answer as an error: an
         // unhandled throw here would kill the worker and lose the call.
         try {
-          port.postMessage({ kind: 'reply', id: req.id, ok: true, value })
+          // A run keeps its trap on `solve.lastError` instead of throwing, so
+          // the kernel state travels beside the value; the host drops this
+          // thread on an unrecovered reload (see kernelHost.ts).
+          const fault: KernelFaultState | undefined = kernelReloadRequired()
+            ? { name: 'KernelFault', reloaded: false }
+            : undefined
+          port.postMessage({ kind: 'reply', id: req.id, ok: true, value, ...(fault && { fault }) })
         } catch (e) {
           fail(e)
         }

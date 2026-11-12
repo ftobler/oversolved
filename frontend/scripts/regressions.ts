@@ -23,10 +23,9 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { loadOcc, resetOcc } from '@/kernel/occ/loadOcc'
-import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { loadTopology } from '@/wasm-kernel/loadTopology'
+import { loadSolverFresh } from '@/wasm-kernel/loadSolver'
 import { setOccLoader } from '@/kernel/solveLocally'
-import { resetSketchSolver, setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { isSketchSolverReady, setSketchSolverLoader } from '@/kernel/features/sketch'
 import { partSpecFromText } from '@/utils/partExport'
 import {
   isKebabCase,
@@ -56,16 +55,15 @@ export async function initKernel(): Promise<void> {
   if (oc === null) {
     throw new Error('OCC.js unavailable: run `npm run occ:install` (or `just install-occ`)')
   }
-  const solver = loadSolver()
-  if (solver === null) {
+  // The default OCC loader is the browser one; a Node entry has to install the
+  // MEMFS-backed loader before the first build. The sketch module is a loader
+  // too, so a trap in a long regen can replace it with a fresh instance; the
+  // install loads eagerly, so readiness is known right here.
+  setOccLoader(loadOcc, resetOcc)
+  setSketchSolverLoader(loadSolverFresh)
+  if (!isSketchSolverReady()) {
     throw new Error('the pkg-node sketch solver is unavailable: run `just wasm`')
   }
-  // The default OCC loader is the browser one; a Node entry has to install the
-  // MEMFS-backed loader before the first build.
-  setOccLoader(loadOcc, resetOcc)
-  resetSketchSolver()
-  setSketchSolver(solver)
-  setSketchTopology(loadTopology())
   kernelReady = true
 }
 

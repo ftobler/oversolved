@@ -21,10 +21,9 @@ import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadOcc } from '@/kernel/occ/loadOcc'
-import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { loadTopology } from '@/wasm-kernel/loadTopology'
+import { loadSolverFresh } from '@/wasm-kernel/loadSolver'
 import { setSolveLocalsForTest } from '@/kernel/solveLocally'
-import { setSketchSolver, setSketchTopology, resetSketchSolver } from '@/kernel/features/sketch'
+import { isSketchSolverReady, resetSketchSolver, setSketchSolverLoader } from '@/kernel/features/sketch'
 import { createRealSolveScheduler } from '@/hooks/__tests__/realSolveScheduler'
 import { serializeBaseline } from '@/testing/actionMatrix/baseline'
 import { corpusDocs, FULL_MAX_TARGETS } from '@/testing/actionMatrix/corpus'
@@ -34,16 +33,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const BASELINE_PATH = path.resolve(__dirname, '../src/testing/actionMatrix/baseline.json')
 
 const oc = await loadOcc()
-const solveBytes = loadSolver()
-const useReal = !!oc && !!solveBytes
-if (useReal) {
-  resetSketchSolver()
-  setSketchSolver(solveBytes)
-  // The same wiring src/test-setup.ts installs for the suites: the Rust
-  // topology builder, not the TS fallback, so the sweep solves what the tests
-  // solve.
-  setSketchTopology(loadTopology())
-}
+// The same kernel wiring src/test-setup.ts installs for the suites (the Rust
+// area builder, not the TS fallback), as a LOADER: the sweep runs long enough
+// that a trap recovery has to be able to replace the sketch module. The
+// install's first load is eager, so readiness is synchronous.
+setSketchSolverLoader(loadSolverFresh)
+const useReal = !!oc && isSketchSolverReady()
 
 console.log(`[regen] full sweep with the ${useReal ? 'real kernel' : 'fake scheduler'}`)
 const sweep = { docs: corpusDocs(), maxTargetsPerDoc: FULL_MAX_TARGETS }

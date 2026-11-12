@@ -7,7 +7,8 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import type { PartDoc } from '@/types/cad'
-import { createKernelHost, KernelTimeout, type KernelWorkerLike, type KernelHostMessage, type KernelRequest } from '../kernelHost'
+import { KernelFault } from '@/kernel/errors'
+import { createKernelHost, kernelToolErrorMessage, KernelTimeout, type KernelWorkerLike, type KernelHostMessage, type KernelRequest } from '../kernelHost'
 
 class FakeKernelWorker implements KernelWorkerLike {
   posted: KernelRequest[] = []
@@ -194,6 +195,73 @@ describe('createKernelHost', () => {
     await expect(next).resolves.toBe('ok')
   })
 
+  it('drops a worker whose kernel fault could not reload its modules', async () => {
+    const { host, created } = setup()
+    const p = host.call('run', {})
+    await vi.waitFor(() => expect(created[0]?.posted).toHaveLength(1))
+    // The sketch module could not be replaced in the worker thread, so its heap
+    // is dead: the reply carries the reload flag, not text the host matches on.
+    created[0].send({
+      kind: 'reply',
+      id: created[0].last().id,
+      ok: false,
+      error: { name: 'KernelFault', message: 'kernel fault: unreachable', reloaded: false },
+    })
+    await expect(p).rejects.toMatchObject({ name: 'KernelFault', message: 'kernel fault: unreachable', reloaded: false })
+    expect(created[0].terminated).toBe(true)
+
+    // The next call runs on a fresh thread, whose fresh modules are the fix.
+    const next = host.call('measure', {})
+    await vi.waitFor(() => expect(created).toHaveLength(2))
+    await vi.waitFor(() => expect(created[1].posted).toHaveLength(1))
+    created[1].send({ kind: 'reply', id: created[1].last().id, ok: true, value: { ok: true } })
+    await expect(next).resolves.toEqual({ ok: true })
+  })
+
+  it('keeps a worker whose fault already reloaded its modules', async () => {
+    const { host, created } = setup()
+    const p = host.call('run', {})
+    await vi.waitFor(() => expect(created[0]?.posted).toHaveLength(1))
+    created[0].send({
+      kind: 'reply',
+      id: created[0].last().id,
+      ok: false,
+      error: { name: 'KernelFault', message: 'kernel fault: unreachable; the kernel was reloaded', reloaded: true },
+    })
+    await expect(p).rejects.toMatchObject({ name: 'KernelFault', reloaded: true })
+    // The in-worker reload worked; keeping the worker saves a reload of every
+    // other module the next call needs.
+    expect(created[0].terminated).toBe(false)
+    const next = host.call('measure', {})
+    await vi.waitFor(() => expect(created[0].posted).toHaveLength(2))
+    expect(created).toHaveLength(1)
+    created[0].send({ kind: 'reply', id: created[0].last().id, ok: true, value: 'same worker' })
+    await expect(next).resolves.toBe('same worker')
+  })
+
+  it('drops a worker whose successful reply carries an unrecovered fault', async () => {
+    const { host, created } = setup()
+    const p = host.call('run', {})
+    await vi.waitFor(() => expect(created[0]?.posted).toHaveLength(1))
+    // A run reports its trap on solve.lastError, so the kernel state rides
+    // beside the value the caller needs; the host treats it like an error-shaped
+    // fault.
+    created[0].send({
+      kind: 'reply',
+      id: created[0].last().id,
+      ok: true,
+      value: { ok: false, solve: { lastError: 'kernel fault: the sketch solver could not be reloaded after a trap' } },
+      fault: { name: 'KernelFault', reloaded: false },
+    })
+    await expect(p).resolves.toMatchObject({ ok: false })
+    expect(created[0].terminated).toBe(true)
+    const next = host.call('measure', {})
+    await vi.waitFor(() => expect(created).toHaveLength(2))
+    await vi.waitFor(() => expect(created[1].posted).toHaveLength(1))
+    created[1].send({ kind: 'reply', id: created[1].last().id, ok: true, value: { ok: true } })
+    await expect(next).resolves.toEqual({ ok: true })
+  })
+
   it('refuses a call after dispose instead of respawning a worker', async () => {
     const { host, created } = setup()
     await host.dispose()
@@ -207,5 +275,22 @@ describe('createKernelHost', () => {
       name: 'KernelWorkerLost',
       message: 'kernel worker failed to start: no such module',
     })
+  })
+})
+
+describe('kernelToolErrorMessage', () => {
+  it('tells the caller a faulted kernel is fresh for the next call', () => {
+    // The bare fault text reads like the server is wedged for good, which is
+    // what the headless trap report complained about.
+    expect(kernelToolErrorMessage(new KernelFault('unreachable')))
+      .toBe('kernel fault: unreachable; the kernel was reloaded; the next call runs on a fresh kernel')
+    expect(kernelToolErrorMessage(new KernelFault('unreachable', false)))
+      .toBe('kernel fault: unreachable; the next call runs on a fresh kernel')
+  })
+
+  it('leaves the other call failures exactly as they are', () => {
+    expect(kernelToolErrorMessage(new KernelTimeout('solve timed out after 2 s')))
+      .toBe('solve timed out after 2 s')
+    expect(kernelToolErrorMessage(new Error('plain'))).toBe('plain')
   })
 })

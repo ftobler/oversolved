@@ -15,6 +15,12 @@
  * rejection carries the accepted prefix when there is one; it is stored on the
  * in-flight call and dies with it, so a later call can never read a stale one.
  *
+ * A worker reply can also fault: a WASM trap that escaped the kernel answers
+ * with a KernelFault, and if its modules could not be replaced in that thread
+ * the reply says so (`reloaded: false`). The host then drops the worker like a
+ * stall does, so the next call gets fresh modules even when a module gains a
+ * reload flaw the in-worker recovery cannot handle (bug-headless-sketch-trap-reload).
+ *
  * The worker side is kernelWorker.ts; this module never loads the kernel.
  */
 
@@ -35,14 +41,53 @@ export interface KernelRequest {
 export interface KernelErrorShape {
   name: string
   message: string
+  /** KernelFault only: whether recovery already replaced the trapped modules.
+   *  A missing flag is read as recovered, so an old shape keeps the worker. */
+  reloaded?: boolean
+}
+
+/** A KernelFault revived from a worker reply: its name, message and the flag
+ *  that decides whether this thread can serve the next call. */
+export interface RevivedKernelFault extends Error {
+  name: 'KernelFault'
+  reloaded: boolean
+}
+
+/** True for a fault whose worker-thread modules were NOT replaced. The host
+ *  drops such a worker; this reads the carried flag, never the message. */
+export function isUnrecoveredKernelFault(e: unknown): e is RevivedKernelFault {
+  return e instanceof Error && e.name === 'KernelFault'
+    && (e as { reloaded?: unknown }).reloaded === false
+}
+
+/**
+ * The tool error text for a failed kernel call. A KernelFault is answered on a
+ * kernel that is live again (the modules were reloaded, or the host dropped the
+ * worker that could not reload them), so say what the caller's next call gets;
+ * the bare fault text reads like the server is wedged for good, which is what
+ * the headless trap report complained about (bug-headless-sketch-trap-reload).
+ */
+export function kernelToolErrorMessage(e: Error): string {
+  if (e.name !== 'KernelFault') return e.message
+  return `${e.message}; the next call runs on a fresh kernel`
+}
+
+/** The kernel state a successful reply can carry. A `run` reports its trap on
+ *  `solve.lastError`, so only the recovery outcome is needed beside the value. */
+export interface KernelFaultState {
+  name: 'KernelFault'
+  reloaded: boolean
 }
 
 /** Everything a kernel worker posts: a feature mark, the state a settled step
- *  left (the stall answer), or the reply to a call. */
+ *  left (the stall answer), or the reply to a call. A successful reply can
+ *  still carry `fault` when the kernel state it produced is dead: a `run`
+ *  reports its trap as `solve.lastError`, not as a thrown error, so the worker
+ *  names the state beside the value the caller still needs. */
 export type KernelHostMessage =
   | { kind: 'progress'; featureId: string }
   | ({ kind: 'checkpoint'; id: number } & HeadlessCheckpoint)
-  | { kind: 'reply'; id: number; ok: true; value: unknown }
+  | { kind: 'reply'; id: number; ok: true; value: unknown; fault?: KernelFaultState }
   | { kind: 'reply'; id: number; ok: false; error: KernelErrorShape }
 
 /** The node `Worker` surface the host uses; tests inject a fake. */
@@ -116,8 +161,13 @@ interface InFlight {
 function reviveError(shape: KernelErrorShape): Error {
   const e = new Error(shape.message)
   // The name is the contract the server reads (a KernelFault is a tool error
-  // with a readable reason): keep it, the class cannot cross the thread.
+  // with a readable reason): keep it, the class cannot cross the thread. The
+  // reload flag rides along for the same reason: the host must respawn without
+  // matching message text.
   e.name = shape.name
+  if (shape.name === 'KernelFault') {
+    (e as RevivedKernelFault).reloaded = shape.reloaded ?? true
+  }
   return e
 }
 
@@ -178,8 +228,22 @@ export function createKernelHost(opts: KernelHostOptions): KernelHost {
         return
       }
       if (inFlight?.id !== msg.id) return
-      if (msg.ok) settle((p) => p.resolve(msg.value))
-      else settle((p) => p.reject(reviveError(msg.error)))
+      if (msg.ok) {
+        settle((p) => p.resolve(msg.value))
+        // A value-level fault never crosses as an error reply: a `run` keeps
+        // its checkpoint and step outcomes and names the trap on
+        // `solve.lastError`. The worker reports the kernel state beside it, and
+        // that decides the same respawn.
+        if (msg.fault !== undefined && !msg.fault.reloaded) drop(w)
+        return
+      }
+      const error = reviveError(msg.error)
+      settle((p) => p.reject(error))
+      // A fault whose modules could not be replaced leaves this thread's kernel
+      // dead. A fresh thread loads fresh modules, so the next call can never
+      // post into the poisoned one; a recovered fault keeps the worker, whose
+      // other modules are still warm.
+      if (isUnrecoveredKernelFault(error)) drop(w)
     })
     w.on('error', (e) => {
       if (worker !== w) return

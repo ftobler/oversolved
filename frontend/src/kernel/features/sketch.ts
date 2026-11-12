@@ -41,6 +41,7 @@ import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
 import { resolve3dGeometry, projectTo2d, type PlaneFrame } from './projectionLowering'
 import type { SolveBytes } from '@/wasm-kernel/codec'
+import type { SketchSolverBundle } from '@/wasm-kernel/wasmTypes'
 
 type Dict = Record<string, unknown>
 
@@ -79,9 +80,10 @@ export interface SketchResult {
 
 let solverBytes: SolveBytes | null = null
 // The Rust area builder (`detect_topology_bytes`). The browser wires it in
-// `initSketchSolver` (awaited alongside the solver); the node harness injects it
-// via `setSketchTopology`. Only null on a fresh checkout with no `just wasm`, in
-// which case the missing solver makes `solveSketch` throw first.
+// `initSketchSolver` (awaited alongside the solver); a headless loader brings
+// it along in its bundle, and `setSketchTopology` injects it on its own. Only
+// null on a fresh checkout with no `just wasm`, in which case the missing
+// solver makes `solveSketch` throw first.
 let topologyBytes: TopologyBytes | null = null
 
 // The auto-loaded solver, memoized per successful result. The null/rejection
@@ -108,10 +110,44 @@ const solverCell = memoizedLoad(async (): Promise<SolveBytes | null> => {
   return bytes
 })
 
-/** Inject a pre-loaded solver (node tests call this with ``loadSolver()``). */
+// A loader that returns a FRESH sketch module (solver plus the area builder of
+// the same instance) for a headless host: the nodejs package instantiates its
+// wasm at require time, so after a trap only a new module is usable, never the
+// cached one. Browser hosts and byte injectors leave this null; they reload
+// through `solverCell` / `resetSolverWasm` instead.
+let solverLoader: (() => SketchSolverBundle | null) | null = null
+
+/** Put a loaded bundle into the module cells. The area builder is replaced with
+ *  the solver because the two are one instance; a bundle whose topology export
+ *  is missing must not keep the trapped instance's builder. */
+function adoptSketchBundle(bundle: SketchSolverBundle | null): SolveBytes | null {
+  if (bundle === null) return null
+  solverBytes = bundle.solve
+  topologyBytes = bundle.topology
+  return bundle.solve
+}
+
+/** Inject a pre-loaded solver (node tests call this with ``loadSolver()``). An
+ *  explicit injection has no reload source, so it also clears a loader: trap
+ *  recovery then drops it instead of resurrecting a module the caller replaced. */
 export function setSketchSolver(bytes: SolveBytes | null): void {
+  solverLoader = null
   solverBytes = bytes
   solverCell.reset()
+}
+
+/**
+ * Install a headless module loader (`loadSolverFresh`). Recovery re-runs it
+ * after a sketch-package trap, which is the only way an injected-bytes host
+ * could ever replace a poisoned instance. The first load happens here so boot
+ * is synchronously ready exactly as `setSketchSolver(loadSolver())` was.
+ */
+export function setSketchSolverLoader(loader: (() => SketchSolverBundle | null) | null): void {
+  solverLoader = loader
+  solverBytes = null
+  topologyBytes = null
+  solverCell.reset()
+  if (loader !== null) adoptSketchBundle(loader())
 }
 
 // Set when a call into the Rust module traps. solveLocally's recovery reads it
@@ -168,15 +204,19 @@ export function setSketchTopology(bytes: TopologyBytes | null): void {
 }
 
 /** Start loading the Rust solver + area builder from ``/wasm/`` (browser path);
- *  a failed auto-load is retried on the next call instead of pinned. */
+ *  a failed auto-load is retried on the next call instead of pinned. A host
+ *  that installed a loader loads through it, synchronously, so a byte-injected
+ *  browser path and a loader-owned headless path share one entry. */
 export function initSketchSolver(): Promise<SolveBytes | null> {
   if (solverBytes) return Promise.resolve(solverBytes)
+  if (solverLoader !== null) return Promise.resolve(adoptSketchBundle(solverLoader()))
   return solverCell.load()
 }
 
-/** Clear the cached solver (tests). The area builder loader is environment
- *  stable (not per-test state), so it is intentionally preserved across a
- *  solver reset; use `setSketchTopology(null)` to drop it explicitly. */
+/** Clear the cached solver (tests). The installed loader, like the area builder
+ *  loader, is environment state rather than per-test state and is preserved;
+ *  the next `initSketchSolver` would load through it again. Use
+ *  `setSketchSolverLoader(null)` to return the module to the browser path. */
 export function resetSketchSolver(): void {
   solverBytes = null
   solverCell.reset()
@@ -188,15 +228,30 @@ export function resetSketchSolver(): void {
  * instantiated module behind `solve_sketch_bytes`, so resetting only this
  * module's cell would hand the next call the same corrupt instance.
  *
- * An injected solver (headless hosts call `setSketchSolver(loadSolver())`) has
- * no loader to re-run, so it is simply dropped: the next sketch reports the
- * solver uninitialised instead of reading a module whose heap is undefined.
+ * A host with a loader (the headless path, `setSketchSolverLoader`) gets a
+ * fresh module here, immediately: nothing else can replace an instance the
+ * require cache would otherwise hand back. Without a loader the browser path
+ * rebuilds from `/wasm/` on the next call, so a replacement is armed either
+ * way. Returns whether a replacement module is actually in hand now: a loader
+ * that produced none reports false, which is what `solveLocally` turns into a
+ * fault that does not claim a reload.
  */
-export function resetSketchSolverAfterTrap(): void {
+export function resetSketchSolverAfterTrap(): boolean {
   solverBytes = null
   topologyBytes = null
   solverCell.reset()
+  if (solverLoader !== null) {
+    try {
+      adoptSketchBundle(solverLoader())
+    } catch {
+      // A module load cannot be reading the trapped heap, so this is not a
+      // trap to rethrow: leaving the cells null lets the reload latch report
+      // the unrecovered kernel instead of a build that silently loses sketches.
+    }
+    return isSketchSolverReady() && isSketchTopologyReady()
+  }
   resetSolverWasm()
+  return true
 }
 
 /**

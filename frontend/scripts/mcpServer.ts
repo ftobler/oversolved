@@ -38,7 +38,7 @@ import { docHashOf } from '@/drive/docHash'
 import type { ScriptStep, ScriptStepOutcome } from '@/drive/scriptRunner'
 import type { SelectResult } from '@/kernel/select'
 import { parseReference } from '@/translations/corpus'
-import { createKernelHost, isKernelCallFailure, KernelTimeout, type KernelOp, type KernelWorkerLike } from '@/drive/kernelHost'
+import { createKernelHost, isKernelCallFailure, kernelToolErrorMessage, KernelTimeout, type KernelOp, type KernelWorkerLike } from '@/drive/kernelHost'
 import { routeKernelStdoutToStderr } from './kernelStdout'
 import { readProjectFiles, readProjectReference, resolveProjectPath, writeDocFile } from './docPath'
 
@@ -70,12 +70,14 @@ type KernelAnswer<T> = { ok: true; value: T } | { ok: false; error: string }
 type AssemblyKernelResult = Omit<HeadlessAssemblyRunResult, 'session'>
 
 // A timeout, a lost worker or a kernel fault is a failed tool call with a
-// readable reason; anything else is a bug the server reports as internal.
+// readable reason; anything else is a bug the server reports as internal. A
+// fault's text also names what the next call gets, because the host has already
+// replaced the kernel (kernelToolErrorMessage).
 async function callKernel<T>(op: KernelOp, args: unknown): Promise<KernelAnswer<T>> {
   try {
     return { ok: true, value: await kernel.call(op, args) as T }
   } catch (e) {
-    if (isKernelCallFailure(e)) return { ok: false, error: e.message }
+    if (isKernelCallFailure(e)) return { ok: false, error: kernelToolErrorMessage(e) }
     throw e
   }
 }
@@ -181,7 +183,7 @@ function partRunFailure(
         ok: false,
         solved: false,
         docHash: parts.docHash,
-        error: e.message,
+        error: kernelToolErrorMessage(e),
         file: written.file,
         format: written.format,
       }
@@ -189,7 +191,7 @@ function partRunFailure(
       return { ok: false, error: writeError instanceof Error ? writeError.message : String(writeError) }
     }
   }
-  return { ok: false, error: e.message }
+  return { ok: false, error: kernelToolErrorMessage(e) }
 }
 
 const ops: McpCadOps = {
@@ -564,9 +566,9 @@ const ops: McpCadOps = {
       return selectReply(part.docHash, result, req.detail)
     } catch (e) {
       // An empty match or a bad predicate expression is a tool failure, not a
-      // protocol error: the message names the offending clause. A timeout or a
-      // lost worker lands here too, with its own message.
-      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+      // protocol error: the message names the offending clause. A timeout, a
+      // lost worker or a fault lands here too, with its own message.
+      return { ok: false, error: e instanceof Error ? kernelToolErrorMessage(e) : String(e) }
     }
   },
 }

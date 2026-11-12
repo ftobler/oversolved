@@ -6,19 +6,24 @@
 import { beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { SharedHarness } from '../occ/sharedHarness'
-import { setSketchSolver, resetSketchSolver } from '../features/sketch'
-import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { setSketchSolverLoader } from '../features/sketch'
+import { loadSolver, loadSolverFresh } from '@/wasm-kernel/loadSolver'
 
 export const oc = await loadOcc()
+// Presence only: every split file guards its describe with
+// skipIf(!oc || !solveBytes), so the pkg-node build must be checked here. The
+// solver itself is installed through the loader below.
 export const solveBytes = loadSolver()
 
 // Every split file guards its describe with skipIf(!oc || !solveBytes); this
-// installs the Rust sketch solver once per file before its first test.
+// installs the Rust sketch solver once per file before its first test. It is a
+// loader (not bytes) so a trap recovery can replace the module: these suites
+// run many solves per process.
 export function extrudeTestHarness(): SharedHarness {
   const h = new SharedHarness(oc!)
   beforeAll(() => {
     if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
-    if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
+    setSketchSolverLoader(loadSolverFresh)
   })
   return h
 }

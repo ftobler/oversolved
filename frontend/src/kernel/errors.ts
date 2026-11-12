@@ -24,6 +24,12 @@ export const KERNEL_FAULT_PREFIX = 'kernel fault'
  */
 export class KernelFault extends Error {
   readonly detail: string
+  /** Whether the trap's modules were replaced before this fault was raised.
+   *  False means the next call can still find the dead instance; the MCP host
+   *  carries this across the thread and answers it by dropping the worker
+   *  (`drive/kernelHost.ts`), so recovery never depends on matching the
+   *  message. */
+  readonly reloaded: boolean
 
   constructor(detail: string, reloaded = true) {
     super(reloaded
@@ -31,6 +37,7 @@ export class KernelFault extends Error {
       : `${KERNEL_FAULT_PREFIX}: ${detail}`)
     this.name = 'KernelFault'
     this.detail = detail
+    this.reloaded = reloaded
   }
 }
 

@@ -12,7 +12,7 @@ import { isDevBuild } from './isDevBuild'
 import { ExportSelectionError, extractErrorMessage, isKernelTrap, KernelFault } from './errors'
 import { initGlobalRepo } from './query'
 import { createFeatureSolver } from './solverRegistry'
-import { initSketchSolver, consumeSketchTrap, isSketchTopologyReady, resetSketchSolverAfterTrap } from './features/sketch'
+import { initSketchSolver, consumeSketchTrap, isSketchSolverReady, isSketchTopologyReady, resetSketchSolverAfterTrap } from './features/sketch'
 import { postRegister } from './features/postRegister'
 import { loadOccWeb, resetOccWeb } from './occ/loadOccWeb'
 import { memoizedLoad } from './occ/memoizedLoad'
@@ -117,12 +117,17 @@ export function setOccLoader(
  * call `disposeAll()`: every handle's `.delete()` would run C++ on the corrupt
  * heap, which can trap again. The module is going away, so its allocations go
  * with it; dropping the references is the safe cleanup.
+ *
+ * Returns whether every module the trap killed has a live replacement. False
+ * only for a sketch-package trap whose loader produced no module: the next
+ * build would still find the dead instance, so the fault must not claim a
+ * reload (and the MCP host drops the worker instead).
  */
-function recoverLocalKernel(): void {
+function recoverLocalKernel(): boolean {
   // The sketch solver is a separate wasm instance with its own heap, so an OCC
   // trap cannot have damaged it; only discard it when the trap came out of it.
-  // Headless hosts inject those bytes with no loader to re-run, so dropping
-  // them for an OCC fault would degrade every later sketch.
+  // A byte-injected sketch module has no loader to re-run, so dropping it for
+  // an OCC fault would degrade every later sketch.
   const sketchFault = consumeSketchTrap()
   persistentTable = null
   lastBuildState = null
@@ -132,10 +137,9 @@ function recoverLocalKernel(): void {
   // loader owns whatever cache it has, so only the default path is reset here.
   else if (occLoaderOverride === null) resetOccWeb()
   occCell.reset()
-  if (sketchFault) {
-    sketchReloadRequired = true
-    resetSketchSolverAfterTrap()
-  }
+  if (!sketchFault) return true
+  sketchReloadRequired = true
+  return resetSketchSolverAfterTrap()
 }
 
 /** A trap that escaped the build is not a document verdict: recover, then
@@ -143,8 +147,21 @@ function recoverLocalKernel(): void {
  *  kernel rather than a feature error. */
 function recoverTrap(e: unknown): never {
   const detail = extractErrorMessage(e)
-  recoverLocalKernel()
-  throw new KernelFault(detail)
+  const reloaded = recoverLocalKernel()
+  throw new KernelFault(detail, reloaded)
+}
+
+/**
+ * Whether a sketch-package trap left the kernel without a replacement: the
+ * reload latch is set and the module it needs is still missing.
+ *
+ * A headless worker asks this after every op. A `run` reports its kernel fault
+ * as `solve.lastError` rather than as a thrown error (the reply must keep its
+ * checkpoint and step outcomes), so an unrecovered fault would never reach the
+ * host's error path; this is the state the host restarts the worker on.
+ */
+export function kernelReloadRequired(): boolean {
+  return sketchReloadRequired && (!isSketchSolverReady() || !isSketchTopologyReady())
 }
 
 /** Run kernel cleanup, converting a disposal trap into the same reload path.

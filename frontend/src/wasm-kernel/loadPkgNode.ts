@@ -45,6 +45,36 @@ export function loadPkgNodeExport<T>(name: string, pkg: PkgNodeTarget = PKG_SKET
   return loadExportOrNull<T>(name, pkgNodePath(pkg), require)
 }
 
+/**
+ * Require the package afresh, evicting the cached module first.
+ *
+ * The wasm-pack nodejs glue instantiates its wasm at module scope, so Node's
+ * module cache is also the cache of the `WebAssembly.Instance`. After a trap the
+ * instance's heap is undefined; a plain re-require would hand back those same
+ * exports. Evicting the entry re-runs the glue, which re-reads the `.wasm` and
+ * builds a new instance. Returns the whole module so callers can take the
+ * exports that must come from ONE instance (the sketch solver and its area
+ * builder share one).
+ */
+export function loadPkgNodeModuleFresh(pkg: PkgNodeTarget = PKG_SKETCH): Record<string, unknown> | null {
+  const requireFn = createRequire(import.meta.url)
+  const pkgPath = pkgNodePath(pkg)
+  if (!existsSync(pkgPath)) return null
+  // Cache keys are the resolved file name; on a symlinked tree that can differ
+  // from pkgPath, so evict both spellings.
+  delete requireFn.cache[requireFn.resolve(pkgPath)]
+  delete requireFn.cache[pkgPath]
+  try {
+    return requireFn(pkgPath) as Record<string, unknown>
+  } catch (e) {
+    // Same ruling as loadExportOrNull: only an absent artifact is expected, a
+    // broken one must surface rather than silently skip the whole suite.
+    const err = e as NodeJS.ErrnoException
+    if (err.code === 'MODULE_NOT_FOUND' && err.message.includes(pkgPath)) return null
+    throw e
+  }
+}
+
 /** The require + classification seam, split out so the absent-vs-broken ruling
  *  can be exercised without a real wasm-pack build. `requireFn` loads `pkgPath`. */
 export function loadExportOrNull<T>(

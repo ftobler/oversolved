@@ -1,9 +1,9 @@
 // The headless operations the non-browser drivers share: build a document by
 // running a script through one DocSession, measure it and export it. The node
 // CLI and the MCP server call these, so the two external surfaces cannot
-// drift; the caller bootstraps the kernel first (setOccLoader, setSketchSolver,
-// setSketchTopology) and owns the file paths, which is the only place the two
-// differ.
+// drift; the caller bootstraps the kernel first (setOccLoader, then the sketch
+// module as a loader via setSketchSolverLoader) and owns the file paths, which
+// is the only place the two differ.
 //
 // Each call here is a fresh part and therefore a fresh session. That is the
 // same one-session-per-operation shape the CLI has always had (one process per

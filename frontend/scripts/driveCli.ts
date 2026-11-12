@@ -30,9 +30,8 @@ import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { loadOcc, resetOcc } from '@/kernel/occ/loadOcc'
-import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { loadTopology } from '@/wasm-kernel/loadTopology'
-import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { loadSolverFresh } from '@/wasm-kernel/loadSolver'
+import { setSketchSolverLoader } from '@/kernel/features/sketch'
 import type { PartDoc } from '@/types/cad'
 import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { createHeadlessPart } from '@/drive/headlessPart'
@@ -50,10 +49,11 @@ import { resolveProjectPath, writeDocFile } from './docPath'
 // ─── kernel bootstrap ───
 
 // The headless OCC loader and the nodejs solver builds; without them
-// solveLocally returns null and every solve reports "unavailable".
+// solveLocally returns null and every solve reports "unavailable". The sketch
+// module is a loader, not bytes: a sketch trap has to be replaced by a fresh
+// module, and only the loader can make one.
 setOccLoader(loadOcc, resetOcc)
-setSketchSolver(loadSolver())
-setSketchTopology(loadTopology())
+setSketchSolverLoader(loadSolverFresh)
 
 // The kernel's own prints (the OCC STEP writer's transfer banner) must not
 // land on stdout: printJson writes through the saved writer, and everything
