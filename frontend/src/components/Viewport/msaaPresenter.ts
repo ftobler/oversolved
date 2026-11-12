@@ -1,5 +1,8 @@
 import * as THREE from 'three'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
+import { AoPass } from '@/components/Viewport/aoPass'
+import { AO_OCCLUDER_LAYER, aoUniforms, isAoActive, isAoCapturing } from '@/components/Viewport/ambientOcclusion'
+import { useSectionStore } from '@/stores/sectionStore'
 
 // Multisampling the part viewport ourselves instead of asking the browser for an
 // antialiased canvas. With `antialias: true` the default framebuffer is
@@ -77,6 +80,11 @@ export class MsaaPresenter {
   private readonly size = new THREE.Vector2()
   private readonly samples: number
   private stencil = false
+  private aoPass: AoPass | null = null
+  // Viewer state, fed by MsaaRender or a direct caller.
+  aoActive = false
+  capturing = false
+  modelExtent = 0
 
   constructor(samples: number = PRESENT_SAMPLES) {
     this.samples = samples
@@ -101,10 +109,75 @@ export class MsaaPresenter {
     return this.stencil
   }
 
-  render(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
+  private normalizeAoArg(ao: unknown): {
+    active: boolean; capturing: boolean; extent?: number
+    shading?: boolean; zebra?: boolean; curvature?: boolean; sectionEnabled?: boolean
+    allowAmbientOcclusion?: boolean
+  } {
+    if (typeof ao === 'boolean') {
+      return { active: ao, capturing: this.capturing || isAoCapturing() }
+    }
+    if (ao && typeof ao === 'object') {
+      const o = ao as Record<string, unknown>
+      const active = o.aoActive ?? o.ambientOcclusion ?? o.ambient_occlusion ?? o.ao ?? o.enabled ?? this.aoActive
+      const capturing = o.capturing ?? this.capturing ?? isAoCapturing() ?? useSectionStore.getState().capturing
+      const extent = typeof o.extent === 'number' ? o.extent : (typeof o.modelExtent === 'number' ? o.modelExtent : undefined)
+      return {
+        active: Boolean(active),
+        capturing: Boolean(capturing),
+        extent,
+        shading: typeof o.shading === 'boolean' ? o.shading : undefined,
+        zebra: typeof o.zebra === 'boolean' ? o.zebra : undefined,
+        curvature: typeof o.curvature === 'boolean' ? o.curvature : undefined,
+        sectionEnabled: typeof o.sectionEnabled === 'boolean' ? o.sectionEnabled : (typeof o.section === 'boolean' ? o.section : undefined),
+        allowAmbientOcclusion: typeof o.allowAmbientOcclusion === 'boolean' ? o.allowAmbientOcclusion : undefined,
+      }
+    }
+    return { active: this.aoActive, capturing: this.capturing || isAoCapturing() || useSectionStore.getState().capturing }
+  }
+
+  render(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, ao?: unknown): void {
     const { x, y } = gl.getDrawingBufferSize(this.size)
+    const aoInfo = this.normalizeAoArg(ao)
+    if (typeof aoInfo.extent === 'number') this.modelExtent = aoInfo.extent
+    const sectionCapturing = useSectionStore.getState().capturing
+    const capturing = aoInfo.capturing || sectionCapturing || this.capturing
+    const active = !capturing && aoInfo.active && isAoActive({
+      ambientOcclusion: aoInfo.active,
+      shading: aoInfo.shading ?? true,
+      zebra: aoInfo.zebra ?? false,
+      curvature: aoInfo.curvature ?? false,
+      sectionEnabled: aoInfo.sectionEnabled ?? false,
+      capturing,
+      allowAmbientOcclusion: aoInfo.allowAmbientOcclusion ?? true,
+    })
+
     const target = this.targetFor(gl, x, y)
     const previous = gl.getRenderTarget()
+
+    if (active) {
+      if (!this.aoPass) this.aoPass = new AoPass()
+      this.aoPass.setSize(x, y)
+      // Pre-pass: opaque body faces only, layer-masked camera.
+      const prepassCam = camera.clone()
+      try { prepassCam.layers.set(AO_OCCLUDER_LAYER) } catch {  /* layers may be readonly in tests */ }
+      gl.setRenderTarget(this.aoPass.prepassTarget)
+      gl.render(scene, prepassCam)
+      // AO quad.
+      gl.setRenderTarget(this.aoPass.aoTarget)
+      gl.render(this.aoPass.quad, this.aoPass.camera)
+      // Update shared uniforms.
+      aoUniforms.tAO.value = this.aoPass.aoTarget.texture
+      ;(aoUniforms.uResolution.value as THREE.Vector2).set(x, y)
+    } else {
+      // Free AO targets when the option is off.
+      if (this.aoPass) {
+        this.aoPass.dispose()
+        this.aoPass = null
+      }
+      aoUniforms.tAO.value = null
+    }
+
     gl.setRenderTarget(target)
     gl.render(scene, camera)
     // renderToScreen ignores the write buffer (and the delta/mask arguments);
@@ -137,6 +210,8 @@ export class MsaaPresenter {
   dispose(): void {
     this.target?.dispose()
     this.target = null
+    this.aoPass?.dispose()
+    this.aoPass = null
     this.output.dispose()
   }
 }

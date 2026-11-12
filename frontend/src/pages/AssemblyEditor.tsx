@@ -744,7 +744,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 hud={<AssemblyMeasurementDisplay measurementIcon={measurementIcon} />}
                 // No Show group: an assembly has no feature tree, so the part
                 // editor alone supplies the document-visibility rows.
-                viewOptions={<ViewOptionsButton allowSectionPick={false} />}
+                viewOptions={<ViewOptionsButton allowSectionPick={false} allowAmbientOcclusion={false} />}
               />
             </EditorErrorBoundary>
             {/* The assembly solve mirrors useSolverStore.isSolving and claims its

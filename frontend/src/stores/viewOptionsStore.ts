@@ -18,9 +18,10 @@ import { create } from 'zustand'
 import { backendBundle } from '@/adapters/backend'
 import {
   DEFAULT_VIEW_PREFERENCES,
-  MAX_BRIGHTNESS,
-  MIN_BRIGHTNESS,
+  MAX_AO_STRENGTH,
+  MIN_AO_STRENGTH,
   normalizeViewPreferences,
+  snapBrightness,
   type CurvatureKind,
   type UserPreferences,
   type ViewPreferences,
@@ -46,6 +47,8 @@ export interface ViewOptionsState extends ViewPreferences {
   setCurvatureKind: (kind: CurvatureKind) => void
   setCurvatureRange: (range: [number, number] | null) => void
   setCurvatureAutoRange: (range: [number, number] | null) => void
+  setAmbientOcclusion: (on: boolean) => void
+  setAoStrength: (value: number) => void
   setCollisionDebug: (on: boolean) => void
   setOrbitAroundCursor: (on: boolean) => void
 }
@@ -62,6 +65,8 @@ export function toViewPreferences(state: ViewPreferences): ViewPreferences {
     curvature_kind: state.curvature_kind,
     curvature_range: state.curvature_range,
     orbit_around_cursor: state.orbit_around_cursor,
+    ambient_occlusion: state.ambient_occlusion,
+    ao_strength: state.ao_strength,
   }
 }
 
@@ -121,7 +126,8 @@ export const useViewOptionsStore = create<ViewOptionsState>((set, get) => {
       const layers = normalizeLayers(on, get().edges)
       // An analysis material needs faces to paint on.
       const analysis = layers.shading ? { zebra: get().zebra, curvature: get().curvature } : { zebra: false, curvature: false }
-      set({ ...layers, ...analysis })
+      const ao = layers.shading ? get().ambient_occlusion : false
+      set({ ...layers, ...analysis, ambient_occlusion: ao })
       persist(get)
     },
 
@@ -131,7 +137,7 @@ export const useViewOptionsStore = create<ViewOptionsState>((set, get) => {
     },
 
     setBrightness: (value) => {
-      const next = Number.isFinite(value) ? Math.min(MAX_BRIGHTNESS, Math.max(MIN_BRIGHTNESS, value)) : 1
+      const next = Number.isFinite(value) ? snapBrightness(value) : 1
       set({ brightness: next })
       persist(get)
     },
@@ -144,7 +150,8 @@ export const useViewOptionsStore = create<ViewOptionsState>((set, get) => {
     setZebra: (on) => {
       // The analysis material needs drawn faces, so it cannot be armed alone.
       const next = on && get().shading
-      set(normalizeAnalysis(next, get().curvature, 'zebra'))
+      const normalized = normalizeAnalysis(next, get().curvature, 'zebra')
+      set({ ...normalized, ambient_occlusion: normalized.zebra ? false : get().ambient_occlusion })
       persist(get)
     },
 
@@ -156,7 +163,8 @@ export const useViewOptionsStore = create<ViewOptionsState>((set, get) => {
 
     setCurvature: (on) => {
       const next = on && get().shading
-      set(normalizeAnalysis(get().zebra, next, 'curvature'))
+      const normalized = normalizeAnalysis(get().zebra, next, 'curvature')
+      set({ ...normalized, ambient_occlusion: normalized.curvature ? false : get().ambient_occlusion })
       persist(get)
     },
 
@@ -181,6 +189,21 @@ export const useViewOptionsStore = create<ViewOptionsState>((set, get) => {
 
     setOrbitAroundCursor: (on) => {
       set({ orbit_around_cursor: on })
+      persist(get)
+    },
+
+    setAmbientOcclusion: (on) => {
+      // AO needs shading and cannot coexist with an analysis material.
+      const next = on && get().shading && !get().zebra && !get().curvature
+      set({ ambient_occlusion: next })
+      persist(get)
+    },
+
+    setAoStrength: (value) => {
+      const next = Number.isFinite(value)
+        ? Math.min(MAX_AO_STRENGTH, Math.max(MIN_AO_STRENGTH, value))
+        : DEFAULT_VIEW_PREFERENCES.ao_strength
+      set({ ao_strength: next })
       persist(get)
     },
 

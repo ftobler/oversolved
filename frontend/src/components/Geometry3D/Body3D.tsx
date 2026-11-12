@@ -28,9 +28,11 @@ import {
   resolveVertexQueries,
 } from '@/components/Geometry3D/bodyGeometry'
 import { analysisMaterialName, useBodyAnalysisMaterial } from '@/components/Geometry3D/bodyAnalysisMaterial'
+import { AO_OCCLUDER_LAYER } from '@/components/Viewport/ambientOcclusion'
 import { curvatureForMesh, effectiveCurvatureRange } from '@/components/Geometry3D/curvature'
 import { buildThreadAttributes, type ThreadSiteIndex } from '@/components/Geometry3D/threadShading'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
+import { useSectionStore } from '@/stores/sectionStore'
 import { lazyGeometryCache } from '@/components/Geometry3D/lazyGeometryCache'
 import { faceRuns, triangleRuns, edgeRuns, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
 import { useHighlightColors, paletteRGB } from '@/components/Geometry3D/useHighlightColors'
@@ -418,10 +420,23 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // drawn; with shading off there is nothing for it to paint.
   const zebra = useViewOptionsStore(s => s.zebra)
   const zebraStripes = useViewOptionsStore(s => s.zebra_stripes)
+  const ambientOcclusion = useViewOptionsStore(s => s.ambient_occlusion)
+  const aoStrength = useViewOptionsStore(s => s.ao_strength)
+  const sectionCapturing = useSectionStore(s => s.capturing)
   // The store keeps the two analysis rows exclusive; the order here only makes
   // the intent readable.
   const analysisMode = !showFaces ? 'none' : curvature ? 'curvature' : zebra ? 'zebra' : 'none'
   const bodyMaterialRef = useRef<THREE.MeshPhysicalMaterial>(null)
+  const bodyMeshRef = useRef<THREE.Mesh>(null)
+  const sectionActive = useSectionActive()
+  useEffect(() => {
+    const mesh = bodyMeshRef.current
+    if (!mesh?.layers) return
+    const opaque = surface.transparency === 0 && surface.transmission === 0
+    if (opaque) mesh.layers.enable(AO_OCCLUDER_LAYER)
+    else mesh.layers.disable(AO_OCCLUDER_LAYER)
+  }, [surface.transparency, surface.transmission])
+
   useBodyAnalysisMaterial(bodyMaterialRef, {
     mode: analysisMode,
     // The part editor is the one place with a vertex-colour highlight, so the
@@ -432,6 +447,21 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     curvatureKind,
     curvatureRange: effectiveCurvatureRange(curvatureManualRange, curvatureAutoRange),
     threaded: threadAttributes !== null,
+    ao: ambientOcclusion,
+    ambientOcclusion: ambientOcclusion,
+    ambient_occlusion: ambientOcclusion,
+    ao_strength: aoStrength,
+    aoStrength: aoStrength,
+    transparent: surface.transparency > 0 || surface.transmission > 0,
+    transmission: surface.transmission,
+    opacity: 1 - surface.transparency,
+    sectionEnabled: sectionActive,
+    sectioned: sectionActive,
+    capturing: sectionCapturing,
+    shading: showFaces,
+    zebra,
+    curvature,
+    allowAmbientOcclusion: true,
   })
 
   // The section clips the body's faces and edges, not the reference geometry
@@ -441,7 +471,6 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // memo-owned instance for the component's lifetime. Only the active boolean
   // is subscribed here, not the moving plane: the shared plane updates in
   // place, so a drag must not re-render every body.
-  const sectionActive = useSectionActive()
   useSectionOwnedMaterialClipping(edgeMaterial, sectionActive)
 
   // The wireframe is where the removal mark lives now the doomed face is
@@ -645,6 +674,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     <group visible={visible} userData={{ featureId }}>
       {showFaces && (
         <mesh
+          ref={bodyMeshRef}
           geometry={geometry}
           userData={{ orbitPivot: true }}
         >

@@ -14,6 +14,7 @@ import type { RefObject } from 'react'
 import * as THREE from 'three'
 import type { WebGLProgramParametersWithUniforms } from 'three'
 import type { CurvatureKind } from '@/adapters/preferences'
+import { aoUniforms } from '@/components/Viewport/ambientOcclusion'
 
 export type BodyAnalysisMode = 'none' | 'zebra' | 'curvature'
 
@@ -31,6 +32,7 @@ export interface BodyAnalysisPatch {
   setStripeCount?: (value: number) => void
   setBaseColor?: (hex: string) => void
   setCurvature?: (kind: CurvatureKind, range: [number, number]) => void
+  setAoStrength?: (value: number) => void
 }
 
 // How much a vertex colour has to move before it counts as a highlight. The
@@ -248,6 +250,87 @@ export class ThreadProgram implements BodyAnalysisPatch {
   }
 }
 
+export const AO_GLSL = `
+  float aoSample = texture2D( tAO, gl_FragCoord.xy / uAoResolution ).r;
+  float aoFactor = mix( 1.0, aoSample, uAoStrength );
+  reflectedLight.indirectDiffuse *= aoFactor;
+  reflectedLight.indirectSpecular *= aoFactor;
+`
+
+/**
+ * Ambient-occlusion patch: samples the shared AO texture and multiplies the
+ * indirect terms only, leaving direct light and overlays untouched.
+ */
+export class AoProgram implements BodyAnalysisPatch {
+  readonly name = 'body-material'
+  readonly uniforms: BodyAnalysisPatch['uniforms']
+  private readonly mixVertexColor: boolean
+  private readonly ao: boolean
+  private readonly transparent: boolean
+
+  constructor(mixVertexColor: boolean = false, ao = true, transparent = false) {
+    this.mixVertexColor = mixVertexColor
+    this.ao = ao && !transparent
+    this.transparent = transparent
+    this.uniforms = { uStripeFrequency: { value: 0 } }
+  }
+
+  customProgramCacheKey = (): string => (this.ao ? 'ao' : '')
+
+  setAoStrength = (value: number): void => {
+    const v = aoUniforms.uAoStrength.value as { value?: number } | number
+    if (v && typeof v === 'object') (v as { value: number }).value = value
+    else aoUniforms.uAoStrength.value = value
+  }
+
+  onBeforeCompile = (shader: WebGLProgramParametersWithUniforms): void => {
+    if (!this.ao) return
+    const declarations = 'uniform sampler2D tAO;\nuniform vec2 uAoResolution;\nuniform float uAoStrength;\n'
+    shader.uniforms.tAO = aoUniforms.tAO
+    shader.uniforms.uAoResolution = aoUniforms.uResolution
+    shader.uniforms.uAoStrength = aoUniforms.uAoStrength
+    shader.fragmentShader = declarations + shader.fragmentShader
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <aomap_fragment>',
+      `${AO_GLSL}`,
+    )
+  }
+}
+
+/** Compose multiple patches by chaining their onBeforeCompile calls. */
+export class CompositePatch implements BodyAnalysisPatch {
+  readonly patches: BodyAnalysisPatch[]
+  readonly name: string
+  readonly uniforms: BodyAnalysisPatch['uniforms']
+
+  constructor(patches: BodyAnalysisPatch[]) {
+    this.patches = patches
+    this.name = patches.map(p => p.name).join('+') || 'body-material'
+    this.uniforms = patches.reduce<BodyAnalysisPatch['uniforms']>((acc, p) => ({ ...acc, ...p.uniforms }), { uStripeFrequency: { value: 0 } })
+  }
+
+  customProgramCacheKey = (): string => this.patches.map(p => p.customProgramCacheKey()).filter(Boolean).join('+')
+
+  onBeforeCompile = (shader: WebGLProgramParametersWithUniforms): void => {
+    for (const patch of this.patches) patch.onBeforeCompile(shader)
+  }
+}
+
+export function makeAoPatch(opts: {
+  ao?: boolean
+  ambientOcclusion?: boolean
+  ambient_occlusion?: boolean
+  mixVertexColor?: boolean
+  transparent?: boolean
+  aoStrength?: number
+}): BodyAnalysisPatch {
+  const ao = resolveAoFlag(opts)
+  const transparent = resolveTransparentFlag(opts)
+  const patch = new AoProgram(opts.mixVertexColor ?? false, ao, transparent)
+  if (opts.aoStrength !== undefined) patch.setAoStrength?.(opts.aoStrength)
+  return patch
+}
+
 /** A standalone patch for a caller that has no hook (tests, one-off previews). */
 export function makeZebraPatch(opts: {
   stripes: number
@@ -275,14 +358,110 @@ export interface BodyAnalysisParams {
   // The geometry carries thread attributes (a tapped bore). Optional so a
   // caller with no threads (the assembly) never has to say so.
   threaded?: boolean
+  // Ambient occlusion on the body material's indirect light.
+  ao?: boolean
+  aoEnabled?: boolean
+  aoActive?: boolean
+  enableAo?: boolean
+  ambientOcclusion?: boolean
+  ambientOcclusionEnabled?: boolean
+  ambient_occlusion?: boolean
+  ao_strength?: number
+  aoStrength?: number
+  // Whether this body is transparent/transmissive (no AO sample).
+  transparent?: boolean
+  transmission?: number
+  opacity?: number
+  // Capturing / section state that disables AO sampling.
+  capturing?: boolean
+  sectionEnabled?: boolean
+  sectioned?: boolean
+  shading?: boolean
+  zebra?: boolean
+  curvature?: boolean
+  allowAmbientOcclusion?: boolean
+}
+
+export function resolveAoFlag(input: unknown): boolean {
+  if (typeof input === 'boolean') return input
+  if (input && typeof input === 'object') {
+    const o = input as Record<string, unknown>
+    return Boolean(o.ao ?? o.aoEnabled ?? o.aoActive ?? o.enableAo ?? o.ambientOcclusion ?? o.ambientOcclusionEnabled ?? o.ambient_occlusion ?? false)
+  }
+  return false
+}
+
+export function resolveTransparentFlag(input: unknown): boolean {
+  if (typeof input === 'boolean') return input
+  if (input && typeof input === 'object') {
+    const o = input as Record<string, unknown>
+    if (typeof o.transparent === 'boolean') return o.transparent
+    if (typeof o.transmission === 'number' && o.transmission > 0) return true
+    if (typeof o.opacity === 'number' && o.opacity < 1) return true
+    return false
+  }
+  return false
+}
+
+function aoActiveFromParams(params: unknown): boolean {
+  if (!params || typeof params !== 'object') return false
+  const p = params as Record<string, unknown>
+  const option = resolveAoFlag(params)
+  const shading = p.shading !== false
+  const zebra = Boolean(p.zebra ?? p.mode === 'zebra')
+  const curvature = Boolean(p.curvature ?? p.mode === 'curvature')
+  const section = Boolean(p.sectionEnabled ?? p.sectioned ?? false)
+  const capturing = Boolean(p.capturing ?? false)
+  const allow = p.allowAmbientOcclusion !== false
+  if (!option || !shading || zebra || curvature || section || capturing || !allow) return false
+  return true
 }
 
 /** Which program a body material runs: an analysis mode wins, since it must
  *  show the true surface; the thread shading is the plain view's patch. */
-export function selectBodyPatch(mode: BodyAnalysisMode, mixVertexColor: boolean, threaded: boolean): BodyAnalysisPatch | null {
+export function selectBodyPatch(...args: unknown[]): BodyAnalysisPatch | null {
+  let mode: BodyAnalysisMode = 'none'
+  let mixVertexColor = false
+  let threaded = false
+  let ao = false
+  let transparent = false
+  let params: unknown = null
+
+  if (args.length === 1 && args[0] && typeof args[0] === 'object' && 'mode' in (args[0] as Record<string, unknown>)) {
+    params = args[0]
+    const p = params as Record<string, unknown>
+    mode = (p.mode as BodyAnalysisMode) ?? 'none'
+    mixVertexColor = Boolean(p.mixVertexColor ?? false)
+    threaded = Boolean(p.threaded ?? false)
+    ao = aoActiveFromParams(p)
+    transparent = resolveTransparentFlag(p)
+  } else {
+    mode = (args[0] as BodyAnalysisMode) ?? 'none'
+    mixVertexColor = Boolean(args[1] ?? false)
+    threaded = Boolean(args[2] ?? false)
+    ao = resolveAoFlag(args[3])
+    transparent = resolveTransparentFlag(args[4])
+    if (args[3] && typeof args[3] === 'object') {
+      params = args[3]
+      ao = aoActiveFromParams(args[3])
+      transparent = transparent || resolveTransparentFlag(args[3])
+    }
+    if (args[4] && typeof args[4] === 'object') {
+      transparent = resolveTransparentFlag(args[4])
+    }
+  }
+
   if (mode === 'zebra') return new ZebraProgram(mixVertexColor)
   if (mode === 'curvature') return new CurvatureProgram(mixVertexColor)
-  if (threaded) return new ThreadProgram()
+  // Thread shading plus optional AO composition.
+  if (threaded) {
+    const thread = new ThreadProgram()
+    if (ao && !transparent) {
+      return new CompositePatch([thread, new AoProgram(mixVertexColor, true, transparent)])
+    }
+    return thread
+  }
+  if (ao && !transparent) return new AoProgram(mixVertexColor, true, transparent)
   return null
 }
 
@@ -298,8 +477,8 @@ export function useBodyAnalysisMaterial(
   const { mode, mixVertexColor } = params
   const threaded = params.threaded ?? false
   const patch = useMemo<BodyAnalysisPatch | null>(
-    () => selectBodyPatch(mode, mixVertexColor, threaded),
-    [mode, mixVertexColor, threaded],
+    () => selectBodyPatch(params),
+    [mode, mixVertexColor, threaded, params.ao, params.ambientOcclusion, params.ambient_occlusion, params.transparent, params.transmission, params.opacity, params.capturing, params.sectionEnabled, params.sectioned, params.shading, params.zebra, params.curvature, params.allowAmbientOcclusion],
   )
 
   useEffect(() => {
@@ -313,6 +492,11 @@ export function useBodyAnalysisMaterial(
   useEffect(() => {
     patch?.setCurvature?.(params.curvatureKind, params.curvatureRange)
   }, [patch, params.curvatureKind, params.curvatureRange])
+
+  useEffect(() => {
+    const strength = params.ao_strength ?? params.aoStrength
+    if (strength !== undefined) patch?.setAoStrength?.(strength)
+  }, [patch, params.ao_strength, params.aoStrength])
 
   useEffect(() => {
     const material = materialRef.current

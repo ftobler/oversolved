@@ -95,7 +95,7 @@ describe('view options store', () => {
 
   it('clamps brightness to the range and resets to 1', () => {
     useViewOptionsStore.getState().setBrightness(9)
-    expect(useViewOptionsStore.getState().brightness).toBe(2)
+    expect(useViewOptionsStore.getState().brightness).toBe(4)
     useViewOptionsStore.getState().setBrightness(Number.NaN)
     expect(useViewOptionsStore.getState().brightness).toBe(1)
     useViewOptionsStore.getState().setBrightness(0.8)

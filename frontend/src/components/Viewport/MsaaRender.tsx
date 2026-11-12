@@ -2,6 +2,10 @@ import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { MsaaPresenter, attachPresenter, detachPresenter } from '@/components/Viewport/msaaPresenter'
 import { useSectionStore } from '@/stores/sectionStore'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
+import { getModelBoundingBoxExtent } from '@/components/Viewport/viewportPlaneSizing'
+import { isAoActive } from '@/components/Viewport/ambientOcclusion'
 
 /**
  * Takes over the part viewport's render: a positive useFrame priority tells R3F
@@ -38,6 +42,12 @@ export function MsaaRender() {
   // the presenter's target (disposing the old one) rather than leaving a
   // stencil-less target under cap geometry.
   const sectionEnabled = useSectionStore(s => s.enabled)
+  const ambientOcclusion = useViewOptionsStore(s => s.ambient_occlusion)
+  const zebra = useViewOptionsStore(s => s.zebra)
+  const curvature = useViewOptionsStore(s => s.curvature)
+  const shading = useViewOptionsStore(s => s.shading)
+  const bodies = usePartEditorStore(s => s.bodies)
+  const capturing = useSectionStore(s => s.capturing)
   useEffect(() => {
     presenter.current?.setStencil(sectionEnabled)
     // `gl` is a dependency too: a rebuilt presenter (StrictMode, a new renderer)
@@ -45,8 +55,21 @@ export function MsaaRender() {
   }, [sectionEnabled, gl])
 
   useFrame(({ gl: renderer, scene, camera }) => {
-    if (presenter.current) presenter.current.render(renderer, scene, camera)
-    else renderer.render(scene, camera)
+    if (presenter.current) {
+      const extent = getModelBoundingBoxExtent(bodies)
+      presenter.current.aoActive = isAoActive({
+        ambientOcclusion,
+        shading,
+        zebra,
+        curvature,
+        sectionEnabled,
+        capturing,
+        allowAmbientOcclusion: true,
+      })
+      presenter.current.capturing = capturing
+      presenter.current.modelExtent = extent
+      presenter.current.render(renderer, scene, camera)
+    } else renderer.render(scene, camera)
   }, 1)
 
   return null

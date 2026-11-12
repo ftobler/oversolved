@@ -31,10 +31,13 @@ function isDocumentSort(value: unknown): value is DocumentSort {
 // field at a time so a single stale value cannot reset the rest of the view.
 export type CurvatureKind = 'mean' | 'gaussian'
 
-export const MIN_BRIGHTNESS = 0.5
-export const MAX_BRIGHTNESS = 2
+export const MIN_BRIGHTNESS = 0.25
+export const MAX_BRIGHTNESS = 4
+export const BRIGHTNESS_STEP = 0.05
 export const MIN_ZEBRA_STRIPES = 2
 export const MAX_ZEBRA_STRIPES = 40
+export const MIN_AO_STRENGTH = 0.2
+export const MAX_AO_STRENGTH = 1.5
 
 export interface ViewPreferences {
   shading: boolean
@@ -53,6 +56,10 @@ export interface ViewPreferences {
   // camera target. On by default: it is how the user asked to reach a corner
   // the fixed pivot cannot.
   orbit_around_cursor: boolean
+  // Screen-space ambient occlusion on the body material's indirect light.
+  ambient_occlusion: boolean
+  // How strongly the AO texture darkens creases (0.2..1.5).
+  ao_strength: number
 }
 
 export const DEFAULT_VIEW_PREFERENCES: Readonly<ViewPreferences> = Object.freeze({
@@ -66,6 +73,8 @@ export const DEFAULT_VIEW_PREFERENCES: Readonly<ViewPreferences> = Object.freeze
   curvature_kind: 'mean',
   curvature_range: null,
   orbit_around_cursor: true,
+  ambient_occlusion: false,
+  ao_strength: 1,
 })
 
 export interface UserPreferences {
@@ -102,6 +111,32 @@ function isCurvatureKind(value: unknown): value is CurvatureKind {
   return value === 'mean' || value === 'gaussian'
 }
 
+export function brightnessToSlider(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  const clamped = Math.min(MAX_BRIGHTNESS, Math.max(MIN_BRIGHTNESS, value))
+  const geometricMean = Math.sqrt(MIN_BRIGHTNESS * MAX_BRIGHTNESS)
+  const factor = Math.sqrt(MAX_BRIGHTNESS / MIN_BRIGHTNESS)
+  return Math.log(clamped / geometricMean) / Math.log(factor)
+}
+
+export function sliderToBrightness(position: number): number {
+  if (!Number.isFinite(position)) return 1
+  const clampedPos = Math.min(1, Math.max(-1, position))
+  const geometricMean = Math.sqrt(MIN_BRIGHTNESS * MAX_BRIGHTNESS)
+  const factor = Math.sqrt(MAX_BRIGHTNESS / MIN_BRIGHTNESS)
+  const raw = geometricMean * Math.pow(factor, clampedPos)
+  const snapped = Math.round(raw / BRIGHTNESS_STEP) * BRIGHTNESS_STEP
+  const clamped = Math.min(MAX_BRIGHTNESS, Math.max(MIN_BRIGHTNESS, snapped))
+  return Number(clamped.toFixed(2))
+}
+
+export function snapBrightness(value: number): number {
+  if (!Number.isFinite(value)) return 1
+  const clamped = Math.min(MAX_BRIGHTNESS, Math.max(MIN_BRIGHTNESS, value))
+  const snapped = Math.round(clamped / BRIGHTNESS_STEP) * BRIGHTNESS_STEP
+  return Number(Math.min(MAX_BRIGHTNESS, Math.max(MIN_BRIGHTNESS, snapped)).toFixed(2))
+}
+
 function isRange(value: unknown): value is [number, number] {
   if (!Array.isArray(value) || value.length !== 2) return false
   const [lo, hi] = value
@@ -116,11 +151,13 @@ function isRange(value: unknown): value is [number, number] {
  */
 function normalizeView(view: ViewPreferences): ViewPreferences {
   const { shading } = view
-  let { edges, zebra, curvature } = view
+  let { edges, zebra, curvature, ambient_occlusion } = view
   if (!shading && !edges) edges = true
-  if (!shading) { zebra = false; curvature = false }
+  if (!shading) { zebra = false; curvature = false; ambient_occlusion = false }
   if (zebra && curvature) curvature = false
-  return { ...view, shading, edges, zebra, curvature }
+  // AO does not compose with an analysis material that replaces the look.
+  if (zebra || curvature) ambient_occlusion = false
+  return { ...view, shading, edges, zebra, curvature, ambient_occlusion }
 }
 
 type RawView = { [field: string]: unknown }
@@ -131,7 +168,7 @@ function readView(raw: unknown): ViewPreferences {
   return normalizeView({
     shading: isBoolean(record.shading) ? record.shading : d.shading,
     edges: isBoolean(record.edges) ? record.edges : d.edges,
-    brightness: clampNumber(record.brightness, MIN_BRIGHTNESS, MAX_BRIGHTNESS, d.brightness),
+    brightness: snapBrightness(clampNumber(record.brightness, MIN_BRIGHTNESS, MAX_BRIGHTNESS, d.brightness)),
     zebra: isBoolean(record.zebra) ? record.zebra : d.zebra,
     zebra_stripes: Math.round(clampNumber(record.zebra_stripes, MIN_ZEBRA_STRIPES, MAX_ZEBRA_STRIPES, d.zebra_stripes)),
     curvature: isBoolean(record.curvature) ? record.curvature : d.curvature,
@@ -140,6 +177,8 @@ function readView(raw: unknown): ViewPreferences {
       ? null
       : isRange(record.curvature_range) ? [record.curvature_range[0], record.curvature_range[1]] : null,
     orbit_around_cursor: isBoolean(record.orbit_around_cursor) ? record.orbit_around_cursor : d.orbit_around_cursor,
+    ambient_occlusion: isBoolean(record.ambient_occlusion) ? record.ambient_occlusion : d.ambient_occlusion,
+    ao_strength: clampNumber(record.ao_strength, MIN_AO_STRENGTH, MAX_AO_STRENGTH, d.ao_strength),
   })
 }
 

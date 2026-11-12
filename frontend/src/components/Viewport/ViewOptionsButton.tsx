@@ -29,7 +29,8 @@ import { SECTION_PICK_HINT, useSectionStore } from '@/stores/sectionStore'
 import { useNotifySafe } from '@/contexts/ToastContext'
 import { BUILTIN_SECTION_PLANES, type BuiltinSectionPlaneId } from '@/viewport/sectionPlane'
 import type { CurvatureKind } from '@/adapters/preferences'
-import { MAX_BRIGHTNESS, MAX_ZEBRA_STRIPES, MIN_BRIGHTNESS, MIN_ZEBRA_STRIPES } from '@/adapters/preferences'
+import { MAX_AO_STRENGTH, MAX_ZEBRA_STRIPES, MIN_AO_STRENGTH, MIN_ZEBRA_STRIPES } from '@/adapters/preferences'
+import { brightnessToSlider, sliderToBrightness } from '@/components/Viewport/brightnessScale'
 import type { ShowGroup, ShowGroupState } from '@/components/Viewport/viewOptionsShow'
 import { SHOW_GROUPS } from '@/components/Viewport/viewOptionsShow'
 import { LENGTH_UNIT_LABEL, LENGTH_UNIT_NAME } from '@/utils/lengthUnit'
@@ -46,6 +47,8 @@ export interface ViewOptionsButtonProps {
   // can (it owns the body face registry); the assembly cannot, so it offers the
   // builtin planes and says so rather than arming a pick nothing consumes.
   allowSectionPick?: boolean
+  // Whether ambient occlusion is available (part editor only in v1).
+  allowAmbientOcclusion?: boolean
   // The part document's unit, and the page's set_length_unit dispatch. Unlike
   // every other row this is a document edit, so the page owns both halves: the
   // card only reflects the unit and asks for a change. Absent in the assembly,
@@ -95,7 +98,7 @@ function formatRange(range: [number, number]): string {
   return `${fmt(range[0])} .. ${fmt(range[1])} 1/mm`
 }
 
-export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick = true, lengthUnit, onSetLengthUnit }: ViewOptionsButtonProps) {
+export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick = true, allowAmbientOcclusion = true, lengthUnit, onSetLengthUnit }: ViewOptionsButtonProps) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -109,6 +112,8 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
   const curvatureKind = useViewOptionsStore(s => s.curvature_kind)
   const curvatureRange = useViewOptionsStore(s => s.curvature_range)
   const curvatureAutoRange = useViewOptionsStore(s => s.curvatureAutoRange)
+  const ambientOcclusion = useViewOptionsStore(s => s.ambient_occlusion)
+  const aoStrength = useViewOptionsStore(s => s.ao_strength)
   const collisionDebug = useViewOptionsStore(s => s.collisionDebug)
   const orbitAroundCursor = useViewOptionsStore(s => s.orbit_around_cursor)
   const sectionEnabled = useSectionStore(s => s.enabled)
@@ -129,6 +134,8 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
   const setCurvature = useViewOptionsStore(s => s.setCurvature)
   const setCurvatureKind = useViewOptionsStore(s => s.setCurvatureKind)
   const setCurvatureRange = useViewOptionsStore(s => s.setCurvatureRange)
+  const setAmbientOcclusion = useViewOptionsStore(s => s.setAmbientOcclusion)
+  const setAoStrength = useViewOptionsStore(s => s.setAoStrength)
   const setCollisionDebug = useViewOptionsStore(s => s.setCollisionDebug)
   const setOrbitAroundCursor = useViewOptionsStore(s => s.setOrbitAroundCursor)
   const setSectionEnabled = useSectionStore(s => s.setEnabled)
@@ -282,11 +289,27 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
               className="view-options-slider"
               aria-label="Brightness"
               title="Brightness (double-click to reset)"
-              min={MIN_BRIGHTNESS}
-              max={MAX_BRIGHTNESS}
-              step={0.05}
-              value={brightness}
-              onChange={e => setBrightness(Number(e.target.value))}
+              min={-1}
+              max={1}
+              step={0.001}
+              value={brightnessToSlider(brightness)}
+              aria-valuetext={brightness.toFixed(2)}
+              onChange={e => setBrightness(sliderToBrightness(Number(e.target.value)))}
+              onKeyDown={e => {
+                if (e.key === 'ArrowRight') {
+                  e.preventDefault()
+                  setBrightness(brightness + 0.05)
+                } else if (e.key === 'ArrowLeft') {
+                  e.preventDefault()
+                  setBrightness(brightness - 0.05)
+                } else if (e.key === 'PageUp') {
+                  e.preventDefault()
+                  setBrightness(brightness + 0.25)
+                } else if (e.key === 'PageDown') {
+                  e.preventDefault()
+                  setBrightness(brightness - 0.25)
+                }
+              }}
               onDoubleClick={() => resetBrightness()}
               data-view-row
             />
@@ -391,6 +414,40 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
                   Auto
                 </button>
               </div>
+            </div>
+          )}
+
+          <CheckRow
+            label="Ambient occlusion"
+            checked={ambientOcclusion}
+            disabled={!allowAmbientOcclusion || !shading}
+            title={!allowAmbientOcclusion
+              ? 'Ambient occlusion is a part-editor view for now'
+              : (!shading ? 'Ambient occlusion needs shading' : 'Ambient occlusion')}
+            onToggle={() => setAmbientOcclusion(!ambientOcclusion)}
+          />
+          {!allowAmbientOcclusion && (
+            <div className="view-options-note" role="status">
+              Ambient occlusion is a part-editor view for now.
+            </div>
+          )}
+          {ambientOcclusion && allowAmbientOcclusion && (
+            <div className="view-options-slider-row">
+              <div className="view-options-slider-head">
+                <span className="view-options-label">Strength</span>
+                <span className="view-options-value">{aoStrength.toFixed(2)}</span>
+              </div>
+              <input
+                type="range"
+                className="view-options-slider"
+                aria-label="Strength"
+                min={MIN_AO_STRENGTH}
+                max={MAX_AO_STRENGTH}
+                step={0.05}
+                value={aoStrength}
+                onChange={e => setAoStrength(Number(e.target.value))}
+                data-view-row
+              />
             </div>
           )}
 

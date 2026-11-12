@@ -153,11 +153,14 @@ describe('ViewOptionsButton viewer rows', () => {
     open()
     const slider = screen.getByRole('slider', { name: 'Brightness' })
 
-    fireEvent.change(slider, { target: { value: '1.65' } })
-    expect(useViewOptionsStore.getState().brightness).toBe(1.65)
+    fireEvent.change(slider, { target: { value: '0' } })
+    expect(useViewOptionsStore.getState().brightness).toBe(1)
 
-    fireEvent.change(slider, { target: { value: '9' } })
-    expect(useViewOptionsStore.getState().brightness).toBe(2)
+    fireEvent.change(slider, { target: { value: '1' } })
+    expect(useViewOptionsStore.getState().brightness).toBe(4)
+
+    fireEvent.change(slider, { target: { value: '-1' } })
+    expect(useViewOptionsStore.getState().brightness).toBe(0.25)
 
     fireEvent.doubleClick(slider)
     expect(useViewOptionsStore.getState().brightness).toBe(1)
