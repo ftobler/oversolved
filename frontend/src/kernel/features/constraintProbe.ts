@@ -62,26 +62,47 @@ export function draftPendingConstraint(
   for (const m of pending.prelude ?? []) {
     applyAddProjectedEntity(probeDoc, m.featureId, m.kind, m.source, m.entityId, m.constraintId)
   }
+  const probeFeature = (probeDoc.features ?? []).find((f) => f.id === pending.featureId) as SketchFeature | undefined
+  if (!probeFeature) return null
+  // Count AFTER the prelude: the projections already grew the list, so
+  // comparing against the original feature would read the projection as a
+  // drafted constraint and hide a dropped add (one-target coincident, an
+  // unresolvable dock/isect target, an unrecognised midpoint form).
+  const before = probeFeature.constraints?.length ?? 0
   applyAddConstraint(
     probeDoc, pending.featureId, pending.kind, pending.targets, pending.value, pending.pos, pending.sign,
   )
-  const probeFeature = (probeDoc.features ?? []).find((f) => f.id === pending.featureId) as SketchFeature | undefined
-  const draft = probeFeature?.constraints?.at(-1)
-  const before = feature.constraints?.length ?? 0
-  // The mutation layer can drop an unresolvable pick without appending
-  // anything; there is nothing to probe, and the doc would no-op too.
-  if (!probeFeature || !draft || (probeFeature.constraints?.length ?? 0) === before) return null
+  const after = probeFeature.constraints?.length ?? 0
+  if (after <= before) return null
+  const draft = probeFeature.constraints?.at(-1)
+  if (!draft) return null
   return { probeFeature, draft }
+}
+
+/** What the authoring gate should do with a pending add. */
+export type PendingConstraintVerdict = 'ok' | 'redundant' | 'dropped'
+
+/**
+ * Classify a pending constraint add before any mutation is created. `dropped`
+ * means the mutation layer would append nothing (the add is malformed for the
+ * operand set), so the caller must emit nothing rather than its planned
+ * projections.
+ */
+export function classifyPendingAdd(doc: PartDoc | null, pending: PendingConstraintAdd): PendingConstraintVerdict {
+  if (!doc) return 'ok'
+  const feature = (doc.features ?? []).find((f) => f.id === pending.featureId)
+  if (feature?.kind !== 'sketch') return 'ok'
+  const drafted = draftPendingConstraint(doc, pending)
+  if (!drafted) return 'dropped'
+  return probeRedundantConstraint(drafted.probeFeature, drafted.draft.id) === true ? 'redundant' : 'ok'
 }
 
 /**
  * True when adding the pending constraint to `doc` would add no new rank.
- * Anything that cannot be decided (no doc, a non-sketch feature, no solver, a
- * constraint the mutation layer drops, an unsatisfied draft set) answers false:
- * the add proceeds and the next solve reports whatever it finds.
+ * Anything that cannot be decided (no doc, a non-sketch feature, no solver, an
+ * unsatisfied draft set) answers false: the add proceeds and the next solve
+ * reports whatever it finds.
  */
 export function wouldOverconstrain(doc: PartDoc | null, pending: PendingConstraintAdd): boolean {
-  const drafted = draftPendingConstraint(doc, pending)
-  if (!drafted) return false
-  return probeRedundantConstraint(drafted.probeFeature, drafted.draft.id) === true
+  return classifyPendingAdd(doc, pending) === 'redundant'
 }

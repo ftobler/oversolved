@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { solveSketch, probeRedundantConstraint, setSketchSolver, resetSketchSolver } from '../sketch'
-import { draftPendingConstraint, wouldOverconstrain } from '../constraintProbe'
+import { classifyPendingAdd, draftPendingConstraint, wouldOverconstrain } from '../constraintProbe'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { initGlobalRepo } from '../../query'
 import type { PartDoc, SketchFeature } from '@/types/cad'
@@ -283,6 +283,26 @@ describe.skipIf(!solveBytes)('wouldOverconstrain (the store gate)', () => {
     expect(drafted?.probeFeature.entities?.some(e => e.id === 'p0')).toBe(true)
     const without = draftPendingConstraint(doc, { ...pending, prelude: [] })
     expect(without?.probeFeature.entities?.some(e => e.id === 'p0')).toBe(false)
+  })
+
+  it('does not mistake a prelude projection for the drafted constraint when the add drops', () => {
+    // One-target coincident: the mutation layer appends nothing. The prelude's
+    // projection is the last constraint, but it is not the draft: counting from
+    // before the prelude used to accept it and hide the drop.
+    const doc = {
+      id: 'd1',
+      features: [lineSketch([originPin, horizontal, length('c_len', 10)])],
+    } as unknown as PartDoc
+    const pending = {
+      featureId: 'sk1', kind: 'coincident',
+      targets: ['vertex:sk1:l1:start'],
+      prelude: [{
+        type: 'add_projected_entity' as const,
+        featureId: 'sk1', kind: 'point', source: '@builtin_origin', entityId: 'p0',
+      }],
+    }
+    expect(draftPendingConstraint(doc, pending)).toBeNull()
+    expect(classifyPendingAdd(doc, pending)).toBe('dropped')
   })
 
   it('answers false without a document, a feature or a solver', () => {

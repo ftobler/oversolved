@@ -12,6 +12,7 @@ import {
   sketchEntitiesOf, sketchConstraintsOf, resetHarness,
 } from './usePartDoc.undoHarness'
 import { useEditorState } from '@/hooks/useEditorState'
+import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 
 vi.mock('@/hooks/useDocumentState', async () => {
   const { documentStateMock } = await import('./usePartDoc.undoHarness')
@@ -937,19 +938,34 @@ describe('usePartDoc undo/redo integration', () => {
     expect(sketchEntitiesOf()).toHaveLength(0)
   })
 
-  it('a projected origin and its constraint are one undo step', () => {
-    docRef.current = makeSketchDoc()
+  it('applyConstraint projects the origin and one undo removes both', () => {
+    docRef.current = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [{ id: 'l1', kind: 'line' }],
+        initial: { l1: [0, 0, 10, 0] },
+        constraints: [],
+      }],
+    } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
-
+    const store = useSketchEditorStore.getState()
+    // The action-matrix wiring: the store's batch port is the session group, so
+    // the command path, not a hand-built mutation, is what carries the undo.
+    setSketchCallback('onMutation', result.current.handleMutation)
+    setSketchCallback('onMutationBatch', result.current.commitMutationGroup)
+    setSketchCallback('checkRedundantAdd', () => false)
+    store.setActiveFeatureId('sk1')
     act(() => {
-      result.current.commitMutationGroup([
-        { type: 'add_projected_entity', featureId: 'sk1', kind: 'point', source: '@builtin_origin', entityId: 'po' },
-        { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:po:xy', '@builtin_origin'] },
-      ] as Mutation[])
+      store.toggleNormalSelection('vertex:sk1:l1:start')
+      store.toggleNormalSelection('@builtin_origin')
     })
 
+    act(() => { expect(store.applyConstraint('coincident')).toBeNull() })
+
     expect(result.current.undoStack).toHaveLength(1)
-    expect(sketchEntitiesOf().map(e => e.id)).toEqual(['po'])
+    expect(sketchEntitiesOf().map(e => e.id)).toHaveLength(2)  // l1 + projection
     // The projection constraint and the coincident.
     expect(sketchConstraintsOf().map(c => c.kind)).toEqual(['projection', 'coincident'])
 
@@ -957,7 +973,7 @@ describe('usePartDoc undo/redo integration', () => {
 
     // One undo removes the projection entity, its projection constraint and the
     // coincident together.
-    expect(sketchEntitiesOf()).toHaveLength(0)
+    expect(sketchEntitiesOf().map(e => e.id)).toEqual(['l1'])
     expect(sketchConstraintsOf()).toHaveLength(0)
   })
 

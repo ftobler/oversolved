@@ -141,9 +141,17 @@ export function createMatrixHarness(spec: PartDoc, solver: MatrixSolver): Matrix
     const feature = cell.current?.features?.find(f => f.id === featureId)
     return feature?.kind === 'sketch' ? feature as unknown as Sketch : null
   })
-  setSketchCallback('getProjectionConstraints', featureId => {
+  setSketchCallback('getProjectedSources', featureId => {
     const feature = cell.current?.features?.find(f => f.id === featureId)
-    return feature?.kind === 'sketch' ? feature.constraints ?? [] : null
+    if (feature?.kind !== 'sketch') return null
+    const kinds = new Map((feature.entities ?? []).map(e => [e.id, e.kind]))
+    const out = []
+    for (const c of feature.constraints ?? []) {
+      if (c.kind !== 'projection' || typeof c.target !== 'string') continue
+      const entityId = c.target.startsWith('$') ? c.target.slice(1) : c.target
+      out.push({ source: c.source, entityId, kind: kinds.get(entityId) ?? null })
+    }
+    return out
   })
   setSketchCallback('beginBrepProjection', () => { session.begin('brep') })
   setSketchCallback('cancelBrepProjection', () => {

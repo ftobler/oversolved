@@ -3,6 +3,8 @@ import { useSketchEditorStore, setSketchCallback, type PendingConstraint } from 
 import { installSketchStoreSetup } from './helpers/sketchEditorStoreTestSetup'
 import { useEditorState } from '@/hooks/useEditorState'
 import { ancestry, emitWire } from '@/utils/query'
+import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
+import type { PartDoc } from '@/types/cad'
 
 describe('sketchEditorStore', () => {
   installSketchStoreSetup()
@@ -307,11 +309,11 @@ describe('sketchEditorStore', () => {
       setSketchCallback('onMutation', handler)
       setSketchCallback('onMutationBatch', batch)
       setSketchCallback('getSketch', () => ({ P1: { x: 0, y: 0 } }) as never)
-      // The production port reads the document feature's constraints; the
-      // solved map carries geometry only.
-      setSketchCallback('getProjectionConstraints', () => ([
-        { id: 'proj_P1', kind: 'projection', target: '$P1', source: '@builtin_origin' },
-      ] as never))
+      // The production port reads the document feature's recorded projections;
+      // the solved map carries geometry only.
+      setSketchCallback('getProjectedSources', () => ([
+        { source: '@builtin_origin', entityId: 'P1', kind: 'point' },
+      ]))
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:c1:center')
       useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
@@ -390,6 +392,76 @@ describe('sketchEditorStore', () => {
         type: 'add_projected_entity', featureId: 'S1', kind: 'circle', source: bodyEdge,
       })
       expect(group[1].targets).toEqual(['entity:S1:C1', `entity:S1:${group[0].entityId}`])
+    })
+
+    it('emits nothing when the add would drop, leaving no orphan projection', () => {
+      // One-target coincident is dropped by the applier. Its planned origin
+      // projection must go with it, not land as a stray point.
+      const handler = vi.fn()
+      const batch = vi.fn()
+      const doc = {
+        version: 1,
+        kind: 'part',
+        features: [{
+          id: 'S1', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [{ id: 'l1', kind: 'line' }],
+          initial: { l1: [0, 0, 10, 0] },
+          constraints: [],
+        }],
+      } as unknown as PartDoc
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('onMutationBatch', batch)
+      setSketchCallback('checkRedundantAdd', (pending) => {
+        const verdict = classifyPendingAdd(doc, pending)
+        return verdict === 'redundant' ? true : verdict === 'dropped' ? null : false
+      })
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
+
+      expect(useSketchEditorStore.getState().applyConstraint('coincident')).toBeNull()
+
+      expect(batch).not.toHaveBeenCalled()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('refuses concentric on a sketch circle plus a projected line edge', () => {
+      // The projected edge's kind comes from the plan, not entityKindMap: if the
+      // fallback is lost the unknown kind is filtered out and the add passes.
+      const handler = vi.fn()
+      const batch = vi.fn()
+      const bodyEdge = emitWire(ancestry(['@b1'], 'edge'))
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('onMutationBatch', batch)
+      setSketchCallback('resolveEdgeKind', () => 'line')
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().setEntityKindMap({ 'entity:S1:C1': 'circle' })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:C1')
+      useSketchEditorStore.getState().toggleNormalSelection(bodyEdge)
+
+      const reason = useSketchEditorStore.getState().applyConstraint('concentric')
+
+      expect(reason).toMatch(/cannot be applied/i)
+      expect(reason).toMatch(/line/)
+      expect(batch).not.toHaveBeenCalled()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('does not pre-project an origin for apply_projection', () => {
+      const handler = vi.fn()
+      const batch = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('onMutationBatch', batch)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
+
+      useSketchEditorStore.getState().applyConstraint('projection')
+
+      // The projection command authors the held entity itself; the pre-step
+      // would leave a second, source-less projection behind.
+      expect(batch).not.toHaveBeenCalled()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint', featureId: 'S1', kind: 'projection', targets: ['@builtin_origin'],
+      })
     })
 
     it('asks the redundancy gate with the pending add and authors on a false answer', () => {

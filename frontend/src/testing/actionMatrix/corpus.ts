@@ -84,9 +84,11 @@ export function corpusDocs(): CorpusDoc[] {
   if (!helixFixture.ok) throw new Error(`action-matrix fixture failed to load: ${helixFixture.error.field} ${helixFixture.error.message}`)
   docs.push({ label: 'fixture:boss_with_helix', spec: helixFixture.doc })
   // One synthetic pair target pins the constraint command's click path: the
-  // origin plus a free sketch point, which projects the origin and authors the
-  // coincident. box_with_hole's `pts` sketch is one unconstrained point, so the
-  // add is a real driver rather than a redundant refusal.
+  // origin plus the first sketch point in box_with_hole (`sk1.bottom.start`,
+  // not the `pts` hole sketch), which projects the origin and authors the
+  // coincident. The row is a crash guard for the projection-plus-add group,
+  // not a differential: the sketch is already constrained, so the harness has
+  // no redundancy gate and the status only proves the command still completes.
   const boxWithHole = docs.find(entry => entry.label === 'box_with_hole')
   if (boxWithHole) {
     const pair = originPairTarget(boxWithHole.spec)

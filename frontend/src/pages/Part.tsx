@@ -7,7 +7,7 @@ import { isWholeBodySelectionId, parseTopoFallbackQuery, stripSelectionWrapper }
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { findEdgeKindForQuery } from '@/picking/bodyDispatchCallbacks'
-import { wouldOverconstrain } from '@/kernel/features/constraintProbe'
+import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
 import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
 import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, type PendingConstraint } from '@/stores/sketchEditorStore'
 import { usePartRelationHints } from '@/hooks/useRelationHint'
@@ -964,10 +964,12 @@ export default function Part() {
 
   // The authoring gate for a new constraint: the probe runs the real solver on
   // a draft copy of the active sketch feature, so a redundant add is refused
-  // before `applyConstraint` creates a mutation. docRef is a ref, so the
-  // callback never goes stale.
+  // before `applyConstraint` creates a mutation. `null` reports an add the
+  // mutation layer would drop (the caller emits nothing, including no planned
+  // projection). docRef is a ref, so the callback never goes stale.
   const checkRedundantAdd = useCallback((pending: PendingConstraint) => {
-    return wouldOverconstrain(docRef.current, pending)
+    const verdict = classifyPendingAdd(docRef.current, pending)
+    return verdict === 'redundant' ? true : verdict === 'dropped' ? null : false
   }, [docRef])
 
   useEffect(() => {
@@ -988,11 +990,20 @@ export default function Part() {
       return solveResults?.[featureId]?.solved ?? null
     })
     // The projection planner needs the document feature's projection
-    // constraints: the solved map carries geometry only, so a source projected
-    // but not yet solved would otherwise be stacked again.
-    setSketchCallback('getProjectionConstraints', (featureId: string) => {
+    // constraints with the held entity's declared kind: the solved map carries
+    // geometry only, so a source projected but not yet solved would otherwise
+    // be stacked again (or degrade a circular edge to a line).
+    setSketchCallback('getProjectedSources', (featureId: string) => {
       const feature = docRef.current?.features?.find((f) => f.id === featureId)
-      return feature?.kind === 'sketch' ? feature.constraints ?? [] : null
+      if (feature?.kind !== 'sketch') return null
+      const kinds = new Map((feature.entities ?? []).map((e) => [e.id, e.kind]))
+      const out = []
+      for (const c of feature.constraints ?? []) {
+        if (c.kind !== 'projection' || typeof c.target !== 'string') continue
+        const entityId = c.target.startsWith('$') ? c.target.slice(1) : c.target
+        out.push({ source: c.source, entityId, kind: kinds.get(entityId) ?? null })
+      }
+      return out
     })
     // The constraint command projects a picked body edge by its curve kind; the
     // dimension tool reads the same fact from the hover instead.
