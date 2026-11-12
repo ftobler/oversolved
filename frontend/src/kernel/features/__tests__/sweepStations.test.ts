@@ -9,6 +9,7 @@ import {
   loopBoundaryGap,
   profileStartGap,
   profilePlacement,
+  describeProfileMiss,
   MIN_CROSSING_SIN_ONCE,
   type SectionInput,
   type SpineSampler,
@@ -41,6 +42,16 @@ function squareLoop(cx: number, cy: number, half: number): LoopEdge[] {
     loop.push({ kind: 'line', start: c[i], end: c[(i + 1) % 4] } as LoopEdge)
   }
   return loop
+}
+
+/** A whole circle as one full-turn arc, the loop the area builder emits for a
+ *  circle boundary. */
+function circleLoop(cx: number, cy: number, r: number): LoopEdge[] {
+  return [{
+    kind: 'arc', center: [cx, cy], radius: r,
+    start: [cx + r, cy], end: [cx + r, cy],
+    angle_start_deg: 0, angle_end_deg: 360, ccw: true,
+  } as LoopEdge]
 }
 
 const deg = (d: number): number => (d * Math.PI) / 180
@@ -320,10 +331,45 @@ describe('sweepStations one-profile placement', () => {
     expect(outcome.ok).toBe(true)
   })
 
+  it('accepts a crossing at the centre of an annulus, the pipe placement', () => {
+    // A pipe's centreline runs through its bore: a crossing in the hole is on
+    // the profile, not a miss. The pre-fix refusal here claimed the crossing was
+    // 0 mm from the centroid, a centred placement it called a miss.
+    const outcome = profilePlacement(STRAIGHT, planeZ(0), circleLoop(0, 0, 2), [circleLoop(0, 0, 1)])
+    expect(outcome).toEqual({ ok: true })
+  })
+
+  it('accepts a crossing inside the hole but off its centre', () => {
+    const offCentre = polyline([[[0.5, 0, 0], [0.5, 0, 10]]])
+    const outcome = profilePlacement(offCentre, planeZ(0), circleLoop(0, 0, 2), [circleLoop(0, 0, 1)])
+    expect(outcome).toEqual({ ok: true })
+  })
+
+  it('still refuses a shallow crossing inside the hole', () => {
+    // The path leaves the profile centre along the profile plane: it lies in the
+    // bore, so the hole rule accepts the placement but the slope floor must not.
+    const alongPlane = polyline([[[0, 0, 0], [1, 0, 0]]])
+    const outcome = profilePlacement(alongPlane, planeZ(0), circleLoop(0, 0, 2), [circleLoop(0, 0, 1)])
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.reason).toBe('shallow-angle')
+  })
+
   it('refuses a crossing past the loop size, naming the gap', () => {
     // Spans x 1.5..2.5: the crossing is 1.5 outside, past the 1.414 band.
     const outcome = profilePlacement(STRAIGHT, planeZ(0), squareLoop(2, 0, 0.5), [])
     expect(outcome).toEqual({ ok: false, reason: 'not-on-path', crossingGap: 1.5 })
+  })
+
+  it('prints the gap without a unit word', () => {
+    // The kernel does not know the document unit, so the number is bare.
+    const outcome = profilePlacement(STRAIGHT, planeZ(0), squareLoop(2, 0, 0.5), [])
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(describeProfileMiss(outcome, ['$path'])).toBe(
+      'sweep: the profile is too far from the path: the nearest crossing is 1.5 outside it ' +
+      "(the band is the profile's own size) (path '$path')",
+    )
   })
 
   it('accepts a start off the plane within the loop size', () => {

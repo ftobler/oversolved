@@ -259,7 +259,7 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
     }
     expect(build(10).status).toBe('ok')
     expect(build(-10).error).toBe(
-      "sweep: the profile is too far from the path: the nearest crossing is 19.5 mm outside it " +
+      "sweep: the profile is too far from the path: the nearest crossing is 19.5 outside it " +
       "(the band is the profile's own size) (path '@hx1')",
     )
   })
@@ -311,7 +311,7 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
       expect(() => solveSweep(oc!, scope, table, {
         id: 'sw1', kind: 'sweep',
         sweep: { sketch: ['$skP'], path: '@hx1', operation: 'new' },
-      }, repo, {})).toThrow(/5 mm outside it/)
+      }, repo, {})).toThrow(/5 outside it/)
     } finally {
       table.disposeAll()
       scope.dispose()
