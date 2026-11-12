@@ -123,3 +123,78 @@ describe.skipIf(!ready)('one bore, two lanes (real OCC + Rust solver)', () => {
     expect(hole!.measures.volume).toBeCloseTo(cut!.measures.volume, 6)
   }, 240_000)
 })
+
+// Since projection-constraint a projected point is an ordinary point held by a
+// `projection` constraint, so the projection itself is a drill site. The recipe
+// therefore adds only the projected origin; a second point coincident to it is
+// an authoring slip that drills nothing. This is the end-to-end guard the MCP
+// instructions teach, including the volume, so a swallowed site can never come
+// back as a partial hole over a correct cut.
+const PROJ_CB_R = 11
+const PROJ_BORE_R = 6
+const PROJ_CB_DEPTH = 7
+// The r11 counterbore takes 7 mm of the 10 mm plate, the r6 bore the last 3.
+const PROJ_COUNTERBORED = Math.PI * PROJ_CB_R * PROJ_CB_R * PROJ_CB_DEPTH
+  + Math.PI * PROJ_BORE_R * PROJ_BORE_R * (10 - PROJ_CB_DEPTH)
+
+/** A 60 x 80 x 10 plate, an offset plane at its top face, and the origin projected into it. */
+function projectedSite(twin: boolean): ScriptStep[] {
+  const steps: ScriptStep[] = [
+    { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Plate', plane: '@builtin_plane_front' } },
+    {
+      mutation: {
+        type: 'add_center_rect', featureId: 'sk1', center: [0, 0], corner: [30, 40],
+        centerRef: '@builtin_origin', dimensions: true,
+      },
+    },
+    { mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Plate', sketchQuery: '$sk1', distance: 10, operation: 'new' } },
+    {
+      mutation: {
+        type: 'add_plane', featureId: 'pl1', definition: { mode: 'offset', plane: '@builtin_plane_front', offset: 10 },
+      },
+    },
+    { mutation: { type: 'add_sketch', featureId: 'sk2', label: 'Top face', plane: '@pl1' } },
+    { mutation: { type: 'add_projected_entity', featureId: 'sk2', kind: 'point', source: '@builtin_origin', entityId: 'o' } },
+  ]
+  if (twin) {
+    steps.push({ mutation: { type: 'add_entity', featureId: 'sk2', kind: 'point', params: [0, 0], entityId: 'p' } })
+    steps.push({
+      mutation: {
+        type: 'add_constraint', featureId: 'sk2', kind: 'coincident',
+        targets: ['vertex:sk2:p:xy', 'vertex:sk2:o:xy'],
+      },
+    })
+  }
+  steps.push({
+    mutation: {
+      type: 'add_hole', featureId: 'h1', label: 'Counterbore', sketch: '@sk2', diameter: 2 * PROJ_BORE_R,
+      depth_mode: 'through_all', style: 'counterbore', cb_diameter: 2 * PROJ_CB_R, cb_depth: PROJ_CB_DEPTH,
+    },
+  })
+  return steps
+}
+
+describe.skipIf(!ready)('the projected origin is the drill site (real OCC + Rust solver)', () => {
+  it('a point coincident to the projected origin is a swallowed site, not a partial hole', async () => {
+    const built = await runHeadless({ doc: emptyDriveDoc(), steps: projectedSite(true) })
+    const measure = await measureHeadless(built.doc as PartDoc)
+    expect(measure).not.toBeNull()
+    expect(measure!.measures.volume).toBeCloseTo(60 * 80 * 10 - PROJ_COUNTERBORED, 2)
+    // The warning is the one problem row, and it is a warning on an ok hole:
+    // no partial miss, and no contradicting merge note.
+    expect(built.features.map(feature => feature.id)).toEqual(['h1'])
+    const hole = built.features[0]
+    expect(hole.status).toBe('ok')
+    expect(hole.message).toContain('sits on site o and drills nothing')
+    expect(hole.message).toContain('(o is the projection of @builtin_origin)')
+    expect(hole.message).not.toMatch(/did not intersect|merge into one cut/)
+  }, 180_000)
+
+  it('the projected origin alone cuts the same counterbore with no warning', async () => {
+    const built = await runHeadless({ doc: emptyDriveDoc(), steps: projectedSite(false) })
+    const measure = await measureHeadless(built.doc as PartDoc)
+    expect(built.features).toEqual([])
+    expect(measure).not.toBeNull()
+    expect(measure!.measures.volume).toBeCloseTo(60 * 80 * 10 - PROJ_COUNTERBORED, 2)
+  }, 180_000)
+})

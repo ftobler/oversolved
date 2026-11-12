@@ -217,6 +217,7 @@ describe('batch B: the empty clear and the profile fill rule', () => {
     for (const type of ['add_hole', 'set_hole_field'] as const) {
       const note = mutationInfoOf(type).note!
       expect(note).toContain('non-construction points are drilled')
+      expect(note).toContain('A projected point (an `add_projected_entity` of kind point) is one of them')
       expect(note).toContain('A circle is a profile, not a drill site')
       expect(note).toContain('circles-only or construction-points-only sketch')
       expect(note).toContain('operation: cut')

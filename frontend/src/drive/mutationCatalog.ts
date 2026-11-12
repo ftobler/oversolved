@@ -340,6 +340,8 @@ const HOLE_FIELD_NOTE =
   '@<sketchId> (or a narrower entity:/vertex:/? pick from the viewport), not the profile consumers\' ' +
   '$<sketchId> form; a $ ref is refused here. ' +
   'The sketch\'s non-construction points are drilled, each at the feature `diameter`. ' +
+  'A projected point (an `add_projected_entity` of kind point) is one of them: a hole on the origin needs only ' +
+  'the projection of `@builtin_origin`, and a second point on it is reported as drilling nothing. ' +
   'A circle is a profile, not a drill site: a whole-sketch pick ignores it, and a circle picked alone is refused. ' +
   'A circles-only or construction-points-only sketch that holds a circle, with no drillable point, is refused with the extrude-cut alternative. ' +
   'To cut a drawn circle, use `add_extrude` with `operation: cut` (`termination: through_all` for a through bore). ' +

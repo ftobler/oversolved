@@ -965,7 +965,10 @@ banner on stdout, so a client config must use the direct node invocation.
   is refused with the remedy; cut a drawn circle with `add_extrude`
   `operation: cut` (`termination: through_all` for a through bore).
   Construction points are skipped by a whole-sketch pick, and
-  picking one alone is refused by name;
+  picking one alone is refused by name; a projected point (an
+  `add_projected_entity` of kind point) is one of the drilled points, so a hole
+  on the origin needs only the projection, and a second point on it is reported
+  as drilling nothing;
   `add_center_rect` takes the half-diagonal corner (center `[0,0]` with corner
   `[1,1]` is 2x2) and leaves a centre point entity; `add_rect` creates its line
   ids in bottom, right, top, left order, and all three of `add_rect`,

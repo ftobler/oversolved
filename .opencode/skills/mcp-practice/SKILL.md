@@ -66,9 +66,13 @@ The example is the red thread, not a spec. Translate it into Oversolved
 convention: sketches are fully constrained, anchored to projected geometry
 where earlier geometry exists and otherwise to the origin, even when that takes
 more steps than the source. The source's coordinate choice stays; it is what
-the dimension values are. A hole site is a sketch point, fully constrained (for
-example coincident to a projected origin); a drawn circle is a profile, so cut
-it with an extrude instead of drilling it.
+the dimension values are. A hole site is a sketch point, fully constrained: on
+the origin it is the `add_projected_entity` point of `@builtin_origin`
+itself, and other sites are points dimensioned from that projection. Do not
+add a second point coincident to a projection; the projection is a point and
+is drilled. A projection that only anchors other sites (the origin under four
+screw points) is drilled too unless it is toggled construction. A drawn circle
+is a profile, so cut it with an extrude instead of drilling it.
 
 ## 3. Model it through MCP
 

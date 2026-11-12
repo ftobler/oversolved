@@ -242,6 +242,29 @@ function drilledEntities(
 }
 
 /**
+ * The source a projected sketch entity was projected from, or null when the
+ * entity carries no `projection` constraint.
+ *
+ * Since projection-constraint a projected point is an ordinary point held by
+ * that constraint, so the projection itself is a drill site. When a second
+ * point sits on it, naming what the kept site is projected from is what tells
+ * the author which of the two the recipe wanted.
+ */
+function projectionSourceOf(sketchFeature: Dict, entityId: string): string | null {
+  const constraints = (sketchFeature.constraints as Dict[] | undefined) ?? []
+  for (const constraint of constraints) {
+    if (constraint.kind !== 'projection' || typeof constraint.target !== 'string') continue
+    const source = constraint.source
+    // The stored target is the entity's own operand spelling, so strip its
+    // sigil rather than minting one: this only reads the constraint.
+    if (constraint.target.replace(/^\$/, '') === entityId && typeof source === 'string' && source !== '') {
+      return source
+    }
+  }
+  return null
+}
+
+/**
  * Construction names for one drill site's cutter, keyed by its faces before the
  * cut: the bore wall, the mouth (the cutter's start disc), the floor (its end
  * disc), and for a widened mouth the counterbore's wall and step floor or the
@@ -631,14 +654,18 @@ function defaultTargetBody(
  * Solve a hole feature into the body store (mirrors `_solve_hole`).
  *
  * The result's accounting split: a site is MISSED when it had geometry but the
- * boolean removed nothing. `hole_count` is sites that removed material (placed
- * minus missed). A hole where SOME sites cut and some missed is `partial` and
- * names the missed sites; a hole where every site missed keeps `status: 'ok'`
- * with a solver warning (the body is unchanged, and a warning beats the old
- * silent ok), matching the bodyOps warning-with-ok convention. `partial` is
- * reserved for the mixed case. A hole that consumes the whole body (a
- * through-hole wider than the body) goes through resplitBody's deletion path:
- * the body leaves the store and the result reports it with `body_ids: []`.
+ * boolean removed nothing. A site whose own cutter lies inside an earlier site's
+ * bore is SWALLOWED instead: the earlier cut already removed that material, so
+ * the site is a warning with the delete/move remedy, not a miss. `hole_count` is
+ * sites that removed material (placed minus missed minus swallowed). A hole
+ * where SOME sites cut and some missed is `partial` and names the missed sites;
+ * a swallowed site never makes the hole partial. A hole where every site missed
+ * keeps `status: 'ok'` with a solver warning (the body is unchanged, and a
+ * warning beats the old silent ok), matching the bodyOps warning-with-ok
+ * convention. `partial` is reserved for the mixed case. A hole that consumes the
+ * whole body (a through-hole wider than the body) goes through resplitBody's
+ * deletion path: the body leaves the store and the result reports it with
+ * `body_ids: []`.
  */
 export function solveHole(
   oc: OccModule,
@@ -745,9 +772,13 @@ export function solveHole(
   let skippedCount = 0
   const skippedEntityIds: string[] = []
   // Bores that overlap in the sketch merge into one cut without a word (kcl
-  // bracket F3); the pairs are named in the result's warning instead.
+  // bracket F3); the pairs are named in the result's warning instead. A site
+  // whose own disc lies inside an earlier site's bore leaves no material to
+  // remove, which the per-site cut below turns into a swallowed-site warning
+  // rather than a miss; the overlaps are kept per site so it can tell the two
+  // apart and name the site that already did the work.
   const siteDiscs: Array<{ id: string; xy: [number, number]; radius: number }> = []
-  const overlappingSites: string[] = []
+  const siteOverlaps = new Map<string, Array<{ earlier: string; coincident: boolean }>>()
   for (const entity of drilled) {
     const eid = entity.id as string
     const site = drillSite(globalRepo, sketchId, entity)
@@ -757,11 +788,14 @@ export function solveHole(
       continue
     }
     const [x2d, y2d] = site.xy
+    const overlaps: Array<{ earlier: string; coincident: boolean }> = []
     for (const earlier of siteDiscs) {
-      if (Math.hypot(earlier.xy[0] - x2d, earlier.xy[1] - y2d) < earlier.radius + radius - TOL_LENGTH_SLACK) {
-        overlappingSites.push(`${earlier.id}, ${eid}`)
+      const distance = Math.hypot(earlier.xy[0] - x2d, earlier.xy[1] - y2d)
+      if (distance < earlier.radius + radius - TOL_LENGTH_SLACK) {
+        overlaps.push({ earlier: earlier.id, coincident: distance < TOL_LENGTH_SLACK })
       }
     }
+    if (overlaps.length > 0) siteOverlaps.set(eid, overlaps)
     siteDiscs.push({ id: eid, xy: [x2d, y2d], radius })
     const center3d: Vec3 = [
       origin[0] + x2d * xAxis[0] + y2d * yAxis[0],
@@ -866,6 +900,14 @@ export function solveHole(
   // full build, while a build restored past that modifier has no diff to seed with.
   let accumulatedDiff: BrepDiff | null = null
   const missedSites: string[] = []
+  // Sites whose cut removed no material, and the earlier sites of this hole
+  // whose bores already cover them. Reported as a warning with a remedy, never
+  // as a miss: the hole itself is right.
+  const swallowedSites: Array<{ eid: string; coincident: boolean; earlier: string[] }> = []
+  // The sites whose cut did remove material, in drill order. A swallowed site
+  // needs one of these among the sites it overlaps: nothing else explains the
+  // empty probe.
+  const cutSites = new Set<string>()
   let cutAny = false
   // Set when a missed blind site would cut with the opposite direction, so the
   // all-missed warning can point at `direction` instead of only reporting.
@@ -910,6 +952,23 @@ export function solveHole(
       // Skipping the cut keeps it out of accumulatedDiff, so the body's stored
       // diff never gains a "whole tool deleted" entry for a miss.
       scope.release(cyl)
+      const overlaps = siteOverlaps.get(eid) ?? []
+      const cutOverlaps = overlaps.filter((o) => cutSites.has(o.earlier))
+      if (cutOverlaps.length > 0) {
+        // An earlier site of this hole already cut this spot away, so the empty
+        // probe is not a placement problem: the cutter lies inside that bore.
+        // A coincident twin is the common authoring slip and names the one site
+        // to keep; an off-centre site needs several earlier bores to cover it.
+        const twins = cutOverlaps.filter((o) => o.coincident)
+        swallowedSites.push({
+          eid,
+          coincident: twins.length > 0,
+          earlier: twins.length > 0 ? [twins[0].earlier] : cutOverlaps.map((o) => o.earlier),
+        })
+        // The direction is not the problem, so the opposite-side probe would
+        // only answer a question nobody asked.
+        continue
+      }
       // A hole on a face sketch commonly points out of the body. When the side
       // is the author's (a blind hole, or a through hole set to reverse), probe
       // the other way so the all-missed warning can name the one-field fix; a
@@ -957,6 +1016,7 @@ export function solveHole(
     // Accumulate per-cut diffs so all rims survive, not just the last.
     accumulatedDiff = mergeBrepDiff(accumulatedDiff, res.diff)
     cutAny = true
+    cutSites.add(eid)
     // The bore the cosmetic thread (if any) is displayed on: the through
     // portion below the widened mouth, never the counterbore wall or the cone.
     const threadOffset = style === 'counterbore' ? cbDepth : style === 'countersink' ? countersinkDepth : 0
@@ -1036,8 +1096,8 @@ export function solveHole(
         body_id: targetBody.id,
         body_ids: [],
         // "removed material" matches the docstring: sites that cut minus those
-        // that missed and therefore removed nothing.
-        hole_count: placed - missedSites.length,
+        // that missed or were swallowed and therefore removed nothing.
+        hole_count: placed - missedSites.length - swallowedSites.length,
         direction: side,
         solver_warning: `hole: the cut removed all of body '${targetBody.id}'; the body was deleted`,
       }
@@ -1050,7 +1110,7 @@ export function solveHole(
     status: skippedCount > 0 || (missedSites.length > 0 && missedSites.length < placed) ? 'partial' : 'ok',
     body_id: bodyIds[0],
     body_ids: bodyIds,
-    hole_count: placed - missedSites.length,
+    hole_count: placed - missedSites.length - swallowedSites.length,
     direction: side,
   }
   if (thread !== null && threadSites.length > 0) {
@@ -1097,8 +1157,39 @@ export function solveHole(
       `hole: sites ${otherSideSites.join(', ')} have material on the other side; ` +
       `drilled ${side} at all sites (a through hole drills one side), ${fix}`
   }
-  if (overlappingSites.length > 0) {
-    const note = `hole: drill sites overlap and merge into one cut: ${overlappingSites.map(pair => `sites ${pair}`).join('; ')}`
+  // A swallowed site is a warning with a remedy, never a miss: the hole's cut
+  // is right, the author only placed one site too many. The note replaces the
+  // generic overlap pair for the same sites so the author reads one fact and
+  // one fix, not two messages saying different things.
+  const swallowedIds = new Set(swallowedSites.map((site) => site.eid))
+  for (const site of swallowedSites) {
+    const twin = site.earlier[0]
+    let note: string
+    if (site.coincident) {
+      // The parenthesis names the projection a twin duplicates, which is the
+      // case the old recipe produced: the projected origin IS the drill site.
+      const source = projectionSourceOf(sketchFeature, twin)
+      note = `hole: site ${site.eid} sits on site ${twin} and drills nothing; ` +
+        `one point per hole is enough, delete ${site.eid}` +
+        (source === null ? '' : ` (${twin} is the projection of ${source})`)
+    } else {
+      note = `hole: site ${site.eid} lies inside the bores of sites ${site.earlier.join(', ')} ` +
+        `and drills nothing; move or delete ${site.eid}`
+    }
+    result.solver_warning = result.solver_warning === undefined ? note : `${result.solver_warning}; ${note}`
+  }
+  // A pair whose later site was swallowed is already explained above; only the
+  // pairs that both cut merge into one bore.
+  const mergedPairs: string[] = []
+  for (const [later, overlaps] of siteOverlaps) {
+    if (swallowedIds.has(later)) continue
+    for (const overlap of overlaps) {
+      if (swallowedIds.has(overlap.earlier)) continue
+      mergedPairs.push(`sites ${overlap.earlier}, ${later}`)
+    }
+  }
+  if (mergedPairs.length > 0) {
+    const note = `hole: drill sites overlap and merge into one cut: ${mergedPairs.join('; ')}`
     result.solver_warning = result.solver_warning === undefined ? note : `${result.solver_warning}; ${note}`
   }
   // A cosmetic overrun is a warning, not a failure: the cut itself is right,
