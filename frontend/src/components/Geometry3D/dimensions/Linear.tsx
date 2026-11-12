@@ -36,7 +36,7 @@ export function LinearDimension({ cid, dim, dimOffset, interaction, planeTransfo
     })
   }, [interaction, cid, dimKind, dim.p1, dim.p2, dim.normal])
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
-    useDimInteraction(cid, dim.value, interaction, true, isDirectional ? onFlip : undefined, undefined, dimKind)
+    useDimInteraction(cid, dim.value, interaction, true, isDirectional ? onFlip : undefined, dimKind)
   const activeDragPos = useActiveLabelDrag(cid)
 
   const [x1, y1] = dim.p1, [x2, y2] = dim.p2

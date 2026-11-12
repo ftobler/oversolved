@@ -594,6 +594,22 @@ describe('vertex keys named per entity kind', () => {
   })
 })
 
+describe('angle value is the displayed corner', () => {
+  // The bug-1 practice finding: a headless author typed the 45 degree wall they
+  // saw and got the direction-vector supplement, so the solver swung the wall.
+  it('says so on add_constraint and set_constraint_value', () => {
+    const add = mutationInfoOf('add_constraint').note!
+    expect(add).toContain('corner the label shows')
+    expect(add).toContain('direction vectors')
+    expect(add).toContain('nearest the authored geometry')
+    expect(add).toContain('`pos`')
+    const set = mutationInfoOf('set_constraint_value').note!
+    expect(set).toContain('corner the label shows')
+    expect(set).toContain('default wedge')
+    expect(set).toContain('direction-vector angle theta')
+  })
+})
+
 describe('add_three_point_arc catalog row', () => {
   it('sits in the sketch family', () => {
     expect(MUTATION_FAMILY.add_three_point_arc).toBe('sketch')

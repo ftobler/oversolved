@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { PartDoc, PartConstraint } from '@/types/cad'
 import { applyAddConstraint, applySetConstraintValue, applySetConstraintPos, dropDeadAxisConstraints } from '@/utils/yamlMutations'
+import { computeAngleDimension } from '@/utils/geometry/angleDimensionLogic'
 import { featureAt } from '@/testing/featureAccess'
 import { sketchAt } from '@/testing/featureAccess'
 
@@ -608,6 +609,69 @@ describe('constraint dimension value stored precision', () => {
     // constraint itself is still authored as a value-less dimension.
     expect(added).toBeDefined()
     expect('value' in added!).toBe(false)
+  })
+})
+
+describe('angle value is the number the label shows', () => {
+  // The bug-1 trapezoid corner: the stored directions make theta 135, while the
+  // corner drawn inside the slot is its supplement (45). The vertex is (6.5, 0).
+  const trapezoidDoc = (constraints: PartConstraint[] = []): PartDoc => ({
+    features: [{
+      id: 'Sketch1',
+      kind: 'sketch',
+      initial: { l1: [2.5, 0, 6.5, 0], l2: [6.5, 0, 6, 0.5] },
+      entities: [{ id: 'l1', kind: 'line' }, { id: 'l2', kind: 'line' }],
+      constraints,
+    }],
+  })
+  const angleOf = (doc: PartDoc) => constraints0(doc).find(c => c.kind === 'angle')!
+
+  it('stores theta 135 for a displayed 45 on the trapezoid corner, with a supplement pos', () => {
+    const doc = trapezoidDoc()
+    applyAddConstraint(doc, 'Sketch1', 'angle', ['entity:Sketch1:l1', 'entity:Sketch1:l2'], 45)
+    const added = angleOf(doc)
+    expect(added.value).toBe(135)
+    expect(added.pos).toBeDefined()
+    const geo = computeAngleDimension(
+      [2.5, 0], [6.5, 0], [6.5, 0], [6, 0.5],
+      added.pos as [number, number],
+    )
+    expect(geo.isSupplement).toBe(true)
+  })
+
+  it('stores the raw theta for a displayed 135 on the same corner, with no pos', () => {
+    const doc = trapezoidDoc()
+    applyAddConstraint(doc, 'Sketch1', 'angle', ['entity:Sketch1:l1', 'entity:Sketch1:l2'], 135)
+    const added = angleOf(doc)
+    expect(added.value).toBe(135)
+    expect(added.pos).toBeUndefined()
+  })
+
+  it('set_constraint_value reads the stored supplement pos: 30 stores 150', () => {
+    const doc = trapezoidDoc([{ id: 'c_angle', kind: 'angle', a: '$l1', b: '$l2', value: 135, pos: [-2, 1] }])
+    applySetConstraintValue(doc, 'Sketch1', 'c_angle', 30)
+    expect(angleOf(doc).value).toBe(150)
+  })
+
+  it('set_constraint_value with no pos reads the default wedge: 45 stores 135, 135 stores 45', () => {
+    const doc = trapezoidDoc([{ id: 'c_angle', kind: 'angle', a: '$l1', b: '$l2', value: 135 }])
+    applySetConstraintValue(doc, 'Sketch1', 'c_angle', 45)
+    expect(angleOf(doc).value).toBe(135)
+    applySetConstraintValue(doc, 'Sketch1', 'c_angle', 135)
+    expect(angleOf(doc).value).toBe(45)
+  })
+
+  it('set_constraint_value on a theta-wedge label stores the typed value unchanged', () => {
+    const doc: PartDoc = {
+      features: [{
+        id: 'Sketch1', kind: 'sketch',
+        initial: { a: [0, 0, 10, 0], b: [0, 0, 0, 10] },
+        entities: [{ id: 'a', kind: 'line' }, { id: 'b', kind: 'line' }],
+        constraints: [{ id: 'c_angle', kind: 'angle', a: '$a', b: '$b', value: 90 }],
+      }],
+    }
+    applySetConstraintValue(doc, 'Sketch1', 'c_angle', 40)
+    expect(angleOf(doc).value).toBe(40)
   })
 })
 

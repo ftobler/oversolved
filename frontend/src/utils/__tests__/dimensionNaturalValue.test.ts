@@ -5,11 +5,13 @@ import {
   computeAnchorRelativePos,
   computeDimensionSign,
   computeAnglePlacementIsSupplement,
+  angleStoredValue,
   linearDimensionSign,
   lineDistanceSign,
   angleDimensionSign,
 } from '@/utils/geometry/dimensionNaturalValue'
-import type { Sketch } from '@/types/cad'
+import { computeAngleDimension } from '@/utils/geometry/angleDimensionLogic'
+import type { PartConstraint, Sketch } from '@/types/cad'
 
 const FID = 'S1'
 
@@ -162,6 +164,107 @@ describe('computeAnglePlacementIsSupplement', () => {
     const sk = makeSketch()
     expect(computeAnglePlacementIsSupplement(ANGLE, sk, FID, null)).toBe(false)
     expect(computeAnglePlacementIsSupplement(['entity:S1:NX', 'entity:S1:L2'], sk, FID, [4, -4])).toBe(false)
+  })
+})
+
+describe('angleStoredValue', () => {
+  // The bug-1 trapezoid corner: l1 runs +x, l2 turns up-left at 135 degrees, so
+  // the stored direction angle is 135 and the corner drawn inside the slot is
+  // its supplement, 45. The vertex is (6.5, 0).
+  const TRAPEZOID: Sketch = {
+    l1: { start: [2.5, 0], end: [6.5, 0] },
+    l2: { start: [6.5, 0], end: [6, 0.5] },
+  } as unknown as Sketch
+  const TRAPEZOID_ANGLE: PartConstraint = { id: 'a', kind: 'angle', a: '$l1', b: '$l2' }
+  const supplementWedge = (): [number, number] => [Math.cos(157.5 * Math.PI / 180) * 2, Math.sin(157.5 * Math.PI / 180) * 2]
+  const thetaWedge = (): [number, number] => [Math.cos(67.5 * Math.PI / 180) * 2, Math.sin(67.5 * Math.PI / 180) * 2]
+
+  it('a fresh 45 on the 135 corner stores 135 and places the label in a supplement wedge', () => {
+    const aligned = angleStoredValue({
+      constraint: TRAPEZOID_ANGLE, value: 45, sketch: TRAPEZOID, newLabel: true,
+    })
+    expect(aligned).not.toBeNull()
+    expect(aligned!.theta).toBeCloseTo(135, 9)
+    const geo = computeAngleDimension([2.5, 0], [6.5, 0], [6.5, 0], [6, 0.5], aligned!.pos)
+    expect(geo.isSupplement).toBe(true)
+    // The label sits in the wedge nearest the drawn corner, not on the far side
+    // of the crossing.
+    expect(geo.labelAngleDeg).toBeCloseTo(157.5, 6)
+  })
+
+  it('a fresh 135 on the same corner stores 135 with no label offset', () => {
+    const aligned = angleStoredValue({
+      constraint: TRAPEZOID_ANGLE, value: 135, sketch: TRAPEZOID, newLabel: true,
+    })
+    expect(aligned!.theta).toBe(135)
+    expect(aligned!.pos).toBeUndefined()
+  })
+
+  it('a θ-wedge label makes 45 store 45, and a supplement-wedge label makes it store 135', () => {
+    expect(angleStoredValue({
+      constraint: TRAPEZOID_ANGLE, value: 45, sketch: TRAPEZOID, pos: thetaWedge(),
+    })!.theta).toBeCloseTo(45, 9)
+    expect(angleStoredValue({
+      constraint: TRAPEZOID_ANGLE, value: 45, sketch: TRAPEZOID, pos: supplementWedge(),
+    })!.theta).toBeCloseTo(135, 9)
+  })
+
+  it('an existing label with no pos reads the renderer default wedge', () => {
+    // The trapezoid corner's default label falls in the supplement wedge, so the
+    // number shown there is 45; an edit to 45 must keep theta 135, and an edit to
+    // 135 must store 45 because the label then shows 135.
+    expect(angleStoredValue({
+      constraint: TRAPEZOID_ANGLE, value: 45, sketch: TRAPEZOID,
+    })!.theta).toBeCloseTo(135, 9)
+    expect(angleStoredValue({
+      constraint: TRAPEZOID_ANGLE, value: 135, sketch: TRAPEZOID,
+    })!.theta).toBeCloseTo(45, 9)
+  })
+
+  it('a fresh supplement value on a theta-wedge corner places the label nearest the drawing', () => {
+    // Both lines start at the origin, 30 degrees apart, so the default label is
+    // in the theta wedge. A typed 150 names the supplement; the nearer of the two
+    // supplement wedges bisects at 105.
+    const sketch: Sketch = {
+      a: { start: [0, 0], end: [10, 0] },
+      b: { start: [0, 0], end: [10 * Math.cos(Math.PI / 6), 10 * Math.sin(Math.PI / 6)] },
+    } as unknown as Sketch
+    const aligned = angleStoredValue({
+      constraint: { id: 'a', kind: 'angle', a: '$a', b: '$b' },
+      value: 150, sketch, newLabel: true,
+    })
+    expect(aligned!.theta).toBeCloseTo(30, 6)
+    const geo = computeAngleDimension(
+      [0, 0], [10, 0], [0, 0], [10 * Math.cos(Math.PI / 6), 10 * Math.sin(Math.PI / 6)], aligned!.pos,
+    )
+    expect(geo.isSupplement).toBe(true)
+    expect(geo.labelAngleDeg).toBeCloseTo(105, 6)
+  })
+
+  it('a tie keeps the drawn theta: a right corner and a 90 value', () => {
+    const sketch: Sketch = {
+      a: { start: [0, 0], end: [10, 0] },
+      b: { start: [0, 0], end: [0, 10] },
+    } as unknown as Sketch
+    const aligned = angleStoredValue({
+      constraint: { id: 'a', kind: 'angle', a: '$a', b: '$b' },
+      value: 90, sketch, newLabel: true,
+    })
+    expect(aligned!.theta).toBe(90)
+    expect(aligned!.pos).toBeUndefined()
+  })
+
+  it('returns null when the operands are not two resolvable lines', () => {
+    expect(angleStoredValue({
+      constraint: { id: 'a', kind: 'angle', a: '$l1' }, value: 45, sketch: TRAPEZOID, newLabel: true,
+    })).toBeNull()
+  })
+
+  it('treats a non-finite pos as no pos and reads the default wedge', () => {
+    const aligned = angleStoredValue({
+      constraint: TRAPEZOID_ANGLE, value: 45, sketch: TRAPEZOID, pos: [NaN, 0],
+    })
+    expect(aligned!.theta).toBeCloseTo(135, 9)
   })
 })
 

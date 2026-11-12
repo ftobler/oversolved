@@ -6,9 +6,11 @@
 // utils/geometry/__tests__/sketchPattern.test.ts.
 
 import { describe, it, expect } from 'vitest'
-import type { Mutation, PartConstraint, PartDoc, SketchFeature } from '@/types/cad'
+import type { DimAngleRender, Mutation, PartConstraint, PartDoc, SketchFeature } from '@/types/cad'
 import { applyMirrorEntities, applyPatternEntities, type PatternEntitiesStep } from '@/utils/yamlMutations'
 import { mutationValueViolation, type ValueContext } from '@/drive/mutationValues'
+import { computeConstraintRender, unflattenGeometry } from '@/utils/geometry/geometryMapping'
+import { computeAngleDimension } from '@/utils/geometry/angleDimensionLogic'
 import { featureById } from '@/testing/featureAccess'
 import { roundedRectProfile, mergeProfiles, type ProfileBlocks } from '@/testing/sketchPatternFixtures'
 
@@ -169,6 +171,35 @@ describe('pattern_entities document write', () => {
     expect(constraints.filter(c => c.kind === 'vertical').map(c => c.target).sort()).toEqual([`$${h2}`, `$${m2}`].sort())
     // c_on names the axis, outside the source set: it stays with the source.
     expect(constraints.filter(c => c.a === `$${h2}start`)).toEqual([])
+  })
+
+  it('a mirrored supplement-wedge angle label shows the same number on the copy', () => {
+    // The label offset is mirrored like any other vector, and the wedge type
+    // survives reflection, so the copy must display what the source displays.
+    // No applier re-encodes the carried value: the mirrored theta is unchanged.
+    const doc = sketchDoc({
+      entities: [{ id: 'ax', kind: 'line' }, { id: 'l1', kind: 'line' }, { id: 'l2', kind: 'line' }],
+      initial: { ax: [0, -10, 0, 10], l1: [2.5, 0, 6.5, 0], l2: [6.5, 0, 6, 0.5] },
+      constraints: [{ id: 'c_ang', kind: 'angle', a: '$l1', b: '$l2', value: 135, pos: [-1, 0.4] }],
+    })
+    applyMirrorEntities(doc, 'sk1', ['l1', 'l2'], 'ax')
+    const { entities, initial, constraints } = sk(doc)
+    const angles = constraints.filter(c => c.kind === 'angle')
+    expect(angles).toHaveLength(2)
+    const source = angles.find(c => c.id === 'c_ang')!
+    const copy = angles.find(c => c.id !== 'c_ang')!
+    const sketch = unflattenGeometry(initial, entities)
+    const displayed = (c: PartConstraint): { value: number; supplement: boolean } => {
+      const render = computeConstraintRender(c, sketch) as DimAngleRender | { kind: string }
+      if (render.kind !== 'dim_angle') throw new Error('the angle render did not resolve')
+      const r = render as DimAngleRender
+      const geo = computeAngleDimension(r.p1, r.p2, r.p3, r.p4, c.pos)
+      const value = c.value ?? 0
+      return { value: geo.isSupplement ? 180 - value : value, supplement: geo.isSupplement }
+    }
+    expect(displayed(source)).toEqual(displayed(copy))
+    expect(displayed(source)).toMatchObject({ value: 45, supplement: true })
+    expect(copy.pos).toEqual([1, 0.4])
   })
 
   it('copies into another sketch on the same plane, Front and @builtin_plane_front alike', () => {

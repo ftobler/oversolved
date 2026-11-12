@@ -1102,15 +1102,15 @@ export const editorState = createStore<EditorState>((set, get) => ({
       ? computeNaturalDimensionValue(constraintKind, targets, sketch, featureId, activeOriginLocal)
       : null
     // An angle label placed in a supplement quadrant shows (and edits against)
-    // 180 - theta. The constraint still stores theta, but the dialog must
-    // pre-fill and commit the displayed supplement so the prompt matches the
-    // live preview label. The transform is its own inverse (used both to
-    // display and to encode back). Mirrors AngleDimension's encodeValue hook.
+    // 180 - theta, so the dialog pre-fills that displayed supplement to match
+    // the live preview label. The commit carries the displayed number itself:
+    // the applier reads it against the label's wedge and stores theta, the one
+    // place that conversion lives.
     const isSupplement = (constraintKind === 'angle' && sketch)
       ? computeAnglePlacementIsSupplement(targets, sketch, featureId, placementWorld, activeOriginLocal)
       : false
-    const toDisplay = (v: number) => isSupplement ? 180 - v : v
-    const displayedNatural = naturalValue !== null ? toDisplay(naturalValue) : null
+    const displayValue = (v: number) => isSupplement ? 180 - v : v
+    const displayedNatural = naturalValue !== null ? displayValue(naturalValue) : null
     const defaultValue = displayedNatural !== null
       ? (Number.isInteger(displayedNatural) ? String(displayedNatural) : displayedNatural.toFixed(2))
       : undefined
@@ -1137,12 +1137,12 @@ export const editorState = createStore<EditorState>((set, get) => ({
       onConfirm: (input) => {
         // Accepting the rounded default unchanged commits the exact measured
         // value, so an already-satisfied dimension is not nudged by the
-        // display rounding. Any edit commits the typed value.
-        // The displayed (supplement-adjusted) value is encoded back to the
-        // stored theta via the self-inverse 180 - v before commit.
-        const value = (naturalValue !== null && input === defaultValue)
-          ? naturalValue
-          : toDisplay(parseFloat(input))
+        // display rounding. Any edit commits the typed value. Both are the
+        // number the label shows; the applier converts an angle to its stored
+        // theta for this label's wedge.
+        const value = (displayedNatural !== null && input === defaultValue)
+          ? displayedNatural
+          : parseFloat(input)
         // The pos written by the placement click anchors the dim label where
         // the user clicked instead of the renderer's default offset. Compute
         // it relative to the dim's natural anchor so the LinearDimension /

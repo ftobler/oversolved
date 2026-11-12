@@ -149,7 +149,7 @@ describe('useDimInteraction click / double-click', () => {
     // strictly positive bound.
     for (const kind of ['point_distance_x', 'point_distance_y', 'radius_difference'] as const) {
       const { result } = renderHook(() =>
-        useDimInteraction('c1', 10, INTERACTION, true, undefined, undefined, kind))
+        useDimInteraction('c1', 10, INTERACTION, true, undefined, kind))
       act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
       const validate = useSketchUiStore.getState().pendingDialog!.validate!
       expect(validate('0'), kind).toBeNull()
@@ -160,7 +160,7 @@ describe('useDimInteraction click / double-click', () => {
 
   it('validate refuses a zero euclidean point_distance with the coincident hint', () => {
     const { result } = renderHook(() =>
-      useDimInteraction('c1', 10, INTERACTION, true, undefined, undefined, 'point_distance'))
+      useDimInteraction('c1', 10, INTERACTION, true, undefined, 'point_distance'))
     act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
     const validate = useSketchUiStore.getState().pendingDialog!.validate!
 
@@ -182,23 +182,6 @@ describe('useDimInteraction click / double-click', () => {
       featureId: 'S1',
       constraintId: 'c1',
       value: 30,
-    })
-  })
-
-  it('encodes the display value before it reaches the mutation', () => {
-    const onMutation = vi.fn()
-    setSketchCallback('onMutation', onMutation)
-    const { result } = renderHook(() =>
-      useDimInteraction('c1', 10, INTERACTION, true, undefined, (displayed) => 180 - displayed))
-    act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
-
-    act(() => useSketchUiStore.getState().pendingDialog!.onConfirm('30'))
-
-    expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_constraint_value',
-      featureId: 'S1',
-      constraintId: 'c1',
-      value: 150,
     })
   })
 })

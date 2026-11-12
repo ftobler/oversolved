@@ -9,6 +9,8 @@ import {
 import { resolveVertexRef } from '@/types/vertexRef'
 import { colinearShapeProblem, constraintOperandSide } from '@/utils/constraintOperands'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
+import { angleStoredValue } from '@/utils/geometry/dimensionNaturalValue'
+import { unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { fitPointIndex } from '@/types/vertexKeys'
@@ -330,13 +332,33 @@ export function applyAddConstraint(
       c.target = pt(targets[0])
     }
   }
+  // An angle mutation carries the number the dimension label shows, which is
+  // the drawn wedge: theta or 180 - theta. Resolve it against the current
+  // geometry once here, so the dialog, the drive and a script mean the same
+  // number; the document always stores theta. Any other kind stores its value
+  // as given.
+  let storedValue = value
+  let storedPos = pos
+  if (kind === 'angle' && value !== undefined && Number.isFinite(value)) {
+    const aligned = angleStoredValue({
+      constraint: c,
+      value,
+      sketch: unflattenGeometry(feature.initial, feature.entities),
+      pos,
+      newLabel: true,
+    })
+    if (aligned) {
+      storedValue = aligned.theta
+      if (aligned.pos) storedPos = aligned.pos
+    }
+  }
   // A dimension value, label position, or sign is persisted into the doc. A
   // non-finite one would poison every later solve, so each is gated here exactly
   // like applySetConstraintValue/Pos. The finiteness gate alone is not enough to
   // match the set path: value and pos are rounded to the same precision there,
   // or the same value would serialize differently depending on the write path.
-  if (value !== undefined && Number.isFinite(value)) c.value = round(value)
-  if (pos !== undefined && Number.isFinite(pos[0]) && Number.isFinite(pos[1])) c.pos = [round(pos[0]), round(pos[1])]
+  if (storedValue !== undefined && Number.isFinite(storedValue)) c.value = round(storedValue)
+  if (storedPos !== undefined && Number.isFinite(storedPos[0]) && Number.isFinite(storedPos[1])) c.pos = [round(storedPos[0]), round(storedPos[1])]
   if (sign !== undefined && Number.isFinite(sign)) c.sign = sign
   feature.constraints.push(c)
 }
@@ -445,7 +467,19 @@ export function applySetConstraintValue(
     warn(`applySetConstraintValue: ${zeroProblem}`, { featureId, constraintId, value })
     return
   }
-  c.value = round(value)
+  // An angle edit types the number the label shows for the wedge it already
+  // sits in: its stored pos, or the renderer's default wedge when it has none.
+  // No pos is written here; the existing label keeps deciding the wedge. The
+  // value is resolved before the assignment so a second read sees the theta.
+  const storedValue = c.kind === 'angle'
+    ? angleStoredValue({
+        constraint: c,
+        value,
+        sketch: unflattenGeometry(feature.initial, feature.entities),
+        pos: c.pos,
+      })?.theta ?? value
+    : value
+  c.value = round(storedValue)
 }
 
 export function applySetConstraintPos(

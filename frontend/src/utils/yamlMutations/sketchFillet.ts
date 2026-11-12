@@ -28,6 +28,7 @@
 import type { PartConstraint, PartDoc, SketchFeature } from '@/types/cad'
 import { TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
 import { lineVertexIndices } from '@/utils/geometry/offsetProfile'
+import { computeAngleDimension } from '@/utils/geometry/angleDimensionLogic'
 import {
   planFilletGeometry,
   type FilletCorner,
@@ -271,10 +272,10 @@ function directionAngle(a: LineInfo, b: LineInfo): number | null {
   return round(theta)
 }
 
-/** A label position on the interior bisector, so the angle dimension reads the
- *  corner the fillet leaves. Kept even though the current appliers store the raw
- *  theta: when the displayed-value rule reaches the appliers this position is
- *  what lets the value change without a second geometry rule. */
+/** A label offset, relative to the corner vertex, on the interior bisector, so
+ *  the angle dimension reads the corner the fillet leaves. The offset, not an
+ *  absolute point: an angle dim's stored `pos` is vertex-relative. Its wedge
+ *  decides the value the plan passes (see displayedCornerAngle). */
 function angleLabelPos(corner: FilletGeometry): [number, number] | null {
   const bx = corner.center[0] - corner.corner[0]
   const by = corner.center[1] - corner.corner[1]
@@ -282,9 +283,27 @@ function angleLabelPos(corner: FilletGeometry): [number, number] | null {
   if (!(length > 1e-12)) return null
   const radius = Math.max(corner.radius * 2, corner.tangentDistance, 1e-3)
   return [
-    round(corner.corner[0] + (bx / length) * radius),
-    round(corner.corner[1] + (by / length) * radius),
+    round((bx / length) * radius),
+    round((by / length) * radius),
   ]
+}
+
+/** The number the dimension label at `pos` shows for this corner: theta when
+ *  `pos` lands in a theta wedge, 180 - theta in a supplement wedge. The angle
+ *  applier reads an `add_constraint` value as that displayed number and stores
+ *  theta again, so the plan must plan the displayed value. */
+function displayedCornerAngle(
+  a: LineInfo,
+  b: LineInfo,
+  theta: number,
+  pos: [number, number],
+): number {
+  const geometry = computeAngleDimension(
+    [a.params[0], a.params[1]], [a.params[2], a.params[3]],
+    [b.params[0], b.params[1]], [b.params[2], b.params[3]],
+    pos,
+  )
+  return round(geometry.isSupplement ? 180 - theta : theta)
 }
 
 /**
@@ -548,7 +567,7 @@ export function planFilletCorners(
         addConstraints.push({
           kind: 'angle',
           targets: [`entity:${feature.id}:${corner.a}`, `entity:${feature.id}:${corner.b}`],
-          value: theta,
+          value: pos !== null ? displayedCornerAngle(a, b, theta, pos) : theta,
           ...(pos !== null ? { pos } : {}),
         })
       }

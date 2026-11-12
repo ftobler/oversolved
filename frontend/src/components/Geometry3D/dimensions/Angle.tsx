@@ -49,14 +49,12 @@ export function AngleDimension({ cid, dim, interaction, planeTransform }: {
 
   // The constraint stores the angle between the two lines (theta). When the
   // label sits in a supplement quadrant the arc subtends 180 - theta, so the
-  // label shows that and editing it stores 180 - entered. The transform is its
-  // own inverse, so the same function serves both directions.
-  const supplementOf = useCallback((v: number) => 180 - v, [])
-  const displayedValue = isSupplement ? supplementOf(dim.value) : dim.value
-  const encodeValue = isSupplement ? supplementOf : undefined
+  // label shows that. The edit dialog sends the number shown; the constraint
+  // applier reads it against this label's stored pos and stores theta again.
+  const displayedValue = isSupplement ? 180 - dim.value : dim.value
 
   const { color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged } =
-    useDimInteraction(cid, displayedValue, interaction, false, onFlip, encodeValue)
+    useDimInteraction(cid, displayedValue, interaction, false, onFlip)
 
   // Arc endpoint ray directions (radians) for arrowhead tangents.
   const angle1 = a0deg * (Math.PI / 180)

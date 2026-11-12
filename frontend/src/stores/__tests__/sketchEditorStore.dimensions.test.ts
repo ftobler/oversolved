@@ -424,6 +424,56 @@ describe('sketchEditorStore', () => {
       })
     })
 
+    it('finalizeDimensionPlacement: a supplement-wedge label pre-fills and commits the displayed number', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      // The bug-1 trapezoid corner: the stored directions make theta 135 and the
+      // corner drawn at the vertex is its supplement, 45. A click in that wedge
+      // must show 45 and carry 45 with the label pos; the applier stores theta.
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [2.5, 0], end: [6.5, 0] },
+        L2: { start: [6.5, 0], end: [6, 0.5] },
+      } as never))
+      useEditorState.setState({
+    dimensionPicks: [
+          { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
+          { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
+        ],
+        dimensionCursorWorld: [5.5, 0.5],
+  })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      const dialog = useSketchUiStore.getState().pendingDialog!
+      expect(Number(dialog.defaultValue)).toBeCloseTo(45, 6)
+      dialog.onConfirm(dialog.defaultValue!)
+      const mutation = handler.mock.calls.at(-1)![0] as Mutation
+      expect(mutation.type).toBe('add_constraint')
+      if (mutation.type !== 'add_constraint') return
+      expect(mutation.value).toBeCloseTo(45, 6)
+      expect(mutation.pos?.[0]).toBeCloseTo(-1, 6)
+      expect(mutation.pos?.[1]).toBeCloseTo(0.5, 6)
+
+      // Typing 40 in the same wedge carries 40, not 140.
+      handler.mockClear()
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [2.5, 0], end: [6.5, 0] },
+        L2: { start: [6.5, 0], end: [6, 0.5] },
+      } as never))
+      useEditorState.setState({
+        dimensionPicks: [
+          { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
+          { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
+        ],
+        dimensionCursorWorld: [5.5, 0.5],
+      })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      useSketchUiStore.getState().pendingDialog!.onConfirm('40')
+      const edited = handler.mock.calls.at(-1)![0] as Mutation
+      expect(edited.type).toBe('add_constraint')
+      if (edited.type !== 'add_constraint') return
+      expect(edited.value).toBe(40)
+      setSketchCallback('getSketch', null)
+    })
+
     it('finalizeDimensionPlacement: same-line twice deduplicates targets to one (length)', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)

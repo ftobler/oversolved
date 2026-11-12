@@ -9,6 +9,7 @@ import type { FilletCorner, PartDoc, SketchFeature } from '@/types/cad'
 import { applyFilletCorners, planFilletCorners } from '@/utils/yamlMutations'
 import { applyAddConstraint } from '@/utils/yamlMutations/sketch'
 import { applyAddRect } from '@/utils/yamlMutations/sketchSugar'
+import { computeAngleDimension } from '@/utils/geometry/angleDimensionLogic'
 import { sketchAt } from '@/testing/featureAccess'
 
 const feat = (doc: PartDoc) => {
@@ -345,6 +346,34 @@ describe('applyFilletCorners coordinate-only corner', () => {
     expect(f.constraints.map(c => c.kind).sort()).toEqual(
       ['angle', 'coincident', 'coincident', 'radius', 'tangent', 'tangent'],
     )
+  })
+
+  it('keeps the measured corner angle when the interior is the supplement wedge', () => {
+    // The bug-1 trapezoid corner at (6.5, 0): the stored directions make theta
+    // 135, while the corner the label sits in subtends 45. The plan hands the
+    // applier the displayed 45 and the applier stores 135 again; passing the raw
+    // theta here would store 45 and swing the wall.
+    const doc: PartDoc = {
+      features: [{
+        id: 'sk', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [{ id: 'a', kind: 'line' }, { id: 'b', kind: 'line' }],
+        initial: { a: [2.5, 0, 6.5, 0], b: [6.5, 0, 6, 0.5] },
+        constraints: [],
+      }],
+    }
+    applyFilletCorners(doc, 'sk', 0.1, [{ a: 'a', aVertex: 'end', b: 'b', bVertex: 'start' }])
+    const f = feat(doc)
+    const angle = f.constraints.find(c => c.kind === 'angle')
+    expect(angle).toBeDefined()
+    expect(angle!.value).toBeCloseTo(135, 6)
+    const p = f.initial.a
+    const q = f.initial.b
+    const geo = computeAngleDimension(
+      [p[0], p[1]], [p[2], p[3]], [q[0], q[1]], [q[2], q[3]],
+      angle!.pos as [number, number],
+    )
+    expect(geo.isSupplement).toBe(true)
+    expect(180 - angle!.value!).toBeCloseTo(45, 6)
   })
 
   it('carries the construction flag only when both sides are construction', () => {

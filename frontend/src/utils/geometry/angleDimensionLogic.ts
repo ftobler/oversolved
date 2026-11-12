@@ -27,8 +27,9 @@ export interface AngleDimGeometry {
 
 const RAD = Math.PI / 180
 
-/** Signed shorter angular distance from a0 to a1 in degrees, in (-180, 180]. */
-function shorterSpan(a0: number, a1: number): number {
+/** Signed shorter angular distance from a0 to a1 in degrees, in (-180, 180].
+ *  Exported for callers that place a label in a named wedge. */
+export function shorterSpan(a0: number, a1: number): number {
   let s = (((a1 - a0) % 360) + 360) % 360
   if (s > 180) s -= 360
   return s

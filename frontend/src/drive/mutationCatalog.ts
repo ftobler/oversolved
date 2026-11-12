@@ -491,6 +491,22 @@ const CONSTRAINT_KIND_NOTE =
   '(the document stores the line first, the order the solver reads). `colinear` takes two lines (parallel and on ' +
   'one line) or a point and a line (the point on the line\'s infinite extension).'
 
+// An angle is the one dimension whose stored value is not the number the label
+// shows: the solver stores the unsigned angle between the two lines' direction
+// vectors, while a label in a supplement wedge shows 180 - that. The appliers
+// translate the mutation value through `angleStoredValue`
+// (utils/geometry/dimensionNaturalValue.ts), so the drive and the UI agree.
+const ANGLE_VALUE_NOTE =
+  'An `angle` value is the corner the label shows, the angle between the two lines as drawn. ' +
+  'The document stores the angle between their direction vectors, theta, which is the same number ' +
+  'in a theta wedge and 180 - value in a supplement wedge. `add_constraint` without `pos` takes the ' +
+  'corner nearest the authored geometry and writes a label `pos` there.'
+
+const ANGLE_SET_VALUE_NOTE =
+  'An `angle` value is the corner the label shows: the constraint\'s stored `pos`, or the ' +
+  'renderer\'s default wedge when it has none, picks the wedge, and the document stores the ' +
+  'direction-vector angle theta.'
+
 // The reply-size rule shared by the sketch copy sugar: `scriptRunner.ts` names
 // the ids up to the limit and reports a count past it.
 const CREATED_IDS_REPLY_NOTE =
@@ -894,7 +910,7 @@ export const MUTATION_CATALOG = {
   },
   add_constraint: {
     summary: 'Add a sketch constraint over entity refs.',
-    note: VERTEX_REF_NOTE + CONSTRAINT_PROJECTION_NOTE,
+    note: VERTEX_REF_NOTE + CONSTRAINT_PROJECTION_NOTE + ' ' + ANGLE_VALUE_NOTE,
     fields: {
       featureId: str(),
       kind: str(CONSTRAINT_KIND_NOTE),
@@ -906,6 +922,7 @@ export const MUTATION_CATALOG = {
   },
   set_constraint_value: {
     summary: 'Set a dimension constraint value.',
+    note: ANGLE_SET_VALUE_NOTE,
     fields: {
       featureId: str(),
       constraintId: str(),

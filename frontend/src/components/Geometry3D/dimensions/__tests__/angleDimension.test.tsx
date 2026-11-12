@@ -162,7 +162,7 @@ describe('AngleDimension supplement label', () => {
     expect(lastLabel()).toMatchObject({ label: '60°' })
   })
 
-  it('encodes the edited display value back to the stored value on confirm', () => {
+  it('sends the edited number the label shows, leaving the theta to the applier', () => {
     const onMutation = vi.fn()
     setSketchCallback('onMutation', onMutation)
     render(<AngleDimension cid="c1" dim={SUPPLEMENT} interaction={INTERACTION} />)
@@ -171,9 +171,11 @@ describe('AngleDimension supplement label', () => {
     const dialog = useSketchUiStore.getState().pendingDialog
     expect(dialog?.defaultValue).toBe('60')
 
+    // The label shows 60, so the edit carries 60; the applier reads the
+    // constraint's stored pos and stores the 120 theta those directions need.
     act(() => dialog!.onConfirm('60'))
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_constraint_value', featureId: 'S1', constraintId: 'c1', value: 120,
+      type: 'set_constraint_value', featureId: 'S1', constraintId: 'c1', value: 60,
     })
   })
 })
