@@ -82,7 +82,7 @@ const extrude = {
 const array = {
   id: ARR, kind: 'pattern', label: 'pattern 1',
   pattern: {
-    subject: 'body', mode: 'linear', count: 2, pitch: 4, include_source: true, operation: 'add',
+    subject: 'body', mode: 'linear', count: 2, pitch: 4, operation: 'add',
     direction: [1, 0, 0], direction_query: `@${SK}/${DIR}`,
     source_body: `@${BODY}`,
   },

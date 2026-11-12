@@ -59,6 +59,31 @@ describe('pattern boundary refusals', () => {
   it('refuses an unknown setter field by name', () => {
     expect(refusal({ type: 'set_pattern_field', featureId: 'pt1', field: 'spacing', value: 5 })).toContain('spacing')
   })
+
+  it('refuses the retired include_source field as unknown', () => {
+    expect(refusal({
+      type: 'set_pattern_field', featureId: 'pt1', field: 'include_source', value: false,
+    })).toContain('include_source')
+  })
+
+  it('refuses a count below 2 because the count includes the source', () => {
+    for (const value of [0, 1, '1']) {
+      expect(refusal({ type: 'set_pattern_field', featureId: 'pt1', field: 'count', value }))
+        .toContain('includes the source')
+      expect(refusal({ type: 'add_pattern', featureId: 'pt1', count: value }))
+        .toContain('includes the source')
+    }
+  })
+
+  it('refuses a 1x1 rectangular pair but accepts a 1x2 row', () => {
+    expect(refusal({ type: 'add_pattern', featureId: 'pt1', mode: 'rectangular', count_x: 1, count_y: 1 }))
+      .toContain('1x1')
+    const accepted = validateMutation(
+      { type: 'add_pattern', featureId: 'pt1', mode: 'rectangular', count_x: 1, count_y: 2 },
+      { doc: emptyDriveDoc() },
+    )
+    expect(accepted.ok).toBe(true)
+  })
 })
 
 describe('one inline add lands the whole pattern', () => {

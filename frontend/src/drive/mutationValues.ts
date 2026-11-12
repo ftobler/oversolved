@@ -33,6 +33,7 @@ import { pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
+import { arrayCountProblem } from '@/persistence/docSchema'
 import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
 import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
 
@@ -1375,8 +1376,66 @@ function addMirror(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return inlineFeatureFieldsProblem(raw, ctx, 'mirror', 'set_mirror_field')
 }
 
+// The pattern count is the one number with a rule the JSON schema cannot
+// carry: it includes the source's own slot, so the one-axis count needs at
+// least 2 and a rectangular pair needs at least one non-seed cell. The same
+// rule lives in persistence/docSchema (loader), utils/yamlMutations (writers)
+// and the kernel, so a value one path accepts never fails another.
+const PATTERN_COUNT_FIELDS = ['count', 'count_x', 'count_y'] as const
+type PatternCountField = (typeof PATTERN_COUNT_FIELDS)[number]
+
+function isPatternCountField(field: string): field is PatternCountField {
+  return (PATTERN_COUNT_FIELDS as readonly string[]).includes(field)
+}
+
+function patternCountProblem(
+  field: PatternCountField,
+  value: unknown,
+  sibling: unknown,
+  label: string,
+): string | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null
+  const other = typeof sibling === 'number' || typeof sibling === 'string' ? sibling : null
+  const problem = arrayCountProblem(field, value, other)
+  return problem === null ? null : `${label} ${problem}`
+}
+
+/** The pattern sub-definition a setter names, or null when the caller has no
+ *  document (or the feature is not a pattern). */
+function storedPatternDef(raw: RawStep, ctx: ValueContext): RawStep | null {
+  if (ctx.doc === null) return null
+  const feature = (ctx.doc.features ?? []).find(entry => entry.id === raw.featureId)
+  if (feature === undefined || feature.kind !== 'pattern') return null
+  const sub: unknown = feature.pattern
+  return isRecord(sub) ? sub : null
+}
+
 function addPattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  return inlineFeatureFieldsProblem(raw, ctx, 'pattern', 'set_pattern_field')
+  const generic = inlineFeatureFieldsProblem(raw, ctx, 'pattern', 'set_pattern_field')
+  if (generic !== null) return generic
+  // Judge each inline count against its sibling in the same payload, so 1x1 is
+  // refused before the applier would seed the missing axis.
+  for (const field of PATTERN_COUNT_FIELDS) {
+    if (raw[field] === undefined) continue
+    const sibling = field === 'count_x' ? raw.count_y : field === 'count_y' ? raw.count_x : undefined
+    const problem = patternCountProblem(field, raw[field], sibling, `add_pattern field ${json(field)}`)
+    if (problem !== null) return invalid(problem)
+  }
+  return null
+}
+
+// A setter changes one count, so the other rectangular axis comes from the
+// stored pattern and the pair is judged as the document would land.
+function setPatternField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const generic = fieldValue(raw, ctx)
+  if (generic !== null) return generic
+  const field = raw.field
+  if (typeof field !== 'string' || !isPatternCountField(field)) return null
+  const stored = storedPatternDef(raw, ctx)
+  const siblingKey = field === 'count_x' ? 'count_y' : field === 'count_y' ? 'count_x' : null
+  const sibling = siblingKey === null ? undefined : stored?.[siblingKey]
+  const problem = patternCountProblem(field, raw.value, sibling, `set_pattern_field field ${json(field)}`)
+  return problem === null ? null : invalid(problem)
 }
 
 function addRevolve(raw: RawStep, ctx: ValueContext): ValueViolation | null {
@@ -1985,7 +2044,7 @@ export const MUTATION_VALUE_RULES = {
   add_boolean_tool: queryField('tool'),
   remove_boolean_tool: queryField('tool'),
   add_pattern: addPattern,
-  set_pattern_field: fieldValue,
+  set_pattern_field: setPatternField,
   add_delete_body: addDeleteBody,
   add_delete_body_ref: queryField('bodyQuery'),
   remove_delete_body_ref: indexField('index'),

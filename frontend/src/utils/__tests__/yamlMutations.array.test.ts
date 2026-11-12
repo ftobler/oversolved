@@ -28,7 +28,6 @@ describe('Pattern mutations (body subject)', () => {
           count: 2,
           pitch: 20,
           operation: 'add',
-          include_source: true,
         },
       })
     })
@@ -72,7 +71,7 @@ describe('Pattern mutations (body subject)', () => {
       const doc: PartDoc = {
         features: [{
           id: 'pt1', kind: 'pattern',
-          pattern: { subject: 'body', mode: 'linear', operation: 'add', include_source: true },
+          pattern: { subject: 'body', mode: 'linear', operation: 'add' },
         }],
       }
       applySetPatternField(doc, 'pt1', 'mode', 'rectangular')

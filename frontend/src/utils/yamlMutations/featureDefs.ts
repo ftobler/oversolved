@@ -148,10 +148,11 @@ export function applySetBooleanField(doc: PartDoc, featureId: string, field: key
  *  empty) is not a count and passes to the setter. */
 function refusePatternCount(sub: object, field: string, value: unknown, fn: string): boolean {
   if (field !== 'count' && field !== 'count_x' && field !== 'count_y') return false
-  if (typeof value !== 'number') return false
+  if (typeof value !== 'number' && typeof value !== 'string') return false
   const bag = sub as FieldBag
   const siblingKey = field === 'count_x' ? 'count_y' : field === 'count_y' ? 'count_x' : null
-  const sibling = siblingKey !== null && typeof bag[siblingKey] === 'number' ? bag[siblingKey] as number : null
+  const bagSibling = siblingKey === null ? null : bag[siblingKey]
+  const sibling = typeof bagSibling === 'number' || typeof bagSibling === 'string' ? bagSibling : null
   const problem = arrayCountProblem(field, value, sibling)
   if (problem === null) return false
   warn(`${fn}: refusing ${field}: ${problem}`)
@@ -669,11 +670,16 @@ export function applyRemoveBooleanTool(doc: PartDoc, featureId: string, tool: st
  *  from landing a count no rule reads. */
 function inlineCountProblem(inline: object): { field: 'count' | 'count_x' | 'count_y'; reason: string } | null {
   const bag = inline as FieldBag
-  const num = (key: string): number | null =>
-    typeof bag[key] === 'number' && Number.isFinite(bag[key]) ? bag[key] as number : null
-  const count = num('count')
-  const countX = num('count_x')
-  const countY = num('count_y')
+  // A string is an expression; arrayCountProblem evaluates what it can and
+  // lets a variable that is still unknown pass to the solver, like the loader.
+  const count = (key: string): number | string | null => {
+    const raw = bag[key]
+    if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
+    return typeof raw === 'string' ? raw : null
+  }
+  const countValue = count('count')
+  const countX = count('count_x')
+  const countY = count('count_y')
   if (countX !== null) {
     const reason = arrayCountProblem('count_x', countX, countY)
     if (reason !== null) return { field: 'count_x', reason }
@@ -682,15 +688,15 @@ function inlineCountProblem(inline: object): { field: 'count' | 'count_x' | 'cou
     const reason = arrayCountProblem('count_y', countY, countX)
     if (reason !== null) return { field: 'count_y', reason }
   }
-  if (count !== null) {
-    const reason = arrayCountProblem('count', count)
+  if (countValue !== null) {
+    const reason = arrayCountProblem('count', countValue)
     if (reason !== null) return { field: 'count', reason }
   }
   return null
 }
 
 const PATTERN_FIELDS: readonly string[] = [
-  'subject', 'source_body', 'operation', 'include_source', 'source_feature', 'target_body',
+  'subject', 'source_body', 'operation', 'source_feature', 'target_body',
   'mode', 'count', 'pitch', 'direction', 'direction_query', 'invert',
   'count_x', 'count_y', 'pitch_x', 'pitch_y',
   'direction_x', 'direction_x_query', 'invert_x', 'direction_y', 'direction_y_query', 'invert_y',
@@ -738,7 +744,6 @@ export function applyAddPattern(
     subject: 'body',
     mode: 'linear',
     operation: 'add',
-    include_source: true,
   }
   // The inline counts are judged before the merge rounds them.
   const problem = inlineCountProblem(inline)
@@ -751,10 +756,8 @@ export function applyAddPattern(
   // operation on it would advertise a field the kernel ignores.
   if (pattern.subject === 'feature') {
     delete pattern.operation
-    delete pattern.include_source
   } else if (pattern.operation === undefined) {
     pattern.operation = 'add'
-    if (pattern.include_source === undefined) pattern.include_source = true
   }
   // An explicit empty value cleared the key on purpose; seeding it back would
   // silently override the author's clear with the mode's default.
@@ -781,11 +784,12 @@ export function applySetPatternField(
   }
   if (refusePatternCount(sub, field, value, 'applySetPatternField')) return
   if (!setSubFeatureField(featureId, 'pattern', sub, field, value, 'applySetPatternField', PATTERN_FIELDS)) return
+  // The retired flag is accepted on load for old documents but is not authored
+  // any more. Any edit lands the pattern on the current shape, so drop it here
+  // rather than carrying a key the kernel ignores.
+  delete (sub as { include_source?: boolean }).include_source
   if (field === 'mode') seedPatternMode(sub)
-  if (field === 'subject' && value === 'feature') {
-    delete sub.operation
-    delete sub.include_source
-  }
+  if (field === 'subject' && value === 'feature') delete sub.operation
 }
 
 // ─── Delete Body ───

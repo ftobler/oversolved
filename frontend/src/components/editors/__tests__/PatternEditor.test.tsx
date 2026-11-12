@@ -45,15 +45,21 @@ describe('PATTERN_SCHEMA', () => {
     expect(EDITOR_SCHEMAS.pattern).toBe(PATTERN_SCHEMA)
     expect(PATTERN_SCHEMA.subKey).toBe('pattern')
     expect(PATTERN_SCHEMA.defaults).toEqual({
-      subject: 'body', mode: 'linear', operation: 'add', include_source: true, count: 2, pitch: 20,
+      subject: 'body', mode: 'linear', operation: 'add', count: 2, pitch: 20,
     })
     expect(PATTERN_SCHEMA.fields.map((f) => f.key)).toEqual([
-      'subject', 'source_body', 'source_feature', 'target_body', 'operation', 'include_source',
+      'subject', 'source_body', 'source_feature', 'target_body', 'operation',
       'mode', 'count', 'direction_query', 'invert', 'pitch',
       'direction_x_query', 'invert_x', 'count_x', 'pitch_x',
       'direction_y_query', 'invert_y', 'count_y', 'pitch_y',
       '_evenly_spaced', 'step_angle', 'axis', 'invert_axis',
     ])
+  })
+
+  it('does not offer the retired include-source option', () => {
+    renderEditor(makeFeature({ subject: 'body' }))
+    expect(screen.queryByText('Include src')).toBeNull()
+    expect(PATTERN_SCHEMA.fields.some((f) => f.key === 'include_source')).toBe(false)
   })
 
   it('offers only the repeatable feature kinds as the source, excluding itself', () => {
@@ -106,8 +112,9 @@ describe('PATTERN_SCHEMA', () => {
 
   it('judges the count as the loader does', () => {
     const count = field('count') as NumberFieldDef
-    expect(count.validateWith!(0, {})).toContain('>= 1')
+    expect(count.validateWith!(0, {})).toContain('includes the source')
+    expect(count.validateWith!(1, {})).toContain('includes the source')
     expect(count.validateWith!(2.5, {})).toContain('integer')
-    expect(count.validateWith!(1, {})).toBeNull()
+    expect(count.validateWith!(2, {})).toBeNull()
   })
 })

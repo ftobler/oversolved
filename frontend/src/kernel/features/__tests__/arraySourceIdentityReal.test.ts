@@ -77,7 +77,7 @@ describe.skipIf(!hasOcc)('array add: the source keeps its id across a disjoint s
     const res = solveArray(oc, r.scope, r.table, {
       id: 'ar1',
       array: {
-        source_body: '@body_src', mode: 'linear', operation: 'add', include_source: true,
+        source_body: '@body_src', mode: 'linear', operation: 'add',
         count_x: 4, pitch_x: 100, direction_x_query: '@dz',
       },
     }, repo, r.store)
@@ -108,7 +108,7 @@ describe.skipIf(!hasOcc)('array add: the source keeps its id across a disjoint s
     solveArray(oc, r.scope, r.table, {
       id: 'ar1',
       array: {
-        source_body: '@body_src', mode: 'linear', operation: 'add', include_source: true,
+        source_body: '@body_src', mode: 'linear', operation: 'add',
         count_x: 4, pitch_x: 100, direction_x_query: '@dz',
       },
     }, repo, r.store)

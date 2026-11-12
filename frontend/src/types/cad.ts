@@ -105,8 +105,11 @@ export type BooleanFeatureDef = {
 // already shaped, inheriting that feature's own operation.
 //
 // `count` is the total instance count for linear and circular modes, the
-// source's own slot included. The rectangular mode counts its two axes in
-// `count_x` and `count_y`.
+// source's own slot included, so it is at least 2. The rectangular mode counts
+// its two axes in `count_x` and `count_y`, leaves the seed cell to the source,
+// and needs at least one other cell (so 1x1 is invalid). A legacy document may
+// still carry `include_source`; the loader accepts it and the kernel ignores
+// it, because the source is always instance 0.
 export type PatternSubject = 'body' | 'feature'
 
 export type PatternFeatureDef = {
@@ -114,7 +117,6 @@ export type PatternFeatureDef = {
   // Body subject.
   source_body?: string
   operation?: 'add' | 'new'
-  include_source?: boolean
   // Feature subject.
   source_feature?: string
   // The body to apply to when the source feature touched more than one.

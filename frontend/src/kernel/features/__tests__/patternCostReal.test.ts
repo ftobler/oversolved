@@ -168,7 +168,7 @@ describe.skipIf(!oc || !solveBytes)('many-instance pattern and array solve cost 
         extrude('ex_jack', '$sk_jack', 10),
         bodyPattern('ar1', 'body_ex_jack', {
           mode: 'rectangular', count_x: 5, count_y: 5, pitch_x: 10, pitch_y: 10,
-          direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add', include_source: true,
+          direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add',
         }),
       ],
     })
@@ -188,7 +188,7 @@ describe.skipIf(!oc || !solveBytes)('many-instance pattern and array solve cost 
         bodyPattern('ar1', 'body_ex_tooth', {
           mode: 'circular', count: 25, step_angle: 14.4,
           axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
-          operation: 'add', include_source: true,
+          operation: 'add',
         }),
       ],
     })

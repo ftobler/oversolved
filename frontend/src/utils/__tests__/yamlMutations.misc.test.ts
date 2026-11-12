@@ -399,7 +399,7 @@ describe('applySetBooleanField keep_tools', () => {
 
 describe('applySetPatternField direction_query', () => {
   it('sets direction_query on a linear pattern', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'linear', count: 2, pitch: 20, direction: [1, 0, 0], operation: 'add', include_source: true } }] }
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'linear', count: 2, pitch: 20, direction: [1, 0, 0], operation: 'add' } }] }
     applySetPatternField(doc, 'pt1', 'direction_query', '@body_ex1/edge/0')
     expect(pattern0(doc).direction_query).toBe('@body_ex1/edge/0')
   })
@@ -413,7 +413,7 @@ describe('applySetPatternField direction_query', () => {
 
 describe('applySetPatternField direction_y_query', () => {
   it('sets direction_y_query on a rectangular pattern', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20, direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add', include_source: true } }] }
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20, direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add' } }] }
     applySetPatternField(doc, 'pt1', 'direction_y_query', '@body_ex1/edge/1')
     expect(pattern0(doc).direction_y_query).toBe('@body_ex1/edge/1')
   })
@@ -421,7 +421,7 @@ describe('applySetPatternField direction_y_query', () => {
 
 describe('applySetPatternField direction', () => {
   it('sets direction on a linear pattern', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'linear', count: 2, pitch: 20, direction: [1, 0, 0], operation: 'add', include_source: true } }] }
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'linear', count: 2, pitch: 20, direction: [1, 0, 0], operation: 'add' } }] }
     applySetPatternField(doc, 'pt1', 'direction', [0, 1, 0])
     expect(pattern0(doc).direction).toEqual([0, 1, 0])
   })
@@ -429,7 +429,7 @@ describe('applySetPatternField direction', () => {
 
 describe('applySetPatternField direction_y', () => {
   it('sets direction_y on a rectangular pattern', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20, direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add', include_source: true } }] }
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20, direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add' } }] }
     applySetPatternField(doc, 'pt1', 'direction_y', [1, 0, 0])
     expect(pattern0(doc).direction_y).toEqual([1, 0, 0])
   })

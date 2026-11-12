@@ -155,9 +155,13 @@ export function resolvePatternAxis(
 function countOf(sub: Dict, fallback: number): number {
   const count = Number(sub.count ?? fallback)
   // Number.isInteger rejects NaN, Infinity and fractional values in one check,
-  // so a hand-edited 2.7 throws instead of silently truncating to 2.
-  if (!Number.isInteger(count) || count < 1) {
-    throw new Error(`pattern: count must be a positive integer, got ${sub.count}`)
+  // so a hand-edited 2.7 throws instead of silently truncating to 2. The count
+  // includes the source's own slot, so 1 has no copy and is refused too.
+  if (!Number.isInteger(count) || count < 2) {
+    throw new Error(
+      `pattern: count must be an integer >= 2 because the count includes the source ` +
+        `(2 makes one new instance), got ${sub.count}`,
+    )
   }
   return count
 }
@@ -177,10 +181,10 @@ function finite(value: unknown, key: string, fallback: number): number {
 }
 
 /**
- * One transform per copy. The subject's own slot is instance 0, so `includeSource`
- * decides whether the count includes it. A feature subject always includes the
- * source (its own application already happened), so it passes true; a body
- * subject passes its `include_source`.
+ * One transform per copy. The subject's own slot is instance 0 and every mode
+ * counts it: both subjects always include the source, so `count` is at least 2
+ * and the builder emits `count - 1` transforms. Rectangular leaves the seed
+ * cell to the source the same way.
  */
 export function buildPatternTransforms(
   oc: OccModule,
@@ -188,7 +192,6 @@ export function buildPatternTransforms(
   sub: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
-  includeSource = true,
 ): OccTrsf[] {
   const mode = (sub.mode as string) ?? 'linear'
 
@@ -203,7 +206,7 @@ export function buildPatternTransforms(
       globalRepo,
       bodyStore,
     )
-    const copies = includeSource ? count - 1 : count
+    const copies = count - 1
     const trsfs: OccTrsf[] = []
     for (let i = 1; i <= copies; i++) {
       trsfs.push(makeTranslationTrsf(oc, scope, dir[0] * pitch * i, dir[1] * pitch * i, dir[2] * pitch * i))
@@ -214,6 +217,12 @@ export function buildPatternTransforms(
   if (mode === 'rectangular') {
     const countX = positiveInteger(sub.count_x, 'count_x', 2)
     const countY = positiveInteger(sub.count_y, 'count_y', 2)
+    if (countX === 1 && countY === 1) {
+      throw new Error(
+        'pattern: count_x * count_y must be at least 2 because the counts include the source, ' +
+          'so 1x1 makes no new instance',
+      )
+    }
     const pitchX = finite(sub.pitch_x, 'pitch_x', 20)
     const pitchY = finite(sub.pitch_y, 'pitch_y', 20)
     const dirX = resolvePatternDirection(
@@ -227,8 +236,8 @@ export function buildPatternTransforms(
     const trsfs: OccTrsf[] = []
     for (let j = 0; j < countY; j++) {
       for (let i = 0; i < countX; i++) {
-        // The seed cell (0,0) is the source slot, never a copy, whether or not
-        // the source is included. Linear and circular already exclude it.
+        // The seed cell (0,0) is the source slot, never a copy. Linear and
+        // circular already exclude it.
         if (i === 0 && j === 0) continue
         trsfs.push(
           makeTranslationTrsf(
@@ -262,20 +271,10 @@ export function buildPatternTransforms(
     const invert = (sub.invert_axis as boolean) ?? false
     const axisDirection = invert ? resolvedDirection.map((c) => (c === 0 ? 0 : -c)) : resolvedDirection
     const trsfs: OccTrsf[] = []
-    if (includeSource) {
-      // Source occupies the seed (0-degree) slot; sweep from step.
-      for (let i = 1; i < count; i++) {
-        trsfs.push(makeRotationTrsf(oc, scope, origin, axisDirection, ((step * i) * Math.PI) / 180))
-      }
-    } else {
-      // No source slot; sweep from the first step, never the seed. A sweep that
-      // lands back on the seed (a full 360 wrap) drops that last copy, matching
-      // the linear exclude behaviour of no copy at the source position.
-      const wraps = step !== 0 && Math.abs((step * count) % 360) < 1e-9
-      const n = wraps ? count - 1 : count
-      for (let i = 1; i <= n; i++) {
-        trsfs.push(makeRotationTrsf(oc, scope, origin, axisDirection, ((step * i) * Math.PI) / 180))
-      }
+    // Source occupies the seed (0-degree) slot; sweep from step. A full 360
+    // wrap is already excluded because the last slot is count - 1, below count.
+    for (let i = 1; i < count; i++) {
+      trsfs.push(makeRotationTrsf(oc, scope, origin, axisDirection, ((step * i) * Math.PI) / 180))
     }
     return trsfs
   }
@@ -444,7 +443,7 @@ function solveFeaturePattern(
   )
   const sourceSub = (source.feature[source.kind] as Dict) ?? {}
   const operation = ((sourceSub.operation as string) ?? 'add') as 'add' | 'cut'
-  const transforms = buildPatternTransforms(oc, scope, sub, globalRepo, bodyStore, true)
+  const transforms = buildPatternTransforms(oc, scope, sub, globalRepo, bodyStore)
   const target = resolvePatternTarget(source.id, (sub.target_body as string) ?? '', bodyStore)
   const targetId = target.id
 
@@ -711,10 +710,9 @@ export function solvePattern(
 
   if (subject === 'body') {
     const body = resolvePatternSourceBody(sub, bodyStore)
-    const includeSource = (sub.include_source as boolean) ?? true
     const operation = (sub.operation as string) ?? 'add'
-    const transforms = buildPatternTransforms(oc, scope, sub, globalRepo, bodyStore, includeSource)
-    return applyBodyPattern(oc, scope, table, body, transforms, includeSource, operation, featureId, bodyStore)
+    const transforms = buildPatternTransforms(oc, scope, sub, globalRepo, bodyStore)
+    return applyBodyPattern(oc, scope, table, body, transforms, operation, featureId, bodyStore)
   }
 
   if (subject === 'feature') {

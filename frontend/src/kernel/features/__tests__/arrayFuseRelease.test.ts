@@ -98,7 +98,7 @@ function reset(): void {
   transferCount = 0
 }
 
-function run(countX: number, includeSource: boolean): {
+function run(countX: number): {
   table: HandleTable
   scope: DisposeScope
   source: ShapeDouble
@@ -145,7 +145,6 @@ function run(countX: number, includeSource: boolean): {
         mode: 'linear',
         count_x: countX,
         pitch_x: 10,
-        include_source: includeSource,
         operation: 'add',
         direction_x_query: 'qx',
       },
@@ -167,10 +166,10 @@ beforeEach(() => {
 
 describe('array add fuse releases (H21)', () => {
   it('releases every chunk of instances after its names transfer, and every superseded fused solid', () => {
-    // 20 instances: one full chunk of 16 and a last chunk of 3.
-    const { table, scope, source } = run(20, true)
+    // count 20 includes the source: 19 copies, one full chunk of 16 and a last
+    // chunk of 3.
+    const { table, scope, source } = run(20)
     try {
-      // instances[0] is the table-owned source; the other 19 are chunk copies.
       for (const d of instances) expect(d.deletes).toBe(1)
       expect(source.deletes).toBe(0)
       // Two chunks means two transfers and one superseded fused solid.
@@ -185,20 +184,6 @@ describe('array add fuse releases (H21)', () => {
         expect(transferAt, `transfer:${i} present`).toBeGreaterThanOrEqual(0)
         expect(order.indexOf(`delete:inst:${i === 1 ? 0 : INSTANCE_FUSE_CHUNK + i - 2}`)).toBeGreaterThan(transferAt)
       }
-    } finally {
-      scope.dispose()
-      table.disposeAll()
-    }
-  })
-
-  it('releases the first instance when include_source is false', () => {
-    const { table, scope } = run(4, false)
-    try {
-      // instances = [inst0, inst1, inst2, inst3]: inst0 is the fuse seed and
-      // is NOT table-owned, so it is released after the chunk like any operand.
-      for (const d of instances) expect(d.deletes).toBe(1)
-      const transferAt = order.indexOf('transfer:1')
-      expect(order.indexOf('delete:inst:0')).toBeGreaterThan(transferAt)
     } finally {
       scope.dispose()
       table.disposeAll()
@@ -237,7 +222,6 @@ describe('array add fuse releases (H21)', () => {
             mode: 'linear',
             count_x: 2,
             pitch_x: 10,
-            include_source: true,
             operation: 'add',
             direction_x_query: 'qx',
           },
@@ -258,11 +242,10 @@ describe('array add fuse releases (H21)', () => {
     }
   })
 
-  it('counts a no-source seed outside the chunk gate', () => {
-    // With include_source false, transforms[0] is the fuse seed and the chunk
-    // starts at 1: 16 transforms are 15 copies, still short of a chunk, while
-    // 17 transforms fill one.
-    const { table: t16, scope: s16 } = run(16, false)
+  it('counts the source outside the chunk gate', () => {
+    // The seed is the source, not a transform: count 16 makes 15 copies, still
+    // short of a chunk, while count 17 makes 16 and fills one.
+    const { table: t16, scope: s16 } = run(16)
     try {
       expect(chunkSizes).toEqual(Array.from({ length: 15 }, () => 1))
     } finally {
@@ -270,7 +253,7 @@ describe('array add fuse releases (H21)', () => {
       t16.disposeAll()
     }
     reset()
-    const { table: t17, scope: s17 } = run(17, false)
+    const { table: t17, scope: s17 } = run(17)
     try {
       expect(chunkSizes).toEqual([INSTANCE_FUSE_CHUNK])
     } finally {
@@ -280,7 +263,7 @@ describe('array add fuse releases (H21)', () => {
   })
 
   it('caps the live instance peak at the chunk size and keeps a short array one fuse per copy', () => {
-    const { table: t4, scope: s4 } = run(4, true)
+    const { table: t4, scope: s4 } = run(4)
     try {
       // Three copies are short of one chunk: the batch is the long-pattern
       // path, so each copy gets its own fuse while the whole chunk stays live.
@@ -291,7 +274,7 @@ describe('array add fuse releases (H21)', () => {
       t4.disposeAll()
     }
     reset()
-    const { table: t20, scope: s20 } = run(20, true)
+    const { table: t20, scope: s20 } = run(20)
     try {
       // 19 copies split into 16 and 3; the peak is the chunk size, not N-1.
       expect(chunkSizes).toEqual([INSTANCE_FUSE_CHUNK, 3])

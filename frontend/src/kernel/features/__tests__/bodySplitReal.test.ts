@@ -448,7 +448,7 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
       id: 'arr1',
       array: {
         source_body: '@body_src', mode: 'linear', operation: 'add',
-        include_source: true, count_x: 3, pitch_x: 50, direction_x_query: '@dx',
+        count_x: 3, pitch_x: 50, direction_x_query: '@dx',
       },
     }, repo, r.store)
     expect(res.body_ids).toEqual(['body_src', 'body_src_1', 'body_src_2'])
@@ -465,7 +465,7 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
       id: 'arr1',
       array: {
         source_body: '@body_src', mode: 'linear', operation: 'add',
-        include_source: true, count_x: 3, pitch_x: 5, direction_x_query: '@dx',
+        count_x: 3, pitch_x: 5, direction_x_query: '@dx',
       },
     }, repo, r.store)
     expect(res.body_ids).toEqual(['body_src'])
@@ -482,7 +482,7 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
       id: 'arr1',
       array: {
         source_body: '@body_src', mode: 'linear', operation: 'new',
-        include_source: true, count_x: 3, pitch_x: 50, direction_x_query: '@dx',
+        count_x: 3, pitch_x: 50, direction_x_query: '@dx',
       },
     }, repo, r.store)
     // M33: with operation 'new' the source body is NOT duplicated; it stands as
@@ -502,7 +502,7 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
     r.scope.dispose()
   })
 
-  it('array new with include_source mints one body per transformed instance, never one for the source', () => {
+  it('array new mints one body per transformed instance, never one for the source', () => {
     const r = rig()
     seedBox(r, 'body_src', [0, 0, 0], 10)
     const repo = new Repository()
@@ -511,7 +511,7 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
       id: 'arr1',
       array: {
         source_body: '@body_src', mode: 'linear', operation: 'new',
-        include_source: true, count_x: 3, pitch_x: 50, direction_x_query: '@dx',
+        count_x: 3, pitch_x: 50, direction_x_query: '@dx',
       },
     }, repo, r.store)
     // count_x=3 with the source included yields two transforms; body_ids must

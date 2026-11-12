@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc } from '@/types/cad'
+import type { PartDoc, PartFeature } from '@/types/cad'
 import { applyAddPattern, applySetPatternField } from '@/utils/yamlMutations'
 import { featureAt } from '@/testing/featureAccess'
 
@@ -18,7 +18,7 @@ describe('Pattern mutations', () => {
         kind: 'pattern',
         label: 'Pattern',
         pattern: {
-          subject: 'body', mode: 'linear', operation: 'add', include_source: true,
+          subject: 'body', mode: 'linear', operation: 'add',
           count: 2, pitch: 20,
         },
       })
@@ -39,10 +39,10 @@ describe('Pattern mutations', () => {
 
     it('refuses an inline count the loader would refuse', () => {
       const doc = makeDoc()
-      applyAddPattern(doc, 'pt1', undefined, { count: 0 })
-      expect(doc.features).toHaveLength(0)
-      applyAddPattern(doc, 'pt2', undefined, { count: 2.5 })
-      expect(doc.features).toHaveLength(0)
+      for (const count of [0, 1, 2.5]) {
+        applyAddPattern(doc, 'pt1', undefined, { count })
+        expect(doc.features).toHaveLength(0)
+      }
     })
   })
 
@@ -66,8 +66,18 @@ describe('Pattern mutations', () => {
       applyAddPattern(doc, 'pt1')
       applySetPatternField(doc, 'pt1', 'spacing' as never, 5)
       expect(pattern0(doc)).not.toHaveProperty('spacing')
-      applySetPatternField(doc, 'pt1', 'count', 0)
+      applySetPatternField(doc, 'pt1', 'count', 1)
       expect(pattern0(doc).count).toBe(2)
+    })
+
+    it('drops the retired include_source key on the next edit', () => {
+      const legacy = { subject: 'body', mode: 'linear', operation: 'add', count: 3, include_source: false }
+      const doc: PartDoc = {
+        features: [{ id: 'pt1', kind: 'pattern', pattern: legacy } as unknown as PartFeature],
+      }
+      applySetPatternField(doc, 'pt1', 'pitch', 25)
+      expect(pattern0(doc)).not.toHaveProperty('include_source')
+      expect(pattern0(doc).count).toBe(3)
     })
 
     it('warns rather than throwing on a missing or wrong-kind feature', () => {

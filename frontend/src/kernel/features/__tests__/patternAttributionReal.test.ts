@@ -230,11 +230,11 @@ describe.skipIf(!oc || !solveBytes)('pattern attribution (real OCC + Rust solver
         extrude('rv2', '$sk_c2', 8),
         pattern('ar1', {
           subject: 'body', source_body: 'body_rv1', operation: 'new',
-          mode: 'linear', count: 4, pitch: 10, direction: [1, 0, 0], include_source: true,
+          mode: 'linear', count: 4, pitch: 10, direction: [1, 0, 0],
         }),
         pattern('ar2', {
           subject: 'body', source_body: 'body_rv2', operation: 'new',
-          mode: 'linear', count: 4, pitch: 10, direction: [1, 0, 0], include_source: true,
+          mode: 'linear', count: 4, pitch: 10, direction: [1, 0, 0],
         }),
         {
           id: 'b1', kind: 'boolean',

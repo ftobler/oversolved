@@ -25,7 +25,7 @@ function makeFeature(over: Record<string, unknown> = {}): PartFeature {
     label: 'Pattern',
     pattern: {
       subject: 'body', mode: 'linear', count: 2, pitch: 20, direction: [1, 0, 0],
-      operation: 'add', include_source: true, source_body: '', ...over,
+      operation: 'add', source_body: '', ...over,
     },
   } as unknown as PartFeature
 }

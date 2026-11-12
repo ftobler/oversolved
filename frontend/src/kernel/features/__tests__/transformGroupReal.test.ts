@@ -23,11 +23,11 @@
 // Their total volumes are unchanged, which is what says the geometry did not
 // move -- only its division into parts did.
 //
-// `array_linear_new` was re-frozen again by M33: `new` + `include_source` used
-// to copy the source body in place (an identity transform producing a second,
-// coincident body). The source now STANDS as instance 0, so the case mints only
-// the two transformed instances (body_ids `['body_arr2','body_arr2_1']`, 3
-// bodies in the store) instead of three copies plus a duplicate source.
+// `array_linear_new` was re-frozen again by M33: `new` used to copy the source
+// body in place (an identity transform producing a second, coincident body).
+// The source now STANDS as instance 0, so the case mints only the two
+// transformed instances (body_ids `['body_arr2','body_arr2_1']`, 3 bodies in the
+// store) instead of three copies plus a duplicate source.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
@@ -376,7 +376,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
 
     it('rectangular 2x2 array add keeps the disjoint instances as separate parts', () => {
       /**
-       * 2x2 array, pitch 15, include_source=true, on a 5-cube: the three
+       * 2x2 array, pitch 15, on a 5-cube: the three
        * instances never touch, so "add" fuses them into a 3-solid compound.
        * That is 3 parts, not one 375-volume part -- this used to assert the
        * fused volume on `body_s`, i.e. the pre-bodySplit behaviour.
@@ -398,7 +398,6 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             mode: 'rectangular',
             count_x: 2, pitch_x: 15, direction_x_query: '@dir_x',
             count_y: 2, pitch_y: 15, direction_y_query: '@dir_y',
-            include_source: true,
             operation: 'add',
           },
         }, repo, bodyStore)
@@ -411,6 +410,33 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
           expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore[bid].shape!))).toBeCloseTo(srcVol, 2)
         }
         expect(bodyStore.body_s.modified_by).toContain('arr1')
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it.each([2, 3])('linear count %i makes count - 1 new instances', (count) => {
+      // The count includes the source, which keeps body_s; pitch 15 on a 5-cube
+      // leaves every copy disjoint, so each new instance is its own part.
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      try {
+        const repo = new Repository()
+        repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
+        const bodyStore: Record<string, Body> = {
+          body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
+        }
+        const result = solveArray(occ, scope, table, {
+          id: 'arr1',
+          array: {
+            source_body: 'body_s', mode: 'linear', count_x: count, pitch_x: 15,
+            direction_x_query: '@dir_x', operation: 'add',
+          },
+        }, repo, bodyStore)
+        expect(result.status).toBe('ok')
+        expect(result.body_ids).toHaveLength(count)
+        expect(Object.keys(bodyStore)).toHaveLength(count)
+        expect(result.body_ids[0]).toBe('body_s')
       } finally {
         scope.dispose()
       }
@@ -462,7 +488,6 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
               mode: 'rectangular',
               count_x: 2, pitch_x: 15, direction_x_query: '@dir_x',
               count_y: 2, pitch_y: 15, direction_y_query: '@dir_y',
-              include_source: true,
               operation: 'add',
             },
           }, repo, bodyStore)
@@ -512,7 +537,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
 
     it('circular_array new operation creates split bodies', () => {
       // operation=new creates one split body per transformed copy; the source
-      // stands as instance 0 (M33), so count=4 with include_source yields 3 new
+      // stands as instance 0 (M33), so count=4 yields 3 new
       // bodies, not 4 -- the source is no longer duplicated in place.
       const scope = new DisposeScope()
       const table = new HandleTable()
@@ -529,7 +554,6 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             source_body: 'body_s',
             count: 4, step_angle: null as unknown as number,
             axis: '@axis_z',
-            include_source: true,
             operation: 'new',
           },
         }, repo, bodyStore)
@@ -546,14 +570,12 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       }
     })
 
-    // ─── Circular array: no source ───
+    // ─── Circular array: source in the seed slot ───
 
-    it('circular_array include_source=false leaves no copy on the seed', () => {
-      // The toggle means no seed copy in every mode. The default step is
-      // 360/count, so the copies must sweep 90, 180, 270: the old exclude branch
-      // swept 0, 90, 180, keeping a coincident seed copy and dropping the 270
-      // slot. Operation new spawns one body per copy, so the copy angles are
-      // read straight off the new bodies.
+    it('circular count 4 sweeps the copies at 90, 180 and 270 from the seed', () => {
+      // The default step is 360/count, and the source holds the seed slot, so
+      // the copies sweep 90, 180, 270. Operation new spawns one body per copy,
+      // so the copy angles are read straight off the new bodies.
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
@@ -568,7 +590,6 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             source_body: 'body_s',
             count: 4, step_angle: null as unknown as number,
             axis: '@axis_z',
-            include_source: false,
             operation: 'new',
           },
         }, repo, bodyStore)
@@ -606,7 +627,6 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             source_body: 'body_s',
             count: 4, step_angle: 45.0,
             axis: '@axis_z',
-            include_source: true,
             operation: 'add',
           },
         }, repo, bodyStore)
@@ -638,7 +658,6 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             source_body: 'body_s',
             count: 5, step_angle: null as unknown as number,
             axis: '@axis_z',
-            include_source: true,
             operation: 'add',
           },
         }, repo, bodyStore)
@@ -648,57 +667,26 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       }
     })
 
-    // ─── Circular array: linear count=1 with source ───
+    // ─── Linear count below the source-in-count minimum ───
 
-    it('linear count=1 with include_source=true equals source shape', () => {
-      // count=1 with include_source=true -- no crash, body unchanged.
+    it('linear count 0 and 1 are refused because the count includes the source', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
-        const bodyStore: Record<string, Body> = {
-          body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
+        for (const count_x of [0, 1]) {
+          const bodyStore: Record<string, Body> = {
+            body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
+          }
+          expect(() => solveArray(occ, scope, table, {
+            id: 'arr1',
+            array: {
+              source_body: 'body_s', mode: 'linear', count_x, pitch_x: 20,
+              direction_x_query: '@dir_x', operation: 'add',
+            },
+          }, repo, bodyStore)).toThrow(/count includes the source/)
         }
-        const srcVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_s.shape!))
-        const result = solveArray(occ, scope, table, {
-          id: 'arr1',
-          array: {
-            source_body: 'body_s', mode: 'linear', count_x: 1, pitch_x: 20,
-            direction_x_query: '@dir_x', include_source: true, operation: 'add',
-          },
-        }, repo, bodyStore)
-        expect(result.status).toBe('ok')
-        // Volume should be unchanged (single instance)
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_s.shape!))).toBeCloseTo(srcVol, 2)
-      } finally {
-        scope.dispose()
-      }
-    })
-
-    // ─── Linear count=1 no source ───
-
-    it('linear count=1 with include_source=false produces 1 transformed copy', () => {
-      // count=1 with include_source=false produces 1 copy at pitch offset.
-      const scope = new DisposeScope()
-      const table = new HandleTable()
-      try {
-        const repo = new Repository()
-        repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
-        const bodyStore: Record<string, Body> = {
-          body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
-        }
-        const srcVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_s.shape!))
-        const result = solveArray(occ, scope, table, {
-          id: 'arr1',
-          array: {
-            source_body: 'body_s', mode: 'linear', count_x: 1, pitch_x: 20,
-            direction_x_query: '@dir_x', include_source: false, operation: 'add',
-          },
-        }, repo, bodyStore)
-        expect(result.status).toBe('ok')
-        // Body replaced with single translated copy, volume unchanged
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_s.shape!))).toBeCloseTo(srcVol, 2)
       } finally {
         scope.dispose()
       }

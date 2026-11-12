@@ -228,10 +228,12 @@ export const FEATURE_SCHEMA_BY_KIND = {
     key: 'pattern',
     properties: {
       subject: { enum: ['body', 'feature'] },
-      // Body subject.
+      // Body subject. The source is always instance 0; the retired
+      // `include_source` flag is deliberately absent, so the setters and the
+      // strict drive check refuse it while the tolerant loader still accepts an
+      // old document that carries it.
       source_body: REF,
       operation: { enum: ['add', 'new'] },
-      include_source: { type: 'boolean' },
       // Feature subject.
       source_feature: REF,
       target_body: REF,

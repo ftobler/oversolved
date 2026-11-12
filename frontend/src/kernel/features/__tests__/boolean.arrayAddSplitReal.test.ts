@@ -168,7 +168,7 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
     seed(r, 'body_plate', 'plate', plate)
     seed(r, 'body_spoke', 'sp0', spokeShape(r))
     const ar1 = {
-      source_body: '@body_spoke', mode: 'linear', operation: 'add', include_source: true,
+      source_body: '@body_spoke', mode: 'linear', operation: 'add',
       count_x: 3, pitch_x: 100, direction_x: [1, 0, 0],
     }
     solveArray(oc, r.scope, r.table, { id: 'ar1', array: ar1 }, new Repository(), r.store)
@@ -193,13 +193,13 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
     seed(r, 'body_plate', 'plate', plate)
     seed(r, 'body_spoke', 'sp0', spokeShape(r))
     const outer = {
-      source_body: '@body_spoke', mode: 'linear', operation: 'add', include_source: true,
+      source_body: '@body_spoke', mode: 'linear', operation: 'add',
       count_x: 2, pitch_x: 100, direction_x: [1, 0, 0],
     }
     solveArray(oc, r.scope, r.table, { id: 'arA', array: outer }, new Repository(), r.store)
     // The inner array takes one OUTER copy as its source and arrays it along Z.
     const inner = {
-      source_body: '@body_spoke_1', mode: 'linear', operation: 'add', include_source: true,
+      source_body: '@body_spoke_1', mode: 'linear', operation: 'add',
       count_x: 2, pitch_x: 30, direction_x: [0, 0, 1],
     }
     solveArray(oc, r.scope, r.table, { id: 'arB', array: inner }, new Repository(), r.store)
@@ -224,7 +224,7 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
     seed(r, 'body_plate', 'plate', plate)
     seed(r, 'body_spoke', 'sp0', spokeShape(r))
     const ar1 = {
-      source_body: '@body_spoke', mode: 'linear', operation: 'add', include_source: true,
+      source_body: '@body_spoke', mode: 'linear', operation: 'add',
       count_x: 2, pitch_x: 100, direction_x: [1, 0, 0],
     }
     solveArray(oc, r.scope, r.table, { id: 'ar1', array: ar1 }, new Repository(), r.store)
@@ -275,7 +275,7 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
     seed(r, 'body_plate', 'plate', plate)
     seed(r, 'body_spoke', 'sp0', spokeShape(r))
     const ar2 = {
-      source_body: '@body_spoke', mode: 'linear', operation: 'new', include_source: true,
+      source_body: '@body_spoke', mode: 'linear', operation: 'new',
       count_x: 3, pitch_x: 100, direction_x: [1, 0, 0],
     }
     solveArray(oc, r.scope, r.table, { id: 'ar2', array: ar2 }, new Repository(), r.store)

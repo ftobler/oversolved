@@ -39,12 +39,35 @@ describe('pattern document validation', () => {
   })
 
   it('refuses a count the loader would refuse', () => {
-    for (const count of [0, -2, 2.5]) {
+    for (const count of [0, 1, -2, 2.5]) {
       const result = loadPartDoc(doc({ subject: 'feature', source_feature: '@ex1', count }))
       expect(result.ok, String(count)).toBe(false)
       if (result.ok) continue
       expect(result.error.field).toBe('features[0].pattern.count')
     }
+  })
+
+  it('refuses a 1x1 rectangular grid but accepts a 1x2 row', () => {
+    const square = loadPartDoc(doc({ subject: 'body', mode: 'rectangular', count_x: 1, count_y: 1 }))
+    expect(square.ok).toBe(false)
+    if (!square.ok) {
+      expect(square.error.field).toBe('features[0].pattern.count_x')
+      expect(square.error.message).toContain('1x1')
+    }
+    expect(loadPartDoc(doc({ subject: 'body', mode: 'rectangular', count_x: 1, count_y: 2 })).ok).toBe(true)
+  })
+
+  it('accepts the retired include_source key on an old document', () => {
+    // Load tolerance is deliberate: the kernel ignores the flag now, but a file
+    // saved before that change must still open.
+    const result = loadPartDoc(doc({
+      subject: 'body', source_body: '@b1', mode: 'linear', count: 3, include_source: false,
+    }))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect((result.doc.features as Record<string, unknown>[])[0].pattern).toMatchObject({
+      count: 3, include_source: false,
+    })
   })
 
   it('refuses a non-string source and a malformed direction', () => {
