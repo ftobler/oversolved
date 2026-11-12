@@ -52,10 +52,12 @@ export const ZEBRA_GLSL = `
 
 /** The highlight half of the zebra patch, split out because the assembly has no
  *  vertex-colour highlight (its selection is an overlay) and must not reference
- *  an attribute it never uploads. */
+ *  an attribute it never uploads. Three declares `vColor` as a `vec4` whenever
+ *  the colour attribute is enabled, so every comparison and mix takes `.rgb`:
+ *  `distance` and `mix` have no vec4/vec3 overload. */
 export const ZEBRA_HIGHLIGHT_GLSL = `
-  float zebraHighlight = step( ${HIGHLIGHT_EPSILON}, distance( vColor, uBaseColor ) );
-  diffuseColor.rgb = mix( zebraColor, vColor, zebraHighlight );
+  float zebraHighlight = step( ${HIGHLIGHT_EPSILON}, distance( vColor.rgb, uBaseColor ) );
+  diffuseColor.rgb = mix( zebraColor, vColor.rgb, zebraHighlight );
 `
 
 /**
@@ -112,9 +114,10 @@ export const CURVATURE_GLSL = `
     : mix( curvatureFlat, curvatureHot, ( curvatureT - 0.5 ) * 2.0 );
 `
 
+// Same vec4 `vColor` as the zebra highlight, so the same RGB swizzle.
 export const CURVATURE_HIGHLIGHT_GLSL = `
-  float curvatureHighlight = step( ${HIGHLIGHT_EPSILON}, distance( vColor, uBaseColor ) );
-  diffuseColor.rgb = mix( curvatureColor, vColor, curvatureHighlight );
+  float curvatureHighlight = step( ${HIGHLIGHT_EPSILON}, distance( vColor.rgb, uBaseColor ) );
+  diffuseColor.rgb = mix( curvatureColor, vColor.rgb, curvatureHighlight );
 `
 
 /**
