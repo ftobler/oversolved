@@ -81,6 +81,12 @@ const reactPlugin = react() as unknown as NonNullable<ViteUserConfig['plugins']>
 
 export default defineConfig({
   plugins: [reactPlugin],
+  // `node_modules` is symlinked into every worktree, so the default dep cache
+  // (`node_modules/.vite`) is shared by all of them: a sibling worktree's
+  // concurrent run rewrites `deps_ssr/*.js` under this one and an import fails
+  // mid-run, which costs a whole suite rerun. Each tree keeps its own cache
+  // under its gitignored tmp/ instead. This is Vite's option, not vitest's.
+  cacheDir: path.resolve(__dirname, '../tmp/vite-cache'),
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
