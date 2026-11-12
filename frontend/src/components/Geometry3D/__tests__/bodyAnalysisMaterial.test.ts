@@ -154,6 +154,33 @@ describe('curvature material patch', () => {
   })
 })
 
+describe('vertex-colour highlight shader types', () => {
+  // Three declares `varying vec4 vColor` for vertex colours while the base
+  // colour uniform is a vec3, and neither `distance` nor `mix` has a vec4/vec3
+  // overload. A bare `vColor` fails the whole program, so pin the swizzle in
+  // the complete sources the patches hand to the renderer, not just in the
+  // exported GLSL fragments.
+  function highlightSources(): string[] {
+    const zebra = applyPatch(makeZebraPatch({ stripes: 12, baseColor: '#112233', mixVertexColor: true }))
+    const curvature = applyCurvature(curvatureParams)
+    return [zebra.fragmentShader, curvature.shader.fragmentShader]
+  }
+
+  it('compares the vec4 vertex colour through its RGB swizzle', () => {
+    for (const source of highlightSources()) {
+      expect(source).toContain('distance( vColor.rgb, uBaseColor )')
+      expect(source).not.toMatch(/distance\(\s*vColor\s*,/)
+    }
+  })
+
+  it('mixes the analysis colour with RGB vertex colours', () => {
+    const sources = highlightSources()
+    expect(sources[0]).toContain('mix( zebraColor, vColor.rgb, zebraHighlight )')
+    expect(sources[1]).toContain('mix( curvatureColor, vColor.rgb, curvatureHighlight )')
+    for (const source of sources) expect(source).not.toMatch(/mix\(\s*\w+,\s*vColor\s*,/)
+  })
+})
+
 describe('useBodyAnalysisMaterial', () => {
   it('updates slider values through uniforms without recompiling', () => {
     const material = new THREE.MeshPhysicalMaterial()
