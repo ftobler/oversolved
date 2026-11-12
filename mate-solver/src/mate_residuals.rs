@@ -838,11 +838,9 @@ impl MateProblem {
         // intact rather than producing inf.
         let norm = if max_diag > 0.0 { max_diag } else { 1.0 };
         let mut scale = vec![1.0 / norm; self.n_red];
-        for bi in 0..self.bodies.len() {
-            if let Some(col) = self.body_col[bi] {
-                for j in 0..3 {
-                    scale[col + 3 + j] = ROT_DAMP_SCALE / norm;
-                }
+        for col in self.body_col.iter().flatten() {
+            for j in 0..3 {
+                scale[col + 3 + j] = ROT_DAMP_SCALE / norm;
             }
         }
         scale
@@ -858,8 +856,8 @@ impl MateProblem {
     /// thing as the anchor's target for the whole solve.
     pub(crate) fn reduced_x0(&self) -> Vec<f64> {
         let mut y = Vec::with_capacity(self.n_red);
-        for bi in 0..self.bodies.len() {
-            if let Some(col) = self.body_col[bi] {
+        for (bi, col) in self.body_col.iter().enumerate() {
+            if let Some(col) = *col {
                 let off = bi * 7;
                 debug_assert_eq!(col, y.len(), "reduced column map drifted");
                 y.extend_from_slice(&self.x0[off..off + 3]);
@@ -881,8 +879,8 @@ impl MateProblem {
     pub(crate) fn expand(&self, y: &[f64]) -> Vec<f64> {
         let mut x = self.x0.clone();
         let q_ref = self.q_ref.borrow();
-        for bi in 0..self.bodies.len() {
-            let Some(col) = self.body_col[bi] else {
+        for (bi, col) in self.body_col.iter().enumerate() {
+            let Some(col) = *col else {
                 continue;
             };
             let off = bi * 7;
@@ -932,8 +930,8 @@ impl MateProblem {
     pub(crate) fn retract(&self, y: &mut [f64]) {
         const FOLD_W: f64 = 4.0;
         let mut q_ref = self.q_ref.borrow_mut();
-        for bi in 0..self.bodies.len() {
-            let Some(col) = self.body_col[bi] else {
+        for (bi, col) in self.body_col.iter().enumerate() {
+            let Some(col) = *col else {
                 continue;
             };
             let w = [y[col + 3], y[col + 4], y[col + 5]];
