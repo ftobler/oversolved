@@ -411,8 +411,9 @@ export function useBodyAnalysisMaterial(
     // the environment map. Disposing drops the renderer's per-material
     // properties, so the next render takes the fresh-compile path and runs
     // onBeforeCompile again; the GLSL program itself stays in the shared
-    // program cache, so no shader is recompiled for a key already seen.
-    material.dispose()
+    // program cache, so no shader is recompiled for a key already seen. A DOM
+    // render (no R3F) hands the ref a plain element, which has no such state.
+    if (typeof material.dispose === 'function') material.dispose()
     material.needsUpdate = true
     return () => {
       // The material is about to unmount; leave it in a state a recycled
