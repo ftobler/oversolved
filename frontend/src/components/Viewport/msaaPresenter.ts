@@ -1,7 +1,9 @@
 import * as THREE from 'three'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { AoPass } from '@/components/Viewport/aoPass'
-import { AO_OCCLUDER_LAYER, aoUniforms, isAoActive, isAoCapturing } from '@/components/Viewport/ambientOcclusion'
+import {
+  AO_OCCLUDER_LAYER, aoRadiusFor, aoUniforms, isAoCapturing,
+} from '@/components/Viewport/ambientOcclusion'
 import { useSectionStore } from '@/stores/sectionStore'
 
 // Multisampling the part viewport ourselves instead of asking the browser for an
@@ -80,7 +82,14 @@ export class MsaaPresenter {
   private readonly size = new THREE.Vector2()
   private readonly samples: number
   private stencil = false
-  private aoPass: AoPass | null = null
+  // One camera for every G-buffer pass, layer-masked to the occluders and
+  // refilled from the live camera each frame: a per-frame clone would allocate
+  // once per frame and the mask would have to be re-applied anyway.
+  private readonly prepassCamera = new THREE.OrthographicCamera()
+  private readonly clearColor = new THREE.Color()
+  // Public so the render harness can see the AO resources exist, are reused
+  // and are freed; the presenter itself is the only other owner.
+  aoPass: AoPass | null = null
   // Viewer state, fed by MsaaRender or a direct caller.
   aoActive = false
   capturing = false
@@ -109,87 +118,18 @@ export class MsaaPresenter {
     return this.stencil
   }
 
-  private normalizeAoArg(ao: unknown): {
-    active: boolean; capturing: boolean; extent?: number
-    shading?: boolean; zebra?: boolean; curvature?: boolean; sectionEnabled?: boolean
-    allowAmbientOcclusion?: boolean
-  } {
-    if (typeof ao === 'boolean') {
-      return { active: ao, capturing: this.capturing || isAoCapturing() }
-    }
-    if (ao && typeof ao === 'object') {
-      const o = ao as Partial<{
-        aoActive: unknown
-        ambientOcclusion: unknown
-        ambient_occlusion: unknown
-        ao: unknown
-        enabled: unknown
-        capturing: unknown
-        extent: unknown
-        modelExtent: unknown
-        shading: unknown
-        zebra: unknown
-        curvature: unknown
-        sectionEnabled: unknown
-        section: unknown
-        allowAmbientOcclusion: unknown
-      }>
-      const active = o.aoActive ?? o.ambientOcclusion ?? o.ambient_occlusion ?? o.ao ?? o.enabled ?? this.aoActive
-      const capturing = o.capturing ?? this.capturing ?? isAoCapturing() ?? useSectionStore.getState().capturing
-      const extent = typeof o.extent === 'number' ? o.extent : (typeof o.modelExtent === 'number' ? o.modelExtent : undefined)
-      return {
-        active: Boolean(active),
-        capturing: Boolean(capturing),
-        extent,
-        shading: typeof o.shading === 'boolean' ? o.shading : undefined,
-        zebra: typeof o.zebra === 'boolean' ? o.zebra : undefined,
-        curvature: typeof o.curvature === 'boolean' ? o.curvature : undefined,
-        sectionEnabled: typeof o.sectionEnabled === 'boolean' ? o.sectionEnabled : (typeof o.section === 'boolean' ? o.section : undefined),
-        allowAmbientOcclusion: typeof o.allowAmbientOcclusion === 'boolean' ? o.allowAmbientOcclusion : undefined,
-      }
-    }
-    return { active: this.aoActive, capturing: this.capturing || isAoCapturing() || useSectionStore.getState().capturing }
-  }
-
-  render(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, ao?: unknown): void {
+  render(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): void {
     const { x, y } = gl.getDrawingBufferSize(this.size)
-    const aoInfo = this.normalizeAoArg(ao)
-    if (typeof aoInfo.extent === 'number') this.modelExtent = aoInfo.extent
-    const sectionCapturing = useSectionStore.getState().capturing
-    const capturing = aoInfo.capturing || sectionCapturing || this.capturing
-    const active = !capturing && aoInfo.active && isAoActive({
-      ambientOcclusion: aoInfo.active,
-      shading: aoInfo.shading ?? true,
-      zebra: aoInfo.zebra ?? false,
-      curvature: aoInfo.curvature ?? false,
-      sectionEnabled: aoInfo.sectionEnabled ?? false,
-      capturing,
-      allowAmbientOcclusion: aoInfo.allowAmbientOcclusion ?? true,
-    })
-
+    const capturing = this.capturing || isAoCapturing() || useSectionStore.getState().capturing
     const target = this.targetFor(gl, x, y)
     const previous = gl.getRenderTarget()
 
-    if (active) {
-      if (!this.aoPass) this.aoPass = new AoPass()
-      this.aoPass.setSize(x, y)
-      // Pre-pass: opaque body faces only, layer-masked camera.
-      const prepassCam = camera.clone()
-      try { prepassCam.layers.set(AO_OCCLUDER_LAYER) } catch {  /* layers may be readonly in tests */ }
-      gl.setRenderTarget(this.aoPass.prepassTarget)
-      gl.render(scene, prepassCam)
-      // AO quad.
-      gl.setRenderTarget(this.aoPass.aoTarget)
-      gl.render(this.aoPass.quad, this.aoPass.camera)
-      // Update shared uniforms.
-      aoUniforms.tAO.value = this.aoPass.aoTarget.texture
-      ;(aoUniforms.uResolution.value as THREE.Vector2).set(x, y)
-    } else {
+    if (this.aoActive && !capturing) {
+      this.renderAo(gl, scene, camera, x, y)
+    } else if (this.aoPass) {
       // Free AO targets when the option is off.
-      if (this.aoPass) {
-        this.aoPass.dispose()
-        this.aoPass = null
-      }
+      this.aoPass.dispose()
+      this.aoPass = null
       aoUniforms.tAO.value = null
     }
 
@@ -199,6 +139,69 @@ export class MsaaPresenter {
     // the target only fills the slot the Pass signature types as required.
     this.output.render(gl, target, target, 0, false)
     gl.setRenderTarget(previous)
+  }
+
+  /**
+   * The AO stage: the G-buffer, then GTAO into its own target, then the
+   * denoiser. Every step runs before the beauty pass, which only reads the
+   * shared uniforms this stage writes.
+   */
+  private renderAo(
+    gl: THREE.WebGLRenderer,
+    scene: THREE.Scene,
+    camera: THREE.Camera,
+    width: number,
+    height: number,
+  ): void {
+    const pass = this.aoPass ?? (this.aoPass = new AoPass())
+    pass.setSize(width, height)
+    pass.update(camera, aoRadiusFor(this.modelExtent))
+
+    // The G-buffer borrows the scene, so save exactly what this stage changes
+    // and hand the beauty pass the same scene it would have drawn without AO.
+    const previousOverride = scene.overrideMaterial
+    const previousBackground = scene.background
+    gl.getClearColor(this.clearColor)
+    const previousClearAlpha = gl.getClearAlpha()
+    const previousAutoClear = gl.autoClear
+
+    // The viewport camera is orthographic, so one ortho instance can carry its
+    // state frame after frame; the projection itself is copied, not rebuilt.
+    this.prepassCamera.copy(camera as THREE.OrthographicCamera)
+    // The mask is the occluder bit alone: edges, overlays and transparent
+    // bodies are not occluders and must not enter the depth or normal target.
+    this.prepassCamera.layers.set(AO_OCCLUDER_LAYER)
+    scene.overrideMaterial = pass.normalMaterial
+    scene.background = null
+    gl.autoClear = false
+    gl.setRenderTarget(pass.gbuffer)
+    // Anything the occluders do not cover is background: a normal pointing at
+    // the camera with full depth, which GTAO and the denoiser both discard.
+    gl.setClearColor(0x7777ff, 1)
+    gl.clear()
+    gl.render(scene, this.prepassCamera)
+
+    scene.overrideMaterial = previousOverride
+    scene.background = previousBackground
+    this.renderQuad(gl, pass.gtaoMaterial, pass.gtaoTarget)
+    this.renderQuad(gl, pass.pdMaterial, pass.aoTarget)
+
+    gl.autoClear = previousAutoClear
+    gl.setClearColor(this.clearColor, previousClearAlpha)
+    aoUniforms.tAO.value = pass.aoTarget.texture
+    aoUniforms.uResolution.value.set(width, height)
+  }
+
+  private renderQuad(gl: THREE.WebGLRenderer, material: THREE.Material, target: THREE.WebGLRenderTarget): void {
+    const pass = this.aoPass!
+    pass.quad.material = material
+    gl.setRenderTarget(target)
+    // White, every frame: the denoiser discards background pixels, so the
+    // silhouette fringe of each body would otherwise keep sampling whatever
+    // the target held before (including the previous frame's occlusion).
+    gl.setClearColor(0xffffff, 1)
+    gl.clear()
+    gl.render(pass.quadScene, pass.camera)
   }
 
   // Sized per call rather than on a resize event: the thumbnail capture shrinks
@@ -227,6 +230,8 @@ export class MsaaPresenter {
     this.target = null
     this.aoPass?.dispose()
     this.aoPass = null
+    // The shared uniform must not point at a freed texture.
+    aoUniforms.tAO.value = null
     this.output.dispose()
   }
 }

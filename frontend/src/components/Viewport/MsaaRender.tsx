@@ -58,13 +58,12 @@ export function MsaaRender() {
     if (presenter.current) {
       const extent = getModelBoundingBoxExtent(bodies)
       presenter.current.aoActive = isAoActive({
-        ambientOcclusion,
+        option: ambientOcclusion,
         shading,
         zebra,
         curvature,
-        sectionEnabled,
+        section: sectionEnabled,
         capturing,
-        allowAmbientOcclusion: true,
       })
       presenter.current.capturing = capturing
       presenter.current.modelExtent = extent
