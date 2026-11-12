@@ -44,12 +44,21 @@ export function toBodyResults(bodies: Record<string, MeshPayload[]>): Record<str
  * They ride beside the `BodyResult` dict rather than in it: `BodyResult.edges`
  * is the part editor's `EdgeData`, a different shape, and round-tripping an
  * `EdgeCurve` through it would buy nothing but a lossy conversion.
+ *
+ * A hidden seam is dropped here, for the beauty pass only: the pick payload
+ * (`assemblyPick.buildEdges`) keeps the whole curve list so a tree-selected
+ * seam can still draw its highlight, and its ID registration applies the same
+ * skip separately.
  */
 export function toEdgeCurves(bodies: Record<string, MeshPayload[]>): Record<string, EdgeCurve[]> {
   const out: Record<string, EdgeCurve[]> = {}
   for (const [handle, meshes] of Object.entries(bodies)) {
     meshes.forEach((m, i) => {
-      out[assemblyBodyId(handle, i)] = m.edges ?? []
+      const edges = m.edges ?? []
+      const hidden = m.hiddenEdges
+      out[assemblyBodyId(handle, i)] = hidden && hidden.length > 0
+        ? edges.filter((_edge, index) => !hidden.includes(index))
+        : edges
     })
   }
   return out

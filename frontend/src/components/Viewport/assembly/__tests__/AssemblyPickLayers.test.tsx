@@ -77,6 +77,52 @@ function tree(pipeline: IdPipeline, bodies: AssemblyPickBody[], layers: { showFa
   )
 }
 
+describe('AssemblyPickLayers hidden seams', () => {
+  function seamBody(handle: string): AssemblyPickBody {
+    return {
+      ...body(handle),
+      edges: {
+        segmentPositions: new Float32Array([
+          0, 0, 0, 1, 0, 0,
+          1, 0, 0, 1, 0, 1,
+          2, 0, 0, 3, 0, 0,
+        ]),
+        segmentToEdge: new Uint32Array([0, 1, 2]),
+        edgeQueries: [`${handle}:edge0`, `${handle}:edge1`, `${handle}:edge2`],
+      },
+      vertices: {
+        vertices: [[0, 0, 0], [1, 0, 0], [2, 0, 0]],
+        vertexQueries: [`${handle}:vtx0`, `${handle}:vtx1`, `${handle}:vtx2`],
+        slotIndices: [0, 1, 2],
+      },
+      hiddenEdges: [1],
+      hiddenVertices: [1],
+    }
+  }
+
+  it('skips the seam segment and the hidden vertex at registration, keeping their neighbours', () => {
+    const { pipeline } = stubPipeline()
+    render(tree(pipeline, [seamBody('p1')]))
+
+    const edgeReg = vi.mocked(pipeline.edgeLayer.registerBody).mock.calls[0][0]
+    expect([...edgeReg.segmentToEdge]).toEqual([0, 2])
+    expect(edgeReg.segmentPositions.length).toBe(2 * 6)
+    expect(edgeReg.edgeQueries).toEqual(['p1:edge0', 'p1:edge1', 'p1:edge2'])
+
+    const vertexReg = vi.mocked(pipeline.vertexLayer.registerBody).mock.calls[0][0]
+    expect(vertexReg.vertices).toEqual([[0, 0, 0], [2, 0, 0]])
+    expect(vertexReg.vertexQueries).toEqual(['p1:vtx0', 'p1:vtx2'])
+  })
+
+  it('registers no edge layer at all when every curve is a hidden seam', () => {
+    const { pipeline } = stubPipeline()
+    const seamOnly = seamBody('p2')
+    seamOnly.hiddenEdges = [0, 1, 2]
+    render(tree(pipeline, [seamOnly]))
+    expect(vi.mocked(pipeline.edgeLayer.registerBody)).not.toHaveBeenCalled()
+  })
+})
+
 describe('AssemblyPickLayers incremental registration', () => {
   it('re-registers only the bodies whose object identity changed', () => {
     const { pipeline, registered, unregistered, reset } = stubPipeline()

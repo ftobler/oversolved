@@ -31,10 +31,23 @@ export interface AssemblyPickBody {
   bodyKey: string
   faces: { positions: Float32Array; triangleToFace: Uint32Array; faceQueries: string[] } | null
   edges: { segmentPositions: Float32Array; segmentToEdge: Uint32Array; edgeQueries: string[] } | null
-  vertices: { vertices: Vec3[]; vertexQueries: string[] } | null
+  vertices: {
+    vertices: Vec3[]
+    vertexQueries: string[]
+    // The bundle's entity-anchor slot behind each entry, in order. The payload
+    // is compacted (an anchor-less vertex has no position and no pick), so a
+    // hidden-slot filter must read this, not the compacted position.
+    slotIndices?: number[]
+  } | null
   /** Per-face boundary-loop segments (6 floats per segment), keyed by face index.
    *  Absent for a face that produced no closed loop (degenerate/open tessellation). */
   faceBoundaries: Map<number, Float32Array> | null
+  /** The body's sparse display-only indices (bundle `hiddenEdges` /
+   *  `hiddenVertices`). `edges` and `vertices` stay whole so a seam an already
+   *  authored mate names still highlights from the tree; only the ID layers skip
+   *  them, through `pickEdgesForRegistration` / `pickVerticesForRegistration`. */
+  hiddenEdges?: number[]
+  hiddenVertices?: number[]
 }
 
 function faceCount(m: MeshPayload): number {
@@ -103,6 +116,58 @@ function buildEdges(handle: string, bodyIndex: number, m: MeshPayload): Assembly
 }
 
 /**
+ * The edge payload an ID layer registers, with every segment a hidden seam owns
+ * removed. Segment -> edge indices are kept, so a segment of a later edge still
+ * names its own entity. The drawn buffer and the selection overlay read the
+ * unfiltered `AssemblyPickBody.edges`, which is what lets a tree-selected seam
+ * still highlight.
+ */
+export function pickEdgesForRegistration(
+  edges: AssemblyPickBody['edges'],
+  hidden?: readonly number[],
+): AssemblyPickBody['edges'] {
+  if (!edges || !hidden || hidden.length === 0) return edges
+  const hiddenSet = new Set(hidden)
+  const kept: number[] = []
+  for (let seg = 0; seg < edges.segmentToEdge.length; seg++) {
+    if (!hiddenSet.has(edges.segmentToEdge[seg])) kept.push(seg)
+  }
+  if (kept.length === edges.segmentToEdge.length) return edges
+  if (kept.length === 0) return null
+  const segmentPositions = new Float32Array(kept.length * 6)
+  const segmentToEdge = new Uint32Array(kept.length)
+  kept.forEach((seg, i) => {
+    segmentPositions.set(edges.segmentPositions.subarray(seg * 6, seg * 6 + 6), i * 6)
+    segmentToEdge[i] = edges.segmentToEdge[seg]
+  })
+  return { segmentPositions, segmentToEdge, edgeQueries: edges.edgeQueries }
+}
+
+/** The vertex payload an ID layer registers, with hidden indices removed. The
+ *  surviving vertices keep their own queries, so a pick still names its slot.
+ *  `hidden` is in bundle slot space, which only `slotIndices` can map back. */
+export function pickVerticesForRegistration(
+  vertices: AssemblyPickBody['vertices'],
+  hidden?: readonly number[],
+): AssemblyPickBody['vertices'] {
+  if (!vertices || !hidden || hidden.length === 0) return vertices
+  const hiddenSet = new Set(hidden)
+  const keptVertices: Vec3[] = []
+  const keptQueries: string[] = []
+  const keptSlots: number[] = []
+  vertices.vertices.forEach((point, i) => {
+    const slot = vertices.slotIndices?.[i] ?? i
+    if (hiddenSet.has(slot)) return
+    keptVertices.push(point)
+    keptQueries.push(vertices.vertexQueries[i])
+    keptSlots.push(slot)
+  })
+  if (keptVertices.length === 0) return null
+  if (keptVertices.length === vertices.vertices.length) return vertices
+  return { vertices: keptVertices, vertexQueries: keptQueries, slotIndices: keptSlots }
+}
+
+/**
  * Vertex positions come from the anchor table, not from the mesh: the bundle
  * never ships a B-rep vertex list, and a vertex anchor's `point` IS the vertex,
  * already carried into the solved pose. A vertex the extractor skipped has no
@@ -117,14 +182,16 @@ function buildVertices(
   const partAnchors = anchors[handle] ?? {}
   const vertices: Vec3[] = []
   const vertexQueries: string[] = []
+  const slotIndices: number[] = []
   slots.forEach((anchorIds, index) => {
     const anchor = anchorIds.length > 0 ? partAnchors[anchorIds[0]] : undefined
     if (!anchor) return
     vertices.push([...anchor.point] as Vec3)
     vertexQueries.push(assemblyEntityKey(handle, bodyIndex, 'vertex', index))
+    slotIndices.push(index)
   })
   if (vertices.length === 0) return null
-  return { vertices, vertexQueries }
+  return { vertices, vertexQueries, slotIndices }
 }
 
 /** One registration payload per body of every part instance, in handle order. */
@@ -142,6 +209,8 @@ export function buildPickBodies(
         edges: buildEdges(handle, bodyIndex, m),
         vertices: buildVertices(handle, bodyIndex, m, anchors),
         faceBoundaries: buildFaceBoundaries(m),
+        hiddenEdges: m.hiddenEdges,
+        hiddenVertices: m.hiddenVertices,
       })
     })
   }

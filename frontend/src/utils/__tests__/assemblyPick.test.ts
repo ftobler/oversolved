@@ -7,7 +7,7 @@ import type { BodyResult, PartInstance, Transform3D } from '@/types/cad'
 import type { MeshPayload } from '@/kernel/solveAssembly'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { buildAnchorTable, type AnchorTable } from '@/utils/anchorGizmos'
-import { buildPickBodies, offsetPickBodies } from '@/utils/assemblyPick'
+import { buildPickBodies, offsetPickBodies, pickEdgesForRegistration, pickVerticesForRegistration } from '@/utils/assemblyPick'
 import { getAssemblyPartGroups } from '@/utils/assemblyRender'
 import { IDENTITY_TRANSFORM, makeTransform, rotateVector } from '@/utils/transform3d'
 import type { EdgeCurve } from '@/kernel/partBundle'
@@ -115,6 +115,17 @@ describe('buildPickBodies', () => {
     const { vertices } = build(mesh)
     expect(vertices!.vertices).toEqual([[10, 0, 0]])
     expect(vertices!.vertexQueries).toEqual([assemblyEntityKey(PART, 0, 'vertex', 1)])
+    // The slot is recorded, which is what a hidden-index filter reads.
+    expect(vertices!.slotIndices).toEqual([1])
+  })
+
+  it('carries the bundle hidden lists onto the pick body', () => {
+    const body = build(makeMesh({ hiddenEdges: [0], hiddenVertices: [1] }))
+    expect(body.hiddenEdges).toEqual([0])
+    expect(body.hiddenVertices).toEqual([1])
+    // The payloads themselves stay whole: the selection overlay draws from them.
+    expect(body.edges!.segmentToEdge).toEqual(new Uint32Array([0]))
+    expect(body.vertices!.vertices).toHaveLength(2)
   })
 
   it('offers no edge or vertex layer for a bundle cached before the entity index existed', () => {
@@ -169,6 +180,42 @@ describe('buildPickBodies', () => {
 // the settling pose. The offset keeps those two descriptions of "where the
 // geometry is" in step through a commit, so a click in the window lands on the
 // entity under the cursor instead of its pre-drag twin.
+describe('picking payloads with hidden seams', () => {
+  // LINE is curve 0 and CIRCLE curve 1. Hiding curve 0 must drop only its
+  // segment and leave the circle's 64 segments naming entity 1.
+  it('pickEdgesForRegistration drops a hidden edge\'s segments and keeps later ownership', () => {
+    const body = build(makeMesh({ edges: [LINE, CIRCLE], hiddenEdges: [0] }))
+    const reg = pickEdgesForRegistration(body.edges, body.hiddenEdges)!
+    expect(reg.segmentToEdge).toHaveLength(64)
+    expect(new Set(reg.segmentToEdge)).toEqual(new Set([1]))
+    expect(reg.edgeQueries).toEqual(body.edges!.edgeQueries)
+    expect(reg.segmentPositions.length).toBe(reg.segmentToEdge.length * 6)
+  })
+
+  it('pickEdgesForRegistration refuses an all-hidden edge payload', () => {
+    const body = build(makeMesh({ edges: [LINE], hiddenEdges: [0] }))
+    expect(pickEdgesForRegistration(body.edges, body.hiddenEdges)).toBeNull()
+  })
+
+  it('pickVerticesForRegistration filters slots, not compacted positions', () => {
+    // Slot 0 has no anchor, slot 1 is the hidden seam vertex, slot 2 survives.
+    const body = build(makeMesh({
+      entityAnchors: { faces: [], edges: [], vertices: [[], ['a_v1'], ['a_v0']] },
+      hiddenVertices: [1],
+    }))
+    expect(body.vertices!.slotIndices).toEqual([1, 2])
+    const reg = pickVerticesForRegistration(body.vertices, body.hiddenVertices)!
+    expect(reg.vertexQueries).toEqual([assemblyEntityKey(PART, 0, 'vertex', 2)])
+    expect(reg.vertices).toEqual([[0, 0, 0]])
+  })
+
+  it('leaves a payload untouched when nothing is hidden', () => {
+    const body = build(makeMesh())
+    expect(pickEdgesForRegistration(body.edges, undefined)).toBe(body.edges)
+    expect(pickVerticesForRegistration(body.vertices, [])).toBe(body.vertices)
+  })
+})
+
 describe('offsetPickBodies', () => {
   function renderBody(handle: string): BodyResult {
     return {

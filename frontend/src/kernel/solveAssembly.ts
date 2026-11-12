@@ -151,6 +151,11 @@ export interface MeshPayload {
   indices: Uint32Array
   faceIdsPerTriangle: Uint32Array
   edges: EdgeCurve[]  // solved-pose analytic curves; the viewport renders them crisp
+  // The body's sparse display-only seam indices (BodyMesh.hiddenEdges /
+  // hiddenVertices), carried through the solve untransformed: they index the
+  // curve and anchor-slot arrays, not positions.
+  hiddenEdges?: number[]
+  hiddenVertices?: number[]
   // Anchor ids per picked entity. Ids, not geometry, so the solved
   // transform leaves them untouched: the same entity names the same anchor at
   // every pose. Absent for a bundle cached before entityAnchors existed.
@@ -1008,6 +1013,8 @@ export async function solveAssembly(
       // `?? []`: a bundle cached before edges existed still solves, it just
       // renders without them. Same fail-safe posture as the sampler's chord.
       edges: (m.edges ?? []).map(e => transformEdgeCurve(e, t)),
+      hiddenEdges: m.hiddenEdges,
+      hiddenVertices: m.hiddenVertices,
       entityAnchors: m.entityAnchors,
     }))
     transformedBodies[part.handle] = transformed

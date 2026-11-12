@@ -15,7 +15,11 @@
 import { useEffect, useRef } from 'react'
 import { useIdPipeline, type IdPipeline } from '@/picking'
 import { isDevBuild } from '@/kernel/isDevBuild'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import {
+  pickEdgesForRegistration,
+  pickVerticesForRegistration,
+  type AssemblyPickBody,
+} from '@/utils/assemblyPick'
 
 function unregisterAll(pipeline: IdPipeline, registered: Map<string, AssemblyPickBody>): void {
   for (const bodyKey of registered.keys()) {
@@ -92,11 +96,20 @@ export default function AssemblyPickLayers({ bodies, showFaces = true, showEdges
         if (showFaces && body.faces) {
           pipeline.faceLayer.registerBody({ bodyKey, ...body.faces })
         }
-        if (showEdges && body.edges) {
-          pipeline.edgeLayer.registerBody({ bodyKey, ...body.edges })
+        // The bundle's sparse seam lists apply here only: `body.edges` and
+        // `body.vertices` stay whole for the selection overlay, so a seam an
+        // authored mate names still highlights from the tree.
+        const edges = pickEdgesForRegistration(body.edges, body.hiddenEdges)
+        if (showEdges && edges) {
+          pipeline.edgeLayer.registerBody({ bodyKey, ...edges })
         }
-        if (body.vertices) {
-          pipeline.vertexLayer.registerBody({ bodyKey, ...body.vertices })
+        const vertices = pickVerticesForRegistration(body.vertices, body.hiddenVertices)
+        if (vertices) {
+          pipeline.vertexLayer.registerBody({
+            bodyKey,
+            vertices: vertices.vertices,
+            vertexQueries: vertices.vertexQueries,
+          })
         }
         registered.set(bodyKey, body)
       } catch (err) {

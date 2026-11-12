@@ -64,6 +64,12 @@ describe('toEdgeCurves', () => {
     expect(curves[assemblyBodyId('h1', 0)]).toEqual([edge(5)])
   })
 
+  it('drops a hidden seam from the drawn curves only, keeping the pick payload whole', () => {
+    const body = { ...mesh(0), edges: [edge(0), edge(1)], hiddenEdges: [0] }
+    const drawn = toEdgeCurves({ h1: [body] })[assemblyBodyId('h1', 0)]
+    expect(drawn).toEqual([edge(1)])
+  })
+
   it('separates the curves of two bodies of one part instance', () => {
     const curves = toEdgeCurves({ h1: [mesh(0), mesh(3)] })
     expect(curves[assemblyBodyId('h1', 0)]).toEqual([edge(0)])
