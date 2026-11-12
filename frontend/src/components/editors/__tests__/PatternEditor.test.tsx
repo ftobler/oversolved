@@ -7,6 +7,7 @@ import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { PATTERN_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import type { PartFeature } from '@/types/cad'
 import type { NumberFieldDef } from '@/components/editors/widgets/fieldTypes'
+import { validateNumberFieldValue } from '@/components/editors/widgets/numberFieldValidate'
 
 const FEATURES: PartFeature[] = [
   { id: 'ex1', kind: 'extrude', label: 'Extrude 1', extrude: { sketch: [], distance: 1 } },
@@ -116,5 +117,11 @@ describe('PATTERN_SCHEMA', () => {
     expect(count.validateWith!(1, {})).toContain('includes the source')
     expect(count.validateWith!(2.5, {})).toContain('integer')
     expect(count.validateWith!(2, {})).toBeNull()
+  })
+
+  it('shows the source-in-count reason when count 1 is typed', () => {
+    // The field has no min, so the pattern's own rule is what the widget sees
+    // rather than a bare "must be at least 2".
+    expect(validateNumberFieldValue(field('count') as NumberFieldDef, 1, {})).toContain('includes the source')
   })
 })

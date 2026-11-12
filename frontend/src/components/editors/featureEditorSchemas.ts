@@ -448,9 +448,12 @@ export const SPLIT_SCHEMA: FeatureEditorSchema = {
 }
 
 // The other count of a rectangular array for the cells cap; a linear array has
-// one axis, so its hidden count_y never binds.
-function siblingCount(other: unknown, mode: unknown): number | null {
-  return mode === 'rectangular' && typeof other === 'number' ? other : null
+// one axis, so its hidden count_y never binds. A string is an expression the
+// shared rule evaluates when it can, so a literal 1x1 still refuses.
+function siblingCount(other: unknown, mode: unknown): number | string | null {
+  return mode === 'rectangular' && (typeof other === 'number' || typeof other === 'string')
+    ? other
+    : null
 }
 
 export const PATTERN_SCHEMA: FeatureEditorSchema = {
@@ -485,8 +488,10 @@ export const PATTERN_SCHEMA: FeatureEditorSchema = {
         { value: 'circular', label: 'Circular' },
       ] },
     // Count is the total on one axis and includes the source's own slot, so 2
-    // is the smallest value and makes one copy.
-    { type: 'number', key: 'count', label: 'Count', default: 2, parse: 'int', validate: positive, min: 2,
+    // is the smallest value and makes one copy. The schema leaves the floor to
+    // validateWith so the source-in-count reason, not a bare numeric bound, is
+    // what the user sees.
+    { type: 'number', key: 'count', label: 'Count', default: 2, parse: 'int',
       max: MAX_ARRAY_COUNT, showWhen: (d) => d.mode !== 'rectangular',
       validateWith: (v) => arrayCountProblem('count', v) },
     { type: 'pick', key: 'direction_query', label: 'Direction', transform: resolveAxisQuery,

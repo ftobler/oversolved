@@ -33,4 +33,9 @@ describe('pattern count limits in the editor', () => {
       expect(validateNumberFieldValue(f, v, data) === null).toBe(arrayCountProblem('count_x', v, 100) === null)
     }
   })
+
+  it('sees an expression-string sibling when it evaluates to 1', () => {
+    const data = { mode: 'rectangular', count_y: '1' }
+    expect(validateNumberFieldValue(field('count_x'), 1, data)).toContain('1x1')
+  })
 })
