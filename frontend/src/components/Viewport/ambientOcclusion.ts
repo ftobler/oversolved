@@ -9,12 +9,23 @@ export const AO_OCCLUDER_LAYER = 10
 // unit- and zoom-stable (mm and inch copies of the same part agree).
 export const AO_RADIUS_FRACTION = 0.03
 
+// One white texel stands in whenever the AO stage does not publish a result
+// (option off, capturing, sectioned, or before the first AO frame). The body
+// material samples tAO unconditionally, so a null texture would bind three's
+// empty one and read black, shading the whole body; importing this twice must
+// not build a second texture, hence the module-level instance.
+export const aoFallbackTexture = (() => {
+  const texture = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1)
+  texture.needsUpdate = true
+  return texture
+})()
+
 // The only channel between the AO stage and the body materials: the denoised
 // occlusion texture, its full-resolution size and the strength slider. Every
 // body material references these same objects, so moving the camera or
 // changing strength recompiles nothing.
 export const aoUniforms = {
-  tAO: { value: null as THREE.Texture | null },
+  tAO: { value: aoFallbackTexture as THREE.Texture },
   uResolution: { value: new THREE.Vector2(1, 1) },
   uAoStrength: { value: 1 },
 }

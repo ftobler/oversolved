@@ -329,14 +329,18 @@ describe('ambient occlusion patch', () => {
 
     expect(shader.fragmentShader).toContain(AO_GLSL)
     expect(shader.fragmentShader).toContain('texture2D( tAO')
-    expect(AO_GLSL).toContain('reflectedLight.indirectDiffuse')
-    expect(AO_GLSL).toContain('reflectedLight.indirectSpecular')
+    // The patch is inserted before three's own chunk, never instead of it: the
+    // material's aoMap and the clearcoat/sheen scaling live in that include.
+    const aoAt = shader.fragmentShader.indexOf(AO_GLSL)
+    const includeAt = shader.fragmentShader.indexOf('#include <aomap_fragment>')
+    expect(aoAt).toBeGreaterThanOrEqual(0)
+    expect(includeAt).toBeGreaterThan(aoAt)
     // Direct light and every overlay (selection, hover, edges) are untouched:
     // AO is indirect light only.
     expect(AO_GLSL).not.toContain('reflectedLight.directDiffuse')
     expect(AO_GLSL).not.toContain('reflectedLight.directSpecular')
     expect(shader.uniforms.tAO).toBe(aoUniforms.tAO)
-    expect(shader.uniforms.uAoResolution).toBe(aoUniforms.uResolution)
+    expect(shader.uniforms.uResolution).toBe(aoUniforms.uResolution)
     expect(shader.uniforms.uAoStrength).toBe(aoUniforms.uAoStrength)
   })
 
@@ -382,6 +386,9 @@ describe('ambient occlusion patch', () => {
     expect(aoUniforms.uAoStrength.value).toBe(0.9)
     expect(material.version).toBe(version)
     expect(material.onBeforeCompile).toBe(compiled)
+    // The uniform is shared by every body material, so a test that moves it must
+    // put it back or the next file's assertions read this value.
+    aoUniforms.uAoStrength.value = 1
   })
 
   it('recompiles the same material instance when AO toggles', () => {

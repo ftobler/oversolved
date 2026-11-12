@@ -58,10 +58,12 @@ describe('AoPass', () => {
       .equals(camera.projectionMatrixInverse)).toBe(true)
   })
 
-  it('writes the radius and keeps the depth shell proportional to it', () => {
+  it('writes the radius and keeps only the depth shell proportional to it', () => {
     // The radius arrives in view units (aoRadiusFor returns a fraction of the
-    // model extent), so thickness and the falloff are a ratio of it, not
-    // absolute defaults: an inch copy at 1/25.4 the extent keeps its look.
+    // model extent), so the thickness is a ratio of it, not an absolute default:
+    // an inch copy at 1/25.4 the extent keeps its look. The falloff is NOT a
+    // view distance: GTAO uses it as the weight of a dimensionless per-step
+    // blend, and anything above 1 makes that weight negative.
     const pass = new AoPass()
     const camera = ortho()
 
@@ -69,12 +71,21 @@ describe('AoPass', () => {
     const uniforms = pass.gtaoMaterial.uniforms
     expect(uniforms.radius.value).toBe(0.5)
     const thickness = uniforms.thickness.value as number
-    const falloff = uniforms.distanceFallOff.value as number
+    expect(uniforms.distanceFallOff.value).toBe(1)
 
     pass.update(camera, 1)
     expect(uniforms.radius.value).toBe(1)
     expect(uniforms.thickness.value).toBeCloseTo(thickness * 2)
-    expect(uniforms.distanceFallOff.value).toBeCloseTo(falloff * 2)
+    expect(uniforms.distanceFallOff.value).toBe(1)
+  })
+
+  it('allocates half-float AO targets, with no depth buffer to keep', () => {
+    const pass = new AoPass()
+
+    for (const target of [pass.gtaoTarget, pass.aoTarget]) {
+      expect(target.texture.type).toBe(THREE.HalfFloatType)
+      expect(target.depthBuffer).toBe(false)
+    }
   })
 
   it('allocates half-resolution targets and only resizes when the size moves', () => {

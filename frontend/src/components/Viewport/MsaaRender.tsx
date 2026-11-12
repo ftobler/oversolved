@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { MsaaPresenter, attachPresenter, detachPresenter } from '@/components/Viewport/msaaPresenter'
 import { useSectionStore } from '@/stores/sectionStore'
+import { useSectionActive } from '@/viewport/useSection'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { getModelBoundingBoxExtent } from '@/components/Viewport/viewportPlaneSizing'
@@ -42,6 +43,11 @@ export function MsaaRender() {
   // the presenter's target (disposing the old one) rather than leaving a
   // stencil-less target under cap geometry.
   const sectionEnabled = useSectionStore(s => s.enabled)
+  // The body material gates on the *resolved* section (see Body3D), so the
+  // presenter must too: gating the stage on the raw flag alone would leave the
+  // material sampling a stale texture while the section is waiting for a solve,
+  // and the two sides would disagree on when AO is on.
+  const sectionActive = useSectionActive()
   const ambientOcclusion = useViewOptionsStore(s => s.ambient_occlusion)
   const zebra = useViewOptionsStore(s => s.zebra)
   const curvature = useViewOptionsStore(s => s.curvature)
@@ -57,12 +63,13 @@ export function MsaaRender() {
   useFrame(({ gl: renderer, scene, camera }) => {
     if (presenter.current) {
       const extent = getModelBoundingBoxExtent(bodies)
+      presenter.current.aoEnabled = ambientOcclusion
       presenter.current.aoActive = isAoActive({
         option: ambientOcclusion,
         shading,
         zebra,
         curvature,
-        section: sectionEnabled,
+        section: sectionActive,
         capturing,
       })
       presenter.current.capturing = capturing

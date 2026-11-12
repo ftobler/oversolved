@@ -255,7 +255,7 @@ export class ThreadProgram implements BodyAnalysisPatch {
 }
 
 export const AO_GLSL = `
-  float aoSample = texture2D( tAO, gl_FragCoord.xy / uAoResolution ).r;
+  float aoSample = texture2D( tAO, gl_FragCoord.xy / uResolution ).r;
   float aoFactor = mix( 1.0, aoSample, uAoStrength );
   reflectedLight.indirectDiffuse *= aoFactor;
   reflectedLight.indirectSpecular *= aoFactor;
@@ -276,14 +276,17 @@ export class AoProgram implements BodyAnalysisPatch {
   setAoStrength = (value: number): void => { aoUniforms.uAoStrength.value = value }
 
   onBeforeCompile = (shader: WebGLProgramParametersWithUniforms): void => {
-    const declarations = 'uniform sampler2D tAO;\nuniform vec2 uAoResolution;\nuniform float uAoStrength;\n'
+    const declarations = 'uniform sampler2D tAO;\nuniform vec2 uResolution;\nuniform float uAoStrength;\n'
     shader.uniforms.tAO = aoUniforms.tAO
-    shader.uniforms.uAoResolution = aoUniforms.uResolution
+    shader.uniforms.uResolution = aoUniforms.uResolution
     shader.uniforms.uAoStrength = aoUniforms.uAoStrength
     shader.fragmentShader = declarations + shader.fragmentShader
+    // Before three's own chunk, not instead of it: aomap_fragment carries the
+    // material's aoMap and the clearcoat/sheen indirect scaling, and replacing
+    // the include would silently drop both.
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <aomap_fragment>',
-      `${AO_GLSL}`,
+      `${AO_GLSL}\n#include <aomap_fragment>`,
     )
   }
 }

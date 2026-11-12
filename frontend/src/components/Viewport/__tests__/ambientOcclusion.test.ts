@@ -5,6 +5,8 @@ import { describe, expect, it, afterEach } from 'vitest'
 import * as THREE from 'three'
 import {
   AO_OCCLUDER_LAYER,
+  aoFallbackTexture,
+  aoUniforms,
   applyAoOccluder,
   aoRadiusFor,
   isAoActive,
@@ -67,8 +69,7 @@ describe('aoRadiusFor', () => {
   })
 })
 
-describe('occluder layer', () => {
-  it('marks an opaque face and clears a see-through one', () => {
+describe('occluder layer', () => {  it('marks an opaque face and clears a see-through one', () => {
     const layers = new THREE.Layers()
     applyAoOccluder(layers, true)
     expect(layers.isEnabled(AO_OCCLUDER_LAYER)).toBe(true)
@@ -90,5 +91,16 @@ describe('capturing flag', () => {
     expect(isAoCapturing()).toBe(true)
     setAoCapturing(false)
     expect(isAoCapturing()).toBe(false)
+  })
+})
+
+describe('fallback texture', () => {
+  it('is a one-texel white image the uniforms can start on', () => {
+    // The body material samples tAO whether or not the AO stage ran, so the
+    // published value is never null: white means "no occlusion".
+    expect(aoUniforms.tAO.value).toBe(aoFallbackTexture)
+    expect(aoFallbackTexture.image.width).toBe(1)
+    expect(aoFallbackTexture.image.height).toBe(1)
+    expect(Array.from(aoFallbackTexture.image.data as Uint8Array)).toEqual([255, 255, 255, 255])
   })
 })

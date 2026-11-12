@@ -3,7 +3,9 @@ import * as THREE from 'three'
 import {
   MsaaPresenter, PRESENT_SAMPLES, PREMULTIPLIED_OUTPUT_FRAGMENT, attachPresenter, detachPresenter, presentFrame,
 } from '@/components/Viewport/msaaPresenter'
-import { AO_OCCLUDER_LAYER, aoUniforms, setAoCapturing } from '@/components/Viewport/ambientOcclusion'
+import {
+  AO_OCCLUDER_LAYER, aoFallbackTexture, aoUniforms, setAoCapturing,
+} from '@/components/Viewport/ambientOcclusion'
 
 // The presenter's contract against a stand-in renderer (jsdom has no WebGL):
 // the scene goes into a multisampled target sized to the drawing buffer, and
@@ -248,13 +250,14 @@ describe('presentFrame', () => {
 // order, the scene state and the shared uniforms right.
 describe('MsaaPresenter ambient occlusion', () => {
   beforeEach(() => {
-    aoUniforms.tAO.value = null
+    aoUniforms.tAO.value = aoFallbackTexture
     aoUniforms.uResolution.value.set(1, 1)
     setAoCapturing(false)
   })
 
   function aoPresenter(extent = 25.4): MsaaPresenter {
     const presenter = new MsaaPresenter()
+    presenter.aoEnabled = true
     presenter.aoActive = true
     presenter.modelExtent = extent
     return presenter
@@ -263,12 +266,15 @@ describe('MsaaPresenter ambient occlusion', () => {
   it('allocates nothing and keeps the pre-AO call list while the option is off', () => {
     const { gl, calls } = makeFakeGl()
     const presenter = new MsaaPresenter()
+    presenter.aoEnabled = false
     presenter.aoActive = false
 
     presenter.render(gl, scene, camera)
 
     expect(presenter.aoPass).toBeNull()
-    expect(aoUniforms.tAO.value).toBeNull()
+    // Never null: the body material samples this texture unconditionally, and a
+    // null one binds three's empty texture and shades the body black.
+    expect(aoUniforms.tAO.value).toBe(aoFallbackTexture)
     expect(calls).toHaveLength(2)
     expect(calls[0].object).toBe(scene)
     expect(calls[1].target).toBeNull()
@@ -288,6 +294,13 @@ describe('MsaaPresenter ambient occlusion', () => {
     const gbuffer = calls[0]
     expect(gbuffer.target).toBe(pass.gbuffer)
     expect(gbuffer.camera).not.toBe(camera)
+    // The copy must carry the live frustum: a stale projection silently renders
+    // the G-buffer at the wrong scale and GTAO reconstructs garbage from it.
+    const prepass = gbuffer.camera as THREE.OrthographicCamera
+    expect(prepass.projectionMatrix.equals(camera.projectionMatrix)).toBe(true)
+    expect(prepass.projectionMatrixInverse.equals(camera.projectionMatrixInverse)).toBe(true)
+    expect([prepass.near, prepass.far]).toEqual([camera.near, camera.far])
+    expect(prepass.matrixWorld.equals(camera.matrixWorld)).toBe(true)
     expect(gbuffer.camera!.layers.mask).toBe(1 << AO_OCCLUDER_LAYER)
     expect(gbuffer.override).toBe(pass.normalMaterial)
     expect(gbuffer.background).toBeNull()
@@ -364,6 +377,11 @@ describe('MsaaPresenter ambient occlusion', () => {
     const mmThickness = mm.aoPass!.gtaoMaterial.uniforms.thickness.value as number
     const inchThickness = inch.aoPass!.gtaoMaterial.uniforms.thickness.value as number
     expect(mmThickness / inchThickness).toBeCloseTo(25.4)
+    // The falloff is a dimensionless blend weight, not a view distance: scaling
+    // it with the radius drives the per-step weight negative and the horizon
+    // accumulator into NaN. It stays at the shader default for every scale.
+    expect(mm.aoPass!.gtaoMaterial.uniforms.distanceFallOff.value).toBe(1)
+    expect(inch.aoPass!.gtaoMaterial.uniforms.distanceFallOff.value).toBe(1)
   })
 
   it('reuses one pre-pass camera instead of cloning the camera every frame', () => {
@@ -384,32 +402,42 @@ describe('MsaaPresenter ambient occlusion', () => {
     const disposed = vi.fn()
     pass.aoTarget.addEventListener('dispose', disposed)
 
+    presenter.aoEnabled = false
     presenter.aoActive = false
     presenter.render(gl, scene, camera)
 
     expect(disposed).toHaveBeenCalledOnce()
     expect(presenter.aoPass).toBeNull()
-    expect(aoUniforms.tAO.value).toBeNull()
+    expect(aoUniforms.tAO.value).toBe(aoFallbackTexture)
     expect(calls).toHaveLength(7)
 
     presenter.aoActive = true
+    presenter.aoEnabled = true
     presenter.render(gl, scene, camera)
     const rebuilt = vi.fn()
     presenter.aoPass!.gbuffer.addEventListener('dispose', rebuilt)
     presenter.dispose()
     expect(rebuilt).toHaveBeenCalledOnce()
     expect(presenter.aoPass).toBeNull()
-    expect(aoUniforms.tAO.value).toBeNull()
+    expect(aoUniforms.tAO.value).toBe(aoFallbackTexture)
   })
 
-  it('skips the AO stage for a capture frame', () => {
+  it('keeps the pass allocated while a capture frame only skips the stage', () => {
+    // Freeing and rebuilding costs three targets and two shader compiles; a
+    // thumbnail save must not pay that, and the body must show no occlusion.
     const { gl, calls } = makeFakeGl()
     const presenter = aoPresenter()
+    presenter.render(gl, scene, camera)
+    const pass = presenter.aoPass!
+    const disposed = vi.fn()
+    pass.aoTarget.addEventListener('dispose', disposed)
 
     setAoCapturing(true)
     presenter.render(gl, scene, camera)
 
-    expect(calls).toHaveLength(2)
-    expect(presenter.aoPass).toBeNull()
+    expect(calls.slice(5)).toHaveLength(2)
+    expect(presenter.aoPass).toBe(pass)
+    expect(disposed).not.toHaveBeenCalled()
+    expect(aoUniforms.tAO.value).toBe(aoFallbackTexture)
   })
 })

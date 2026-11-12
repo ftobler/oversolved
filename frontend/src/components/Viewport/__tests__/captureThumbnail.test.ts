@@ -318,20 +318,21 @@ describe('captureThumbnail', () => {
     stubCanvas()
     const { gl, calls } = makePresenterGl()
     const presenter = new MsaaPresenter()
+    presenter.aoEnabled = true
     presenter.aoActive = true
     presenter.modelExtent = 25.4
     attachPresenter(gl, presenter)
 
     await captureThumbnail(gl, new THREE.Scene(), new THREE.OrthographicCamera())
 
-    // The capture is the two-call path (scene, output) at the quarter size; the
-    // full-size repaint then runs the AO stage again, five calls.
-    expect(calls).toHaveLength(7)
+    // The capture is the two-call path (scene, output) at the quarter size: no
+    // AO G-buffer draw in it. Asserting the absence rather than a call count
+    // keeps a retained AO pass (which is cheaper) from failing the test.
     expect(calls[0].width).toBe(200)
     expect(calls[1].target).toBeNull()
-    // The repaint's first draw is the half-resolution AO G-buffer: the stage
-    // is back for the on-screen frame.
-    expect(calls[2].width).toBe(400)
+    expect(calls.slice(0, 2).some(call => call.width === 100)).toBe(false)
+    // The full-size repaint then runs the AO stage again.
+    expect(calls.slice(2).some(call => call.width === 400)).toBe(true)
     expect(aoUniforms.tAO.value).toBe(presenter.aoPass!.aoTarget.texture)
     expect(isAoCapturing()).toBe(false)
     expect(useSectionStore.getState().capturing).toBe(false)

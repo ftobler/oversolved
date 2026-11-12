@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import * as THREE from 'three'
 import { MsaaRender } from '@/components/Viewport/MsaaRender'
 import { MsaaPresenter, presentFrame } from '@/components/Viewport/msaaPresenter'
+import { useSectionStore } from '@/stores/sectionStore'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 
 // MsaaRender's contract with R3F: it claims the frame with a positive useFrame
 // priority (which is what stops R3F's own gl.render), draws through a presenter
@@ -29,6 +31,9 @@ beforeEach(() => {
   h.priority = undefined
   h.invalidate.mockClear()
   h.gl = { render: vi.fn() }
+  // The gates read shared stores; a test that flips one must not leak it.
+  useViewOptionsStore.setState({ ambient_occlusion: false })
+  useSectionStore.setState({ enabled: false, resolved: false, capturing: false })
 })
 
 describe('MsaaRender', () => {
@@ -63,5 +68,29 @@ describe('MsaaRender', () => {
     expect(gl.render).toHaveBeenCalledWith(scene, camera)
     renderSpy.mockRestore()
     disposeSpy.mockRestore()
+  })
+
+  it('gates AO on the resolved section, the same flag the body material reads', () => {
+    // The present gate and the Body3D gate must agree: while the section is
+    // enabled but its plane has not resolved, the body does not sample AO, so
+    // the presenter must not claim AO is active either.
+    const spy = vi.spyOn(MsaaPresenter.prototype, 'render').mockImplementation(() => {})
+    useViewOptionsStore.setState({ ambient_occlusion: true })
+    useSectionStore.setState({ enabled: true, resolved: false })
+    const view = render(<MsaaRender />)
+
+    h.frame!({ gl: h.gl, scene, camera })
+    const presenter = spy.mock.instances[0] as unknown as MsaaPresenter
+    expect(presenter.aoActive).toBe(true)
+    expect(presenter.aoEnabled).toBe(true)
+
+    act(() => { useSectionStore.setState({ resolved: true }) })
+    h.frame!({ gl: h.gl, scene, camera })
+    expect(presenter.aoActive).toBe(false)
+    // The option itself is still on, so the pass stays allocated.
+    expect(presenter.aoEnabled).toBe(true)
+
+    view.unmount()
+    spy.mockRestore()
   })
 })

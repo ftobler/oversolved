@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { AoPass } from '@/components/Viewport/aoPass'
 import {
-  AO_OCCLUDER_LAYER, aoRadiusFor, aoUniforms, isAoCapturing,
+  AO_OCCLUDER_LAYER, aoFallbackTexture, aoRadiusFor, aoUniforms, isAoCapturing,
 } from '@/components/Viewport/ambientOcclusion'
 import { useSectionStore } from '@/stores/sectionStore'
 
@@ -91,6 +91,11 @@ export class MsaaPresenter {
   // and are freed; the presenter itself is the only other owner.
   aoPass: AoPass | null = null
   // Viewer state, fed by MsaaRender or a direct caller.
+  // Whether the AO option is on at all. Distinct from `aoActive`: the option
+  // being on but the surface shaded some other way (section, capture) keeps the
+  // pass allocated, because freeing and rebuilding it is two shader compiles and
+  // three targets per frame and a visible hitch on the next save.
+  aoEnabled = false
   aoActive = false
   capturing = false
   modelExtent = 0
@@ -126,11 +131,13 @@ export class MsaaPresenter {
 
     if (this.aoActive && !capturing) {
       this.renderAo(gl, scene, camera, x, y)
-    } else if (this.aoPass) {
-      // Free AO targets when the option is off.
-      this.aoPass.dispose()
-      this.aoPass = null
-      aoUniforms.tAO.value = null
+    } else {
+      // No result this frame: publish the white texel, never null, because the
+      // body material samples tAO whether or not the stage ran. The pass itself
+      // is only freed once the option goes off; a capture or a section merely
+      // skips the stage, and rebuilding it costs two shader compiles.
+      aoUniforms.tAO.value = aoFallbackTexture
+      if (!this.aoEnabled) this.releaseAoPass()
     }
 
     gl.setRenderTarget(target)
@@ -153,9 +160,9 @@ export class MsaaPresenter {
     width: number,
     height: number,
   ): void {
-    const pass = this.aoPass ?? (this.aoPass = new AoPass())
+    const pass = this.aoPass ?? (this.aoPass = new AoPass(gl))
     pass.setSize(width, height)
-    pass.update(camera, aoRadiusFor(this.modelExtent))
+    pass.update(camera as THREE.OrthographicCamera, aoRadiusFor(this.modelExtent))
 
     // The G-buffer borrows the scene, so save exactly what this stage changes
     // and hand the beauty pass the same scene it would have drawn without AO.
@@ -228,11 +235,16 @@ export class MsaaPresenter {
   dispose(): void {
     this.target?.dispose()
     this.target = null
-    this.aoPass?.dispose()
-    this.aoPass = null
-    // The shared uniform must not point at a freed texture.
-    aoUniforms.tAO.value = null
+    this.releaseAoPass()
     this.output.dispose()
+  }
+
+  /** Free the AO pass and republish the white texel the materials expect. */
+  private releaseAoPass(): void {
+    if (!this.aoPass) return
+    this.aoPass.dispose()
+    this.aoPass = null
+    aoUniforms.tAO.value = aoFallbackTexture
   }
 }
 
