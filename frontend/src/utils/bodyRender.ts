@@ -18,6 +18,10 @@ export interface BodyRenderItem {
   edgeCreatedBy?: string[]
   vertices?: [number, number, number][]
   vertexQueries?: string[]
+  // The kernel's sparse display-only indices (BodyResult.hidden_edges /
+  // hidden_vertices): the viewport neither draws nor picks them.
+  hiddenEdges?: number[]
+  hiddenVertices?: number[]
   visible: boolean
   // Ghost layer only: the edit being previewed consumes this body. Orthogonal to
   // `visible`, which is the user's own show/hide -- a doomed body the user hid
@@ -83,6 +87,8 @@ export function getBodiesToRender(
       edgeCreatedBy: body.edge_created_by,
       vertices: body.vertices,
       vertexQueries: body.vertex_queries,
+      hiddenEdges: body.hidden_edges,
+      hiddenVertices: body.hidden_vertices,
       visible: bodyVisible && !isBodyHiddenByFeature(createdBy, features, visibleFeatures),
     })
   }

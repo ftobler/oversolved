@@ -16,6 +16,9 @@ interface PreviewEdgeOverlayProps {
 
 interface PreviewBodyEdgesProps {
   edges: EdgeData[]
+  // The body's sparse seam indices: a preview ghost hides them like the solid
+  // preview of the same body does.
+  hiddenEdges?: number[]
   existingGeom: Map<string, EdgeCells[]> | null
 }
 
@@ -107,18 +110,23 @@ function coincides(a: EdgeCells, b: EdgeCells): boolean {
   return covers(a, b) && covers(b, a)
 }
 
-function PreviewBodyEdges({ edges, existingGeom }: PreviewBodyEdgesProps) {
+function PreviewBodyEdges({ edges, hiddenEdges, existingGeom }: PreviewBodyEdgesProps) {
   // The preview is body geometry: it is cut with the same plane as the solid it
   // previews, or a pending edit would draw through the removed half.
   const sectionActive = useSectionActive()
   // Tessellate each edge once; the point array feeds both the suppression cells
   // and, for the survivors, the merged BufferGeometry.
   const tessellated = useMemo(
-    () => edges.map((edge) => {
-      const pts = buildEdgeSegments([edge])
-      return { pts, cells: cellsFromSegments(pts) }
-    }),
-    [edges],
+    () => {
+      const hidden = hiddenEdges && hiddenEdges.length > 0 ? new Set(hiddenEdges) : undefined
+      return edges
+        .filter((_edge, i) => !hidden?.has(i))
+        .map((edge) => {
+          const pts = buildEdgeSegments([edge])
+          return { pts, cells: cellsFromSegments(pts) }
+        })
+    },
+    [edges, hiddenEdges],
   )
 
   const geo = useMemo(() => {
@@ -165,8 +173,10 @@ export default function PreviewEdgeOverlay({ items, pickItems }: PreviewEdgeOver
     // could possibly coincide with (see candidateGhosts).
     const byCell = new Map<string, EdgeCells[]>()
     for (const item of pickItems) {
-      for (const edge of item.edges) {
-        const cells = cellsFromSegments(buildEdgeSegments([edge]))
+      const hidden = item.hiddenEdges && item.hiddenEdges.length > 0 ? new Set(item.hiddenEdges) : undefined
+      for (let i = 0; i < item.edges.length; i++) {
+        if (hidden?.has(i)) continue
+        const cells = cellsFromSegments(buildEdgeSegments([item.edges[i]]))
         if (cells.cellList.length === 0) continue
         for (const [x, y, z] of cells.cellList) {
           const key = cellKey(x, y, z)
@@ -187,6 +197,7 @@ export default function PreviewEdgeOverlay({ items, pickItems }: PreviewEdgeOver
           <PreviewBodyEdges
             key={item.key}
             edges={item.edges}
+            hiddenEdges={item.hiddenEdges}
             existingGeom={existingGeom}
           />
         )

@@ -267,6 +267,34 @@ describe('buildEdgeSegmentGeometry segment -> edge map', () => {
     expect(geo.edgeSegmentCounts).toEqual([1, 0, 1])
     expect(Number.isNaN(geo.edgeSegmentCounts[1])).toBe(false)
   })
+
+  it('skips a hidden edge exactly like an invalid one, without shifting its neighbours', () => {
+    const edges: EdgeData[] = [
+      { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] },
+      { kind: 'line', start: [1, 0, 0], end: [2, 0, 0] },
+      { kind: 'line', start: [2, 0, 0], end: [3, 0, 0] },
+    ]
+    const geo = buildEdgeSegmentGeometry(edges, new Set([1]))
+    expect(geo.edgeSegmentCounts).toEqual([1, 0, 1])
+    expect([...geo.segmentToEdge]).toEqual([0, 2])
+    expect(geo.segmentToEdge).not.toContain(1)
+    expect(geo.positions.length).toBe(geo.segmentToEdge.length * 6)
+    // The same list without the set is today's output, untouched.
+    const plain = buildEdgeSegmentGeometry(edges)
+    expect([...plain.segmentToEdge]).toEqual([0, 1, 2])
+    expect(plain.positions.length).toBe(18)
+  })
+
+  it('an all-hidden edge list builds an empty buffer rather than throwing', () => {
+    const edges: EdgeData[] = [
+      { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] },
+      { kind: 'line', start: [1, 0, 0], end: [2, 0, 0] },
+    ]
+    const geo = buildEdgeSegmentGeometry(edges, new Set([0, 1]))
+    expect(geo.positions.length).toBe(0)
+    expect(geo.segmentToEdge.length).toBe(0)
+    expect(geo.edgeSegmentCounts).toEqual([0, 0])
+  })
 })
 
 describe('buildEdgeSegments circle', () => {

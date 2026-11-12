@@ -87,6 +87,12 @@ interface Body3DProps {
   edgeCreatedBy?: string[]
   vertices?: [number, number, number][]
   vertexQueries?: string[]
+  // The body's sparse display-only indices (BodyResult.hidden_edges /
+  // hidden_vertices): a periodic face's own seam and the vertices that end no
+  // visible open edge. Not drawn and not registered in the ID buffer; the
+  // hover/selection overlays below still draw one that was picked headlessly.
+  hiddenEdges?: readonly number[]
+  hiddenVertices?: readonly number[]
   visible?: boolean
   color?: string
   transparency?: number  // 0-1 (0 = opaque, 1 = fully transparent)
@@ -108,10 +114,28 @@ interface Body3DProps {
   threadSites?: ThreadSiteIndex | null
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, edgeCreatedBy, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true, capBand = 0, threadSites = null }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, edgeCreatedBy, vertices, vertexQueries, hiddenEdges, hiddenVertices, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true, capBand = 0, threadSites = null }: Body3DProps) {
+  // One Set per list, stable across renders, so the edge geometry memo and both
+  // registration hooks only re-run when the body's kernel lists actually change.
+  const hiddenEdgeSet = useMemo(
+    () => (hiddenEdges && hiddenEdges.length > 0 ? new Set(hiddenEdges) : undefined),
+    [hiddenEdges],
+  )
+  const hiddenVertexSet = useMemo(
+    () => (hiddenVertices && hiddenVertices.length > 0 ? new Set(hiddenVertices) : undefined),
+    [hiddenVertices],
+  )
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible && showFaces })
-  useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible && showEdges })
-  useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })
+  useEdgeIdRegistration({
+    featureId, bodyId, edges, edgeQueries,
+    hiddenEdges: hiddenEdgeSet,
+    enabled: interactive && visible && showEdges,
+  })
+  useVertexIdRegistration({
+    featureId, bodyId, vertices, vertexQueries,
+    hiddenVertices: hiddenVertexSet,
+    enabled: interactive && visible,
+  })
   const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
   const hoveredPickKey = useSketchEditorStore(s => s.hoveredPickKey)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
@@ -388,8 +412,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // Positions AND the per-edge segment counts from ONE traversal, so the
   // painter's run offsets and the colour buffer it writes can never disagree
   // about which edges were skipped (a degenerate edge shifted every later offset
-  // before).
-  const edgeSegmentGeometry = useMemo(() => buildEdgeSegmentGeometry(edges), [edges])
+  // before). The hidden seam set is the same one the ID layer uses.
+  const edgeSegmentGeometry = useMemo(
+    () => buildEdgeSegmentGeometry(edges, hiddenEdgeSet),
+    [edges, hiddenEdgeSet],
+  )
 
   const edgeGeometry = useMemo(() => {
     const geo = new THREE.BufferGeometry()

@@ -231,11 +231,21 @@ export interface EdgeSegmentGeometry {
 // (buildEdgeSegments + getEdgeSegmentCounts) counted skipped edges anyway, so
 // every later segment was attributed to the previous edge and picked silently
 // wrong.
-export function buildEdgeSegmentGeometry(edges: EdgeData[]): EdgeSegmentGeometry {
+//
+// `hidden` is the body's sparse seam list (BodyResult.hidden_edges): a hidden
+// edge is skipped exactly like an invalid one, so it contributes no segment and
+// no map entry while every later edge keeps its own index. A caller that wants
+// to draw one on purpose (a seam picked into the document, drawn as a hover or
+// selection overlay) simply omits the set.
+export function buildEdgeSegmentGeometry(
+  edges: EdgeData[],
+  hidden?: ReadonlySet<number>,
+): EdgeSegmentGeometry {
   const parts: number[] = []
   const owners: number[] = []
 
   for (let edgeIdx = 0; edgeIdx < edges.length; edgeIdx++) {
+    if (hidden?.has(edgeIdx)) continue
     const edge = edges[edgeIdx]
     if (edge.kind === 'line') {
       if (_isValidSegment(edge.start) && _isValidSegment(edge.end)) {

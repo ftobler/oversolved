@@ -80,6 +80,22 @@ describe('VertexIdLayer', () => {
     expect(pts.geometry.getAttribute('position').count).toBe(1)
   })
 
+  it('writes no id for a hidden index and keeps the next vertex on its own pick key', () => {
+    // The middle vertex is a closed edge's own vertex (a hole rim dot): no id,
+    // no mark, and the third vertex must still resolve to its own query.
+    layer.registerBody({
+      ...makeReg(),
+      perPrimitivePickKeys: true,
+      hiddenIndices: new Set([1]),
+    })
+    expect(reg.size()).toBe(2)
+    expect(reg.lookupKey(VERTEX_LAYER_NAME, 'b#vertex#1')).toBeUndefined()
+    const third = reg.lookupKey(VERTEX_LAYER_NAME, 'b#vertex#2')!
+    expect(reg.lookup(third)!.entityKey).toBe('vtx@C')
+    const pts = layer.scene.children[0] as import('three').Points
+    expect(pts.geometry.getAttribute('position').count).toBe(2)
+  })
+
   it('excludes vertices with non-finite positions so they cannot mark the origin (g4-H2)', () => {
     // markPosition: axisCell(NaN) buckets at the origin and axisCoincides reads
     // a NaN pair as coincident, so an un-filtered NaN vertex would be offered as

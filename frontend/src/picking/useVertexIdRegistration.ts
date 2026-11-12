@@ -14,9 +14,13 @@ export function useVertexIdRegistration(params: {
   vertices: ReadonlyArray<[number, number, number]> | undefined
   vertexQueries: ReadonlyArray<string> | undefined
   enabled?: boolean
+  // The body's sparse seam-vertex indices (BodyResult.hidden_vertices): not
+  // drawn, so not pickable. Skipping the write keeps every other vertex's pick
+  // id at its own index, the perPrimitivePickKeys contract.
+  hiddenVertices?: ReadonlySet<number>
 }): void {
   const pipeline = useIdPipeline()
-  const { featureId, bodyId, vertices, vertexQueries, enabled = true } = params
+  const { featureId, bodyId, vertices, vertexQueries, enabled = true, hiddenVertices } = params
   const bodyKey = bodyKeyFor(featureId, bodyId)
 
   useRegisteredBody(pipeline, enabled, bodyKey,
@@ -27,7 +31,10 @@ export function useVertexIdRegistration(params: {
       const resolvedQueries = resolveVertexQueries(vertices, vertexQueries, bodyId)
       if (!resolvedQueries) return false
       try {
-        p.vertexLayer.registerBody({ bodyKey, vertices, vertexQueries: resolvedQueries, perPrimitivePickKeys: true })
+        p.vertexLayer.registerBody({
+          bodyKey, vertices, vertexQueries: resolvedQueries, perPrimitivePickKeys: true,
+          hiddenIndices: hiddenVertices,
+        })
         return true
       } catch (err) {
         if (isDevBuild()) console.warn('Vertex ID registration failed; continuing without vertex picking for this body', { bodyKey, err })
@@ -35,6 +42,6 @@ export function useVertexIdRegistration(params: {
       }
     },
     (p) => p.vertexLayer.unregisterBody(bodyKey),
-    [featureId, bodyId, vertices, vertexQueries],
+    [featureId, bodyId, vertices, vertexQueries, hiddenVertices],
   )
 }

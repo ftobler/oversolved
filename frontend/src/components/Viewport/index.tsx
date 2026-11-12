@@ -574,6 +574,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       edgeCreatedBy={b.edgeCreatedBy}
       vertices={b.vertices}
       vertexQueries={b.vertexQueries}
+      hiddenEdges={b.hiddenEdges}
+      hiddenVertices={b.hiddenVertices}
       visible={b.visible}
       color={partColors?.[b.key]}
       transparency={partStyle?.[b.key]?.transparency ?? 0}

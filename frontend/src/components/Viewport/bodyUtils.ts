@@ -177,6 +177,8 @@ export function getPreviewBodies(
       edgeCreatedBy: body.edge_created_by,
       vertices: body.vertices,
       vertexQueries: body.vertex_queries,
+      hiddenEdges: body.hidden_edges,
+      hiddenVertices: body.hidden_vertices,
       // The edited feature is forced visible while its editor is open
       // (visibleFeatureIds), so its own preview body still shows even when the
       // user had hidden the feature before opening it.

@@ -64,6 +64,13 @@ export interface VertexBodyRegistration {
    * reusers with unique keys leave it off. Mirrors FaceIdLayer / EdgeIdLayer.
    */
   perPrimitivePickKeys?: boolean
+  /**
+   * Vertex indices the viewport must not pick (BodyResult.hidden_vertices: a
+   * closed edge's single vertex, a seam's ends, a sphere pole). Skipping the
+   * write leaves every other index's pick key at its own position, so the
+   * per-primitive key contract is unchanged.
+   */
+  hiddenIndices?: ReadonlySet<number>
 }
 
 const VERT_SHADER = `
@@ -261,6 +268,10 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
     try {
       let written = 0
       for (let i = 0; i < count; i++) {
+        // A hidden vertex ends no visible open edge, so it is neither drawn nor
+        // pickable. Its index stays reserved: the next vertex's id is still
+        // keyed on its own position.
+        if (reg.hiddenIndices?.has(i)) continue
         const query = vertexQueries[i]
         if (query === undefined) continue
         const v = vertices[i]

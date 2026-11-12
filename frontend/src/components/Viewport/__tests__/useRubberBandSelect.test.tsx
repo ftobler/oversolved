@@ -22,6 +22,10 @@ import { PART_EDITOR_CONSUMED_LAYERS } from '@/components/Viewport/idDispatch/us
 import { takeBandClickConsumed } from '@/components/Viewport/idDispatch/bandClickGuard'
 import { useRubberBandSelect } from '../useRubberBandSelect'
 import { useEditorState } from '@/hooks/useEditorState'
+import { useEdgeIdRegistration } from '@/picking/useEdgeIdRegistration'
+import { useVertexIdRegistration } from '@/picking/useVertexIdRegistration'
+import { EDGE_LAYER_NAME } from '@/picking/EdgeIdLayer'
+import type { EdgeData } from '@/types/cad'
 
 const PIPELINE_W = 100
 const PIPELINE_H = 100
@@ -767,6 +771,57 @@ describe('the band flag and a plain click', () => {
       result.current.onPointerUp()
     })
     expect(takeBandClickConsumed()).toBe(true)
+  })
+})
+
+// A cylinder seen end-on: the kernel's own shape, replayed through the real
+// registration hooks. `hiddenSeamsReal.test.ts` pins the same fixture at the kernel
+// level (one line seam at index 0, two rim circles at 1 and 2, both vertices
+// hidden); this half pins what a rubber band can then collect.
+describe('useRubberBandSelect over a body with a hidden seam', () => {
+  const EDGES: EdgeData[] = [
+    { kind: 'line', start: [0, 0, -5], end: [0, 0, 5] },  // the seam
+    { kind: 'circle', center: [0, 0, 5], radius: 5, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: 2 * Math.PI },
+    { kind: 'circle', center: [0, 0, -5], radius: 5, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: 2 * Math.PI },
+  ]
+  const QUERIES = ['?seam', '?rimTop', '?rimBottom']
+  const VERTICES: [number, number, number][] = [[0, 0, 5], [0, 0, -5]]
+  const VERTEX_QUERIES = ['?vSeamTop', '?vSeamBottom']
+
+  it('selects the two rim circles and no seam edge or hidden vertex', () => {
+    const p = new IdPipeline({ width: PIPELINE_W, height: PIPELINE_H })
+    setLivePipeline(p)
+    try {
+      renderHook(() => {
+        useEdgeIdRegistration({
+          featureId: 'f1', bodyId: 'b1', edges: EDGES, edgeQueries: QUERIES,
+          hiddenEdges: new Set([0]),
+        })
+        useVertexIdRegistration({
+          featureId: 'f1', bodyId: 'b1', vertices: VERTICES, vertexQueries: VERTEX_QUERIES,
+          hiddenVertices: new Set([0, 1]),
+        })
+      })
+
+      const rimTop = p.registry.lookupKey(EDGE_LAYER_NAME, 'f1/b1#edge#1')!
+      const rimBottom = p.registry.lookupKey(EDGE_LAYER_NAME, 'f1/b1#edge#2')!
+      // Neither the seam edge nor either seam vertex was registered at all.
+      expect(p.registry.lookupKey(EDGE_LAYER_NAME, 'f1/b1#edge#0')).toBeUndefined()
+      expect(p.vertexLayer.bodyCount()).toBe(0)
+
+      // Paint three bands: one per rim plus an id-less stretch where a seam
+      // would have been drawn, then sweep the whole box.
+      const { gl } = glForPaint((_col, row) => (row < 10 ? rimTop : row < 20 ? rimBottom : null))
+      sweepWith(gl)
+      expect(selectedKeys().sort()).toEqual(['?rimBottom', '?rimTop'])
+      for (const key of selectedKeys()) {
+        expect(VERTEX_QUERIES).not.toContain(key)
+        expect(key).not.toBe('?seam')
+      }
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
   })
 })
 

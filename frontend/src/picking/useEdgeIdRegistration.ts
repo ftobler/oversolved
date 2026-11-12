@@ -14,7 +14,8 @@ import { isDevBuild } from '@/kernel/isDevBuild'
  * the visible LineSegments geometry, so the ID-buffer ribbons sit exactly
  * where the user sees the edges. Positions and segment map come from ONE
  * traversal (buildEdgeSegmentGeometry), so a skipped edge can never shift
- * every later segment onto the wrong edge query.
+ * every later segment onto the wrong edge query. A hidden seam is skipped by
+ * the same set the drawn buffer uses, so the two cannot disagree about it.
  */
 export function useEdgeIdRegistration(params: {
   featureId: string
@@ -22,12 +23,15 @@ export function useEdgeIdRegistration(params: {
   edges: EdgeData[] | undefined
   edgeQueries: ReadonlyArray<string> | undefined
   enabled?: boolean
+  // The body's sparse seam indices (BodyResult.hidden_edges): not drawn, so not
+  // registered either, or a wireframe nobody sees would keep blocking clicks.
+  hiddenEdges?: ReadonlySet<number>
   // Reference curves register beside the B-rep edges but on a layer the section
   // does not clip, matching how they are drawn.
   layer?: 'edge' | 'reference'
 }): void {
   const pipeline = useIdPipeline()
-  const { featureId, bodyId, edges, edgeQueries, enabled = true, layer = 'edge' } = params
+  const { featureId, bodyId, edges, edgeQueries, enabled = true, hiddenEdges, layer = 'edge' } = params
   const bodyKey = bodyKeyFor(featureId, bodyId)
 
   useRegisteredBody(pipeline, enabled, bodyKey,
@@ -38,7 +42,7 @@ export function useEdgeIdRegistration(params: {
       // being highlight-only.
       const resolvedQueries = resolveEdgeQueries(edges, edgeQueries, bodyId)
       if (!resolvedQueries) return false
-      const { positions: segmentPositions, segmentToEdge } = buildEdgeSegmentGeometry(edges)
+      const { positions: segmentPositions, segmentToEdge } = buildEdgeSegmentGeometry(edges, hiddenEdges)
       if (segmentPositions.length === 0) return false
       // Drift assert: positions and map come from one traversal, so any future
       // refactor that lets them disagree must fail here, not as silent
@@ -59,6 +63,6 @@ export function useEdgeIdRegistration(params: {
       }
     },
     (p) => (layer === 'reference' ? p.referenceEdgeLayer : p.edgeLayer).unregisterBody(bodyKey),
-    [featureId, bodyId, edges, edgeQueries, layer],
+    [featureId, bodyId, edges, edgeQueries, hiddenEdges, layer],
   )
 }
