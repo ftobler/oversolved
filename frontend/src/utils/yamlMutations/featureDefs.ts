@@ -710,6 +710,15 @@ function seedPatternMode(sub: PatternFeatureDef, cleared: ReadonlySet<string> = 
   const seed = (key: 'count' | 'count_x' | 'count_y' | 'pitch' | 'pitch_x' | 'pitch_y', value: number): void => {
     if (!cleared.has(key) && sub[key] === undefined) sub[key] = value
   }
+  // A mode switch can expose a legacy count the destination mode reads but the
+  // old one ignored. Raise a numeric count below the source-in-count floor to
+  // the destination seed; a string expression is left to the solver, and a
+  // clear is the author's own choice.
+  const seedCount = (value: number): void => {
+    if (cleared.has('count')) return
+    if (sub.count === undefined) sub.count = value
+    else if (typeof sub.count === 'number' && sub.count < 2) sub.count = value
+  }
   if (sub.mode === 'rectangular') {
     // The rectangular grid reads its own axes; the one-axis fields must not
     // linger as values the solver would ignore.
@@ -719,16 +728,19 @@ function seedPatternMode(sub: PatternFeatureDef, cleared: ReadonlySet<string> = 
     seed('pitch_x', 20)
     seed('count_y', 2)
     seed('pitch_y', 20)
+    // A stale 1x1 pair would save a grid the kernel refuses; one axis raised to
+    // its seed leaves a legal 1xN row.
+    if (!cleared.has('count_y') && sub.count_x === 1 && sub.count_y === 1) sub.count_y = 2
   } else {
     // One-axis modes never read the second rectangular axis.
     delete sub.count_y
     delete sub.pitch_y
     if (sub.mode === 'circular') {
       delete sub.pitch
-      seed('count', 4)
+      seedCount(4)
     } else {
       delete sub.step_angle
-      seed('count', 2)
+      seedCount(2)
       seed('pitch', 20)
     }
   }
