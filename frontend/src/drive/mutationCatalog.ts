@@ -911,7 +911,8 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), constraintId: str(), sign: num() },
   },
   delete: {
-    summary: 'Delete sketch entities, vertices or constraints.',
+    summary: 'Delete sketch entities, vertices or constraints by `targets` refs '
+      + '(entity:/vertex:/constraint: <sketchId>:...), not featureId + ids.',
     fields: {
       targets: arr(
         'Sketch targets to delete: "entity:<sketchId>:<entityId>", ' +

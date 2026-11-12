@@ -466,6 +466,16 @@ describe('mutation catalog', () => {
     expect(summary).toContain('missing input')
   })
 
+  // The index is the first row an author reads, and `delete` is the one sketch
+  // mutation that carries its sketch id inside each target (practice run F3
+  // guessed featureId + ids there).
+  it('names the delete target form in the index summary', () => {
+    const summary = mutationInfoOf('delete').summary
+    expect(summary).toContain('targets')
+    expect(summary).toContain('entity:/vertex:/constraint: <sketchId>')
+    expect(summary).toContain('not featureId + ids')
+  })
+
   it('documents the center-rect corner, the transform axis pair and the revolve axis ref', () => {
     const center = mutationInfoOf('add_center_rect').note
     expect(center).toContain('half-diagonal')
