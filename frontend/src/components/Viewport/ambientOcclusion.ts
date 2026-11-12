@@ -1,6 +1,4 @@
 import * as THREE from 'three'
-import { useSectionStore } from '@/stores/sectionStore'
-
 // Dedicated three Layers bit for bodies that act as AO occluders: opaque faces
 // only. The pre-pass camera's layer mask is this bit, so transparent or
 // transmissive bodies never enter the depth/normal target.
