@@ -34,7 +34,8 @@ import type {
 } from './solverProtocol'
 import { onFeatureStart } from '../featureProgress'
 import { SUPERSEDED_ERROR } from './solverProtocol'
-import { toPartBundle } from '../partBundle'
+import { scaleBundleToMillimetres, toPartBundle } from '../partBundle'
+import { partToAssemblyScale } from '@/utils/lengthUnit'
 import type { BodyResult } from '../../types/cad'
 
 // The worker's per-generation import byte cache. The client sends each id's
@@ -155,10 +156,13 @@ export async function handleBundleRequest(
     if (!response) {
       return { id: req.id, ok: false, error: 'OCC.js unavailable' }
     }
-    const bundle = toPartBundle(
-      req.doc_id,
-      req.content_hash,
-      response.bodies as Record<string, BodyResult>,
+    const bundle = scaleBundleToMillimetres(
+      toPartBundle(
+        req.doc_id,
+        req.content_hash,
+        response.bodies as Record<string, BodyResult>,
+      ),
+      partToAssemblyScale(req.spec),
     )
     return { id: req.id, ok: true, payload: bundle }
   } catch (e) {
