@@ -20,7 +20,7 @@ import { Repository } from '../../query'
 import { solveSweep } from '../sweep'
 import { solveFillet } from '../filletChamfer'
 import { volumeOf } from '../../occ/volume'
-import { countSolids, countSubShapes } from '../../occ/booleans'
+import { countSolids, countSubShapes, shapeIsValid } from '../../occ/booleans'
 import { faceSurfaceType, type SurfaceType } from '../../occ/primitives'
 import { solidToEdges } from '../../occ/tessellation'
 import { deriveEdgeUuid } from '../../constructionName'
@@ -41,6 +41,7 @@ type Build = {
   volume?: number
   faces?: number
   solids?: number
+  valid?: boolean
   surfaceTypes?: SurfaceType[]
   error?: string
 }
@@ -125,6 +126,7 @@ function sweepProfile(
         volume: volumeOf(oc!, scope, shape),
         faces: countSubShapes(oc!, scope, shape, E.TopAbs_FACE),
         solids: countSolids(oc!, scope, shape),
+        valid: shapeIsValid(oc!, scope, shape),
         surfaceTypes,
       }
     } catch (exc) {
@@ -178,6 +180,7 @@ describe.skipIf(!oc)('sweep of a profile with holes (real OCC)', () => {
     const length = 3 + 1.5 * Math.PI + 3
     const expected = Math.PI * (4 - 2.25) * length
     expect(Math.abs(built.volume! - expected)).toBeLessThan(expected * 1e-4)
+    expect(built.valid).toBe(true)
     expect(built.solids).toBe(1)
     // Both walls exist and follow the bend: each is two cylinders (the straight
     // runs) and one torus (the arc), plus the two annular caps.

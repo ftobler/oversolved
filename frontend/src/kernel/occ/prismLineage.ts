@@ -1159,11 +1159,11 @@ export function sweepProfileWithLineage(
   for (const inner of holeLineages) toolNames.assign(inner.faceNames)
   const faceNames = carryFaceNames(cut.faceOrigin, lineage.faceNames, toolNames)
   const faceAncestry = { ...lineage.faceAncestry }
+  // The hole shells' own caps are cut away, so only the OUTER shell's cap
+  // tokens describe the annular caps the cut leaves; merging the inner cap
+  // ancestry would put UUIDs on the body that no face carries.
   const capAncestry = { ...lineage.capAncestry }
-  for (const inner of holeLineages) {
-    Object.assign(faceAncestry, inner.faceAncestry)
-    Object.assign(capAncestry, inner.capAncestry)
-  }
+  for (const inner of holeLineages) Object.assign(faceAncestry, inner.faceAncestry)
   const table = FaceEdgeTable.read(oc, scope, cutSolid)
   // A face the cut split or left out of the origin table is named off its
   // named neighbours, exactly as the uncut prism path does.
