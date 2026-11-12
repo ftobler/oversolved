@@ -118,7 +118,22 @@ export class MsaaPresenter {
       return { active: ao, capturing: this.capturing || isAoCapturing() }
     }
     if (ao && typeof ao === 'object') {
-      const o = ao as Record<string, unknown>
+      const o = ao as Partial<{
+        aoActive: unknown
+        ambientOcclusion: unknown
+        ambient_occlusion: unknown
+        ao: unknown
+        enabled: unknown
+        capturing: unknown
+        extent: unknown
+        modelExtent: unknown
+        shading: unknown
+        zebra: unknown
+        curvature: unknown
+        sectionEnabled: unknown
+        section: unknown
+        allowAmbientOcclusion: unknown
+      }>
       const active = o.aoActive ?? o.ambientOcclusion ?? o.ambient_occlusion ?? o.ao ?? o.enabled ?? this.aoActive
       const capturing = o.capturing ?? this.capturing ?? isAoCapturing() ?? useSectionStore.getState().capturing
       const extent = typeof o.extent === 'number' ? o.extent : (typeof o.modelExtent === 'number' ? o.modelExtent : undefined)

@@ -344,6 +344,37 @@ export function makeZebraPatch(opts: {
 const NO_PATCH = () => {}
 const NO_KEY = () => ''
 
+/** The loose props/legacy argument bag the material accepts; every field is
+ *  narrowed at use, so an untyped caller cannot smuggle a wrong type past. */
+type LooseParams = Partial<{
+  mode: unknown
+  mixVertexColor: unknown
+  threaded: unknown
+  ao: unknown
+  aoEnabled: unknown
+  aoActive: unknown
+  enableAo: unknown
+  ambientOcclusion: unknown
+  ambientOcclusionEnabled: unknown
+  ambient_occlusion: unknown
+  ao_strength: unknown
+  aoStrength: unknown
+  transparent: unknown
+  transmission: unknown
+  opacity: unknown
+  capturing: unknown
+  sectionEnabled: unknown
+  sectioned: unknown
+  shading: unknown
+  zebra: unknown
+  curvature: unknown
+  allowAmbientOcclusion: unknown
+}>
+
+function hasModeField(value: unknown): value is { mode?: unknown } {
+  return typeof value === 'object' && value !== null && 'mode' in value
+}
+
 export interface BodyAnalysisParams {
   mode: BodyAnalysisMode
   mixVertexColor: boolean
@@ -381,7 +412,7 @@ export interface BodyAnalysisParams {
 export function resolveAoFlag(input: unknown): boolean {
   if (typeof input === 'boolean') return input
   if (input && typeof input === 'object') {
-    const o = input as Record<string, unknown>
+    const o = input as LooseParams
     return Boolean(o.ao ?? o.aoEnabled ?? o.aoActive ?? o.enableAo ?? o.ambientOcclusion ?? o.ambientOcclusionEnabled ?? o.ambient_occlusion ?? false)
   }
   return false
@@ -390,7 +421,7 @@ export function resolveAoFlag(input: unknown): boolean {
 export function resolveTransparentFlag(input: unknown): boolean {
   if (typeof input === 'boolean') return input
   if (input && typeof input === 'object') {
-    const o = input as Record<string, unknown>
+    const o = input as LooseParams
     if (typeof o.transparent === 'boolean') return o.transparent
     if (typeof o.transmission === 'number' && o.transmission > 0) return true
     if (typeof o.opacity === 'number' && o.opacity < 1) return true
@@ -401,7 +432,7 @@ export function resolveTransparentFlag(input: unknown): boolean {
 
 function aoActiveFromParams(params: unknown): boolean {
   if (!params || typeof params !== 'object') return false
-  const p = params as Record<string, unknown>
+  const p = params as LooseParams
   const option = resolveAoFlag(params)
   const shading = p.shading !== false
   const zebra = Boolean(p.zebra ?? p.mode === 'zebra')
@@ -423,9 +454,9 @@ export function selectBodyPatch(...args: unknown[]): BodyAnalysisPatch | null {
   let transparent = false
   let params: unknown = null
 
-  if (args.length === 1 && args[0] && typeof args[0] === 'object' && 'mode' in (args[0] as Record<string, unknown>)) {
+  if (args.length === 1 && hasModeField(args[0])) {
     params = args[0]
-    const p = params as Record<string, unknown>
+    const p = params as LooseParams
     mode = (p.mode as BodyAnalysisMode) ?? 'none'
     mixVertexColor = Boolean(p.mixVertexColor ?? false)
     threaded = Boolean(p.threaded ?? false)

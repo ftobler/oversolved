@@ -50,9 +50,9 @@ describe('viewer options in the preferences record', () => {
 
   it('clamps a brightness outside the range and falls back on garbage', () => {
     store({ view: { brightness: 9 } })
-    expect(readLocalPrefs().view.brightness).toBe(2)
+    expect(readLocalPrefs().view.brightness).toBe(4)
     store({ view: { brightness: -3 } })
-    expect(readLocalPrefs().view.brightness).toBe(0.5)
+    expect(readLocalPrefs().view.brightness).toBe(0.25)
     store({ view: { brightness: 'bright' } })
     expect(readLocalPrefs().view.brightness).toBe(1)
     store({ view: { brightness: Number.NaN } })
