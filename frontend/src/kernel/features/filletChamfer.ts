@@ -30,10 +30,12 @@ import { linearHandle, type FeatureHandle } from './featureHandles'
 import {
   chamferWidthDiagnosis,
   edgeLabel,
+  endFaceDiagnosis,
   filletWidthDiagnosis,
   nearTangentCornerDiagnosis,
   tangentChainDiagnosis,
 } from './edgeFailureDiagnosis'
+import { endFacePrismEnabled, makeChamferPrismFallback, makeFilletPrismFallback } from './endFaceBlend'
 import { tangentChain } from './tangentChain'
 import {
   applyFilletWithLineage,
@@ -41,6 +43,7 @@ import {
   type EdgeModifierResult,
   type OldNames,
 } from '../occ/edgeModifier'
+import type { CornerBlendSpec } from '../occ/cornerBlend'
 import { swallowUnlessTrap } from '../errors'
 
 type Dict = Record<string, unknown>
@@ -60,9 +63,9 @@ interface EdgeFeatureResult {
   // partial result.
   failed_edges?: string[]
   // The blend ran past the picks along a tangent chain (OCC continues over a
-  // G1 joint). The feature built exactly what the pick produces; the note says
-  // how much of the body moved. Informational, so it is not a solver_warning:
-  // that word is kept for a fallback or a no-op.
+  // G1 joint), or a refused edge was built as a prism cut. The feature built
+  // what the pick produces; the note says how. Informational, so it is not a
+  // solver_warning: that word is kept for a fallback that changes the outcome.
   solver_note?: string
 }
 
@@ -442,6 +445,7 @@ function applyEdgeFeature(
   applyFn: ApplyFn,
   makeHandle?: (anchor: Vec3, direction: Vec3) => FeatureHandle | null,
   failureDiagnosis?: (shape: OccShape, edges: OccShape[]) => string | null,
+  endFace?: (shape: OccShape, edges: OccShape[]) => string | null,
 ): EdgeFeatureResult {
   // The id lives on the feature, not its kind sub-dict, so the caller passes it
   // in: it is the createdBy tag for the generated blend-face UUIDs.
@@ -530,6 +534,9 @@ function applyEdgeFeature(
   // invisible in the document, which holds only the picks.
   let chainSize = 0
   let unpickedSize = 0
+  // Positions in the authored edge list a prism fallback built. One per refused
+  // edge; the note names them so a different builder is never silent.
+  const prismEdges: number[] = []
   let handle: FeatureHandle | null = null
   for (const [bid, qlist] of groups) {
     let body: Body
@@ -605,9 +612,9 @@ function applyEdgeFeature(
       // replacing it: some such picks build at a smaller value (a corner
       // blend), others at none (ppp0103's half-boss arc), and only a build
       // tells which.
-      const diagnosis = failureDiagnosis?.(oldShape, topoEdges) ?? null
-      // A near-tangent corner names a cause when no measured width does; the
-      // unpicked-chain note follows only when neither explains the refusal.
+      const diagnosis = failureDiagnosis?.(oldShape, topoEdges) ?? endFace?.(oldShape, topoEdges) ?? null
+      // A near-tangent corner names a cause when no measured width or end face
+      // does; the unpicked-chain note follows only when neither explains it.
       const corner = diagnosis === null ? nearTangentCornerDiagnosis(oc, scope, oldShape, topoEdges) : null
       const chain = diagnosis === null && corner === null
         ? tangentChainDiagnosis(oc, scope, oldShape, topoEdges)
@@ -640,6 +647,7 @@ function applyEdgeFeature(
         // count: a partner the user picked is not "unpicked" because the
         // kernel skipped this edge (practice F3).
         const why = failureDiagnosis?.(oldShape, [edge])
+          ?? endFace?.(oldShape, [edge])
           ?? nearTangentCornerDiagnosis(oc, scope, oldShape, [edge])
           ?? tangentChainDiagnosis(oc, scope, oldShape, [edge], topoEdges)
           ?? 'refused by the kernel even alone; try a smaller radius/distance'
@@ -671,6 +679,11 @@ function applyEdgeFeature(
       chainSize += chain.chain
       unpickedSize += chain.chain - chain.picked
     }
+    for (const i of res.prismEdgeIndices) {
+      const q = topoEdges[i] === undefined ? undefined : queryOf.get(topoEdges[i])
+      const authored = q === undefined ? -1 : edges.indexOf(q)
+      if (authored >= 0) prismEdges.push(authored)
+    }
     applied.push(...ids)
     body.brep_diff = res.diff
     body.modified_by.push(featureId)
@@ -685,12 +698,24 @@ function applyEdgeFeature(
 
   if (applied.length === 0) throw new Error(`${featureKind}: no edges resolved`)
 
-  // The chain note is the file's only informational text writer: a fallback or
-  // a no-op stays a `solver_warning` in the leaves that take one.
-  const solverNote = unpickedSize > 0
-    ? `${featureKind}: the picked edges continue along the tangent chain, so ${chainSize} ` +
-      `edges were ${featureKind === 'fillet' ? 'filleted' : 'chamfered'} (${unpickedSize} of them not picked)`
-    : undefined
+  // Two informational notes ride this channel: the blend the kernel took beyond
+  // the picks, and the edges a prism cut had to build. Neither is a problem, so
+  // neither is a `solver_warning` (that word is for a fallback or a no-op).
+  const noteParts: string[] = []
+  const fallbackEdges = [...new Set(prismEdges)].sort((a, b) => a - b)
+  if (fallbackEdges.length > 0) {
+    noteParts.push(
+      `${featureKind}: ${fallbackEdges.map((i) => `edges[${i}]`).join(', ')} blended by a prism cut ` +
+      'because the rolling-ball blend could not consume its end face',
+    )
+  }
+  if (unpickedSize > 0) {
+    noteParts.push(
+      `${featureKind}: the picked edges continue along the tangent chain, so ${chainSize} ` +
+      `edges were ${featureKind === 'fillet' ? 'filleted' : 'chamfered'} (${unpickedSize} of them not picked)`,
+    )
+  }
+  const solverNote = noteParts.length > 0 ? noteParts.join('; ') : undefined
 
   if (unresolved.length > 0 || failed.length > 0 || modifierFailures.length > 0) {
     const parts: string[] = []
@@ -733,14 +758,16 @@ export function solveFillet(
   const sub = (feature.fillet as Dict) ?? {}
   const radius = Number(sub.radius ?? 1.0)
   if (!Number.isFinite(radius) || radius <= 0) throw new Error('fillet: radius must be positive')
+  const prism = endFacePrismEnabled() ? makeFilletPrismFallback(radius, (feature.id as string) ?? '') : undefined
   return applyEdgeFeature(oc, scope, table, sub, (feature.id as string) ?? '', bodyStore, 'fillet', (o, s, shape, edges, nm) =>
-    applyFilletWithLineage(o, s, shape, radius, edges, nm),
+    applyFilletWithLineage(o, s, shape, radius, edges, nm, prism),
   // unit_scale=1 here is a 1:1 UX approximation: dragging along the
   // face-bisector normal is not the exact radius/bisector-travel relation
   // (r = d_bisector * sin(theta/2) for the included edge angle), but it is
   // close enough for a freehand tweak and re-anchors on every rebuild.
   (anchor, direction) => linearHandle('radius', anchor, direction, radius),
   (shape, edges) => filletWidthDiagnosis(oc, scope, shape, edges, radius),
+  (shape, edges) => endFaceDiagnosis(oc, scope, shape, edges, { kind: 'fillet', radius }),
   )
 }
 
@@ -760,11 +787,22 @@ export function solveChamfer(
   const angleRaw = sub.angle
   const angle = Number(angleRaw !== undefined && angleRaw !== null ? angleRaw : 45.0)
   if (!Number.isFinite(distance) || distance <= 0) throw new Error('chamfer: distance must be positive')
+  const angleRad = angle * (Math.PI / 180)
+  // The prism cut is only offered for a symmetric distance chamfer: an
+  // angle-distance chamfer's second leg depends on which face OCC took as the
+  // reference, and a wrong-angle bevel is worse than the refusal.
+  const fallback = endFacePrismEnabled() && chamferMode !== 'angle_distance'
+    ? makeChamferPrismFallback(distance, (feature.id as string) ?? '')
+    : undefined
+  const endFaceSpec: CornerBlendSpec = chamferMode === 'angle_distance'
+    ? { kind: 'chamfer', distance, angleRad }
+    : { kind: 'chamfer', distance }
   return applyEdgeFeature(oc, scope, table, sub, (feature.id as string) ?? '', bodyStore, 'chamfer', (o, s, shape, edges, nm) =>
-    applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, nm),
+    applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, nm, fallback),
   // See fillet above: unit_scale=1 is a 1:1 UX approximation along the
   // face-bisector normal, not the exact chamfer geometry relation.
   (anchor, direction) => linearHandle('distance', anchor, direction, distance),
   (shape, edges) => chamferWidthDiagnosis(oc, scope, shape, edges, distance),
+  (shape, edges) => endFaceDiagnosis(oc, scope, shape, edges, endFaceSpec),
   )
 }

@@ -10,6 +10,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccOrientedShape, OccShape, OccSubShape } from '../occ/occTypes'
 import { canonicalEdges, canonicalVertices } from '../occ/bodyNames'
 import { exploreEdges, exploreFaces } from '../occ/edgeModifier'
+import { consumedEndFace, type CornerBlendSpec } from '../occ/cornerBlend'
 import { endTangents } from './tangentChain'
 
 type Vec3 = [number, number, number]
@@ -125,6 +126,46 @@ export function filletWidthDiagnosis(
   return worst.between
     ? `radius ${radius} consumes the ${shown(worst.width)} face between the picked edges; use < ${shown(worst.limit)} or a sketch arc`
     : `radius ${radius} consumes the ${shown(worst.width)} adjacent face; use < ${shown(worst.limit)}`
+}
+
+/**
+ * A blend that runs past a small END face: a planar face that touches the
+ * picked edge only at one of its vertices and that the blend would consume
+ * whole. `filletWidthDiagnosis` measures only faces that CONTAIN the edge, so
+ * this case fell through to the bare kernel refusal and the "try a smaller
+ * radius" hint -- wrong advice twice over, because the end face is not the
+ * radius the user asked for and a smaller radius is not the fix they want (the
+ * enclosure practice run: the lip's 1.06 corner triangle refused every r above
+ * 1.06, while r9 removes the overhang exactly).
+ *
+ * The message names the measured reach, which is what makes the sketch fix
+ * obvious. A face that is not square to the edge has no such reach; it is
+ * named without one rather than given a fabricated number.
+ */
+export function endFaceDiagnosis(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  edges: OccShape[],
+  spec: CornerBlendSpec,
+): string | null {
+  const value = spec.kind === 'fillet' ? spec.radius : spec.distance
+  for (const edge of edges) {
+    const consumed = consumedEndFace(oc, scope, shape, edge, spec)
+    if (consumed === null) continue
+    const { reach, limit } = consumed
+    const at = reach.at.map((c) => Number(c.toFixed(3)) + 0)
+    const label = spec.kind === 'fillet' ? 'radius' : 'distance'
+    const tail = 'or round the profile in the sketch (fillet_corners) before the extrude'
+    if (!reach.square) {
+      return `${label} ${shown(value)} consumes the end face at [${at.join(', ')}] ` +
+        `(the picked edge ends on it, ${shown(reach.tiltDeg)} deg off square); ` +
+        `square the face up to the edge, ${tail}`
+    }
+    return `${label} ${shown(value)} consumes the ${shown(limit)} end face at [${at.join(', ')}] ` +
+      `(the picked edge ends on it); ${label} under ${shown(limit)} builds, ${tail}`
+  }
+  return null
 }
 
 /**

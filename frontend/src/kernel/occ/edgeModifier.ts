@@ -15,6 +15,7 @@ import { volumeOfDefault } from './volume'
 import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
 import { canonicalEdges, canonicalVertices, type ShapeNames } from './bodyNames'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
+import { mergeBrepDiff } from '../features/shared/brepDiff'
 import { mintFaceUuid, filletFacePath, splitFacePath, orderSplitChildren, type SplitChild } from '../constructionName'
 import {
   nameNeighboursAndDeriveEdges,
@@ -36,6 +37,27 @@ export interface OldNames extends ShapeNames {
 /** The rebuilt construction names after a fillet/chamfer, keyed by the output solid. */
 export type NewNames = ShapeNames
 
+/**
+ * A second builder for an edge the rolling-ball maker refused: the leaf decides
+ * which edges are safe and how they are named (features/endFaceBlend.ts), this
+ * adapter runs the cuts and folds their results into one outcome. It exists
+ * because OCC's ChFi3d cannot consume a face it was not asked to blend, while a
+ * straight edge between two planes is a prism that can simply be cut.
+ */
+export interface EdgeFallback {
+  // Whether this edge is safe, measured on the pre-modifier shape.
+  qualifies(oc: OccModule, scope: DisposeScope, shape: OccShape, edge: OccShape): boolean
+  // The cut for one edge on `shape`, carrying `names` (keyed to `shape`) onto
+  // the result. The returned shape is untracked: the caller owns it.
+  build(
+    oc: OccModule,
+    scope: DisposeScope,
+    shape: OccShape,
+    edge: OccShape,
+    names: NewNames | null,
+  ): { shape: OccShape; names: NewNames | null; diff: BrepDiff } | null
+}
+
 export interface EdgeModifierResult {
   shape: OccShape
   success: boolean
@@ -46,6 +68,9 @@ export interface EdgeModifierResult {
    *  or `addEdge` threw). Indices, not geom hashes: only the caller knows which
    *  query produced each edge, and a hash cannot be matched back to one. */
   skippedEdgeIndices: number[]
+  /** Indices into the `edges` argument a fallback built after the maker refused
+   *  them. Informational: the leaf names them in its note. */
+  prismEdgeIndices: number[]
 }
 
 function asFace(oc: OccModule, s: OccShape): OccSubShape {
@@ -557,6 +582,8 @@ interface AddEdgeContext {
 interface ModifierSpec {
   makeMaker(shape: OccShape): OccEdgeModifierMaker
   addEdge(maker: OccEdgeModifierMaker, edge: OccShape, ctx: AddEdgeContext): void
+  // The leaf's second builder for edges the maker refuses (see EdgeFallback).
+  fallback?: EdgeFallback
 }
 
 function applyEdgeModifier(
@@ -575,6 +602,7 @@ function applyEdgeModifier(
     names: null,
     diff: emptyBrepDiff(),
     skippedEdgeIndices: [],
+    prismEdgeIndices: [],
   })
 
   if ((shape as unknown as { IsNull(): boolean }).IsNull()) return fail('null_shape')
@@ -697,6 +725,70 @@ function applyEdgeModifier(
     return { maker: retry.maker, shape: scope.detach(retry.shape) }
   }
 
+  /** The fallback's cut, validity-gated like the maker's output: a cut that does
+   *  not validate is refused, and one that heals is adopted healed. The cut's
+   *  names and diff move onto the healed shape through the fixer's history. */
+  const acceptCut = (
+    cut: { shape: OccShape; names: NewNames | null; diff: BrepDiff },
+  ): { shape: OccShape; names: NewNames | null; diff: BrepDiff } | null => {
+    if (isValidShape(oc, scope, cut.shape)) return cut
+    const healed = healShape(oc, scope, cut.shape)
+    if (healed === null) {
+      scope.release(cut.shape)
+      return null
+    }
+    const rebased = cut.names === null ? null : rebaseNames(cut.names, healed.rebase)
+    const healedDiff = rebaseDiff(cut.diff, healed.rebase)
+    scope.release(cut.shape)
+    return { shape: healed.shape, names: rebased, diff: healedDiff }
+  }
+
+  // The leaf's second builder, one cut per refused edge, on the result the
+  // previous cut produced. The qualify gate always reads the PRE-modifier
+  // `shape`: the end face and the chain are properties of the pick, and an
+  // earlier cut elsewhere on the body cannot change them.
+  const runFallback = (
+    base: OccShape,
+    baseNames: NewNames | null,
+    baseDiff: BrepDiff,
+    ownBase: boolean,
+    candidates: number[],
+  ): { shape: OccShape; names: NewNames | null; diff: BrepDiff; built: number[] } => {
+    let current = base
+    let names = baseNames
+    let diff = baseDiff
+    let own = ownBase
+    const builtIndices: number[] = []
+    const fallback = spec.fallback
+    if (fallback === undefined) return { shape: current, names, diff, built: builtIndices }
+    for (const index of candidates) {
+      const edge = edges[index]
+      if (edge === undefined) continue
+      let qualifies = false
+      try {
+        qualifies = fallback.qualifies(oc, scope, shape, edge)
+      } catch (e) {
+        swallowUnlessTrap(e)
+      }
+      if (!qualifies) continue
+      const cut = fallback.build(oc, scope, current, edge, names)
+      if (cut === null) continue
+      const accepted = acceptCut(cut)
+      if (accepted === null) continue
+      // A replaced base has no other owner: the maker's shape (or the previous
+      // cut's) was handed to this function.
+      if (own) scope.release(current)
+      current = accepted.shape
+      names = accepted.names
+      diff = mergeBrepDiff(diff, accepted.diff)
+      own = true
+      builtIndices.push(index)
+    }
+    return { shape: current, names, diff, built: builtIndices }
+  }
+
+  const initialNames: NewNames | null = trackLineage && oldNames !== null ? oldNames : null
+
   let built: OccShape | null = null
   let buildReason = 'build_not_done'
   let bisected = false
@@ -710,7 +802,28 @@ function applyEdgeModifier(
   if (built === null) {
     bisected = true
     const rebuilt = rebuildWithout(isolateBroken())
-    if (rebuilt === null) return fail(buildReason)
+    if (rebuilt === null) {
+      // The maker accepts none of the picks. A refused edge the leaf's fallback
+      // qualifies still builds, as a prism cut on the pre-modifier body; the
+      // rest stay refused with the reason the maker gave. A maker that could not
+      // even be constructed is an environment failure, not a geometric refusal,
+      // so it is not handed to the fallback.
+      if (buildReason !== 'maker_failed') {
+        const retried = runFallback(shape, initialNames, emptyBrepDiff(), false, [...appliedIdx].sort((a, b) => a - b))
+        if (retried.built.length > 0) {
+          return {
+            shape: retried.shape,
+            success: true,
+            reason: null,
+            names: retried.names,
+            diff: retried.diff,
+            skippedEdgeIndices: [...skippedIdx, ...appliedIdx.filter((i) => !retried.built.includes(i))].sort((a, b) => a - b),
+            prismEdgeIndices: retried.built,
+          }
+        }
+      }
+      return fail(buildReason)
+    }
     maker = rebuilt.maker
     built = rebuilt.shape
   }
@@ -805,21 +918,37 @@ function applyEdgeModifier(
   // picks stored against it, the same eviction the far-edge rule in
   // edgeModifierDiff exists to prevent. The names are handed to the healed
   // shape through the fixer's own history (`rebase`), and so is the diff.
+  let outShape = built
+  let outNames: NewNames | null = names
+  let outDiff = diff
   if (heal !== null) {
-    const rebased = names === null ? null : rebaseNames(names, heal.rebase)
-    const healedDiff = rebaseDiff(diff, heal.rebase)
+    outNames = names === null ? null : rebaseNames(names, heal.rebase)
+    outDiff = rebaseDiff(diff, heal.rebase)
     scope.release(built)
-    return { shape: heal.shape, success: true, reason: null, names: rebased, diff: healedDiff, skippedEdgeIndices: skippedIdx }
+    outShape = heal.shape
   }
 
-  return { shape: built, success: true, reason: null, names, diff, skippedEdgeIndices: skippedIdx }
+  // A refused edge the maker isolated can still build as a prism cut on the
+  // result. One at a time, because each cut reshapes the body the next one sees.
+  const refused = skippedIdx.filter((i) => appliedIdx.includes(i))
+  const retried = runFallback(outShape, outNames, outDiff, true, refused)
+  return {
+    shape: retried.shape,
+    success: true,
+    reason: null,
+    names: retried.names,
+    diff: retried.diff,
+    skippedEdgeIndices: skippedIdx.filter((i) => !retried.built.includes(i)),
+    prismEdgeIndices: retried.built,
+  }
 }
 
-function filletSpec(oc: OccModule, radius: number): ModifierSpec {
+function filletSpec(oc: OccModule, radius: number, fallback?: EdgeFallback): ModifierSpec {
   return {
     makeMaker: (shape) =>
       new oc.BRepFilletAPI_MakeFillet(shape, oc.ChFi3d_FilletShape.ChFi3d_Rational),
     addEdge: (maker, edge) => maker.Add_2(radius, edge),
+    fallback,
   }
 }
 
@@ -838,7 +967,13 @@ function adjacentFaceLookup(oc: OccModule): (edge: OccShape, ctx: AddEdgeContext
   }
 }
 
-function chamferSpec(oc: OccModule, distance: number, kind: string, angleDeg: number): ModifierSpec {
+function chamferSpec(
+  oc: OccModule,
+  distance: number,
+  kind: string,
+  angleDeg: number,
+  fallback?: EdgeFallback,
+): ModifierSpec {
   // The unit boundary. The document authors the angle in degrees (the editor
   // labels it so, and the schema defaults it to 45), but ChFi3d takes it
   // through C `tan()`, which is radians. This is the only call site that
@@ -857,10 +992,12 @@ function chamferSpec(oc: OccModule, distance: number, kind: string, angleDeg: nu
       if (!face) throw new Error('chamfer: the target edge belongs to no face of the shape')
       maker.AddDA(distance, angleRad, edge, face)
     },
+    fallback,
   }
 }
 
-/** Apply a fillet to `edges` and track lineage (mirrors `apply_fillet_with_lineage`). */
+/** Apply a fillet to `edges` and track lineage (mirrors `apply_fillet_with_lineage`).
+ *  `fallback` is the leaf's prism cut for edges the maker refuses (see EdgeFallback). */
 export function applyFilletWithLineage(
   oc: OccModule,
   scope: DisposeScope,
@@ -868,8 +1005,9 @@ export function applyFilletWithLineage(
   radius: number,
   edges: OccShape[],
   oldNames: OldNames | null = null,
+  fallback?: EdgeFallback,
 ): EdgeModifierResult {
-  return applyEdgeModifier(oc, scope, shape, edges, filletSpec(oc, radius), true, oldNames)
+  return applyEdgeModifier(oc, scope, shape, edges, filletSpec(oc, radius, fallback), true, oldNames)
 }
 
 /** Apply a fillet to `edges`, diff only (mirrors `apply_fillet_with_diff`). */
@@ -893,8 +1031,9 @@ export function applyChamferWithLineage(
   kind: string,
   angleDeg: number,
   oldNames: OldNames | null = null,
+  fallback?: EdgeFallback,
 ): EdgeModifierResult {
-  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, distance, kind, angleDeg), true, oldNames)
+  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, distance, kind, angleDeg, fallback), true, oldNames)
 }
 
 /** Apply a chamfer to `edges`, diff only (mirrors `apply_chamfer_with_diff`). */
