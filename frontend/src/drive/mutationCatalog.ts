@@ -75,7 +75,7 @@ const optNullableStr = (note?: string) =>
   ({ type: 'string', required: false, nullable: true, ...(note !== undefined && { note }) } as const)
 const nullableStr = () => ({ type: 'string', required: false, nullable: true } as const)
 const num = (note?: string) => ({ type: 'number', required: true, ...(note !== undefined && { note }) } as const)
-const optNum = () => ({ type: 'number', required: false } as const)
+const optNum = (note?: string) => ({ type: 'number', required: false, ...(note !== undefined && { note }) } as const)
 const optObj = () => ({ type: 'object', required: false } as const)
 const bool = () => ({ type: 'boolean', required: true } as const)
 const optBool = (note?: string) => ({ type: 'boolean', required: false, ...(note !== undefined && { note }) } as const)
@@ -506,6 +506,19 @@ const ANGLE_VALUE_NOTE =
   'in a theta wedge and 180 - value in a supplement wedge. `add_constraint` without `pos` takes the ' +
   'corner nearest the authored geometry and writes a label `pos` there.'
 
+// The sign of a directional dimension is the one field whose meaning depends on
+// the kind, and the three behaviours differ: the axis kinds and `angle` keep the
+// authored side when it is absent, while `line_distance` has a legacy +1 default
+// that flips silent geometry when a projected edge runs the other way. The note
+// is shared by the add and the flip so both rows state the same contract.
+const CONSTRAINT_SIGN_NOTE =
+  'Orientation of a directional dimension, +1 or -1. point_distance_x/point_distance_y: the second ' +
+  'target minus the first along that axis equals sign * value; absent, the distance is unsigned and ' +
+  'the authored side is kept. line_distance: the point\'s offset along the line\'s left normal ' +
+  '(start to end) equals sign * value; absent means +1, so state it when the side matters. angle: ' +
+  'pins the turn from the first line to the second; absent, the unsigned angle is matched. Other ' +
+  'kinds ignore it.'
+
 const ANGLE_SET_VALUE_NOTE =
   'An `angle` value is the corner the label shows: the constraint\'s stored `pos`, or the ' +
   'renderer\'s default wedge when it has none, picks the wedge, and the document stores the ' +
@@ -929,7 +942,7 @@ export const MUTATION_CATALOG = {
       targets: arr('Entity or vertex refs the constraint names; see the row note for the spelling.'),
       value: optNum(),
       pos: optPoint(),
-      sign: optNum(),
+      sign: optNum(CONSTRAINT_SIGN_NOTE),
     },
   },
   set_constraint_value: {
@@ -946,8 +959,8 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), constraintId: str(), pos: point() },
   },
   set_constraint_sign: {
-    summary: 'Flip a signed dimension.',
-    fields: { featureId: str(), constraintId: str(), sign: num() },
+    summary: 'Flip a signed dimension: sets +1 or -1; any negative value is -1, anything else +1.',
+    fields: { featureId: str(), constraintId: str(), sign: num(CONSTRAINT_SIGN_NOTE) },
   },
   delete: {
     summary: 'Delete sketch entities, vertices or constraints by `targets` refs '

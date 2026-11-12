@@ -640,6 +640,33 @@ describe('add_three_point_arc catalog row', () => {
   })
 })
 
+// The Numpy practice run copied `sign: 1` from an example and got its rectangle
+// mirrored through the origin, because no note said what the sign measures or
+// what leaving it out does. The note is shared by add and set so the two paths
+// cannot describe different contracts.
+describe('constraint sign note', () => {
+  it('states the sign contract on add_constraint and set_constraint_sign', () => {
+    for (const [type, field] of [['add_constraint', 'sign'], ['set_constraint_sign', 'sign']] as const) {
+      const note = mutationInfoOf(type).fields[field].note
+      expect(note, type).toBeTruthy()
+      expect(note!, type).toContain('point_distance_x')
+      expect(note!, type).toContain('point_distance_y')
+      expect(note!, type).toContain('line_distance')
+      expect(note!, type).toContain('angle')
+      // The axis kinds keep the authored side; line_distance does not.
+      expect(note!, type).toContain('absent, the distance is unsigned and the authored side is kept')
+      expect(note!, type).toContain('absent means +1')
+      expect(note!, type).toContain('absent, the unsigned angle is matched')
+      expect(note!, type).toContain('Other kinds ignore it')
+    }
+  })
+
+  it('says the flip normalizes any signed number to +1 or -1', () => {
+    expect(mutationInfoOf('set_constraint_sign').summary)
+      .toContain('sets +1 or -1; any negative value is -1, anything else +1')
+  })
+})
+
 // The 2026-11-08 practice round found three notes that sent a headless client
 // down the wrong path: an area query only a viewport click can store, an axis
 // split that reads as a refusal, and a selector shape only `select` documented.

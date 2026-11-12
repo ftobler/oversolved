@@ -37,6 +37,19 @@ describe('applyAddConstraint with sign', () => {
     applyAddConstraint(doc, 'S1', 'point_distance', ['vertex:S1:pa', 'vertex:S1:pb'], 11)
     expect(onlyConstraint(doc).sign).toBeUndefined()
   })
+
+  // The drive boundary accepts any finite number, so add must collapse it the
+  // same way set_constraint_sign does. A raw 0 would zero the dimension and a
+  // raw 5 would scale it five times in the residual `d - sign * value`.
+  it('normalizes a non-unit add sign to +1 or -1, matching the set path', () => {
+    const zero = makeDoc()
+    applyAddConstraint(zero, 'S1', 'point_distance_x', ['vertex:S1:pa', 'vertex:S1:pb'], 10, undefined, 0)
+    expect(onlyConstraint(zero).sign).toBe(1)
+
+    const negative = makeDoc()
+    applyAddConstraint(negative, 'S1', 'point_distance_x', ['vertex:S1:pa', 'vertex:S1:pb'], 10, undefined, -7)
+    expect(onlyConstraint(negative).sign).toBe(-1)
+  })
 })
 
 describe('applySetConstraintSign', () => {
