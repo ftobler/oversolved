@@ -79,6 +79,19 @@ describe('AoPass', () => {
     expect(uniforms.distanceFallOff.value).toBe(1)
   })
 
+  it('takes an orthographic view direction, not the perspective one', () => {
+    // GTAOShader's own view direction is normalize(-viewPos), which only holds
+    // for a perspective camera. With an ortho viewport whose near plane can sit
+    // behind the model it swings across the screen and the horizon slices are
+    // taken against the wrong axis, so the fragment shader is patched.
+    const pass = new AoPass()
+
+    expect(pass.gtaoMaterial.fragmentShader).toContain(
+      '( PERSPECTIVE_CAMERA == 1 ) ? normalize(-viewPos.xyz) : vec3( 0.0, 0.0, 1.0 )',
+    )
+    expect(pass.gtaoMaterial.fragmentShader).not.toMatch(/vec3 viewDir = normalize\(-viewPos\.xyz\);/)
+  })
+
   it('allocates half-float AO targets, with no depth buffer to keep', () => {
     const pass = new AoPass()
 

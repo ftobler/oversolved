@@ -239,7 +239,7 @@ export class MsaaPresenter {
     this.output.dispose()
   }
 
-  /** Free the AO pass and republish the white texel the materials expect. */
+  // Free the AO pass and republish the white texel the materials expect.
   private releaseAoPass(): void {
     if (!this.aoPass) return
     this.aoPass.dispose()

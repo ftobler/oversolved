@@ -3,7 +3,7 @@
 // The audit of the zebra program without a GPU: the patch is a pure function of
 // the shader source plus a uniforms record, and the hook is the only thing that
 // decides what is compile-time (the mode) and what is a uniform (every slider).
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import * as THREE from 'three'
 import type { WebGLProgramParametersWithUniforms } from 'three'
@@ -405,5 +405,28 @@ describe('ambient occlusion patch', () => {
     expect(material.customProgramCacheKey()).toBe('')
     expect(material.version).toBeGreaterThan(version)
     expect(ref.current).toBe(material)
+  })
+
+  it('drops the renderer-side program state on every patch change', () => {
+    // three skips onBeforeCompile on a program-cache hit and keeps the uniform
+    // list of the last *new* compile on the material, so an A -> B -> A round
+    // trip leaves the second A's uniforms unregistered: a sampler then reads
+    // texture unit 0, the environment map. Disposing forces the fresh-compile
+    // branch (the GLSL program itself is still shared and reference-counted).
+    const material = new THREE.MeshPhysicalMaterial()
+    const dispose = vi.spyOn(material, 'dispose')
+    const ref = { current: material as THREE.Material | null }
+    const { rerender } = renderHook(({ p }) => useBodyAnalysisMaterial(ref, p), {
+      initialProps: { p: plainParams as BodyAnalysisParams },
+    })
+    expect(dispose).toHaveBeenCalled()
+
+    dispose.mockClear()
+    rerender({ p: { ...plainParams, ao: true } as BodyAnalysisParams })
+    rerender({ p: plainParams as BodyAnalysisParams })
+
+    // Once per swap, and the second swap back to the first key is the cache hit
+    // that used to skip onBeforeCompile.
+    expect(dispose).toHaveBeenCalledTimes(2)
   })
 })

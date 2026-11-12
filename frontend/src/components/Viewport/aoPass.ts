@@ -4,6 +4,17 @@ import {
   generatePdSamplePointInitializer, PoissonDenoiseShader,
 } from 'three/examples/jsm/shaders/PoissonDenoiseShader.js'
 
+// GTAOShader derives its view direction from the view-space position
+// (`normalize(-viewPos)`), which is a perspective assumption. The part viewport
+// is orthographic and its near plane can sit behind the model (INITIAL_CAMERA
+// near is -500), so that expression swings or flips across the screen and the
+// horizon slices are taken against the wrong axis. An orthographic view
+// direction is constant and points at the camera, +z in view space.
+const GTAO_FRAGMENT_SHADER = GTAOShader.fragmentShader.replace(
+  'vec3 viewDir = normalize(-viewPos.xyz);',
+  'vec3 viewDir = ( PERSPECTIVE_CAMERA == 1 ) ? normalize(-viewPos.xyz) : vec3( 0.0, 0.0, 1.0 );',
+)
+
 // Half float render targets need this extension; without it the AO targets fall
 // back to bytes instead of failing the frame. A caller with no renderer (tests)
 // gets the half-float path, which is what every WebGL2 context in the wild
@@ -91,7 +102,7 @@ export class AoPass {
       },
       uniforms: THREE.UniformsUtils.clone(GTAOShader.uniforms),
       vertexShader: GTAOShader.vertexShader,
-      fragmentShader: GTAOShader.fragmentShader,
+      fragmentShader: GTAO_FRAGMENT_SHADER,
       blending: THREE.NoBlending,
       depthTest: false,
       depthWrite: false,

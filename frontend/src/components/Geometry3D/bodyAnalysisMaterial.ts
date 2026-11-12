@@ -402,6 +402,17 @@ export function useBodyAnalysisMaterial(
     if (!material) return
     material.onBeforeCompile = patch?.onBeforeCompile ?? (NO_PATCH as THREE.Material['onBeforeCompile'])
     material.customProgramCacheKey = patch?.customProgramCacheKey ?? NO_KEY
+    // three keeps the uniform list of the last *new* compile on the material
+    // (WebGLRenderer.getProgram assigns materialProperties.uniforms only in the
+    // else branch) and skips onBeforeCompile when the program cache already
+    // holds the key. Swapping patches on one long-lived material therefore
+    // leaves the new program's uniforms unregistered after an A -> B -> A
+    // round trip: a float reads 0, and a sampler reads texture unit 0, which is
+    // the environment map. Disposing drops the renderer's per-material
+    // properties, so the next render takes the fresh-compile path and runs
+    // onBeforeCompile again; the GLSL program itself stays in the shared
+    // program cache, so no shader is recompiled for a key already seen.
+    material.dispose()
     material.needsUpdate = true
     return () => {
       // The material is about to unmount; leave it in a state a recycled
