@@ -1,7 +1,7 @@
 // The sweep leaf. It resolves the profile to 2D loops (face profiles are not supported for
 // sweep), resolves the path reference to an ordered chain of world-space spine edges, sweeps
-// the profile's outer boundary along the spine with per-entity lineage, and applies the body
-// operation. Includes the path-collection helpers (_path_ref_to_sketch_id,
+// the profile's outer boundary and its holes along the spine with per-entity lineage, and
+// applies the body operation. Includes the path-collection helpers (_path_ref_to_sketch_id,
 // _order_edges_into_chain, _collect_path_edges). Curved spine edges (arcs,
 // elliptical arcs, splines) are built from their exact in-plane descriptors
 // (spineCurvedEdge and its arms), chain-forward, with the joints snapped so the
@@ -945,8 +945,9 @@ export function solveSweep(
   if (!multisection && allLoops.length === 0) throw new Error('sweep: no closed profile found')
 
   // Every outer loop is one section; a section with a hole has no meaning here
-  // (the pipe shell carries one boundary), so refuse it instead of dropping the
-  // hole silently the way the single-profile path does.
+  // (the pipe shell carries one boundary per section), so refuse it by name
+  // rather than dropping the hole. The one-profile path carries its holes as
+  // inner shells and cuts them, so this limit is a multisection one.
   const sectionInputs: SectionInput[] = []
   if (multisection) {
     // Count the outer loops within each sketch so the refusal names the loop the

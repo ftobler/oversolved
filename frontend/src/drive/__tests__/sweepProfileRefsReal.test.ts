@@ -95,6 +95,26 @@ describe.skipIf(!ready)('sweep profile refs (real OCC + Rust solver)', () => {
     expect(Math.abs((measured?.measures.volume ?? 0) - Math.PI * 4 * 10)).toBeLessThan(0.5)
   }, 120_000)
 
+  it('sweeps a whole-sketch ring profile as a tube', async () => {
+    // The two concentric circles are one sketch area (an annulus). The whole
+    // sketch pick must build the tube, not the filled disc: 17.5*pi over the
+    // 20 long path. The circles are offset along the path plane's v so the
+    // path crosses the wall rather than the bore.
+    const run = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [
+        m({ type: 'add_sketch', featureId: 'prof', plane: '@builtin_plane_top' }),
+        m({ type: 'add_entity', featureId: 'prof', kind: 'circle', params: [0, 1.75, 2], entityId: 'outer' }),
+        m({ type: 'add_entity', featureId: 'prof', kind: 'circle', params: [0, 1.75, 1.5], entityId: 'inner' }),
+        ...scene(),
+        m({ type: 'add_sweep', featureId: 'sw', sketchQuery: '$prof', pathQuery: '$path', operation: 'new' }),
+      ],
+    })
+    expect(nonSketchProblems(run.features)).toEqual([])
+    const tube = Math.PI * (4 - 2.25) * L
+    expect(Math.abs((row(run, 'sw').bodyVolume ?? 0) - tube)).toBeLessThan(0.5)
+  }, 120_000)
+
   it('passes a lone line at the boundary and lets the sweep leaf refuse it', async () => {
     const run = await runHeadless({
       doc: emptyDriveDoc(),
