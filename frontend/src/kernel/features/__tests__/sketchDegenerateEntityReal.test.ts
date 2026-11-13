@@ -11,7 +11,6 @@
 //
 // Runs against the real node wasm; skips when the gitignored builds are absent.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import type { PartConstraint, PartDoc } from '@/types/cad'
 import { setSketchSolver, setSketchTopology, solveSketch } from '../sketch'
@@ -20,17 +19,8 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { runHeadless, emptyDriveDoc } from '@/drive/headlessOps'
 import { featureFailure } from '@/utils/core/featureFailure'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { setOccLoader } from '@/kernel/solveLocally'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()
@@ -91,6 +81,16 @@ describe.skipIf(!ready)('a degenerate solved entity is named and left out of pro
     // The extrude sees the circle alone, so it is not a problem row either.
     expect(run.features.some(problem => problem.id === 'ex1')).toBe(false)
     expect(run.bodies).toContain('body_ex1')
+
+    // The curve stays drawable: the exclusion is from the profile, not from the
+    // solved geometry the editor renders.
+    const solved = solveSketch(
+      doc.features!.find(feature => feature.id === 'sk1') as unknown as Record<string, unknown>,
+      initGlobalRepo(),
+      {},
+    )
+    expect(solved.geometry).toHaveProperty('e1')
+    expect(solved.degenerate_entities?.map(entry => entry.id)).toContain('e1')
   }, 180_000)
 
   // A radius dimension at zero is the end state a variable edit leaves. Sketch
@@ -128,6 +128,26 @@ describe.skipIf(!ready)('a degenerate solved entity is named and left out of pro
     expect(extrudeProblem?.message ?? '').not.toContain('make_circle')
   }, 180_000)
 
+  it('skips a degenerate construction curve but names a zero-span arc', () => {
+    const out = solveSketch({
+      id: 'sk1',
+      kind: 'sketch',
+      plane: '@builtin_plane_front',
+      entities: [
+        { id: 'lz', kind: 'line', construction: true },
+        { id: 'c1', kind: 'circle' },
+        { id: 'a1', kind: 'arc' },
+      ],
+      initial: { lz: [1, 1, 1, 1], c1: [0, 0, 5], a1: [0, 0, 3, 90, 90] },
+    } as unknown as Record<string, unknown>, initGlobalRepo(), {})
+    const ids = out.degenerate_entities?.map(entry => entry.id) ?? []
+    // Construction geometry never bounds a profile, so its size is not a
+    // profile problem. The arc's zero span is, and it is named.
+    expect(ids).not.toContain('lz')
+    expect(ids).toContain('a1')
+    expect(String(out.solver_warning)).toContain('no extent')
+  })
+
   it('a lone zero circle names itself in the verdict instead of overconstraint', () => {
     setSketchSolver(solveBytes!)
     const out = solveSketch({
@@ -142,7 +162,10 @@ describe.skipIf(!ready)('a degenerate solved entity is named and left out of pro
     expect(out.status).toBe('overconstrained')
     expect(String(out.solver_warning)).toContain('entity c1 is degenerate')
     expect(String(out.solver_warning)).toContain('radius')
-    // The degenerate curve is not handed to the area builder at all.
+    // The curve stays in geometry so the editor draws it, and is not handed to
+    // the area builder at all.
+    expect(out.geometry).toHaveProperty('c1')
+    expect(out.degenerate_entities).toEqual([{ id: 'c1', reason: expect.stringContaining('radius') }])
     expect((out.topology as { surfaces?: unknown[] } | undefined)?.surfaces ?? []).toHaveLength(0)
     // The user-facing verdict is the warning, not the bare status word.
     expect(featureFailure('sk1', { sk1: out }, {}).message).toContain('entity c1 is degenerate')

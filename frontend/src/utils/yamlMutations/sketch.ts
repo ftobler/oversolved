@@ -6,7 +6,9 @@ import {
   canonicalLineDistanceTargets, isPointLikeEntityKind,
   pointDistanceZeroProblem,
 } from './helpers'
-import { dimensionSizeProblem, entitySizeProblem } from '@/utils/entitySizeProblems'
+import {
+  ENTITY_SIZE_FLOOR, dimensionSizeProblem, entitySizeProblem,
+} from '@/utils/entitySizeProblems'
 import { resolveVertexRef } from '@/types/vertexRef'
 import {
   addConstraintProblem, constraintTargetSide, midpointOperands, midpointShapeReason,
@@ -132,11 +134,20 @@ export function applyMoveVertex(
   // endpoints below they have no direct param pair. Invert the drop position
   // back into (a, b, theta) (params: [cx, cy, a, b, theta]).
   if (def.kind === 'ellipse' && isEllipseAxisKey(vertexKey)) {
-    const next = ellipseAxisDrag(params, vertexKey, to)
+    // The handle clamp uses the same floor as the authoring boundary. A major
+    // handle dropped inside b still arrives as a < b, which the boundary would
+    // refuse, so check the whole candidate before touching the doc.
+    const next = ellipseAxisDrag(params, vertexKey, to, ENTITY_SIZE_FLOOR)
     if (!next) return
-    params[2] = round(next.a)
-    params[3] = round(next.b)
-    params[4] = round(next.theta)
+    const candidate = [params[0], params[1], round(next.a), round(next.b), round(next.theta)]
+    const problem = entitySizeProblem('ellipse', candidate)
+    if (problem !== null) {
+      warn(`applyMoveVertex: ${problem}`, { featureId, entityId, vertexKey, to })
+      return
+    }
+    params[2] = candidate[2]
+    params[3] = candidate[3]
+    params[4] = candidate[4]
     return
   }
   // Arc start/end are derived (center + radius at an angle), so they have no
@@ -146,11 +157,22 @@ export function applyMoveVertex(
   if (def.kind === 'arc' && (vertexKey === 'start' || vertexKey === 'end')) {
     const dx = to[0] - params[0]
     const dy = to[1] - params[1]
-    params[2] = round(Math.hypot(dx, dy))
     const ai = vertexKey === 'start' ? 3 : 4
     let ang = (Math.atan2(dy, dx) * 180) / Math.PI
     ang += Math.round((params[ai] - ang) / 360) * 360
-    params[ai] = round(ang)
+    // The endpoint is derived from radius and angle, so a drop on the centre or
+    // on the other endpoint would store a zero radius or zero span. Judge the
+    // whole candidate first; the old values stay on refusal.
+    const candidate = [...params]
+    candidate[2] = round(Math.hypot(dx, dy))
+    candidate[ai] = round(ang)
+    const problem = entitySizeProblem('arc', candidate)
+    if (problem !== null) {
+      warn(`applyMoveVertex: ${problem}`, { featureId, entityId, vertexKey, to })
+      return
+    }
+    params[2] = candidate[2]
+    params[ai] = candidate[ai]
   }
 }
 

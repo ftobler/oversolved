@@ -13,10 +13,31 @@
 // what "zero" means.
 import { TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
 
-/** The accepted minimum for one size scalar, printed in every refusal so a
- *  caller sees the exact rule rather than a bare "too small". */
-const MIN_SIZE = TOL_TOPOLOGY_MERGE
+/** The accepted minimum for one size scalar. Exported so a drag clamp and the
+ *  size rule cannot disagree about where zero begins. */
+export const ENTITY_SIZE_FLOOR = TOL_TOPOLOGY_MERGE
+const MIN_SIZE = ENTITY_SIZE_FLOOR
 const MIN_SIZE_TEXT = `TOL_TOPOLOGY_MERGE (${MIN_SIZE})`
+
+// Below this a degree span describes the same point twice; the arc bounds no
+// region and only reaches the builder as a sliver. Legitimate small arcs (a
+// chamfer relief, a degree-scale fillet) are far above it. The drive and the
+// solved sketch read this one rule, so an authored arc and a solve-flipped one
+// are judged the same way.
+const DEGENERATE_ARC_SPAN_DEG = 1e-6
+
+/** One solved curve the size rule rejects. The solve result carries this list
+ *  so a caller (the tree verdict, the drive reply) can name the cause without
+ *  parsing the joined warning text. */
+export interface DegenerateEntity {
+  id: string
+  reason: string
+}
+
+/** The warning row a degenerate solved entity contributes. */
+export function degenerateEntityWarning(id: string, reason: string): string {
+  return `entity ${id} is degenerate (${reason}); it is left out of profiles`
+}
 
 /**
  * Why a circle or arc radius cannot bound a region, or null when it can.
@@ -47,9 +68,10 @@ export function entitySizeProblem(kind: string, params: readonly number[]): stri
     case 'circle':
       if (params.length < 3) return null
       return circleRadiusProblem(params[2], 'circle radius')
-    case 'arc':
-      if (params.length < 3) return null
-      return circleRadiusProblem(params[2], 'arc radius')
+    case 'arc': {
+      if (params.length < 5) return null
+      return circleRadiusProblem(params[2], 'arc radius') ?? arcSpanProblem(params[3], params[4])
+    }
     case 'ellipse':
       if (params.length < 4) return null
       return ellipseSizeProblem(params[2], params[3])
@@ -59,6 +81,20 @@ export function entitySizeProblem(kind: string, params: readonly number[]): stri
     default:
       return null
   }
+}
+
+/** A degree span that describes the same point twice. No unit guessing: a degree
+ *  value is simply taken as degrees. The hint only fires when the pair is inside
+ *  one turn in radians, the exact shape of a radian value stored in a degree
+ *  slot. */
+function arcSpanProblem(start: number, end: number): string | null {
+  const span = Math.abs(end - start)
+  if (span > DEGENERATE_ARC_SPAN_DEG) return null
+  const looksRadian = Math.abs(start) <= 2 * Math.PI && Math.abs(end) <= 2 * Math.PI
+  const hint = looksRadian
+    ? '; the pair looks like radians, but arc angles are degrees (a quarter turn is 90, a full turn 360)'
+    : ''
+  return `arc angles are degrees, and ${start} to ${end} spans ${span} degrees, so the arc has no extent${hint}`
 }
 
 function lineSizeProblem(x0: number, y0: number, x1: number, y1: number): string | null {

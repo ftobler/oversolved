@@ -32,7 +32,9 @@ import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags, getDe
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { ignoredConstraintWarning } from '@/utils/constraintProblems'
-import { entitySizeProblem } from '@/utils/entitySizeProblems'
+import {
+  ENTITY_SIZE_FLOOR, degenerateEntityWarning, entitySizeProblem, type DegenerateEntity,
+} from '@/utils/entitySizeProblems'
 import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, type TopologyBytes, type WireContact } from '../topologyDecorate'
 import { declaredContacts } from './shared/declaredContacts'
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
@@ -80,6 +82,10 @@ export interface SketchResult {
    *  this solve. An unresolved projection with a cached position keeps it; one
    *  that never had a position is also left out of the geometry and the profile. */
   projection_errors?: string[]
+  /** The solved curves the size rule rejected, with the reason each one is left
+   *  out of the profile topology. Kept structured so the verdict code can name
+   *  the cause without parsing the joined warning text. */
+  degenerate_entities?: DegenerateEntity[]
   /** The authored constraints this solve could not use, from both drop routes
    *  (the live-doc lowering and the solver's survivors filter). The sketch
    *  editor draws each as a red tile at its surviving local operand and the
@@ -634,9 +640,10 @@ export function droppedConstraintRecords(
  * under radius 0 as an overconstrained solve before this side sees it, so a
  * lone zero circle answers overconstrained. The size predicate here is what
  * names the real cause on the warning channel instead of leaving the verdict
- * with no cause. A sibling that omits entities from the profile for another
- * reason (an unresolved projection, a missing key) joins this list rather than
- * deleting geometry in a second place.
+ * with no cause. An unpositioned projection is already left out before this
+ * scan; this list holds only the entities the size rule rejected. A construction
+ * curve is skipped because it never bounds a profile, so its size is not a
+ * profile problem.
  */
 function degenerateSolvedEntities(
   layout: EntityLayout[],
@@ -646,7 +653,7 @@ function degenerateSolvedEntities(
   const reasons = new Map<string, string>()
   for (let i = 0; i < layout.length; i++) {
     const ent = layout[i]
-    if (ent.id === ORIGIN_ID || unpositioned.has(ent.id)) continue
+    if (ent.id === ORIGIN_ID || ent.construction || unpositioned.has(ent.id)) continue
     const params = out.paramsSolved.slice(ent.offset, ent.offset + ent.size)
     const reason = entitySizeProblem(ent.kind, params)
     if (reason !== null) reasons.set(ent.id, reason)
@@ -821,8 +828,9 @@ export function solveSketch(
   // a solve that drove a dimension to zero. Name each one and say it is not in
   // the profile, so the sketch verdict reads as the real cause rather than as a
   // bare overconstraint.
-  for (const [id, reason] of degenerate) {
-    warnings.push(`entity ${id} is degenerate (${reason}); it is left out of profiles`)
+  const degenerateList: DegenerateEntity[] = [...degenerate].map(([id, reason]) => ({ id, reason }))
+  for (const { id, reason } of degenerateList) {
+    warnings.push(degenerateEntityWarning(id, reason))
   }
 
   return {
@@ -838,6 +846,7 @@ export function solveSketch(
     ...(Object.keys(constraintResults).length ? { constraints: constraintResults } : {}),
     ...(Object.keys(resolvedKinds).length ? { resolved_kinds: resolvedKinds } : {}),
     ...(projectionErrors.length ? { projection_errors: projectionErrors } : {}),
+    ...(degenerateList.length ? { degenerate_entities: degenerateList } : {}),
     ...(droppedList.length ? { dropped_constraints: droppedList } : {}),
     solve_ms: 0,
   }
@@ -1257,7 +1266,9 @@ export function solveSketchDrag(
       // warm start, as for the arc endpoint above; a null result (cursor on the
       // center) leaves the warm-start params, holding the last good frame.
       const off = ctx.ellipseAxis.paramOffset
-      const next = ellipseAxisDrag(input.params.slice(off, off + 5), ctx.ellipseAxis.key, cursorWorld)
+      const next = ellipseAxisDrag(
+        input.params.slice(off, off + 5), ctx.ellipseAxis.key, cursorWorld, ENTITY_SIZE_FLOOR,
+      )
       if (next) {
         input.params[off + 2] = next.a
         input.params[off + 3] = next.b

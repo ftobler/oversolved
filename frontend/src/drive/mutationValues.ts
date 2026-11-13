@@ -119,11 +119,6 @@ const ENTITY_PARAM_NAMES: Record<EntityKind, readonly string[]> = {
 
 const ENTITY_KINDS = Object.keys(ENTITY_PARAM_NAMES).join(', ')
 
-// Below this a degree span describes the same point twice; the arc bounds no
-// region and only reaches the builder as a sliver. Legitimate small arcs (a
-// chamfer relief, a degree-scale fillet) are far above it.
-const DEGENERATE_ARC_SPAN_DEG = 1e-6
-
 function entityKindProblem(kind: string, where: string): string | null {
   if (!Object.hasOwn(ENTITY_PARAM_NAMES, kind)) {
     return `${where} kind ${json(kind)} is not an entity kind; use one of ${ENTITY_KINDS}`
@@ -165,26 +160,12 @@ function entityParamsProblem(kind: string, params: unknown[], where: string): st
       return `${where} ${kind} param ${i} (${names[i]}) must be a finite number, got ${json(params[i])}`
     }
   }
-  // The shared size rule: an entity too small to bound a region is refused here
-  // and by the applier, so a drive step and a draw-tool commit cannot disagree
-  // about what the solver and the OCC writer can use. The arity and finiteness
-  // checks above own their own wording; this one names the size field.
+  // The shared size rule: an entity too small to bound a region, or an arc with
+  // no angular extent, is refused here and by the applier, so a drive step and
+  // a draw-tool commit cannot disagree about what the solver and the OCC writer
+  // can use. The arity and finiteness checks above own their own wording.
   const sizeProblem = entitySizeProblem(kind, params as number[])
   if (sizeProblem !== null) return `${where} ${sizeProblem}`
-  if (kind === 'arc') {
-    const [start, end] = [params[3] as number, params[4] as number]
-    const span = Math.abs(end - start)
-    if (span <= DEGENERATE_ARC_SPAN_DEG) {
-      // No unit guessing: a degree value is simply taken as degrees. The hint
-      // only fires when the pair is inside one turn in radians, the exact shape
-      // of a radian value stored in a degree slot.
-      const looksRadian = Math.abs(start) <= 2 * Math.PI && Math.abs(end) <= 2 * Math.PI
-      const hint = looksRadian
-        ? '; the pair looks like radians, but arc angles are degrees (a quarter turn is 90, a full turn 360)'
-        : ''
-      return `${where} ${kind} angles are degrees, and ${start} to ${end} spans ${span} degrees, so the arc has no extent${hint}`
-    }
-  }
   return null
 }
 

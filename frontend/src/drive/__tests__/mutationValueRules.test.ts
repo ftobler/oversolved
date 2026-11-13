@@ -2237,13 +2237,19 @@ describe('resize_circle and the radius/diameter dimension share the size floor',
     expect(diameter.message).toContain('TOL_TOPOLOGY_MERGE')
   })
 
-  it('refuses a radius dimension added at zero, not only a set one', () => {
-    const error = refusal({
+  it('refuses a radius or diameter dimension added at zero, not only a set one', () => {
+    const radius = refusal({
       type: 'add_constraint', featureId: 'sk1', kind: 'radius', targets: ['entity:sk1:c1'], value: 0,
     }, circleDoc())
-    expect(error.code).toBe('invalid-mutation')
-    expect(error.message).toContain('radius')
-    expect(error.message).toContain('TOL_TOPOLOGY_MERGE')
+    expect(radius.code).toBe('invalid-mutation')
+    expect(radius.message).toContain('radius')
+    expect(radius.message).toContain('TOL_TOPOLOGY_MERGE')
+    const diameter = refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'diameter', targets: ['entity:sk1:c1'], value: 0,
+    }, circleDoc())
+    expect(diameter.code).toBe('invalid-mutation')
+    expect(diameter.message).toContain('diameter')
+    expect(diameter.message).toContain('TOL_TOPOLOGY_MERGE')
     expect(validateMutation({
       type: 'add_constraint', featureId: 'sk1', kind: 'radius', targets: ['entity:sk1:c1'], value: 2e-5,
     }, { doc: circleDoc() })).toMatchObject({ ok: true })

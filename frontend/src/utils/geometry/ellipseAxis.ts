@@ -31,8 +31,12 @@ export function ellipseAxisPoints(
 
 /** Smallest semi-axis a drag may leave behind. A zero axis collapses the ellipse
  *  to a segment, which the solver cannot recover from (theta stops being
- *  observable), so the handles clamp instead of passing through zero. */
-const MIN_SEMI_AXIS = 1e-6
+ *  observable), so the handles clamp instead of passing through zero. The value
+ *  is the shared topology floor (TOL_TOPOLOGY_MERGE): an axis under it is a
+ *  degenerate entity the boundary refuses. Kept as a literal here because this
+ *  module imports nothing for the worker drag path; the check test pins it to
+ *  the solver constant. */
+export const MIN_SEMI_AXIS = 1e-5
 
 /** Map a cursor drop position onto an ellipse's (a, b, theta) params.
  *
@@ -57,6 +61,7 @@ export function ellipseAxisDrag(
   params: readonly number[],
   key: EllipseAxisKey,
   to: readonly [number, number],
+  minSemiAxis = MIN_SEMI_AXIS,
 ): { a: number; b: number; theta: number } | null {
   const [cx, cy, a, b, theta] = params
   const dx = to[0] - cx
@@ -64,7 +69,7 @@ export function ellipseAxisDrag(
 
   if (key === 'major1' || key === 'major2') {
     const r = Math.hypot(dx, dy)
-    if (r < MIN_SEMI_AXIS) return null
+    if (r < minSemiAxis) return null
     // major2 is the negative end, so it points the axis the opposite way.
     const sign = key === 'major1' ? 1 : -1
     let ang = (Math.atan2(sign * dy, sign * dx) * 180) / Math.PI
@@ -79,5 +84,5 @@ export function ellipseAxisDrag(
   // is what makes the handle slide along the axis instead of chasing the cursor.
   const th = theta * (Math.PI / 180)
   const proj = -dx * Math.sin(th) + dy * Math.cos(th)
-  return { a, b: Math.max(Math.abs(proj), MIN_SEMI_AXIS), theta }
+  return { a, b: Math.max(Math.abs(proj), minSemiAxis), theta }
 }

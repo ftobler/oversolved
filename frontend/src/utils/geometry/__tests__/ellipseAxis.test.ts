@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { ellipseAxisDrag, ellipseAxisPoints, isEllipseAxisKey, ELLIPSE_AXIS_KEYS } from '@/utils/geometry/ellipseAxis'
+import {
+  ellipseAxisDrag, ellipseAxisPoints, isEllipseAxisKey, ELLIPSE_AXIS_KEYS, MIN_SEMI_AXIS,
+} from '@/utils/geometry/ellipseAxis'
+import { TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
 
 // The axis handles are drawn (EntityLines) and pickable (buildSketchVertices) but
 // are derived from center/a/b/theta rather than stored params, so before this
@@ -72,9 +75,16 @@ describe('ellipseAxisDrag', () => {
     expect(next[4]).toBeCloseTo(90)
   })
 
-  it('clamps a collapsed minor axis instead of returning zero', () => {
+  it('clamps a collapsed minor axis to the shared topology floor', () => {
     const next = applied([0, 0, 10, 5, 0], 'minor1', [3, 0])!
-    expect(next[3]).toBeGreaterThan(0)
+    expect(next[3]).toBe(MIN_SEMI_AXIS)
+    // The drag clamp and the boundary must call zero at the same place.
+    expect(MIN_SEMI_AXIS).toBe(TOL_TOPOLOGY_MERGE)
+  })
+
+  it('honours a caller-supplied floor', () => {
+    const next = ellipseAxisDrag([0, 0, 10, 5, 0], 'minor1', [0, 2], 3)!
+    expect(next.b).toBe(3)
   })
 
   it('returns null when a major handle is dropped on the center', () => {
