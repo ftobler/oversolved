@@ -1092,7 +1092,9 @@ export const MUTATION_CATALOG = {
       + '(`@<sketchId>/<entityId>`; add `/start`, `/end`, `/center` or `/xy` for one vertex). A sketch line, '
       + 'circle or arc projects as that curve; a foreign spline or ellipse is refused and reported in '
       + '`projection_errors` (a projection that already had a position keeps it; one that never had any is left '
-      + 'out of the profile). The projection is held in place and can be '
+      + 'out of the profile). A body circle, arc or ellipse edge, or another sketch\'s circle or arc, seen '
+      + 'edge-on projects as a line (its silhouette extent); `kind: "point"` on such a curved source projects '
+      + 'its centre in any orientation. The projection is held in place and can be '
       + 'selected and deleted like any other entity.',
     fields: {
       featureId: str(),

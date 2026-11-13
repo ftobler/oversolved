@@ -173,7 +173,7 @@ just dragged) that is never stored in the document.
 
 A `fit_spline` is the interpolating spline (CadQuery `spline(points, tangents)`): the document stores the fit points and, when the user authored end tangents, the two absolute handle points. The `handles` field is `start`, `end` or `both` and says which handle pair follows the points; absent means no handles. The curve is derived (clamped C2 cubic, chord parameters); the handles are the first piece's second control point and the last piece's third. Vertex keys are `start`, `fit1`..`fitN-2` (interior points), `end`, and `c1`/`c2` for the handles; `fit<k>` is positional, so inserting or deleting a point renumbers every later ref in the same mutation. The Bezier `spline` above is unchanged.
 
-Projection is held by a `projection` constraint: a base-kind entity (`line`/`circle`/`arc`/`point`/...) paired with `{kind: projection, target: $<entityId>, source: <query>}` is projected from a 3D source and pinned to its projected shape and position. Deleting the constraint leaves the entity free at its last projected params. Legacy v5 documents that carried `source` on the entity are migrated to this form. Any entity can set `construction: true`.
+Projection is held by a `projection` constraint: a base-kind entity (`line`/`circle`/`arc`/`point`/...) paired with `{kind: projection, target: $<entityId>, source: <query>}` is projected from a 3D source and pinned to its projected shape and position. A body circle, arc or ellipse edge, or another sketch's circle or arc (a foreign spline or ellipse is refused), whose plane is not parallel to the sketch plane is lowered to an ellipse or a fitted spline, and one seen edge-on lowers to its silhouette line; a projection declared `point` on such a curved source is that curve's centre in any orientation. The kind is re-resolved on every solve, so a source that rotates into or out of edge-on changes kind without a document migration. Deleting the constraint leaves the entity free at its last projected params. Legacy v5 documents that carried `source` on the entity are migrated to this form. Any entity can set `construction: true`.
 
 Mirroring a selection (`mirror_entities`) writes plain authored entities: the copies are ordinary rows with their own ids, and there is no stored mirror relation, so moving the originals later does not move them. A constraint is carried over only when every one of its operands is a mirrored source or the axis line; a constraint that reaches anything else stays with the originals alone. A source whose mirror is itself (a seam edge on the axis, a line across it) gets no copy; it serves both halves, and its constraints to the other sources carry onto the copies. In the sketch editor the selection holds the sources and the axis: a lone selected line is the axis, and when the sources include lines the axis is the one selected construction line.
 
@@ -959,6 +959,14 @@ entity) and `{"external_xy": [x, y]}`. The app writes the string form.
 `value` non-negative; absent means the legacy side-agnostic absolute behavior.
 `pos` is the dimension label position, a 2D offset in sketch space relative to
 the constraint's anchor point. Both are authored, never solver output.
+
+A point key names a point only on a kind that has it: `$c0center` on a
+`circle`, `$a0start` on an `arc`, `$e0major1` on an `ellipse`. A constraint whose
+operand names a key the target's current kind does not have (a `center` on a
+`line`, an ellipse axis key on a `circle`) is dropped from that solve and
+reported in `dropped_constraints`, with the key and the kind named, rather than
+bound to an arbitrary point. The row stays in the document, so a kind that
+returns to one with that key re-enables it.
 
 ## Query Syntax
 

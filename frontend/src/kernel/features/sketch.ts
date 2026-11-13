@@ -19,6 +19,7 @@
  */
 
 import type { Sketch, SketchFeature, Entity, Constraints } from '@/types/cad'
+import { getEntityKind } from '@/types/cad'
 import type { Repository } from '../query'
 import { getPoint3d } from '../query'
 import type { Body } from '../types3d'
@@ -40,7 +41,7 @@ import { loadSolverWasm, loadTopologyWasm, resetSolverWasm } from '@/wasm-kernel
 import { isKernelTrap, swallowUnlessTrap } from '../errors'
 import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
-import { resolve3dGeometry, projectTo2d, type PlaneFrame } from './projectionLowering'
+import { resolve3dGeometry, projectTo2d, projectCenter, type PlaneFrame } from './projectionLowering'
 import type { PlaneLike } from './shared/planes'
 import type { SolveBytes } from '@/wasm-kernel/codec'
 import type { SketchSolverBundle } from '@/wasm-kernel/wasmTypes'
@@ -376,7 +377,13 @@ function lowerProjectionConstraints(
             : resolve3dGeometry(resolvedSrc, (sketchId) =>
                 (globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined) ?? null)
           if (data3d) {
-            const projected = projectTo2d(data3d, plane as PlaneFrame)
+            // A projection DECLARED point on a curved source means its centre;
+            // every other declared kind keeps the resolved geometry's own
+            // projection. The default `point` used for a missing kind is not a
+            // declaration, so it stays on the resolved-kind path.
+            const declaredPoint = ent?.kind === 'point'
+            const projected = (declaredPoint ? projectCenter(data3d, plane as PlaneFrame) : null)
+              ?? projectTo2d(data3d, plane as PlaneFrame)
             if (projected) {
               initial[targetId] = projected.params
               if (projected.kind !== declaredKind) resolvedKinds[targetId] = projected.kind
@@ -798,11 +805,36 @@ export function solveSketch(
 
 // ─── Shared projection pin helper ───
 
+/**
+ * The entity kinds the last solve rendered, keyed by entity id. A projected
+ * entity can resolve to a kind different from the stored one (a circle seen
+ * edge-on renders as a line), and the solve bakes params of the resolved kind:
+ * the render sketch is where that resolution is kept, because the document
+ * entity keeps its pick-time kind. Empty for no render geometry.
+ */
+export function resolvedKindsOfSketch(sketch: Sketch | null | undefined): Record<string, string> {
+  if (!sketch) return {}
+  const kinds: Record<string, string> = {}
+  for (const [id, entity] of Object.entries(sketch)) kinds[id] = getEntityKind(entity)
+  return kinds
+}
+
 /** Collect the entity ids held by `projection` constraints so the solve, the
  *  redundancy probe and the drag preview pin exactly the same set. Entities
  *  no longer carry a `source`; the constraint's `target` names the held
- *  entity. */
-export function pinProjectionTargets(feature: SketchFeature): { loweredFeature: SketchFeature; pinnedIds: string[] } {
+ *  entity.
+ *
+ *  `resolvedKinds` is the last solve's render kinds (`resolvedKindsOfSketch`).
+ *  The hard solve re-derives a projection's kind before lowering, but the drag
+ *  preview and the authoring probe read the stored feature directly, whose
+ *  entity still says the pick-time kind while its baked params are the resolved
+ *  one (a circle seen edge-on is a 4-param line). Adopting the render kind here
+ *  keeps those paths reading the params in the kind they were written as,
+ *  instead of binding a `center` ref to the line's start. */
+export function pinProjectionTargets(
+  feature: SketchFeature,
+  resolvedKinds?: Readonly<Record<string, string>>,
+): { loweredFeature: SketchFeature; pinnedIds: string[] } {
   const pinned = new Set<string>()
   const constraints = feature.constraints ?? []
   for (const c of constraints) {
@@ -816,7 +848,17 @@ export function pinProjectionTargets(feature: SketchFeature): { loweredFeature: 
     const src = (e as { source?: unknown }).source
     if (src && typeof src === 'string') pinned.add(e.id)
   }
-  return { loweredFeature: feature, pinnedIds: [...pinned] }
+  let loweredFeature = feature
+  if (resolvedKinds) {
+    const entities = (feature.entities ?? []).map(e => {
+      const kind = resolvedKinds[e.id]
+      return kind && kind !== e.kind ? { ...e, kind } : e
+    })
+    if (entities.some((e, i) => e !== feature.entities?.[i])) {
+      loweredFeature = { ...feature, entities }
+    }
+  }
+  return { loweredFeature, pinnedIds: [...pinned] }
 }
 
 // ─── Authoring probe ───
@@ -838,12 +880,18 @@ export function pinProjectionTargets(feature: SketchFeature): { loweredFeature: 
  * solver, an unlowerable sketch, or an UNSATISFIED draft set (that is a
  * conflict, not redundancy; the solve will report it and the UI will mark the
  * culprits). Projected entities are pinned from their last resolved params, as
- * in `prepareDragContext`.
+ * in `prepareDragContext`; `resolvedKinds` is that solve's render kinds, so a
+ * projected entity that changed kind (a circle seen edge-on) is probed in its
+ * resolved kind rather than the document's pick-time one.
  */
-export function probeRedundantConstraint(feature: SketchFeature, draftId: string): boolean | null {
+export function probeRedundantConstraint(
+  feature: SketchFeature,
+  draftId: string,
+  resolvedKinds?: Readonly<Record<string, string>>,
+): boolean | null {
   if (!solverBytes) return null
   try {
-    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature)
+    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature, resolvedKinds)
     const extract = partDocToSketches([loweredFeature], [0, 0], pinnedIds)
     if (extract.skipped.length || !extract.sketches.length) return null
     const { input, constraintIds } = lowerSketch(extract.sketches[0].sketch, { skipStatusPass: true })
@@ -930,6 +978,12 @@ export interface DragContext {
  * mirroring solveSketch's projection_errors path (constraints referencing it
  * are dropped by partDocToSketches).
  *
+ * `resolvedKinds` is the last solve's render kinds, passed through to
+ * `pinProjectionTargets`: a projection whose source turned edge-on has 4 line
+ * params in `initial` while the document entity still stores the pick-time
+ * circle kind, and adopting the render kind is what makes the preview read
+ * those params as the line they are.
+ *
  * For vertex drags, `dragVertexKey` is the specific vertex being dragged
  * (e.g. 'start', 'end', 'center'). For edge/entity drags (whole-entity
  * translation), pass `dragVertexKey = null`.
@@ -943,9 +997,10 @@ export function prepareDragContext(
   dragEntityId: string,
   dragVertexKey: string | null,
   originLocal: [number, number] = [0, 0],
+  resolvedKinds?: Readonly<Record<string, string>>,
 ): DragContext | null {
   try {
-    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature)
+    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature, resolvedKinds)
 
     // originLocal expresses the document origin (0,0,0) in this sketch's local
     // 2D frame so a `@builtin_origin` coincident pins to the actual document

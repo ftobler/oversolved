@@ -47,8 +47,8 @@ describe('partDocToSketches', () => {
         id: 'sk1',
         kind: 'sketch',
         plane: '@builtin_plane_front',
-        entities: [{ id: b64, kind: 'line' }, { id: 'pwfYD59xKWiSyQhm', kind: 'line' }],
-        initial: { [b64]: [0, 0, 10, 0], pwfYD59xKWiSyQhm: [10, 0, 10, 10] },
+        entities: [{ id: b64, kind: 'line' }, { id: 'pwfYD59xKWiSyQhm', kind: 'circle' }],
+        initial: { [b64]: [0, 0, 10, 0], pwfYD59xKWiSyQhm: [10, 10, 5] },
         constraints: [
           { id: 'c_bare', kind: 'horizontal', target: `$${b64}` },
           { id: 'c_sub', kind: 'coincident', a: '$pwfYD59xKWiSyQhmcenter', b: '@builtin_origin' },
@@ -83,6 +83,63 @@ describe('partDocToSketches', () => {
     const { sketches } = partDocToSketches(features)
     const ids = sketches[0].sketch.constraints.map((c) => c.id)
     expect(ids).toEqual(['keep'])
+  })
+
+  it('drops a point key the target kind does not have and keeps the valid ones', () => {
+    // `center` on a line is not an operand: the solver's fallback would bind the
+    // line's start, silently turning a centre coincidence into an endpoint
+    // one. The row is dropped and named; valid keys on the same sketch stay.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [
+          { id: 'L1', kind: 'line' },
+          { id: 'C1', kind: 'circle' },
+          { id: 'A1', kind: 'arc' },
+          { id: 'E1', kind: 'ellipse' },
+          { id: 'P1', kind: 'point' },
+        ],
+        initial: {
+          L1: [0, 0, 10, 0], C1: [0, 0, 5], A1: [0, 0, 5, 0, 90],
+          E1: [0, 0, 8, 4, 0], P1: [1, 1],
+        },
+        constraints: [
+          { id: 'bad', kind: 'coincident', a: '$L1center', b: '$P1xy' },
+          { id: 'circle', kind: 'coincident', a: '$C1center', b: '$P1xy' },
+          { id: 'arc', kind: 'coincident', a: '$A1start', b: '$P1xy' },
+          { id: 'ellipse', kind: 'point_distance', a: '$E1center', b: '$E1major1', value: 8 },
+        ],
+      },
+    ]
+    const { sketches } = partDocToSketches(features)
+    expect(sketches[0].droppedConstraints).toEqual([
+      { id: 'bad', kind: 'coincident', reason: 'operand center not on line' },
+    ])
+    expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['circle', 'arc', 'ellipse'])
+  })
+
+  it('keeps a fit spline interior point and rejects a key its block does not carry', () => {
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'F1', kind: 'fit_spline' }, { id: 'P1', kind: 'point' }],
+        // Three fit points, no handles: start, fit1, end.
+        initial: { F1: [0, 0, 5, 5, 10, 0], P1: [1, 1] },
+        constraints: [
+          { id: 'fitted', kind: 'coincident', a: '$F1fit1', b: '$P1xy' },
+          { id: 'bad', kind: 'coincident', a: '$F1fit2', b: '$P1xy' },
+        ],
+      },
+    ]
+    const { sketches } = partDocToSketches(features)
+    expect(sketches[0].droppedConstraints).toEqual([
+      { id: 'bad', kind: 'coincident', reason: 'operand fit2 not on fit_spline' },
+    ])
+    expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['fitted'])
   })
 
   it('skips center_rect sketches', () => {
@@ -359,15 +416,33 @@ describe('partDocToSketches', () => {
     expect(sketches[0].sketch.constraints.map((c) => c.id)).toEqual(['keep'])
   })
 
+  // Each point key is exercised on a kind that can actually carry it: the
+  // key-existence gate drops a valid spelling only when the target lacks it
+  // (pinned by the test above), so the parser table uses a kind per key.
+  const KIND_FOR_POINT_KEY: Record<string, { kind: string; initial: number[] }> = {
+    start: { kind: 'spline', initial: [0, 0, 1, 1, 2, 2, 3, 3] },
+    end: { kind: 'spline', initial: [0, 0, 1, 1, 2, 2, 3, 3] },
+    c1: { kind: 'spline', initial: [0, 0, 1, 1, 2, 2, 3, 3] },
+    c2: { kind: 'spline', initial: [0, 0, 1, 1, 2, 2, 3, 3] },
+    center: { kind: 'circle', initial: [0, 0, 5] },
+    xy: { kind: 'point', initial: [0, 0] },
+    major1: { kind: 'ellipse', initial: [0, 0, 8, 4, 0] },
+    major2: { kind: 'ellipse', initial: [0, 0, 8, 4, 0] },
+    minor1: { kind: 'ellipse', initial: [0, 0, 8, 4, 0] },
+    minor2: { kind: 'ellipse', initial: [0, 0, 8, 4, 0] },
+  }
+
   it.each([...VERTEX_POINT_KEYS])('passes dict-ref point %s through unchanged', (pt) => {
+    const spec = KIND_FOR_POINT_KEY[pt]
+    expect(spec, pt).toBeDefined()
     const features: PartFeature[] = [
       {
         id: 'sk1',
         kind: 'sketch',
-        entities: [{ id: 'l1', kind: 'line' }],
-        initial: { l1: [0, 0, 10, 0] },
+        entities: [{ id: 'e1', kind: spec.kind }],
+        initial: { e1: spec.initial },
         constraints: [
-          { id: 'c', kind: 'coincident', a: { entity: 'l1', point: pt }, b: '@builtin_origin' } as unknown as PartConstraint,
+          { id: 'c', kind: 'coincident', a: { entity: 'e1', point: pt }, b: '@builtin_origin' } as unknown as PartConstraint,
         ],
       },
     ]
@@ -375,8 +450,9 @@ describe('partDocToSketches', () => {
     expect(skipped).toHaveLength(0)
     expect(sketches[0].sketch.constraints[0]).toMatchObject({
       kind: 'coincident',
-      a: { entity: 'l1', point: pt },
+      a: { entity: 'e1', point: pt },
     })
+    expect(sketches[0].droppedConstraints).toEqual([])
   })
 
   it('lowers a two-line colinear to one coincident with the same refs and id', () => {

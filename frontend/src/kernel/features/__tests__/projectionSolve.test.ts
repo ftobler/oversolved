@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   solveSketch, setSketchSolver, resetSketchSolver,
-  prepareDragContext, solveSketchDrag,
+  prepareDragContext, solveSketchDrag, pinProjectionTargets,
 } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { worldToSketch2d } from '../shared/planes'
@@ -589,5 +589,36 @@ describe('solveSketch pins projected entities (fix-projected-entities-pinned)', 
     const c0 = result!.geometry.c0
     expect(Math.hypot(c0[0] - 3, c0[1] - 4)).toBeLessThan(0.1)
     expect(c0[2]).toBeCloseTo(5, 1)
+  })
+
+  it('e. adopts the last solve resolved kind in the drag preview and probe', () => {
+    if (!solveBytes) return
+    // A browser document keeps the pick-time kind while the solve bakes the
+    // resolved one: a projected circle seen edge-on stores `circle` with the
+    // lowered 4-param line. The drag preview and the authoring probe read
+    // `initial` directly with no repository to re-lower from, so they must be
+    // told the resolved kind or the 4 params are read as a circle.
+    const feature = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'pc', kind: 'circle' }, { id: 'p0', kind: 'point' }],
+      initial: { pc: [0, -1, 0, 1], p0: [10, 10] },
+      constraints: [
+        { id: 'proj_pc', kind: 'projection', target: '$pc', source: '?edge;circle' },
+        { id: 'cc', kind: 'coincident', a: '$p0xy', b: '$pccenter' },
+      ],
+    } as unknown as SketchFeature
+
+    const stale = prepareDragContext(feature, 'p0', 'xy', [0, 0])
+    expect(stale).not.toBeNull()
+    expect(stale!.layout.find(e => e.id === 'pc')).toMatchObject({ kind: 'circle', size: 3 })
+
+    const adopted = prepareDragContext(feature, 'p0', 'xy', [0, 0], { pc: 'line' })
+    expect(adopted).not.toBeNull()
+    expect(adopted!.layout.find(e => e.id === 'pc')).toMatchObject({ kind: 'line', size: 4 })
+
+    expect(pinProjectionTargets(feature, { pc: 'line' }).loweredFeature.entities
+      ?.find(e => e.id === 'pc')?.kind).toBe('line')
+    // Without the resolved kinds the stored feature is returned untouched.
+    expect(pinProjectionTargets(feature).loweredFeature).toBe(feature)
   })
 })

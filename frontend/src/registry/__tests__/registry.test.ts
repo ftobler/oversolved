@@ -18,11 +18,13 @@ import {
   VERTEX_INDICES,
   ALL_COORD_INDICES,
   entityCoordPairs,
+  entityPointKeys,
   entityVertexIndices,
   fitSplineHandlesFromFlags,
   fitSplineVertices,
   getDefaultParams,
 } from '@/registry/entityRegistry'
+import { VERTEX_POINT_KEYS, isVertexPointKey } from '@/types/vertexKeys'
 import { iconUrl } from '@/components/Toolbar/tools/toolUtils'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { LOWERED_KINDS } from '@/wasm-kernel/partDocToSketches'
@@ -467,5 +469,33 @@ describe('fit spline instance layout', () => {
     expect(entityCoordPairs('unknown')).toBeUndefined()
     expect(entityVertexIndices('fit_spline', 11, 'both')).toBeUndefined()
     expect(entityCoordPairs('fit_spline', 4, 'both')).toBeUndefined()
+  })
+})
+
+describe('constraint point keys', () => {
+  it('lists the keys a constraint may name on each kind', () => {
+    expect([...entityPointKeys('line')!]).toEqual(['start', 'end'])
+    expect(entityPointKeys('circle')!.has('center')).toBe(true)
+    expect(entityPointKeys('arc')!.has('start')).toBe(true)
+    expect(entityPointKeys('arc')!.has('end')).toBe(true)
+    expect(entityPointKeys('ellipse')!.has('major1')).toBe(true)
+    expect(entityPointKeys('ellipse')!.has('minor2')).toBe(true)
+    expect(entityPointKeys('spline')!.has('c1')).toBe(true)
+    expect(entityPointKeys('point')!.has('xy')).toBe(true)
+    // A fit spline's interior points come from the authored block.
+    expect(entityPointKeys('fit_spline', 6)).toEqual(new Set(['start', 'fit1', 'end']))
+    expect(entityPointKeys('fit_spline', 12, 'both')!.has('fit2')).toBe(true)
+  })
+
+  it('only names keys the ref parser and the wire table accept', () => {
+    for (const kind of ['line', 'circle', 'arc', 'ellipse', 'spline', 'point']) {
+      for (const key of entityPointKeys(kind)!) expect(VERTEX_POINT_KEYS).toContain(key)
+    }
+    for (const key of entityPointKeys('fit_spline', 12, 'both')!) expect(isVertexPointKey(key)).toBe(true)
+  })
+
+  it('returns undefined for a kind or block it cannot describe', () => {
+    expect(entityPointKeys('unknown')).toBeUndefined()
+    expect(entityPointKeys('fit_spline', 11, 'both')).toBeUndefined()
   })
 })

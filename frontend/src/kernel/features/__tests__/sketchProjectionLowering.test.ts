@@ -68,9 +68,13 @@ describe.skipIf(!solveBytes)('solveSketch projected-entity lowering', () => {
   it('surfaces a tilted-circle projection as an ellipse entity kind', () => {
     // A circle whose plane is not parallel to the sketch plane must lower to an
     // ellipse; the doc entity adopts the resolved kind so its param count fits.
+    // The axis is tilted 60 deg off the Front plane's normal, not perpendicular
+    // to it: a perpendicular circle is edge-on and lowers to a line instead.
+    const phi = Math.PI / 3
     const repo = new Repository()
     repo.query = (() => ({
-      type: 'edge', kind: 'circle', center: [0, 0, 0], radius: 2, axis: [0, 1, 0], x_axis: [1, 0, 0],
+      type: 'edge', kind: 'circle', center: [0, 0, 0], radius: 2,
+      axis: [0, -Math.sin(phi), Math.cos(phi)], x_axis: [1, 0, 0],
     })) as Repository['query']
     const feature = {
       id: 'sk4', kind: 'sketch', plane: '@builtin_plane_front',

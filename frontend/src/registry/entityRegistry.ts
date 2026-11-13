@@ -356,6 +356,50 @@ export function entityVertexIndices(
   return VERTEX_INDICES[kind]
 }
 
+/**
+ * The point keys a CONSTRAINT may name on an entity of `kind`: which selectors
+ * the entity actually has. Broader than `vertices` above, which is the set of
+ * draggable snapshot points: an arc's ends are real operands (start is the
+ * `a0` end), and an ellipse's axis ends dimension its major/minor radius.
+ *
+ * A selector outside this set is not a meaningful operand. The solver's
+ * `point()` falls back to the entity's first point for an inapplicable
+ * selector, so binding one silently changes what the constraint means (a
+ * `center` on a line becomes its start). The lowering validates against this
+ * list before it reaches the solver; see `lowerConstraint`.
+ *
+ * The Rust half of this contract lives in `sketch-solver/src/residuals/mod.rs`:
+ * `point()` maps each `PointSelector` (`sketch-solver/src/constraints.rs`) onto
+ * an entity's param block, and `ref_valid` only re-checks the variable
+ * fit-spline slots because the fixed-size kinds are expected to be validated
+ * here. The table below is a hand-copied mirror of those arms; keep it in step
+ * when a kind gains a point (the residual test suite covers the Rust side).
+ *
+ * Undefined for an unknown kind or a malformed fit-spline block, so a caller
+ * keeps its existing path instead of guessing the block's shape.
+ */
+const ENTITY_POINT_KEYS: Readonly<Record<string, readonly string[]>> = {
+  line: ['start', 'end'],
+  circle: ['center'],
+  arc: ['center', 'start', 'end'],
+  ellipse: ['center', 'major1', 'major2', 'minor1', 'minor2'],
+  spline: ['start', 'c1', 'c2', 'end'],
+  point: ['xy'],
+}
+
+export function entityPointKeys(
+  kind: string,
+  nParams?: number,
+  handles?: 'start' | 'end' | 'both',
+): ReadonlySet<string> | undefined {
+  if (kind === 'fit_spline') {
+    const vertices = entityVertexIndices(kind, nParams, handles)
+    return vertices ? new Set(Object.keys(vertices)) : undefined
+  }
+  const keys = ENTITY_POINT_KEYS[kind]
+  return keys ? new Set(keys) : undefined
+}
+
 /** The coordinate pairs to translate for ONE entity instance, the instance-aware
  *  counterpart of `ALL_COORD_INDICES` (`fit_spline` again derives them). */
 export function entityCoordPairs(

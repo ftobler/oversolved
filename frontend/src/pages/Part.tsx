@@ -8,6 +8,7 @@ import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { findEdgeKindForQuery } from '@/picking/bodyDispatchCallbacks'
 import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
+import { resolvedKindsOfSketch } from '@/kernel/features/sketch'
 import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
 import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, type PendingConstraint } from '@/stores/sketchEditorStore'
 import { usePartRelationHints } from '@/hooks/useRelationHint'
@@ -1057,9 +1058,14 @@ export default function Part() {
   // mutation layer would drop (the caller emits nothing, including no planned
   // projection). docRef is a ref, so the callback never goes stale.
   const checkRedundantAdd = useCallback((pending: PendingConstraint) => {
-    const verdict = classifyPendingAdd(docRef.current, pending)
+    // The stored kind is the pick-time one; the solve's render sketch carries
+    // the resolved kinds (a circle seen edge-on is a line), and the bake wrote
+    // the params in that resolved kind. Without adopting it the probe would read
+    // the 4 line params as a circle and bind a `center` ref to the line's start.
+    const resolvedKinds = resolvedKindsOfSketch(solveResults?.[pending.featureId]?.solved)
+    const verdict = classifyPendingAdd(docRef.current, pending, resolvedKinds)
     return verdict === 'redundant' ? true : verdict === 'dropped' ? null : false
-  }, [docRef])
+  }, [docRef, solveResults])
 
   useEffect(() => {
     setSketchCallback('onMutation', handleMutation)
