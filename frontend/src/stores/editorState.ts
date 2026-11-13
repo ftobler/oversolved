@@ -19,7 +19,7 @@ import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoint
 import { deriveSelectionDomain, devOnly, testMode, failLoud } from './stateInvariants'
 import { isDrawingTool } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
-import { planBrepDimensionPick, planProjectedOperand, classifyBrepOperand, refreshProjectedPickKinds, type PlannedProjection, type ProjectedEntityMutation } from '@/tools/operandProjection'
+import { planBrepDimensionPick, planProjectedOperand, classifyBrepOperand, refreshProjectedPickKinds, type PlannedProjection, type PlannedProjectionMutation } from '@/tools/operandProjection'
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
 import { randomId, canonicalLineDistanceTargets, isPointLikeEntityKind, pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
@@ -690,7 +690,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
     const sketch = sketchCallbacks.getSketch?.(activeFeatureId) ?? null
     const recorded = sketchCallbacks.getProjectedSources?.(activeFeatureId) ?? undefined
     const planned: PlannedProjection[] = []
-    const projections: ProjectedEntityMutation[] = []
+    const projections: PlannedProjectionMutation[] = []
     const kindByTarget = new Map<string, string>()
     const resolved = picked.map(t => {
       const brep = projectableOperand(t)

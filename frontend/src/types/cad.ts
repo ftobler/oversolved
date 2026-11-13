@@ -1304,7 +1304,10 @@ export type Mutation =
   | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string; entityId?: string; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
   | { type: 'insert_fit_point'; featureId: string; entityId: string; index: number; point: Point }
   | { type: 'set_fit_spline_handle'; featureId: string; entityId: string; end: 'start' | 'end'; handle: Point | null }
-  | { type: 'add_projected_entity'; featureId: string; kind: string; source: string; entityId?: string; constraintId?: string }
+  // `kind` may be omitted with a selector `source`: the drive infers it from the
+  // element the selector matched (an edge's curve kind, or point for a vertex or
+  // face) and fills it before the applier runs.
+  | { type: 'add_projected_entity'; featureId: string; kind?: string; source: string | SelectorRef; entityId?: string; constraintId?: string }
   // The optional refs name what a click snapped onto (a `vertex:` ref, or an
   // `entity:` ref for a point on that curve); the writer pins the matching corner
   // to it with a coincident. The n-gon's center ref pins the construction

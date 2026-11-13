@@ -202,6 +202,18 @@ const PLANE_QUERY_NOTE =
   + 'The measure reply `frames` map reports the resolved origin and axes; a run reports the ones this call '
   + 'touched or moved, and `frames: "all"` restores every resolved frame.'
 
+// A projection source is a body query or a sketch ref. A body element (and only
+// a body element: `select` walks bodies) can be named by a selector the drive
+// resolves, like a sketch plane; the origin and another sketch's geometry stay
+// plain strings because `select` cannot name them.
+const PROJECTION_SOURCE_NOTE =
+  'A body edge, vertex or face query from `select` (the stored ?... string), `@builtin_origin`, or a whole '
+  + 'entity of another sketch (`@<sketchId>/<entityId>`; add `/start`, `/end`, `/center` or `/xy` for one '
+  + 'vertex). Instead of pasting a body query, `source` also takes the selector itself as '
+  + '`{selector: <a select selector naming exactly one edge, vertex or face>}`; the headless drive resolves it '
+  + 'against the settled solve and stores the query it matched, so the document never carries a selector. '
+  + 'Only body elements take a selector: `@builtin_origin` and `@<sketchId>/<entityId>` are named directly.'
+
 // The params slot order per entity kind, generated from the entity registry so
 // a new kind or a moved slot cannot leave the catalog stale.
 const ENTITY_PARAMS_NOTE =
@@ -1082,7 +1094,17 @@ export const MUTATION_CATALOG = {
       + '`projection_errors` (a projection that already had a position keeps it; one that never had any is left '
       + 'out of the profile). The projection is held in place and can be '
       + 'selected and deleted like any other entity.',
-    fields: { featureId: str(), kind: str(), source: str('The source edge ref.'), entityId: optStr(), constraintId: optStr() },
+    fields: {
+      featureId: str(),
+      kind: optStr(
+        'Entity kind: line, circle, arc, ellipse, spline or point. Omit it with a {selector} source: '
+        + 'the drive infers the kind from the element the selector matched (an edge keeps its curve kind, '
+        + 'a vertex or face projects as point).',
+      ),
+      source: queryOrSelector(PROJECTION_SOURCE_NOTE),
+      entityId: optStr(),
+      constraintId: optStr(),
+    },
   },
   add_rect: {
     summary: 'Add an axis-aligned rectangle with its lines and constraints; '

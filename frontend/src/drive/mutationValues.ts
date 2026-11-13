@@ -799,11 +799,25 @@ function addEntityWithConstraint(raw: RawStep, ctx: ValueContext): ValueViolatio
 
 function addProjectedEntity(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const kind = raw.kind
-  if (typeof kind !== 'string') return invalid(`kind must be an entity kind string, got ${json(kind)}`)
-  const kindProblem = entityKindProblem(kind, 'add_projected_entity')
-  if (kindProblem !== null) return invalid(kindProblem)
   const source = raw.source
-  const sourceProblem = pickQueryProblem(source, 'source')
+  if (kind === undefined) {
+    // The drive infers the kind from the element a selector matched; the stored
+    // string form has no element to read, so the author names it.
+    if (!isRecord(source)) {
+      return invalid(
+        'kind must be an entity kind string such as "line", or omitted with a {selector} source '
+        + 'the drive resolves and infers it from',
+      )
+    }
+  } else {
+    if (typeof kind !== 'string') return invalid(`kind must be an entity kind string, got ${json(kind)}`)
+    const kindProblem = entityKindProblem(kind, 'add_projected_entity')
+    if (kindProblem !== null) return invalid(kindProblem)
+  }
+  // A record source is a `{selector}` the drive resolves before this boundary
+  // runs, so one that survives to here is on a surface with no solved bodies
+  // (the browser bridge) and is refused by name rather than stored.
+  const sourceProblem = isRecord(source) ? selectorRefProblem(source, 'source') : pickQueryProblem(source, 'source')
   if (sourceProblem !== null) return invalid(sourceProblem)
   const idProblem = entityIdProblem(raw, ctx)
   return idProblem === null ? null : invalid(idProblem)

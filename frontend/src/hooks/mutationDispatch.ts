@@ -130,6 +130,12 @@ const resolvedQueries = (value: (string | SelectorRef)[] | undefined): string[] 
     throw new Error(UNRESOLVED_PICK)
   })
 
+// The drive fills a projection's omitted kind from the element its selector
+// matched, so the applier always receives the pair. A caller that skipped both
+// gates has nothing to store as an element kind.
+const UNRESOLVED_PROJECTION_KIND =
+  'add_projected_entity reached the applier without a kind; the drive infers it from a resolved {selector} source'
+
 export const mutationHandlers: MutationHandlers = {
   move_vertex: (next, m) =>
     applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to, m.solvedGeometry),
@@ -174,8 +180,12 @@ export const mutationHandlers: MutationHandlers = {
     applyInsertFitPoint(next, m.featureId, m.entityId, m.index, m.point),
   set_fit_spline_handle: (next, m) =>
     applySetFitSplineHandle(next, m.featureId, m.entityId, m.end, m.handle),
-  add_projected_entity: (next, m) =>
-    applyAddProjectedEntity(next, m.featureId, m.kind, m.source, m.entityId, m.constraintId),
+  add_projected_entity: (next, m) => {
+    const source = resolvedQuery(m.source)
+    if (source === undefined) throw new Error(UNRESOLVED_PICK)
+    if (m.kind === undefined) throw new Error(UNRESOLVED_PROJECTION_KIND)
+    applyAddProjectedEntity(next, m.featureId, m.kind, source, m.entityId, m.constraintId)
+  },
   add_rect: (next, m) =>
     applyAddRect(next, m.featureId, m.p0, m.p1, m.p0Ref, m.p1Ref, m.entityIds, m.dimensions),
   add_center_rect: (next, m) =>

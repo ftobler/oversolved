@@ -887,6 +887,43 @@ describe('finding: edge pick lists take inline selectors', () => {
   })
 })
 
+describe('finding: a projection source takes an inline selector', () => {
+  // The headless drive resolves the selector before the value rules, so a
+  // selector that survives to this boundary came from the browser bridge, which
+  // has no solved bodies. Refuse it by name instead of calling it a bad string.
+  it('names the solved-body requirement, not "must be string"', () => {
+    const error = refusal({
+      type: 'add_projected_entity', featureId: 'sk2', kind: 'line',
+      source: { selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } },
+    })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('source')
+    expect(error.message).toContain('solved bodies')
+    expect(error.message).not.toContain('must be string')
+  })
+
+  it('still refuses an object source that is not a {selector} pick', () => {
+    const error = refusal({
+      type: 'add_projected_entity', featureId: 'sk2', kind: 'line', source: { foo: 1 },
+    })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('field "source"')
+    expect(error.message).toContain('queryOrSelector')
+  })
+
+  it('keeps the kind required when the source is the stored string form', () => {
+    // The drive infers an omitted kind from the element a selector matched; a
+    // string source has no element to read, so the author names the kind.
+    const error = refusal({ type: 'add_projected_entity', featureId: 'sk2', source: '@builtin_origin' })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('kind')
+    expect(error.message).toContain('{selector}')
+    expect(validateMutation({
+      type: 'add_projected_entity', featureId: 'sk2', kind: 'point', source: '@builtin_origin',
+    })).toMatchObject({ ok: true })
+  })
+})
+
 describe('finding 6: delete targets', () => {
   it.each(['l1', 'sk1/l1', '@sk1/l1'])('refuses %s as a delete target', (target) => {
     const error = refusal({ type: 'delete', targets: [target] })
