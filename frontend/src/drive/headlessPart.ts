@@ -12,6 +12,9 @@
 // its immediate scheduler; only this drive surface wraps one.
 
 import type { PartDoc, Mutation, SketchData, BodyResult } from '@/types/cad'
+import {
+  faceBoundaryFromBodies, isFaceProjectionSource, type FaceBoundaryBodyLike,
+} from '@/kernel/features/projectionMembers'
 import { createDocSession, type DocSession } from '@/session/DocSession'
 import type { SolveOptions, SolveSchedulerState } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
@@ -175,6 +178,15 @@ export interface HeadlessPart {
   run(steps: readonly ScriptStep[]): Promise<ScriptRunOutcome>
 }
 
+/** A face projection is the one add whose input lives in the last solved body. */
+function isFaceProjectionStep(mutation: unknown): boolean {
+  if (typeof mutation !== 'object' || mutation === null) return false
+  const step = mutation as { type?: unknown; source?: unknown }
+  return step.type === 'add_projected_entity'
+    && typeof step.source === 'string'
+    && isFaceProjectionSource(step.source)
+}
+
 export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
   const docId = opts.docId ?? 'headless'
   // The ids this call's files map supplies, fixed for the session's lifetime
@@ -285,6 +297,11 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     },
     dirtyFacts: () => dirtyFacts,
     docId,
+    // A face projection is added with the members the last solve derived from
+    // the solved bodies; the headless host answers from its own response box.
+    projectionBoundary: faceBoundaryFromBodies(
+      () => responseBox.current?.bodies as Record<string, FaceBoundaryBodyLike> | undefined,
+    ),
     ...(opts.journal && { journal: journalSink(opts.journal) }),
   })
 
@@ -370,7 +387,9 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           // unsolved document (a fresh doc, or a chained docHash whose reply
           // carried no bodies) solves once before its first selector step.
           let bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
-          const needsBodies = usesSelectionAid(step.mutation)
+          // A face projection needs the last solve's body mesh to derive its
+          // member ids, exactly like a selector pick needs it to resolve.
+          const needsBodies = usesSelectionAid(step.mutation) || isFaceProjectionStep(step.mutation)
           if (needsBodies || usesSettledSketchGeometry(step.mutation)) {
             if (solve.owed()) {
               await solve.flush()

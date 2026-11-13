@@ -38,6 +38,7 @@ import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/per
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
 import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
+import { isFaceProjectionSource } from '@/kernel/features/projectionMembers'
 import { SelectorError, validateSelector } from '@/kernel/select'
 import { declaredSelectorKind, selectorShapeHint } from '@/drive/selectionAids'
 
@@ -670,6 +671,19 @@ function deleteRule(raw: RawStep, ctx: ValueContext): ValueViolation | null {
     const parts = (targets[i] as string).split(':')
     parsed.push({ kind: parts[0], featureId: parts[1], id: parts[2] })
   }
+  if (raw.materialize !== undefined) {
+    if (!Array.isArray(raw.materialize) || raw.materialize.length === 0) {
+      return invalid(`materialize must be a non-empty list of member rows, got ${json(raw.materialize)}`)
+    }
+    for (let i = 0; i < raw.materialize.length; i++) {
+      const row = raw.materialize[i]
+      if (!isRecord(row) || typeof row.id !== 'string' || row.id === ''
+        || typeof row.kind !== 'string' || row.kind === ''
+        || !Array.isArray(row.params) || !row.params.every(isFiniteNumber)) {
+        return invalid(`materialize[${i}] must be {id, kind, params} with a finite param list, got ${json(row)}`)
+      }
+    }
+  }
   if (ctx.doc === null) return null
   // A target that matches nothing used to answer ok with an unchanged doc: the
   // caller could not tell it apart from a successful delete. The app's own
@@ -680,9 +694,14 @@ function deleteRule(raw: RawStep, ctx: ValueContext): ValueViolation | null {
     if (sketch === undefined) {
       return unknownTarget(`delete target names no sketch feature ${json(target.featureId)}`)
     }
+    // A face-projection member is a derived entity: it has no row, but its id
+    // names an entry of the owning projection's member map and its delete is
+    // the exclusion write.
+    const derived = target.kind !== 'constraint' && (sketch.constraints ?? []).some(c =>
+      c.kind === 'projection' && Object.values(c.members ?? {}).includes(target.id))
     const exists = target.kind === 'constraint'
       ? (sketch.constraints ?? []).some(c => c.id === target.id)
-      : (sketch.entities ?? []).some(e => e.id === target.id)
+      : (sketch.entities ?? []).some(e => e.id === target.id) || derived
     if (!exists) {
       const what = target.kind === 'constraint' ? 'constraint' : 'entity'
       return unknownTarget(`delete target names no ${what} ${json(target.id)} in sketch ${target.featureId}`)
@@ -816,11 +835,12 @@ function addProjectedEntity(raw: RawStep, ctx: ValueContext): ValueViolation | n
   const source = raw.source
   if (kind === undefined) {
     // The drive infers the kind from the element a selector matched; the stored
-    // string form has no element to read, so the author names it.
-    if (!isRecord(source)) {
+    // string form has no element to read, so the author names it. A face source
+    // is the exception: it has no single kind because its boundary is derived.
+    if (!isRecord(source) && !(typeof source === 'string' && isFaceProjectionSource(source))) {
       return invalid(
-        'kind must be an entity kind string such as "line", or omitted with a {selector} source '
-        + 'the drive resolves and infers it from',
+        'kind must be an entity kind string such as "line", or omitted for a face source '
+        + '(its members are derived) or a {selector} source the drive resolves and infers it from',
       )
     }
   } else {
@@ -833,6 +853,17 @@ function addProjectedEntity(raw: RawStep, ctx: ValueContext): ValueViolation | n
   // (the browser bridge) and is refused by name rather than stored.
   const sourceProblem = isRecord(source) ? selectorRefProblem(source, 'source') : pickQueryProblem(source, 'source')
   if (sourceProblem !== null) return invalid(sourceProblem)
+  if (raw.members !== undefined) {
+    if (!isRecord(raw.members)) return invalid(`members must be an object of construction token -> member id, got ${json(raw.members)}`)
+    for (const [token, id] of Object.entries(raw.members)) {
+      if (typeof id !== 'string' || id === '') {
+        return invalid(`members[${json(token)}] must be a non-empty member id, got ${json(id)}`)
+      }
+    }
+  }
+  if (raw.excluded !== undefined && !isStringArray(raw.excluded)) {
+    return invalid(`excluded must be a list of construction tokens, got ${json(raw.excluded)}`)
+  }
   const idProblem = entityIdProblem(raw, ctx)
   return idProblem === null ? null : invalid(idProblem)
 }

@@ -21,6 +21,10 @@ import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { fitPointIndex } from '@/types/vertexKeys'
 import { hidePlanesIfFirstBoundSketch } from './featureAdmin'
 import { applyAddFitSpline, applyDeleteFitPoint, type FitSplineAddOptions } from './fitSpline'
+import {
+  faceProjectionConstraintId, isFaceProjectionSource, reconcileFaceProjection,
+} from '@/kernel/features/projectionMembers'
+import type { FaceBoundaryLookup } from '@/kernel/features/faceBoundary'
 
 // The rect/ngon/offset sugar lives in a sibling module so this file stays a
 // focused set of the core sketch mutations. Re-exported here so the historical
@@ -570,7 +574,22 @@ export function applyToggleConstruction(doc: PartDoc, targets: string[]): void {
   }
 }
 
-export function applyDeleteElements(doc: PartDoc, targets: string[]): void {
+/** Delete sketch elements. Two projection-specific readings:
+ *
+ *  - A derived face-projection member has no row to remove. Deleting it adds
+ *    its construction token to the owning projection's `excluded`, which is the
+ *    durable "the user removed this edge" fact; undo removes the token.
+ *  - Deleting the face projection itself may carry `materialize`, the member
+ *    rows the solve derived. Written with their derived ids and params, they
+ *    become ordinary geometry and constraints on them keep working; the
+ *    constraint is removed after them. The payload is recorded with the
+ *    mutation, so a replay writes the same bytes without solving.
+ */
+export function applyDeleteElements(
+  doc: PartDoc,
+  targets: string[],
+  materialize?: ReadonlyArray<{ id: string; kind: string; params: readonly number[] }>,
+): void {
   const byFeature: Record<string, { entities: Set<string>; constraints: Set<string> }> = {}
   // A `fit<k>` target removes one point of a positional list, so each removal
   // renumbers the list under the remaining targets. Collect them per entity and
@@ -597,6 +616,53 @@ export function applyDeleteElements(doc: PartDoc, targets: string[]): void {
         }
       }
       byFeature[fid].entities.add(parts[2])
+    }
+  }
+  // A derived member has no row: deleting it records the exclusion on its
+  // projection instead. The exclusion is a document fact, so undo restores the
+  // member with the same derived id on the next solve.
+  for (const [fid, per] of Object.entries(byFeature)) {
+    const feature = findSketchFeature(doc, fid)
+    if (!feature?.constraints) continue
+    const ownerByMember = new Map<string, { constraint: PartConstraint; token: string }>()
+    for (const constraint of feature.constraints) {
+      if (constraint.kind !== 'projection' || constraint.members === undefined) continue
+      for (const [token, id] of Object.entries(constraint.members)) {
+        if (!ownerByMember.has(id)) ownerByMember.set(id, { constraint, token })
+      }
+    }
+    for (const id of [...per.entities]) {
+      const owner = ownerByMember.get(id)
+      if (owner === undefined) continue
+      if (!owner.constraint.excluded?.includes(owner.token)) {
+        owner.constraint.excluded = [...(owner.constraint.excluded ?? []), owner.token]
+      }
+      per.entities.delete(id)
+    }
+  }
+  // Freeze: the solve's member bytes become rows under the same ids, so the
+  // constraints naming them survive the projection's removal. Only the members
+  // this constraint actually owns are written, so a stale payload cannot
+  // invent an entity.
+  if (materialize !== undefined && materialize.length > 0) {
+    for (const [fid, per] of Object.entries(byFeature)) {
+      if (per.constraints.size === 0) continue
+      const feature = findSketchFeature(doc, fid)
+      if (!feature?.constraints) continue
+      for (const constraintId of per.constraints) {
+        const constraint = feature.constraints.find(candidate => candidate.id === constraintId)
+        if (constraint?.kind !== 'projection' || constraint.members === undefined) continue
+        const memberIds = new Set(Object.values(constraint.members))
+        for (const row of materialize) {
+          if (!memberIds.has(row.id)) continue
+          if (!feature.entities) feature.entities = []
+          if (!feature.entities.some(entity => entity.id === row.id)) {
+            feature.entities.push({ id: row.id, kind: row.kind })
+          }
+          if (!feature.initial) feature.initial = {}
+          feature.initial[row.id] = row.params.map(round)
+        }
+      }
     }
   }
   for (const [fid, perEntity] of Object.entries(fitPointDeletes)) {
@@ -773,6 +839,16 @@ function applyEntityDimension(
   }
 }
 
+/** What a face projection needs besides the doc: the face's boundary this
+ *  instant. Injected so the applier stays pure and the drive/UI can answer from
+ *  the last solved bodies rather than reaching into a store. `members` lets a
+ *  recorded mutation (or a direct caller) carry the map, which is what keeps a
+ *  replay independent of a live solve. */
+export interface AddProjectionOptions {
+  faceBoundary?: FaceBoundaryLookup
+  members?: Record<string, string>
+}
+
 export function applyAddProjectedEntity(
   doc: PartDoc,
   featureId: string,
@@ -780,9 +856,50 @@ export function applyAddProjectedEntity(
   source: string,
   entityId?: string,
   constraintId?: string,
-): void {
+  options: AddProjectionOptions = {},
+): Record<string, string> | undefined {
   const feature = resolveSketch(doc, featureId, 'entities', 'constraints')
-  if (!feature) return
+  if (!feature) return undefined
+  // A face projects as one live constraint whose members are derived, not as one
+  // held entity per boundary edge. No target, no entity row: the ids live in the
+  // constraint's `members` map and the geometry in the solve.
+  if (isFaceProjectionSource(source)) {
+    const baseCid = constraintId ?? faceProjectionConstraintId(source)
+    if (baseCid === null) return undefined
+    const constraints = feature.constraints ?? []
+    // One projection per face (and one per id): a second pick of the same face
+    // would derive the same member ids under a different constraint id.
+    if (constraints.some((c) => c.id === baseCid)) return undefined
+    if (constraints.some((c) => c.kind === 'projection' && c.source === source && c.target === undefined)) return undefined
+    let cid = baseCid
+    let members = options.members
+    if (members === undefined) {
+      const boundary = options.faceBoundary?.(source) ?? null
+      // Without a solved boundary there is no member set to record. Refusing is
+      // the honest answer: a constraint with no ids would resolve only after a
+      // solve the caller cannot see.
+      if (boundary === null) return undefined
+      // A frozen projection leaves its member rows under the same derived ids.
+      // A later re-pick of that face must not collide with them, so the
+      // constraint id (and with it every member id) draws past the taken ones.
+      const taken = new Set((feature.entities ?? []).map((entity) => entity.id))
+      for (let suffix = 1; ; suffix++) {
+        cid = suffix === 1 ? baseCid : `${baseCid}_${suffix}`
+        if (constraints.some((c) => c.id === cid)) continue
+        members = reconcileFaceProjection({ id: cid, members: {} }, boundary).members
+        if (!Object.values(members).some((id) => taken.has(id))) break
+      }
+    }
+    if (members === undefined) return undefined
+    constraints.push({
+      id: cid,
+      kind: 'projection',
+      source,
+      ...(Object.keys(members).length ? { members } : {}),
+    })
+    feature.constraints = constraints
+    return members
+  }
   const eid = mintEntityId(feature.entities, entityId)
   // Refuse a second projection on the same entity.
   if ((feature.constraints ?? []).some((c) => c.kind === 'projection' && c.target === `$${eid}`)) return

@@ -1,6 +1,7 @@
 import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, Mutation, PartFeature, SketchData } from '@/types/cad'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
+import type { FaceBoundaryLookup } from '@/kernel/features/faceBoundary'
 import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { applySetRollback, setIdScope } from '@/utils/yamlMutations'
@@ -107,6 +108,10 @@ export interface DocSessionDeps {
   // means the inspection simply omits the field.
   getValidation?: () => unknown
   getBodies?: () => unknown
+  // A face projection's member ids are derived at add time from the face's
+  // current boundary. The host injects the lookup (UI: the body registry;
+  // headless: the last solved bodies), keeping the session free of geometry.
+  projectionBoundary?: FaceBoundaryLookup
   // The journal sink (the part editor, the headless CLI). Absent in the unit
   // suites and the assembly editor: no sink, no bookkeeping. The part editor
   // supplies one in every build, because the recovery autosave borrows its
@@ -331,7 +336,7 @@ function dragAnchorFor(m: Mutation): { featureId: string; entityId: string } | u
     : undefined
 }
 
-type AnyHandler = (doc: PartDoc, m: Mutation) => void
+type AnyHandler = (doc: PartDoc, m: Mutation, ctx?: { projectionBoundary?: FaceBoundaryLookup }) => void
 
 // The result of running a mutation set on one clone, with the pruned solve
 // results and the whole-feature snapshots a failing re-solve can restore.
@@ -739,7 +744,7 @@ export class DocSession {
         const addedId = insertAt !== undefined && 'featureId' in m && !next.features?.some(f => f.id === m.featureId)
           ? m.featureId
           : null
-        handler?.(next, m)
+        handler?.(next, m, { projectionBoundary: this.deps.projectionBoundary })
         if (addedId !== null && insertAt !== undefined && insertFeatureAt(next, addedId, insertAt)) {
           insertedIds.push(addedId)
         }

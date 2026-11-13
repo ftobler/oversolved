@@ -3,6 +3,7 @@ import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 import { useDocumentState } from '@/hooks/useDocumentState'
 import { useSolver } from '@/hooks/useSolver'
 import { createDocSession, type DocSession, type SessionJournalSink } from '@/session/DocSession'
+import { faceBoundaryLookup } from '@/picking/bodyDispatchCallbacks'
 import type { Result, SessionFailure } from '@/session/result'
 import type { SolveOptions, SolveOutcome } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
@@ -88,6 +89,9 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     docId: uuid ?? null,
     getValidation: () => validationRef.current,
     getBodies: () => bodiesRef.current,
+    // The face a projection is added from is the one the viewport picked, so
+    // the member ids come from the live body registry.
+    projectionBoundary: faceBoundaryLookup,
     // The sink is captured once: it only exists in dev/test builds and the page
     // builds it with an empty dependency list, so it is stable for this mount
     // (a document switch remounts the editor and this session with it).

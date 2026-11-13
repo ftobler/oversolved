@@ -6,6 +6,8 @@
 // `initial` (add_rect, add_entity) does not need this: it has no previous
 // solved state to read.
 
+import { isFaceProjectionSource } from '@/kernel/features/projectionMembers'
+
 type RawStep = { [key: string]: unknown }
 
 function isRecord(value: unknown): value is RawStep {
@@ -54,6 +56,11 @@ export function usesSettledSketchGeometry(raw: unknown): boolean {
       return true
     case 'delete':
       return deletesFitPoint(raw)
+    // A face projection's member ids come from the face's boundary in the last
+    // solved bodies, so the step must run against a settled document. An edge,
+    // vertex or sketch source takes its kind from the pick and needs no solve.
+    case 'add_projected_entity':
+      return typeof raw.source === 'string' && isFaceProjectionSource(raw.source)
     default:
       return carriesDockRef(raw)
   }

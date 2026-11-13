@@ -134,6 +134,13 @@ function groupProblem(
       .filter(c => c.kind === 'projection' && typeof c.target === 'string')
       .map(c => String(c.target).replace(/^\$/, '')),
   )
+  // A face projection's members are derived solve entities, never document
+  // rows: a group cannot hold one (the loader would refuse such a document).
+  const projectedMembers = new Set(
+    (feature.constraints ?? [])
+      .filter(c => c.kind === 'projection')
+      .flatMap(c => Object.values(c.members ?? {})),
+  )
   for (const target of targets) {
     if (target === '@builtin_origin') {
       return 'group holds whole sketch entities; the origin is not one'
@@ -157,6 +164,9 @@ function groupProblem(
     }
     if (id !== null && projected.has(id)) {
       return `group cannot include the projected entity "${id}"; delete its projection first`
+    }
+    if (id !== null && projectedMembers.has(id)) {
+      return `group cannot include the projected member "${id}"; delete its projection first`
     }
   }
   return null

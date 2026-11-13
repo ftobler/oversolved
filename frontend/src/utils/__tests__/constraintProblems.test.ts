@@ -192,4 +192,17 @@ describe('addConstraintProblem', () => {
       }
     },
   )
+
+  it('refuses a face-projection member as a group member', () => {
+    const doc = shapeDoc()
+    const sketch = doc.features![0]
+    if (sketch.kind !== 'sketch') throw new Error('fixture is not a sketch')
+    const member = 'proj_face.eaaaaaaa'
+    sketch.constraints = [{
+      id: 'proj_face', kind: 'projection', source: '?face',
+      members: { 'u|e_aaaa': member },
+    }]
+    const problem = addConstraintProblem(sketch, 'group', [`entity:sk1:${member}`], undefined)
+    expect(problem).toContain('projected member')
+  })
 })

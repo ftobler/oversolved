@@ -12,6 +12,7 @@
  */
 
 import type { Mesh3D } from '@/types/cad'
+import { boundaryFromFaceEdges, type FaceBoundary } from '@/kernel/features/projectionMembers'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { FACE_LAYER_NAME } from '@/picking/layerNames'
 import { parsePickKeyIndex } from '@/picking/pickKey'
@@ -191,13 +192,26 @@ export function findBodyFaceByPickKey(pickKey: string): ResolvedFace | null {
 export function findFaceBoundaryEdges(q: string): { source: string; kind: string }[] | null {
   const entry = faceOwners.get(q)?.[0]
   if (!entry) return null
-  const edgeQs = entry.cb.mesh.face_edge_queries?.[entry.faceIndex!.get(q)!]
+  const faceIndex = entry.faceIndex!.get(q)!
+  const edgeQs = entry.cb.mesh.face_edge_queries?.[faceIndex]
   if (!edgeQs || edgeQs.length === 0) return null
-  return edgeQs.map((source) => {
+  // A periodic face meets its own seam edge twice; the mesh keeps that second
+  // visit in `face_seam_queries`. A seam is kernel bookkeeping, not the wire the
+  // user picked, so it never becomes a projected member.
+  const seams = new Set(entry.cb.mesh.face_seam_queries?.[faceIndex] ?? [])
+  return edgeQs.filter((source) => !seams.has(source)).map((source) => {
     const ei = entry.edgeIndex?.get(source)
     const kind = (ei !== undefined ? entry.cb.edgeKinds?.[ei] : undefined) ?? 'line'
     return { source, kind }
   })
+}
+
+/** The session's add-time face boundary lookup, answered from the live body
+ *  registry. A face the registry has not seen (no solved body yet) is null,
+ *  which makes the applier refuse the projection instead of storing a
+ *  constraint with no members. */
+export function faceBoundaryLookup(q: string): FaceBoundary | null {
+  return boundaryFromFaceEdges(findFaceBoundaryEdges(q))
 }
 
 /**

@@ -39,6 +39,17 @@ describe('usesSettledSketchGeometry', () => {
     expect(usesSettledSketchGeometry({ type: 'delete', targets: ['entity:sk1:l1'] })).toBe(false)
   })
 
+  it('needs a flush for a face projection, which reads the last solved boundary', () => {
+    expect(usesSettledSketchGeometry({
+      type: 'add_projected_entity', featureId: 'sk1',
+      source: '?9;@u|e_abcd:flatface',
+    })).toBe(true)
+    expect(usesSettledSketchGeometry({
+      type: 'add_projected_entity', featureId: 'sk1', kind: 'line',
+      source: '?9;@u|e_abcd:straightedge',
+    })).toBe(false)
+  })
+
   it('leaves the writing mutations alone', () => {
     for (const step of [
       { type: 'add_rect', featureId: 'sk1' },

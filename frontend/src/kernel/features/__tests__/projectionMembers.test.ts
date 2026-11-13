@@ -248,8 +248,31 @@ describe('the add and delete appliers', () => {
     expect(sketch.constraints).toHaveLength(1)
   })
 
-  it('refuses a face add with no solved boundary', () => {
+  it('draws a fresh constraint id past frozen member rows', () => {
     const doc = sketchDoc()
+    const cid = faceProjectionConstraintId(faceSource)!
+    applyAddProjectedEntity(doc, 'sk1', '', faceSource, undefined, undefined, {
+      faceBoundary: () => boundary,
+    })
+    const sketch = (doc.features ?? [])[0]
+    if (sketch.kind !== 'sketch') throw new Error('not a sketch')
+    const frozen = Object.values(sketch.constraints![0].members!)
+    applyDeleteElements(
+      doc,
+      [`constraint:sk1:${cid}`],
+      frozen.map(id => ({ id, kind: 'line', params: [0, 0, 1, 1] })),
+    )
+    expect(sketch.entities?.map(e => e.id).sort()).toEqual([...frozen].sort())
+    applyAddProjectedEntity(doc, 'sk1', '', faceSource, undefined, undefined, {
+      faceBoundary: () => boundary,
+    })
+    const fresh = sketch.constraints?.find(c => c.kind === 'projection')
+    expect(fresh?.id).toBe(`${cid}_2`)
+    // The frozen ids are never reused, so the two entity families cannot merge.
+    expect(Object.values(fresh?.members ?? {}).some(id => frozen.includes(id))).toBe(false)
+  })
+
+  it('refuses a face add with no solved boundary', () => {    const doc = sketchDoc()
     applyAddProjectedEntity(doc, 'sk1', '', faceSource)
     const sketch = (doc.features ?? [])[0]
     if (sketch.kind !== 'sketch') throw new Error('not a sketch')
