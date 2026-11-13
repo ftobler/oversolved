@@ -305,6 +305,124 @@ describe('solveSketch projects the document origin as a point', () => {
   })
 })
 
+describe('solveSketch projects another sketch\'s whole entity', () => {
+  beforeEach(() => {
+    resetSketchSolver()
+    if (solveBytes) setSketchSolver(solveBytes)
+  })
+
+  // sk1 lives on Front and holds a line from (0,0) to (5,5). In world space that
+  // is (0,0,0)->(5,5,0); on a Right-plane sketch (local x = -world z, local y =
+  // world y) it projects to (0,0)->(0,5).
+  const front = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+
+  const ENTRIES: Record<string, unknown> = {
+    'sk1/L1': { external_params: [0, 0, 5, 5], kind: 'line', sketch_id: 'sk1' },
+    'sk1/L1/start': { external_xy: [0, 0], sketch_id: 'sk1' },
+    'sk1/L1/end': { external_xy: [5, 5], sketch_id: 'sk1' },
+    _pt_sk1: front,
+  }
+
+  /** A repository over `entries`, keyed the way the slash registry stores them
+   *  (`@` stripped), with the element map the frame lookup reads. */
+  function repoOf(entries: Record<string, unknown> = ENTRIES): Repository {
+    return {
+      query: (q: string) => {
+        const key = q.startsWith('@') ? q.slice(1) : q
+        return (key in entries ? entries[key] : null) as never
+      },
+      elements: new Map<string, unknown>(Object.entries(entries)),
+    } as unknown as Repository
+  }
+
+  const sketchWithProjection = (source: string, declaredKind: string): Dict => ({
+    id: 'sk2', kind: 'sketch', plane: '@builtin_plane_right',
+    entities: [{ id: 'held', kind: declaredKind }],
+    initial: { held: declaredKind === 'point' ? [9, 9] : [0, 0, 1, 0] },
+    constraints: [{ id: 'proj_held', kind: 'projection', target: '$held', source }],
+  })
+
+  it('lifts a foreign line through its owning sketch frame and projects it', () => {
+    if (!solveBytes) return
+    const out = solveSketch(sketchWithProjection('@sk1/L1', 'line'), repoOf(), {} as Record<string, Body>)
+    expect(out.status).not.toBe('error')
+    expect(out.projection_errors).toBeUndefined()
+    const g = out.geometry?.held
+    expect(g).toBeDefined()
+    expect(g![0]).toBeCloseTo(0)
+    expect(g![1]).toBeCloseTo(0)
+    expect(g![2]).toBeCloseTo(0)
+    expect(g![3]).toBeCloseTo(5)
+  })
+
+  it('keeps a foreign vertex projection working (the point path)', () => {
+    if (!solveBytes) return
+    const out = solveSketch(sketchWithProjection('@sk1/L1/end', 'point'), repoOf(), {} as Record<string, Body>)
+    expect(out.projection_errors).toBeUndefined()
+    expect(out.geometry?.held?.[0]).toBeCloseTo(0)
+    expect(out.geometry?.held?.[1]).toBeCloseTo(5)
+  })
+
+  it('reports an unknown source as a projection error and a named warning', () => {
+    if (!solveBytes) return
+    const out = solveSketch(sketchWithProjection('@sk1/nope', 'point'), repoOf(), {} as Record<string, Body>)
+    expect(out.projection_errors).toEqual(['proj_held'])
+    expect(out.solver_warning).toContain(
+      'projection proj_held source @sk1/nope did not resolve; the entity keeps its last position',
+    )
+  })
+
+  it('reports a foreign spline source instead of projecting a wrong curve', () => {
+    if (!solveBytes) return
+    // This batch lowers line, circle and arc from another sketch; a spline (or
+    // ellipse) source refuses, and the refusal is visible rather than silent.
+    const entries = {
+      ...ENTRIES,
+      'sk1/S1': { external_params: [0, 0, 1, 1, 2, 2, 3, 3], kind: 'spline', sketch_id: 'sk1' },
+    }
+    const out = solveSketch(sketchWithProjection('@sk1/S1', 'spline'), repoOf(entries), {} as Record<string, Body>)
+    expect(out.projection_errors).toEqual(['proj_held'])
+  })
+})
+
+describe('solveSketch reports the constraints it could not use', () => {
+  beforeEach(() => {
+    resetSketchSolver()
+    if (solveBytes) setSketchSolver(solveBytes)
+  })
+
+  // The reported document, rebuilt from the finding text: sk2 on the Right plane
+  // carries a snap-authored coincident whose second operand is a line of sk1 on
+  // the Front plane (`@sk1/1yxgoOAo0Q3Xondp`). The sketch is otherwise fully
+  // constrained, so the dead row is the only thing the user could not find.
+  it('lists a cross-sketch coincident as dropped and keeps the sketch fully constrained', () => {
+    if (!solveBytes) return
+    const feature: Dict = {
+      id: 'sk2', kind: 'sketch', plane: '@builtin_plane_right',
+      entities: [{ id: 'ax', kind: 'line' }],
+      initial: { ax: [0, 0, 10, 0] },
+      constraints: [
+        { id: 'c_axstart_origin', kind: 'coincident', a: '$axstart', b: '@builtin_origin' },
+        { id: 'c_ax_horiz', kind: 'horizontal', target: '$ax' },
+        { id: 'c_ax_len', kind: 'length', target: '$ax', value: 10 },
+        {
+          id: 'c_coincident_oT6KcUj9', kind: 'coincident',
+          a: '$axstart', b: '@sk1/1yxgoOAo0Q3Xondp',
+        },
+      ],
+    }
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    expect(out.status).toBe('fully_constrained')
+    expect(out.dropped_constraints).toEqual([
+      { id: 'c_coincident_oT6KcUj9', kind: 'coincident', reason: 'stale reference' },
+    ])
+    // The plain warning channel keeps the same sentence the tree already shows.
+    expect(out.solver_warning).toContain(
+      'constraint c_coincident_oT6KcUj9 (coincident) names operands it cannot use (stale reference) and was ignored.',
+    )
+  })
+})
+
 describe('solveSketch pins projected entities (fix-projected-entities-pinned)', () => {
   beforeEach(() => {
     resetSketchSolver()

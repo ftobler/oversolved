@@ -222,6 +222,145 @@ export function applyResizeCircle(
   params[2] = round(radius)
 }
 
+/** A foreign operand parsed from its feature-qualified selection ref. */
+interface ForeignOperand {
+  sketchId: string
+  entityId: string
+  // The entity vertex the ref names, e.g. `start`; null for a whole-entity ref.
+  vertexKey: string | null
+}
+
+/** Parse `entity:<sk>:<eid>` / `vertex:<sk>:<eid>:<key>` into a foreign operand,
+ *  or null when the ref is local to `featureId` (a stored `$` ref, the builtin
+ *  origin, a `dock:`/`isect:` handle) or names no feature-qualified sketch ref. */
+function _parseForeignOperand(target: string, featureId: string): ForeignOperand | null {
+  const parts = target.split(':')
+  if (parts[0] !== 'entity' && parts[0] !== 'vertex') return null
+  const sketchId = parts[1]
+  const entityId = parts[2]
+  if (!sketchId || !entityId || sketchId === featureId) return null
+  if (parts[0] === 'entity') return { sketchId, entityId, vertexKey: null }
+  const vertexKey = parts[3]
+  return vertexKey ? { sketchId, entityId, vertexKey } : null
+}
+
+/** One projection a foreign operand needs before the constraint can name it. */
+interface ForeignProjection {
+  index: number
+  source: string
+  kind: string
+  ref: string
+}
+
+/** The rewritten targets plus the projections to materialize once the
+ *  constraint itself passes the shape checks. Nothing is written until then, so
+ *  a refused pick (bad kind, operand count, redundancy, forward reference)
+ *  leaves the document byte-identical and no orphan projection behind. */
+interface ForeignProjectionPlan {
+  targets: string[]
+  created: Array<{ entityId: string; kind: string; source: string }>
+}
+
+/**
+ * Plan the projections every operand naming another sketch's geometry needs, so
+ * a cross-sketch snap authors the same visible, deletable held entity the
+ * constraint command makes from a B-rep pick instead of a ref the solver can
+ * never resolve (a stale reference).
+ *
+ * `null` drops the whole pick: a ref to a sketch that comes AFTER this one in
+ * the tree is a forward reference the solve cannot resolve yet (the pick keeps
+ * its position and authors no constraint, like a body snap), and a ref naming a
+ * missing sketch or entity must not be persisted dead.
+ */
+function _planForeignTargets(
+  doc: PartDoc,
+  featureId: string,
+  targets: readonly string[],
+): ForeignProjectionPlan | null {
+  const parsed = targets.map(target => _parseForeignOperand(target, featureId))
+  if (parsed.every(op => op === null)) return { targets: [...targets], created: [] }
+  const feature = findSketchFeature(doc, featureId)
+  if (!feature) return null
+  const features = doc.features ?? []
+  const activeAt = features.findIndex(f => f.id === featureId)
+
+  const planned: ForeignProjection[] = []
+  const entities = feature.entities ?? []
+  const constraints = feature.constraints ?? []
+  // One entity per source, so an operand pair naming the same curve projects it
+  // once whether the projection was already recorded or minted in this pick.
+  const entityIdBySource = new Map<string, string>()
+  for (let index = 0; index < parsed.length; index++) {
+    const op = parsed[index]
+    if (!op) continue
+    const sourceAt = features.findIndex(f => f.id === op.sketchId)
+    const sourceSketch = findSketchFeature(doc, op.sketchId)
+    const sourceDef = sourceSketch?.entities?.find(e => e.id === op.entityId)
+    if (sourceAt < 0 || !sourceDef) {
+      warn('applyAddConstraint: snapped element does not resolve in its sketch', {
+        featureId, sketchId: op.sketchId, entityId: op.entityId,
+      })
+      return null
+    }
+    if (activeAt >= 0 && sourceAt > activeAt) {
+      warn('applyAddConstraint: ignoring a snap to a later sketch (forward reference)', {
+        featureId, sketchId: op.sketchId,
+      })
+      return null
+    }
+    // A vertex source resolves through the owning sketch frame as a point; a
+    // whole entity keeps its kind so the projection lowers as that curve.
+    const source = op.vertexKey
+      ? `@${op.sketchId}/${op.entityId}/${op.vertexKey}`
+      : `@${op.sketchId}/${op.entityId}`
+    let eid = entityIdBySource.get(source)
+    if (eid === undefined) {
+      const recorded = constraints.find(c => c.kind === 'projection' && c.source === source)
+      const recordedId = recorded && typeof recorded.target === 'string' ? recorded.target.replace(/^\$/, '') : null
+      eid = recordedId !== null && entities.some(e => e.id === recordedId) ? recordedId : mintEntityId(entities)
+      entityIdBySource.set(source, eid)
+    }
+    planned.push({
+      index,
+      source,
+      kind: op.vertexKey ? 'point' : sourceDef.kind,
+      ref: op.vertexKey ? `vertex:${featureId}:${eid}:xy` : `entity:${featureId}:${eid}`,
+    })
+  }
+
+  const out = [...targets]
+  for (const plan of planned) out[plan.index] = plan.ref
+  const created = [...entityIdBySource]
+    .filter(([, entityId]) => !entities.some(e => e.id === entityId))
+    .map(([source, entityId]) => ({
+      entityId,
+      kind: planned.find(plan => plan.source === source)?.kind ?? 'point',
+      source,
+    }))
+  return { targets: out, created }
+}
+
+/** Materialize the planned projections: the held entity and the `projection`
+ *  constraint that records where it came from. */
+function _materializeForeignProjections(
+  doc: PartDoc,
+  featureId: string,
+  plan: ForeignProjectionPlan,
+): void {
+  if (plan.created.length === 0) return
+  const feature = resolveSketch(doc, featureId, 'entities', 'constraints')
+  if (!feature) return
+  for (const { entityId, kind, source } of plan.created) {
+    feature.entities.push({ id: entityId, kind })
+    feature.constraints.push({
+      id: uniqueConstraintId(feature.constraints, 'projection'),
+      kind: 'projection',
+      target: `$${entityId}`,
+      source,
+    })
+  }
+}
+
 export function applyAddConstraint(
   doc: PartDoc,
   featureId: string,
@@ -258,6 +397,20 @@ export function applyAddConstraint(
   // One refusal source with the drive rule: the checks used to live in the
   // branches below, so the drive copied only the colinear and zero ones and
   // reported every other refusal as an ok that changed nothing.
+  //
+  // A cross-sketch snap operand is projected into this sketch first (the same
+  // visible held entity the constraint command makes from a B-rep pick), so the
+  // constraint names something the solver can resolve. The projection is
+  // materialized below, after the shape checks, so a refused pick leaves no
+  // orphan behind; both land in this one mutation, hence one undo entry. The
+  // drive never reaches the projection branch: its value rule refuses a foreign
+  // target by name, telling the author to project it explicitly.
+  const projectionPlan = _planForeignTargets(doc, featureId, targets)
+  if (!projectionPlan) {
+    warn('applyAddConstraint: dropping a pick whose foreign operand does not resolve', { featureId, kind, targets })
+    return
+  }
+  targets = projectionPlan.targets
   const problem = addConstraintProblem(feature, kind, targets, value)
   if (problem !== null) {
     warn(`applyAddConstraint: ${problem}`, { featureId, kind, targets })
@@ -347,6 +500,9 @@ export function applyAddConstraint(
   if (sign !== undefined && Number.isFinite(sign)) c.sign = sign < 0 ? -1 : 1
   if (!feature.constraints) feature.constraints = []
   feature.constraints.push(c)
+  // The constraint is accepted, so the held entities it names can land too. A
+  // cross-sketch pick never reaches this line without a projection plan.
+  _materializeForeignProjections(doc, featureId, projectionPlan)
 }
 
 export function applyToggleConstruction(doc: PartDoc, targets: string[]): void {

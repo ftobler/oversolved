@@ -262,6 +262,9 @@ const CONSTRAINT_PROJECTION_NOTE =
   ' To constrain against the part origin or a body vertex/edge, add_projected_entity it first '
   + '(kind "point" for `@builtin_origin`, with the body query as the source) and name the projection as the target. '
   + 'A bare `@builtin_origin` still solves but creates no entity, so there is nothing to select or delete.'
+  + ' A target in another sketch is refused: the solver reads sketch-local refs only, so project the foreign '
+  + 'element into this sketch first (`add_projected_entity` with source `@<sketchId>/<entityId>` or '
+  + '`@<sketchId>/<entityId>/<key>`) and name the projection.'
 
 // Every `set_<kind>_field` names one feature kind; the kind's schema
 // sub-definition is the one list of fields it may set. The Record makes a new
@@ -1062,7 +1065,12 @@ export const MUTATION_CATALOG = {
     },
   },
   add_projected_entity: {
-    summary: 'Project a body edge into a sketch as an entity held by a projection constraint.',
+    summary: 'Project a body edge or another sketch\'s geometry into a sketch as an entity held by a projection constraint.',
+    note: 'The source is a body edge/vertex/face query, `@builtin_origin`, or a whole entity of another sketch '
+      + '(`@<sketchId>/<entityId>`; add `/start`, `/end`, `/center` or `/xy` for one vertex). A sketch line, '
+      + 'circle or arc projects as that curve; a foreign spline or ellipse is refused and reported in '
+      + '`projection_errors` (the entity keeps its last position). The projection is held in place and can be '
+      + 'selected and deleted like any other entity.',
     fields: { featureId: str(), kind: str(), source: str('The source edge ref.'), entityId: optStr(), constraintId: optStr() },
   },
   add_rect: {

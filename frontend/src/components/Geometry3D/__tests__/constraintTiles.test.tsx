@@ -227,6 +227,88 @@ describe('ConstraintTile hover highlight targets', () => {
   })
 })
 
+// A constraint the solve could not use has no solved render, so it had no tile:
+// the tree warned about an id the user could not find or delete from the canvas.
+// It draws one red tile where its surviving local operand is, and Delete takes it
+// through the ordinary constraint-selection path.
+describe('a dropped constraint is a red, selectable tile', () => {
+  const dropped = [{ id: 'c_dead', kind: 'coincident', reason: 'stale reference' }]
+  const authored = [{
+    id: 'c_dead', kind: 'coincident',
+    a: '$line1start', b: '@sk1/otherSketchLine',
+  }] as unknown as import('@/types/cad').PartConstraint[]
+
+  it('renders at the local operand with the warning sentence and a red outline', () => {
+    useSketchUiStore.setState({ showConstraintTiles: false })
+    const { container } = render(
+      <ConstraintOverlays
+        constraints={{}}
+        sketch={mockSketch}
+        extent={10}
+        featureId="feat1"
+        droppedConstraints={dropped}
+        authoredConstraints={authored}
+      />
+    )
+    // One tile even though the user hid the ordinary symbols: this one is an
+    // error marker, not decoration.
+    const img = container.querySelector('img')
+    expect(img).not.toBeNull()
+    const tile = img!.parentElement!
+    expect(tile.title).toBe(
+      'constraint c_dead (coincident) names operands it cannot use (stale reference) and was ignored.',
+    )
+    expect(tile.style.outline).toContain(COLOR_ERROR_DEEP)
+  })
+
+  it('selects as the ordinary constraint id so Delete removes it', () => {
+    useEditorState.setState({ normalSelection: new Set() })
+    const { container } = render(
+      <ConstraintOverlays
+        constraints={{}}
+        sketch={mockSketch}
+        extent={10}
+        featureId="feat1"
+        droppedConstraints={dropped}
+        authoredConstraints={authored}
+      />
+    )
+    fireEvent.click(container.querySelector('img')!.parentElement!)
+    expect(useSketchEditorStore.getState().normalSelection.has('constraint:feat1:c_dead')).toBe(true)
+  })
+
+  it('anchors at the sketch origin when no operand resolves any more', () => {
+    useSketchUiStore.setState({ showConstraintTiles: true })
+    const { container } = render(
+      <ConstraintOverlays
+        constraints={{}}
+        sketch={{}}
+        extent={10}
+        featureId="feat1"
+        droppedConstraints={dropped}
+        authoredConstraints={[{
+          id: 'c_dead', kind: 'coincident', a: '$gone1', b: '@sk1/other',
+        }] as unknown as import('@/types/cad').PartConstraint[]}
+      />
+    )
+    expect(container.querySelector('img')).not.toBeNull()
+  })
+
+  it('draws no tile for a dropped id the document no longer holds', () => {
+    const { container } = render(
+      <ConstraintOverlays
+        constraints={{}}
+        sketch={mockSketch}
+        extent={10}
+        featureId="feat1"
+        droppedConstraints={dropped}
+        authoredConstraints={[]}
+      />
+    )
+    expect(container.querySelector('img')).toBeNull()
+  })
+})
+
 describe('ConstraintTile click selection and unmount cleanup', () => {
   it('clicking a tile selects its composite constraint id', () => {
     useEditorState.setState({

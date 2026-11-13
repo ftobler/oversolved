@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import type { Sketch } from '@/types/cad'
+import type { Sketch, SketchFeature, Mutation } from '@/types/cad'
 import { shouldActivateDrag, computeDragMove, computeDragMutation } from '@/utils/geometry/dragLogic'
 import { sketchToVertexCandidates, sketchToEntityCandidates } from '@/utils/geometry/snapDetection'
 import { CLICK_THRESHOLD_PX } from '@/utils/pointerAbstraction'
+import { mutationHandlers } from '@/hooks/mutationDispatch'
+import { makeDoc, makeSketch as makeSketchFixture } from '@/utils/core/testFixture'
 
 const FEATURE = 'S1'
 
@@ -313,6 +315,67 @@ describe('computeDragMutation', () => {
     expect(result?.type).toBe('move_entity')
     if (result?.type === 'move_entity') {
       expect(result.delta).toEqual([3, 4])
+    }
+  })
+})
+
+// A release on another sketch's geometry used to record a constraint naming that
+// sketch, which the solve drops as a stale reference. The drag still emits the
+// one snap mutation; the applier projects the snapped element into the active
+// sketch and constrains the projection, so the group is one undo entry.
+describe('computeDragMutation released on another sketch', () => {
+  const docWithTwoSketches = () => makeDoc(
+    makeSketchFixture('S1', {
+      entities: [{ id: 'L9', kind: 'line' }],
+      initial: { L9: [0, 0, 10, 0] },
+    }),
+    makeSketchFixture('S2', { plane: '@builtin_plane_right', entities: [{ id: 'L1', kind: 'line' }], initial: { L1: [0, 5, 10, 5] } }),
+  )
+
+  // The same two sketches with the snap target AFTER the active one: a forward
+  // reference the solve cannot resolve yet.
+  const docWithLaterTarget = () => makeDoc(
+    makeSketchFixture('S2', { plane: '@builtin_plane_right', entities: [{ id: 'L1', kind: 'line' }], initial: { L1: [0, 5, 10, 5] } }),
+    makeSketchFixture('S1', { entities: [{ id: 'L9', kind: 'line' }], initial: { L9: [0, 0, 10, 0] } }),
+  )
+
+  it('yields the projection and a coincident against it in one mutation', () => {
+    const drag = makeDrag({ featureId: 'S2', entityId: 'L1', vertexKey: 'start', currentWorld: [10, 0] })
+    const mutation = computeDragMutation([200, 200], drag, {
+      kind: 'entity', position: [5, 0], constraintKind: 'coincident', entityRef: 'entity:S1:L9',
+    })
+    expect(mutation?.type).toBe('move_vertex_with_constraint')
+    const doc = docWithTwoSketches()
+    mutationHandlers.move_vertex_with_constraint(doc, mutation as Extract<Mutation, { type: 'move_vertex_with_constraint' }>)
+    const s2 = doc.features!.find(f => f.id === 'S2') as SketchFeature
+    const projection = s2.constraints!.find(c => c.kind === 'projection')!
+    expect(projection.source).toBe('@S1/L9')
+    const projectedId = String(projection.target).replace(/^\$/, '')
+    const coincident = s2.constraints!.find(c => c.kind === 'coincident')!
+    expect(coincident.a).toBe('$L1start')
+    expect(coincident.b).toBe(`$${projectedId}`)
+  })
+
+  it('a release on a later sketch keeps the position and authors nothing', () => {
+    const drag = makeDrag({ featureId: 'S2', entityId: 'L1', vertexKey: 'start', currentWorld: [1, 1] })
+    const mutation = computeDragMutation([200, 200], drag, {
+      kind: 'vertex', position: [1, 1], constraintKind: 'coincident', vertexId: 'vertex:S1:L9:end',
+    })
+    const doc = docWithLaterTarget()
+    mutationHandlers.move_vertex_with_constraint(doc, mutation as Extract<Mutation, { type: 'move_vertex_with_constraint' }>)
+    const s2 = doc.features!.find(f => f.id === 'S2') as SketchFeature
+    expect(s2.initial!.L1.slice(0, 2)).toEqual([1, 1])
+    expect(s2.constraints ?? []).toHaveLength(0)
+  })
+
+  it('a body snap stays position only', () => {
+    const drag = makeDrag({ featureId: 'S2', entityId: 'L1', vertexKey: 'start', currentWorld: [2, 2] })
+    const mutation = computeDragMutation([200, 200], drag, {
+      kind: 'vertex', position: [2, 2], constraintKind: 'coincident', vertexId: 'vertex:__body__b1:bv0:start',
+    })
+    expect(mutation?.type).toBe('move_vertex')
+    if (mutation?.type === 'move_vertex') {
+      expect(mutation.to).toEqual([2, 2])
     }
   })
 })

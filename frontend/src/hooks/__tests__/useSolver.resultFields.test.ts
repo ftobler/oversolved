@@ -158,6 +158,13 @@ describe('applySolveResult -- fields the feature tree reads', () => {
     expect(result.current.solveResults.sk1.projection_errors).toEqual(['entity:sk1:p1'])
   })
 
+  it('carries the dropped constraints the editor tiles and the cleanup read', async () => {
+    const result = setupHook()
+    const dropped = [{ id: 'c_dead', kind: 'coincident', reason: 'stale reference' }]
+    await solveWith(result, { sk1: { status: 'ok', geometry: {}, dropped_constraints: dropped } })
+    expect(result.current.solveResults.sk1.dropped_constraints).toEqual(dropped)
+  })
+
   it('builds a plane result with the world transform its orientations derive from', async () => {
     const result = setupHook()
     await solveWith(result, {

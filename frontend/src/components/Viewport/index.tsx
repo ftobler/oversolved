@@ -727,6 +727,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
               entityStatus={solveResult?.features}
               otherSketches={isActiveFeature ? combinedOtherSketches : undefined}
               featureDef={fullFeatureDef}
+              droppedConstraints={solveResult?.dropped_constraints}
             />
           )
         })}

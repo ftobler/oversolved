@@ -47,6 +47,31 @@ export function constraintTargetSide(
   return 'unresolved'
 }
 
+/**
+ * True when `target` names another sketch's geometry by its feature-qualified
+ * spelling (`entity:<otherSketch>:<eid>` / `vertex:<otherSketch>:<eid>:<key>`).
+ * A stored `$eid` is local by definition, and the builtin origin is not a
+ * sketch. A caller with no known sketch id (a shape-only value check) gets
+ * false: without the active id nothing can be foreign.
+ *
+ * The solver reads only sketch-local refs, so a foreign operand is dead from
+ * the moment it is authored; the projection gesture is the supported shape.
+ */
+export function foreignConstraintTarget(target: string, featureId: string): boolean {
+  if (featureId === '' || target === '@builtin_origin') return false
+  const parts = target.split(':')
+  if (parts[0] !== 'entity' && parts[0] !== 'vertex') return false
+  return parts[1] !== undefined && parts[1] !== '' && parts[1] !== featureId
+}
+
+/** The one warning sentence for a constraint ignored by either the live-doc
+ *  lowering or the solver's survivors filter. Shared with the editor tile, which
+ *  shows the same sentence for a dropped constraint, so the tooltip and the tree
+ *  can never disagree about what was ignored. */
+export function ignoredConstraintWarning(id: string, kind: string, reason: string): string {
+  return `constraint ${id} (${kind}) names operands it cannot use (${reason}) and was ignored.`
+}
+
 /** The keys a midpoint stores, in the document's usual `$`/`@` wire form. The
  *  two forms are distinct: one line with its midpoint, or the point midway
  *  between two points. */
@@ -104,6 +129,19 @@ export function addConstraintProblem(
   const entityIds = new Set((feature?.entities ?? []).map(e => e.id))
   const kindById = new Map((feature?.entities ?? []).map(e => [e.id, e.kind]))
   const sideOf = (target: string) => constraintTargetSide(target, featureId, entityIds, kindById)
+
+  // A target naming another sketch is dead on the wire: the solver resolves
+  // sketch-local refs only. The UI snap and constraint paths project the picked
+  // element first (applyAddConstraint does it in the applier); a drive or MCP
+  // author gets told what to do instead of an ok that changed nothing. Only
+  // judged when the active sketch is known: a shape-only caller cannot classify
+  // a feature-qualified ref.
+  if (feature !== undefined) {
+    const foreign = targets.find(target => foreignConstraintTarget(String(target), featureId))
+    if (foreign !== undefined) {
+      return `constraint targets must be in sketch ${featureId}; project ${foreign} first (add_projected_entity)`
+    }
+  }
 
   if (kind === 'midpoint') {
     if (midpointOperands(targets, sideOf) !== null) return null

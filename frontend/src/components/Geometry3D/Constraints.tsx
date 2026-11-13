@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { Html } from '@react-three/drei'
-import type { Sketch, Constraints, Entity, PlaneTransform } from '@/types/cad'
+import type { Sketch, Constraints, Entity, PlaneTransform, PartConstraint, DroppedSketchConstraint } from '@/types/cad'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl, groupConstraintsByEntity } from '@/utils/geometry/sketchHelpers'
 import { renderDimension } from '@/components/Geometry3D/dimensions/renderDimension'
 import { COLOR_SELECTED, COLOR_ERROR_DEEP, LABEL_Z_OFFSET, highlightState } from '@/components/Geometry3D/constants'
 import { findEntitiesAtPoint } from '@/utils/geometry/drawGeometry'
-import { constraintTileLabel } from '@/registry/constraintRegistry'
+import { constraintTileLabel, CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
+import { computeConstraintRender } from '@/utils/geometry/geometryMapping'
+import { ignoredConstraintWarning } from '@/utils/constraintProblems'
 
 function ConstraintTile({ url, title, id, featureId, highlightIds, superfluous, culprit }: { url: string; title: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean }) {
   const [hovered, setHovered] = useState(false)
@@ -81,9 +83,50 @@ interface ConstraintOverlaysProps {
   extent: number
   featureId: string
   planeTransform?: PlaneTransform
+  /** The constraints the solve could not use. Each gets a red tile at its first
+   *  operand that still resolves locally (or the sketch origin), so the user can
+   *  find and delete the dead row instead of hunting the warning text. */
+  droppedConstraints?: readonly DroppedSketchConstraint[]
+  /** The authored constraint bodies, the only place a dropped constraint's
+   *  operands still live; the solved map has no render for it. */
+  authoredConstraints?: readonly PartConstraint[]
 }
 
-export function ConstraintOverlays({ constraints, sketch, extent, featureId, planeTransform }: ConstraintOverlaysProps) {
+/** One red tile per dropped constraint: the glyph the constraint would have had,
+ *  anchored where its surviving operand is. A constraint whose every operand is
+ *  gone anchors at the sketch origin, the one place a tile can still be found. */
+function droppedConstraintTiles(
+  dropped: readonly DroppedSketchConstraint[],
+  authored: readonly PartConstraint[] | undefined,
+  sketch: Sketch,
+): { id: string; at: [number, number]; url: string; title: string; highlightIds: string[] }[] {
+  const tiles: { id: string; at: [number, number]; url: string; title: string; highlightIds: string[] }[] = []
+  for (const entry of dropped) {
+    const body = authored?.find(c => c.id === entry.id)
+    if (!body) continue
+    const render = computeConstraintRender(body, sketch)
+    const at = ('at' in render && render.at ? render.at : [0, 0]) as [number, number]
+    const renderKind = typeof render.kind === 'string' ? render.kind : ''
+    const defKind = CONSTRAINT_BY_KIND.get(entry.kind)?.renderKind ?? ''
+    const url = getIconUrl(renderKind) ?? getIconUrl(defKind) ?? getIconUrl('symbol_unknown')
+    if (!url) continue
+    const highlighted = 'entities' in render && render.entities?.length
+      ? render.entities
+      : 'entity' in render && typeof render.entity === 'string'
+        ? [render.entity]
+        : findEntitiesAtPoint(sketch, at)
+    tiles.push({
+      id: entry.id,
+      at,
+      url,
+      title: ignoredConstraintWarning(entry.id, entry.kind, entry.reason),
+      highlightIds: highlighted.length > 0 ? highlighted : [],
+    })
+  }
+  return tiles
+}
+
+export function ConstraintOverlays({ constraints, sketch, extent, featureId, planeTransform, droppedConstraints, authoredConstraints }: ConstraintOverlaysProps) {
   const drag = useSketchEditorStore(s => s.drag)
   const isDragging = drag !== null
   const showConstraintTiles = useSketchUiStore(s => s.showConstraintTiles)
@@ -158,5 +201,29 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
     }
   }
 
-  return <>{[...symbolElements, ...dimElements]}</>
+  // A dropped constraint is an error marker, not decoration: it keeps its red
+  // tile even when the user hides the ordinary symbols, because hiding it would
+  // leave only the tree's warning text to find a row that cannot be deleted from
+  // the canvas. It still goes away during a drag, like every other tile.
+  const droppedElements: React.ReactNode[] = []
+  if (!isDragging) {
+    for (const tile of droppedConstraintTiles(droppedConstraints ?? [], authoredConstraints, sketch)) {
+      droppedElements.push(
+        <Html key={`dropped-${tile.id}`} position={[tile.at[0], tile.at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>
+          <div style={{ marginLeft: 20, marginTop: -8, display: 'flex' }}>
+            <ConstraintTile
+              url={tile.url}
+              title={tile.title}
+              id={tile.id}
+              featureId={featureId}
+              highlightIds={tile.highlightIds}
+              culprit
+            />
+          </div>
+        </Html>
+      )
+    }
+  }
+
+  return <>{[...symbolElements, ...dimElements, ...droppedElements]}</>
 }

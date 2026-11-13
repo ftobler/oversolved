@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, PartEntityDef, SketchFeature } from '@/types/cad'
+import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, PartEntityDef, SketchFeature, DroppedSketchConstraint } from '@/types/cad'
 import { useSketchEditorStore, type VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 
 // Vertex/point rendering
@@ -72,9 +72,12 @@ export interface Geometry3DProps {
   entityStatus?: EntityStatus
   otherSketches?: Record<string, Sketch>
   featureDef?: SketchFeature
+  /** The authored constraints this sketch's solve could not use; each draws a
+   *  red, selectable tile so the dead row can be found and deleted. */
+  droppedConstraints?: readonly DroppedSketchConstraint[]
 }
 
-export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, originLocal, solveStatus, entityStatus, otherSketches, featureDef }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, originLocal, solveStatus, entityStatus, otherSketches, featureDef, droppedConstraints }: Geometry3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const drag = useSketchEditorStore(s => s.drag)
   const isDraggingThis = !!drag && drag.featureId === featureId
@@ -301,7 +304,7 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && !stale && <TopologySurfaces topology={topology} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} isEditing={isEditing} constraints={featureDef?.constraints} />
-      {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} />}
+      {(constraints || droppedConstraints?.length) && isEditing && <ConstraintOverlays constraints={constraints ?? {}} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} droppedConstraints={droppedConstraints} authoredConstraints={featureDef?.constraints} />}
       {isEditing && !stale && <InferredContactMarkers candidates={inferredCandidates} />}
       {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} topology={stale ? undefined : topology} />}
       {isEditing && <DragSnapIndicator />}

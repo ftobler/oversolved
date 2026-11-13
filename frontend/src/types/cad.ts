@@ -1196,6 +1196,14 @@ export interface FeatureHandleData {
   max?: number
 }
 
+/** One authored sketch constraint the solve could not use, with the reason the
+ *  warning text and the red editor tile both state. */
+export interface DroppedSketchConstraint {
+  id: string
+  kind: string
+  reason: string
+}
+
 export interface SketchData {
   solved: Sketch
   constraints?: Constraints
@@ -1207,6 +1215,10 @@ export interface SketchData {
   // Projected entities the solve could not resolve. Kept in the solve result
   // (never written into the doc) so the cleanup command knows what to remove.
   projection_errors?: string[]
+  // Authored constraints the solve could not use (a stale or foreign operand, an
+  // unreadable one). Kept here so the editor can draw a removable tile for each
+  // and the cleanup command can clear them; they never reach the solver.
+  dropped_constraints?: DroppedSketchConstraint[]
   plane?: { origin: [number, number, number]; x_axis: [number, number, number]; y_axis: [number, number, number]; normal: [number, number, number] }
   body_id?: string
   body_ids?: string[]  // every body the feature made; body_id is only the first

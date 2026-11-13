@@ -22,7 +22,7 @@ import type { Sketch, SketchFeature, Entity, Constraints } from '@/types/cad'
 import type { Repository } from '../query'
 import { getPoint3d } from '../query'
 import type { Body } from '../types3d'
-import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
+import { partDocToSketches, type DroppedConstraint } from '@/wasm-kernel/partDocToSketches'
 import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSketch'
 import {
   encodeInput, decodeOutput, STATUS_NAME, Status, CONSTRAINT_FLAG, ConstraintKindCode,
@@ -31,6 +31,7 @@ import {
 import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags, getDefaultParams } from '@/registry'
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
+import { ignoredConstraintWarning } from '@/utils/constraintProblems'
 import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, type TopologyBytes, type WireContact } from '../topologyDecorate'
 import { declaredContacts } from './shared/declaredContacts'
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
@@ -40,6 +41,7 @@ import { isKernelTrap, swallowUnlessTrap } from '../errors'
 import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
 import { resolve3dGeometry, projectTo2d, type PlaneFrame } from './projectionLowering'
+import type { PlaneLike } from './shared/planes'
 import type { SolveBytes } from '@/wasm-kernel/codec'
 import type { SketchSolverBundle } from '@/wasm-kernel/wasmTypes'
 
@@ -76,6 +78,11 @@ export interface SketchResult {
   /** Entity ids of projected entities whose source query could not be resolved
    *  this solve; they were dropped so the rest of the sketch could build. */
   projection_errors?: string[]
+  /** The authored constraints this solve could not use, from both drop routes
+   *  (the live-doc lowering and the solver's survivors filter). The sketch
+   *  editor draws each as a red tile at its surviving local operand and the
+   *  cleanup command removes them; the warning text names the same ids. */
+  dropped_constraints?: DroppedConstraint[]
 }
 
 let solverBytes: SolveBytes | null = null
@@ -278,6 +285,7 @@ function lowerProjectionConstraints(
   loweredFeature: Dict
   resolvedKinds: Record<string, string>
   projectionErrors: string[]
+  projectionWarnings: string[]
   pinnedIds: string[]
 } {
   const entities = (feature.entities as Array<Dict>) ?? []
@@ -298,10 +306,11 @@ function lowerProjectionConstraints(
   const projections = constraints.filter((c) => c.kind === 'projection')
   const resolvedKinds: Record<string, string> = {}
   const projectionErrors: string[] = []
+  const projectionWarnings: string[] = []
   const pinnedIds: string[] = []
 
   if (projections.length === 0) {
-    return { loweredFeature: feature, resolvedKinds, projectionErrors, pinnedIds }
+    return { loweredFeature: feature, resolvedKinds, projectionErrors, projectionWarnings, pinnedIds }
   }
 
   const initial: Record<string, number[]> = { ...((feature.initial as Record<string, number[]>) ?? {}) }
@@ -335,7 +344,8 @@ function lowerProjectionConstraints(
           // nothing and the entity stayed at the stale/default point.
           const data3d = 'external_xy' in resolvedSrc
             ? { kindH: 'point' as const, data: { point: getPoint3d(resolvedSrc, globalRepo) } }
-            : resolve3dGeometry(resolvedSrc)
+            : resolve3dGeometry(resolvedSrc, (sketchId) =>
+                (globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined) ?? null)
           if (data3d) {
             const projected = projectTo2d(data3d, plane as PlaneFrame)
             if (projected) {
@@ -359,13 +369,22 @@ function lowerProjectionConstraints(
       initial[targetId] = [...(getDefaultParams ? getDefaultParams(declaredKind) : [])]
     }
     pinnedIds.push(targetId)
-    if (!resolved) projectionErrors.push(cid)
+    if (!resolved) {
+      projectionErrors.push(cid)
+      // Named, not silent: the drive reply reads this as a warning row on the
+      // sketch, so an unresolved projection cannot read as a clean build.
+      projectionWarnings.push(
+        `projection ${cid} source ${source === '' ? '(none)' : source} did not resolve; `
+        + 'the entity keeps its last position',
+      )
+    }
   }
 
   return {
     loweredFeature: { ...feature, constraints, initial },
     resolvedKinds,
     projectionErrors,
+    projectionWarnings,
     pinnedIds,
   }
 }
@@ -537,34 +556,29 @@ function droppedConstraintReason(input: FlatInput, layout: EntityLayout[], index
   return 'operand kind'
 }
 
-/** The one warning sentence for a constraint ignored by either the live-doc
- *  lowering or the solver's survivors filter. */
-function ignoredConstraintWarning(id: string, kind: string, reason: string): string {
-  return `constraint ${id} (${kind}) names operands it cannot use (${reason}) and was ignored.`
-}
-
 /**
- * One warning per authored constraint the solver dropped. A constraint naming
- * operands it cannot use (a point in the line slot, a Length on a point, a
- * stale ref) used to disappear without a trace; the dropped verdict bit makes
- * it a build warning the tree and the drive reply can name.
+ * The authored constraints the solver dropped, one structured record each. A
+ * constraint naming operands it cannot use (a point in the line slot, a Length
+ * on a point, a stale ref) used to disappear without a trace; the dropped
+ * verdict bit makes it a build warning the tree and the drive reply can name,
+ * and the editor draws it as a red tile from the same record.
  */
-export function droppedConstraintWarnings(
+export function droppedConstraintRecords(
   out: SolverOutput,
   input: FlatInput,
   layout: EntityLayout[],
   constraintIds: ReadonlyArray<string | null>,
   authoredKindById: ReadonlyMap<string, string>,
-): string[] {
-  const warnings: string[] = []
+): DroppedConstraint[] {
+  const dropped: DroppedConstraint[] = []
   for (let i = 0; i < out.constraintFlags.length; i++) {
     if ((out.constraintFlags[i] & CONSTRAINT_FLAG.dropped) === 0) continue
     const cid = constraintIds[i]
     if (cid === null || cid === undefined) continue
     const kind = authoredKindById.get(cid) ?? CONSTRAINT_KIND_NAME[input.constraints[i]?.kind ?? -1] ?? 'constraint'
-    warnings.push(ignoredConstraintWarning(cid, kind, droppedConstraintReason(input, layout, i)))
+    dropped.push({ id: cid, kind, reason: droppedConstraintReason(input, layout, i) })
   }
-  return warnings
+  return dropped
 }
 
 export function solveSketch(
@@ -585,7 +599,7 @@ export function solveSketch(
     globalRepo,
     { sketchId: featureId, featuresById },
   )
-  const { loweredFeature, resolvedKinds, projectionErrors, pinnedIds } =
+  const { loweredFeature, resolvedKinds, projectionErrors, projectionWarnings, pinnedIds } =
     lowerProjectionConstraints(feature, plane, globalRepo)
 
   // ─── Lower the live PartDoc feature to SketchInput ───
@@ -699,10 +713,18 @@ export function solveSketch(
     ? [underconstrainedWarning(out.diagnostics.dof, freeIds)]
     : []
   const authoredKindById = new Map<string, string>((pf.constraints ?? []).map(c => [c.id, c.kind]))
-  warnings.push(...droppedConstraintWarnings(out, input, layout, constraintIds, authoredKindById))
-  // The live-document lowering drops an unresolvable ref before the wire, so
-  // the solver cannot flag it; name those constraints on the same warning.
-  warnings.push(...droppedConstraints.map(d => ignoredConstraintWarning(d.id, d.kind, d.reason)))
+  // Both drop routes in one list: the lowering drops (unresolvable refs, bad
+  // shapes) and the solver's survivors filter. The editor draws a tile per record
+  // and the cleanup command removes them, so this list is the single answer to
+  // "which authored constraints does the solve not use".
+  const droppedList: DroppedConstraint[] = [
+    ...droppedConstraints,
+    ...droppedConstraintRecords(out, input, layout, constraintIds, authoredKindById),
+  ]
+  warnings.push(...droppedList.map(d => ignoredConstraintWarning(d.id, d.kind, d.reason)))
+  // An unresolved projection used to be silent over MCP (it survives as a pinned
+  // entity, so the solve reads clean): name it on the same warning channel.
+  warnings.push(...projectionWarnings)
 
   return {
     status,
@@ -717,6 +739,7 @@ export function solveSketch(
     ...(Object.keys(constraintResults).length ? { constraints: constraintResults } : {}),
     ...(Object.keys(resolvedKinds).length ? { resolved_kinds: resolvedKinds } : {}),
     ...(projectionErrors.length ? { projection_errors: projectionErrors } : {}),
+    ...(droppedList.length ? { dropped_constraints: droppedList } : {}),
     solve_ms: 0,
   }
 }

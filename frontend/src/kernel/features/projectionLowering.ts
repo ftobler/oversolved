@@ -12,7 +12,8 @@
 
 import { fitCubicBezier } from '@/utils/geometry/bezierFit'
 import { dot as dot3, cross as cross3 } from '@/utils/vec3'
-import { worldToSketch2d } from './shared/planes'
+import { worldToSketch2d, sketchToWorld2d } from './shared/planes'
+import type { PlaneLike } from './shared/planes'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 
 type Dict = Record<string, unknown>
@@ -121,8 +122,25 @@ function isParallelToPlane(axis: number[], plane: PlaneFrame): boolean {
   return Math.abs(dot3(an, pn)) >= 0.9999
 }
 
-/** Extract 3D geometry from a repository payload (mirrors `_resolve_source_geometry`). */
-export function resolve3dGeometry(data: Dict): Resolved3dGeometry | null {
+/** A 3D frame lookup for a sketch id: the `_pt_<sketchId>` registration, which
+ *  carries the full plane frame (origin, axes and normal). The lowerer stays
+ *  repository-free so it can be unit tested; the solve passes the lookup. */
+export type SketchFrameLookup = (sketchId: string) => PlaneLike | null
+
+/**
+ * Extract 3D geometry from a repository payload (mirrors `_resolve_source_geometry`).
+ *
+ * `sketchFrame` lifts a whole sketch entity: `postRegister` registers
+ * `<sketch>/<eid>` as `{external_params, kind, sketch_id}`, whose params are 2D
+ * in the owning sketch's frame. A cross-sketch snap or projection of such an
+ * entity had no branch and resolved nothing. The lift mirrors
+ * `resolveCircularReference` in `shared/directionQuery.ts` (centre through the
+ * frame, the frame normal as the circle axis): line, circle and arc lower; a
+ * spline or ellipse payload is left unresolved (its 2D params do not describe a
+ * curve this projection can rebuild), which the sketch solve reports as a
+ * projection error naming the constraint.
+ */
+export function resolve3dGeometry(data: Dict, sketchFrame?: SketchFrameLookup): Resolved3dGeometry | null {
   const dataType = (data.type as string) ?? ''
   // Every face kind projects as its own centroid point; a cone, sphere or torus
   // payload used to miss this branch and project nothing at all.
@@ -188,6 +206,49 @@ export function resolve3dGeometry(data: Dict): Resolved3dGeometry | null {
       (data.z as number) ?? 0,
     ]
     return { kindH: 'point', data: { point: pt } }
+  }
+  if ('external_params' in data) {
+    const sketchId = (data.sketch_id as string | undefined) ?? ''
+    const frame = sketchId !== '' ? sketchFrame?.(sketchId) ?? null : null
+    const params = data.external_params as number[] | undefined
+    const kind = (data.kind as string | undefined) ?? ''
+    if (!frame || !params || params.length < 2) return null
+    // The first pair is the line start or the curve centre, whichever the kind
+    // reads it as.
+    const p0 = sketchToWorld2d([params[0], params[1]], frame)
+    const xAxis = frame.x_axis
+    if (kind === 'line') {
+      if (params.length < 4) return null
+      return {
+        kindH: 'line',
+        data: { start: p0, end: sketchToWorld2d([params[2], params[3]], frame) },
+      }
+    }
+    if (kind === 'circle') {
+      if (params.length < 3) return null
+      const normal = cross3(frame.x_axis, frame.y_axis)
+      return { kindH: 'circle', data: { center: p0, radius: params[2], axis: normal, x_axis: [...xAxis] } }
+    }
+    if (kind === 'arc') {
+      // The document stores arc angles in degrees; the 3D payload every other
+      // projection branch reads carries radians.
+      if (params.length < 5) return null
+      const normal = cross3(frame.x_axis, frame.y_axis)
+      return {
+        kindH: 'arc',
+        data: {
+          center: p0,
+          radius: params[2],
+          axis: normal,
+          x_axis: [...xAxis],
+          angle_start: (params[3] * Math.PI) / 180,
+          angle_end: (params[4] * Math.PI) / 180,
+        },
+      }
+    }
+    // A spline or ellipse source has no 2D-params-to-3D lift here; refusing it
+    // leaves the caller's `projection_errors` naming the dead projection.
+    return null
   }
   // Fallback: payloads from the slash registry (hole points, etc.)
   if ('x' in data || 'y' in data || 'z' in data) {

@@ -197,6 +197,9 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     expect(out.solver_warning).toMatch(
       /^constraint c_length_\S+ \(length\) names operands it cannot use \(operand kind\) and was ignored\.$/,
     )
+    // The structured twin the editor tiles and the cleanup command read.
+    expect(out.dropped_constraints).toHaveLength(1)
+    expect(out.dropped_constraints![0]).toMatchObject({ kind: 'length', reason: 'operand kind' })
   })
 
   it('reports a constraint the live-doc lowering dropped for a stale ref', () => {
@@ -213,6 +216,9 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     expect(out.solver_warning).toMatch(
       /^constraint c_missing \(coincident\) names operands it cannot use \(stale reference\) and was ignored\.$/,
     )
+    expect(out.dropped_constraints).toEqual([
+      { id: 'c_missing', kind: 'coincident', reason: 'stale reference' },
+    ])
   })
 
   it('reports a colinear the lowering dropped for a shape it cannot read', () => {

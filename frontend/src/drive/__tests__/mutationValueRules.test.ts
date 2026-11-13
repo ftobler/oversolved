@@ -407,6 +407,49 @@ describe('finding 5: add_constraint target spelling', () => {
   })
 })
 
+// A target naming another sketch is dead on the wire: the solver resolves
+// sketch-local refs only, so the constraint would be dropped at solve time and
+// the caller would see an ok that changed nothing. The refusal tells the author
+// the projection that does work.
+describe('a cross-sketch constraint target is refused by name', () => {
+  function twoSketchDoc(): PartDoc {
+    return seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [{ id: 'L1', kind: 'line' }],
+          initial: { L1: [0, 0, 10, 0] },
+        },
+        {
+          id: 'sk2', kind: 'sketch', plane: '@builtin_plane_right',
+          entities: [{ id: 'ax', kind: 'line' }],
+          initial: { ax: [0, 0, 10, 0] },
+        },
+      ],
+    })
+  }
+
+  it('refuses the pair and names the project-first fix', () => {
+    const error = refusal({
+      type: 'add_constraint', featureId: 'sk2', kind: 'coincident',
+      targets: ['vertex:sk2:ax:start', 'entity:sk1:L1'],
+    }, twoSketchDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toBe(
+      'constraint targets must be in sketch sk2; project entity:sk1:L1 first (add_projected_entity)',
+    )
+  })
+
+  it('still accepts the local pair', () => {
+    expect(validateMutation({
+      type: 'add_constraint', featureId: 'sk2', kind: 'coincident',
+      targets: ['vertex:sk2:ax:start', 'entity:sk2:ax'],
+    }, { doc: twoSketchDoc() })).toMatchObject({ ok: true })
+  })
+})
+
 // The repro from the practice runs: `add_constraint midpoint` accepted a
 // `$<id>` line and a builtin origin, refused them, and still reported ok with
 // no ids. The accepted spellings must pass the rule; a midpoint of two points

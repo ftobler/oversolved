@@ -269,19 +269,31 @@ describe('applyAddEntityWithConstraint', () => {
     expect(constraints0(doc)).toHaveLength(0)
   })
 
-  it('uses source feature ID for cross-sketch snap vertex', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{
-      id: 'Sketch1', kind: 'sketch',
-      entities: [],
-      initial: {},
-      constraints: [],
-    }] }
+  it('projects a cross-sketch snap vertex into this sketch instead of naming the other sketch', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [
+      {
+        id: 'Sketch2', kind: 'sketch',
+        entities: [{ id: 'line1', kind: 'line' }],
+        initial: { line1: [0, 0, 10, 0] },
+        constraints: [],
+      },
+      {
+        id: 'Sketch1', kind: 'sketch',
+        entities: [],
+        initial: {},
+        constraints: [],
+      },
+    ] }
     applyAddEntityWithConstraint(doc, 'Sketch1', 'line', [0, 0, 5, 5], 'start', 'vertex:Sketch2:line1:start', 'coincident')
-    const newEntity = entities0(doc)[0]
-    const newConstraint = constraints0(doc).find(c => c.kind === 'coincident')!
+    const active = featureAt(doc, 1, 'sketch')
+    const newEntity = active.entities![0]
+    const newConstraint = active.constraints!.find(c => c.kind === 'coincident')!
     expect(newConstraint.a).toBe(`$${newEntity.id}start`)
-    // Absolute cross-feature refs are slash-joined (canonical kernel format).
-    expect(newConstraint.b).toBe('@Sketch2/line1/start')
+    // The foreign element is a visible held entity of this sketch now; the
+    // constraint names that, never `@Sketch2/...` (which the solve ignores).
+    const projection = active.constraints!.find(c => c.kind === 'projection')!
+    expect(projection.source).toBe('@Sketch2/line1/start')
+    expect(newConstraint.b).toBe(`${projection.target}xy`)
   })
 })
 

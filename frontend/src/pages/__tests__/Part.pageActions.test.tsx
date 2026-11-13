@@ -317,6 +317,29 @@ describe('Part page actions', () => {
     expect(screen.queryByTestId('context-menu')).toBeNull()
   })
 
+  it('offers the cleanup for a constraint the solve dropped and includes its id', () => {
+    const sketch1 = F.doc.features![2] as { constraints?: { id: string; kind: string }[] }
+    const originalConstraints = sketch1.constraints
+    const originalSolve = F.solve.sketch1
+    sketch1.constraints = [...(originalConstraints ?? []), { id: 'c_dead', kind: 'coincident' }]
+    F.solve.sketch1 = {
+      ...originalSolve,
+      dropped_constraints: [{ id: 'c_dead', kind: 'coincident', reason: 'stale reference' }],
+    } as unknown as typeof originalSolve
+    try {
+      renderPart()
+      fireEvent.click(screen.getByTestId('feature-ctx-extrude1'))
+      fireEvent.click(menuItem(/Remove dangling/))
+      expect(h.handleMutation).toHaveBeenCalledWith({
+        type: 'remove_dangling_content',
+        features: { sketch1: { projections: [], constraints: ['c1', 'c_dead'] } },
+      })
+    } finally {
+      sketch1.constraints = originalConstraints
+      F.solve.sketch1 = originalSolve
+    }
+  })
+
   it('the active sketch menu aligns the camera to its plane and toggles the constraint tiles', () => {
     useEditorState.setState({
     editingFeatureId: 'sketch1',

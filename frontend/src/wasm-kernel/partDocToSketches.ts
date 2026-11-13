@@ -15,7 +15,7 @@
  * skipped with a reason. Those await the phase-2 projection lowering.
  */
 
-import type { PartConstraint, PartFeature, SketchFeature } from '@/types/cad'
+import type { PartConstraint, PartFeature, SketchFeature, DroppedSketchConstraint } from '@/types/cad'
 import { resolveVertexRef } from '@/types/vertexRef'
 import { colinearShapeProblem, constraintOperandSide } from '@/utils/constraintOperands'
 import { isConstraintKindName } from './codec'
@@ -23,12 +23,10 @@ import type { SketchInput } from './lowerSketch'
 
 /** A constraint the live-document lowering could not turn into a solver row.
  *  An unresolved ref used to vanish here, before the wire, so no verdict could
- *  name it; the sketch warning path reports these instead. */
-export interface DroppedConstraint {
-  id: string
-  kind: string
-  reason: string
-}
+ *  name it; the sketch warning path reports these instead. The record shape is
+ *  shared with the solve result (`dropped_constraints`) so the editor tile and
+ *  the warning cannot disagree. */
+export type DroppedConstraint = DroppedSketchConstraint
 
 export interface ExtractedSketch {
   featureId: string

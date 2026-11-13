@@ -111,6 +111,7 @@ export function useSolver(
       thread?: import('@/types/cad').ThreadDisplayData
       solve_ms?: number
       projection_errors?: string[]
+      dropped_constraints?: import('@/types/cad').DroppedSketchConstraint[]
       dof?: number
     }>
 
@@ -177,6 +178,10 @@ export function useSolver(
           ...(feature.originLocal && { originLocal: feature.originLocal }),
           ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
           ...(feature.projection_errors?.length && { projection_errors: feature.projection_errors }),
+          // The constraints the solve had to ignore: the editor tiles and the
+          // cleanup command read them. Solve-time facts like projection_errors,
+          // so they are never written into the doc.
+          ...(feature.dropped_constraints?.length && { dropped_constraints: feature.dropped_constraints }),
           // The sketch's constraint law: the tree and the open editor read this
           // row through featureFailure, so dropping the warning here left the
           // app unmarked while the MCP reply showed yellow.

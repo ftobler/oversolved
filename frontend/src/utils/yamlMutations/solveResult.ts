@@ -97,11 +97,12 @@ export function shouldBakeSketchGeometry(
   return featureResult?.status !== 'overconstrained'
 }
 
-// The explicit cleanup command's handler: removes the projected entities and
-// superfluous constraints the last solve flagged, then drops any constraint that
-// references a removed entity so no dangling refs linger in the doc. Only
-// source-carrying entities are eligible for removal (a flagged entity without a
-// source is a plain sketch entity and is kept). Undo restores the whole doc.
+// The explicit cleanup command's handler: removes the projected entities and the
+// constraints the last solve flagged (redundant rows and the ones it could not
+// use), then drops any constraint that references a removed entity so no
+// dangling refs linger in the doc. Only source-carrying entities are eligible
+// for removal (a flagged entity without a source is a plain sketch entity and is
+// kept). Undo restores the whole doc.
 export function applyRemoveDanglingContent(
   doc: PartDoc,
   perFeature: Record<string, { projections: string[]; constraints: string[] }>,

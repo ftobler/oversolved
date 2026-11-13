@@ -387,6 +387,7 @@ export default function Part() {
   const hasDanglingContent = useMemo(() => {
     for (const data of Object.values(solveResults)) {
       if (data.projection_errors?.length) return true
+      if (data.dropped_constraints?.length) return true
       if (data.constraints && Object.values(data.constraints).some(c => c.superfluous)) return true
     }
     return false
@@ -401,9 +402,15 @@ export default function Part() {
     const perFeature: Record<string, { projections: string[]; constraints: string[] }> = {}
     for (const [featureId, data] of Object.entries(solveResults)) {
       const projections = data.projection_errors ?? []
-      const constraints = Object.entries(data.constraints ?? {})
-        .filter(([, c]) => c.superfluous)
-        .map(([cid]) => cid)
+      // The cleanup's `constraints` list is every constraint id to remove: the
+      // solve's redundant rows and the ones it had to ignore (a cross-sketch
+      // ref, an unreadable operand). Both are dead weight, both are undoable.
+      const constraints = [
+        ...Object.entries(data.constraints ?? {})
+          .filter(([, c]) => c.superfluous)
+          .map(([cid]) => cid),
+        ...(data.dropped_constraints ?? []).map(d => d.id),
+      ]
       if (projections.length > 0 || constraints.length > 0) {
         perFeature[featureId] = { projections, constraints }
       }
