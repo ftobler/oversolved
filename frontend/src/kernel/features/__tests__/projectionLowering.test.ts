@@ -297,13 +297,15 @@ describe('arc projection (3D body arc)', () => {
     expect(ea).toBeCloseTo(0)
   })
 
-  it('projects a sketch-local arc (2D angles, no 3D axis) straight through', () => {
-    // A sketch-to-sketch projection carries the source arc's 2D angles already;
-    // rebuilding them from a 3D axis would be both unnecessary and wrong.
+  it('refuses an arc payload with no axis, which no production payload omits', () => {
+    // The OCC reader always writes the circle's axis/x_axis, and the sketch
+    // lift supplies the owning frame's normal, so an axis-less arc has no
+    // source plane to project from. The old pass-through branch was reachable
+    // only from a hand-built payload and mixed radian angles into degree slots.
     const g = resolve3dGeometry(
       { type: 'edge', kind: 'arc', center: [1, 2, 0], radius: 5, angle_start: 30, angle_end: 120 })!
-    const out = projectTo2d(g, XY)!
-    expect(out).toEqual({ kind: 'arc', params: [1, 2, 5, 30, 120] })
+    expect(g.kindH).toBe('arc')
+    expect(projectTo2d(g, XY)).toBeNull()
   })
 
   it('lowers a tilted source arc to a sampled curve, not a fake circular arc', () => {

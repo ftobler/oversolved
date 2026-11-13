@@ -293,6 +293,63 @@ describe('solveSketch projection lowering', () => {
     )
   })
 
+  it('does not pad a stored point block into the declared line when the source is dead', () => {
+    if (!solveBytes) return
+    // A projection declared `line` can resolve to a point (a line seen end-on);
+    // its cache is then two params. When the source dies, padding that block to
+    // the line's four slots invented a (40,30)->(0,0) pinned segment, and the
+    // "keep its last position" rule made it permanent. A block of another arity
+    // is not a position in this kind.
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'drawn', kind: 'circle' },
+        { id: 'held', kind: 'line' },
+      ],
+      initial: { drawn: [2, 3, 4], held: [40, 30] },
+      constraints: [
+        { id: 'proj_held', kind: 'projection', target: '$held', source: '?edge;gone' },
+      ],
+    }
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    expect(out.status).not.toBe('exception')
+    expect(out.geometry?.held).toBeUndefined()
+    expect(profileEntityIds(out)).not.toContain('held')
+    expect(out.solver_warning).toContain(
+      'projection proj_held source ?edge;gone did not resolve; '
+      + 'the entity has no position yet and is left out of the profile',
+    )
+  })
+
+  it('does not truncate a stored fit_spline block into a declared spline', () => {
+    if (!solveBytes) return
+    // A spline declaration can resolve to a fit_spline, whose cache is 2N
+    // params. Under the declared cubic spline's 8 slots a truncation read the
+    // first four fit points as a cubic and pinned that curve. Any legal fit
+    // block (2N, N >= 2, even) belongs to the variable-size kind, never to the
+    // fixed one.
+    const fitBlock = [0, 0, 2, 1, 4, -1, 6, 1, 8, 0]
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'drawn', kind: 'circle' },
+        { id: 'held', kind: 'spline' },
+      ],
+      initial: { drawn: [2, 3, 4], held: fitBlock },
+      constraints: [
+        { id: 'proj_held', kind: 'projection', target: '$held', source: '?edge;gone' },
+      ],
+    }
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    expect(out.status).not.toBe('exception')
+    expect(out.geometry?.held).toBeUndefined()
+    expect(profileEntityIds(out)).not.toContain('held')
+    expect(out.solver_warning).toContain(
+      'projection proj_held source ?edge;gone did not resolve; '
+      + 'the entity has no position yet and is left out of the profile',
+    )
+  })
+
   it('keeps an unresolved projection with a cached position in the solve and the profile', () => {
     if (!solveBytes) return
     // The other half of the rule: a projection whose source died still holds its
@@ -547,6 +604,36 @@ describe('solveSketch projects another sketch\'s whole entity', () => {
     expect(g![1]).toBeCloseTo(0)
     expect(g![2]).toBeCloseTo(0)
     expect(g![3]).toBeCloseTo(5)
+  })
+
+  it('lifts a foreign arc through its owning sketch frame, on Front and a parallel offset plane', () => {
+    if (!solveBytes) return
+    // sk1 holds a 30..120 degree arc in its own Front frame. A sketch on Front
+    // and one on a plane parallel to it are looking at the same world arc, so
+    // both project the same centre, radius and sweep -- in degrees, the slots
+    // every sketch arc reads.
+    const entries = {
+      ...ENTRIES,
+      'sk1/A1': { external_params: [10, 5, 4, 30, 120], kind: 'arc', sketch_id: 'sk1' },
+      '?offsetFace': { origin: [0, 0, 7], normal: [0, 0, 1], x_axis: [1, 0, 0], y_axis: [0, 1, 0] },
+    }
+    const arcSketch = (plane: string): Dict => ({
+      id: 'sk2', kind: 'sketch', plane,
+      entities: [{ id: 'held', kind: 'arc' }],
+      initial: { held: [0, 0, 1, 0, 90] },
+      constraints: [{ id: 'proj_held', kind: 'projection', target: '$held', source: '@sk1/A1' }],
+    })
+    for (const plane of ['@builtin_plane_front', '?offsetFace']) {
+      const out = solveSketch(arcSketch(plane), repoOf(entries), {} as Record<string, Body>)
+      expect(out.projection_errors, plane).toBeUndefined()
+      const g = out.geometry?.held
+      expect(g, plane).toBeDefined()
+      expect(g![0]).toBeCloseTo(10)
+      expect(g![1]).toBeCloseTo(5)
+      expect(g![2]).toBeCloseTo(4)
+      expect(g![3]).toBeCloseTo(30)
+      expect(g![4]).toBeCloseTo(120)
+    }
   })
 
   it('keeps a foreign vertex projection working (the point path)', () => {

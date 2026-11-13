@@ -29,7 +29,7 @@ import {
   encodeInput, decodeOutput, STATUS_NAME, Status, CONSTRAINT_FLAG, ConstraintKindCode,
   type FlatConstraint, type FlatInput, type SolverOutput,
 } from '@/wasm-kernel/codec'
-import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags, getDefaultParams } from '@/registry'
+import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags, getDefaultParams, ENTITY_BY_KIND } from '@/registry'
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { ignoredConstraintWarning } from '@/utils/constraintProblems'
@@ -296,6 +296,27 @@ function isDefaultParamsBlock(params: unknown, kind: string): boolean {
 }
 
 /**
+ * True when a stored `initial` block is a position in the declared kind's own
+ * layout. A projection keeps its last position only on this answer.
+ *
+ * The block can belong to another kind: a projection declared `line` that
+ * resolved to a `point` (an end-on source) caches 2 params, one declared
+ * `spline` that resolved to a `fit_spline` caches 2N. Padding or truncating
+ * that block to the declared kind's arity invents geometry at the stale
+ * position, which the "keep the last position" rule then makes permanent. A
+ * variable-size kind (`fit_spline`) has no arity to compare against: its block
+ * IS the layout, so any legal fit block is its own position and `lowerSketch`
+ * owns the exact point/handle count.
+ */
+function isProjectionPosition(stored: unknown, kind: string): boolean {
+  if (!Array.isArray(stored) || isDefaultParamsBlock(stored, kind)) return false
+  const def = ENTITY_BY_KIND.get(kind)
+  if (def === undefined) return false
+  if (def.variableParams) return stored.length >= def.paramCount && stored.length % 2 === 0
+  return stored.length === def.paramCount
+}
+
+/**
  * Project one body/sketch source query; `declaredPoint` asks for the curve
  * centre when the source is curved (a projection declared `point`).
  */
@@ -468,9 +489,11 @@ function lowerProjectionConstraints(
     const declaredKind = (ent?.kind as string) ?? 'point'
     // Read before any branch writes `initial`: an unresolved projection can only
     // "keep its last position" if it had one on entry. A block equal to the kind
-    // defaults is the old fallback's baked zero curve, not a position.
+    // defaults is the old fallback's baked zero curve, and a block of another
+    // arity is a cache of a resolve that lowered to a different kind; neither is
+    // a position in this kind's slots.
     const stored = initial[targetId]
-    const hadPosition = stored !== undefined && !isDefaultParamsBlock(stored, declaredKind)
+    const hadPosition = isProjectionPosition(stored, declaredKind)
     let resolved = false
     try {
       if (source.startsWith('$')) {
@@ -499,9 +522,12 @@ function lowerProjectionConstraints(
     }
     // Whether resolved or not, the entity stays in the solve and is pinned:
     // resolved -> at the freshly projected params; unresolved -> at its cached
-    // (last projected) params, or default params if it never had any. The
-    // projection constraint id is reported as an error only when unresolved.
-    if (initial[targetId] === undefined) {
+    // (last projected) params, or default params when the stored block is not a
+    // position in this kind (it never had one, or it is another kind's block).
+    // A foreign block is replaced rather than kept: passing it on would make the
+    // solver pad or truncate it to this kind's arity. The projection constraint
+    // id is reported as an error only when unresolved.
+    if (initial[targetId] === undefined || (!resolved && !hadPosition)) {
       initial[targetId] = [...(getDefaultParams ? getDefaultParams(declaredKind) : [])]
     }
     pinnedIds.push(targetId)
@@ -998,7 +1024,11 @@ export function resolvedKindsOfSketch(sketch: Sketch | null | undefined): Record
  *  entity still says the pick-time kind while its baked params are the resolved
  *  one (a circle seen edge-on is a 4-param line). Adopting the render kind here
  *  keeps those paths reading the params in the kind they were written as,
- *  instead of binding a `center` ref to the line's start. */
+ *  instead of binding a `center` ref to the line's start. A path with no last
+ *  solve (a freshly opened sketch, or one still waiting on its first solve)
+ *  passes no map: the document's pick-time kind is then the honest answer, and
+ *  the params are whatever the document holds for it.
+ */
 export function pinProjectionTargets(
   feature: SketchFeature,
   resolvedKinds?: Readonly<Record<string, string>>,

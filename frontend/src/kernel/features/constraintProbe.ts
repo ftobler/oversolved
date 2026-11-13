@@ -88,6 +88,12 @@ export type PendingConstraintVerdict = 'ok' | 'redundant' | 'dropped'
  * means the mutation layer would append nothing (the add is malformed for the
  * operand set), so the caller must emit nothing rather than its planned
  * projections.
+ *
+ * `resolvedKinds` and `derivedMembers` are the last solve's render kinds and
+ * face-projection rows. A caller that holds that solve must pass them: with the
+ * document kind no longer following the resolution, the probe would otherwise
+ * read a projected entity in its pick-time kind. A caller with no last solve
+ * passes nothing, and the document's stored kind is then the honest answer.
  */
 export function classifyPendingAdd(
   doc: PartDoc | null,
@@ -108,7 +114,16 @@ export function classifyPendingAdd(
  * Anything that cannot be decided (no doc, a non-sketch feature, no solver, an
  * unsatisfied draft set) answers false: the add proceeds and the next solve
  * reports whatever it finds.
+ *
+ * The optional solve facts are the same ones `classifyPendingAdd` documents;
+ * this wrapper forwards them so a caller holding a solve does not silently
+ * degrade the probe to the document kinds.
  */
-export function wouldOverconstrain(doc: PartDoc | null, pending: PendingConstraintAdd): boolean {
-  return classifyPendingAdd(doc, pending) === 'redundant'
+export function wouldOverconstrain(
+  doc: PartDoc | null,
+  pending: PendingConstraintAdd,
+  resolvedKinds?: Readonly<Record<string, string>>,
+  derivedMembers?: readonly ProjectionMemberEntity[],
+): boolean {
+  return classifyPendingAdd(doc, pending, resolvedKinds, derivedMembers) === 'redundant'
 }
