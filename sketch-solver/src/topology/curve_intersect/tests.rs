@@ -870,3 +870,41 @@ fn a_hit_on_a_degenerate_ellipse_pair_is_finite() {
         assert!(h.t_b.is_finite(), "t_b {}", h.t_b);
     }
 }
+
+#[test]
+fn a_line_crossing_a_degenerate_ellipse_reports_its_major_axis_ends() {
+    // A b = 0 ellipse is the segment along its major axis. The line/ellipse
+    // closed form divided the local y by the zero axis and every intermediate
+    // went inf/NaN, so a crossing line was silently missed.
+    let e = Curve::Ellipse {
+        c: [20.0, 0.0],
+        a: 3.0,
+        b: 0.0,
+        theta: 0.0,
+    };
+    let hits = intersect_curves(&line([10.0, 0.0], [30.0, 0.0]), &e);
+    assert_eq!(hits.len(), 2, "the segment ends are the two contacts");
+    let mut xs: Vec<f64> = hits.iter().map(|h| h.point[0]).collect();
+    xs.sort_by(|p, q| p.total_cmp(q));
+    assert!((xs[0] - 17.0).abs() < 1e-6, "left end {}", xs[0]);
+    assert!((xs[1] - 23.0).abs() < 1e-6, "right end {}", xs[1]);
+    for h in hits {
+        assert!(h.t_a.is_finite() && h.t_b.is_finite(), "{h:?}");
+    }
+}
+
+#[test]
+fn a_negative_semi_axis_keeps_its_sign_in_the_recovered_parameter() {
+    // a = -3 names the same ellipse as a = 3 with the eccentric angle shifted
+    // by pi. The degenerate-axis floor must not fold the sign away and move a
+    // recovered parameter to the opposite end.
+    let e = Curve::Ellipse {
+        c: [0.0, 0.0],
+        a: -3.0,
+        b: 1.0,
+        theta: 0.0,
+    };
+    // Local x' = -3 with x'/a = 1 at the left end, x'/a = -1 at the right one.
+    assert_eq!(param_of(&e, [-3.0, 0.0]), 0.0);
+    assert!((param_of(&e, [3.0, 0.0]) - std::f64::consts::PI).abs() < 1e-12);
+}

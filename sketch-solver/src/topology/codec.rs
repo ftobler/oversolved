@@ -31,6 +31,10 @@ pub enum TopologyCodecError {
     NonFinite {
         entity: Option<String>,
     },
+    /// A declared contact's unmet record carried a non-finite point or gap.
+    /// The contact id names the authored constraint, which is not an entity, so
+    /// it rides its own arm rather than the `entity` slot.
+    NonFiniteUnmetContact(String),
     /// More entities than `MAX_ENTITIES`. Mirrors the flat codec's capacity
     /// philosophy: counts are untrusted, and here the cost of believing them
     /// is quadratic downstream, so the refusal happens at decode.
@@ -73,6 +77,9 @@ impl std::fmt::Display for TopologyCodecError {
             }
             TopologyCodecError::NonFinite { entity: None } => {
                 write!(f, "non-finite value not attributable to one entity")
+            }
+            TopologyCodecError::NonFiniteUnmetContact(id) => {
+                write!(f, "non-finite value in unmet contact '{id}'")
             }
             TopologyCodecError::TooManyEntities => {
                 write!(f, "more than {MAX_ENTITIES} entities")
@@ -407,15 +414,18 @@ fn reject_non_finite_output(out: &TopologyOut) -> Result<(), TopologyCodecError>
     if let Some(be) = bad_boundary {
         return Err(non_finite(be.id.as_deref()));
     }
-    let unmet_ok = out
+    // The unmet-contact record carries the authored constraint id, not an
+    // entity. Its own arm keeps that id out of the `entity` slot, where a
+    // constraint id would read as an entity and send the user looking for a
+    // curve that does not exist.
+    if let Some(c) = out
         .unmet_contacts
         .iter()
-        .all(|c| pt_ok(&c.a) && pt_ok(&c.b) && c.gap.is_finite());
-    if unmet_ok {
-        Ok(())
-    } else {
-        Err(non_finite(None))
+        .find(|c| !pt_ok(&c.a) || !pt_ok(&c.b) || !c.gap.is_finite())
+    {
+        return Err(TopologyCodecError::NonFiniteUnmetContact(c.id.clone()));
     }
+    Ok(())
 }
 
 /// Geometry fields of one edge (kind + curve-specific keys), matching the TS eg
@@ -947,6 +957,25 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "non-finite value not attributable to one entity"
+        );
+    }
+
+    #[test]
+    fn a_non_finite_unmet_contact_names_the_authored_contact() {
+        // The record carries the authored constraint id, not an entity. Its own
+        // arm keeps the id out of the `entity` slot, so the message never sends
+        // the user looking for a curve with the constraint's name.
+        let mut out = square_topology();
+        out.unmet_contacts.push(UnmetContact {
+            id: "tangent_1".into(),
+            a: [0.0, 0.0],
+            b: [0.0, f64::NAN],
+            gap: 0.1,
+        });
+        let err = encode_output(&out).expect_err("a NaN contact point is refused");
+        assert_eq!(
+            err.to_string(),
+            "non-finite value in unmet contact 'tangent_1'"
         );
     }
 }

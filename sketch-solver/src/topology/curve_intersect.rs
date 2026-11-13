@@ -99,6 +99,35 @@ const FLAT: f64 = 1e-7;
 
 // ─── recover a curve's parameter from a point known to lie on it ───
 
+/// The magnitude below which a semi-axis is treated as zero by the parameter
+/// recovery and the line/ellipse closed form. It is the square root of the
+/// solver residual's `MIN_SEMI_AXIS_SQ`, the floor those arms already apply to
+/// the squared axis. Three floors live in this path on purpose and answer
+/// different questions: this one keeps the divisions finite at the solver's own
+/// degenerate-ellipse scale; the area builder's no-area rung is
+/// `TOL_TOPOLOGY_MERGE` (1e-5, `dcel::holes` and `entitySizeProblems.ts`); and
+/// the declared-contact parameter guard uses `TOL_TOPOLOGY_EPS` (1e-9,
+/// `dcel::contacts`).
+fn semi_axis_floor() -> f64 {
+    MIN_SEMI_AXIS_SQ.sqrt()
+}
+
+/// A semi-axis usable as a divisor. The magnitude is floored, but the sign of a
+/// finite axis is kept: a negative axis is the same ellipse with its eccentric
+/// angle shifted by half a turn, and folding it to positive silently moves a
+/// split to the opposite end. Comparing magnitudes also avoids squaring a large
+/// axis into overflow.
+fn usable_semi_axis(axis: f64) -> f64 {
+    let floor = semi_axis_floor();
+    if axis.abs() >= floor {
+        axis
+    } else if axis < 0.0 {
+        -floor
+    } else {
+        floor
+    }
+}
+
 fn param_of(curve: &Curve, p: Vec2) -> f64 {
     match *curve {
         Curve::Line { p0, p1 } => {
@@ -124,9 +153,10 @@ fn param_of(curve: &Curve, p: Vec2) -> f64 {
             // residual and gap arms apply keeps the parameter defined.
             let xl = dx * cr + dy * sr;
             let yl = -dx * sr + dy * cr;
-            let ea = (a * a).max(MIN_SEMI_AXIS_SQ).sqrt();
-            let eb = (b * b).max(MIN_SEMI_AXIS_SQ).sqrt();
-            pymod((yl / eb).atan2(xl / ea), TWO_PI)
+            pymod(
+                (yl / usable_semi_axis(b)).atan2(xl / usable_semi_axis(a)),
+                TWO_PI,
+            )
         }
         // bezier: not recoverable in closed form; callers that pair a bezier as
         // the "other" curve obtain its parameter directly.
@@ -461,10 +491,15 @@ fn dedup_hits(hits: Vec<Hit>) -> Vec<Hit> {
 fn line_ellipse(l0: Vec2, l1: Vec2, c: Vec2, a: f64, b: f64, theta: f64) -> Vec<Vec2> {
     let cr = radians(theta).cos();
     let sr = radians(theta).sin();
+    // The same floored axes the parameter recovery uses: a b = 0 ellipse is the
+    // segment along its major axis, and an unfloored divide silently missed
+    // every line contact with it instead of reporting the two ends.
+    let ea = usable_semi_axis(a);
+    let eb = usable_semi_axis(b);
     let to_local = |p: Vec2| -> Vec2 {
         let dx = p[0] - c[0];
         let dy = p[1] - c[1];
-        [(dx * cr + dy * sr) / a, (-dx * sr + dy * cr) / b]
+        [(dx * cr + dy * sr) / ea, (-dx * sr + dy * cr) / eb]
     };
     let q0 = to_local(l0);
     let q1 = to_local(l1);

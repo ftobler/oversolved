@@ -4,11 +4,17 @@
 // projected circle lowers to the degenerate ellipse `[20, 0, 3, 0, 0]`, and two
 // of them in one sketch used to fail the whole sketch with
 // `exception: topology codec error: NonFinite`, taking every downstream feature
-// with it. The document is loaded as the bug report holds it (a stored
-// degenerate entity), which is past the authoring value rules by construction.
+// with it.
 //
-// After `projection-edge-on-line` landed both sources lower to lines, so the
-// same sketch is also the coincident-lines re-probe: an overlap of collinear
+// The loaded-document case below asserts the post-merge contract: the size rule
+// names the solved b = 0 ellipses as degenerate and leaves them out of the area
+// build, so this document can no longer reach the NaN path at all. The durable
+// guard for that path is the Rust test
+// `topology::codec::tests::two_identical_degenerate_ellipses_build_a_finite_topology`,
+// which feeds b = 0 straight through `detect_topology` + `encode_output`.
+//
+// After `projection-edge-on-line` landed both projected sources lower to lines,
+// so the second case is the coincident-lines re-probe: an overlap of collinear
 // lines is a supported topology case, not an exception.
 //
 // Skips when OCC.js or the Rust solver is absent.
@@ -63,9 +69,11 @@ describe.skipIf(!oc || !solveBytes)('a degenerate projected curve never fails th
     setSketchSolverLoader(loadSolverFresh)
   })
 
-  it('builds a loaded sketch holding two b = 0 ellipses', () => {
-    // The crash the bug report carried: two coincident edge-on projections
-    // stored as the degenerate ellipses the old lowering produced.
+  it('names a loaded pair of b = 0 ellipses as degenerate and still builds', () => {
+    // The bug report's document, loaded as it stands: two coincident edge-on
+    // projections stored as the degenerate ellipses the old lowering produced.
+    // The size rule now keeps both out of the profile and names them, which is
+    // the contract that stops this from being a sketch exception.
     const r = h.run(topSpec({
       id: 'skX', kind: 'sketch', plane: '@builtin_plane_top',
       entities: [{ id: 'e0', kind: 'ellipse' }, { id: 'e1', kind: 'ellipse' }],
@@ -78,6 +86,10 @@ describe.skipIf(!oc || !solveBytes)('a degenerate projected curve never fails th
     // Nothing the topology emits may be a NaN either: a finite status over a
     // poisoned profile would only move the failure into the next feature.
     expect(nonFinitePath(sk.topology)).toBeNull()
+    const ids = ((sk.degenerate_entities as Array<{ id: string }> | undefined) ?? [])
+      .map(entry => entry.id)
+      .sort()
+    expect(ids).toEqual(['e0', 'e1'])
   })
 
   it('builds the same sketch when both sources re-lower to coincident lines', () => {
