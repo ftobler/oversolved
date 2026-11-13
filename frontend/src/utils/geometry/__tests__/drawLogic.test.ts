@@ -1050,45 +1050,39 @@ describe('computeDrawClick - project tool', () => {
     }
   })
 
-  it('projects a face as a closed wire: one entity per boundary edge', () => {
+  it('projects a face as one live projection, not one entity per boundary edge', () => {
     const snap = emptySnap()
-    snap.hoveredSelectionId = '?4,4;@bxx@fyy:flatface'
+    const ancQuery = '?4,4;@bxx@fyy:flatface'
+    snap.hoveredSelectionId = ancQuery
     snap.hoveredFaceEdges = [
       { source: '?a;e0:edge', kind: 'line' },
       { source: '?a;e1:edge', kind: 'circle' },
       { source: '?a;e2:edge', kind: 'line' },
     ]
     const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
-    expect(result.mutations).toHaveLength(3)
-    expect(result.mutations.every(m => m.type === 'add_projected_entity')).toBe(true)
-    const kinds = result.mutations.map(m => (m.type === 'add_projected_entity' ? m.kind : ''))
-    expect(kinds).toEqual(['line', 'circle', 'line'])
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0]).toEqual({
+      type: 'add_projected_entity', featureId: FEATURE, source: ancQuery,
+    })
     expect(result.gestureComplete).toBe(true)
   })
 
-  it('falls back to a single point projection for a face with no boundary edges', () => {
+  it('refuses a face pick with no solved boundary instead of storing a dead point', () => {
     const snap = emptySnap()
     snap.hoveredSelectionId = '?4,4;@bxx@fyy:flatface'
     snap.hoveredFaceEdges = null
     const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
-    expect(result.mutations).toHaveLength(1)
-    if (result.mutations[0].type === 'add_projected_entity') {
-      expect(result.mutations[0].kind).toBe('point')
-    }
+    expect(result.mutations).toHaveLength(0)
   })
 
-  it('emits add_projected_entity for face ancestry query pick', () => {
+  it('emits one source-only mutation for a face ancestry query pick', () => {
     const snap = emptySnap()
     const ancQuery = '?4,4;@bxx@fyy:flatface'
     snap.hoveredSelectionId = ancQuery
     const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)
-    expect(result.mutations).toHaveLength(1)
-    expect(result.mutations[0].type).toBe('add_projected_entity')
-    if (result.mutations[0].type === 'add_projected_entity') {
-      expect(result.mutations[0].source).toBe(ancQuery)
-      expect(result.mutations[0].kind).toBe('point')
-    }
-    expect(result.gestureComplete).toBe(true)
+    // The face branch requires a resolved boundary, which the hover did not carry.
+    expect(result.mutations).toHaveLength(0)
+    expect(result.gestureComplete).toBe(false)
   })
 
   it('emits add_projected_entity for vertex ancestry query pick (no type restriction)', () => {
