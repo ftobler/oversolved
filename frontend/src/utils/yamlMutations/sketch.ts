@@ -450,8 +450,9 @@ export function applyAddConstraint(
     c.refs = [...new Set(targets.map(pt))]
   } else if (kind === 'horizontal' || kind === 'vertical') {
     // Overloaded: one line -> `target` (make the line axis-aligned); two points
-    // -> `a`/`b` (share a coordinate). addConstraintProblem refused the empty
-    // pick and the whole-entity a/b slot, so only the two forms remain.
+    // -> `a`/`b` (share a coordinate). addConstraintProblem refused the empty or
+    // over-long pick and a whole non-point entity in the a/b slot (a whole point
+    // entity is a legal point there), so only the two forms remain.
     if (targets.length >= 2) {
       c.a = pt(targets[0])
       c.b = pt(targets[1])

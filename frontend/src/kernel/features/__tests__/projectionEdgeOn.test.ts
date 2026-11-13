@@ -201,7 +201,7 @@ describe('solveSketch projects a declared point on a curved source as its centre
     expect(out.dropped_constraints).toEqual([
       {
         id: 'cc', kind: 'coincident',
-        reason: 'operand center not on line; project the centre as a point to keep it',
+        reason: 'operand center not on line; project the center as a point to keep it',
       },
     ])
     expect(feature.constraints).toHaveLength(2)
@@ -233,7 +233,7 @@ describe('solveSketch projects a declared point on a curved source as its centre
     expect(out.dropped_constraints).toEqual([
       {
         id: 'cc', kind: 'coincident',
-        reason: 'operand center not on line; project the centre as a point to keep it',
+        reason: 'operand center not on line; project the center as a point to keep it',
       },
       { id: 'eq', kind: 'equal_length', reason: 'equal_length does not apply to line and circle' },
     ])

@@ -129,7 +129,10 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
     const base = await targetOnTop('arc')
     expect(base.ok).toBe(true)
     // 0 deg: the source arc is coplanar with the target, so the projection is an
-    // arc, the centre row lowers and the free point is bound to the centre.
+    // arc, the centre row lowers and the free point is bound to the centre. The
+    // document entity kind here is the CURRENT pre-hygiene state: the in-process
+    // solve still writes the resolved kind into the entity def, and
+    // projection-lowering-hygiene keeps the declared kind instead.
     expect(kindOf(base.doc, 'skT', 'pa0')).toBe('arc')
     expect(base.featureDeltas?.find(entry => entry.id === 'skT')?.status).toBe('fully_constrained')
     expect(paramsOf(base.doc, 'skT', 'pt')?.[0]).toBeCloseTo(5, 6)
@@ -140,16 +143,16 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
     // A tilted arc has no 2D ellipse-arc entity, so it lowers to a fitted
     // spline (an eight-parameter block). The resolved kind is what the operand
     // gate sees, or the `center` key would still pass and the row would bind the
-    // spline's midpoint. The baked params, not the document entity kind, are the
-    // stable witness: projection-lowering-hygiene keeps the declared kind while
-    // the resolved one shapes the lowering.
+    // spline's midpoint. The witness is the solved param block the write-back
+    // installed: its length is the resolved kind's, so it survives the hygiene
+    // change (the document entity kind does not).
     expect(paramsOf(tilted.doc, 'skT', 'pa0')).toHaveLength(8)
     const row = tilted.features.find(problem => problem.id === 'skT')
     expect(row).toBeDefined()
     expect(row!.status).not.toBe('fully_constrained')
     expect(row!.message).toContain('operand center not on spline')
     // A lost centre carries the stable alternative, not only the loss.
-    expect(row!.message).toContain('project the centre as a point to keep it')
+    expect(row!.message).toContain('project the center as a point to keep it')
     // The document keeps the row, so the round trip below can revive it.
     expect(sketchOf(tilted.doc, 'skT')?.constraints).toHaveLength(2)
     // The free point stays where the last solve left it, not on a control point
@@ -159,6 +162,9 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
 
     const back = await moveTarget(tilted.doc!, TOP)
     expect(back.ok).toBe(true)
+    // Current pre-hygiene state: the entity def is rewritten with the resolved
+    // kind each solve. After hygiene the declared arc stays throughout, and the
+    // fully-constrained status and the bound point below are the real proof.
     expect(kindOf(back.doc, 'skT', 'pa0')).toBe('arc')
     expect(back.featureDeltas?.find(entry => entry.id === 'skT')?.status).toBe('fully_constrained')
     expect(back.features.find(problem => problem.id === 'skT')).toBeUndefined()
@@ -169,6 +175,8 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
   it('7. a circle that resolves to an ellipse drops its diameter and equal rows', async () => {
     const base = await targetOnTop('circle')
     expect(base.ok).toBe(true)
+    // Declared and resolved agree while coplanar; this is the current
+    // pre-hygiene document state (see the first test).
     expect(kindOf(base.doc, 'skT', 'pa0')).toBe('circle')
     // The equal row pulled the user circle up to the projection's radius; it is
     // the value a silent rebind would move again.
@@ -176,9 +184,9 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
 
     const tilted = await moveTarget(base.doc!, '@pl30')
     expect(tilted.ok).toBe(true)
-    // A five-parameter conic block and the ellipse in the reasons below name the
-    // resolved kind; the document entity kind is not asserted, because the
-    // hygiene change keeps it declared while the solve resolves an ellipse.
+    // The write-back installed a five-parameter conic block and the reasons
+    // below name the ellipse; the document entity kind is not asserted, because
+    // the hygiene change keeps it declared while the solve resolves an ellipse.
     expect(paramsOf(tilted.doc, 'skT', 'pa0')).toHaveLength(5)
     const row = tilted.features.find(problem => problem.id === 'skT')
     expect(row).toBeDefined()
@@ -205,9 +213,9 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
     const tilted = await moveTarget(base.doc!, '@plEdge')
     expect(tilted.ok).toBe(true)
     // The tilted target sees the source circle edge-on, so the lowering takes
-    // the silhouette branch and bakes a four-parameter line block (again the
-    // params, not the document entity kind, are the witness that survives the
-    // hygiene change).
+    // the silhouette branch and the write-back installs a four-parameter line
+    // block (again the params, not the document entity kind, are the witness
+    // that survives the hygiene change).
     expect(paramsOf(tilted.doc, 'skT', 'pa0')).toHaveLength(4)
     const row = tilted.features.find(problem => problem.id === 'skT')
     expect(row).toBeDefined()

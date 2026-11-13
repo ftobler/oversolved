@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import type { PartFeature, PartConstraint } from '@/types/cad'
+import type { PartDoc, PartFeature, PartConstraint } from '@/types/cad'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { partDocToSketches } from '../partDocToSketches'
 import { addConstraintProblem } from '@/utils/constraintProblems'
+import { applyAddConstraint } from '@/utils/yamlMutations'
 import type { SketchFeature } from '@/types/cad'
 
 describe('partDocToSketches', () => {
@@ -115,11 +116,10 @@ describe('partDocToSketches', () => {
       },
     ]
     const { sketches } = partDocToSketches(features)
+    // A plain entity has no source to re-project, so the reason carries no
+    // remedy sentence.
     expect(sketches[0].droppedConstraints).toEqual([
-      {
-        id: 'bad', kind: 'coincident',
-        reason: 'operand center not on line; project the centre as a point to keep it',
-      },
+      { id: 'bad', kind: 'coincident', reason: 'operand center not on line' },
     ])
     expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['circle', 'arc', 'ellipse'])
   })
@@ -165,13 +165,36 @@ describe('partDocToSketches', () => {
     ]
     const { sketches } = partDocToSketches(features)
     expect(sketches[0].droppedConstraints).toEqual([
-      {
-        id: 'cc', kind: 'coincident',
-        reason: 'operand center not on spline; project the centre as a point to keep it',
-      },
+      { id: 'cc', kind: 'coincident', reason: 'operand center not on spline' },
     ])
     // `start` survives: a spline still has it.
     expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['start'])
+  })
+
+  it('names the project-as-point remedy only for a projected entity', () => {
+    // The same lost key on an entity a `projection` holds can be kept by
+    // projecting the source's centre as a declared point, so only that row names
+    // the remedy. A plain entity has no source to re-aim.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'S1', kind: 'spline' }, { id: 'P1', kind: 'point' }],
+        initial: { S1: [0, 0, 5, 5, 10, 5, 15, 0], P1: [3, 4] },
+        constraints: [
+          { id: 'proj', kind: 'projection', target: '$S1', source: '?edge;circle' },
+          { id: 'cc', kind: 'coincident', a: '$P1xy', b: '$S1center' },
+        ],
+      },
+    ]
+    const { sketches } = partDocToSketches(features)
+    expect(sketches[0].droppedConstraints).toEqual([
+      {
+        id: 'cc', kind: 'coincident',
+        reason: 'operand center not on spline; project the center as a point to keep it',
+      },
+    ])
   })
 
   it('keeps the two-point horizontal/vertical form on whole point entities', () => {
@@ -202,6 +225,31 @@ describe('partDocToSketches', () => {
     expect(sketches[0].droppedConstraints).toEqual([
       { id: 'v_dead', kind: 'vertical', reason: 'vertical does not apply to circle and point' },
       { id: 'h_target', kind: 'horizontal', reason: 'horizontal does not apply to point' },
+    ])
+  })
+
+  it('lowers the vertical pair the add-time rule authors for two point entities', () => {
+    // The parity the table claims, end to end: what `addConstraintProblem`
+    // accepts for a whole point pair is exactly what the lowering keeps.
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'P1', kind: 'point' }, { id: 'P2', kind: 'point' }],
+        initial: { P1: [0, 0], P2: [0, 5] },
+        constraints: [],
+      }],
+    }
+    applyAddConstraint(doc, 'sk1', 'vertical', ['entity:sk1:P1', 'entity:sk1:P2'])
+    const row = (doc.features![0] as SketchFeature).constraints![0]
+    expect(row).toMatchObject({ kind: 'vertical', a: '$P1', b: '$P2' })
+    const { sketches } = partDocToSketches(doc.features)
+    expect(sketches[0].droppedConstraints).toEqual([])
+    expect(sketches[0].sketch.constraints).toEqual([
+      { id: row.id, kind: 'vertical', a: { entity: 'P1' }, b: { entity: 'P2' } },
     ])
   })
 

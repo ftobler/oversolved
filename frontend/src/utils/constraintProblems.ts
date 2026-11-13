@@ -254,25 +254,16 @@ export function addConstraintProblem(
   }
 
   if (kind === 'horizontal' || kind === 'vertical') {
-    // Overloaded: one line -> `target`, two points -> `a`/`b`. A whole LINE or
-    // curve in the a/b slot resolves to one sub-point and yields a degenerate
-    // residual that is often already satisfied, so the line never turns; a whole
-    // point entity IS the point and is legal there (the stored `$` form and the
-    // explicit `entity:` form must not disagree). Empty falls through both
-    // forms, so it is refused too.
+    // Overloaded: one line -> `target`, two points -> `a`/`b`. More than two is
+    // neither form. The kinds of a two-pick list are the entity-kind table's
+    // judgement below: a whole point entity is a legal point there, while a whole
+    // line or curve is the degenerate sub-point pick the table refuses (the same
+    // pick `dropDeadAxisConstraints` prunes), whichever spelling named it.
     // See bugreports/vertical_constraint_20260621_102915.md.
     if (targets.length < 1) return `${kind} needs a target`
-    if (targets.length >= 2) {
-      const dead = targets
-        .filter(target => target.startsWith('entity:'))
-        .find(target => {
-          const kind = kindById.get(target.split(':')[2])
-          return kind !== undefined && kind !== 'point'
-        })
-      if (dead !== undefined) return `${kind} needs one line or two points, got ${JSON.stringify(targets)}`
+    if (targets.length > 2) {
+      return `${kind} needs one line or two points, got ${JSON.stringify(targets)}`
     }
-    // A lone whole entity falls through to the entity-kind table below: one
-    // point or curve is not a line to hold horizontal.
   }
 
   if (kind === 'colinear') {

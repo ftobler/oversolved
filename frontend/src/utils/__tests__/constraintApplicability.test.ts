@@ -82,6 +82,9 @@ describe('constraint entity-kind applicability', () => {
     expect(constraintEntityKindProblem('horizontal', [at('point', 'a'), at('point', 'b')])).toBeNull()
     expect(constraintEntityKindProblem('vertical', [at('circle', 'a'), at('line', 'b')]))
       .toBe('vertical does not apply to circle and line')
+    // A stray extra operand is judged with the pair, never silently ignored.
+    expect(constraintEntityKindProblem('horizontal', [at('point', 'a'), at('point', 'b'), at('line', 'operand')]))
+      .toBe('horizontal does not apply to point and line')
   })
 
   it('accepts every kind for a constraint with no group and for no operand', () => {

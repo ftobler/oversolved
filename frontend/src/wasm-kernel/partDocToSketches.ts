@@ -85,11 +85,14 @@ function isFiniteNumber(v: unknown): v is number {
 }
 
 /** What the key-existence check needs to know about a target entity: its
- *  current kind and, for a variable `fit_spline`, the authored block shape. */
+ *  current kind, and for a variable `fit_spline` the authored block shape. */
 interface EntityLowerInfo {
   kind: string
   nParams?: number
   handles?: 'start' | 'end' | 'both'
+  /** Held by a `projection` constraint, so its source's centre can be kept by a
+   *  declared-point projection whatever kind the curve resolves to. */
+  projected?: boolean
 }
 
 /**
@@ -134,10 +137,13 @@ function lowerConstraint(
         if (info) {
           const keys = entityPointKeys(info.kind, info.nParams, info.handles)
           if (keys && !keys.has(resolved.point)) {
-            // A lost centre is the one key with a stable alternative: the
-            // declared-point projection keeps the centre reachable in any
+            // A projected curve's centre is the one lost key with a stable
+            // alternative: a declared-point projection keeps it reachable in any
             // orientation, so the warning names that rather than only the loss.
-            const remedy = resolved.point === 'center' ? '; project the centre as a point to keep it' : ''
+            // A plain point or fit spline has no such source to re-project.
+            const remedy = resolved.point === 'center' && info.projected
+              ? '; project the center as a point to keep it'
+              : ''
             dropped.push({
               id: c.id, kind: authoredKind,
               reason: `operand ${resolved.point} not on ${info.kind}${remedy}`,
@@ -370,9 +376,21 @@ export function partDocToSketches(
     }
 
     const entityIds = new Set(entities.map((e) => e.id))
+    // A constraining row that loses a key gets the remedy only when the entity
+    // has a projection to re-aim; a plain entity has no source to project.
+    const projectedIds = new Set(
+      (feature.constraints ?? [])
+        .filter((c) => c.kind === 'projection' && typeof c.target === 'string')
+        .map((c) => String(c.target).replace(/^\$/, '')),
+    )
     const entityInfo = new Map<string, EntityLowerInfo>(entities.map((e) => [
       e.id,
-      { kind: e.kind, nParams: feature.initial?.[e.id]?.length, handles: e.handles },
+      {
+        kind: e.kind,
+        nParams: feature.initial?.[e.id]?.length,
+        handles: e.handles,
+        projected: projectedIds.has(e.id),
+      },
     ]))
     const authoredKinds = new Map((feature.constraints ?? []).map((c) => [c.id, c.kind]))
     const constraints: Array<Record<string, unknown>> = []

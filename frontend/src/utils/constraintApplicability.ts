@@ -1,25 +1,23 @@
 // Which entity kinds a constraint kind can take, at the boundary where an
 // authored row is judged against the kind its target currently has.
 //
-// The registry's `entityKindGroups` is the editor command's own pre-check: the
-// action matrix pins exactly which picks it refuses, so that set stays as it is.
-// The solve boundary needs a wider table. It also judges the kinds whose
-// `apply_<kind>` command never had a pre-check (a length on an arc, a diameter on
-// a line) and the rows those commands authored before this rule existed.
+// Two tables, one judgement. The registry's `entityKindGroups` is the editor
+// command's own pre-check; the action matrix pins the picks that pre-check
+// refuses, so widening it is a deliberate editor change (concentric gained the
+// ellipse in this branch). The solve boundary needs a wider table and keeps it
+// here: it also judges the kinds whose `apply_<kind>` command never had a
+// pre-check (a length on an arc, a diameter on a line) and the rows those
+// commands authored before this rule existed.
 //
-// One table, two readers: `addConstraintProblem` refuses a new pick with this
-// sentence and `partDocToSketches` drops an authored row with the same one, so an
-// author cannot author a row the next solve silently ignores. The two do not
-// always see the same kind, and that is the point of the report: the add-time
-// reader sees the kind the document DECLARES, the lowering sees the kind the
-// solve RESOLVED (a projected entity can be a declared circle and a resolved
-// ellipse). Until the in-process solve stops writing the resolved kind back into
-// the entity def (`projection-lowering-hygiene`), a headless run tends to have
-// the two agree; after it, a row authored on the declared kind can still be
-// dropped by the solve, which is the reporting path this rule exists for.
-//
-// A projected entity re-resolves every solve (a circle becomes an ellipse, an arc
-// a spline), which is why the lowering reader is the one that matters.
+// `addConstraintProblem` refuses a new pick with this sentence and
+// `partDocToSketches` drops an authored row with the same one, so a pick refused
+// at add time is one the solve would ignore. The two do not always see the same
+// kind: add time reads the kind the document DECLARES, the lowering the kind the
+// solve RESOLVES (a projected entity can be a declared circle and a resolved
+// ellipse). Until `projection-lowering-hygiene` stops the in-process solve
+// writing the resolved kind into the entity def, a headless run tends to have the
+// two agree; after it, a row authored on the declared kind can still be dropped
+// by the solve, which is the reporting path this rule exists for.
 
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 
@@ -104,13 +102,14 @@ export function constraintEntityKindProblem(
     return `${kind} does not apply to ${[...new Set(judged.map(operand => operand.kind))].join(' and ')}`
   }
   if (OVERLOADED_AXIS_KINDS.has(kind)) {
-    // Judge each form by its own role: the target form is a line, the a/b pair
-    // two points. An empty side is not a refusal (the shape rules own a missing
-    // or mixed pick).
+    // Judge each form by its own role: the target form is a line, every other
+    // operand is a point of the pair. A stray extra operand is judged there too,
+    // so a third slot can never be silently dropped. An empty side is not a
+    // refusal (the shape rules own a missing or over-long pick).
     const targetProblem = verdict(operands.filter(operand => operand.role === 'target'))
     if (targetProblem !== null) return targetProblem
     return verdict(
-      operands.filter(operand => operand.role === 'a' || operand.role === 'b'),
+      operands.filter(operand => operand.role !== 'target'),
       AXIS_PAIR_KIND_GROUPS,
     )
   }

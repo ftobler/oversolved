@@ -94,10 +94,28 @@ const cases: Case[] = [
     kind: 'horizontal', targets: ['vertex:sk1:ax:start', 'vertex:sk1:ax:end'], problem: null,
   },
   { name: 'horizontal no target', kind: 'horizontal', targets: [], problem: 'horizontal needs a target' },
+  // Both spellings of a whole non-point entity in the a/b slot reach the same
+  // entity-kind sentence; only a substituted point-style sub-ref (a vertex) is a
+  // legal point operand there.
   {
-    name: 'horizontal whole entity in the a/b slot',
+    name: 'horizontal line entity in the a/b slot',
     kind: 'horizontal', targets: ['entity:sk1:ax', 'vertex:sk1:ax:start'],
-    problem: 'horizontal needs one line or two points, got ["entity:sk1:ax","vertex:sk1:ax:start"]',
+    problem: 'horizontal does not apply to line',
+  },
+  {
+    name: 'horizontal dead pair, explicit refs',
+    kind: 'horizontal', targets: ['entity:sk1:c1', 'entity:sk1:o'],
+    problem: 'horizontal does not apply to circle and point',
+  },
+  {
+    name: 'horizontal dead pair, stored refs',
+    kind: 'horizontal', targets: ['$c1', '$o'],
+    problem: 'horizontal does not apply to circle and point',
+  },
+  {
+    name: 'horizontal three points',
+    kind: 'horizontal', targets: ['$oxy', '$pxy', 'vertex:sk1:ax:start'],
+    problem: 'horizontal needs one line or two points, got ["$oxy","$pxy","vertex:sk1:ax:start"]',
   },
   { name: 'vertical line', kind: 'vertical', targets: ['$ax'], problem: null },
   { name: 'colinear two lines', kind: 'colinear', targets: ['$ax', '$bx'], problem: null },
