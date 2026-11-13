@@ -382,14 +382,9 @@ function lowerProjectionConstraints(
   const projectionWarnings: string[] = []
   const pinnedIds: string[] = []
   const unpositionedIds: string[] = []
-  // Entities derived from a face boundary. They join the LOWERED feature only;
-  // the document keeps its authored rows, so the solve stays a pure function.
-  const derivedEntities: Array<{ id: string; kind: string }> = []
-  // Projected entities whose resolved kind differs from the pick-time one. The
-  // lowered feature gets the resolved kind (the solver reads the params in that
-  // kind); the input feature is never touched, and the write-back installs the
-  // same kind on the document row.
-  const kindOverrides = new Map<string, string>()
+  // Entities derived from a face boundary are passed to `partDocToSketches` as
+  // solve facts (with the resolved kinds), never written into the feature or
+  // its `initial`.
 
   if (projections.length === 0) {
     return {
@@ -450,9 +445,7 @@ function lowerProjectionConstraints(
           )
           continue
         }
-        initial[memberId] = projected.params
         pinnedIds.push(memberId)
-        derivedEntities.push({ id: memberId, kind: projected.kind })
         report.entities.push({ id: memberId, kind: projected.kind, params: [...projected.params] })
       }
       // A face that resolves but yields no member is a failure only when it had
@@ -497,7 +490,6 @@ function lowerProjectionConstraints(
           // the lowering itself never writes the input feature.
           if (projected.kind !== declaredKind) {
             resolvedKinds[targetId] = projected.kind
-            kindOverrides.set(targetId, projected.kind)
           }
           resolved = true
         }
@@ -534,19 +526,8 @@ function lowerProjectionConstraints(
     }
   }
 
-  const entitiesOut = kindOverrides.size > 0
-    ? entities.map((entity) => {
-        const kind = kindOverrides.get(String(entity.id))
-        return kind === undefined ? entity : { ...entity, kind }
-      })
-    : entities
   return {
-    loweredFeature: {
-      ...feature,
-      constraints,
-      initial,
-      ...(derivedEntities.length ? { entities: [...entitiesOut, ...derivedEntities] } : entitiesOut !== entities ? { entities: entitiesOut } : {}),
-    },
+    loweredFeature: { ...feature, constraints, initial },
     resolvedKinds,
     projectionMembers,
     projectionErrors,
@@ -814,12 +795,22 @@ export function solveSketch(
   // sketch plane's local (0,0) -- which differ for a sketch on an offset/
   // projected face ("line constrained to origin" bug).
   const originLocal = projectWorldToFrame([0, 0, 0], plane as Frame3D)
-  // The lowered feature carries the kinds the projection pass adopted above, so
-  // the lowering's operand gate judges the rows on the resolved kind (a circle
-  // seen edge-on is a line there). This call must stay after
-  // `lowerProjectionConstraints` for that to hold.
+  // The project pass hands the lowering its resolve facts explicitly: the kind
+  // each held entity resolved to and the face projection's derived members. The
+  // operand gate then judges a row on the resolved kind (a circle seen edge-on
+  // is a line) and can address a member id without an in-place document write.
+  const derivedEntities: Record<string, string> = {}
+  const derivedInitial: Record<string, number[]> = {}
+  for (const report of Object.values(projectionMembers)) {
+    for (const member of report.entities) {
+      derivedEntities[member.id] = member.kind
+      derivedInitial[member.id] = [...member.params]
+    }
+  }
   const pf = loweredFeature as unknown as SketchFeature
-  const extract = partDocToSketches([pf], originLocal, pinnedIds)
+  const extract = partDocToSketches([pf], originLocal, pinnedIds, {
+    resolvedKinds, derivedEntities, derivedInitial,
+  })
   if (extract.skipped.length) {
     throw new Error(`sketch '${featureId}': ${extract.skipped[0].reason}`)
   }
@@ -900,9 +891,11 @@ export function solveSketch(
   // culprit is marked `culprit` for the deeper-red paint. Sugar expanded to
   // synthetic ids (ngon/dock) has no authored id on the wire, so its pieces
   // stay unmarked.
+  const memberEntities = Object.entries(derivedEntities).map(([id, kind]) => ({ id, kind }))
+  const baseRenderEntities = [...(pf.entities ?? []), ...memberEntities]
   const renderEntities = Object.keys(resolvedKinds).length
-    ? (pf.entities ?? []).map((e) => ({ ...e, kind: resolvedKinds[e.id] ?? e.kind }))
-    : pf.entities
+    ? baseRenderEntities.map((e) => ({ ...e, kind: resolvedKinds[e.id] ?? e.kind }))
+    : baseRenderEntities
   const solvedSketch = unflattenGeometry(geometry, renderEntities)
   const rendered = deriveConstraints(pf, solvedSketch, { originLocal })
   const wireIndexById = new Map<string, number>()

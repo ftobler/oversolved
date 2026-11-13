@@ -10,7 +10,9 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { solveSketch, setSketchSolver, resetSketchSolver } from '../sketch'
+import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import type { PartDoc } from '@/types/cad'
 import type { Repository } from '../../query'
 import type { Body } from '../../types3d'
 
@@ -143,18 +145,26 @@ describe('solveSketch re-resolves a projected kind seen edge-on or end-on', () =
 
   it('17. a line that leaves perpendicular resolves back to a line and the retained row lowers again', () => {
     if (!solveBytes) return
-    // The same document across two solves, the way a session sees it: the first
-    // solve builds the point and writes that kind into the entity def, so the
-    // second reports the flip back and the retained row is valid again.
+    // The same document across two solves, the way a session sees it: the
+    // write-back adopts the resolved kind on the entity row (the lowering no
+    // longer edits the input), so the second solve reports the flip back and the
+    // retained row is valid again.
     const feature = startRowFeature()
     const endOn = solveSketch(feature, stubRepo(endOnLine), {} as Record<string, Body>)
     expect(endOn.resolved_kinds).toEqual({ l0: 'point' })
     expect(endOn.dropped_constraints).toHaveLength(1)
+    // The document row only changes through the write-back, not during solving.
+    expect((feature.entities as Array<{ id: string; kind: string }>)[0].kind).toBe('line')
+    const doc = { version: 7, kind: 'part', features: [feature] } as unknown as PartDoc
+    applyGeometryToFeature(doc, feature.id as string, endOn.geometry ?? {}, undefined, {
+      resolvedKinds: endOn.resolved_kinds,
+    })
+    expect((feature.entities as Array<{ id: string; kind: string }>)[0].kind).toBe('point')
 
     const back = solveSketch(feature, stubRepo(slantLine), {} as Record<string, Body>)
     expect(back.projection_errors).toBeUndefined()
-    // Point -> line is a real kind change: the entity def says `point` after
-    // the first solve, so the second resolve is reported and the row binds the
+    // Point -> line is a real kind change: the entity row says `point` after the
+    // write-back, so the second resolve is reported and the row binds the
     // projected segment's start again.
     expect(back.resolved_kinds).toEqual({ l0: 'line' })
     expect(back.dropped_constraints).toBeUndefined()

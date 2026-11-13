@@ -350,6 +350,17 @@ export function isDocumentConstraintKind(kind: string): boolean {
   return isConstraintKindName(kind) || LOWERED_KINDS.has(kind)
 }
 
+/** Per-solve projection facts for one sketch, kept out of the document. A
+ *  projected entity's kind is resolved by the lowerer (a circle seen edge-on is
+ *  a line) and a face projection's members are derived entities, neither of
+ *  which is a document row. Passing them here is what lets the key and
+ *  kind-applicability gates read the resolved shape without an in-place write. */
+export interface SketchProjectionFacts {
+  resolvedKinds?: Readonly<Record<string, string>>
+  derivedEntities?: Readonly<Record<string, string>>
+  derivedInitial?: Readonly<Record<string, number[]>>
+}
+
 /**
  * Lower sketch features to solver `SketchInput`. `originLocal` is the document
  * origin (0,0,0) in the sketch's local 2D frame, applied to every
@@ -357,18 +368,28 @@ export function isDocumentConstraintKind(kind: string): boolean {
  * the caller passes the projected value for a sketch on an offset/projected
  * plane. Callers that lower more than one feature at once must share a plane, or
  * resolve per-feature themselves (today both callers pass a single feature).
+ * `facts` carries this solve's resolved kinds and derived face members; applied
+ * to a single feature, as every caller does.
  */
 export function partDocToSketches(
   features: PartFeature[] | undefined,
   originLocal: [number, number] = [0, 0],
   pinnedEntityIds: string[] = [],
+  facts: SketchProjectionFacts = {},
 ): ExtractResult {
   const sketches: ExtractedSketch[] = []
   const skipped: SkippedSketch[] = []
 
   for (const feature of features ?? []) {
     if (feature.kind !== 'sketch') continue
-    const entities = feature.entities ?? []
+    const resolvedKinds = facts.resolvedKinds ?? {}
+    const derivedKinds = facts.derivedEntities ?? {}
+    const derivedInitial = facts.derivedInitial ?? {}
+    const entities: NonNullable<SketchFeature['entities']> = [
+      ...(feature.entities ?? []),
+      ...Object.entries(derivedKinds).map(([id, kind]) => ({ id, kind })),
+    ]
+    const initial = { ...(feature.initial ?? {}), ...derivedInitial }
 
     if (entities.some((e) => e.kind === 'center_rect')) {
       skipped.push({ featureId: feature.id, reason: 'center_rect sugar (not expanded)' })
@@ -386,8 +407,8 @@ export function partDocToSketches(
     const entityInfo = new Map<string, EntityLowerInfo>(entities.map((e) => [
       e.id,
       {
-        kind: e.kind,
-        nParams: feature.initial?.[e.id]?.length,
+        kind: resolvedKinds[e.id] ?? e.kind,
+        nParams: initial[e.id]?.length,
         handles: e.handles,
         projected: projectedIds.has(e.id),
       },
@@ -404,8 +425,13 @@ export function partDocToSketches(
     const sketch: SketchInput = {
       id: feature.id,
       plane: feature.plane ?? null,
-      entities: entities.map((e) => ({ id: e.id, kind: e.kind, construction: e.construction, handles: e.handles })),
-      initial: feature.initial ?? {},
+      entities: entities.map((e) => ({
+        id: e.id,
+        kind: resolvedKinds[e.id] ?? e.kind,
+        construction: e.construction,
+        handles: e.handles,
+      })),
+      initial,
       constraints,
       pinnedEntityIds,
     }
