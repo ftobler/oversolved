@@ -19,6 +19,7 @@ import type { PartConstraint, PartFeature, SketchFeature, DroppedSketchConstrain
 import { resolveVertexRef } from '@/types/vertexRef'
 import { colinearShapeProblem, constraintOperandSide } from '@/utils/constraintOperands'
 import { entityPointKeys } from '@/registry/entityRegistry'
+import { constraintEntityKindProblem } from '@/utils/constraintApplicability'
 import { isConstraintKindName } from './codec'
 import type { SketchInput } from './lowerSketch'
 
@@ -89,9 +90,10 @@ interface EntityLowerInfo {
 
 /**
  * Lower one constraint to dict-ref form. Returns null (drop the constraint) when
- * any present ref does not resolve to a local entity, or when it names a point
- * key the target entity's current kind does not have -- matching the historical
- * behavior for stale refs and refusing a silent key rebind.
+ * any present ref does not resolve to a local entity, when it names a point key
+ * the target entity's current kind does not have, or when the constraint kind
+ * cannot take the target's current kind -- matching the historical behavior for
+ * stale refs and refusing a silent rebind of either sort.
  */
 function lowerConstraint(
   c: PartConstraint,
@@ -102,6 +104,10 @@ function lowerConstraint(
   entityInfo: ReadonlyMap<string, EntityLowerInfo>,
 ): Record<string, unknown> | null {
   const out: Record<string, unknown> = { id: c.id, kind: c.kind }
+  // The whole-entity operands, by their CURRENT kind: what the kind-
+  // applicability table reads once every ref has resolved. A vertex ref, the
+  // origin and a locus ref are not entity operands.
+  const entityKinds: string[] = []
   for (const key of REF_KEYS) {
     const raw = c[key]
     if (raw == null) continue
@@ -112,24 +118,35 @@ function lowerConstraint(
       dropped.push({ id: c.id, kind: authoredKind, reason: 'stale reference' })
       return null
     }
-    // A point key the target's CURRENT kind does not have is not a meaningful
-    // operand. The solver would fall back to the entity's first point (`center`
-    // on a line binds its start), silently changing what the user asked for, so
-    // the row is dropped and named instead. The document keeps the row, so a
-    // source that changes back re-enables it on the next solve. This is the
-    // key-existence half of feature/projection-kind-change-operands.md; that
-    // plan generalises it to the full kind-applicability table.
-    if ('entity' in resolved && resolved.point !== undefined) {
+    if ('entity' in resolved) {
       const info = entityInfo.get(resolved.entity)
-      if (info) {
-        const keys = entityPointKeys(info.kind, info.nParams, info.handles)
-        if (keys && !keys.has(resolved.point)) {
-          dropped.push({ id: c.id, kind: authoredKind, reason: `operand ${resolved.point} not on ${info.kind}` })
-          return null
+      // A point key the target's CURRENT kind does not have is not a meaningful
+      // operand. The solver would fall back to the entity's first point
+      // (`center` on a line binds its start), silently changing what the user
+      // asked for, so the row is dropped and named instead. The document keeps
+      // the row, so a source that changes back re-enables it on the next solve.
+      if (resolved.point !== undefined) {
+        if (info) {
+          const keys = entityPointKeys(info.kind, info.nParams, info.handles)
+          if (keys && !keys.has(resolved.point)) {
+            dropped.push({ id: c.id, kind: authoredKind, reason: `operand ${resolved.point} not on ${info.kind}` })
+            return null
+          }
         }
+      } else if (info) {
+        entityKinds.push(info.kind)
       }
     }
     out[key] = resolved
+  }
+  // The kind-applicability half, read from the same table the add-time guards
+  // use (`constraintEntityKindProblem`): a `length` on an arc or an `equal_length`
+  // across a line and an ellipse has no row, whichever kind the entity was
+  // authored as. The row stays in the document, so a kind round trip revives it.
+  const kindProblem = constraintEntityKindProblem(authoredKind, entityKinds)
+  if (kindProblem !== null) {
+    dropped.push({ id: c.id, kind: authoredKind, reason: kindProblem })
+    return null
   }
   // N-ary refs: a group's member list. Each names a whole local entity; the
   // origin (`@builtin_origin`) and any other unresolved form is dropped with

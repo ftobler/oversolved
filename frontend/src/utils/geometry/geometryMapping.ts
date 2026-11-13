@@ -363,7 +363,10 @@ function computeConstraintRenderCore(
     const eid = resolved.target?.entity
     if (!eid) return { kind: 'unknown' }
     const e = sketch[eid] as Circle | Arc
-    if (!e) return { kind: 'unknown' }
+    // A projected target can resolve to another kind while the row stays in the
+    // document (the solve drops and names it): only a centre and a radius can
+    // anchor the glyph, so any other kind is the unknown tile, not a crash.
+    if (!e || !('center' in e) || !('radius' in e)) return { kind: 'unknown' }
     const center = e.center
     const edge = 'start' in e ? e.start : [e.center[0] + e.radius, e.center[1]] as Point
     return {
@@ -380,7 +383,9 @@ function computeConstraintRenderCore(
     const eid = resolved.target?.entity
     if (!eid) return { kind: 'unknown' }
     const e = sketch[eid] as Circle | Arc
-    if (!e) return { kind: 'unknown' }
+    // Same kind-change tolerance as `radius`: an ellipse or a line has no single
+    // radius to draw the diameter across.
+    if (!e || !('center' in e) || !('radius' in e)) return { kind: 'unknown' }
     const cx = e.center[0], cy = e.center[1], r = e.radius
     return {
       kind: 'dim_diameter',

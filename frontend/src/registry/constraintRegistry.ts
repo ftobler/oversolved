@@ -315,7 +315,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
   {
     kind: 'diameter',
     label: 'Diameter',
-    description: 'Sets the diameter of a circle to a specific value.',
+    description: 'Sets the diameter of a circle or arc to a specific value.',
     category: 'dimensional',
     hasValue: true,
     refPattern: 'target',

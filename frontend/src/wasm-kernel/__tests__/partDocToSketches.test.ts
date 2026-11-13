@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { PartFeature, PartConstraint } from '@/types/cad'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { partDocToSketches } from '../partDocToSketches'
+import { addConstraintProblem } from '@/utils/constraintProblems'
 import type { SketchFeature } from '@/types/cad'
 
 describe('partDocToSketches', () => {
@@ -127,19 +128,116 @@ describe('partDocToSketches', () => {
         kind: 'sketch',
         plane: '@builtin_plane_front',
         entities: [{ id: 'F1', kind: 'fit_spline' }, { id: 'P1', kind: 'point' }],
-        // Three fit points, no handles: start, fit1, end.
-        initial: { F1: [0, 0, 5, 5, 10, 0], P1: [1, 1] },
+        // Four fit points, no handles: start, fit1, fit2, end.
+        initial: { F1: [0, 0, 5, 5, 10, 0, 15, 5], P1: [1, 1] },
         constraints: [
           { id: 'fitted', kind: 'coincident', a: '$F1fit1', b: '$P1xy' },
-          { id: 'bad', kind: 'coincident', a: '$F1fit2', b: '$P1xy' },
+          { id: 'bad', kind: 'coincident', a: '$F1fit3', b: '$P1xy' },
         ],
       },
     ]
     const { sketches } = partDocToSketches(features)
     expect(sketches[0].droppedConstraints).toEqual([
-      { id: 'bad', kind: 'coincident', reason: 'operand fit2 not on fit_spline' },
+      { id: 'bad', kind: 'coincident', reason: 'operand fit3 not on fit_spline' },
     ])
     expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['fitted'])
+  })
+
+  it('drops a coincident whose center key the resolved spline lacks', () => {
+    // The arc -> spline half of the kind change: a spline has no `center`, so
+    // the row cannot bind one. Dropping it is what keeps the solver's fallback
+    // (the spline's midpoint) from reading as a solved coincidence.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'S1', kind: 'spline' }, { id: 'P1', kind: 'point' }],
+        initial: { S1: [0, 0, 5, 5, 10, 5, 15, 0], P1: [3, 4] },
+        constraints: [
+          { id: 'cc', kind: 'coincident', a: '$P1xy', b: '$S1center' },
+          { id: 'start', kind: 'coincident', a: '$P1xy', b: '$S1start' },
+        ],
+      },
+    ]
+    const { sketches } = partDocToSketches(features)
+    expect(sketches[0].droppedConstraints).toEqual([
+      { id: 'cc', kind: 'coincident', reason: 'operand center not on spline' },
+    ])
+    // `start` survives: a spline still has it.
+    expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['start'])
+  })
+
+  it('drops a constraint kind the target entity kind cannot take', () => {
+    // The kind-applicability half, read from the registry table the add-time
+    // guards use: a point is not a line, an ellipse has no length or radius, and
+    // a line and an ellipse share no measure for `equal_length`.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [
+          { id: 'L1', kind: 'line' }, { id: 'P1', kind: 'point' },
+          { id: 'E1', kind: 'ellipse' }, { id: 'A1', kind: 'arc' },
+        ],
+        initial: { L1: [0, 0, 10, 0], P1: [1, 1], E1: [0, 0, 8, 4, 0], A1: [0, 0, 5, 0, 90] },
+        constraints: [
+          { id: 'h_point', kind: 'horizontal', target: '$P1' },
+          { id: 'len_arc', kind: 'length', target: '$A1', value: 5 },
+          { id: 'dia_ellipse', kind: 'diameter', target: '$E1', value: 8 },
+          { id: 'equal_mixed', kind: 'equal_length', a: '$L1', b: '$E1' },
+          { id: 'keep_h', kind: 'horizontal', target: '$L1' },
+          { id: 'keep_equal', kind: 'equal_length', a: '$A1', b: '$A1' },
+          { id: 'keep_center', kind: 'coincident', a: '$E1center', b: '$P1xy' },
+        ],
+      },
+    ]
+    const { sketches } = partDocToSketches(features)
+    expect(sketches[0].droppedConstraints).toEqual([
+      { id: 'h_point', kind: 'horizontal', reason: 'horizontal does not apply to point' },
+      { id: 'len_arc', kind: 'length', reason: 'length does not apply to arc' },
+      { id: 'dia_ellipse', kind: 'diameter', reason: 'diameter does not apply to ellipse' },
+      { id: 'equal_mixed', kind: 'equal_length', reason: 'equal_length does not apply to line and ellipse' },
+    ])
+    // A centre key on a kind that has one is untouched: the gate only refuses
+    // the operands the current kind cannot take.
+    expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['keep_h', 'keep_equal', 'keep_center'])
+  })
+
+  it('the add-time refusal and the solve-time drop name the same sentence', () => {
+    // One table, two readers. A row authored before a kind change must fail the
+    // add-time rule and the lowering with the same words, or a script cannot
+    // predict what the next solve will ignore.
+    const feature: SketchFeature = {
+      id: 'sk1',
+      kind: 'sketch',
+      plane: '@builtin_plane_front',
+      entities: [{ id: 'E1', kind: 'ellipse' }],
+      initial: { E1: [0, 0, 8, 4, 0] },
+      constraints: [{ id: 'd', kind: 'diameter', target: '$E1', value: 8 }],
+    }
+    const drop = partDocToSketches([feature]).sketches[0].droppedConstraints
+    expect(drop).toEqual([{ id: 'd', kind: 'diameter', reason: 'diameter does not apply to ellipse' }])
+    expect(addConstraintProblem(feature, 'diameter', ['$E1'], 8)).toBe(drop[0].reason)
+  })
+
+  it('never edits the document rows it drops', () => {
+    // A kind round trip (back to the kind the row was authored for) re-enables
+    // the row on the next solve only if the lowering left it in the document.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'E1', kind: 'ellipse' }],
+        initial: { E1: [0, 0, 8, 4, 0] },
+        constraints: [{ id: 'd', kind: 'diameter', target: '$E1', value: 8 }],
+      },
+    ]
+    const before = JSON.stringify(features)
+    expect(partDocToSketches(features).sketches[0].sketch.constraints).toEqual([])
+    expect(JSON.stringify(features)).toBe(before)
   })
 
   it('skips center_rect sketches', () => {

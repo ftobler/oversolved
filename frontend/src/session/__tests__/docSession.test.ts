@@ -250,7 +250,9 @@ describe('execute', () => {
     const { session } = makeSession(pointSketchDoc())
     const result = session.executeGroup([
       { type: 'add_entity', featureId: 'sk1', kind: 'point', params: [5, 5], entityId: 'pt1' },
-      { type: 'add_constraint', featureId: 'sk1', kind: 'length', targets: ['entity:sk1:pt1'], value: 10 },
+      // A length holds a line: the add-time rule now refuses it on a point, and
+      // this test's subject is the created-id report, not that refusal.
+      { type: 'add_constraint', featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'], value: 10 },
     ])
 
     const minted = sketchAt(session.getDoc()!).constraints?.[0]?.id
@@ -539,7 +541,9 @@ describe('executeGroup', () => {
 
     session.executeGroup([
       { type: 'add_entity', featureId: 'sk1', kind: 'point', params: [5, 5], entityId: 'pt1' },
-      { type: 'add_constraint', featureId: 'sk1', kind: 'length', targets: ['entity:sk1:pt1'], value: 10 },
+      // Two real mutations, so the single history entry below proves the group
+      // collapsed them; a length holds a line, not the point it just added.
+      { type: 'add_constraint', featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'], value: 10 },
     ])
 
     expect(session.inspect().history.undo).toEqual(['add point in sk1'])
@@ -589,7 +593,7 @@ describe('executeGroup', () => {
     const grouped = makeSession(pointSketchDoc())
     grouped.session.executeGroup([
       { type: 'add_entity', featureId: 'sk1', kind: 'point', params: [5, 5], entityId: 'pt1' },
-      { type: 'add_constraint', featureId: 'sk1', kind: 'length', targets: ['entity:sk1:pt1'], value: 10 },
+      { type: 'add_constraint', featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'], value: 10 },
     ])
     expect(grouped.solve.calls.at(-1)?.opts).toEqual({ _suppressFirstSolve: true })
   })
