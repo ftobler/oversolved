@@ -60,7 +60,7 @@ sketchCallbacks.closeDialog = () => useSketchUiStore.getState().closeDialog()
 // this re-export keeps the ~130 existing import sites on one hook.
 export { useEditorState as useSketchEditorStore } from '@/hooks/useEditorState'
 export { useEditorState } from '@/hooks/useEditorState'
-export { editorState, clampRollback, DEFAULT_EDITOR_STATE, sketchOwnedDeleteTargets } from './editorState'
+export { editorState, clampRollback, DEFAULT_EDITOR_STATE, sketchOwnedDeleteTargets, deleteMutationFor } from './editorState'
 export type { EditorState, PartEditorFsm, ViewportDerivedState } from './editorState'
 
 // Public surface preserved for existing consumers: the callback registry, the

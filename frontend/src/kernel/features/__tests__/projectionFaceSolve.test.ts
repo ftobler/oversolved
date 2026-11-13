@@ -6,7 +6,9 @@
 // `initial` row, so a settled solve installs nothing.
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { solveSketch, setSketchSolver, resetSketchSolver } from '../sketch'
+import {
+  solveSketch, setSketchSolver, resetSketchSolver, prepareDragContext,
+} from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
 import { deriveMemberIds } from '../projectionMembers'
@@ -63,14 +65,13 @@ function faceFeature(): Dict {
   }
 }
 
-describe('face projection lowering', () => {
+describe.skipIf(!solveBytes)('face projection lowering', () => {
   beforeEach(() => {
     resetSketchSolver()
     if (solveBytes) setSketchSolver(solveBytes)
   })
 
   it('derives every boundary edge as a member and leaves the input feature untouched', () => {
-    if (!solveBytes) return
     const feature = faceFeature()
     const before = structuredClone(feature)
     const out = solveSketch(feature, memberRepo(), {} as Record<string, Body>, {}, boundary)
@@ -87,7 +88,6 @@ describe('face projection lowering', () => {
   })
 
   it('derives no members and reports the projection when the face does not resolve', () => {
-    if (!solveBytes) return
     const out = solveSketch(faceFeature(), memberRepo(), {} as Record<string, Body>, {}, () => null)
     expect(out.projection_members?.proj_face.members).toEqual({})
     expect(out.projection_members?.proj_face.entities).toEqual([])
@@ -96,7 +96,8 @@ describe('face projection lowering', () => {
 })
 
 describe('face projection write-back', () => {
-  it('installs the member map once and never bakes member geometry into initial', () => {    const ids = deriveMemberIds('proj_face', EDGE_TOKENS)
+  it('installs the member map once and never bakes member geometry into initial', () => {
+    const ids = deriveMemberIds('proj_face', EDGE_TOKENS)
     const feature = faceFeature() as unknown as SketchFeature
     const doc = { version: 7, kind: 'part', features: [feature] } as unknown as PartDoc
     const geometry: Record<string, number[]> = {}
@@ -138,5 +139,50 @@ describe('face projection write-back', () => {
     expect(applyGeometryToFeature(doc, 'sk1', out.geometry ?? {}, undefined, {
       resolvedKinds: out.resolved_kinds,
     })).toBe(false)
+  })
+})
+
+describe.skipIf(!solveBytes)('face projection drag context', () => {
+  beforeEach(() => {
+    resetSketchSolver()
+    if (solveBytes) setSketchSolver(solveBytes)
+  })
+
+  const ids = deriveMemberIds('proj_face', EDGE_TOKENS)
+  const member = ids[EDGE_TOKENS[0]]
+
+  function dragFeature(): SketchFeature {
+    return {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'u1', kind: 'point' }],
+      initial: { u1: [5, 5] },
+      constraints: [
+        { id: 'proj_face', kind: 'projection', source: FACE_QUERY, members: ids },
+        {
+          id: 'c1', kind: 'coincident',
+          a: { entity: 'u1', point: 'xy' },
+          b: { entity: member, point: 'start' },
+        },
+      ],
+    } as unknown as SketchFeature
+  }
+
+  const derived = [{ id: member, kind: 'line', params: [0, 0, 10, 0] }]
+
+  it('lowers a derived member and keeps the row that names it', () => {
+    const ctx = prepareDragContext(dragFeature(), 'u1', 'xy', [0, 0], undefined, derived)
+    expect(ctx).not.toBeNull()
+    expect(ctx!.layout.some(layout => layout.id === member)).toBe(true)
+    // The projection row itself is skipped; the coincident against the member
+    // survives instead of dropping as a stale reference.
+    const memberIndex = ctx!.layout.findIndex(layout => layout.id === member)
+    expect(ctx!.input.constraints.some(constraint =>
+      constraint.refs.some(ref => ref.ref.kind === 'entity' && ref.ref.index === memberIndex))).toBe(true)
+  })
+
+  it('returns a context when the dragged entity is the member itself', () => {
+    const ctx = prepareDragContext(dragFeature(), member, null, [0, 0], undefined, derived)
+    expect(ctx).not.toBeNull()
+    expect(ctx!.layout.some(layout => layout.id === member)).toBe(true)
   })
 })

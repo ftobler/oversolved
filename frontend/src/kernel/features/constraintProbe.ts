@@ -14,6 +14,7 @@
  */
 import type { PartConstraint, PartDoc, SketchFeature } from '@/types/cad'
 import { applyAddConstraint, applyAddProjectedEntity } from '@/utils/yamlMutations/sketch'
+import type { ProjectionMemberEntity } from './projectionMembers'
 import { probeRedundantConstraint } from './sketch'
 
 /** One `add_projected_entity` the pending add depends on. The constraint
@@ -92,13 +93,14 @@ export function classifyPendingAdd(
   doc: PartDoc | null,
   pending: PendingConstraintAdd,
   resolvedKinds?: Readonly<Record<string, string>>,
+  derivedMembers?: readonly ProjectionMemberEntity[],
 ): PendingConstraintVerdict {
   if (!doc) return 'ok'
   const feature = (doc.features ?? []).find((f) => f.id === pending.featureId)
   if (feature?.kind !== 'sketch') return 'ok'
   const drafted = draftPendingConstraint(doc, pending)
   if (!drafted) return 'dropped'
-  return probeRedundantConstraint(drafted.probeFeature, drafted.draft.id, resolvedKinds) === true ? 'redundant' : 'ok'
+  return probeRedundantConstraint(drafted.probeFeature, drafted.draft.id, resolvedKinds, derivedMembers) === true ? 'redundant' : 'ok'
 }
 
 /**

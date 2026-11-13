@@ -723,6 +723,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
               featureId={f.id}
               solved={sketch}
               entities={entities}
+              projectionMembers={solveResult?.projection_members}
               constraints={constraints}
               topology={solveResult?.topology}
               activeFeatureId={activeFeatureId}

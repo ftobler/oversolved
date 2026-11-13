@@ -45,7 +45,7 @@ import { isKernelTrap, swallowUnlessTrap } from '../errors'
 import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
 import { resolve3dGeometry, projectTo2d, projectCenter, type PlaneFrame } from './projectionLowering'
-import { reconcileFaceProjection, type ProjectionMemberReport } from './projectionMembers'
+import { reconcileFaceProjection, type ProjectionMemberEntity, type ProjectionMemberReport } from './projectionMembers'
 import type { FaceBoundaryLookup } from './faceBoundary'
 import type { PlaneLike } from './shared/planes'
 import type { SolveBytes } from '@/wasm-kernel/codec'
@@ -447,6 +447,14 @@ function lowerProjectionConstraints(
         pinnedIds.push(memberId)
         derivedEntities.push({ id: memberId, kind: projected.kind })
         report.entities.push({ id: memberId, kind: projected.kind, params: [...projected.params] })
+      }
+      // A face that resolves but yields no member is as dead as a miss: name it
+      // so the projection cannot sit silent with nothing to freeze or report.
+      if (report.entities.length === 0) {
+        projectionErrors.push(cid)
+        projectionWarnings.push(
+          `projection ${cid} face ${source} has no boundary edge to project`,
+        )
       }
       continue
     }
@@ -993,6 +1001,7 @@ export function resolvedKindsOfSketch(sketch: Sketch | null | undefined): Record
 export function pinProjectionTargets(
   feature: SketchFeature,
   resolvedKinds?: Readonly<Record<string, string>>,
+  derivedMembers?: ReadonlyArray<ProjectionMemberEntity>,
 ): { loweredFeature: SketchFeature; pinnedIds: string[] } {
   const pinned = new Set<string>()
   const constraints = feature.constraints ?? []
@@ -1010,16 +1019,36 @@ export function pinProjectionTargets(
     const src = (e as { source?: unknown }).source
     if (src && typeof src === 'string') pinned.add(e.id)
   }
-  let loweredFeature = feature
+  let entities = feature.entities ?? []
+  let initial = feature.initial
+  // Face-projection members are not document rows, so the drag preview and the
+  // authoring probe would otherwise lower without them and drop every
+  // constraint naming one. Add the last solve's rows and params to this copy.
+  if (derivedMembers !== undefined && derivedMembers.length > 0) {
+    const existing = new Set(entities.map(e => e.id))
+    const extra = derivedMembers.filter(member => !existing.has(member.id))
+    if (extra.length > 0) {
+      entities = [...entities, ...extra.map(member => ({ id: member.id, kind: member.kind }))]
+      const nextInitial = { ...(initial ?? {}) }
+      for (const member of extra) {
+        if (nextInitial[member.id] === undefined) nextInitial[member.id] = [...member.params]
+      }
+      initial = nextInitial
+    }
+  }
   if (resolvedKinds) {
-    const entities = (feature.entities ?? []).map(e => {
+    entities = entities.map(e => {
       const kind = resolvedKinds[e.id]
       return kind && kind !== e.kind ? { ...e, kind } : e
     })
-    if (entities.some((e, i) => e !== feature.entities?.[i])) {
-      loweredFeature = { ...feature, entities }
-    }
   }
+  const loweredFeature = entities === feature.entities && initial === feature.initial
+    ? feature
+    : {
+        ...feature,
+        entities,
+        ...(initial !== feature.initial ? { initial } : {}),
+      }
   return { loweredFeature, pinnedIds: [...pinned] }
 }
 
@@ -1050,10 +1079,11 @@ export function probeRedundantConstraint(
   feature: SketchFeature,
   draftId: string,
   resolvedKinds?: Readonly<Record<string, string>>,
+  derivedMembers?: ReadonlyArray<ProjectionMemberEntity>,
 ): boolean | null {
   if (!solverBytes) return null
   try {
-    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature, resolvedKinds)
+    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature, resolvedKinds, derivedMembers)
     const extract = partDocToSketches([loweredFeature], [0, 0], pinnedIds)
     if (extract.skipped.length || !extract.sketches.length) return null
     const { input, constraintIds } = lowerSketch(extract.sketches[0].sketch, { skipStatusPass: true })
@@ -1144,7 +1174,9 @@ export interface DragContext {
  * `pinProjectionTargets`: a projection whose source turned edge-on has 4 line
  * params in `initial` while the document entity still stores the pick-time
  * circle kind, and adopting the render kind is what makes the preview read
- * those params as the line they are.
+ * those params as the line they are. `derivedMembers` is the last solve's face
+ * projection rows; they are folded into the lowered copy so a constraint naming
+ * a member is not dropped as stale during the preview.
  *
  * For vertex drags, `dragVertexKey` is the specific vertex being dragged
  * (e.g. 'start', 'end', 'center'). For edge/entity drags (whole-entity
@@ -1160,9 +1192,10 @@ export function prepareDragContext(
   dragVertexKey: string | null,
   originLocal: [number, number] = [0, 0],
   resolvedKinds?: Readonly<Record<string, string>>,
+  derivedMembers?: ReadonlyArray<ProjectionMemberEntity>,
 ): DragContext | null {
   try {
-    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature, resolvedKinds)
+    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature, resolvedKinds, derivedMembers)
 
     // originLocal expresses the document origin (0,0,0) in this sketch's local
     // 2D frame so a `@builtin_origin` coincident pins to the actual document

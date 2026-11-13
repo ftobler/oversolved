@@ -12,7 +12,7 @@
 // hooks/useEditorState.ts, and the historical name `useSketchEditorStore` is a
 // re-export of that binding from stores/sketchEditorStore.ts.
 import { createStore } from 'zustand/vanilla'
-import type { FilletCorner, Mutation, PartDoc, PartStyleEntry, ProjectionMemberEntityData, SelectionDomain, SketchData } from '@/types/cad'
+import type { FilletCorner, Mutation, PartDoc, PartStyleEntry, SelectionDomain } from '@/types/cad'
 import type { DimensionPick } from '@/registry'
 import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND } from '@/registry'
 import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints, computeDimensionSign, computeAnglePlacementIsSupplement } from '@/utils/geometry/dimensionNaturalValue'
@@ -20,7 +20,6 @@ import { deriveSelectionDomain, devOnly, testMode, failLoud } from './stateInvar
 import { isDrawingTool } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
 import { freezeRowsForDelete } from '@/kernel/features/projectionMembers'
-import { usePartEditorStore } from './partEditorStore'
 import { planBrepDimensionPick, planProjectedOperand, classifyBrepOperand, refreshProjectedPickKinds, type PlannedProjection, type PlannedProjectionMutation } from '@/tools/operandProjection'
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
@@ -66,35 +65,34 @@ export function sketchOwnedDeleteTargets(selection: Set<string>, activeFeatureId
   })
 }
 
-/** The freeze payload a delete of a face projection carries: the member rows
- *  the last solve derived, so removing the constraint leaves ordinary geometry
- *  with the same ids. Read from the published solve results; a delete that
- *  targets no face projection returns no field at all. */
-function materializeForDelete(
+/** The one delete mutation for a sketch selection, with a face projection's
+ *  solved member rows folded in. Every delete entry point (the store action,
+ *  the page's mixed selection, the action-matrix harness) uses this so the
+ *  freeze bytes cannot be forgotten on one path. */
+export function deleteMutationFor(
   activeFeatureId: string | null,
   targets: readonly string[],
-): { materialize?: ProjectionMemberEntityData[]; frozenNothing?: string } {
-  if (activeFeatureId === null) return {}
-  const store = usePartEditorStore.getState()
-  const feature = (store.doc?.features ?? []).find(candidate => candidate.id === activeFeatureId)
-  if (feature?.kind !== 'sketch') return {}
-  const reports = (store.solveResults as Record<string, SketchData>)[activeFeatureId]?.projection_members
+): { mutation: Mutation; frozenNothing?: string } {
+  const empty = { mutation: { type: 'delete', targets: [...targets] } as Mutation }
+  if (activeFeatureId === null) return empty
+  const feature = (sketchCallbacks.getDoc?.()?.features ?? []).find(candidate => candidate.id === activeFeatureId)
+  if (feature?.kind !== 'sketch') return empty
+  const reports = sketchCallbacks.getProjectionMembers?.(activeFeatureId) ?? null
   const rows = freezeRowsForDelete(activeFeatureId, feature, targets, reports)
-  if (rows !== undefined) return { materialize: rows }
-  // A face projection whose face did not resolve has no member bytes to freeze.
-  // The delete still removes the constraint, but the user is told why nothing
-  // was materialized instead of the rows silently missing.
+  if (rows !== undefined) return { mutation: { type: 'delete', targets: [...targets], materialize: rows } }
+  // A live face projection whose face did not resolve has no member bytes to
+  // freeze. The delete still removes the constraint, but the caller is told why
+  // nothing was materialized instead of the rows silently missing.
   const unresolved = targets.find((target) => {
     if (!target.startsWith('constraint:')) return false
     const [kind, sketchId, constraintId] = target.split(':')
     if (kind !== 'constraint' || sketchId !== activeFeatureId || constraintId === undefined) return false
     const constraint = feature.constraints?.find(candidate => candidate.id === constraintId)
     return constraint?.kind === 'projection'
-      && constraint.members !== undefined
-      && Object.keys(constraint.members).length > 0
+      && constraint.target === undefined
       && (reports?.[constraintId]?.entities.length ?? 0) === 0
   })
-  return unresolved === undefined ? {} : { frozenNothing: unresolved }
+  return unresolved === undefined ? empty : { ...empty, frozenNothing: unresolved }
 }
 
 // The selection contract of mirror_entities: the selected entities are the
@@ -951,12 +949,12 @@ export const editorState = createStore<EditorState>((set, get) => ({
     if (selection.size === 0) return
     const targets = sketchOwnedDeleteTargets(selection, activeFeatureId)
     if (targets.length === 0) return
-    const frozen = materializeForDelete(activeFeatureId, targets)
-    onMutation({ type: 'delete', targets, ...(frozen.materialize !== undefined ? { materialize: frozen.materialize } : {}) })
-    if (frozen.frozenNothing !== undefined) {
+    const { mutation, frozenNothing } = deleteMutationFor(activeFeatureId, targets)
+    onMutation(mutation)
+    if (frozenNothing !== undefined) {
       sketchCallbacks.showMessage?.({
         title: 'Projection not frozen',
-        message: `the face did not resolve this solve, so ${frozen.frozenNothing} was removed without materializing its members`,
+        message: `the face did not resolve this solve, so ${frozenNothing} was removed without materializing its members`,
         variant: 'info',
       })
     }

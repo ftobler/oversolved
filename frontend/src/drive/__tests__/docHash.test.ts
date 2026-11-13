@@ -27,7 +27,49 @@ function doc(): PartDoc {
   } as PartDoc
 }
 
+function projectedDoc(): PartDoc {
+  return {
+    version: 1,
+    kind: 'part',
+    features: [{
+      id: 'sk1',
+      kind: 'sketch',
+      plane: '@builtin_plane_front',
+      entities: [{ id: 'p1', kind: 'circle' }],
+      initial: { p1: [0, 0, 5] },
+      constraints: [
+        { id: 'proj_p1', kind: 'projection', target: '$p1', source: '?edge;circle' },
+        {
+          id: 'proj_face', kind: 'projection', source: '?face',
+          members: { 'u|e_aaaa': 'proj_face.eaaaaaaa' },
+        },
+      ],
+    }],
+  } as PartDoc
+}
+
 describe('authoredHashOf', () => {
+  it('ignores the member map and a projected entity kind, but follows excluded', () => {
+    const before = projectedDoc()
+
+    const membersChanged = structuredClone(before)
+    const membersSketch = membersChanged.features![0]
+    if (membersSketch.kind === 'sketch') {
+      membersSketch.constraints![1].members = { 'u|e_aaaa': 'proj_face.bbbbbbbb' }
+    }
+    expect(authoredHashOf(membersChanged)).toBe(authoredHashOf(before))
+
+    const kindChanged = structuredClone(before)
+    const kindSketch = kindChanged.features![0]
+    if (kindSketch.kind === 'sketch') kindSketch.entities![0].kind = 'ellipse'
+    expect(authoredHashOf(kindChanged)).toBe(authoredHashOf(before))
+
+    const excluded = structuredClone(before)
+    const excludedSketch = excluded.features![0]
+    if (excludedSketch.kind === 'sketch') excludedSketch.constraints![1].excluded = ['u|e_aaaa']
+    expect(authoredHashOf(excluded)).not.toBe(authoredHashOf(before))
+  })
+
   it('ignores the solve write-back fields', () => {
     const before = doc()
     const baked = structuredClone(before)

@@ -22,7 +22,7 @@ import { fitPointIndex } from '@/types/vertexKeys'
 import { hidePlanesIfFirstBoundSketch } from './featureAdmin'
 import { applyAddFitSpline, applyDeleteFitPoint, type FitSplineAddOptions } from './fitSpline'
 import {
-  faceProjectionConstraintId, isFaceProjectionSource, reconcileFaceProjection,
+  deriveMemberIds, faceProjectionConstraintId, isFaceProjectionSource, reconcileFaceProjection,
 } from '@/kernel/features/projectionMembers'
 import type { FaceBoundaryLookup } from '@/kernel/features/faceBoundary'
 
@@ -847,6 +847,16 @@ function applyEntityDimension(
 export interface AddProjectionOptions {
   faceBoundary?: FaceBoundaryLookup
   members?: Record<string, string>
+  excluded?: string[]
+}
+
+/** True when a supplied map is exactly what the loader would derive for this
+ *  constraint id: construction tokens only, each id the derived form. */
+function derivedMemberMap(constraintId: string, members: Record<string, string>): boolean {
+  const tokens = Object.keys(members)
+  if (tokens.some(token => !/^u\|[0-9A-Za-z_]+$/.test(token))) return false
+  const expected = deriveMemberIds(constraintId, tokens)
+  return tokens.every(token => members[token] === expected[token])
 }
 
 export function applyAddProjectedEntity(
@@ -873,6 +883,13 @@ export function applyAddProjectedEntity(
     if (constraints.some((c) => c.kind === 'projection' && c.source === source && c.target === undefined)) return undefined
     let cid = baseCid
     let members = options.members
+    // A supplied map (a recorded mutation, a direct caller) must be the form the
+    // loader will derive, or the document could not reopen. A boundary lets the
+    // applier recompute the right one; without one, a wrong map is refused.
+    if (members !== undefined && !derivedMemberMap(baseCid, members)) {
+      if (options.faceBoundary === undefined) return undefined
+      members = undefined
+    }
     if (members === undefined) {
       const boundary = options.faceBoundary?.(source) ?? null
       // Without a solved boundary there is no member set to record. Refusing is
@@ -890,12 +907,22 @@ export function applyAddProjectedEntity(
         if (!Object.values(members).some((id) => taken.has(id))) break
       }
     }
-    if (members === undefined) return undefined
+    // A face with no boundary edge at all has nothing to project. Storing a
+    // targetless constraint with no members would be a document that can neither
+    // freeze nor report, so the add is refused by name.
+    if (Object.keys(members).length === 0) {
+      warn('applyAddProjectedEntity: the face has no boundary edge to project; refusing it', {
+        featureId, source,
+      })
+      return undefined
+    }
+    const excluded = [...new Set((options.excluded ?? []).filter(token => token !== ''))]
     constraints.push({
       id: cid,
       kind: 'projection',
       source,
-      ...(Object.keys(members).length ? { members } : {}),
+      members,
+      ...(excluded.length ? { excluded } : {}),
     })
     feature.constraints = constraints
     return members

@@ -733,22 +733,25 @@ function checkConstraint(value: unknown, field: string): void {
     }
     const source = constraint.source as string
     const faceSource = isFaceProjectionSource(source)
-    // A face projection is one live constraint; an edge/vertex/origin/foreign
-    // sketch projection holds exactly one materialized entity. The two shapes
-    // cannot mix: a face has no single target, and a target without a face has
-    // no member set to derive.
-    if (faceSource && constraint.target !== undefined) {
-      fail(`${field}.target`, `must be absent for a face projection (its members are derived)`)
-    }
+    // A face projection has two shapes. The live form has no target and derives
+    // its members; the legacy held-centroid form (written before the live form
+    // existed, and by an older drive face pick) keeps a target and one point
+    // entity, exactly like an edge projection. Both load; only the targetless
+    // form may carry the derived member map.
     if (!faceSource && constraint.target === undefined) {
       fail(`${field}.target`, `is required for a non-face projection`)
     }
+    const derivedForm = faceSource && constraint.target === undefined
     if (constraint.members !== undefined) {
-      if (!faceSource) fail(`${field}.members`, `is only valid on a face projection`)
+      if (!derivedForm) {
+        fail(`${field}.members`, `is only valid on a face projection without a target`)
+      }
       checkProjectionMembers(constraint, field)
     }
     if (constraint.excluded !== undefined) {
-      if (!faceSource) fail(`${field}.excluded`, `is only valid on a face projection`)
+      if (!derivedForm) {
+        fail(`${field}.excluded`, `is only valid on a face projection without a target`)
+      }
       const excluded = checkList(constraint.excluded, `${field}.excluded`, MAX_FEATURE_LIST)
       eachEntry(excluded, `${field}.excluded`, checkConstructionToken)
     }

@@ -10,7 +10,7 @@
 // moved face would rename every member.
 
 import { parseQuery } from '@/utils/query'
-import { isFaceRestriction } from '@/kernel/occ/primitives'
+import { isFaceRestriction } from '@/kernel/faceTypes'
 
 /** Hex characters of the construction UUID a member id starts with. */
 export const MEMBER_ID_HEX = 8
@@ -148,8 +148,11 @@ function sameMembers(a: Record<string, string>, b: Record<string, string>): bool
  *
  * 1. A face that did not resolve (null boundary) edits nothing and pins the
  *    stored map; the members come back on their own when it resolves again.
- * 2. A kept edge keeps the id the map already holds, and the whole result keeps
- *    the stored object when nothing changed, so the write-back installs nothing.
+ * 2. A kept edge keeps the id the map already holds whenever the whole map's
+ *    derivation still spells it that way (a collision with a new or orphaned
+ *    token is the one case the deterministic lengthening moves it), and the
+ *    whole result keeps the stored object when nothing changed, so the
+ *    write-back installs nothing.
  * 3. A new edge gets its derived id; the derived ids never consume a mint.
  * 4. A member whose edge left the face is kept in the map (orphan) so a restored
  *    edge gets its old id back; it is reported and yields no geometry this solve.
@@ -185,7 +188,9 @@ export function reconcileFaceProjection(
   const members: Record<string, string> = {}
   for (const token of mapTokens) members[token] = derived[token]
   const added = liveTokens.filter((token) => stored[token] === undefined)
-  const kept = liveTokens.filter((token) => stored[token] !== undefined)
+  // A token is "kept" only when its stored id is still the derived one; a
+  // collision that lengthened it is a change, not a keep.
+  const kept = liveTokens.filter((token) => stored[token] === members[token])
   if (sameMembers(stored, members)) {
     return { resolved: true, members: stored, added, orphans, kept, changed: false }
   }

@@ -2,7 +2,7 @@
 // which ids survive an edit, and what a removed or vanished edge does. No OCC,
 // no solver, no document store.
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import {
   boundaryFromFaceEdges,
   deriveMemberIds,
@@ -14,7 +14,9 @@ import {
   type FaceBoundary,
   type FaceBoundaryEdge,
 } from '../projectionMembers'
-import { applyAddProjectedEntity, applyDeleteElements } from '@/utils/yamlMutations/sketch'
+import { applyAddProjectedEntity, applyDeleteElements, applyAddEntity } from '@/utils/yamlMutations/sketch'
+import { setIdSource, mintEntityId } from '@/utils/yamlMutations/helpers'
+import { seededIdSource } from '@/drive/seededIds'
 import type { PartDoc } from '@/types/cad'
 
 const CID = 'proj_face'
@@ -161,7 +163,8 @@ describe('reconcileFaceProjection', () => {
     expect(result.added).toEqual([fresh])
   })
 
-  it('drops an excluded token from the map and re-adds it with the same id when restored', () => {    const stored = deriveMemberIds(CID, TOKENS)
+  it('drops an excluded token from the map and re-adds it with the same id when restored', () => {
+    const stored = deriveMemberIds(CID, TOKENS)
     const excluded = reconcileFaceProjection(
       { id: CID, members: stored, excluded: [TOKENS[1]] },
       boundary(TOKENS.map(token => edge(token))),
@@ -215,6 +218,10 @@ describe('freezeRowsForDelete', () => {  const members = deriveMemberIds(CID, TO
 
 describe('the add and delete appliers', () => {
   const faceSource = edgeQuery(TOKENS[0], 'flatface')
+
+  afterEach(() => {
+    setIdSource(null)
+  })
 
   function sketchDoc(): PartDoc {
     return {
@@ -272,11 +279,66 @@ describe('the add and delete appliers', () => {
     expect(Object.values(fresh?.members ?? {}).some(id => frozen.includes(id))).toBe(false)
   })
 
-  it('refuses a face add with no solved boundary', () => {    const doc = sketchDoc()
+  it('refuses a face add with no solved boundary', () => {
+    const doc = sketchDoc()
     applyAddProjectedEntity(doc, 'sk1', '', faceSource)
     const sketch = (doc.features ?? [])[0]
     if (sketch.kind !== 'sketch') throw new Error('not a sketch')
     expect(sketch.constraints).toEqual([])
+  })
+
+  it('writes excluded tokens and refuses a supplied map the loader would refuse', () => {
+    const doc = sketchDoc()
+    applyAddProjectedEntity(doc, 'sk1', '', faceSource, undefined, undefined, {
+      faceBoundary: () => boundary,
+      excluded: [TOKENS[1], TOKENS[1]],
+    })
+    let sketch = (doc.features ?? [])[0]
+    if (sketch.kind !== 'sketch') throw new Error('not a sketch')
+    expect(sketch.constraints![0].excluded).toEqual([TOKENS[1]])
+
+    const other = sketchDoc()
+    applyAddProjectedEntity(other, 'sk1', '', faceSource, undefined, undefined, {
+      members: { [TOKENS[0]]: 'proj_face.wrong' },
+    })
+    sketch = (other.features ?? [])[0]
+    if (sketch.kind !== 'sketch') throw new Error('not a sketch')
+    expect(sketch.constraints).toEqual([])
+
+    // With a boundary the bad map is ignored and the real one derived.
+    applyAddProjectedEntity(other, 'sk1', '', faceSource, undefined, undefined, {
+      faceBoundary: () => boundary,
+      members: { [TOKENS[0]]: 'proj_face.wrong' },
+    })
+    expect(Object.keys(sketch.constraints?.[0].members ?? {})).toEqual([...TOKENS].sort())
+  })
+
+  it('refuses a face with no boundary edge instead of storing an empty map', () => {
+    const doc = sketchDoc()
+    applyAddProjectedEntity(doc, 'sk1', '', faceSource, undefined, undefined, {
+      faceBoundary: () => ({ edges: [] }),
+    })
+    const sketch = (doc.features ?? [])[0]
+    if (sketch.kind !== 'sketch') throw new Error('not a sketch')
+    expect(sketch.constraints).toEqual([])
+  })
+
+  it('consumes no mint, so a later add_entity gets the source first id', () => {
+    const seed = 12345
+    const control = seededIdSource(seed)
+    setIdSource(control)
+    const expected = mintEntityId([], undefined)
+
+    const run = seededIdSource(seed)
+    setIdSource(run)
+    const doc = sketchDoc()
+    applyAddProjectedEntity(doc, 'sk1', '', faceSource, undefined, undefined, {
+      faceBoundary: () => boundary,
+    })
+    applyAddEntity(doc, 'sk1', 'point', [8, 8])
+    const sketch = (doc.features ?? [])[0]
+    if (sketch.kind !== 'sketch') throw new Error('not a sketch')
+    expect(sketch.entities?.map(entity => entity.id)).toEqual([expected])
   })
 
   it('records a member delete as an exclusion and leaves the constraint', () => {

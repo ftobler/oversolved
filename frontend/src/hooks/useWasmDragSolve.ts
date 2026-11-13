@@ -34,6 +34,7 @@ import {
 } from '@/kernel/features/sketch'
 import { setLastDragSolve, clearLastDragSolveFor } from '@/utils/geometry/dragSolveRegistry'
 import type { CircleDragMode } from '@/kernel/features/circleDragMode'
+import type { ProjectionMemberEntity } from '@/kernel/features/projectionMembers'
 
 interface UseWasmDragSolveInput {
   featureId: string
@@ -52,6 +53,9 @@ interface UseWasmDragSolveInput {
    *  reads a projected entity that changed kind in the params it was baked
    *  with. Absent leaves the document's stored kind in charge. */
   resolvedKinds?: Readonly<Record<string, string>>
+  /** The last solve's derived face-projection members, so the preview lowers
+   *  the wire and a constraint naming a member survives the drag. */
+  derivedMembers?: readonly ProjectionMemberEntity[]
 }
 
 interface WasmDragSolveResult {
@@ -68,7 +72,7 @@ interface WasmDragSolveResult {
 }
 
 export function useWasmDragSolve(
-  { featureId, featureDef, drag, isDraggingThis, originLocal, resolvedKinds }: UseWasmDragSolveInput,
+  { featureId, featureDef, drag, isDraggingThis, originLocal, resolvedKinds, derivedMembers }: UseWasmDragSolveInput,
 ): WasmDragSolveResult {
   const warmStartRef = useRef<number[] | null>(null)
   const latestCursorRef = useRef<[number, number] | null>(null)
@@ -110,8 +114,8 @@ export function useWasmDragSolve(
     // For vertex drags, pass the vertex key. For edge drags, pass null. The
     // resolved kinds come from the render sketch and are memoised per solve by
     // the caller, so this dependency stays stable across a drag's frames.
-    return prepareDragContext(featureDef, dragEntityId, dragVertexKey, [originX, originY], resolvedKinds)
-  }, [featureDef, dragEntityId, dragVertexKey, originX, originY, resolvedKinds])
+    return prepareDragContext(featureDef, dragEntityId, dragVertexKey, [originX, originY], resolvedKinds, derivedMembers)
+  }, [featureDef, dragEntityId, dragVertexKey, originX, originY, resolvedKinds, derivedMembers])
 
   // ─── Resolve the circle-rim drag mode once per edge drag ───
   // The mode is decided at activation by probing the real drag solver, then stays

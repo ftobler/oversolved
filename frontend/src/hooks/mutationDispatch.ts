@@ -115,7 +115,7 @@ type MutationHandlers = {
     doc: PartDoc,
     m: Extract<Mutation, { type: K }>,
     ctx?: MutationContext,
-  ) => void
+  ) => Mutation | void
 }
 
 /** What an applier may read besides the document: right now only a face's
@@ -150,6 +150,12 @@ const resolvedQueries = (value: (string | SelectorRef)[] | undefined): string[] 
 const UNRESOLVED_PROJECTION_KIND =
   'add_projected_entity reached the applier without a kind; a string source must name one, '
   + 'and the drive fills it only from a {selector} source it resolved'
+
+function sameMemberMap(a: Record<string, string>, b: Record<string, string>): boolean {
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  return aKeys.length === bKeys.length && aKeys.every(key => b[key] === a[key])
+}
 
 export const mutationHandlers: MutationHandlers = {
   move_vertex: (next, m) =>
@@ -204,10 +210,15 @@ export const mutationHandlers: MutationHandlers = {
     const derived = applyAddProjectedEntity(next, m.featureId, m.kind ?? '', source, m.entityId, m.constraintId, {
       faceBoundary: ctx?.projectionBoundary,
       members: m.members,
+      excluded: m.excluded,
     })
-    // A face add derives its member ids here; recording them with the mutation
-    // is what lets a replay apply the same constraint without a live solve.
-    if (m.members === undefined && derived !== undefined) m.members = { ...derived }
+    // A face add derives its member ids here; handing the enriched mutation back
+    // lets the session journal it without editing the caller's object. A supplied
+    // map the applier replaced with the real one is rewritten too, so a bad step
+    // cannot leave a document the loader would refuse.
+    if (derived !== undefined && (m.members === undefined || !sameMemberMap(m.members, derived))) {
+      return { ...m, members: derived }
+    }
   },
   add_rect: (next, m) =>
     applyAddRect(next, m.featureId, m.p0, m.p1, m.p0Ref, m.p1Ref, m.entityIds, m.dimensions),

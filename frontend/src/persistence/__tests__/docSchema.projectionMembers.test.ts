@@ -54,13 +54,40 @@ describe('projection member validation', () => {
     expect(result.error.message).toContain('must be')
   })
 
-  it('refuses a target on a face projection and requires one on an edge projection', () => {
-    const faceTarget = loadPartDoc(doc({
-      id: CID, kind: 'projection', source: FACE, target: '$p1',
-    }))
-    expect(faceTarget.ok).toBe(false)
-    if (!faceTarget.ok) expect(faceTarget.error.field).toBe('features[0].constraints[0].target')
+  it('loads the legacy held-centroid face projection (target plus point entity)', () => {
+    // The shape the previous build wrote for a face pick with no boundary, and
+    // for a drive face source with kind point: one held point entity, a target,
+    // and a face query as the source. It is accepted as-is, with no migration.
+    const legacy = {
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [{
+        id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [{ id: 'c0', kind: 'point' }],
+        initial: { c0: [0, 0] },
+        constraints: [{ id: 'proj_c0', kind: 'projection', target: '$c0', source: FACE }],
+      }],
+    }
+    const result = loadPartDoc(legacy)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.migrations).toEqual([])
+    const sketch = result.doc.features?.[0]
+    if (sketch?.kind !== 'sketch') throw new Error('not a sketch')
+    expect(sketch.constraints?.[0]).toMatchObject({ target: '$c0', source: FACE })
+    expect(sketch.constraints?.[0].members).toBeUndefined()
+  })
 
+  it('refuses a derived member map on the legacy target form', () => {
+    const members = deriveMemberIds('proj_c0', [TOKEN])
+    const result = loadPartDoc(doc({
+      id: 'proj_c0', kind: 'projection', target: '$p1', source: FACE, members,
+    }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.field).toBe('features[0].constraints[0].members')
+  })
+
+  it('requires a target on an edge projection', () => {
     const edgeNoTarget = loadPartDoc(doc({ id: 'proj_e', kind: 'projection', source: EDGE }))
     expect(edgeNoTarget.ok).toBe(false)
     if (!edgeNoTarget.ok) expect(edgeNoTarget.error.field).toBe('features[0].constraints[0].target')

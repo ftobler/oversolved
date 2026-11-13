@@ -10,7 +10,7 @@ import { findEdgeKindForQuery } from '@/picking/bodyDispatchCallbacks'
 import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
 import { resolvedKindsOfSketch } from '@/kernel/features/sketch'
 import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
-import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, type PendingConstraint } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, deleteMutationFor, type PendingConstraint } from '@/stores/sketchEditorStore'
 import { usePartRelationHints } from '@/hooks/useRelationHint'
 import { useEditorState, editorState } from '@/hooks/useEditorState'
 import { syncRollbackFromDoc } from '@/stores/editorState'
@@ -708,7 +708,7 @@ export default function Part() {
       // A 3D-only selection keeps its group exactly as before (no sketch half).
       const sketchDelete = sketchOwnedDeleteTargets(sel, store.activeFeatureId)
       const mutations: Mutation[] = sketchDelete.length > 0
-        ? [{ type: 'delete', targets: sketchDelete }, ...threeD]
+        ? [deleteMutationFor(store.activeFeatureId, sketchDelete).mutation, ...threeD]
         : threeD
       // A Delete while rolled back inserts its delete features at the bar and
       // solves them in the same press. Deleting a feature above the bar shifts
@@ -1063,7 +1063,13 @@ export default function Part() {
     // the params in that resolved kind. Without adopting it the probe would read
     // the 4 line params as a circle and bind a `center` ref to the line's start.
     const resolvedKinds = resolvedKindsOfSketch(solveResults?.[pending.featureId]?.solved)
-    const verdict = classifyPendingAdd(docRef.current, pending, resolvedKinds)
+    // A face projection's members are solve-time rows; the probe needs them to
+    // lower a target that names one instead of dropping it as stale.
+    const projectionMembers = solveResults?.[pending.featureId]?.projection_members
+    const derivedMembers = projectionMembers === undefined
+      ? undefined
+      : Object.values(projectionMembers).flatMap(report => report.entities)
+    const verdict = classifyPendingAdd(docRef.current, pending, resolvedKinds, derivedMembers)
     return verdict === 'redundant' ? true : verdict === 'dropped' ? null : false
   }, [docRef, solveResults])
 

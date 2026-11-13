@@ -122,6 +122,15 @@ function lineMember(report: { entities: Array<{ id: string; kind: string }> }): 
   return line
 }
 
+/** The line member whose x extent is farthest right: the one a wider box moves,
+ *  so a frozen copy is visibly different from a live projection. */
+function movingLineMember(report: { entities: Array<{ id: string; kind: string; params: number[] }> }): string {
+  const lines = report.entities.filter(e => e.kind === 'line')
+  if (lines.length === 0) throw new Error('no line member')
+  const extent = (params: number[]) => Math.max(params[0], params[2])
+  return [...lines].sort((a, b) => extent(b.params) - extent(a.params))[0].id
+}
+
 describe.skipIf(!oc || !solveBytes)('face projection (real OCC + Rust solver)', () => {
   it('9. a face pick is one live constraint deriving the boundary and the hole', () => {
     const { result: baseResult, geometry } = base()
@@ -299,7 +308,7 @@ describe.skipIf(!oc || !solveBytes)('face projection (real OCC + Rust solver)', 
     const doc = projectionBaseDoc()
     const cid = addFaceProjection(doc, baseResult, 'skP', geometry.frontFace)
     const firstReport = reportOf(sketchOf(run(doc), 'skP'), cid)
-    const member = lineMember(firstReport)
+    const member = movingLineMember(firstReport)
     applyAddEntity(doc, 'skP', 'point', [5, 5], 'u1')
     applyAddConstraint(doc, 'skP', 'coincident', ['vertex:skP:u1:xy', `vertex:skP:${member}:start`])
     run(doc)

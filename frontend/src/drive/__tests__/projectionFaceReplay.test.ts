@@ -104,12 +104,10 @@ describe.skipIf(!oc || !solveBytes)('face projection replay', () => {
     expect(docHashOf(chunked.getDoc() as PartDoc)).toBe(docHashOf(whole.getDoc() as PartDoc))
   })
 
-  it('20. a later add_entity keeps its minted id: members never consume the mint index', async () => {
+  it('20. a later add_entity replays with the same minted id', async () => {
     const fixture = faceFixture()
-    // A plain add_entity after the projection mints from the same sequence the
-    // face constraint would have consumed if it used a mint; the id recorded is
-    // the one replay hands out again. The control run's seed differs with the
-    // authored document, so the comparison is record vs replay.
+    // The applier's no-mint proof is the projectionMembers unit test; this pin
+    // is the replay side: the id recorded after the face add comes back.
     const journal = createDriveJournal(projectionBaseDoc())
     const recorded = part(projectionBaseDoc(), journal)
     expect((await recorded.run([

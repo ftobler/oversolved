@@ -7,6 +7,7 @@ import { faceBoundaryLookup } from '@/picking/bodyDispatchCallbacks'
 import type { Result, SessionFailure } from '@/session/result'
 import type { SolveOptions, SolveOutcome } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
+import { setSketchCallback } from '@/stores/sketchEditorCallbacks'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
 import { failLoud } from '@/stores/stateInvariants'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
@@ -121,6 +122,18 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   useEffect(() => { setSolveResultsRef.current = setSolveResults }, [setSolveResults])
   useEffect(() => { validationRef.current = validation }, [validation])
   useEffect(() => { bodiesRef.current = bodies }, [bodies])
+  // The delete action's freeze route reads the solved member rows through the
+  // sketch callback registry, so the store does not import the part-editor
+  // store. A headless store use simply has no port and freezes nothing.
+  useEffect(() => {
+    setSketchCallback('getDoc', () => docRef.current)
+    return () => setSketchCallback('getDoc', null)
+  }, [docRef])
+  useEffect(() => {
+    setSketchCallback('getProjectionMembers', (featureId: string) =>
+      (solveResults[featureId]?.projection_members ?? null))
+    return () => setSketchCallback('getProjectionMembers', null)
+  }, [solveResults])
 
   // The session is the store; every event bumps its version, so the hook
   // re-renders through useSyncExternalStore. The move events also perform the
