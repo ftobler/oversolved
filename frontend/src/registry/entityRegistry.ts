@@ -368,6 +368,13 @@ export function entityVertexIndices(
  * `center` on a line becomes its start). The lowering validates against this
  * list before it reaches the solver; see `lowerConstraint`.
  *
+ * The Rust half of this contract lives in `sketch-solver/src/residuals/mod.rs`:
+ * `point()` maps each `PointSelector` (`sketch-solver/src/constraints.rs`) onto
+ * an entity's param block, and `ref_valid` only re-checks the variable
+ * fit-spline slots because the fixed-size kinds are expected to be validated
+ * here. The table below is a hand-copied mirror of those arms; keep it in step
+ * when a kind gains a point (the residual test suite covers the Rust side).
+ *
  * Undefined for an unknown kind or a malformed fit-spline block, so a caller
  * keeps its existing path instead of guessing the block's shape.
  */

@@ -88,13 +88,17 @@ export type PendingConstraintVerdict = 'ok' | 'redundant' | 'dropped'
  * operand set), so the caller must emit nothing rather than its planned
  * projections.
  */
-export function classifyPendingAdd(doc: PartDoc | null, pending: PendingConstraintAdd): PendingConstraintVerdict {
+export function classifyPendingAdd(
+  doc: PartDoc | null,
+  pending: PendingConstraintAdd,
+  resolvedKinds?: Readonly<Record<string, string>>,
+): PendingConstraintVerdict {
   if (!doc) return 'ok'
   const feature = (doc.features ?? []).find((f) => f.id === pending.featureId)
   if (feature?.kind !== 'sketch') return 'ok'
   const drafted = draftPendingConstraint(doc, pending)
   if (!drafted) return 'dropped'
-  return probeRedundantConstraint(drafted.probeFeature, drafted.draft.id) === true ? 'redundant' : 'ok'
+  return probeRedundantConstraint(drafted.probeFeature, drafted.draft.id, resolvedKinds) === true ? 'redundant' : 'ok'
 }
 
 /**

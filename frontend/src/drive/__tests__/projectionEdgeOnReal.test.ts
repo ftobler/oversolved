@@ -287,8 +287,13 @@ describe.skipIf(!ready)('edge-on projection lowers to a real line (real OCC + Ru
     })
     expect(run.ok).toBe(true)
     // Coplanar source: the projection stays a circle, so the centre
-    // coincidence is a real relation and the sketch is clean.
+    // coincidence is a real relation and the sketch is clean. Pin the verdict
+    // itself: if the row were dropped the user circle would be free, which the
+    // volume and centre checks cannot tell apart from an authored-concentric
+    // circle.
     expect(nonSketchProblems(run.features)).toEqual([])
+    expect(run.features.find(problem => problem.id === 'sk0')).toBeUndefined()
+    expect(run.featureDeltas?.find(entry => entry.id === 'sk0')?.status).toBe('fully_constrained')
     const sk0 = sketchOf(run.doc, 'sk0')
     expect(sk0?.entities?.find(e => e.id === 'pc')?.kind).toBe('circle')
     expect(sk0?.initial?.uc).toEqual([20, 5, 5])

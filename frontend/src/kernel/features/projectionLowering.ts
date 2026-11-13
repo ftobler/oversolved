@@ -161,7 +161,9 @@ function isEdgeOn(ellipseParams: number[]): boolean {
 function conicSilhouetteLine(ellipseParams: number[]): ProjectedParams | null {
   const [cx, cy, a] = ellipseParams
   const [dx, dy] = dirAt(ellipseParams[4])
-  if (!(a > 0)) return null
+  // A silhouette shorter than the merge rung is the same degenerate class as
+  // the zero-width sliver this rule removes, so it reports instead of storing.
+  if (!(a > TOL_TOPOLOGY_MERGE)) return null
   return canonicalLine(cx - a * dx, cy - a * dy, cx + a * dx, cy + a * dy)
 }
 
@@ -224,7 +226,7 @@ function sampledSilhouetteLine(
     if (s < tMin) tMin = s
     if (s > tMax) tMax = s
   }
-  if (!(tMax - tMin > 0)) return null
+  if (!(tMax - tMin > TOL_TOPOLOGY_MERGE)) return null
   return canonicalLine(
     c2d[0] + tMin * dir[0], c2d[1] + tMin * dir[1],
     c2d[0] + tMax * dir[0], c2d[1] + tMax * dir[1],
@@ -441,7 +443,10 @@ export function projectTo2d(
     // fit a cubic Bezier, mirroring the generic spline-edge projection. Seen
     // edge-on it is its covered silhouette instead.
     if (isEdgeOn(fullParams)) {
-      const dir = dirAt(fullParams[3])
+      // The silhouette direction is the projected MAJOR axis (theta); the minor
+      // semi-axis (b, index 3) is the collapsed one this branch tests, so it
+      // cannot name the line.
+      const dir = dirAt(fullParams[4])
       const u2 = dirTo2d(u, plane)
       const v2 = dirTo2d(vn, plane)
       const phase = Math.atan2(b * dot2d(v2, dir), a * dot2d(u2, dir))
@@ -493,7 +498,10 @@ export function projectTo2d(
       // arc sweeping across the edge-on extremum folds back over that segment.
       const fullParams = circleToEllipseParams(center, radius, axis, ax, plane)
       if (isEdgeOn(fullParams)) {
-        const dir = dirAt(fullParams[3])
+        // The direction is the projected MAJOR axis (theta), which is the
+        // silhouette line; the minor semi-axis is the collapsed one this branch
+        // tests, so reading it would measure every silhouette along local +x.
+        const dir = dirAt(fullParams[4])
         const phase = Math.atan2(dot2d(dirTo2d(y_axis, plane), dir), dot2d(dirTo2d(ax, plane), dir))
         return sampledSilhouetteLine(pointAt, { a0, a1, phase },
           [fullParams[0], fullParams[1]], dir, plane)

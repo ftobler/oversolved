@@ -48,6 +48,10 @@ interface UseWasmDragSolveInput {
    *  preview. [0,0] for the builtin planes; nonzero for an offset/projected
    *  face. Defaults to [0,0] (builtin-plane behaviour). */
   originLocal?: [number, number]
+  /** The last solve's resolved entity kinds (the render sketch), so the preview
+   *  reads a projected entity that changed kind in the params it was baked
+   *  with. Absent leaves the document's stored kind in charge. */
+  resolvedKinds?: Readonly<Record<string, string>>
 }
 
 interface WasmDragSolveResult {
@@ -64,7 +68,7 @@ interface WasmDragSolveResult {
 }
 
 export function useWasmDragSolve(
-  { featureId, featureDef, drag, isDraggingThis, originLocal }: UseWasmDragSolveInput,
+  { featureId, featureDef, drag, isDraggingThis, originLocal, resolvedKinds }: UseWasmDragSolveInput,
 ): WasmDragSolveResult {
   const warmStartRef = useRef<number[] | null>(null)
   const latestCursorRef = useRef<[number, number] | null>(null)
@@ -103,9 +107,11 @@ export function useWasmDragSolve(
   const ctx = useMemo(() => {
     if (!featureDef || !dragEntityId) return null
     if (!isSketchSolverReady()) return null
-    // For vertex drags, pass the vertex key. For edge drags, pass null.
-    return prepareDragContext(featureDef, dragEntityId, dragVertexKey, [originX, originY])
-  }, [featureDef, dragEntityId, dragVertexKey, originX, originY])
+    // For vertex drags, pass the vertex key. For edge drags, pass null. The
+    // resolved kinds come from the render sketch and are memoised per solve by
+    // the caller, so this dependency stays stable across a drag's frames.
+    return prepareDragContext(featureDef, dragEntityId, dragVertexKey, [originX, originY], resolvedKinds)
+  }, [featureDef, dragEntityId, dragVertexKey, originX, originY, resolvedKinds])
 
   // ─── Resolve the circle-rim drag mode once per edge drag ───
   // The mode is decided at activation by probing the real drag solver, then stays

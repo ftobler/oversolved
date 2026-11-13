@@ -40,6 +40,7 @@ import { topologyStale } from '@/components/Geometry3D/dragTopologyGate'
 
 // WASM drag solve: runs the real solver on every drag frame.
 import { useWasmDragSolve } from '@/hooks/useWasmDragSolve'
+import { resolvedKindsOfSketch } from '@/kernel/features/sketch'
 
 // Drawing tools
 import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'
@@ -94,10 +95,20 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // fall-back [0,0] keeps a stable identity across renders.
   const dragOrigin = useMemo<[number, number]>(() => originLocal ?? [0, 0], [originLocal])
 
+  // The last solve's resolved kinds, from the render sketch. A projected entity
+  // can render as a kind the document does not store (a circle seen edge-on is
+  // a line); the drag preview lowers the stored feature, so it needs this to
+  // read the baked params in the kind they were written as. Keyed on `solved`
+  // so the identity is stable across a drag's frames (the memo key above warns
+  // that a fresh object per render would rebuild the context mid-drag).
+  const resolvedKinds = useMemo(() => resolvedKindsOfSketch(solved), [solved])
+
   // WASM drag solve for vertex drags (runs the real solver per frame with
   // warm-start continuity and rAF throttling). engaged=false for edge/dim_label
   // drags, unmapped vertices, or while the main-thread solver is still loading.
-  const wasmDrag = useWasmDragSolve({ featureId, featureDef, drag, isDraggingThis, originLocal: dragOrigin })
+  const wasmDrag = useWasmDragSolve({
+    featureId, featureDef, drag, isDraggingThis, originLocal: dragOrigin, resolvedKinds,
+  })
 
   // During drag on this feature: vertex drags use WASM; edge drags use a simple
   // translation preview (no constraint resolution -- the hard solve handles it
