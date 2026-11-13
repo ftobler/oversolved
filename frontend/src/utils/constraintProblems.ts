@@ -7,7 +7,11 @@
 import type { SketchFeature } from '@/types/cad'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { resolveVertexRef } from '@/types/vertexRef'
-import { constraintEntityKindProblem } from './constraintApplicability'
+import {
+  constraintEntityKindProblem,
+  type ConstraintKindOperand,
+  type ConstraintOperandRole,
+} from './constraintApplicability'
 import { pointDistanceZeroProblem } from './yamlMutations/helpers'
 import {
   COLINEAR_SHAPE_REASON,
@@ -157,21 +161,30 @@ function groupProblem(
   return null
 }
 
+/** The field the applier will store a pick in: a lone pick is `target`, the
+ *  first of a pair `a`, the second `b` (the overloaded horizontal/vertical and
+ *  the a_b kinds), and anything past that an unjudged operand. */
+function pickRole(index: number, count: number): ConstraintOperandRole {
+  if (count === 1) return 'target'
+  return index === 0 ? 'a' : index === 1 ? 'b' : 'operand'
+}
+
 /**
- * The current kind of every target that names a WHOLE entity. A vertex ref, the
- * builtin origin and an unmaterialized `dock:`/`isect:` handle name points, not
- * entity kinds, so they are left out; a target the sketch does not hold is
- * unresolved and the lowering's stale-ref path owns it.
+ * The current kind of every target that names a WHOLE entity, with the field it
+ * will be stored in. A vertex ref, the builtin origin and an unmaterialized
+ * `dock:`/`isect:` handle name points, not entity kinds, so they are left out; a
+ * target the sketch does not hold is unresolved and the lowering's stale-ref
+ * path owns it.
  */
-function wholeEntityKinds(
+function wholeEntityOperands(
   featureId: string,
   entityIds: ReadonlySet<string>,
   kindById: ReadonlyMap<string, string>,
   targets: readonly string[],
-): string[] {
-  const kinds: string[] = []
-  for (const target of targets) {
-    const text = String(target)
+): ConstraintKindOperand[] {
+  const operands: ConstraintKindOperand[] = []
+  for (let i = 0; i < targets.length; i++) {
+    const text = String(targets[i])
     if (text === '@builtin_origin' || text.startsWith('vertex:') || text.startsWith('dock:') || text.startsWith('isect:')) continue
     let entity: string | null = null
     if (text.startsWith('$')) {
@@ -182,9 +195,9 @@ function wholeEntityKinds(
       if (parts[0] === 'entity' && parts[1] === featureId && parts[2] !== undefined) entity = parts[2]
     }
     const kind = entity === null ? undefined : kindById.get(entity)
-    if (kind !== undefined) kinds.push(kind)
+    if (kind !== undefined) operands.push({ role: pickRole(i, targets.length), kind })
   }
-  return kinds
+  return operands
 }
 
 /** The sentence a refused midpoint carries. The accepted shapes come from the
@@ -241,14 +254,22 @@ export function addConstraintProblem(
   }
 
   if (kind === 'horizontal' || kind === 'vertical') {
-    // Overloaded: one line -> `target`, two points -> `a`/`b`. A whole entity in
-    // the a/b slot resolves to one sub-point and yields a degenerate residual
-    // that is often already satisfied, so the line never turns. Empty falls
-    // through both forms, so it is refused too.
+    // Overloaded: one line -> `target`, two points -> `a`/`b`. A whole LINE or
+    // curve in the a/b slot resolves to one sub-point and yields a degenerate
+    // residual that is often already satisfied, so the line never turns; a whole
+    // point entity IS the point and is legal there (the stored `$` form and the
+    // explicit `entity:` form must not disagree). Empty falls through both
+    // forms, so it is refused too.
     // See bugreports/vertical_constraint_20260621_102915.md.
     if (targets.length < 1) return `${kind} needs a target`
-    if (targets.length >= 2 && (targets[0].startsWith('entity:') || targets[1].startsWith('entity:'))) {
-      return `${kind} needs one line or two points, got ${JSON.stringify(targets)}`
+    if (targets.length >= 2) {
+      const dead = targets
+        .filter(target => target.startsWith('entity:'))
+        .find(target => {
+          const kind = kindById.get(target.split(':')[2])
+          return kind !== undefined && kind !== 'point'
+        })
+      if (dead !== undefined) return `${kind} needs one line or two points, got ${JSON.stringify(targets)}`
     }
     // A lone whole entity falls through to the entity-kind table below: one
     // point or curve is not a line to hold horizontal.
@@ -269,13 +290,15 @@ export function addConstraintProblem(
 
   // A well-formed pick whose entity kind the constraint cannot represent has no
   // solver row: a length on an arc, an equal across a line and an ellipse, a
-  // horizontal on a point. The registry's `entityKindGroups` is the one table,
-  // read here and by the solve-time lowering, so a script cannot author a row
-  // the next solve silently ignores. Judged after the per-kind shape rules: a
-  // wrong operand count already has the more specific sentence.
+  // horizontal on a point. The one applicability table (constraintApplicability)
+  // is read here and by the solve-time lowering, so a pick refused here is one
+  // the solve would ignore. The converse is still possible for a projection: this
+  // reader sees the declared kind, the lowering the resolved one. Judged after
+  // the per-kind shape rules: a wrong operand count already has the more specific
+  // sentence.
   const kindProblem = constraintEntityKindProblem(
     kind,
-    wholeEntityKinds(featureId, entityIds, kindById, targets),
+    wholeEntityOperands(featureId, entityIds, kindById, targets),
   )
   if (kindProblem !== null) return kindProblem
 

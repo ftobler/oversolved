@@ -99,7 +99,7 @@ export interface ConstraintDef {
    * applyConstraint) unless every `entity:` operand's kind belongs to one common
    * group. Vertex/point targets are unaffected. Examples:
    *   - parallel:  [['line']]                  -- both operands must be lines
-   *   - concentric:[['arc', 'circle']]         -- any mix of arcs/circles
+   *   - concentric:[['arc', 'circle', 'ellipse']] -- any mix of curves with a centre
    *   - equal:     [['line'], ['arc','circle']] -- two lines (length) OR two
    *                                                curves (radius), never mixed
    * Constraints whose operands are heterogeneous by design (tangent = line +
@@ -156,7 +156,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
   {
     kind: 'concentric',
     label: 'Concentric',
-    description: 'Forces two circles or arcs to share the same center point.',
+    description: 'Forces two circles, arcs or ellipses to share the same center point.',
     category: 'geometric',
     hasValue: false,
     refPattern: 'a_b',
@@ -164,7 +164,10 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     symbolIcon: 'constraint-concentric',
     toolbarIcon: 'constraint-concentric',
     showInToolbar: true,
-    entityKindGroups: [['arc', 'circle']],  // shares a center; lines have none
+    // An ellipse's params 0..1 are its centre too, and the solver's concentric
+    // gate accepts it (residuals/mod.rs `has_center`). Excluding it dropped a
+    // concentric the moment a projected circle tilted to an ellipse.
+    entityKindGroups: [['arc', 'circle', 'ellipse']],
   },
   {
     kind: 'equal_length',

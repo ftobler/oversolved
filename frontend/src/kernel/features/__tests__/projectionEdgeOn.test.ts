@@ -199,7 +199,10 @@ describe('solveSketch projects a declared point on a curved source as its centre
     const out = solveSketch(feature, stubRepo(edgeOnCircle), {} as Record<string, Body>)
     expect(out.resolved_kinds).toEqual({ c0: 'line' })
     expect(out.dropped_constraints).toEqual([
-      { id: 'cc', kind: 'coincident', reason: 'operand center not on line' },
+      {
+        id: 'cc', kind: 'coincident',
+        reason: 'operand center not on line; project the centre as a point to keep it',
+      },
     ])
     expect(feature.constraints).toHaveLength(2)
     // The free point is not dragged onto the silhouette's start.
@@ -228,7 +231,10 @@ describe('solveSketch projects a declared point on a curved source as its centre
     const out = solveSketch(feature, stubRepo(edgeOnCircle), {} as Record<string, Body>)
     expect(out.resolved_kinds).toEqual({ c0: 'line' })
     expect(out.dropped_constraints).toEqual([
-      { id: 'cc', kind: 'coincident', reason: 'operand center not on line' },
+      {
+        id: 'cc', kind: 'coincident',
+        reason: 'operand center not on line; project the centre as a point to keep it',
+      },
       { id: 'eq', kind: 'equal_length', reason: 'equal_length does not apply to line and circle' },
     ])
     // Neither row left the document, and neither free entity was dragged.

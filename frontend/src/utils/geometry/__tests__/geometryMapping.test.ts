@@ -194,7 +194,7 @@ describe('computeConstraintRender - radius / diameter exact extent', () => {
     expect(computeConstraintRender({ id: 'D', kind: 'diameter', target: '$GONE' }, sketch)).toEqual({ kind: 'unknown' })
   })
 
-  it('radius and diameter on a kind that changed under them are unknown, not a throw', () => {
+  it('radius and diameter on a kind that changed under them render the unknown tile', () => {
     // A projected circle that tilts to an ellipse, or goes edge-on as a line,
     // leaves the authored row in the document while the solve drops it by name.
     // The renderer reads that row's target against the SOLVED sketch, so the

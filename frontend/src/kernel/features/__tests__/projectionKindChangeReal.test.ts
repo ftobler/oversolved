@@ -138,13 +138,18 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
     const tilted = await moveTarget(base.doc!, '@pl30')
     expect(tilted.ok).toBe(true)
     // A tilted arc has no 2D ellipse-arc entity, so it lowers to a fitted
-    // spline. The resolved kind is what the operand gate sees, or the `center`
-    // key would still pass and the row would bind the spline's midpoint.
-    expect(kindOf(tilted.doc, 'skT', 'pa0')).toBe('spline')
+    // spline (an eight-parameter block). The resolved kind is what the operand
+    // gate sees, or the `center` key would still pass and the row would bind the
+    // spline's midpoint. The baked params, not the document entity kind, are the
+    // stable witness: projection-lowering-hygiene keeps the declared kind while
+    // the resolved one shapes the lowering.
+    expect(paramsOf(tilted.doc, 'skT', 'pa0')).toHaveLength(8)
     const row = tilted.features.find(problem => problem.id === 'skT')
     expect(row).toBeDefined()
     expect(row!.status).not.toBe('fully_constrained')
     expect(row!.message).toContain('operand center not on spline')
+    // A lost centre carries the stable alternative, not only the loss.
+    expect(row!.message).toContain('project the centre as a point to keep it')
     // The document keeps the row, so the round trip below can revive it.
     expect(sketchOf(tilted.doc, 'skT')?.constraints).toHaveLength(2)
     // The free point stays where the last solve left it, not on a control point
@@ -171,7 +176,10 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
 
     const tilted = await moveTarget(base.doc!, '@pl30')
     expect(tilted.ok).toBe(true)
-    expect(kindOf(tilted.doc, 'skT', 'pa0')).toBe('ellipse')
+    // A five-parameter conic block and the ellipse in the reasons below name the
+    // resolved kind; the document entity kind is not asserted, because the
+    // hygiene change keeps it declared while the solve resolves an ellipse.
+    expect(paramsOf(tilted.doc, 'skT', 'pa0')).toHaveLength(5)
     const row = tilted.features.find(problem => problem.id === 'skT')
     expect(row).toBeDefined()
     expect(row!.status).not.toBe('fully_constrained')
@@ -179,20 +187,16 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
     // diameter, and it shares no radius measure with a circle.
     expect(row!.message).toContain('diameter does not apply to ellipse')
     expect(row!.message).toContain('equal_length does not apply to ellipse and circle')
+    // The rows were authored while the projection was coplanar and still a
+    // circle, so the add-time rule accepted them; the tilt is what made the
+    // solve re-judge them. Re-authoring here is deliberately NOT asserted:
+    // add time reads the kind the document declares, and the in-process solve
+    // still writes the resolved kind back into the entity def. Once
+    // projection-lowering-hygiene removes that write, a browser author would
+    // be accepted (declared circle) and the solve would report it, exactly as
+    // this test shows for the row authored before the tilt.
     expect(sketchOf(tilted.doc, 'skT')?.constraints).toHaveLength(4)
     expect(paramsOf(tilted.doc, 'skT', 'uc')).toEqual([0, 0, 3])
-
-    // Add-time and solve-time agree: authoring the same pair now is refused
-    // with the same sentence the dropped row carries.
-    const refused = await runHeadless({
-      doc: structuredClone(tilted.doc!),
-      steps: [step({
-        type: 'add_constraint', featureId: 'skT', kind: 'equal_length',
-        targets: ['entity:skT:pa0', 'entity:skT:uc'],
-      })],
-    })
-    expect(refused.ok).toBe(false)
-    expect(JSON.stringify(refused.outcome)).toContain('equal_length does not apply to ellipse and circle')
   }, 240_000)
 
   it('8. a circle seen edge-on drops the centre and equal rows, point free', async () => {
@@ -201,8 +205,9 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
     const tilted = await moveTarget(base.doc!, '@plEdge')
     expect(tilted.ok).toBe(true)
     // The tilted target sees the source circle edge-on, so the lowering takes
-    // the silhouette branch and the entity is a real line.
-    expect(kindOf(tilted.doc, 'skT', 'pa0')).toBe('line')
+    // the silhouette branch and bakes a four-parameter line block (again the
+    // params, not the document entity kind, are the witness that survives the
+    // hygiene change).
     expect(paramsOf(tilted.doc, 'skT', 'pa0')).toHaveLength(4)
     const row = tilted.features.find(problem => problem.id === 'skT')
     expect(row).toBeDefined()

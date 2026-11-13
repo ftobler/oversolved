@@ -19,7 +19,11 @@ import type { PartConstraint, PartFeature, SketchFeature, DroppedSketchConstrain
 import { resolveVertexRef } from '@/types/vertexRef'
 import { colinearShapeProblem, constraintOperandSide } from '@/utils/constraintOperands'
 import { entityPointKeys } from '@/registry/entityRegistry'
-import { constraintEntityKindProblem } from '@/utils/constraintApplicability'
+import {
+  constraintEntityKindProblem,
+  type ConstraintKindOperand,
+  type ConstraintOperandRole,
+} from '@/utils/constraintApplicability'
 import { isConstraintKindName } from './codec'
 import type { SketchInput } from './lowerSketch'
 
@@ -104,10 +108,11 @@ function lowerConstraint(
   entityInfo: ReadonlyMap<string, EntityLowerInfo>,
 ): Record<string, unknown> | null {
   const out: Record<string, unknown> = { id: c.id, kind: c.kind }
-  // The whole-entity operands, by their CURRENT kind: what the kind-
-  // applicability table reads once every ref has resolved. A vertex ref, the
-  // origin and a locus ref are not entity operands.
-  const entityKinds: string[] = []
+  // The whole-entity operands, by their CURRENT kind and the field they came
+  // from: what the kind-applicability table reads once every ref has resolved.
+  // A vertex ref and the origin are point operands, not whole entities; a bare
+  // locus ref (a whole curve) IS one and carries its kind.
+  const operands: ConstraintKindOperand[] = []
   for (const key of REF_KEYS) {
     const raw = c[key]
     if (raw == null) continue
@@ -129,12 +134,21 @@ function lowerConstraint(
         if (info) {
           const keys = entityPointKeys(info.kind, info.nParams, info.handles)
           if (keys && !keys.has(resolved.point)) {
-            dropped.push({ id: c.id, kind: authoredKind, reason: `operand ${resolved.point} not on ${info.kind}` })
+            // A lost centre is the one key with a stable alternative: the
+            // declared-point projection keeps the centre reachable in any
+            // orientation, so the warning names that rather than only the loss.
+            const remedy = resolved.point === 'center' ? '; project the centre as a point to keep it' : ''
+            dropped.push({
+              id: c.id, kind: authoredKind,
+              reason: `operand ${resolved.point} not on ${info.kind}${remedy}`,
+            })
             return null
           }
         }
       } else if (info) {
-        entityKinds.push(info.kind)
+        const role: ConstraintOperandRole =
+          key === 'target' ? 'target' : key === 'a' ? 'a' : key === 'b' ? 'b' : 'operand'
+        operands.push({ role, kind: info.kind })
       }
     }
     out[key] = resolved
@@ -143,7 +157,7 @@ function lowerConstraint(
   // use (`constraintEntityKindProblem`): a `length` on an arc or an `equal_length`
   // across a line and an ellipse has no row, whichever kind the entity was
   // authored as. The row stays in the document, so a kind round trip revives it.
-  const kindProblem = constraintEntityKindProblem(authoredKind, entityKinds)
+  const kindProblem = constraintEntityKindProblem(authoredKind, operands)
   if (kindProblem !== null) {
     dropped.push({ id: c.id, kind: authoredKind, reason: kindProblem })
     return null

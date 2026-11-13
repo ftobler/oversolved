@@ -116,7 +116,10 @@ describe('partDocToSketches', () => {
     ]
     const { sketches } = partDocToSketches(features)
     expect(sketches[0].droppedConstraints).toEqual([
-      { id: 'bad', kind: 'coincident', reason: 'operand center not on line' },
+      {
+        id: 'bad', kind: 'coincident',
+        reason: 'operand center not on line; project the centre as a point to keep it',
+      },
     ])
     expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['circle', 'arc', 'ellipse'])
   })
@@ -162,10 +165,44 @@ describe('partDocToSketches', () => {
     ]
     const { sketches } = partDocToSketches(features)
     expect(sketches[0].droppedConstraints).toEqual([
-      { id: 'cc', kind: 'coincident', reason: 'operand center not on spline' },
+      {
+        id: 'cc', kind: 'coincident',
+        reason: 'operand center not on spline; project the centre as a point to keep it',
+      },
     ])
     // `start` survives: a spline still has it.
     expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['start'])
+  })
+
+  it('keeps the two-point horizontal/vertical form on whole point entities', () => {
+    // Horizontal/vertical are overloaded: the one-entity form is a line, but the
+    // a/b form compares two points resolved through `point()`, where a whole
+    // point entity IS the point. Judged by role, not by operand kind alone. A
+    // whole non-point entity in the pair is the degenerate pick
+    // `dropDeadAxisConstraints` prunes, so it is dropped here too.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [
+          { id: 'P1', kind: 'point' }, { id: 'P2', kind: 'point' }, { id: 'C1', kind: 'circle' },
+        ],
+        initial: { P1: [0, 0], P2: [0, 5], C1: [2, 2, 1] },
+        constraints: [
+          { id: 'v_pair', kind: 'vertical', a: '$P1', b: '$P2' },
+          { id: 'v_dead', kind: 'vertical', a: '$C1', b: '$P1' },
+          { id: 'h_target', kind: 'horizontal', target: '$P1' },
+        ],
+      },
+    ]
+    const { sketches } = partDocToSketches(features)
+    // The point pair lowers; the dead pair and the single-target-on-a-point drop.
+    expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['v_pair'])
+    expect(sketches[0].droppedConstraints).toEqual([
+      { id: 'v_dead', kind: 'vertical', reason: 'vertical does not apply to circle and point' },
+      { id: 'h_target', kind: 'horizontal', reason: 'horizontal does not apply to point' },
+    ])
   })
 
   it('drops a constraint kind the target entity kind cannot take', () => {
@@ -190,6 +227,9 @@ describe('partDocToSketches', () => {
           { id: 'keep_h', kind: 'horizontal', target: '$L1' },
           { id: 'keep_equal', kind: 'equal_length', a: '$A1', b: '$A1' },
           { id: 'keep_center', kind: 'coincident', a: '$E1center', b: '$P1xy' },
+          // An ellipse shares its centre with a circle or an arc, so a concentric
+          // on a projection that tilted to an ellipse keeps its row.
+          { id: 'keep_concentric', kind: 'concentric', a: '$E1', b: '$A1' },
         ],
       },
     ]
@@ -202,13 +242,15 @@ describe('partDocToSketches', () => {
     ])
     // A centre key on a kind that has one is untouched: the gate only refuses
     // the operands the current kind cannot take.
-    expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['keep_h', 'keep_equal', 'keep_center'])
+    expect(sketches[0].sketch.constraints.map(c => c.id))
+      .toEqual(['keep_h', 'keep_equal', 'keep_center', 'keep_concentric'])
   })
 
   it('the add-time refusal and the solve-time drop name the same sentence', () => {
-    // One table, two readers. A row authored before a kind change must fail the
-    // add-time rule and the lowering with the same words, or a script cannot
-    // predict what the next solve will ignore.
+    // One table, two readers, with no projection in play: the declared kind and
+    // the resolved kind are the same ellipse, so both must refuse it in the same
+    // words. A projection whose kind resolves away from its declaration is the
+    // solve's report, not an add-time refusal (see the table header).
     const feature: SketchFeature = {
       id: 'sk1',
       kind: 'sketch',
