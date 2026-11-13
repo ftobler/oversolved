@@ -1,8 +1,8 @@
-// One vocabulary for "this typeRestriction names a face". `isFaceRestriction`
-// in occ/primitives.ts is the only place the face kinds are written as a
-// predicate; every consumer calls it. Two hand predicates had already drifted
-// from the shared six (fillet/chamfer's edge expansion and projection lowering
-// stopped at `cylinderface`), so a countersink cone resolved nothing.
+// One vocabulary for "this typeRestriction names a face". `faceTypes.ts` is the
+// only place the face kinds are written as a predicate; every consumer calls it
+// (and `occ/primitives.ts` re-exports the leaf). Two hand predicates had already
+// drifted from the shared six (fillet/chamfer's edge expansion and projection
+// lowering stopped at `cylinderface`), so a countersink cone resolved nothing.
 //
 // The scan targets exactly that shape: a same-line union of three or more face
 // subtypes, or one that also names the `face` catch-all. It is a same-line,
@@ -40,10 +40,10 @@ describe('face restriction kinds have one home', () => {
     expect(sources.length).toBeGreaterThan(150)
   })
 
-  it('keeps the last hand predicate out of every file but primitives.ts', () => {
+  it('keeps the last hand predicate out of every file but faceTypes.ts', () => {
     const offenders: string[] = []
     for (const file of sources) {
-      if (file.endsWith(join('occ', 'primitives.ts'))) continue
+      if (file.endsWith(join('kernel', 'faceTypes.ts'))) continue
       const lines = liveText(file).split('\n')
       lines.forEach((line, i) => {
         const kinds = predicateKinds(line)

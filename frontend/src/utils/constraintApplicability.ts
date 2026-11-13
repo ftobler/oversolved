@@ -13,11 +13,11 @@
 // `partDocToSketches` drops an authored row with the same one, so a pick refused
 // at add time is one the solve would ignore. The two do not always see the same
 // kind: add time reads the kind the document DECLARES, the lowering the kind the
-// solve RESOLVES (a projected entity can be a declared circle and a resolved
-// ellipse). Until `projection-lowering-hygiene` stops the in-process solve
-// writing the resolved kind into the entity def, a headless run tends to have the
-// two agree; after it, a row authored on the declared kind can still be dropped
-// by the solve, which is the reporting path this rule exists for.
+// solve RESOLVES (threaded through `SketchProjectionFacts`; a projected entity
+// can be a declared circle and a resolved ellipse), and the write-back adopts
+// the resolved kind on the row afterwards. A row authored on the declared kind
+// can therefore still be dropped by the solve, which is the reporting path this
+// rule exists for.
 
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 

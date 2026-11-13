@@ -32,7 +32,8 @@ const F = vi.hoisted(() => {
       { id: 'plane1', kind: 'plane', label: 'Plane 1' },
       // A sketch off the builtin planes: Normal to sketch must frame its solved
       // frame, which no builtin-id lookup can know.
-      { id: 'sketch2', kind: 'sketch', label: 'Sketch 2', plane: '@plane1' },
+      { id: 'sketch2', kind: 'sketch', label: 'Sketch 2', plane: '@plane1',
+        constraints: [{ id: 'proj_face', kind: 'projection', source: '?face', members: { 'u|e_aaaa': 'proj_face.aaaaaaaa' } }] },
     ],
     part_style: { 'body-1': { name: 'Body One', color: '#FF0000' } },
   }
@@ -44,7 +45,14 @@ const F = vi.hoisted(() => {
       sketch1: { solved: {}, constraints: { c1: { superfluous: true } } },
       extrude1: { solved: {} },
       plane1: { plane_transform: { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], origin: [1, 2, 3] } },
-      sketch2: { solved: {}, plane_transform: { rotation: [0, 0, -1, 0, 1, 0, 1, 0, 0], origin: [4, 5, 6] } },
+      sketch2: { solved: {}, plane_transform: { rotation: [0, 0, -1, 0, 1, 0, 1, 0, 0], origin: [4, 5, 6] },
+        projection_members: {
+          proj_face: {
+            members: { 'u|e_aaaa': 'proj_face.aaaaaaaa' },
+            entities: [{ id: 'proj_face.aaaaaaaa', kind: 'line', params: [0, 0, 10, 0] }],
+            orphans: [],
+          },
+        } },
     },
   }
   return self
@@ -75,7 +83,9 @@ vi.mock('@/hooks/usePartDoc', async () =>
     doc: F.doc,
     docRef: { current: F.doc },
     bodies: F.bodies,
-    solveResults: F.solve,
+    // A getter so a test can swap the solve map and force the Part effect to
+    // re-register its session ports.
+    solveResults: () => F.solve,
     requestSolve: h.requestSolve,
     handleMutation: h.handleMutation,
     saveDoc: h.saveDoc,
@@ -161,15 +171,16 @@ vi.mock('@/components/dialogs/RightClickMenu', async () =>
   (await import('@/__tests__/test-utils')).rightClickMenuMockModule())
 vi.mock('@/hooks/useWorkspaceName', () => ({ useWorkspaceName: () => 'WS' }))
 
+const partTree = () => (
+  <MemoryRouter initialEntries={['/workspaces/ws-1/entries/doc-1']}>
+    <Routes>
+      <Route path="/workspaces/:workspaceId/entries/:entryId" element={<Part />} />
+    </Routes>
+  </MemoryRouter>
+)
+
 function renderPart() {
-  return render(
-    <MemoryRouter initialEntries={['/workspaces/ws-1/entries/doc-1']}>
-      <Routes>
-        <Route path="/workspaces/:workspaceId/entries/:entryId" element={<Part />} />
-      </Routes>
-    </MemoryRouter>,
-    { wrapper: Wrapper },
-  )
+  return render(partTree(), { wrapper: Wrapper })
 }
 
 // The header now also carries an Export button, so a menu label can name more
@@ -211,6 +222,41 @@ describe('Part page actions', () => {
     showConstraintTiles: false,
   })
     useDevSettingsStore.setState({ validateOnRebuild: false })
+  })
+
+  it('re-registers the freeze ports after a new solve and freezes on the page delete', () => {
+    const view = renderPart()
+    expect(typeof getSketchCallback('getDoc')).toBe('function')
+    expect(typeof getSketchCallback('getProjectionMembers')).toBe('function')
+
+    // A solve publishes a new solve map; the Part effect re-runs and must own
+    // the freeze ports again, not leave them to a separate effect it clears.
+    F.solve = {
+      ...F.solve,
+      sketch2: {
+        ...F.solve.sketch2,
+        projection_members: {
+          proj_face: {
+            members: { 'u|e_aaaa': 'proj_face.aaaaaaaa' },
+            entities: [{ id: 'proj_face.aaaaaaaa', kind: 'line', params: [0, 0, 10, 0] }],
+            orphans: [],
+          },
+        },
+      },
+    }
+    view.rerender(partTree())
+    expect(typeof getSketchCallback('getDoc')).toBe('function')
+    expect(typeof getSketchCallback('getProjectionMembers')).toBe('function')
+
+    useEditorState.setState({
+      activeFeatureId: 'sketch2',
+      normalSelection: new Set(['constraint:sketch2:proj_face']),
+    })
+    act(() => { useEditorState.getState().deleteSelected() })
+    expect(h.handleMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'delete',
+      materialize: [{ id: 'proj_face.aaaaaaaa', kind: 'line', params: [0, 0, 10, 0] }],
+    }))
   })
 
   it('the toolbar Save writes the open document through saveDoc and clears the banner', async () => {

@@ -54,7 +54,7 @@ never a thrown exception crossing the bridge.
 |---|---|---|
 | `commands()` | none | `{ id, label, shortcut?, enabled: true \| reason }[]` for the live spec table |
 | `execute(id, params?)` | command id, raw params | the registry `Result` (`ok` + `createdIds`, or `code`/`message`) |
-| `script(steps)` | step array (below) | `{ ok, steps: [{ index, kind, id, ok, createdIds, constraints?, createdCount?, error? }] }` |
+| `script(steps)` | step array (below) | `{ ok, steps: [{ index, kind, id, ok, createdIds, constraints?, createdCount?, layers?, groupId?, otherLayers?, replacedConstraints?, captured?, poseKept?, part?, note?, error? }] }` |
 | `inspect()` | none | session, editor and probe facts (below) |
 | `idle()` | none | resolves when no solve is pending or running |
 | `hitTest(x, y, opts?)` | CSS pixels, optional window size and layer list | ordered `ProbeHit[]` |
@@ -140,6 +140,11 @@ A script is an array (or `{ steps: [...] }`) of steps:
   step, so awaiting the script also awaits the solves it started.
 - `frontend/src/drive/scriptRunner.ts` is the one runner: the bridge and the
   CLI both call `runScript`, so the semantics cannot drift.
+- A successful step can also carry `captured` (the orientation an assembly
+  mate measured), `poseKept` (a fixed toggle's kept pose), `part` (the part an
+  `add_step_part` bound and instanced) and `note` (a caveat beside `ok`, such as
+  a face projection deleted without rows to freeze). The table entry above is
+  the full field list.
 
 ## Journal and repro replay
 
@@ -628,7 +633,9 @@ banner on stdout, so a client config must use the direct node invocation.
   and its `featureDeltas` row carries the same `dof`. Neither makes a run or a
   measure `ok` false, and both are sketch warning rows an export tolerates (see
   below). `fixed` makes a sketch read fully constrained but carries no design
-  intent: dimension against projected geometry (`add_projected_entity`; deleting the projection constraint frees the entity) or
+  intent: dimension against projected geometry (`add_projected_entity`; a face
+  projection follows later edits, and deleting the projection constraint freezes
+  its derived members into ordinary geometry) or
   `@builtin_origin` instead, and reserve `fixed` for deliberately frozen
   geometry such as an imported DXF. An `overconstrained` sketch is a real
   failure and is listed; the tree and the open editor add the number of
@@ -1170,7 +1177,9 @@ banner on stdout, so a client config must use the direct node invocation.
   form is refused as a non-array. `add_projected_entity.source` takes one too,
   `{selector: <a select selector naming exactly one edge, vertex or face>}`, and
   may then omit `kind`: the drive infers it from the matched element (an edge
-  keeps its curve kind; a vertex or face projects as `point`). Only a body
+  keeps its curve kind; a vertex or face projects as `point`). A FACE source's
+  wire is derived as a whole, so a supplied `kind` is ignored; pick one edge if
+  you want a curve or its centre. Only a body
   element can be a selector source, because `select` walks bodies;
   `@builtin_origin` and `@<sketchId>/<entityId>` are plain strings.
 - A sketch on a face uses that face's frame: origin at the face centroid, and

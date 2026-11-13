@@ -19,6 +19,9 @@ import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoint
 import { deriveSelectionDomain, devOnly, testMode, failLoud } from './stateInvariants'
 import { isDrawingTool } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
+import {
+  freezeRowsForDelete, PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage, projectionsFreezingNothing,
+} from '@/kernel/features/projectionMembers'
 import { planBrepDimensionPick, planProjectedOperand, classifyBrepOperand, refreshProjectedPickKinds, type PlannedProjection, type PlannedProjectionMutation } from '@/tools/operandProjection'
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
@@ -62,6 +65,37 @@ export function sketchOwnedDeleteTargets(selection: Set<string>, activeFeatureId
     }
     return false
   })
+}
+
+/** The one delete mutation for a sketch selection, with a face projection's
+ *  solved member rows folded in. Every delete entry point (the store action,
+ *  the page's mixed selection, the action-matrix harness) uses this so the
+ *  freeze bytes cannot be forgotten on one path.
+ *
+ *  The editor freezes the LAST PUBLISHED solve, deliberately: that is what the
+ *  user sees, so a delete never surprises them by settling to a state they have
+ *  not seen. The drive flushes first instead (a script's freeze is a document
+ *  act); this asymmetry is intentional. */
+export function deleteMutationFor(
+  activeFeatureId: string | null,
+  targets: readonly string[],
+): { mutation: Mutation; frozenNothing?: string[] } {
+  const targetsCopy = [...targets]
+  const emptyMutation: Mutation = { type: 'delete', targets: targetsCopy }
+  if (activeFeatureId === null) return { mutation: emptyMutation }
+  const feature = (sketchCallbacks.getDoc?.()?.features ?? []).find(candidate => candidate.id === activeFeatureId)
+  if (feature?.kind !== 'sketch') return { mutation: emptyMutation }
+  const reports = sketchCallbacks.getProjectionMembers?.(activeFeatureId) ?? null
+  const rows = freezeRowsForDelete(activeFeatureId, feature, targets, reports)
+  // A mixed selection can freeze some projections and leave another unresolved;
+  // the note must fire for that one even when rows exist.
+  const empty = projectionsFreezingNothing(activeFeatureId, feature, targets, reports)
+  return {
+    mutation: rows === undefined
+      ? emptyMutation
+      : { type: 'delete', targets: targetsCopy, materialize: rows },
+    ...(empty.length > 0 ? { frozenNothing: empty } : {}),
+  }
 }
 
 // The selection contract of mirror_entities: the selected entities are the
@@ -918,7 +952,15 @@ export const editorState = createStore<EditorState>((set, get) => ({
     if (selection.size === 0) return
     const targets = sketchOwnedDeleteTargets(selection, activeFeatureId)
     if (targets.length === 0) return
-    onMutation({ type: 'delete', targets })
+    const { mutation, frozenNothing } = deleteMutationFor(activeFeatureId, targets)
+    onMutation(mutation)
+    if (frozenNothing !== undefined) {
+      sketchCallbacks.showMessage?.({
+        title: PROJECTION_NOT_FROZEN_TITLE,
+        message: projectionNotFrozenMessage(frozenNothing),
+        variant: 'info',
+      })
+    }
     get().clearSelectionAfterDelete()
   },
 

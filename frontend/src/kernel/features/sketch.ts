@@ -45,6 +45,8 @@ import { isKernelTrap, swallowUnlessTrap } from '../errors'
 import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
 import { resolve3dGeometry, projectTo2d, projectCenter, type PlaneFrame } from './projectionLowering'
+import { reconcileFaceProjection, type ProjectionMemberEntity, type ProjectionMemberReport } from './projectionMembers'
+import type { FaceBoundaryLookup } from './faceBoundary'
 import type { PlaneLike } from './shared/planes'
 import type { SolveBytes } from '@/wasm-kernel/codec'
 import type { SketchSolverBundle } from '@/wasm-kernel/wasmTypes'
@@ -83,6 +85,11 @@ export interface SketchResult {
    *  this solve. An unresolved projection with a cached position keeps it; one
    *  that never had a position is also left out of the geometry and the profile. */
   projection_errors?: string[]
+  /** Face projections only: the per-constraint derived membership this solve.
+   *  The ids and params are solve-time facts (no member is a document row); the
+   *  write-back installs only the `members` map, and a freeze mutation copies
+   *  the entities into document rows through the journal. */
+  projection_members?: Record<string, ProjectionMemberReport>
   /** The solved curves the size rule rejected, with the reason each one is left
    *  out of the profile topology. Kept structured so the verdict code can name
    *  the cause without parsing the joined warning text. */
@@ -289,12 +296,46 @@ function isDefaultParamsBlock(params: unknown, kind: string): boolean {
 }
 
 /**
+ * Project one body/sketch source query; `declaredPoint` asks for the curve
+ * centre when the source is curved (a projection declared `point`).
+ */
+function projectSourceQuery(
+  source: string,
+  plane: PlaneFrame,
+  globalRepo: Repository,
+  declaredPoint: boolean,
+): ReturnType<typeof projectTo2d> {
+  if (!source || source.startsWith('$')) return null
+  const resolvedSrc = globalRepo.query(source, null) as Dict | null
+  if (!resolvedSrc) return null
+  // A registry point carries 2D external_xy and needs its owning sketch frame
+  // to become 3D; the builtin origin has no sketch and lifts to the document
+  // origin. Without this the origin projection resolved nothing and the entity
+  // stayed at the stale/default point.
+  const data3d = 'external_xy' in resolvedSrc
+    ? { kindH: 'point' as const, data: { point: getPoint3d(resolvedSrc, globalRepo) } }
+    : resolve3dGeometry(resolvedSrc, (sketchId) =>
+        (globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined) ?? null)
+  if (!data3d) return null
+  // A projection DECLARED point on a curved source means its centre; every other
+  // declared kind keeps the resolved geometry's own projection. The default
+  // `point` used for a missing kind is not a declaration, so it stays on the
+  // resolved-kind path.
+  return (declaredPoint ? projectCenter(data3d, plane) : null) ?? projectTo2d(data3d, plane)
+}
+
+/**
  * Lower every projected entity (one carrying a ``source`` ancestry query) in a
  * sketch feature: resolve the source geometry via the repository, project it
  * onto the sketch plane, and fold the resulting 2D params into ``initial``.
  * The entity's ``source`` is stripped and its id is added to ``pinnedIds`` so
  * the solver treats the lowered params as immovable -- the design invariant
  * "a projected entity is just an entity whose params are pinned".
+ *
+ * A face projection has no target: its boundary edges are derived into member
+ * entities on every solve (never document rows), their ids are kept stable
+ * through the constraint's `members` map, and the report is returned for the
+ * write-back and for the freeze command. The input feature is never mutated.
  *
  * Returns the mutated feature plus the bookkeeping the caller surfaces to the
  * doc (resolved kinds for tilted-circle/partial-ellipse lowering) and to the
@@ -309,9 +350,11 @@ function lowerProjectionConstraints(
   feature: Dict,
   plane: ReturnType<typeof resolveSketchPlane>,
   globalRepo: Repository,
+  faceBoundary?: FaceBoundaryLookup,
 ): {
   loweredFeature: Dict
   resolvedKinds: Record<string, string>
+  projectionMembers: Record<string, ProjectionMemberReport>
   projectionErrors: string[]
   projectionWarnings: string[]
   pinnedIds: string[]
@@ -334,14 +377,19 @@ function lowerProjectionConstraints(
   }
   const projections = constraints.filter((c) => c.kind === 'projection')
   const resolvedKinds: Record<string, string> = {}
+  const projectionMembers: Record<string, ProjectionMemberReport> = {}
   const projectionErrors: string[] = []
   const projectionWarnings: string[] = []
   const pinnedIds: string[] = []
   const unpositionedIds: string[] = []
+  // Entities derived from a face boundary are passed to `partDocToSketches` as
+  // solve facts (with the resolved kinds), never written into the feature or
+  // its `initial`.
 
   if (projections.length === 0) {
     return {
-      loweredFeature: feature, resolvedKinds, projectionErrors, projectionWarnings, pinnedIds, unpositionedIds,
+      loweredFeature: feature, resolvedKinds, projectionMembers, projectionErrors, projectionWarnings,
+      pinnedIds, unpositionedIds,
     }
   }
 
@@ -350,12 +398,72 @@ function lowerProjectionConstraints(
   for (const pc of projections) {
     const cid = pc.id as string
     const targetRef = typeof pc.target === 'string' ? pc.target : ''
+    const source = typeof pc.source === 'string' ? pc.source : ''
+    // A face projection (no target) is one live constraint whose members are
+    // derived here. The face miss edits nothing: the stored map stays pinned and
+    // the members return with the same ids when the face resolves again.
+    if (targetRef === '') {
+      const boundary = faceBoundary?.(source) ?? null
+      const reconciled = reconcileFaceProjection(
+        pc as { id: string; members?: Record<string, string>; excluded?: string[] },
+        boundary,
+      )
+      const report: ProjectionMemberReport = {
+        members: reconciled.members,
+        entities: [],
+        orphans: [...reconciled.orphans],
+      }
+      projectionMembers[cid] = report
+      if (boundary === null) {
+        projectionErrors.push(cid)
+        projectionWarnings.push(
+          `projection ${cid} source ${source === '' ? '(none)' : source} did not resolve; `
+          + 'no face members are derived this solve',
+        )
+        continue
+      }
+      const edgeByToken = new Map(boundary.edges.map((edge) => [edge.token, edge]))
+      const excludedTokens = new Set((pc.excluded as string[] | undefined) ?? [])
+      const seams = new Set(boundary.seams ?? [])
+      // A face whose every edge is excluded is an intentionally empty live
+      // projection, not a failure: only live edges that all failed to project
+      // may report an error.
+      const liveEdges = boundary.edges.filter((edge) =>
+        edge.token !== '' && !excludedTokens.has(edge.token) && !seams.has(edge.query)).length
+      for (const [token, memberId] of Object.entries(reconciled.members)) {
+        const edge = edgeByToken.get(token)
+        if (edge === undefined) continue  // orphan: kept in the map, no geometry
+        let projected: ReturnType<typeof projectTo2d> = null
+        try {
+          projected = projectSourceQuery(edge.query, plane as PlaneFrame, globalRepo, false)
+        } catch (e) {
+          swallowUnlessTrap(e)
+        }
+        if (!projected) {
+          projectionWarnings.push(
+            `projection ${cid} member ${memberId} source ${edge.query} did not resolve`,
+          )
+          continue
+        }
+        pinnedIds.push(memberId)
+        report.entities.push({ id: memberId, kind: projected.kind, params: [...projected.params] })
+      }
+      // A face that resolves but yields no member is a failure only when it had
+      // a live edge to project; an all-excluded (or all-orphan) boundary is an
+      // intentionally empty live projection, not a dangling one.
+      if (report.entities.length === 0 && liveEdges > 0) {
+        projectionErrors.push(cid)
+        projectionWarnings.push(
+          `projection ${cid} face ${source} has no boundary edge to project`,
+        )
+      }
+      continue
+    }
     const targetId = targetRef.startsWith('$') ? targetRef.slice(1) : targetRef
     if (!targetId) { projectionErrors.push(cid); continue }
     // Duplicate projection on one entity: the later constraint is the error.
     if (seenTargets.has(targetId)) { projectionErrors.push(cid); continue }
     seenTargets.add(targetId)
-    const source = typeof pc.source === 'string' ? pc.source : ''
     const ent = entities.find((e) => e.id === targetId)
     const declaredKind = (ent?.kind as string) ?? 'point'
     // Read before any branch writes `initial`: an unresolved projection can only
@@ -373,33 +481,17 @@ function lowerProjectionConstraints(
           resolved = true
         }
       } else if (source) {
-        const resolvedSrc = globalRepo.query(source, null) as Dict | null
-        if (resolvedSrc) {
-          // A registry point carries 2D external_xy and needs its owning sketch
-          // frame to become 3D; the builtin origin has no sketch and lifts to
-          // the document origin. Without this the origin projection resolved
-          // nothing and the entity stayed at the stale/default point.
-          const data3d = 'external_xy' in resolvedSrc
-            ? { kindH: 'point' as const, data: { point: getPoint3d(resolvedSrc, globalRepo) } }
-            : resolve3dGeometry(resolvedSrc, (sketchId) =>
-                (globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined) ?? null)
-          if (data3d) {
-            // A projection DECLARED point on a curved source means its centre;
-            // every other declared kind keeps the resolved geometry's own
-            // projection. The default `point` used for a missing kind is not a
-            // declaration, so it stays on the resolved-kind path.
-            const declaredPoint = ent?.kind === 'point'
-            const projected = (declaredPoint ? projectCenter(data3d, plane as PlaneFrame) : null)
-              ?? projectTo2d(data3d, plane as PlaneFrame)
-            if (projected) {
-              initial[targetId] = projected.params
-              if (projected.warning) projectionWarnings.push(`projection ${cid}: ${projected.warning}`)
-              if (projected.kind !== declaredKind) resolvedKinds[targetId] = projected.kind
-              // Adopt resolved kind on the doc entity while the constraint holds.
-              if (ent) ent.kind = projected.kind
-              resolved = true
-            }
+        const projected = projectSourceQuery(source, plane as PlaneFrame, globalRepo, ent?.kind === 'point')
+        if (projected) {
+          initial[targetId] = projected.params
+          if (projected.warning) projectionWarnings.push(`projection ${cid}: ${projected.warning}`)
+          // The resolved kind is a solve fact here. The write-back adopts it on
+          // the document row (a projection's kind is derived, not authored), so
+          // the lowering itself never writes the input feature.
+          if (projected.kind !== declaredKind) {
+            resolvedKinds[targetId] = projected.kind
           }
+          resolved = true
         }
       }
     } catch (e) {
@@ -437,6 +529,7 @@ function lowerProjectionConstraints(
   return {
     loweredFeature: { ...feature, constraints, initial },
     resolvedKinds,
+    projectionMembers,
     projectionErrors,
     projectionWarnings,
     pinnedIds,
@@ -674,6 +767,7 @@ export function solveSketch(
   globalRepo: Repository,
   _bodyStore: Record<string, Body>,
   featuresById: Record<string, Dict> = {},
+  faceBoundary?: FaceBoundaryLookup,
 ): SketchResult {
   if (!solverBytes) {
     throw new Error('sketch: Rust solver not initialised (call initSketchSolver first)')
@@ -687,8 +781,8 @@ export function solveSketch(
     globalRepo,
     { sketchId: featureId, featuresById },
   )
-  const { loweredFeature, resolvedKinds, projectionErrors, projectionWarnings, pinnedIds, unpositionedIds } =
-    lowerProjectionConstraints(feature, plane, globalRepo)
+  const { loweredFeature, resolvedKinds, projectionMembers, projectionErrors, projectionWarnings, pinnedIds, unpositionedIds } =
+    lowerProjectionConstraints(feature, plane, globalRepo, faceBoundary)
   // A projection that never had a position stays pinned in the solve but is kept
   // out of the solved geometry below, and therefore out of the profile topology:
   // baking its default all-zero params would make that degenerate curve both a
@@ -701,12 +795,22 @@ export function solveSketch(
   // sketch plane's local (0,0) -- which differ for a sketch on an offset/
   // projected face ("line constrained to origin" bug).
   const originLocal = projectWorldToFrame([0, 0, 0], plane as Frame3D)
-  // The lowered feature carries the kinds the projection pass adopted above, so
-  // the lowering's operand gate judges the rows on the resolved kind (a circle
-  // seen edge-on is a line there). This call must stay after
-  // `lowerProjectionConstraints` for that to hold.
+  // The project pass hands the lowering its resolve facts explicitly: the kind
+  // each held entity resolved to and the face projection's derived members. The
+  // operand gate then judges a row on the resolved kind (a circle seen edge-on
+  // is a line) and can address a member id without an in-place document write.
+  const derivedKinds: Record<string, string> = {}
+  const derivedInitial: Record<string, number[]> = {}
+  for (const report of Object.values(projectionMembers)) {
+    for (const member of report.entities) {
+      derivedKinds[member.id] = member.kind
+      derivedInitial[member.id] = [...member.params]
+    }
+  }
   const pf = loweredFeature as unknown as SketchFeature
-  const extract = partDocToSketches([pf], originLocal, pinnedIds)
+  const extract = partDocToSketches([pf], originLocal, pinnedIds, {
+    resolvedKinds, derivedKinds, derivedInitial,
+  })
   if (extract.skipped.length) {
     throw new Error(`sketch '${featureId}': ${extract.skipped[0].reason}`)
   }
@@ -787,9 +891,11 @@ export function solveSketch(
   // culprit is marked `culprit` for the deeper-red paint. Sugar expanded to
   // synthetic ids (ngon/dock) has no authored id on the wire, so its pieces
   // stay unmarked.
+  const memberEntities = Object.entries(derivedKinds).map(([id, kind]) => ({ id, kind }))
+  const baseRenderEntities = [...(pf.entities ?? []), ...memberEntities]
   const renderEntities = Object.keys(resolvedKinds).length
-    ? (pf.entities ?? []).map((e) => ({ ...e, kind: resolvedKinds[e.id] ?? e.kind }))
-    : pf.entities
+    ? baseRenderEntities.map((e) => ({ ...e, kind: resolvedKinds[e.id] ?? e.kind }))
+    : baseRenderEntities
   const solvedSketch = unflattenGeometry(geometry, renderEntities)
   const rendered = deriveConstraints(pf, solvedSketch, { originLocal })
   const wireIndexById = new Map<string, number>()
@@ -857,6 +963,7 @@ export function solveSketch(
     plane_transform,
     ...(Object.keys(constraintResults).length ? { constraints: constraintResults } : {}),
     ...(Object.keys(resolvedKinds).length ? { resolved_kinds: resolvedKinds } : {}),
+    ...(Object.keys(projectionMembers).length ? { projection_members: projectionMembers } : {}),
     ...(projectionErrors.length ? { projection_errors: projectionErrors } : {}),
     ...(degenerateList.length ? { degenerate_entities: degenerateList } : {}),
     ...(droppedList.length ? { dropped_constraints: droppedList } : {}),
@@ -895,6 +1002,7 @@ export function resolvedKindsOfSketch(sketch: Sketch | null | undefined): Record
 export function pinProjectionTargets(
   feature: SketchFeature,
   resolvedKinds?: Readonly<Record<string, string>>,
+  derivedMembers?: ReadonlyArray<ProjectionMemberEntity>,
 ): { loweredFeature: SketchFeature; pinnedIds: string[] } {
   const pinned = new Set<string>()
   const constraints = feature.constraints ?? []
@@ -903,22 +1011,45 @@ export function pinProjectionTargets(
     const t = typeof c.target === 'string' ? c.target : ''
     const id = t.startsWith('$') ? t.slice(1) : t
     if (id) pinned.add(id)
+    // A face projection's members are derived entities, not rows; pinning their
+    // ids keeps the drag/probe paths on the same held set the hard solve uses.
+    for (const memberId of Object.values(c.members ?? {})) pinned.add(memberId)
   }
   // Legacy v5: entities carrying `source` are held.
   for (const e of feature.entities ?? []) {
     const src = (e as { source?: unknown }).source
     if (src && typeof src === 'string') pinned.add(e.id)
   }
-  let loweredFeature = feature
+  let entities = feature.entities ?? []
+  let initial = feature.initial
+  // Face-projection members are not document rows, so the drag preview and the
+  // authoring probe would otherwise lower without them and drop every
+  // constraint naming one. Add the last solve's rows and params to this copy.
+  if (derivedMembers !== undefined && derivedMembers.length > 0) {
+    const existing = new Set(entities.map(e => e.id))
+    const extra = derivedMembers.filter(member => !existing.has(member.id))
+    if (extra.length > 0) {
+      entities = [...entities, ...extra.map(member => ({ id: member.id, kind: member.kind }))]
+      const nextInitial = { ...(initial ?? {}) }
+      for (const member of extra) {
+        if (nextInitial[member.id] === undefined) nextInitial[member.id] = [...member.params]
+      }
+      initial = nextInitial
+    }
+  }
   if (resolvedKinds) {
-    const entities = (feature.entities ?? []).map(e => {
+    entities = entities.map(e => {
       const kind = resolvedKinds[e.id]
       return kind && kind !== e.kind ? { ...e, kind } : e
     })
-    if (entities.some((e, i) => e !== feature.entities?.[i])) {
-      loweredFeature = { ...feature, entities }
-    }
   }
+  const loweredFeature = entities === feature.entities && initial === feature.initial
+    ? feature
+    : {
+        ...feature,
+        entities,
+        ...(initial !== feature.initial ? { initial } : {}),
+      }
   return { loweredFeature, pinnedIds: [...pinned] }
 }
 
@@ -949,10 +1080,11 @@ export function probeRedundantConstraint(
   feature: SketchFeature,
   draftId: string,
   resolvedKinds?: Readonly<Record<string, string>>,
+  derivedMembers?: ReadonlyArray<ProjectionMemberEntity>,
 ): boolean | null {
   if (!solverBytes) return null
   try {
-    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature, resolvedKinds)
+    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature, resolvedKinds, derivedMembers)
     const extract = partDocToSketches([loweredFeature], [0, 0], pinnedIds)
     if (extract.skipped.length || !extract.sketches.length) return null
     const { input, constraintIds } = lowerSketch(extract.sketches[0].sketch, { skipStatusPass: true })
@@ -1043,7 +1175,9 @@ export interface DragContext {
  * `pinProjectionTargets`: a projection whose source turned edge-on has 4 line
  * params in `initial` while the document entity still stores the pick-time
  * circle kind, and adopting the render kind is what makes the preview read
- * those params as the line they are.
+ * those params as the line they are. `derivedMembers` is the last solve's face
+ * projection rows; they are folded into the lowered copy so a constraint naming
+ * a member is not dropped as stale during the preview.
  *
  * For vertex drags, `dragVertexKey` is the specific vertex being dragged
  * (e.g. 'start', 'end', 'center'). For edge/entity drags (whole-entity
@@ -1059,9 +1193,10 @@ export function prepareDragContext(
   dragVertexKey: string | null,
   originLocal: [number, number] = [0, 0],
   resolvedKinds?: Readonly<Record<string, string>>,
+  derivedMembers?: ReadonlyArray<ProjectionMemberEntity>,
 ): DragContext | null {
   try {
-    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature, resolvedKinds)
+    const { loweredFeature, pinnedIds } = pinProjectionTargets(feature, resolvedKinds, derivedMembers)
 
     // originLocal expresses the document origin (0,0,0) in this sketch's local
     // 2D frame so a `@builtin_origin` coincident pins to the actual document

@@ -1,0 +1,244 @@
+// @vitest-environment node
+//
+// Replay of a document that holds a face projection: the journal records the
+// derived member map with the add, so a replay needs no live solve; a freeze
+// carries its member rows in the delete payload; and the derived ids never
+// consume the journal's mint index, so a later `add_entity` keeps its id.
+//
+// Skips when OCC.js or the Rust solver is absent.
+
+import { describe, it, expect } from 'vitest'
+import { createHeadlessPart } from '../headlessPart'
+import { createDriveJournal, type CommandJournal } from '../journal'
+import { replayJournal } from '../replay'
+import { docHashOf } from '../docHash'
+import type { ScriptStep } from '../scriptRunner'
+import { deriveMemberIds, faceBoundaryFromBodies, faceProjectionConstraintId } from '@/kernel/features/projectionMembers'
+import { loadOcc } from '@/kernel/occ/loadOcc'
+import { setOccLoader } from '@/kernel/solveLocally'
+import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { loadTopology } from '@/wasm-kernel/loadTopology'
+import type { PartDoc } from '@/types/cad'
+import {
+  BOX_BODY_ID, BOX_SKETCH_ID, oc, projectionBaseDoc, projectionTestHarness, solveBytes,
+} from '@/kernel/features/__tests__/projectionRealSupport'
+
+const { h, base } = projectionTestHarness()
+
+if (oc && solveBytes) {
+  setOccLoader(loadOcc)
+  setSketchSolver(solveBytes)
+  setSketchTopology(loadTopology())
+}
+
+interface FaceFixture {
+  frontFace: string
+  cid: string
+  member: string
+  memberIds: string[]
+  members: Record<string, string>
+  steps: ScriptStep[]
+}
+
+/** The face query, its derived constraint id, and one line member id, all read
+ *  from the one base build by geometry. */
+function faceFixture(): FaceFixture {
+  const { result, geometry } = base()
+  const body = h.body(result, BOX_BODY_ID)
+  const boundary = faceBoundaryFromBodies(() => ({ [BOX_BODY_ID]: body }))(geometry.frontFace)
+  if (!boundary) throw new Error('base body: front face has no boundary')
+  const cid = faceProjectionConstraintId(geometry.frontFace)
+  if (cid === null) throw new Error('front face query carries no construction UUID')
+  const ids = deriveMemberIds(cid, boundary.edges.map(edge => edge.token))
+  const line = boundary.edges.find(edge => edge.kind === 'line')
+  if (!line) throw new Error('base body: front face has no straight edge')
+  const steps: ScriptStep[] = [
+    { mutation: { type: 'add_sketch', featureId: 'skP', label: 'Projection', plane: '@builtin_plane_front' } },
+    { mutation: { type: 'add_projected_entity', featureId: 'skP', source: geometry.frontFace } },
+    { mutation: { type: 'set_constraint_value', featureId: BOX_SKETCH_ID, constraintId: 'c9', value: 50 } },
+    {
+      mutation: {
+        type: 'add_entity_with_constraint', featureId: 'skP', kind: 'point', params: [5, 5],
+        vertexKey: 'xy', snapVertexId: `vertex:skP:${ids[line.token]}:start`, constraintKind: 'coincident',
+      },
+    },
+  ]
+  return {
+    frontFace: geometry.frontFace, cid, member: ids[line.token],
+    memberIds: Object.values(ids), members: ids, steps,
+  }
+}
+
+function part(doc: PartDoc = projectionBaseDoc(), journal?: CommandJournal) {
+  return createHeadlessPart({ doc: structuredClone(doc), docId: 'face-replay', ...(journal && { journal }) })
+}
+
+const mintedPointId = (doc: PartDoc | null): string => {
+  const sketch = (doc?.features ?? []).find(f => f.id === 'skP')
+  if (sketch?.kind !== 'sketch') throw new Error('no projection sketch')
+  const point = sketch.entities?.find(e => e.kind === 'point')
+  if (!point) throw new Error('no minted point')
+  return point.id
+}
+
+describe.skipIf(!oc || !solveBytes)('face projection replay', () => {
+  it('18. a face add, an upstream width edit, a member constraint and a freeze replay without divergence', async () => {
+    const fixture = faceFixture()
+    const journal = createDriveJournal(projectionBaseDoc())
+    const recorded = part(projectionBaseDoc(), journal)
+    const outcome = await recorded.run(fixture.steps)
+    expect(outcome.ok).toBe(true)
+
+    // Freeze the projection: the delete carries the member row bytes, so the
+    // replay writes the same rows without solving.
+    const frozen = recorded.session.execute({
+      type: 'delete',
+      targets: [`constraint:skP:${fixture.cid}`],
+      materialize: [{ id: fixture.member, kind: 'line', params: [0, 0, 10, 0] }],
+    } as never)
+    expect(frozen.ok).toBe(true)
+    // The script run already settled its steps; the freeze was a direct session
+    // apply, so spend its solve before hashing (replay settles every entry).
+    await recorded.solve.flush()
+
+    const repro = journal.repro()
+    expect(repro).not.toBeNull()
+    const fresh = part(repro!.doc as PartDoc)
+    const replay = await replayJournal(repro!, fresh.session, () => fresh.idle())
+    expect(replay.ok).toBe(true)
+    expect(replay.steps.every(step => step.ok)).toBe(true)
+    expect(replay.finalHash).toBe(docHashOf(recorded.getDoc() as PartDoc))
+  })
+
+  it('19. one settle for the whole script and one settle per step reach the same document', async () => {
+    const fixture = faceFixture()
+    const whole = part()
+    expect((await whole.run(fixture.steps)).ok).toBe(true)
+
+    const chunked = part()
+    for (const step of fixture.steps) {
+      expect((await chunked.run([step])).ok).toBe(true)
+    }
+    expect(docHashOf(chunked.getDoc() as PartDoc)).toBe(docHashOf(whole.getDoc() as PartDoc))
+  })
+
+  it('20. a later add_entity replays with the same minted id', async () => {
+    const fixture = faceFixture()
+    // The applier's no-mint proof is the projectionMembers unit test; this pin
+    // is the replay side: the id recorded after the face add comes back.
+    const journal = createDriveJournal(projectionBaseDoc())
+    const recorded = part(projectionBaseDoc(), journal)
+    expect((await recorded.run([
+      fixture.steps[0],
+      fixture.steps[1],
+      { mutation: { type: 'add_entity', featureId: 'skP', kind: 'point', params: [8, 8] } },
+    ])).ok).toBe(true)
+    const repro = journal.repro()!
+    const fresh = part(repro.doc as PartDoc)
+    const replay = await replayJournal(repro, fresh.session, () => fresh.idle())
+    expect(replay.ok).toBe(true)
+    expect(mintedPointId(fresh.getDoc())).toBe(mintedPointId(recorded.getDoc()))
+  })
+
+  it('21. freeze, re-pick the same face and replay keep the suffixed constraint id', async () => {
+    const fixture = faceFixture()
+    const journal = createDriveJournal(projectionBaseDoc())
+    const recorded = part(projectionBaseDoc(), journal)
+    expect((await recorded.run(fixture.steps)).ok).toBe(true)
+
+    const frozen = recorded.session.execute({
+      type: 'delete',
+      targets: [`constraint:skP:${fixture.cid}`],
+      materialize: [{ id: fixture.member, kind: 'line', params: [0, 0, 10, 0] }],
+    })
+    expect(frozen.ok).toBe(true)
+    const repick = await recorded.run([{
+      mutation: { type: 'add_projected_entity', featureId: 'skP', source: fixture.frontFace },
+    }])
+    expect(repick.ok).toBe(true)
+
+    const sketch = (recorded.getDoc()?.features ?? []).find(f => f.id === 'skP')
+    if (sketch?.kind !== 'sketch') throw new Error('no projection sketch')
+    expect(sketch.constraints?.filter(c => c.kind === 'projection').map(c => c.id)).toEqual([`${fixture.cid}_2`])
+
+    const repro = journal.repro()!
+    const repickEntry = repro.journal
+      .flatMap(entry => Array.isArray(entry.payload) ? entry.payload : [entry.payload])
+      .find(payload => (payload as { constraintId?: string }).constraintId === `${fixture.cid}_2`)
+    // Pin the recorded payload: the suffixed id and the map it was derived
+    // with. A replay could re-derive the same suffix from a boundary, so this is
+    // not proof of replay independence.
+    expect(repickEntry).toBeDefined()
+    const recordedMembers = (repickEntry as { members?: Record<string, string> }).members ?? {}
+    expect(Object.keys(recordedMembers)).toHaveLength(fixture.memberIds.length)
+    expect(Object.values(recordedMembers).every(id => id.startsWith(`${fixture.cid}_2.`))).toBe(true)
+    const fresh = part(repro.doc as PartDoc)
+    const replay = await replayJournal(repro, fresh.session, () => fresh.idle())
+    expect(replay.ok).toBe(true)
+    expect(replay.finalHash).toBe(docHashOf(recorded.getDoc() as PartDoc))
+    const replayed = (fresh.getDoc()?.features ?? []).find(f => f.id === 'skP')
+    if (replayed?.kind !== 'sketch') throw new Error('no replayed sketch')
+    expect(replayed.constraints?.filter(c => c.kind === 'projection').map(c => c.id)).toEqual([`${fixture.cid}_2`])
+  })
+
+  it('22. a headless delete freezes a face projection without a hand-written payload', async () => {
+    const fixture = faceFixture()
+    const p = part()
+    expect((await p.run(fixture.steps)).ok).toBe(true)
+    const removed = await p.run([{
+      mutation: { type: 'delete', targets: [`constraint:skP:${fixture.cid}`] },
+    }])
+    expect(removed.ok).toBe(true)
+
+    const sketch = (p.getDoc()?.features ?? []).find(f => f.id === 'skP')
+    if (sketch?.kind !== 'sketch') throw new Error('no projection sketch')
+    expect(sketch.constraints?.some(c => c.id === fixture.cid)).toBe(false)
+    const frozen = (sketch.entities ?? []).map(e => e.id).filter(id => fixture.memberIds.includes(id))
+    expect(frozen.sort()).toEqual([...fixture.memberIds].sort())
+    for (const id of fixture.memberIds) expect(sketch.initial?.[id]).toBeDefined()
+  })
+
+  it('23. a drive delete with no rows notes that nothing was frozen', async () => {
+    const fixture = faceFixture()
+    const cid = 'proj_deadbeef'
+    const source = '?d;@u|e_deadbeef:flatface'
+    const members = deriveMemberIds(cid, Object.keys(fixture.members))
+    const p = part()
+    expect((await p.run([fixture.steps[0]])).ok).toBe(true)
+    // A face query that no body resolves: the constraint is valid (a supplied
+    // map) but the next solve reports it and derives no members.
+    const added = p.session.execute({
+      type: 'add_projected_entity', featureId: 'skP', source,
+      members, constraintId: cid,
+    })
+    expect(added.ok).toBe(true)
+    const removed = await p.run([{
+      mutation: { type: 'delete', targets: [`constraint:skP:${cid}`] },
+    }])
+    expect(removed.ok).toBe(true)
+    expect(removed.steps[0].note).toContain('no solved member rows')
+  })
+
+  it('24. a delete after an upstream edit freezes the settled face, not the old solve', async () => {
+    const fixture = faceFixture()
+    const p = part()
+    const removed = await p.run([
+      fixture.steps[0], // sketch
+      fixture.steps[1], // face projection
+      fixture.steps[2], // width 40 -> 50
+      { mutation: { type: 'delete', targets: [`constraint:skP:${fixture.cid}`] } },
+    ])
+    expect(removed.ok).toBe(true)
+    const sketch = (p.getDoc()?.features ?? []).find(f => f.id === 'skP')
+    if (sketch?.kind !== 'sketch') throw new Error('no projection sketch')
+    const frozen = new Set(fixture.memberIds)
+    const lineXs = (sketch.entities ?? [])
+      .filter(entity => frozen.has(entity.id))
+      .map(entity => sketch.initial?.[entity.id] ?? [])
+      .filter(params => params.length === 4)
+      .flatMap(params => [params[0], params[2]])
+    // At 40 the profile spans 40; the settled 50 edit must be the freeze (the
+    // rectangle can translate, so compare its extent, not an absolute edge).
+    expect(Math.max(...lineXs) - Math.min(...lineXs)).toBeGreaterThanOrEqual(49)
+  })
+})

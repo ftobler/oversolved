@@ -36,6 +36,7 @@ import { solveSplit } from './features/splitByPlane'
 import { solveDeleteBody } from './features/deleteBody'
 import { solveImportStep } from './features/importStep'
 import { solveSketch } from './features/sketch'
+import { faceBoundaryLookup } from './features/faceBoundary'
 import { solvePlane } from './features/plane'
 import { solveHelix } from './features/helix'
 import { solveVariable } from './features/variable'
@@ -85,8 +86,16 @@ type LeafSolver<K extends DispatchedKind> = (
 export type SolverTable = { [K in DispatchedKind]: LeafSolver<K> }
 
 const KIND_SOLVER: SolverTable = {
-  sketch: (_oc, _scope, _table, feature, globalRepo, bodyStore, featuresById) =>
-    solveSketch(feature, globalRepo, bodyStore, featuresById),
+  sketch: (oc, _scope, table, feature, globalRepo, bodyStore, featuresById) =>
+    solveSketch(
+      feature,
+      globalRepo,
+      bodyStore,
+      featuresById,
+      // The sketch leaf is blind to OCC; the builder hands it the one lookup it
+      // needs for a face projection's boundary (plain strings out).
+      faceBoundaryLookup(oc, table, bodyStore, globalRepo),
+    ),
   plane: solvePlane,
   helix: solveHelix,
   extrude: solveExtrude,

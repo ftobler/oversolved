@@ -25,7 +25,7 @@ import {
 } from '@/pages/commandEntries'
 import { useEditorState } from '@/hooks/useEditorState'
 import { clearSketchCallbacks, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
-import { sketchOwnedDeleteTargets } from '@/stores/editorState'
+import { sketchOwnedDeleteTargets, deleteMutationFor } from '@/stores/editorState'
 import { randomId } from '@/utils/yamlMutations/helpers'
 import { initializeTools } from '@/tools'
 import type { MatrixTarget } from './corpus'
@@ -141,6 +141,11 @@ export function createMatrixHarness(spec: PartDoc, solver: MatrixSolver): Matrix
     const feature = cell.current?.features?.find(f => f.id === featureId)
     return feature?.kind === 'sketch' ? feature as unknown as Sketch : null
   })
+  // The delete action's freeze route reads the live doc and the solved member
+  // rows through the same ports usePartDoc registers in the app.
+  setSketchCallback('getDoc', () => cell.current)
+  setSketchCallback('getProjectionMembers', featureId =>
+    (solveResults.current[featureId]?.projection_members ?? null))
   setSketchCallback('getProjectedSources', featureId => {
     const feature = cell.current?.features?.find(f => f.id === featureId)
     if (feature?.kind !== 'sketch') return null
@@ -179,7 +184,7 @@ export function createMatrixHarness(spec: PartDoc, solver: MatrixSolver): Matrix
     const sketchDelete = sketchOwnedDeleteTargets(selection, store.activeFeatureId)
     if (featureDeletes.length > 0) {
       const group: Mutation[] = sketchDelete.length > 0
-        ? [{ type: 'delete', targets: sketchDelete }, ...featureDeletes]
+        ? [deleteMutationFor(store.activeFeatureId, sketchDelete).mutation, ...featureDeletes]
         : featureDeletes
       session.executeGroup(group)
       store.clearSelectionAfterDelete()

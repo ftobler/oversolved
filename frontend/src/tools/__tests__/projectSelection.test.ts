@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { Mutation, Sketch } from '@/types/cad'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
-import { registerBodyCallbacks, resetBodyCallbacksForTest } from '@/picking/bodyDispatchCallbacks'
+import { registerBodyCallbacks, resetBodyCallbacksForTest, findFaceBoundaryEdges, faceBoundaryLookup } from '@/picking/bodyDispatchCallbacks'
 import { projectionMutationsForId, projectionMutationsForSelection, type ProjectionResolvers } from '@/tools/projectionMutations'
 import { projectSelection, liveProjectionResolvers } from '@/tools/projectSelectionCommand'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -37,7 +37,7 @@ describe('projectionMutationsForId', () => {
     // A parts-list `@body_...` pick names no geometry, so it is never
     // projected; a body primitive (face/edge/vertex ancestry query) still is.
     expect(projectionMutationsForId('@body_ex1', FEATURE, noResolvers)).toEqual([])
-    expect(projectionMutationsForId(FACE_Q, FEATURE, noResolvers)).not.toEqual([])
+    expect(projectionMutationsForId(STRAIGHT_Q, FEATURE, noResolvers)).not.toEqual([])
   })
 
   it('projects a foreign sketch entity with its resolved kind', () => {
@@ -81,29 +81,30 @@ describe('projectionMutationsForId', () => {
     expect(projectionMutationsForId('vertex:S2:L1:', FEATURE, noResolvers)).toEqual([])
   })
 
-  it('expands a face into one projected entity per boundary edge', () => {
+  it('projects a face as one live projection constraint, not one mutation per edge', () => {
     const faceEdges = [
       { source: '?a;@b:edge', kind: 'line' },
       { source: '?c;@d:edge', kind: 'arc' },
     ]
     const muts = projectionMutationsForId(FACE_Q, FEATURE, resolvers({ faceEdges: () => faceEdges }))
-    expect(muts).toHaveLength(2)
-    expect(muts.map(m => m.type === 'add_projected_entity' && m.kind)).toEqual(['line', 'arc'])
+    expect(muts).toEqual([{ type: 'add_projected_entity', featureId: FEATURE, source: FACE_Q }])
   })
 
-  it('projects a conic/sphere/torus face by its boundary wire, not the centroid point', () => {
+  it('projects a conic/sphere/torus face as one live projection too', () => {
     // The isFace decision must cover every SurfaceType kind; before the shared
     // restriction vocabulary these three fell through to the centroid branch.
     const faceEdges = [{ source: '?a;@b:edge', kind: 'arc' }]
     for (const tr of ['coneface', 'sphereface', 'torusface']) {
-      const muts = projectionMutationsForId(`?4,4;@bxx@fww:${tr}`, FEATURE, resolvers({ faceEdges: () => faceEdges }))
-      expect(muts).toEqual([{ type: 'add_projected_entity', featureId: FEATURE, kind: 'arc', source: '?a;@b:edge' }])
+      const faceQuery = `?4,4;@bxx@fww:${tr}`
+      const muts = projectionMutationsForId(faceQuery, FEATURE, resolvers({ faceEdges: () => faceEdges }))
+      expect(muts).toEqual([{ type: 'add_projected_entity', featureId: FEATURE, source: faceQuery }])
     }
   })
 
-  it('falls back to the face centroid point when boundary edges are unknown', () => {
-    const muts = projectionMutationsForId('?4,4;@bxx@fww:coneface', FEATURE, noResolvers)
-    expect(muts).toEqual([{ type: 'add_projected_entity', featureId: FEATURE, kind: 'point', source: '?4,4;@bxx@fww:coneface' }])
+  it('refuses a face pick with no solved boundary instead of storing a dead point', () => {
+    // Without the body registry's boundary the applier cannot derive member ids;
+    // the tool emits nothing so the user learns the pick was not projectable.
+    expect(projectionMutationsForId('?4,4;@bxx@fww:coneface', FEATURE, noResolvers)).toEqual([])
   })
 })
 
@@ -243,5 +244,30 @@ describe('liveProjectionResolvers', () => {
     expect(liveProjectionResolvers.edgeKind('ghost')).toBeNull()
     expect(liveProjectionResolvers.faceEdges('faceQ0')).toEqual([{ source: 'edgeQ1', kind: 'arc' }])
     expect(liveProjectionResolvers.faceEdges('ghost')).toBeNull()
+  })
+
+  it('drops a seam from the face boundary and answers the add-time lookup with tokens', () => {
+    const rim = `?d;@u|e_aaaabbbb:straightedge`
+    const seam = `?d;@u|e_ccccdddd:straightedge`
+    registerBodyCallbacks('b1', {
+      featureId: 'ex1',
+      bodyId: 'body_1',
+      mesh: {
+        vertices: new Float32Array([0, 0, 0]),
+        faces: new Uint32Array([0, 0, 0]),
+        face_queries: ['faceQ0'],
+        face_edge_queries: [[rim, seam]],
+        face_seam_queries: [[seam]],
+      },
+      edgeQueries: [rim, seam],
+      edgeKinds: ['line', 'line'],
+      vertexQueries: undefined,
+      updateFaceGeometryForIndex: () => undefined,
+      clearFaceGeometry: () => undefined,
+    })
+    expect(findFaceBoundaryEdges('faceQ0')).toEqual([{ source: rim, kind: 'line' }])
+    const boundary = faceBoundaryLookup('faceQ0')
+    expect(boundary?.edges).toEqual([{ token: 'u|e_aaaabbbb', query: rim, kind: 'line' }])
+    expect(faceBoundaryLookup('ghost')).toBeNull()
   })
 })

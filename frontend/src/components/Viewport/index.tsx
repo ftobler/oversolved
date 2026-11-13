@@ -710,13 +710,20 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           // Solved geometry when the solve has landed, else the authored
           // `initial` shape: the choice is pure and tested in bodyUtils.
           const { sketch, constraints } = sketchForRender(solveResults?.[f.id], fullFeatureDef)
+          // Face-projection members are solve-time entities, not document rows;
+          // the editor's kind/selection maps need them alongside the authored
+          // rows or a projected member reads as a ghost.
+          const derivedEntities = Object.values(solveResult?.projection_members ?? {})
+            .flatMap(report => report.entities.map(e => ({ id: e.id, kind: e.kind })))
+          const entities = [...(fullFeatureDef.entities ?? []), ...derivedEntities]
           const isActiveFeature = f.id === activeFeatureId
           return (
             <Geometry3D
               key={f.id}
               featureId={f.id}
               solved={sketch}
-              entities={fullFeatureDef.entities}
+              entities={entities}
+              projectionMembers={solveResult?.projection_members}
               constraints={constraints}
               topology={solveResult?.topology}
               activeFeatureId={activeFeatureId}

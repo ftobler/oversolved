@@ -754,4 +754,48 @@ describe('partDocToSketches', () => {
     expect(sketches).toHaveLength(0)
     expect(skipped).toHaveLength(0)
   })
+
+  it('judges an entity on the resolved kind supplied by SketchProjectionFacts', () => {
+    const features = [{
+      id: 'sk1',
+      kind: 'sketch',
+      plane: '@builtin_plane_front',
+      entities: [{ id: 'e', kind: 'circle' }],
+      initial: { e: [0, 0, 5] },
+      constraints: [{ id: 'd', kind: 'diameter', target: '$e', value: 10 }],
+    }] as unknown as PartFeature[]
+    const { sketches } = partDocToSketches(features, [0, 0], [], {
+      resolvedKinds: { e: 'line' },
+    })
+    expect(sketches[0].sketch.entities).toEqual([{ id: 'e', kind: 'line', construction: undefined, handles: undefined }])
+    expect(sketches[0].droppedConstraints).toEqual([
+      { id: 'd', kind: 'diameter', reason: 'diameter does not apply to line' },
+    ])
+  })
+
+  it('takes a derived member arity from derivedInitial', () => {
+    const feature = {
+      id: 'sk1',
+      kind: 'sketch',
+      plane: '@builtin_plane_front',
+      entities: [],
+      initial: {},
+      constraints: [{ id: 'c', kind: 'coincident', a: { entity: 'm', point: 'fit2' }, b: '@builtin_origin' }],
+    } as unknown as PartFeature
+    // A three-point fit spline has no fit2 key; a five-point one does.
+    const short = partDocToSketches([feature], [0, 0], [], {
+      derivedKinds: { m: 'fit_spline' },
+      derivedInitial: { m: [0, 0, 1, 1, 2, 2] },
+    })
+    expect(short.sketches[0].droppedConstraints).toEqual([
+      { id: 'c', kind: 'coincident', reason: 'operand fit2 not on fit_spline' },
+    ])
+    const long = partDocToSketches([feature], [0, 0], [], {
+      derivedKinds: { m: 'fit_spline' },
+      derivedInitial: { m: [0, 0, 1, 1, 2, 2, 3, 3, 4, 4] },
+    })
+    expect(long.sketches[0].droppedConstraints).toEqual([])
+    expect(long.sketches[0].sketch.entities).toContainEqual({ id: 'm', kind: 'fit_spline', construction: undefined, handles: undefined })
+    expect(long.sketches[0].sketch.initial.m).toEqual([0, 0, 1, 1, 2, 2, 3, 3, 4, 4])
+  })
 })

@@ -8,7 +8,7 @@
 // single owner: the store imports it, and helpers import it, but there is still
 // exactly one module-level instance for the app lifetime. It was the private
 // `_sketchCbs` const before the store was split; the contract is unchanged.
-import type { Mutation, Sketch } from '@/types/cad'
+import type { Mutation, PartDoc, ProjectionMemberReportData, Sketch } from '@/types/cad'
 import type { DimensionPick } from '@/registry'
 import type { RecordedProjection } from '@/tools/operandProjection'
 import type { ProjectionPrelude } from '@/kernel/features/constraintProbe'
@@ -21,6 +21,11 @@ export const sketchCallbacks: {
   onRebuild: (() => void) | null
   onExitSketch: (() => void) | null
   getSketch: ((featureId: string) => Sketch | null) | null
+  // The live document, for the delete action's freeze route: it needs the
+  // constraint rows and the solved member report, and this store stays free of
+  // the session and the part-editor store. Registered by the Part page's
+  // session-port effect.
+  getDoc: (() => PartDoc | null) | null
   // The document feature's recorded projections (source, held entity and that
   // entity's declared kind). The solved map carries geometry only, so this is
   // how the projection planner reuses a `projection` whose solve has not
@@ -31,6 +36,12 @@ export const sketchCallbacks: {
   // the body dispatch tables. Absent in a headless store use, where an edge
   // projects with the line default.
   resolveEdgeKind: ((query: string) => string | null) | null
+  // The solved face-projection members for one sketch, so the delete action can
+  // freeze them without importing the published part-editor store (this store
+  // stays free of the session and the solver). Registered by the Part page's
+  // session-port effect; null in a headless store use, where a delete freezes
+  // nothing.
+  getProjectionMembers: ((featureId: string) => Record<string, ProjectionMemberReportData> | null) | null
   beginBrepProjection: (() => void) | null
   cancelBrepProjection: (() => void) | null
   // The authoring gate for a new constraint: true when the add would make the
@@ -54,7 +65,9 @@ export const sketchCallbacks: {
   onRebuild: null,
   onExitSketch: null,
   getSketch: null,
+  getDoc: null,
   getProjectedSources: null,
+  getProjectionMembers: null,
   resolveEdgeKind: null,
   beginBrepProjection: null,
   cancelBrepProjection: null,
@@ -96,7 +109,9 @@ export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => void)
 export function setSketchCallback(key: 'onMutationBatch', cb: ((ms: Mutation[]) => void) | null): void
 export function setSketchCallback(key: 'onRebuild' | 'onExitSketch', cb: (() => void) | null): void
 export function setSketchCallback(key: 'getSketch', cb: ((featureId: string) => Sketch | null) | null): void
+export function setSketchCallback(key: 'getDoc', cb: (() => PartDoc | null) | null): void
 export function setSketchCallback(key: 'getProjectedSources', cb: ((featureId: string) => readonly RecordedProjection[] | null) | null): void
+export function setSketchCallback(key: 'getProjectionMembers', cb: ((featureId: string) => Record<string, ProjectionMemberReportData> | null) | null): void
 export function setSketchCallback(key: 'resolveEdgeKind', cb: ((query: string) => string | null) | null): void
 export function setSketchCallback(key: 'beginBrepProjection' | 'cancelBrepProjection', cb: (() => void) | null): void
 export function setSketchCallback(key: 'checkRedundantAdd', cb: ((pending: PendingConstraint) => boolean | null) | null): void
@@ -120,7 +135,9 @@ const SESSION_CALLBACK_KEYS = [
   'onRebuild',
   'onExitSketch',
   'getSketch',
+  'getDoc',
   'getProjectedSources',
+  'getProjectionMembers',
   'resolveEdgeKind',
   'beginBrepProjection',
   'cancelBrepProjection',

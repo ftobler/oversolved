@@ -1,4 +1,6 @@
 import type { PartDoc, Mutation, SelectorRef } from '@/types/cad'
+import { isFaceProjectionSource } from '@/kernel/features/projectionMembers'
+import type { FaceBoundaryLookup } from '@/kernel/features/faceBoundary'
 import {
   applyMoveVertex,
   applyMoveEntity,
@@ -109,7 +111,18 @@ import {
 import { applyRemoveDanglingContent } from '@/utils/yamlMutations/solveResult'
 
 type MutationHandlers = {
-  [K in Mutation['type']]: (doc: PartDoc, m: Extract<Mutation, { type: K }>) => void
+  [K in Mutation['type']]: (
+    doc: PartDoc,
+    m: Extract<Mutation, { type: K }>,
+    ctx?: MutationContext,
+  ) => Mutation | void
+}
+
+/** What an applier may read besides the document: right now only a face's
+ *  current boundary, which the session injects from the last solved bodies so a
+ *  face projection's member ids can be derived at add time. */
+export interface MutationContext {
+  projectionBoundary?: FaceBoundaryLookup
 }
 
 // A pick field that also accepts a selector aid. The headless drive resolves a
@@ -138,6 +151,12 @@ const UNRESOLVED_PROJECTION_KIND =
   'add_projected_entity reached the applier without a kind; a string source must name one, '
   + 'and the drive fills it only from a {selector} source it resolved'
 
+function sameMemberMap(a: Record<string, string>, b: Record<string, string>): boolean {
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  return aKeys.length === bKeys.length && aKeys.every(key => b[key] === a[key])
+}
+
 export const mutationHandlers: MutationHandlers = {
   move_vertex: (next, m) =>
     applyMoveVertex(next, m.featureId, m.entityId, m.vertexKey, m.to, m.solvedGeometry),
@@ -162,7 +181,7 @@ export const mutationHandlers: MutationHandlers = {
   set_constraint_sign: (next, m) =>
     applySetConstraintSign(next, m.featureId, m.constraintId, m.sign),
   delete: (next, m) =>
-    applyDeleteElements(next, m.targets),
+    applyDeleteElements(next, m.targets, m.materialize),
   add_entity: (next, m) =>
     applyAddEntity(next, m.featureId, m.kind, m.params, m.entityId, {
       tangents: m.tangents, tangentScale: m.tangentScale,
@@ -182,11 +201,30 @@ export const mutationHandlers: MutationHandlers = {
     applyInsertFitPoint(next, m.featureId, m.entityId, m.index, m.point),
   set_fit_spline_handle: (next, m) =>
     applySetFitSplineHandle(next, m.featureId, m.entityId, m.end, m.handle),
-  add_projected_entity: (next, m) => {
+  add_projected_entity: (next, m, ctx) => {
     const source = resolvedQuery(m.source)
     if (source === undefined) throw new Error(UNRESOLVED_PICK)
-    if (m.kind === undefined) throw new Error(UNRESOLVED_PROJECTION_KIND)
-    applyAddProjectedEntity(next, m.featureId, m.kind, source, m.entityId, m.constraintId)
+    // A face source has no single kind: it derives members instead. Every other
+    // source still needs the pick-time kind (the drive fills it from a selector).
+    if (m.kind === undefined && !isFaceProjectionSource(source)) throw new Error(UNRESOLVED_PROJECTION_KIND)
+    const derived = applyAddProjectedEntity(next, m.featureId, m.kind ?? '', source, m.entityId, m.constraintId, {
+      faceBoundary: ctx?.projectionBoundary,
+      members: m.members,
+      excluded: m.excluded,
+    })
+    // A face add derives its member ids and constraint id here; handing the
+    // enriched mutation back lets the session journal it without editing the
+    // caller's object. The recorded id is what keeps a replay's derivation off a
+    // collision with rows a freeze left behind. A supplied map the applier
+    // replaced with the real one is rewritten too, so a bad step cannot leave a
+    // document the loader would refuse.
+    if (derived !== undefined && (
+      m.constraintId !== derived.constraintId
+      || m.members === undefined
+      || !sameMemberMap(m.members, derived.members)
+    )) {
+      return { ...m, constraintId: derived.constraintId, members: derived.members }
+    }
   },
   add_rect: (next, m) =>
     applyAddRect(next, m.featureId, m.p0, m.p1, m.p0Ref, m.p1Ref, m.entityIds, m.dimensions),

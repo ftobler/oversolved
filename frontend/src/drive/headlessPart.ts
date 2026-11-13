@@ -11,7 +11,12 @@
 // command step, the end) instead of after every step. The browser adapter keeps
 // its immediate scheduler; only this drive surface wraps one.
 
-import type { PartDoc, Mutation, SketchData, BodyResult } from '@/types/cad'
+import type { PartDoc, Mutation, SketchData, BodyResult, BuildResponse } from '@/types/cad'
+import {
+  faceBoundaryFromBodies, freezeRowsForDelete, isFaceProjectionSource,
+  projectionNotFrozenMessage, projectionsFreezingNothing,
+  type FaceBoundaryBodyLike, type ProjectionMemberEntity,
+} from '@/kernel/features/projectionMembers'
 import { createDocSession, type DocSession } from '@/session/DocSession'
 import type { SolveOptions, SolveSchedulerState } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
@@ -175,6 +180,51 @@ export interface HeadlessPart {
   run(steps: readonly ScriptStep[]): Promise<ScriptRunOutcome>
 }
 
+/** A face projection is the one add whose input lives in the last solved body. */
+function isFaceProjectionStep(mutation: unknown): boolean {
+  if (typeof mutation !== 'object' || mutation === null) return false
+  const step = mutation as { type?: unknown; source?: unknown }
+  return step.type === 'add_projected_entity'
+    && typeof step.source === 'string'
+    && isFaceProjectionSource(step.source)
+}
+
+
+/** Fill a drive `delete` of a face projection with the member rows the last
+ *  solve derived, the headless twin of the editor's freeze payload. Without it a
+ *  script that deletes the constraint silently discards the wire. */
+function withProjectionFreeze(
+  mutation: Mutation,
+  doc: PartDoc | null,
+  result: BuildResponse['result'] | undefined,
+): { mutation: Mutation; frozenNothing?: string[] } {
+  if (mutation.type !== 'delete' || mutation.materialize !== undefined || doc === null) {
+    // An explicit payload wins: a caller (or a recorded journal entry) that
+    // already says what to materialize owns those bytes.
+    return { mutation }
+  }
+  const features = new Set<string>()
+  for (const target of mutation.targets) {
+    if (!target.startsWith('constraint:')) continue
+    const parts = target.split(':')
+    if (parts[1] !== undefined && parts[2] !== undefined) features.add(parts[1])
+  }
+  const rows: ProjectionMemberEntity[] = []
+  const empty: string[] = []
+  for (const featureId of features) {
+    const feature = (doc.features ?? []).find(candidate => candidate.id === featureId)
+    if (feature?.kind !== 'sketch') continue
+    const reports = (result?.[featureId] as {
+      projection_members?: Record<string, { entities: ProjectionMemberEntity[]; orphans?: string[] }>
+    } | undefined)?.projection_members
+    const found = freezeRowsForDelete(featureId, feature, mutation.targets, reports)
+    if (found !== undefined) rows.push(...found)
+    empty.push(...projectionsFreezingNothing(featureId, feature, mutation.targets, reports))
+  }
+  const frozen = rows.length > 0 ? { ...mutation, materialize: rows } : mutation
+  return empty.length > 0 ? { mutation: frozen, frozenNothing: empty } : { mutation: frozen }
+}
+
 export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
   const docId = opts.docId ?? 'headless'
   // The ids this call's files map supplies, fixed for the session's lifetime
@@ -285,6 +335,11 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     },
     dirtyFacts: () => dirtyFacts,
     docId,
+    // A face projection is added with the members the last solve derived from
+    // the solved bodies; the headless host answers from its own response box.
+    projectionBoundary: faceBoundaryFromBodies(
+      () => responseBox.current?.bodies as Record<string, FaceBoundaryBodyLike> | undefined,
+    ),
     ...(opts.journal && { journal: journalSink(opts.journal) }),
   })
 
@@ -370,11 +425,16 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           // unsolved document (a fresh doc, or a chained docHash whose reply
           // carried no bodies) solves once before its first selector step.
           let bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
-          const needsBodies = usesSelectionAid(step.mutation)
-          if (needsBodies || usesSettledSketchGeometry(step.mutation)) {
+          // A face projection needs the last solve's body mesh to derive its
+          // member ids, exactly like a selector pick needs it to resolve. A
+          // delete of one needs the settled face too, so its freeze rows are
+          // the current members, not the previous solve's.
+          const needsBodies = usesSelectionAid(step.mutation) || isFaceProjectionStep(step.mutation)
+          const needsSettled = usesSettledSketchGeometry(step.mutation, docBox.current)
+          if (needsBodies || needsSettled) {
             if (solve.owed()) {
               await solve.flush()
-            } else if (needsBodies && responseBox.current === null) {
+            } else if ((needsBodies || needsSettled) && responseBox.current === null) {
               session.refreshSolve()
               await solve.flush()
             }
@@ -394,12 +454,16 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           // the layer rows the step reply reports.
           const importable = resolveDxfFile(validated.mutation, opts.files, docBox.current)
           if (!importable.ok) return { ok: false, code: importable.code, message: importable.message }
-          const applied = session.execute(importable.mutation)
+          const frozen = withProjectionFreeze(importable.mutation, docBox.current, responseBox.current?.result)
+          const applied = session.execute(frozen.mutation)
+          const noted = frozen.frozenNothing !== undefined && applied.ok
+            ? { ...applied, note: projectionNotFrozenMessage(frozen.frozenNothing) }
+            : applied
           // A refused filter is a no-op: the step says no-change instead of
           // reporting layer rows for an import that did not happen.
-          return importable.reply !== null && applied.ok && applied.noOp !== true
-            ? { ...applied, ...importable.reply }
-            : applied
+          return importable.reply !== null && noted.ok && noted.noOp !== true
+            ? { ...noted, ...importable.reply }
+            : noted
         },
         async (outcomes: readonly ScriptStepOutcome[]) => {
           // A deferred request is not pending yet, so this only drains a solve

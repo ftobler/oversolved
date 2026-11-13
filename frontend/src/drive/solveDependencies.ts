@@ -6,6 +6,9 @@
 // `initial` (add_rect, add_entity) does not need this: it has no previous
 // solved state to read.
 
+import { isFaceProjectionSource } from '@/kernel/features/projectionMembers'
+import type { PartDoc } from '@/types/cad'
+
 type RawStep = { [key: string]: unknown }
 
 function isRecord(value: unknown): value is RawStep {
@@ -31,9 +34,30 @@ function deletesFitPoint(raw: RawStep): boolean {
     && targets.some(target => typeof target === 'string' && /^vertex:[^:]+:[^:]+:fit\d+$/.test(target))
 }
 
+/** A delete naming a live face projection. The freeze payload must come from the
+ *  settled face, not the previous solve, and an absent member map is not a live
+ *  face form worth a settle. */
+function deletesFaceProjection(raw: RawStep, doc: PartDoc | null | undefined): boolean {
+  const targets = raw.targets
+  if (!Array.isArray(targets) || doc == null) return false
+  for (const target of targets) {
+    if (typeof target !== 'string' || !target.startsWith('constraint:')) continue
+    const [kind, featureId, constraintId] = target.split(':')
+    if (kind !== 'constraint' || featureId === undefined || constraintId === undefined) continue
+    const feature = (doc.features ?? []).find(candidate => candidate.id === featureId)
+    if (feature?.kind !== 'sketch') continue
+    const constraint = feature.constraints?.find(candidate => candidate.id === constraintId)
+    if (constraint?.kind === 'projection' && constraint.target === undefined && constraint.members !== undefined) {
+      return true
+    }
+  }
+  return false
+}
+
 /** Whether a step's applier reads `feature.initial` and would answer differently
- *  on an authored document than on the settled one the previous step left. */
-export function usesSettledSketchGeometry(raw: unknown): boolean {
+ *  on an authored document than on the settled one the previous step left.
+ *  `doc` is only needed for a delete that targets a face projection. */
+export function usesSettledSketchGeometry(raw: unknown, doc?: PartDoc | null): boolean {
   if (!isRecord(raw)) return false
   switch (raw.type) {
     // Relative moves and resizes are applied to the current params.
@@ -53,7 +77,12 @@ export function usesSettledSketchGeometry(raw: unknown): boolean {
     case 'set_fit_spline_handle':
       return true
     case 'delete':
-      return deletesFitPoint(raw)
+      return deletesFitPoint(raw) || deletesFaceProjection(raw, doc)
+    // A face projection's member ids come from the face's boundary in the last
+    // solved bodies, so the step must run against a settled document. An edge,
+    // vertex or sketch source takes its kind from the pick and needs no solve.
+    case 'add_projected_entity':
+      return typeof raw.source === 'string' && isFaceProjectionSource(raw.source)
     default:
       return carriesDockRef(raw)
   }

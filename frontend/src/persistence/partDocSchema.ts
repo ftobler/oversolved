@@ -106,6 +106,12 @@ const CONSTRAINT_SCHEMA: JsonSchema = {
     id: { type: 'string', minLength: 1 },
     kind: { type: 'string' },
     source: { type: 'string' },
+    // A face projection's derived membership: construction token -> member id,
+    // and the tokens the user removed. The loader additionally proves each id
+    // equals the form derived from the token (docSchema.ts), which JSON Schema
+    // cannot express.
+    members: { type: 'object', additionalProperties: { type: 'string', minLength: 1 } },
+    excluded: { type: 'array', items: { type: 'string', minLength: 1 } },
   },
   additionalProperties: true,
   allOf: [

@@ -1,6 +1,7 @@
 import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, Mutation, PartFeature, SketchData } from '@/types/cad'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
+import type { FaceBoundaryLookup } from '@/kernel/features/faceBoundary'
 import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { applySetRollback, setIdScope } from '@/utils/yamlMutations'
@@ -107,6 +108,10 @@ export interface DocSessionDeps {
   // means the inspection simply omits the field.
   getValidation?: () => unknown
   getBodies?: () => unknown
+  // A face projection's member ids are derived at add time from the face's
+  // current boundary. The host injects the lookup (UI: the body registry;
+  // headless: the last solved bodies), keeping the session free of geometry.
+  projectionBoundary?: FaceBoundaryLookup
   // The journal sink (the part editor, the headless CLI). Absent in the unit
   // suites and the assembly editor: no sink, no bookkeeping. The part editor
   // supplies one in every build, because the recovery autosave borrows its
@@ -331,7 +336,11 @@ function dragAnchorFor(m: Mutation): { featureId: string; entityId: string } | u
     : undefined
 }
 
-type AnyHandler = (doc: PartDoc, m: Mutation) => void
+type AnyHandler = (
+  doc: PartDoc,
+  m: Mutation,
+  ctx?: { projectionBoundary?: FaceBoundaryLookup },
+) => Mutation | void
 
 // The result of running a mutation set on one clone, with the pruned solve
 // results and the whole-feature snapshots a failing re-solve can restore.
@@ -339,6 +348,10 @@ interface AppliedMutations {
   next: PartDoc
   restorable: Record<string, SketchData> | null
   nextSolveResults: Record<string, SketchData>
+  /** The mutations as journaled: an applier may hand back an enriched copy (a
+   *  face projection records the member ids it derived), which replays without
+   *  a live solve. The caller's mutation objects are never edited. */
+  mutations: Mutation[]
 }
 
 interface TransactionBase {
@@ -607,7 +620,8 @@ export class DocSession {
     // recorded seed.
     this.deps.journal?.onBeforeApply(this.deps.docId ?? null)
     const applied = this.runMutations(current, mutations)
-    if (this.isNoOp(mutations, current, applied.next, group)) {
+    const appliedMutations = applied.mutations
+    if (this.isNoOp(appliedMutations, current, applied.next, group)) {
       // A no-op is still "the next mutation" as far as the brep arm is
       // concerned, so the arm is consumed here too. The result says so
       // explicitly: a headless step has to report a refused creator instead of
@@ -615,8 +629,8 @@ export class DocSession {
       this.consumeBrepArm(current)
       return noOpResult()
     }
-    const result = this.landMutations(mutations, current, applied)
-    this.reportDocChange(mutations, group, current, applied.next, unsettled)
+    const result = this.landMutations(appliedMutations, current, applied)
+    this.reportDocChange(appliedMutations, group, current, applied.next, unsettled)
     return result
   }
 
@@ -713,6 +727,10 @@ export class DocSession {
   private runMutations(current: PartDoc, mutations: Mutation[]): AppliedMutations {
     const next = this.deps.cloneDoc(current)
     const handlers = mutationHandlers as Record<string, AnyHandler | undefined>
+    // A copy: an applier that enriches its mutation (a face projection's derived
+    // member ids) replaces the entry here, and the journal records the enriched
+    // form without editing the caller's object.
+    const appliedMutations = [...mutations]
     let restorable: Record<string, SketchData> | null = null
     let nextSolveResults = this.deps.solveResults.get()
     // The features this apply inserted. The bar lands just past the last one.
@@ -726,7 +744,8 @@ export class DocSession {
     // because the starting document is the same.
     const outerScope = setIdScope(contentIds(current))
     try {
-      for (const m of mutations) {
+      for (let index = 0; index < appliedMutations.length; index++) {
+        const m = appliedMutations[index]
         const handler = Object.hasOwn(handlers, m.type) ? handlers[m.type] : undefined
         // A feature add may carry the rollback bar's slot. The handler appends it
         // like every other add, then the row moves into place. Detecting the
@@ -739,7 +758,8 @@ export class DocSession {
         const addedId = insertAt !== undefined && 'featureId' in m && !next.features?.some(f => f.id === m.featureId)
           ? m.featureId
           : null
-        handler?.(next, m)
+        const enriched = handler?.(next, m, { projectionBoundary: this.deps.projectionBoundary })
+        if (enriched !== undefined) appliedMutations[index] = enriched
         if (addedId !== null && insertAt !== undefined && insertFeatureAt(next, addedId, insertAt)) {
           insertedIds.push(addedId)
         }
@@ -776,7 +796,7 @@ export class DocSession {
         applySetRollback(next, facts.rollbackPosition)
       }
     }
-    return { next, restorable, nextSolveResults }
+    return { next, restorable, nextSolveResults, mutations: appliedMutations }
   }
 
   // The pre-sync guard the mirror comment promises: outside an edit, a

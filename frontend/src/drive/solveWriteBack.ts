@@ -58,13 +58,18 @@ export function applySolveToDoc(doc: PartDoc, response: SolveResponseLike): Solv
       geometry?: Record<string, number[]>
       entity_moved?: string[]
       status?: string
+      resolved_kinds?: Record<string, string>
+      projection_members?: Record<string, { members: Record<string, string> }>
     } | null
     const geometry = row?.geometry
     if (geometry && shouldBakeSketchGeometry(row)) {
       // The solver names what it moved; an absent report means every entity
       // takes the exact no-op test instead of the reference keep.
       const moved = Array.isArray(row.entity_moved) ? new Set(row.entity_moved) : undefined
-      if (applyGeometryToFeature(cloned, id, geometry, moved)) {
+      if (applyGeometryToFeature(cloned, id, geometry, moved, {
+        resolvedKinds: row.resolved_kinds,
+        projectionMembers: row.projection_members,
+      })) {
         movedFeatureIds.push(id)
       }
     }

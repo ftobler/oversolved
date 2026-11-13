@@ -2,8 +2,9 @@
 // Lowers a pickable ID (body face/edge/vertex query, or a foreign sketch
 // entity or vertex) into the `add_projected_entity` mutations that pull it
 // onto the active sketch plane. Shared by the project tool's click path (drawLogic) and
-// by the pre-selection path, so both agree on kind resolution and face-wire
-// expansion.
+// by the pre-selection path, so both agree on kind resolution. A face becomes one
+// live projection constraint; its boundary members are derived per solve, never
+// one mutation per edge.
 import type { Mutation } from '@/types/cad'
 import { parseQuery, emitWire, absolute } from '@/utils/query'
 import { isWholeBodySelectionId } from '@/utils/query/selectionId'
@@ -100,16 +101,14 @@ export function projectionMutationsForId(
       }
     } catch {  /* parse failure: keep default point */ }
 
-    // A face pick projects its whole boundary as a closed wire: one projected
-    // entity per boundary edge. Without resolved boundary edges (older body or
-    // no topology) fall back to projecting the face centroid as a point.
+    // A face is ONE live projection, not a frozen wire: the solver derives its
+    // boundary edges (seams excluded) as members on every solve. The resolver
+    // still has to answer, because a face with no solved body has no boundary to
+    // derive from and the applier would refuse the constraint.
     if (isFace) {
       const faceEdges = resolvers.faceEdges(id)
-      if (faceEdges && faceEdges.length > 0) {
-        return faceEdges.map(e => ({
-          type: 'add_projected_entity', featureId, kind: e.kind, source: e.source,
-        }))
-      }
+      if (!faceEdges || faceEdges.length === 0) return []
+      return [{ type: 'add_projected_entity', featureId, source: id }]
     }
 
     return [{ type: 'add_projected_entity', featureId, kind, source: id }]

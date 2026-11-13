@@ -8,9 +8,10 @@ import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { findEdgeKindForQuery } from '@/picking/bodyDispatchCallbacks'
 import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
+import { PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
 import { resolvedKindsOfSketch } from '@/kernel/features/sketch'
 import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
-import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, type PendingConstraint } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, deleteMutationFor, type PendingConstraint } from '@/stores/sketchEditorStore'
 import { usePartRelationHints } from '@/hooks/useRelationHint'
 import { useEditorState, editorState } from '@/hooks/useEditorState'
 import { syncRollbackFromDoc } from '@/stores/editorState'
@@ -707,9 +708,17 @@ export default function Part() {
       // selection the 3D pass needs, which is what used to strand the 3D half.
       // A 3D-only selection keeps its group exactly as before (no sketch half).
       const sketchDelete = sketchOwnedDeleteTargets(sel, store.activeFeatureId)
-      const mutations: Mutation[] = sketchDelete.length > 0
-        ? [{ type: 'delete', targets: sketchDelete }, ...threeD]
-        : threeD
+      const frozen = sketchDelete.length > 0
+        ? deleteMutationFor(store.activeFeatureId, sketchDelete)
+        : null
+      const mutations: Mutation[] = frozen !== null ? [frozen.mutation, ...threeD] : threeD
+      if (frozen?.frozenNothing !== undefined) {
+        showMessage({
+          title: PROJECTION_NOT_FROZEN_TITLE,
+          message: projectionNotFrozenMessage(frozen.frozenNothing),
+          variant: 'info',
+        })
+      }
       // A Delete while rolled back inserts its delete features at the bar and
       // solves them in the same press. Deleting a feature above the bar shifts
       // the inserted block (and the bar) down with the list.
@@ -734,7 +743,7 @@ export default function Part() {
     // only press unchanged). A non-deletable selection (a face primitive, a
     // builtin) filters to nothing, so the store no-ops and the selection stands.
     store.deleteSelected()
-  }, [commitMutationGroup, bodies, features])
+  }, [commitMutationGroup, bodies, features, showMessage])
 
   // Adding a feature while another feature's editor is open must close that
   // editor first (the one-open-editor discipline enterEditFeature enforces).
@@ -1063,7 +1072,13 @@ export default function Part() {
     // the params in that resolved kind. Without adopting it the probe would read
     // the 4 line params as a circle and bind a `center` ref to the line's start.
     const resolvedKinds = resolvedKindsOfSketch(solveResults?.[pending.featureId]?.solved)
-    const verdict = classifyPendingAdd(docRef.current, pending, resolvedKinds)
+    // A face projection's members are solve-time rows; the probe needs them to
+    // lower a target that names one instead of dropping it as stale.
+    const projectionMembers = solveResults?.[pending.featureId]?.projection_members
+    const derivedMembers = projectionMembers === undefined
+      ? undefined
+      : Object.values(projectionMembers).flatMap(report => report.entities)
+    const verdict = classifyPendingAdd(docRef.current, pending, resolvedKinds, derivedMembers)
     return verdict === 'redundant' ? true : verdict === 'dropped' ? null : false
   }, [docRef, solveResults])
 
@@ -1103,6 +1118,13 @@ export default function Part() {
     // The constraint command projects a picked body edge by its curve kind; the
     // dimension tool reads the same fact from the hover instead.
     setSketchCallback('resolveEdgeKind', (query: string) => findEdgeKindForQuery(query) ?? null)
+    // The delete action's freeze route reads the live document and the solved
+    // member rows through this same registration. It must live here with the
+    // ports the teardown clears: a separate effect would not re-run when this
+    // one is cleared for another dependency change.
+    setSketchCallback('getDoc', () => docRef.current)
+    setSketchCallback('getProjectionMembers', (featureId: string) =>
+      (solveResults?.[featureId]?.projection_members ?? null))
     return () => {
       clearSketchCallbacks()
     }

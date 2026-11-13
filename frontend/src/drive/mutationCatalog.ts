@@ -1005,7 +1005,13 @@ export const MUTATION_CATALOG = {
       targets: arr(
         'Sketch targets to delete: "entity:<sketchId>:<entityId>", ' +
         '"vertex:<sketchId>:<entityId>:<vertexKey>" or "constraint:<sketchId>:<constraintId>". ' +
-        'Features are deleted with delete_feature, not with a sketch target.',
+        'A derived face-projection member is deleted by adding its construction token to the ' +
+        'projection\'s `excluded`; features are deleted with delete_feature, not with a sketch target.',
+      ),
+      materialize: optArr(
+        'Freezing a face projection: the member rows the last solve derived, as ' +
+        '[{id, kind, params}]. Delete the projection constraint in the same call; the rows keep the ' +
+        'same ids, so constraints naming them keep working and later upstream edits no longer move them.',
       ),
     },
   },
@@ -1087,7 +1093,7 @@ export const MUTATION_CATALOG = {
     },
   },
   add_projected_entity: {
-    summary: 'Project a body edge or another sketch\'s geometry into a sketch as an entity held by a projection constraint.',
+    summary: 'Project a body edge, face or another sketch\'s geometry into a sketch as a live projection constraint.',
     note: 'The source is a body edge/vertex/face query, `@builtin_origin`, or a whole entity of another sketch '
       + '(`@<sketchId>/<entityId>`; add `/start`, `/end`, `/center` or `/xy` for one vertex). A sketch line, '
       + 'circle or arc projects as that curve; a foreign spline or ellipse is refused and reported in '
@@ -1095,21 +1101,33 @@ export const MUTATION_CATALOG = {
       + 'out of the profile). A body circle, arc or ellipse edge, or another sketch\'s circle or arc, seen '
       + 'edge-on projects as a line (its silhouette extent); `kind: "point"` on such a curved source projects '
       + 'its centre in any orientation. A line perpendicular to the sketch plane projects as a point (its '
-      + 'midpoint). The kind is re-resolved on every solve, and a constraint that names a '
-      + 'point key or a kind the projection\'s CURRENT kind does not have is ignored and reported in '
-      + '`dropped_constraints` (a `diameter` on a circle that tilted to an ellipse); the document keeps the '
-      + 'constraint, so a source that changes back re-enables it. The projection is held in place and can be '
-      + 'selected and deleted like any other entity.',
+      + 'midpoint). A FACE source is one live projection with no target: its boundary edges are derived as '
+      + 'members on every solve, so a later fillet or cut adds or removes members without a new pick. A supplied '
+      + '`kind` is ignored for a face source (the whole wire is derived). Seam edges are skipped. Members are not '
+      + 'document rows; their ids live in the constraint\'s `members` map and a deleted member is recorded in '
+      + '`excluded`. Delete the constraint to freeze the members into ordinary geometry. The kind is re-resolved '
+      + 'on every solve, and a constraint that names a point key or a kind the projection\'s CURRENT kind does '
+      + 'not have is ignored and reported in `dropped_constraints` (a `diameter` on a circle that tilted to an '
+      + 'ellipse); the document keeps the constraint, so a source that changes back re-enables it.',
     fields: {
       featureId: str(),
       kind: optStr(
-        'Entity kind: line, circle, arc, ellipse, spline or point. Omit it with a {selector} source: '
-        + 'the drive infers the kind from the element the selector matched (an edge keeps its curve kind, '
-        + 'a vertex or face projects as point).',
+        'Entity kind: line, circle, arc, ellipse, spline or point. Omit it for a face source (the whole '
+        + 'wire is derived; a supplied kind is ignored, so pick one edge if you want a centre point), or '
+        + 'with a {selector} source: the drive infers the kind from the element the selector matched '
+        + '(an edge keeps its curve kind, a vertex or face projects as point).',
       ),
       source: queryOrSelector(PROJECTION_SOURCE_NOTE),
       entityId: optStr(),
       constraintId: optStr(),
+      members: {
+        type: 'object',
+        required: false,
+        note: 'Face sources only: construction token -> derived member id, recorded so a replay needs no live '
+          + 'solve. The id must equal the form derived from the constraint id and the token; a caller that '
+          + 'omits the map lets the applier derive it from the last solved face boundary.',
+      },
+      excluded: optArr('Face sources only: construction tokens the user removed; a later solve never re-adds them.'),
     },
   },
   add_rect: {

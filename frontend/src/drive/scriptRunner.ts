@@ -103,6 +103,9 @@ export interface ScriptStepOutcome {
   poseKept?: KeptPose
   // Present only on an add_step_part step: the part it bound and instanced.
   part?: StepPartBinding
+  // A step-level caveat the reply carries beside `ok` (a face projection the
+  // delete removed without freezing its members).
+  note?: string
 }
 
 export interface ScriptRunOutcome {
@@ -132,6 +135,8 @@ export interface AnnotatedSuccess {
   // unfiltered import step (see ScriptStepOutcome.layers).
   layers?: Record<string, number>
   otherLayers?: Record<string, number>
+  // A step-level caveat carried into the outcome beside `ok`.
+  note?: string
 }
 
 export type ScriptStepRunner<S extends AnyScriptStep = ScriptStep> = (step: S) => ScriptStepResult | Promise<ScriptStepResult>
@@ -228,6 +233,7 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
     const layers = 'layers' in result ? result.layers : undefined
     const otherLayers = 'otherLayers' in result ? result.otherLayers : undefined
     const groupId = 'groupId' in result ? result.groupId : undefined
+    const note = 'note' in result ? result.note : undefined
     // A DXF import or a text run is the bulk case of the reply-size rule: one
     // step can add hundreds of entities, so the reply carries the count and
     // the document resource (or the run's docHash) serves the ids. A sketch
@@ -245,6 +251,7 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
       ...(captured !== undefined && { captured }),
       ...(poseKept !== undefined && { poseKept }),
       ...(part !== undefined && { part }),
+      ...(note !== undefined && { note }),
     }
   }
   return { index, kind, id, ok: false, createdIds: [], error: { code: result.code, message: result.message } }

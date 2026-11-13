@@ -526,6 +526,14 @@ export interface PartConstraint {
   // `projection` constraint only: the source pick query string (absolute `@...`
   // or ancestry `?...`) the held entity is projected from.
   source?: string
+  // `projection` constraint only, face sources (no `target`): the construction
+  // token -> derived member id map. The ids are a pure function of this
+  // constraint's id and the token, so a solve keeps them without a mint; the
+  // solve write-back is the only writer.
+  members?: Record<string, string>
+  // `projection` constraint only, face sources: construction tokens the user
+  // removed from the projected wire. A re-solve never re-adds one.
+  excluded?: string[]
 }
 
 export interface PartEntityDef {
@@ -1204,6 +1212,20 @@ export interface DroppedSketchConstraint {
   reason: string
 }
 
+export interface ProjectionMemberEntityData {
+  id: string
+  kind: string
+  params: number[]
+}
+
+/** Face-projection membership as the solve reports it. The ids and params are
+ *  solve facts, never document rows; the write-back installs only `members`. */
+export interface ProjectionMemberReportData {
+  members: Record<string, string>
+  entities: ProjectionMemberEntityData[]
+  orphans: string[]
+}
+
 export interface SketchData {
   solved: Sketch
   constraints?: Constraints
@@ -1215,6 +1237,9 @@ export interface SketchData {
   // Projected entities the solve could not resolve. Kept in the solve result
   // (never written into the doc) so the cleanup command knows what to remove.
   projection_errors?: string[]
+  // Face projections: the derived members this solve. Kept here so the editor
+  // renders them and the delete command can freeze them into entity rows.
+  projection_members?: Record<string, ProjectionMemberReportData>
   // Authored constraints the solve could not use (a stale or foreign operand, an
   // unreadable one). Kept here so the editor can draw a removable tile for each
   // and the cleanup command can clear them; they never reach the solver.
@@ -1291,7 +1316,7 @@ export type Mutation =
   | { type: 'set_constraint_value'; featureId: string; constraintId: string; value: number }
   | { type: 'set_constraint_pos'; featureId: string; constraintId: string; pos: Point }
   | { type: 'set_constraint_sign'; featureId: string; constraintId: string; sign: number }
-  | { type: 'delete'; targets: string[] }
+  | { type: 'delete'; targets: string[]; materialize?: ProjectionMemberEntityData[] }
   | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string; dimensions?: boolean; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
   // The optional `layers` filter names the layers to import; absent imports
   // every layer. The filter runs first, so an entity on an unpicked layer
@@ -1307,7 +1332,11 @@ export type Mutation =
   // `kind` may be omitted with a selector `source`: the drive infers it from the
   // element the selector matched (an edge's curve kind, or point for a vertex or
   // face) and fills it before the applier runs.
-  | { type: 'add_projected_entity'; featureId: string; kind?: string; source: string | SelectorRef; entityId?: string; constraintId?: string }
+  | {
+      type: 'add_projected_entity'; featureId: string; kind?: string; source: string | SelectorRef
+      entityId?: string; constraintId?: string
+      members?: Record<string, string>; excluded?: string[]
+    }
   // The optional refs name what a click snapped onto (a `vertex:` ref, or an
   // `entity:` ref for a point on that curve); the writer pins the matching corner
   // to it with a coincident. The n-gon's center ref pins the construction

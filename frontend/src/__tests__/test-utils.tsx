@@ -131,6 +131,9 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
   const { usePartEditorStore } = await import('@/stores/partEditorStore')
   const { useEffect, useMemo } = await import('react')
   const emptyDoc = () => ({ version: 1, kind: 'part', features: [], part_style: {} })
+  // The real hook always returns a map; the mock's default must too, and it must
+  // keep one identity so the Part effect does not re-run on every render.
+  const EMPTY_SOLVE_RESULTS: Record<string, unknown> = {}
   return {
     BUILTIN_FEATURE_DEFAULTS,
     BUILTIN_FEATURE_IDS,
@@ -138,13 +141,18 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
     // partEditorStore; the mock must emulate that side effect or a mocked page
     // sees an empty store (the Sidebar mock reads bodies from it).
     usePartDoc: () => {
+      // A function override lets a page test replace the solve map between
+      // renders, which is how the callback effect's re-registration is driven.
+      const supplied = typeof overrides.solveResults === 'function'
+        ? (overrides.solveResults as () => unknown)()
+        : overrides.solveResults
+      const solveResults = supplied ?? EMPTY_SOLVE_RESULTS
       const value = useMemo(() => ({
       doc: emptyDoc(),
       docRef: { current: emptyDoc() },
       loading: false,
       error: null,
       setError: vi.fn(),
-      solveResults: {},
       bodies: {},
       pickBodies: {},
       solving: false,
@@ -188,7 +196,8 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
       validation: null,
       pickStateReady: false,
       ...overrides,
-      }), [])
+      solveResults,
+      }), [solveResults])
       useEffect(() => {
         const doc = value.doc as { features?: unknown[] } | null
         usePartEditorStore.getState().publishSession({

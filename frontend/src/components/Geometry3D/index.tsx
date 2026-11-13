@@ -60,6 +60,9 @@ export interface Geometry3DProps {
   featureId: string
   solved: Sketch
   entities?: Array<{ id: string; kind: string; construction?: boolean }>
+  // The last solve's face-projection report, so the drag preview lowers the
+  // derived wire and a constraint naming a member survives.
+  projectionMembers?: Record<string, import('@/types/cad').ProjectionMemberReportData>
   constraints?: Constraints
   topology?: Topology
   activeFeatureId?: string
@@ -78,7 +81,7 @@ export interface Geometry3DProps {
   droppedConstraints?: readonly DroppedSketchConstraint[]
 }
 
-export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, originLocal, solveStatus, entityStatus, otherSketches, featureDef, droppedConstraints }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, entities, projectionMembers, constraints, topology, activeFeatureId, plane, planeTransform, originLocal, solveStatus, entityStatus, otherSketches, featureDef, droppedConstraints }: Geometry3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const drag = useSketchEditorStore(s => s.drag)
   const isDraggingThis = !!drag && drag.featureId === featureId
@@ -102,12 +105,16 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // so the identity is stable across a drag's frames (the memo key above warns
   // that a fresh object per render would rebuild the context mid-drag).
   const resolvedKinds = useMemo(() => resolvedKindsOfSketch(solved), [solved])
+  const derivedMembers = useMemo(
+    () => Object.values(projectionMembers ?? {}).flatMap(report => report.entities),
+    [projectionMembers],
+  )
 
   // WASM drag solve for vertex drags (runs the real solver per frame with
   // warm-start continuity and rAF throttling). engaged=false for edge/dim_label
   // drags, unmapped vertices, or while the main-thread solver is still loading.
   const wasmDrag = useWasmDragSolve({
-    featureId, featureDef, drag, isDraggingThis, originLocal: dragOrigin, resolvedKinds,
+    featureId, featureDef, drag, isDraggingThis, originLocal: dragOrigin, resolvedKinds, derivedMembers,
   })
 
   // During drag on this feature: vertex drags use WASM; edge drags use a simple
