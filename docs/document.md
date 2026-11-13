@@ -259,7 +259,11 @@ existing body: with no `merge_target` every body is a candidate and it fuses
 the first one the profile reaches, warning about any other body it also
 reaches. A profile that reaches no body at all fails the feature (`add does not
 merge with any existing body`), so the first extrusion of a part uses `new`.
-`cut` removes material from the body it reaches.
+`cut` removes material from the body it reaches. With no `merge_target` it
+reaches every body, and one it consumes entirely is removed from the part. That
+deletion is silent when other bodies remain; the warning names the consumed
+body only when `merge_target` aimed at it, or when the cut leaves no body at
+all.
 
 A part saved before this rule whose first extrusion is `add` (or omits
 `operation`, which reads as `add`) rebuilds red until that feature is switched
