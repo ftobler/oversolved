@@ -8,6 +8,8 @@ import {
   DxfImportError,
   MAX_DXF_IMPORT_BYTES,
   dxfImportLimitError,
+  dxfLayerOptions,
+  dxfSelectedLayers,
   parseDxfProfile,
 } from '@/utils/dxfImport'
 
@@ -28,6 +30,108 @@ function dxf(entities: string[][], options: { insunits?: number } = {}): string 
 
 const line = (x1: number, y1: number, x2: number, y2: number, layer = '0') =>
   entity('LINE', [8, layer], [10, x1], [20, y1], [11, x2], [21, y2])
+
+const circle = (cx: number, cy: number, r: number, layer = '0') =>
+  entity('CIRCLE', [8, layer], [10, cx], [20, cy], [40, r])
+
+describe('parseDxfProfile layer filter', () => {
+  // One sheet, three layers: the shape a real profile drawing has. The filter
+  // tests share it so a layer count and an import row are never confused.
+  const sheet = () => dxf([
+    line(0, 0, 10, 0, 'profile'),
+    line(10, 0, 10, 10, 'profile'),
+    circle(5, 5, 1, 'holes'),
+    entity('DIMENSION', [8, 'dim'], [10, 0], [20, 0]),
+  ])
+
+  it('imports every layer when no filter is given, as it always did', () => {
+    const profile = parseDxfProfile(sheet(), 'mm')
+    expect(profile.entities).toEqual([
+      { kind: 'line', params: [0, 0, 10, 0] },
+      { kind: 'line', params: [10, 0, 10, 10] },
+      { kind: 'circle', params: [5, 5, 1] },
+    ])
+    expect(profile.layers).toEqual({ profile: 2, holes: 1 })
+    expect(profile.skipped).toEqual({ DIMENSION: 1 })
+    expect(profile.fileLayers).toEqual({ profile: 2, holes: 1, dim: 1 })
+    expect(profile.pickedLayers).toBeUndefined()
+  })
+
+  it('imports only the picked layer and reports the whole layer map', () => {
+    const profile = parseDxfProfile(sheet(), 'mm', { layers: ['profile'] })
+    expect(profile.entities).toEqual([
+      { kind: 'line', params: [0, 0, 10, 0] },
+      { kind: 'line', params: [10, 0, 10, 10] },
+    ])
+    expect(profile.layers).toEqual({ profile: 2 })
+    expect(profile.fileLayers).toEqual({ profile: 2, holes: 1, dim: 1 })
+    expect(profile.pickedLayers).toEqual(['profile'])
+  })
+
+  it('matches a layer name case-insensitively after trimming', () => {
+    const text = dxf([line(0, 0, 10, 0, 'Profile')])
+    const profile = parseDxfProfile(text, 'mm', { layers: [' PROFILE '] })
+    expect(profile.entities).toHaveLength(1)
+    expect(profile.layers).toEqual({ Profile: 1 })
+    expect(profile.pickedLayers).toEqual(['Profile'])
+  })
+
+  it('refuses an unknown layer with every file layer and its count', () => {
+    expect(() => parseDxfProfile(sheet(), 'mm', { layers: ['fan'] }))
+      .toThrow('DXF has no layer "fan"; layers: profile (2), holes (1), dim (1).')
+  })
+
+  it('filters before the entity rules, so decoration cannot refuse the import', () => {
+    const text = dxf([
+      line(0, 0, 10, 0, 'profile'),
+      entity('HATCH', [8, 'hatch'], [2, 'SOLID']),
+      entity('INSERT', [8, 'blocks'], [2, 'BLOCK']),
+    ])
+    expect(() => parseDxfProfile(text, 'mm')).toThrow(/unsupported DXF entity HATCH/)
+    const profile = parseDxfProfile(text, 'mm', { layers: ['profile'] })
+    expect(profile.entities).toEqual([{ kind: 'line', params: [0, 0, 10, 0] }])
+    // The unpicked HATCH and INSERT are neither imported nor counted as skipped.
+    expect(profile.skipped).toEqual({})
+    expect(profile.fileLayers).toEqual({ profile: 1, hatch: 1, blocks: 1 })
+  })
+
+  it('refuses a picked layer that holds only annotations, naming it', () => {
+    const text = dxf([
+      line(0, 0, 10, 0, 'profile'),
+      entity('DIMENSION', [8, 'dim'], [10, 0], [20, 0]),
+      entity('TEXT', [8, 'dim'], [10, 0], [20, 0], [1, 'note']),
+    ])
+    expect(() => parseDxfProfile(text, 'mm', { layers: ['dim'] }))
+      .toThrow(/no importable geometry on layers dim \(skipped 1 DIMENSION, 1 TEXT\)/)
+  })
+
+  it('applies the file unit to the filtered rows', () => {
+    const text = dxf([
+      line(0, 0, 1, 0, 'profile'),
+      circle(0, 0, 1, 'holes'),
+    ], { insunits: 4 })
+    const profile = parseDxfProfile(text, 'inch', { layers: ['profile'] })
+    expect(profile.scale).toBeCloseTo(1 / 25.4)
+    expect(profile.entities[0].params[2]).toBeCloseTo(1 / 25.4)
+  })
+
+  it('offers only the layers that import on their own', () => {
+    const text = dxf([
+      line(0, 0, 10, 0, 'profile'),
+      circle(5, 5, 1, 'holes'),
+      entity('DIMENSION', [8, 'dim'], [10, 0], [20, 0]),
+      entity('HATCH', [8, 'hatch'], [2, 'SOLID']),
+    ])
+    expect(dxfLayerOptions(text, 'mm')).toEqual([
+      { layer: 'profile', count: 1 },
+      { layer: 'holes', count: 1 },
+    ])
+    const offered = ['profile', 'holes']
+    expect(dxfSelectedLayers(offered, offered)).toBeNull()
+    expect(dxfSelectedLayers(offered, ['profile'])).toEqual(['profile'])
+    expect(dxfSelectedLayers(offered, [])).toEqual([])
+  })
+})
 
 describe('parseDxfProfile entities', () => {
   it('reads a LINE as its two endpoints', () => {

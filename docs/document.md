@@ -194,16 +194,22 @@ arc), a single clamped cubic Bezier SPLINE (four control points, weights all
 1), a full ELLIPSE and POINT. TEXT, MTEXT, DIMENSION, LEADER and the other
 annotation entities are skipped and counted, and so is paper space; any other
 curve entity (INSERT, HATCH, a multi-span or rational SPLINE, a 3D POLYLINE)
-refuses the whole file by name, so a profile is never half imported.
+refuses the whole file by name (unless the `layers` filter leaves that
+entity's layer out), so a profile is never half imported.
 
-The sketch entity has no layer field, so every layer is imported and the layer
-names are not stored (the parser reports their counts). Repeated entities are
-kept as authored; the import does not de-duplicate them, and a polyline width
-is ignored (the centreline imports). `$INSUNITS` is converted to the document's
-unit (0 unitless means the numbers are already document units; 1 inch, 2 foot,
-4 mm, 5 cm and 6 m convert), and an unsupported code refuses by name. DXF is a
-planar format: the import reads X and Y only, matching CadQuery's DXF import
-onto a workplane, and the drawing's local coordinates are the sketch's own.
+The sketch entity has no layer field, so layer names are not stored (the parser
+reports their counts). An optional `layers` list on the mutation imports only
+the layers it names, matched case-insensitively after trimming; the filter runs
+before the entity rules, so a HATCH, a block INSERT or an annotation on an
+unpicked layer neither refuses the file nor counts as skipped, and an unknown
+name refuses with the file's own layer list and entity counts. Without the list
+every layer imports. Repeated entities are kept as authored; the import does
+not de-duplicate them, and a polyline width is ignored (the centreline
+imports). `$INSUNITS` is converted to the document's unit (0 unitless means the
+numbers are already document units; 1 inch, 2 foot, 4 mm, 5 cm and 6 m
+convert), and an unsupported code refuses by name. DXF is a planar format: the
+import reads X and Y only, matching CadQuery's DXF import onto a workplane, and
+the drawing's local coordinates are the sketch's own.
 
 ### plane
 

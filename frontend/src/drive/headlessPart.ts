@@ -33,7 +33,7 @@ import { authoredHashOf } from '@/drive/docHash'
 import { seededIdSource, stepSeedFor } from '@/drive/seededIds'
 import { resolveSelectionAids, usesSelectionAid } from '@/drive/selectionAids'
 import { usesSettledSketchGeometry } from '@/drive/solveDependencies'
-import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
+import { DxfImportError, dxfImportReply, parseDxfProfile, type DxfImportReply, type DxfProfile } from '@/utils/dxfImport'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { setIdSource } from '@/utils/yamlMutations'
 
@@ -79,47 +79,53 @@ export interface HeadlessCheckpoint {
 }
 
 /**
- * Turn an `import_dxf` step's `file` id into the text it names. The id is
- * confined to this run's files map, and the bytes must decode as UTF-8 and
- * parse as DXF, so a bad file is a named step failure with the document
- * untouched. The mutation the session applies carries `content`, never
- * `file`: undo and journal replay then need no file map.
+ * Turn an `import_dxf` step into the mutation the session applies: a `file` id
+ * becomes the text it names, and either spelling is parsed with its layer
+ * filter so a bad file or an unknown layer is a named step failure with the
+ * document untouched. The mutation the session applies carries `content`, never
+ * `file`: undo and journal replay then need no file map. The parse also yields
+ * the layer rows the step replies with.
  */
 function resolveDxfFile(
   mutation: Mutation,
   files: ReadonlyMap<string, Uint8Array> | undefined,
   doc: PartDoc | null,
-): { ok: true; mutation: Mutation } | { ok: false; code: string; message: string } {
-  if (mutation.type !== 'import_dxf' || mutation.file === undefined) return { ok: true, mutation }
+): { ok: true; mutation: Mutation; reply: DxfImportReply | null } | { ok: false; code: string; message: string } {
+  if (mutation.type !== 'import_dxf') return { ok: true, mutation, reply: null }
   const fileId = mutation.file
-  const bytes = files?.get(fileId)
-  if (bytes === undefined) {
-    const available = [...(files?.keys() ?? [])].sort()
-    return {
-      ok: false,
-      code: 'unknown-target',
-      message: `file ${JSON.stringify(fileId)} is not in this call's files map; available: `
-        + `${available.join(', ') || 'none'}. Pass its bytes with the run call's \`files\` argument.`,
+  let content = mutation.content ?? ''
+  if (fileId !== undefined) {
+    const bytes = files?.get(fileId)
+    if (bytes === undefined) {
+      const available = [...(files?.keys() ?? [])].sort()
+      return {
+        ok: false,
+        code: 'unknown-target',
+        message: `file ${JSON.stringify(fileId)} is not in this call's files map; available: `
+          + `${available.join(', ') || 'none'}. Pass its bytes with the run call's \`files\` argument.`,
+      }
+    }
+    try {
+      content = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    } catch {
+      return {
+        ok: false,
+        code: 'invalid-mutation',
+        message: `file ${JSON.stringify(fileId)} is not UTF-8 text; a DXF profile must be UTF-8 encoded`,
+      }
     }
   }
-  let content: string
+  let profile: DxfProfile
   try {
-    content = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-  } catch {
-    return {
-      ok: false,
-      code: 'invalid-mutation',
-      message: `file ${JSON.stringify(fileId)} is not UTF-8 text; a DXF profile must be UTF-8 encoded`,
-    }
-  }
-  try {
-    parseDxfProfile(content, lengthUnitOf(doc?.length_unit))
+    profile = parseDxfProfile(content, lengthUnitOf(doc?.length_unit), {
+      layers: mutation.layers,
+    })
   } catch (e) {
     if (e instanceof DxfImportError) return { ok: false, code: 'invalid-mutation', message: e.message }
     throw e
   }
   const { file: _file, ...rest } = mutation
-  return { ok: true, mutation: { ...rest, content } }
+  return { ok: true, mutation: { ...rest, content }, reply: dxfImportReply(profile) }
 }
 
 export interface HeadlessPart {
@@ -384,10 +390,16 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           if (!validated.ok) return { ok: false, code: validated.error.code, message: validated.error.message }
           // A `file` is resolved after the boundary checked the id against this
           // call's map, and before the session: the journal and undo see the same
-          // content an inline step would have carried.
+          // content an inline step would have carried. The same parse supplies
+          // the layer rows the step reply reports.
           const importable = resolveDxfFile(validated.mutation, opts.files, docBox.current)
           if (!importable.ok) return { ok: false, code: importable.code, message: importable.message }
-          return session.execute(importable.mutation)
+          const applied = session.execute(importable.mutation)
+          // A refused filter is a no-op: the step says no-change instead of
+          // reporting layer rows for an import that did not happen.
+          return importable.reply !== null && applied.ok && applied.noOp !== true
+            ? { ...applied, ...importable.reply }
+            : applied
         },
         async (outcomes: readonly ScriptStepOutcome[]) => {
           // A deferred request is not pending yet, so this only drains a solve

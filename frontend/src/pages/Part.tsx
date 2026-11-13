@@ -40,7 +40,10 @@ import PartColorPopover from '@/pages/PartColorPopover'
 import PartExportImport, { type PartExportImportHandle } from '@/pages/PartExportImport'
 import { usePartCommands } from '@/pages/PartKeyboardShortcuts'
 import { useNotifySafe } from '@/contexts/ToastContext'
-import { dxfImportLimitError, parseDxfProfile, type DxfProfile } from '@/utils/dxfImport'
+import {
+  dxfImportLimitError, dxfLayerOptions, dxfSelectedLayers, parseDxfProfile,
+  type DxfLayerOption, type DxfProfile,
+} from '@/utils/dxfImport'
 import { getSketchState, PART_COMMAND_SPECS, type PartCommandContext, type ShowMessagePayload } from '@/pages/commandEntries'
 import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
 import { installDriveSurface } from '@/drive/driveSurface'
@@ -50,6 +53,7 @@ import { attachAutosave, registerRecoveryEditor, useAutosaveStore } from '@/reco
 import { CommandRegistry } from '@/utils/core/commandSpec'
 import type { SessionJournalSink } from '@/session/DocSession'
 import MessageDialog from '@/components/dialogs/MessageDialog'
+import DxfLayerDialog from '@/components/dialogs/DxfLayerDialog'
 import { useEditFeature } from '@/pages/useEditFeature'
 
 import measurementIcon from '@/assets/icons/measurement.svg'
@@ -75,6 +79,16 @@ import { hasDanglingContentInDoc } from '@/utils/yamlMutations/solveResult'
 const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 
 type PartColorPopoverState = { bodyId: string; position: [number, number]; session: number } | null
+
+// The DXF import waiting on the layer chooser: the file text is read once and
+// held here, so the confirm re-parses with the chosen layers rather than
+// asking for the file again.
+type DxfChooser = {
+  featureId: string
+  content: string
+  fileName: string
+  options: DxfLayerOption[]
+}
 
 // A new feature belongs in the rollback bar's slot when the user parked it
 // mid-stack, and at the end otherwise. The bar can never sit above the
@@ -115,14 +129,30 @@ function extractFeatures(doc: PartDoc | null): PartFeature[] {
 }
 
 // The one-line success toast: what landed, what was left out, and whether the
-// numbers were converted. The skipped and unit facts are the import's contract
-// (utils/dxfImport.ts), so the user learns them at the moment of import.
+// numbers were converted. The skipped, layer and unit facts are the import's
+// contract (utils/dxfImport.ts), so the user learns them at the moment of
+// import. A filtered import names the layers it read and counts what stayed
+// behind; an unfiltered one says neither, because it took everything.
 function dxfImportMessage(profile: DxfProfile, fileName: string): string {
   const count = profile.entities.length
-  const parts = [`Imported ${count} ${count === 1 ? 'entity' : 'entities'} from ${fileName}`]
+  const picked = profile.pickedLayers
+  const source = picked === undefined
+    ? `from ${fileName}`
+    : `from layers ${picked.join(', ')} in ${fileName}`
+  const parts = [`Imported ${count} ${count === 1 ? 'entity' : 'entities'} ${source}`]
   const skipped = Object.entries(profile.skipped)
   if (skipped.length > 0) {
     parts.push(`skipped ${skipped.map(([kind, n]) => `${n} ${kind}`).join(', ')}`)
+  }
+  if (picked !== undefined) {
+    // Folded like the parser's match: `Body` and `BODY` are one layer.
+    const chosen = new Set(picked.map(name => name.toLowerCase()))
+    const leftOut = Object.entries(profile.fileLayers)
+      .filter(([layer]) => !chosen.has(layer.toLowerCase()))
+      .reduce((sum, [, n]) => sum + n, 0)
+    if (leftOut > 0) {
+      parts.push(`${leftOut} ${leftOut === 1 ? 'entity' : 'entities'} on other layers left out`)
+    }
   }
   if (profile.unit.code === 0) parts.push('unitless DXF read in document units')
   else if (profile.scale !== 1) parts.push(`converted from ${profile.unit.name} to the document unit`)
@@ -227,6 +257,10 @@ export default function Part() {
   const [debugOpen, setDebugOpen] = useState(false)
   const [messageDialog, setMessageDialog] = useState<ShowMessagePayload | null>(null)
   const showMessage = useCallback((payload: ShowMessagePayload) => setMessageDialog(payload), [])
+  // The pending DXF import the layer chooser is deciding for. Null means no
+  // chooser is open; the file content waits here rather than in the dialog so
+  // the dialog stays a pure view of the offered layers.
+  const [dxfChooser, setDxfChooser] = useState<DxfChooser | null>(null)
 
   const activePickField = useSketchEditorStore(s => s.activePickField)
   const setActivePickField = useSketchEditorStore(s => s.setActivePickField)
@@ -894,6 +928,51 @@ export default function Part() {
   // banner names the exact refusal (an unsupported entity, a bad unit) instead
   // of the session swallowing a no-op; the mutation itself parses again at the
   // document boundary, so a direct caller cannot skip the contract.
+  //
+  // A drawing whose geometry sits on several importable layers offers the
+  // layer chooser first: one sheet holding every profile of a part is the
+  // OpenSCAD `import(layer = ...)` idiom, and the filter also keeps decoration
+  // (a HATCH, a block) on an unpicked layer from refusing the import.
+  const commitDxfImport = useCallback((
+    featureId: string,
+    content: string,
+    fileName: string,
+    layers?: string[],
+  ) => {
+    // The picker and the layer chooser are async windows: the open sketch can
+    // change or vanish by the time the file is read or the user confirms.
+    // Dispatching then would land in the wrong sketch (or no-op) while the
+    // toast claimed it landed, so the target is re-read from the live editor
+    // and document.
+    if (editorState.getState().editingFeatureId !== featureId) {
+      setError('The open sketch changed; import the DXF again')
+      return
+    }
+    const target = docRef.current?.features?.some(f => f.id === featureId && f.kind === 'sketch')
+    if (!target) {
+      setError('The sketch is no longer open')
+      return
+    }
+    let profile: DxfProfile
+    try {
+      profile = parseDxfProfile(content, lengthUnitOf(docRef.current?.length_unit), {
+        layers,
+      })
+    } catch (e) {
+      setError(errorMessage(e, 'Failed to import DXF'))
+      return
+    }
+    const result = handleMutation({
+      type: 'import_dxf',
+      featureId,
+      content,
+      ...(layers !== undefined && { layers }),
+    })
+    if (result?.ok === false) return
+    setError(null)
+    notify(dxfImportMessage(profile, fileName), 'success')
+  }, [handleMutation, setError, notify, docRef])
+
   const handleImportDxf = useCallback(() => {
     const featureId = editorState.getState().editingFeatureId
     if (!featureId) {
@@ -922,33 +1001,35 @@ export default function Part() {
         setError('DXF file is empty')
         return
       }
-      let profile: DxfProfile
+      // The layer map comes from the file, not from a successful whole-file
+      // parse: the unfiltered parse is exactly what refuses a drawing whose
+      // decoration layer is unsupported, and choosing layers is how it
+      // imports. Only the layers that import on their own are offered.
+      let options: DxfLayerOption[]
       try {
-        profile = parseDxfProfile(content, lengthUnitOf(docRef.current?.length_unit))
+        options = dxfLayerOptions(content, lengthUnitOf(docRef.current?.length_unit))
       } catch (e) {
         setError(errorMessage(e, 'Failed to import DXF'))
         return
       }
-      // The picker is an async window: the open sketch can change or vanish by
-      // the time the file is read. Dispatching then would land in the wrong
-      // sketch (or no-op) while the toast claimed it landed, so the target is
-      // re-read from the live editor and document.
-      if (editorState.getState().editingFeatureId !== featureId) {
-        setError('The open sketch changed; import the DXF again')
+      if (options.length > 1) {
+        setDxfChooser({ featureId, content, fileName: file.name, options })
         return
       }
-      const target = docRef.current?.features?.some(f => f.id === featureId && f.kind === 'sketch')
-      if (!target) {
-        setError('The sketch is no longer open')
-        return
-      }
-      const result = handleMutation({ type: 'import_dxf', featureId, content })
-      if (result?.ok === false) return
-      setError(null)
-      notify(dxfImportMessage(profile, file.name), 'success')
+      commitDxfImport(featureId, content, file.name)
     }
     input.click()
-  }, [handleMutation, setError, notify, docRef])
+  }, [commitDxfImport, setError, docRef])
+
+  // The chooser's confirm: an all-checked choice is the unfiltered mutation it
+  // always was, so only an unchecking user dispatches a `layers` field.
+  const handleDxfLayers = useCallback((checked: string[]) => {
+    const pending = dxfChooser
+    if (!pending) return
+    setDxfChooser(null)
+    const layers = dxfSelectedLayers(pending.options.map(option => option.layer), checked)
+    commitDxfImport(pending.featureId, pending.content, pending.fileName, layers ?? undefined)
+  }, [dxfChooser, commitDxfImport])
 
   const handleSetLengthUnit = useCallback((unit: LengthUnit) => {
     handleMutation({ type: 'set_length_unit', unit })
@@ -1511,6 +1592,13 @@ export default function Part() {
         onCancel={() => setCloneName(null)}
       />
       <RawDocumentDialog failure={loadFailure} onClose={() => setLoadFailure(null)} />
+      <DxfLayerDialog
+        isOpen={dxfChooser !== null}
+        fileName={dxfChooser?.fileName ?? ''}
+        layers={dxfChooser?.options ?? []}
+        onImport={handleDxfLayers}
+        onCancel={() => setDxfChooser(null)}
+      />
       <PartColorPopover
         popover={partColorPopover}
         onColorSet={handleBodyColor}

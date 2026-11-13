@@ -864,9 +864,15 @@ banner on stdout, so a client config must use the direct node invocation.
   (`file`; give exactly one of the two), parses it with the same module the sketch
   toolbar's file picker uses, and appends the supported entities to one sketch
   as one undo entry; its row note lists the supported entity kinds, the
-  annotation entities that are skipped, and the `$INSUNITS` rule. Its step reply
-  is compact: `createdIds: []` and `createdCount`, because one import can add
-  hundreds of entities and the document resource has their ids. The
+  annotation entities that are skipped, and the `$INSUNITS` rule. An optional
+  `layers` list names the layers to import, matched case-insensitively after
+  trimming; absent imports every layer. Entities on other layers are ignored,
+  including ones that would otherwise refuse the file, and an unknown name is a
+  step failure naming the file's layers and their entity counts. Its step reply
+  is compact: `createdIds: []` and `createdCount`, plus `layers` (the imported
+  rows per layer) and, when a filter left file layers out, `otherLayers` with
+  their counts, because one import can add hundreds of entities and the
+  document resource has their ids. The
   `set_*_field` value note emits the enum members of every enum field in that
   kind's schema
   (`operation: add|cut|new`, `direction: normal|reverse|symmetric`,
@@ -1404,7 +1410,10 @@ authors `flip: true` by hand is equally valid.
   An `import_dxf` or `add_text` step reports `createdIds: []` and
   `createdCount: <entities>` instead, because one step can add hundreds of
   entities; a sketch copy step that creates more than 200 ids reports them the
-  same way. The ids of such a step stay readable from the document resource,
+  same way. An `import_dxf` step also reports `layers` (the imported rows per
+  layer, in file order) and, when its `layers` filter left file layers out,
+  `otherLayers` with those layers' entity counts. The ids of such a step stay
+  readable from the document resource,
   and the run's `docHash` names the document that holds them. Other mutations
   list every id
   they create. In an assembly, an

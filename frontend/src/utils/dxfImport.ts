@@ -5,9 +5,11 @@
 //
 // The contract is deliberately narrow: a curve the sketch cannot represent
 // faithfully refuses the whole file by name, so a profile is never half
-// imported. Text and dimension annotations are skipped and counted, because
-// they are not profile geometry and refusing a drawing over its title block
-// would make the import useless.
+// imported. An optional `layers` filter narrows the file first, so decoration
+// on a layer nobody picked (hatches, blocks, dimensions) cannot refuse an
+// import that does not want it. Text and dimension annotations are skipped and
+// counted, because they are not profile geometry and refusing a drawing over
+// its title block would make the import useless.
 
 import type { EntityKind, LengthUnit } from '@/types/cad'
 import { MM_PER_LENGTH_UNIT } from '@/utils/lengthUnit'
@@ -38,6 +40,39 @@ export interface DxfProfile {
   skipped: Record<string, number>
   // Imported entity rows per authored DXF layer.
   layers: Record<string, number>
+  // Every entity layer in the ENTITIES section with its entity count, in file
+  // order and in the file's own spelling. The count includes the entities the
+  // import would refuse, so one refused call still teaches a client the map it
+  // can choose from. A POLYLINE's VERTEX rows belong to it, not to a layer of
+  // their own, so they are not counted.
+  fileLayers: Record<string, number>
+  // The authored layer names a `layers` filter selected, in file order. Absent
+  // means every layer imported, which is also the shape the document and the
+  // reply keep for an unfiltered import.
+  pickedLayers?: string[]
+}
+
+export interface DxfImportOptions {
+  // The layer names to import, matched case-insensitively after trimming (DXF
+  // layer names are case-insensitive, so `Body` and `BODY` are one layer).
+  // Absent imports every layer.
+  layers?: readonly string[]
+}
+
+/** One layer a chooser may offer, and how many entities it holds. */
+export interface DxfLayerOption {
+  // The layer's authored spelling.
+  layer: string
+  count: number
+}
+
+/** The layer rows a successful import reports to a drive caller. */
+export interface DxfImportReply {
+  // Imported entity rows per layer, in file order.
+  layers: Record<string, number>
+  // The file layers a filter left out, with their entity counts. Absent when
+  // no filter was given (or it picked every layer).
+  otherLayers?: Record<string, number>
 }
 
 export class DxfImportError extends Error {
@@ -180,6 +215,55 @@ function rawEntities(section: Pair[]): RawEntity[] {
   }
   if (current) entities.push(current)
   return entities
+}
+
+/** The ENTITIES section's layer map, in file order. A POLYLINE's VERTEX and
+ *  SEQEND rows are part of it rather than entities of their own, so counting
+ *  them would inflate the map a client picks from. */
+function fileLayerMap(raw: RawEntity[]): Record<string, number> {
+  const layers: Record<string, number> = {}
+  for (const entity of raw) {
+    if (entity.type === 'VERTEX' || entity.type === 'SEQEND') continue
+    layers[entity.layer] = (layers[entity.layer] ?? 0) + 1
+  }
+  return layers
+}
+
+function describeLayers(layers: Record<string, number>): string {
+  return Object.entries(layers).map(([name, count]) => `${name} (${count})`).join(', ')
+}
+
+/** The authored spellings a filter names, in file order. DXF layer names are
+ *  case-insensitive in AutoCAD and most writers, so the match trims and folds
+ *  case; the returned names are the file's own, which is what the document and
+ *  the reply report. */
+function resolvePickedLayers(requested: readonly string[], fileLayers: Record<string, number>): string[] {
+  if (requested.length === 0) {
+    fail('layers must name at least one layer; omit it to import every layer')
+  }
+  const authored = Object.keys(fileLayers)
+  const unknown: string[] = []
+  const picked = new Set<string>()
+  for (const entry of requested) {
+    const name = entry.trim()
+    if (name.length === 0) fail('a layers entry must be a non-empty layer name')
+    // Every spelling whose folded name matches, so a writer that spelled one
+    // layer two ways still imports all of it.
+    const matches = authored.filter(candidate => candidate.toLowerCase() === name.toLowerCase())
+    if (matches.length === 0) unknown.push(name)
+    else for (const match of matches) picked.add(match)
+  }
+  if (unknown.length > 0) {
+    // One refusal teaches the whole layer map, so a client that guessed a name
+    // can pick from the real one on the next call.
+    const label = unknown.length === 1 ? 'layer' : 'layers'
+    const listed = describeLayers(fileLayers) || 'none'
+    fail(
+      `DXF has no ${label} ${unknown.map(name => JSON.stringify(name)).join(', ')}; ` +
+      `layers: ${listed}.`,
+    )
+  }
+  return authored.filter(name => picked.has(name))
 }
 
 function firstPair(entity: RawEntity, code: number): Pair | undefined {
@@ -471,10 +555,20 @@ function describeSkipped(skipped: Record<string, number>): string {
 
 /**
  * Parse an ASCII DXF profile into sketch entity blocks. Throws DxfImportError
- * for a malformed file, an unsupported curve entity, an unsupported unit or a
- * file with no importable geometry; a thrown error means nothing may land.
+ * for a malformed file, an unsupported curve entity, an unsupported unit, an
+ * unknown layer name or a file with no importable geometry; a thrown error
+ * means nothing may land.
+ *
+ * A `layers` filter runs before the entity rules: an entity on a layer outside
+ * the list is never classified, so a HATCH, a block INSERT or an annotation
+ * there neither refuses the file nor counts as skipped. That is what makes a
+ * real drawing with decoration on its own layers importable.
  */
-export function parseDxfProfile(text: string, documentUnit: LengthUnit): DxfProfile {
+export function parseDxfProfile(
+  text: string,
+  documentUnit: LengthUnit,
+  options: DxfImportOptions = {},
+): DxfProfile {
   const pairs = pairsOf(text)
   const { unit, scale } = unitToDocument(insUnits(sectionPairs(pairs, 'HEADER')), documentUnit)
   const section = sectionPairs(pairs, 'ENTITIES')
@@ -482,6 +576,11 @@ export function parseDxfProfile(text: string, documentUnit: LengthUnit): DxfProf
     fail('not a DXF file: no ENTITIES section')
   }
   const raw = rawEntities(section)
+  const fileLayers = fileLayerMap(raw)
+  const pickedLayers = options.layers === undefined ? undefined : resolvePickedLayers(options.layers, fileLayers)
+  // Folded for the same reason the name lookup is: `Body` and `BODY` are one
+  // layer to DXF even when a writer spelled both.
+  const picked = pickedLayers === undefined ? null : new Set(pickedLayers.map(name => name.toLowerCase()))
   const entities: DxfEntity[] = []
   const skipped: Record<string, number> = {}
   const layers: Record<string, number> = {}
@@ -501,6 +600,11 @@ export function parseDxfProfile(text: string, documentUnit: LengthUnit): DxfProf
 
   for (let i = 0; i < raw.length; i++) {
     const entity = raw[i]
+    // A filtered-out POLYLINE leaves its VERTEX and SEQEND rows behind; they
+    // belong to that entity, so they go with it instead of reading as a
+    // malformed standalone VERTEX.
+    if (picked !== null && (entity.type === 'VERTEX' || entity.type === 'SEQEND')) continue
+    if (picked !== null && !picked.has(entity.layer.toLowerCase())) continue
     // Paper space is a layout view, not model geometry; CadQuery reads the
     // model space too. A POLYLINE still consumes its VERTEX rows below.
     if (entity.type !== 'POLYLINE' && intOf(entity, 67, 0) === 1) {
@@ -589,8 +693,79 @@ export function parseDxfProfile(text: string, documentUnit: LengthUnit): DxfProf
   }
 
   if (entities.length === 0) {
+    // A filtered import that found nothing says which layers it looked at, so
+    // a caller can tell "the layer is empty" from "the file has no geometry".
+    const where = pickedLayers === undefined ? '' : ` on layers ${pickedLayers.join(', ')}`
     const skippedText = Object.keys(skipped).length > 0 ? ` (skipped ${describeSkipped(skipped)})` : ''
-    fail(`DXF contains no importable geometry${skippedText}`)
+    fail(`DXF contains no importable geometry${where}${skippedText}`)
   }
-  return { entities, unit, scale, skipped, layers }
+  return {
+    entities,
+    unit,
+    scale,
+    skipped,
+    layers,
+    fileLayers,
+    ...(pickedLayers === undefined ? {} : { pickedLayers }),
+  }
+}
+
+/**
+ * The layers a chooser offers: the file's own layer order, only the ones whose
+ * entities import on their own. A layer holding nothing but annotations, or a
+ * curve the import refuses (a HATCH, a block INSERT) even when it is the only
+ * layer picked, would fail once chosen, so offering it would only lead to a
+ * refusal. A malformed file or an unsupported unit refuses here the same way a
+ * whole-file parse does; every layer then fails its trial, so a file with an
+ * unsupported unit offers nothing and the caller reports the unit refusal.
+ */
+export function dxfLayerOptions(text: string, documentUnit: LengthUnit): DxfLayerOption[] {
+  const pairs = pairsOf(text)
+  const section = sectionPairs(pairs, 'ENTITIES')
+  if (!section) fail('not a DXF file: no ENTITIES section')
+  const options: DxfLayerOption[] = []
+  for (const [layer, count] of Object.entries(fileLayerMap(rawEntities(section)))) {
+    try {
+      parseDxfProfile(text, documentUnit, { layers: [layer] })
+    } catch (e) {
+      // Only the parser's own contract says "this layer would not import"; a
+      // bug thrown through it must not read as an empty layer.
+      if (!(e instanceof DxfImportError)) throw e
+      continue
+    }
+    options.push({ layer, count })
+  }
+  return options
+}
+
+/**
+ * The mutation's `layers` field for a chooser whose offered layers the user has
+ * checked: absent (null) when every offered layer stays checked, so a full
+ * import keeps the unfiltered mutation shape. An empty check list returns an
+ * empty list; the chooser has to keep Import disabled there, because the drive
+ * boundary refuses an empty filter by name.
+ */
+export function dxfSelectedLayers(
+  offered: readonly string[],
+  checked: readonly string[],
+): string[] | null {
+  const chosen = offered.filter(layer => checked.includes(layer))
+  return chosen.length === offered.length ? null : chosen
+}
+
+/** The layer rows a drive step reports after a successful import of `profile`:
+ *  what landed per layer, and, when a filter left file layers out, what a
+ *  second import of the same file could still pick. */
+export function dxfImportReply(profile: DxfProfile): DxfImportReply {
+  const picked = profile.pickedLayers
+  if (picked === undefined) return { layers: profile.layers }
+  const chosen = new Set(picked.map(name => name.toLowerCase()))
+  const otherLayers: Record<string, number> = {}
+  for (const [layer, count] of Object.entries(profile.fileLayers)) {
+    if (!chosen.has(layer.toLowerCase())) otherLayers[layer] = count
+  }
+  return {
+    layers: profile.layers,
+    ...(Object.keys(otherLayers).length > 0 ? { otherLayers } : {}),
+  }
 }

@@ -82,6 +82,14 @@ export interface ScriptStepOutcome {
   // MAX_REPORTED_CREATED_IDS ids. How many entities the step added. The
   // document resource has the ids.
   createdCount?: number
+  // Present only on an import_dxf step: the imported entity rows per layer, in
+  // file order, so a caller can see what landed where without reading the
+  // document back.
+  layers?: Record<string, number>
+  // Present only on an import_dxf step whose `layers` filter left file layers
+  // out: those layers and their entity counts. An unfiltered first import of a
+  // sheet thus still shows what a filtered one could pick.
+  otherLayers?: Record<string, number>
   error?: { code: string; message: string }
   // Present only when the step measured an orientation into the document.
   captured?: MateCapture
@@ -117,6 +125,10 @@ export interface AnnotatedSuccess {
   captured?: MateCapture
   poseKept?: KeptPose
   part?: StepPartBinding
+  // The import_dxf layer summary, present only on a successful filtered or
+  // unfiltered import step (see ScriptStepOutcome.layers).
+  layers?: Record<string, number>
+  otherLayers?: Record<string, number>
 }
 
 export type ScriptStepRunner<S extends AnyScriptStep = ScriptStep> = (step: S) => ScriptStepResult | Promise<ScriptStepResult>
@@ -208,6 +220,10 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
     const part = 'part' in result ? result.part : undefined
     const constraints = 'constraints' in result ? result.constraints : undefined
     const replacedConstraints = 'replacedConstraints' in result ? result.replacedConstraints : undefined
+    // The import layer summary rides the step result, so the runner reports it
+    // beside the bulk count without knowing anything about DXF.
+    const layers = 'layers' in result ? result.layers : undefined
+    const otherLayers = 'otherLayers' in result ? result.otherLayers : undefined
     // A DXF import or a text run is the bulk case of the reply-size rule: one
     // step can add hundreds of entities, so the reply carries the count and
     // the document resource (or the run's docHash) serves the ids. A sketch
@@ -217,6 +233,8 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
     return {
       index, kind, id, ok: true, createdIds: counted ? [] : createdIds,
       ...(counted && { createdCount: createdIds.length }),
+      ...(layers !== undefined && { layers }),
+      ...(otherLayers !== undefined && { otherLayers }),
       ...(constraints !== undefined && { constraints }),
       ...(replacedConstraints !== undefined && { replacedConstraints }),
       ...(captured !== undefined && { captured }),

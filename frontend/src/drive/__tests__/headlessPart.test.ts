@@ -42,6 +42,21 @@ function utf8(text: string): Uint8Array {
   return new TextEncoder().encode(text)
 }
 
+/** A sheet of profiles: two lines on `profile`, one on `holes`, a dimension on
+ *  `dim`, each row naming its layer. */
+function layeredDxfText(): string {
+  const groups = ['0', 'SECTION', '2', 'ENTITIES']
+  const line = (layer: string, x1: number, y1: number, x2: number, y2: number) => {
+    groups.push('0', 'LINE', '8', layer, '10', String(x1), '20', String(y1), '11', String(x2), '21', String(y2))
+  }
+  line('profile', 0, 0, 10, 0)
+  line('profile', 10, 0, 10, 10)
+  line('holes', 5, 5, 6, 5)
+  groups.push('0', 'DIMENSION', '8', 'dim', '10', '0', '20', '0')
+  groups.push('0', 'ENDSEC', '0', 'EOF')
+  return groups.join('\n') + '\n'
+}
+
 // The imported geometry without its minted ids: two runs draw different seeds
 // from different step payloads, so only the kind and params are comparable.
 function importedGeometry(doc: PartDoc | null): Array<{ kind: string; params: number[] | undefined }> {
@@ -298,6 +313,42 @@ describe('import_dxf from the run files map', () => {
     expect(outcome.ok).toBe(false)
     expect(outcome.steps[0].error?.message).toContain('INSERT')
     expect(importedGeometry(part.getDoc())).toEqual([])
+  })
+
+  it('imports the picked layers of a file and reports what stayed behind', async () => {
+    const part = createHeadlessPart({
+      doc: sketchDoc(),
+      files: new Map([['sheet', utf8(layeredDxfText())]]),
+    })
+    const outcome = await part.run([
+      { mutation: { type: 'import_dxf', featureId: 'sk', file: 'sheet', layers: ['profile'] } },
+    ])
+    expect(outcome.ok).toBe(true)
+    expect(importedGeometry(part.getDoc())).toEqual([
+      { kind: 'line', params: [0, 0, 10, 0] },
+      { kind: 'line', params: [10, 0, 10, 10] },
+    ])
+    expect(outcome.steps[0]).toMatchObject({
+      createdIds: [],
+      createdCount: 2,
+      layers: { profile: 2 },
+      otherLayers: { holes: 1, dim: 1 },
+    })
+  })
+
+  it('reports the layer rows of an unfiltered file import and no otherLayers', async () => {
+    const part = createHeadlessPart({
+      doc: sketchDoc(),
+      files: new Map([['sheet', utf8(layeredDxfText())]]),
+    })
+    const outcome = await part.run([
+      { mutation: { type: 'import_dxf', featureId: 'sk', file: 'sheet' } },
+    ])
+    expect(outcome.steps[0]).toMatchObject({
+      createdCount: 3,
+      layers: { profile: 2, holes: 1 },
+    })
+    expect(outcome.steps[0]).not.toHaveProperty('otherLayers')
   })
 
   it('reports the entity count instead of a bulk id list', async () => {

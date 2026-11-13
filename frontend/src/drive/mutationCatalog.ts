@@ -217,10 +217,12 @@ const DXF_IMPORT_NOTE =
   + '(bulges become arcs), a single-span cubic Bezier SPLINE, a full ELLIPSE and POINT import as authored '
   + 'sketch entities with fresh ids, all in one undo entry. TEXT, MTEXT, DIMENSION and the other annotation '
   + 'entities are skipped and counted, as is paper space; any other curve entity (INSERT, HATCH, a multi-span or rational '
-  + 'SPLINE, a 3D POLYLINE) refuses the whole file by name so no profile is half imported. $INSUNITS '
+  + 'SPLINE, a 3D POLYLINE) refuses the whole file by name so no profile is half imported, unless the '
+  + '`layers` filter leaves that entity\'s layer out. $INSUNITS '
   + 'converts to the document unit (0 unitless, 1 inch, 2 foot, 4 mm, 5 cm, 6 m; unitless means document '
-  + 'units). Every layer is imported and layer names are not stored; repeated entities are kept. '
-  + 'The step reply reports `createdIds: []` and `createdCount`: the import is a bulk add, so the reply '
+  + 'units). Layer names are not stored; repeated entities are kept. '
+  + 'The step reply reports `createdIds: []` and `createdCount`, plus `layers` (imported rows per layer) '
+  + 'and `otherLayers` when a filter left file layers out: the import is a bulk add, so the reply '
   + 'carries the entity count, the run reply\'s `docHash` names the document, and the document resource '
   + 'has the ids.'
 
@@ -1004,6 +1006,11 @@ export const MUTATION_CATALOG = {
       featureId: str('The sketch feature the imported entities land in.'),
       content: optStr('The ASCII DXF file text; give this or `file`, not both.'),
       file: optStr('The id of a DXF entry in the run call\'s files map; give this or `content`, not both.'),
+      layers: optArr(
+        'Names of the layers to import, matched case-insensitively after trimming; absent imports every '
+        + 'layer. Entities on other layers are ignored, including ones that would otherwise refuse the '
+        + 'file. An unknown name is refused with the file\'s layer list and counts.',
+      ),
     },
   },
   add_text: {

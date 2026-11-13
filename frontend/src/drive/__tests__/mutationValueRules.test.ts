@@ -22,7 +22,7 @@ import { applySetPlaneDefinitionField } from '@/utils/yamlMutations/featureAdmin
 import { applySetHoleField } from '@/utils/yamlMutations/featureDefs'
 import { FIELD_SETTER_KIND } from '../mutationCatalog'
 import { EMPTY_REF_CLEARS } from '../mutationValues'
-import { sketchAt } from '@/testing/featureAccess'
+import { sketchAt, featureById } from '@/testing/featureAccess'
 import { Repository, makeAncestryQuery } from '@/kernel/query'
 import { collectExtrudeLoops } from '@/kernel/features/faceProfile'
 
@@ -1743,6 +1743,44 @@ describe('import_dxf takes exactly one of content or file', () => {
   it('refuses an inline file the parser does not support', () => {
     const bad = '0\nSECTION\n2\nENTITIES\n0\nINSERT\n2\nBLOCK\n0\nENDSEC\n0\nEOF\n'
     expect(refusal({ type: 'import_dxf', featureId: 'sk1', content: bad }).message).toContain('INSERT')
+  })
+})
+
+describe('import_dxf layer filter values', () => {
+  const TEXT = '0\nSECTION\n2\nENTITIES\n'
+    + '0\nLINE\n8\nprofile\n10\n0\n20\n0\n11\n5\n21\n0\n'
+    + '0\nLINE\n8\nholes\n10\n0\n20\n5\n11\n5\n21\n5\n'
+    + '0\nDIMENSION\n8\ndim\n10\n0\n20\n0\n'
+    + '0\nENDSEC\n0\nEOF\n'
+
+  it('refuses an empty list and a non-name entry as invalid params', () => {
+    for (const layers of [[], 'body', [1], ['body', '']]) {
+      const error = refusal({ type: 'import_dxf', featureId: 'sk1', content: TEXT, layers })
+      expect(error.code, JSON.stringify(layers)).toBe('invalid-mutation')
+      expect(error.message, JSON.stringify(layers)).toContain('layers')
+    }
+  })
+
+  it('refuses an unknown layer with the file layer list, before the session', async () => {
+    const error = refusal({ type: 'import_dxf', featureId: 'sk1', content: TEXT, layers: ['fan'] })
+    expect(error.message).toContain('no layer "fan"')
+    expect(error.message).toContain('profile (1), holes (1), dim (1)')
+
+    // The same refusal through the real run loop: one refused step, the
+    // document untouched, and the started sketch still there.
+    const result = await runHeadless({
+      doc: sketchDoc(),
+      steps: [{ mutation: { type: 'import_dxf', featureId: 'sk1', content: TEXT, layers: ['fan'] } }],
+    })
+    expect(result.outcome.steps).toHaveLength(1)
+    expect(result.outcome.steps[0].ok).toBe(false)
+    expect(result.outcome.steps[0].error?.message).toContain('no layer "fan"')
+    expect(featureById(result.doc as PartDoc, 'sk1', 'sketch').entities).toHaveLength(1)
+  })
+
+  it('admits a filtered import and keeps the list as the field', () => {
+    const raw = { type: 'import_dxf', featureId: 'sk1', content: TEXT, layers: [' PROFILE '] }
+    expect(validateMutation(raw, { doc: sketchDoc() })).toEqual({ ok: true, mutation: raw })
   })
 })
 

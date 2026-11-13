@@ -8,6 +8,8 @@
 import type { Mutation, PartDoc } from '@/types/cad'
 import type { CommandResult } from '@/utils/core/commandSpec'
 import type { Result } from '@/session/result'
+import { dxfImportReply, parseDxfProfile, type DxfImportReply } from '@/utils/dxfImport'
+import { lengthUnitOf } from '@/utils/lengthUnit'
 import {
   getSceneHandles, getSceneProbe, probeHitTest, worldToScreen,
   type ProbeCamera, type ProbeHandle, type ProbeHit,
@@ -235,6 +237,26 @@ function defaultDownload(filename: string, text: string): void {
   URL.revokeObjectURL(url)
 }
 
+/** The layer rows an inline import step replies with, computed from the same
+ *  parse the boundary ran. The browser bridge reports them exactly as the
+ *  headless runner does, so an import step's reply does not depend on which
+ *  surface ran it. */
+function importLayerReply(
+  mutation: Mutation,
+  doc: PartDoc | null,
+): DxfImportReply | null {
+  if (mutation.type !== 'import_dxf' || mutation.content === undefined) return null
+  try {
+    return dxfImportReply(parseDxfProfile(mutation.content, lengthUnitOf(doc?.length_unit), {
+      layers: mutation.layers,
+    }))
+  } catch {
+    // Validation already refused a file that cannot parse; a race here must
+    // not turn a successful apply into a thrown bridge error.
+    return null
+  }
+}
+
 export function createDriveSurface(deps: DriveSurfaceDeps): DriveSurface {
   const execute = (id: string, params?: unknown): DriveExecuteResult => {
     try {
@@ -262,7 +284,11 @@ export function createDriveSurface(deps: DriveSurfaceDeps): DriveSurface {
       const result = deps.executeMutation(validated.mutation)
       // The adapter's null means there was no document to apply the step to:
       // a script run before the editor mounted must not report every step ok.
-      return result ?? { ok: false, code: 'no-document', message: 'no document is open to apply the step to' }
+      if (!result) return { ok: false, code: 'no-document', message: 'no document is open to apply the step to' }
+      const reply = result.ok && result.noOp !== true
+        ? importLayerReply(validated.mutation, deps.doc?.() ?? null)
+        : null
+      return reply === null ? result : { ...result, ...reply }
     } catch (e) {
       return {
         ok: false,

@@ -1504,6 +1504,22 @@ function importDxf(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   if (typeof featureId !== 'string' || featureId.length === 0) {
     return invalid(`featureId must name the sketch the imported entities land in, got ${json(featureId)}`)
   }
+  const layers = raw.layers
+  if (layers !== undefined) {
+    // The parser matches the names case-insensitively, so the shape check here
+    // only has to refuse an empty filter or a non-name entry by name.
+    if (!Array.isArray(layers)) {
+      return invalid(`layers must be a list of layer names, got ${json(layers)}`)
+    }
+    if (layers.length === 0) {
+      return invalid('layers must name at least one layer; omit it to import every layer')
+    }
+    for (let i = 0; i < layers.length; i++) {
+      if (typeof layers[i] !== 'string' || (layers[i] as string).trim().length === 0) {
+        return invalid(`layers[${i}] must be a non-empty layer name, got ${json(layers[i])}`)
+      }
+    }
+  }
   const hasContent = raw.content !== undefined
   const hasFile = raw.file !== undefined
   if (hasContent && hasFile) return invalid('import_dxf takes exactly one of content or file')
@@ -1538,10 +1554,13 @@ function importDxf(raw: RawStep, ctx: ValueContext): ValueViolation | null {
     return unknownTarget(`import_dxf names no sketch feature ${json(featureId)}`)
   }
   // A `file` is parsed by the runner after it decodes the bytes; an inline
-  // `content` is parsed here so both spellings refuse the same way.
+  // `content` is parsed here so both spellings refuse the same way, including
+  // an unknown layer name against the file's own layer map.
   if (!hasFile) {
     try {
-      parseDxfProfile(raw.content as string, lengthUnitOf(ctx.doc?.length_unit))
+      parseDxfProfile(raw.content as string, lengthUnitOf(ctx.doc?.length_unit), {
+        layers: layers as string[] | undefined,
+      })
     } catch (e) {
       if (e instanceof DxfImportError) return invalid(e.message)
       throw e

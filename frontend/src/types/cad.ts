@@ -1281,7 +1281,10 @@ export type Mutation =
   | { type: 'set_constraint_sign'; featureId: string; constraintId: string; sign: number }
   | { type: 'delete'; targets: string[] }
   | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string; dimensions?: boolean; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
-  | { type: 'import_dxf'; featureId: string; content?: string; file?: string }
+  // The optional `layers` filter names the layers to import; absent imports
+  // every layer. The filter runs first, so an entity on an unpicked layer
+  // (even one that would refuse the file) is never classified.
+  | { type: 'import_dxf'; featureId: string; content?: string; file?: string; layers?: string[] }
   // Lettering expanded once into authored line/spline outlines; no text kind
   // is stored. origin/size/angle/align place the run (utils/geometry/textExpand.ts).
   | { type: 'add_text'; featureId: string; text: string; origin?: Point; size?: number; angle?: number; align?: 'left' | 'center' | 'right' }

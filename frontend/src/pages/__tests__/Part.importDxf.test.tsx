@@ -4,7 +4,7 @@
 // contract itself is pinned in utils/__tests__/dxfImportMutation.test.ts.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { Wrapper } from '@/__tests__/test-utils'
@@ -76,6 +76,16 @@ vi.mock('@/pages/PartExportImport', async () => {
 })
 
 const DXF = '0\nSECTION\n2\nENTITIES\n0\nLINE\n10\n0\n20\n0\n11\n10\n21\n0\n0\nENDSEC\n0\nEOF\n'
+
+// A two-layer sheet: the shape the layer chooser exists for. The rows are
+// synthetic, not taken from any practice drawing.
+const MULTI_LAYER_DXF = [
+  '0', 'SECTION', '2', 'ENTITIES',
+  '0', 'LINE', '8', 'profile', '10', '0', '20', '0', '11', '10', '21', '0',
+  '0', 'LINE', '8', 'profile', '10', '10', '20', '0', '11', '10', '21', '10',
+  '0', 'LINE', '8', 'holes', '10', '5', '20', '5', '11', '6', '21', '5',
+  '0', 'ENDSEC', '0', 'EOF',
+].join('\n') + '\n'
 
 function renderPart() {
   return render(
@@ -183,5 +193,59 @@ describe('Part DXF import', () => {
 
     expect(h.setError).toHaveBeenCalledWith('The open sketch changed; import the DXF again')
     expect(h.handleMutation).not.toHaveBeenCalled()
+  })
+
+  it('asks which layers to import and dispatches only the unchecked-away ones', async () => {
+    renderPart()
+    await pickDxf({ name: 'sheet.dxf', size: MULTI_LAYER_DXF.length, text: async () => MULTI_LAYER_DXF })
+
+    // Both layers are offered, and nothing has landed yet.
+    expect(screen.getByText('Import DXF layers from sheet.dxf')).toBeTruthy()
+    expect(screen.getByRole('checkbox', { name: 'profile' })).toBeTruthy()
+    expect(screen.getByRole('checkbox', { name: 'holes' })).toBeTruthy()
+    expect(h.handleMutation).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'holes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+
+    expect(h.handleMutation).toHaveBeenCalledTimes(1)
+    expect(h.handleMutation).toHaveBeenCalledWith({
+      type: 'import_dxf', featureId: 'sketch1', content: MULTI_LAYER_DXF, layers: ['profile'],
+    })
+  })
+
+  it('keeps the unfiltered mutation shape when every layer stays checked', async () => {
+    renderPart()
+    await pickDxf({ name: 'sheet.dxf', size: MULTI_LAYER_DXF.length, text: async () => MULTI_LAYER_DXF })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+
+    expect(h.handleMutation).toHaveBeenCalledWith({
+      type: 'import_dxf', featureId: 'sketch1', content: MULTI_LAYER_DXF,
+    })
+  })
+
+  it('dispatches nothing when the layer chooser is cancelled', async () => {
+    renderPart()
+    await pickDxf({ name: 'sheet.dxf', size: MULTI_LAYER_DXF.length, text: async () => MULTI_LAYER_DXF })
+
+    // The page has other Cancel-labelled controls; the chooser's own footer is
+    // the one this test means.
+    const dialog = screen.getByText('Import DXF layers from sheet.dxf').closest('.dialog-component')
+    if (!dialog) throw new Error('the layer chooser did not render its shell')
+    fireEvent.click(within(dialog as HTMLElement).getByRole('button', { name: 'Cancel' }))
+
+    expect(h.handleMutation).not.toHaveBeenCalled()
+    expect(screen.queryByText('Import DXF layers from sheet.dxf')).toBeNull()
+  })
+
+  it('imports a single-layer file without asking', async () => {
+    renderPart()
+    await pickDxf({ name: 'single.dxf', size: DXF.length, text: async () => DXF })
+
+    expect(screen.queryByText(/Import DXF layers/)).toBeNull()
+    expect(h.handleMutation).toHaveBeenCalledWith({
+      type: 'import_dxf', featureId: 'sketch1', content: DXF,
+    })
   })
 })

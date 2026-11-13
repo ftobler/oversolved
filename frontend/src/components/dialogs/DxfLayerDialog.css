@@ -1,0 +1,39 @@
+/* The layer rows of the DXF import chooser. The overlay, header and footer
+   buttons come from the shared dialog shell. */
+
+.dxf-layer-dialog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.dxf-layer-dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #ddd;
+  cursor: pointer;
+}
+
+/* The shell stretches and pads every input; a checkbox keeps its own size. */
+.dxf-layer-dialog-row input {
+  flex: none;
+  width: auto;
+  margin: 0;
+  padding: 0;
+}
+
+.dxf-layer-dialog-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dxf-layer-dialog-count {
+  margin-left: auto;
+  color: #888;
+  white-space: nowrap;
+}

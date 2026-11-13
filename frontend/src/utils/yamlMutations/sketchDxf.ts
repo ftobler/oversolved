@@ -8,10 +8,15 @@ import { parseDxfProfile } from '@/utils/dxfImport'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { allFinite, mintEntityId, resolveSketch, round, warn } from './helpers'
 
-export function applyImportDxf(doc: PartDoc, featureId: string, content: string): void {
+export function applyImportDxf(
+  doc: PartDoc,
+  featureId: string,
+  content: string,
+  layers?: readonly string[],
+): void {
   let profile
   try {
-    profile = parseDxfProfile(content, lengthUnitOf(doc.length_unit))
+    profile = parseDxfProfile(content, lengthUnitOf(doc.length_unit), layers === undefined ? undefined : { layers })
   } catch (e) {
     // The picker and the drive value rule report the refusal before dispatch;
     // a direct internal caller gets a loud no-op instead of a half import.

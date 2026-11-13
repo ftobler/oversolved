@@ -23,7 +23,9 @@ export function describeMutation(m: Mutation): string {
     case 'add_entity':
       return `add ${m.kind} in ${m.featureId}`
     case 'import_dxf':
-      return `import DXF into ${m.featureId}`
+      return m.layers === undefined
+        ? `import DXF into ${m.featureId}`
+        : `import DXF (layers ${m.layers.join(', ')}) into ${m.featureId}`
     case 'add_text':
       return `add text ${JSON.stringify(m.text)} in ${m.featureId}`
     case 'add_entity_with_constraint':

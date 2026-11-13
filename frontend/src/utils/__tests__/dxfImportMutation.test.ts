@@ -29,6 +29,9 @@ function dxf(entities: string[][], insunits?: number): string {
 const line = (x1: number, y1: number, x2: number, y2: number) =>
   entity('LINE', [10, x1], [20, y1], [11, x2], [21, y2])
 
+const lineOn = (layer: string, x1: number, y1: number, x2: number, y2: number) =>
+  entity('LINE', [8, layer], [10, x1], [20, y1], [11, x2], [21, y2])
+
 function sketchDoc(initial: Record<string, number[]> = {}): PartDoc {
   const ids = Object.keys(initial)
   return makeDoc(makeSketch('sk', {
@@ -143,6 +146,63 @@ describe('import_dxf at the drive boundary', () => {
     const content = dxf([line(0, 0, 1, 0)])
     const result = validateMutation({ type: 'import_dxf', featureId: 'sk', content }, { doc: sketchDoc() })
     expect(result).toEqual({ ok: true, mutation: { type: 'import_dxf', featureId: 'sk', content } })
+  })
+})
+
+describe('import_dxf layer filter', () => {
+  // Two profile lines and one hole, split over two layers the way a sheet of
+  // profiles is drawn.
+  const LAYERED = () => dxf([
+    lineOn('profile', 0, 0, 10, 0),
+    lineOn('profile', 10, 0, 10, 10),
+    lineOn('holes', 5, 5, 6, 5),
+  ])
+
+  it('lands only the picked rows, as one undo entry', () => {
+    const engine = makeEngine(sketchDoc())
+    const result = engine.session.execute({
+      type: 'import_dxf', featureId: 'sk', content: LAYERED(), layers: [' Profile '],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const sketch = docSketch(engine.cell.current as PartDoc)
+    expect(sketch.entities?.map(e => e.kind)).toEqual(['line', 'line'])
+    expect(result.createdIds).toHaveLength(2)
+    expect(engine.session.historyEntries().undo).toHaveLength(1)
+  })
+
+  it('keeps an unknown layer a no-op, creating no containers', () => {
+    // The fixture omits the containers on purpose: a refused filter must not
+    // materialize them either, or the no-op would become a real doc write.
+    const doc = makeDoc({ id: 'sk', kind: 'sketch' })
+    const before = JSON.stringify(doc)
+    applyImportDxf(doc, 'sk', LAYERED(), ['nope'])
+    expect(JSON.stringify(doc)).toBe(before)
+    expect(docSketch(doc).entities).toBeUndefined()
+  })
+
+  it('refuses the boundary step before the session, naming the layer map', () => {
+    const content = LAYERED()
+    const result = validateMutation(
+      { type: 'import_dxf', featureId: 'sk', content, layers: ['fan'] },
+      { doc: sketchDoc() },
+    )
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.code).toBe('invalid-mutation')
+    expect(result.error.message).toContain('no layer "fan"')
+    expect(result.error.message).toContain('profile (2), holes (1)')
+  })
+
+  it('keeps the filter as the mutation field it validated', () => {
+    const content = LAYERED()
+    expect(validateMutation(
+      { type: 'import_dxf', featureId: 'sk', content, layers: ['holes'] },
+      { doc: sketchDoc() },
+    )).toEqual({
+      ok: true,
+      mutation: { type: 'import_dxf', featureId: 'sk', content, layers: ['holes'] },
+    })
   })
 })
 
