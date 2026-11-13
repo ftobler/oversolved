@@ -11,14 +11,16 @@
 // sketch did not change because a later call added one feature. The reply
 // keeps a row when the feature's checkpoint differs from the input document's
 // solve, or when the steps touched it: a solid feature (so an edit that
-// happens to leave the same volume still shows its zero contribution), or the
-// sketch or plane the step authored, so its remaining dof or its verdict reads
-// back without a second call. `mode: 'all'` is the inspection opt-in that
+// happens to leave the same volume still shows its zero contribution), the
+// sketch or plane the step authored (so its remaining dof or verdict reads
+// back without a second call), or a feature that built with a warning (so its
+// warning text stays on the row). `mode: 'all'` is the inspection opt-in that
 // restores the whole history.
 
 import type { PartDoc } from '@/types/cad'
 import type { FeatureMeasure, FeatureMeasureBody } from '@/kernel/solveLocally'
 import { isBuiltOutcome, type FeatureOutcome } from '@/drive/featureOutcome'
+import { parseSketchTarget } from '@/drive/mutationValues'
 
 export interface FeatureDelta {
   id: string
@@ -75,8 +77,9 @@ const NON_SOLID_KINDS: ReadonlySet<string> = new Set<string>(['origin', 'sketch'
 
 // The non-solid kinds a touched row answers for: a sketch carries its
 // remaining dof and a plane its solve verdict, so a step that authored one
-// reads back even with no measure change. A touched variable, origin or helix
-// carries nothing this row has a field for, so the zero rule still drops it.
+// reads back even with no measure change. An unwarned touched variable, origin
+// or helix carries nothing this row has a field for, so the zero rule drops
+// it; a warned one is still admitted by the warning rule in the loop.
 const REFERENCE_KINDS: ReadonlySet<string> = new Set<string>(['sketch', 'plane'])
 
 export function isSolidProducingKind(kind: string): boolean {
@@ -254,40 +257,34 @@ export function featureDeltaRows(
   }
 }
 
-// A delete step has no featureId: its wire refs carry the sketch as the second
-// segment ('entity:sk1:l2', 'vertex:sk1:l2:start', 'constraint:sk1:c1'). Only
-// those three namespaces name sketch content, so an unfamiliar prefix names no
-// sketch here.
-const SKETCH_TARGET_KINDS: ReadonlySet<string> = new Set<string>(['entity', 'vertex', 'constraint'])
-
-function deleteTargetFeatureId(target: unknown): string {
-  if (typeof target !== 'string') return ''
-  const [kind, featureId] = target.split(':')
-  if (featureId === undefined || !SKETCH_TARGET_KINDS.has(kind)) return ''
-  return featureId
-}
-
 /** The feature ids the steps authored or created: a mutation's `featureId`, a
- *  copy-mode pattern's `targetFeatureId` (its source sketch is read-only), a
- *  delete's wire refs, and every id a handler reports it created. */
+ *  copy-mode pattern's `targetFeatureId` (its source sketch is read-only), the
+ *  sketch a delete or construction toggle names in its wire refs, and every id
+ *  a handler reports it created. */
 export function touchedFeatureIds(steps: readonly unknown[], outcomeSteps: readonly unknown[]): Set<string> {
   const ids = new Set<string>()
   for (const step of steps) {
     if (typeof step !== 'object' || step === null) continue
     const mutation = (step as { mutation?: unknown }).mutation
     if (typeof mutation !== 'object' || mutation === null) continue
+    const type = (mutation as { type?: unknown }).type
     const featureId = (mutation as { featureId?: unknown }).featureId
     // A copy-mode pattern writes into targetFeatureId; featureId then names the
-    // read-only source sketch, which this call did not change.
-    const writeTarget = (mutation as { targetFeatureId?: unknown }).targetFeatureId
+    // read-only source sketch. Any other mutation carrying the key still names
+    // its own featureId.
+    const writeTarget = type === 'pattern_entities'
+      ? (mutation as { targetFeatureId?: unknown }).targetFeatureId
+      : undefined
     const authored = typeof writeTarget === 'string' && writeTarget.length > 0 ? writeTarget : featureId
     if (typeof authored === 'string' && authored.length > 0) ids.add(authored)
-    if ((mutation as { type?: unknown }).type === 'delete') {
+    // A delete or construction toggle has no featureId: its targets name the
+    // sketch in each wire ref.
+    if (type === 'delete' || type === 'toggle_construction') {
       const targets = (mutation as { targets?: unknown }).targets
       if (Array.isArray(targets)) {
         for (const target of targets) {
-          const touchedId = deleteTargetFeatureId(target)
-          if (touchedId !== '') ids.add(touchedId)
+          const parsed = parseSketchTarget(target)
+          if (parsed !== null) ids.add(parsed.featureId)
         }
       }
     }

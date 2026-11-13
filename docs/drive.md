@@ -672,15 +672,15 @@ banner on stdout, so a client config must use the direct node invocation.
   over every live body. A row appears when the feature's checkpoint differs from
   the input document's solve, when the feature is new, or when the steps touched
   it: a solid-producing feature (so an edit that leaves the same volume still
-  shows its zero contribution), a sketch (so its `dof` reads in the same call)
-  or a plane. Untouched planes and sketches from an earlier call do not repeat,
-  and neither does an untouched existing sketch or plane whose own delta is zero
-  (an upstream edit moves its cumulative checkpoint, not its contribution). The
-  first body's deltas start from zero. A failed or partial feature
-  has no row (its checkpoint may hold half-applied geometry), but that
+  shows its zero contribution), a sketch (so its `dof` reads in the same call),
+  a plane, or a feature that built with a warning (so its `warning` text is
+  visible). An untouched sketch or plane does not repeat even when its
+  cumulative checkpoint moved: an upstream edit moves the checkpoint, not its
+  contribution. The first body's deltas start from zero. A failed or partial
+  feature has no row (its checkpoint may hold half-applied geometry), but that
   checkpoint still sets the baseline for the next built feature, so a later
-  delta describes the real part. A feature that built with a warning keeps its
-  row and carries the kernel's `warning` text, so a partial tool list's volume
+  delta describes the real part. A feature that built with a warning carries the
+  kernel's `warning` text on its row, so a partial tool list's volume
   is visible without a second measure; an untouched warned feature still appears
   only under `featureDeltas: "all"`. Pass `featureDeltas: "all"` to
   list every built feature, which is how an empty `steps: []` call inspects

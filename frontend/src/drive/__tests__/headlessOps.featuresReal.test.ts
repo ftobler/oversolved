@@ -182,6 +182,25 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     })
   }, 120_000)
 
+  it('lists a sketch a delete step emptied an entity from', async () => {
+    // A delete names no featureId; its entity ref is the only handle on the
+    // sketch, so the row must reach the reply without a warning to carry it.
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const built = await runHeadless({ doc: emptyDoc(), steps: box.steps })
+    expect(built.ok).toBe(true)
+    const sketch = built.doc!.features!.find(feature => feature.id === 'sk1')
+    if (sketch?.kind !== 'sketch' || (sketch.entities ?? []).length === 0) throw new Error('unreachable')
+    const entityId = sketch.entities![0].id
+    const result = await runHeadless({
+      doc: built.doc!,
+      steps: [{ mutation: { type: 'delete', targets: [`entity:sk1:${entityId}`] } }],
+    })
+    expect(result.ok).toBe(true)
+    const row = result.featureDeltas?.find(delta => delta.id === 'sk1')
+    expect(row).toBeDefined()
+    expect(typeof row!.dof).toBe('number')
+  }, 120_000)
+
   it('lists a failed hole with its kernel message and does not flip ok', async () => {
     const result = await runHeadless({ doc: emptyDoc(), steps: HOLE_ON_LINE_SKETCH })
     expect(result.ok).toBe(true)
