@@ -12,10 +12,10 @@
 // keeps a row when the feature's checkpoint differs from the input document's
 // solve, or when the steps touched it: a solid feature (so an edit that
 // happens to leave the same volume still shows its zero contribution), the
-// sketch or plane the step authored (so its remaining dof or verdict reads
-// back without a second call), or a feature that built with a warning (so its
-// warning text stays on the row). `mode: 'all'` is the inspection opt-in that
-// restores the whole history.
+// sketch or plane the step touched or authored (so its remaining dof or verdict
+// reads back without a second call), or a touched feature that built with a
+// warning (so its warning text stays on the row). `mode: 'all'` is the
+// inspection opt-in that restores the whole history.
 
 import type { PartDoc } from '@/types/cad'
 import type { FeatureMeasure, FeatureMeasureBody } from '@/kernel/solveLocally'
@@ -76,7 +76,7 @@ const ZERO_BBOX = [0, 0, 0, 0, 0, 0]
 const NON_SOLID_KINDS: ReadonlySet<string> = new Set<string>(['origin', 'sketch', 'plane', 'variable', 'helix'])
 
 // The non-solid kinds a touched row answers for: a sketch carries its
-// remaining dof and a plane its solve verdict, so a step that authored one
+// remaining dof and a plane its solve verdict, so a step that touched one
 // reads back even with no measure change. An unwarned touched variable, origin
 // or helix carries nothing this row has a field for, so the zero rule drops
 // it; a warned one is still admitted by the warning rule in the loop.
