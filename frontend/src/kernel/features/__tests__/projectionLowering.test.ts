@@ -119,6 +119,50 @@ describe('projectTo2d basic kinds', () => {
   })
 })
 
+describe('end-on line projection', () => {
+  // A straight source perpendicular to the sketch plane projects to a
+  // zero-length segment, which is not geometry: it has no direction, so
+  // `horizontal`, `parallel` and `angle` on it mean nothing and the area
+  // builder has to survive it. Its true projection is the one point both ends
+  // land on.
+
+  it('1. a line along +Z projects as its midpoint point', () => {
+    const g: Resolved3dGeometry = { kindH: 'line', data: { start: [3, 4, -2], end: [3, 4, 9] } }
+    expect(projectTo2d(g, XY)).toEqual({ kind: 'point', params: [3, 4] })
+  })
+
+  it('2. collapses on the projected width, not the source angle', () => {
+    // One lateral offset on a line 10 long: the 1e-6 lift projects below the
+    // merge rung and collapses, the 1e-3 lift is above it and the line stays a
+    // real segment of that length.
+    const leaning = (offset: number): Resolved3dGeometry => ({
+      kindH: 'line', data: { start: [2, 3, -4], end: [2 + offset, 3, 6] },
+    })
+    const collapsed = projectTo2d(leaning(1e-6), XY)!
+    expect(collapsed.kind).toBe('point')
+    // The midpoint of the two ends, so neither source end is privileged.
+    expect(collapsed.params[0]).toBeCloseTo(2 + 5e-7, 9)
+    expect(collapsed.params[1]).toBeCloseTo(3, 9)
+
+    const kept = projectTo2d(leaning(1e-3), XY)!
+    expect(kept.kind).toBe('line')
+    expect(kept.params).toEqual([2, 3, 2 + 1e-3, 3])
+  })
+
+  it('3. a foreign sketch line lifted through a perpendicular frame becomes a point', () => {
+    // The source sketch sits on Right, whose local x runs along world -Z, so a
+    // line across that axis is perpendicular to the Front (XY) target plane.
+    // The foreign line travels through `external_params`, the lift every
+    // cross-sketch projection takes.
+    const right = { origin: [0, 0, 0], x_axis: [0, 0, -1], y_axis: [0, 1, 0], normal: [1, 0, 0] }
+    const g = resolve3dGeometry(
+      { external_params: [1, 2, 7, 2], kind: 'line', sketch_id: 'sk1' },
+      (sketchId) => (sketchId === 'sk1' ? right : null),
+    )!
+    expect(projectTo2d(g, XY)).toEqual({ kind: 'point', params: [0, 2] })
+  })
+})
+
 describe('orientation-aware circle projection', () => {
   it('a circle parallel to the sketch plane stays a circle', () => {
     const g = resolve3dGeometry(

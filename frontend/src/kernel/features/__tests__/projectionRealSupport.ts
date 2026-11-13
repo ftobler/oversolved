@@ -78,6 +78,9 @@ export interface BaseGeometry {
   // The four straight edges bounding the +y cap, ordered by x then z so the
   // assignment of projected entity ids does not depend on kernel order.
   topFaceEdges: string[]
+  // The edge along world y at (width, y, -height): perpendicular to Top, whose
+  // normal is +y, so it projects onto Top as one point.
+  verticalEdge: string
   // The cut opening at z = 0: centre (20, 5, 0), radius 3.
   holeFrontCircle: string
   // The flat face at z = 0 (outward normal +z).
@@ -156,6 +159,13 @@ function readBaseGeometry(h: SharedHarness, result: BuildResponse): BaseGeometry
   return {
     topFrontEdge,
     topFaceEdges: sortEdgesByMidpoint(topFaceEdges, edges, edgeQueries),
+    verticalEdge: only(
+      edges.flatMap((e, i) => {
+        const mid = lineMidpoint(e)
+        return mid && near(mid, [BOX.width, BOX.depth / 2, -BOX.height]) ? [edgeQueries[i]] : []
+      }),
+      'vertical edge',
+    ),
     holeFrontCircle: only(
       edges.flatMap((e, i) => (
         (e.kind === 'circle' || e.kind === 'arc')

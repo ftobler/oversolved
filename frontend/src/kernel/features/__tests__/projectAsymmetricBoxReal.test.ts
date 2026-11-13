@@ -59,6 +59,21 @@ function lineMatches(got: number[], e0: [number, number], e1: [number, number]):
   return (same(g0, e0) && same(g1, e1)) || (same(g0, e1) && same(g1, e0))
 }
 
+// A line perpendicular to the plane has no projected length, so its true
+// projection is the one point both source ends land on. Asserting the point
+// keeps a zero-length line from reading as a match for a coincident pair.
+function pointMatches(got: number[], e: [number, number]): boolean {
+  return got.length === 2 && close(got[0], e[0]) && close(got[1], e[1])
+}
+
+/** The projected geometry matches what this edge's true projection is: a point
+ *  when the edge is perpendicular to the plane (its two projected ends
+ *  coincide), its segment otherwise. */
+function projectionMatches(got: number[], e0: [number, number], e1: [number, number]): boolean {
+  const perpendicular = close(e0[0], e1[0]) && close(e0[1], e1[1])
+  return perpendicular ? pointMatches(got, e0) : lineMatches(got, e0, e1)
+}
+
 const W = 8, H = 12, D = 5  // distinct on every axis
 
 function rectSketch() {
@@ -126,7 +141,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('project asymmetric box ed
           mismatches.push(`edge ${i}: DROPPED (projErr=${JSON.stringify(projErrors)})`)
           return
         }
-        if (!lineMatches(geom, eStart, eEnd)) {
+        if (!projectionMatches(geom, eStart, eEnd)) {
           mismatches.push(
             `edge ${i}: world ${JSON.stringify(ed.start)}->${JSON.stringify(ed.end)} ` +
             `expected local ${JSON.stringify(eStart)}->${JSON.stringify(eEnd)} got ${JSON.stringify(geom)}`
@@ -182,7 +197,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('project asymmetric box ed
       const geom = (sk2res.geometry as Record<string, number[]>)?.proj0
       const projErrors = (sk2res.projection_errors as string[]) ?? []
       if (projErrors.includes('proj0') || !geom) { mismatches.push(`edge ${i}: DROPPED (projErr=${JSON.stringify(projErrors)})`); return }
-      if (!lineMatches(geom, eStart, eEnd)) {
+      if (!projectionMatches(geom, eStart, eEnd)) {
         mismatches.push(
           `edge ${i}: world ${JSON.stringify(ed.start)}->${JSON.stringify(ed.end)} ` +
           `expected face-local ${JSON.stringify(eStart)}->${JSON.stringify(eEnd)} got ${JSON.stringify(geom)}`

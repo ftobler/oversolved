@@ -242,8 +242,31 @@ describe('solveSketch projects a declared point on a curved source as its centre
     expect(out.geometry?.u0).toEqual([10, 0, 2])
   })
 
-  // A line -> point kind change would drop `start`/`end` on the same rule; that
-  // transition belongs to its own plan.
-  it.todo('16. drops a start row on a line that resolves to a point '
-    + '(feature/projection-perpendicular-line.md)')
+  it('16. drops a start row on a line that resolves to a point', () => {
+    if (!solveBytes) return
+    // The source line runs along world +Z, the Front plane's normal, so its
+    // projection is one point. The coincident authored on the line's start has
+    // no start key on the resolved point, so the kind-change rule drops it by
+    // name and leaves the free point where it was; the row stays in the
+    // document, so a source that rotates out of perpendicular re-enables it.
+    const feature = sketchWith({
+      entities: [{ id: 'l0', kind: 'line' }, { id: 'p0', kind: 'point' }],
+      initial: { p0: [10, 10] },
+      constraints: [
+        { id: 'proj_l0', kind: 'projection', target: '$l0', source: '?edge;line' },
+        { id: 'cc', kind: 'coincident', a: '$p0xy', b: '$l0start' },
+      ],
+    })
+    const endOnLine: Dict = { type: 'edge', kind: 'line', start: [2, 3, -4], end: [2, 3, 6] }
+    const out = solveSketch(feature, stubRepo(endOnLine), {} as Record<string, Body>)
+    expect(out.projection_errors).toBeUndefined()
+    expect(out.resolved_kinds).toEqual({ l0: 'point' })
+    expect(out.geometry?.l0).toEqual([2, 3])
+    expect(out.dropped_constraints).toEqual([
+      { id: 'cc', kind: 'coincident', reason: 'operand start not on point' },
+    ])
+    expect(feature.constraints).toHaveLength(2)
+    // The free point is not dragged onto the projected point.
+    expect(out.geometry?.p0).toEqual([10, 10])
+  })
 })
