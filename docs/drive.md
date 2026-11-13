@@ -54,7 +54,7 @@ never a thrown exception crossing the bridge.
 |---|---|---|
 | `commands()` | none | `{ id, label, shortcut?, enabled: true \| reason }[]` for the live spec table |
 | `execute(id, params?)` | command id, raw params | the registry `Result` (`ok` + `createdIds`, or `code`/`message`) |
-| `script(steps)` | step array (below) | `{ ok, steps: [{ index, kind, id, ok, createdIds, constraints?, createdCount?, error? }] }` |
+| `script(steps)` | step array (below) | `{ ok, steps: [{ index, kind, id, ok, createdIds, constraints?, createdCount?, layers?, groupId?, otherLayers?, replacedConstraints?, captured?, poseKept?, part?, note?, error? }] }` |
 | `inspect()` | none | session, editor and probe facts (below) |
 | `idle()` | none | resolves when no solve is pending or running |
 | `hitTest(x, y, opts?)` | CSS pixels, optional window size and layer list | ordered `ProbeHit[]` |
@@ -140,6 +140,11 @@ A script is an array (or `{ steps: [...] }`) of steps:
   step, so awaiting the script also awaits the solves it started.
 - `frontend/src/drive/scriptRunner.ts` is the one runner: the bridge and the
   CLI both call `runScript`, so the semantics cannot drift.
+- A successful step can also carry `captured` (the orientation an assembly
+  mate measured), `poseKept` (a fixed toggle's kept pose), `part` (the part an
+  `add_step_part` bound and instanced) and `note` (a caveat beside `ok`, such as
+  a face projection deleted without rows to freeze). The table entry above is
+  the full field list.
 
 ## Journal and repro replay
 

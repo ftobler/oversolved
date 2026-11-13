@@ -129,11 +129,10 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
   it('5-6. an arc that resolves to a fit spline drops its centre row and comes back', async () => {
     const base = await targetOnTop('arc')
     expect(base.ok).toBe(true)
-    // 0 deg: the source arc is coplanar with the target, so the projection is an
-    // arc, the centre row lowers and the free point is bound to the centre. The
-    // document entity kind here is the CURRENT pre-hygiene state: the in-process
-    // solve still writes the resolved kind into the entity def, and
-    // projection-lowering-hygiene keeps the declared kind instead.
+    // 0 deg: the source arc is coplanar with the target, so the projection is
+    // an arc, the centre row lowers and the free point is bound to the centre.
+    // The document row keeps its pick-time kind until the write-back adopts the
+    // resolved one; here the two agree.
     expect(kindOf(base.doc, 'skT', 'pa0')).toBe('arc')
     expect(base.featureDeltas?.find(entry => entry.id === 'skT')?.status).toBe('fully_constrained')
     expect(paramsOf(base.doc, 'skT', 'pt')?.[0]).toBeCloseTo(5, 6)
@@ -146,8 +145,8 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
     // block, longer than the eight-parameter cubic. The resolved kind is what the
     // operand gate sees, or the `center` key would still pass and the row would
     // bind a point on the fitted curve. The witness is the solved param block the
-    // write-back installed: its length is the resolved kind's, so it survives the
-    // hygiene change (the document entity kind does not).
+    // write-back installed: its length is the resolved kind's, and the document
+    // row adopts that kind through the same write-back.
     const tiltedBlock = paramsOf(tilted.doc, 'skT', 'pa0')!
     expect(tiltedBlock.length).toBeGreaterThan(8)
     expect(tiltedBlock.length % 2).toBe(0)  // fit points only, no end handles
@@ -166,9 +165,9 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
 
     const back = await moveTarget(tilted.doc!, TOP)
     expect(back.ok).toBe(true)
-    // Current pre-hygiene state: the entity def is rewritten with the resolved
-    // kind each solve. After hygiene the declared arc stays throughout, and the
-    // fully-constrained status and the bound point below are the real proof.
+    // The write-back adopts the resolved kind each solve; the `arc` after
+    // returning is the re-derived kind, and the fully-constrained status and the
+    // bound point below are the real proof.
     expect(kindOf(back.doc, 'skT', 'pa0')).toBe('arc')
     expect(back.featureDeltas?.find(entry => entry.id === 'skT')?.status).toBe('fully_constrained')
     expect(back.features.find(problem => problem.id === 'skT')).toBeUndefined()
@@ -179,8 +178,7 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
   it('7. a circle that resolves to an ellipse drops its diameter and equal rows', async () => {
     const base = await targetOnTop('circle')
     expect(base.ok).toBe(true)
-    // Declared and resolved agree while coplanar; this is the current
-    // pre-hygiene document state (see the first test).
+    // Declared and resolved agree while coplanar.
     expect(kindOf(base.doc, 'skT', 'pa0')).toBe('circle')
     // The equal row pulled the user circle up to the projection's radius; it is
     // the value a silent rebind would move again.
@@ -189,8 +187,8 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
     const tilted = await moveTarget(base.doc!, '@pl30')
     expect(tilted.ok).toBe(true)
     // The write-back installed a five-parameter conic block and the reasons
-    // below name the ellipse; the document entity kind is not asserted, because
-    // the hygiene change keeps it declared while the solve resolves an ellipse.
+    // below name the ellipse; the document row adopts the ellipse kind through
+    // the same write-back.
     expect(paramsOf(tilted.doc, 'skT', 'pa0')).toHaveLength(5)
     const row = tilted.features.find(problem => problem.id === 'skT')
     expect(row).toBeDefined()
@@ -202,11 +200,11 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
     // The rows were authored while the projection was coplanar and still a
     // circle, so the add-time rule accepted them; the tilt is what made the
     // solve re-judge them. Re-authoring here is deliberately NOT asserted:
-    // add time reads the kind the document declares, and the in-process solve
-    // still writes the resolved kind back into the entity def. Once
-    // projection-lowering-hygiene removes that write, a browser author would
-    // be accepted (declared circle) and the solve would report it, exactly as
-    // this test shows for the row authored before the tilt.
+    // add time reads the kind the document declares, the solve judges the
+    // resolved kind threaded through `SketchProjectionFacts`, and the write-back
+    // adopts that kind on the row. A browser author is accepted on the declared
+    // kind and the solve reports it, exactly as this test shows for the row
+    // authored before the tilt.
     expect(sketchOf(tilted.doc, 'skT')?.constraints).toHaveLength(4)
     expect(paramsOf(tilted.doc, 'skT', 'uc')).toEqual([0, 0, 3])
   }, 240_000)
@@ -218,8 +216,7 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
     expect(tilted.ok).toBe(true)
     // The tilted target sees the source circle edge-on, so the lowering takes
     // the silhouette branch and the write-back installs a four-parameter line
-    // block (again the params, not the document entity kind, are the witness
-    // that survives the hygiene change).
+    // block on the row.
     expect(paramsOf(tilted.doc, 'skT', 'pa0')).toHaveLength(4)
     const row = tilted.features.find(problem => problem.id === 'skT')
     expect(row).toBeDefined()

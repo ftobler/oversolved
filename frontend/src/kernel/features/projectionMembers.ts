@@ -4,10 +4,13 @@
 // each live member was handed, so a solve can keep an id stable without minting
 // one (the journal's mint index never sees a member).
 //
-// The id is a pure function of the constraint id and the edge's construction
-// UUID token, the identity a rebuild recomputes (see knowledge base
-// "Construction-name hand-off"). Geometry hashes were rejected as identity: a
-// moved face would rename every member.
+// The id is a function of the constraint id and the edge's construction UUID
+// token, the identity a rebuild recomputes (see knowledge base
+// "Construction-name hand-off"). It is stable across solves unless two tokens
+// collide in the first eight hex characters: then the deterministic lengthening
+// moves one id, and the last-resort fallback appends the sorted position for a
+// duplicated token. Geometry hashes were rejected as identity: a moved face
+// would rename every member.
 
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/faceTypes'
@@ -220,8 +223,11 @@ export interface ProjectionMemberReport {
  *  may have failed to project, or it may have been added since the last solve. */
 export const PROJECTION_NOT_FROZEN_TITLE = 'Projection not frozen'
 
-export function projectionNotFrozenMessage(constraintId: string): string {
-  return `projection ${constraintId} has no solved member rows to freeze; it was removed without materializing geometry`
+export function projectionNotFrozenMessage(constraintIds: readonly string[]): string {
+  const named = constraintIds.join(', ')
+  const plural = constraintIds.length === 1 ? 'projection' : 'projections'
+  return `${plural} ${named} ${constraintIds.length === 1 ? 'has' : 'have'} no solved member rows to freeze; `
+    + 'removed without materializing geometry'
 }
 
 /** The targeted face projections a delete will freeze nothing for: each has

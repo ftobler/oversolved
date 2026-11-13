@@ -106,8 +106,8 @@ describe('solveSketch re-resolves a projected kind seen edge-on or end-on', () =
 
   // A Front sketch holding a projected line and a point coincident to its
   // start, authored while the projection is a real line. Each test builds a
-  // fresh one: the in-process solve writes the resolved kind into the entity
-  // def, so sharing one instance would carry that state between tests.
+  // fresh one: the write-back (not the solve) adopts the resolved kind, so
+  // sharing one instance would carry that state between tests.
   function startRowFeature(): Dict {
     return sketchWith({
       entities: [{ id: 'l0', kind: 'line' }, { id: 'p0', kind: 'point' }],

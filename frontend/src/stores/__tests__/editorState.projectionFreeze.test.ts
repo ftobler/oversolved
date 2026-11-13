@@ -94,8 +94,28 @@ describe('deleteSelected freeze route', () => {
     expect(messages).toEqual([])
   })
 
-  it('notes a mixed selection where only one face projection has rows to freeze', () => {
+  it('names every unresolved projection in one note', () => {
     const second = 'proj_face2'
+    const third = 'proj_face3'
+    const mixed = doc()
+    const sketch = mixed.features![0]
+    if (sketch.kind !== 'sketch') throw new Error('not a sketch')
+    sketch.constraints!.push(
+      { id: second, kind: 'projection', source: '?face2', members: { 'u|e_bbbb': 'proj_face2.bbbbbbbb' } },
+      { id: third, kind: 'projection', source: '?face3', members: { 'u|e_cccc': 'proj_face3.cccccccc' } },
+    )
+    setSketchCallback('getDoc', () => mixed)
+    editorState.setState({
+      activeFeatureId: 'sk1',
+      normalSelection: new Set([`constraint:sk1:${second}`, `constraint:sk1:${third}`]),
+    })
+    editorState.getState().deleteSelected()
+    expect(messages).toHaveLength(1)
+    expect(messages[0].message).toContain(second)
+    expect(messages[0].message).toContain(third)
+  })
+
+  it('notes a mixed selection where only one face projection has rows to freeze', () => {    const second = 'proj_face2'
     const mixed = doc()
     const sketch = mixed.features![0]
     if (sketch.kind !== 'sketch') throw new Error('not a sketch')

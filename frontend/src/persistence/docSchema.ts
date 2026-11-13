@@ -674,9 +674,10 @@ function checkProjectionMembers(constraint: DocRecord, field: string): void {
   const constraintId = constraint.id as string
   const derived = deriveMemberIds(constraintId, tokens)
   for (const token of tokens) {
-    // The id is a pure function of the constraint id and the construction
-    // token. Storing anything else is a document that claims an identity the
-    // solve will immediately rewrite, so the loader refuses it by field.
+    // The id is the form derived from the constraint id and the construction
+    // token (lengthened deterministically on a collision within the map). Storing
+    // anything else is a document that claims an identity the solve will
+    // immediately rewrite, so the loader refuses it by field.
     if (members[token] !== derived[token]) {
       fail(
         `${field}.members[${JSON.stringify(token)}]`,

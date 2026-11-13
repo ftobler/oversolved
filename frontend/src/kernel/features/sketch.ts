@@ -799,17 +799,17 @@ export function solveSketch(
   // each held entity resolved to and the face projection's derived members. The
   // operand gate then judges a row on the resolved kind (a circle seen edge-on
   // is a line) and can address a member id without an in-place document write.
-  const derivedEntities: Record<string, string> = {}
+  const derivedKinds: Record<string, string> = {}
   const derivedInitial: Record<string, number[]> = {}
   for (const report of Object.values(projectionMembers)) {
     for (const member of report.entities) {
-      derivedEntities[member.id] = member.kind
+      derivedKinds[member.id] = member.kind
       derivedInitial[member.id] = [...member.params]
     }
   }
   const pf = loweredFeature as unknown as SketchFeature
   const extract = partDocToSketches([pf], originLocal, pinnedIds, {
-    resolvedKinds, derivedEntities, derivedInitial,
+    resolvedKinds, derivedKinds, derivedInitial,
   })
   if (extract.skipped.length) {
     throw new Error(`sketch '${featureId}': ${extract.skipped[0].reason}`)
@@ -891,7 +891,7 @@ export function solveSketch(
   // culprit is marked `culprit` for the deeper-red paint. Sugar expanded to
   // synthetic ids (ngon/dock) has no authored id on the wire, so its pieces
   // stay unmarked.
-  const memberEntities = Object.entries(derivedEntities).map(([id, kind]) => ({ id, kind }))
+  const memberEntities = Object.entries(derivedKinds).map(([id, kind]) => ({ id, kind }))
   const baseRenderEntities = [...(pf.entities ?? []), ...memberEntities]
   const renderEntities = Object.keys(resolvedKinds).length
     ? baseRenderEntities.map((e) => ({ ...e, kind: resolvedKinds[e.id] ?? e.kind }))

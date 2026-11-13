@@ -200,19 +200,45 @@ describe.skipIf(!oc || !solveBytes)('face projection replay', () => {
 
   it('23. a drive delete with no rows notes that nothing was frozen', async () => {
     const fixture = faceFixture()
+    const cid = 'proj_deadbeef'
+    const source = '?d;@u|e_deadbeef:flatface'
+    const members = deriveMemberIds(cid, Object.keys(fixture.members))
     const p = part()
     expect((await p.run([fixture.steps[0]])).ok).toBe(true)
-    // A valid map added directly leaves the last solve without a report for
-    // this constraint, which is the unresolved/just-added case.
+    // A face query that no body resolves: the constraint is valid (a supplied
+    // map) but the next solve reports it and derives no members.
     const added = p.session.execute({
-      type: 'add_projected_entity', featureId: 'skP', source: fixture.frontFace,
-      members: fixture.members, constraintId: fixture.cid,
+      type: 'add_projected_entity', featureId: 'skP', source,
+      members, constraintId: cid,
     })
     expect(added.ok).toBe(true)
     const removed = await p.run([{
-      mutation: { type: 'delete', targets: [`constraint:skP:${fixture.cid}`] },
+      mutation: { type: 'delete', targets: [`constraint:skP:${cid}`] },
     }])
     expect(removed.ok).toBe(true)
     expect(removed.steps[0].note).toContain('no solved member rows')
+  })
+
+  it('24. a delete after an upstream edit freezes the settled face, not the old solve', async () => {
+    const fixture = faceFixture()
+    const p = part()
+    const removed = await p.run([
+      fixture.steps[0], // sketch
+      fixture.steps[1], // face projection
+      fixture.steps[2], // width 40 -> 50
+      { mutation: { type: 'delete', targets: [`constraint:skP:${fixture.cid}`] } },
+    ])
+    expect(removed.ok).toBe(true)
+    const sketch = (p.getDoc()?.features ?? []).find(f => f.id === 'skP')
+    if (sketch?.kind !== 'sketch') throw new Error('no projection sketch')
+    const frozen = new Set(fixture.memberIds)
+    const lineXs = (sketch.entities ?? [])
+      .filter(entity => frozen.has(entity.id))
+      .map(entity => sketch.initial?.[entity.id] ?? [])
+      .filter(params => params.length === 4)
+      .flatMap(params => [params[0], params[2]])
+    // At 40 the profile spans 40; the settled 50 edit must be the freeze (the
+    // rectangle can translate, so compare its extent, not an absolute edge).
+    expect(Math.max(...lineXs) - Math.min(...lineXs)).toBeGreaterThanOrEqual(49)
   })
 })

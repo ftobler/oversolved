@@ -357,7 +357,7 @@ export function isDocumentConstraintKind(kind: string): boolean {
  *  kind-applicability gates read the resolved shape without an in-place write. */
 export interface SketchProjectionFacts {
   resolvedKinds?: Readonly<Record<string, string>>
-  derivedEntities?: Readonly<Record<string, string>>
+  derivedKinds?: Readonly<Record<string, string>>
   derivedInitial?: Readonly<Record<string, number[]>>
 }
 
@@ -383,7 +383,7 @@ export function partDocToSketches(
   for (const feature of features ?? []) {
     if (feature.kind !== 'sketch') continue
     const resolvedKinds = facts.resolvedKinds ?? {}
-    const derivedKinds = facts.derivedEntities ?? {}
+    const derivedKinds = facts.derivedKinds ?? {}
     const derivedInitial = facts.derivedInitial ?? {}
     const entities: NonNullable<SketchFeature['entities']> = [
       ...(feature.entities ?? []),

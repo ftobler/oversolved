@@ -1118,6 +1118,13 @@ export default function Part() {
     // The constraint command projects a picked body edge by its curve kind; the
     // dimension tool reads the same fact from the hover instead.
     setSketchCallback('resolveEdgeKind', (query: string) => findEdgeKindForQuery(query) ?? null)
+    // The delete action's freeze route reads the live document and the solved
+    // member rows through this same registration. It must live here with the
+    // ports the teardown clears: a separate effect would not re-run when this
+    // one is cleared for another dependency change.
+    setSketchCallback('getDoc', () => docRef.current)
+    setSketchCallback('getProjectionMembers', (featureId: string) =>
+      (solveResults?.[featureId]?.projection_members ?? null))
     return () => {
       clearSketchCallbacks()
     }

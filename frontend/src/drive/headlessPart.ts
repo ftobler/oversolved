@@ -189,6 +189,22 @@ function isFaceProjectionStep(mutation: unknown): boolean {
     && isFaceProjectionSource(step.source)
 }
 
+/** A delete that names a targetless face projection must freeze the current
+ *  face, not the previous solve's rows. */
+function deletesFaceProjection(mutation: Mutation, doc: PartDoc | null): boolean {
+  if (mutation.type !== 'delete' || doc === null) return false
+  for (const target of mutation.targets) {
+    if (!target.startsWith('constraint:')) continue
+    const [kind, featureId, constraintId] = target.split(':')
+    if (kind !== 'constraint' || featureId === undefined || constraintId === undefined) continue
+    const feature = (doc.features ?? []).find(candidate => candidate.id === featureId)
+    if (feature?.kind !== 'sketch') continue
+    const constraint = feature.constraints?.find(candidate => candidate.id === constraintId)
+    if (constraint?.kind === 'projection' && constraint.target === undefined) return true
+  }
+  return false
+}
+
 /** Fill a drive `delete` of a face projection with the member rows the last
  *  solve derived, the headless twin of the editor's freeze payload. Without it a
  *  script that deletes the constraint silently discards the wire. */
@@ -196,8 +212,12 @@ function withProjectionFreeze(
   mutation: Mutation,
   doc: PartDoc | null,
   result: Record<string, unknown> | undefined,
-): { mutation: Mutation; frozenNothing?: string } {
-  if (mutation.type !== 'delete' || doc === null) return { mutation }
+): { mutation: Mutation; frozenNothing?: string[] } {
+  if (mutation.type !== 'delete' || mutation.materialize !== undefined || doc === null) {
+    // An explicit payload wins: a caller (or a recorded journal entry) that
+    // already says what to materialize owns those bytes.
+    return { mutation }
+  }
   const features = new Set<string>()
   for (const target of mutation.targets) {
     if (!target.startsWith('constraint:')) continue
@@ -217,7 +237,7 @@ function withProjectionFreeze(
     empty.push(...projectionsFreezingNothing(featureId, feature, mutation.targets, reports))
   }
   const frozen = rows.length > 0 ? { ...mutation, materialize: rows } : mutation
-  return empty.length > 0 ? { mutation: frozen, frozenNothing: empty[0] } : { mutation: frozen }
+  return empty.length > 0 ? { mutation: frozen, frozenNothing: empty } : { mutation: frozen }
 }
 
 export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
@@ -421,12 +441,15 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           // carried no bodies) solves once before its first selector step.
           let bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
           // A face projection needs the last solve's body mesh to derive its
-          // member ids, exactly like a selector pick needs it to resolve.
+          // member ids, exactly like a selector pick needs it to resolve. A
+          // delete of one needs the settled face too, so its freeze rows are
+          // the current members, not the previous solve's.
           const needsBodies = usesSelectionAid(step.mutation) || isFaceProjectionStep(step.mutation)
-          if (needsBodies || usesSettledSketchGeometry(step.mutation)) {
+          const needsSettledDelete = deletesFaceProjection(step.mutation as Mutation, docBox.current)
+          if (needsBodies || needsSettledDelete || usesSettledSketchGeometry(step.mutation)) {
             if (solve.owed()) {
               await solve.flush()
-            } else if (needsBodies && responseBox.current === null) {
+            } else if ((needsBodies || needsSettledDelete) && responseBox.current === null) {
               session.refreshSolve()
               await solve.flush()
             }

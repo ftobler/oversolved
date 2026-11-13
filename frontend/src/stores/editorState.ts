@@ -74,7 +74,7 @@ export function sketchOwnedDeleteTargets(selection: Set<string>, activeFeatureId
 export function deleteMutationFor(
   activeFeatureId: string | null,
   targets: readonly string[],
-): { mutation: Mutation; frozenNothing?: string } {
+): { mutation: Mutation; frozenNothing?: string[] } {
   const targetsCopy = [...targets]
   const emptyMutation: Mutation = { type: 'delete', targets: targetsCopy }
   if (activeFeatureId === null) return { mutation: emptyMutation }
@@ -89,7 +89,7 @@ export function deleteMutationFor(
     mutation: rows === undefined
       ? emptyMutation
       : { type: 'delete', targets: targetsCopy, materialize: rows },
-    ...(empty.length > 0 ? { frozenNothing: empty[0] } : {}),
+    ...(empty.length > 0 ? { frozenNothing: empty } : {}),
   }
 }
 

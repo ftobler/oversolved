@@ -2,9 +2,8 @@
 //
 // A straight source edge perpendicular to the sketch plane projects to one
 // point, not a zero-length line. This is the true projection, the same rule the
-// edge-on conic takes to its silhouette line: no warning, and the resolved kind
-// is reported in `resolved_kinds` (a solve-time fact; the document row keeps
-// the declared kind once projection-lowering-hygiene lands).
+// edge-on conic takes to its silhouette line: no warning, the resolved kind is
+// reported in `resolved_kinds`, and the write-back adopts it on the document row.
 //
 // A constraint that names the collapsed line's start or end has no key on the
 // point, so the merged kind-change rule drops it with a `dropped_constraints`

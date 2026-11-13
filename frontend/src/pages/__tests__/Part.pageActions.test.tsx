@@ -32,7 +32,8 @@ const F = vi.hoisted(() => {
       { id: 'plane1', kind: 'plane', label: 'Plane 1' },
       // A sketch off the builtin planes: Normal to sketch must frame its solved
       // frame, which no builtin-id lookup can know.
-      { id: 'sketch2', kind: 'sketch', label: 'Sketch 2', plane: '@plane1' },
+      { id: 'sketch2', kind: 'sketch', label: 'Sketch 2', plane: '@plane1',
+        constraints: [{ id: 'proj_face', kind: 'projection', source: '?face', members: { 'u|e_aaaa': 'proj_face.aaaaaaaa' } }] },
     ],
     part_style: { 'body-1': { name: 'Body One', color: '#FF0000' } },
   }
@@ -44,7 +45,14 @@ const F = vi.hoisted(() => {
       sketch1: { solved: {}, constraints: { c1: { superfluous: true } } },
       extrude1: { solved: {} },
       plane1: { plane_transform: { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], origin: [1, 2, 3] } },
-      sketch2: { solved: {}, plane_transform: { rotation: [0, 0, -1, 0, 1, 0, 1, 0, 0], origin: [4, 5, 6] } },
+      sketch2: { solved: {}, plane_transform: { rotation: [0, 0, -1, 0, 1, 0, 1, 0, 0], origin: [4, 5, 6] },
+        projection_members: {
+          proj_face: {
+            members: { 'u|e_aaaa': 'proj_face.aaaaaaaa' },
+            entities: [{ id: 'proj_face.aaaaaaaa', kind: 'line', params: [0, 0, 10, 0] }],
+            orphans: [],
+          },
+        } },
     },
   }
   return self
@@ -211,6 +219,29 @@ describe('Part page actions', () => {
     showConstraintTiles: false,
   })
     useDevSettingsStore.setState({ validateOnRebuild: false })
+  })
+
+  it('owns the freeze ports, so a page delete freezes after the effect teardown', () => {
+    const first = renderPart()
+    expect(typeof getSketchCallback('getDoc')).toBe('function')
+    expect(typeof getSketchCallback('getProjectionMembers')).toBe('function')
+    // The page effect clears every port on teardown and re-registers them; the
+    // freeze ports must be part of that same registration, not a separate effect
+    // the clear can strand.
+    first.unmount()
+    expect(getSketchCallback('getDoc')).toBeNull()
+    renderPart()
+    expect(typeof getSketchCallback('getDoc')).toBe('function')
+
+    useEditorState.setState({
+      activeFeatureId: 'sketch2',
+      normalSelection: new Set(['constraint:sketch2:proj_face']),
+    })
+    act(() => { useEditorState.getState().deleteSelected() })
+    expect(h.handleMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'delete',
+      materialize: [{ id: 'proj_face.aaaaaaaa', kind: 'line', params: [0, 0, 10, 0] }],
+    }))
   })
 
   it('the toolbar Save writes the open document through saveDoc and clears the banner', async () => {

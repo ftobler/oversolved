@@ -91,8 +91,8 @@ describe('solveSketch projection lowering', () => {
     expect(g!.length).toBe(5)
     expect(g![2]).toBeCloseTo(5)  // a = R
     expect(g![3]).toBeCloseTo(5 * Math.cos(phi))  // b = R cos(phi)
-    // The kind change must be surfaced so the doc entity (declared 'circle')
-    // adopts 'ellipse' -- otherwise a 'circle' entity gets 5-param geometry.
+    // The kind change must be surfaced so the write-back adopts 'ellipse' on the
+    // row; the solve itself lowers the entity in its resolved kind.
     expect(out.resolved_kinds?.e0).toBe('ellipse')
   })
 
@@ -130,10 +130,10 @@ describe('solveSketch projection lowering', () => {
 
   it('converges: a doc entity already a fit_spline re-solves from an ellipse source', () => {
     if (!solveBytes) return
-    // Second solve after convergence: the doc entity kind is now 'fit_spline'
-    // (it adopted the resolved kind last solve) but its source edge is still an
-    // ellipse. Projection must branch on the resolved geometry, not the declared
-    // kind, or the spline branch reads a non-existent points array and fails.
+    // Second solve after convergence: the write-back adopted 'fit_spline' on the
+    // row last solve, but its source edge is still an ellipse. Projection must
+    // branch on the resolved geometry, not the declared kind, or the spline
+    // branch reads a non-existent points array and fails.
     const partialEllipse: Dict = {
       type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2,
       axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
@@ -188,11 +188,9 @@ describe('solveSketch projection lowering', () => {
     // feature/projection-kind-change-operands.md; this pins the half the
     // lowering already owns.
     //
-    // Today the resolved kind reaches partDocToSketches only through the
-    // in-place kind write in lowerProjectionConstraints, which
-    // feature/projection-lowering-hygiene removes. After that lands the
-    // resolved kinds must be threaded into partDocToSketches for this drop to
-    // keep firing; that threading is not this change's job.
+    // The resolved kind reaches `partDocToSketches` through
+    // `SketchProjectionFacts` (the lowering no longer writes the entity def),
+    // so this drop fires in the same solve that resolved the curve.
     const partialEllipse: Dict = {
       type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2,
       axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
