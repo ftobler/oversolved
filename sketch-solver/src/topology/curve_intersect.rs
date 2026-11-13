@@ -117,10 +117,16 @@ fn param_of(curve: &Curve, p: Vec2) -> f64 {
             let dx = p[0] - c[0];
             let dy = p[1] - c[1];
             // Un-rotate into the ellipse's local frame; the eccentric angle is
-            // atan2(y'/b, x'/a) (NOT the geometric angle).
+            // atan2(y'/b, x'/a) (NOT the geometric angle). A degenerate
+            // semi-axis (an edge-on projected circle lowers to b = 0) would
+            // otherwise recover NaN at a point on the major axis, poisoning
+            // every split parameter that names the entity. The same floor the
+            // residual and gap arms apply keeps the parameter defined.
             let xl = dx * cr + dy * sr;
             let yl = -dx * sr + dy * cr;
-            pymod((yl / b).atan2(xl / a), TWO_PI)
+            let ea = (a * a).max(MIN_SEMI_AXIS_SQ).sqrt();
+            let eb = (b * b).max(MIN_SEMI_AXIS_SQ).sqrt();
+            pymod((yl / eb).atan2(xl / ea), TWO_PI)
         }
         // bezier: not recoverable in closed form; callers that pair a bezier as
         // the "other" curve obtain its parameter directly.

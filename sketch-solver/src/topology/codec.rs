@@ -25,8 +25,12 @@ pub enum TopologyCodecError {
     /// (NaN params wedged the arc normalization walk once already), and
     /// serde_json likewise maps a non-finite COMPUTED value to JSON Null on
     /// serialize rather than failing. Both directions gate here, mirroring
-    /// the flat codec's `CodecError::NonFinite` as the backstop.
-    NonFinite,
+    /// the flat codec's `CodecError::NonFinite` as the backstop. The entity
+    /// id is carried when the gate can attribute the value to one: an
+    /// unattributed `NonFinite` left the user unable to find the cause.
+    NonFinite {
+        entity: Option<String>,
+    },
     /// More entities than `MAX_ENTITIES`. Mirrors the flat codec's capacity
     /// philosophy: counts are untrusted, and here the cost of believing them
     /// is quadratic downstream, so the refusal happens at decode.
@@ -53,6 +57,38 @@ pub const MAX_ENTITIES: usize = 4_096;
 impl From<serde_json::Error> for TopologyCodecError {
     fn from(e: serde_json::Error) -> Self {
         TopologyCodecError::Json(e)
+    }
+}
+
+/// The boundary message the Worker turns into the sketch exception. The
+/// non-finite arm names the entity whenever the gate could attribute the value:
+/// the whole sketch used to fail with a bare `NonFinite` and no clue which
+/// curve poisoned it.
+impl std::fmt::Display for TopologyCodecError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TopologyCodecError::Json(e) => write!(f, "invalid JSON: {e}"),
+            TopologyCodecError::NonFinite { entity: Some(eid) } => {
+                write!(f, "non-finite value from entity '{eid}'")
+            }
+            TopologyCodecError::NonFinite { entity: None } => {
+                write!(f, "non-finite value not attributable to one entity")
+            }
+            TopologyCodecError::TooManyEntities => {
+                write!(f, "more than {MAX_ENTITIES} entities")
+            }
+            TopologyCodecError::TooManyContacts => {
+                write!(f, "more than {MAX_ENTITIES} contacts")
+            }
+            TopologyCodecError::DegenerateFitSpline(message) => f.write_str(message),
+        }
+    }
+}
+
+/// Attribute a non-finite value to the entity it came from, when the gate can.
+fn non_finite(entity: Option<&str>) -> TopologyCodecError {
+    TopologyCodecError::NonFinite {
+        entity: entity.map(str::to_string),
     }
 }
 
@@ -135,7 +171,7 @@ impl From<RawGeom> for InputEntity {
 /// after deserialization as a backstop against serde_json versions or
 /// features that map overflowing literals to +-infinity instead of erroring.
 fn reject_non_finite(raw: &[(String, RawGeom)]) -> Result<(), TopologyCodecError> {
-    for (_, g) in raw {
+    for (eid, g) in raw {
         let pts = [
             g.start,
             g.end,
@@ -150,16 +186,16 @@ fn reject_non_finite(raw: &[(String, RawGeom)]) -> Result<(), TopologyCodecError
             .flatten()
             .any(|p| p.iter().any(|x| !x.is_finite()))
         {
-            return Err(TopologyCodecError::NonFinite);
+            return Err(non_finite(Some(eid)));
         }
         if let Some(points) = &g.points {
             if points.iter().flatten().any(|x| !x.is_finite()) {
-                return Err(TopologyCodecError::NonFinite);
+                return Err(non_finite(Some(eid)));
             }
         }
         let scalars = [g.radius, g.angle_start, g.angle_end, g.a, g.b, g.theta];
         if scalars.into_iter().flatten().any(|x| !x.is_finite()) {
-            return Err(TopologyCodecError::NonFinite);
+            return Err(non_finite(Some(eid)));
         }
     }
     Ok(())
@@ -350,23 +386,35 @@ fn geom_is_finite(eg: &EdgeGeom) -> bool {
 /// transform downstream.
 fn reject_non_finite_output(out: &TopologyOut) -> Result<(), TopologyCodecError> {
     let pt_ok = |p: &Vec2| p.iter().all(|x| x.is_finite());
-    let points_ok = out.intersection_points.iter().all(|(_, p)| pt_ok(p))
-        && out.vertices.iter().all(|(_, p)| pt_ok(p));
-    let edges_ok = out.edges.iter().all(|e| geom_is_finite(&e.geom));
-    let surfaces_ok = out.surfaces.iter().chain(out.hole_regions.iter()).all(|s| {
-        s.boundary
-            .iter()
-            .chain(s.holes.iter().flatten())
-            .all(|be| geom_is_finite(&be.geom))
-    });
+    // Registered points carry no entity of their own: they are minted where two
+    // entities meet, so there is nothing to name.
+    if out.intersection_points.iter().any(|(_, p)| !pt_ok(p))
+        || out.vertices.iter().any(|(_, p)| !pt_ok(p))
+    {
+        return Err(non_finite(None));
+    }
+    if let Some(e) = out.edges.iter().find(|e| !geom_is_finite(&e.geom)) {
+        return Err(non_finite(Some(&e.entity_id)));
+    }
+    // A boundary edge keeps the id of the entity it came from, so a poisoned
+    // surface edge can name its curve just like a whole edge does.
+    let bad_boundary = out
+        .surfaces
+        .iter()
+        .chain(out.hole_regions.iter())
+        .flat_map(|s| s.boundary.iter().chain(s.holes.iter().flatten()))
+        .find(|be| !geom_is_finite(&be.geom));
+    if let Some(be) = bad_boundary {
+        return Err(non_finite(be.id.as_deref()));
+    }
     let unmet_ok = out
         .unmet_contacts
         .iter()
         .all(|c| pt_ok(&c.a) && pt_ok(&c.b) && c.gap.is_finite());
-    if points_ok && edges_ok && surfaces_ok && unmet_ok {
+    if unmet_ok {
         Ok(())
     } else {
-        Err(TopologyCodecError::NonFinite)
+        Err(non_finite(None))
     }
 }
 
@@ -569,6 +617,19 @@ pub fn encode_output(out: &TopologyOut) -> Result<Vec<u8>, TopologyCodecError> {
 mod tests {
     use super::*;
 
+    /// A unit square's topology, the finite baseline the output-gate tests
+    /// poison one slot at a time.
+    fn square_topology() -> TopologyOut {
+        let input = json!([
+            ["a", {"start": [0.0, 0.0], "end": [2.0, 0.0]}],
+            ["b", {"start": [2.0, 0.0], "end": [2.0, 2.0]}],
+            ["c", {"start": [2.0, 2.0], "end": [0.0, 2.0]}],
+            ["d", {"start": [0.0, 2.0], "end": [0.0, 0.0]}],
+        ]);
+        let bytes = serde_json::to_vec(&input).unwrap();
+        super::super::detect_topology(&decode_input(&bytes).unwrap(), &[])
+    }
+
     #[test]
     fn round_trips_a_single_square() {
         let input = json!([
@@ -705,7 +766,7 @@ mod tests {
             assert!(
                 matches!(
                     reject_non_finite(&[("e0".into(), g)]),
-                    Err(TopologyCodecError::NonFinite)
+                    Err(TopologyCodecError::NonFinite { entity: Some(ref id) }) if id == "e0"
                 ),
                 "{name} passed the non-finite gate"
             );
@@ -722,17 +783,7 @@ mod tests {
         // directly on a real square topology (mirroring the input-gate test)
         // because no payload reliably drives DERIVED floats non-finite across
         // numeric refactors; one slot class per case.
-        fn square() -> TopologyOut {
-            let input = json!([
-                ["a", {"start": [0.0, 0.0], "end": [2.0, 0.0]}],
-                ["b", {"start": [2.0, 0.0], "end": [2.0, 2.0]}],
-                ["c", {"start": [2.0, 2.0], "end": [0.0, 2.0]}],
-                ["d", {"start": [0.0, 2.0], "end": [0.0, 0.0]}],
-            ]);
-            let bytes = serde_json::to_vec(&input).unwrap();
-            super::super::detect_topology(&decode_input(&bytes).unwrap(), &[])
-        }
-        assert!(encode_output(&square()).is_ok());
+        assert!(encode_output(&square_topology()).is_ok());
         type Poison = fn(&mut TopologyOut);
         let cases: Vec<(&str, Poison)> = vec![
             ("vertex.x", |out: &mut TopologyOut| {
@@ -783,12 +834,119 @@ mod tests {
             }),
         ];
         for (name, poison) in cases {
-            let mut out = square();
+            let mut out = square_topology();
             poison(&mut out);
             assert!(
-                matches!(encode_output(&out), Err(TopologyCodecError::NonFinite)),
+                matches!(
+                    encode_output(&out),
+                    Err(TopologyCodecError::NonFinite { .. })
+                ),
                 "{name} serialized instead of being rejected"
             );
         }
+    }
+
+    #[test]
+    fn two_identical_degenerate_ellipses_build_a_finite_topology() {
+        // An edge-on projected circle lowers to the ellipse [20, 0, 3, 0, 0],
+        // and projecting a hole's edge together with the circle that cut it
+        // puts two of them in one sketch. The b = 0 carrier made the scanned
+        // hit parameter recover NaN, which the output gate refused as a bare
+        // `NonFinite` and the whole sketch became an exception. A zero-area
+        // carrier must never take the sketch down.
+        let input = json!([
+            ["e0", {"kind": "ellipse", "center": [20.0, 0.0], "a": 3.0, "b": 0.0, "theta": 0.0}],
+            ["e1", {"kind": "ellipse", "center": [20.0, 0.0], "a": 3.0, "b": 0.0, "theta": 0.0}],
+        ]);
+        let bytes = serde_json::to_vec(&input).unwrap();
+        let out = super::super::detect_topology(&decode_input(&bytes).unwrap(), &[]);
+        let encoded = encode_output(&out).expect("a degenerate ellipse must not fail the sketch");
+        let v: Value = serde_json::from_slice(&encoded).unwrap();
+        assert!(
+            v["surfaces"].as_array().unwrap().is_empty(),
+            "a zero-area carrier bounds no face"
+        );
+        // Pinned outcome: each degenerate ellipse is still its segment (the two
+        // ends of the major axis), so both entities contribute authored edges.
+        // It is not treated as an incomplete entity and dropped.
+        let edges = v["edges"].as_array().unwrap();
+        for eid in ["e0", "e1"] {
+            assert!(
+                edges.iter().any(|e| e["entity_id"] == json!(eid)),
+                "{eid} lost its segment edges"
+            );
+        }
+        assert!(edges.iter().all(|e| {
+            e["start"]
+                .as_array()
+                .is_some_and(|p| p.iter().all(|x| x.as_f64().is_some_and(f64::is_finite)))
+        }));
+    }
+
+    #[test]
+    fn a_fully_collapsed_ellipse_bounds_nothing_and_does_not_fail() {
+        // a = b = 0 is a point, not a curve: it has no extents to intersect,
+        // split or close, so it contributes no vertex, edge or face. It must
+        // still decode and build rather than raising `NonFinite`.
+        let input = json!([
+            ["e0", {"kind": "ellipse", "center": [0.0, 0.0], "a": 0.0, "b": 0.0, "theta": 0.0}],
+            ["e1", {"kind": "ellipse", "center": [0.0, 0.0], "a": 0.0, "b": 0.0, "theta": 0.0}],
+        ]);
+        let bytes = serde_json::to_vec(&input).unwrap();
+        let out = super::super::detect_topology(&decode_input(&bytes).unwrap(), &[]);
+        let encoded = encode_output(&out).expect("a collapsed ellipse must not fail the sketch");
+        let v: Value = serde_json::from_slice(&encoded).unwrap();
+        assert!(v["vertices"].as_object().unwrap().is_empty());
+        assert!(v["edges"].as_array().unwrap().is_empty());
+        assert!(v["surfaces"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_non_finite_input_value_names_the_entity_it_came_from() {
+        // The user sees this message on the sketch, so "NonFinite" alone left
+        // them with no way to find the curve that poisoned the build.
+        let g = RawGeom {
+            a: Some(f64::NAN),
+            ..RawGeom::default()
+        };
+        let err = reject_non_finite(&[("e7".into(), g)]).unwrap_err();
+        assert_eq!(err.to_string(), "non-finite value from entity 'e7'");
+    }
+
+    #[test]
+    fn a_non_finite_computed_edge_names_the_entity_it_came_from() {
+        let mut out = square_topology();
+        if let EdgeGeom::Line { start, .. } = &mut out.edges[0].geom {
+            start[0] = f64::NAN;
+        }
+        let err = encode_output(&out).expect_err("a NaN edge is refused");
+        assert_eq!(err.to_string(), "non-finite value from entity 'a'");
+    }
+
+    #[test]
+    fn a_non_finite_surface_edge_names_its_source_entity() {
+        // The standalone pass copies the entity id onto the boundary edge, so a
+        // poisoned surface edge names its curve the same way a whole edge does.
+        let input = json!([["e0", {"kind": "ellipse", "center": [0.0, 0.0], "a": 3.0, "b": 1.0, "theta": 0.0}]]);
+        let bytes = serde_json::to_vec(&input).unwrap();
+        let mut out = super::super::detect_topology(&decode_input(&bytes).unwrap(), &[]);
+        if let EdgeGeom::Ellipse { b, .. } = &mut out.surfaces[0].boundary[0].geom {
+            *b = f64::NAN;
+        }
+        let err = encode_output(&out).expect_err("a NaN boundary edge is refused");
+        assert_eq!(err.to_string(), "non-finite value from entity 'e0'");
+    }
+
+    #[test]
+    fn a_non_finite_registered_point_is_reported_without_an_entity() {
+        // A vertex is minted where two entities meet, so no single entity owns
+        // it; the message says so instead of guessing one.
+        let mut out = square_topology();
+        out.vertices[0].1[0] = f64::INFINITY;
+        let err = encode_output(&out).expect_err("a non-finite vertex is refused");
+        assert_eq!(
+            err.to_string(),
+            "non-finite value not attributable to one entity"
+        );
     }
 }
