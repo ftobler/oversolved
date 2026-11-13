@@ -21,7 +21,7 @@ import { featureParamsSchema } from '@/persistence/partDocSchema'
 import { applySetPlaneDefinitionField } from '@/utils/yamlMutations/featureAdmin'
 import { applySetHoleField } from '@/utils/yamlMutations/featureDefs'
 import { FIELD_SETTER_KIND } from '../mutationCatalog'
-import { EMPTY_REF_CLEARS } from '../mutationValues'
+import { EMPTY_REF_CLEARS, mutationValueViolation } from '../mutationValues'
 import { sketchAt, featureById } from '@/testing/featureAccess'
 import { Repository, makeAncestryQuery } from '@/kernel/query'
 import { collectExtrudeLoops } from '@/kernel/features/faceProfile'
@@ -900,6 +900,28 @@ describe('finding: a projection source takes an inline selector', () => {
     expect(error.message).toContain('source')
     expect(error.message).toContain('solved bodies')
     expect(error.message).not.toContain('must be string')
+  })
+
+  it('refuses a present non-string kind the selector step left in place', () => {
+    // The drive fills a missing kind from the matched element, but a present
+    // value is the author's: a number is refused here, exactly as it is with a
+    // string source, instead of being silently replaced by the inferred kind.
+    const violation = mutationValueViolation('add_projected_entity', {
+      type: 'add_projected_entity', featureId: 'sk2', kind: 5,
+      source: { selector: { kind: 'edge' } },
+    }, { doc: null, fieldSchema: () => null })
+    expect(violation?.code).toBe('invalid-mutation')
+    expect(violation?.message).toContain('kind must be an entity kind string, got 5')
+  })
+
+  it('reuses the selector shape hint for a malformed grammar on the bridge', () => {
+    const error = refusal({
+      type: 'add_projected_entity', featureId: 'sk2', kind: 'line',
+      source: { selector: { kind: 'face', type: 'flatface' } },
+    })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('source: selector has unknown key "type"')
+    expect(error.message).toContain('{selector: {kind: "face", where: {type: "flatface"}}}')
   })
 
   it('still refuses an object source that is not a {selector} pick', () => {

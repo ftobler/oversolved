@@ -131,10 +131,12 @@ const resolvedQueries = (value: (string | SelectorRef)[] | undefined): string[] 
   })
 
 // The drive fills a projection's omitted kind from the element its selector
-// matched, so the applier always receives the pair. A caller that skipped both
-// gates has nothing to store as an element kind.
+// matched, so the applier always receives the pair. This fires both for a
+// missing kind on a string source (the author must name one) and for a caller
+// that skipped both gates with a selector.
 const UNRESOLVED_PROJECTION_KIND =
-  'add_projected_entity reached the applier without a kind; the drive infers it from a resolved {selector} source'
+  'add_projected_entity reached the applier without a kind; a string source must name one, '
+  + 'and the drive fills it only from a {selector} source it resolved'
 
 export const mutationHandlers: MutationHandlers = {
   move_vertex: (next, m) =>

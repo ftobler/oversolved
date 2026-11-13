@@ -207,6 +207,33 @@ describe.skipIf(!ready)('selector picks through the headless drive (real OCC)', 
     expect(feature.fillet.edges.length).toBeGreaterThan(1)
   }, 240_000)
 
+  it('chamfers every edge a selector matches in one step and stores the queries', async () => {
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const built = await runHeadless({ doc: emptyDoc(), steps: box.steps })
+    expect(built.ok).toBe(true)
+    const edges = (await selectHeadless(built.doc!, {
+      kind: 'edge',
+      where: { parallel: [0, 1, 0] },
+    }))!.queries
+    expect(edges).toHaveLength(4)
+
+    const chamfered = await runHeadless({
+      doc: structuredClone(built.doc!),
+      steps: [step({
+        type: 'add_chamfer', featureId: 'ch1',
+        edges: [{ selector: { kind: 'edge', where: { parallel: [0, 1, 0] } } }],
+        distance: 1,
+      })],
+    })
+    expect(chamfered.ok).toBe(true)
+    expect(chamfered.features.find(problem => problem.id === 'ch1')).toBeUndefined()
+    const feature = chamfered.doc?.features?.find(candidate => candidate.id === 'ch1')
+    expect(feature?.kind).toBe('chamfer')
+    if (feature?.kind !== 'chamfer') return
+    expect(feature.chamfer.edges).toEqual(edges)
+    expect(feature.chamfer.edges.length).toBeGreaterThan(1)
+  }, 240_000)
+
   it('projects a body edge named by a selector in one step, matching the pasted query', async () => {
     const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
     const built = await runHeadless({ doc: emptyDoc(), steps: box.steps })
@@ -217,7 +244,10 @@ describe.skipIf(!ready)('selector picks through the headless drive (real OCC)', 
       where: { and: [{ parallel: [0, 1, 0] }, { extreme: { axis: [0, 1, 0], side: 'max' } }] },
     }
     // A single edge of the box's top face: four of its edges run along x, the Y
-    // extreme keeps the two on the face, and the Z extreme keeps the one at z=0.
+    // extreme keeps the two on the face, and the Z extreme keeps the one whose
+    // midpoint is highest in z. The Top plane's y axis is -Z, so the rect spans
+    // z -30..0 and that edge runs (0,10,0)-(40,10,0); the test asserts its 2D
+    // position below, so a changed frame fails here rather than passing quietly.
     const edgeSelector = {
       kind: 'edge',
       where: {

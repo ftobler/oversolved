@@ -363,6 +363,34 @@ describe('resolveSelectionAids', () => {
     expect(resolved.message).toContain('{selector: {kind: "edge", where: {type: "line"}}}')
   })
 
+  it('takes the example kind from a malformed face selector itself', () => {
+    // A projection source accepts any element kind, so the hint cannot assume
+    // edge: this selector says face, and a face's type predicate is a surface.
+    const resolved = resolveSelectionAids(
+      {
+        type: 'add_projected_entity', featureId: 'sk2', kind: 'point',
+        source: { selector: { kind: 'face', type: 'flatface' } },
+      },
+      twoBodies(),
+    )
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) return
+    expect(resolved.code).toBe('invalid-ref')
+    expect(resolved.message).toContain('{selector: {kind: "face", where: {type: "flatface"}}}')
+  })
+
+  it('leaves a present non-string kind for the value rules to refuse', () => {
+    const resolved = resolveSelectionAids(
+      { type: 'add_projected_entity', featureId: 'sk2', kind: 5, source: oneEdgeSelector },
+      bodiesWithEdges(),
+    )
+    expect(resolved.ok).toBe(true)
+    if (!resolved.ok) return
+    const mutation = resolved.mutation as { kind: unknown; source: string }
+    expect(mutation.kind).toBe(5)
+    expect(mutation.source).toBe(q('body_a', ['@u|e_1'], 'straightedge'))
+  })
+
   it('passes a string projection source through untouched', () => {
     // `select` walks bodies only, so the origin and another sketch's geometry
     // are already the stored form and have no selector spelling.

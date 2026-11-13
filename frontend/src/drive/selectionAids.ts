@@ -49,13 +49,29 @@ function pickOf(value: unknown): boolean {
 // different mistake and must keep its plain message.
 const UNKNOWN_SELECTOR_KEY = /^selector has unknown key "([^"]+)"/
 
+const SELECT_KINDS: readonly SelectKind[] = ['edge', 'face', 'vertex']
+
+/** The kind a raw `{selector}` pick declares, when it names a valid one. A
+ *  malformed selector is exactly the case a hint is needed for, so this reads
+ *  the declared kind without trusting the grammar to validate. */
+export function declaredSelectorKind(value: unknown): SelectKind | null {
+  if (!isRecord(value) || !isRecord(value.selector)) return null
+  const kind = value.selector.kind
+  // The list is a const tuple, so a string membership check needs the widening.
+  return typeof kind === 'string' && (SELECT_KINDS as readonly string[]).includes(kind)
+    ? kind as SelectKind
+    : null
+}
+
 /**
  * A predicate key placed at the selector's top level is a real practice-round
  * mistake: `{selector: {type: "flatface"}}`. The kernel names the unknown key
  * but not the shape, so add the shape and the corrected spelling. The predicate
  * list is the grammar's own PREDICATE_KEYS, so a new predicate cannot drift.
+ * Exported so the browser bridge (mutationValues) gives the same correction as
+ * the drive, off the selector's own declared kind.
  */
-function selectorShapeHint(message: string, kind: SelectKind): string {
+export function selectorShapeHint(message: string, kind: SelectKind): string {
   const key = UNKNOWN_SELECTOR_KEY.exec(message)?.[1]
   // The list is a const tuple, so a string membership check needs the widening.
   if (key === undefined || !(PREDICATE_KEYS as readonly string[]).includes(key)) return message
@@ -128,12 +144,12 @@ function resolvePick(
     selector = selectorOf(value)
   } catch (e) {
     if (e instanceof SelectorError) {
-      // Without a fixed kind the selector's own is the example to suggest; the
-      // hint only distinguishes a face's surface type from an edge's kind.
+      // The selector's own kind is the example the hint should suggest, and the
+      // grammar check that just failed may be why it is not listed in the rule.
       return {
         ok: false,
         code: 'invalid-ref',
-        message: `${label}: ${selectorShapeHint(e.message, rule.kind ?? 'edge')}`,
+        message: `${label}: ${selectorShapeHint(e.message, declaredSelectorKind(value) ?? rule.kind ?? 'edge')}`,
       }
     }
     throw e
@@ -195,9 +211,12 @@ function planeStep(raw: RawStep, bodies: Record<string, BodyResult> | null): Sel
 }
 
 /** The sketch entity kind an omitted projection `kind` infers from the element
- *  the selector matched: an edge keeps its curve kind, a vertex or face projects
- *  as its own point. This is the UI's own mapping (projectedKindForEdge), so the
- *  drive and the project tool cannot declare different kinds for one edge. */
+ *  the selector matched. An edge uses the UI's own mapping (projectedKindForEdge),
+ *  so the drive and the project tool cannot declare different curve kinds for
+ *  one edge. A vertex projects as its point. A face is the one divergence: the
+ *  drive infers a point (its centroid, what the lowerer reads), while the UI
+ *  expands a face pick into its boundary wire when the body reports one. The
+ *  kind is a pick-time hint either way, so the lowerer's resolved geometry wins. */
 function projectedKindOf(item: SelectItem): string {
   return item.kind === 'edge' ? projectedKindForEdge(item.geometry.kind) : 'point'
 }
@@ -206,9 +225,10 @@ function sourceStep(raw: RawStep, bodies: Record<string, BodyResult> | null): Se
   if (!pickOf(raw.source)) return { ok: true, mutation: raw }
   const pick = resolvePick(raw.source, bodies, `${raw.type as string} source`, PROJECTION_SOURCE_PICK)
   if (!pick.ok) return pick
-  // A declared kind is the author's pick-time hint and stays as written; only a
-  // missing one is filled, from the element that actually matched.
-  const kind = typeof raw.kind === 'string' ? raw.kind : projectedKindOf(pick.items[0])
+  // Fill only a missing kind. A present but wrong one (kind: 5) is left for the
+  // value rules to refuse rather than silently corrected here, the same refusal
+  // the string source form gets.
+  const kind = raw.kind === undefined ? projectedKindOf(pick.items[0]) : raw.kind
   return { ok: true, mutation: { ...raw, kind, source: pick.queries[0] } }
 }
 
