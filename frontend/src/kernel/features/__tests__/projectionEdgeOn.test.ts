@@ -1,9 +1,12 @@
 // @vitest-environment node
 //
-// The solve-level half of edge-on curve projection: a projected entity whose
-// source is seen edge-on adopts the `line` kind (a stored degenerate ellipse
-// re-lowers on its next solve, no migration), and a declared `point` on a
-// curved source is that curve's centre. Skips when the Rust solver is absent.
+// The solve-level half of projection kind re-resolution: a projected entity
+// whose source is seen edge-on adopts the `line` kind (a stored degenerate
+// ellipse re-lowers on its next solve, no migration), a line perpendicular to
+// the plane adopts the `point` kind, and a declared `point` on a curved source
+// is that curve's centre. A constraint naming a key the resolved kind does not
+// have is dropped with a `dropped_constraints` record and revives when the
+// source turns back. Skips when the Rust solver is absent.
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { solveSketch, setSketchSolver, resetSketchSolver } from '../sketch'
@@ -41,7 +44,7 @@ function sketchWith(feature: Dict): Dict {
   }
 }
 
-describe('solveSketch lowers an edge-on curve to a line', () => {
+describe('solveSketch re-resolves a projected kind seen edge-on or end-on', () => {
   beforeEach(() => {
     resetSketchSolver()
     if (solveBytes) setSketchSolver(solveBytes)
@@ -97,6 +100,74 @@ describe('solveSketch lowers an edge-on curve to a line', () => {
     expect(out.projection_errors).toBeUndefined()
     expect(out.geometry?.held).toHaveLength(4)
     expect(out.resolved_kinds).toEqual({ held: 'line' })
+  })
+
+  // A Front sketch holding a projected line and a point coincident to its
+  // start, authored while the projection is a real line. Each test builds a
+  // fresh one: the in-process solve writes the resolved kind into the entity
+  // def, so sharing one instance would carry that state between tests.
+  function startRowFeature(): Dict {
+    return sketchWith({
+      entities: [{ id: 'l0', kind: 'line' }, { id: 'p0', kind: 'point' }],
+      initial: { p0: [10, 10] },
+      constraints: [
+        { id: 'proj_l0', kind: 'projection', target: '$l0', source: '?edge;line' },
+        { id: 'cc', kind: 'coincident', a: '$p0xy', b: '$l0start' },
+      ],
+    })
+  }
+
+  // The source line runs along world +Z, the Front plane's normal, so its
+  // projection is one point.
+  const endOnLine: Dict = { type: 'edge', kind: 'line', start: [2, 3, -4], end: [2, 3, 6] }
+  // The same line swung 7 units along +X: Front-local (2, 3) -> (9, 3).
+  const slantLine: Dict = { type: 'edge', kind: 'line', start: [2, 3, -4], end: [9, 3, 6] }
+
+  it('16. drops a start row on a line that resolves to a point', () => {
+    if (!solveBytes) return
+    // The coincident authored on the line's start has no start key on the
+    // resolved point, so the kind-change rule drops it by name and leaves the
+    // free point where it was; the row stays in the document.
+    const feature = startRowFeature()
+    const out = solveSketch(feature, stubRepo(endOnLine), {} as Record<string, Body>)
+    expect(out.projection_errors).toBeUndefined()
+    expect(out.resolved_kinds).toEqual({ l0: 'point' })
+    expect(out.geometry?.l0).toEqual([2, 3])
+    expect(out.dropped_constraints).toEqual([
+      { id: 'cc', kind: 'coincident', reason: 'operand start not on point' },
+    ])
+    expect(feature.constraints).toHaveLength(2)
+    // The free point is not dragged onto the projected point.
+    expect(out.geometry?.p0).toEqual([10, 10])
+  })
+
+  it('17. a line that leaves perpendicular resolves back to a line and the retained row lowers again', () => {
+    if (!solveBytes) return
+    // The same document across two solves, the way a session sees it: the first
+    // solve builds the point and writes that kind into the entity def, so the
+    // second reports the flip back and the retained row is valid again.
+    const feature = startRowFeature()
+    const endOn = solveSketch(feature, stubRepo(endOnLine), {} as Record<string, Body>)
+    expect(endOn.resolved_kinds).toEqual({ l0: 'point' })
+    expect(endOn.dropped_constraints).toHaveLength(1)
+
+    const back = solveSketch(feature, stubRepo(slantLine), {} as Record<string, Body>)
+    expect(back.projection_errors).toBeUndefined()
+    // Point -> line is a real kind change: the entity def says `point` after
+    // the first solve, so the second resolve is reported and the row binds the
+    // projected segment's start again.
+    expect(back.resolved_kinds).toEqual({ l0: 'line' })
+    expect(back.dropped_constraints).toBeUndefined()
+    // The pinned projection round-trips through the solver a few 1e-11 off the
+    // lowered params; the start the retained row binds is the solved one.
+    const g = back.geometry!.l0
+    expect(g[0]).toBeCloseTo(2, 6)
+    expect(g[1]).toBeCloseTo(3, 6)
+    expect(g[2]).toBeCloseTo(9, 6)
+    expect(g[3]).toBeCloseTo(3, 6)
+    expect(back.geometry?.p0?.[0]).toBeCloseTo(2, 6)
+    expect(back.geometry?.p0?.[1]).toBeCloseTo(3, 6)
+    expect(feature.constraints).toHaveLength(2)
   })
 })
 
@@ -240,33 +311,5 @@ describe('solveSketch projects a declared point on a curved source as its centre
     // Neither row left the document, and neither free entity was dragged.
     expect(feature.constraints).toHaveLength(3)
     expect(out.geometry?.u0).toEqual([10, 0, 2])
-  })
-
-  it('16. drops a start row on a line that resolves to a point', () => {
-    if (!solveBytes) return
-    // The source line runs along world +Z, the Front plane's normal, so its
-    // projection is one point. The coincident authored on the line's start has
-    // no start key on the resolved point, so the kind-change rule drops it by
-    // name and leaves the free point where it was; the row stays in the
-    // document, so a source that rotates out of perpendicular re-enables it.
-    const feature = sketchWith({
-      entities: [{ id: 'l0', kind: 'line' }, { id: 'p0', kind: 'point' }],
-      initial: { p0: [10, 10] },
-      constraints: [
-        { id: 'proj_l0', kind: 'projection', target: '$l0', source: '?edge;line' },
-        { id: 'cc', kind: 'coincident', a: '$p0xy', b: '$l0start' },
-      ],
-    })
-    const endOnLine: Dict = { type: 'edge', kind: 'line', start: [2, 3, -4], end: [2, 3, 6] }
-    const out = solveSketch(feature, stubRepo(endOnLine), {} as Record<string, Body>)
-    expect(out.projection_errors).toBeUndefined()
-    expect(out.resolved_kinds).toEqual({ l0: 'point' })
-    expect(out.geometry?.l0).toEqual([2, 3])
-    expect(out.dropped_constraints).toEqual([
-      { id: 'cc', kind: 'coincident', reason: 'operand start not on point' },
-    ])
-    expect(feature.constraints).toHaveLength(2)
-    // The free point is not dragged onto the projected point.
-    expect(out.geometry?.p0).toEqual([10, 10])
   })
 })

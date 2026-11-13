@@ -147,6 +147,18 @@ describe('end-on line projection', () => {
     const kept = projectTo2d(leaning(1e-3), XY)!
     expect(kept.kind).toBe('line')
     expect(kept.params).toEqual([2, 3, 2 + 1e-3, 3])
+
+    // The opposite separation, so the classification cannot be an angle rule:
+    // a line only 1e-5 long but laid at 45 degrees to the plane projects
+    // 7.07e-6, under the rung, and collapses. A rule keyed on the tilt keeps
+    // it, because 45 degrees is nowhere near perpendicular.
+    const steep = projectTo2d({
+      kindH: 'line',
+      data: { start: [2, 3, 0], end: [2 + 1e-5 / Math.SQRT2, 3, 1e-5 / Math.SQRT2] },
+    }, XY)!
+    expect(steep.kind).toBe('point')
+    expect(steep.params[0]).toBeCloseTo(2 + 1e-5 / (2 * Math.SQRT2), 9)
+    expect(steep.params[1]).toBeCloseTo(3, 9)
   })
 
   it('3. a foreign sketch line lifted through a perpendicular frame becomes a point', () => {

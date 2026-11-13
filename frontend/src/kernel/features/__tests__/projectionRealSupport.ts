@@ -18,7 +18,7 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { volumeOf } from '../../occ/booleans'
 import type { SharedHarness } from '../../occ/sharedHarness'
 import type { BuildResponse } from '../../builder'
-import type { EdgeData, PartDoc } from '@/types/cad'
+import type { DroppedSketchConstraint, EdgeData, PartDoc } from '@/types/cad'
 import type { OccShape } from '../../occ/occTypes'
 
 export { oc, solveBytes } from '../extrudeRealSupport'
@@ -115,6 +115,20 @@ export function projectionTestHarness(): ProjectionHarness {
       return cached
     },
   }
+}
+
+/** The sketch solve fields the projection pins read. */
+export interface SketchOut {
+  geometry?: Record<string, number[]>
+  projection_errors?: string[]
+  resolved_kinds?: Record<string, string>
+  dropped_constraints?: DroppedSketchConstraint[]
+  status?: string
+}
+
+/** One sketch's solve result by feature id, typed to the fields above. */
+export function sketchOut(h: SharedHarness, result: BuildResponse, id: string): SketchOut {
+  return h.res(result, id) as SketchOut
 }
 
 /** Volume of one body a feature produced, read from that feature's checkpoint. */

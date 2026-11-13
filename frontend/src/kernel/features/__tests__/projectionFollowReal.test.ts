@@ -22,21 +22,15 @@ import { applySolveToDoc } from '@/drive/solveWriteBack'
 import type { PartDoc, PartFeature, SketchFeature } from '@/types/cad'
 import {
   BOX, BOX_EXTRUDE_ID, BOX_SKETCH_ID, HOLE_CENTRE,
-  bodyVolume, oc, projectionBaseDoc, projectionTestHarness, solveBytes,
+  bodyVolume, oc, projectionBaseDoc, projectionTestHarness, sketchOut, solveBytes,
+  type SketchOut,
 } from './projectionRealSupport'
 
 const { h, base } = projectionTestHarness()
 
-/** The sketch solve fields these pins read. */
-type SketchOut = {
-  geometry?: Record<string, number[]>
-  projection_errors?: string[]
-  resolved_kinds?: Record<string, string>
-}
-
 const run = (doc: PartDoc) => h.run(doc as unknown as Record<string, unknown>)
 const sketchOf = (result: ReturnType<typeof run>, id: string): SketchOut =>
-  h.res(result, id) as SketchOut
+  sketchOut(h, result, id)
 
 /** The plane the tilted-plane and annulus cases sit on: Front's frame, moved to
  *  z = 10 and rotated about x, so the hole's front circle projects as an

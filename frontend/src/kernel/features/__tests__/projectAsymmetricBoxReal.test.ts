@@ -31,7 +31,7 @@ import { SharedHarness } from '../../occ/sharedHarness'
 import { setSketchSolver, setSketchTopology, resetSketchSolver } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
-import { BUILTIN_PLANES } from '../../solverConstants'
+import { BUILTIN_PLANES, TOL_TOPOLOGY_MERGE } from '../../solverConstants'
 import type { EdgeData } from '@/types/cad'
 
 const oc = await loadOcc()
@@ -68,9 +68,10 @@ function pointMatches(got: number[], e: [number, number]): boolean {
 
 /** The projected geometry matches what this edge's true projection is: a point
  *  when the edge is perpendicular to the plane (its two projected ends
- *  coincide), its segment otherwise. */
+ *  coincide), its segment otherwise. The span test is the lowering's own merge
+ *  rung, so this helper cannot disagree with the rule it pins. */
 function projectionMatches(got: number[], e0: [number, number], e1: [number, number]): boolean {
-  const perpendicular = close(e0[0], e1[0]) && close(e0[1], e1[1])
+  const perpendicular = Math.hypot(e1[0] - e0[0], e1[1] - e0[1]) <= TOL_TOPOLOGY_MERGE
   return perpendicular ? pointMatches(got, e0) : lineMatches(got, e0, e1)
 }
 
