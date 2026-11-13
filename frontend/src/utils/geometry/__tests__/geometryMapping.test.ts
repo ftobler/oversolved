@@ -193,6 +193,26 @@ describe('computeConstraintRender - radius / diameter exact extent', () => {
     expect(computeConstraintRender({ id: 'R', kind: 'radius', target: '$GONE' }, sketch)).toEqual({ kind: 'unknown' })
     expect(computeConstraintRender({ id: 'D', kind: 'diameter', target: '$GONE' }, sketch)).toEqual({ kind: 'unknown' })
   })
+
+  it('radius and diameter on a kind that changed under them render the unknown tile', () => {
+    // A projected circle that tilts to an ellipse, or goes edge-on as a line,
+    // leaves the authored row in the document while the solve drops it by name.
+    // The renderer reads that row's target against the SOLVED sketch, so the
+    // cast has to survive a kind with no single radius.
+    const changed: Sketch = {
+      L: { start: [0, 0], end: [4, 0] },
+      E: { center: [1, 2], a: 3, b: 1, theta: 0 },
+    }
+    // The outer fallback wraps the unknown render in a selectable tile (so the
+    // row can still be found and deleted); what matters is that it does not
+    // read a radius off a kind that has none.
+    for (const target of ['$L', '$E']) {
+      for (const kind of ['radius', 'diameter']) {
+        expect(computeConstraintRender({ id: 'X', kind, target }, changed))
+          .toMatchObject({ kind: 'symbol_unknown', entity: expect.any(String) })
+      }
+    }
+  })
 })
 
 describe('computeConstraintRender - linear normal', () => {

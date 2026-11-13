@@ -7,6 +7,11 @@
 import type { SketchFeature } from '@/types/cad'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { resolveVertexRef } from '@/types/vertexRef'
+import {
+  constraintEntityKindProblem,
+  type ConstraintKindOperand,
+  type ConstraintOperandRole,
+} from './constraintApplicability'
 import { pointDistanceZeroProblem } from './yamlMutations/helpers'
 import { dimensionSizeProblem } from './entitySizeProblems'
 import {
@@ -157,6 +162,45 @@ function groupProblem(
   return null
 }
 
+/** The field the applier will store a pick in: a lone pick is `target`, the
+ *  first of a pair `a`, the second `b` (the overloaded horizontal/vertical and
+ *  the a_b kinds), and anything past that an unjudged operand. */
+function pickRole(index: number, count: number): ConstraintOperandRole {
+  if (count === 1) return 'target'
+  return index === 0 ? 'a' : index === 1 ? 'b' : 'operand'
+}
+
+/**
+ * The current kind of every target that names a WHOLE entity, with the field it
+ * will be stored in. A vertex ref, the builtin origin and an unmaterialized
+ * `dock:`/`isect:` handle name points, not entity kinds, so they are left out; a
+ * target the sketch does not hold is unresolved and the lowering's stale-ref
+ * path owns it.
+ */
+function wholeEntityOperands(
+  featureId: string,
+  entityIds: ReadonlySet<string>,
+  kindById: ReadonlyMap<string, string>,
+  targets: readonly string[],
+): ConstraintKindOperand[] {
+  const operands: ConstraintKindOperand[] = []
+  for (let i = 0; i < targets.length; i++) {
+    const text = String(targets[i])
+    if (text === '@builtin_origin' || text.startsWith('vertex:') || text.startsWith('dock:') || text.startsWith('isect:')) continue
+    let entity: string | null = null
+    if (text.startsWith('$')) {
+      const resolved = resolveVertexRef(entityIds, text)
+      if (resolved !== null && resolved.point === undefined) entity = resolved.entity
+    } else {
+      const parts = text.split(':')
+      if (parts[0] === 'entity' && parts[1] === featureId && parts[2] !== undefined) entity = parts[2]
+    }
+    const kind = entity === null ? undefined : kindById.get(entity)
+    if (kind !== undefined) operands.push({ role: pickRole(i, targets.length), kind })
+  }
+  return operands
+}
+
 /** The sentence a refused midpoint carries. The accepted shapes come from the
  *  catalog note, so a caller learns what to write instead of only what failed. */
 export function midpointShapeReason(targets: readonly string[]): string {
@@ -218,16 +262,16 @@ export function addConstraintProblem(
   }
 
   if (kind === 'horizontal' || kind === 'vertical') {
-    // Overloaded: one line -> `target`, two points -> `a`/`b`. A whole entity in
-    // the a/b slot resolves to one sub-point and yields a degenerate residual
-    // that is often already satisfied, so the line never turns. Empty falls
-    // through both forms, so it is refused too.
+    // Overloaded: one line -> `target`, two points -> `a`/`b`. More than two is
+    // neither form. The kinds of a two-pick list are the entity-kind table's
+    // judgement below: a whole point entity is a legal point there, while a whole
+    // line or curve is the degenerate sub-point pick the table refuses (the same
+    // pick `dropDeadAxisConstraints` prunes), whichever spelling named it.
     // See bugreports/vertical_constraint_20260621_102915.md.
     if (targets.length < 1) return `${kind} needs a target`
-    if (targets.length >= 2 && (targets[0].startsWith('entity:') || targets[1].startsWith('entity:'))) {
+    if (targets.length > 2) {
       return `${kind} needs one line or two points, got ${JSON.stringify(targets)}`
     }
-    return null
   }
 
   if (kind === 'colinear') {
@@ -242,6 +286,20 @@ export function addConstraintProblem(
   if (kind === 'group') {
     return groupProblem(feature, featureId, targets, value)
   }
+
+  // A well-formed pick whose entity kind the constraint cannot represent has no
+  // solver row: a length on an arc, an equal across a line and an ellipse, a
+  // horizontal on a point. The one applicability table (constraintApplicability)
+  // is read here and by the solve-time lowering, so a pick refused here is one
+  // the solve would ignore. The converse is still possible for a projection: this
+  // reader sees the declared kind, the lowering the resolved one. Judged after
+  // the per-kind shape rules: a wrong operand count already has the more specific
+  // sentence.
+  const kindProblem = constraintEntityKindProblem(
+    kind,
+    wholeEntityOperands(featureId, entityIds, kindById, targets),
+  )
+  if (kindProblem !== null) return kindProblem
 
   // Generic kinds need operands: coincident pairs two refs, everything else at
   // least one. An empty (or single-target coincident) pick would otherwise

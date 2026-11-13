@@ -700,6 +700,10 @@ export function solveSketch(
   // sketch plane's local (0,0) -- which differ for a sketch on an offset/
   // projected face ("line constrained to origin" bug).
   const originLocal = projectWorldToFrame([0, 0, 0], plane as Frame3D)
+  // The lowered feature carries the kinds the projection pass adopted above, so
+  // the lowering's operand gate judges the rows on the resolved kind (a circle
+  // seen edge-on is a line there). This call must stay after
+  // `lowerProjectionConstraints` for that to hold.
   const pf = loweredFeature as unknown as SketchFeature
   const extract = partDocToSketches([pf], originLocal, pinnedIds)
   if (extract.skipped.length) {

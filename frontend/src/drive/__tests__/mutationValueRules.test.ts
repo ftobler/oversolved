@@ -492,13 +492,15 @@ describe('midpoint operand shapes', () => {
     expect(error.message).toContain('midpoint needs a line and a point, or three points')
   })
 
-  it('refuses a horizontal with a whole entity in the a/b slot', () => {
+  it('refuses a horizontal with a whole line entity in the a/b slot', () => {
+    // The kind table owns the two-pick kinds, so the drive refusal is the same
+    // sentence the solve-time lowering records for the stored row.
     const error = refusal({
       type: 'add_constraint', featureId: 'sk1', kind: 'horizontal',
       targets: ['entity:sk1:ax', 'vertex:sk1:ax:start'],
     }, midpointDoc())
     expect(error.code).toBe('invalid-mutation')
-    expect(error.message).toContain('horizontal needs one line or two points')
+    expect(error.message).toContain('horizontal does not apply to line')
   })
 })
 

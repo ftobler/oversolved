@@ -199,18 +199,51 @@ describe('solveSketch projects a declared point on a curved source as its centre
     const out = solveSketch(feature, stubRepo(edgeOnCircle), {} as Record<string, Body>)
     expect(out.resolved_kinds).toEqual({ c0: 'line' })
     expect(out.dropped_constraints).toEqual([
-      { id: 'cc', kind: 'coincident', reason: 'operand center not on line' },
+      {
+        id: 'cc', kind: 'coincident',
+        reason: 'operand center not on line; project the center as a point to keep it',
+      },
     ])
     expect(feature.constraints).toHaveLength(2)
     // The free point is not dragged onto the silhouette's start.
     expect(out.geometry?.p0).toEqual([10, 10])
   })
 
-  // The remaining generalisation: which keys a kind has is validated at
-  // lowering, but the full kind-applicability table (and the dropped-row reason
-  // wording for every key) is that plan's call. Before it, a key that a LINE
-  // does have (for example `start`) can still change meaning across a kind
-  // change without a dropped row.
-  it.todo('15. no kind change silently rebinds an operand key; generalise the key-existence drop '
-    + 'to the full applicability table (feature/projection-kind-change-operands.md)')
+  it('15b. an edge-on resolved kind also drops the constraint kinds it cannot take', () => {
+    if (!solveBytes) return
+    // Same edge-on circle, a second row the line kind cannot represent: an
+    // `equal_length` to a user circle. Both rows are authored while the
+    // projection resolved as a circle, then the centre key and the pair kind
+    // run out of meaning together. The user circle keeps its radius, so the
+    // drop is not a silent rebind onto the silhouette.
+    const feature = sketchWith({
+      entities: [{ id: 'c0', kind: 'circle' }, { id: 'u0', kind: 'circle' }],
+      initial: { u0: [10, 0, 2] },
+      constraints: [
+        { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
+        { id: 'cc', kind: 'coincident', a: '$u0center', b: '$c0center' },
+        { id: 'eq', kind: 'equal_length', a: '$c0', b: '$u0' },
+      ],
+    })
+    const edgeOnCircle: Dict = {
+      type: 'edge', kind: 'circle', center: [0, 0, 0], radius: 5, axis: [1, 0, 0], x_axis: [0, 1, 0],
+    }
+    const out = solveSketch(feature, stubRepo(edgeOnCircle), {} as Record<string, Body>)
+    expect(out.resolved_kinds).toEqual({ c0: 'line' })
+    expect(out.dropped_constraints).toEqual([
+      {
+        id: 'cc', kind: 'coincident',
+        reason: 'operand center not on line; project the center as a point to keep it',
+      },
+      { id: 'eq', kind: 'equal_length', reason: 'equal_length does not apply to line and circle' },
+    ])
+    // Neither row left the document, and neither free entity was dragged.
+    expect(feature.constraints).toHaveLength(3)
+    expect(out.geometry?.u0).toEqual([10, 0, 2])
+  })
+
+  // A line -> point kind change would drop `start`/`end` on the same rule; that
+  // transition belongs to its own plan.
+  it.todo('16. drops a start row on a line that resolves to a point '
+    + '(feature/projection-perpendicular-line.md)')
 })

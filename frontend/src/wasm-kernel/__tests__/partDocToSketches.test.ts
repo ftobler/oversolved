@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import type { PartFeature, PartConstraint } from '@/types/cad'
+import type { PartDoc, PartFeature, PartConstraint } from '@/types/cad'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { partDocToSketches } from '../partDocToSketches'
+import { addConstraintProblem } from '@/utils/constraintProblems'
+import { applyAddConstraint } from '@/utils/yamlMutations'
 import type { SketchFeature } from '@/types/cad'
 
 describe('partDocToSketches', () => {
@@ -114,6 +116,8 @@ describe('partDocToSketches', () => {
       },
     ]
     const { sketches } = partDocToSketches(features)
+    // A plain entity has no source to re-project, so the reason carries no
+    // remedy sentence.
     expect(sketches[0].droppedConstraints).toEqual([
       { id: 'bad', kind: 'coincident', reason: 'operand center not on line' },
     ])
@@ -127,19 +131,203 @@ describe('partDocToSketches', () => {
         kind: 'sketch',
         plane: '@builtin_plane_front',
         entities: [{ id: 'F1', kind: 'fit_spline' }, { id: 'P1', kind: 'point' }],
-        // Three fit points, no handles: start, fit1, end.
-        initial: { F1: [0, 0, 5, 5, 10, 0], P1: [1, 1] },
+        // Four fit points, no handles: start, fit1, fit2, end.
+        initial: { F1: [0, 0, 5, 5, 10, 0, 15, 5], P1: [1, 1] },
         constraints: [
           { id: 'fitted', kind: 'coincident', a: '$F1fit1', b: '$P1xy' },
-          { id: 'bad', kind: 'coincident', a: '$F1fit2', b: '$P1xy' },
+          { id: 'bad', kind: 'coincident', a: '$F1fit3', b: '$P1xy' },
         ],
       },
     ]
     const { sketches } = partDocToSketches(features)
     expect(sketches[0].droppedConstraints).toEqual([
-      { id: 'bad', kind: 'coincident', reason: 'operand fit2 not on fit_spline' },
+      { id: 'bad', kind: 'coincident', reason: 'operand fit3 not on fit_spline' },
     ])
     expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['fitted'])
+  })
+
+  it('drops a coincident whose center key the resolved spline lacks', () => {
+    // The arc -> spline half of the kind change: a spline has no `center`, so
+    // the row cannot bind one. Dropping it is what keeps the solver's fallback
+    // (the spline's midpoint) from reading as a solved coincidence.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'S1', kind: 'spline' }, { id: 'P1', kind: 'point' }],
+        initial: { S1: [0, 0, 5, 5, 10, 5, 15, 0], P1: [3, 4] },
+        constraints: [
+          { id: 'cc', kind: 'coincident', a: '$P1xy', b: '$S1center' },
+          { id: 'start', kind: 'coincident', a: '$P1xy', b: '$S1start' },
+        ],
+      },
+    ]
+    const { sketches } = partDocToSketches(features)
+    expect(sketches[0].droppedConstraints).toEqual([
+      { id: 'cc', kind: 'coincident', reason: 'operand center not on spline' },
+    ])
+    // `start` survives: a spline still has it.
+    expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['start'])
+  })
+
+  it('names the project-as-point remedy only for a projected entity', () => {
+    // The same lost key on an entity a `projection` holds can be kept by
+    // projecting the source's centre as a declared point, so only that row names
+    // the remedy. A plain entity has no source to re-aim.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'S1', kind: 'spline' }, { id: 'P1', kind: 'point' }],
+        initial: { S1: [0, 0, 5, 5, 10, 5, 15, 0], P1: [3, 4] },
+        constraints: [
+          { id: 'proj', kind: 'projection', target: '$S1', source: '?edge;circle' },
+          { id: 'cc', kind: 'coincident', a: '$P1xy', b: '$S1center' },
+        ],
+      },
+    ]
+    const { sketches } = partDocToSketches(features)
+    expect(sketches[0].droppedConstraints).toEqual([
+      {
+        id: 'cc', kind: 'coincident',
+        reason: 'operand center not on spline; project the center as a point to keep it',
+      },
+    ])
+  })
+
+  it('keeps the two-point horizontal/vertical form on whole point entities', () => {
+    // Horizontal/vertical are overloaded: the one-entity form is a line, but the
+    // a/b form compares two points resolved through `point()`, where a whole
+    // point entity IS the point. Judged by role, not by operand kind alone. A
+    // whole non-point entity in the pair is the degenerate pick
+    // `dropDeadAxisConstraints` prunes, so it is dropped here too.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [
+          { id: 'P1', kind: 'point' }, { id: 'P2', kind: 'point' }, { id: 'C1', kind: 'circle' },
+        ],
+        initial: { P1: [0, 0], P2: [0, 5], C1: [2, 2, 1] },
+        constraints: [
+          { id: 'v_pair', kind: 'vertical', a: '$P1', b: '$P2' },
+          { id: 'v_dead', kind: 'vertical', a: '$C1', b: '$P1' },
+          { id: 'h_target', kind: 'horizontal', target: '$P1' },
+        ],
+      },
+    ]
+    const { sketches } = partDocToSketches(features)
+    // The point pair lowers; the dead pair and the single-target-on-a-point drop.
+    expect(sketches[0].sketch.constraints.map(c => c.id)).toEqual(['v_pair'])
+    expect(sketches[0].droppedConstraints).toEqual([
+      { id: 'v_dead', kind: 'vertical', reason: 'vertical does not apply to circle and point' },
+      { id: 'h_target', kind: 'horizontal', reason: 'horizontal does not apply to point' },
+    ])
+  })
+
+  it('lowers the vertical pair the add-time rule authors for two point entities', () => {
+    // The parity the table claims, end to end: what `addConstraintProblem`
+    // accepts for a whole point pair is exactly what the lowering keeps.
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'P1', kind: 'point' }, { id: 'P2', kind: 'point' }],
+        initial: { P1: [0, 0], P2: [0, 5] },
+        constraints: [],
+      }],
+    }
+    applyAddConstraint(doc, 'sk1', 'vertical', ['entity:sk1:P1', 'entity:sk1:P2'])
+    const row = (doc.features![0] as SketchFeature).constraints![0]
+    expect(row).toMatchObject({ kind: 'vertical', a: '$P1', b: '$P2' })
+    const { sketches } = partDocToSketches(doc.features)
+    expect(sketches[0].droppedConstraints).toEqual([])
+    expect(sketches[0].sketch.constraints).toEqual([
+      { id: row.id, kind: 'vertical', a: { entity: 'P1' }, b: { entity: 'P2' } },
+    ])
+  })
+
+  it('drops a constraint kind the target entity kind cannot take', () => {
+    // The kind-applicability half, read from the registry table the add-time
+    // guards use: a point is not a line, an ellipse has no length or radius, and
+    // a line and an ellipse share no measure for `equal_length`.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [
+          { id: 'L1', kind: 'line' }, { id: 'P1', kind: 'point' },
+          { id: 'E1', kind: 'ellipse' }, { id: 'A1', kind: 'arc' },
+        ],
+        initial: { L1: [0, 0, 10, 0], P1: [1, 1], E1: [0, 0, 8, 4, 0], A1: [0, 0, 5, 0, 90] },
+        constraints: [
+          { id: 'h_point', kind: 'horizontal', target: '$P1' },
+          { id: 'len_arc', kind: 'length', target: '$A1', value: 5 },
+          { id: 'dia_ellipse', kind: 'diameter', target: '$E1', value: 8 },
+          { id: 'equal_mixed', kind: 'equal_length', a: '$L1', b: '$E1' },
+          { id: 'keep_h', kind: 'horizontal', target: '$L1' },
+          { id: 'keep_equal', kind: 'equal_length', a: '$A1', b: '$A1' },
+          { id: 'keep_center', kind: 'coincident', a: '$E1center', b: '$P1xy' },
+          // An ellipse shares its centre with a circle or an arc, so a concentric
+          // on a projection that tilted to an ellipse keeps its row.
+          { id: 'keep_concentric', kind: 'concentric', a: '$E1', b: '$A1' },
+        ],
+      },
+    ]
+    const { sketches } = partDocToSketches(features)
+    expect(sketches[0].droppedConstraints).toEqual([
+      { id: 'h_point', kind: 'horizontal', reason: 'horizontal does not apply to point' },
+      { id: 'len_arc', kind: 'length', reason: 'length does not apply to arc' },
+      { id: 'dia_ellipse', kind: 'diameter', reason: 'diameter does not apply to ellipse' },
+      { id: 'equal_mixed', kind: 'equal_length', reason: 'equal_length does not apply to line and ellipse' },
+    ])
+    // A centre key on a kind that has one is untouched: the gate only refuses
+    // the operands the current kind cannot take.
+    expect(sketches[0].sketch.constraints.map(c => c.id))
+      .toEqual(['keep_h', 'keep_equal', 'keep_center', 'keep_concentric'])
+  })
+
+  it('the add-time refusal and the solve-time drop name the same sentence', () => {
+    // One table, two readers, with no projection in play: the declared kind and
+    // the resolved kind are the same ellipse, so both must refuse it in the same
+    // words. A projection whose kind resolves away from its declaration is the
+    // solve's report, not an add-time refusal (see the table header).
+    const feature: SketchFeature = {
+      id: 'sk1',
+      kind: 'sketch',
+      plane: '@builtin_plane_front',
+      entities: [{ id: 'E1', kind: 'ellipse' }],
+      initial: { E1: [0, 0, 8, 4, 0] },
+      constraints: [{ id: 'd', kind: 'diameter', target: '$E1', value: 8 }],
+    }
+    const drop = partDocToSketches([feature]).sketches[0].droppedConstraints
+    expect(drop).toEqual([{ id: 'd', kind: 'diameter', reason: 'diameter does not apply to ellipse' }])
+    expect(addConstraintProblem(feature, 'diameter', ['$E1'], 8)).toBe(drop[0].reason)
+  })
+
+  it('never edits the document rows it drops', () => {
+    // A kind round trip (back to the kind the row was authored for) re-enables
+    // the row on the next solve only if the lowering left it in the document.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'E1', kind: 'ellipse' }],
+        initial: { E1: [0, 0, 8, 4, 0] },
+        constraints: [{ id: 'd', kind: 'diameter', target: '$E1', value: 8 }],
+      },
+    ]
+    const before = JSON.stringify(features)
+    expect(partDocToSketches(features).sketches[0].sketch.constraints).toEqual([])
+    expect(JSON.stringify(features)).toBe(before)
   })
 
   it('skips center_rect sketches', () => {

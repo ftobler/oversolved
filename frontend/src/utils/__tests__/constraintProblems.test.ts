@@ -17,13 +17,19 @@ function shapeDoc(): PartDoc {
     features: [{
       id: 'sk1',
       kind: 'sketch',
-      initial: { ax: [-2, 0, 2, 0], bx: [0, 1, 2, 1], o: [1, 1], p: [3, 3], c1: [0, 0, 2] },
+      initial: {
+        ax: [-2, 0, 2, 0], bx: [0, 1, 2, 1], o: [1, 1], p: [3, 3],
+        c1: [0, 0, 2], e1: [0, 0, 4, 2, 0], a1: [5, 5, 2, 0, 90], a2: [8, 8, 3, 0, 90],
+      },
       entities: [
         { id: 'ax', kind: 'line' },
         { id: 'bx', kind: 'line' },
         { id: 'o', kind: 'point' },
         { id: 'p', kind: 'point' },
         { id: 'c1', kind: 'circle' },
+        { id: 'e1', kind: 'ellipse' },
+        { id: 'a1', kind: 'arc' },
+        { id: 'a2', kind: 'arc' },
       ],
       constraints: [],
     }],
@@ -88,10 +94,28 @@ const cases: Case[] = [
     kind: 'horizontal', targets: ['vertex:sk1:ax:start', 'vertex:sk1:ax:end'], problem: null,
   },
   { name: 'horizontal no target', kind: 'horizontal', targets: [], problem: 'horizontal needs a target' },
+  // Both spellings of a whole non-point entity in the a/b slot reach the same
+  // entity-kind sentence; only a substituted point-style sub-ref (a vertex) is a
+  // legal point operand there.
   {
-    name: 'horizontal whole entity in the a/b slot',
+    name: 'horizontal line entity in the a/b slot',
     kind: 'horizontal', targets: ['entity:sk1:ax', 'vertex:sk1:ax:start'],
-    problem: 'horizontal needs one line or two points, got ["entity:sk1:ax","vertex:sk1:ax:start"]',
+    problem: 'horizontal does not apply to line',
+  },
+  {
+    name: 'horizontal dead pair, explicit refs',
+    kind: 'horizontal', targets: ['entity:sk1:c1', 'entity:sk1:o'],
+    problem: 'horizontal does not apply to circle and point',
+  },
+  {
+    name: 'horizontal dead pair, stored refs',
+    kind: 'horizontal', targets: ['$c1', '$o'],
+    problem: 'horizontal does not apply to circle and point',
+  },
+  {
+    name: 'horizontal three points',
+    kind: 'horizontal', targets: ['$oxy', '$pxy', 'vertex:sk1:ax:start'],
+    problem: 'horizontal needs one line or two points, got ["$oxy","$pxy","vertex:sk1:ax:start"]',
   },
   { name: 'vertical line', kind: 'vertical', targets: ['$ax'], problem: null },
   { name: 'colinear two lines', kind: 'colinear', targets: ['$ax', '$bx'], problem: null },
@@ -113,6 +137,38 @@ const cases: Case[] = [
   { name: 'zero point_distance', kind: 'point_distance', targets: ['$oxy', '$pxy'], value: 0,
     problem: 'point_distance value 0 is a coincident, not a dimension; use the coincident constraint between the two points' },
   { name: 'zero point_distance_x', kind: 'point_distance_x', targets: ['$oxy', '$pxy'], value: 0, problem: null },
+  // The kind-applicability half: a well-formed pick whose entity kind the
+  // constraint cannot represent is refused with the sentence the solve-time
+  // lowering records in `dropped_constraints`, so a script cannot author a row
+  // the next solve silently ignores.
+  { name: 'horizontal on a point entity', kind: 'horizontal', targets: ['$o'], problem: 'horizontal does not apply to point' },
+  { name: 'vertical on a curve entity', kind: 'vertical', targets: ['$c1'], problem: 'vertical does not apply to circle' },
+  // The overloaded a/b pair is two points: a whole point entity is a legal
+  // operand there even though the single-target form must be a line. The stored
+  // `$` spelling and the explicit `entity:` spelling must agree.
+  { name: 'vertical two point entities', kind: 'vertical', targets: ['$o', '$p'], problem: null },
+  {
+    name: 'vertical two point entities, explicit refs',
+    kind: 'vertical', targets: ['entity:sk1:o', 'entity:sk1:p'], problem: null,
+  },
+  { name: 'length on an arc', kind: 'length', targets: ['$a1'], value: 3, problem: 'length does not apply to arc' },
+  { name: 'radius on a line', kind: 'radius', targets: ['$ax'], value: 3, problem: 'radius does not apply to line' },
+  { name: 'radius on an ellipse', kind: 'radius', targets: ['$e1'], value: 3, problem: 'radius does not apply to ellipse' },
+  { name: 'diameter on an ellipse', kind: 'diameter', targets: ['$e1'], value: 6, problem: 'diameter does not apply to ellipse' },
+  { name: 'diameter on an arc', kind: 'diameter', targets: ['$a1'], value: 4, problem: null },
+  { name: 'angle with a curve operand', kind: 'angle', targets: ['$ax', '$c1'], value: 30,
+    problem: 'angle does not apply to line and circle' },
+  { name: 'radius_difference with a line operand', kind: 'radius_difference', targets: ['$c1', '$ax'], value: 1,
+    problem: 'radius_difference does not apply to circle and line' },
+  { name: 'equal_length across a line and an ellipse', kind: 'equal_length', targets: ['$ax', '$e1'],
+    problem: 'equal_length does not apply to line and ellipse' },
+  { name: 'equal_length on two arcs', kind: 'equal_length', targets: ['$a1', '$a2'], problem: null },
+  { name: 'concentric circle and ellipse', kind: 'concentric', targets: ['$c1', '$e1'], problem: null },
+  { name: 'concentric with a line', kind: 'concentric', targets: ['$c1', '$ax'],
+    problem: 'concentric does not apply to circle and line' },
+  // A vertex names a point operand, not an entity kind: the group table has
+  // nothing to say about it.
+  { name: 'radius named by a vertex', kind: 'radius', targets: ['vertex:sk1:c1:center'], value: 3, problem: null },
 ]
 
 describe('addConstraintProblem', () => {
