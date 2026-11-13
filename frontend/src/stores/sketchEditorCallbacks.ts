@@ -23,7 +23,8 @@ export const sketchCallbacks: {
   getSketch: ((featureId: string) => Sketch | null) | null
   // The live document, for the delete action's freeze route: it needs the
   // constraint rows and the solved member report, and this store stays free of
-  // the session and the part-editor store. Registered by usePartDoc.
+  // the session and the part-editor store. Registered by the Part page's
+  // session-port effect.
   getDoc: (() => PartDoc | null) | null
   // The document feature's recorded projections (source, held entity and that
   // entity's declared kind). The solved map carries geometry only, so this is
@@ -37,8 +38,9 @@ export const sketchCallbacks: {
   resolveEdgeKind: ((query: string) => string | null) | null
   // The solved face-projection members for one sketch, so the delete action can
   // freeze them without importing the published part-editor store (this store
-  // stays free of the session and the solver). Registered by usePartDoc; null
-  // in a headless store use, where a delete freezes nothing.
+  // stays free of the session and the solver). Registered by the Part page's
+  // session-port effect; null in a headless store use, where a delete freezes
+  // nothing.
   getProjectionMembers: ((featureId: string) => Record<string, ProjectionMemberReportData> | null) | null
   beginBrepProjection: (() => void) | null
   cancelBrepProjection: (() => void) | null

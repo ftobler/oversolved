@@ -11,7 +11,7 @@
 // command step, the end) instead of after every step. The browser adapter keeps
 // its immediate scheduler; only this drive surface wraps one.
 
-import type { PartDoc, Mutation, SketchData, BodyResult } from '@/types/cad'
+import type { PartDoc, Mutation, SketchData, BodyResult, BuildResponse } from '@/types/cad'
 import {
   faceBoundaryFromBodies, freezeRowsForDelete, isFaceProjectionSource,
   projectionNotFrozenMessage, projectionsFreezingNothing,
@@ -189,21 +189,6 @@ function isFaceProjectionStep(mutation: unknown): boolean {
     && isFaceProjectionSource(step.source)
 }
 
-/** A delete that names a targetless face projection must freeze the current
- *  face, not the previous solve's rows. */
-function deletesFaceProjection(mutation: Mutation, doc: PartDoc | null): boolean {
-  if (mutation.type !== 'delete' || doc === null) return false
-  for (const target of mutation.targets) {
-    if (!target.startsWith('constraint:')) continue
-    const [kind, featureId, constraintId] = target.split(':')
-    if (kind !== 'constraint' || featureId === undefined || constraintId === undefined) continue
-    const feature = (doc.features ?? []).find(candidate => candidate.id === featureId)
-    if (feature?.kind !== 'sketch') continue
-    const constraint = feature.constraints?.find(candidate => candidate.id === constraintId)
-    if (constraint?.kind === 'projection' && constraint.target === undefined) return true
-  }
-  return false
-}
 
 /** Fill a drive `delete` of a face projection with the member rows the last
  *  solve derived, the headless twin of the editor's freeze payload. Without it a
@@ -211,7 +196,7 @@ function deletesFaceProjection(mutation: Mutation, doc: PartDoc | null): boolean
 function withProjectionFreeze(
   mutation: Mutation,
   doc: PartDoc | null,
-  result: Record<string, unknown> | undefined,
+  result: BuildResponse['result'] | undefined,
 ): { mutation: Mutation; frozenNothing?: string[] } {
   if (mutation.type !== 'delete' || mutation.materialize !== undefined || doc === null) {
     // An explicit payload wins: a caller (or a recorded journal entry) that
@@ -445,11 +430,11 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           // delete of one needs the settled face too, so its freeze rows are
           // the current members, not the previous solve's.
           const needsBodies = usesSelectionAid(step.mutation) || isFaceProjectionStep(step.mutation)
-          const needsSettledDelete = deletesFaceProjection(step.mutation as Mutation, docBox.current)
-          if (needsBodies || needsSettledDelete || usesSettledSketchGeometry(step.mutation)) {
+          const needsSettled = usesSettledSketchGeometry(step.mutation, docBox.current)
+          if (needsBodies || needsSettled) {
             if (solve.owed()) {
               await solve.flush()
-            } else if ((needsBodies || needsSettledDelete) && responseBox.current === null) {
+            } else if ((needsBodies || needsSettled) && responseBox.current === null) {
               session.refreshSolve()
               await solve.flush()
             }

@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { usesSettledSketchGeometry } from '../solveDependencies'
+import type { PartDoc } from '@/types/cad'
 
 describe('usesSettledSketchGeometry', () => {
   it('names every handler that reads the current sketch params', () => {
@@ -48,6 +49,26 @@ describe('usesSettledSketchGeometry', () => {
       type: 'add_projected_entity', featureId: 'sk1', kind: 'line',
       source: '?9;@u|e_abcd:straightedge',
     })).toBe(false)
+  })
+
+  it('needs a flush for deleting a face projection, but not a map-less form', () => {
+    const doc = {
+      version: 7, kind: 'part',
+      features: [{
+        id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [], initial: {},
+        constraints: [
+          { id: 'face', kind: 'projection', source: '?face', members: { 'u|e_aaaa': 'proj_face.aaaaaaaa' } },
+          { id: 'empty', kind: 'projection', source: '?face2' },
+          { id: 'edge', kind: 'projection', target: '$l1', source: '?edge;line' },
+        ],
+      }],
+    } as unknown as PartDoc
+    expect(usesSettledSketchGeometry({ type: 'delete', targets: ['constraint:sk1:face'] }, doc)).toBe(true)
+    expect(usesSettledSketchGeometry({ type: 'delete', targets: ['constraint:sk1:empty'] }, doc)).toBe(false)
+    expect(usesSettledSketchGeometry({ type: 'delete', targets: ['constraint:sk1:edge'] }, doc)).toBe(false)
+    // Unvalidated JSON without targets is a refusal, not a throw.
+    expect(usesSettledSketchGeometry({ type: 'delete' }, doc)).toBe(false)
   })
 
   it('leaves the writing mutations alone', () => {

@@ -8,9 +8,9 @@
 // token, the identity a rebuild recomputes (see knowledge base
 // "Construction-name hand-off"). It is stable across solves unless two tokens
 // collide in the first eight hex characters: then the deterministic lengthening
-// moves one id, and the last-resort fallback appends the sorted position for a
-// duplicated token. Geometry hashes were rejected as identity: a moved face
-// would rename every member.
+// moves one id, and the last-resort fallback re-spaces the whole map by sorted
+// position for a duplicated token. Geometry hashes were rejected as identity: a
+// moved face would rename every member.
 
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/faceTypes'

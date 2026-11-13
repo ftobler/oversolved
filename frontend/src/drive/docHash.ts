@@ -29,29 +29,32 @@ export function authoredHashOf(doc: PartDoc): string {
   const { part_style: _partStyle, ...authored } = doc
   if (Array.isArray(doc.features)) {
     authored.features = doc.features.map((feature) => {
-      const { initial: _initial, ...authoredFeature } = feature as typeof feature & Record<string, unknown>
-      const constraints = Array.isArray(authoredFeature.constraints)
-        ? authoredFeature.constraints as Array<Record<string, unknown>>
-        : undefined
+      // Only a sketch carries `initial`, `constraints` and `entities`; the union
+      // narrows here so the projection stays typed.
+      if (feature.kind !== 'sketch') return feature
+      const { initial: _initial, ...authoredFeature } = feature
+      const constraints = authoredFeature.constraints
       const held = new Set<string>()
-      if (constraints !== undefined) {
-        authoredFeature.constraints = constraints.map((constraint) => {
-          if (constraint?.kind === 'projection' && typeof constraint.target === 'string') {
-            held.add(constraint.target.replace(/^\$/, ''))
-          }
-          if (constraint?.members === undefined) return constraint
-          const { members: _members, ...rest } = constraint
-          return rest
-        })
-      }
-      if (held.size > 0 && Array.isArray(authoredFeature.entities)) {
-        authoredFeature.entities = (authoredFeature.entities as Array<Record<string, unknown>>).map((entity) => {
-          if (!held.has(String(entity.id))) return entity
-          const { kind: _kind, ...rest } = entity
-          return rest
-        })
-      }
-      return authoredFeature as typeof feature
+      const nextConstraints = constraints?.map((constraint) => {
+        if (constraint.kind === 'projection' && typeof constraint.target === 'string') {
+          held.add(constraint.target.replace(/^\$/, ''))
+        }
+        if (constraint.members === undefined) return constraint
+        const { members: _members, ...rest } = constraint
+        return rest
+      })
+      const entities = held.size > 0 && authoredFeature.entities !== undefined
+        ? authoredFeature.entities.map((entity) => {
+            if (!held.has(entity.id)) return entity
+            const { kind: _kind, ...rest } = entity
+            return rest
+          })
+        : authoredFeature.entities
+      return {
+        ...authoredFeature,
+        ...(nextConstraints !== constraints && { constraints: nextConstraints }),
+        ...(entities !== authoredFeature.entities && { entities }),
+      } as typeof feature
     })
   }
   return docHashOf(authored)

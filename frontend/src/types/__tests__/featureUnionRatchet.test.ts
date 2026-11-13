@@ -51,10 +51,11 @@ const RATCHETS: Ratchet[] = [
     // array leaves folded into one pattern leaf: its dispatch record, the body
     // subject and the shared patternSubject accessor keep the three removed
     // array records' total, so the baseline stayed 363 until this change.
-    // 366: the face-projection fixtures are untyped JSON payloads in tests (two
-    // in projectionFaceSolve, one in projectFaceReal, one in the loader test).
+    // 362: the face-projection work needed no loose record -- `authoredHashOf`
+    // narrows a sketch by `kind` and the headless freeze names the response's
+    // own `BuildResponse['result']` type.
     token: 'Record<string, unknown>',
-    baseline: 366,
+    baseline: 362,
   },
 ]
 

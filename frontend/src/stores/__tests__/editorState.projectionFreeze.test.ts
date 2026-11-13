@@ -115,7 +115,8 @@ describe('deleteSelected freeze route', () => {
     expect(messages[0].message).toContain(third)
   })
 
-  it('notes a mixed selection where only one face projection has rows to freeze', () => {    const second = 'proj_face2'
+  it('notes a mixed selection where only one face projection has rows to freeze', () => {
+    const second = 'proj_face2'
     const mixed = doc()
     const sketch = mixed.features![0]
     if (sketch.kind !== 'sketch') throw new Error('not a sketch')

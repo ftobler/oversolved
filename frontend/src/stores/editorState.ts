@@ -70,7 +70,12 @@ export function sketchOwnedDeleteTargets(selection: Set<string>, activeFeatureId
 /** The one delete mutation for a sketch selection, with a face projection's
  *  solved member rows folded in. Every delete entry point (the store action,
  *  the page's mixed selection, the action-matrix harness) uses this so the
- *  freeze bytes cannot be forgotten on one path. */
+ *  freeze bytes cannot be forgotten on one path.
+ *
+ *  The editor freezes the LAST PUBLISHED solve, deliberately: that is what the
+ *  user sees, so a delete never surprises them by settling to a state they have
+ *  not seen. The drive flushes first instead (a script's freeze is a document
+ *  act); this asymmetry is intentional. */
 export function deleteMutationFor(
   activeFeatureId: string | null,
   targets: readonly string[],

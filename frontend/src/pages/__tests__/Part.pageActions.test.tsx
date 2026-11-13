@@ -83,7 +83,9 @@ vi.mock('@/hooks/usePartDoc', async () =>
     doc: F.doc,
     docRef: { current: F.doc },
     bodies: F.bodies,
-    solveResults: F.solve,
+    // A getter so a test can swap the solve map and force the Part effect to
+    // re-register its session ports.
+    solveResults: () => F.solve,
     requestSolve: h.requestSolve,
     handleMutation: h.handleMutation,
     saveDoc: h.saveDoc,
@@ -169,15 +171,16 @@ vi.mock('@/components/dialogs/RightClickMenu', async () =>
   (await import('@/__tests__/test-utils')).rightClickMenuMockModule())
 vi.mock('@/hooks/useWorkspaceName', () => ({ useWorkspaceName: () => 'WS' }))
 
+const partTree = () => (
+  <MemoryRouter initialEntries={['/workspaces/ws-1/entries/doc-1']}>
+    <Routes>
+      <Route path="/workspaces/:workspaceId/entries/:entryId" element={<Part />} />
+    </Routes>
+  </MemoryRouter>
+)
+
 function renderPart() {
-  return render(
-    <MemoryRouter initialEntries={['/workspaces/ws-1/entries/doc-1']}>
-      <Routes>
-        <Route path="/workspaces/:workspaceId/entries/:entryId" element={<Part />} />
-      </Routes>
-    </MemoryRouter>,
-    { wrapper: Wrapper },
-  )
+  return render(partTree(), { wrapper: Wrapper })
 }
 
 // The header now also carries an Export button, so a menu label can name more
@@ -221,17 +224,29 @@ describe('Part page actions', () => {
     useDevSettingsStore.setState({ validateOnRebuild: false })
   })
 
-  it('owns the freeze ports, so a page delete freezes after the effect teardown', () => {
-    const first = renderPart()
+  it('re-registers the freeze ports after a new solve and freezes on the page delete', () => {
+    const view = renderPart()
     expect(typeof getSketchCallback('getDoc')).toBe('function')
     expect(typeof getSketchCallback('getProjectionMembers')).toBe('function')
-    // The page effect clears every port on teardown and re-registers them; the
-    // freeze ports must be part of that same registration, not a separate effect
-    // the clear can strand.
-    first.unmount()
-    expect(getSketchCallback('getDoc')).toBeNull()
-    renderPart()
+
+    // A solve publishes a new solve map; the Part effect re-runs and must own
+    // the freeze ports again, not leave them to a separate effect it clears.
+    F.solve = {
+      ...F.solve,
+      sketch2: {
+        ...F.solve.sketch2,
+        projection_members: {
+          proj_face: {
+            members: { 'u|e_aaaa': 'proj_face.aaaaaaaa' },
+            entities: [{ id: 'proj_face.aaaaaaaa', kind: 'line', params: [0, 0, 10, 0] }],
+            orphans: [],
+          },
+        },
+      },
+    }
+    view.rerender(partTree())
     expect(typeof getSketchCallback('getDoc')).toBe('function')
+    expect(typeof getSketchCallback('getProjectionMembers')).toBe('function')
 
     useEditorState.setState({
       activeFeatureId: 'sketch2',
