@@ -7,13 +7,14 @@
 // does get a row, carrying the kernel's `warning`, so the volume of a partial
 // tool list is readable without a second `measure` call.
 //
-// A chained call must not repeat the whole history: a plane or an untouched
+// A chained call must not repeat the whole history: an untouched plane or
 // sketch did not change because a later call added one feature. The reply
-// keeps a row only when the feature's checkpoint differs from the input
-// document's solve, or when the steps touched a feature that produces solids
-// (so an edit that happens to leave the same volume still shows its zero
-// contribution). `mode: 'all'` is the inspection opt-in that restores the
-// whole history.
+// keeps a row when the feature's checkpoint differs from the input document's
+// solve, or when the steps touched it: a solid feature (so an edit that
+// happens to leave the same volume still shows its zero contribution), or the
+// sketch or plane the step authored, so its remaining dof or its verdict reads
+// back without a second call. `mode: 'all'` is the inspection opt-in that
+// restores the whole history.
 
 import type { PartDoc } from '@/types/cad'
 import type { FeatureMeasure, FeatureMeasureBody } from '@/kernel/solveLocally'
@@ -56,8 +57,9 @@ export interface FeatureDeltaOptions {
   // The input document's solve, when it could be measured. A feature whose
   // checkpoint matches it was not changed by this run.
   baseline?: readonly FeatureMeasure[] | null
-  // Feature ids the steps created or named. Solid-producing entries get a row
-  // even when their measure did not move, so a no-op edit is visible.
+  // Feature ids the steps created or named. Solid-producing entries and the
+  // touched sketch or plane get a row even when their measure did not move, so
+  // a no-op edit is visible and a sketch's dof reads back.
   touched?: ReadonlySet<string>
   // 'all' lists every built feature (the inspection opt-in); 'changed' keeps
   // only what this run changed or touched. Omitting the whole options object
@@ -70,6 +72,12 @@ const ZERO_BBOX = [0, 0, 0, 0, 0, 0]
 // A feature that only authors reference geometry. Everything else puts a body
 // in the checkpoint or changes one, and a touched one is worth reporting.
 const NON_SOLID_KINDS: ReadonlySet<string> = new Set<string>(['origin', 'sketch', 'plane', 'variable', 'helix'])
+
+// The non-solid kinds a touched row answers for: a sketch carries its
+// remaining dof and a plane its solve verdict, so a step that authored one
+// reads back even with no measure change. A touched variable, origin or helix
+// carries nothing this row has a field for, so the zero rule still drops it.
+const REFERENCE_KINDS: ReadonlySet<string> = new Set<string>(['sketch', 'plane'])
 
 export function isSolidProducingKind(kind: string): boolean {
   return !NON_SOLID_KINDS.has(kind)
@@ -184,11 +192,12 @@ export function featureDeltaRows(
       const kind = typeof feature.kind === 'string' ? feature.kind : 'unknown'
       const volumeDelta = measure.volume - previousVolume
       const bboxDelta = subtractBbox(measure.bbox, previousBbox)
-      // A warned reference feature the steps touched is worth a row even though
-      // it has no volume: an author who just added a constraint to an
-      // underconstrained sketch reads its shrunk `dof` without a second call.
-      const warnedTouched = outcome.warning !== undefined && touched.has(id)
-      if (mode === 'all' || warnedTouched || includeRow(id, kind, measure, volumeDelta, bboxDelta)) {
+      // A reference feature the steps touched is worth a row even though it has
+      // no volume: an author who just projected an edge into a sketch, or moved
+      // a plane, reads its remaining dof or verdict without a second call. A
+      // solid keeps its own touched rule inside includeRow.
+      const referenceTouched = touched.has(id) && REFERENCE_KINDS.has(kind)
+      if (mode === 'all' || referenceTouched || includeRow(id, kind, measure, volumeDelta, bboxDelta)) {
         const solid = isSolidProducingKind(kind)
         const bodyId = solid ? outcome.bodyId : undefined
         const changed = solid && measure.bodies !== undefined
@@ -221,10 +230,10 @@ export function featureDeltaRows(
   // it cannot call anything unchanged; showing every built row is the honest
   // fallback. Otherwise a feature is included when its checkpoint moved, when
   // it was added (no baseline row), or when the steps touched a solid feature.
-  // An existing reference feature (sketch, plane) whose own delta is zero is
+  // An untouched reference feature (sketch, plane) whose own delta is zero is
   // left out: its cumulative checkpoint moves with every upstream edit, so a
   // variable edit listed each downstream sketch as a zero row (bearing notes).
-  // A newly added one keeps its row, which is how a run sees what it added.
+  // A touched one is admitted above; a newly added one keeps its row here.
   function includeRow(
     id: string,
     kind: string,

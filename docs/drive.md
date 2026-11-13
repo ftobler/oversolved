@@ -674,19 +674,19 @@ banner on stdout, so a client config must use the direct node invocation.
   a solid-producing feature
   (so an edit that leaves the same volume still shows its zero contribution);
   untouched planes and sketches from an earlier call do not repeat, and neither
-  does an existing sketch or plane whose own delta is zero (an upstream edit
-  moves its cumulative checkpoint, not its contribution). The first body's deltas start from zero. A failed or
-  partial feature
+  does an untouched existing sketch or plane whose own delta is zero (an
+  upstream edit moves its cumulative checkpoint, not its contribution). The
+  first body's deltas start from zero. A failed or partial feature
   has no row (its checkpoint may hold half-applied geometry), but that
   checkpoint still sets the baseline for the next built feature, so a later
   delta describes the real part. A feature that built with a warning keeps its
   row and carries the kernel's `warning` text, so a partial tool list's volume
   is visible without a second measure; the row-coverage rule is otherwise the
-  same as for an unwarned build (changed, new, or touched), and one extra rule
-  covers the sketch law: a warned sketch the steps touched is listed even when
-  its checkpoint did not move, so the shrunk `dof` reads in the same call. An
-  untouched warned feature still appears only under `featureDeltas: "all"`. Pass `featureDeltas: "all"`
-  to list every built feature, which is how an empty `steps: []` call inspects
+  same as for an unwarned build (changed, new, or touched). A sketch or plane
+  the steps touched is listed even when its checkpoint did not move, so a
+  sketch's `dof` reads in the same call. An untouched warned feature still
+  appears only under `featureDeltas: "all"`. Pass `featureDeltas: "all"` to
+  list every built feature, which is how an empty `steps: []` call inspects
   the whole history.
   The list is null when the final solve exposed
   no measurable checkpoints (the kernel was unavailable or faulted, which is

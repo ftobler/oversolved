@@ -159,6 +159,28 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(row?.dof).toBe(4)
   }, 120_000)
 
+  it('lists a touched fully constrained sketch even when its checkpoint did not move', async () => {
+    // The sketch-protection probe: project the origin into an already
+    // constrained box sketch. Nothing the checkpoint measures moves, so the
+    // zero rule dropped the row and the reply said nothing about the sketch.
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const built = await runHeadless({ doc: emptyDoc(), steps: box.steps })
+    const result = await runHeadless({
+      doc: built.doc!,
+      steps: [{
+        mutation: {
+          type: 'add_projected_entity', featureId: 'sk1', kind: 'point',
+          source: '@builtin_origin', entityId: 'origin_proj',
+        },
+      }],
+    })
+    expect(result.ok).toBe(true)
+    const row = result.featureDeltas?.find(delta => delta.id === 'sk1')
+    expect(row).toMatchObject({
+      id: 'sk1', status: 'fully_constrained', dof: 0, volumeDelta: 0,
+    })
+  }, 120_000)
+
   it('lists a failed hole with its kernel message and does not flip ok', async () => {
     const result = await runHeadless({ doc: emptyDoc(), steps: HOLE_ON_LINE_SKETCH })
     expect(result.ok).toBe(true)

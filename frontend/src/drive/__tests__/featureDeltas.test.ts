@@ -152,14 +152,111 @@ describe('featureDeltaRows', () => {
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [...MEASURES, { id: 'ex3', volume: 15000, bbox: [0, 0, 0, 60, 10, 30] }]
     const outcomes: Record<string, FeatureOutcome> = { ...CLEAN, ex3: { status: 'ok' } }
-    // sk1 and fi1 were named by the steps; sk1 is a sketch (its row stays out),
-    // fi1 is solid-producing and keeps its row even though the measure matches.
+    // fi1 was named by the steps and is solid-producing, so it keeps its row
+    // even though the measure matches; ex3 is new and has no baseline row.
     const rows = featureDeltaRows(withAdded, measures, outcomes, {
       baseline: MEASURES,
-      touched: new Set(['sk1', 'fi1']),
+      touched: new Set(['fi1']),
       mode: 'changed',
     })
     expect(rows.map(row => row.id)).toEqual(['fi1', 'ex3'])
+  })
+
+  // The sketch-protection probe: one add_projected_entity into an existing,
+  // fully constrained sketch. Nothing the checkpoint measures moved, yet the
+  // author needs the row to see the projection kept the sketch at dof 0.
+  it('changed mode lists a touched clean sketch so its dof reads in one call', () => {
+    const outcomes: Record<string, FeatureOutcome> = {
+      ...CLEAN,
+      sk1: { status: 'fully_constrained', dof: 0 },
+    }
+    const rows = featureDeltaRows(DOC, MEASURES, outcomes, {
+      baseline: MEASURES,
+      touched: new Set(['sk1']),
+      mode: 'changed',
+    })
+    expect(rows).toEqual([expect.objectContaining({
+      id: 'sk1',
+      status: 'fully_constrained',
+      dof: 0,
+      volumeDelta: 0,
+      bboxDelta: null,
+    })])
+  })
+
+  it('changed mode lists a touched plane whose own delta is zero', () => {
+    const doc = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'sk1', kind: 'sketch' }, { id: 'pl1', kind: 'plane' }],
+    } as unknown as PartDoc
+    const measures: FeatureMeasure[] = [
+      { id: 'sk1', volume: 0, bbox: null },
+      { id: 'pl1', volume: 0, bbox: null },
+    ]
+    const outcomes: Record<string, FeatureOutcome> = {
+      sk1: { status: 'ok' },
+      pl1: { status: 'ok' },
+    }
+    // A set_plane_field step names the plane; the zero rule must not hide it.
+    const rows = featureDeltaRows(doc, measures, outcomes, {
+      baseline: measures,
+      touched: new Set(['pl1']),
+      mode: 'changed',
+    })
+    expect(rows).toEqual([expect.objectContaining({
+      id: 'pl1',
+      status: 'ok',
+      volumeDelta: 0,
+      bboxDelta: null,
+    })])
+  })
+
+  // Bearing notes: a variable edit moves every downstream checkpoint, so each
+  // sketch after the first extrude showed up as a zero-contribution row. The
+  // edit touches the variable, not the sketches; the sketches stay out.
+  it('changed mode leaves every downstream sketch out of a variable edit', () => {
+    const doc = {
+      ...DOC,
+      features: [
+        { id: 'var1', kind: 'variable' },
+        { id: 'sk1', kind: 'sketch' },
+        { id: 'ex1', kind: 'extrude' },
+        { id: 'sk2', kind: 'sketch' },
+        { id: 'sk3', kind: 'sketch' },
+        { id: 'sk4', kind: 'sketch' },
+      ],
+    } as unknown as PartDoc
+    const before: FeatureMeasure[] = [
+      { id: 'var1', volume: 0, bbox: null },
+      { id: 'sk1', volume: 0, bbox: null },
+      { id: 'ex1', volume: 12000, bbox: [0, 0, 0, 40, 10, 30] },
+      { id: 'sk2', volume: 12000, bbox: [0, 0, 0, 40, 10, 30] },
+      { id: 'sk3', volume: 12000, bbox: [0, 0, 0, 40, 10, 30] },
+      { id: 'sk4', volume: 12000, bbox: [0, 0, 0, 40, 10, 30] },
+    ]
+    const after: FeatureMeasure[] = [
+      { id: 'var1', volume: 0, bbox: null },
+      { id: 'sk1', volume: 0, bbox: null },
+      { id: 'ex1', volume: 24000, bbox: [0, 0, 0, 40, 20, 30] },
+      { id: 'sk2', volume: 24000, bbox: [0, 0, 0, 40, 20, 30] },
+      { id: 'sk3', volume: 24000, bbox: [0, 0, 0, 40, 20, 30] },
+      { id: 'sk4', volume: 24000, bbox: [0, 0, 0, 40, 20, 30] },
+    ]
+    const outcomes: Record<string, FeatureOutcome> = {
+      var1: { status: 'ok' },
+      sk1: { status: 'ok' },
+      ex1: { status: 'ok' },
+      sk2: { status: 'ok' },
+      sk3: { status: 'ok' },
+      sk4: { status: 'ok' },
+    }
+    const rows = featureDeltaRows(doc, after, outcomes, {
+      baseline: before,
+      touched: new Set(['var1']),
+      mode: 'changed',
+    })
+    expect(rows.map(row => row.id)).toEqual(['ex1'])
   })
 
   // Bearing notes: a variable edit moved every downstream checkpoint, so each
