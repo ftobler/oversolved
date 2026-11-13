@@ -17,6 +17,10 @@ type Dict = Record<string, unknown>
  * no un-offset `edge0` to register there: the face/plane is still the honest
  * top, but the synthetic edge is skipped rather than naming an edge that does
  * not exist on the body.
+ *
+ * An apex end has no top face at all (the profile closed to a point), so `apex`
+ * skips the face too: a registered plane at `distance` would be a phantom a
+ * sketch could sit on.
  */
 export function registerTopFace(
   globalRepo: Repository,
@@ -25,7 +29,9 @@ export function registerTopFace(
   surfaces: Dict[],
   distance: number,
   taperDeg = 0,
+  apex = false,
 ): void {
+  if (apex) return
   const origin = pt.origin
   const xAxis = pt.x_axis
   const yAxis = pt.y_axis

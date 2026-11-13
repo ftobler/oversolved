@@ -728,14 +728,6 @@ export function solveExtrude(
       direction,
       sweepDistance,
     )
-    // A planar up_to keeps the old top-face registration at the blind distance;
-    // a curved face or a next stop has no honest flat frame to register.
-    if (
-      (termination === 'blind' || (termination === 'up_to' && upToTarget?.kind === 'plane' && upToStart !== 'surface')) &&
-      firstSurfaces !== undefined && firstPtData !== undefined
-    ) {
-      registerTopFace(globalRepo, featureId, firstPtData, firstSurfaces, effectiveDistance, taperDeg)
-    }
     // The ray and the inside classifier use the profile itself, not the sketch
     // plane's frame origin: a plane placed away from its drawing would decide
     // the side from a point the profile never occupies.
@@ -770,6 +762,17 @@ export function solveExtrude(
       featureId,
       taperDeg,
     )
+    // A planar up_to keeps the old top-face registration at the blind distance;
+    // a curved face or a next stop has no honest flat frame to register. An
+    // apex end has no top face at all; the lineage reports it so no phantom
+    // plane is registered at `distance`.
+    const apexMode = lineage.apex !== null && lineage.apex !== undefined
+    if (
+      (termination === 'blind' || (termination === 'up_to' && upToTarget?.kind === 'plane' && upToStart !== 'surface')) &&
+      firstSurfaces !== undefined && firstPtData !== undefined
+    ) {
+      registerTopFace(globalRepo, featureId, firstPtData, firstSurfaces, effectiveDistance, taperDeg, apexMode)
+    }
     // The tool is scope-owned from here: applyBodyOperation detaches whatever
     // becomes a body, and the leftover (an add/cut tool, a compound wrapper)
     // frees at dispose instead of living for the worker session.

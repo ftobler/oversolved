@@ -327,8 +327,11 @@ holes included and material-consistent (a washer with a positive taper leans the
 outer wall in and the hole wall out, so the wall thins toward the top). It is a
 number or an expression string, like `distance`. A taper needs
 `termination: blind` and `direction: normal` or `reverse`; symmetric, up_to,
-up_to_next and through_all are refused by name. A taper that would collapse the
-profile before `distance` is refused with the height it would collapse at, as in
+up_to_next and through_all are refused by name. A taper that closes the profile
+exactly at `distance` builds to an apex: a pyramid from a polygon, a cone from a
+circle. One that closes to a ridge (a non-square rectangle closing to a segment
+rather than a point) is refused, as is one that collapses the profile before
+`distance`, which names the height it would collapse at, as in
 `extrude: taper 45 collapses the profile after 5.000 of 10; shorten the distance
 or reduce the taper`. Absent or 0 is the straight prism the feature has always
 built. In the editor, switching `direction` to symmetric or `termination` away

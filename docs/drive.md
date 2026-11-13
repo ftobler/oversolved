@@ -883,7 +883,9 @@ banner on stdout, so a client config must use the direct node invocation.
   positive narrows, negative widens, every lateral wall drafts (holes included),
   and it needs `termination: blind` with `direction: normal` or `reverse`;
   symmetric, up_to, up_to_next and through_all are refused, as is a taper that
-  collapses the profile before `distance`. `add_plane`'s `definition` carries the same shape the part-document
+  collapses the profile before `distance`. A taper that closes the profile
+  exactly at `distance` builds to an apex (a pyramid, a cone); one that closes
+  to a ridge (a non-square rectangle) is refused by name. `add_plane`'s `definition` carries the same shape the part-document
   schema serves (its `mode` enum includes `offset`, and the common offset plane is
   `{mode:"offset", plane:"@builtin_plane_top", offset:43}`). A multisection
   sweep is one `add_sweep_profile` per section and `multisection: true` in the
