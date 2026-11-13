@@ -221,7 +221,11 @@ const DXF_IMPORT_NOTE =
   + '`layers` filter leaves that entity\'s layer out. $INSUNITS '
   + 'converts to the document unit (0 unitless, 1 inch, 2 foot, 4 mm, 5 cm, 6 m; unitless means document '
   + 'units). Layer names are not stored; repeated entities are kept. '
-  + 'The step reply reports `createdIds: []` and `createdCount`, plus `layers` (imported rows per layer) '
+  + 'Unless `group: false`, the imported rows are held by one Group constraint whose anchor is the first '
+  + 'imported entity (2 DOF left: pin one vertex, e.g. coincident to the origin projection, to fully '
+  + 'constrain; delete the constraint to edit the entities freely). '
+  + 'The step reply reports `createdIds: []` and `createdCount`, plus `layers` (imported rows per layer), '
+  + '`groupId` (the authored Group constraint, absent with `group: false`) '
   + 'and `otherLayers` when a filter left file layers out: the import is a bulk add, so the reply '
   + 'carries the entity count, the run reply\'s `docHash` names the document, and the document resource '
   + 'has the ids.'
@@ -505,7 +509,9 @@ const CONSTRAINT_KIND_NOTE =
   '`length`; two points take `point_distance`, and a zero `point_distance` is refused: coincident ' +
   'points are a `coincident` constraint, not a dimension. `line_distance` takes a line and a point in either order ' +
   '(the document stores the line first, the order the solver reads). `colinear` takes two lines (parallel and on ' +
-  'one line) or a point and a line (the point on the line\'s infinite extension).'
+  'one line) or a point and a line (the point on the line\'s infinite extension). `group` takes one or more ' +
+  'whole authored entities of the sketch (no vertex, origin or projected entity) and glues them into their ' +
+  'current shape, leaving the set free to translate; it carries no value and deleting it frees the entities.'
 
 // An angle is the one dimension whose stored value is not the number the label
 // shows: the solver stores the unsigned angle between the two lines' direction
@@ -1015,6 +1021,10 @@ export const MUTATION_CATALOG = {
         'Names of the layers to import, matched case-insensitively after trimming; absent imports every '
         + 'layer. Entities on other layers are ignored, including ones that would otherwise refuse the '
         + 'file. An unknown name is refused with the file\'s layer list and counts.',
+      ),
+      group: optBool(
+        'Hold every imported entity in one Group constraint (default true), so the profile keeps its '
+        + 'shape and arrives with 2 DOF. `false` imports plain entities the caller constrains itself.',
       ),
     },
   },

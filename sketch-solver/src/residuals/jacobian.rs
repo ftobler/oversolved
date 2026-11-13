@@ -1,6 +1,7 @@
 //! Analytic and finite-difference Jacobian rows for the constraint set.
 
 use super::geom::is_curve;
+use super::misc::{anchor_is_first_pair, group_coord_count};
 use super::Problem;
 use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 use crate::fit_spline::ParamLayout;
@@ -397,6 +398,7 @@ impl Problem<'_> {
             ConstraintKind::RadiusDifference => self.jac_radius_difference(c, x, rows),
             ConstraintKind::Coincident => self.jac_coincident(c, x, xp, rows),
             ConstraintKind::Fixed => self.jac_fixed(c, x, rows),
+            ConstraintKind::Group => self.jac_group(c, x, rows),
             // Direction-normalizing / atan2 residuals: finite-difference fallback.
             ConstraintKind::LineDistance
             | ConstraintKind::Normal
@@ -729,6 +731,49 @@ impl Problem<'_> {
                     || a_kind == Some(Kind::Ellipse)
                     || a_kind == Some(Kind::Spline) || a_kind == Some(Kind::FitSpline)))
         )
+    }
+
+    /// Analytic rows for the rigid group, mirroring `r_group` row for row: the
+    /// member param's own +1, and (for a coordinate row) the anchor point's
+    /// point Jacobian negated on the row's axis.
+    fn jac_group(&self, c: &Constraint, x: &[f64], rows: &mut Vec<SparseRow>) {
+        let (
+            Some(Ref::Entity { index: member, .. }),
+            Some(
+                anchor @ Ref::Entity {
+                    index: anchor_index,
+                    ..
+                },
+            ),
+        ) = (c.ref_for(RefRole::Target), c.ref_for(RefRole::A))
+        else {
+            return;
+        };
+        let Ref::Entity {
+            point: anchor_point,
+            ..
+        } = anchor
+        else {
+            return;
+        };
+        let off = self.offset_of(member);
+        let size = self.param_count_of(member);
+        let coords = group_coord_count(self.kind_of(member), size);
+        let skip_anchor_pair =
+            member == anchor_index && size >= 2 && anchor_is_first_pair(anchor_point);
+        for i in 0..size {
+            if skip_anchor_pair && i < 2 {
+                continue;
+            }
+            let mut row = RowBuf::new();
+            row.add(off + i, 1.0);
+            if i < coords {
+                for (col, dpx, dpy) in self.point_jac(x, anchor) {
+                    row.add(col, -(if i % 2 == 0 { dpx } else { dpy }));
+                }
+            }
+            rows.push(row.finish());
+        }
     }
 
     fn jac_fixed(&self, c: &Constraint, x: &[f64], rows: &mut Vec<SparseRow>) {

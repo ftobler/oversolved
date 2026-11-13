@@ -56,6 +56,7 @@ fn sample_input() -> Input {
     Input {
         entities,
         params_initial: vec![0.0, 0.0, 10.0, 0.0, 3.0, 4.0, 2.5],
+        params_reference: Vec::new(),
         pinned_mask: vec![0b0000_0011],
         equality_pins: vec![EqualityPin {
             param_index: 6,
@@ -102,6 +103,7 @@ fn f64_scalars_round_trip_bit_exact() {
     let input = Input {
         entities: vec![Entity::new(Kind::Point, 0)],
         params_initial: values.to_vec(),
+        params_reference: Vec::new(),
         pinned_mask: vec![0],
         equality_pins: vec![EqualityPin {
             param_index: 0,
@@ -215,6 +217,7 @@ fn sign_selector_round_trips() {
     let input = Input {
         entities: vec![Entity::new(Kind::Point, 0)],
         params_initial: vec![0.0, 0.0],
+        params_reference: Vec::new(),
         pinned_mask: vec![0],
         equality_pins: Vec::new(),
         constraints: vec![
@@ -285,6 +288,7 @@ fn ellipse_entity_round_trips() {
     let input = Input {
         entities: vec![Entity::new(Kind::Ellipse, 0)],
         params_initial: vec![1.0, 2.0, 4.0, 2.0, 30.0],
+        params_reference: Vec::new(),
         pinned_mask: vec![0],
         equality_pins: Vec::new(),
         constraints: Vec::new(),
@@ -304,6 +308,7 @@ fn spline_entity_round_trips() {
     let input = Input {
         entities: vec![Entity::new(Kind::Spline, 0)],
         params_initial: vec![0.0, 0.0, 1.0, 2.0, 3.0, 2.0, 4.0, 0.0],
+        params_reference: Vec::new(),
         pinned_mask: vec![0],
         equality_pins: Vec::new(),
         constraints: Vec::new(),
@@ -503,15 +508,16 @@ fn rev5_output_magic_is_rejected() {
 }
 
 // The fixed-size input header (see module docs): magic, four counts, two
-// u8 flags, the drag anchor and the storage quantum. The first entity or
-// constraint record starts right after it, which is what the corruption
-// offsets below rely on.
-const HEADER_LEN: usize = 34;
+// u8 flags, the drag anchor, the storage quantum and the reference count. The
+// first entity or constraint record starts right after it, which is what the
+// corruption offsets below rely on.
+const HEADER_LEN: usize = 38;
 
 fn one_entity_input() -> Input {
     Input {
         entities: vec![Entity::new(Kind::Line, 0)],
         params_initial: Vec::new(),
+        params_reference: Vec::new(),
         pinned_mask: Vec::new(),
         equality_pins: Vec::new(),
         constraints: Vec::new(),
@@ -524,6 +530,7 @@ fn one_entity_ref_constraint_input() -> Input {
     Input {
         entities: Vec::new(),
         params_initial: Vec::new(),
+        params_reference: Vec::new(),
         pinned_mask: Vec::new(),
         equality_pins: Vec::new(),
         constraints: vec![Constraint {
@@ -627,6 +634,7 @@ fn bad_axis_rejected() {
     let input = Input {
         entities: Vec::new(),
         params_initial: Vec::new(),
+        params_reference: Vec::new(),
         pinned_mask: Vec::new(),
         equality_pins: Vec::new(),
         constraints: vec![Constraint {
@@ -784,15 +792,16 @@ fn fit_input(points: usize, flags: u8) -> Input {
             flags,
         }],
         params_initial: params,
+        params_reference: Vec::new(),
         ..Default::default()
     }
 }
 
-/// Patch the first entity record's flags and count bytes (the header is 26
-/// bytes and the record is `kind, flags, offset, count`).
+/// Patch the first entity record's flags and count bytes (the header is
+/// `HEADER_LEN` bytes and the record is `kind, flags, offset, count`).
 fn patch_entity_record(bytes: &mut [u8], flags: u8, count: u32) {
-    bytes[34 + 1] = flags;
-    bytes[34 + 6..34 + 10].copy_from_slice(&count.to_le_bytes());
+    bytes[HEADER_LEN + 1] = flags;
+    bytes[HEADER_LEN + 6..HEADER_LEN + 10].copy_from_slice(&count.to_le_bytes());
 }
 
 #[test]
@@ -813,6 +822,7 @@ fn the_decoder_rejects_a_fixed_kind_with_the_wrong_count() {
     let input = Input {
         entities: vec![Entity::new(Kind::Line, 0)],
         params_initial: vec![0.0; 4],
+        params_reference: Vec::new(),
         ..Default::default()
     };
     let mut bytes = encode_input(&input);
@@ -839,6 +849,7 @@ fn the_decoder_rejects_a_malformed_fit_spline() {
     let input = Input {
         entities: vec![Entity::new(Kind::Line, 0)],
         params_initial: vec![0.0; 4],
+        params_reference: Vec::new(),
         ..Default::default()
     };
     let mut bytes = encode_input(&input);
@@ -856,6 +867,7 @@ fn a_fit_point_selector_round_trips_on_the_constraint_wire() {
             flags: 0,
         }],
         params_initial: vec![0.0, 0.0, 1.0, 2.0, 3.0, 1.0],
+        params_reference: Vec::new(),
         constraints: vec![Constraint {
             kind_code: crate::ConstraintKind::Coincident.to_u8(),
             refs: vec![(
@@ -896,4 +908,107 @@ fn a_stale_skg4_input_magic_is_rejected() {
     let mut bytes = encode_input(&input);
     bytes[0..4].copy_from_slice(&MAGIC_SKG4.to_le_bytes());
     assert_eq!(decode_input(&bytes).unwrap_err(), CodecError::BadMagic);
+}
+
+#[test]
+fn a_group_constraint_round_trips_and_carries_the_reference() {
+    // Kind 19 plus the optional reference block: both are new on this wire, and
+    // the reference must survive bit-exact so a drag holds the authored shape.
+    let input = Input {
+        entities: vec![Entity::new(Kind::Line, 0), Entity::new(Kind::Circle, 4)],
+        params_initial: vec![0.0, 0.0, 10.0, 0.0, 3.0, 4.0, 2.5],
+        params_reference: vec![1.0, 1.0, 11.0, 1.0, 4.0, 5.0, 2.5],
+        pinned_mask: vec![0],
+        equality_pins: Vec::new(),
+        constraints: vec![Constraint {
+            kind_code: crate::ConstraintKind::Group.to_u8(),
+            refs: vec![
+                (
+                    RefRole::Target,
+                    Ref::Entity {
+                        index: 1,
+                        point: PointSelector::Absent,
+                    },
+                ),
+                (
+                    RefRole::A,
+                    Ref::Entity {
+                        index: 0,
+                        point: PointSelector::Start,
+                    },
+                ),
+            ],
+            ..Default::default()
+        }],
+        seed_quantum: 1e-6,
+        options: Options::default(),
+    };
+    let bytes = encode_input(&input);
+    let decoded = decode_input(&bytes).expect("decode");
+    assert_eq!(
+        decoded.constraints[0].kind(),
+        Some(crate::ConstraintKind::Group)
+    );
+    assert_eq!(
+        decoded.constraints[0].ref_for(RefRole::A),
+        Some(Ref::Entity {
+            index: 0,
+            point: PointSelector::Start
+        })
+    );
+    assert_eq!(decoded.params_reference, input.params_reference);
+    assert_eq!(encode_input(&decoded), bytes);
+}
+
+#[test]
+fn a_payload_without_a_group_or_reference_still_decodes() {
+    // A buffer authored before the kind existed: no group constraint and no
+    // reference block. The reference reads as empty, which the solver treats as
+    // "hold params_initial", exactly the old behaviour.
+    let decoded = decode_input(&encode_input(&sample_input())).expect("decode");
+    assert!(decoded.params_reference.is_empty());
+    assert!(decoded
+        .constraints
+        .iter()
+        .all(|c| c.kind() != Some(crate::ConstraintKind::Group)));
+}
+
+#[test]
+fn a_partial_reference_block_is_refused() {
+    // A reference shorter than the params is a host bug: the group residual
+    // would read another vector's length. The codec refuses it at the door.
+    let input = Input {
+        params_reference: vec![0.0, 0.0],
+        ..one_entity_input()
+    };
+    assert_eq!(
+        decode_input(&encode_input(&input)).unwrap_err(),
+        CodecError::BadReferenceCount(2)
+    );
+}
+
+#[test]
+fn the_rev_6_input_magic_is_rejected() {
+    // Rev 6 has no `n_reference` field: this decoder would read the first
+    // entity record's bytes as it and shift the whole param block.
+    let mut bytes = encode_input(&sample_input());
+    bytes[0..4].copy_from_slice(&MAGIC_SKG6.to_le_bytes());
+    assert_eq!(decode_input(&bytes).unwrap_err(), CodecError::BadMagic);
+}
+
+#[test]
+fn the_rev_6_output_magic_is_rejected() {
+    let out = Output {
+        params_solved: vec![1.0],
+        entity_status: vec![0],
+        overall_status: 0,
+        vertex_freedom: Vec::new(),
+        constraint_flags: Vec::new(),
+        constraint_miss: Vec::new(),
+        entity_moved: Vec::new(),
+        diagnostics: Diagnostics::default(),
+    };
+    let mut bytes = encode_output(&out);
+    bytes[0..4].copy_from_slice(&MAGIC_OUT_SKR6.to_le_bytes());
+    assert_eq!(decode_output(&bytes).unwrap_err(), CodecError::BadMagic);
 }

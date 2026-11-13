@@ -26,7 +26,9 @@
 //   45/135 deg axis; for any other axis they are dropped, because a mirrored
 //   horizontal line is neither horizontal nor vertical and carrying the
 //   constraint would distort the copy.
-// - Sugar/dock kinds (offset, ngon, dock) and unknown kinds are dropped.
+// - Sugar/dock kinds (offset, ngon, dock) and unknown kinds are dropped. A
+//   `group` copies only when every member is a mirror source, and copies as one
+//   group over the copies.
 
 import type { PartConstraint, PartDoc, PartEntityDef } from '@/types/cad'
 import {
@@ -46,7 +48,7 @@ export const CARRY_KINDS: ReadonlySet<string> = new Set([
   'coincident', 'concentric', 'equal_length', 'parallel', 'normal', 'tangent',
   'midpoint', 'colinear', 'fixed', 'length', 'radius', 'diameter',
   'radius_difference', 'point_distance', 'point_distance_x', 'point_distance_y',
-  'line_distance', 'angle', 'horizontal', 'vertical',
+  'line_distance', 'angle', 'horizontal', 'vertical', 'group',
 ])
 
 // The kind whose side selector the mirror reverses: the signed measure ran from
@@ -119,6 +121,38 @@ function rewriteRef(ref: string, plan: MirrorPlan): { ref: string; copy: boolean
  *  or an axis remap that the axis angle does not admit. */
 function cloneMirrorConstraint(c: PartConstraint, plan: MirrorPlan, constraints: PartConstraint[]): PartConstraint | null {
   const cloned: PartConstraint = { ...c }
+
+  // A group is one constraint over N whole members. It copies as one group over
+  // the copies, and only when every member is a source: a member left behind
+  // would tie the copy to the original's half, which is a relation the user did
+  // not ask for. The mirrored shape is the copies' own `initial` (mirroring an
+  // entity's initial block is what puts it there), so the reference needs no
+  // rewrite.
+  if (c.kind === 'group') {
+    const refs = Array.isArray(c.refs) ? c.refs : []
+    if (refs.length === 0) return null
+    const copiedRefs: string[] = []
+    let namesCopy = false
+    for (const ref of refs) {
+      if (typeof ref !== 'string' || !ref.startsWith('$') || !plan.idMap.has(ref.slice(1))) {
+        warn('mirror_entities: group has a member outside the mirror set, dropped', { id: c.id })
+        return null
+      }
+      const rewritten = rewriteRef(ref, plan)
+      if (rewritten === null) {
+        warn('mirror_entities: group member does not mirror, dropped', { id: c.id })
+        return null
+      }
+      namesCopy ||= rewritten.copy
+      copiedRefs.push(rewritten.ref)
+    }
+    // All members mirrored to themselves: the clone would name the same group
+    // twice, so the original already carries it.
+    if (!namesCopy) return null
+    cloned.refs = copiedRefs
+    cloned.id = uniqueConstraintId(constraints, cloned.kind)
+    return cloned
+  }
 
   if (!CARRY_KINDS.has(c.kind)) {
     warn('mirror_entities: constraint kind carries no mirrored form, dropped', { id: c.id, kind: c.kind })

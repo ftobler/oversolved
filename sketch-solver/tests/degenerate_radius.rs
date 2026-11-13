@@ -126,6 +126,7 @@ fn recreated_sketch() -> Input {
     Input {
         entities,
         params_initial: params,
+        params_reference: Vec::new(),
         // pl and pb are projected entities: every param pinned to its seed.
         pinned_mask: vec![0xff, 0, 0, 0, 0, 0, 0, 0],
         equality_pins: Vec::new(),

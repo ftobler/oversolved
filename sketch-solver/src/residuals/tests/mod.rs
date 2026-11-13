@@ -9,4 +9,5 @@ mod ellipse_distance;
 mod fd_scale;
 mod filtering;
 mod fit_spline;
+mod group;
 mod midpoint_spline_jacobian;

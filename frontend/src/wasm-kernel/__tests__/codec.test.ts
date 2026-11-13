@@ -5,8 +5,8 @@
 // so these pin that the current revision is written and accepted and that
 // buffers stamped with superseded revisions (1: pre-sign, 2: f32 scalars, 3:
 // no per-constraint verdicts, SKG4/SKR4: no storage quantum / moved report,
-// SKG5/SKR5: no dropped verdict bit) are refused instead of decoded with
-// shifted offsets or misread verdicts.
+// SKG5/SKR5: no dropped verdict bit, SKG6/SKR6: no reference params) are
+// refused instead of decoded with shifted offsets or misread verdicts.
 
 import { describe, it, expect } from 'vitest'
 import {
@@ -17,8 +17,9 @@ import { loadSolver } from '../loadSolver'
 
 const solveBytes = loadSolver()
 
-const MAGIC_IN = 0x36474b53  // "SKG6"
-const MAGIC_OUT = 0x36524b53  // "SKR6"
+const MAGIC_IN = 0x37474b53  // "SKG7"
+const MAGIC_OUT = 0x37524b53  // "SKR7"
+const MAGIC_OUT_SKR6 = 0x36524b53  // "SKR6" (no reference params in the input)
 const MAGIC_OUT_SKR5 = 0x35524b53  // "SKR5" (no dropped verdict bit)
 const MAGIC_OUT_SKR4 = 0x34524b53  // "SKR4" (no entity_moved)
 const MAGIC_OUT_REV3 = 0x33524b53  // "SKR3" (no per-constraint verdicts)
@@ -120,6 +121,12 @@ describe('sketch wire magic', () => {
     expect(() => decodeOutput(outputBytes(MAGIC_OUT_SKR5))).toThrow('bad output magic')
   })
 
+  it('decodeOutput rejects the rev 6 (SKR6) output magic', () => {
+    // The pair moves together: an SKR6 solver has no reference params, so a
+    // stale js/wasm pairing must fail at the handshake.
+    expect(() => decodeOutput(outputBytes(MAGIC_OUT_SKR6))).toThrow('bad output magic')
+  })
+
   it('decodeOutput rejects the rev 4 (SKR4) output magic', () => {
     // No entity_moved block: the diagnostics would start where this decoder
     // reads the moved bytes.
@@ -146,6 +153,36 @@ describe.skipIf(!solveBytes)('sketch wire stale input magic', () => {
     const bytes = encodeInput(emptyInput())
     bytes.set([0x53, 0x4b, 0x47, 0x35], 0)  // "SKG5"
     expect(() => solveBytes!(bytes)).toThrow()
+  })
+
+  it('rejects a SKG6 buffer, whose header has no reference params', () => {
+    // This decoder would read the first entity record as `n_reference` and
+    // shift every following block.
+    const bytes = encodeInput(emptyInput())
+    bytes.set([0x53, 0x4b, 0x47, 0x36], 0)  // "SKG6"
+    expect(() => solveBytes!(bytes)).toThrow()
+  })
+})
+
+describe.skipIf(!solveBytes)('sketch wire reference params', () => {
+  it('holds the reference shape while the seed is moved', () => {
+    // The drag case in one call: the seed has the line end pulled up, the
+    // reference is the authored line, and `fixed` must pin to the reference.
+    const input: FlatInput = {
+      entities: [{ kind: Kind.Line, flags: 0, offset: 0, count: 4 }],
+      params: [0.0, 4.0, 10.0, 4.0],
+      paramsReference: [0.0, 0.0, 10.0, 0.0],
+      pinnedMask: [],
+      equalityPins: [],
+      constraints: [
+        { kind: ConstraintKindCode.fixed, refs: [{ role: Role.target, ref: { kind: 'entity', index: 0, point: Sel.absent } }] },
+      ],
+      seedQuantum: 1e-6,
+      options: { dragMode: false, dragAnchorId: 0, skipStatusPass: false },
+    }
+    const out = decodeOutput(solveBytes!(encodeInput(input)))
+    expect(out.paramsSolved[1]).toBeCloseTo(0, 6)
+    expect(out.paramsSolved[3]).toBeCloseTo(0, 6)
   })
 })
 

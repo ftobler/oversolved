@@ -744,6 +744,52 @@ describe('sketchEditorStore', () => {
         expect(handler).not.toHaveBeenCalled()
       })
     })
+
+    describe('group', () => {
+      it('dispatches one add_constraint over every selected entity', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L2')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:C1')
+
+        expect(useSketchEditorStore.getState().applyConstraint('group')).toBeNull()
+        expect(handler).toHaveBeenCalledOnce()
+        expect(handler).toHaveBeenCalledWith({
+          type: 'add_constraint',
+          featureId: 'S1',
+          kind: 'group',
+          targets: expect.arrayContaining(['entity:S1:L1', 'entity:S1:L2', 'entity:S1:C1']),
+        })
+      })
+
+      it('refuses a projected member by name before creating a mutation', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        setSketchCallback('getProjectedSources', () => [{ entityId: 'L1', kind: 'line' }])
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L2')
+
+        const reason = useSketchEditorStore.getState().applyConstraint('group')
+
+        expect(reason).toContain('projected entity "L1"')
+        expect(handler).not.toHaveBeenCalled()
+      })
+
+      it('refuses a vertex pick by name', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
+
+        const reason = useSketchEditorStore.getState().applyConstraint('group')
+
+        expect(reason).toContain('whole sketch entities')
+        expect(handler).not.toHaveBeenCalled()
+      })
+    })
   })
 
   describe('toggleConstruction', () => {

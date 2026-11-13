@@ -270,6 +270,23 @@ function createdIdsBetween(before: PartDoc, after: PartDoc): string[] {
   return created
 }
 
+/** The id of a Group constraint this apply created, if any. An import_dxf
+ *  authors exactly one over its rows; the reply names it beside the entity
+ *  count instead of leaving the caller to read the document back. */
+function createdGroupId(before: PartDoc, after: PartDoc): string | undefined {
+  for (const feature of after.features ?? []) {
+    if (feature.kind !== 'sketch') continue
+    const beforeFeature = before.features?.find(f => f.id === feature.id)
+    const beforeIds = new Set(
+      beforeFeature?.kind === 'sketch' ? (beforeFeature.constraints ?? []).map(c => c.id) : [],
+    )
+    for (const constraint of feature.constraints ?? []) {
+      if (constraint.kind === 'group' && !beforeIds.has(constraint.id)) return constraint.id
+    }
+  }
+  return undefined
+}
+
 /**
  * The dimensional constraints a step replaced, old id to new id. Only a compact
  * sugar step can do this today: fillet_corners consumes the `length` a trimmed
@@ -800,10 +817,21 @@ export class DocSession {
   private createdIdsFor(mutations: Mutation[], before: PartDoc, after: PartDoc): SessionSuccess {
     if (!mutations.some(m => CREATING_MUTATION_TYPES.has(m.type))) return okResult()
     const created = createdIdsBetween(before, after)
+    // An import's group is a constraint, not an imported entity: the reply
+    // names it separately so `createdCount` keeps meaning rows. It is in
+    // `created` (a new sketch child), so drop it from the id list.
+    const groupId = mutations.some(m => m.type === 'import_dxf')
+      ? createdGroupId(before, after)
+      : undefined
+    const entityIds = groupId === undefined ? created : created.filter(id => id !== groupId)
+    const withGroup = (result: SessionSuccess): SessionSuccess =>
+      groupId === undefined ? result : { ...result, groupId }
     const vertexKeys = mutations.length === 1 && mutations[0].type === 'add_three_point_arc'
       ? threePointArcVertexKeys(mutations[0].start, mutations[0].through, mutations[0].end) ?? undefined
       : undefined
-    if (!mutations.every(m => COMPACT_CREATED_TYPES.has(m.type))) return okResult(created, undefined, vertexKeys)
+    if (!mutations.every(m => COMPACT_CREATED_TYPES.has(m.type))) {
+      return withGroup(okResult(entityIds, undefined, vertexKeys))
+    }
     // A rect, n-gon, mirror, pattern or fillet mints several constraints beside
     // its entities. The ids list keeps the entities in minting order and the
     // constraints collapse to a count; the document resource has their ids.
@@ -821,8 +849,8 @@ export class DocSession {
         if (!heldBefore.has(c.id)) createdConstraintIds.add(c.id)
       }
     }
-    const ids = created.filter(id => !createdConstraintIds.has(id))
-    return okResult(ids, created.length - ids.length, undefined, replacedDimensions(before, after))
+    const ids = entityIds.filter(id => !createdConstraintIds.has(id))
+    return withGroup(okResult(ids, entityIds.length - ids.length, undefined, replacedDimensions(before, after)))
   }
 
   private solveAfterMutation(doc: PartDoc, mutations: Mutation[], restorable: Record<string, SketchData> | null): void {

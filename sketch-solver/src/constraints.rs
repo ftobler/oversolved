@@ -176,7 +176,7 @@ impl Axis {
     }
 }
 
-/// The 19 constraint kinds the solver understands. Codes are stable wire values;
+/// The 20 constraint kinds the solver understands. Codes are stable wire values;
 /// do not renumber without bumping the codec contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConstraintKind {
@@ -199,6 +199,12 @@ pub enum ConstraintKind {
     RadiusDifference,
     PointDistanceX,
     PointDistanceY,
+    /// Rigid group: a member holds its shape and its offset from the group's
+    /// anchor point, which may translate. The host lowers one document group to
+    /// one `Group` per member; `Target` names the member, `A` the anchor point.
+    /// No payload: the reference shape is the solver's reference params, the way
+    /// `fixed` reads them.
+    Group,
 }
 
 impl ConstraintKind {
@@ -223,6 +229,7 @@ impl ConstraintKind {
             16 => ConstraintKind::RadiusDifference,
             17 => ConstraintKind::PointDistanceX,
             18 => ConstraintKind::PointDistanceY,
+            19 => ConstraintKind::Group,
             _ => return None,
         })
     }
@@ -248,6 +255,7 @@ impl ConstraintKind {
             ConstraintKind::RadiusDifference => 16,
             ConstraintKind::PointDistanceX => 17,
             ConstraintKind::PointDistanceY => 18,
+            ConstraintKind::Group => 19,
         }
     }
 }
@@ -364,17 +372,17 @@ mod tests {
     }
 
     #[test]
-    fn constraint_kind_roundtrips_for_all_19_kinds() {
-        // Walks 0..=18 exhaustively: every code maps to a kind and back, and the
-        // count is exactly 19 (guards against a kind added without a code).
+    fn constraint_kind_roundtrips_for_all_20_kinds() {
+        // Walks 0..=19 exhaustively: every code maps to a kind and back, and the
+        // count is exactly 20 (guards against a kind added without a code).
         let mut count = 0;
-        for code in 0u8..=18 {
-            let kind = ConstraintKind::from_u8(code).expect("0..=18 must be valid");
+        for code in 0u8..=19 {
+            let kind = ConstraintKind::from_u8(code).expect("0..=19 must be valid");
             assert_eq!(kind.to_u8(), code);
             count += 1;
         }
-        assert_eq!(count, 19);
-        assert_eq!(ConstraintKind::from_u8(19), None);
+        assert_eq!(count, 20);
+        assert_eq!(ConstraintKind::from_u8(20), None);
         assert_eq!(ConstraintKind::from_u8(u8::MAX), None);
     }
 

@@ -6,6 +6,7 @@
 // live document, judging the shapes only when it can read the entity kinds.
 import type { SketchFeature } from '@/types/cad'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
+import { resolveVertexRef } from '@/types/vertexRef'
 import { pointDistanceZeroProblem } from './yamlMutations/helpers'
 import {
   COLINEAR_SHAPE_REASON,
@@ -99,6 +100,62 @@ export function midpointOperands(
   return null
 }
 
+/** The sketch fields a shape rule reads. `constraints` is optional so a
+ *  shape-only caller (the drive rule without a live document) can omit it. */
+type SketchShape = Pick<SketchFeature, 'id' | 'entities'> & Pick<Partial<SketchFeature>, 'constraints'>
+
+/**
+ * Why a `group` pick has no solver rows, or null. A group holds whole authored
+ * entities of one sketch: a vertex, the projected origin, or an entity already
+ * held by a `projection` has no rigid-group reading (its params are pinned
+ * elsewhere or the pick is not an entity). The count rule and the value refusal
+ * apply without a document; the per-entity checks need one.
+ */
+function groupProblem(
+  feature: SketchShape | undefined,
+  featureId: string,
+  targets: readonly string[],
+  value: number | undefined,
+): string | null {
+  if (targets.length < 1) return 'group needs at least one target'
+  if (value !== undefined) {
+    return 'group takes no value; delete the Group constraint to edit the entities freely'
+  }
+  if (!feature) return null
+  const entityIds = new Set((feature.entities ?? []).map(e => e.id))
+  const projected = new Set(
+    (feature.constraints ?? [])
+      .filter(c => c.kind === 'projection' && typeof c.target === 'string')
+      .map(c => String(c.target).replace(/^\$/, '')),
+  )
+  for (const target of targets) {
+    if (target === '@builtin_origin') {
+      return 'group holds whole sketch entities; the origin is not one'
+    }
+    if (target.startsWith('vertex:')) {
+      return 'group holds whole sketch entities, not a vertex'
+    }
+    // A dock/isect handle materializes into a point before the applier judges
+    // it; the applier re-runs this rule on the resolved targets.
+    if (target.startsWith('dock:') || target.startsWith('isect:')) continue
+    let id: string | null = null
+    if (target.startsWith('entity:')) {
+      const parts = target.split(':')
+      if (parts[0] === 'entity' && parts[1] === featureId && parts[2]) id = parts[2]
+    } else {
+      const resolved = resolveVertexRef(entityIds, target)
+      if (resolved?.point !== undefined) {
+        return 'group holds whole sketch entities, not a vertex'
+      }
+      id = resolved?.entity ?? null
+    }
+    if (id !== null && projected.has(id)) {
+      return `group cannot include the projected entity "${id}"; delete its projection first`
+    }
+  }
+  return null
+}
+
 /** The sentence a refused midpoint carries. The accepted shapes come from the
  *  catalog note, so a caller learns what to write instead of only what failed. */
 export function midpointShapeReason(targets: readonly string[]): string {
@@ -116,7 +173,7 @@ export function midpointShapeReason(targets: readonly string[]): string {
  * applier can author. The applier calls this again with the resolved targets.
  */
 export function addConstraintProblem(
-  feature: Pick<SketchFeature, 'id' | 'entities'> | undefined,
+  feature: SketchShape | undefined,
   kind: string,
   targets: readonly string[],
   value: number | undefined,
@@ -172,6 +229,10 @@ export function addConstraintProblem(
     // uses.
     if (targets.length !== 2) return COLINEAR_SHAPE_REASON
     return colinearShapeProblem(targets[0], targets[1], target => sideOf(String(target)))
+  }
+
+  if (kind === 'group') {
+    return groupProblem(feature, featureId, targets, value)
   }
 
   // Generic kinds need operands: coincident pairs two refs, everything else at

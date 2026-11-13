@@ -1,5 +1,33 @@
 use super::{Problem, P2};
-use crate::constraints::{Axis, Constraint, Ref, RefRole};
+use crate::constraints::{Axis, Constraint, PointSelector, Ref, RefRole};
+use crate::Kind;
+
+/// How many leading scalars of a member's param block are coordinates (as
+/// opposed to shape scalars such as a radius or an arc angle).
+///
+/// The group holds coordinates at their reference plus the group's translation
+/// and every later scalar at its reference exactly. `fit_spline` stores the fit
+/// points and the optional end handles as absolute points, so its whole block
+/// translates; a spline is four Bezier control points.
+pub(super) fn group_coord_count(kind: Kind, param_count: usize) -> usize {
+    match kind {
+        Kind::Line => 4,
+        Kind::Circle | Kind::Arc | Kind::Ellipse | Kind::Point => 2,
+        Kind::Spline => 8,
+        Kind::FitSpline => param_count,
+    }
+}
+
+/// True when the anchor selector names the entity's first param pair. Every
+/// kind's first point lives at params 0,1 (line/spline start, the centre of a
+/// circle/arc/ellipse, a point's xy, a fit spline's first fit point), and the
+/// host's lowering always writes one of these selectors.
+pub(super) fn anchor_is_first_pair(point: PointSelector) -> bool {
+    matches!(
+        point,
+        PointSelector::Absent | PointSelector::Start | PointSelector::Center | PointSelector::Xy
+    )
+}
 
 impl Problem<'_> {
     pub(super) fn r_midpoint(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
@@ -54,7 +82,7 @@ impl Problem<'_> {
             let (fix_x, fix_y) = match c.xy {
                 Some((fx, fy)) => (fx, fy),
                 None => {
-                    let p0 = self.point(&self.x0, target);
+                    let p0 = self.point(&self.reference, target);
                     (p0[0], p0[1])
                 }
             };
@@ -64,8 +92,57 @@ impl Problem<'_> {
             let off = self.offset_of(index);
             let size = self.param_count_of(index);
             for i in 0..size {
-                r.push(x[off + i] - self.x0[off + i]);
+                r.push(x[off + i] - self.reference[off + i]);
             }
+        }
+    }
+
+    /// Rigid group member: its coordinates hold their reference offset from the
+    /// anchor point, and its shape scalars hold their reference value.
+    ///
+    /// The anchor point's displacement `t = anchor(x) - anchor(reference)` is the
+    /// translation the whole group is allowed. Only the anchor entity's own first
+    /// pair is that `t` itself, so it contributes no rows; every other member
+    /// param (and the anchor's other params) gets one. The rows are therefore
+    /// `(member params) - 2` per group, with no redundancy: the null space is
+    /// exactly the two translations.
+    pub(super) fn r_group(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
+        let (
+            Some(Ref::Entity { index: member, .. }),
+            Some(
+                anchor @ Ref::Entity {
+                    index: anchor_index,
+                    ..
+                },
+            ),
+        ) = (c.ref_for(RefRole::Target), c.ref_for(RefRole::A))
+        else {
+            return;
+        };
+        let Ref::Entity {
+            point: anchor_point,
+            ..
+        } = anchor
+        else {
+            return;
+        };
+        let off = self.offset_of(member);
+        let size = self.param_count_of(member);
+        let t = self.translation(x, anchor);
+        let coords = group_coord_count(self.kind_of(member), size);
+        let skip_anchor_pair =
+            member == anchor_index && size >= 2 && anchor_is_first_pair(anchor_point);
+        for i in 0..size {
+            if skip_anchor_pair && i < 2 {
+                continue;
+            }
+            let held = self.reference[off + i];
+            let residual = if i < coords {
+                x[off + i] - held - t[i % 2]
+            } else {
+                x[off + i] - held
+            };
+            r.push(residual);
         }
     }
 }

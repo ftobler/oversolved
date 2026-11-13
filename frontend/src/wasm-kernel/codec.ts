@@ -28,6 +28,7 @@ const CONSTRAINT_CODE_BY_KIND = {
   radius_difference: 16,
   point_distance_x: 17,
   point_distance_y: 18,
+  group: 19,
 } as const
 
 /** The sketch constraint kind names, from the wire table the solver decodes, so
@@ -92,21 +93,25 @@ export const CONSTRAINT_FLAG = {
   dropped: 1 << 1,
 } as const
 
-// Rev 6 of the wire layout. `SKG6`/`SKR6` carry the dropped verdict bit: the
-// byte layout is unchanged but the meaning of `constraint_flags` grew, and an
-// older solver would read a dropped constraint as unflagged. `SKG5` added the
-// header's storage quantum; `SKR5` added the per-entity moved bitmask before
-// the diagnostics. The entity record itself is unchanged since `SKG4`, which
-// made it variable-size (`fit_spline` carries `2 N + 2 h` params), and rev 4's
-// per-constraint verdicts are otherwise unchanged too. The magic IS the
-// version handshake: the layout evolved before (has_sign flag + trailing sign
-// f32) without moving these, so a stale js/wasm pairing decoded shifted
-// offsets instead of failing. Bump BOTH sides (these two and
-// sketch-solver/src/codec.rs) on any layout or verdict-semantics change.
-// Invalidating stale cached payloads is acceptable and safe post-wave-1:
-// bundle-cache reads degrade to cold rebuilds.
-const MAGIC_IN = 0x36474b53  // "SKG6", little-endian on the wire
-const MAGIC_OUT = 0x36524b53  // "SKR6"
+// Rev 7 of the wire layout. `SKG7` added the input's optional reference param
+// block (`paramsReference`): `fixed` and `group` hold it when present and
+// `params` otherwise, so a drag can seed from the previous frame while the
+// constraints still hold the last hard solve's shape. The output layout did not
+// change, but the magic pair moves together as the version handshake. Rev 6
+// (`SKG6`/`SKR6`) carried the dropped verdict bit: the layout was unchanged but
+// the meaning of `constraint_flags` grew, and an older solver would read a
+// dropped constraint as unflagged. `SKG5` added the header's storage quantum;
+// `SKR5` added the per-entity moved bitmask before the diagnostics. The entity
+// record itself is unchanged since `SKG4`, which made it variable-size
+// (`fit_spline` carries `2 N + 2 h` params), and rev 4's per-constraint
+// verdicts are otherwise unchanged too. The magic IS the version handshake: the
+// layout evolved before (has_sign flag + trailing sign f32) without moving
+// these, so a stale js/wasm pairing decoded shifted offsets instead of failing.
+// Bump BOTH sides (these two and sketch-solver/src/codec.rs) on any layout or
+// verdict-semantics change. Invalidating stale cached payloads is acceptable and
+// safe post-wave-1: bundle-cache reads degrade to cold rebuilds.
+const MAGIC_IN = 0x37474b53  // "SKG7", little-endian on the wire
+const MAGIC_OUT = 0x37524b53  // "SKR7"
 
 export interface FlatEntity {
   kind: number
@@ -135,6 +140,11 @@ export interface FlatConstraint {
 export interface FlatInput {
   entities: FlatEntity[]
   params: number[]
+  /** The shape `fixed` and `group` hold, when it is not `params` (which is the
+   *  solve seed). Empty/absent means "hold `params`", the hard solve's case; a
+   *  drag sends the last hard solve's params so a deformed drag seed does not
+   *  teach the group a new shape. Must have `params`'s length when present. */
+  paramsReference?: number[]
   pinnedMask: number[]
   equalityPins: Array<{ index: number; target: number }>
   constraints: FlatConstraint[]
@@ -225,6 +235,7 @@ export function encodeInput(input: FlatInput): Uint8Array {
   w.u8(input.options.skipStatusPass ? 1 : 0)
   w.u32(input.options.dragAnchorId)
   w.f64(input.seedQuantum ?? 0)
+  w.u32(input.paramsReference?.length ?? 0)
 
   for (const e of input.entities) {
     w.u8(e.kind)
@@ -233,6 +244,7 @@ export function encodeInput(input: FlatInput): Uint8Array {
     w.u32(e.count)
   }
   for (const p of input.params) w.f64(p)
+  for (const p of input.paramsReference ?? []) w.f64(p)
 
   const maskLen = Math.ceil(input.params.length / 8)
   for (let i = 0; i < maskLen; i++) w.u8(input.pinnedMask[i] ?? 0)

@@ -23,8 +23,10 @@
 //!   u8   skip_status_pass (0/1)
 //!   u32  drag_anchor_id
 //!   f64  seed_quantum        // host storage grid in doc units; 0 disables the moved report
+//!   u32  n_reference         // 0, or n_params (see below)
 //! entities:       n_entities x { u8 kind, u8 flags, u32 param_offset, u32 param_count }
 //! params_initial: n_params x f64
+//! params_reference: n_reference x f64  // absent when n_reference is 0
 //! pinned_mask:    ceil(n_params / 8) bytes (LSB-first within each byte)
 //! equality_pins:  n_equality_pins x { u32 param_index, f64 target }
 //! constraints:    n_constraints x constraint-record (see below)
@@ -67,9 +69,14 @@
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
 //! ```
 //!
-//! The `SKG6`/`SKR6` pair carries the `CONSTRAINT_FLAG_DROPPED` verdict bit:
-//! the layout is unchanged, but an older solver would silently read a dropped
-//! constraint as unflagged, so the magic handshake moves with the meaning.
+//! The `SKG7`/`SKR7` pair adds the input's optional reference params: `fixed`
+//! and `group` hold them when they are present, and `params_initial` otherwise.
+//! A drag seeds from the previous frame, so it must say which shape the
+//! constraints hold; the hard solve leaves `n_reference` at 0. The output
+//! layout did not change, but the pair moves together as the version handshake.
+//! The earlier `SKG6`/`SKR6` pair carried the `CONSTRAINT_FLAG_DROPPED` verdict
+//! bit: the layout was unchanged, but an older solver would silently read a
+//! dropped constraint as unflagged, so the magic moved with the meaning.
 //! Before that, `SKG5` added the header's `seed_quantum` and `SKR5` added the
 //! `entity_moved` bitmask, so the write-back asks the solver which entities
 //! it moved instead of applying a float envelope of its own. Before that,
@@ -83,8 +90,8 @@
 //! of the boundary (this file and frontend/src/wasm-kernel/codec.ts) on any
 //! layout change. Invalidating old cached payloads is acceptable and safe
 //! post-wave-1: bundle-cache reads of stale buffers degrade to cold rebuilds.
-pub const MAGIC: u32 = 0x3647_4B53; // "SKG6" in LE memory order
-pub const MAGIC_OUT: u32 = 0x3652_4B53; // "SKR6" in LE memory order
+pub const MAGIC: u32 = 0x3747_4B53; // "SKG7" in LE memory order
+pub const MAGIC_OUT: u32 = 0x3752_4B53; // "SKR7" in LE memory order
 
 /// The rev 1 and rev 2 values (and rev 3, whose output lacked the
 /// per-constraint verdicts). Kept only so tests can assert a stale pairing
@@ -119,6 +126,13 @@ pub const MAGIC_OUT_SKR4: u32 = 0x3452_4B53;
 pub const MAGIC_SKG5: u32 = 0x3547_4B53;
 #[cfg(test)]
 pub const MAGIC_OUT_SKR5: u32 = 0x3552_4B53;
+/// The rev 6 pair. The input layout has no `n_reference`: a rev 6 buffer
+/// decoded by this solver would read the first reference f64's bytes as
+/// `n_reference` and shift every following block.
+#[cfg(test)]
+pub const MAGIC_SKG6: u32 = 0x3647_4B53;
+#[cfg(test)]
+pub const MAGIC_OUT_SKR6: u32 = 0x3652_4B53;
 
 use solver_core::bytes::{Eof, Reader, Writer};
 
@@ -141,6 +155,8 @@ pub enum CodecError {
     BadFlags(u8),
     /// A `fit_spline` record whose count is not `2 N + 2 h` with `2 <= N <= 64`.
     BadFitLayout(u32, u8),
+    /// An input whose reference block is neither absent nor the param count.
+    BadReferenceCount(u32),
 }
 
 /// Lets `r.u32()?` inside a `Result<_, CodecError>` function convert the
@@ -185,6 +201,7 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
     let skip_status_pass = r.u8()? != 0;
     let drag_anchor_id = r.u32()?;
     let seed_quantum = finite(r.f64()?)?;
+    let n_reference = r.u32()? as usize;
 
     // Record widths for the pre-allocation caps below: entity = kind + flags +
     // offset + count, param = f64, pin = index + target, constraint = kind +
@@ -228,6 +245,18 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
         params_initial.push(finite(r.f64()?)?);
     }
 
+    // The reference is either absent (the hard solve: hold `params_initial`) or
+    // the whole param vector (a drag: hold the last hard solve's shape). A
+    // partial block would leave residual builders reading a different vector's
+    // length, so it is refused at the one door.
+    if n_reference != 0 && n_reference != n_params {
+        return Err(CodecError::BadReferenceCount(n_reference as u32));
+    }
+    let mut params_reference = Vec::with_capacity(r.capacity_for(n_reference, 8));
+    for _ in 0..n_reference {
+        params_reference.push(finite(r.f64()?)?);
+    }
+
     let mask_len = pinned_mask_bytes(n_params);
     let pinned_mask = r.take(mask_len)?.to_vec();
 
@@ -249,6 +278,7 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
     Ok(Input {
         entities,
         params_initial,
+        params_reference,
         pinned_mask,
         equality_pins,
         constraints,
@@ -332,6 +362,10 @@ pub(crate) fn encode_input(input: &Input) -> Vec<u8> {
     w.u8(input.options.skip_status_pass as u8);
     w.u32(input.options.drag_anchor_id);
     w.f64(input.seed_quantum);
+    // A reference vector that is neither absent nor full-length is not a buffer
+    // this codec's own decode accepts, so the test encoder writes it verbatim
+    // and lets a test pin that refusal.
+    w.u32(input.params_reference.len() as u32);
 
     for e in &input.entities {
         w.u8(e.kind.to_u8());
@@ -340,6 +374,9 @@ pub(crate) fn encode_input(input: &Input) -> Vec<u8> {
         w.u32(e.param_count as u32);
     }
     for &p in &input.params_initial {
+        w.f64(p);
+    }
+    for &p in &input.params_reference {
         w.f64(p);
     }
     // Pad the mask to the canonical length so decode round-trips exactly.

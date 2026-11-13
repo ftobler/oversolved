@@ -86,4 +86,45 @@ describe('applySolveResult and a failed sketch', () => {
 
     expect(setDoc).not.toHaveBeenCalled()
   })
+
+  it('a grouped sketch with a conflicting length keeps its held shape', async () => {
+    // The solver's compromise stretches a group member; baking it would teach
+    // the group a deformed reference on the next solve. The failed solve must
+    // leave `initial` at the last satisfied geometry.
+    const doc = {
+      version: 1,
+      kind: 'part',
+      features: [
+        {
+          id: 'sk1',
+          kind: 'sketch',
+          entities: [{ id: 'l1', kind: 'line' }, { id: 'c1', kind: 'circle' }],
+          initial: { l1: [0, 0, 4, 0], c1: [6, 0, 1] },
+          constraints: [
+            { id: 'g1', kind: 'group', refs: ['$l1', '$c1'] },
+            { id: 'len', kind: 'length', target: '$l1', value: 10 },
+          ],
+        },
+        sketch('sk2', 'l2', [1, 2, 3, 4]),
+      ],
+    } as unknown as PartDoc
+    const { result, setDoc } = setupHook(doc)
+    mockSolveLocally.mockResolvedValue(response({
+      sk1: {
+        status: 'overconstrained',
+        geometry: { l1: [0, 0, 10, 0], c1: [12, 0, 1] },
+      },
+      sk2: { status: 'underconstrained', geometry: { l2: [5, 6, 7, 8] } },
+    }))
+
+    await act(async () => { await result.current.reSolve(doc) })
+
+    expect(setDoc).toHaveBeenCalledTimes(1)
+    const written = setDoc.mock.calls[0][0] as PartDoc
+    const sk1 = written.features!.find(f => f.id === 'sk1') as { initial?: Record<string, number[]> }
+    expect(sk1.initial).toEqual({ l1: [0, 0, 4, 0], c1: [6, 0, 1] })
+    // The group itself is still there for the next edit/undo.
+    expect((written.features!.find(f => f.id === 'sk1') as { constraints?: unknown[] }).constraints)
+      .toHaveLength(2)
+  })
 })

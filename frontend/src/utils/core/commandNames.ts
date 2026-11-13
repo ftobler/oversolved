@@ -54,6 +54,7 @@ export const COMMAND_NAMES = [
   'apply_tangent',
   'apply_midpoint',
   'apply_fixed',
+  'apply_group',
   'apply_colinear',
   'apply_length',
   'apply_radius',

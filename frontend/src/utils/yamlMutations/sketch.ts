@@ -442,6 +442,12 @@ export function applyAddConstraint(
       warn(`applyAddConstraint: ${midpointShapeReason(targets)}`, { featureId, targets })
       return
     }
+  } else if (kind === 'group') {
+    // A group stores its whole member list in `refs` (the n-ary spelling the
+    // ngon sugar uses, and the one the lowering reads). The first member is the
+    // anchor. addConstraintProblem refused a vertex, the origin and a projected
+    // member, so every target is an authored entity of this sketch.
+    c.refs = [...new Set(targets.map(pt))]
   } else if (kind === 'horizontal' || kind === 'vertical') {
     // Overloaded: one line -> `target` (make the line axis-aligned); two points
     // -> `a`/`b` (share a coordinate). addConstraintProblem refused the empty
@@ -574,6 +580,16 @@ export function applyDeleteElements(doc: PartDoc, targets: string[]): void {
       // Garbage-collect constraints that reference deleted entities.
       if (feature.constraints) {
         for (const c of feature.constraints) {
+          // A group survives losing a member: it shrinks, and the first
+          // remaining member becomes the anchor (the residual reads the first
+          // target). Only the last member's removal deletes the group, which is
+          // the one place a constraint outlives the usual cascade.
+          if (c.kind === 'group' && Array.isArray(c.refs)) {
+            const kept = c.refs.filter(r => !_refMatchesDeleted(r, entsToDelete))
+            if (kept.length === 0) consToDelete.add(c.id)
+            else if (kept.length !== c.refs.length) c.refs = kept
+            continue
+          }
           if (_refsDeletedEntity(c, entsToDelete)) consToDelete.add(c.id)
           // An n-gon survives losing its circumcircle: it stays regular and just
           // has no center any more, so only the circle field goes.

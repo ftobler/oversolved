@@ -725,6 +725,26 @@ export const editorState = createStore<EditorState>((set, get) => ({
       return ek === 'line' ? 'line' : isPointLikeEntityKind(ek) ? 'point' : undefined
     })
 
+    const def = CONSTRAINT_BY_KIND.get(kind)
+    const label = def?.label ?? kind
+    // A group holds whole authored entities: a vertex pick, the origin, or an
+    // entity already held by a projection (or projected by this very click) has
+    // no rigid-group reading. The applier and the drive rule refuse the same
+    // picks; naming it here is what the command's temp message shows the user.
+    if (kind === 'group') {
+      const recordedProjections = sketchCallbacks.getProjectedSources?.(activeFeatureId) ?? []
+      const projectedIds = new Set(recordedProjections.map(p => p.entityId))
+      for (const t of targets) {
+        if (t === '@builtin_origin' || t.startsWith('vertex:')) {
+          return `${label} holds whole sketch entities, not a vertex or the origin.`
+        }
+        const eid = t.startsWith('entity:') ? t.split(':')[2] : undefined
+        if (eid !== undefined && (kindByTarget.has(t) || projectedIds.has(eid))) {
+          return `${label} cannot include the projected entity "${eid}"; delete its projection first.`
+        }
+      }
+    }
+
     // Reject operand kinds the constraint cannot represent before authoring it.
     // A parallel between two arcs (or a concentric on a line) otherwise lands in
     // the doc as a constraint the solver can't satisfy and the canvas can't
@@ -732,8 +752,6 @@ export const editorState = createStore<EditorState>((set, get) => ({
     // `entityKindGroups` is the single source of truth: every entity operand's
     // kind must fall in one common group. An unknown kind (not in entityKindMap
     // yet) is tolerated so this never blocks on a transient/empty map.
-    const def = CONSTRAINT_BY_KIND.get(kind)
-    const label = def?.label ?? kind
     if (def?.entityKindGroups) {
       const groups = def.entityKindGroups
       const kinds = targets

@@ -204,6 +204,13 @@ function entityIds(...refs: ResolvedRef[]): string[] {
   return refs.map(r => r?.entity).filter((e): e is string => !!e && e !== ORIGIN_REF)
 }
 
+/** The vertex key of an entity kind's first point, the point a group's
+ *  translation is measured from. `undefined` lets `geomPoint` use the kind's
+ *  default (a line's start, a point's xy). */
+function groupAnchorPointKey(kind: string): string | undefined {
+  return kind === 'circle' || kind === 'arc' || kind === 'ellipse' ? 'center' : undefined
+}
+
 // Public entry point. Delegates to the per-kind core renderer, then guarantees
 // a selectable glyph: when the core can't build a specific render (an unknown
 // or hand-edited shape, e.g. a parallel between two circles) we anchor a generic
@@ -289,6 +296,30 @@ function computeConstraintRenderCore(
     point_b: normalize(constraint.point_b),
   }
   const kind = resolved.kind
+
+  // A group is one tile for the whole set, at the anchor's first point, and
+  // hovering it highlights every member. The anchor is the first member ref, the
+  // same one the solver measures the group's translation from.
+  if (kind === 'group') {
+    const rawRefs = Array.isArray(constraint.refs) ? constraint.refs : []
+    const members: string[] = []
+    for (const raw of rawRefs) {
+      const ref = typeof raw === 'string' ? normalize(raw) : raw as ResolvedRef
+      const eid = ref?.entity
+      if (!eid || eid === ORIGIN_REF || members.includes(eid)) continue
+      members.push(eid)
+    }
+    const anchorId = members[0]
+    const anchorEntity = anchorId ? sketch[anchorId] : undefined
+    if (!anchorId || !anchorEntity) return { kind: 'unknown' }
+    // geomPoint's whole-entity fallback is the start point, but the group's
+    // anchor is the entity's first point as the solver names it: a circle, arc
+    // or ellipse is anchored at its centre.
+    const key = groupAnchorPointKey(getEntityKind(anchorEntity))
+    const at = geomPoint(sketch, { entity: anchorId, point: key })
+    if (!at) return { kind: 'unknown' }
+    return { kind: 'symbol_group', at, entity: anchorId, entities: members }
+  }
 
   // horizontal/vertical share the same anchoring; only the glyph differs.
   if (kind === 'horizontal' || kind === 'vertical') {

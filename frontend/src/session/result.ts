@@ -38,6 +38,10 @@ export interface SessionSuccess {
   // straight run. The old id is gone from the document, the new one names the
   // result, so a caller can carry its label or undo bookkeeping across.
   replacedConstraints?: Array<{ from: string; to: string }>
+  // Present only on an import_dxf step: the Group constraint the import authored
+  // over its rows. Created ids of the step leave it out, so `createdCount` stays
+  // the imported entity count; a caller names the group through this id.
+  groupId?: string
 }
 
 export interface OpenedSuccess {

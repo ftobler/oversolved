@@ -226,6 +226,28 @@ describe('import_dxf from the run files map', () => {
     expect(byFile.session.historyEntries().undo).toHaveLength(1)
   })
 
+  it('reports the authored Group constraint as groupId beside the row count', async () => {
+    const part = createHeadlessPart({ doc: sketchDoc() })
+    const outcome = await part.run([{ mutation: { type: 'import_dxf', featureId: 'sk', content: TEXT } }])
+    expect(outcome.ok).toBe(true)
+    expect(outcome.steps[0].createdCount).toBe(2)
+    const sketch = part.getDoc()?.features?.[0]
+    const group = sketch?.kind === 'sketch'
+      ? (sketch.constraints ?? []).find(c => c.kind === 'group')
+      : undefined
+    expect(group).toBeDefined()
+    expect(outcome.steps[0].groupId).toBe(group?.id)
+
+    // The opt-out has no group and no groupId.
+    const plain = createHeadlessPart({ doc: sketchDoc() })
+    const bare = await plain.run([{
+      mutation: { type: 'import_dxf', featureId: 'sk', content: TEXT, group: false },
+    }])
+    expect(bare.steps[0].groupId).toBeUndefined()
+    const bareSketch = plain.getDoc()?.features?.[0]
+    expect(bareSketch?.kind === 'sketch' ? (bareSketch.constraints ?? []) : []).toEqual([])
+  })
+
   it('fails an unknown id, names it, and leaves the document unchanged', async () => {
     const part = createHeadlessPart({
       doc: sketchDoc(),

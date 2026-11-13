@@ -10,7 +10,8 @@
 //   vertex of one); the clone names the copy of that source in the SAME
 //   instance. Anything reaching outside the source set (another entity, another
 //   feature, an n-ary sugar list) stays on the source alone: the copies are a
-//   row of profiles, not live children of the source.
+//   row of profiles, not live children of the source. A `group` follows the
+//   same rule over all its members and copies as one group per instance.
 // - Values and `sign` carry unchanged: a rigid motion keeps lengths, angles and
 //   handedness. The orientation-bound kinds follow the instance's rotation:
 //   horizontal/vertical and point_distance_x/y swap at a quarter turn and drop
@@ -60,6 +61,10 @@ interface CarryTemplate {
   // prefix is the stored ref's own leading `$` (or nothing for a bare id),
   // kept so the clone is spelled like its source.
   operands: { field: keyof PartConstraint; sourceId: string; key: string; prefix: string }[]
+  /** A group's member refs, in anchor-first order. Pooled separately from
+   *  `operands` because a group has no single-ref field: each member is one
+   *  entry of its `refs` array. */
+  groupRefs?: { sourceId: string; prefix: string }[]
 }
 
 /** A sketch's plane ref in one spelling: `Front`, `builtin_plane_front` and
@@ -96,6 +101,25 @@ function carryTemplates(constraints: readonly PartConstraint[], sourceIds: reado
   const out: CarryTemplate[] = []
   for (const c of constraints) {
     if (c.kind === 'projection') continue
+    // A group copies as one group per instance, over that instance's copies of
+    // its members, and only when every member is a source. Every member ref
+    // must be a bare entity (no vertex key): the group holds whole entities.
+    if (c.kind === 'group') {
+      const refs = Array.isArray(c.refs) ? c.refs : []
+      const groupRefs: { sourceId: string; prefix: string }[] = []
+      let outside = refs.length === 0
+      for (const ref of refs) {
+        const hit = typeof ref === 'string' ? operandSource(ref, sourceIds) : null
+        if (hit === null || hit.key !== '') { outside = true; break }
+        groupRefs.push({ sourceId: hit.sourceId, prefix: hit.prefix })
+      }
+      if (outside) {
+        warn('pattern_entities: group has a member outside the source set, left on the source', { id: c.id })
+        continue
+      }
+      out.push({ constraint: c, operands: [], groupRefs })
+      continue
+    }
     const operandFields = CONSTRAINT_REF_FIELDS.filter(f => typeof c[f] === 'string')
     if (operandFields.length === 0) {
       // A refs-only sugar constraint (ngon) has no single-ref operand to map;
@@ -142,6 +166,9 @@ function instantiate(
 ): PartConstraint | null {
   const c = template.constraint
   const cloned: PartConstraint = { ...c }
+  if (template.groupRefs !== undefined) {
+    cloned.refs = template.groupRefs.map(g => g.prefix + idMap.get(g.sourceId)!)
+  }
   for (const op of template.operands) {
     const key = op.key === '' ? '' : transformVertexKey(kindOf.get(op.sourceId) ?? '', op.key)
     cloned[op.field] = (op.prefix + idMap.get(op.sourceId)! + key) as never

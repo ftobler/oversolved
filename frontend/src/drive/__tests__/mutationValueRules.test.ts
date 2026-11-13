@@ -2077,3 +2077,52 @@ describe('extrude up_to_next and the surface emboss', () => {
     expect(edited.extrude.up_to_start).toBeUndefined()
   })
 })
+
+describe('add_constraint group values', () => {
+  function projectedDoc(): PartDoc {
+    return seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [{ id: 'l1', kind: 'line' }, { id: 'p1', kind: 'point' }],
+        initial: { l1: [0, 0, 10, 0], p1: [3, 4] },
+        constraints: [{ id: 'proj', kind: 'projection', target: '$p1', source: '@edge1' }],
+      }],
+    })
+  }
+
+  it('admits stored $ refs and no value', () => {
+    const result = validateMutation(
+      { type: 'add_constraint', featureId: 'sk1', kind: 'group', targets: ['$l1', '$p1'] },
+      { doc: projectedDoc() },
+    )
+    // p1 is projected, so the member rule refuses it; the plain line alone is
+    // the admitted spelling.
+    expect(result.ok).toBe(false)
+    const ok = validateMutation(
+      { type: 'add_constraint', featureId: 'sk1', kind: 'group', targets: ['$l1'] },
+      { doc: projectedDoc() },
+    )
+    expect(ok.ok).toBe(true)
+  })
+
+  it('refuses a value', () => {
+    const error = refusal(
+      { type: 'add_constraint', featureId: 'sk1', kind: 'group', targets: ['$l1'], value: 5 },
+      projectedDoc(),
+    )
+    expect(error.message).toContain('takes no value')
+  })
+
+  it('refuses a projected member and a vertex', () => {
+    expect(refusal(
+      { type: 'add_constraint', featureId: 'sk1', kind: 'group', targets: ['$l1', '$p1'] },
+      projectedDoc(),
+    ).message).toContain('projected')
+    expect(refusal(
+      { type: 'add_constraint', featureId: 'sk1', kind: 'group', targets: ['vertex:sk1:l1:start'] },
+      projectedDoc(),
+    ).message).toContain('not a vertex')
+  })
+})

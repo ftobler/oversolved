@@ -853,7 +853,11 @@ banner on stdout, so a client config must use the direct node invocation.
   leave a visible, deletable entity in the sketch, project the operand first
   with `add_projected_entity` (kind `point` for the origin) and name the
   projection as the target. A bare `@builtin_origin` solves but creates no
-  entity, so there is nothing to select or delete. An `angle` value is the
+  entity, so there is nothing to select or delete. `group` takes one or more
+  whole authored entities of the sketch (no vertex, origin or projected entity)
+  and glues them into their current shape while leaving the set free to
+  translate; it carries no value, and deleting it frees the entities. An
+  `angle` value is the
   corner the label shows, the angle between the two lines as drawn; without
   `pos` the corner nearest the authored geometry is taken and a label `pos` is
   written there. The document stores the angle between the two direction
@@ -868,9 +872,13 @@ banner on stdout, so a client config must use the direct node invocation.
   `layers` list names the layers to import, matched case-insensitively after
   trimming; absent imports every layer. Entities on other layers are ignored,
   including ones that would otherwise refuse the file, and an unknown name is a
-  step failure naming the file's layers and their entity counts. Its step reply
+  step failure naming the file's layers and their entity counts. The imported
+  rows are held by one `group` constraint in the same undo entry, anchored on
+  the first imported row, so the profile arrives at 2 DOF; `group: false`
+  imports plain rows instead. Its step reply
   is compact: `createdIds: []` and `createdCount`, plus `layers` (the imported
-  rows per layer) and, when a filter left file layers out, `otherLayers` with
+  rows per layer), `groupId` (the authored group, absent with `group: false`) and,
+  when a filter left file layers out, `otherLayers` with
   their counts, because one import can add hundreds of entities and the
   document resource has their ids. The
   `set_*_field` value note emits the enum members of every enum field in that
@@ -1413,7 +1421,8 @@ authors `flip: true` by hand is equally valid.
   `createdCount: <entities>` instead, because one step can add hundreds of
   entities; a sketch copy step that creates more than 200 ids reports them the
   same way. An `import_dxf` step also reports `layers` (the imported rows per
-  layer, in file order) and, when its `layers` filter left file layers out,
+  layer, in file order), `groupId` (the Group constraint the import authored,
+  absent with `group: false`) and, when its `layers` filter left file layers out,
   `otherLayers` with those layers' entity counts. The ids of such a step stay
   readable from the document resource,
   and the run's `docHash` names the document that holds them. Other mutations

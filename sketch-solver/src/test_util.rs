@@ -82,6 +82,7 @@ pub fn input(entities: Vec<Entity>, params: Vec<f64>, constraints: Vec<Constrain
     Input {
         entities,
         params_initial: params,
+        params_reference: Vec::new(),
         pinned_mask: Vec::new(),
         equality_pins: Vec::new(),
         constraints,
