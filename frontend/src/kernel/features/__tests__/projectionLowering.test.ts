@@ -10,6 +10,16 @@ import {
   type PlaneFrame,
   type Resolved3dGeometry,
 } from '../projectionLowering'
+import {
+  curveScale,
+  maxDeviationToCubic,
+  maxDeviationToFitSpline,
+  PROJECTED_CURVE_FIT_TOL,
+} from '@/utils/geometry/projectedCurveFit'
+import { interpolateFitSpline, type Pt } from '@/utils/geometry/fitSpline'
+import { fitCubicBezier } from '@/utils/geometry/bezierFit'
+import { cross } from '@/utils/vec3'
+import { worldToSketch2d } from '../shared/planes'
 
 // XY sketch plane: normal = +Z.
 const XY: PlaneFrame = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0] }
@@ -157,20 +167,24 @@ describe('ellipse edge projection', () => {
     expect(theta).toBeCloseTo(0)
   })
 
-  it('a partial elliptical arc projects as a spline (no 2D ellipse-arc entity)', () => {
+  it('a partial elliptical arc projects as a fitted spline (no 2D ellipse-arc entity)', () => {
+    // A quarter of this eccentric ellipse misses one cubic by 2.9e-3 of its
+    // size, over the 1.5e-3 rung, so it lowers to the interpolating spline.
     const g = resolve3dGeometry(
       {
         type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2,
         axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
       })!
     const out = projectTo2d(g, XY)!
-    expect(out.kind).toBe('spline')
+    expect(out.kind).toBe('fit_spline')
     const p = out.params
-    // Endpoints pinned: t=0 -> [4,0], t=pi/2 -> [0,2].
-    expect(p[0]).toBeCloseTo(4)
-    expect(p[1]).toBeCloseTo(0)
-    expect(p[6]).toBeCloseTo(0)
-    expect(p[7]).toBeCloseTo(2)
+    // Fit-point block, both endpoints exact to f64: the fit points ARE the
+    // projected source ends, t=0 -> [4,0], t=pi/2 -> [4 cos(pi/2), 2].
+    expect(p.length).toBeGreaterThan(8)
+    expect(p[0]).toBe(4)
+    expect(p[1]).toBe(0)
+    expect(p[p.length - 2]).toBe(4 * Math.cos(Math.PI / 2))
+    expect(p[p.length - 1]).toBe(2)
   })
 
   it('a rotated in-plane ellipse reports its rotation', () => {
@@ -236,10 +250,12 @@ describe('arc projection (3D body arc)', () => {
     expect(out).toEqual({ kind: 'arc', params: [1, 2, 5, 30, 120] })
   })
 
-  it('lowers a tilted source arc to a sampled spline, not a fake circular arc', () => {
+  it('lowers a tilted source arc to a sampled curve, not a fake circular arc', () => {
     // A tilted circular arc projects to an elliptical arc; the old lowering
     // rebuilt it as a single-radius circular arc whose radius came from one
-    // endpoint and whose side was arbitrary.
+    // endpoint and whose side was arbitrary. At a 60 degree tilt the projected
+    // quarter misses one cubic by 2.9e-3 of its size, over the 1.5e-3 rung, so
+    // it lowers to the interpolating spline.
     const phi = Math.PI / 3
     const axis = [0, -Math.sin(phi), Math.cos(phi)]
     const g = resolve3dGeometry(
@@ -248,15 +264,15 @@ describe('arc projection (3D body arc)', () => {
         axis, x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
       })!
     const out = projectTo2d(g, XY)!
-    expect(out.kind).toBe('spline')
+    expect(out.kind).toBe('fit_spline')
     const p = out.params
-    expect(p).toHaveLength(8)
-    // Endpoints survive exactly: t=0 -> (5,0); t=pi/2 -> y-axis of the source
-    // frame is (0, cos phi, sin phi), projected to (0, 5 cos phi).
-    expect(p[0]).toBeCloseTo(5)
-    expect(p[1]).toBeCloseTo(0)
-    expect(p[6]).toBeCloseTo(0)
-    expect(p[7]).toBeCloseTo(5 * Math.cos(phi))
+    expect(p.length).toBeGreaterThan(8)
+    // Endpoints survive exactly to f64: t=0 -> (5,0); t=pi/2 -> y-axis of the
+    // source frame is (0, cos phi, sin phi), projected to (5 cos(pi/2), 5 cos phi).
+    expect(p[0]).toBe(5)
+    expect(p[1]).toBe(0)
+    expect(p[p.length - 2]).toBe(5 * Math.cos(Math.PI / 2))
+    expect(p[p.length - 1]).toBe(5 * Math.cos(phi))
   })
 })
 
@@ -548,6 +564,193 @@ describe('projectCenter', () => {
     expect(projectCenter({ kindH: 'line', data: { start: [0, 0, 0], end: [1, 1, 1] } }, XY)).toBeNull()
     expect(projectCenter({ kindH: 'spline', data: { points: [[0, 0, 0], [1, 1, 1]] } }, XY)).toBeNull()
     expect(projectCenter({ kindH: 'point', data: { point: [1, 2, 3] } }, XY)).toBeNull()
+  })
+})
+
+describe('sampled curve fitting', () => {
+  // A 30 degree tilt about world X, radius 5. The projected arc is an ellipse
+  // with a = 5 and b = 5 cos(30) in the XY sketch frame.
+  const PHI = Math.PI / 6
+  const TILT_AXIS = [0, -Math.sin(PHI), Math.cos(PHI)]
+
+  function arcEdge(a0: number, a1: number): Resolved3dGeometry {
+    return resolve3dGeometry({
+      type: 'edge', kind: 'arc', center: [0, 0, 0], radius: 5,
+      axis: TILT_AXIS, x_axis: [1, 0, 0], angle_start: a0, angle_end: a1,
+    })!
+  }
+
+  // The true projected arc, sampled densely: an ellipse arc of a = 5, b = 5 cos(phi).
+  function arcTruth(a0: number, a1: number, steps = 128): Pt[] {
+    const out: Pt[] = []
+    for (let i = 0; i <= steps; i++) {
+      const t = a0 + (a1 - a0) * (i / steps)
+      out.push([5 * Math.cos(t), 5 * Math.cos(PHI) * Math.sin(t)])
+    }
+    return out
+  }
+
+  function ellipseTruth(a: number, b: number, a0: number, a1: number, steps = 128): Pt[] {
+    const out: Pt[] = []
+    for (let i = 0; i <= steps; i++) {
+      const t = a0 + (a1 - a0) * (i / steps)
+      out.push([a * Math.cos(t), b * Math.sin(t)])
+    }
+    return out
+  }
+
+  function pairs(flat: readonly number[]): Pt[] {
+    const out: Pt[] = []
+    for (let i = 0; i + 1 < flat.length; i += 2) out.push([flat[i], flat[i + 1]])
+    return out
+  }
+
+  // Largest distance from the dense truth to the lowered curve, the measure
+  // the lowering itself uses to choose a kind.
+  function deviation(out: { kind: string; params: number[] }, truth: Pt[]): number {
+    if (out.kind === 'spline') {
+      const p = out.params
+      return maxDeviationToCubic(truth, [
+        [p[0], p[1]], [p[2], p[3]], [p[4], p[5]], [p[6], p[7]],
+      ])
+    }
+    return maxDeviationToFitSpline(truth, pairs(out.params))
+  }
+
+  function tolerance(truth: Pt[]): number {
+    return PROJECTED_CURVE_FIT_TOL * curveScale(truth)
+  }
+
+  function expectFollows(out: { kind: string; params: number[] }, truth: Pt[]): void {
+    expect(deviation(out, truth)).toBeLessThanOrEqual(tolerance(truth))
+  }
+
+  it('keeps a tilted quarter arc as one cubic', () => {
+    // Before: one cubic misses this arc by 3.76e-3 absolute, 5.7e-4 of the
+    // curve's size, under the 1.5e-3 rung. The common projected quarter arc
+    // therefore keeps its kind and its eight params.
+    const out = projectTo2d(arcEdge(0, Math.PI / 2), XY)!
+    const truth = arcTruth(0, Math.PI / 2)
+    expect(out.kind).toBe('spline')
+    expect(out.params).toHaveLength(8)
+    expectFollows(out, truth)
+    // Endpoints stay exact: t=0 -> (5, 0), t=pi/2 -> (5 cos(pi/2), 5 cos(phi)).
+    expect(out.params[0]).toBe(5)
+    expect(out.params[1]).toBe(0)
+    expect(out.params[6]).toBe(5 * Math.cos(Math.PI / 2))
+    expect(out.params[7]).toBe(5 * Math.cos(PHI))
+    // The legacy 33-point seed, built through the production 3D frame and
+    // projection (not an analytic reimplementation): no stored quarter arc
+    // changes its shape when a document re-solves after this feature lands.
+    const ax = [1, 0, 0]
+    const yAxis = cross(TILT_AXIS, ax)
+    const seed: Pt[] = []
+    for (let i = 0; i <= 32; i++) {
+      const t = (Math.PI / 2) * (i / 32)
+      const c = Math.cos(t)
+      const s = Math.sin(t)
+      seed.push(worldToSketch2d([
+        5 * (c * ax[0] + s * yAxis[0]),
+        5 * (c * ax[1] + s * yAxis[1]),
+        5 * (c * ax[2] + s * yAxis[2]),
+      ], XY) as Pt)
+    }
+    expect(out.params).toEqual(fitCubicBezier(seed))
+  })
+
+  it('lowers a tilted half arc to a fit_spline', () => {
+    // Before: 2.25e-2 absolute, 2.1e-3 of the size, over the rung.
+    const out = projectTo2d(arcEdge(0, Math.PI), XY)!
+    const truth = arcTruth(0, Math.PI)
+    expect(out.kind).toBe('fit_spline')
+    expect(out.params.length).toBeGreaterThan(8)
+    expectFollows(out, truth)
+  })
+
+  it('lowers a tilted 270 degree arc to a fit_spline with exact endpoints', () => {
+    // Before: 2.10e-1 absolute, 1.6e-2 of the size: a quarter of a radius.
+    const a0 = 0
+    const a1 = (3 * Math.PI) / 2
+    const out = projectTo2d(arcEdge(a0, a1), XY)!
+    const truth = arcTruth(a0, a1)
+    expect(out.kind).toBe('fit_spline')
+    expectFollows(out, truth)
+    // The joints of a closed profile depend on these: the first and last fit
+    // points are the projected source ends, not a fitted approximation.
+    expect(out.params[0]).toBe(5)
+    expect(out.params[1]).toBe(0)
+    expect(out.params[out.params.length - 2]).toBe(5 * Math.cos((3 * Math.PI) / 2))
+    expect(out.params[out.params.length - 1]).toBe(-5 * Math.cos(PHI))
+  })
+
+  it('lowers a partial ellipse over pi to a fit_spline', () => {
+    // Before: 1.85e-2 absolute, 2.2e-3 of the size.
+    const g = resolve3dGeometry({
+      type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2,
+      axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI,
+    })!
+    const out = projectTo2d(g, XY)!
+    const truth = ellipseTruth(4, 2, 0, Math.PI)
+    expect(out.kind).toBe('fit_spline')
+    expectFollows(out, truth)
+    expect(out.params[0]).toBe(4)
+    expect(out.params[1]).toBe(0)
+    expect(out.params[out.params.length - 2]).toBe(4 * Math.cos(Math.PI))
+    expect(out.params[out.params.length - 1]).toBe(2 * Math.sin(Math.PI))
+  })
+
+  it('lowers a sampled three-inflection B-spline to a fit_spline', () => {
+    // Before: 9.55e-1 absolute, 1.5e-1 of the size. A body spline edge hands
+    // over one sampled polyline; it can hold several inflections a single cubic
+    // cannot follow.
+    const control: Pt[] = [[0, 0], [1, 2], [2, -2], [3, 2], [4, -2], [5, 0]]
+    const source = interpolateFitSpline(control)
+    const end = source.knots[source.knots.length - 1]
+    const samples: Pt[] = []
+    for (let i = 0; i <= 32; i++) samples.push(source.eval((end * i) / 32))
+    const out = projectTo2d(
+      { kindH: 'spline', data: { points: samples.map(p => [p[0], p[1], 0]) } }, XY)!
+    expect(out.kind).toBe('fit_spline')
+    expectFollows(out, samples)
+    expect(out.params[0]).toBe(0)
+    expect(out.params[1]).toBe(0)
+    expect(out.params[out.params.length - 2]).toBe(5)
+    expect(out.params[out.params.length - 1]).toBe(0)
+  })
+
+  it('closes a literally closed sampled loop', () => {
+    // A closed B-spline edge (the Resin_Mold breakout loop) repeats its first
+    // sample bit for bit. One cubic cannot close a loop, and the duplicate
+    // sample as an endpoint-only seed is a single zero chord the interpolating
+    // spline refuses, so the open chain is fitted and the first point repeated
+    // at the end.
+    const samples: Pt[] = []
+    for (let i = 0; i <= 32; i++) {
+      const t = (2 * Math.PI * i) / 32
+      samples.push([3 * Math.cos(t), 3 * Math.sin(t)])
+    }
+    samples[samples.length - 1] = [samples[0][0], samples[0][1]]
+    const out = projectTo2d(
+      { kindH: 'spline', data: { points: samples.map(p => [p[0], p[1], 0]) } }, XY)!
+    expect(out.kind).toBe('fit_spline')
+    expect(out.warning).toBeUndefined()
+    const p = out.params
+    expect(p.length).toBeGreaterThan(4)
+    expect(p[p.length - 2]).toBe(p[0])
+    expect(p[p.length - 1]).toBe(p[1])
+    expectFollows(out, samples)
+  })
+
+  it('lowers the same source to identical params twice', () => {
+    // The pin plan re-solves from the stored document, so a projection must not
+    // depend on any state between calls.
+    const source = { kindH: 'spline' as const, data: { points: [[0, 0, 0], [1, 2, 0], [2, -2, 0], [3, 0, 0]] } }
+    const first = projectTo2d(source, XY)!
+    const second = projectTo2d(source, XY)!
+    expect(second).toEqual(first)
+    const arcFirst = projectTo2d(arcEdge(0, (3 * Math.PI) / 2), XY)!
+    const arcSecond = projectTo2d(arcEdge(0, (3 * Math.PI) / 2), XY)!
+    expect(arcSecond).toEqual(arcFirst)
   })
 })
 

@@ -353,7 +353,10 @@ function makeCurve(points: readonly Pt[], knots: readonly number[], derivatives:
   }
 }
 
-function bezierClosestT(ctrl: readonly Pt[], p: Pt): number {
+/** Parameter of the closest point on a cubic Bezier to `p`: a dense seed then
+ *  Newton steps. Exported so the projection fit can measure its own error with
+ *  the same closest-point code the fit-spline preview uses. */
+export function bezierClosestT(ctrl: readonly Pt[], p: Pt): number {
   const SAMPLES = 24
   const dist2 = (t: number): number => {
     const b = bezierEval(ctrl, t)

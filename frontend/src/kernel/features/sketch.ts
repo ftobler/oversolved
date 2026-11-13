@@ -393,6 +393,7 @@ function lowerProjectionConstraints(
               ?? projectTo2d(data3d, plane as PlaneFrame)
             if (projected) {
               initial[targetId] = projected.params
+              if (projected.warning) projectionWarnings.push(`projection ${cid}: ${projected.warning}`)
               if (projected.kind !== declaredKind) resolvedKinds[targetId] = projected.kind
               // Adopt resolved kind on the doc entity while the constraint holds.
               if (ent) ent.kind = projected.kind
