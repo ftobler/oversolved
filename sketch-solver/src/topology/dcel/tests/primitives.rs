@@ -232,6 +232,22 @@ fn collinear_overlap_degenerate_and_normal() {
     .is_empty());
 }
 
+#[test]
+fn two_identical_lines_build_one_segment_and_no_face() {
+    // Two edge-on projections of the same silhouette lower to two coincident
+    // lines after `projection-edge-on-line`. The area builder must accept the
+    // overlap: one segment owned by the first-seeded entity, no phantom split
+    // ring, and no zero-width face.
+    let geom = vec![
+        ("a".into(), line([0.0, 0.0], [10.0, 0.0])),
+        ("b".into(), line([0.0, 0.0], [10.0, 0.0])),
+    ];
+    let t = detect_topology(&geom, &[]);
+    assert_eq!(t.edges.len(), 1, "the overlap is one edge");
+    assert_eq!(t.edges[0].entity_id, "a");
+    assert!(t.surfaces.is_empty(), "a zero-width overlap bounds no area");
+}
+
 /// The four projected arcs from the "ghost area" report, as the document baked
 /// them (center, radius, degree angles). `enrichSketchEntity` rebuilds the
 /// endpoints from those angles; that is what the area builder receives.

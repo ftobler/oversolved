@@ -823,3 +823,98 @@ fn a_self_crossing_is_found_at_every_curve_scale() {
         );
     }
 }
+
+#[test]
+fn a_degenerate_ellipse_recovers_a_finite_parameter_on_its_major_axis() {
+    // An edge-on projected circle lowers to b = 0. The eccentric angle is
+    // atan2(y'/b, x'/a) and both major-axis endpoints have y' = 0, so the raw
+    // division recovered NaN and every split naming that entity was poisoned.
+    let e = Curve::Ellipse {
+        c: [20.0, 0.0],
+        a: 3.0,
+        b: 0.0,
+        theta: 0.0,
+    };
+    for phi in [0.0, std::f64::consts::PI] {
+        let p = ellipse_point_at([20.0, 0.0], 3.0, 0.0, 1.0, 0.0, phi);
+        let t = param_of(&e, p);
+        assert!(t.is_finite(), "phi {phi}: recovered {t}");
+    }
+    // A fully collapsed ellipse is the centre point; the parameter is
+    // arbitrary but still has to be a number.
+    let collapsed = Curve::Ellipse {
+        c: [0.0, 0.0],
+        a: 0.0,
+        b: 0.0,
+        theta: 0.0,
+    };
+    assert!(param_of(&collapsed, [0.0, 0.0]).is_finite());
+}
+
+#[test]
+fn a_hit_on_a_degenerate_ellipse_pair_is_finite() {
+    // The whole observed crash: two identical b = 0 ellipses. The scan found
+    // the two major-axis endpoints and recovered the parameter from the zero
+    // semi-axis, so both hit parameters and the split points went NaN.
+    let a = Curve::Ellipse {
+        c: [20.0, 0.0],
+        a: 3.0,
+        b: 0.0,
+        theta: 0.0,
+    };
+    let hits = intersect_curves(&a, &a);
+    assert!(!hits.is_empty(), "the two axis endpoints are contacts");
+    for h in hits {
+        assert!(h.point.iter().all(|x| x.is_finite()), "point {:?}", h.point);
+        assert!(h.t_a.is_finite(), "t_a {}", h.t_a);
+        assert!(h.t_b.is_finite(), "t_b {}", h.t_b);
+    }
+}
+
+#[test]
+fn a_line_crossing_a_degenerate_ellipse_reports_its_major_axis_ends() {
+    // A b = 0 ellipse is the segment along its major axis. The line/ellipse
+    // closed form divided the local y by the zero axis and every intermediate
+    // went inf/NaN, so a crossing line was silently missed.
+    let e = Curve::Ellipse {
+        c: [20.0, 0.0],
+        a: 3.0,
+        b: 0.0,
+        theta: 0.0,
+    };
+    let hits = intersect_curves(&line([10.0, 0.0], [30.0, 0.0]), &e);
+    assert_eq!(hits.len(), 2, "the segment ends are the two contacts");
+    let mut xs: Vec<f64> = hits.iter().map(|h| h.point[0]).collect();
+    xs.sort_by(|p, q| p.total_cmp(q));
+    assert!((xs[0] - 17.0).abs() < 1e-6, "left end {}", xs[0]);
+    assert!((xs[1] - 23.0).abs() < 1e-6, "right end {}", xs[1]);
+    for h in hits {
+        assert!(h.t_a.is_finite() && h.t_b.is_finite(), "{h:?}");
+    }
+}
+
+#[test]
+fn a_negative_semi_axis_keeps_its_sign_in_the_recovered_parameter() {
+    // a = -3 names the same ellipse as a = 3 with the eccentric angle shifted
+    // by pi. The degenerate-axis floor must not fold the sign away and move a
+    // recovered parameter to the opposite end.
+    let e = Curve::Ellipse {
+        c: [0.0, 0.0],
+        a: -3.0,
+        b: 1.0,
+        theta: 0.0,
+    };
+    // Local x' = -3 with x'/a = 1 at the left end, x'/a = -1 at the right one.
+    assert_eq!(param_of(&e, [-3.0, 0.0]), 0.0);
+    assert!((param_of(&e, [3.0, 0.0]) - std::f64::consts::PI).abs() < 1e-12);
+    // Below the floor the magnitude is raised but the sign is kept: -1e-9 must
+    // reach -floor, not the folded +floor, so the left end still recovers 0.
+    let tiny = Curve::Ellipse {
+        c: [0.0, 0.0],
+        a: -1e-9,
+        b: 1.0,
+        theta: 0.0,
+    };
+    assert_eq!(usable_semi_axis(-1e-9, 1e-6), -1e-6);
+    assert_eq!(param_of(&tiny, [-1e-9, 0.0]), 0.0);
+}

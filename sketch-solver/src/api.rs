@@ -65,7 +65,7 @@ pub fn solve_bytes_guarded(input: &[u8]) -> Result<Vec<u8>, String> {
 /// [`detect_topology_bytes`] with the boundary guard above wrapping it.
 pub fn detect_topology_bytes_guarded(input: &[u8]) -> Result<Vec<u8>, String> {
     catch_panic("sketch topology", || {
-        detect_topology_bytes(input).map_err(|e| format!("topology codec error: {e:?}"))
+        detect_topology_bytes(input).map_err(|e| format!("topology codec error: {e}"))
     })
 }
 
