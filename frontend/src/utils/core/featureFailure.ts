@@ -28,6 +28,7 @@
  */
 import { isBodyFeatureResult } from '@/types/cad'
 import { STATUS_NAME, Status } from '@/wasm-kernel/codec'
+import { degenerateEntityWarning, type DegenerateEntity } from '@/utils/entitySizeProblems'
 import { NO_MARK, type StatusMark } from './statusMark'
 
 /** Statuses that report a satisfiable state rather than a pass/fail. */
@@ -108,8 +109,27 @@ export function featureFailure(
   }
   // An overconstrained sketch is the verdict the tree used to hide entirely.
   // Its result carries the culprit constraints the solve could not satisfy, so
-  // the message names how many are in conflict instead of a generic line.
+  // the message names how many are in conflict instead of a generic line. A
+  // degenerate entity is a different cause: it must name itself here, because
+  // "the sketch is overconstrained" is true but tells the author nothing to fix.
+  // Only the structured degenerate list earns that replacement; an ignored
+  // constraint or an unresolved projection can ride beside a real conflict and
+  // must keep the culprit count.
   if (status === 'overconstrained') {
+    const rawDegenerate = (result as { degenerate_entities?: unknown }).degenerate_entities
+    const degenerate = Array.isArray(rawDegenerate)
+      ? rawDegenerate.filter((entry): entry is DegenerateEntity =>
+          typeof entry === 'object' && entry !== null
+          && typeof (entry as { id?: unknown }).id === 'string'
+          && typeof (entry as { reason?: unknown }).reason === 'string')
+      : []
+    if (degenerate.length > 0) {
+      return {
+        failed: true,
+        level: 'error',
+        message: degenerate.map(entry => degenerateEntityWarning(entry.id, entry.reason)).join(' '),
+      }
+    }
     const constraints = (result as { constraints?: Record<string, { culprit?: unknown }> }).constraints
     const culprits = constraints === undefined
       ? 0

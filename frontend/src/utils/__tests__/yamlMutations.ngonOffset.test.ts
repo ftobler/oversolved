@@ -133,11 +133,16 @@ describe('applyAddOffset', () => {
   })
 
   it('skips a degenerate zero-length line (no normal direction)', () => {
+    // A loaded document can still carry the line the add path refuses. The
+    // offset applier leaves that source in place and creates no clone; dropping
+    // it here would be a second, silent authoring rule.
     const doc = sketchDoc()
-    applyAddEntity(doc, 'sk', 'line', [3, 3, 3, 3], 'src')
+    const sketch = featureAt(doc, 0, 'sketch')
+    sketch.entities!.push({ id: 'src', kind: 'line' })
+    sketch.initial!['src'] = [3, 3, 3, 3]
     applyAddOffset(doc, 'sk', ['src'], 5)
     const feat = featureAt(doc, 0, 'sketch')
-    expect(feat.entities).toHaveLength(1)  // no clone created
+    expect(feat.entities).toHaveLength(1)  // source kept, no clone created
     expect(feat.constraints ?? []).toHaveLength(0)
   })
 

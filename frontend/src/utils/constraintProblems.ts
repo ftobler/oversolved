@@ -8,6 +8,7 @@ import type { SketchFeature } from '@/types/cad'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { resolveVertexRef } from '@/types/vertexRef'
 import { pointDistanceZeroProblem } from './yamlMutations/helpers'
+import { dimensionSizeProblem } from './entitySizeProblems'
 import {
   COLINEAR_SHAPE_REASON,
   colinearShapeProblem,
@@ -181,6 +182,13 @@ export function addConstraintProblem(
   if (isConstraintKindName(kind)) {
     const zero = pointDistanceZeroProblem(kind, value)
     if (zero !== null) return zero
+    // A radius or diameter dimension is a size too: zero would drive the curve
+    // to a point and leave it out of every profile. The setter path refuses the
+    // same value, and both read one predicate.
+    if (value !== undefined) {
+      const size = dimensionSizeProblem(kind, value)
+      if (size !== null) return size
+    }
   }
   const featureId = feature?.id ?? ''
   const entityIds = new Set((feature?.entities ?? []).map(e => e.id))

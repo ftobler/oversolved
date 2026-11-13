@@ -6,6 +6,9 @@ import {
   canonicalLineDistanceTargets, isPointLikeEntityKind,
   pointDistanceZeroProblem,
 } from './helpers'
+import {
+  ENTITY_SIZE_FLOOR, dimensionSizeProblem, entitySizeProblem,
+} from '@/utils/entitySizeProblems'
 import { resolveVertexRef } from '@/types/vertexRef'
 import {
   addConstraintProblem, constraintTargetSide, midpointOperands, midpointShapeReason,
@@ -131,11 +134,20 @@ export function applyMoveVertex(
   // endpoints below they have no direct param pair. Invert the drop position
   // back into (a, b, theta) (params: [cx, cy, a, b, theta]).
   if (def.kind === 'ellipse' && isEllipseAxisKey(vertexKey)) {
-    const next = ellipseAxisDrag(params, vertexKey, to)
+    // The handle clamp uses the same floor as the authoring boundary. A major
+    // handle dropped inside b still arrives as a < b, which the boundary would
+    // refuse, so check the whole candidate before touching the doc.
+    const next = ellipseAxisDrag(params, vertexKey, to, ENTITY_SIZE_FLOOR)
     if (!next) return
-    params[2] = round(next.a)
-    params[3] = round(next.b)
-    params[4] = round(next.theta)
+    const candidate = [params[0], params[1], round(next.a), round(next.b), round(next.theta)]
+    const problem = entitySizeProblem('ellipse', candidate)
+    if (problem !== null) {
+      warn(`applyMoveVertex: ${problem}`, { featureId, entityId, vertexKey, to })
+      return
+    }
+    params[2] = candidate[2]
+    params[3] = candidate[3]
+    params[4] = candidate[4]
     return
   }
   // Arc start/end are derived (center + radius at an angle), so they have no
@@ -145,11 +157,22 @@ export function applyMoveVertex(
   if (def.kind === 'arc' && (vertexKey === 'start' || vertexKey === 'end')) {
     const dx = to[0] - params[0]
     const dy = to[1] - params[1]
-    params[2] = round(Math.hypot(dx, dy))
     const ai = vertexKey === 'start' ? 3 : 4
     let ang = (Math.atan2(dy, dx) * 180) / Math.PI
     ang += Math.round((params[ai] - ang) / 360) * 360
-    params[ai] = round(ang)
+    // The endpoint is derived from radius and angle, so a drop on the centre or
+    // on the other endpoint would store a zero radius or zero span. Judge the
+    // whole candidate first; the old values stay on refusal.
+    const candidate = [...params]
+    candidate[2] = round(Math.hypot(dx, dy))
+    candidate[ai] = round(ang)
+    const problem = entitySizeProblem('arc', candidate)
+    if (problem !== null) {
+      warn(`applyMoveVertex: ${problem}`, { featureId, entityId, vertexKey, to })
+      return
+    }
+    params[2] = candidate[2]
+    params[ai] = candidate[ai]
   }
 }
 
@@ -205,11 +228,20 @@ export function applyResizeCircle(
 ): void {
   const feature = findSketchFeature(doc, featureId)
   if (!feature?.initial) return
-  // A non-finite or non-positive radius is broken pointer math upstream, or an
-  // attempt to invert the circle. round(NaN) is still NaN, so letting it through
-  // would poison the doc and every later solve seeded from it.
-  if (!Number.isFinite(radius) || radius <= 0) {
-    warn('applyResizeCircle: ignoring non-finite or non-positive radius', { featureId, entityId, radius })
+  // A non-finite radius is broken pointer math upstream. round(NaN) is still
+  // NaN, so letting it through would poison the doc and every later solve
+  // seeded from it.
+  if (!Number.isFinite(radius)) {
+    warn('applyResizeCircle: ignoring non-finite radius', { featureId, entityId, radius })
+    return
+  }
+  // The same size floor as add_entity and the drive rule: zero, a negative
+  // radius or one a hair above zero all enclose nothing, and the solve would
+  // leave the circle out of every profile. Refuse before adopting the frame so
+  // the drag commits no geometry the author cannot use.
+  const sizeProblem = entitySizeProblem('circle', [0, 0, radius])
+  if (sizeProblem !== null) {
+    warn(`applyResizeCircle: ${sizeProblem}`, { featureId, entityId, radius })
     return
   }
   // The adopted frame already carries the on-screen solve; only the radius is
@@ -625,6 +657,14 @@ export function applySetConstraintValue(
     warn(`applySetConstraintValue: ${zeroProblem}`, { featureId, constraintId, value })
     return
   }
+  // A radius or diameter dimension is a size, so zero would drive the curve to
+  // a point. The drive boundary refuses the same value through this helper, so
+  // a UI edit and an authored step agree on what the sketch can hold.
+  const sizeProblem = dimensionSizeProblem(c.kind, value)
+  if (sizeProblem !== null) {
+    warn(`applySetConstraintValue: ${sizeProblem}`, { featureId, constraintId, value })
+    return
+  }
   // An angle edit types the number the label shows for the wedge it already
   // sits in: its stored pos, or the renderer's default wedge when it has none.
   // No pos is written here; the existing label keeps deciding the wedge. The
@@ -693,6 +733,15 @@ export function applyAddEntity(
   // materialized, so the refusal leaves the doc unchanged for the step net.
   if (!allFinite(params)) {
     warn('applyAddEntity: ignoring non-finite seed params', { featureId, kind, params })
+    return
+  }
+  // The drive refuses the same seed through this helper. A draw tool should
+  // never produce a zero-length line or a zero-radius circle, but a double
+  // click on one spot does, and the stored row would then be left out of every
+  // profile. Refuse before any container is materialized.
+  const sizeProblem = entitySizeProblem(kind, params)
+  if (sizeProblem !== null) {
+    warn(`applyAddEntity: ${sizeProblem}`, { featureId, kind, params })
     return
   }
   const feature = resolveSketch(doc, featureId, 'entities', 'initial')
@@ -781,6 +830,13 @@ export function applyAddEntityWithConstraint(
   // itself adds no empty container to the document.
   if (!allFinite(params)) {
     warn('applyAddEntityWithConstraint: ignoring non-finite seed params', { featureId, kind, params })
+    return
+  }
+  // Same size floor as applyAddEntity: the snap constraint must never be
+  // authored against an entity that was not created.
+  const sizeProblem = entitySizeProblem(kind, params)
+  if (sizeProblem !== null) {
+    warn(`applyAddEntityWithConstraint: ${sizeProblem}`, { featureId, kind, params })
     return
   }
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')

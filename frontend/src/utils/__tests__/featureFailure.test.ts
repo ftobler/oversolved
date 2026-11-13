@@ -70,6 +70,37 @@ describe('featureFailure', () => {
     }, {}).message).toBe('the sketch is overconstrained (2 conflicting constraints)')
   })
 
+  // A degenerate curve forces the same overconstrained verdict, but the bare
+  // status word would hide the one thing the author can fix. The structured
+  // degenerate list names the entity, so it is the message.
+  it('names a degenerate entity instead of the bare overconstrained verdict', () => {
+    const reason = 'circle radius 0 is not greater than TOL_TOPOLOGY_MERGE (0.00001), so the curve encloses no area'
+    const warning = `entity c1 is degenerate (${reason}); it is left out of profiles`
+    expect(featureFailure('sk1', {
+      sk1: {
+        status: 'overconstrained',
+        solver_warning: warning,
+        degenerate_entities: [{ id: 'c1', reason }],
+      },
+    }, {})).toEqual({ failed: true, level: 'error', message: warning })
+  })
+
+  // A warning that is not about a degenerate entity must not displace the
+  // conflict count: an ignored constraint can ride beside a genuine conflict.
+  it('keeps the culprit count for an ignored-constraint warning', () => {
+    expect(featureFailure('sk1', {
+      sk1: {
+        status: 'overconstrained',
+        solver_warning: 'constraint c9 (horizontal) names operands it cannot use (bad shape) and was ignored.',
+        constraints: { c1: { culprit: true }, c2: { culprit: true }, c3: {} },
+      },
+    }, {})).toEqual({
+      failed: true,
+      level: 'error',
+      message: 'the sketch is overconstrained (2 conflicting constraints)',
+    })
+  })
+
   it('words an underconstrained sketch and assembly the same', () => {
     // The two editors read different solvers but must speak one language; a
     // user seeing the same count should not have to learn two sentences.

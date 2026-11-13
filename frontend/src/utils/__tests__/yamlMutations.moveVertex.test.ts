@@ -95,6 +95,12 @@ describe('applyMoveVertex', () => {
     expect(initial0(doc).arc1).toEqual([0, 0, 3, 0, 90])
   })
 
+  it('refuses an arc endpoint dropped on the center instead of storing a zero radius', () => {
+    const doc = makeArcDoc()
+    applyMoveVertex(doc, 'Sketch1', 'arc1', 'start', [0, 0])
+    expect(initial0(doc).arc1).toEqual([0, 0, 5, 0, 90])
+  })
+
   it('keeps the arc angle on its continuous branch across the +/-180 seam', () => {
     const doc = makeArcDoc([0, 0, 5, 170, 270])
     // Drop start just past 180deg (at angle ~190 => atan2 returns ~-170);
@@ -143,6 +149,19 @@ describe('applyMoveVertex', () => {
   it('no-ops an ellipse major handle dropped on the center', () => {
     const doc = makeEllipseDoc()
     applyMoveVertex(doc, 'Sketch1', 'ell1', 'major1', [0, 0])
+    expect(initial0(doc).ell1).toEqual([0, 0, 10, 5, 0])
+  })
+
+  it('refuses a major handle dragged inside b instead of storing a < b', () => {
+    const doc = makeEllipseDoc()
+    // a would become 3 with b still 5: the OCC writer refuses that order.
+    applyMoveVertex(doc, 'Sketch1', 'ell1', 'major1', [0, 3])
+    expect(initial0(doc).ell1).toEqual([0, 0, 10, 5, 0])
+  })
+
+  it('refuses a minor handle dragged under the shared floor', () => {
+    const doc = makeEllipseDoc()
+    applyMoveVertex(doc, 'Sketch1', 'ell1', 'minor1', [0, 1e-6])
     expect(initial0(doc).ell1).toEqual([0, 0, 10, 5, 0])
   })
 
