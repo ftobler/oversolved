@@ -11,9 +11,10 @@ import {
 } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { worldToSketch2d } from '../shared/planes'
+import { unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import type { Repository } from '../../query'
 import type { Body } from '../../types3d'
-import type { SketchFeature } from '@/types/cad'
+import type { PartEntityDef, SketchFeature } from '@/types/cad'
 
 type Dict = Record<string, unknown>
 
@@ -30,6 +31,12 @@ function stubRepo(payload: Dict): Repository {
 /** Repository stub that never resolves a query (stale ancestry / missing edge). */
 function deadRepo(): Repository {
   return { query: () => null, elements: new Map() } as unknown as Repository
+}
+
+/** The entity ids the sketch solve left in its profile topology. */
+type ProfileTopology = { edges?: Array<{ entity_id: string }> }
+function profileEntityIds(out: Dict): string[] {
+  return ((out.topology as ProfileTopology | undefined)?.edges ?? []).map((e) => e.entity_id)
 }
 
 describe('solveSketch projection lowering', () => {
@@ -132,12 +139,16 @@ describe('solveSketch projection lowering', () => {
     // A stale projection (source no longer resolves) must NOT throw the whole
     // sketch -- it is dropped, the user's own geometry still solves, and the
     // dropped id is reported. Regression for "the whole sketch went inert".
+    // The stale entity is a fit_spline on purpose: its default block is two fit
+    // points, a real segment the area builder would otherwise keep as a profile
+    // edge, so this pins the exclusion rather than a curve that dies on its own.
+    const entities = [
+      { id: 'drawn', kind: 'circle' },
+      { id: 'stale', kind: 'fit_spline', source: '?edge;gone' },
+    ]
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
-      entities: [
-        { id: 'drawn', kind: 'circle' },
-        { id: 'stale', kind: 'ellipse', source: '?edge;gone' },
-      ],
+      entities,
       initial: { drawn: [2, 3, 4] },
       constraints: [],
     }
@@ -147,9 +158,65 @@ describe('solveSketch projection lowering', () => {
     // The drawn circle solved and renders.
     expect(out.geometry?.drawn).toBeDefined()
     expect(out.geometry?.drawn?.[2]).toBeCloseTo(4)
-    // The stale projection stays pinned at its cached/default params and is reported.
-    expect(out.geometry?.stale).toBeDefined()
     expect(out.projection_errors).toContain('proj_stale')
+    // It never had a position, so nothing is baked and nothing reaches the
+    // profile: an all-zero curve at the origin must not become a profile edge.
+    expect(out.geometry?.stale).toBeUndefined()
+    const profileIds = profileEntityIds(out)
+    expect(profileIds).not.toContain('stale')
+    expect(out.solver_warning).toContain(
+      'projection proj_stale source ?edge;gone did not resolve; '
+      + 'the entity has no position yet and is left out of the profile',
+    )
+    // Chosen rule for display: the entity is not filtered out of the sketch view,
+    // it falls back to the same default block, so the user can still delete it.
+    const view = unflattenGeometry(out.geometry, entities as unknown as PartEntityDef[])
+    expect(view.stale).toBeDefined()
+  })
+
+  it('treats a stored default block as no position (the old baked zero curve)', () => {
+    if (!solveBytes) return
+    // Regression for documents written by the old fallback: it baked the kind's
+    // default params for a fresh projection that never resolved, so the doc holds
+    // an all-zero spline. That block is not a position; anything but this
+    // exclusion keeps the degenerate curve in the profile forever.
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'drawn', kind: 'circle' },
+        { id: 'stale', kind: 'spline', source: '?edge;gone' },
+      ],
+      initial: { drawn: [2, 3, 4], stale: [0, 0, 0, 0, 0, 0, 0, 0] },
+      constraints: [],
+    }
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    expect(out.geometry?.stale).toBeUndefined()
+    expect(profileEntityIds(out)).not.toContain('stale')
+    expect(out.solver_warning).toContain(
+      'projection proj_stale source ?edge;gone did not resolve; '
+      + 'the entity has no position yet and is left out of the profile',
+    )
+  })
+
+  it('keeps an unresolved projection with a cached position in the solve and the profile', () => {
+    if (!solveBytes) return
+    // The other half of the rule: a projection whose source died still holds its
+    // last resolved position, so it stays a pinned, valid profile edge.
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'drawn', kind: 'line' },
+        { id: 'held', kind: 'line', source: '?edge;gone' },
+      ],
+      initial: { drawn: [0, 0, 4, 0], held: [0, 2, 4, 2] },
+      constraints: [],
+    }
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    expect(out.geometry?.held).toEqual([0, 2, 4, 2])
+    expect(out.solver_warning).toContain(
+      'projection proj_held source ?edge;gone did not resolve; the entity keeps its last position',
+    )
+    expect(profileEntityIds(out)).toContain('held')
   })
 
   it('runs a line body (not its endpoint) through the document origin on an offset plane', () => {

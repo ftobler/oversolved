@@ -42,6 +42,23 @@ describe('edgeAncestryPayload (projection round-trip)', () => {
     expect(payload.radius).toBe(5)
     expect(payload.type).toBe('edge')
   })
+
+  it('carries the sampled polyline of a spline edge so it can be projected', () => {
+    // Regression: the payload used to omit `points`, so a registered spline edge
+    // resolved to nothing and the projection fell back to an all-zero curve.
+    const points = [[0, 0, 0], [3, 6, 0], [7, 6, 0], [10, 0, 0]]
+    const payload = edgeAncestryPayload({ kind: 'spline', points }, '@body_1', '@ex1', 2)
+    expect(payload.points).toEqual(points)
+
+    const g = resolve3dGeometry({ type: 'edge', ...payload })
+    expect(g?.kindH).toBe('spline')
+    const out = projectTo2d(g!, XY)
+    expect(out?.kind).toBe('spline')
+    expect(out?.params).toHaveLength(8)
+    // The fitted cubic is pinned to the projected first/last samples.
+    expect(out?.params.slice(0, 2)).toEqual([0, 0])
+    expect(out?.params.slice(6, 8)).toEqual([10, 0])
+  })
 })
 
 describe('B-rep edge registration carries the classifiers of its own query', () => {

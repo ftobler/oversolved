@@ -194,6 +194,9 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
 
       const stableIds = ids.filter((t) => !isClassifierId(t))
       if (edgeCreatedBy !== body.created_by) stableIds.push(ref(body.created_by))
+      // Projection-facing payloads are built by `edgeAncestryPayload`
+      // (builderAncestry.ts). This one is not: `ancestryRepo` is private to this
+      // feature solve and carries the OCC handle the blend needs, never geometry.
       const payload: AncestryEdgePayload = { type: edgeType, classifiers, shape: te }
       ancestryRepo.registerAncestor(stableIds, payload, uuid)
     }

@@ -87,7 +87,15 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
  * The repository payload registered for one B-rep edge. Carries every geometric
  * field a consumer (projection lowering, measurements) might read: circle/arc
  * use `radius`, ellipse needs `a`/`b` (semi-axes) -- omitting those makes a
- * resolved elliptical edge unprojectable (resolve3dGeometry returns null).
+ * resolved elliptical edge unprojectable (resolve3dGeometry returns null) -- and
+ * a spline needs `points`, the sampled polyline the projection fits a cubic to.
+ * The same omission once hit the ellipse fields, so every field a resolve branch
+ * reads belongs here.
+ *
+ * The spline polyline is the biggest field by far (a dense edge is ~170 samples,
+ * three numbers each, per spline edge per body snapshot). Kept as-is on purpose:
+ * the samples ARE the curve, and the projection has no other way to rebuild it
+ * from a repository payload.
  *
  * `classifiers` are the ones minted into the edge's query (OCC edge data
  * carries none of its own); registering [] while the query asked for `cls_*`
@@ -116,6 +124,7 @@ export function edgeAncestryPayload(
     x_axis: edge.x_axis,
     angle_start: edge.angle_start,
     angle_end: edge.angle_end,
+    points: edge.points,
     classifiers,
   }
 }

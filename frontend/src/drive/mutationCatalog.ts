@@ -1079,7 +1079,8 @@ export const MUTATION_CATALOG = {
     note: 'The source is a body edge/vertex/face query, `@builtin_origin`, or a whole entity of another sketch '
       + '(`@<sketchId>/<entityId>`; add `/start`, `/end`, `/center` or `/xy` for one vertex). A sketch line, '
       + 'circle or arc projects as that curve; a foreign spline or ellipse is refused and reported in '
-      + '`projection_errors` (the entity keeps its last position). The projection is held in place and can be '
+      + '`projection_errors` (a projection that already had a position keeps it; one that never had any is left '
+      + 'out of the profile). The projection is held in place and can be '
       + 'selected and deleted like any other entity.',
     fields: { featureId: str(), kind: str(), source: str('The source edge ref.'), entityId: optStr(), constraintId: optStr() },
   },
