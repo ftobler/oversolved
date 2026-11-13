@@ -19,6 +19,7 @@ import { threadEntry } from '@/kernel/threadTable'
 import { isLengthUnit } from '@/utils/lengthUnit'
 import { normalizeMateLimitDeg } from '@/utils/mateKinds'
 import { isDocumentConstraintKind } from '@/wasm-kernel/partDocToSketches'
+import { deriveMemberIds, isFaceProjectionSource } from '@/kernel/features/projectionMembers'
 import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
 
 // The version the ladder migrates to. A document carrying `version` 7 or newer
@@ -660,6 +661,38 @@ const CONSTRAINT_OPERAND_KEYS = [
   'target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b', 'circle',
 ] as const
 
+function checkProjectionMembers(constraint: DocRecord, field: string): void {
+  const members = checkRecord(constraint.members, `${field}.members`)
+  const tokens = Object.keys(members)
+  if (tokens.length > MAX_FEATURE_LIST) {
+    fail(`${field}.members`, `has ${tokens.length} entries, the limit is ${MAX_FEATURE_LIST}`)
+  }
+  for (const token of tokens) {
+    checkConstructionToken(token, `${field}.members`)
+    checkId(members[token], `${field}.members[${JSON.stringify(token)}]`)
+  }
+  const constraintId = constraint.id as string
+  const derived = deriveMemberIds(constraintId, tokens)
+  for (const token of tokens) {
+    // The id is a pure function of the constraint id and the construction
+    // token. Storing anything else is a document that claims an identity the
+    // solve will immediately rewrite, so the loader refuses it by field.
+    if (members[token] !== derived[token]) {
+      fail(
+        `${field}.members[${JSON.stringify(token)}]`,
+        `must be ${JSON.stringify(derived[token])} (the id derived from the constraint id and the construction token), `
+        + `got ${JSON.stringify(members[token])}`,
+      )
+    }
+  }
+}
+
+function checkConstructionToken(value: unknown, field: string): void {
+  if (typeof value !== 'string' || !/^u\|[0-9A-Za-z_]+$/.test(value)) {
+    fail(field, `must be a construction UUID token (u|<uuid>), got ${JSON.stringify(value)}`)
+  }
+}
+
 function checkConstraint(value: unknown, field: string): void {
   const constraint = checkRecord(value, field)
   checkId(constraint.id, `${field}.id`)
@@ -694,8 +727,33 @@ function checkConstraint(value: unknown, field: string): void {
     eachEntry(list, f, checkFiniteNumber)
   })
   checkOptional(constraint, 'source', field, checkString)
-  if (constraint.kind === 'projection' && constraint.source === undefined) {
-    fail(`${field}.source`, `is required for a projection constraint`)
+  if (constraint.kind === 'projection') {
+    if (constraint.source === undefined) {
+      fail(`${field}.source`, `is required for a projection constraint`)
+    }
+    const source = constraint.source as string
+    const faceSource = isFaceProjectionSource(source)
+    // A face projection is one live constraint; an edge/vertex/origin/foreign
+    // sketch projection holds exactly one materialized entity. The two shapes
+    // cannot mix: a face has no single target, and a target without a face has
+    // no member set to derive.
+    if (faceSource && constraint.target !== undefined) {
+      fail(`${field}.target`, `must be absent for a face projection (its members are derived)`)
+    }
+    if (!faceSource && constraint.target === undefined) {
+      fail(`${field}.target`, `is required for a non-face projection`)
+    }
+    if (constraint.members !== undefined) {
+      if (!faceSource) fail(`${field}.members`, `is only valid on a face projection`)
+      checkProjectionMembers(constraint, field)
+    }
+    if (constraint.excluded !== undefined) {
+      if (!faceSource) fail(`${field}.excluded`, `is only valid on a face projection`)
+      const excluded = checkList(constraint.excluded, `${field}.excluded`, MAX_FEATURE_LIST)
+      eachEntry(excluded, `${field}.excluded`, checkConstructionToken)
+    }
+  } else if (constraint.members !== undefined || constraint.excluded !== undefined) {
+    fail(`${field}.members`, `is only valid on a projection constraint`)
   }
 }
 
