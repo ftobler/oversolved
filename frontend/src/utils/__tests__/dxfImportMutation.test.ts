@@ -244,3 +244,63 @@ describe('import_dxf is one undo entry', () => {
     expect(engine.session.historyEntries().undo).toHaveLength(0)
   })
 })
+
+describe('import_dxf group', () => {
+  it('holds the imported rows in one group and reports its id beside the count', () => {
+    const engine = makeEngine(sketchDoc())
+    const content = dxf([
+      line(0, 0, 10, 0),
+      line(10, 0, 10, 10),
+      entity('CIRCLE', [10, 5], [20, 5], [40, 2]),
+    ])
+    const result = engine.session.execute({ type: 'import_dxf', featureId: 'sk', content })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const sketch = docSketch(engine.cell.current as PartDoc)
+    const entityIds = sketch.entities!.map(e => e.id)
+    expect(entityIds).toHaveLength(3)
+    const groups = (sketch.constraints ?? []).filter(c => c.kind === 'group')
+    expect(groups).toHaveLength(1)
+    // Anchor first: the first imported row leads the member list.
+    expect(groups[0].refs).toEqual(entityIds.map(id => `$${id}`))
+    expect(result.groupId).toBe(groups[0].id)
+    // The group is a constraint, not an imported entity: the id list and the
+    // step's createdCount keep naming rows only.
+    expect(result.createdIds).toEqual(entityIds)
+    expect(engine.session.historyEntries().undo).toHaveLength(1)
+  })
+
+  it('group: false imports plain rows, as before', () => {
+    const doc = sketchDoc()
+    applyImportDxf(doc, 'sk', dxf([line(0, 0, 1, 0), line(1, 0, 1, 1)]), undefined, false)
+    const sketch = docSketch(doc)
+    expect(sketch.entities).toHaveLength(2)
+    expect(sketch.constraints ?? []).toEqual([])
+  })
+
+  it('two filtered imports make two groups', () => {
+    const content = dxf([
+      lineOn('profile', 0, 0, 10, 0),
+      lineOn('profile', 10, 0, 10, 10),
+      lineOn('holes', 5, 5, 6, 5),
+    ])
+    const doc = sketchDoc()
+    applyImportDxf(doc, 'sk', content, ['profile'])
+    applyImportDxf(doc, 'sk', content, ['holes'])
+    const sketch = docSketch(doc)
+    const groups = (sketch.constraints ?? []).filter(c => c.kind === 'group')
+    expect(groups).toHaveLength(2)
+    expect(groups[0].refs).toHaveLength(2)
+    expect(groups[1].refs).toHaveLength(1)
+  })
+
+  it('refuses a non-boolean group at the value boundary', () => {
+    const result = validateMutation(
+      { type: 'import_dxf', featureId: 'sk', content: dxf([line(0, 0, 1, 0)]), group: 'no' },
+      { doc: sketchDoc() },
+    )
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.message).toContain('must be boolean')
+  })
+})

@@ -211,6 +211,14 @@ convert), and an unsupported code refuses by name. DXF is a planar format: the
 import reads X and Y only, matching CadQuery's DXF import onto a workplane, and
 the drawing's local coordinates are the sketch's own.
 
+Unless the mutation passes `group: false`, every imported row is also held by
+one `group` constraint (anchor: the first imported entity) in the same mutation,
+so the profile arrives with exactly its two translations of freedom; pin one
+vertex (for example a `coincident` to `@builtin_origin`) to fully constrain it,
+and delete the single constraint to edit the rows freely. A filtered import
+groups only the rows it picked, so two imports of two layers make two groups.
+`group: false` imports plain rows for a client that constrains them itself.
+
 ### plane
 
 ```yaml
@@ -938,6 +946,7 @@ entity) and `{"external_xy": [x, y]}`. The app writes the string form.
 | `concentric` | Center-delta x and y |
 | `radius_difference` | Difference of two radii minus value |
 | `fixed` | Params pinned to initial |
+| `group` | Members hold their shape and their offset from the anchor point; the set may translate (2 DOF) |
 | `projection` | Holds an entity to its projected source shape and position |
 | `colinear` | Two lines collinear (parallel and on one line), or a point on the infinite line through a line |
 | `ngon` | Sugar: regular polygon over `refs` (member lines), optionally pinned to the `circle` circumcircle; lowered to equal_length, angle and coincident rows |

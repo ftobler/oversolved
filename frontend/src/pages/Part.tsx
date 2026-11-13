@@ -133,13 +133,14 @@ function extractFeatures(doc: PartDoc | null): PartFeature[] {
 // contract (utils/dxfImport.ts), so the user learns them at the moment of
 // import. A filtered import names the layers it read and counts what stayed
 // behind; an unfiltered one says neither, because it took everything.
-function dxfImportMessage(profile: DxfProfile, fileName: string): string {
+function dxfImportMessage(profile: DxfProfile, fileName: string, grouped = true): string {
   const count = profile.entities.length
   const picked = profile.pickedLayers
   const source = picked === undefined
     ? `from ${fileName}`
     : `from layers ${picked.join(', ')} in ${fileName}`
   const parts = [`Imported ${count} ${count === 1 ? 'entity' : 'entities'} ${source}`]
+  if (grouped) parts.push('as one group; delete the Group constraint to edit freely')
   const skipped = Object.entries(profile.skipped)
   if (skipped.length > 0) {
     parts.push(`skipped ${skipped.map(([kind, n]) => `${n} ${kind}`).join(', ')}`)

@@ -67,6 +67,22 @@ describe('constraintRegistry', () => {
     }
   })
 
+  it('the group holds N whole refs and is reachable from the toolbar', () => {
+    const group = CONSTRAINT_BY_KIND.get('group')!
+    expect(group).toMatchObject({
+      label: 'Group',
+      category: 'geometric',
+      hasValue: false,
+      refPattern: 'targets',
+      renderKind: 'symbol_group',
+      symbolIcon: 'constraint-group',
+      toolbarIcon: 'constraint-group',
+      showInToolbar: true,
+    })
+    // The glyph is a real asset, and the shortcut is unique (checked above).
+    expect(iconUrl(group.symbolIcon!)).not.toBe('')
+  })
+
   it('RENDER_KIND_TO_ICON maps every constraint with a symbolIcon', () => {
     for (const c of CONSTRAINTS) {
       if (c.symbolIcon) {

@@ -47,8 +47,9 @@ export interface ConstraintDef {
    *   - "target"   → single entity/vertex → `target`
    *   - "a_b"      → two entities/vertices → `a`, `b`
    *   - "midpoint" → special (line+point or 3 vertices)
+   *   - "targets"  → any number of whole entities → `refs` (the group)
    */
-  refPattern: 'target' | 'a_b' | 'midpoint'
+  refPattern: 'target' | 'a_b' | 'midpoint' | 'targets'
 
   /**
    * The render kind returned by computeConstraintRender.
@@ -249,6 +250,19 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     symbolIcon: 'constraint-fixed',
     toolbarIcon: 'constraint-fixed',
     shortcut: 'f',
+    showInToolbar: true,
+  },
+  {
+    kind: 'group',
+    label: 'Group',
+    description: 'Glues the selected entities into their current shape; the group can still move. Delete the constraint to edit the entities freely.',
+    category: 'geometric',
+    hasValue: false,
+    refPattern: 'targets',
+    renderKind: 'symbol_group',
+    symbolIcon: 'constraint-group',
+    toolbarIcon: 'constraint-group',
+    shortcut: 'g',
     showInToolbar: true,
   },
   {
@@ -485,8 +499,14 @@ const RENDER_KIND_TO_LABEL: Readonly<Record<string, string>> = {
 export function constraintTileLabel(
   renderKind: string,
   verdict: { superfluous?: boolean; culprit?: boolean } = {},
+  count?: number,
 ): string {
-  const name = RENDER_KIND_TO_LABEL[renderKind] ?? 'Constraint'
+  // A group is one tile over N members, and the count is the one thing the
+  // glyph cannot show. It is the same row the constraint list reads.
+  const base = RENDER_KIND_TO_LABEL[renderKind] ?? 'Constraint'
+  const name = renderKind === 'symbol_group' && count !== undefined && count > 0
+    ? `${base} (${count} ${count === 1 ? 'entity' : 'entities'})`
+    : base
   if (verdict.culprit) return `${name} (conflicting)`
   if (verdict.superfluous) return `${name} (redundant)`
   return name

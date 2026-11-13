@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { lowerSketch, pinnedMaskFor, type EntityLayout } from '../lowerSketch'
-import { Kind, Role, Sel } from '../codec'
+import { ConstraintKindCode, Kind, Role, Sel } from '../codec'
 import { DOC_GRID, round } from '@/utils/yamlMutations/helpers'
 
 describe('lowerSketch storage quantum', () => {
@@ -310,5 +310,84 @@ describe('lowerSketch fit_spline entity', () => {
       initial: { sp: params },
       constraints: [],
     })).toThrow(/limit is 64/)
+  })
+})
+
+describe('lowerSketch group', () => {
+  it('lowers one group of N members to N solver constraints sharing the anchor ref', () => {
+    const { input, layout, constraintIds } = lowerSketch({
+      id: 'S1',
+      entities: [
+        { id: 'l1', kind: 'line' },
+        { id: 'c1', kind: 'circle' },
+        { id: 'a1', kind: 'arc' },
+      ],
+      initial: { l1: [0, 0, 4, 0], c1: [6, 0, 1], a1: [0, 0, 2, 0, 90] },
+      constraints: [{
+        id: 'g1',
+        kind: 'group',
+        refs: [{ entity: 'l1' }, { entity: 'c1' }, { entity: 'a1' }],
+      }],
+    })
+    const lineIndex = layout.findIndex(l => l.id === 'l1')
+    const groups = input.constraints.filter(c => c.kind === ConstraintKindCode.group)
+    expect(groups).toHaveLength(3)
+    for (const group of groups) {
+      expect(group.refs[1]).toEqual({
+        role: Role.a,
+        ref: { kind: 'entity', index: lineIndex, point: Sel.start },
+      })
+    }
+    // Each member is the target of exactly one piece, in member order.
+    expect(groups.map(g => (g.refs[0].ref as { index: number }).index)).toEqual([
+      lineIndex,
+      layout.findIndex(l => l.id === 'c1'),
+      layout.findIndex(l => l.id === 'a1'),
+    ])
+    // Every piece maps back to the one authored id, so its verdict names it.
+    expect(constraintIds.filter(id => id === 'g1')).toHaveLength(3)
+  })
+
+  it('anchors a circle/arc/ellipse group at the centre and a point group at xy', () => {
+    const { input, layout } = lowerSketch({
+      id: 'S1',
+      entities: [
+        { id: 'c1', kind: 'circle' },
+        { id: 'a1', kind: 'arc' },
+        { id: 'e1', kind: 'ellipse' },
+        { id: 'p1', kind: 'point' },
+      ],
+      initial: {
+        c1: [1, 1, 2], a1: [3, 3, 1, 0, 90], e1: [5, 5, 2, 1, 0], p1: [7, 7],
+      },
+      constraints: [
+        { id: 'gc', kind: 'group', refs: [{ entity: 'c1' }] },
+        { id: 'ga', kind: 'group', refs: [{ entity: 'a1' }] },
+        { id: 'ge', kind: 'group', refs: [{ entity: 'e1' }] },
+        { id: 'gp', kind: 'group', refs: [{ entity: 'p1' }] },
+      ],
+    })
+    const index = (id: string) => layout.findIndex(l => l.id === id)
+    const groups = input.constraints.filter(c => c.kind === ConstraintKindCode.group)
+    expect(groups.map(g => (g.refs[1].ref as { point: number }).point))
+      .toEqual([Sel.center, Sel.center, Sel.center, Sel.xy])
+    // Each one-member group anchors on itself.
+    expect(groups.map(g => (g.refs[1].ref as { index: number }).index))
+      .toEqual([index('c1'), index('a1'), index('e1'), index('p1')])
+  })
+
+  it('fails loud on a member that is not a local whole-entity ref', () => {
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'l1', kind: 'line' }],
+      initial: { l1: [0, 0, 1, 0] },
+      constraints: [{ id: 'g1', kind: 'group', refs: [{ entity: 'l1', point: 'start' }] }],
+    })).toThrow("group 'g1' member 'l1' names a vertex")
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'l1', kind: 'line' }],
+      initial: { l1: [0, 0, 1, 0] },
+      constraints: [{ id: 'g1', kind: 'group', refs: [{ entity: 'gone' }] }],
+    })).toThrow("group 'g1' names unknown entity 'gone'")
   })
 })

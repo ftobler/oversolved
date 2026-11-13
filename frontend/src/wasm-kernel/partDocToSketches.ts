@@ -104,6 +104,27 @@ function lowerConstraint(
     }
     out[key] = resolved
   }
+  // N-ary refs: a group's member list. Each names a whole local entity; the
+  // origin (`@builtin_origin`) and any other unresolved form is dropped with
+  // the group, since a member the solver cannot address would leave the rest
+  // half-held. Sugar kinds (ngon, dock) expanded before this loop, so their
+  // refs never reach here.
+  if (Array.isArray(c.refs)) {
+    const refs: Array<{ entity: string; point?: string }> = []
+    for (const raw of c.refs) {
+      const resolved = resolveLocal(raw, entityIds, originLocal)
+      if (!resolved || 'external_xy' in resolved) {
+        dropped.push({ id: c.id, kind: authoredKind, reason: 'unresolvable group member' })
+        return null
+      }
+      refs.push(resolved)
+    }
+    if (refs.length === 0) {
+      dropped.push({ id: c.id, kind: authoredKind, reason: 'group has no members' })
+      return null
+    }
+    out.refs = refs
+  }
   // A present-but-non-numeric scalar is corrupt: passing it through (or
   // stripping it) would lower a dimension with no residual, so the sketch
   // silently solves underconstrained. Drop the whole constraint, the same

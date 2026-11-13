@@ -699,6 +699,54 @@ function checkConstraint(value: unknown, field: string): void {
   }
 }
 
+/**
+ * A group's members must be whole authored entities of the same sketch. A
+ * member that names no entity, a vertex suffix, or an entity held by a
+ * `projection` cannot be held rigidly: the solver would either drop the group
+ * row (the stale-ref path) or fight the projection's pin, so the document is
+ * refused by field instead of loading a constraint that cannot solve.
+ */
+function checkGroupConstraints(feature: DocRecord, field: string): void {
+  if (feature.kind !== 'sketch') return
+  const entityIds = new Set<string>()
+  for (const entity of Array.isArray(feature.entities) ? feature.entities : []) {
+    if (isRecord(entity) && typeof entity.id === 'string') entityIds.add(entity.id)
+  }
+  const constraints = Array.isArray(feature.constraints) ? feature.constraints : []
+  const projected = new Set<string>()
+  for (const constraint of constraints) {
+    if (!isRecord(constraint) || constraint.kind !== 'projection') continue
+    if (typeof constraint.target !== 'string') continue
+    projected.add(constraint.target.replace(/^\$/, ''))
+  }
+  for (let i = 0; i < constraints.length; i++) {
+    const constraint = constraints[i]
+    if (!isRecord(constraint) || constraint.kind !== 'group') continue
+    const refsField = `${field}.constraints[${i}].refs`
+    if (!Array.isArray(constraint.refs) || constraint.refs.length === 0) {
+      fail(refsField, 'a group needs at least one member')
+    }
+    for (let j = 0; j < constraint.refs.length; j++) {
+      const ref = constraint.refs[j]
+      let id: string | null = null
+      if (typeof ref === 'string' && ref.startsWith('$')) {
+        id = ref.slice(1)
+      } else if (isRecord(ref) && typeof ref.entity === 'string'
+        && (ref.point === undefined || ref.point === null)) {
+        id = ref.entity
+      } else {
+        fail(`${refsField}[${j}]`, `must name a whole sketch entity, got ${JSON.stringify(ref)}`)
+      }
+      if (id === null || !entityIds.has(id)) {
+        fail(`${refsField}[${j}]`, `names no entity in this sketch, got ${JSON.stringify(ref)}`)
+      }
+      if (projected.has(id)) {
+        fail(`${refsField}[${j}]`, `names projected entity ${JSON.stringify(id)}; a group holds authored entities`)
+      }
+    }
+  }
+}
+
 function checkInitial(value: unknown, field: string): void {
   const initial = checkRecord(value, field)
   const keys = Object.keys(initial)
@@ -1041,6 +1089,7 @@ function checkFeature(value: unknown, field: string): void {
     const constraints = checkList(feature.constraints, `${field}.constraints`, MAX_FEATURE_LIST)
     eachEntry(constraints, `${field}.constraints`, checkConstraint)
   }
+  checkGroupConstraints(feature, field)
   if (feature.initial !== undefined) checkInitial(feature.initial, `${field}.initial`)
   if (Array.isArray(feature.entities)) {
     const initial = isRecord(feature.initial) ? feature.initial : null

@@ -114,6 +114,14 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
     },
     {
       "enabled": true,
+      "id": "apply_group",
+      "label": "Apply Group",
+      "params": [],
+      "shortcut": "g",
+      "undoable": true,
+    },
+    {
+      "enabled": true,
       "id": "apply_horizontal",
       "label": "Apply Horizontal",
       "params": [],

@@ -415,6 +415,7 @@ fn check_big_jac_problem(
     let inp = Input {
         entities,
         params_initial: params,
+        params_reference: Vec::new(),
         pinned_mask,
         equality_pins,
         constraints,

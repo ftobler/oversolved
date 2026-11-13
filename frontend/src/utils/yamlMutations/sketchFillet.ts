@@ -395,6 +395,17 @@ export function planFilletCorners(
         }
       }
 
+      // Trimming changes the side's held shape, which is exactly what a Group
+      // constraint forbids: the corner cannot be rounded while the entity is
+      // glued to its current form.
+      const group = constraints.find(c => c.kind === 'group' && touchesEntity(c, side.id))
+      if (group !== undefined) {
+        return {
+          code: 'invalid',
+          reason: `${where}: side "${side.id}" is held by group constraint "${group.id}"; ungroup first`,
+        }
+      }
+
       const dimension = constraints.find(c =>
         c.value !== undefined && touchesVertex(c, side.id, side.key))
       if (dimension !== undefined) {

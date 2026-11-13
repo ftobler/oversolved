@@ -86,6 +86,9 @@ export interface ScriptStepOutcome {
   // file order, so a caller can see what landed where without reading the
   // document back.
   layers?: Record<string, number>
+  // Present only on an import_dxf step that authored its Group constraint: the
+  // constraint's id. `createdCount` stays the imported entity count.
+  groupId?: string
   // Present only on an import_dxf step whose `layers` filter left file layers
   // out: those layers and their entity counts. An unfiltered first import of a
   // sheet thus still shows what a filtered one could pick.
@@ -224,6 +227,7 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
     // beside the bulk count without knowing anything about DXF.
     const layers = 'layers' in result ? result.layers : undefined
     const otherLayers = 'otherLayers' in result ? result.otherLayers : undefined
+    const groupId = 'groupId' in result ? result.groupId : undefined
     // A DXF import or a text run is the bulk case of the reply-size rule: one
     // step can add hundreds of entities, so the reply carries the count and
     // the document resource (or the run's docHash) serves the ids. A sketch
@@ -235,6 +239,7 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
       ...(counted && { createdCount: createdIds.length }),
       ...(layers !== undefined && { layers }),
       ...(otherLayers !== undefined && { otherLayers }),
+      ...(groupId !== undefined && { groupId }),
       ...(constraints !== undefined && { constraints }),
       ...(replacedConstraints !== undefined && { replacedConstraints }),
       ...(captured !== undefined && { captured }),

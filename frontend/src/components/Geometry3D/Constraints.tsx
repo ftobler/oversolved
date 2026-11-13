@@ -128,7 +128,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
           const atEntities = findEntitiesAtPoint(sketch, at)
           highlightIds = atEntities.length > 0 ? atEntities : [eid]
         }
-        const title = constraintTileLabel(r.kind, c)
+        const title = constraintTileLabel(r.kind, c, r.entities?.length)
         atGroups.get(atKey)!.icons.push({ url, title, key: cid, highlightIds, superfluous: c.superfluous, culprit: c.culprit })
 
       } else {

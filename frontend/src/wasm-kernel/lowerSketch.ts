@@ -119,8 +119,35 @@ export interface LowerOptions {
   skipStatusPass?: boolean
 }
 
+/** One resolved constraint dict, as partDocToSketches hands it to this
+ *  lowering: refs are already entity dicts, never query strings. */
+type RawConstraint = Record<string, unknown>
+
 function isRefDict(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+/**
+ * The selector that names an entity kind's first point: the point params 0,1
+ * hold, and the anchor a group's translation is measured from.
+ */
+function firstPointSelector(kind: string): number {
+  switch (kind) {
+    case 'line':
+    case 'spline':
+    case 'fit_spline':
+      return Sel.start
+    case 'circle':
+    case 'arc':
+    case 'ellipse':
+      return Sel.center
+    case 'point':
+      return Sel.xy
+    default:
+      // A kind added without deciding its anchor point would lower a group
+      // whose translation is measured at the wrong place; fail loud instead.
+      throw new Error(`lowerSketch: no group anchor point for entity kind '${kind}'`)
+  }
 }
 
 /**
@@ -229,7 +256,56 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     return { kind: 'entity', index, point }
   }
 
-  const lowerConstraint = (c: Record<string, unknown>): FlatConstraint => {
+  /**
+   * Lower one rigid group into its per-member wire constraints.
+   *
+   * The document carries the member refs only; the shape to hold is the
+   * sketch's `initial` block, which the solver reads as its reference (the hard
+   * solve's `params`; a drag sends it explicitly). So each member becomes one
+   * `Group` row set: its own entity as the target and the group's anchor point
+   * as the `a` ref. The anchor's own first pair is that shared translation and
+   * contributes no row; the residual builder knows that from the selector.
+   *
+   * The first target is the anchor. Its first point (line/spline start, the
+   * centre of a circle/arc/ellipse, a point's xy, a fit spline's first fit
+   * point) names the point whose motion is the group's translation.
+   */
+  const lowerGroupConstraint = (c: RawConstraint): FlatConstraint[] => {
+    const id = typeof c.id === 'string' ? c.id : '?'
+    if (!Array.isArray(c.refs)) {
+      throw new Error(`lowerSketch: group '${id}' has no member refs`)
+    }
+    const members: Array<{ id: string; index: number }> = []
+    const seen = new Set<string>()
+    for (const raw of c.refs) {
+      if (!isRefDict(raw) || typeof raw.entity !== 'string' || raw.external_xy !== undefined) {
+        throw new Error(`lowerSketch: group '${id}' has a member that is not a local entity ref`)
+      }
+      // A group holds whole entities: a vertex ref would name a row the group
+      // cannot hold (it would move with the member, not with the group).
+      if (raw.point !== undefined && raw.point !== null) {
+        throw new Error(`lowerSketch: group '${id}' member '${raw.entity}' names a vertex, not an entity`)
+      }
+      if (seen.has(raw.entity)) continue
+      seen.add(raw.entity)
+      const index = idToIndex.get(raw.entity)
+      if (index === undefined) throw new Error(`lowerSketch: group '${id}' names unknown entity '${raw.entity}'`)
+      members.push({ id: raw.entity, index })
+    }
+    if (members.length === 0) throw new Error(`lowerSketch: group '${id}' has no members`)
+    const anchor = members[0]
+    const anchorKind = layout[anchor.index].kind
+    const anchorPoint = firstPointSelector(anchorKind)
+    return members.map((member) => ({
+      kind: ConstraintKindCode.group,
+      refs: [
+        { role: Role.target, ref: { kind: 'entity', index: member.index, point: Sel.absent } },
+        { role: Role.a, ref: { kind: 'entity', index: anchor.index, point: anchorPoint } },
+      ],
+    }))
+  }
+
+  const lowerConstraint = (c: RawConstraint): FlatConstraint[] => {
     const kindName = c.kind as string
     // Every document kind is turned into a wire kind by partDocToSketches before
     // this runs, and the document boundary refuses an unknown kind by field, so
@@ -241,6 +317,7 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     if (!isConstraintKindName(kindName)) {
       throw new Error(`lowerSketch: unknown constraint kind '${kindName}'`)
     }
+    if (kindName === 'group') return lowerGroupConstraint(c)
     const kind = ConstraintKindCode[kindName]
     const refs: FlatConstraint['refs'] = []
     for (const [key, role] of REF_KEYS) {
@@ -271,14 +348,19 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
       out.axis = axis
     }
     if (typeof c.sign === 'number') out.sign = c.sign
-    return out
+    return [out]
   }
 
   const constraints: FlatConstraint[] = []
   const constraintIds: Array<string | null> = []
   for (const c of sk.constraints) {
-    constraints.push(lowerConstraint(c))
-    constraintIds.push(typeof c.id === 'string' ? c.id : null)
+    const lowered = lowerConstraint(c)
+    // A sugar constraint (a group) lowers to several rows; every piece maps
+    // back to the one authored id so its verdict can name the user's row.
+    for (const flat of lowered) {
+      constraints.push(flat)
+      constraintIds.push(typeof c.id === 'string' ? c.id : null)
+    }
   }
 
   // Implicit origin pin, mirroring _solve_sketch's ORIGIN_FIX.

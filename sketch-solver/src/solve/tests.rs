@@ -1892,6 +1892,7 @@ fn the_half_step_boundary_is_strict() {
     let inp = Input {
         entities: vec![point(0), point(2)],
         params_initial: vec![0.0; 4],
+        params_reference: Vec::new(),
         pinned_mask: Vec::new(),
         equality_pins: vec![
             EqualityPin {

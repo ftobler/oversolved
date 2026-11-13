@@ -1,7 +1,8 @@
 //! Constraint residual builders.
 //!
 //! `Problem` precomputes the per-solve invariants (entity kinds/offsets, the
-//! initial param vector `x0`, the line-circle coincident map) once, then
+//! initial param vector `x0`, the reference vector `fixed`/`group` hold, the
+//! line-circle coincident map) once, then
 //! `residuals(x)` evaluates the stacked residual vector for a candidate `x`.
 //! Computation is in `f64`, and so is the wire format (rev 3 and later): no conversion
 //! happens on decode or encode.
@@ -45,9 +46,13 @@ pub(super) struct TangentContact {
 
 pub struct Problem<'a> {
     entities: &'a [Entity],
-    /// Initial param vector (the wire's f64 params, verbatim), the `x0` of
-    /// the `fixed` fallback and the pin rows.
+    /// Initial param vector (the wire's f64 params, verbatim), the `x0` of the
+    /// solve seed, the pin rows and the drag anchor.
     pub x0: Vec<f64>,
+    /// The shape `fixed` and `group` hold: `Input::params_reference` when the
+    /// host sent one (a drag, whose seed is deliberately deformed), `x0`
+    /// otherwise (the hard solve, whose seed is the document's stored shape).
+    reference: Vec<f64>,
     /// Only the constraints whose every entity reference is addressable (see
     /// `Input::entity_params_in_range`) and whose operand kinds supply the
     /// param slots their builder reads (see `operand_kinds_supply_slots`).
@@ -76,6 +81,14 @@ pub struct Problem<'a> {
 impl<'a> Problem<'a> {
     pub fn new(input: &'a Input) -> Self {
         let x0: Vec<f64> = input.params_initial.clone();
+        // A malformed (partial) reference never reaches here: the codec refuses
+        // it and `Problem` is built from decoded input. A hand-built Input with
+        // one falls back to the seed, the same conservative reading.
+        let reference: Vec<f64> = if input.params_reference.len() == x0.len() {
+            input.params_reference.clone()
+        } else {
+            x0.clone()
+        };
 
         let pinned_indices: Vec<usize> = (0..x0.len()).filter(|&i| input.is_pinned(i)).collect();
         // A pin naming a param the buffer does not have is stale in exactly the
@@ -121,6 +134,7 @@ impl<'a> Problem<'a> {
         let mut problem = Problem {
             entities: &input.entities,
             x0,
+            reference,
             constraints,
             constraint_wire_indices,
             pinned_indices,
@@ -528,6 +542,15 @@ impl<'a> Problem<'a> {
         }
     }
 
+    /// The group's translation: the anchor point's movement from the reference
+    /// to `x`. The group constraints of one document group share it, so every
+    /// member moves by the same vector.
+    fn translation(&self, x: &[f64], anchor: Ref) -> P2 {
+        let now = self.point(x, anchor);
+        let held = self.point(&self.reference, anchor);
+        [now[0] - held[0], now[1] - held[1]]
+    }
+
     /// Unit radius direction at a contact point. Both circles and arcs measure
     /// the radial from the centre to the ACTUAL contact: an arc's start/end
     /// angle params describe its own endpoints, not wherever a pinned line foot
@@ -595,6 +618,7 @@ impl<'a> Problem<'a> {
             ConstraintKind::Concentric => self.r_concentric(c, x, r),
             ConstraintKind::Fixed => self.r_fixed(c, x, r),
             ConstraintKind::RadiusDifference => self.r_radius_difference(c, x, r),
+            ConstraintKind::Group => self.r_group(c, x, r),
         }
     }
 

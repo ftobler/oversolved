@@ -180,6 +180,15 @@ pub struct Options {
 pub struct Input {
     pub entities: Vec<Entity>,
     pub params_initial: Vec<f64>,
+    /// The shape `fixed` and `group` hold, when it is not the solve seed.
+    ///
+    /// Empty means "the reference is `params_initial`", which is the hard
+    /// solve's case: it seeds from the document's stored geometry. A drag seeds
+    /// from the previous frame (a vertex drag deforms that seed on purpose), so
+    /// the host sends the last hard solve's params here instead and the
+    /// constraints keep holding the shape the user authored. A non-empty vector
+    /// must have `params_initial`'s length; the codec refuses anything else.
+    pub params_reference: Vec<f64>,
     /// One bit per param (LSB-first within each byte); 1 = pinned to its
     /// `params_initial` value.
     pub pinned_mask: Vec<u8>,

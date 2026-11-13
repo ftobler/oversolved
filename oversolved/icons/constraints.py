@@ -303,3 +303,30 @@ def constraint_projection(ctx):
     stroke(ctx, 2)
     ctx.arc(0.5, 0.5, 0.08, 0, 2 * math.pi)
     ctx.fill()
+
+
+@icon("frontend/src/assets/icons/constraint-group.svg")  # double use: toolbar
+def constraint_group(ctx):
+    # A dotted enclosure around three linked members: the group holds their
+    # shape and relative placement, and the loose border says the set itself can
+    # still move.
+    x0, y0 = 0.12, 0.12
+    x1, y1 = 0.88, 0.88
+    for ax, ay, bx, by in (
+        (x0, y0, x1, y0),
+        (x1, y0, x1, y1),
+        (x1, y1, x0, y1),
+        (x0, y1, x0, y0),
+    ):
+        draw_dotted_line(ctx, ax, ay, bx, by, 4)
+
+    # Three members joined in one shape.
+    hull = [(0.34, 0.66), (0.5, 0.34), (0.7, 0.62)]
+    ctx.move_to(*hull[0])
+    ctx.line_to(*hull[1])
+    ctx.line_to(*hull[2])
+    ctx.close_path()
+    stroke(ctx, 1.5)
+    for px_, py_ in hull:
+        ctx.arc(px_, py_, 0.055, 0, 2 * math.pi)
+        ctx.fill()

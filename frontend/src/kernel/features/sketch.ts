@@ -882,6 +882,13 @@ export function prepareDragContext(
     if (extract.skipped.length || !extract.sketches.length) return null
 
     const { input, layout } = lowerSketch(extract.sketches[0].sketch)
+    // This context is a drag: the per-frame seed is the previous frame (a vertex
+    // drag deliberately deforms it) or params0 plus the cursor delta. `fixed`
+    // and `group` must keep holding the last hard solve's shape, not that seed,
+    // or the drag would teach them a deformed reference, so pin the reference
+    // to `initial` here once. The hard solve leaves it unset and the solver
+    // reads `params` instead.
+    input.paramsReference = [...input.params]
 
     const anchorIndex = layout.findIndex((l) => l.id === dragEntityId)
     if (anchorIndex === -1) return null

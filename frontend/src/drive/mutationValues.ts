@@ -1522,6 +1522,9 @@ function importDxf(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   }
   const hasContent = raw.content !== undefined
   const hasFile = raw.file !== undefined
+  if (raw.group !== undefined && typeof raw.group !== 'boolean') {
+    return invalid(`group must be a boolean (false imports plain entities), got ${json(raw.group)}`)
+  }
   if (hasContent && hasFile) return invalid('import_dxf takes exactly one of content or file')
   if (!hasContent && !hasFile) {
     return invalid(

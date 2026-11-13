@@ -44,6 +44,8 @@ vi.mock('@/utils/geometry/drawGeometry', () => ({
 
 import { ConstraintOverlays } from '@/components/Geometry3D/Constraints'
 import { useEditorState } from '@/hooks/useEditorState'
+import { computeConstraintRender } from '@/utils/geometry/geometryMapping'
+import type { PartConstraint } from '@/types/cad'
 
 beforeEach(() => {
   useEditorState.setState({
@@ -224,6 +226,53 @@ describe('ConstraintTile hover highlight targets', () => {
     fireEvent.mouseEnter(tile)
     fireEvent.mouseLeave(tile)
     expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set())
+  })
+})
+
+describe('ConstraintTile group', () => {
+  const twoLineSketch: Sketch = {
+    l1: { start: [0, 0], end: [10, 0] } as Sketch[string],
+    l2: { start: [0, 2], end: [10, 2] } as Sketch[string],
+  }
+
+  function groupRender() {
+    const constraint: PartConstraint = { id: 'g1', kind: 'group', refs: ['$l1', '$l2'] }
+    return computeConstraintRender(constraint, twoLineSketch)
+  }
+
+  it('renders one tile per group at the anchor and names the member count', () => {
+    const constraints: Constraints = {
+      g1: { render: groupRender(), residual: 0 } as Constraints[string],
+    }
+    const { container } = render(
+      <ConstraintOverlays
+        constraints={constraints}
+        sketch={twoLineSketch}
+        extent={10}
+        featureId="feat1"
+      />,
+    )
+    const imgs = container.querySelectorAll('img')
+    expect(imgs).toHaveLength(1)
+    // The anchor is the first member (l1), and the tile names the set size.
+    expect(imgs[0].parentElement!.title).toBe('Group (2 entities)')
+    expect((constraints.g1.render as { at: [number, number] }).at).toEqual([0, 0])
+  })
+
+  it('hovering the group tile highlights every member', () => {
+    const constraints: Constraints = {
+      g1: { render: groupRender(), residual: 0 } as Constraints[string],
+    }
+    const { container } = render(
+      <ConstraintOverlays
+        constraints={constraints}
+        sketch={twoLineSketch}
+        extent={10}
+        featureId="feat1"
+      />,
+    )
+    fireEvent.mouseEnter(container.querySelector('img')!.parentElement!)
+    expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set(['l1', 'l2']))
   })
 })
 

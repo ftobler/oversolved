@@ -163,7 +163,7 @@ export const mutationHandlers: MutationHandlers = {
     // The headless runner resolves a `file` id into `content` before the
     // session sees it; the empty fallback keeps a direct caller on the
     // applier's own loud parse refusal.
-    applyImportDxf(next, m.featureId, m.content ?? '', m.layers),
+    applyImportDxf(next, m.featureId, m.content ?? '', m.layers, m.group),
   add_text: (next, m) =>
     applyAddText(next, m.featureId, m),
   add_entity_with_constraint: (next, m) =>
