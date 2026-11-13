@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest'
 import {
   resolve3dGeometry,
   projectTo2d,
+  projectCenter,
   circleToEllipseParams,
   type PlaneFrame,
   type Resolved3dGeometry,
@@ -256,6 +257,156 @@ describe('arc projection (3D body arc)', () => {
     expect(p[1]).toBeCloseTo(0)
     expect(p[6]).toBeCloseTo(0)
     expect(p[7]).toBeCloseTo(5 * Math.cos(phi))
+  })
+})
+
+describe('edge-on conic projection', () => {
+  // Every conic seen edge-on stores a zero-width ellipse, which the area
+  // builder cannot split and OCC refuses (`make_ellipse_edge: needs a >= b > 0`).
+  // Its true silhouette is a real segment, so the lowerer emits that line.
+
+  /** The line's endpoints, sorted into (min, max) per axis so either spelling
+   *  of the same silhouette compares equal. */
+  function line(params: number[]) {
+    const [x0, y0, x1, y1] = params
+    return {
+      xMin: Math.min(x0, x1), xMax: Math.max(x0, x1),
+      yMin: Math.min(y0, y1), yMax: Math.max(y0, y1),
+      midX: (x0 + x1) / 2, midY: (y0 + y1) / 2,
+      length: Math.hypot(x1 - x0, y1 - y0),
+    }
+  }
+
+  it('1. a full circle seen edge-on becomes a line through its projected centre', () => {
+    const g = resolve3dGeometry(
+      { type: 'edge', kind: 'circle', center: [1, 2, 0], radius: 3, axis: [1, 0, 0], x_axis: [0, 1, 0] })!
+    const out = projectTo2d(g, XY)!
+    expect(out.kind).toBe('line')
+    expect(out.params).toHaveLength(4)
+    const l = line(out.params)
+    expect(l.xMin).toBeCloseTo(1)
+    expect(l.xMax).toBeCloseTo(1)
+    expect(l.yMin).toBeCloseTo(-1)
+    expect(l.yMax).toBeCloseTo(5)
+    expect(l.length).toBeCloseTo(6)
+    expect(l.midX).toBeCloseTo(1)
+    expect(l.midY).toBeCloseTo(2)
+  })
+
+  it('2. collapses on the projected WIDTH, not the tilt angle', () => {
+    // A big circle a hair off edge-on leaves a sliver the area builder also
+    // chokes on, so the test is the projected minor semi-axis (R*|axis.n|)
+    // against the topology-merge tolerance.
+    const nearAxis = (width: number) => {
+      const alpha = Math.acos(width / 3)
+      return [0, Math.sin(alpha), Math.cos(alpha)]
+    }
+    const near = resolve3dGeometry(
+      { type: 'edge', kind: 'circle', center: [0, 0, 0], radius: 3, axis: nearAxis(5e-6), x_axis: [1, 0, 0] })!
+    expect(projectTo2d(near, XY)!.kind).toBe('line')
+
+    const above = resolve3dGeometry(
+      { type: 'edge', kind: 'circle', center: [0, 0, 0], radius: 3, axis: nearAxis(1e-3), x_axis: [1, 0, 0] })!
+    const out = projectTo2d(above, XY)!
+    expect(out.kind).toBe('ellipse')
+    expect(out.params[3]).toBeCloseTo(1e-3, 8)
+  })
+
+  it('3. a full ellipse seen edge-on keeps the extent that is still in the sketch plane', () => {
+    // Major axis in the sketch plane: the major extent survives.
+    const inPlane = resolve3dGeometry(
+      { type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2, axis: [1, 0, 0], x_axis: [0, 1, 0] })!
+    const l = line(projectTo2d(inPlane, XY)!.params)
+    expect(projectTo2d(inPlane, XY)!.kind).toBe('line')
+    expect(l.length).toBeCloseTo(8)
+
+    // Major axis along the sketch normal: only the minor extent is left.
+    const alongNormal = resolve3dGeometry(
+      { type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2, axis: [0, 1, 0], x_axis: [0, 0, 1] })!
+    const out = projectTo2d(alongNormal, XY)!
+    expect(out.kind).toBe('line')
+    expect(line(out.params).length).toBeCloseTo(4)
+  })
+
+  it('4. an edge-on quarter arc is the unsplit segment between its projected ends', () => {
+    const g = resolve3dGeometry(
+      {
+        type: 'edge', kind: 'arc', center: [0, 0, 0], radius: 5,
+        axis: [0, 1, 0], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
+      })!
+    const out = projectTo2d(g, XY)!
+    expect(out.kind).toBe('line')
+    const l = line(out.params)
+    expect(l.xMin).toBeCloseTo(0)
+    expect(l.xMax).toBeCloseTo(5)
+    expect(l.yMin).toBeCloseTo(0)
+    expect(l.yMax).toBeCloseTo(0)
+  })
+
+  it('5. a folding edge-on arc gives its covered extent, the interior extremum included', () => {
+    // The projected sweep runs out to the extremum at t=0 and back, so a
+    // sampled chord set would repeat the segment; the silhouette is the extent
+    // it covers.
+    const sweep = (a0: number, a1: number) => resolve3dGeometry(
+      {
+        type: 'edge', kind: 'arc', center: [0, 0, 0], radius: 5,
+        axis: [0, 1, 0], x_axis: [1, 0, 0], angle_start: a0, angle_end: a1,
+      })!
+    const symmetric = projectTo2d(sweep(-Math.PI / 4, Math.PI / 4), XY)!
+    expect(symmetric.kind).toBe('line')
+    const l = line(symmetric.params)
+    expect(l.xMin).toBeCloseTo(5 * Math.cos(Math.PI / 4))
+    expect(l.xMax).toBeCloseTo(5)
+
+    // An asymmetric sweep puts the extremum between sample points: only the
+    // exact extremum keeps the extent at R.
+    const asymmetric = projectTo2d(sweep(-50 * Math.PI / 180, 40 * Math.PI / 180), XY)!
+    const a = line(asymmetric.params)
+    expect(a.xMax).toBeCloseTo(5, 6)
+    expect(a.xMin).toBeCloseTo(5 * Math.cos(50 * Math.PI / 180))
+  })
+
+  it('6. an edge-on partial ellipse is a line, not a fitted spline', () => {
+    const g = resolve3dGeometry(
+      {
+        type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2,
+        axis: [0, 1, 0], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
+      })!
+    const out = projectTo2d(g, XY)!
+    expect(out.kind).toBe('line')
+    const l = line(out.params)
+    expect(l.xMin).toBeCloseTo(0)
+    expect(l.xMax).toBeCloseTo(4)
+  })
+})
+
+describe('projectCenter', () => {
+  it('projects the centre of a circle, an arc and an ellipse in any orientation', () => {
+    const circle: Resolved3dGeometry = {
+      kindH: 'circle', data: { center: [1, 2, 3], radius: 5, axis: [1, 0, 0], x_axis: [0, 1, 0] },
+    }
+    const arc: Resolved3dGeometry = {
+      kindH: 'arc',
+      data: { center: [4, 5, 6], radius: 2, axis: [1, 0, 0], x_axis: [0, 1, 0], angle_start: 0, angle_end: 1 },
+    }
+    const ellipse: Resolved3dGeometry = {
+      kindH: 'ellipse', data: { center: [-1, -2, -3], a: 4, b: 2, axis: [1, 0, 0], x_axis: [0, 1, 0] },
+    }
+    expect(projectCenter(circle, XY)).toEqual({ kind: 'point', params: [1, 2] })
+    expect(projectCenter(arc, XY)).toEqual({ kind: 'point', params: [4, 5] })
+    expect(projectCenter(ellipse, XY)).toEqual({ kind: 'point', params: [-1, -2] })
+  })
+
+  it('reads the centre through the sketch frame, not the world axes', () => {
+    const right: PlaneFrame = { origin: [10, 0, 0], x_axis: [0, 0, -1], y_axis: [0, 1, 0] }
+    const circle: Resolved3dGeometry = { kindH: 'circle', data: { center: [10, 2, -3], radius: 1 } }
+    expect(projectCenter(circle, right)).toEqual({ kind: 'point', params: [3, 2] })
+  })
+
+  it('has no centre for a line or a spline, so the resolved kind wins', () => {
+    expect(projectCenter({ kindH: 'line', data: { start: [0, 0, 0], end: [1, 1, 1] } }, XY)).toBeNull()
+    expect(projectCenter({ kindH: 'spline', data: { points: [[0, 0, 0], [1, 1, 1]] } }, XY)).toBeNull()
+    expect(projectCenter({ kindH: 'point', data: { point: [1, 2, 3] } }, XY)).toBeNull()
   })
 })
 

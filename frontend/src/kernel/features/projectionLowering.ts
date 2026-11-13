@@ -5,9 +5,11 @@
  * by every solve path.
  *
  * The lowerer supports all edge kinds the OCC reader emits -- line, circle,
- * arc, ellipse, spline -- plus orientation-aware circle projection: a 3D circle
- * whose plane is not parallel to the sketch plane projects as an *ellipse*, not
- * a circle with the wrong radius.
+ * arc, ellipse, spline -- plus orientation-aware conic projection: a 3D circle
+ * or ellipse whose plane is not parallel to the sketch plane projects as an
+ * *ellipse*, not a circle with the wrong radius. A conic seen edge-on has a
+ * zero-width projection, so it lowers to its silhouette line instead (its true
+ * shape); a declared `point` on a curved source is that curve's centre.
  */
 
 import { fitCubicBezier } from '@/utils/geometry/bezierFit'
@@ -15,6 +17,7 @@ import { dot as dot3, cross as cross3 } from '@/utils/vec3'
 import { worldToSketch2d, sketchToWorld2d } from './shared/planes'
 import type { PlaneLike } from './shared/planes'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
+import { TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
 
 type Dict = Record<string, unknown>
 
@@ -31,9 +34,10 @@ export interface Resolved3dGeometry {
 }
 
 /** A lowered projection: the resolved entity kind plus its 2D params. The kind
- *  can differ from the declared kind (a tilted circle lowers to an ellipse).
- *  Arc params are always the counter-clockwise spelling, the only one the
- *  sketch arc entity has. */
+ *  can differ from the declared kind: a tilted circle lowers to an ellipse, an
+ *  edge-on one to a line, and a declared point on a curve to its centre. Arc
+ *  params are always the counter-clockwise spelling, the only one the sketch
+ *  arc entity has. */
 interface ProjectedParams {
   kind: string
   params: number[]
@@ -50,6 +54,10 @@ function normalize3(a: number[]): number[] {
 
 function len2d(v: number[]): number {
   return Math.hypot(v[0], v[1])
+}
+
+function dot2d(a: number[], b: number[]): number {
+  return a[0] * b[0] + a[1] * b[1]
 }
 
 /**
@@ -120,6 +128,82 @@ function isParallelToPlane(axis: number[], plane: PlaneFrame): boolean {
   const pn = normalize3(cross3(plane.x_axis, plane.y_axis))
   const an = normalize3(axis)
   return Math.abs(dot3(an, pn)) >= 0.9999
+}
+
+/** An in-plane unit direction for an angle in degrees. */
+function dirAt(thetaDeg: number): number[] {
+  const t = thetaDeg * (Math.PI / 180)
+  return [Math.cos(t), Math.sin(t)]
+}
+
+/** The 2D components of a world direction in the sketch frame. */
+function dirTo2d(u: number[], plane: PlaneFrame): number[] {
+  return [dot3(u, plane.x_axis), dot3(u, plane.y_axis)]
+}
+
+/**
+ * True when a projected conic is seen edge-on: its minor semi-axis has
+ * collapsed to (or under) the area builder's vertex-merge tolerance. Testing
+ * the projected width rather than the tilt angle also catches a large circle a
+ * hair off edge-on, whose sliver ellipse the area builder would choke on just
+ * the same.
+ */
+function isEdgeOn(ellipseParams: number[]): boolean {
+  return ellipseParams[3] <= TOL_TOPOLOGY_MERGE
+}
+
+/** The silhouette of a full projected conic: the segment along its major axis,
+ *  whose midpoint is the projected centre by symmetry. */
+function conicSilhouetteLine(ellipseParams: number[]): ProjectedParams {
+  const [cx, cy, a] = ellipseParams
+  const [dx, dy] = dirAt(ellipseParams[4])
+  return { kind: 'line', params: [cx - a * dx, cy - a * dy, cx + a * dx, cy + a * dy] }
+}
+
+/**
+ * The silhouette of an edge-on arc-like sweep: sample the curve, fold the
+ * sweep's interior projected extrema into the sample set (the grid misses them,
+ * and a folding sweep reaches its extent exactly at one), and emit the segment
+ * between the smallest and largest projected coordinate along `dir`.
+ *
+ * The ends are the true covered extent, not the source's projected ends: an arc
+ * sweeping across the edge-on extremum projects out and back over the same
+ * segment, and that segment is what the user sees.
+ */
+function sampledSilhouetteLine(
+  pointAt: (t: number) => number[],
+  sweep: { a0: number; a1: number; phase: number },
+  c2d: number[],
+  dir: number[],
+  plane: PlaneFrame,
+): ProjectedParams {
+  const { a0, a1, phase } = sweep
+  const N = 32
+  const angles: number[] = []
+  for (let i = 0; i <= N; i++) angles.push(a0 + (a1 - a0) * (i / N))
+  // The projected coordinate along `dir` is a sinusoid, so its extrema sit at
+  // phase + k*pi; keep the ones the sweep actually covers.
+  const end = a1 > a0 ? a1 : a1 + 2 * Math.PI
+  for (const k of [0, 1]) {
+    let t = phase + k * Math.PI
+    while (t < a0) t += 2 * Math.PI
+    if (t <= end) angles.push(t)
+  }
+  let tMin = Infinity
+  let tMax = -Infinity
+  for (const t of angles) {
+    const p = worldToSketch2d(pointAt(t), plane)
+    const s = (p[0] - c2d[0]) * dir[0] + (p[1] - c2d[1]) * dir[1]
+    if (s < tMin) tMin = s
+    if (s > tMax) tMax = s
+  }
+  return {
+    kind: 'line',
+    params: [
+      c2d[0] + tMin * dir[0], c2d[1] + tMin * dir[1],
+      c2d[0] + tMax * dir[0], c2d[1] + tMax * dir[1],
+    ],
+  }
 }
 
 /** A 3D frame lookup for a sketch id: the `_pt_<sketchId>` registration, which
@@ -292,9 +376,11 @@ export function projectTo2d(
     const axis = data.axis as number[] | undefined
     const x_axis = data.x_axis as number[] | undefined
     // Tilted circle -> ellipse. Without an axis (sketch-local source) keep it a
-    // circle, which is correct for a coplanar projection.
+    // circle, which is correct for a coplanar projection. Seen edge-on the
+    // ellipse is zero-width, so it lowers to its silhouette line.
     if (axis && x_axis && !isParallelToPlane(axis, plane)) {
-      return { kind: 'ellipse', params: circleToEllipseParams(center, radius, axis, x_axis, plane) }
+      const params = circleToEllipseParams(center, radius, axis, x_axis, plane)
+      return isEdgeOn(params) ? conicSilhouetteLine(params) : { kind: 'ellipse', params }
     }
     const c2d = worldToSketch2d(center, plane)
     return { kind: 'circle', params: [...c2d, radius] }
@@ -309,25 +395,37 @@ export function projectTo2d(
     const a0 = data.angle_start as number | undefined
     const a1 = data.angle_end as number | undefined
     const full = a0 == null || a1 == null || Math.abs(Math.abs(a1 - a0) - 2 * Math.PI) < 1e-3
-    if (full) {
-      return { kind: 'ellipse', params: conicToEllipseParams(center, x_axis, a, v, b, plane) }
-    }
-    // A partial elliptical arc has no 2D ellipse-arc entity: sample the arc and
-    // fit a cubic Bezier, mirroring the generic spline-edge projection.
     const u = normalize3(x_axis)
     const vn = normalize3(v)
-    const N = 32
-    const pts2d: [number, number][] = []
-    for (let i = 0; i <= N; i++) {
-      const t = a0 + (a1 - a0) * (i / N)
+    const pointAt = (t: number): number[] => {
       const ca = a * Math.cos(t)
       const sb = b * Math.sin(t)
-      const p3 = [
+      return [
         center[0] + ca * u[0] + sb * vn[0],
         center[1] + ca * u[1] + sb * vn[1],
         center[2] + ca * u[2] + sb * vn[2],
       ]
-      pts2d.push(worldToSketch2d(p3, plane) as [number, number])
+    }
+    const fullParams = conicToEllipseParams(center, x_axis, a, v, b, plane)
+    if (full) {
+      return isEdgeOn(fullParams) ? conicSilhouetteLine(fullParams) : { kind: 'ellipse', params: fullParams }
+    }
+    // A partial elliptical arc has no 2D ellipse-arc entity: sample the arc and
+    // fit a cubic Bezier, mirroring the generic spline-edge projection. Seen
+    // edge-on it is its covered silhouette instead.
+    if (isEdgeOn(fullParams)) {
+      const dir = dirAt(fullParams[3])
+      const u2 = dirTo2d(u, plane)
+      const v2 = dirTo2d(vn, plane)
+      const phase = Math.atan2(b * dot2d(v2, dir), a * dot2d(u2, dir))
+      return sampledSilhouetteLine(pointAt, { a0: a0 as number, a1: a1 as number, phase },
+        [fullParams[0], fullParams[1]], dir, plane)
+    }
+    const N = 32
+    const pts2d: [number, number][] = []
+    for (let i = 0; i <= N; i++) {
+      const t = (a0 as number) + ((a1 as number) - (a0 as number)) * (i / N)
+      pts2d.push(worldToSketch2d(pointAt(t), plane) as [number, number])
     }
     const params = fitCubicBezier(pts2d)
     return params ? { kind: 'spline', params } : null
@@ -363,11 +461,21 @@ export function projectTo2d(
     }
 
     if (!isParallelToPlane(axis, plane)) {
-      // A tilted source arc projects to an ELLIPTICAL arc. There is no 2D
-      // ellipse-arc entity, and a circular arc through the projected endpoints
-      // would invent a radius (the chord endpoints are at different distances
-      // from the projected center) and an arbitrary side. Sample and fit a
-      // cubic Bezier instead, mirroring the partial-ellipse branch above.
+      // A tilted source arc projects to an ELLIPTICAL arc. Seen edge-on that
+      // ellipse has zero width, so the arc lowers to the segment it covers: an
+      // arc sweeping across the edge-on extremum folds back over that segment.
+      const fullParams = circleToEllipseParams(center, radius, axis, ax, plane)
+      if (isEdgeOn(fullParams)) {
+        const dir = dirAt(fullParams[3])
+        const phase = Math.atan2(dot2d(dirTo2d(y_axis, plane), dir), dot2d(dirTo2d(ax, plane), dir))
+        return sampledSilhouetteLine(pointAt, { a0, a1, phase },
+          [fullParams[0], fullParams[1]], dir, plane)
+      }
+      // Otherwise there is no 2D ellipse-arc entity, and a circular arc through
+      // the projected endpoints would invent a radius (the chord endpoints are
+      // at different distances from the projected center) and an arbitrary
+      // side. Sample and fit a cubic Bezier instead, mirroring the
+      // partial-ellipse branch above.
       const N = 32
       const pts2d: [number, number][] = []
       for (let i = 0; i <= N; i++) {
@@ -404,4 +512,20 @@ export function projectTo2d(
     return params ? { kind: 'spline', params } : null
   }
   return null
+}
+
+/**
+ * Project the centre of a curved source. A projection declared `point` on a
+ * circle, arc or ellipse means that curve's centre, which stays reachable in
+ * any orientation, edge-on included (where the curve itself lowers to a line
+ * and its vertex keys disappear).
+ *
+ * Returns null for every other resolved kind, so the resolved kind keeps
+ * winning: a declared point on a line is still that line.
+ */
+export function projectCenter(g3d: Resolved3dGeometry, plane: PlaneFrame): ProjectedParams | null {
+  if (g3d.kindH !== 'circle' && g3d.kindH !== 'arc' && g3d.kindH !== 'ellipse') return null
+  const center = g3d.data.center as number[] | undefined
+  if (!center) return null
+  return { kind: 'point', params: worldToSketch2d(center, plane) }
 }

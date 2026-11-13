@@ -40,7 +40,7 @@ import { loadSolverWasm, loadTopologyWasm, resetSolverWasm } from '@/wasm-kernel
 import { isKernelTrap, swallowUnlessTrap } from '../errors'
 import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
-import { resolve3dGeometry, projectTo2d, type PlaneFrame } from './projectionLowering'
+import { resolve3dGeometry, projectTo2d, projectCenter, type PlaneFrame } from './projectionLowering'
 import type { PlaneLike } from './shared/planes'
 import type { SolveBytes } from '@/wasm-kernel/codec'
 import type { SketchSolverBundle } from '@/wasm-kernel/wasmTypes'
@@ -376,7 +376,13 @@ function lowerProjectionConstraints(
             : resolve3dGeometry(resolvedSrc, (sketchId) =>
                 (globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined) ?? null)
           if (data3d) {
-            const projected = projectTo2d(data3d, plane as PlaneFrame)
+            // A projection DECLARED point on a curved source means its centre;
+            // every other declared kind keeps the resolved geometry's own
+            // projection. The default `point` used for a missing kind is not a
+            // declaration, so it stays on the resolved-kind path.
+            const declaredPoint = ent?.kind === 'point'
+            const projected = (declaredPoint ? projectCenter(data3d, plane as PlaneFrame) : null)
+              ?? projectTo2d(data3d, plane as PlaneFrame)
             if (projected) {
               initial[targetId] = projected.params
               if (projected.kind !== declaredKind) resolvedKinds[targetId] = projected.kind
