@@ -286,7 +286,12 @@ describe('finding 1: add_entity param count', () => {
     for (const kind of ['line', 'circle', 'arc', 'ellipse', 'spline', 'point'] as const) {
       const count = ENTITY_BY_KIND.get(kind)?.paramCount
       expect(count, kind).toBeDefined()
-      const params = Array.from({ length: count! }, (_, i) => i)
+      // The arity fixture must also clear the size rule: 0..4 would make this
+      // ellipse a < b, which is a separate refusal. Keep the length the registry
+      // names and make the axes legal.
+      const params = kind === 'ellipse'
+        ? [0, 0, 3, 2, 0]
+        : Array.from({ length: count! }, (_, i) => i)
       expect(validateMutation({ type: 'add_entity', featureId: 'sk1', kind, params }), kind)
         .toMatchObject({ ok: true })
       const longer = [...params, 1]
@@ -2134,6 +2139,139 @@ describe('extrude up_to_next and the surface emboss', () => {
     const edited = cleared.doc?.features?.find(f => f.id === 'ex2')
     if (edited?.kind !== 'extrude') throw new Error('the setter step stored no extrude')
     expect(edited.extrude.up_to_start).toBeUndefined()
+  })
+})
+
+// The size floor: a curve inside TOL_TOPOLOGY_MERGE has no separable endpoints,
+// so it can bound no region and the OCC writer refuses the ellipse forms by
+// name. The step is refused here, before it can store a row the solve then has
+// to drop. The same predicate runs in the appliers.
+describe('a degenerate entity value is refused by name', () => {
+  const rows: Array<{
+    name: string
+    kind: string
+    params: number[]
+    needles: string[]
+  }> = [
+    { name: 'zero-radius circle', kind: 'circle', params: [0, 0, 0], needles: ['circle', 'radius', 'TOL_TOPOLOGY_MERGE'] },
+    { name: 'zero-radius arc', kind: 'arc', params: [0, 0, 0, 0, 90], needles: ['arc', 'radius', 'TOL_TOPOLOGY_MERGE'] },
+    { name: 'ellipse with b = 0', kind: 'ellipse', params: [0, 0, 2, 0, 0], needles: ['ellipse', 'b (minor)', 'TOL_TOPOLOGY_MERGE'] },
+    { name: 'ellipse with a < b', kind: 'ellipse', params: [0, 0, 1, 3, 0], needles: ['a (major)', 'b (minor)', '[cx, cy, b, a, theta + 90]'] },
+    { name: 'ellipse with a < 0', kind: 'ellipse', params: [0, 0, -2, 1, 0], needles: ['ellipse', 'a (major)', 'TOL_TOPOLOGY_MERGE'] },
+    { name: 'zero-length line', kind: 'line', params: [1, 1, 1, 1], needles: ['line', 'length', 'TOL_TOPOLOGY_MERGE'] },
+    { name: 'coincident cubic spline', kind: 'spline', params: [2, 3, 2, 3, 2, 3, 2, 3], needles: ['spline', 'coincident', 'no extent'] },
+  ]
+
+  it.each(rows)('refuses a $name', ({ kind, params, needles }) => {
+    const error = refusal({ type: 'add_entity', featureId: 'sk1', kind, params })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('add_entity')
+    for (const needle of needles) expect(error.message, needle).toContain(needle)
+  })
+
+  it('accepts a radius above the floor and refuses one below it', () => {
+    expect(validateMutation({
+      type: 'add_entity', featureId: 'sk1', kind: 'circle', params: [0, 0, 2e-5],
+    })).toMatchObject({ ok: true })
+    const below = refusal({ type: 'add_entity', featureId: 'sk1', kind: 'circle', params: [0, 0, 5e-6] })
+    expect(below.code).toBe('invalid-mutation')
+    expect(below.message).toContain('0.000005')
+  })
+
+  it('accepts a circle-shaped ellipse, a normal line and a closed cubic', () => {
+    expect(validateMutation({
+      type: 'add_entity', featureId: 'sk1', kind: 'ellipse', params: [0, 0, 2, 2, 0],
+    })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 0, 2e-5, 0],
+    })).toMatchObject({ ok: true })
+    // Coincident ends with spread controls is a closed loop, not a degenerate
+    // curve: only all four controls at one point has no extent.
+    expect(validateMutation({
+      type: 'add_entity', featureId: 'sk1', kind: 'spline', params: [0, 0, 5, 5, -5, 5, 0, 0],
+    })).toMatchObject({ ok: true })
+  })
+})
+
+describe('resize_circle and the radius/diameter dimension share the size floor', () => {
+  function circleDoc(kind: 'radius' | 'diameter' = 'radius'): PartDoc {
+    return seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'c1', kind: 'circle' }],
+        initial: { c1: [0, 0, 5] },
+        constraints: [{ id: 'dim', kind, target: '$c1', value: 5 }],
+      }],
+    })
+  }
+
+  it('refuses resize_circle under the floor and accepts the boundary', () => {
+    for (const radius of [0, 5e-6]) {
+      const error = refusal({ type: 'resize_circle', featureId: 'sk1', entityId: 'c1', radius }, circleDoc())
+      expect(error.code, String(radius)).toBe('invalid-mutation')
+      expect(error.message, String(radius)).toContain('radius')
+      expect(error.message, String(radius)).toContain('TOL_TOPOLOGY_MERGE')
+    }
+    expect(validateMutation({
+      type: 'resize_circle', featureId: 'sk1', entityId: 'c1', radius: 2e-5,
+    }, { doc: circleDoc() })).toMatchObject({ ok: true })
+  })
+
+  it('refuses a radius and a diameter dimension at zero', () => {
+    const radius = refusal({
+      type: 'set_constraint_value', featureId: 'sk1', constraintId: 'dim', value: 0,
+    }, circleDoc('radius'))
+    expect(radius.code).toBe('invalid-mutation')
+    expect(radius.message).toContain('radius')
+    expect(radius.message).toContain('TOL_TOPOLOGY_MERGE')
+
+    const diameter = refusal({
+      type: 'set_constraint_value', featureId: 'sk1', constraintId: 'dim', value: 0,
+    }, circleDoc('diameter'))
+    expect(diameter.code).toBe('invalid-mutation')
+    expect(diameter.message).toContain('diameter')
+    expect(diameter.message).toContain('TOL_TOPOLOGY_MERGE')
+  })
+
+  it('refuses a radius dimension added at zero, not only a set one', () => {
+    const error = refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'radius', targets: ['entity:sk1:c1'], value: 0,
+    }, circleDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('radius')
+    expect(error.message).toContain('TOL_TOPOLOGY_MERGE')
+    expect(validateMutation({
+      type: 'add_constraint', featureId: 'sk1', kind: 'radius', targets: ['entity:sk1:c1'], value: 2e-5,
+    }, { doc: circleDoc() })).toMatchObject({ ok: true })
+  })
+
+  it('accepts a dimension at the floor boundary and leaves other kinds alone', () => {
+    expect(validateMutation({
+      type: 'set_constraint_value', featureId: 'sk1', constraintId: 'dim', value: 2e-5,
+    }, { doc: circleDoc('radius') })).toMatchObject({ ok: true })
+    expect(validateMutation({
+      type: 'set_constraint_value', featureId: 'sk1', constraintId: 'dim', value: 4e-5,
+    }, { doc: circleDoc('diameter') })).toMatchObject({ ok: true })
+    // A zero axis distance is legal; only size dimensions take the floor.
+    const axis = seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }],
+        initial: { p1: [0, 0], p2: [5, 0] },
+        constraints: [{ id: 'c_dist', kind: 'point_distance_x', a: '$p1', b: '$p2', value: 5 }],
+      }],
+    })
+    expect(validateMutation({
+      type: 'set_constraint_value', featureId: 'sk1', constraintId: 'c_dist', value: 0,
+    }, { doc: axis })).toMatchObject({ ok: true })
   })
 })
 

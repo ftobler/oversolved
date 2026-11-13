@@ -31,6 +31,7 @@ import { textFieldsProblem } from '@/utils/geometry/textExpand'
 import { planAddText, type AddTextFields } from '@/utils/yamlMutations/sketchText'
 import { pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
 import { addConstraintProblem } from '@/utils/constraintProblems'
+import { dimensionSizeProblem, entitySizeProblem } from '@/utils/entitySizeProblems'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
@@ -164,6 +165,12 @@ function entityParamsProblem(kind: string, params: unknown[], where: string): st
       return `${where} ${kind} param ${i} (${names[i]}) must be a finite number, got ${json(params[i])}`
     }
   }
+  // The shared size rule: an entity too small to bound a region is refused here
+  // and by the applier, so a drive step and a draw-tool commit cannot disagree
+  // about what the solver and the OCC writer can use. The arity and finiteness
+  // checks above own their own wording; this one names the size field.
+  const sizeProblem = entitySizeProblem(kind, params as number[])
+  if (sizeProblem !== null) return `${where} ${sizeProblem}`
   if (kind === 'arc') {
     const [start, end] = [params[3] as number, params[4] as number]
     const span = Math.abs(end - start)
@@ -591,8 +598,17 @@ function moveEntity(raw: RawStep): ValueViolation | null {
 }
 
 function resizeCircle(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  const problem = positiveNumberProblem(raw.radius, 'radius')
-  if (problem !== null) return invalid(problem)
+  const radius = raw.radius
+  if (!isFiniteNumber(radius)) {
+    const problem = positiveNumberProblem(radius, 'radius')
+    return invalid(problem ?? `radius must be a finite number, got ${json(radius)}`)
+  }
+  // The same size floor the add and the applier use: a non-positive radius and
+  // one a hair above zero both store a curve with no region, so the resize
+  // reports it instead of writing what the sketch then has to drop from its
+  // profile.
+  const sizeProblem = entitySizeProblem('circle', [0, 0, radius])
+  if (sizeProblem !== null) return invalid(`resize_circle ${sizeProblem}`)
   const featureId = raw.featureId
   const entityId = raw.entityId
   if (ctx.doc === null || typeof featureId !== 'string' || typeof entityId !== 'string') return null
@@ -619,7 +635,12 @@ function setConstraintValue(raw: RawStep, ctx: ValueContext): ValueViolation | n
     ?.find(c => c.id === raw.constraintId)
   if (constraint === undefined || !isConstraintKindName(constraint.kind)) return null
   const zero = pointDistanceZeroProblem(constraint.kind, raw.value)
-  return zero === null ? null : invalid(zero)
+  if (zero !== null) return invalid(zero)
+  // A radius or diameter dimension is also a size: zero drives the circle to a
+  // point, which the sketch would then have to leave out of every profile. The
+  // applier refuses it through the same helper.
+  const size = dimensionSizeProblem(constraint.kind, raw.value)
+  return size === null ? null : invalid(`set_constraint_value ${size}`)
 }
 
 function setConstraintPos(raw: RawStep): ValueViolation | null {

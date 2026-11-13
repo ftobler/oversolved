@@ -108,8 +108,12 @@ export function featureFailure(
   }
   // An overconstrained sketch is the verdict the tree used to hide entirely.
   // Its result carries the culprit constraints the solve could not satisfy, so
-  // the message names how many are in conflict instead of a generic line.
+  // the message names how many are in conflict instead of a generic line. A
+  // solver warning is more specific still: a degenerate entity that forced the
+  // verdict must name itself here, because "the sketch is overconstrained" is
+  // true but tells the author nothing to fix.
   if (status === 'overconstrained') {
+    if (solverWarning !== undefined) return { failed: true, level: 'error', message: solverWarning }
     const constraints = (result as { constraints?: Record<string, { culprit?: unknown }> }).constraints
     const culprits = constraints === undefined
       ? 0

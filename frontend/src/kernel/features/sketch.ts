@@ -32,6 +32,7 @@ import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags, getDe
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { ignoredConstraintWarning } from '@/utils/constraintProblems'
+import { entitySizeProblem } from '@/utils/entitySizeProblems'
 import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, type TopologyBytes, type WireContact } from '../topologyDecorate'
 import { declaredContacts } from './shared/declaredContacts'
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
@@ -621,6 +622,38 @@ export function droppedConstraintRecords(
   return dropped
 }
 
+/**
+ * The solved curves too small to bound anything, with the reason each one is
+ * left out of the area build. A zero circle and an ellipse whose solve flips
+ * its axes are two a legal authored document can still produce; at a shared
+ * endpoint either one can take a valid neighbour's profile down with it. They
+ * stay in `geometry` so the editor still draws what the author has, and only
+ * the profile topology skips them.
+ *
+ * The solver's own `invalid_geometry` rule marks a solved circle or arc at or
+ * under radius 0 as an overconstrained solve before this side sees it, so a
+ * lone zero circle answers overconstrained. The size predicate here is what
+ * names the real cause on the warning channel instead of leaving the verdict
+ * with no cause. A sibling that omits entities from the profile for another
+ * reason (an unresolved projection, a missing key) joins this list rather than
+ * deleting geometry in a second place.
+ */
+function degenerateSolvedEntities(
+  layout: EntityLayout[],
+  out: SolverOutput,
+  unpositioned: ReadonlySet<string>,
+): Map<string, string> {
+  const reasons = new Map<string, string>()
+  for (let i = 0; i < layout.length; i++) {
+    const ent = layout[i]
+    if (ent.id === ORIGIN_ID || unpositioned.has(ent.id)) continue
+    const params = out.paramsSolved.slice(ent.offset, ent.offset + ent.size)
+    const reason = entitySizeProblem(ent.kind, params)
+    if (reason !== null) reasons.set(ent.id, reason)
+  }
+  return reasons
+}
+
 export function solveSketch(
   feature: Dict,
   globalRepo: Repository,
@@ -668,6 +701,9 @@ export function solveSketch(
   assertSolverOutputMatchesLayout(out, layout, featureId, input.options.skipStatusPass)
   assertConstraintVerdictsMatchInput(out, input.constraints.length, input.options.dragMode, featureId)
   const status = STATUS_NAME[out.overallStatus]
+  // The curves the profile builder must not see. Computed before the geometry
+  // maps so the area build and the warning row read one answer.
+  const degenerate = degenerateSolvedEntities(layout, out, unpositioned)
 
   // Reconstruct per-entity geometry and status maps, plus rich geometry for
   // topology detection.
@@ -702,7 +738,11 @@ export function solveSketch(
     if (STATUS_NAME[out.entityStatus[i]] === 'underconstrained') freeIds.push(ent.id)
     // Construction geometry solves like anything else but must bound no area,
     // so the flag rides along to the area builder, which skips those entities.
-    richGeom[ent.id] = { ...enrichSketchEntity(ent.kind, params, ent.flags), ...(ent.construction ? { construction: true } : {}) }
+    // A degenerate curve is left out entirely: it has no area of its own and at
+    // a shared endpoint would split, and possibly unbalance, a valid neighbour.
+    if (!degenerate.has(ent.id)) {
+      richGeom[ent.id] = { ...enrichSketchEntity(ent.kind, params, ent.flags), ...(ent.construction ? { construction: true } : {}) }
+    }
     if (ent.kind === 'point') pointPositions.push([params[0], params[1]])
   }
 
@@ -777,6 +817,13 @@ export function solveSketch(
   // An unresolved projection used to be silent over MCP (it survives as a pinned
   // entity, so the solve reads clean): name it on the same warning channel.
   warnings.push(...projectionWarnings)
+  // A document can still carry a degenerate curve from a load, a projection or
+  // a solve that drove a dimension to zero. Name each one and say it is not in
+  // the profile, so the sketch verdict reads as the real cause rather than as a
+  // bare overconstraint.
+  for (const [id, reason] of degenerate) {
+    warnings.push(`entity ${id} is degenerate (${reason}); it is left out of profiles`)
+  }
 
   return {
     status,
