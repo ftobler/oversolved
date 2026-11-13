@@ -74,4 +74,23 @@ describe('deleteSelected freeze route', () => {
     expect(messages).toHaveLength(1)
     expect(messages[0].title).toBe('Projection not frozen')
   })
+
+  it('stays silent for an all-excluded face: intentionally empty, not unresolved', () => {
+    const allExcluded = doc()
+    const sketch = allExcluded.features![0]
+    if (sketch.kind !== 'sketch') throw new Error('not a sketch')
+    sketch.constraints![0].excluded = [TOKEN]
+    setSketchCallback('getDoc', () => allExcluded)
+    editorState.getState().deleteSelected()
+    expect(mutations).toHaveLength(1)
+    expect((mutations[0] as { materialize?: unknown }).materialize).toBeUndefined()
+    expect(messages).toEqual([])
+  })
+
+  it('stays silent when the surviving members are all orphans', () => {
+    members = { [CID]: { members: { [TOKEN]: MEMBER }, entities: [], orphans: [TOKEN] } }
+    editorState.getState().deleteSelected()
+    expect(mutations).toHaveLength(1)
+    expect(messages).toEqual([])
+  })
 })

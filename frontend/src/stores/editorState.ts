@@ -73,13 +73,15 @@ export function deleteMutationFor(
   activeFeatureId: string | null,
   targets: readonly string[],
 ): { mutation: Mutation; frozenNothing?: string } {
-  const empty = { mutation: { type: 'delete', targets: [...targets] } as Mutation }
+  const targetsCopy = [...targets]
+  const emptyMutation: Mutation = { type: 'delete', targets: targetsCopy }
+  const empty = { mutation: emptyMutation }
   if (activeFeatureId === null) return empty
   const feature = (sketchCallbacks.getDoc?.()?.features ?? []).find(candidate => candidate.id === activeFeatureId)
   if (feature?.kind !== 'sketch') return empty
   const reports = sketchCallbacks.getProjectionMembers?.(activeFeatureId) ?? null
   const rows = freezeRowsForDelete(activeFeatureId, feature, targets, reports)
-  if (rows !== undefined) return { mutation: { type: 'delete', targets: [...targets], materialize: rows } }
+  if (rows !== undefined) return { mutation: { type: 'delete', targets: targetsCopy, materialize: rows } }
   // A live face projection whose face did not resolve has no member bytes to
   // freeze. The delete still removes the constraint, but the caller is told why
   // nothing was materialized instead of the rows silently missing.
@@ -88,9 +90,15 @@ export function deleteMutationFor(
     const [kind, sketchId, constraintId] = target.split(':')
     if (kind !== 'constraint' || sketchId !== activeFeatureId || constraintId === undefined) return false
     const constraint = feature.constraints?.find(candidate => candidate.id === constraintId)
-    return constraint?.kind === 'projection'
-      && constraint.target === undefined
-      && (reports?.[constraintId]?.entities.length ?? 0) === 0
+    if (constraint?.kind !== 'projection' || constraint.target !== undefined) return false
+    const excluded = new Set(constraint.excluded ?? [])
+    const orphans = new Set(reports?.[constraintId]?.orphans ?? [])
+    const hasLiveMember = Object.keys(constraint.members ?? {})
+      .some(token => !excluded.has(token) && !orphans.has(token))
+    // An all-excluded (or all-orphan, or map-less) face projection is
+    // intentionally empty; only one with live members that did not resolve is
+    // "not frozen".
+    return hasLiveMember && (reports?.[constraintId]?.entities.length ?? 0) === 0
   })
   return unresolved === undefined ? empty : { ...empty, frozenNothing: unresolved }
 }

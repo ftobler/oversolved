@@ -212,12 +212,18 @@ export const mutationHandlers: MutationHandlers = {
       members: m.members,
       excluded: m.excluded,
     })
-    // A face add derives its member ids here; handing the enriched mutation back
-    // lets the session journal it without editing the caller's object. A supplied
-    // map the applier replaced with the real one is rewritten too, so a bad step
-    // cannot leave a document the loader would refuse.
-    if (derived !== undefined && (m.members === undefined || !sameMemberMap(m.members, derived))) {
-      return { ...m, members: derived }
+    // A face add derives its member ids and constraint id here; handing the
+    // enriched mutation back lets the session journal it without editing the
+    // caller's object. The recorded id is what keeps a replay's derivation off a
+    // collision with rows a freeze left behind. A supplied map the applier
+    // replaced with the real one is rewritten too, so a bad step cannot leave a
+    // document the loader would refuse.
+    if (derived !== undefined && (
+      m.constraintId !== derived.constraintId
+      || m.members === undefined
+      || !sameMemberMap(m.members, derived.members)
+    )) {
+      return { ...m, constraintId: derived.constraintId, members: derived.members }
     }
   },
   add_rect: (next, m) =>

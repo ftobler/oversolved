@@ -14,12 +14,22 @@ import { replayJournal } from '../replay'
 import { docHashOf } from '../docHash'
 import type { ScriptStep } from '../scriptRunner'
 import { deriveMemberIds, faceBoundaryFromBodies, faceProjectionConstraintId } from '@/kernel/features/projectionMembers'
+import { loadOcc } from '@/kernel/occ/loadOcc'
+import { setOccLoader } from '@/kernel/solveLocally'
+import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { loadTopology } from '@/wasm-kernel/loadTopology'
 import type { PartDoc } from '@/types/cad'
 import {
   BOX_BODY_ID, BOX_SKETCH_ID, oc, projectionBaseDoc, projectionTestHarness, solveBytes,
 } from '@/kernel/features/__tests__/projectionRealSupport'
 
 const { h, base } = projectionTestHarness()
+
+if (oc && solveBytes) {
+  setOccLoader(loadOcc)
+  setSketchSolver(solveBytes)
+  setSketchTopology(loadTopology())
+}
 
 interface FaceFixture {
   frontFace: string
@@ -82,6 +92,9 @@ describe.skipIf(!oc || !solveBytes)('face projection replay', () => {
       materialize: [{ id: fixture.member, kind: 'line', params: [0, 0, 10, 0] }],
     } as never)
     expect(frozen.ok).toBe(true)
+    // The script run already settled its steps; the freeze was a direct session
+    // apply, so spend its solve before hashing (replay settles every entry).
+    await recorded.solve.flush()
 
     const repro = journal.repro()
     expect(repro).not.toBeNull()
@@ -120,5 +133,36 @@ describe.skipIf(!oc || !solveBytes)('face projection replay', () => {
     const replay = await replayJournal(repro, fresh.session, () => fresh.idle())
     expect(replay.ok).toBe(true)
     expect(mintedPointId(fresh.getDoc())).toBe(mintedPointId(recorded.getDoc()))
+  })
+
+  it('21. freeze, re-pick the same face and replay keep the suffixed constraint id', async () => {
+    const fixture = faceFixture()
+    const journal = createDriveJournal(projectionBaseDoc())
+    const recorded = part(projectionBaseDoc(), journal)
+    expect((await recorded.run(fixture.steps)).ok).toBe(true)
+
+    const frozen = recorded.session.execute({
+      type: 'delete',
+      targets: [`constraint:skP:${fixture.cid}`],
+      materialize: [{ id: fixture.member, kind: 'line', params: [0, 0, 10, 0] }],
+    })
+    expect(frozen.ok).toBe(true)
+    const repick = await recorded.run([{
+      mutation: { type: 'add_projected_entity', featureId: 'skP', source: fixture.frontFace },
+    }])
+    expect(repick.ok).toBe(true)
+
+    const sketch = (recorded.getDoc()?.features ?? []).find(f => f.id === 'skP')
+    if (sketch?.kind !== 'sketch') throw new Error('no projection sketch')
+    expect(sketch.constraints?.filter(c => c.kind === 'projection').map(c => c.id)).toEqual([`${fixture.cid}_2`])
+
+    const repro = journal.repro()!
+    const fresh = part(repro.doc as PartDoc)
+    const replay = await replayJournal(repro, fresh.session, () => fresh.idle())
+    expect(replay.ok).toBe(true)
+    expect(replay.finalHash).toBe(docHashOf(recorded.getDoc() as PartDoc))
+    const replayed = (fresh.getDoc()?.features ?? []).find(f => f.id === 'skP')
+    if (replayed?.kind !== 'sketch') throw new Error('no replayed sketch')
+    expect(replayed.constraints?.filter(c => c.kind === 'projection').map(c => c.id)).toEqual([`${fixture.cid}_2`])
   })
 })

@@ -707,9 +707,17 @@ export default function Part() {
       // selection the 3D pass needs, which is what used to strand the 3D half.
       // A 3D-only selection keeps its group exactly as before (no sketch half).
       const sketchDelete = sketchOwnedDeleteTargets(sel, store.activeFeatureId)
-      const mutations: Mutation[] = sketchDelete.length > 0
-        ? [deleteMutationFor(store.activeFeatureId, sketchDelete).mutation, ...threeD]
-        : threeD
+      const frozen = sketchDelete.length > 0
+        ? deleteMutationFor(store.activeFeatureId, sketchDelete)
+        : null
+      const mutations: Mutation[] = frozen !== null ? [frozen.mutation, ...threeD] : threeD
+      if (frozen?.frozenNothing !== undefined) {
+        showMessage({
+          title: 'Projection not frozen',
+          message: `the face did not resolve this solve, so ${frozen.frozenNothing} was removed without materializing its members`,
+          variant: 'info',
+        })
+      }
       // A Delete while rolled back inserts its delete features at the bar and
       // solves them in the same press. Deleting a feature above the bar shifts
       // the inserted block (and the bar) down with the list.
@@ -734,7 +742,7 @@ export default function Part() {
     // only press unchanged). A non-deletable selection (a face primitive, a
     // builtin) filters to nothing, so the store no-ops and the selection stands.
     store.deleteSelected()
-  }, [commitMutationGroup, bodies, features])
+  }, [commitMutationGroup, bodies, features, showMessage])
 
   // Adding a feature while another feature's editor is open must close that
   // editor first (the one-open-editor discipline enterEditFeature enforces).

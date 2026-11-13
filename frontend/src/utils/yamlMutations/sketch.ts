@@ -652,9 +652,14 @@ export function applyDeleteElements(
       for (const constraintId of per.constraints) {
         const constraint = feature.constraints.find(candidate => candidate.id === constraintId)
         if (constraint?.kind !== 'projection' || constraint.members === undefined) continue
-        const memberIds = new Set(Object.values(constraint.members))
+        // One press can delete a member and the projection together; the
+        // exclusion pass above has already recorded that member, so it must not
+        // be written back as frozen geometry.
+        const excluded = new Set(constraint.excluded ?? [])
+        const tokenById = new Map(Object.entries(constraint.members).map(([token, id]) => [id, token]))
         for (const row of materialize) {
-          if (!memberIds.has(row.id)) continue
+          const token = tokenById.get(row.id)
+          if (token === undefined || excluded.has(token)) continue
           if (!feature.entities) feature.entities = []
           if (!feature.entities.some(entity => entity.id === row.id)) {
             feature.entities.push({ id: row.id, kind: row.kind })
@@ -859,6 +864,11 @@ function derivedMemberMap(constraintId: string, members: Record<string, string>)
   return tokens.every(token => members[token] === expected[token])
 }
 
+export interface AddedFaceProjection {
+  constraintId: string
+  members: Record<string, string>
+}
+
 export function applyAddProjectedEntity(
   doc: PartDoc,
   featureId: string,
@@ -867,7 +877,7 @@ export function applyAddProjectedEntity(
   entityId?: string,
   constraintId?: string,
   options: AddProjectionOptions = {},
-): Record<string, string> | undefined {
+): AddedFaceProjection | undefined {
   const feature = resolveSketch(doc, featureId, 'entities', 'constraints')
   if (!feature) return undefined
   // A face projects as one live constraint whose members are derived, not as one
@@ -925,7 +935,7 @@ export function applyAddProjectedEntity(
       ...(excluded.length ? { excluded } : {}),
     })
     feature.constraints = constraints
-    return members
+    return { constraintId: cid, members }
   }
   const eid = mintEntityId(feature.entities, entityId)
   // Refuse a second projection on the same entity.

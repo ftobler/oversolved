@@ -428,6 +428,13 @@ function lowerProjectionConstraints(
         continue
       }
       const edgeByToken = new Map(boundary.edges.map((edge) => [edge.token, edge]))
+      const excludedTokens = new Set((pc.excluded as string[] | undefined) ?? [])
+      const seams = new Set(boundary.seams ?? [])
+      // A face whose every edge is excluded is an intentionally empty live
+      // projection, not a failure: only live edges that all failed to project
+      // may report an error.
+      const liveEdges = boundary.edges.filter((edge) =>
+        edge.token !== '' && !excludedTokens.has(edge.token) && !seams.has(edge.query)).length
       for (const [token, memberId] of Object.entries(reconciled.members)) {
         const edge = edgeByToken.get(token)
         if (edge === undefined) continue  // orphan: kept in the map, no geometry
@@ -448,9 +455,10 @@ function lowerProjectionConstraints(
         derivedEntities.push({ id: memberId, kind: projected.kind })
         report.entities.push({ id: memberId, kind: projected.kind, params: [...projected.params] })
       }
-      // A face that resolves but yields no member is as dead as a miss: name it
-      // so the projection cannot sit silent with nothing to freeze or report.
-      if (report.entities.length === 0) {
+      // A face that resolves but yields no member is a failure only when it had
+      // a live edge to project; an all-excluded (or all-orphan) boundary is an
+      // intentionally empty live projection, not a dangling one.
+      if (report.entities.length === 0 && liveEdges > 0) {
         projectionErrors.push(cid)
         projectionWarnings.push(
           `projection ${cid} face ${source} has no boundary edge to project`,

@@ -354,4 +354,27 @@ describe('the add and delete appliers', () => {
     expect(sketch.constraints![0].excluded).toEqual([token])
     expect(sketch.constraints).toHaveLength(1)
   })
+
+  it('does not freeze a member deleted in the same press as its projection', () => {
+    const doc = sketchDoc()
+    applyAddProjectedEntity(doc, 'sk1', '', faceSource, undefined, undefined, {
+      faceBoundary: () => boundary,
+    })
+    const sketch = (doc.features ?? [])[0]
+    if (sketch.kind !== 'sketch') throw new Error('not a sketch')
+    const cid = sketch.constraints![0].id
+    const first = sketch.constraints![0].members![TOKENS[0]]
+    const second = sketch.constraints![0].members![TOKENS[1]]
+    applyDeleteElements(
+      doc,
+      [`entity:sk1:${first}`, `constraint:sk1:${cid}`],
+      [
+        { id: first, kind: 'line', params: [0, 0, 1, 1] },
+        { id: second, kind: 'line', params: [1, 0, 2, 1] },
+      ],
+    )
+    expect(sketch.constraints).toEqual([])
+    expect(sketch.entities?.map(entity => entity.id)).toEqual([second])
+    expect(sketch.initial?.[first]).toBeUndefined()
+  })
 })

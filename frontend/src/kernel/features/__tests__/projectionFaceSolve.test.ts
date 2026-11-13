@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-  solveSketch, setSketchSolver, resetSketchSolver, prepareDragContext,
+  solveSketch, setSketchSolver, resetSketchSolver, prepareDragContext, probeRedundantConstraint,
 } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
@@ -16,7 +16,7 @@ import type { Repository } from '../../query'
 import type { Body } from '../../types3d'
 import type { FaceBoundaryLookup } from '../faceBoundary'
 import type { FaceBoundaryEdge } from '../projectionMembers'
-import type { PartDoc, SketchFeature } from '@/types/cad'
+import type { PartConstraint, PartDoc, SketchFeature } from '@/types/cad'
 
 type Dict = Record<string, unknown>
 
@@ -92,6 +92,18 @@ describe.skipIf(!solveBytes)('face projection lowering', () => {
     expect(out.projection_members?.proj_face.members).toEqual({})
     expect(out.projection_members?.proj_face.entities).toEqual([])
     expect(out.projection_errors).toContain('proj_face')
+  })
+
+  it('treats an all-excluded boundary as intentionally empty, not an error', () => {
+    const members = deriveMemberIds('proj_face', EDGE_TOKENS)
+    const feature = faceFeature()
+    ;(feature.constraints as Array<Record<string, unknown>>)[0] = {
+      id: 'proj_face', kind: 'projection', source: FACE_QUERY,
+      members, excluded: [...EDGE_TOKENS],
+    }
+    const out = solveSketch(feature, memberRepo(), {} as Record<string, Body>, {}, boundary)
+    expect(out.projection_members?.proj_face.entities).toEqual([])
+    expect(out.projection_errors).toBeUndefined()
   })
 })
 
@@ -184,5 +196,19 @@ describe.skipIf(!solveBytes)('face projection drag context', () => {
     const ctx = prepareDragContext(dragFeature(), member, null, [0, 0], undefined, derived)
     expect(ctx).not.toBeNull()
     expect(ctx!.layout.some(layout => layout.id === member)).toBe(true)
+  })
+
+  it('answers the authoring probe against the derived member instead of dropping the row', () => {
+    const feature = dragFeature()
+    // The draft the authoring path leaves last: a dimension to the member.
+    feature.constraints!.push({
+      id: 'draft', kind: 'coincident',
+      a: { entity: 'u1', point: 'xy' },
+      b: { entity: member, point: 'start' },
+    } as unknown as PartConstraint)
+    // Without the report the row is stale, so the probe cannot see the draft.
+    expect(probeRedundantConstraint(feature, 'draft')).toBeNull()
+    // With it the draft lowers; an exact second coincident reads redundant.
+    expect(probeRedundantConstraint(feature, 'draft', undefined, derived)).toBe(true)
   })
 })
