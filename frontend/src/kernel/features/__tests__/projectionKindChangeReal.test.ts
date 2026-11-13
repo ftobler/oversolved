@@ -6,7 +6,8 @@
 // the sketch warning, while the document row stays put so the kind round trip
 // re-enables it. Rebuilt from scratch (not from the practice example): a source
 // arc or circle on Top, a target sketch on Top that holds the projection, and a
-// target plane tilted about world x (ellipse) or y (edge-on silhouette).
+// target plane tilted about world x (ellipse, or a fit spline for a sampled arc)
+// or y (edge-on silhouette).
 //
 // Skips when OCC.js or the Rust solver is absent.
 
@@ -125,7 +126,7 @@ function moveTarget(doc: PartDoc, plane: string) {
 }
 
 describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on it', () => {
-  it('5-6. an arc that resolves to a spline drops its centre row and comes back', async () => {
+  it('5-6. an arc that resolves to a fit spline drops its centre row and comes back', async () => {
     const base = await targetOnTop('arc')
     expect(base.ok).toBe(true)
     // 0 deg: the source arc is coplanar with the target, so the projection is an
@@ -140,23 +141,26 @@ describe.skipIf(!ready)('a resolved-kind change re-validates the constraints on 
 
     const tilted = await moveTarget(base.doc!, '@pl30')
     expect(tilted.ok).toBe(true)
-    // A tilted arc has no 2D ellipse-arc entity, so it lowers to a fitted
-    // spline (an eight-parameter block). The resolved kind is what the operand
-    // gate sees, or the `center` key would still pass and the row would bind the
-    // spline's midpoint. The witness is the solved param block the write-back
-    // installed: its length is the resolved kind's, so it survives the hygiene
-    // change (the document entity kind does not).
-    expect(paramsOf(tilted.doc, 'skT', 'pa0')).toHaveLength(8)
+    // A tilted arc has no 2D ellipse-arc entity, and at 30 degrees one cubic no
+    // longer follows it, so the sampled fit resolves to a fit spline: a 2N-point
+    // block, longer than the eight-parameter cubic. The resolved kind is what the
+    // operand gate sees, or the `center` key would still pass and the row would
+    // bind a point on the fitted curve. The witness is the solved param block the
+    // write-back installed: its length is the resolved kind's, so it survives the
+    // hygiene change (the document entity kind does not).
+    const tiltedBlock = paramsOf(tilted.doc, 'skT', 'pa0')!
+    expect(tiltedBlock.length).toBeGreaterThan(8)
+    expect(tiltedBlock.length % 2).toBe(0)  // fit points only, no end handles
     const row = tilted.features.find(problem => problem.id === 'skT')
     expect(row).toBeDefined()
     expect(row!.status).not.toBe('fully_constrained')
-    expect(row!.message).toContain('operand center not on spline')
+    expect(row!.message).toContain('operand center not on fit_spline')
     // A lost centre carries the stable alternative, not only the loss.
     expect(row!.message).toContain('project the center as a point to keep it')
     // The document keeps the row, so the round trip below can revive it.
     expect(sketchOf(tilted.doc, 'skT')?.constraints).toHaveLength(2)
-    // The free point stays where the last solve left it, not on a control point
-    // of the fitted spline.
+    // The free point stays where the last solve left it, not on a point of the
+    // fitted curve.
     expect(paramsOf(tilted.doc, 'skT', 'pt')?.[0]).toBeCloseTo(5, 3)
     expect(paramsOf(tilted.doc, 'skT', 'pt')?.[1]).toBeCloseTo(10, 3)
 
